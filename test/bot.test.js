@@ -1,0 +1,101 @@
+'use strict'
+
+const { test } = require('node:test')
+const assert = require('node:assert/strict')
+const { once } = require('node:events')
+const http = require('node:http')
+const { loadConfig } = require('../src/config')
+const { chooseRealm } = require('../src/realms')
+const { createState } = require('../src/state')
+const { createApi } = require('../src/api')
+
+test('account profiles stay inside their cache directory; invalid configuration fails before login', () => {
+  const config = loadConfig({ BOT_PROFILE: 'main', REALM_ID: '123' })
+  assert.equal(config.realmId, '123')
+  assert.ok(config.authDir.endsWith('main'))
+  for (const profile of ['../other', '..', 'a/b', 'a\\b']) {
+    assert.throws(() => loadConfig({ BOT_PROFILE: profile }))
+  }
+  for (const port of ['0', '-1', '65536', 'abc']) assert.throws(() => loadConfig({ API_PORT: port }))
+  assert.throws(() => loadConfig({ REALM_ID: '1e3' }))
+  assert.throws(() => loadConfig({ MINECRAFT_VERSION: 'latest' }))
+})
+
+test('Realm selection retries invalid input and never silently selects the first Realm', async () => {
+  const realms = [{ id: 12, name: 'one', state: 'OPEN' }, { id: 23, name: 'two', state: 'OPEN' }]
+  const answers = ['', '99', '2']
+  const selected = await chooseRealm(realms, { ask: async () => answers.shift(), log: () => {} })
+  assert.equal(selected.id, 23)
+  await assert.rejects(chooseRealm(realms, { log: () => {} }), /ターミナル/)
+  await assert.rejects(chooseRealm(realms, { realmId: '999', log: () => {} }), /一覧にありません/)
+  await assert.rejects(chooseRealm([{ id: 12, state: 'CLOSED' }], { realmId: '12', log: () => {} }), /閉じている/)
+  await assert.rejects(chooseRealm(realms, { ask: async () => 'q', log: () => {} }), { code: 'CANCELLED' })
+})
+
+test('observation tracks this player only, supports BigInt IDs, and preserves inventory ownership', () => {
+  const { state, applyPacket, snapshot } = createState('main', () => 'test-time')
+  applyPacket('start_game', { entity_id: 7n, runtime_entity_id: 99n, player_position: { x: 1, y: 65, z: 2 }, dimension: 'overworld', rotation: { x: 10, z: 80 }, player_gamemode: 'fallback', world_gamemode: 'survival' })
+  assert.equal(state.gameMode, 'survival')
+  assert.deepEqual(state.rotation, { pitch: 10, yaw: 80 })
+  applyPacket('update_player_game_type', { player_unique_id: 8n, gamemode: 'creative' })
+  assert.equal(state.gameMode, 'survival')
+  applyPacket('set_player_game_type', { gamemode: 'creative' })
+  assert.equal(state.gameMode, 'creative')
+  applyPacket('set_player_game_type', { gamemode: 'fallback' })
+  assert.equal(state.gameMode, 'survival')
+  applyPacket('move_player', { runtime_id: 100n, position: { x: 500, y: 70, z: 500 } })
+  assert.deepEqual(state.position, { x: 1, y: 65, z: 2 })
+  applyPacket('move_player', { runtime_id: '99', position: { x: 2, y: 65, z: 2 }, pitch: 0, yaw: 90 })
+  assert.equal(state.position.x, 2)
+  applyPacket('update_attributes', { runtime_entity_id: 100n, attributes: [{ name: 'minecraft:health', current: 0 }] })
+  assert.equal(state.health, null)
+  applyPacket('update_attributes', { runtime_entity_id: 99n, attributes: [{ name: 'minecraft:health', current: 20 }] })
+  assert.equal(state.health, 20)
+  applyPacket('inventory_content', { window_id: 'inventory', input: [{ network_id: 0 }, { network_id: 42, count: 3 }] })
+  applyPacket('item_registry', { itemstates: [{ runtime_id: 42, name: 'minecraft:stone' }] })
+  assert.equal(state.inventory.items[0].name, 'minecraft:stone')
+  applyPacket('mob_equipment', { runtime_entity_id: 99n, window_id: 'inventory', selected_slot: 1 })
+  assert.equal(state.heldItem.name, 'minecraft:stone')
+  applyPacket('mob_equipment', { runtime_entity_id: 99n, window_id: 'offhand', selected_slot: 0 })
+  assert.equal(state.selectedSlot, 1)
+  applyPacket('player_hotbar', { window_id: 'inventory', selected_slot: 250 })
+  assert.equal(state.selectedSlot, null)
+  assert.equal(state.heldItem, null)
+  applyPacket('inventory_content', { window_id: 'container', input: [] })
+  assert.equal(state.inventory.items[0].count, 3)
+  applyPacket('inventory_slot', { window_id: 'inventory', slot: 1, item: { network_id: 0 } })
+  assert.equal(state.inventory.items.length, 0)
+  const copy = snapshot()
+  copy.position.x = -1
+  assert.equal(state.position.x, 2)
+  assert.doesNotThrow(() => JSON.stringify(snapshot()))
+  applyPacket('server_post_move', { position: { x: 3, y: 66.62, z: 4 } })
+  assert.deepEqual(state.position, { x: 3, y: 66.62, z: 4 })
+  assert.equal(state.positionSource, 'server_post_move')
+})
+
+test('local API returns real observed state and allows only explicit local disconnect requests', async t => {
+  let disconnects = 0
+  const api = createApi({ snapshot: () => ({ phase: 'spawned', position: { x: 1, y: 2, z: 3 } }), disconnect: () => { disconnects++ } })
+  t.after(() => { api.closeAllConnections(); api.close() })
+  api.listen(0, '127.0.0.1')
+  await once(api, 'listening')
+  const base = `http://127.0.0.1:${api.address().port}`
+  const state = await fetch(`${base}/status`)
+  assert.equal(state.status, 200)
+  assert.equal((await state.json()).phase, 'spawned')
+  const foreignHostStatus = await new Promise((resolve, reject) => {
+    const request = http.get(`${base}/status`, { headers: { Host: 'foreign.example' } }, response => {
+      response.resume()
+      resolve(response.statusCode)
+    })
+    request.on('error', reject)
+  })
+  assert.equal(foreignHostStatus, 403)
+  assert.equal((await fetch(`${base}/disconnect`, { method: 'POST', headers: { Origin: 'https://foreign.example', 'Content-Type': 'application/json' }, body: '{}' })).status, 403)
+  assert.equal((await fetch(`${base}/disconnect`, { method: 'POST', body: '' })).status, 415)
+  assert.equal(disconnects, 0)
+  assert.equal((await fetch(`${base}/disconnect`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 202)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(disconnects, 1)
+})

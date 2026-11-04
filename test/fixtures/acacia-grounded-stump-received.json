@@ -1,0 +1,8717 @@
+{
+  "kind": "received_cached_remote_blocks_not_current_pose",
+  "at": "2026-11-01T18:33:23.440Z",
+  "beforeScope": [
+    "0f5e63ea-4116-4720-b087-a86bb9859290",
+    97
+  ],
+  "afterScope": [
+    "0f5e63ea-4116-4720-b087-a86bb9859290",
+    97
+  ],
+  "blocks": [
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 71,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 71,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 71,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 71,
+        "z": -12
+      },
+      "name": "minecraft:short_grass",
+      "runtimeId": 2827903781,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 71,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 71,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 71,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 72,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 72,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 72,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 72,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 72,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 72,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 72,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 73,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 73,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 73,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 73,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 73,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 73,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 73,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 74,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 74,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 74,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 74,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 74,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 74,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 74,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 75,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 75,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 75,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 75,
+        "z": -12
+      },
+      "name": "minecraft:acacia_log",
+      "runtimeId": 3030848113,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 75,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 75,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 75,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 76,
+        "z": -15
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 76,
+        "z": -14
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 76,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 76,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 76,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 76,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 76,
+        "z": -9
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 77,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 77,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 77,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 77,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 77,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 77,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 77,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 71,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 71,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 71,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 71,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 71,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 71,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 71,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 72,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 72,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 72,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 72,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 72,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 72,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 72,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 73,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 73,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 73,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 73,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 73,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 73,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 73,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 74,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 74,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 74,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 74,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 74,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 74,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 74,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 75,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 75,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 75,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 75,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 75,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 75,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 75,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 76,
+        "z": -15
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 76,
+        "z": -14
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 76,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 76,
+        "z": -12
+      },
+      "name": "minecraft:acacia_log",
+      "runtimeId": 3030848113,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 76,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 76,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 76,
+        "z": -9
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 77,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 77,
+        "z": -14
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 77,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 77,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 77,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 77,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 77,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 71,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 71,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 71,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 71,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 71,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 71,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 71,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 72,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 72,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 72,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 72,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 72,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 72,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 72,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 73,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 73,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 73,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 73,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 73,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 73,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 73,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 74,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 74,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 74,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 74,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 74,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 74,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 74,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 75,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 75,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 75,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 75,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 75,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 75,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 75,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 76,
+        "z": -15
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 76,
+        "z": -14
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 76,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 76,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 76,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 76,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 76,
+        "z": -9
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 77,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 77,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 77,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 77,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 77,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 77,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 77,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 71,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 71,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 71,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 71,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 71,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 71,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 71,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 72,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 72,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 72,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 72,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 72,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 72,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 72,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 73,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 73,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 73,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 73,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 73,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 73,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 73,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 74,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 74,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 74,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 74,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 74,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 74,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 74,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 75,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 75,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 75,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 75,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 75,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 75,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 75,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 76,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 76,
+        "z": -14
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 76,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 76,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 76,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 76,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 76,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 77,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 77,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 77,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 77,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 77,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 77,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -16,
+        "y": 77,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 71,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 71,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 71,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 71,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 71,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 71,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 71,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 72,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 72,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 72,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 72,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 72,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 72,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 72,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 73,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 73,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 73,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 73,
+        "z": -12
+      },
+      "name": "minecraft:acacia_log",
+      "runtimeId": 3030848113,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 73,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 73,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 73,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 74,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 74,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 74,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 74,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 74,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 74,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 74,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 75,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 75,
+        "z": -14
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 75,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 75,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 75,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 75,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 75,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 76,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 76,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 76,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 76,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 76,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 76,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 76,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 77,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 77,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 77,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 77,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 77,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 77,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -15,
+        "y": 77,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 71,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 71,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 71,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 71,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 71,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 71,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 71,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 72,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 72,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 72,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 72,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 72,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 72,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 72,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 73,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 73,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 73,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 73,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 73,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 73,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 73,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 74,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 74,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 74,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 74,
+        "z": -12
+      },
+      "name": "minecraft:acacia_log",
+      "runtimeId": 3030848113,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 74,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 74,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 74,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 75,
+        "z": -15
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 75,
+        "z": -14
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 75,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 75,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 75,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 75,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 75,
+        "z": -9
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 76,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 76,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 76,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 76,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 76,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 76,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 76,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 77,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 77,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 77,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 77,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 77,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 77,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -14,
+        "y": 77,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 71,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 71,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 71,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 71,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 71,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 71,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 71,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 72,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 72,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 72,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 72,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 72,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 72,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 72,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 73,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 73,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 73,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 73,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 73,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 73,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 73,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 74,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 74,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 74,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 74,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 74,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 74,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 74,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 75,
+        "z": -15
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 75,
+        "z": -14
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 75,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 75,
+        "z": -12
+      },
+      "name": "minecraft:acacia_log",
+      "runtimeId": 3030848113,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 75,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 75,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 75,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 76,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 76,
+        "z": -14
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 76,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 76,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 76,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 76,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 76,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 77,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 77,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 77,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 77,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 77,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 77,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -13,
+        "y": 77,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 70,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 70,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 70,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 70,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 70,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 70,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 70,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 71,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 71,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 71,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 71,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 71,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 71,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 71,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 72,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 72,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 72,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 72,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 72,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 72,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 72,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 73,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 73,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 73,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 73,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 73,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 73,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 73,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 74,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 74,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 74,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 74,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 74,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 74,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 74,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 75,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 75,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 75,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 75,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 75,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 75,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 75,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 76,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 76,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 76,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 76,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 76,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 76,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -23,
+        "y": 76,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 70,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 70,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 70,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 70,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 70,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 70,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 70,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 71,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 71,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 71,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 71,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 71,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 71,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 71,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 72,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 72,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 72,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 72,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 72,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 72,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 72,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 73,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 73,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 73,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 73,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 73,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 73,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 73,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 74,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 74,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 74,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 74,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 74,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 74,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 74,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 75,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 75,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 75,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 75,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 75,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 75,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 75,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 76,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 76,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 76,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 76,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 76,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 76,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -22,
+        "y": 76,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 70,
+        "z": -15
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 70,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 70,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 70,
+        "z": -12
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 70,
+        "z": -11
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 70,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 70,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 71,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 71,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 71,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 71,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 71,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 71,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 71,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 72,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 72,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 72,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 72,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 72,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 72,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 72,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 73,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 73,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 73,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 73,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 73,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 73,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 73,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 74,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 74,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 74,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 74,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 74,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 74,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 74,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 75,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 75,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 75,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 75,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 75,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 75,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 75,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 76,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 76,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 76,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 76,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 76,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 76,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -21,
+        "y": 76,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 70,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 70,
+        "z": -14
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 70,
+        "z": -13
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 70,
+        "z": -12
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 70,
+        "z": -11
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 70,
+        "z": -10
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 70,
+        "z": -9
+      },
+      "name": "minecraft:short_grass",
+      "runtimeId": 2827903781,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 71,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 71,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 71,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 71,
+        "z": -12
+      },
+      "name": "minecraft:acacia_log",
+      "runtimeId": 3030848113,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 71,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 71,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 71,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 72,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 72,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 72,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 72,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 72,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 72,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 72,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 73,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 73,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 73,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 73,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 73,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 73,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 73,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 74,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 74,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 74,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 74,
+        "z": -12
+      },
+      "name": "minecraft:acacia_log",
+      "runtimeId": 3030848113,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 74,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 74,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 74,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 75,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 75,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 75,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 75,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 75,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 75,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 75,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 76,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 76,
+        "z": -14
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 76,
+        "z": -13
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 76,
+        "z": -12
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 76,
+        "z": -11
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 76,
+        "z": -10
+      },
+      "name": "minecraft:acacia_leaves",
+      "runtimeId": 1857362751,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -20,
+        "y": 76,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 70,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 70,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 70,
+        "z": -13
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 70,
+        "z": -12
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 70,
+        "z": -11
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 70,
+        "z": -10
+      },
+      "name": "minecraft:short_grass",
+      "runtimeId": 2827903781,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -19,
+        "y": 70,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 70,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 70,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 70,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 70,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 70,
+        "z": -11
+      },
+      "name": "minecraft:short_grass",
+      "runtimeId": 2827903781,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 70,
+        "z": -10
+      },
+      "name": "minecraft:short_grass",
+      "runtimeId": 2827903781,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -18,
+        "y": 70,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 70,
+        "z": -15
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 70,
+        "z": -14
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 70,
+        "z": -13
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 70,
+        "z": -12
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 70,
+        "z": -11
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 70,
+        "z": -10
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -17,
+        "y": 70,
+        "z": -9
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    }
+  ],
+  "note": "Actual received remote cached world at capture scope97, not the current player pose, a same-time historical mining route, or proof of server harvest."
+}

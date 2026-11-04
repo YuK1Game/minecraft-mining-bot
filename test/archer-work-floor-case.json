@@ -1,0 +1,355 @@
+{
+  "at": "2026-11-01T23:32:42.511Z",
+  "kind": "READONLY_SCOPE_AND_IN_MEMORY_POLICY_COMPARISON_NOT_APPLIED",
+  "scope": {
+    "profile": "bot",
+    "realmId": "21225335",
+    "cid": "0f5e63ea-4116-4720-b087-a86bb9859290",
+    "startedAt": "2026-11-01T13:50:28.443Z",
+    "self": "13639",
+    "dimension": "overworld",
+    "life": 242
+  },
+  "hp": 20,
+  "hunger": 20,
+  "items": [],
+  "position": {
+    "x": -14.465076032176109,
+    "y": 64.62,
+    "z": 23.502814985500148
+  },
+  "spawnRanged": true,
+  "survivalWork": false,
+  "canonical": [],
+  "requiresObservation": false,
+  "unknown": 0,
+  "outside": [
+    {
+      "entityId": "13649",
+      "runtimeId": "13649",
+      "name": "minecraft:skeleton",
+      "kind": "mob",
+      "position": {
+        "x": 1.518200397491455,
+        "y": 55,
+        "z": 32.981529235839844
+      },
+      "positionKnown": true,
+      "distance": 20.924998190364548,
+      "classification": "known_hostile",
+      "hostile": true,
+      "dangerous": false,
+      "dangerRadius": 18,
+      "category": "ranged",
+      "score": 0,
+      "reason": "minecraft:skeletonを20.92ブロックで観測。回避方針18ブロックの外側ですが、追跡や飛来物がない保証ではありません。",
+      "policyBasis": "接続維持・通常リスポーンで学習する方針。通常遠隔attack range15に余裕3を取る18ブロックを生存中は維持する。",
+      "evidenceUrl": "https://raw.githubusercontent.com/Mojang/bedrock-samples/main/behavior_pack/entities/skeleton.json"
+    },
+    {
+      "entityId": "21884",
+      "runtimeId": "21884",
+      "name": "minecraft:skeleton",
+      "kind": "mob",
+      "position": {
+        "x": -24.27724266052246,
+        "y": 67,
+        "z": 46.926910400390625
+      },
+      "positionKnown": true,
+      "distance": 25.50747458978107,
+      "classification": "known_hostile",
+      "hostile": true,
+      "dangerous": false,
+      "dangerRadius": 18,
+      "category": "ranged",
+      "score": 0,
+      "reason": "minecraft:skeletonを25.51ブロックで観測。回避方針18ブロックの外側ですが、追跡や飛来物がない保証ではありません。",
+      "policyBasis": "接続維持・通常リスポーンで学習する方針。通常遠隔attack range15に余裕3を取る18ブロックを生存中は維持する。",
+      "evidenceUrl": "https://raw.githubusercontent.com/Mojang/bedrock-samples/main/behavior_pack/entities/skeleton.json"
+    },
+    {
+      "entityId": "21928",
+      "runtimeId": "21928",
+      "name": "minecraft:skeleton",
+      "kind": "mob",
+      "position": {
+        "x": -17.39387321472168,
+        "y": 66,
+        "z": 53.04831314086914
+      },
+      "positionKnown": true,
+      "distance": 29.722360508300806,
+      "classification": "known_hostile",
+      "hostile": true,
+      "dangerous": false,
+      "dangerRadius": 18,
+      "category": "ranged",
+      "score": 0,
+      "reason": "minecraft:skeletonを29.72ブロックで観測。回避方針18ブロックの外側ですが、追跡や飛来物がない保証ではありません。",
+      "policyBasis": "接続維持・通常リスポーンで学習する方針。通常遠隔attack range15に余裕3を取る18ブロックを生存中は維持する。",
+      "evidenceUrl": "https://raw.githubusercontent.com/Mojang/bedrock-samples/main/behavior_pack/entities/skeleton.json"
+    },
+    {
+      "entityId": "21922",
+      "runtimeId": "21922",
+      "name": "minecraft:skeleton",
+      "kind": "mob",
+      "position": {
+        "x": -25.500099182128906,
+        "y": 70,
+        "z": 53.041587829589844
+      },
+      "positionKnown": true,
+      "distance": 31.9883609623051,
+      "classification": "known_hostile",
+      "hostile": true,
+      "dangerous": false,
+      "dangerRadius": 18,
+      "category": "ranged",
+      "score": 0,
+      "reason": "minecraft:skeletonを31.99ブロックで観測。回避方針18ブロックの外側ですが、追跡や飛来物がない保証ではありません。",
+      "policyBasis": "接続維持・通常リスポーンで学習する方針。通常遠隔attack range15に余裕3を取る18ブロックを生存中は維持する。",
+      "evidenceUrl": "https://raw.githubusercontent.com/Mojang/bedrock-samples/main/behavior_pack/entities/skeleton.json"
+    },
+    {
+      "entityId": "21921",
+      "runtimeId": "21921",
+      "name": "minecraft:skeleton",
+      "kind": "mob",
+      "position": {
+        "x": -6.300000190734863,
+        "y": 36,
+        "z": -6.8023576736450195
+      },
+      "positionKnown": true,
+      "distance": 42.47559715174217,
+      "classification": "known_hostile",
+      "hostile": true,
+      "dangerous": false,
+      "dangerRadius": 18,
+      "category": "ranged",
+      "score": 0,
+      "reason": "minecraft:skeletonを42.48ブロックで観測。回避方針18ブロックの外側ですが、追跡や飛来物がない保証ではありません。",
+      "policyBasis": "接続維持・通常リスポーンで学習する方針。通常遠隔attack range15に余裕3を取る18ブロックを生存中は維持する。",
+      "evidenceUrl": "https://raw.githubusercontent.com/Mojang/bedrock-samples/main/behavior_pack/entities/skeleton.json"
+    },
+    {
+      "entityId": "21920",
+      "runtimeId": "21920",
+      "name": "minecraft:skeleton",
+      "kind": "mob",
+      "position": {
+        "x": -7.699999809265137,
+        "y": 35,
+        "z": -7.4855194091796875
+      },
+      "positionKnown": true,
+      "distance": 43.398012913707156,
+      "classification": "known_hostile",
+      "hostile": true,
+      "dangerous": false,
+      "dangerRadius": 18,
+      "category": "ranged",
+      "score": 0,
+      "reason": "minecraft:skeletonを43.40ブロックで観測。回避方針18ブロックの外側ですが、追跡や飛来物がない保証ではありません。",
+      "policyBasis": "接続維持・通常リスポーンで学習する方針。通常遠隔attack range15に余裕3を取る18ブロックを生存中は維持する。",
+      "evidenceUrl": "https://raw.githubusercontent.com/Mojang/bedrock-samples/main/behavior_pack/entities/skeleton.json"
+    },
+    {
+      "entityId": "13911",
+      "runtimeId": "13911",
+      "name": "minecraft:skeleton",
+      "kind": "mob",
+      "position": {
+        "x": 34.189308166503906,
+        "y": 21,
+        "z": 19.14594268798828
+      },
+      "positionKnown": true,
+      "distance": 65.48996746044077,
+      "classification": "known_hostile",
+      "hostile": true,
+      "dangerous": false,
+      "dangerRadius": 18,
+      "category": "ranged",
+      "score": 0,
+      "reason": "minecraft:skeletonを65.49ブロックで観測。回避方針18ブロックの外側ですが、追跡や飛来物がない保証ではありません。",
+      "policyBasis": "接続維持・通常リスポーンで学習する方針。通常遠隔attack range15に余裕3を取る18ブロックを生存中は維持する。",
+      "evidenceUrl": "https://raw.githubusercontent.com/Mojang/bedrock-samples/main/behavior_pack/entities/skeleton.json"
+    }
+  ],
+  "physical": {
+    "movement": "stopped",
+    "mining": "stopped",
+    "input": false,
+    "user": false,
+    "guard": false,
+    "excavation": false,
+    "tunneling": false,
+    "foraging": false,
+    "recovery": false,
+    "food": false,
+    "craft": null,
+    "inventory": false,
+    "interactions": null,
+    "neutralStream": true
+  },
+  "safety": {
+    "running": true,
+    "busy": false,
+    "active": null,
+    "phase": "work_clearance_pending",
+    "lastError": null,
+    "lastResult": {
+      "action": "escape",
+      "supported": true,
+      "escaped": false,
+      "partialEscape": true,
+      "code": null,
+      "reason": null,
+      "partialFailure": null,
+      "cause": null,
+      "diagnostics": null,
+      "rejection": null,
+      "serverConfirmed": false,
+      "enemyDefeated": null
+    },
+    "held": true,
+    "pending": true
+  },
+  "records": [
+    {
+      "runtimeId": "13649",
+      "uniqueId": "-639950117249",
+      "name": "minecraft:skeleton",
+      "scope": "[\"bot\",\"21225335\",\"overworld\",\"0f5e63ea-4116-4720-b087-a86bb9859290\",\"13639\",\"2026-11-01T13:50:28.443Z\"]",
+      "dangerRadius": 18,
+      "distance": 20.924998190364548,
+      "targetDistance": 26,
+      "remainingDistance": 5.075001809635452
+    },
+    {
+      "runtimeId": "21884",
+      "uniqueId": "-639950105468",
+      "name": "minecraft:skeleton",
+      "scope": "[\"bot\",\"21225335\",\"overworld\",\"0f5e63ea-4116-4720-b087-a86bb9859290\",\"13639\",\"2026-11-01T13:50:28.443Z\"]",
+      "dangerRadius": 18,
+      "distance": 25.50747458978107,
+      "targetDistance": 26,
+      "remainingDistance": 0.49252541021893137
+    }
+  ],
+  "currentResolution": {
+    "actors": [
+      {
+        "entityId": "13649",
+        "runtimeId": "13649",
+        "name": "minecraft:skeleton",
+        "kind": "mob",
+        "position": {
+          "x": 1.518200397491455,
+          "y": 55,
+          "z": 32.981529235839844
+        },
+        "positionKnown": true,
+        "distance": 20.924998190364548,
+        "classification": "known_hostile",
+        "hostile": true,
+        "dangerous": false,
+        "dangerRadius": 18,
+        "category": "ranged",
+        "score": 0,
+        "reason": "minecraft:skeletonを20.92ブロックで観測。回避方針18ブロックの外側ですが、追跡や飛来物がない保証ではありません。",
+        "policyBasis": "接続維持・通常リスポーンで学習する方針。通常遠隔attack range15に余裕3を取る18ブロックを生存中は維持する。",
+        "evidenceUrl": "https://raw.githubusercontent.com/Mojang/bedrock-samples/main/behavior_pack/entities/skeleton.json"
+      },
+      {
+        "entityId": "21884",
+        "runtimeId": "21884",
+        "name": "minecraft:skeleton",
+        "kind": "mob",
+        "position": {
+          "x": -24.27724266052246,
+          "y": 67,
+          "z": 46.926910400390625
+        },
+        "positionKnown": true,
+        "distance": 25.50747458978107,
+        "classification": "known_hostile",
+        "hostile": true,
+        "dangerous": false,
+        "dangerRadius": 18,
+        "category": "ranged",
+        "score": 0,
+        "reason": "minecraft:skeletonを25.51ブロックで観測。回避方針18ブロックの外側ですが、追跡や飛来物がない保証ではありません。",
+        "policyBasis": "接続維持・通常リスポーンで学習する方針。通常遠隔attack range15に余裕3を取る18ブロックを生存中は維持する。",
+        "evidenceUrl": "https://raw.githubusercontent.com/Mojang/bedrock-samples/main/behavior_pack/entities/skeleton.json"
+      }
+    ],
+    "records": [
+      {
+        "runtimeId": "13649",
+        "uniqueId": "-639950117249",
+        "name": "minecraft:skeleton",
+        "scope": "[\"bot\",\"21225335\",\"overworld\",\"0f5e63ea-4116-4720-b087-a86bb9859290\",\"13639\",\"2026-11-01T13:50:28.443Z\"]",
+        "dangerRadius": 18,
+        "distance": 20.924998190364548,
+        "targetDistance": 26,
+        "remainingDistance": 5.075001809635452
+      },
+      {
+        "runtimeId": "21884",
+        "uniqueId": "-639950105468",
+        "name": "minecraft:skeleton",
+        "scope": "[\"bot\",\"21225335\",\"overworld\",\"0f5e63ea-4116-4720-b087-a86bb9859290\",\"13639\",\"2026-11-01T13:50:28.443Z\"]",
+        "dangerRadius": 18,
+        "distance": 25.50747458978107,
+        "targetDistance": 26,
+        "remainingDistance": 0.49252541021893137
+      }
+    ],
+    "invalid": [],
+    "released": []
+  },
+  "proposedResolution": {
+    "actors": [],
+    "records": [],
+    "invalid": [],
+    "released": [
+      {
+        "runtimeId": "13649",
+        "reason": "clearance"
+      },
+      {
+        "runtimeId": "21884",
+        "reason": "clearance"
+      }
+    ]
+  },
+  "currentCapture": [
+    {
+      "runtimeId": "13649",
+      "uniqueId": "-639950117249",
+      "name": "minecraft:skeleton",
+      "dangerRadius": 18,
+      "scope": "[\"bot\",\"21225335\",\"overworld\",\"0f5e63ea-4116-4720-b087-a86bb9859290\",\"13639\",\"2026-11-01T13:50:28.443Z\"]",
+      "observedAt": 1793575962512
+    },
+    {
+      "runtimeId": "21884",
+      "uniqueId": "-639950105468",
+      "name": "minecraft:skeleton",
+      "dangerRadius": 18,
+      "scope": "[\"bot\",\"21225335\",\"overworld\",\"0f5e63ea-4116-4720-b087-a86bb9859290\",\"13639\",\"2026-11-01T13:50:28.443Z\"]",
+      "observedAt": 1793575962512
+    }
+  ],
+  "proposedCapture": [],
+  "policy": "Only online_learning Skeleton/Stray/Bogged work floor becomes max(canonical,18); all other policy behavior unchanged.",
+  "limits": [
+    "No source changes or live record/actor clears. This comparison uses an isolated compiled module and the same actual received status.",
+    "Public snapshot cannot establish whether the private Safety run.damage flag is still set; it can identify exactly which retained actors are extra-margin-only.",
+    "Food separate radius+8 admission is not changed."
+  ]
+}

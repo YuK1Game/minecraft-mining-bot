@@ -1,0 +1,468 @@
+{
+  "version": 1,
+  "requestId": -48,
+  "profile": "bot",
+  "connectionId": "85a7e65e-8372-4363-830f-d55a60bdafe0",
+  "dimension": "overworld",
+  "self": "273",
+  "life": 176,
+  "sourceSlot": 4,
+  "selectedSlot": 2,
+  "initialRaw": {
+    "id": 262,
+    "count": 2,
+    "metadata": 0,
+    "hasStackId": true,
+    "stackId": 373,
+    "stackIdPresent": true,
+    "blockId": 0,
+    "nbtMarker": 0,
+    "nbtPresent": true,
+    "extraHash": "d5d15c180bbf3802",
+    "rawHash": "6b581bc8188b2041"
+  },
+  "droppedEvents": 3,
+  "events": [
+    {
+      "sequence": 4,
+      "at": 1793512558296,
+      "name": "completed_using_item",
+      "phase": "holding",
+      "wireEpoch": 1,
+      "hunger": 17,
+      "hungerBeforeUse": 17,
+      "health": 13.882017135620117,
+      "flags": {
+        "wireSent": true,
+        "completionSent": false,
+        "accepted": false,
+        "completedAck": false,
+        "hungerIncreased": false,
+        "observedConsumption": false
+      },
+      "selected": 2,
+      "self": "273",
+      "life": 176,
+      "scopeMatches": true,
+      "currentRaw": {
+        "id": 262,
+        "count": 2,
+        "metadata": 0,
+        "hasStackId": true,
+        "stackId": 373,
+        "stackIdPresent": true,
+        "blockId": 0,
+        "nbtMarker": 0,
+        "nbtPresent": true,
+        "extraHash": "d5d15c180bbf3802",
+        "rawHash": "6b581bc8188b2041"
+      },
+      "direction": "server_received",
+      "usedItemId": 262,
+      "useMethod": "eat",
+      "after": {
+        "phase": "holding",
+        "wireEpoch": 1,
+        "hunger": 17,
+        "flags": {
+          "wireSent": true,
+          "completionSent": false,
+          "accepted": false,
+          "completedAck": true,
+          "hungerIncreased": false,
+          "observedConsumption": false
+        }
+      }
+    },
+    {
+      "sequence": 5,
+      "at": 1793512558299,
+      "name": "inventory_transaction",
+      "phase": "holding",
+      "wireEpoch": 1,
+      "hunger": 17,
+      "hungerBeforeUse": 17,
+      "health": 13.882017135620117,
+      "flags": {
+        "wireSent": true,
+        "completionSent": false,
+        "accepted": false,
+        "completedAck": true,
+        "hungerIncreased": false,
+        "observedConsumption": false
+      },
+      "selected": 2,
+      "self": "273",
+      "life": 176,
+      "scopeMatches": true,
+      "currentRaw": {
+        "id": 262,
+        "count": 2,
+        "metadata": 0,
+        "hasStackId": true,
+        "stackId": 373,
+        "stackIdPresent": true,
+        "blockId": 0,
+        "nbtMarker": 0,
+        "nbtPresent": true,
+        "extraHash": "d5d15c180bbf3802",
+        "rawHash": "6b581bc8188b2041"
+      },
+      "direction": "server_received",
+      "transaction": {
+        "type": "item_release",
+        "legacyRequestId": 0,
+        "selectedActionCount": 1,
+        "actions": [
+          {
+            "source": "container",
+            "window": 0,
+            "slot": 2,
+            "old": {
+              "id": 262,
+              "count": 2,
+              "metadata": 0,
+              "hasStackId": false,
+              "stackId": null,
+              "stackIdPresent": true,
+              "blockId": 0,
+              "nbtMarker": 0,
+              "nbtPresent": true,
+              "extraHash": "d5d15c180bbf3802",
+              "rawHash": "90323ad8fb209e91"
+            },
+            "new": {
+              "id": 262,
+              "count": 1,
+              "metadata": 0,
+              "hasStackId": true,
+              "stackId": 441,
+              "stackIdPresent": true,
+              "blockId": 0,
+              "nbtMarker": 0,
+              "nbtPresent": true,
+              "extraHash": "d5d15c180bbf3802",
+              "rawHash": "4eda811d34d5fa79"
+            }
+          }
+        ],
+        "data": {
+          "actionType": "consume",
+          "hotbarSlot": 2,
+          "hand": "main_hand",
+          "held": {
+            "id": 262,
+            "count": 2,
+            "metadata": 0,
+            "hasStackId": false,
+            "stackId": null,
+            "stackIdPresent": true,
+            "blockId": 0,
+            "nbtMarker": 0,
+            "nbtPresent": true,
+            "extraHash": "d5d15c180bbf3802",
+            "rawHash": "90323ad8fb209e91"
+          }
+        }
+      },
+      "after": {
+        "phase": "holding",
+        "wireEpoch": 1,
+        "hunger": 17,
+        "flags": {
+          "wireSent": true,
+          "completionSent": false,
+          "accepted": false,
+          "completedAck": true,
+          "hungerIncreased": false,
+          "observedConsumption": false
+        }
+      }
+    },
+    {
+      "sequence": 6,
+      "at": 1793512558302,
+      "name": "inventory_content",
+      "phase": "holding",
+      "wireEpoch": 1,
+      "hunger": 17,
+      "hungerBeforeUse": 17,
+      "health": 13.882017135620117,
+      "flags": {
+        "wireSent": true,
+        "completionSent": false,
+        "accepted": false,
+        "completedAck": true,
+        "hungerIncreased": false,
+        "observedConsumption": false
+      },
+      "selected": 2,
+      "self": "273",
+      "life": 176,
+      "scopeMatches": true,
+      "currentRaw": {
+        "id": 262,
+        "count": 1,
+        "metadata": 0,
+        "hasStackId": true,
+        "stackId": 441,
+        "stackIdPresent": true,
+        "blockId": 0,
+        "nbtMarker": 0,
+        "nbtPresent": true,
+        "extraHash": "d5d15c180bbf3802",
+        "rawHash": "4eda811d34d5fa79"
+      },
+      "direction": "server_received",
+      "window": "inventory",
+      "container": "anvil_input",
+      "dynamicContainer": null,
+      "slot": 2,
+      "length": 36,
+      "receivedRaw": {
+        "id": 262,
+        "count": 1,
+        "metadata": 0,
+        "hasStackId": true,
+        "stackId": 441,
+        "stackIdPresent": true,
+        "blockId": 0,
+        "nbtMarker": 0,
+        "nbtPresent": true,
+        "extraHash": "d5d15c180bbf3802",
+        "rawHash": "4eda811d34d5fa79"
+      },
+      "rawMatches": true,
+      "source": null,
+      "after": {
+        "phase": "holding",
+        "wireEpoch": 1,
+        "hunger": 17,
+        "flags": {
+          "wireSent": true,
+          "completionSent": false,
+          "accepted": false,
+          "completedAck": true,
+          "hungerIncreased": false,
+          "observedConsumption": false
+        }
+      }
+    },
+    {
+      "sequence": 7,
+      "at": 1793512558315,
+      "name": "update_attributes",
+      "phase": "holding",
+      "wireEpoch": 1,
+      "hunger": 17,
+      "hungerBeforeUse": 17,
+      "health": 13.882017135620117,
+      "flags": {
+        "wireSent": true,
+        "completionSent": false,
+        "accepted": false,
+        "completedAck": true,
+        "hungerIncreased": false,
+        "observedConsumption": false
+      },
+      "selected": 2,
+      "self": "273",
+      "life": 176,
+      "scopeMatches": true,
+      "currentRaw": {
+        "id": 262,
+        "count": 1,
+        "metadata": 0,
+        "hasStackId": true,
+        "stackId": 441,
+        "stackIdPresent": true,
+        "blockId": 0,
+        "nbtMarker": 0,
+        "nbtPresent": true,
+        "extraHash": "d5d15c180bbf3802",
+        "rawHash": "4eda811d34d5fa79"
+      },
+      "direction": "server_received",
+      "receivedSelf": "273",
+      "hungerValues": [
+        20
+      ],
+      "after": {
+        "phase": "holding",
+        "wireEpoch": 1,
+        "hunger": 20,
+        "flags": {
+          "wireSent": true,
+          "completionSent": false,
+          "accepted": false,
+          "completedAck": true,
+          "hungerIncreased": true,
+          "observedConsumption": false
+        }
+      }
+    },
+    {
+      "sequence": 8,
+      "at": 1793512566302,
+      "name": "update_attributes",
+      "phase": "awaiting_consume",
+      "wireEpoch": 1,
+      "hunger": 20,
+      "hungerBeforeUse": 17,
+      "health": 15.882017135620117,
+      "flags": {
+        "wireSent": true,
+        "completionSent": false,
+        "accepted": false,
+        "completedAck": true,
+        "hungerIncreased": true,
+        "observedConsumption": false
+      },
+      "selected": 2,
+      "self": "273",
+      "life": 176,
+      "scopeMatches": true,
+      "currentRaw": {
+        "id": 262,
+        "count": 1,
+        "metadata": 0,
+        "hasStackId": true,
+        "stackId": 441,
+        "stackIdPresent": true,
+        "blockId": 0,
+        "nbtMarker": 0,
+        "nbtPresent": true,
+        "extraHash": "d5d15c180bbf3802",
+        "rawHash": "4eda811d34d5fa79"
+      },
+      "direction": "server_received",
+      "receivedSelf": "273",
+      "hungerValues": [
+        19
+      ],
+      "after": {
+        "phase": "awaiting_consume",
+        "wireEpoch": 1,
+        "hunger": 19,
+        "flags": {
+          "wireSent": true,
+          "completionSent": false,
+          "accepted": false,
+          "completedAck": true,
+          "hungerIncreased": true,
+          "observedConsumption": false
+        }
+      }
+    },
+    {
+      "sequence": 9,
+      "at": 1793512567342,
+      "name": "cancelled",
+      "phase": "awaiting_consume",
+      "wireEpoch": 1,
+      "hunger": 19,
+      "hungerBeforeUse": 17,
+      "health": 15.882017135620117,
+      "flags": {
+        "wireSent": true,
+        "completionSent": false,
+        "accepted": false,
+        "completedAck": true,
+        "hungerIncreased": true,
+        "observedConsumption": false
+      },
+      "selected": 2,
+      "self": "273",
+      "life": 176,
+      "scopeMatches": true,
+      "currentRaw": {
+        "id": 262,
+        "count": 1,
+        "metadata": 0,
+        "hasStackId": true,
+        "stackId": 441,
+        "stackIdPresent": true,
+        "blockId": 0,
+        "nbtMarker": 0,
+        "nbtPresent": true,
+        "extraHash": "d5d15c180bbf3802",
+        "rawHash": "4eda811d34d5fa79"
+      },
+      "reason": "食事を中断しました。"
+    },
+    {
+      "sequence": 10,
+      "at": 1793512567342,
+      "name": "inventory_uncertain",
+      "phase": "awaiting_consume",
+      "wireEpoch": 1,
+      "hunger": 19,
+      "hungerBeforeUse": 17,
+      "health": 15.882017135620117,
+      "flags": {
+        "wireSent": true,
+        "completionSent": false,
+        "accepted": false,
+        "completedAck": true,
+        "hungerIncreased": true,
+        "observedConsumption": false
+      },
+      "selected": 2,
+      "self": "273",
+      "life": 176,
+      "scopeMatches": true,
+      "currentRaw": {
+        "id": 262,
+        "count": 1,
+        "metadata": 0,
+        "hasStackId": true,
+        "stackId": 441,
+        "stackIdPresent": true,
+        "blockId": 0,
+        "nbtMarker": 0,
+        "nbtPresent": true,
+        "extraHash": "d5d15c180bbf3802",
+        "rawHash": "4eda811d34d5fa79"
+      },
+      "reason": "食事を中断しました。"
+    },
+    {
+      "sequence": 11,
+      "at": 1793512567348,
+      "name": "failed",
+      "phase": "awaiting_consume",
+      "wireEpoch": 1,
+      "hunger": 19,
+      "hungerBeforeUse": 17,
+      "health": 15.882017135620117,
+      "flags": {
+        "wireSent": true,
+        "completionSent": false,
+        "accepted": false,
+        "completedAck": true,
+        "hungerIncreased": true,
+        "observedConsumption": false
+      },
+      "selected": 2,
+      "self": "273",
+      "life": 176,
+      "scopeMatches": true,
+      "currentRaw": {
+        "id": 262,
+        "count": 1,
+        "metadata": 0,
+        "hasStackId": true,
+        "stackId": 441,
+        "stackIdPresent": true,
+        "blockId": 0,
+        "nbtMarker": 0,
+        "nbtPresent": true,
+        "extraHash": "d5d15c180bbf3802",
+        "rawHash": "4eda811d34d5fa79"
+      },
+      "reason": "食事を中断しました。",
+      "code": null
+    }
+  ],
+  "source": ".local/food-after-iron176-death.json"
+}

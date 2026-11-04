@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bot ライブログ</title>
+<style>
+  :root { --bg: #f7f7f5; --fg: #1d1d1b; --muted: #6b6b66; --line: #e3e3de; --combat: #b4441e; --error: #b3122b; --panel: #ffffff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #e9e9e4; --muted: #9a9a93; --line: #2c2c29; --combat: #f08a5d; --error: #ff6b7d; --panel: #1f1f1d; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-serif; }
+  header { position: sticky; top: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  h1 { font-size: 16px; margin: 0 12px 0 0; }
+  button, input { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  button[aria-pressed="true"] { border-color: var(--fg); font-weight: 600; }
+  input[type="search"] { cursor: text; min-width: 180px; }
+  #status { color: var(--muted); margin-left: auto; font-size: 13px; }
+  a { color: inherit; }
+  main { padding: 8px 16px 40px; font: 13px/1.45 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
+  .l { padding: 1px 0; border-bottom: 1px solid transparent; }
+  .combat { color: var(--combat); }
+  .error { color: var(--error); font-weight: 600; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bot ライブログ</h1>
+  <button data-filter="all" aria-pressed="true">すべて</button>
+  <button data-filter="combat" aria-pressed="false">戦闘</button>
+  <button data-filter="error" aria-pressed="false">エラー</button>
+  <input id="q" type="search" placeholder="文字で絞り込み">
+  <label><input id="follow" type="checkbox" checked> 自動スクロール</label>
+  <a href="/">進捗ページ</a>
+  <span id="status">接続中…</span>
+</header>
+<main id="log"></main>
+<script>
+  const COMBAT = /戦闘|攻撃|矢を発射|クリーパー|間合い|ダメージ|死亡|回避|後退|退避|リスポーン|melee|ranged|combat/i
+  const ERROR = /error|exception|失敗|異常|切断|閉じられ|TypeError|ReferenceError/i
+  const MAX_LINES = 3000
+  const log = document.getElementById('log'), status = document.getElementById('status'), q = document.getElementById('q'), follow = document.getElementById('follow')
+  let filter = 'all'
+  const visible = el => (filter === 'all' || el.classList.contains(filter)) && (!q.value || el.textContent.toLowerCase().includes(q.value.toLowerCase()))
+  const refresh = () => { for (const el of log.children) el.classList.toggle('hidden', !visible(el)) }
+  function add (line) {
+    const el = document.createElement('div'); el.className = 'l'; el.textContent = line
+    if (COMBAT.test(line)) el.classList.add('combat')
+    if (ERROR.test(line)) el.classList.add('error')
+    if (!visible(el)) el.classList.add('hidden')
+    log.appendChild(el)
+    while (log.children.length > MAX_LINES) log.firstChild.remove()
+    if (follow.checked) window.scrollTo(0, document.body.scrollHeight)
+  }
+  for (const b of document.querySelectorAll('[data-filter]')) b.addEventListener('click', () => {
+    filter = b.dataset.filter
+    for (const o of document.querySelectorAll('[data-filter]')) o.setAttribute('aria-pressed', String(o === b))
+    refresh()
+  })
+  q.addEventListener('input', refresh)
+  const source = new EventSource('/api/logs/stream')
+  source.onopen = () => { status.textContent = '受信中' }
+  source.onmessage = event => { try { add(JSON.parse(event.data)) } catch {} }
+  source.onerror = () => { status.textContent = '再接続中…' }
+</script>
+</body>
+</html>

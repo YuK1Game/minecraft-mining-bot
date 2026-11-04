@@ -1,0 +1,95 @@
+{
+  "source": ".local/bds-critical-damage-2026-11-01T04-48-11-716Z.json",
+  "localConnectionId": "f6a013d6-aa83-450d-be21-5d9140167ede",
+  "targetUniqueId": "-356482285559",
+  "criticalHopId": 1,
+  "originalAttackTick": "189764",
+  "observedGroundSwordDamage": 5.904000282287598,
+  "observedFirstNegativeVelocityAttemptDamage": 5.904000282287598,
+  "frames": [
+    {
+      "tick": "189763",
+      "queuedAt": 1793508509969,
+      "position": {
+        "x": 0.5,
+        "y": 102.86918707874469,
+        "z": 0.5
+      },
+      "inputPositionDeltaY": 0.08307781780646906,
+      "receiptConfirmed": true,
+      "physicsState": {
+        "position": {
+          "x": 0.5,
+          "y": 101.24918707874468,
+          "z": 0.5
+        },
+        "velocity": {
+          "x": 0,
+          "y": 0.0030162615090425808,
+          "z": 0
+        },
+        "onGround": false,
+        "isInWater": false,
+        "isInLava": false,
+        "isInWeb": false,
+        "effects": {}
+      }
+    },
+    {
+      "tick": "189764",
+      "queuedAt": 1793508510020,
+      "position": {
+        "x": 0.5,
+        "y": 102.87220334025373,
+        "z": 0.5
+      },
+      "inputPositionDeltaY": 0.003016261509046103,
+      "receiptConfirmed": true,
+      "physicsState": {
+        "position": {
+          "x": 0.5,
+          "y": 101.25220334025373,
+          "z": 0.5
+        },
+        "velocity": {
+          "x": 0,
+          "y": -0.07544406518948656,
+          "z": 0
+        },
+        "onGround": false,
+        "isInWater": false,
+        "isInLava": false,
+        "isInWeb": false,
+        "effects": {}
+      }
+    },
+    {
+      "tick": "189765",
+      "queuedAt": 1793508510070,
+      "position": {
+        "x": 0.5,
+        "y": 102.79675927506425,
+        "z": 0.5
+      },
+      "inputPositionDeltaY": -0.07544406518948676,
+      "receiptConfirmed": true,
+      "physicsState": {
+        "position": {
+          "x": 0.5,
+          "y": 101.17675927506424,
+          "z": 0.5
+        },
+        "velocity": {
+          "x": 0,
+          "y": -0.15233518685055708,
+          "z": 0
+        },
+        "onGround": false,
+        "isInWater": false,
+        "isInLava": false,
+        "isInWeb": false,
+        "effects": {}
+      }
+    }
+  ]
+}

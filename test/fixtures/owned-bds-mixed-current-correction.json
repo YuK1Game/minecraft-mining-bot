@@ -1,0 +1,151 @@
+{
+  "label": "HISTORICAL_OWNED_BDS_ACTUAL_PACKET_NOT_PATCH_SUCCESS",
+  "source": ".local/bds-water-observer-summary-2026-11-01T20-37.json",
+  "sourceSha256": "7a81f52f2cef7609727f73ff99cb204d9b2ede3ba0027950ad529d79208062f3",
+  "rawSource": ".local/bds-water-observer-2026-11-01T20-37-10-222Z.json",
+  "rawSourceSha256": "bdca2b3cea059a27bb169cc612c28144fc604d82bf9c4b052f37f2ee71bc463e",
+  "serverVersion": "1.26.60.6",
+  "selfRuntimeId": "1",
+  "correction": {
+    "prediction_type": "player",
+    "position": {
+      "x": 0.5,
+      "y": 101.82406616210938,
+      "z": 0.30000001192092896
+    },
+    "delta": {
+      "x": -2.4674204901486974e-9,
+      "y": -0.08969520777463913,
+      "z": 0
+    },
+    "rotation": {
+      "x": 0,
+      "z": 0
+    },
+    "on_ground": false,
+    "tick": "196527"
+  },
+  "actualQueued": {
+    "pitch": 0,
+    "yaw": -180,
+    "position": {
+      "x": 0.5,
+      "y": 102.04281630399025,
+      "z": 0.3
+    },
+    "move_vector": {
+      "x": 0,
+      "z": 1
+    },
+    "head_yaw": -180,
+    "input_data": [
+      "up",
+      "jumping",
+      "want_up",
+      "horizontal_collision"
+    ],
+    "input_mode": "mouse",
+    "play_mode": "normal",
+    "interaction_model": "crosshair",
+    "interact_rotation": {
+      "x": 0,
+      "z": -180
+    },
+    "tick": "196527",
+    "delta": {
+      "x": 1.92024618106305e-18,
+      "y": 0.3,
+      "z": 0
+    },
+    "transaction": null,
+    "item_stack_request": null,
+    "block_action": null,
+    "vehicle_rotation": null,
+    "predicted_vehicle": null,
+    "analogue_move_vector": {
+      "x": 0,
+      "z": 1
+    },
+    "camera_orientation": {
+      "x": 1.2246467991473532e-16,
+      "y": 0,
+      "z": -1
+    },
+    "raw_move_vector": {
+      "x": 0,
+      "z": 1
+    }
+  },
+  "actualNative": {
+    "tick": "196527",
+    "receiptConfirmed": true,
+    "controls": {
+      "forward": true,
+      "jump": true
+    },
+    "yaw": -180,
+    "pitch": 0,
+    "predictedState": {
+      "position": {
+        "x": 0.5,
+        "y": 100.42281630399025,
+        "z": 0.3
+      },
+      "velocity": {
+        "x": 1.92024618106305e-18,
+        "y": 0.3,
+        "z": 0
+      },
+      "velocitySource": "client_prediction",
+      "yaw": -180,
+      "pitch": 0,
+      "gameMode": "survival",
+      "onGround": false,
+      "isInWater": true,
+      "isInLava": false,
+      "isInWeb": false,
+      "isCollidedHorizontally": true,
+      "isCollidedVertically": false,
+      "jumpTicks": 0,
+      "jumpQueued": false,
+      "controls": {
+        "forward": true,
+        "back": false,
+        "left": false,
+        "right": false,
+        "jump": true,
+        "sprint": false,
+        "sneak": false
+      },
+      "effects": {},
+      "attributes": {},
+      "contactAdjustment": null,
+      "horizontalContactAdjustment": null
+    },
+    "packetPosition": {
+      "x": 0.5,
+      "y": 102.04281630399025,
+      "z": 0.3
+    },
+    "health": 20,
+    "queuedAt": 1793565446414,
+    "modeled": true,
+    "producer": "navigation"
+  },
+  "baselineInputReplay": {
+    "accepted": true,
+    "code": null,
+    "correctionTick": "196527",
+    "currentTick": "196527",
+    "replayedTicks": 0,
+    "continued": false,
+    "continuationRejected": "Only an unfinished direct surface swim can resume"
+  },
+  "arrived": false,
+  "limitations": [
+    "Owned LOCAL controlled arena only; no claim of current Realm authority settings/terrain/trajectory.",
+    "Observer samples are tick-labelled received server packets; query corroboration supports actual coordinates at the sampled points, not an invented per-tick server physics flag.",
+    "First recorded difference is not proof of a specific fluid/seed defect; no source or physics patch proposed from unmeasured mechanics.",
+    "No further LOCAL launch."
+  ]
+}

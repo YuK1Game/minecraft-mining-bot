@@ -1,0 +1,156 @@
+{
+  "source": "Actual isolated local BDS 1.26.60.6 strict grounded same-tick measurements; no Realm acceptance inference",
+  "createdAt": "2026-11-01T03:19:57.545Z",
+  "server": {
+    "version": "1.26.60.6",
+    "build": "52886189"
+  },
+  "tickRate": 20,
+  "inputTicks": 60,
+  "initialFeet": {
+    "x": 0.5,
+    "y": 100,
+    "z": 0.5
+  },
+  "yaw": -90,
+  "calibrated": {
+    "playerSpeed": 0.1,
+    "sprintSpeed": 0.3
+  },
+  "rows": [
+    {
+      "control": "walk",
+      "sentInputs": 60,
+      "sameTickGroundedPairs": 8,
+      "steadyPairs": 6,
+      "steadySamples": [
+        {
+          "frame": 25,
+          "fromFrame": 19,
+          "serverVelocity": 0.11785903573036194,
+          "serverDisplacementPerTick": 0.21585877736409506
+        },
+        {
+          "frame": 31,
+          "fromFrame": 25,
+          "serverVelocity": 0.11785905808210373,
+          "serverDisplacementPerTick": 0.21585893630981445
+        },
+        {
+          "frame": 37,
+          "fromFrame": 31,
+          "serverVelocity": 0.11785905808210373,
+          "serverDisplacementPerTick": 0.21585909525553384
+        },
+        {
+          "frame": 43,
+          "fromFrame": 37,
+          "serverVelocity": 0.11785905808210373,
+          "serverDisplacementPerTick": 0.21585941314697266
+        },
+        {
+          "frame": 49,
+          "fromFrame": 43,
+          "serverVelocity": 0.11785905808210373,
+          "serverDisplacementPerTick": 0.21585941314697266
+        },
+        {
+          "frame": 55,
+          "fromFrame": 49,
+          "serverVelocity": 0.11785905808210373,
+          "serverDisplacementPerTick": 0.21585941314697266
+        }
+      ],
+      "originalModel": {
+        "velocity": 0.07507622870432455,
+        "displacementPerTick": 0.13750225522460996
+      },
+      "server": {
+        "velocity": 0.11785905435681343,
+        "displacementPerTick": 0.21585925420125324
+      },
+      "calibratedModelAfter60": {
+        "x": 13.19194545105071,
+        "y": 101.62,
+        "z": 0.5
+      },
+      "strictCounterfactual": {
+        "inputs": 60,
+        "corrections": 0
+      },
+      "actualConsoleEndpointAfterStop": {
+        "x": 13.3098030090332,
+        "y": 101.6200103759766,
+        "z": 0.5
+      },
+      "endpointNote": "Actual console query after production stop/release; no exact input-tick association is asserted."
+    },
+    {
+      "control": "sprint",
+      "sentInputs": 60,
+      "sameTickGroundedPairs": 8,
+      "steadyPairs": 6,
+      "steadySamples": [
+        {
+          "frame": 25,
+          "fromFrame": 19,
+          "serverVelocity": 0.15321673452854156,
+          "serverDisplacementPerTick": 0.28061620394388836
+        },
+        {
+          "frame": 31,
+          "fromFrame": 25,
+          "serverVelocity": 0.15321676433086395,
+          "serverDisplacementPerTick": 0.28061676025390625
+        },
+        {
+          "frame": 37,
+          "fromFrame": 31,
+          "serverVelocity": 0.15321676433086395,
+          "serverDisplacementPerTick": 0.28061676025390625
+        },
+        {
+          "frame": 43,
+          "fromFrame": 37,
+          "serverVelocity": 0.15321676433086395,
+          "serverDisplacementPerTick": 0.28061676025390625
+        },
+        {
+          "frame": 49,
+          "fromFrame": 43,
+          "serverVelocity": 0.15321676433086395,
+          "serverDisplacementPerTick": 0.28061676025390625
+        },
+        {
+          "frame": 55,
+          "fromFrame": 49,
+          "serverVelocity": 0.15321676433086395,
+          "serverDisplacementPerTick": 0.28061676025390625
+        }
+      ],
+      "originalModel": {
+        "velocity": 0.16013759582632417,
+        "displacementPerTick": 0.2932923103940927
+      },
+      "server": {
+        "velocity": 0.1532167593638102,
+        "displacementPerTick": 0.28061676025390625
+      },
+      "calibratedModelAfter60": {
+        "x": 16.99952908636592,
+        "y": 101.62,
+        "z": 0.5
+      },
+      "strictCounterfactual": {
+        "inputs": 60,
+        "corrections": 0
+      },
+      "actualConsoleEndpointAfterStop": {
+        "x": 17.15274620056152,
+        "y": 101.6200103759766,
+        "z": 0.5
+      },
+      "endpointNote": "Actual console query after production stop/release; no exact input-tick association is asserted."
+    }
+  ]
+}

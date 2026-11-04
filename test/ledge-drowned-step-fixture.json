@@ -1,0 +1,8142 @@
+{
+  "provenance": {
+    "label": "STATIC COMPOSITE currentreceivedterrain21:35 L198 +historicalL196actor/HP/pose. Actualoneleafreceiptbefore/after preserved. Notanactual196trajectoryorcurrentroute.",
+    "terrainSource": ".local/readonly-headroom-world-2135.json",
+    "terrainAt": "2026-11-01T21:34:34.465Z",
+    "terrainScopeBefore": {
+      "profile": "bot",
+      "realmId": "21225335",
+      "connectionId": "0f5e63ea-4116-4720-b087-a86bb9859290",
+      "startedAt": "2026-11-01T13:50:28.443Z",
+      "dimension": "overworld",
+      "life": 198
+    },
+    "terrainScopeAfter": {
+      "profile": "bot",
+      "realmId": "21225335",
+      "connectionId": "0f5e63ea-4116-4720-b087-a86bb9859290",
+      "startedAt": "2026-11-01T13:50:28.443Z",
+      "dimension": "overworld",
+      "life": 198
+    },
+    "beforeSource": ".local/field2127-one-protective-headleaf-proof.json",
+    "laterLowHpSource": ".local/field2129-two-cell-terrain-only-counterfactual.json",
+    "allComparedFingerprintsMatch": true,
+    "controlledFields": [
+      "Historical terrainOcclusion metadata omitted; static current actor circles re-evaluated conservatively. Controlled test Input start_game/ticks and AIR receipts are only in executor test, never live evidence."
+    ]
+  },
+  "beforeState": {
+    "phase": "spawned",
+    "profile": "bot",
+    "realm": {
+      "id": "21225335",
+      "name": "YuK1Game"
+    },
+    "connectionId": "0f5e63ea-4116-4720-b087-a86bb9859290",
+    "startedAt": "2026-11-01T13:50:28.443Z",
+    "runtimeEntityId": "13639",
+    "dimension": "overworld",
+    "gameMode": "survival",
+    "health": 16,
+    "dead": false,
+    "spawnPending": false,
+    "lifecycle": {
+      "phase": "alive",
+      "dead": false,
+      "health": 16,
+      "hardcore": false,
+      "hardcoreKnown": true,
+      "spawnPending": false,
+      "runtimeEntityId": "13639",
+      "attempts": 196,
+      "pending": false,
+      "clientReadySent": false,
+      "actionSent": false,
+      "serverReadyReceived": false,
+      "deathId": 196,
+      "readyPosition": null,
+      "deathInfo": {
+        "cause": "death.attack.mob",
+        "messages": [
+          "HouchiChan",
+          "%entity.zombie.name"
+        ]
+      },
+      "lastServerPosition": {
+        "x": -31.700000762939453,
+        "y": 70.37320709228516,
+        "z": 19.374622344970703
+      },
+      "lastResult": {
+        "phase": "alive",
+        "health": 20,
+        "position": {
+          "x": -19.5,
+          "y": 68.62001037597656,
+          "z": 25.5
+        },
+        "positionSource": "respawn",
+        "deathId": 196,
+        "serverConfirmed": true
+      }
+    },
+    "position": {
+      "x": -33.7,
+      "y": 70.62,
+      "z": 19.3
+    },
+    "positionSource": "client_prediction",
+    "positionUpdatedAt": "2026-11-01T21:27:01.646Z",
+    "positionServerConfirmed": false,
+    "predicted": {
+      "position": {
+        "x": -33.7,
+        "y": 70.62,
+        "z": 19.3
+      },
+      "feetPosition": {
+        "x": -33.7,
+        "y": 69,
+        "z": 19.3
+      },
+      "velocity": {
+        "x": 0,
+        "y": -0.0784000015258789,
+        "z": 0
+      },
+      "onGround": true,
+      "physicsState": {
+        "position": {
+          "x": -33.7,
+          "y": 69,
+          "z": 19.3
+        },
+        "velocity": {
+          "x": 0,
+          "y": -0.0784000015258789,
+          "z": 0
+        },
+        "velocitySource": "client_prediction",
+        "yaw": -111.43789735630622,
+        "pitch": 25.915054927736627,
+        "gameMode": "survival",
+        "onGround": true,
+        "isInWater": false,
+        "isInLava": false,
+        "isInWeb": false,
+        "isCollidedHorizontally": false,
+        "isCollidedVertically": true,
+        "jumpTicks": 0,
+        "jumpQueued": false,
+        "controls": {
+          "forward": false,
+          "back": false,
+          "left": false,
+          "right": false,
+          "jump": false,
+          "sprint": false,
+          "sneak": false
+        },
+        "effects": {},
+        "attributes": {},
+        "contactAdjustment": null,
+        "horizontalContactAdjustment": null
+      },
+      "source": "client_prediction",
+      "serverConfirmed": false,
+      "updatedAt": "2026-11-01T21:27:01.646Z"
+    },
+    "rotation": {
+      "pitch": 0,
+      "yaw": -21.6744384765625
+    },
+    "inventory": {
+      "known": true,
+      "items": [
+        {
+          "slot": 0,
+          "name": "minecraft:copper_ingot",
+          "networkId": 515,
+          "count": 1,
+          "metadata": 0
+        },
+        {
+          "slot": 2,
+          "name": "minecraft:wooden_sword",
+          "networkId": 310,
+          "count": 1,
+          "metadata": 0,
+          "stackId": 1895,
+          "durabilityKnown": true,
+          "durabilityUsed": 5,
+          "maxDurability": 59,
+          "durabilityRemaining": 54,
+          "durabilitySource": "server_item_nbt"
+        }
+      ]
+    },
+    "inventoryConfidence": {
+      "known": true,
+      "unresolved": null
+    },
+    "rawSelectedSlot": 2,
+    "heldItem": {
+      "slot": 2,
+      "name": "minecraft:wooden_sword",
+      "networkId": 310,
+      "count": 1,
+      "metadata": 0,
+      "stackId": 1895,
+      "durabilityKnown": true,
+      "durabilityUsed": 5,
+      "maxDurability": 59,
+      "durabilityRemaining": 54,
+      "durabilitySource": "server_item_nbt"
+    },
+    "vitals": {
+      "health": {
+        "value": 16,
+        "observedAt": "2026-11-01T21:24:09.731Z",
+        "source": "server_attribute"
+      },
+      "hunger": {
+        "value": 16,
+        "observedAt": "2026-11-01T21:24:09.804Z",
+        "source": "server_attribute",
+        "scope": {
+          "profile": "bot",
+          "realmId": "21225335",
+          "connectionId": "0f5e63ea-4116-4720-b087-a86bb9859290",
+          "startedAt": "2026-11-01T13:50:28.443Z",
+          "dimension": "overworld",
+          "runtimeEntityId": "13639",
+          "deathId": 196
+        }
+      },
+      "saturation": {
+        "value": 0,
+        "observedAt": "2026-11-01T21:21:40.669Z",
+        "source": "server_attribute"
+      },
+      "exhaustion": {
+        "value": 1.422454833984375,
+        "observedAt": "2026-11-01T21:24:09.804Z",
+        "source": "server_attribute"
+      }
+    },
+    "threatPolicy": "online_learning",
+    "entityStats": {
+      "dimension": "overworld",
+      "selfRuntimeId": "13639",
+      "size": 30,
+      "limit": 512,
+      "unknownPositions": 0,
+      "liveHostiles": 21,
+      "ignoredUpdates": 34106
+    },
+    "entities": [
+      {
+        "runtimeId": "16653",
+        "uniqueId": "-639950110698",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -7.300029754638672,
+          "y": 49,
+          "z": 16.299999237060547
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T20:47:52.357Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.539Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "13649",
+        "uniqueId": "-639950117249",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 1.518200397491455,
+          "y": 55,
+          "z": 32.981529235839844
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T20:50:00.063Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:00.729Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "19706",
+        "uniqueId": "-639950107645",
+        "kind": "mob",
+        "entityType": "minecraft:drowned",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -29.98897361755371,
+          "y": 68,
+          "z": 22.485286712646484
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:21:55.091Z",
+        "alive": true,
+        "lastEvent": {
+          "event": "arm_swing",
+          "data": 0,
+          "time": "2026-11-01T21:21:07.279Z"
+        },
+        "hurtAt": "2026-11-01T21:20:57.873Z",
+        "updatedAt": "2026-11-01T21:21:55.091Z",
+        "positionKnown": true,
+        "name": "minecraft:drowned"
+      },
+      {
+        "runtimeId": "14355",
+        "uniqueId": "-639950112932",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -42.299964904785156,
+          "y": 70,
+          "z": -9.699967384338379
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T21:18:29.223Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:00.931Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "18177",
+        "uniqueId": "-639950109174",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -42.70000076293945,
+          "y": 70,
+          "z": -9.299996376037598
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T21:18:29.225Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.123Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "19993",
+        "uniqueId": "-639950107358",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -18.700008392333984,
+          "y": 63,
+          "z": 28.700000762939453
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:22:00.688Z",
+        "alive": true,
+        "lastEvent": {
+          "event": "hurt_animation",
+          "data": 2,
+          "time": "2026-11-01T21:21:11.346Z"
+        },
+        "hurtAt": "2026-11-01T21:21:11.346Z",
+        "updatedAt": "2026-11-01T21:27:01.642Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "19833",
+        "uniqueId": "-639950107518",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -61.74858093261719,
+          "y": 68,
+          "z": 47.82485580444336
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.634Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.634Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20022",
+        "uniqueId": "-639950107329",
+        "kind": "mob",
+        "entityType": "minecraft:wandering_trader",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 8.300003051757812,
+          "y": 63,
+          "z": -0.2999988794326782
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:22:45.147Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:00.795Z",
+        "positionKnown": true,
+        "name": "minecraft:wandering_trader"
+      },
+      {
+        "runtimeId": "20023",
+        "uniqueId": "-639950107328",
+        "kind": "mob",
+        "entityType": "minecraft:trader_llama",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 8.555404663085938,
+          "y": 62.50264358520508,
+          "z": -3.316178798675537
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.637Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.637Z",
+        "positionKnown": true,
+        "name": "minecraft:trader_llama"
+      },
+      {
+        "runtimeId": "20024",
+        "uniqueId": "-639950107327",
+        "kind": "mob",
+        "entityType": "minecraft:trader_llama",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 10.638917922973633,
+          "y": 62.01325988769531,
+          "z": -0.6419906616210938
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.664Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.747Z",
+        "positionKnown": true,
+        "name": "minecraft:trader_llama"
+      },
+      {
+        "runtimeId": "19835",
+        "uniqueId": "-639950107516",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -92.50102233886719,
+          "y": 75,
+          "z": 48.40455627441406
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.667Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.667Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20037",
+        "uniqueId": "-639950107314",
+        "kind": "mob",
+        "entityType": "minecraft:sheep",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -24.76492691040039,
+          "y": 71,
+          "z": -5.131682395935059
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.666Z",
+        "alive": true,
+        "lastEvent": {
+          "event": "eat_grass_animation",
+          "data": 0,
+          "time": "2026-11-01T21:26:15.865Z"
+        },
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.666Z",
+        "positionKnown": true,
+        "name": "minecraft:sheep"
+      },
+      {
+        "runtimeId": "20044",
+        "uniqueId": "-639950107307",
+        "kind": "mob",
+        "entityType": "minecraft:pig",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -21.607555389404297,
+          "y": 67.00133514404297,
+          "z": 36.44514083862305
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.751Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.751Z",
+        "positionKnown": true,
+        "name": "minecraft:pig"
+      },
+      {
+        "runtimeId": "20043",
+        "uniqueId": "-639950107308",
+        "kind": "mob",
+        "entityType": "minecraft:pig",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -32.44999694824219,
+          "y": 70.7531967163086,
+          "z": 29.489398956298828
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.749Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.749Z",
+        "positionKnown": true,
+        "name": "minecraft:pig"
+      },
+      {
+        "runtimeId": "13645",
+        "uniqueId": "-639950121173",
+        "kind": "mob",
+        "entityType": "minecraft:drowned",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -68.69999694824219,
+          "y": 52,
+          "z": -17.299999237060547
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T21:21:45.579Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.052Z",
+        "positionKnown": true,
+        "name": "minecraft:drowned"
+      },
+      {
+        "runtimeId": "13892",
+        "uniqueId": "-639950119197",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -99.69999694824219,
+          "y": 16,
+          "z": 37.70000076293945
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:26:56.914Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.488Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20054",
+        "uniqueId": "-639950107297",
+        "kind": "entity",
+        "entityType": "minecraft:xp_orb",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -30.875,
+          "y": 67.19954681396484,
+          "z": 19.29775619506836
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:24:29.498Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:24:29.498Z",
+        "positionKnown": true,
+        "name": "minecraft:xp_orb"
+      },
+      {
+        "runtimeId": "20058",
+        "uniqueId": "-639950107293",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -38.957584381103516,
+          "y": 69,
+          "z": -8.636942863464355
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:00.327Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.050Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "20062",
+        "uniqueId": "-639950107289",
+        "kind": "mob",
+        "entityType": "minecraft:creeper",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -68.21635437011719,
+          "y": 82,
+          "z": 10.922965049743652
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.220Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.220Z",
+        "metadataOrder": 43,
+        "ignited": false,
+        "ignitionOrder": 43,
+        "charged": false,
+        "fuseLength": -1,
+        "fuseOrder": 1,
+        "primed": false,
+        "positionKnown": true,
+        "name": "minecraft:creeper"
+      },
+      {
+        "runtimeId": "20063",
+        "uniqueId": "-639950107288",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -7.299999713897705,
+          "y": 49,
+          "z": 16.93050765991211
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.755Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.755Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20064",
+        "uniqueId": "-639950107287",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -62.94710922241211,
+          "y": 58,
+          "z": 10.460033416748047
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:26:54.923Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:26:57.319Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "20070",
+        "uniqueId": "-639950107281",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -18.879243850708008,
+          "y": 69,
+          "z": 54.801658630371094
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:26:57.118Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:26:59.052Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20069",
+        "uniqueId": "-639950107282",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -20.202598571777344,
+          "y": 69,
+          "z": 54.72697448730469
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:26:57.320Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:26:59.051Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20068",
+        "uniqueId": "-639950107283",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -22.52628517150879,
+          "y": 68,
+          "z": 57.59148025512695
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.665Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.665Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20071",
+        "uniqueId": "-639950107280",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -17.814208984375,
+          "y": 67,
+          "z": 51.545589447021484
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.752Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.752Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "20074",
+        "uniqueId": "-639950107277",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -21.060598373413086,
+          "y": 70,
+          "z": 52.5051155090332
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.640Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.640Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20073",
+        "uniqueId": "-639950107278",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -26.299999237060547,
+          "y": 70,
+          "z": 58.770774841308594
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.639Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.639Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20075",
+        "uniqueId": "-639950107276",
+        "kind": "mob",
+        "entityType": "minecraft:sheep",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 7.860987186431885,
+          "y": 65,
+          "z": 7.549769878387451
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:26:57.591Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:26:59.225Z",
+        "positionKnown": true,
+        "name": "minecraft:sheep"
+      },
+      {
+        "runtimeId": "20076",
+        "uniqueId": "-639950107275",
+        "kind": "mob",
+        "entityType": "minecraft:pig",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -75.50054931640625,
+          "y": 82,
+          "z": 12.825438499450684
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.754Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.754Z",
+        "positionKnown": true,
+        "name": "minecraft:pig"
+      },
+      {
+        "runtimeId": "20077",
+        "uniqueId": "-639950107274",
+        "kind": "mob",
+        "entityType": "minecraft:creeper",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -61.492088317871094,
+          "y": 69,
+          "z": 46.860107421875
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:01.748Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.748Z",
+        "metadataOrder": 6,
+        "ignited": false,
+        "ignitionOrder": 6,
+        "charged": false,
+        "fuseLength": -1,
+        "fuseOrder": 1,
+        "primed": false,
+        "positionKnown": true,
+        "name": "minecraft:creeper"
+      }
+    ],
+    "selectedSlot": 2
+  },
+  "afterLeafState": {
+    "phase": "spawned",
+    "profile": "bot",
+    "realm": {
+      "id": "21225335",
+      "name": "YuK1Game"
+    },
+    "connectionId": "0f5e63ea-4116-4720-b087-a86bb9859290",
+    "startedAt": "2026-11-01T13:50:28.443Z",
+    "runtimeEntityId": "13639",
+    "dimension": "overworld",
+    "gameMode": "survival",
+    "health": 16,
+    "dead": false,
+    "spawnPending": false,
+    "lifecycle": {
+      "phase": "alive",
+      "dead": false,
+      "health": 16,
+      "hardcore": false,
+      "hardcoreKnown": true,
+      "spawnPending": false,
+      "runtimeEntityId": "13639",
+      "attempts": 196,
+      "pending": false,
+      "clientReadySent": false,
+      "actionSent": false,
+      "serverReadyReceived": false,
+      "deathId": 196,
+      "readyPosition": null,
+      "deathInfo": {
+        "cause": "death.attack.mob",
+        "messages": [
+          "HouchiChan",
+          "%entity.zombie.name"
+        ]
+      },
+      "lastServerPosition": {
+        "x": -31.700000762939453,
+        "y": 70.37320709228516,
+        "z": 19.374622344970703
+      },
+      "lastResult": {
+        "phase": "alive",
+        "health": 20,
+        "position": {
+          "x": -19.5,
+          "y": 68.62001037597656,
+          "z": 25.5
+        },
+        "positionSource": "respawn",
+        "deathId": 196,
+        "serverConfirmed": true
+      }
+    },
+    "position": {
+      "x": -33.7,
+      "y": 70.62,
+      "z": 19.3
+    },
+    "positionSource": "client_prediction",
+    "positionUpdatedAt": "2026-11-01T21:27:06.234Z",
+    "positionServerConfirmed": false,
+    "predicted": {
+      "position": {
+        "x": -33.7,
+        "y": 70.62,
+        "z": 19.3
+      },
+      "feetPosition": {
+        "x": -33.7,
+        "y": 69,
+        "z": 19.3
+      },
+      "velocity": {
+        "x": 0,
+        "y": -0.0784000015258789,
+        "z": 0
+      },
+      "onGround": true,
+      "physicsState": {
+        "position": {
+          "x": -33.7,
+          "y": 69,
+          "z": 19.3
+        },
+        "velocity": {
+          "x": 0,
+          "y": -0.0784000015258789,
+          "z": 0
+        },
+        "velocitySource": "client_prediction",
+        "yaw": 0,
+        "pitch": -90,
+        "gameMode": "survival",
+        "onGround": true,
+        "isInWater": false,
+        "isInLava": false,
+        "isInWeb": false,
+        "isCollidedHorizontally": false,
+        "isCollidedVertically": true,
+        "jumpTicks": 0,
+        "jumpQueued": false,
+        "controls": {
+          "forward": false,
+          "back": false,
+          "left": false,
+          "right": false,
+          "jump": false,
+          "sprint": false,
+          "sneak": false
+        },
+        "effects": {},
+        "attributes": {},
+        "contactAdjustment": null,
+        "horizontalContactAdjustment": null
+      },
+      "source": "client_prediction",
+      "serverConfirmed": false,
+      "updatedAt": "2026-11-01T21:27:06.234Z"
+    },
+    "rotation": {
+      "pitch": 0,
+      "yaw": -21.6744384765625
+    },
+    "inventory": {
+      "known": true,
+      "items": [
+        {
+          "slot": 0,
+          "name": "minecraft:copper_ingot",
+          "networkId": 515,
+          "count": 1,
+          "metadata": 0
+        },
+        {
+          "slot": 2,
+          "name": "minecraft:wooden_sword",
+          "networkId": 310,
+          "count": 1,
+          "metadata": 0,
+          "stackId": 1895,
+          "durabilityKnown": true,
+          "durabilityUsed": 7,
+          "maxDurability": 59,
+          "durabilityRemaining": 52,
+          "durabilitySource": "server_item_nbt"
+        }
+      ]
+    },
+    "inventoryConfidence": {
+      "known": true,
+      "unresolved": null
+    },
+    "rawSelectedSlot": 2,
+    "heldItem": {
+      "slot": 2,
+      "name": "minecraft:wooden_sword",
+      "networkId": 310,
+      "count": 1,
+      "metadata": 0,
+      "stackId": 1895,
+      "durabilityKnown": true,
+      "durabilityUsed": 7,
+      "maxDurability": 59,
+      "durabilityRemaining": 52,
+      "durabilitySource": "server_item_nbt"
+    },
+    "vitals": {
+      "health": {
+        "value": 16,
+        "observedAt": "2026-11-01T21:24:09.731Z",
+        "source": "server_attribute"
+      },
+      "hunger": {
+        "value": 16,
+        "observedAt": "2026-11-01T21:24:09.804Z",
+        "source": "server_attribute",
+        "scope": {
+          "profile": "bot",
+          "realmId": "21225335",
+          "connectionId": "0f5e63ea-4116-4720-b087-a86bb9859290",
+          "startedAt": "2026-11-01T13:50:28.443Z",
+          "dimension": "overworld",
+          "runtimeEntityId": "13639",
+          "deathId": 196
+        }
+      },
+      "saturation": {
+        "value": 0,
+        "observedAt": "2026-11-01T21:21:40.669Z",
+        "source": "server_attribute"
+      },
+      "exhaustion": {
+        "value": 1.4274548292160034,
+        "observedAt": "2026-11-01T21:27:06.221Z",
+        "source": "server_attribute"
+      }
+    },
+    "threatPolicy": "online_learning",
+    "entityStats": {
+      "dimension": "overworld",
+      "selfRuntimeId": "13639",
+      "size": 29,
+      "limit": 512,
+      "unknownPositions": 0,
+      "liveHostiles": 20,
+      "ignoredUpdates": 34106
+    },
+    "entities": [
+      {
+        "runtimeId": "16653",
+        "uniqueId": "-639950110698",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -7.300029754638672,
+          "y": 49,
+          "z": 16.299999237060547
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T20:47:52.357Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.028Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "13649",
+        "uniqueId": "-639950117249",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 1.518200397491455,
+          "y": 55,
+          "z": 32.981529235839844
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T20:50:00.063Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:05.774Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "19706",
+        "uniqueId": "-639950107645",
+        "kind": "mob",
+        "entityType": "minecraft:drowned",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -29.98897361755371,
+          "y": 68,
+          "z": 22.485286712646484
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:21:55.091Z",
+        "alive": true,
+        "lastEvent": {
+          "event": "arm_swing",
+          "data": 0,
+          "time": "2026-11-01T21:21:07.279Z"
+        },
+        "hurtAt": "2026-11-01T21:20:57.873Z",
+        "updatedAt": "2026-11-01T21:21:55.091Z",
+        "positionKnown": true,
+        "name": "minecraft:drowned"
+      },
+      {
+        "runtimeId": "14355",
+        "uniqueId": "-639950112932",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -42.299964904785156,
+          "y": 70,
+          "z": -9.699967384338379
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T21:18:29.223Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:04.667Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "18177",
+        "uniqueId": "-639950109174",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -42.70000076293945,
+          "y": 70,
+          "z": -9.299996376037598
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T21:18:29.225Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:02.729Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "19993",
+        "uniqueId": "-639950107358",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -18.700008392333984,
+          "y": 63,
+          "z": 28.700000762939453
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:22:00.688Z",
+        "alive": true,
+        "lastEvent": {
+          "event": "hurt_animation",
+          "data": 2,
+          "time": "2026-11-01T21:21:11.346Z"
+        },
+        "hurtAt": "2026-11-01T21:21:11.346Z",
+        "updatedAt": "2026-11-01T21:27:05.736Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "19833",
+        "uniqueId": "-639950107518",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -59.897945404052734,
+          "y": 69,
+          "z": 46.809051513671875
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:05.375Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:05.375Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20022",
+        "uniqueId": "-639950107329",
+        "kind": "mob",
+        "entityType": "minecraft:wandering_trader",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 8.300003051757812,
+          "y": 63,
+          "z": -0.2999988794326782
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:22:45.147Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:01.919Z",
+        "positionKnown": true,
+        "name": "minecraft:wandering_trader"
+      },
+      {
+        "runtimeId": "20023",
+        "uniqueId": "-639950107328",
+        "kind": "mob",
+        "entityType": "minecraft:trader_llama",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 8.479677200317383,
+          "y": 62.590293884277344,
+          "z": -3.229844570159912
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:06.229Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.229Z",
+        "positionKnown": true,
+        "name": "minecraft:trader_llama"
+      },
+      {
+        "runtimeId": "20024",
+        "uniqueId": "-639950107327",
+        "kind": "mob",
+        "entityType": "minecraft:trader_llama",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 11.360637664794922,
+          "y": 62.27360916137695,
+          "z": -1.9646075963974
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:06.062Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.062Z",
+        "positionKnown": true,
+        "name": "minecraft:trader_llama"
+      },
+      {
+        "runtimeId": "19835",
+        "uniqueId": "-639950107516",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -87.65447998046875,
+          "y": 73,
+          "z": 52.69999313354492
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:06.111Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.111Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20037",
+        "uniqueId": "-639950107314",
+        "kind": "mob",
+        "entityType": "minecraft:sheep",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -19.883106231689453,
+          "y": 69,
+          "z": -2.7942447662353516
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:06.222Z",
+        "alive": true,
+        "lastEvent": {
+          "event": "eat_grass_animation",
+          "data": 0,
+          "time": "2026-11-01T21:26:15.865Z"
+        },
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.222Z",
+        "positionKnown": true,
+        "name": "minecraft:sheep"
+      },
+      {
+        "runtimeId": "20044",
+        "uniqueId": "-639950107307",
+        "kind": "mob",
+        "entityType": "minecraft:pig",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -19.90957260131836,
+          "y": 67,
+          "z": 34.65548324584961
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:06.230Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.230Z",
+        "positionKnown": true,
+        "name": "minecraft:pig"
+      },
+      {
+        "runtimeId": "20043",
+        "uniqueId": "-639950107308",
+        "kind": "mob",
+        "entityType": "minecraft:pig",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -32.295692443847656,
+          "y": 71,
+          "z": 28.501415252685547
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:06.230Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.230Z",
+        "positionKnown": true,
+        "name": "minecraft:pig"
+      },
+      {
+        "runtimeId": "13645",
+        "uniqueId": "-639950121173",
+        "kind": "mob",
+        "entityType": "minecraft:drowned",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -68.69999694824219,
+          "y": 52,
+          "z": -17.299999237060547
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T21:21:45.579Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:03.106Z",
+        "positionKnown": true,
+        "name": "minecraft:drowned"
+      },
+      {
+        "runtimeId": "13892",
+        "uniqueId": "-639950119197",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -99.69999694824219,
+          "y": 16,
+          "z": 37.70000076293945
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:26:56.914Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:05.242Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20054",
+        "uniqueId": "-639950107297",
+        "kind": "entity",
+        "entityType": "minecraft:xp_orb",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -30.875,
+          "y": 67.19954681396484,
+          "z": 19.29775619506836
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:24:29.498Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:24:29.498Z",
+        "positionKnown": true,
+        "name": "minecraft:xp_orb"
+      },
+      {
+        "runtimeId": "20058",
+        "uniqueId": "-639950107293",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -38.957584381103516,
+          "y": 69,
+          "z": -8.636942863464355
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:00.327Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:05.964Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "20063",
+        "uniqueId": "-639950107288",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -7.299999713897705,
+          "y": 49,
+          "z": 16.95044708251953
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:06.224Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.228Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20064",
+        "uniqueId": "-639950107287",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -62.94710922241211,
+          "y": 58,
+          "z": 10.460033416748047
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:26:54.923Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:05.966Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "20070",
+        "uniqueId": "-639950107281",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -18.879243850708008,
+          "y": 69,
+          "z": 54.801658630371094
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:26:57.118Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:26:59.052Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20069",
+        "uniqueId": "-639950107282",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -20.202598571777344,
+          "y": 69,
+          "z": 54.72697448730469
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:26:57.320Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.231Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20068",
+        "uniqueId": "-639950107283",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -26.78289222717285,
+          "y": 70,
+          "z": 60.07426452636719
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:06.226Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.226Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20071",
+        "uniqueId": "-639950107280",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -20.52696990966797,
+          "y": 69.92160034179688,
+          "z": 51.5008659362793
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:06.232Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.232Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "20074",
+        "uniqueId": "-639950107277",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -25.812498092651367,
+          "y": 70,
+          "z": 49.529293060302734
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:06.227Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.227Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20073",
+        "uniqueId": "-639950107278",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -25.996353149414062,
+          "y": 70,
+          "z": 58.60060501098633
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:04.417Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:04.417Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20075",
+        "uniqueId": "-639950107276",
+        "kind": "mob",
+        "entityType": "minecraft:sheep",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 7.860987186431885,
+          "y": 65,
+          "z": 7.549769878387451
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:26:57.591Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.112Z",
+        "positionKnown": true,
+        "name": "minecraft:sheep"
+      },
+      {
+        "runtimeId": "20077",
+        "uniqueId": "-639950107274",
+        "kind": "mob",
+        "entityType": "minecraft:creeper",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -61.37592315673828,
+          "y": 69,
+          "z": 46.30295181274414
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:06.224Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.224Z",
+        "metadataOrder": 17,
+        "ignited": false,
+        "ignitionOrder": 17,
+        "charged": false,
+        "fuseLength": -1,
+        "fuseOrder": 1,
+        "primed": false,
+        "positionKnown": true,
+        "name": "minecraft:creeper"
+      },
+      {
+        "runtimeId": "20078",
+        "uniqueId": "-639950107273",
+        "kind": "mob",
+        "entityType": "minecraft:sheep",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -72.63502502441406,
+          "y": 78,
+          "z": 21.491912841796875
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:06.114Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:27:06.221Z",
+        "positionKnown": true,
+        "name": "minecraft:sheep"
+      }
+    ],
+    "selectedSlot": 2
+  },
+  "lowHealthState": {
+    "phase": "spawned",
+    "profile": "bot",
+    "realm": {
+      "id": "21225335",
+      "name": "YuK1Game"
+    },
+    "connectionId": "0f5e63ea-4116-4720-b087-a86bb9859290",
+    "startedAt": "2026-11-01T13:50:28.443Z",
+    "runtimeEntityId": "13639",
+    "dimension": "overworld",
+    "gameMode": "survival",
+    "health": 4,
+    "dead": false,
+    "spawnPending": false,
+    "lifecycle": {
+      "phase": "alive",
+      "dead": false,
+      "health": 4,
+      "hardcore": false,
+      "hardcoreKnown": true,
+      "spawnPending": false,
+      "runtimeEntityId": "13639",
+      "attempts": 196,
+      "pending": false,
+      "clientReadySent": false,
+      "actionSent": false,
+      "serverReadyReceived": false,
+      "deathId": 196,
+      "readyPosition": null,
+      "deathInfo": {
+        "cause": "death.attack.mob",
+        "messages": [
+          "HouchiChan",
+          "%entity.zombie.name"
+        ]
+      },
+      "lastServerPosition": {
+        "x": -33.70000457763672,
+        "y": 71.32861328125,
+        "z": 19.299999237060547
+      },
+      "lastResult": {
+        "phase": "alive",
+        "health": 20,
+        "position": {
+          "x": -19.5,
+          "y": 68.62001037597656,
+          "z": 25.5
+        },
+        "positionSource": "respawn",
+        "deathId": 196,
+        "serverConfirmed": true
+      }
+    },
+    "position": {
+      "x": -33.7,
+      "y": 70.62,
+      "z": 19.3
+    },
+    "positionSource": "client_prediction",
+    "positionUpdatedAt": "2026-11-01T21:29:10.122Z",
+    "positionServerConfirmed": false,
+    "predicted": {
+      "position": {
+        "x": -33.7,
+        "y": 70.62,
+        "z": 19.3
+      },
+      "feetPosition": {
+        "x": -33.7,
+        "y": 69,
+        "z": 19.3
+      },
+      "velocity": {
+        "x": 0,
+        "y": -0.0784000015258789,
+        "z": 0
+      },
+      "onGround": true,
+      "physicsState": {
+        "position": {
+          "x": -33.7,
+          "y": 69,
+          "z": 19.3
+        },
+        "velocity": {
+          "x": 0,
+          "y": -0.0784000015258789,
+          "z": 0
+        },
+        "velocitySource": "client_prediction",
+        "yaw": -79.2388369890657,
+        "pitch": 54.32431539639317,
+        "gameMode": "survival",
+        "onGround": true,
+        "isInWater": false,
+        "isInLava": false,
+        "isInWeb": false,
+        "isCollidedHorizontally": false,
+        "isCollidedVertically": true,
+        "jumpTicks": 0,
+        "jumpQueued": false,
+        "controls": {
+          "forward": false,
+          "back": false,
+          "left": false,
+          "right": false,
+          "jump": false,
+          "sprint": false,
+          "sneak": false
+        },
+        "effects": {},
+        "attributes": {},
+        "contactAdjustment": null,
+        "horizontalContactAdjustment": null
+      },
+      "source": "client_prediction",
+      "serverConfirmed": false,
+      "updatedAt": "2026-11-01T21:29:10.122Z"
+    },
+    "rotation": {
+      "pitch": 0,
+      "yaw": -21.6744384765625
+    },
+    "inventory": {
+      "known": true,
+      "items": [
+        {
+          "slot": 0,
+          "name": "minecraft:copper_ingot",
+          "networkId": 515,
+          "count": 1,
+          "metadata": 0
+        },
+        {
+          "slot": 2,
+          "name": "minecraft:wooden_sword",
+          "networkId": 310,
+          "count": 1,
+          "metadata": 0,
+          "stackId": 1899,
+          "durabilityKnown": true,
+          "durabilityUsed": 11,
+          "maxDurability": 59,
+          "durabilityRemaining": 48,
+          "durabilitySource": "server_item_nbt"
+        }
+      ]
+    },
+    "inventoryConfidence": {
+      "known": true,
+      "unresolved": null
+    },
+    "rawSelectedSlot": 2,
+    "heldItem": {
+      "slot": 2,
+      "name": "minecraft:wooden_sword",
+      "networkId": 310,
+      "count": 1,
+      "metadata": 0,
+      "stackId": 1899,
+      "durabilityKnown": true,
+      "durabilityUsed": 11,
+      "maxDurability": 59,
+      "durabilityRemaining": 48,
+      "durabilitySource": "server_item_nbt"
+    },
+    "vitals": {
+      "health": {
+        "value": 4,
+        "observedAt": "2026-11-01T21:27:42.482Z",
+        "source": "server_attribute"
+      },
+      "hunger": {
+        "value": 16,
+        "observedAt": "2026-11-01T21:24:09.804Z",
+        "source": "server_attribute",
+        "scope": {
+          "profile": "bot",
+          "realmId": "21225335",
+          "connectionId": "0f5e63ea-4116-4720-b087-a86bb9859290",
+          "startedAt": "2026-11-01T13:50:28.443Z",
+          "dimension": "overworld",
+          "runtimeEntityId": "13639",
+          "deathId": 196
+        }
+      },
+      "saturation": {
+        "value": 0,
+        "observedAt": "2026-11-01T21:21:40.669Z",
+        "source": "server_attribute"
+      },
+      "exhaustion": {
+        "value": 1.9774547815322876,
+        "observedAt": "2026-11-01T21:27:42.699Z",
+        "source": "server_attribute"
+      }
+    },
+    "threatPolicy": "online_learning",
+    "entityStats": {
+      "dimension": "overworld",
+      "selfRuntimeId": "13639",
+      "size": 24,
+      "limit": 512,
+      "unknownPositions": 0,
+      "liveHostiles": 15,
+      "ignoredUpdates": 34132
+    },
+    "entities": [
+      {
+        "runtimeId": "16653",
+        "uniqueId": "-639950110698",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -7.300029754638672,
+          "y": 49,
+          "z": 16.299999237060547
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T20:47:52.357Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:10.022Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "13649",
+        "uniqueId": "-639950117249",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 1.518200397491455,
+          "y": 55,
+          "z": 32.981529235839844
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T20:50:00.063Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:06.974Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "19706",
+        "uniqueId": "-639950107645",
+        "kind": "mob",
+        "entityType": "minecraft:drowned",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -29.995119094848633,
+          "y": 68,
+          "z": 22.48546600341797
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:27:34.495Z",
+        "alive": true,
+        "lastEvent": {
+          "event": "arm_swing",
+          "data": 0,
+          "time": "2026-11-01T21:21:07.279Z"
+        },
+        "hurtAt": "2026-11-01T21:20:57.873Z",
+        "updatedAt": "2026-11-01T21:27:42.963Z",
+        "positionKnown": true,
+        "name": "minecraft:drowned"
+      },
+      {
+        "runtimeId": "14355",
+        "uniqueId": "-639950112932",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -42.299964904785156,
+          "y": 70,
+          "z": -9.699967384338379
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T21:18:29.223Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:08.408Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "18177",
+        "uniqueId": "-639950109174",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -42.70000076293945,
+          "y": 70,
+          "z": -9.299996376037598
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T21:18:29.225Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:09.029Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "19993",
+        "uniqueId": "-639950107358",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -18.700008392333984,
+          "y": 63,
+          "z": 28.700000762939453
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:22:00.688Z",
+        "alive": true,
+        "lastEvent": {
+          "event": "hurt_animation",
+          "data": 2,
+          "time": "2026-11-01T21:21:11.346Z"
+        },
+        "hurtAt": "2026-11-01T21:21:11.346Z",
+        "updatedAt": "2026-11-01T21:29:08.818Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "19833",
+        "uniqueId": "-639950107518",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -56.499908447265625,
+          "y": 70,
+          "z": 35.9741325378418
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:28:50.986Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:09.529Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20022",
+        "uniqueId": "-639950107329",
+        "kind": "mob",
+        "entityType": "minecraft:wandering_trader",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 8.300003051757812,
+          "y": 63,
+          "z": -0.2999988794326782
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:22:45.147Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:07.140Z",
+        "positionKnown": true,
+        "name": "minecraft:wandering_trader"
+      },
+      {
+        "runtimeId": "20023",
+        "uniqueId": "-639950107328",
+        "kind": "mob",
+        "entityType": "minecraft:trader_llama",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 9.211585998535156,
+          "y": 63,
+          "z": -1.3325436115264893
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:29:09.346Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:09.346Z",
+        "positionKnown": true,
+        "name": "minecraft:trader_llama"
+      },
+      {
+        "runtimeId": "20024",
+        "uniqueId": "-639950107327",
+        "kind": "mob",
+        "entityType": "minecraft:trader_llama",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 10.119853019714355,
+          "y": 62.1811637878418,
+          "z": -0.4500012695789337
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:29:10.067Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:10.067Z",
+        "positionKnown": true,
+        "name": "minecraft:trader_llama"
+      },
+      {
+        "runtimeId": "20044",
+        "uniqueId": "-639950107307",
+        "kind": "mob",
+        "entityType": "minecraft:pig",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -14.370304107666016,
+          "y": 68,
+          "z": 40.44999694824219
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:28:45.280Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:05.799Z",
+        "positionKnown": true,
+        "name": "minecraft:pig"
+      },
+      {
+        "runtimeId": "20043",
+        "uniqueId": "-639950107308",
+        "kind": "mob",
+        "entityType": "minecraft:pig",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -64.50238037109375,
+          "y": 79,
+          "z": 6.042543888092041
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:29:06.344Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:09.777Z",
+        "positionKnown": true,
+        "name": "minecraft:pig"
+      },
+      {
+        "runtimeId": "13645",
+        "uniqueId": "-639950121173",
+        "kind": "mob",
+        "entityType": "minecraft:drowned",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -68.69999694824219,
+          "y": 52,
+          "z": -17.299999237060547
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T21:21:45.579Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:09.884Z",
+        "positionKnown": true,
+        "name": "minecraft:drowned"
+      },
+      {
+        "runtimeId": "13892",
+        "uniqueId": "-639950119197",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -99.69999694824219,
+          "y": 16,
+          "z": 37.70000076293945
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:28:12.477Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:08.321Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20058",
+        "uniqueId": "-639950107293",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -41.70000076293945,
+          "y": 65,
+          "z": -12.29999828338623
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:29:01.962Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:02.112Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "20079",
+        "uniqueId": "-639950107272",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -22.501375198364258,
+          "y": 55,
+          "z": 33.648494720458984
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:29:10.119Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:10.119Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton"
+      },
+      {
+        "runtimeId": "20082",
+        "uniqueId": "-639950107269",
+        "kind": "entity",
+        "entityType": "minecraft:xp_orb",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -30.875,
+          "y": 67.20050048828125,
+          "z": 19.298616409301758
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:28:02.540Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:28:02.540Z",
+        "positionKnown": true,
+        "name": "minecraft:xp_orb"
+      },
+      {
+        "runtimeId": "20088",
+        "uniqueId": "-639950107263",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -23.473873138427734,
+          "y": 49,
+          "z": 29.094648361206055
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:29:10.066Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:10.066Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20089",
+        "uniqueId": "-639950107262",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -33.9871940612793,
+          "y": 37,
+          "z": 27.499998092651367
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:28:41.298Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:10.120Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20090",
+        "uniqueId": "-639950107261",
+        "kind": "mob",
+        "entityType": "minecraft:zombie",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -7.998592376708984,
+          "y": 49,
+          "z": 16.299999237060547
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:29:10.024Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:10.024Z",
+        "positionKnown": true,
+        "name": "minecraft:zombie"
+      },
+      {
+        "runtimeId": "20092",
+        "uniqueId": "-639950107259",
+        "kind": "mob",
+        "entityType": "minecraft:sheep",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -44.61008834838867,
+          "y": 70,
+          "z": 58.24266815185547
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:29:10.118Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:10.118Z",
+        "positionKnown": true,
+        "name": "minecraft:sheep"
+      },
+      {
+        "runtimeId": "20093",
+        "uniqueId": "-639950107258",
+        "kind": "mob",
+        "entityType": "minecraft:creeper",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -7.309457778930664,
+          "y": 50.24846267700195,
+          "z": 17.36673927307129
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:29:10.065Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:10.065Z",
+        "metadataOrder": 72,
+        "ignited": false,
+        "ignitionOrder": 72,
+        "charged": false,
+        "fuseLength": -1,
+        "fuseOrder": 1,
+        "primed": false,
+        "positionKnown": true,
+        "name": "minecraft:creeper"
+      },
+      {
+        "runtimeId": "20094",
+        "uniqueId": "-639950107257",
+        "kind": "mob",
+        "entityType": "minecraft:sheep",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": 0.9342120885848999,
+          "y": 68,
+          "z": 2.5242366790771484
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T21:29:10.064Z",
+        "alive": true,
+        "lastEvent": {
+          "event": "eat_grass_animation",
+          "data": 0,
+          "time": "2026-11-01T21:28:47.446Z"
+        },
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:10.064Z",
+        "positionKnown": true,
+        "name": "minecraft:sheep"
+      },
+      {
+        "runtimeId": "20096",
+        "uniqueId": "-639950107255",
+        "kind": "mob",
+        "entityType": "minecraft:cow",
+        "dimension": "overworld",
+        "hostile": false,
+        "hostility": "unclassified",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -52.5099983215332,
+          "y": 65,
+          "z": -17.510000228881836
+        },
+        "positionSource": "add_entity",
+        "positionUpdatedAt": "2026-11-01T21:29:04.672Z",
+        "alive": true,
+        "lastEvent": null,
+        "hurtAt": null,
+        "updatedAt": "2026-11-01T21:29:09.918Z",
+        "positionKnown": true,
+        "name": "minecraft:cow"
+      }
+    ],
+    "selectedSlot": 2
+  },
+  "blocks": [
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 67,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 67,
+        "z": 17
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 68,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 68,
+        "z": 17
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 69,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 69,
+        "z": 17
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 70,
+        "z": 16
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 70,
+        "z": 17
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 2881089219,
+      "properties": {
+        "growth": 0,
+        "minecraft:cardinal_direction": "east"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 3649828412,
+      "properties": {
+        "growth": 1,
+        "minecraft:cardinal_direction": "east"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 71,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 71,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 72,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 72,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 73,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 73,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -37,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 67,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 67,
+        "z": 17
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 68,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 68,
+        "z": 17
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 69,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 69,
+        "z": 17
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 70,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 70,
+        "z": 17
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 1466627666,
+      "properties": {
+        "growth": 2,
+        "minecraft:cardinal_direction": "south"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 71,
+        "z": 16
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 71,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 72,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 72,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 73,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 73,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -36,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 67,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 67,
+        "z": 17
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 68,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 68,
+        "z": 17
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 69,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 69,
+        "z": 17
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 70,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 70,
+        "z": 17
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 71,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 71,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:oak_log",
+      "runtimeId": 825916963,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 72,
+        "z": 16
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 72,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:oak_log",
+      "runtimeId": 825916963,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 73,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 73,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:oak_log",
+      "runtimeId": 825916963,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 67,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 67,
+        "z": 17
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 68,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 68,
+        "z": 17
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 69,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 69,
+        "z": 17
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 70,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 70,
+        "z": 17
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 71,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 71,
+        "z": 17
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 72,
+        "z": 16
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 72,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 73,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 73,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -34,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 67,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 67,
+        "z": 17
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 68,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 68,
+        "z": 17
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 69,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 69,
+        "z": 17
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 70,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 70,
+        "z": 17
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 71,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 71,
+        "z": 17
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 72,
+        "z": 16
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 72,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 73,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 73,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -33,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 67,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 67,
+        "z": 17
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 68,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 68,
+        "z": 17
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 69,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 69,
+        "z": 17
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 70,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 70,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 71,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 71,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 72,
+        "z": 16
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 72,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 73,
+        "z": 16
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 73,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -32,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 67,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 67,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 68,
+        "z": 16
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 68,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 69,
+        "z": 16
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 69,
+        "z": 17
+      },
+      "name": "minecraft:stone",
+      "runtimeId": 2150698529,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 1.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 70,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 70,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 71,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 71,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 72,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 72,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 73,
+        "z": 16
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 73,
+        "z": 17
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -31,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    }
+  ],
+  "originalHeadLeaf": {
+    "known": true,
+    "position": {
+      "x": -34,
+      "y": 71,
+      "z": 19
+    },
+    "name": "minecraft:oak_leaves",
+    "runtimeId": 1055407794,
+    "properties": {
+      "persistent_bit": 0,
+      "update_bit": 1
+    },
+    "boundingBox": "block",
+    "hardness": 0.2,
+    "diggable": true,
+    "extra": []
+  },
+  "receivedLeafAir": {
+    "known": true,
+    "position": {
+      "x": -34,
+      "y": 71,
+      "z": 19
+    },
+    "name": "minecraft:air",
+    "runtimeId": 3690217760,
+    "properties": {},
+    "boundingBox": "empty",
+    "hardness": -1,
+    "diggable": false,
+    "extra": []
+  },
+  "remainingCuts": [
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -35,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    }
+  ],
+  "landingFloor": {
+    "known": true,
+    "position": {
+      "x": -35,
+      "y": 69,
+      "z": 19
+    },
+    "name": "minecraft:dirt",
+    "runtimeId": 2186211206,
+    "properties": {},
+    "boundingBox": "block",
+    "hardness": 0.5,
+    "diggable": true,
+    "extra": []
+  }
+}

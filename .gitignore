@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Secrets and auth caches (Microsoft / Xbox login tokens)
+.env
+.auth/
+
+# Local runtime state, logs, backups
+.local/
+backup/
+*.log
+*.log.*
+coverage/
+
+# Tooling
+.claude/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

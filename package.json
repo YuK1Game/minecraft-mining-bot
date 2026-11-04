@@ -1,0 +1,27 @@
+{
+  "name": "minecraft-realms-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minecraft Bedrock Realms automation bot with live behavior reload and survival preparation",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/main.js",
+    "auto": "node scripts/keep-alive.js",
+    "auto:once": "node --env-file-if-exists=.env src/main.js --auto",
+    "realms": "node --env-file-if-exists=.env src/main.js --list",
+    "test": "node --test",
+    "check": "node scripts/check.js",
+    "dashboard": "node --env-file-if-exists=.env scripts/dashboard.js"
+  },
+  "dependencies": {
+    "bedrock-protocol": "3.61.0",
+    "prismarine-auth": "3.1.1",
+    "prismarine-item": "1.18.0",
+    "prismarine-physics": "github:Pix3lPirat3/prismarine-physics#e6181bf79c19db3eafc8a589e984f7ba623556f6",
+    "prismarine-realms": "1.6.0",
+    "prismarine-registry": "1.12.0",
+    "vec3": "0.2.0"
+  }
+}

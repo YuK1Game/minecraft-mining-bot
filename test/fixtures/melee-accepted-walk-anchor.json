@@ -1,0 +1,93 @@
+{
+  "source": "Actual isolated local BDS1.26.60.6 nonstrict accepted walk, no self pose echo, no actual melee NPC or attack in this recording",
+  "startedAt": 1793503010565,
+  "rawAnchor": {
+    "position": {
+      "x": 0.5,
+      "y": 101.62001037597656,
+      "z": 0.5
+    },
+    "at": 1793503014078,
+    "source": "move_player",
+    "tick": "0",
+    "onGround": false
+  },
+  "modelEnd": {
+    "x": 13.19194545105071,
+    "y": 101.62,
+    "z": 0.5
+  },
+  "physicsEnd": {
+    "position": {
+      "x": 13.19194545105071,
+      "y": 100,
+      "z": 0.5
+    },
+    "velocity": {
+      "x": 0.1178590771779521,
+      "y": -0.0784000015258789,
+      "z": 3.2764213346931862e-18
+    },
+    "velocitySource": "model-initialized",
+    "yaw": -90,
+    "pitch": 0,
+    "gameMode": "survival",
+    "onGround": true,
+    "isInWater": false,
+    "isInLava": false,
+    "isInWeb": false,
+    "isCollidedHorizontally": false,
+    "isCollidedVertically": true,
+    "jumpTicks": 0,
+    "jumpQueued": false,
+    "controls": {
+      "forward": true,
+      "back": false,
+      "left": false,
+      "right": false,
+      "jump": false,
+      "sprint": false,
+      "sneak": false
+    },
+    "effects": {},
+    "attributes": {},
+    "contactAdjustment": null,
+    "horizontalContactAdjustment": null
+  },
+  "serverEndpoint": {
+    "at": 1793503017981,
+    "data": [
+      {
+        "dimension": 0,
+        "id": -326417514493,
+        "position": {
+          "x": 13.19194602966309,
+          "y": 101.6200103759766,
+          "z": 0.5
+        },
+        "uniqueId": "c8a174c4-d9ee-3a3b-89aa-a53c6aea40b0",
+        "yRot": -90
+      }
+    ],
+    "note": "Actual console query after production stop/release; no exact input-tick association is asserted."
+  },
+  "inputs": 60,
+  "corrections": 0,
+  "constants": {
+    "gravity": 0.08,
+    "playerSpeed": 0.1,
+    "sprintSpeed": 0.3,
+    "stepHeight": 0.6,
+    "waterGravity": 0.02,
+    "waterInertia": 0.8
+  },
+  "previousControllerNegativeControl": {
+    "sourceSHA": "30A9E0B4E67FC70A432D103B029BC80B81F395F512F6FD3C38BB462676DF114D",
+    "ready": false,
+    "code": "OUT_OF_REACH",
+    "outcome": "out_of_reach",
+    "errors": [
+      "Target is outside actual authoritative/working melee reach"
+    ]
+  }
+}

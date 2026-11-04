@@ -1,0 +1,1714 @@
+{
+  "label": "ACTUAL owned OFFLINE vanilla BDS1.26.60.6, single diamond transfer then normal close/reopen readback; historical, no Realm credit",
+  "sourceProof": ".local/bds-chest-storage-2026-11-01T14-32-14-078Z.json",
+  "collectedAt": "2026-11-01T14:32:41.285Z",
+  "scope": {
+    "profile": "Chestmvxxifwf",
+    "realmId": "owned-bds",
+    "connectionId": "93a5c880-87ae-4269-863d-f98856d206b5",
+    "startedAt": "2026-11-01T14:32:14.080Z",
+    "runtimeEntityId": "9",
+    "dimension": "overworld",
+    "life": 0
+  },
+  "state": {
+    "phase": "spawned",
+    "profile": "Chestmvxxifwf",
+    "realm": {
+      "id": "owned-bds",
+      "name": "owned offline chest proof"
+    },
+    "playerName": null,
+    "version": null,
+    "runtimeEntityId": "9",
+    "dimension": "overworld",
+    "position": {
+      "x": 0.5,
+      "y": 101.62,
+      "z": 0.5
+    },
+    "spawnPosition": {
+      "x": 0,
+      "y": 100,
+      "z": 0
+    },
+    "spawnPending": false,
+    "positionSource": "client_prediction",
+    "positionUpdatedAt": "2026-11-01T14:32:33.757Z",
+    "rotation": {
+      "pitch": 0,
+      "yaw": 0
+    },
+    "health": 20,
+    "healthSource": "update_attributes",
+    "breath": {
+      "current": null,
+      "maximum": null,
+      "currentUpdatedAt": null,
+      "maximumUpdatedAt": null
+    },
+    "gameMode": "survival",
+    "selectedSlot": 0,
+    "heldItem": {
+      "slot": 0,
+      "name": "minecraft:leather",
+      "networkId": 384,
+      "count": 28,
+      "metadata": 0
+    },
+    "inventory": {
+      "known": true,
+      "items": [
+        {
+          "slot": 0,
+          "name": "minecraft:leather",
+          "count": 28,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:beef",
+          "count": 50,
+          "stackId": 2
+        },
+        {
+          "slot": 2,
+          "name": "minecraft:chicken",
+          "count": 3,
+          "stackId": 3
+        },
+        {
+          "slot": 3,
+          "name": "minecraft:diamond",
+          "count": 1,
+          "stackId": 5
+        }
+      ]
+    },
+    "startedAt": "2026-11-01T14:32:14.080Z",
+    "connectedAt": null,
+    "lastError": null,
+    "capabilities": {
+      "movement": false,
+      "mining": false
+    },
+    "connectionId": "93a5c880-87ae-4269-863d-f98856d206b5",
+    "lifecycle": {
+      "deathId": 0,
+      "dead": false
+    },
+    "dead": false
+  },
+  "block": {
+    "known": true,
+    "position": {
+      "x": 2,
+      "y": 100,
+      "z": 0
+    },
+    "name": "minecraft:chest",
+    "runtimeId": 3162850062,
+    "properties": {
+      "minecraft:cardinal_direction": "north"
+    },
+    "boundingBox": "block",
+    "hardness": 2.5,
+    "diggable": true,
+    "extra": []
+  },
+  "server": {
+    "version": "1.26.60.6",
+    "originalPropertiesSHA": "8b6f9ad1f7c9de4b9186de874a6923a2a0c5ddebcf02b076d291dd28a3d3fdb1",
+    "restoredPropertiesSHA": "8b6f9ad1f7c9de4b9186de874a6923a2a0c5ddebcf02b076d291dd28a3d3fdb1",
+    "exactPropertiesRestored": true,
+    "serverExitCode": 0
+  },
+  "startGame": {
+    "runtime_entity_id": "9",
+    "player_position": {
+      "x": 0.5,
+      "y": 102.62001037597656,
+      "z": 0.5
+    },
+    "current_tick": [
+      0,
+      193647
+    ],
+    "server_authoritative_inventory": true,
+    "player_gamemode": "fallback",
+    "world_gamemode": "survival"
+  },
+  "registry": {
+    "itemstates": [
+      {
+        "name": "minecraft:chicken",
+        "runtime_id": 275,
+        "component_based": false,
+        "version": "legacy",
+        "nbt": {
+          "type": "compound",
+          "name": "",
+          "value": {
+            "components": {
+              "type": "compound",
+              "value": {
+                "minecraft:food": {
+                  "type": "compound",
+                  "value": {
+                    "can_always_eat": {
+                      "type": "byte",
+                      "value": 0
+                    },
+                    "cooldown_time": {
+                      "type": "int",
+                      "value": 0
+                    },
+                    "cooldown_type": {
+                      "type": "string",
+                      "value": ""
+                    },
+                    "effects": {
+                      "type": "list",
+                      "value": {
+                        "type": "compound",
+                        "value": [
+                          {
+                            "amplifier": {
+                              "type": "int",
+                              "value": 0
+                            },
+                            "chance": {
+                              "type": "float",
+                              "value": 0.30000001192092896
+                            },
+                            "descriptionId": {
+                              "type": "string",
+                              "value": "potion.hunger"
+                            },
+                            "duration": {
+                              "type": "int",
+                              "value": 30
+                            },
+                            "id": {
+                              "type": "int",
+                              "value": 17
+                            },
+                            "name": {
+                              "type": "string",
+                              "value": "hunger"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "nutrition": {
+                      "type": "int",
+                      "value": 2
+                    },
+                    "on_use_action": {
+                      "type": "int",
+                      "value": -1
+                    },
+                    "on_use_range": {
+                      "type": "list",
+                      "value": {
+                        "type": "float",
+                        "value": [
+                          8,
+                          8,
+                          8
+                        ]
+                      }
+                    },
+                    "saturation_modifier": {
+                      "type": "float",
+                      "value": 0.30000001192092896
+                    },
+                    "using_converts_to": {
+                      "type": "string",
+                      "value": ""
+                    }
+                  }
+                },
+                "minecraft:use_duration": {
+                  "type": "int",
+                  "value": 32
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "minecraft:beef",
+        "runtime_id": 273,
+        "component_based": false,
+        "version": "legacy",
+        "nbt": {
+          "type": "compound",
+          "name": "",
+          "value": {
+            "components": {
+              "type": "compound",
+              "value": {
+                "minecraft:food": {
+                  "type": "compound",
+                  "value": {
+                    "can_always_eat": {
+                      "type": "byte",
+                      "value": 0
+                    },
+                    "cooldown_time": {
+                      "type": "int",
+                      "value": 0
+                    },
+                    "cooldown_type": {
+                      "type": "string",
+                      "value": ""
+                    },
+                    "nutrition": {
+                      "type": "int",
+                      "value": 3
+                    },
+                    "on_use_action": {
+                      "type": "int",
+                      "value": -1
+                    },
+                    "on_use_range": {
+                      "type": "list",
+                      "value": {
+                        "type": "float",
+                        "value": [
+                          8,
+                          8,
+                          8
+                        ]
+                      }
+                    },
+                    "saturation_modifier": {
+                      "type": "float",
+                      "value": 0.30000001192092896
+                    },
+                    "using_converts_to": {
+                      "type": "string",
+                      "value": ""
+                    }
+                  }
+                },
+                "minecraft:use_duration": {
+                  "type": "int",
+                  "value": 32
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "minecraft:diamond",
+        "runtime_id": 306,
+        "component_based": false,
+        "version": "none",
+        "nbt": {
+          "type": "compound",
+          "name": "",
+          "value": {}
+        }
+      },
+      {
+        "name": "minecraft:leather",
+        "runtime_id": 384,
+        "component_based": false,
+        "version": "none",
+        "nbt": {
+          "type": "compound",
+          "name": "",
+          "value": {}
+        }
+      }
+    ]
+  },
+  "registrySubset": "Only actual received item registry rows for network IDs present in actual main baseline; no invented IDs",
+  "initial": {
+    "main": {
+      "at": "2026-11-01T14:32:34.976Z",
+      "direction": "in",
+      "name": "inventory_content",
+      "packet": {
+        "window_id": "inventory",
+        "input": [
+          {
+            "network_id": 384,
+            "count": 28,
+            "metadata": 0,
+            "has_stack_id": true,
+            "stack_id": 1,
+            "block_runtime_id": 0,
+            "extra": {
+              "has_nbt": 0,
+              "can_place_on": [],
+              "can_destroy": []
+            }
+          },
+          {
+            "network_id": 273,
+            "count": 50,
+            "metadata": 0,
+            "has_stack_id": true,
+            "stack_id": 2,
+            "block_runtime_id": 0,
+            "extra": {
+              "has_nbt": 0,
+              "can_place_on": [],
+              "can_destroy": []
+            }
+          },
+          {
+            "network_id": 275,
+            "count": 3,
+            "metadata": 0,
+            "has_stack_id": true,
+            "stack_id": 3,
+            "block_runtime_id": 0,
+            "extra": {
+              "has_nbt": 0,
+              "can_place_on": [],
+              "can_destroy": []
+            }
+          },
+          {
+            "network_id": 306,
+            "count": 1,
+            "metadata": 0,
+            "has_stack_id": true,
+            "stack_id": 5,
+            "block_runtime_id": 0,
+            "extra": {
+              "has_nbt": 0,
+              "can_place_on": [],
+              "can_destroy": []
+            }
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          }
+        ],
+        "container": {
+          "container_id": "anvil_input"
+        },
+        "storage_item": {
+          "network_id": 0,
+          "count": 0,
+          "metadata": 0,
+          "has_stack_id": false,
+          "block_runtime_id": 0
+        }
+      }
+    },
+    "open": {
+      "at": "2026-11-01T14:32:34.974Z",
+      "direction": "in",
+      "name": "container_open",
+      "packet": {
+        "window_id": 2,
+        "window_type": "container",
+        "coordinates": {
+          "x": 2,
+          "y": 100,
+          "z": 0
+        },
+        "runtime_entity_id": "-1"
+      }
+    },
+    "chest": {
+      "at": "2026-11-01T14:32:34.977Z",
+      "direction": "in",
+      "name": "inventory_content",
+      "packet": {
+        "window_id": 2,
+        "input": [
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          }
+        ],
+        "container": {
+          "container_id": "anvil_input"
+        },
+        "storage_item": {
+          "network_id": 0,
+          "count": 0,
+          "metadata": 0,
+          "has_stack_id": false,
+          "block_runtime_id": 0
+        }
+      }
+    }
+  },
+  "request": {
+    "at": "2026-11-01T14:32:34.981Z",
+    "direction": "out",
+    "name": "item_stack_request",
+    "packet": {
+      "requests": [
+        {
+          "request_id": -501,
+          "actions": [
+            {
+              "type_id": "place",
+              "legacy_type_id": 1,
+              "count": 1,
+              "source": {
+                "slot_type": {
+                  "container_id": "hotbar_and_inventory",
+                  "dynamic_container_id": null
+                },
+                "slot": 3,
+                "stack_id": 5
+              },
+              "destination": {
+                "slot_type": {
+                  "container_id": "container",
+                  "dynamic_container_id": null
+                },
+                "slot": 0,
+                "stack_id": 0
+              }
+            }
+          ],
+          "custom_names": [],
+          "cause": -1
+        }
+      ]
+    }
+  },
+  "outcomes": [
+    {
+      "at": "2026-11-01T14:32:34.990Z",
+      "direction": "in",
+      "name": "inventory_slot",
+      "packet": {
+        "window_id": 2,
+        "slot": 0,
+        "item": {
+          "network_id": 306,
+          "count": 1,
+          "metadata": 0,
+          "has_stack_id": true,
+          "stack_id": 5,
+          "block_runtime_id": 0,
+          "extra": {
+            "has_nbt": 0,
+            "can_place_on": [],
+            "can_destroy": []
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-11-01T14:32:34.991Z",
+      "direction": "in",
+      "name": "item_stack_response",
+      "packet": {
+        "responses": [
+          {
+            "status": "ok",
+            "request_id": -501,
+            "containers": [
+              {
+                "slot_type": {
+                  "container_id": "hotbar_and_inventory"
+                },
+                "slots": [
+                  {
+                    "slot": 3,
+                    "hotbar_slot": 3,
+                    "count": 0,
+                    "custom_name": "",
+                    "filtered_custom_name": "",
+                    "durability_correction": 0
+                  }
+                ]
+              },
+              {
+                "slot_type": {
+                  "container_id": "container"
+                },
+                "slots": [
+                  {
+                    "slot": 0,
+                    "hotbar_slot": 0,
+                    "count": 1,
+                    "item_stack_id": 5,
+                    "custom_name": "",
+                    "filtered_custom_name": "",
+                    "durability_correction": 0
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-11-01T14:32:34.999Z",
+      "direction": "in",
+      "name": "inventory_content",
+      "packet": {
+        "window_id": 2,
+        "input": [
+          {
+            "network_id": 306,
+            "count": 1,
+            "metadata": 0,
+            "has_stack_id": true,
+            "stack_id": 5,
+            "block_runtime_id": 0,
+            "extra": {
+              "has_nbt": 0,
+              "can_place_on": [],
+              "can_destroy": []
+            }
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          }
+        ],
+        "container": {
+          "container_id": "anvil_input"
+        },
+        "storage_item": {
+          "network_id": 0,
+          "count": 0,
+          "metadata": 0,
+          "has_stack_id": false,
+          "block_runtime_id": 0
+        }
+      }
+    }
+  ],
+  "reopened": {
+    "open": {
+      "at": "2026-11-01T14:32:39.712Z",
+      "direction": "in",
+      "name": "container_open",
+      "packet": {
+        "window_id": 3,
+        "window_type": "container",
+        "coordinates": {
+          "x": 2,
+          "y": 100,
+          "z": 0
+        },
+        "runtime_entity_id": "-1"
+      }
+    },
+    "main": {
+      "at": "2026-11-01T14:32:39.713Z",
+      "direction": "in",
+      "name": "inventory_content",
+      "packet": {
+        "window_id": "inventory",
+        "input": [
+          {
+            "network_id": 384,
+            "count": 28,
+            "metadata": 0,
+            "has_stack_id": true,
+            "stack_id": 1,
+            "block_runtime_id": 0,
+            "extra": {
+              "has_nbt": 0,
+              "can_place_on": [],
+              "can_destroy": []
+            }
+          },
+          {
+            "network_id": 273,
+            "count": 50,
+            "metadata": 0,
+            "has_stack_id": true,
+            "stack_id": 2,
+            "block_runtime_id": 0,
+            "extra": {
+              "has_nbt": 0,
+              "can_place_on": [],
+              "can_destroy": []
+            }
+          },
+          {
+            "network_id": 275,
+            "count": 3,
+            "metadata": 0,
+            "has_stack_id": true,
+            "stack_id": 3,
+            "block_runtime_id": 0,
+            "extra": {
+              "has_nbt": 0,
+              "can_place_on": [],
+              "can_destroy": []
+            }
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          }
+        ],
+        "container": {
+          "container_id": "anvil_input"
+        },
+        "storage_item": {
+          "network_id": 0,
+          "count": 0,
+          "metadata": 0,
+          "has_stack_id": false,
+          "block_runtime_id": 0
+        }
+      }
+    },
+    "chest": {
+      "at": "2026-11-01T14:32:39.713Z",
+      "direction": "in",
+      "name": "inventory_content",
+      "packet": {
+        "window_id": 3,
+        "input": [
+          {
+            "network_id": 306,
+            "count": 1,
+            "metadata": 0,
+            "has_stack_id": true,
+            "stack_id": 5,
+            "block_runtime_id": 0,
+            "extra": {
+              "has_nbt": 0,
+              "can_place_on": [],
+              "can_destroy": []
+            }
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          },
+          {
+            "network_id": 0,
+            "count": 0,
+            "metadata": 0,
+            "has_stack_id": false,
+            "block_runtime_id": 0
+          }
+        ],
+        "container": {
+          "container_id": "anvil_input"
+        },
+        "storage_item": {
+          "network_id": 0,
+          "count": 0,
+          "metadata": 0,
+          "has_stack_id": false,
+          "block_runtime_id": 0
+        }
+      }
+    }
+  },
+  "expected": {
+    "sourceSlot": 3,
+    "chestSlot": 0,
+    "count": 1,
+    "sourceCountBefore": 1,
+    "sourceCountAfter": 0,
+    "chestCountBefore": 0,
+    "chestCountAfter": 1,
+    "actualStackId": 5
+  },
+  "limits": [
+    "No separate main slot/full update arrived between the transfer request and strict timeout.",
+    "Actual server chest slot/full update and matching ACK arrived immediately; main source decrement was actual ACK count zero.",
+    "Normal reopen actual mainAIR and chestdiamond1 verifies retained storage, not a new transfer.",
+    "This fixture replays received outcomes, not a live server or Realm operation."
+  ]
+}

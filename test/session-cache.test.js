@@ -1,0 +1,26 @@
+'use strict'
+const { test } = require('node:test')
+const assert = require('node:assert/strict')
+const { createSessionCache } = require('../src/session-cache')
+
+test('behaviour reload can replay current server recipes, stack IDs and open inventory without reconnecting', () => {
+  const cache = createSessionCache()
+  cache.observe('start_game', { runtime_entity_id: 41n })
+  cache.observe('item_registry', { itemstates: [{ runtime_id: 162, name: 'minecraft:acacia_log' }] })
+  cache.observe('crafting_data', { clear_recipes: true, shaped_recipes: [{ network_id: 3466 }] })
+  cache.observe('inventory_content', { window_id: 'inventory', input: [{ network_id: 162, count: 3, stack_id: 4 }] })
+  cache.observe('inventory_slot', { window_id: 'inventory', slot: 0, item: { network_id: 162, count: 2, stack_id: 6 } })
+  cache.observe('inventory_slot', { window_id: 'container', slot: 0, item: { network_id: 99 } })
+  cache.observe('container_open', { window_id: 2, window_type: 'inventory' })
+  const events = []
+  cache.replay((name, packet) => events.push({ name, packet }))
+  assert.equal(events.find(e => e.name === 'start_game').packet.runtime_entity_id, 41n)
+  assert.equal(events.find(e => e.name === 'crafting_data').packet.shaped_recipes[0].network_id, 3466)
+  assert.equal(events.find(e => e.name === 'inventory_content').packet.input[0].stack_id, 6)
+  assert.equal(events.at(-1).name, 'container_open')
+  cache.observe('container_close', { window_id: 2 })
+  assert.equal(cache.snapshot().openContainer, null)
+  cache.observe('start_game', { runtime_entity_id: 42n })
+  assert.equal(cache.snapshot().inventoryKnown, false)
+  assert.equal(cache.snapshot().recipePackets, 0)
+})

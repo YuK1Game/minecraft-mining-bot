@@ -1,0 +1,181 @@
+{
+  "kind": "historical_actor_and_observer_sample",
+  "capturedAt": "2026-11-01T16:04:42.369Z",
+  "source": ".local/operator-recovery-initial.json",
+  "note": "Actual life17 observer and one actual skeleton, actual empty main inventory. Tests explicitly apply the new flag as a counterfactual trusted caller classification; this is not a claim life17 held a valuable kit. This minimized roster is not evidence about all nearby actors or route safety.",
+  "state": {
+    "phase": "spawned",
+    "profile": "bot",
+    "realm": {
+      "id": "21225335",
+      "name": "YuK1Game"
+    },
+    "connectionId": "0f5e63ea-4116-4720-b087-a86bb9859290",
+    "startedAt": "2026-11-01T13:50:28.443Z",
+    "runtimeEntityId": "13639",
+    "dimension": "overworld",
+    "position": {
+      "x": -20.126115304380836,
+      "y": 70.62,
+      "z": 7.2234616184454525
+    },
+    "health": 13,
+    "threatPolicy": "online_learning",
+    "lifecycle": {
+      "phase": "alive",
+      "dead": false,
+      "health": 13,
+      "hardcore": false,
+      "hardcoreKnown": true,
+      "spawnPending": false,
+      "runtimeEntityId": "13639",
+      "attempts": 17,
+      "pending": false,
+      "clientReadySent": false,
+      "actionSent": false,
+      "serverReadyReceived": false,
+      "deathId": 17,
+      "readyPosition": null,
+      "deathInfo": {
+        "cause": "death.attack.arrow",
+        "messages": [
+          "HouchiChan",
+          "%entity.skeleton.name"
+        ]
+      },
+      "lastServerPosition": {
+        "x": -20.230127334594727,
+        "y": 71.47209930419922,
+        "z": 8.089568138122559
+      },
+      "lastResult": {
+        "phase": "alive",
+        "health": 20,
+        "position": {
+          "x": -11.5,
+          "y": 63.62001037597656,
+          "z": 21.5
+        },
+        "positionSource": "respawn",
+        "deathId": 17,
+        "serverConfirmed": true
+      }
+    },
+    "inventory": {
+      "known": true,
+      "items": []
+    },
+    "predicted": {
+      "position": {
+        "x": -20.126115304380836,
+        "y": 70.62,
+        "z": 7.2234616184454525
+      },
+      "feetPosition": {
+        "x": -20.126115304380836,
+        "y": 69,
+        "z": 7.2234616184454525
+      },
+      "velocity": {
+        "x": 0,
+        "y": -0.0784000015258789,
+        "z": 0
+      },
+      "onGround": true,
+      "physicsState": {
+        "position": {
+          "x": -20.126115304380836,
+          "y": 69,
+          "z": 7.2234616184454525
+        },
+        "velocity": {
+          "x": 0,
+          "y": -0.0784000015258789,
+          "z": 0
+        },
+        "velocitySource": "client_prediction",
+        "yaw": -21.6744384765625,
+        "pitch": 0,
+        "gameMode": "survival",
+        "onGround": true,
+        "isInWater": false,
+        "isInLava": false,
+        "isInWeb": false,
+        "isCollidedHorizontally": false,
+        "isCollidedVertically": true,
+        "jumpTicks": 0,
+        "jumpQueued": false,
+        "controls": {
+          "forward": false,
+          "back": false,
+          "left": false,
+          "right": false,
+          "jump": false,
+          "sprint": false,
+          "sneak": false
+        },
+        "effects": {},
+        "attributes": {},
+        "contactAdjustment": null,
+        "horizontalContactAdjustment": null
+      },
+      "source": "client_prediction",
+      "serverConfirmed": false,
+      "updatedAt": "2026-11-01T16:04:42.156Z"
+    },
+    "entities": [
+      {
+        "runtimeId": "14495",
+        "uniqueId": "-639950112792",
+        "kind": "mob",
+        "entityType": "minecraft:skeleton",
+        "dimension": "overworld",
+        "hostile": true,
+        "hostility": "hostile",
+        "username": null,
+        "networkId": null,
+        "count": null,
+        "position": {
+          "x": -22.5224609375,
+          "y": 68,
+          "z": 21.711828231811523
+        },
+        "positionSource": "move_entity_delta",
+        "positionUpdatedAt": "2026-11-01T16:04:42.295Z",
+        "alive": true,
+        "lastEvent": {
+          "event": "hurt_animation",
+          "data": 7,
+          "time": "2026-11-01T16:02:10.454Z"
+        },
+        "hurtAt": "2026-11-01T16:02:10.454Z",
+        "updatedAt": "2026-11-01T16:04:42.295Z",
+        "positionKnown": true,
+        "name": "minecraft:skeleton",
+        "terrainOcclusion": {
+          "policy": "deep_known_solid_separation_v3_corner_prefix",
+          "source": "known_server_blocks",
+          "createdAt": 1793549082335,
+          "runtimeId": "14495",
+          "entityType": "minecraft:skeleton",
+          "dimension": "overworld",
+          "observerPosition": {
+            "x": -20.126115304380836,
+            "y": 70.62,
+            "z": 7.2234616184454525
+          },
+          "entityPosition": {
+            "x": -22.5224609375,
+            "y": 68,
+            "z": 21.711828231811523
+          },
+          "distance": 14.917092193744397,
+          "verticalSeparation": 1,
+          "rays": [],
+          "suppressed": false,
+          "reason": "close_or_insufficient_vertical_separation"
+        }
+      }
+    ]
+  }
+}

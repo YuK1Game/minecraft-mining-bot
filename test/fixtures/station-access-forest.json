@@ -1,0 +1,7763 @@
+{
+  "observedAt": "2026-10-31T23:29:27.6820919Z",
+  "state": {
+    "phase": "spawned",
+    "health": 20,
+    "gameMode": "survival",
+    "profile": "bot",
+    "dimension": "overworld",
+    "position": {
+      "x": -42.490257263183594,
+      "y": 71.62,
+      "z": 20.669317910930637
+    },
+    "rawServerPosition": {
+      "x": -42.490257263183594,
+      "y": 71.62001037597656,
+      "z": 20.644590377807617
+    },
+    "positionSource": "client_prediction",
+    "positionUpdatedAt": "2026-10-31T23:29:27.534Z",
+    "rawServerPositionUpdatedAt": "2026-10-31T23:27:28.769Z",
+    "startedAt": "2026-10-31T23:26:38.593Z",
+    "connectionId": "f165a5ec-6dd4-497a-8776-b0c6a39c8685",
+    "runtimeEntityId": "1",
+    "rawSelectedSlot": 0,
+    "selectedSlot": 0,
+    "heldItem": {
+      "slot": 0,
+      "name": "minecraft:stick",
+      "networkId": 323,
+      "count": 4,
+      "metadata": 0
+    },
+    "inventory": {
+      "known": true,
+      "items": [
+        {
+          "slot": 0,
+          "name": "minecraft:stick",
+          "networkId": 323,
+          "count": 4,
+          "metadata": 0
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:birch_planks",
+          "networkId": -740,
+          "count": 2,
+          "metadata": 0
+        }
+      ]
+    },
+    "predicted": {
+      "position": {
+        "x": -42.490257263183594,
+        "y": 71.62,
+        "z": 20.669317910930637
+      },
+      "feetPosition": {
+        "x": -42.490257263183594,
+        "y": 70,
+        "z": 20.669317910930637
+      },
+      "velocity": {
+        "x": 0,
+        "y": -0.0784000015258789,
+        "z": 0
+      },
+      "onGround": true,
+      "physicsState": {
+        "position": {
+          "x": -42.490257263183594,
+          "y": 70,
+          "z": 20.669317910930637
+        },
+        "velocity": {
+          "x": 0,
+          "y": -0.0784000015258789,
+          "z": 0
+        },
+        "velocitySource": "client_prediction",
+        "yaw": 122.18951157161236,
+        "pitch": -7.690848271761328,
+        "gameMode": "survival",
+        "onGround": true,
+        "isInWater": false,
+        "isInLava": false,
+        "isInWeb": false,
+        "isCollidedHorizontally": false,
+        "isCollidedVertically": true,
+        "jumpTicks": 0,
+        "jumpQueued": false,
+        "controls": {
+          "forward": false,
+          "back": false,
+          "left": false,
+          "right": false,
+          "jump": false,
+          "sprint": false,
+          "sneak": false
+        },
+        "effects": {},
+        "attributes": {},
+        "contactAdjustment": null,
+        "horizontalContactAdjustment": null
+      },
+      "source": "client_prediction",
+      "serverConfirmed": false,
+      "updatedAt": "2026-10-31T23:29:27.534Z"
+    },
+    "threatPolicy": "online_learning",
+    "realm": {
+      "id": "21225335"
+    },
+    "lifecycle": {
+      "deathId": 0,
+      "dead": false,
+      "phase": "alive"
+    },
+    "entities": [
+      {
+        "runtimeId": "4",
+        "uniqueId": "-635655159314",
+        "entityType": "minecraft:sheep",
+        "kind": "mob",
+        "hostile": false,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -17.090421676635742,
+          "y": 68,
+          "z": 29.437036514282227
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "8",
+        "uniqueId": "-635655159358",
+        "entityType": "minecraft:drowned",
+        "kind": "mob",
+        "hostile": true,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -14.322321891784668,
+          "y": 67,
+          "z": 17.31107521057129
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "5",
+        "uniqueId": "-635655159322",
+        "entityType": "minecraft:sheep",
+        "kind": "mob",
+        "hostile": false,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -59.500247955322266,
+          "y": 69,
+          "z": 47.97420120239258
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "12",
+        "uniqueId": "-635655159640",
+        "entityType": "minecraft:wandering_trader",
+        "kind": "mob",
+        "hostile": false,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": 2.269679546356201,
+          "y": 68.24918365478516,
+          "z": 12.519390106201172
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "11",
+        "uniqueId": "-635655159638",
+        "entityType": "minecraft:trader_llama",
+        "kind": "mob",
+        "hostile": false,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": 4.450000762939453,
+          "y": 67,
+          "z": 8.124382019042969
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "20",
+        "uniqueId": "-8589933465",
+        "entityType": "minecraft:zombie",
+        "kind": "mob",
+        "hostile": true,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -13.288910865783691,
+          "y": 30,
+          "z": -12.509632110595703
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "24",
+        "uniqueId": "-635655159334",
+        "entityType": "minecraft:creeper",
+        "kind": "mob",
+        "hostile": true,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -38.97265625,
+          "y": 69,
+          "z": -8.529394149780273
+        },
+        "dimension": "overworld",
+        "primed": false,
+        "charged": false
+      },
+      {
+        "runtimeId": "27",
+        "uniqueId": "-631360192509",
+        "entityType": "minecraft:item",
+        "kind": "item",
+        "hostile": false,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -60.43425369262695,
+          "y": 66.125,
+          "z": 80.57000732421875
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "26",
+        "uniqueId": "-631360192510",
+        "entityType": "minecraft:item",
+        "kind": "item",
+        "hostile": false,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -60.43425369262695,
+          "y": 66.125,
+          "z": 80.57000732421875
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "28",
+        "uniqueId": "-8589933143",
+        "entityType": "minecraft:zombie",
+        "kind": "mob",
+        "hostile": true,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -60.970703125,
+          "y": 68,
+          "z": 48.51588821411133
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "31",
+        "uniqueId": "-639950127100",
+        "entityType": "minecraft:sheep",
+        "kind": "mob",
+        "hostile": false,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -75.47814178466797,
+          "y": 71,
+          "z": 42.10392761230469
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "35",
+        "uniqueId": "-639950127096",
+        "entityType": "minecraft:pig",
+        "kind": "mob",
+        "hostile": false,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -25.815845489501953,
+          "y": 73,
+          "z": 3.1812429428100586
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "36",
+        "uniqueId": "-639950127095",
+        "entityType": "minecraft:zombie",
+        "kind": "mob",
+        "hostile": true,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -68.2247085571289,
+          "y": 59,
+          "z": -4.911056995391846
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "39",
+        "uniqueId": "-639950127092",
+        "entityType": "minecraft:cow",
+        "kind": "mob",
+        "hostile": false,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -49.159828186035156,
+          "y": 69,
+          "z": 58.455108642578125
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "46",
+        "uniqueId": "-639950127085",
+        "entityType": "minecraft:zombie",
+        "kind": "mob",
+        "hostile": true,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -9.69999885559082,
+          "y": 53,
+          "z": 17.811899185180664
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "45",
+        "uniqueId": "-639950127086",
+        "entityType": "minecraft:zombie",
+        "kind": "mob",
+        "hostile": true,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -9.015457153320312,
+          "y": 53,
+          "z": 16.960567474365234
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "44",
+        "uniqueId": "-639950127087",
+        "entityType": "minecraft:zombie",
+        "kind": "mob",
+        "hostile": true,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -9.453378677368164,
+          "y": 53,
+          "z": 16.299999237060547
+        },
+        "dimension": "overworld"
+      },
+      {
+        "runtimeId": "50",
+        "uniqueId": "-639950127081",
+        "entityType": "minecraft:zombie",
+        "kind": "mob",
+        "hostile": true,
+        "alive": true,
+        "positionKnown": true,
+        "position": {
+          "x": -68.30000305175781,
+          "y": 38,
+          "z": 19.700000762939453
+        },
+        "dimension": "overworld"
+      }
+    ],
+    "crafting": {
+      "authority": true,
+      "inventoryKnown": true,
+      "openContainer": null,
+      "inventory": [
+        {
+          "slot": 0,
+          "name": "minecraft:stick",
+          "count": 4,
+          "stackId": 3
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:birch_planks",
+          "count": 2,
+          "stackId": 2
+        }
+      ]
+    },
+    "world": {
+      "initialized": true,
+      "loadedSections": 105,
+      "version": "1.26.60"
+    },
+    "capabilities": {
+      "movement": true,
+      "mining": true
+    }
+  },
+  "blocks": [
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 67,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 69,
+        "z": 24
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 74,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 67,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 1466627666,
+      "properties": {
+        "growth": 2,
+        "minecraft:cardinal_direction": "south"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 2853226491,
+      "properties": {
+        "growth": 2,
+        "minecraft:cardinal_direction": "west"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 3649828412,
+      "properties": {
+        "growth": 1,
+        "minecraft:cardinal_direction": "east"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 73,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 74,
+        "z": 22
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 74,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 68,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 1833559294,
+      "properties": {
+        "growth": 1,
+        "minecraft:cardinal_direction": "west"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 71,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 73,
+        "z": 23
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 74,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 73,
+        "z": 23
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 74,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 74,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 67,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 67,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 70,
+        "z": 24
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 4221994522,
+      "properties": {
+        "growth": 0,
+        "minecraft:cardinal_direction": "north"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 74,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 69,
+        "z": 24
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 72,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 69,
+        "z": 24
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 73,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 69,
+        "z": 23
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 70,
+        "z": 23
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 10836905,
+      "properties": {
+        "growth": 2,
+        "minecraft:cardinal_direction": "east"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 74,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 73,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 69,
+        "z": 23
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 73,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 74,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 74,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 72,
+        "z": 23
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 2853226491,
+      "properties": {
+        "growth": 2,
+        "minecraft:cardinal_direction": "west"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 74,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 69,
+        "z": 23
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 68,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 70,
+        "z": 24
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 1466627666,
+      "properties": {
+        "growth": 2,
+        "minecraft:cardinal_direction": "south"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 68,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 68,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 71,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 68,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 71,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 67,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 90463784,
+      "properties": {
+        "growth": 3,
+        "minecraft:cardinal_direction": "west"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 74,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 74,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:crafting_table",
+      "runtimeId": 1752181952,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 2.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 67,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 74,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 74,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 71,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 10836905,
+      "properties": {
+        "growth": 2,
+        "minecraft:cardinal_direction": "east"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 71,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 71,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 90463784,
+      "properties": {
+        "growth": 3,
+        "minecraft:cardinal_direction": "west"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 72,
+        "z": 23
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 74,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 71,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 73,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 70,
+        "z": 24
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 537536753,
+      "properties": {
+        "growth": 0,
+        "minecraft:cardinal_direction": "west"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 71,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 68,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 69,
+        "z": 24
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 71,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 72,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 73,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 67,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 71,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 69,
+        "z": 23
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 69,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 73,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 3693557529,
+      "properties": {
+        "growth": 3,
+        "minecraft:cardinal_direction": "north"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 67,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 74,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 67,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 74,
+        "z": 23
+      },
+      "name": "minecraft:oak_log",
+      "runtimeId": 825916963,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 71,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 74,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 70,
+        "z": 23
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 1466627666,
+      "properties": {
+        "growth": 2,
+        "minecraft:cardinal_direction": "south"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 71,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 68,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 67,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 74,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 70,
+        "z": 23
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 3649828412,
+      "properties": {
+        "growth": 1,
+        "minecraft:cardinal_direction": "east"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 68,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 73,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 74,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 70,
+        "z": 24
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 1488016474,
+      "properties": {
+        "growth": 3,
+        "minecraft:cardinal_direction": "east"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 74,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 74,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 1466627666,
+      "properties": {
+        "growth": 2,
+        "minecraft:cardinal_direction": "south"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 73,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 67,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 72,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 68,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 68,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 74,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 74,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 69,
+        "z": 23
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 73,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 74,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 74,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 72,
+        "z": 23
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 72,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 71,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 74,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 72,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 73,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 74,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 68,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:birch_log",
+      "runtimeId": 1423805714,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 70,
+        "z": 23
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 2853226491,
+      "properties": {
+        "growth": 2,
+        "minecraft:cardinal_direction": "west"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 72,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 71,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 74,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 72,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 70,
+        "z": 24
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 1488016474,
+      "properties": {
+        "growth": 3,
+        "minecraft:cardinal_direction": "east"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 72,
+        "z": 23
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 69,
+        "z": 23
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 68,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 74,
+        "z": 18
+      },
+      "name": "minecraft:birch_log",
+      "runtimeId": 1423805714,
+      "properties": {
+        "pillar_axis": "y"
+      },
+      "boundingBox": "block",
+      "hardness": 2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 73,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 72,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 69,
+        "z": 24
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 74,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 67,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 69,
+        "z": 22
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 74,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 68,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 1055407794,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 1
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 74,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 72,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 68,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 73,
+        "z": 23
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 69,
+        "z": 23
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 72,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 72,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 72,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 69,
+        "z": 24
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 70,
+        "z": 24
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 2705939541,
+      "properties": {
+        "growth": 1,
+        "minecraft:cardinal_direction": "south"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 70,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 74,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 72,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 74,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 71,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 71,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 74,
+        "z": 23
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 69,
+        "z": 24
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 72,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 73,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 69,
+        "z": 24
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 69,
+        "z": 23
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 74,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 70,
+        "z": 24
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 2705939541,
+      "properties": {
+        "growth": 1,
+        "minecraft:cardinal_direction": "south"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 67,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 68,
+        "z": 23
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 68,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 1541214755,
+      "properties": {
+        "growth": 3,
+        "minecraft:cardinal_direction": "south"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 70,
+        "z": 23
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 537536753,
+      "properties": {
+        "growth": 0,
+        "minecraft:cardinal_direction": "west"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 71,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 70,
+        "z": 24
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 10836905,
+      "properties": {
+        "growth": 2,
+        "minecraft:cardinal_direction": "east"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 70,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 67,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 68,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 68,
+        "z": 22
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 70,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 70,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 71,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 73,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 73,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 74,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 68,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 74,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 74,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 3649828412,
+      "properties": {
+        "growth": 1,
+        "minecraft:cardinal_direction": "east"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 70,
+        "z": 23
+      },
+      "name": "minecraft:leaf_litter",
+      "runtimeId": 2705939541,
+      "properties": {
+        "growth": 1,
+        "minecraft:cardinal_direction": "south"
+      },
+      "boundingBox": "empty",
+      "hardness": 0,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 69,
+        "z": 24
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 74,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 73,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 74,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 74,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 69,
+        "z": 21
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 67,
+        "z": 20
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 68,
+        "z": 24
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 74,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 72,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 73,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 73,
+        "z": 23
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 69,
+        "z": 20
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 74,
+        "z": 24
+      },
+      "name": "minecraft:oak_leaves",
+      "runtimeId": 2110714365,
+      "properties": {
+        "persistent_bit": 0,
+        "update_bit": 0
+      },
+      "boundingBox": "block",
+      "hardness": 0.2,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 70,
+        "z": 18
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 73,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 69,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 71,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 71,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 74,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 68,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 72,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 70,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 74,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -38,
+        "y": 67,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 74,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 67,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 71,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 70,
+        "z": 24
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -41,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -42,
+        "y": 68,
+        "z": 19
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 71,
+        "z": 21
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 71,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -45,
+        "y": 70,
+        "z": 19
+      },
+      "name": "minecraft:grass_block",
+      "runtimeId": 3727763636,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.6,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 73,
+        "z": 19
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -46,
+        "y": 68,
+        "z": 21
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 70,
+        "z": 20
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -39,
+        "y": 67,
+        "z": 23
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 72,
+        "z": 18
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 72,
+        "z": 23
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -44,
+        "y": 67,
+        "z": 22
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -40,
+        "y": 72,
+        "z": 22
+      },
+      "name": "minecraft:air",
+      "runtimeId": 3690217760,
+      "properties": {},
+      "boundingBox": "empty",
+      "hardness": -1,
+      "diggable": false,
+      "extra": []
+    },
+    {
+      "known": true,
+      "position": {
+        "x": -43,
+        "y": 69,
+        "z": 18
+      },
+      "name": "minecraft:dirt",
+      "runtimeId": 2186211206,
+      "properties": {},
+      "boundingBox": "block",
+      "hardness": 0.5,
+      "diggable": true,
+      "extra": []
+    }
+  ]
+}

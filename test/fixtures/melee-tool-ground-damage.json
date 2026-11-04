@@ -1,0 +1,1395 @@
+{
+  "label": "Observed values only. Grounded normal attacks, not Java values, critical forecasts, armor-adjusted estimates or inferred material rows.",
+  "actualVersion": "1.26.60.6",
+  "sourceProofs": [
+    {
+      "file": "bds-tool-damage-2026-11-01T07-00-17-172Z.json",
+      "sha256": "a099b5cf2f5059c961aea1b15bf266bf05c55290802d93cfd95f2c740bd8fe34",
+      "actualVersion": "1.26.60.6",
+      "rowCount": 5,
+      "propertiesRestored": true,
+      "serverExitCode": 0
+    },
+    {
+      "file": "bds-tool-damage-2026-11-01T07-02-00-052Z.json",
+      "sha256": "f15a476cfcbe122c1ccb61d39a72ebdb633027fcea9296d5d4aecdd98214c1b2",
+      "actualVersion": "1.26.60.6",
+      "rowCount": 18,
+      "propertiesRestored": true,
+      "serverExitCode": 0
+    }
+  ],
+  "emptyRawItem": {
+    "network_id": 0,
+    "count": 0,
+    "metadata": 0,
+    "has_stack_id": false,
+    "block_runtime_id": 0
+  },
+  "rows": [
+    {
+      "item": "minecraft:stone_sword",
+      "damage": 6,
+      "targetRuntimeId": "19",
+      "targetUniqueId": "-382252089342",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 4,
+      "rawItem": {
+        "network_id": 314,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 2,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 314,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 3,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 1
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:wooden_pickaxe",
+      "damage": 3,
+      "targetRuntimeId": "19",
+      "targetUniqueId": "-377957122041",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 7,
+      "rawItem": {
+        "network_id": 312,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 7,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 312,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 8,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-00-17-172Z.json"
+    },
+    {
+      "item": "minecraft:wooden_shovel",
+      "damage": 2,
+      "targetRuntimeId": "23",
+      "targetUniqueId": "-377957122037",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 8,
+      "rawItem": {
+        "network_id": 311,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 10,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 311,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 11,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-00-17-172Z.json"
+    },
+    {
+      "item": "minecraft:wooden_hoe",
+      "damage": 3,
+      "targetRuntimeId": "27",
+      "targetUniqueId": "-377957122033",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 7,
+      "rawItem": {
+        "network_id": 332,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 13,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 332,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 14,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-00-17-172Z.json"
+    },
+    {
+      "item": "minecraft:golden_pickaxe",
+      "damage": 3,
+      "targetRuntimeId": "31",
+      "targetUniqueId": "-377957122029",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 7,
+      "rawItem": {
+        "network_id": 327,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 16,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 327,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 17,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-00-17-172Z.json"
+    },
+    {
+      "item": "minecraft:stone_pickaxe",
+      "damage": 4,
+      "targetRuntimeId": "23",
+      "targetUniqueId": "-382252089338",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 6,
+      "rawItem": {
+        "network_id": 316,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 5,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 316,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 6,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:iron_pickaxe",
+      "damage": 5,
+      "targetRuntimeId": "27",
+      "targetUniqueId": "-382252089334",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 5,
+      "rawItem": {
+        "network_id": 299,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 8,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 299,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 9,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:diamond_pickaxe",
+      "damage": 6,
+      "targetRuntimeId": "31",
+      "targetUniqueId": "-382252089330",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 4,
+      "rawItem": {
+        "network_id": 320,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 11,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 320,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 12,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:netherite_pickaxe",
+      "damage": 7,
+      "targetRuntimeId": "34",
+      "targetUniqueId": "-382252089327",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 3,
+      "rawItem": {
+        "network_id": 621,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 14,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 621,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 15,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:copper_pickaxe",
+      "damage": 4,
+      "targetRuntimeId": "38",
+      "targetUniqueId": "-382252089323",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 6,
+      "rawItem": {
+        "network_id": 751,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 17,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 751,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 18,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:golden_shovel",
+      "damage": 2,
+      "targetRuntimeId": "44",
+      "targetUniqueId": "-382252089317",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 8,
+      "rawItem": {
+        "network_id": 326,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 20,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 326,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 21,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:golden_hoe",
+      "damage": 3,
+      "targetRuntimeId": "49",
+      "targetUniqueId": "-382252089312",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 7,
+      "rawItem": {
+        "network_id": 336,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 23,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 336,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 24,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:stone_shovel",
+      "damage": 3,
+      "targetRuntimeId": "54",
+      "targetUniqueId": "-382252089307",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 7,
+      "rawItem": {
+        "network_id": 315,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 26,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 315,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 27,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:stone_hoe",
+      "damage": 4,
+      "targetRuntimeId": "59",
+      "targetUniqueId": "-382252089302",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 6,
+      "rawItem": {
+        "network_id": 333,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 29,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 333,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 30,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:iron_shovel",
+      "damage": 4,
+      "targetRuntimeId": "64",
+      "targetUniqueId": "-382252089297",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 6,
+      "rawItem": {
+        "network_id": 298,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 32,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 298,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 33,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:iron_hoe",
+      "damage": 5,
+      "targetRuntimeId": "70",
+      "targetUniqueId": "-382252089291",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 5,
+      "rawItem": {
+        "network_id": 334,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 35,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 334,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 36,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:diamond_shovel",
+      "damage": 5,
+      "targetRuntimeId": "74",
+      "targetUniqueId": "-382252089287",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 5,
+      "rawItem": {
+        "network_id": 319,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 39,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 319,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 40,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:diamond_hoe",
+      "damage": 6,
+      "targetRuntimeId": "78",
+      "targetUniqueId": "-382252089283",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 4,
+      "rawItem": {
+        "network_id": 335,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 42,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 335,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 43,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:netherite_shovel",
+      "damage": 6,
+      "targetRuntimeId": "84",
+      "targetUniqueId": "-382252089277",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 4,
+      "rawItem": {
+        "network_id": 620,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 45,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 620,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 46,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:netherite_hoe",
+      "damage": 7,
+      "targetRuntimeId": "87",
+      "targetUniqueId": "-382252089274",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 3,
+      "rawItem": {
+        "network_id": 623,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 48,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 623,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 49,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:copper_shovel",
+      "damage": 3,
+      "targetRuntimeId": "93",
+      "targetUniqueId": "-382252089268",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 7,
+      "rawItem": {
+        "network_id": 750,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 51,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 750,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 52,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    },
+    {
+      "item": "minecraft:copper_hoe",
+      "damage": 4,
+      "targetRuntimeId": "97",
+      "targetUniqueId": "-382252089264",
+      "actualVersion": "1.26.60.6",
+      "healthBefore": 10,
+      "healthAfter": 6,
+      "rawItem": {
+        "network_id": 753,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 54,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "afterItem": {
+        "network_id": 753,
+        "count": 1,
+        "metadata": 0,
+        "has_stack_id": true,
+        "stack_id": 55,
+        "block_runtime_id": 0,
+        "extra": {
+          "has_nbt": true,
+          "nbt": {
+            "version": 1,
+            "nbt": {
+              "type": "compound",
+              "name": "",
+              "value": {
+                "Damage": {
+                  "type": "int",
+                  "value": 2
+                }
+              }
+            }
+          },
+          "can_place_on": [],
+          "can_destroy": []
+        }
+      },
+      "source": "bds-tool-damage-2026-11-01T07-02-00-052Z.json"
+    }
+  ]
+}
