@@ -866,7 +866,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // flowers are passable for walking but block placement).
     const clear = c => [c, { ...c, y: c.y + 1 }].every(p => { const b = adapter.getBlock(p.x, p.y, p.z); return b?.known === true && AIR.has(nameOf(b)) && !(b.extra ?? []).length })
     const out = []
-    for (let r = 2; r <= 4; r++) {
+    for (let r = 2; r <= 6; r++) {
       for (let dx = -r; dx <= r; dx++) {
         for (let dz = -r; dz <= r; dz++) {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue
@@ -886,7 +886,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         }
       }
     }
-    return out.sort((a, b) => a.path.length - b.path.length).slice(0, 12)
+    return out.sort((a, b) => a.path.length - b.path.length).slice(0, 16)
   }
 
   // All registered chests are full: put down one more beside the last one
@@ -897,16 +897,21 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (list.length >= maxChests) return { ok: false, reason: 'MAX_CHESTS', maxChests }
     if (typeof adapter.addChest !== 'function') return { ok: false, reason: 'ADD_CHEST_UNSUPPORTED' }
     const last = list[list.length - 1]
-    await goToStorage(myEpoch, last)
+    // Walking to the last chest is only a starting point; if that stand cannot
+    // be reached any more, search for a chest cell from where we are.
+    try { await goToStorage(myEpoch, last) } catch (error) { if (error instanceof QuarryInterrupt && error.code !== 'STORAGE_UNREACHABLE') throw error; if (!(error instanceof QuarryInterrupt)) note('add_chest_start_unreachable', { error: String(error.message ?? error).slice(0, 160) }) }
     const s = guard(myEpoch)
-    const candidates = chestCandidates(last.position, feetCell(s))
+    // Around every registered chest (the last one's surroundings fill up with
+    // chests, tables and trees), nearest walk first, duplicates removed.
+    const seen = new Set()
+    const candidates = [last, ...list.slice(0, -1).reverse()].flatMap(st => st?.position ? chestCandidates(st.position, feetCell(s)) : []).filter(c => { const k = `${c.cell.x},${c.cell.y},${c.cell.z}`; if (seen.has(k)) return false; seen.add(k); return true }).sort((a, b) => a.path.length - b.path.length)
     if (!candidates.length) return { ok: false, reason: 'NO_CHEST_CELL' }
     setState('ADD_STORAGE')
     const rec = recordAction({ type: 'add_chest', candidates: candidates.slice(0, 4).map(c => c.cell) })
     await save('add_chest_intent')
     let r = null
     const attempts = []
-    for (const c of candidates.slice(0, 4)) {
+    for (const c of candidates.slice(0, 8)) {
       // Stand beside the cell first, then place (or craft, then place) there.
       try { await moveToStance(myEpoch, c.stand) } catch (error) { if (error instanceof QuarryInterrupt) throw error; attempts.push({ cell: c.cell, reason: 'MOVE_FAILED' }); continue }
       // Other candidates are spare cells for a crafting table if one is needed.
@@ -980,7 +985,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (!added.ok) return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: 'all chests full', chests: (job.config.inventory.storage ?? []).length, addChest: added } })
       st = added.storage
     }
-    await goToStorage(myEpoch, st)
+    // A chest whose stand cannot be walked to right now is skipped like a full
+    // one (retried after the next resume) instead of failing the whole action.
+    try { await goToStorage(myEpoch, st) } catch (error) {
+      if (error instanceof QuarryInterrupt) throw error
+      note('storage_unroutable', { position: st.position, error: String(error.message ?? error).slice(0, 160) })
+      job.fullStorage = [...new Set([...(job.fullStorage ?? []), posKey(st.position)])]
+      return
+    }
     setState('DEPOSIT')
     const s = guard(myEpoch)
     const inv = items(s)

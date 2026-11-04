@@ -5848,7 +5848,16 @@ function createRuntime (host) {
     if (quarryJob) return quarryJob
     if (disposed || disposing) throw new Error('行動コードを更新しています。少し待ってからやり直してください。')
     if (!quarryPorts) throw new Error('移動・採掘の準備がまだ終わっていません。スポーン後にやり直してください。')
-    const ports = quarryPorts, own = ports.own
+    // Ports are looked up on every call: a teleport or respawn starts a new
+    // input generation, and ports captured when the job was created would then
+    // refuse every move/mine ("スポーン前の操作は終了しました") until a reload.
+    const live = () => { if (!quarryPorts) throw new Error('移動・採掘の準備がまだ終わっていません。'); return quarryPorts }
+    const own = fn => (...args) => live().own(fn)(...args)
+    const ports = {
+      mining: { preview: (...a) => live().mining.preview(...a), start: (...a) => live().mining.start(...a), stop: (...a) => live().mining.stop(...a) },
+      movement: { preview: (...a) => live().movement.preview(...a), start: (...a) => live().movement.start(...a), stop: (...a) => live().movement.stop(...a) },
+      getMining: () => live().getMining(), getMovement: () => live().getMovement()
+    }
     const adapter = createQuarryRuntimeAdapter({
       getState: quarryState,
       getBlock: quarryBlockReader(),
