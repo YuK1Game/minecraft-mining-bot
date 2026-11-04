@@ -158,6 +158,22 @@ test('T42 manual pause during combat is never resumed automatically; death pause
   assert.equal(j.status().deaths.length, 1)
 })
 
+test('a job paused after a death resumes on the new life and keeps digging', async () => {
+  const sim = setup()
+  const j = createQuarryJob({ adapter: sim.adapter, sleep: () => new Promise(r => setImmediate(r)), pollMs: 5 })
+  j.plan(cfg)
+  j.start()
+  await until(() => sim.stats.mined > 10)
+  await j.pause()
+  sim.state.lifecycle.deathId = 2 // died (twice) while paused
+  const before = sim.stats.mined
+  j.resume()
+  await until(() => sim.stats.mined > before + 3)
+  assert.notEqual(j.status().pauseReason, 'DEATH')
+  assert.equal(j.status().deaths.length, 1)
+  await j.pause()
+})
+
 test('T16 disconnect: work stops, reconnect reconciles and continues without re-mining', async () => {
   const sim = setup()
   const j = createQuarryJob({ adapter: sim.adapter, sleep: () => new Promise(r => setImmediate(r)), pollMs: 5 })

@@ -5,7 +5,7 @@ const createItem = require('prismarine-item')
 function createDurabilityReader (version = '1.26.60') {
   const Item = createItem(`bedrock_${version}`)
   return function durability (description, raw) {
-    if (!description || !/_(?:pickaxe|sword)$/.test(description.name ?? '')) return description
+    if (!description || !/_(?:pickaxe|sword|shovel|axe|hoe)$/.test(description.name ?? '')) return description
     try {
       if (!raw || raw.count !== description.count || !raw.has_stack_id || !Number.isInteger(raw.stack_id) || raw.stack_id <= 0 || description.stackId != null && raw.stack_id !== description.stackId) return { ...description, durabilityKnown: false }
       if (/_sword$/.test(description.name)) {

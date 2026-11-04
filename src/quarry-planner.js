@@ -217,16 +217,29 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     if (same(floor, t)) return false
     return true
   }
-  function stancesFor (t, reach, removed) {
-    const found = []
+  let avoidStances = new Set()
+  // Nearest walkable stance with a visible face of t. Candidates are filtered
+  // and ordered cheaply first; the face ray-cast (the expensive part) runs
+  // only until one succeeds, and at most maxAimTries times per target.
+  function stancesFor (t, reach, removed, maxAimTries = 24) {
+    const candidates = []
     for (const [k, d] of reach) {
+      if (d > 0 && avoidStances.has(k)) continue // a stance the bot repeatedly failed to reach
       const [x, y, z] = k.split(',').map(Number); const s = { x, y, z }
       if (Math.abs(s.x + 0.5 - (t.x + 0.5)) > REACH + 0.5 || Math.abs(s.z + 0.5 - (t.z + 0.5)) > REACH + 0.5 || s.y + EYE - (t.y + 0.5) > REACH + 0.5 || t.y + 0.5 - (s.y + EYE) > REACH + 0.5) continue
+      const e = eyeOf(s)
+      const eyeDist = Math.hypot(t.x + 0.5 - e.x, t.y + 0.5 - e.y, t.z + 0.5 - e.z)
+      if (eyeDist > REACH + 0.9) continue
       if (!stanceAllows(s, t)) continue
-      const aim = selectVisibleBlockFace({ eye: eyeOf(s), target: t, world: { getBlock }, maxReach: REACH, removed })
-      if (aim) found.push({ stance: s, distance: d, aim })
+      candidates.push({ stance: s, distance: d, eyeDist })
     }
-    return found.sort((a, b) => a.distance - b.distance || a.aim.distance - b.aim.distance)
+    candidates.sort((a, b) => a.distance - b.distance || a.eyeDist - b.eyeDist)
+    for (let i = 0; i < candidates.length && i < maxAimTries; i++) {
+      const c = candidates[i]
+      const aim = selectVisibleBlockFace({ eye: eyeOf(c.stance), target: t, world: { getBlock }, maxReach: REACH, removed })
+      if (aim) return [{ stance: c.stance, distance: c.distance, aim }]
+    }
+    return []
   }
 
   // ---- layer and next action ---------------------------------------------
@@ -254,11 +267,18 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
   // Returns one of: { action: 'mine', stance, targets, tool }, { action: 'seal', ... },
   // { action: 'stair_place', ... }, { action: 'layer_done' }, { action: 'finished' },
   // { action: 'pause', reason, details }.
-  function next ({ feet, yTop, tools, policy = {}, inventoryItems = [], maxBatch = cfg.maxBlocksPerBatch }) {
+  // Planning is chunked: the event loop is released every ~12ms so live
+  // input streams (movement, idle input, combat ticks) never miss a tick.
+  const yieldNow = () => new Promise(resolve => setImmediate(resolve))
+  async function next ({ feet, yTop, tools, policy = {}, inventoryItems = [], maxBatch = cfg.maxBlocksPerBatch, avoid = null }) {
+    let slice = performance.now()
+    const breathe = async () => { if (performance.now() - slice > 12) { await yieldNow(); slice = performance.now() } }
+    avoidStances = avoid instanceof Set ? avoid : new Set()
     if (!Number.isSafeInteger(yTop)) return { action: 'pause', reason: 'Y_TOP_UNKNOWN' }
     const reach = reachableFrom(feet)
     if (!reach.size) return { action: 'pause', reason: 'NO_STANDING_POSITION' }
     for (let y = yTop; y >= regions.yBottom; y--) {
+      await breathe()
       const layer = layerSummary(y, { tools, policy })
       // Protected and unharvestable cells are deferred with their reason once.
       for (const blocked of layer.blocked) defer(blocked.position, blocked.reason, blocked.needs ? { needs: blocked.needs } : {})
@@ -292,6 +312,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
         }
       }
       for (const target of layer.pending) {
+        await breathe()
         const support = protectsSupport(target.position)
         if (support) { defer(target.position, support); continue }
         const hazards = fluidNeighbours(target.position)
@@ -328,14 +349,15 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     const limit = Math.min(valuable ? 1 : maxBatch, budget)
     const batch = [{ position: target.position, name: target.name, runtimeId: target.runtimeId, tool: target.tool, aim: chosen.aim }]
     removed.add(key(target.position.x, target.position.y, target.position.z))
+    let misses = 0
     for (const other of layerPending) {
-      if (batch.length >= limit) break
+      if (batch.length >= limit || misses > 24) break
       if (same(other.position, target.position) || other.rule?.ore) continue
       if (!other.tool || target.tool && (other.tool.kind !== target.tool.kind || other.tool.slot !== target.tool.slot)) continue
       if (!stanceAllows(chosen.stance, other.position) || protectsSupport(other.position)) continue
       if (fluidNeighbours(other.position).length) continue
       const aim = selectVisibleBlockFace({ eye: eyeOf(chosen.stance), target: other.position, world: { getBlock }, maxReach: REACH, removed })
-      if (!aim) continue
+      if (!aim) { misses++; continue }
       batch.push({ position: other.position, name: other.name, runtimeId: other.runtimeId, tool: other.tool, aim })
       removed.add(key(other.position.x, other.position.y, other.position.z))
     }

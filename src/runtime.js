@@ -4980,28 +4980,11 @@ function createRuntime (host) {
       userTick: () => { const s = host.shared.userTickStats ?? {}; return { inventoryUncertain: host.shared.inventoryUncertain ?? null, rangedShotUncertain: host.shared.rangedShotUncertain ?? null, resync: host.shared.inventoryResync?.lastRequest ?? null, ...s, taskAgeMs: s.taskSince ? Date.now() - s.taskSince : 0, sinceRanMs: s.lastRanAt ? Date.now() - s.lastRanAt : null, taskPending: !!userBehaviorTickTask, lastCombat: userBehaviors?.snapshot?.().combat?.lastResult?.code ?? null, worker: userBehaviors?.snapshot?.().combat?.phase ?? null } },
       acquireDenials: () => ({ last: host.shared.lastUserAcquireDenial ?? null, counts: { ...(host.shared.userAcquireDenials ?? {}) }, lastPreemptSurvey: host.shared.lastPreemptSurvey ?? null }),
       foodLife: () => ({ foodKnownLife: foodKnownLife(), deathRespawn: host.shared.deathRespawn?.deathId ?? null, receipt: host.shared.inventoryLifeReceipt ? { source: host.shared.inventoryLifeReceipt.source, deathId: host.shared.inventoryLifeReceipt.deathId, keyMatches: host.shared.inventoryLifeReceipt.key === inventoryLifeBaseKey(raw()) } : null, verified: !!verifiedInitialLifeReceipt(), hunger: food.snapshot().hunger }),
-      // Operator-only test helper: sends a /give command request. The result
-      // is not proof of anything; check the server inventory afterwards.
+      // Operator helper: sends any slash command as the bot (the owner allows
+      // all commands on this Realm). The result is not proof of anything;
+      // check the world or inventory afterwards.
       command: (text, version = 'latest') => {
-        // Test-only: /give, /tp of this bot itself, and /summon of one zombie or skeleton.
-        const self = String(raw().playerName ?? '')
-        const coords = '(-?\\d+(?:\\.\\d+)?) (-?\\d+(?:\\.\\d+)?) (-?\\d+(?:\\.\\d+)?)'
-        // Debug arena only: /fill limited to the fixed test box far from the
-        // base (x,z 380..420, y 145..160) with stone/glowstone/air, and
-        // /effect on this bot only.
-        const fill = typeof text === 'string' && /^\/fill (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) minecraft:(stone|glowstone|air)( hollow)?$/.exec(text)
-        if (fill) {
-          const [x1, y1, z1, x2, y2, z2] = fill.slice(1, 7).map(Number)
-          const inBox = [x1, x2].every(v => v >= 380 && v <= 420) && [z1, z2].every(v => v >= 380 && v <= 420) && [y1, y2].every(v => v >= 145 && v <= 160)
-          if (!inBox) throw new Error('/fill はテスト場の範囲（x,z 380〜420, y 145〜160）だけに使えます。')
-        }
-        const effect = typeof text === 'string' && self && new RegExp(`^/effect ${self} (?:minecraft:)?(?:instant_health|regeneration|slow_falling|hunger) \\d{1,3} \\d{1,3}( true)?$`).test(text)
-        // Debug arena cleanup: /kill of test mobs inside the arena box only.
-        const kill = typeof text === 'string' && /^\/kill @e\[type=minecraft:(?:zombie|husk|skeleton|creeper|spider),x=380,y=145,z=380,dx=40,dy=15,dz=40\]$/.test(text)
-        // Field tests: /time set day|night (the owner keeps the world at day; tests restore it).
-        const time = typeof text === 'string' && /^\/time set (?:day|night|noon|midnight)$/.test(text)
-        const allowed = !!fill || effect || kill || time || typeof text === 'string' && (/^\/give \S+ minecraft:[a-z_]+( \d{1,3})?$/.test(text) || self && new RegExp(`^/tp ${self} ${coords}$`).test(text) || new RegExp(`^/summon minecraft:(?:zombie|husk|skeleton|creeper|spider) ${coords}$`).test(text))
-        if (!allowed) throw new Error('/give, /tp <このBot> x y z, /summon minecraft:zombie|husk|skeleton|creeper|spider x y z のみ送れます。')
+        if (typeof text !== 'string' || !/^\/\S/.test(text) || text.length > 512 || /[\r\n]/.test(text)) throw new Error('コマンドは / で始まる1行（512文字以内）で指定してください。')
         host.client.queue('command_request', { command: text, origin: { type: 'player', uuid: require('node:crypto').randomUUID(), request_id: '', player_entity_id: 0n }, internal: false, version: String(version) })
         return { sent: true, command: text, version: String(version) }
       }
@@ -5764,6 +5747,61 @@ function createRuntime (host) {
     const hunger = host.shared.vitals?.hunger
     return { ...state, food: Number.isFinite(hunger) ? hunger : Number.isFinite(hunger?.value) ? hunger.value : state.food ?? null, deathCause: host.shared.deathRespawn?.cause ?? null, inventory: host.shared.inventoryUncertain ? { ...state.inventory, uncertain: true } : state.inventory }
   }
+  // The planner reads thousands of cells per decision. planningWorld.getBlock
+  // re-derives its protection overlays on every call, which can hold the event
+  // loop long enough to stall the movement input timer, so reads are memoised
+  // until the world revision changes (or for at most one second).
+  function quarryBlockReader () {
+    let cache = new Map(), revision = -1, at = 0
+    return (x, y, z) => {
+      const rev = typeof host.world.revision === 'function' ? host.world.revision() : null, t = Date.now()
+      if (rev !== revision || t - at > 1000) { cache = new Map(); revision = rev; at = t }
+      const k = x + ',' + y + ',' + z
+      let b = cache.get(k)
+      if (b === undefined) { b = planningWorld.getBlock(x, y, z); cache.set(k, b) }
+      return b
+    }
+  }
+  // Quarry storage expansion: one more chest at the first candidate cell that
+  // works. It reuses the depot storage controller, one primitive per step: a
+  // carried chest is placed directly; otherwise planks are crafted from
+  // carried logs, a crafting table is used (a nearby one, or one crafted and
+  // placed at another candidate), and the chest is crafted and placed. Only a
+  // server-confirmed chest block counts; nothing comes from commands.
+  let quarryChestWork = null
+  async function quarryAddChest ({ candidates = [], signal } = {}) {
+    quarryChestWork ??= createDepotStorageWork({ getState: () => lightweightUserState(), world: host.world, crafting, interactions, chest, inventory })
+    const isAir = p => { const b = host.world.getBlock(p.x, p.y, p.z); return b?.known === true && /^minecraft:(air|cave_air|void_air)$/.test(b.name) }
+    const tried = []
+    const crafted = []
+    try {
+      // The job walks to a stand beside candidates[0] before each call; the
+      // other cells are only spare places for a crafting table.
+      for (const cell of candidates.slice(0, 1)) {
+        let lastKind = null
+        for (let step = 0; step < 32; step++) {
+          if (signal?.aborted) throw new Error('quarry add chest aborted')
+          const b = host.world.getBlock(cell.x, cell.y, cell.z)
+          if (b?.known === true && b.name === 'minecraft:chest') return { ok: true, position: { ...cell }, crafted }
+          const state = lightweightUserState()
+          const near = state.position ? host.world.getArea({ x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62), z: Math.floor(state.position.z) }, 3) : []
+          const table = near.filter(x => x.known && x.name === 'minecraft:crafting_table').sort((a, c) => Math.hypot(a.position.x - state.position.x, a.position.z - state.position.z) - Math.hypot(c.position.x - state.position.x, c.position.z - state.position.z))[0]?.position ?? null
+          const tableCell = candidates.find(c => (c.x !== cell.x || c.y !== cell.y || c.z !== cell.z) && isAir(c) && Math.abs(c.x - cell.x) + Math.abs(c.z - cell.z) >= 2) ?? null
+          const options = { scope: continuationScope(state), storageCell: cell, tablePosition: table, tableCell }
+          const decision = quarryChestWork.preview(options)
+          lastKind = decision.kind
+          if (decision.kind === 'need_logs') return { ok: false, reason: 'NO_CHEST_MATERIAL', needs: { logs: decision.count ?? 2, planks: decision.missingPlanks ?? null }, crafted }
+          if (['need_access', 'need_equip', 'need_table_cell', 'blocked', 'verify_chest_ownership', 'observe_inventory'].includes(decision.kind)) { tried.push({ cell, kind: decision.kind, reason: decision.reason ?? decision.errors?.[0] ?? null }); break }
+          const result = await quarryChestWork.step(options, { signal })
+          if (decision.kind === 'craft') crafted.push(decision.output)
+          if (result?.phase === 'failed') { tried.push({ cell, kind: decision.kind, reason: result.reason ?? null }); break }
+          await new Promise(resolve => setTimeout(resolve, 150))
+        }
+        if (lastKind && !tried.some(t => t.cell === cell)) tried.push({ cell, kind: lastKind, reason: 'STEP_LIMIT' })
+      }
+    } finally { try { crafting.closeContainer() } catch {} }
+    return { ok: false, reason: 'NO_PLACEABLE_CELL', tried: tried.slice(0, 6), crafted }
+  }
   function ensureQuarryJob () {
     if (quarryJob) return quarryJob
     if (disposed || disposing) throw new Error('行動コードを更新しています。少し待ってからやり直してください。')
@@ -5771,15 +5809,18 @@ function createRuntime (host) {
     const ports = quarryPorts, own = ports.own
     const adapter = createQuarryRuntimeAdapter({
       getState: quarryState,
-      getBlock: (x, y, z) => planningWorld.getBlock(x, y, z),
-      entities: () => host.entities.snapshot({ kind: 'item' }),
+      getBlock: quarryBlockReader(),
+      entities: () => host.entities.snapshot({ kind: 'all' }),
       mining: ports.mining, getMining: ports.getMining, movement: ports.movement, getMovement: ports.getMovement,
       equip: own(slot => operations.inventory.equip(slot)),
       placeQuarry: own(options => { requireIdle(); crafting.closeContainer(); return interactions.placeQuarryBlock(options) }),
       eat: own(() => operations.food.eat({})),
       chest: { open: own(position => operations.chest.open(position)), depositItem: own(options => operations.chest.depositItem(options)), close: () => crafting.closeContainer() },
+      addChest: own(options => { requireIdle(); crafting.closeContainer(); return quarryAddChest(options) }),
       stopAll: async reason => { try { ports.mining.stop(reason) } catch {} try { ports.movement.stop(reason) } catch {} try { chest.cancel(reason) } catch {} try { interactions.cancel(reason) } catch {} },
-      combatActive: () => { const b = userBehaviorSnapshot(); return userBehaviorLease?.kind === 'combat' || b.activeKind === 'combat' || b.claim?.kind === 'combat' },
+      // Idle-protection escapes move the bot too; treat them like a fight so the
+      // quarry yields movement instead of racing them.
+      combatActive: () => { const b = userBehaviorSnapshot(); return userBehaviorLease?.kind === 'combat' || b.activeKind === 'combat' || b.claim?.kind === 'combat' || idleSafety?.snapshot().busy === true },
       threatEvidence: target => quarryEvidence(target, lightweightUserState()),
       recentDamageAt: () => { const at = Number(host.shared.recentDamageNoPrimary?.at ?? NaN); return Number.isFinite(at) ? at : null },
       log: message => { try { host.log(message) } catch {} }
@@ -5796,7 +5837,7 @@ function createRuntime (host) {
     adapter.onFinished = s => {
       quarryCombatArmed = false
       if (quarryBehaviorRestore) { host.shared.userBehaviorsEnabled = quarryBehaviorRestore.userBehaviorsEnabled; quarryBehaviorRestore = null }
-      try { host.log(`露天掘り: ${s?.result ?? s?.state}${s?.pauseReason ? ` (${s.pauseReason})` : ''}`) } catch {}
+      try { host.log(`露天掘り: ${s?.result?.type ?? s?.state}${s?.pauseReason ? ` (${s.pauseReason})` : ''}`) } catch {}
     }
     quarryJob = createQuarryJob({ adapter, storage: quarryStorage, log: message => { try { host.log(`露天掘り: ${message}`) } catch {} } })
     if (host.shared.quarryDocument) { try { quarryJob.load(host.shared.quarryDocument) } catch (error) { host.shared.quarryLoadError = String(error.message).slice(0, 200) } }
