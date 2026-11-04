@@ -17,6 +17,7 @@ const ACTIVE = new Set(['PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT'
 const RESULT = new Set(['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS', 'PAUSED', 'CANCELLED', 'FAILED'])
 // Deferrals that are planned exclusions, not exceptions (§16.3).
 const PLANNED_EXCLUSIONS = new Set(['UNBREAKABLE'])
+const TOOL_WAIT = new Set(['WAITING_FOR_TOOL', 'TOOL_DURABILITY_RESERVE', 'TOOL_DURABILITY_UNKNOWN', 'TOOL_NOT_IN_HOTBAR'])
 
 class QuarryInterrupt extends Error { constructor (code, message) { super(message ?? code); this.code = code } }
 
@@ -51,6 +52,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   let job = null // persistent document
   let planner = null; let regions = null; let ledger = createLedger()
   let worker = null; let epoch = 0; let abort = null
+  const badStances = new Map() // stance key -> consecutive move failures
+  let countsCache = null // status() is polled; full-range counts are cached briefly
   let lastInventory = null; let pendingDrops = []; let batchCount = 0
   const events = []
 
@@ -84,12 +87,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (Array.isArray(config.permissions.travelRegion)) return config.permissions.travelRegion
     // Default: the job's columns grown by 2, plus the storage and the bot's
     // current place, from the job bottom to a few blocks above its top.
-    const xs = []; const zs = []; const ys = []
+    const xs = []; const zs = []; const ys = []; const lows = [regs.yBottom]
     for (const chunk of regs.chunks) { const b = chunkBounds(chunk); xs.push(b.xMin - 2, b.xMax + 2); zs.push(b.zMin - 2, b.zMax + 2) }
-    for (const s of config.inventory.storage ?? []) if (s?.position) { xs.push(s.position.x - 3, s.position.x + 3); zs.push(s.position.z - 3, s.position.z + 3); ys.push(s.position.y + 4, s.position.y - 2) }
-    if (state?.position) { const f = feetCell(state); xs.push(f.x - 2, f.x + 2); zs.push(f.z - 2, f.z + 2); ys.push(f.y + 4, f.y - 2) }
+    for (const s of config.inventory.storage ?? []) if (s?.position) { xs.push(s.position.x - 3, s.position.x + 3); zs.push(s.position.z - 3, s.position.z + 3); ys.push(s.position.y + 4, s.position.y - 2); lows.push(s.position.y - 2) }
+    // The bot's own place may lie below the job bottom (lower ground beside
+    // the area), so the region reaches down to it as well.
+    if (state?.position) { const f = feetCell(state); xs.push(f.x - 2, f.x + 2); zs.push(f.z - 2, f.z + 2); ys.push(f.y + 4, f.y - 2); lows.push(f.y - 2) }
     const top = Math.min(regs.worldMaxY, Math.max(...ys, (regs.yTop ?? regs.worldMaxY - 4) + 4))
-    return [{ xMin: Math.min(...xs), xMax: Math.max(...xs), yMin: regs.yBottom, yMax: top, zMin: Math.min(...zs), zMax: Math.max(...zs) }]
+    return [{ xMin: Math.min(...xs), xMax: Math.max(...xs), yMin: Math.max(regs.worldMinY, Math.min(...lows)), yMax: top, zMin: Math.min(...zs), zMax: Math.max(...zs) }]
   }
   function makeRegions (config, yTop, state) {
     const base = { target: config.target, yTop, yBottom: config.yBottom, worldMinY: config.worldMinY, worldMaxY: config.worldMaxY, boundarySeal: config.boundarySeal, infrastructureRegion: config.permissions.infrastructureRegion, protectedRegion: config.permissions.protectedRegion }
@@ -142,6 +147,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         for (const b of s.blocked) if (survey.protected.length < 64) survey.protected.push({ position: b.position, name: b.name, reason: b.reason })
       }
       if (survey.fluidCells > config.strategy.largeFluidCells) warnings.push({ code: 'LARGE_FLUID_IN_TARGET', cells: survey.fluidCells })
+      // Many protected/unknown blocks usually mean a player build inside the
+      // target; they are never broken, but the user should know before start.
+      if (survey.protected.length >= 16) warnings.push({ code: 'PROTECTED_BLOCKS_IN_TARGET', cells: survey.protected.length, note: 'Possibly a player structure; these blocks are left in place', names: [...new Set(survey.protected.map(p => p.name))].slice(0, 8) })
     }
     const sealCells = regs.seal.ready ? regs.seal.columns.size * (regs.seal.yMax - regs.seal.yMin + 1) : 0
     const summary = { ready: issues.length === 0, issues, warnings, jobId: config.jobId, chunks: regs.chunks, yTop, yTopProvisional: unknownAbove > 0, yBottom: regs.yBottom, columns: regs.columns.size, counts, survey, stair, boundarySeal: { enabled: regs.seal.enabled, ready: regs.seal.ready, columns: regs.seal.columns.size, yMin: regs.seal.yMin, yMax: regs.seal.yMax, cells: sealCells, placementOnly: true }, travelRegion: regs.travel, storage: storageList }
@@ -212,11 +220,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (code === 'DISCONNECTED') { setState('DISCONNECTED'); return }
     if (['PERSISTENCE_FAILED', 'STORAGE_UNREACHABLE', 'NO_STORAGE'].includes(code)) return finish('PAUSED', code)
     if (['HAZARD', 'LOW_HEALTH'].includes(code)) return
+    // An action broken because combat/safety took control is handled as
+    // that interruption and does not use up the retry budget.
+    if (job.config.quarryCombat.enabled && adapter.combatActive()) return suspendForCombat()
     // Unknown errors: retry bounded, then pause with the reason (§15.1 max 3).
     job.retry = (job.retry ?? 0) + 1
-    if (job.retry > 3) return finish('PAUSED', `ACTION_FAILED:${String(error.message ?? code).slice(0, 160)}`)
+    if (job.retry > 3) return finish('PAUSED', `ACTION_FAILED:${String(error.message ?? code).slice(0, 160)}`, { pauseDetails: { lastError: String(error.message ?? code).slice(0, 300), lastMoveError: job.lastMoveError ?? null, lastDecision: job.lastDecision ?? null, avoidedStances: [...badStances.keys()].slice(0, 10) } })
     setState('SURVEY')
-    await sleep(500)
+    // Back off so a controller that just failed (e.g. a stalled input timer)
+    // can settle before the next attempt.
+    await sleep(500 * 2 ** (job.retry - 1))
   }
 
   function suspendForCombat () {
@@ -248,7 +261,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
       case 'COMBAT_SETTLE': {
         if (adapter.combatActive()) { setState('COMBAT'); return }
-        const r = combatBridge.settle(s, adapter.entities(), { evidenceFor: e => adapter.threatEvidence?.(e) ?? {}, recentDamageAt: adapter.recentDamageAt?.() ?? null, hazard: hazardNow(s) !== null })
+        const r = combatBridge.settle(s, adapter.actors?.() ?? adapter.entities(), { evidenceFor: e => adapter.threatEvidence?.(e) ?? {}, recentDamageAt: adapter.recentDamageAt?.() ?? null, hazard: hazardNow(s) !== null })
         job.settle = r
         if (r.settled) setState('RECOVER_AFTER_COMBAT')
         else await sleep(100)
@@ -370,7 +383,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const oldest = open.length ? Math.min(...open.map(d => d.firstSeen)) : null
     if (batchCount >= job.config.strategy.maxBlocksPerBatch || oldest !== null && now() - oldest >= job.config.strategy.collectWithinSeconds * 1000) { await collect(myEpoch, batchCount >= job.config.strategy.maxBlocksPerBatch ? 'batch' : 'deadline'); return }
     setState('PLAN')
-    const decision = planner.next({ feet: feetCell(s), yTop: job.cursorY ?? job.yTop, tools: inv, policy: { ...job.config.tools, ...job.config.collection }, inventoryItems: inv, maxBatch: job.config.strategy.maxBlocksPerBatch - batchCount })
+    rebindTravelIfOutside(s)
+    const decision = await planner.next({ feet: feetCell(s), yTop: job.cursorY ?? job.yTop, tools: inv, policy: { ...job.config.tools, ...job.config.collection }, inventoryItems: inv, maxBatch: job.config.strategy.maxBlocksPerBatch - batchCount, avoid: new Set([...badStances].filter(([, n]) => n >= 2).map(([k]) => k)) })
     job.lastDecision = { action: decision.action, reason: decision.reason ?? null, details: decision.details ?? null, y: decision.targets?.[0]?.position?.y ?? decision.y ?? null }
     if (decision.action === 'finished') { await collect(myEpoch, 'final'); setState('FINAL_CHECK'); return }
     if (decision.action === 'deferred') { note('deferred', { reason: decision.reason, count: decision.count, y: decision.y }); return }
@@ -378,6 +392,26 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (decision.action === 'seal' || decision.action === 'stair_place') return place(myEpoch, decision)
     if (decision.action === 'mine') return mine(myEpoch, decision)
     throw new Error(`Unknown planner action ${decision.action}`)
+  }
+
+  // A fight or a safety escape can carry the bot outside the travel region
+  // fixed at plan time. Planning from there would find nothing walkable and
+  // defer the whole job as UNREACHABLE, so the region is rebuilt to include
+  // the current position (and the job columns) and reachability is retried.
+  function rebindTravelIfOutside (s) {
+    const f = feetCell(s)
+    if (!f || permits(regions, 'travel', f).allowed) return false
+    const next = makeRegions(job.config, job.yTop, s)
+    // Never loop on a rebuild that still leaves the bot outside (that would
+    // clear and re-defer the same cells on every tick).
+    if (!permits(next, 'travel', f).allowed) { if (!job.travelReboundFailed) { job.travelReboundFailed = true; note('travel_rebound_failed', { feet: f }) } return false }
+    job.travelReboundFailed = false
+    const records = planner.exportRecords()
+    regions = next
+    planner = createQuarryPlanner({ regions, getBlock: adapter.getBlock, config: job.config.strategy, records })
+    planner.clearDeferred(['UNREACHABLE'])
+    note('travel_rebound', { feet: f })
+    return true
   }
 
   async function moveToStance (myEpoch, stance) {
@@ -389,7 +423,17 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // the adapter walks it in short verified segments (§5.2, §6.1).
     const path = planner.pathTo(f, stance)
     if (!path) throw new Error(`No permitted walking route to ${JSON.stringify(stance)}`)
-    await call(myEpoch, 'move', signal => adapter.moveTo(stance, { signal, path, maxStepDown: job.config.strategy.maxStepDown, travel: c => permits(regions, 'travel', c).allowed }))
+    const sk = `${stance.x},${stance.y},${stance.z}`
+    try { await call(myEpoch, 'move', signal => adapter.moveTo(stance, { signal, path, maxStepDown: job.config.strategy.maxStepDown, travel: c => permits(regions, 'travel', c).allowed })) } catch (error) {
+      // A move broken by a fight or a safety escape is an interruption, not a
+      // bad stance (the other controller stopped our movement first).
+      if (!(error instanceof QuarryInterrupt) && job.config.quarryCombat.enabled && adapter.combatActive()) throw new QuarryInterrupt('COMBAT')
+      // Input-timer stalls are the bot's own scheduling hiccups, not a property
+      // of the destination, so they never mark a stance as bad.
+      if (!(error instanceof QuarryInterrupt) && !/timer stalled|movement ticks were missed/i.test(String(error.message))) { badStances.set(sk, (badStances.get(sk) ?? 0) + 1); job.lastMoveError = { target: stance, error: String(error.message ?? error).slice(0, 200), at: new Date(now()).toISOString() } }
+      throw error
+    }
+    badStances.delete(sk)
     const after = feetCell(guard(myEpoch))
     p.status = after.x === stance.x && after.y === stance.y && after.z === stance.z ? 'confirmed' : 'mismatch'
     if (p.status !== 'confirmed') throw new Error(`Arrived at ${JSON.stringify(after)} instead of ${JSON.stringify(stance)}`)
@@ -400,11 +444,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (tool.kind === 'hand') {
       const held = s.heldItem
       if (!held?.name || !/_(pickaxe|shovel|axe|hoe|sword)$|^minecraft:shears$/.test(held.name)) return
-      const inv = items(s)
+      // Equipping swaps a real item into the hand, so the source must hold a
+      // non-tool item (an empty slot is refused). After a deposit the hotbar
+      // may be empty: take any non-tool stack from the whole inventory. With
+      // none left, keep the held tool rather than fail the job.
+      const inv = items(s) ?? []
       const isTool = i => /_(pickaxe|shovel|axe|hoe|sword)$|shears$/.test(i?.name ?? '')
-      const free = [0, 1, 2, 3, 4, 5, 6, 7, 8].find(slot => !inv.some(i => i.slot === slot && isTool(i)))
-      if (free == null) return
-      await call(myEpoch, 'equip_hand', signal => adapter.equip(free, { signal, hand: true }))
+      const usable = inv.filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot <= 35 && i.count > 0 && i.name && !isTool(i) && i.slot !== s.selectedSlot)
+      const source = usable.find(i => i.slot <= 8) ?? usable.sort((a, b) => a.slot - b.slot)[0]
+      if (!source) { note('hand_unavailable', { held: held.name }); return }
+      await call(myEpoch, 'equip_hand', signal => adapter.equip(source.slot, { signal, hand: true }))
       return
     }
     if (s.heldItem?.name === tool.name && (s.selectedSlot === tool.slot || s.heldItem?.slot === tool.slot)) return
@@ -475,19 +524,26 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const before = totals(items(s) ?? [])
     const remaining = []
     for (const d of pendingDrops) { const e = ents.get(d.runtimeId); if (e) remaining.push({ ...d, position: copy(e.position), count: e.count }) }
-    // Nearby items inside travel permission are collected too (mixed items are
-    // counted as "picked" only when they enter the bag).
-    for (const e of ents.values()) if (!remaining.some(d => d.runtimeId === e.runtimeId) && permits(regions, 'travel', { x: Math.floor(e.position.x), y: Math.floor(e.position.y + 0.01), z: Math.floor(e.position.z) }).allowed && s.position && Math.hypot(e.position.x - s.position.x, e.position.z - s.position.z) <= 12) remaining.push({ runtimeId: e.runtimeId, name: e.name, count: e.count, position: copy(e.position), firstSeen: now(), mixed: true })
+    // Every item lying inside the travel region is collected, not only the
+    // job's own drops (mixed items count as "picked" only when they enter the
+    // bag).
+    for (const e of ents.values()) if (!remaining.some(d => d.runtimeId === e.runtimeId) && permits(regions, 'travel', { x: Math.floor(e.position.x), y: Math.floor(e.position.y + 0.01), z: Math.floor(e.position.z) }).allowed) remaining.push({ runtimeId: e.runtimeId, name: e.name, count: e.count, position: copy(e.position), firstSeen: now(), mixed: true })
     remaining.sort((a, b) => a.firstSeen - b.firstSeen || Math.hypot(a.position.x - s.position.x, a.position.z - s.position.z) - Math.hypot(b.position.x - s.position.x, b.position.z - s.position.z))
     const unreachable = []
-    for (const d of remaining.slice(0, 24)) {
+    let needRoom = false
+    const PASS = 48
+    for (const [i, d] of remaining.entries()) {
+      // Items beyond this pass, or left after the bag filled, stay tracked.
+      if (i >= PASS || needRoom) { unreachable.push({ ...d, reason: needRoom ? 'NO_CAPACITY' : 'NEXT_PASS' }); continue }
       const inv = items(guard(myEpoch))
-      if (!canAccept(inv, [{ name: d.name ?? 'unknown', count: d.count ?? 1 }])) { unreachable.push({ ...d, reason: 'NO_CAPACITY' }); continue }
+      if (!canAccept(inv, [{ name: d.name ?? 'unknown', count: d.count ?? 1 }])) { needRoom = true; unreachable.push({ ...d, reason: 'NO_CAPACITY' }); continue }
       const cell = { x: Math.floor(d.position.x), y: Math.floor(d.position.y + 0.01), z: Math.floor(d.position.z) }
-      const target = [cell, { ...cell, y: cell.y + 1 }, ...[[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ x: cell.x + dx, y: cell.y, z: cell.z + dz }))].find(c => planner.standable(c) && permits(regions, 'travel', c).allowed && planner.reachableFrom(feetCell(guard(myEpoch))).has(`${c.x},${c.y},${c.z}`))
+      const reach = planner.reachableFrom(feetCell(guard(myEpoch)))
+      const around = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
+      const target = [0, 1, -1].flatMap(dy => around.map(([dx, dz]) => ({ x: cell.x + dx, y: cell.y + dy, z: cell.z + dz }))).find(c => planner.standable(c) && permits(regions, 'travel', c).allowed && reach.has(`${c.x},${c.y},${c.z}`))
       if (!target) { unreachable.push({ ...d, reason: 'UNREACHABLE' }); continue }
       try { await moveToStance(myEpoch, target) } catch (error) { if (error instanceof QuarryInterrupt) throw error; unreachable.push({ ...d, reason: 'MOVE_FAILED' }); continue }
-      const until = now() + 1500
+      const until = now() + 2500
       while (now() < until && adapter.entities().some(e => e.runtimeId === d.runtimeId)) await sleep(100)
     }
     const after = totals(items(guard(myEpoch)) ?? [])
@@ -496,9 +552,12 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // Items still on the ground stay tracked: capacity misses are retried after
     // a deposit, unreachable ones are only written off at the end (§10.2).
     const still = new Set(adapter.entities().filter(e => e.kind === 'item').map(e => e.runtimeId))
-    pendingDrops = unreachable.filter(d => still.has(d.runtimeId)).map(d => ({ ...d, unreachable: d.reason !== 'NO_CAPACITY' }))
+    pendingDrops = unreachable.filter(d => still.has(d.runtimeId)).map(d => ({ ...d, unreachable: !['NO_CAPACITY', 'NEXT_PASS'].includes(d.reason) }))
     job.unreachableItems = pendingDrops.filter(d => d.unreachable).map(d => ({ name: d.name, count: d.count, position: d.position, reason: d.reason }))
     batchCount = 0
+    // The bag could not take everything: empty it into the chests, then the
+    // left-over drops are picked up on the next collection.
+    if (needRoom && job.config.inventory.storage?.length) { note('collect_needs_room', { left: pendingDrops.filter(d => !d.unreachable).length }); job.depositReason = 'capacity'; setState('RETURN'); return }
     setState('PLAN')
   }
 
@@ -551,8 +610,101 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     setState('SURVEY')
   }
 
-  async function goToStorage (myEpoch) {
-    const st = job.config.inventory.storage?.[0]
+  // Storage is a list of chests filled in order. A chest that reported no room
+  // is skipped until the job is resumed (the user may have emptied it).
+  const posKey = p => `${p.x},${p.y},${p.z}`
+  function currentStorage () {
+    const full = new Set(job.fullStorage ?? [])
+    return (job.config.inventory.storage ?? []).find(st => st?.position && !full.has(posKey(st.position))) ?? null
+  }
+
+  // Cells for one more chest near `near`: standable ground (solid floor, air
+  // for the chest and above it), outside the dig columns, not beside another
+  // chest (that would merge into a double chest and hide the new one), and not
+  // a cell the bot or another chest's stand uses.
+  // Returns [{ cell, stand, path }]: the bot walks to `stand` (beside the cell)
+  // before placing, so the chest face is in reach and in sight.
+  function chestCandidates (near, feet) {
+    const chests = (job.config.inventory.storage ?? []).map(st => st.position).filter(Boolean)
+    const named = (c, re) => { const b = adapter.getBlock(c.x, c.y, c.z); return b?.known === true && re.test(nameOf(b)) }
+    // Any chest block counts, registered or not (two touching chests merge).
+    const touchesChest = c => chests.some(p => p.y === c.y && Math.abs(p.x - c.x) + Math.abs(p.z - c.z) <= 1) || [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ax, az]) => named({ x: c.x + ax, y: c.y, z: c.z + az }, /chest$/))
+    // The chest needs a truly empty cell and empty space above it (grass and
+    // flowers are passable for walking but block placement).
+    const clear = c => [c, { ...c, y: c.y + 1 }].every(p => { const b = adapter.getBlock(p.x, p.y, p.z); return b?.known === true && AIR.has(nameOf(b)) && !(b.extra ?? []).length })
+    const out = []
+    for (let r = 2; r <= 4; r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue
+          for (const dy of [0, -1, 1]) {
+            const c = { x: near.x + dx, y: near.y + dy, z: near.z + dz }
+            if (!planner.standable(c) || !clear(c) || regions.columns.has(`${c.x},${c.z}`) || touchesChest(c)) continue
+            if (feet && c.x === feet.x && c.z === feet.z && Math.abs(c.y - feet.y) <= 1) continue
+            let best = null
+            for (const [ax, az] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              const stand = { x: c.x + ax, y: c.y, z: c.z + az }
+              if (!planner.standable(stand) || regions.columns.has(`${stand.x},${stand.z}`) || named(stand, /chest$|crafting_table/)) continue
+              const path = feet ? planner.pathTo(feet, stand) : null
+              if (path && (!best || path.length < best.path.length)) best = { cell: c, stand, path }
+            }
+            if (best) out.push(best)
+          }
+        }
+      }
+    }
+    return out.sort((a, b) => a.path.length - b.path.length).slice(0, 12)
+  }
+
+  // All registered chests are full: put down one more beside the last one
+  // (a carried chest, or one crafted from carried wood; never by command).
+  async function expandStorage (myEpoch) {
+    const list = job.config.inventory.storage ?? []
+    const maxChests = job.config.inventory.maxChests ?? 16
+    if (list.length >= maxChests) return { ok: false, reason: 'MAX_CHESTS', maxChests }
+    if (typeof adapter.addChest !== 'function') return { ok: false, reason: 'ADD_CHEST_UNSUPPORTED' }
+    const last = list[list.length - 1]
+    await goToStorage(myEpoch, last)
+    const s = guard(myEpoch)
+    const candidates = chestCandidates(last.position, feetCell(s))
+    if (!candidates.length) return { ok: false, reason: 'NO_CHEST_CELL' }
+    setState('ADD_STORAGE')
+    const rec = recordAction({ type: 'add_chest', candidates: candidates.slice(0, 4).map(c => c.cell) })
+    await save('add_chest_intent')
+    let r = null
+    const attempts = []
+    for (const c of candidates.slice(0, 4)) {
+      // Stand beside the cell first, then place (or craft, then place) there.
+      try { await moveToStance(myEpoch, c.stand) } catch (error) { if (error instanceof QuarryInterrupt) throw error; attempts.push({ cell: c.cell, reason: 'MOVE_FAILED' }); continue }
+      // Other candidates are spare cells for a crafting table if one is needed.
+      const cells = [c.cell, ...candidates.filter(o => o !== c).map(o => o.cell)]
+      try { r = await call(myEpoch, 'add_chest', signal => adapter.addChest(cells, { signal })) } catch (error) {
+        if (error instanceof QuarryInterrupt) throw error
+        r = { ok: false, reason: 'ADD_CHEST_FAILED', error: String(error.message ?? error).slice(0, 200) }
+      }
+      if (r?.ok) break
+      attempts.push({ cell: c.cell, reason: r?.reason ?? null, tried: r?.tried?.slice(0, 2) ?? null })
+      if (r?.reason === 'NO_CHEST_MATERIAL') break
+    }
+    if (!r?.ok && r) r = { ...r, attempts }
+    rec.status = r?.ok ? 'confirmed' : 'failed'; rec.result = copy(r ?? null)
+    if (!r?.ok) { await save('add_chest_failed'); return r ?? { ok: false, reason: 'ADD_CHEST_FAILED' } }
+    // Only a chest the server reports at that cell counts (§11.2).
+    const b = adapter.getBlock(r.position.x, r.position.y, r.position.z)
+    if (!b?.known || nameOf(b) !== 'chest') { rec.status = 'failed'; return { ok: false, reason: 'CHEST_NOT_OBSERVED', position: r.position } }
+    const entry = { position: copy(r.position), addedBy: 'quarry', at: new Date(now()).toISOString() }
+    job.config.inventory.storage = [...list, entry]
+    // The travel region includes every chest; rebuild it for the new one.
+    const records = planner.exportRecords()
+    regions = makeRegions(job.config, job.yTop, adapter.getState())
+    planner = createQuarryPlanner({ regions, getBlock: adapter.getBlock, config: job.config.strategy, records })
+    note('storage_added', { position: entry.position, chests: job.config.inventory.storage.length, crafted: r.crafted ?? null })
+    await save('storage_added')
+    return { ok: true, storage: entry }
+  }
+
+  async function goToStorage (myEpoch, target = null) {
+    const st = target ?? currentStorage() ?? job.config.inventory.storage?.[0]
     if (!st) throw new QuarryInterrupt('NO_STORAGE', 'No registered storage')
     setState('RETURN')
     const from = feetCell(guard(myEpoch))
@@ -565,16 +717,31 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   async function returnAndDeposit (myEpoch, why) {
     if (!job.config.inventory.storage?.length) return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: 'carry-only job is full' } })
-    await goToStorage(myEpoch)
+    let st = currentStorage()
+    if (!st) {
+      // Every chest is full: add one more and keep going.
+      const added = await expandStorage(myEpoch)
+      if (!added.ok) return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: 'all chests full', chests: (job.config.inventory.storage ?? []).length, addChest: added } })
+      st = added.storage
+    }
+    await goToStorage(myEpoch, st)
     setState('DEPOSIT')
     const s = guard(myEpoch)
     const inv = items(s)
     if (!inv) { await sleep(300); return }
     const { deposits } = keepPlan(inv, job.config.inventory)
-    const rec = recordAction({ type: 'deposit', why, items: deposits })
+    if (!deposits.length) {
+      if (why === 'final') { setState('FINAL_CHECK', { finalDeposited: true }); return }
+      // Nothing to store but the bag is still too full: only kept items
+      // (tools, food, seal blocks, chest wood) remain, so wait for the user.
+      const free = freeSlots(inv)
+      if (free < job.config.inventory.minFreeSlots) return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: 'only kept items left', freeSlots: free, needFreeSlots: job.config.inventory.minFreeSlots } })
+      setState('SURVEY'); return
+    }
+    const rec = recordAction({ type: 'deposit', why, items: deposits, storage: copy(st.position) })
     await save('deposit_intent')
     let result
-    try { result = await call(myEpoch, 'deposit', signal => adapter.deposit(job.config.inventory.storage, deposits, { signal })) } catch (error) {
+    try { result = await call(myEpoch, 'deposit', signal => adapter.deposit([st], deposits, { signal })) } catch (error) {
       if (error instanceof QuarryInterrupt) throw error
       rec.status = 'failed'; rec.error = String(error.message ?? error)
       job.depositFailures = (job.depositFailures ?? 0) + 1
@@ -588,8 +755,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     lastInventory = totals(items(adapter.getState()) ?? [])
     await save('deposited')
     if (result?.full) {
-      const free = freeSlots(items(adapter.getState()) ?? [])
-      if (free < job.config.inventory.minFreeSlots) return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { freeSlots: free, needFreeSlots: job.config.inventory.minFreeSlots } })
+      // This chest is full; the rest goes to the next one (added if needed).
+      job.fullStorage = [...new Set([...(job.fullStorage ?? []), posKey(st.position)])]
+      note('storage_full', { position: st.position, deposited: (result.deposited ?? []).reduce((n, d) => n + d.count, 0) })
+      await save('storage_full')
+      if (keepPlan(items(adapter.getState()) ?? [], job.config.inventory).deposits.length) { setState('RETURN'); return }
     }
     if (why === 'final') { setState('FINAL_CHECK', { finalDeposited: true }); return }
     setState('SURVEY')
@@ -603,8 +773,39 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (counts.remaining > 0) { job.cursorY = job.yTop; setState('SURVEY'); return }
     if (counts.unknown > 0) return finish('PAUSED', 'UNOBSERVED_CELLS', { pauseDetails: counts })
     if (!job.finalDeposited && job.config.inventory.storage?.length) { await collect(myEpoch, 'final'); job.depositReason = 'final'; await returnAndDeposit(myEpoch, 'final'); return }
+    // UNREACHABLE is relative to where the bot stood; re-try from here a few
+    // times before treating those cells as exceptions.
+    if (planner.deferredList().some(d => d.reason === 'UNREACHABLE') && (job.unreachableRetries ?? 0) < 3) {
+      job.unreachableRetries = (job.unreachableRetries ?? 0) + 1
+      planner.clearDeferred(['UNREACHABLE'])
+      note('unreachable_retry', { attempt: job.unreachableRetries })
+      job.cursorY = job.yTop; setState('SURVEY'); return
+    }
+    // One last sweep for anything still lying in the area (drops that were
+    // unreachable earlier, items that fell later), then store it as well.
+    if (!job.finalSweepDone) {
+      job.finalSweepDone = true
+      const lying = adapter.entities().filter(e => e.kind === 'item' && e.position && permits(regions, 'travel', { x: Math.floor(e.position.x), y: Math.floor(e.position.y + 0.01), z: Math.floor(e.position.z) }).allowed).length
+      if (lying) {
+        note('final_sweep', { items: lying })
+        if (job.config.inventory.storage?.length) job.finalDeposited = false
+        await collect(myEpoch, 'final_sweep')
+        if (job.state === 'PLAN') setState('FINAL_CHECK')
+        return
+      }
+    }
     const exceptions = exceptionsList()
-    if (exceptions.length && !job.acceptedExceptions) return finish('PAUSED', 'UNRESOLVED_EXCEPTIONS', { pauseDetails: { exceptions: exceptions.slice(0, 50), count: exceptions.length } })
+    const byReason = {}
+    for (const e of exceptions) { const r = e.reason ?? e.kind; byReason[r] = (byReason[r] ?? 0) + 1 }
+    // Cells kept only for want of a usable tool are not exceptions to accept:
+    // the job waits for a tool and retries them on resume (§8.1).
+    const toolWait = exceptions.filter(e => TOOL_WAIT.has(e.reason))
+    if (toolWait.length) {
+      const needs = {}
+      for (const e of toolWait) { const n = e.needs ? `${e.needs.kind ?? e.needs}${e.needs.tier != null ? `:${e.needs.tier}` : ''}` : 'unknown'; needs[n] = (needs[n] ?? 0) + 1 }
+      return finish('PAUSED', 'WAITING_FOR_TOOL', { pauseDetails: { cells: toolWait.length, needs, byReason, examples: toolWait.slice(0, 10) } })
+    }
+    if (exceptions.length && !job.acceptedExceptions) return finish('PAUSED', 'UNRESOLVED_EXCEPTIONS', { pauseDetails: { count: exceptions.length, byReason, exceptions: exceptions.slice(0, 50) } })
     return finish(exceptions.length ? 'COMPLETED_WITH_EXCEPTIONS' : 'COMPLETED', null)
   }
   function exceptionsList () {
@@ -653,8 +854,20 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job) throw new Error('No quarry job')
     if (ACTIVE.has(job.state)) return status()
     if (!['PAUSED', 'IDLE', 'DISCONNECTED'].includes(job.state)) throw new Error(`Cannot resume from ${job.state}`)
+    // The bot may have died or reconnected while the job was paused. Resume
+    // binds to the current living session (the death is recorded once) and
+    // reconciles from there instead of pausing again with DEATH.
+    if (job.scope) {
+      const cur = adapter.getState()
+      if (cur?.phase === 'spawned' && !cur.dead && (scopeOf(cur) !== job.scope || lifeOf(cur) !== job.life)) {
+        if (lifeOf(cur) !== job.life && job.pauseReason !== 'DEATH') job.deaths.push({ at: new Date(now()).toISOString(), position: null, cause: null, unrecovered: [], whilePaused: true })
+        job.scope = scopeOf(cur); job.life = lifeOf(cur)
+      }
+    }
     job.userRunIntent = 'running'; epoch++
-    job.retry = 0
+    job.retry = 0; job.unreachableRetries = 0
+    // Chests may have been emptied and drops re-checked while paused.
+    job.fullStorage = []; job.finalSweepDone = false; job.finalDeposited = false
     abort = new AbortController()
     setState(job.scope ? 'RECONCILE' : 'PREFLIGHT', { pauseReason: null, result: null })
     adapter.onStarted?.(status())
@@ -662,7 +875,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return status()
   }
   async function pause (reason = 'MANUAL_PAUSE') {
-    if (!job || !ACTIVE.has(job.state)) return status()
+    if (!job) return status()
+    if (!ACTIVE.has(job.state)) { if (job.state === 'PAUSED') job.userRunIntent = 'paused'; return status() }
     job.userRunIntent = 'paused'; epoch++
     abort?.abort(new QuarryInterrupt('STOP_REQUESTED'))
     try { await adapter.stopAll('quarry_pause') } catch {}
@@ -708,7 +922,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job) return { state: 'IDLE', job: null }
     const s = adapter.getState()
     const inv = items(s)
-    const counts = (() => { try { return job.yTop != null && planner ? planner.counts(job.yTop) : null } catch { return null } })()
+    const counts = (() => {
+      if (countsCache && now() - countsCache.at < 2000 && countsCache.planner === planner) return countsCache.value
+      try { const value = job.yTop != null && planner ? planner.counts(job.yTop) : null; countsCache = { at: now(), planner, value }; return value } catch { return null }
+    })()
     return copy({
       jobId: job.config.jobId, state: job.state, userRunIntent: job.userRunIntent, result: job.result, pauseReason: job.pauseReason, pauseDetails: job.pauseDetails ?? null,
       chunks: regions?.chunks ?? null, yTop: job.yTop, yBottom: regions?.yBottom ?? null, currentY: job.lastDecision?.y ?? job.cursorY,

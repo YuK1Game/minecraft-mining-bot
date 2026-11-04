@@ -31,7 +31,10 @@ function createSim ({ loaded = { xMin: -40, xMax: 60, yMin: -64, yMax: 140, zMin
     health: 20, maxHealth: 20, food: 20, position: { x: 0.5, y: 0, z: 0.5 }, selectedSlot: 0, heldItem: null,
     inventory: { known: true, items: [] }
   }
+  // Chest contents by position; `chest` is the first chest's list (older tests).
   const chest = []
+  const chests = new Map()
+  const chestAt = p => { const key = p ? `${p.x},${p.y},${p.z}` : 'first'; if (!chests.size) chests.set(key, chest); if (!chests.has(key)) chests.set(key, []); return chests.get(key) }
   const entities = []
   let entityId = 100
   let combat = false
@@ -119,6 +122,8 @@ function createSim ({ loaded = { xMin: -40, xMax: 60, yMin: -64, yMax: 140, zMin
     },
     async escape (cell) { setFeet(cell) },
     async equip (slot) {
+      // Like the runtime: equipping an empty slot is refused.
+      if (!state.inventory.items.some(x => x.slot === slot && x.count > 0)) throw new Error('持ち替え元にアイテムがありません。')
       if (slot > 8) {
         const i = state.inventory.items.find(x => x.slot === slot); const free = [...Array(9).keys()].find(s => !state.inventory.items.some(x => x.slot === s))
         const target = free ?? 8
@@ -140,6 +145,7 @@ function createSim ({ loaded = { xMin: -40, xMax: 60, yMin: -64, yMax: 140, zMin
     async goToStorage (st) { setFeet(st.stand ?? { x: st.position.x + 1, y: st.position.y, z: st.position.z }); stats.moves++ },
     async deposit (storage, deposits) {
       const deposited = []; let full = false
+      const chest = chestAt(storage?.[0]?.position)
       for (const d of deposits) {
         const i = state.inventory.items.find(x => x.slot === d.slot)
         if (!i) continue
@@ -153,11 +159,23 @@ function createSim ({ loaded = { xMin: -40, xMax: 60, yMin: -64, yMax: 140, zMin
       stats.deposits++
       return { deposited, full }
     },
+    // A carried chest is placed; otherwise 2 logs are "crafted" into one.
+    async addChest (candidates) {
+      const c = candidates.find(p => getBlock(p.x, p.y, p.z).known && blocks.get(k(p.x, p.y, p.z)) === undefined)
+      if (!c) return { ok: false, reason: 'NO_PLACEABLE_CELL' }
+      const carried = state.inventory.items.find(i => i.name === 'minecraft:chest')
+      const logs = state.inventory.items.filter(i => /_log$/.test(i.name)).reduce((n, i) => n + i.count, 0)
+      if (carried) take(carried.slot, 1)
+      else if (logs >= 2) { let left = 2; for (const i of [...state.inventory.items].filter(x => /_log$/.test(x.name))) { const t = Math.min(left, i.count); take(i.slot, t); left -= t; if (!left) break } }
+      else return { ok: false, reason: 'NO_CHEST_MATERIAL', needs: { logs: 2 } }
+      world.set(c.x, c.y, c.z, 'chest'); chestAt(c); stats.chestsAdded = (stats.chestsAdded ?? 0) + 1
+      return { ok: true, position: { ...c }, crafted: carried ? [] : ['minecraft:chest'] }
+    },
     combatActive: () => combat,
     async stopAll () {},
     recentDamageAt: () => null
   }
-  return { world, getBlock, unknown, state, chest, entities, adapter, give, setFeet, feet, stats, log, hooks, setCombat: v => { combat = v } }
+  return { world, getBlock, unknown, state, chest, chests, entities, adapter, give, setFeet, feet, stats, log, hooks, setCombat: v => { combat = v } }
 }
 
 // Flat test terrain: stone to `stoneTop`, dirt above, grass on top.

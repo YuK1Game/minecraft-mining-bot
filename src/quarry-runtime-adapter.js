@@ -12,9 +12,9 @@ const FEET = 1.62
 function createQuarryRuntimeAdapter (ports) {
   const {
     getState, getBlock, entities, mining, getMining, movement, getMovement, equip, placeQuarry, eat,
-    chest, stopAll, combatActive, threatEvidence = null, recentDamageAt = null, harmfulEffect = null,
+    chest, addChest = null, stopAll, combatActive, threatEvidence = null, recentDamageAt = null, harmfulEffect = null,
     sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now,
-    segmentCells = 6, segmentTimeoutMs = 20000, mineTimeoutMs = 15000, log = () => {}
+    segmentCells = 6, segmentTimeoutMs = 20000, mineTimeoutMs = 15000, previewSettleMs = 3000, shortStopMs = 1500, log = () => {}
   } = ports
 
   const aborted = signal => { if (signal?.aborted) throw Object.assign(new Error('quarry adapter call aborted'), { code: 'ABORTED' }) }
@@ -41,15 +41,24 @@ function createQuarryRuntimeAdapter (ports) {
     const preview = await movement.preview(target, options)
     if (!preview?.ready) return { ok: false, reason: preview?.reason ?? preview?.errors?.join(' / ') ?? 'movement preview not ready' }
     await movement.start(target, options)
-    await waitFor(signal, 'quarry move', segmentTimeoutMs, () => {
+    // A native move that ends short (server correction, replan request) is
+    // reported back so the walker can re-plan from where the bot actually is
+    // instead of waiting out the whole segment timeout.
+    let shortSince = null
+    const r = await waitFor(signal, 'quarry move', segmentTimeoutMs, () => {
       const m = getMovement()
       if (['failed', 'stopped'].includes(m?.phase)) throw new Error(m.reason ?? 'movement stopped')
       const s = getState(); const f = feetOf(s)
       const near = Math.hypot(f.x - target.x, f.z - target.z) <= 0.35 && Math.abs(f.y - target.y) <= 0.1
       const grounded = (s.predicted?.physicsState ?? s.physicsState)?.onGround !== false
-      return near && grounded && ['completed', 'idle', 'awaiting_server_confirmation'].includes(m?.phase)
+      if (near && grounded && ['completed', 'idle', 'awaiting_server_confirmation'].includes(m?.phase)) return { ok: true }
+      if (!near && ['completed', 'idle', 'awaiting_server_confirmation', 'replan_required'].includes(m?.phase)) {
+        shortSince ??= now()
+        if (now() - shortSince >= shortStopMs) { try { movement.stop?.('quarry_replan') } catch {} return { ok: false, reason: `move ended short (${m?.phase})` } }
+      } else shortSince = null
+      return null
     })
-    return { ok: true }
+    return r
   }
 
   // Walks the job's permitted route in verified segments. When the native
@@ -66,6 +75,9 @@ function createQuarryRuntimeAdapter (ports) {
         const r = await step(route[index + span], signal)
         if (r.ok) { index += span; moved = true; break }
         last = r.reason
+        if (same(cellOf(getState()), goal)) { moved = true; break }
+        const f = route.findIndex(c => same(c, cellOf(getState())))
+        if (f > index) { index = f; span = Math.min(span, route.length - 1 - index) + 1 } // partial progress: retry from here
       }
       if (!moved) throw new Error(`quarry move refused: ${last}`)
       const here = cellOf(getState()); const found = route.findIndex(c => same(c, here))
@@ -80,7 +92,16 @@ function createQuarryRuntimeAdapter (ports) {
       const b = getBlock(t.x, t.y, t.z)
       if (b?.known && AIR.has(nameOf(b))) continue
       const target = { x: t.x, y: t.y, z: t.z, accessPreparation: 'quarry', expectedName: t.expectedName, expectedRuntimeId: t.expectedRuntimeId ?? null, requiredTool: t.requiredTool ?? null }
-      const preview = await mining.preview([target])
+      // Right after a move the pose may not be confirmed still and grounded
+      // yet; give the preview a short settle window before failing.
+      let preview = null
+      const until = now() + previewSettleMs
+      for (;;) {
+        preview = await mining.preview([target])
+        if (preview?.ready || now() > until) break
+        aborted(signal)
+        await sleep(150)
+      }
       if (!preview?.ready) throw new Error(`quarry mining preview refused: ${preview?.errors?.join(' / ') ?? 'not ready'}`)
       await mining.start([target])
       await waitFor(signal, 'quarry mine', mineTimeoutMs, () => {
@@ -129,6 +150,8 @@ function createQuarryRuntimeAdapter (ports) {
   return {
     getState,
     getBlock,
+    // Hostiles and projectiles for the post-combat settle check (§9.4).
+    actors: () => entities().filter(e => e.kind !== 'item' && e.positionKnown !== false && e.position),
     entities: () => entities().filter(e => e.kind === 'item' && e.positionKnown !== false && e.position).map(e => ({ kind: 'item', runtimeId: String(e.runtimeId), name: e.name, count: e.count ?? 1, position: e.position })),
     mine,
     moveTo: (stance, options) => walk(stance, options),
@@ -138,6 +161,10 @@ function createQuarryRuntimeAdapter (ports) {
     place,
     eat: () => eat(),
     deposit,
+    // One more storage chest at the first workable candidate cell (a carried
+    // chest, or one crafted from carried wood). Returns { ok, position } or
+    // { ok: false, reason }.
+    addChest: (candidates, options = {}) => typeof addChest === 'function' ? addChest({ candidates, signal: options.signal }) : { ok: false, reason: 'ADD_CHEST_UNSUPPORTED' },
     stopAll: reason => stopAll(reason),
     combatActive,
     threatEvidence: threatEvidence ?? undefined,

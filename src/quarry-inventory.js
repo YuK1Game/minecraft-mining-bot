@@ -15,13 +15,17 @@ const isFood = name => FOOD.test(nameOf(name))
 
 // What stays with the bot on deposit (§11.1): tools, weapons, armour, food,
 // emergency items and up to keepSealBlocks of seal/stair material.
-function keepPlan (items, { keepSealBlocks = 32, keepFood = 64 } = {}) {
+// Material for one more storage chest is kept too: carried chests and a
+// crafting table, plus a few logs/planks (2 logs make a chest, 1 a table).
+function keepPlan (items, { keepSealBlocks = 32, keepFood = 64, keepLogs = 4, keepPlanks = 12 } = {}) {
   const keep = new Map() // slot -> count kept
-  let seal = 0; let food = 0
+  let seal = 0; let food = 0; let logs = 0; let planks = 0
   const sorted = [...(items ?? [])].filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot < SLOTS).sort((a, b) => a.slot - b.slot)
   for (const item of sorted) {
     const n = nameOf(item)
-    if (toolOf(item) || KEEP.test(n)) { keep.set(item.slot, item.count); continue }
+    if (toolOf(item) || KEEP.test(n) || n === 'chest' || n === 'crafting_table') { keep.set(item.slot, item.count); continue }
+    if (/_(log|stem)$/.test(n) && logs < keepLogs) { const k = Math.min(item.count, keepLogs - logs); logs += k; keep.set(item.slot, k); continue }
+    if (/_planks$/.test(n) && planks < keepPlanks) { const k = Math.min(item.count, keepPlanks - planks); planks += k; keep.set(item.slot, k); continue }
     if (isFood(n) && food < keepFood) { const k = Math.min(item.count, keepFood - food); food += k; keep.set(item.slot, k); continue }
     if (SEAL_MATERIALS.includes(n) && seal < keepSealBlocks) { const k = Math.min(item.count, keepSealBlocks - seal); seal += k; keep.set(item.slot, k) }
   }

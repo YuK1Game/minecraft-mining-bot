@@ -73,3 +73,30 @@ test('quarry terminal syntax', () => {
   assert.equal(parseQuarryCommand('/quarry').method, 'status')
   assert.throws(() => parseQuarryCommand('/quarry plan 1'))
 })
+
+test('runtime adapter re-plans a move that ends short instead of waiting out the timeout', async () => {
+  const { ports, calls, state } = fakePorts()
+  let first = true; let phase = 'idle'
+  const a = createQuarryRuntimeAdapter({
+    ...ports,
+    segmentTimeoutMs: 60000,
+    getMovement: () => ({ phase }),
+    movement: {
+      preview: () => ({ ready: true }),
+      stop: () => {},
+      start: target => {
+        calls.push(['move', target]); phase = 'moving'
+        setTimeout(() => {
+          // First attempt: server correction leaves the bot one cell short.
+          state.position = first ? { x: target.x - 1, y: target.y + 1.62, z: target.z } : { x: target.x, y: target.y + 1.62, z: target.z }
+          first = false; phase = 'awaiting_server_confirmation'
+        }, 10)
+      }
+    },
+    shortStopMs: 50
+  })
+  const started = Date.now()
+  await a.moveTo({ x: 3, y: 0, z: 0 }, { path: [0, 1, 2, 3].map(x => ({ x, y: 0, z: 0 })) })
+  assert.equal(Math.floor(state.position.x), 3)
+  assert.ok(Date.now() - started < 5000)
+})

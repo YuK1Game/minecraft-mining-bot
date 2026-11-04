@@ -66,7 +66,8 @@ test('T03 ore without a harvesting pickaxe is kept and mined after resupply', as
   assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
   j.start()
   let s = await runUntilStopped(j)
-  assert.equal(s.pauseReason, 'UNRESOLVED_EXCEPTIONS')
+  assert.equal(s.pauseReason, 'WAITING_FOR_TOOL')
+  assert.equal(s.pauseDetails.needs['pickaxe:2'], 1)
   assert.equal(sim.world.name(7, 61, 7), 'iron_ore')
   assert.ok(s.deferred.some(d => d.position === '7,61,7' && d.reason === 'WAITING_FOR_TOOL'))
   sim.give('stone_pickaxe')
@@ -99,7 +100,9 @@ test('T06/T08 full bag and full storage: no dropping, waits for storage', async 
   j.start()
   const s = await runUntilStopped(j)
   assert.equal(s.pauseReason, 'WAITING_FOR_STORAGE', JSON.stringify(s.result))
-  assert.ok(s.pauseDetails.needFreeSlots === 6)
+  // The only chest is full and there is no chest or wood to add another one.
+  assert.equal(s.pauseDetails.reason, 'all chests full', JSON.stringify(s.pauseDetails))
+  assert.equal(s.pauseDetails.addChest?.reason, 'NO_CHEST_MATERIAL', JSON.stringify(s.pauseDetails))
   // Nothing was thrown away and no extra drops lie around beyond one batch.
   assert.ok(sim.entities.length <= 8, `ground items ${sim.entities.length}`)
 })
@@ -176,4 +179,114 @@ test('T14 containers and spawners are left with a reason', async () => {
   assert.equal(sim.world.name(10, 61, 10), 'stone', 'support under a protected block stays')
   const reasons = Object.fromEntries(s.result.pauseDetails.exceptions.filter(e => e.position).map(e => [e.position, e.reason]))
   assert.equal(reasons['10,62,10'], 'CONTAINER_OR_FACILITY'); assert.equal(reasons['3,61,12'], 'SPAWNER_OR_TRIAL'); assert.equal(reasons['10,61,10'], 'SUPPORTS_PROTECTED')
+})
+
+test('live case: no pickaxe digs the soft layers, then waits for a tool instead of finishing', async () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('bread', 5); sim.give('cobblestone', 8)
+  const { j } = job(sim)
+  const plan = j.plan(baseConfig({ yBottom: 59 }))
+  assert.equal(plan.ready, true)
+  assert.ok(plan.warnings.some(w => w.code === 'NO_PICKAXE'))
+  j.start()
+  const s = await runUntilStopped(j)
+  assert.equal(s.state, 'PAUSED')
+  assert.equal(s.pauseReason, 'WAITING_FOR_TOOL')
+  assert.ok(s.pauseDetails.needs['pickaxe:1'] > 0)
+  assert.ok(s.ledger.minedBlocks > 0, 'grass and dirt are still dug')
+  const again = await j.pause()
+  assert.equal(again.userRunIntent, 'paused')
+})
+
+test('live case: an escape that carries the bot outside the area does not defer the job as unreachable', async () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('stone_pickaxe'); sim.give('stone_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+  const { j } = job(sim)
+  assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+  j.start()
+  const deadline = Date.now() + 20000
+  while (sim.stats.mined < 10 && Date.now() < deadline) await new Promise(r => setTimeout(r, 5))
+  sim.setCombat(true)
+  while (j.status().state !== 'COMBAT' && Date.now() < deadline) await new Promise(r => setTimeout(r, 5))
+  sim.setFeet({ x: 8, y: 63, z: 24 }) // escape ends 7 blocks outside the chunk
+  sim.setCombat(false)
+  const s = await runUntilStopped(j)
+  assert.equal(s.pauseReason, 'UNRESOLVED_EXCEPTIONS', JSON.stringify(s.pauseDetails))
+  assert.equal(s.pauseDetails.byReason.UNREACHABLE ?? 0, 0, JSON.stringify(s.pauseDetails.byReason))
+  assert.ok(sim.stats.mined > 300)
+})
+
+test('live case: escape to lower ground outside the area (below the job bottom) rebinds once and returns', async () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.world.fill(6, 61, 22, 10, 62, 26, 'air') // a dip beside the area, lower than the job bottom
+  sim.world.set(8, 61, 22, 'dirt') // one step out of the dip
+  sim.give('stone_pickaxe'); sim.give('stone_shovel'); sim.give('bread', 5)
+  const lines = []
+  const { j } = job(sim, { log: m => lines.push(m) })
+  assert.equal(j.plan(baseConfig({ yBottom: 62 })).ready, true)
+  j.start()
+  const deadline = Date.now() + 20000
+  while (sim.stats.mined < 5 && Date.now() < deadline) await new Promise(r => setTimeout(r, 5))
+  sim.setCombat(true)
+  while (j.status().state !== 'COMBAT' && Date.now() < deadline) await new Promise(r => setTimeout(r, 5))
+  sim.setFeet({ x: 8, y: 61, z: 24 })
+  sim.setCombat(false)
+  const s = await runUntilStopped(j)
+  assert.equal(s.pauseDetails?.byReason?.UNREACHABLE ?? 0, 0, JSON.stringify(s.pauseDetails))
+  const rebinds = lines.filter(m => m.includes('travel_rebound')).length
+  assert.ok(rebinds <= 2, `rebinds ${rebinds}`)
+  assert.ok(sim.stats.mined >= 250, `mined ${sim.stats.mined} ${s.pauseReason} ${JSON.stringify(s.pauseDetails?.byReason)} ${JSON.stringify(s.counts)}`)
+})
+
+test('live case: digging by hand with an empty hotbar swaps in a stack from the main inventory', async () => {
+  const sim = setup({ stoneTop: 58, top: 62 })
+  sim.give('diamond_pickaxe')
+  // Hotbar 1..8 empty (as right after a deposit); the only non-tool stacks are in the main inventory.
+  sim.give('bread', 5); sim.give('cobblestone', 8)
+  for (const i of sim.state.inventory.items) if (/bread|cobblestone/.test(i.name)) i.slot += 20
+  sim.state.selectedSlot = 0; sim.state.heldItem = { name: 'minecraft:diamond_pickaxe', slot: 0 }
+  const { j } = job(sim)
+  assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+  j.start()
+  const s = await runUntilStopped(j)
+  assert.ok(!String(s.pauseReason).startsWith('ACTION_FAILED'), JSON.stringify(s.result))
+  assert.ok(s.ledger.minedBlocks > 0)
+})
+
+test('full chest: the bot adds a chest beside it (from carried wood) and keeps depositing', async () => {
+  const sim = setup({ stoneTop: 62, top: 62, chestSlots: 1 })
+  sim.give('diamond_pickaxe'); sim.give('bread', 5); sim.give('oak_log', 4)
+  for (let i = 0; i < 26; i++) sim.give('andesite', 64)
+  const { j } = job(sim)
+  j.plan(baseConfig({ yBottom: 62 }))
+  j.start()
+  const s = await runUntilStopped(j)
+  assert.ok((sim.stats.chestsAdded ?? 0) >= 1, `chests added ${sim.stats.chestsAdded} ${s.pauseReason} ${JSON.stringify(s.pauseDetails)}`)
+  const doc = j.document()
+  const added = doc.config.inventory.storage.slice(1)
+  assert.ok(added.length >= 1)
+  const first = doc.config.inventory.storage[0].position
+  for (const st of added) {
+    const p = st.position
+    assert.equal(sim.getBlock(p.x, p.y, p.z).name, 'minecraft:chest')
+    assert.ok(p.x < 0 || p.z < 0 || p.x > 15 || p.z > 15, `new chest ${JSON.stringify(p)} is outside the dug chunk`)
+    assert.ok(Math.abs(p.x - first.x) + Math.abs(p.z - first.z) > 1 || p.y !== first.y, 'new chest does not touch the first one')
+    assert.ok(sim.chests.get(`${p.x},${p.y},${p.z}`)?.length >= 1, 'items went into the new chest')
+  }
+  assert.equal(s.ledger.lost ?? 0, 0)
+  // With wood used up and every chest full it finally waits for the user.
+  if (s.pauseReason === 'WAITING_FOR_STORAGE') assert.equal(s.pauseDetails.reason, 'all chests full')
+})
+
+test('collection picks up every item lying in the area, not just the first 24', async () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+  // 40 stray items scattered on the surface inside the area.
+  for (let n = 0; n < 40; n++) sim.entities.push({ id: 5000 + n, name: 'minecraft:stick', count: 1, position: { x: 1.5 + (n % 8) * 1.7, y: 63, z: 1.5 + Math.floor(n / 8) * 2.5 } })
+  const { j } = job(sim)
+  assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+  j.start()
+  const s = await runUntilStopped(j)
+  const sticks = sim.entities.filter(e => e.name === 'minecraft:stick').length
+  assert.equal(sticks, 0, `sticks left ${sticks} (${s.pauseReason})`)
 })
