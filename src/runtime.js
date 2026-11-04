@@ -5941,7 +5941,7 @@ function createRuntime (host) {
     try { names = (await fs.readdir(quarryDir())).filter(n => /^quarry_[A-Za-z0-9_-]+.json$/.test(n)) } catch { return { skipped: 'no_dir' } }
     const docs = []
     for (const n of names) { try { const d = JSON.parse(await fs.readFile(path.join(quarryDir(), n), 'utf8')); docs.push(d) } catch {} }
-    const candidate = docs.filter(d => d?.config?.jobId && d.state !== 'FINISHED' && d.result?.type !== 'FINISHED' && d.result?.type !== 'CANCELLED' && (d.userRunIntent === 'running' || d.pauseReason === 'PROCESS_RESTARTED') && Date.now() - Date.parse(d.savedAt ?? 0) < 24 * 3600e3).sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))[0]
+    const candidate = docs.filter(d => d?.config?.jobId && d.state !== 'FINISHED' && d.result?.type !== 'FINISHED' && d.result?.type !== 'CANCELLED' && (d.userRunIntent === 'running' || d.pauseReason === 'PROCESS_RESTARTED') && (d.state !== 'PAUSED' || QUARRY_AUTO_RESUMABLE.test(d.pauseReason ?? '')) && Date.now() - Date.parse(d.savedAt ?? 0) < 24 * 3600e3).sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))[0]
     if (!candidate) return { skipped: 'none' }
     const status = await loadQuarryFile(candidate.config.jobId)
     const reason = status?.pauseReason ?? ''

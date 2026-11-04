@@ -55,6 +55,11 @@ const CREEPER_ELEVATED_SHOT_DISTANCE = 6.5
 const CREEPER_LOOKAHEAD_S = 1.2
 // Once a draw is under way: remaining draw plus flight only.
 const CREEPER_DRAWING_LOOKAHEAD_S = 0.5
+// A draw already under way is finished while the creeper stays at least this
+// far (blast edge ~3m plus margin), instead of being cancelled at 8m.
+const CREEPER_DRAWING_MIN_DISTANCE = 5
+// Cornered creeper: within this distance step in and hit instead of shooting.
+const CREEPER_CORNERED_STRIKE = 4.5
 // Retreat standpoints from a creeper (margin beyond the 6-block blast edge).
 const CREEPER_RETREAT_RADII = Object.freeze([9, 10, 8.5])
 // An evade claim ends once the creeper is this far, or after this many steps.
@@ -81,15 +86,20 @@ function engagementAllowed (entityType, { distance = Infinity, provoked = false 
   return false
 }
 
-function allowedModes (entityType, { hasBow = false, distance = Infinity, elevated = false } = {}) {
+function allowedModes (entityType, { hasBow = false, distance = Infinity, elevated = false, cornered = false } = {}) {
   const routine = profileOf(entityType)?.routine
   // Creeper: shoot from a safe distance; inside real reach a single hit (to
   // knock it back) is allowed, then disengage. Never approach or chase.
   // Between reach and the shot distance it is evaded (repeated bounded steps
   // away), never approached.
+  // Cornered (no evade standpoint left): fight instead of waiting for the
+  // blast - one knockback hit in reach, otherwise the bow down to its minimum.
+  // Inside CREEPER_CORNERED_STRIKE a short step in for the knockback hit is
+  // allowed (it interrupts the fuse); the bow cannot shoot that close.
+  if (routine === 'special_objective' && entityType === 'minecraft:creeper' && cornered) return distance <= MELEE_REACH ? ['melee'] : distance <= CREEPER_CORNERED_STRIKE ? ['melee', 'approach'] : hasBow ? ['ranged'] : ['evade']
   if (routine === 'special_objective' && entityType === 'minecraft:creeper') return distance <= MELEE_REACH ? ['melee'] : distance < (elevated ? CREEPER_ELEVATED_SHOT_DISTANCE : CREEPER_MIN_SHOT_DISTANCE) ? ['evade'] : hasBow ? ['ranged'] : []
   if (routine === 'no_ranged_no_gaze') return ['melee']
   return ['melee', 'ranged', 'approach']
 }
 
-module.exports = { PROFILES, HP_RETREAT, HP_RESUME, HP_RETREAT_DEFENSE_RANGE, CREEPER_MIN_SHOT_DISTANCE, CREEPER_ELEVATED_SHOT_DISTANCE, CREEPER_LOOKAHEAD_S, CREEPER_DRAWING_LOOKAHEAD_S, CREEPER_RETREAT_RADII, CREEPER_EVADED_DISTANCE, CREEPER_EVADE_STEPS, TARGET_SWITCH_MARGIN, PROVOKED_WINDOW_MS, PROVOKED_DISTANCE, profileOf, engagementAllowed, allowedModes, meleeHitLimit }
+module.exports = { CREEPER_DRAWING_MIN_DISTANCE, PROFILES, HP_RETREAT, HP_RESUME, HP_RETREAT_DEFENSE_RANGE, CREEPER_MIN_SHOT_DISTANCE, CREEPER_ELEVATED_SHOT_DISTANCE, CREEPER_LOOKAHEAD_S, CREEPER_DRAWING_LOOKAHEAD_S, CREEPER_RETREAT_RADII, CREEPER_EVADED_DISTANCE, CREEPER_EVADE_STEPS, TARGET_SWITCH_MARGIN, PROVOKED_WINDOW_MS, PROVOKED_DISTANCE, profileOf, engagementAllowed, allowedModes, meleeHitLimit }

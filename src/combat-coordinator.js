@@ -124,6 +124,10 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
   // Low HP among 2+ close hostiles: disengage instead of trading hits.
   // ...but only while nothing is already in reach: a zombie keeps pace with
   // the bot, so with one adjacent, running just takes free hits (observed).
+  // Creepers that left no evade standpoint: fought (melee knockback / bow from
+  // ~4m) for a short window instead of only evading until they explode.
+  const corneredCreepers = new Map()
+  const cornered = e => (corneredCreepers.get(String(e?.runtimeId)) ?? 0) > clock()
   function crowdedLowHp (s) { return updateHpRetreat(s) && closeHostiles(s) >= 2 && !allActors().some(e => eligible(e, s) && distance(s.position, bodyAim(e)) <= MELEE_SELECT_REACH) }
   function provokedBy (s, e) {
     const at = Number(getRecentDamageAt?.() ?? NaN)
@@ -157,7 +161,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       const target = { ...copy(actor), runtimeId: id(actor.runtimeId), uniqueId: id(actor.uniqueId, true) }
       if (workAllows('canSelectTarget', target, s, { distance: preferred.distance, provoked: provokedBy(s, target) }).allowed !== true) continue
       if (!(preferred.distance <= 2.8 || engageable(target, s) || target.entityType === 'minecraft:creeper')) continue
-      const modes = profiles.allowedModes(target.entityType, { hasBow: bow, distance: preferred.distance, elevated: elevatedFrom(target, s) })
+      const modes = profiles.allowedModes(target.entityType, { hasBow: bow, distance: preferred.distance, elevated: elevatedFrom(target, s), cornered: cornered(target) })
       let mode = retreat && modes.includes('evade') ? 'evade' : preferred.mode ?? (mayAcquireApproach(s, target, preferred.distance) ? 'approach' : null)
       // A survey includes inventory, trajectory and friendly-actor checks.
       // Share it only within this selection; action previews always recheck.
@@ -241,11 +245,14 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
         let drawing = false
         try { drawing = ['starting', 'drawing', 'charging', 'awaiting_fire'].includes(ranged.snapshot().phase) } catch {}
         const lookahead = drawing ? profiles.CREEPER_DRAWING_LOOKAHEAD_S : profiles.CREEPER_LOOKAHEAD_S
-        if (observed.distance - closing * lookahead < creeperShotDistance(observed.actor ?? lease.target, s)) return { outcome: stop('CREEPER_CLOSING', `Creeper at ${observed.distance.toFixed(1)}m closing at ${closing.toFixed(1)}m/s would be inside the ${profiles.CREEPER_MIN_SHOT_DISTANCE}-block shot distance before the arrow lands`, { creeperDistance: observed.distance, closingSpeed: closing }) }
+        // A draw already under way may finish down to CREEPER_DRAWING_MIN_DISTANCE
+        // (blast edge plus margin): a fast creeper otherwise always cancels it.
+        const shotFloor = drawing ? Math.min(creeperShotDistance(observed.actor ?? lease.target, s), profiles.CREEPER_DRAWING_MIN_DISTANCE ?? 5) : creeperShotDistance(observed.actor ?? lease.target, s)
+        if (!cornered(lease.target) && observed.distance - closing * lookahead < shotFloor) return { outcome: stop('CREEPER_CLOSING', `Creeper at ${observed.distance.toFixed(1)}m closing at ${closing.toFixed(1)}m/s would be inside the ${profiles.CREEPER_MIN_SHOT_DISTANCE}-block shot distance before the arrow lands`, { creeperDistance: observed.distance, closingSpeed: closing }) }
       }
       if (crowdedLowHp(s)) return { outcome: stop('HP_DISENGAGE', 'Low health among several close hostiles: disengage and recover before fighting again') }
       if (updateHpRetreat(s) && observed.distance > retreatDefenseRange()) return { outcome: stop('HP_RETREAT', 'Health is below the retreat threshold; only immediate defence within the approach range continues') }
-      const modes = profiles.allowedModes(lease.target.entityType, { hasBow: hasBowAndArrows(s), distance: observed.distance, elevated: elevatedFrom(lease.target, s) })
+      const modes = profiles.allowedModes(lease.target.entityType, { hasBow: hasBowAndArrows(s), distance: observed.distance, elevated: elevatedFrom(lease.target, s), cornered: cornered(lease.target) })
       if (!modes.length || observed.mode && !modes.includes(observed.mode)) return { outcome: stop('PROFILE_MODE_BLOCKED', `The ${lease.target.entityType} profile does not allow this engagement mode now`) }
     }
     return { state: s, ...observed }
@@ -335,7 +342,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     }
     // No backoff after a creeper evade/closing outcome: the single knockback
     // hit (or the next evade step) must be available as soon as it applies.
-    if (!(lease.target.entityType === 'minecraft:creeper' && ['CREEPER_CLOSING', 'CREEPER_EVADED', 'PROFILE_MODE_BLOCKED', 'PROFILE_HIT_LIMIT'].includes(outcome.code))) { const key = targetKey(lease.scope, lease.target), noRoute = ['APPROACH_NOT_READY', 'NO_READY_ACTION', 'NO_PROGRESS', 'CREEPER_NO_SIGHT'].includes(outcome.code); const streak = noRoute ? (noRouteStreaks.get(key) ?? 0) + 1 : 0; if (noRoute) noRouteStreaks.set(key, streak); else noRouteStreaks.delete(key); if (noRouteStreaks.size > 64) noRouteStreaks.delete(noRouteStreaks.keys().next().value); backoffs.set(key, clock() + (noRoute ? Math.max(backoffMs, Math.min(NO_ROUTE_BACKOFF_MAX_MS, (outcome.code === 'CREEPER_NO_SIGHT' ? 1000 : NO_ROUTE_BACKOFF_MS) * 2 ** (streak - 1))) : backoffMs)) } // no route right now: retrying every tick only churns the lease
+    if (!(lease.target.entityType === 'minecraft:creeper' && ['CREEPER_CLOSING', 'CREEPER_EVADED', 'CREEPER_EVADE_UNAVAILABLE', 'PROFILE_MODE_BLOCKED', 'PROFILE_HIT_LIMIT'].includes(outcome.code))) { const key = targetKey(lease.scope, lease.target), noRoute = ['APPROACH_NOT_READY', 'NO_READY_ACTION', 'NO_PROGRESS', 'CREEPER_NO_SIGHT'].includes(outcome.code); const streak = noRoute ? (noRouteStreaks.get(key) ?? 0) + 1 : 0; if (noRoute) noRouteStreaks.set(key, streak); else noRouteStreaks.delete(key); if (noRouteStreaks.size > 64) noRouteStreaks.delete(noRouteStreaks.keys().next().value); backoffs.set(key, clock() + (noRoute ? Math.max(backoffMs, Math.min(NO_ROUTE_BACKOFF_MAX_MS, (outcome.code === 'CREEPER_NO_SIGHT' ? 1000 : NO_ROUTE_BACKOFF_MS) * 2 ** (streak - 1))) : backoffMs)) } // no route right now: retrying every tick only churns the lease
     while (backoffs.size > 128) backoffs.delete(backoffs.keys().next().value)
     if (claim === lease) claim = null
     lastResult = { ...outcome, claimId: lease.id, targetRuntimeId: lease.target.runtimeId, targetUniqueId: lease.target.uniqueId, targetName: lease.target.entityType, controllerCalls: lease.controllerCalls, approachCalls: lease.approachCalls, elapsedMs: Math.max(0, clock() - lease.startedAt), blocked: false }
@@ -368,7 +375,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       if (!moved.error && moved.value?.ready !== false && moved.value?.accepted !== false) return null
       return stop('CREEPER_NO_SIGHT', 'No stance at least 8m from the creeper with a clear bow line')
     }
-    const modesNow = profiles.allowedModes(lease.target.entityType, { hasBow: hasBowAndArrows(observation.state), distance: observation.distance, elevated: elevatedFrom(lease.target, observation.state) })
+    const modesNow = profiles.allowedModes(lease.target.entityType, { hasBow: hasBowAndArrows(observation.state), distance: observation.distance, elevated: elevatedFrom(lease.target, observation.state), cornered: cornered(lease.target) })
     if (!modesNow.includes('approach') && !(observation.distance <= MELEE_SELECT_REACH && modesNow.includes('melee'))) {
       if ((lease.noApproachHolds = (lease.noApproachHolds ?? 0) + 1) <= 20) return null
       return stop('PROFILE_MODE_BLOCKED', `The ${lease.target.entityType} profile forbids an approach and no shot is ready`, { previewCode: preview?.code ?? null })
@@ -436,6 +443,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       if (step.outcome) return { outcome: step.outcome }
       const result = step.error ? 'error' : step.value?.ready === false ? 'unavailable' : 'stepped'
       try { log(`クリーパー回避: distance=${g.distance.toFixed(1)}m step=${lease.evadeSteps} ${Math.round(clock() - startedAt)}ms result=${result}${step.value?.reason ? ' reason=' + step.value.reason : ''}`) } catch {}
+      if (result !== 'stepped') corneredCreepers.set(String(lease.target.runtimeId), clock() + 10000)
       if (result !== 'stepped') return { outcome: stop('CREEPER_EVADE_UNAVAILABLE', step.value?.reason ?? String(step.error?.message ?? step.error ?? 'No evade standpoint'), { creeperDistance: g.distance }) }
       await sleep(pollMs)
     }

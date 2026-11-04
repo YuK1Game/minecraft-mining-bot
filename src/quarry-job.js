@@ -959,7 +959,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return (adapter.actors?.() ?? []).filter(e => e.hostile === true && e.alive !== false && e.position && Math.hypot(e.position.x - st.position.x, e.position.z - st.position.z) <= STORAGE_AREA_RADIUS && Math.abs(e.position.y - st.position.y) <= 12)
   }
   async function waitForQuietStorage (myEpoch) {
-    const busy = list => list.length >= 3 || list.some(e => /witch|evoker|ravager|vindicator/.test(e.entityType ?? ''))
+    const busy = list => list.length >= 3 || list.some(e => /witch|evoker|ravager|vindicator|creeper/.test(e.entityType ?? ''))
     let list = storageHostiles()
     if (!busy(list)) return
     note('storage_area_hostile', { count: list.length, types: [...new Set(list.map(e => e.entityType))].slice(0, 6) })
