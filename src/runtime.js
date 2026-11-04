@@ -659,6 +659,30 @@ function createRuntime (host) {
   function noteHutProgress (data) { host.shared.hutMemo = data.memo; void missionJournal.save(); host.noteProgress(data) }
   // Route evidence for nearby hostiles (see threat-reachability.js). Missing
   // or truncated evidence stays unknown and the normal threat policy applies.
+  // Daylight watchdog. The owner keeps this sandbox Realm at permanent day; it
+  // was found at night twice (mobs on the surface, a death at the chests).
+  // Every 30s: if the overworld clock moved since the last check (day cycle
+  // running) or it is night, log it and re-apply noon + no day cycle (at most
+  // every 5 minutes). Only the world-clock packets are read; no proof claimed.
+  const daylightTimer = setInterval(() => {
+    if (disposed || disposing) { clearInterval(daylightTimer); return }
+    try {
+      const clock = Object.values(host.shared.worldClocks ?? {}).find(c => /overworld/.test(c?.name ?? ''))
+      if (!clock || !Number.isFinite(Number(clock.time)) || raw().phase !== 'spawned') return
+      const t = Number(clock.time); const day = ((t % 24000) + 24000) % 24000
+      const w = host.shared.daylightWatch ?? (host.shared.daylightWatch = { lastTime: null, lastFixAt: 0, fixes: 0 })
+      const moving = w.lastTime !== null && Math.abs(t - w.lastTime) > 40
+      const night = day >= 12500 && day <= 23500
+      w.lastTime = t
+      if (!moving && !night) return
+      host.log(`昼固定の監視: 時刻の変化を検知しました time=${t} dayTime=${day} cycleRunning=${moving} night=${night}`)
+      if (Date.now() - w.lastFixAt < 300000) return
+      w.lastFixAt = Date.now(); w.fixes++
+      for (const command of ['/gamerule dodaylightcycle false', '/time set noon']) host.client.queue('command_request', { command, origin: { type: 'player', uuid: require('node:crypto').randomUUID(), request_id: '', player_entity_id: 0n }, internal: false, version: 'latest' })
+      host.log(`昼固定の監視: 昼固定を再設定しました（${w.fixes}回目）`)
+    } catch { /* The next check retries. */ }
+  }, 30000)
+  daylightTimer.unref?.()
   let reachabilityTimer = null
   function refreshThreatReachability () {
     // The flood fill runs outside the caller's state read, one timer at once.
@@ -1846,7 +1870,9 @@ function createRuntime (host) {
     }
     const generationInput = input
     let waterPreviewObserver = null
-    const generationMotionState = () => { requireGeneration(); const state = motionState(); const scoped={...state,profile:state.profile??host.meta.profile,lifecycle:{...(state.lifecycle??{}),deathId:movementKnownLife()}}; waterPreviewObserver?.captureState(scoped); return scoped }
+    // combatMotion: a combat claim is moving itself (approach / sight stance).
+    const combatMoving = () => { try { return userBehaviorLease?.kind === 'combat' && ['approaching', 'repositioning'].includes(userBehaviorSnapshot().combat?.phase) } catch { return false } }
+    const generationMotionState = () => { requireGeneration(); const state = motionState(); const scoped={...state,profile:state.profile??host.meta.profile,lifecycle:{...(state.lifecycle??{}),deathId:movementKnownLife()},combatMotion:combatMoving()}; waterPreviewObserver?.captureState(scoped); return scoped }
     walker = createWalker({ ...common, getState: generationMotionState, world: host.world })
     const generationMovement = createMovement({ ...common, replanMixedAfterReplay:true, getState: generationMotionState, world: host.world, physics: generationPhysics.withWorld(host.world, { allowWater: false }), waterPhysics: generationPhysics, onQueuedFrame: queuedFrame, getQueuedCursor: queuedCursor, onPrediction: prediction => { if (currentGeneration()) host.setPrediction({ ...host.shared.prediction, ...prediction }, 'navigation') } })
     movement = generationMovement
@@ -4763,7 +4789,14 @@ function createRuntime (host) {
       if (damage) host.shared.recentDamageNoPrimary = damage
     }
     const keepUserCombat = !disposing && !disposed && reason === 'ダメージを検知しました。' && receiptState.phase === 'spawned' && !receiptState.dead && !receiptState.isDead && receiptState.health > 0 && (userBehaviorLease?.kind === 'combat' || userBehaviorSnapshot().claim?.kind === 'combat')
-    if (keepUserCombat && userBehaviorLease?.ready) { movement?.stop(reason); walker?.stop(reason); return Promise.resolve([]) }
+    if (keepUserCombat && userBehaviorLease?.ready) {
+      // Combat's own approach/sight move is re-validated by combat on every
+      // poll; stopping it on each hit (a witch's poison ticks every second)
+      // aborted every approach and the bot never closed in (live 2026-11-05).
+      const phase = (() => { try { return userBehaviorSnapshot().combat?.phase ?? null } catch { return null } })()
+      if (!['approaching', 'repositioning'].includes(phase)) { movement?.stop(reason); walker?.stop(reason) }
+      return Promise.resolve([])
+    }
     let userCleanup = null
     if (!keepUserCombat) { try { userBehaviors?.cancel(reason, receiptState.dead || receiptState.health === 0 ? 'NOT_ALIVE' : 'CANCELLED'); userCleanup = userBehaviors?.drain() } catch (error) { userBehaviorError(error, 'cancel') } }
     const exactRespawn = confirmedRespawn?.serverConfirmed === true && confirmedRespawn.health > 0 && confirmedRespawn.health === receiptState.health && receiptState.phase === 'spawned' && !receiptState.dead && confirmedRespawn.position && receiptState.position && ['x', 'y', 'z'].every(axis => Number.isFinite(confirmedRespawn.position[axis]) && confirmedRespawn.position[axis] === receiptState.position[axis])
@@ -4974,6 +5007,8 @@ function createRuntime (host) {
       // Read-only: in-process CPU profile (no inspector port is opened). Saves
       // .local/cpu-<time>.cpuprofile and returns the top self-time functions.
       cpuProfile: ms => profileCpu(ms),
+      // Read-only: why the after-restart quarry restore did or did not run.
+      quarryRestore: () => { const st = raw(); return { tried: host.shared.quarryRestoreTried === true, result: host.shared.quarryRestore ?? null, ports: !!quarryPorts, phase: st.phase, loadingScreenEnded: host.shared.loadingScreenEnded === true, spawnPending: !!st.spawnPending, inventoryKnown: st.inventory?.known ?? null, inventoryUncertain: host.shared.inventoryUncertain ?? null } },
       // Read-only: the raw server item in a slot (NBT, enchantments) as JSON.
       rawItem: slot => { const r = crafting.rawItem(Number(slot)); return r ? JSON.parse(JSON.stringify(r, (k, v) => typeof v === 'bigint' ? String(v) : v)) : null },
       // Read-only: milliseconds spent in each part of the /status snapshot.
@@ -5891,12 +5926,13 @@ function createRuntime (host) {
   const QUARRY_AUTO_RESUMABLE = /^(PROCESS_RESTARTED|DISCONNECTED|ACTION_FAILED|STORAGE_UNREACHABLE|RECOVERY_NOT_PROGRESSING|HEALTH_NOT_RECOVERING)/
   async function restoreQuarryJob () {
     const fs = require('node:fs/promises'), path = require('node:path')
-    if (ensureQuarryJob().status()) return { skipped: 'job_loaded' }
+    // After a restart the job controller exists but holds no job (state IDLE).
+    if (ensureQuarryJob().status()?.jobId) return { skipped: 'job_loaded' }
     let names = []
     try { names = (await fs.readdir(quarryDir())).filter(n => /^quarry_[A-Za-z0-9_-]+.json$/.test(n)) } catch { return { skipped: 'no_dir' } }
     const docs = []
     for (const n of names) { try { const d = JSON.parse(await fs.readFile(path.join(quarryDir(), n), 'utf8')); docs.push(d) } catch {} }
-    const candidate = docs.filter(d => d?.config?.jobId && d.state !== 'FINISHED' && d.result?.type !== 'FINISHED' && d.result?.type !== 'CANCELLED' && d.userRunIntent === 'running' && Date.now() - Date.parse(d.savedAt ?? 0) < 24 * 3600e3).sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))[0]
+    const candidate = docs.filter(d => d?.config?.jobId && d.state !== 'FINISHED' && d.result?.type !== 'FINISHED' && d.result?.type !== 'CANCELLED' && (d.userRunIntent === 'running' || d.pauseReason === 'PROCESS_RESTARTED') && Date.now() - Date.parse(d.savedAt ?? 0) < 24 * 3600e3).sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))[0]
     if (!candidate) return { skipped: 'none' }
     const status = await loadQuarryFile(candidate.config.jobId)
     const reason = status?.pauseReason ?? ''
@@ -5906,6 +5942,18 @@ function createRuntime (host) {
     host.log(`露天掘り: 自動で再開しました: ${candidate.config.jobId}`)
     return { loaded: candidate.config.jobId, resumed: true, reason }
   }
+
+  function maybeRestoreQuarryJob () {
+    if (disposed || disposing || host.shared.quarryRestoreTried || !quarryPorts) return
+    const state = raw()
+    if (state.phase !== 'spawned' || !host.shared.loadingScreenEnded || state.spawnPending || state.inventory?.known !== true || host.shared.inventoryUncertain) return
+    host.shared.quarryRestoreTried = true
+    void restoreQuarryJob().then(r => { host.shared.quarryRestore = r; host.log(`露天掘り: 再起動後の確認: ${JSON.stringify(r)}`) }).catch(error => { host.shared.quarryRestore = { error: String(error.message).slice(0, 200) }; host.log(`露天掘り: 再起動後の読み込みに失敗: ${String(error.message).slice(0, 160)}`) })
+  }
+  // resumeRequested is not reached while autonomy is running (as it is right
+  // after a restart), so the restore also runs from its own timer.
+  const quarryRestoreTimer = setInterval(() => { if (disposed || disposing) { clearInterval(quarryRestoreTimer); return } try { maybeRestoreQuarryJob() } catch {} }, 15000)
+  quarryRestoreTimer.unref?.()
 
   function resumeRequested () {
     if (disposed || disposing) return
@@ -5917,10 +5965,7 @@ function createRuntime (host) {
     if (surfaceReturnOwner || userBehaviorOwns()) return
     resumeSafety()
     if (raw().phase === 'spawned' && host.shared.loadingScreenEnded) startIdle()
-    if (!host.shared.quarryRestoreTried && quarryPorts && raw().phase === 'spawned' && host.shared.loadingScreenEnded && !raw().spawnPending && raw().inventory?.known === true && !host.shared.inventoryUncertain) {
-      host.shared.quarryRestoreTried = true
-      void restoreQuarryJob().then(r => { host.shared.quarryRestore = r }).catch(error => { host.shared.quarryRestore = { error: String(error.message).slice(0, 200) } })
-    }
+    maybeRestoreQuarryJob()
     // A quarry job paused only by a hot reload resumes once on the new code.
     if (host.shared.quarryAutoResume && quarryPorts && raw().phase === 'spawned' && host.shared.loadingScreenEnded && !raw().spawnPending) {
       host.shared.quarryAutoResume = false

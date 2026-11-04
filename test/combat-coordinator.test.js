@@ -82,17 +82,18 @@ test('distance and retry holds skip expensive selection callbacks without losing
   assert.equal(f.surveyCalls.length, 1)
 })
 
-test('stale sight observations retry with fresh decisions only twice and never fall through to an old closing approach', async () => {
+test('stale sight observations retry with fresh decisions within a bounded grace (moving bow targets) and never fall through to an old closing approach', async () => {
   for (const type of ['minecraft:zombie', 'minecraft:creeper']) {
     const f = fixture({ bow: true, targetX: 14, approachHook: () => ({ ready: false, code: 'SIGHT_STALE' }) })
     f.target.entityType = type; f.setRangedReady(false)
     const result = await f.coordinator.tick()
-    assert.equal(result.code, 'SIGHT_STALE'); assert.equal(f.approaches.length, 3)
+    // Frozen fixture clock: the 0.9s grace never expires, so the 8-retry cap ends the claim.
+    assert.equal(result.code, 'SIGHT_STALE'); assert.equal(f.approaches.length, 9)
     assert.ok(f.approaches.every(call => call.args.purpose === 'sight'))
     assert.equal(f.resumes.length, 1); assert.equal(f.coordinator.snapshot().busy, false)
     assert.equal((await f.coordinator.tick()).code, 'NO_CANDIDATE')
     f.advance(450); await f.coordinator.tick()
-    assert.equal(f.approaches.length, 6, 'another claim gets its own bounded retries after the ordinary backoff')
+    assert.equal(f.approaches.length, 18, 'another claim gets its own bounded retries after the ordinary backoff')
   }
 })
 
@@ -303,3 +304,4 @@ test('a creeper behind terrain (>= 8m) gets only a sight-stance request, never a
   assert.ok(purposes.length >= 1, JSON.stringify(r)); assert.ok(purposes.every(p => p === 'sight'), JSON.stringify(purposes))
   assert.equal(r.code, 'CREEPER_NO_SIGHT')
 })
+

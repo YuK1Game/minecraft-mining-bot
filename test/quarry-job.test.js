@@ -508,3 +508,36 @@ test('live case 2026-11-05: an ACTION_FAILED pause resumes itself (bounded) inst
   assert.equal(s.pauseReason, 'UNRESOLVED_EXCEPTIONS', `${s.state} ${s.pauseReason}`)
   assert.ok(sim.stats.mined > 100)
 })
+
+test('live case 2026-11-05: with several hostiles around the chests the job waits in the pit before leaving to deposit', async () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5)
+  for (let n = 0; n < 31; n++) sim.give('andesite', 64) // nearly full bag: the first capacity check returns to the chest
+  let checks = 0
+  sim.adapter.actors = () => (checks++ < 4 ? [{ kind: 'mob', hostile: true, alive: true, entityType: 'minecraft:zombie', position: { x: -6, y: 63, z: -4 } }, { kind: 'mob', hostile: true, alive: true, entityType: 'minecraft:skeleton', position: { x: -2, y: 63, z: -8 } }, { kind: 'mob', hostile: true, alive: true, entityType: 'minecraft:spider', position: { x: -8, y: 63, z: -2 } }] : [])
+  const lines = []
+  const { j } = job(sim, { log: l => lines.push(l) })
+  assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+  j.start()
+  const until = Date.now() + 30000
+  while (Date.now() < until && !sim.stats.deposits) await new Promise(r => setTimeout(r, 10))
+  assert.ok(lines.some(l => /storage_area_hostile/.test(l)), 'the busy chest area was noticed')
+  assert.ok(lines.some(l => /storage_area_clear/.test(l)), 'it went once the area cleared')
+  assert.ok(sim.stats.deposits >= 1)
+  j.emergencyStop?.()
+})
+
+test('live case 2026-11-05: a stance whose mining preview is refused (pose not settled) does not leave the cells unmined', async () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+  let refusals = 6
+  const mine = sim.adapter.mine
+  sim.adapter.mine = async (targets, o) => { if (refusals-- > 0) throw new Error('quarry mining preview refused: 1,62,1: 通常の地面に静止していることを確認できません。'); return mine(targets, o) }
+  const { j } = job(sim)
+  assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+  j.start()
+  const s = await runUntilStopped(j)
+  const failed = (s.deferred ?? []).filter(d => d.reason === 'MINING_FAILED')
+  assert.equal(failed.length, 0, `cells written off: ${JSON.stringify(failed.slice(0, 3))}`)
+  assert.equal(s.pauseReason, 'UNRESOLVED_EXCEPTIONS')
+})
