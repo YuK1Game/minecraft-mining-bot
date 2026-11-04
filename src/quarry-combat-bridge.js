@@ -80,7 +80,13 @@ function createQuarryCombatBridge ({ now = Date.now, config = {} } = {}) {
   // distance) and the bot still inside the anchor radius (§9.3, T34).
   function canContinue (target, state, evidence = {}) {
     if (!active) return { allowed: true, reason: 'NO_QUARRY_JOB' }
-    if (anchor && finite(state?.position) && !evidence.retreating && distH(anchor, feetOf(state)) > cfg.normalMovementRadiusFromAnchor + 0.5) return { allowed: false, reason: 'ANCHOR_LIMIT' }
+    // Outside the radius the bot does not keep chasing, but an immediate
+    // threat (within immediateRadius, or one that just hurt us) is always
+    // answered: knockback or a safety step can carry the bot past the radius,
+    // and refusing then leaves it standing still while it is killed.
+    if (anchor && finite(state?.position) && !evidence.retreating && distH(anchor, feetOf(state)) > cfg.normalMovementRadiusFromAnchor + 0.5) {
+      if (!(target?.position && threatens(state, target, evidence).immediate)) return { allowed: false, reason: 'ANCHOR_LIMIT' }
+    }
     return canSelectTarget(target, state, evidence)
   }
 

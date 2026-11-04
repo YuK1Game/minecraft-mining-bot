@@ -48,8 +48,69 @@ function fixture ({ health = 20, weaponSlot = 0, noWeapon = false, equipConfirme
     equip: async slot => { equips.push(slot); if (equipConfirmed) { const r = bag.get(slot), old = bag.get(0); bag.set(0, r); bag.set(slot, old) }; return { serverConfirmed: equipConfirmed } }, getInput: () => { if (movement?.snapshot().running) throw new Error('Generic input requested during active native hop'); getInputCalls++; return input },
     ...(useNative ? { previewHop: p => previewDenied ? { ready: false, reason: previewDenied } : movement.previewHop(p), startHop: p => movement.startHop(p), getMovement: () => hopProof ? hopProof(movement.snapshot()) : movement.snapshot(), stopHop: (reason, hopId) => { if (movement.snapshot().criticalHopId === hopId) movement.stop(reason) } } : {}),
     now: () => time, wallNow: modelWall, sleep: async (ms, signal) => { if (signal?.aborted) throw new Error('aborted'); time += ms; if (useNative) testContext.mock.timers.tick(ms); if (running) queueNormalInput(); onSleep?.({ melee, state, rawState, target, actors, bag, blocks, time, observe, movement }); await turn(); if (signal?.aborted) throw new Error('aborted') }, ...options })
-  return { melee, state, rawState, target, actors, bag, blocks, packets, attacks, equips, input, movement, observe, modelPose, getInputCalls: () => getInputCalls }
+  return { melee, state, rawState, target, actors, bag, blocks, packets, attacks, equips, input, movement, observe, modelPose, crafting, getInputCalls: () => getInputCalls }
 }
+
+test('melee uses lightweight inventory and individual death observations while retaining full actor sight guards', async () => {
+  let snapshots = 0, gets = 0, inventoryReads = 0, statusReads = 0
+  const f = fixture({
+    entities: { snapshot: () => { snapshots++; return structuredClone(f.actors) }, get: runtimeId => { gets++; return structuredClone(f.actors.find(actor => actor.runtimeId === runtimeId) ?? null) } },
+    onAttack: ({ target, observe }) => { target.alive = false; observe('entity_event', { runtime_entity_id: '70', event_id: 'death_animation' }) }
+  })
+  const observedInventory = f.crafting.snapshot
+  f.crafting.inventorySnapshot = () => { inventoryReads++; return observedInventory() }
+  f.crafting.status = () => { statusReads++; const { inventory, ...status } = observedInventory(); return status }
+  f.crafting.snapshot = () => { throw new Error('Combat must not enumerate recipes') }
+  const result = await f.melee.engage('70', { critical: false, maxHits: 2, durationMs: 2000 })
+  assert.equal(result.targetDead, true); assert.equal(result.hitsRequested, 1)
+  assert.ok(inventoryReads > 0); assert.ok(statusReads > 0); assert.ok(gets > 0); assert.ok(snapshots > 0)
+})
+
+test('ordinary preview skips hop simulation while default preview keeps it and all attack guards remain active', t => {
+  let hops = 0
+  const f = fixture({ useNative: true, testContext: t, previewHop: options => { hops++; return f.movement.previewHop(options) } })
+  const ordinary = f.melee.preview('70', { critical: false })
+  assert.equal(ordinary.ready, true); assert.equal(ordinary.criticalHop.ready, false); assert.equal(hops, 0)
+  assert.equal(f.melee.preview('70').criticalHop.ready, true); assert.equal(hops, 1)
+  f.blocks.set('1,66,0', { known: false })
+  assert.equal(f.melee.preview('70', { critical: false }).code, 'LOS_BLOCKED')
+  assert.equal(hops, 1); assert.equal(f.packets.length, 0)
+})
+
+test('a sent hotbar selection permits ordinary melee only for the same observed stack without claiming a confirmed hit', async () => {
+  const f = fixture({ weaponSlot: 1, equip: async slot => {
+    f.state.rawSelectedSlot = f.state.rawServerSelectedSlot = slot
+    f.rawState.rawSelectedSlot = f.rawState.rawServerSelectedSlot = slot
+    return { phase: 'completed', slot, sourceSlot: slot, selectionSent: true, selectedSlotChanged: true, serverConfirmed: false, confirmedBy: null }
+  } })
+  const result = await f.melee.engage('70', { critical: false, maxHits: 1, durationMs: 2000 })
+  assert.equal(result.hitsRequested, 1); assert.equal(result.serverConfirmed, false)
+  assert.equal(result.attempts[0].hitConfirmed, false); assert.equal(result.attempts[0].serverConfirmed, false)
+  assert.equal(f.attacks[0].params.transaction.transaction_data.hotbar_slot, 1)
+  assert.equal(f.attacks[0].params.transaction.transaction_data.held_item.stack_id, 40)
+})
+
+test('a hotbar selection flag cannot bypass melee slot, stack, inventory or life checks', async () => {
+  for (const change of [
+    (f, result) => { result.selectionSent = false },
+    (f, result) => { result.phase = 'stopped' },
+    (f, result) => { result.slot = 2 },
+    (f, result) => { result.sourceSlot = 2 },
+    f => { f.state.rawServerSelectedSlot = 0 },
+    f => { f.bag.get(1).stack_id++ },
+    f => { f.state.inventory.known = false },
+    f => { f.state.lifecycle.deathId++; f.rawState.lifecycle.deathId++ }
+  ]) {
+    const f = fixture({ weaponSlot: 1, equip: async slot => {
+      f.state.rawSelectedSlot = f.state.rawServerSelectedSlot = slot
+      f.rawState.rawSelectedSlot = f.rawState.rawServerSelectedSlot = slot
+      const result = { phase: 'completed', slot, sourceSlot: slot, selectionSent: true, serverConfirmed: false }
+      change(f, result); return result
+    } })
+    const result = await f.melee.engage('70', { critical: false, maxHits: 1, durationMs: 2000 })
+    assert.equal(result.hitsRequested, 0, JSON.stringify(result)); assert.equal(f.attacks.length, 0); assert.equal(result.serverConfirmed, false)
+  }
+})
 
 test('near current trusted working reach, alive>0 and no players/passive targets; raw remains an anchor', async () => {
   const f = fixture({ health: 1 }); assert.equal(f.melee.preview('70').ready, true)

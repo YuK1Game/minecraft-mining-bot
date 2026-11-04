@@ -35,7 +35,7 @@ function createState (profile, clock = () => new Date().toISOString()) {
   function updateInventory () {
     state.inventory.items = [...slots.entries()]
       .filter(([, item]) => item && item.network_id !== 0 && item.count > 0)
-      .map(([slot, item]) => ({ slot, name: names.get(item.network_id) ?? null, networkId: item.network_id, count: item.count, metadata: item.metadata ?? 0 }))
+      .map(([slot, item]) => ({ slot, name: names.get(item.network_id) ?? null, networkId: item.network_id, count: item.count, metadata: item.metadata ?? 0, stackId: item.has_stack_id === true && Number.isInteger(item.stack_id) && item.stack_id > 0 && item.stack_id <= 2147483647 ? item.stack_id : null }))
       .sort((a, b) => a.slot - b.slot)
     state.heldItem = state.selectedSlot === null ? null : state.inventory.items.find(item => item.slot === state.selectedSlot) ?? null
   }
@@ -142,7 +142,13 @@ function createState (profile, clock = () => new Date().toISOString()) {
         break
     }
   }
-  return { state, applyPacket, snapshot: () => structuredClone(state) }
+  // The host also writes connection/lifecycle fields directly. Read requested
+  // fields now rather than caching by packet sequence, and never expose them.
+  function snapshotFields (fields) {
+    if (!Array.isArray(fields) || fields.some(field => typeof field !== 'string')) throw new TypeError('State fields must be an array of names')
+    return structuredClone(Object.fromEntries(fields.filter(field => Object.hasOwn(state, field)).map(field => [field, state[field]])))
+  }
+  return { state, applyPacket, snapshot: () => structuredClone(state), snapshotFields }
 }
 
 module.exports = { createState }

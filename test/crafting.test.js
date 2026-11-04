@@ -499,3 +499,65 @@ test('wooden sword crafting serializes actual server IDs and remains unconfirmed
   assert.equal(f.confirmed[0].input[2].count, 1)
   assert.equal(f.confirmed[0].input[2].stack_id, 501)
 })
+
+test('lightweight crafting reads preserve current observations without exposing mutable inventory or container state', () => {
+  const { crafting } = fixture()
+  crafting.applyPacket('container_open', { window_id: 7, window_type: 'workbench', coordinates: { x: 1, y: 64, z: 2 } })
+  const full = crafting.snapshot(), status = crafting.status(), inventory = crafting.inventorySnapshot()
+  assert.deepEqual(status, Object.fromEntries(Object.keys(status).map(key => [key, full[key]])))
+  assert.deepEqual(inventory, { ...status, inventory: full.inventory })
+  assert.equal(Object.hasOwn(status, 'inventory'), false)
+  assert.equal(Object.hasOwn(inventory, 'availableRecipes'), false)
+  status.openContainer.coordinates.x = 99
+  inventory.inventory[0].count = 99
+  assert.equal(crafting.status().openContainer.coordinates.x, 1)
+  assert.equal(crafting.inventorySnapshot().inventory[0].count, 1)
+  crafting.applyPacket('inventory_slot', { window_id: 'inventory', slot: 0, item: item(17, 3, 88) })
+  assert.equal(crafting.inventorySnapshot().inventory[0].count, 3)
+  assert.equal(crafting.inventorySnapshot().inventory[0].stackId, 88)
+  crafting.applyPacket('container_close', { window_id: 7 })
+  assert.equal(crafting.status().openContainer, null)
+})
+
+test('recipe summaries remain independent and refresh after registry changes, recipe replacement, clearing and reconnect', () => {
+  const { crafting } = fixture()
+  const first = crafting.snapshot()
+  const expected = structuredClone(first.availableRecipes)
+  first.availableRecipes[0].output[0].name = 'minecraft:invented'
+  first.availableRecipes.length = 0
+  assert.deepEqual(crafting.snapshot().availableRecipes, expected)
+  crafting.applyPacket('item_registry', { itemstates: [{ runtime_id: 29, name: 'minecraft:unknown_material' }] })
+  assert.equal(crafting.snapshot().availableRecipes.some(recipe => recipe.networkId === 901), false)
+  crafting.applyPacket('item_registry', { itemstates: [{ runtime_id: 29, name: 'minecraft:oak_planks' }] })
+  assert.equal(crafting.snapshot().availableRecipes.find(recipe => recipe.networkId === 901).output[0].name, 'minecraft:oak_planks')
+  crafting.applyPacket('crafting_data', { clear_recipes: false, shapeless_recipes: [{ recipe_id: 'replacement', network_id: 901, block: 'crafting_table', input: [], output: [output(41, 2)] }] })
+  const replacement = crafting.snapshot().availableRecipes.find(recipe => recipe.networkId === 901)
+  assert.equal(replacement.id, 'replacement')
+  assert.deepEqual(replacement.output, [{ name: 'minecraft:stick', count: 2 }])
+  crafting.applyPacket('crafting_data', { clear_recipes: true })
+  assert.deepEqual(crafting.snapshot().availableRecipes, [])
+  assert.equal(crafting.snapshot().recipes, 0)
+  crafting.applyPacket('crafting_data', { shapeless_recipes: [{ recipe_id: 'restored', network_id: 901, output: [output(41, 2)] }] })
+  assert.equal(crafting.snapshot().availableRecipes.length, 1)
+  crafting.applyPacket('start_game', { server_authoritative_inventory: true })
+  assert.deepEqual(crafting.snapshot().availableRecipes, [])
+  assert.deepEqual(crafting.inventorySnapshot().inventory, [])
+  assert.equal(crafting.status().inventoryKnown, false)
+})
+
+test('lightweight crafting reads follow pending and confirmed requests rather than a prior display snapshot', async () => {
+  const f = fixture()
+  f.crafting.snapshot()
+  f.crafting.applyPacket('container_open', { window_id: 'inventory', window_type: 'inventory' })
+  const task = f.crafting.craft('oak_planks'), requestId = f.packets.at(-1).params.requests[0].request_id
+  assert.equal(f.crafting.status().pendingRequestId, requestId)
+  assert.equal(f.crafting.inventorySnapshot().inventory.some(entry => entry.name === 'minecraft:oak_planks'), false)
+  f.crafting.applyPacket('item_stack_response', { responses: [{ request_id: requestId, status: 'ok', containers: [{ slot_type: { container_id: 'hotbar_and_inventory' }, slots: [{ slot: 0, count: 0, item_stack_id: null }, { slot: 1, count: 4, item_stack_id: 102 }] }] }] })
+  await task
+  const current = f.crafting.status()
+  assert.equal(current.pendingRequestId, null)
+  assert.equal(current.lastResult.phase, 'completed')
+  current.lastResult.output.count = 99
+  assert.equal(f.crafting.status().lastResult.output.count, 4)
+  assert.deepEqual(f.crafting.inventorySnapshot().inventory, [{ slot: 1, name: 'minecraft:oak_planks', count: 4, stackId: 102 }])
+})

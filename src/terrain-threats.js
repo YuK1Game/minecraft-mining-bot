@@ -191,13 +191,16 @@ function annotateTerrainThreats (state, entities, options = {}) {
   const reuse = entry?.map ?? null
   const observer = state?.position ? `${revision}|${state.position.x},${state.position.y},${state.position.z}` : 'none'
   const t = now()
+  // The runtime can transfer its already-independent actor records here. The
+  // default still copies caller-owned observations, including nested fields.
+  const copyEntity = options.ownedEntities === true ? entity => entity : structuredClone
   return entities.map((entity, index) => {
-    if (index >= limit) return { ...structuredClone(entity), terrainOcclusion: null }
+    if (index >= limit) return { ...copyEntity(entity), terrainOcclusion: null }
     const key = reuse && entity?.position ? `${idOf(entity)}|${typeOf(entity)}|${dimension(entity.dimension)}|${dimension(state?.dimension)}|${observer}|${entity.position.x},${entity.position.y},${entity.position.z}` : null
     const cached = key ? reuse.get(key) : null
     const evidence = cached && t - cached.createdAt >= 0 && t - cached.createdAt <= EVIDENCE_REUSE_MS ? cached : buildTerrainThreatEvidence(state, entity, annotationOptions)
     if (key && evidence !== cached) { reuse.set(key, evidence); if (reuse.size > EVIDENCE_CACHE_LIMIT) reuse.delete(reuse.keys().next().value) }
-    return { ...structuredClone(entity), terrainOcclusion: evidence }
+    return { ...copyEntity(entity), terrainOcclusion: evidence }
   })
 }
 

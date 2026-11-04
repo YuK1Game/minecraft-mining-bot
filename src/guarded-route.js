@@ -1,5 +1,6 @@
 'use strict'
 
+const { equipmentReady } = require('./equipment-readiness')
 const { setTimeout: sleep } = require('node:timers/promises')
 const { evaluateThreats } = require('./threats')
 const { constrainedSecondaryFloor, selectConstrainedPrimary, outsideSkeletonFloor, unarmedCreeperZombie, unarmedZombieFloor, outsideUnarmedSpiderFloor, activeUnarmedSpiderFloor } = require('./escape-policy')
@@ -188,9 +189,10 @@ function createGuardedRoute ({ getState, movement, getMovement, inventory, comba
     if (!swordHeld(value.state) && !bootstrapHand(value.state, run)) {
       const sword = value.state.inventory.items.find(item => item.count === 1 && SWORDS.test(item.name) && !(item.durabilityKnown === true && item.durabilityRemaining <= 0))
       if (!sword) throw new GuardedRouteError('A real sword is required before every route leg', 'SWORD_REQUIRED')
+      const expectedSword = copy(sword)
       const result = await invoke(run, 'Confirmed sword equipment', signal => inventory.equip(sword.slot, { signal }), { policy: { ...policy, armed: false }, mutation: true })
       value = await read(run, { ...policy, armed: false })
-      if (result?.serverConfirmed !== true || !swordHeld(value.state) || swordHeld(value.state).name !== sword.name) throw new GuardedRouteError('Sword equip was not confirmed by the actual selected inventory', 'EQUIPMENT_UNCONFIRMED')
+      if (!equipmentReady(result, value.state, { sourceSlot: expectedSword.slot, expectedItem: expectedSword }) || !swordHeld(value.state) || swordHeld(value.state).name !== sword.name) throw new GuardedRouteError('Sword equip was not confirmed by the actual selected inventory', 'EQUIPMENT_UNCONFIRMED')
     }
     if (closeContainer) await invoke(run, 'Close equipment GUI before movement', signal => closeContainer({ signal }), { policy, mutation: true })
     value = await read(run, policy)

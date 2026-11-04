@@ -100,3 +100,90 @@ test('runtime adapter re-plans a move that ends short instead of waiting out the
   assert.equal(Math.floor(state.position.x), 3)
   assert.ok(Date.now() - started < 5000)
 })
+
+test('runtime adapter hands a whole batch to one mining.start and waits for every cell to be air', async () => {
+  const { ports, calls, blocks } = fakePorts()
+  blocks.set('1,1,0', 'minecraft:stone')
+  let started = null
+  ports.mining = {
+    preview: t => ({ ready: t.every(x => x.accessPreparation === 'quarry') }),
+    start: t => { started = t; calls.push(['mine', t.length]); let i = 0; const next = () => { if (i >= t.length) return; blocks.delete(`${t[i].x},${t[i].y},${t[i].z}`); i++; setTimeout(next, 5) }; setTimeout(next, 5) }
+  }
+  let phase = 'idle'; ports.getMining = () => ({ phase: started && [...started].every(x => !blocks.has(`${x.x},${x.y},${x.z}`)) ? 'completed' : phase })
+  const a = createQuarryRuntimeAdapter(ports)
+  const r = await a.mine([{ x: 1, y: 0, z: 0, expectedName: 'minecraft:stone' }, { x: 1, y: 1, z: 0, expectedName: 'minecraft:stone' }, { x: 2, y: 0, z: 0, expectedName: 'minecraft:dirt' }])
+  assert.equal(r.batched, true)
+  assert.deepEqual(calls.filter(c => c[0] === 'mine'), [['mine', 3]])
+  assert.equal(['1,0,0', '1,1,0', '2,0,0'].some(k => blocks.has(k)), false)
+})
+
+test('runtime adapter falls back to one target at a time when the batch preview is refused', async () => {
+  const { ports, calls, blocks } = fakePorts()
+  ports.mining.preview = t => ({ ready: t.length === 1 })
+  const a = createQuarryRuntimeAdapter({ ...ports, previewSettleMs: 20 })
+  const r = await a.mine([{ x: 1, y: 0, z: 0, expectedName: 'minecraft:stone' }, { x: 2, y: 0, z: 0, expectedName: 'minecraft:dirt' }])
+  assert.notEqual(r.batched, true)
+  assert.equal(calls.filter(c => c[0] === 'mine').length, 2)
+  assert.equal(blocks.size, 0)
+})
+
+test('quarry preview: a permanent refusal never consumes the settling delay', async () => {
+  for (const errors of [['対象の周辺に未取得のブロックがあります。'], ['対象ブロックが変更されたため停止しました。'], ['通常の地面に静止していることを確認できません。', '保護されたブロックは露天掘りでも壊しません。']]) {
+    const { ports, calls } = fakePorts()
+    let sleeps = 0; let previews = 0
+    ports.mining.preview = () => { previews++; return { ready: false, errors } }
+    const a = createQuarryRuntimeAdapter({ ...ports, sleep: async () => { sleeps++ } })
+    await assert.rejects(() => a.mine([{ x: 1, y: 0, z: 0, expectedName: 'minecraft:stone' }]), /preview refused/)
+    assert.equal(previews, 1)
+    assert.equal(sleeps, 0)
+    assert.equal(calls.length, 0, 'no break input was sent')
+  }
+})
+
+test('quarry preview: only unsettled grounding retries, within one shared deadline', async () => {
+  const { ports, calls, blocks } = fakePorts()
+  let clock = 0; let previews = 0
+  ports.mining = {
+    preview: () => ({ ready: ++previews >= 3, errors: ['1,0,0: 通常の地面に静止していることを確認できません。'] }),
+    start: targets => { calls.push(['mine']); for (const t of targets) blocks.delete(`${t.x},${t.y},${t.z}`) }
+  }
+  ports.getMining = () => ({ phase: 'completed' })
+  const a = createQuarryRuntimeAdapter({ ...ports, now: () => clock, sleep: async ms => { clock += ms } })
+  await a.mine([{ x: 1, y: 0, z: 0, expectedName: 'minecraft:stone' }])
+  assert.equal(clock, 300)
+  assert.equal(calls.length, 1)
+
+  blocks.set('1,0,0', 'minecraft:stone')
+  ports.mining.preview = () => ({ ready: false, errors: ['通常の地面に静止していることを確認できません。'] })
+  const start = clock
+  await assert.rejects(() => a.mine([{ x: 1, y: 0, z: 0, expectedName: 'minecraft:stone' }, { x: 2, y: 0, z: 0, expectedName: 'minecraft:dirt' }]), /preview refused/)
+  assert.equal(clock - start, 3000, 'batch fallback does not restart the settling budget')
+  assert.equal(calls.length, 1)
+})
+
+test('quarry preview: a hidden later face falls back without polling the unchanged batch', async () => {
+  const { ports, blocks } = fakePorts()
+  let sleeps = 0; let batches = 0
+  ports.mining = {
+    preview: targets => { if (targets.length > 1) batches++; return { ready: targets.length === 1, errors: ['射程内の採掘面への視線が遮られているか、未取得です。'] } },
+    start: targets => { for (const t of targets) blocks.delete(`${t.x},${t.y},${t.z}`) }
+  }
+  ports.getMining = () => ({ phase: 'completed' })
+  const a = createQuarryRuntimeAdapter({ ...ports, sleep: async () => { sleeps++ } })
+  await a.mine([{ x: 1, y: 0, z: 0, expectedName: 'minecraft:stone' }, { x: 2, y: 0, z: 0, expectedName: 'minecraft:dirt' }])
+  assert.equal(batches, 1)
+  assert.equal(sleeps, 0)
+  assert.equal(blocks.size, 0)
+})
+
+test('live case 2026-11-04: a block that breaks far slower than the held tool allows is stopped as SLOW_BREAK', async () => {
+  const { ports } = fakePorts()
+  let stopped = false
+  ports.mining = { preview: () => ({ ready: true }), start: () => {}, stop: () => { stopped = true } } // the server never breaks it
+  ports.getMining = () => ({ phase: 'mining' })
+  const a = createQuarryRuntimeAdapter({ ...ports, slowBreakMinMs: 100 })
+  const started = Date.now()
+  await assert.rejects(() => a.mine([{ x: 1, y: 0, z: 0, expectedName: 'minecraft:stone' }]), e => e.code === 'SLOW_BREAK')
+  assert.ok(Date.now() - started < 2000, 'stopped long before the 15s block timeout')
+  assert.equal(stopped, true, 'the mining input is stopped')
+})

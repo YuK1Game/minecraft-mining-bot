@@ -10,12 +10,26 @@ const empty = item => item?.network_id === 0 && item.count === 0
 const inventoryWindow = id => id === 0 || id === 'inventory'
 const fullName = { container_id: 'hotbar_and_inventory', dynamic_container_id: null }
 
-function createInventory ({ client, getState, crafting, allocateRequestId, onInventory = () => {}, timeoutMs = 8000, onUncertain = () => {}, commitSelection = null }) {
+function createInventory ({ client, getState, crafting, allocateRequestId, onInventory = () => {}, timeoutMs = 8000, onUncertain = () => {}, commitSelection = null, selectionStore = {} }) {
   if (typeof client?.queue !== 'function' || typeof getState !== 'function' || typeof crafting?.rawItem !== 'function' || typeof crafting?.applyPacket !== 'function' || typeof crafting?.snapshot !== 'function' || typeof allocateRequestId !== 'function' || typeof onInventory !== 'function') throw new Error('道具の持ち替えには接続、持ち物、接続が管理する要求ID、確定通知が必要です。')
   if (!Number.isFinite(timeoutMs) || timeoutMs < 50 || timeoutMs > 30000) throw new Error('持ち替えの待ち時間が不正です。')
   if (typeof onUncertain !== 'function') throw new Error('onUncertainは関数で指定してください。')
   let operation = null
   let lastResult = null
+  const craftStatus = () => typeof crafting.status === 'function' ? crafting.status() : crafting.snapshot()
+  const craftInventory = () => typeof crafting.inventorySnapshot === 'function' ? crafting.inventorySnapshot() : crafting.snapshot()
+  const selectionScope = state => JSON.stringify([state.connectionId ?? null, state.startedAt ?? null, String(state.runtimeEntityId ?? ''), state.dimension ?? null, state.lifecycle?.deathId ?? state.deathId ?? 0])
+  const selectionPending = state => selectionStore.pending?.scope === selectionScope(state) && selectionStore.pending.slot === state.rawSelectedSlot
+
+  function sendSelection (slot, item, state) {
+    const changed = state.rawSelectedSlot !== slot
+    client.queue('mob_equipment', { runtime_entity_id: BigInt(state.runtimeEntityId), item: copy(item), slot, selected_slot: slot, window_id: 'inventory' })
+    commitSelection(slot)
+    selectionStore.pending = { scope: selectionScope(state), slot }
+    const selectedItem = { name: crafting.itemNameOf?.(item.network_id) ?? craftInventory().inventory?.find(value => value.slot === slot)?.name ?? null, networkId: item.network_id, stackId: item.stack_id, count: item.count, metadata: item.metadata ?? 0 }
+    lastResult = { phase: 'completed', slot, sourceSlot: slot, selectedSlotChanged: changed, selectionSent: true, selectedItem, serverConfirmed: false, confirmedBy: null }
+    return copy(lastResult)
+  }
 
   function notifyUncertain (attempt, reason) {
     if (!attempt.wireSent || attempt.serverRejected || attempt.serverConfirmed || attempt.uncertaintyNotified) return
@@ -28,7 +42,7 @@ function createInventory ({ client, getState, crafting, allocateRequestId, onInv
     if (state.dead === true || state.isDead === true || state.health === 0 || state.phase !== 'spawned') throw new Error('死亡中・接続前は持ち替えできません。')
     if (!Number.isFinite(state.health) || state.health <= (forFood || forCombat ? 0 : resourceMinHealth(state))) throw new Error('体力が少ないか不明のため持ち替えを停止します。')
     if (state.gameMode !== 'survival' && state.gameMode !== 0) throw new Error('持ち替えはサバイバルモード専用です。')
-    const observed = crafting.snapshot()
+    const observed = craftStatus()
     if (observed.authority !== true || observed.inventoryKnown !== true || state.inventory?.known === false || state.inventory?.uncertain === true) throw new Error('サーバー権威の持ち物をまだ取得できていません。')
     if (observed.pendingRequestId != null) throw new Error('クラフト結果を待ってから持ち替えてください。')
     // Never fall back to a requested/predicted selectedSlot.
@@ -52,7 +66,7 @@ function createInventory ({ client, getState, crafting, allocateRequestId, onInv
     const input = observedInventory()
     if (empty(input[sourceSlot]) && !forCombat) throw new Error('持ち替え元にアイテムがありません。')
     if (forFood) {
-      const items = crafting.snapshot().inventory ?? []
+      const items = craftInventory().inventory ?? []
       const item = items.find(item => item.slot === sourceSlot)
       const emergency = allowEmergencyRotten === true && item?.name === 'minecraft:rotten_flesh' && !items.some(value => value.count > 0 && isSupportedFood(value.name, state))
       if (!(isSupportedFood(item?.name, state) || emergency) || item.count !== input[sourceSlot].count || item.stackId != null && item.stackId !== input[sourceSlot].stack_id) throw new Error('低体力時に持ち替えられるのは実際に所持する対応食料だけです。')
@@ -112,14 +126,14 @@ function createInventory ({ client, getState, crafting, allocateRequestId, onInv
     // Combat fast path: a weapon already in the hotbar is selected directly
     // (one mob_equipment, ~0ms) instead of a swap through the inventory screen
     // (open, request, response, close: 0.5-1.8s measured).
-    if (forCombat && typeof commitSelection === 'function' && sourceSlot >= 0 && sourceSlot <= 8 && sourceSlot !== initial.targetSlot && !empty(initial.source)) {
+    if (typeof commitSelection === 'function' && sourceSlot >= 0 && sourceSlot <= 8 && (forCombat && sourceSlot !== initial.targetSlot || sourceSlot === initial.targetSlot && selectionPending(getState())) && !empty(initial.source)) {
       const state = getState()
-      client.queue('mob_equipment', { runtime_entity_id: BigInt(state.runtimeEntityId), item: copy(initial.source), slot: sourceSlot, selected_slot: sourceSlot, window_id: 'inventory' })
-      commitSelection(sourceSlot)
-      lastResult = { phase: 'completed', slot: sourceSlot, sourceSlot, selectedSlotChanged: true, serverConfirmed: true, confirmedBy: 'hotbar_selection_sent' }
-      return copy(lastResult)
+      return sendSelection(sourceSlot, initial.source, state)
     }
-    if (initial.sourceSlot === initial.targetSlot || empty(initial.source) && empty(initial.destination)) return { phase: 'completed', slot: initial.targetSlot, sourceSlot, selectedSlotChanged: false, serverConfirmed: true, confirmedBy: 'observed_selected_slot' }
+    if (initial.sourceSlot === initial.targetSlot || empty(initial.source) && empty(initial.destination)) {
+      const confirmed = !selectionPending(getState())
+      return { phase: 'completed', slot: initial.targetSlot, sourceSlot, selectedSlotChanged: false, serverConfirmed: confirmed, confirmedBy: confirmed ? 'observed_selected_slot' : null }
+    }
     let rejectCancel
     const cancelled = new Promise((resolve, reject) => { rejectCancel = reject })
     // Cancellation may happen synchronously in a client callback before the
@@ -133,7 +147,7 @@ function createInventory ({ client, getState, crafting, allocateRequestId, onInv
       try { assertActive(attempt); checkObserved() } catch (error) { cancel(error.message) }
     }, 100)
     try {
-      const open = crafting.snapshot().openContainer
+      const open = craftStatus().openContainer
       if (!open) {
         attempt.openingOwned = true
         const opened = await Promise.race([forFood || forCombat ? openRecoveryInventory(attempt) : crafting.openInventory(), cancelled])
@@ -175,12 +189,47 @@ function createInventory ({ client, getState, crafting, allocateRequestId, onInv
     } finally {
       clearTimeout(timeout); clearInterval(poll)
       if (operation === attempt) operation = null
-      if (attempt.ownedContainerId !== null && crafting.snapshot().openContainer?.id === attempt.ownedContainerId) {
+      if (attempt.ownedContainerId !== null && craftStatus().openContainer?.id === attempt.ownedContainerId) {
         try { crafting.closeContainer() } catch { /* Cleanup cannot change the server-confirmed swap result. */ }
       }
     }
   }
-  function applyPacket (name, packet) {
+  // Work resumes after combat with an explicit selection even when our local
+  // slot already matches. This avoids first discovering a stale server hand by
+  // spending several seconds mining at bare-hand speed. No receipt is invented.
+  async function equipForMining (sourceSlot, { signal } = {}) {
+    signal?.throwIfAborted()
+    if (operation) throw new Error('前の持ち替え操作を待っています。')
+    const initial = plan(sourceSlot)
+    let ownedOperation = null
+    const onAbort = () => { if (ownedOperation && operation === ownedOperation) cancel('採掘再開の持ち替えは中断されました。') }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      let selected = sourceSlot
+      if (sourceSlot > 8 || typeof commitSelection !== 'function') {
+        const pending = equip(sourceSlot)
+        ownedOperation = operation
+        if (signal?.aborted) onAbort()
+        const result = await pending
+        signal?.throwIfAborted()
+        if (typeof commitSelection !== 'function') return result
+        selected = result.slot
+      }
+      signal?.throwIfAborted()
+      const state = session()
+      const item = observedItem(selected)
+      if (empty(item) || !sameIdentity(item, initial.source)) throw new Error('採掘再開前に道具が変わりました。再計画してください。')
+      return sendSelection(selected, item, state)
+    } finally { signal?.removeEventListener('abort', onAbort) }
+  }
+
+  function applyPacket (name, packet, { replaying = false } = {}) {
+    if (!replaying && ['player_hotbar', 'mob_equipment', 'start_game', 'change_dimension', 'disconnect'].includes(name)) {
+      const state = getState()
+      const ownSelection = name === 'player_hotbar' || name === 'mob_equipment' && String(packet.runtime_entity_id) === String(state.runtimeEntityId)
+      if (ownSelection && inventoryWindow(packet.window_id) && Number.isInteger(packet.selected_slot) && packet.selected_slot >= 0 && packet.selected_slot <= 8) delete selectionStore.pending
+      if (['start_game', 'change_dimension', 'disconnect'].includes(name)) delete selectionStore.pending
+    }
     const attempt = operation
     if (!attempt) return
     if (name === 'start_game' || name === 'change_dimension' || name === 'disconnect') { cancel('接続・次元が変わったため持ち替えを中止しました。'); return }
@@ -214,7 +263,7 @@ function createInventory ({ client, getState, crafting, allocateRequestId, onInv
     }
     if (name === 'inventory_content' && inventoryWindow(packet.window_id) || name === 'inventory_slot' && inventoryWindow(packet.window_id) || name === 'item_stack_response') checkObserved()
   }
-  return { equip: sourceSlot => equip(sourceSlot), equipForCombat: sourceSlot => equip(sourceSlot, false, false, true), equipForFood: (sourceSlot, options = {}) => { if (!options || typeof options.allowEmergencyRotten !== 'boolean' && options.allowEmergencyRotten !== undefined) throw new Error('非常用食料の指定が不正です。'); return equip(sourceSlot, true, options.allowEmergencyRotten === true) }, applyPacket, cancel, snapshot: () => ({ busy: operation !== null, pendingRequestId: operation?.id ?? null, phase: operation ? operation.id === null ? 'opening_inventory' : 'requested' : lastResult?.phase ?? 'idle', lastResult: copy(lastResult) }) }
+  return { equip: sourceSlot => equip(sourceSlot), equipForMining, equipForCombat: sourceSlot => equip(sourceSlot, false, false, true), equipForFood: (sourceSlot, options = {}) => { if (!options || typeof options.allowEmergencyRotten !== 'boolean' && options.allowEmergencyRotten !== undefined) throw new Error('非常用食料の指定が不正です。'); return equip(sourceSlot, true, options.allowEmergencyRotten === true) }, applyPacket, cancel, snapshot: () => ({ busy: operation !== null, pendingRequestId: operation?.id ?? null, phase: operation ? operation.id === null ? 'opening_inventory' : 'requested' : lastResult?.phase ?? 'idle', lastResult: copy(lastResult) }) }
 }
 
 module.exports = { createInventory }

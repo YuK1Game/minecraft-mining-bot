@@ -187,6 +187,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, getRa
   }
 
   function check () {
+    if (status.phase !== 'mining' || !status.activeTarget || !activeInput) return
     try {
       const state = getState()
       if (state.phase !== 'spawned' || state.dimension !== dimension || !state.position || Math.hypot(state.position.x - origin.x, state.position.y - origin.y, state.position.z - origin.z) > 0.3) {
@@ -211,6 +212,26 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, getRa
     } catch (error) { stop(error.message, 'failed') }
   }
 
+  // Called after the host has applied received terrain to the world reader.
+  // Coalesce a packet burst without waiting for the 100ms watchdog. The
+  // packet is only a wake-up: received world state remains the completion proof.
+  let pendingObservation = null
+  function applyPacket (name, packet) {
+    if (status.phase !== 'mining' || !status.activeTarget) return
+    const target = status.activeTarget
+    const touches = entry => entry?.position && ['x', 'y', 'z'].every(axis => entry.position[axis] === target[axis])
+    if (name === 'update_block') { if (!touches(packet)) return }
+    else if (name === 'update_subchunk_blocks') { if (![...(packet.blocks ?? []), ...(packet.extra ?? [])].some(touches)) return }
+    else if (name !== 'subchunk' && name !== 'level_chunk') return
+    const run = status
+    if (pendingObservation === run) return
+    pendingObservation = run
+    queueMicrotask(() => {
+      if (pendingObservation === run) pendingObservation = null
+      if (status === run && status.phase === 'mining') check()
+    })
+  }
+
   function start (targets) { return startChecked(targetList(targets), false) }
   function startAccessClearance (options) { return startChecked([clearanceTarget(options)], true) }
   function startChecked (targets, clearance) {
@@ -233,7 +254,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, getRa
     return snapshot()
   }
   function snapshot () { return structuredClone(status) }
-  return { preview, start, previewAccessClearance, startAccessClearance, stop, snapshot }
+  return { preview, start, previewAccessClearance, startAccessClearance, stop, snapshot, applyPacket }
 }
 
 module.exports = { createMining }

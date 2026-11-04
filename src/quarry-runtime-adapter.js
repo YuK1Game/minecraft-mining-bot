@@ -11,10 +11,10 @@ const FEET = 1.62
 
 function createQuarryRuntimeAdapter (ports) {
   const {
-    getState, getBlock, entities, mining, getMining, movement, getMovement, equip, placeQuarry, eat,
-    chest, addChest = null, stopAll, combatActive, threatEvidence = null, recentDamageAt = null, harmfulEffect = null,
+    getState, getBlock, entities, mining, getMining, movement, getMovement, equip, placeQuarry, eat, resyncInventory = null, prepareMining = null,
+    chest, addChest = null, stopAll, combatActive, threatEvidence = null, recentDamageAt = null, harmfulEffect = null, worldRevision = null,
     sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now,
-    segmentCells = 6, segmentTimeoutMs = 20000, mineTimeoutMs = 15000, previewSettleMs = 3000, shortStopMs = 1500, log = () => {}
+    segmentCells = 6, segmentTimeoutMs = 20000, mineTimeoutMs = 15000, previewSettleMs = 3000, shortStopMs = 1500, pollMs = 25, slowBreakMinMs = 1500, log = () => {}
   } = ports
 
   const aborted = signal => { if (signal?.aborted) throw Object.assign(new Error('quarry adapter call aborted'), { code: 'ABORTED' }) }
@@ -23,14 +23,14 @@ function createQuarryRuntimeAdapter (ports) {
   const centre = c => ({ x: c.x + 0.5, y: c.y, z: c.z + 0.5 })
   const same = (a, b) => a.x === b.x && a.y === b.y && a.z === b.z
 
-  async function waitFor (signal, label, timeoutMs, test) {
+  async function waitFor (signal, label, timeoutMs, test, interval = 50) {
     const until = now() + timeoutMs
     for (;;) {
       aborted(signal)
       const r = await test()
       if (r) return r
       if (now() > until) throw new Error(`${label}: timed out`)
-      await sleep(50)
+      await sleep(interval)
     }
   }
 
@@ -86,7 +86,70 @@ function createQuarryRuntimeAdapter (ports) {
     return { phase: 'completed' }
   }
 
+  // Break-time watchdog. The server decides how long a block takes from the
+  // item it believes is in the selected slot. If the local view says "diamond
+  // pickaxe" but the server still has another slot selected (seen after a bow
+  // fight), stone breaks at bare-hand speed. A block that takes far longer
+  // than the held tool needs is stopped and reported as SLOW_BREAK so the job
+  // can resync the inventory and re-equip.
+  const TOOL_SPEED = { wooden: 2, stone: 4, iron: 6, diamond: 8, netherite: 9, golden: 12 }
+  function expectedBreakMs (block, t) {
+    const h = Number(block?.hardness)
+    if (!Number.isFinite(h) || h <= 0) return 0
+    const held = getState()?.heldItem?.name ?? ''
+    const m = /^minecraft:(wooden|stone|iron|diamond|netherite|golden)_(pickaxe|shovel|axe)$/.exec(held)
+    const right = m && (!t.requiredTool || t.requiredTool.kind === m[2])
+    const speed = right ? TOOL_SPEED[m[1]] : 1
+    return Math.ceil(h * (right || !t.requiredTool ? 1.5 : 5) * 20 / speed) * 50
+  }
+  const slowLimitMs = (block, t) => Math.max(slowBreakMinMs, 3 * expectedBreakMs(block, t) + 300)
+  function slowBreak (t, elapsed, limit) {
+    try { mining.stop?.('quarry_slow_break') } catch {}
+    return Object.assign(new Error(`quarry mine: block ${t.x},${t.y},${t.z} took ${elapsed}ms (limit ${limit}ms) with ${getState()?.heldItem?.name ?? 'nothing'} in hand`), { code: 'SLOW_BREAK', elapsedMs: elapsed, limitMs: limit })
+  }
+
+  const toTarget = t => ({ x: t.x, y: t.y, z: t.z, accessPreparation: 'quarry', expectedName: t.expectedName, expectedRuntimeId: t.expectedRuntimeId ?? null, requiredTool: t.requiredTool ?? null })
+  const isAir = t => { const b = getBlock(t.x, t.y, t.z); return b?.known && AIR.has(nameOf(b)) }
+
+  // Only an unsettled arrival can improve merely by waiting. A changed block,
+  // unknown neighbour, wrong tool or hidden face needs a new plan (or a smaller
+  // batch), not three seconds of identical previews. Unknown reasons fail fast.
+  const settlingOnly = preview => Array.isArray(preview?.errors) && preview.errors.length > 0 && preview.errors.every(error => String(error).includes('通常の地面に静止していることを確認できません。'))
+  async function previewMining (targets, signal, interval, until) {
+    for (;;) {
+      aborted(signal)
+      const preview = await mining.preview(targets)
+      if (preview?.ready || !settlingOnly(preview) || now() >= until) return preview
+      await sleep(Math.min(interval, Math.max(1, until - now())))
+    }
+  }
+
+  // The whole batch goes to one mining.start call: mining.js chains the
+  // targets itself and starts the next break as soon as the previous cell's
+  // air is received, without a preview/start round trip per block. When the
+  // batch preview is not ready (e.g. a face only becomes visible later), the
+  // per-target path below is used instead.
+  async function mineBatch (targets, signal, previewDeadline) {
+    const open = targets.filter(t => !isAir(t))
+    if (open.length < 2) return false
+    const preview = await previewMining(open.map(toTarget), signal, 100, previewDeadline)
+    if (!preview?.ready) return false
+    await mining.start(open.map(toTarget))
+    let current = null; let since = now()
+    await waitFor(signal, 'quarry mine', mineTimeoutMs * open.length, () => {
+      const m = getMining()
+      if (['failed', 'stopped'].includes(m?.phase)) throw new Error(m.reason ?? 'mining stopped')
+      const next = open.find(t => !isAir(t))
+      if (next !== current) { current = next; since = now() }
+      if (next) { const limit = slowLimitMs(getBlock(next.x, next.y, next.z), next); if (now() - since > limit) throw slowBreak(next, now() - since, limit) }
+      return !next && ['completed', 'idle'].includes(m?.phase)
+    }, pollMs)
+    return true
+  }
+
   async function mine (targets, { signal } = {}) {
+    const previewDeadline = now() + previewSettleMs
+    if (await mineBatch(targets, signal, previewDeadline)) return { phase: 'completed', batched: true }
     for (const t of targets) {
       aborted(signal)
       const b = getBlock(t.x, t.y, t.z)
@@ -94,22 +157,17 @@ function createQuarryRuntimeAdapter (ports) {
       const target = { x: t.x, y: t.y, z: t.z, accessPreparation: 'quarry', expectedName: t.expectedName, expectedRuntimeId: t.expectedRuntimeId ?? null, requiredTool: t.requiredTool ?? null }
       // Right after a move the pose may not be confirmed still and grounded
       // yet; give the preview a short settle window before failing.
-      let preview = null
-      const until = now() + previewSettleMs
-      for (;;) {
-        preview = await mining.preview([target])
-        if (preview?.ready || now() > until) break
-        aborted(signal)
-        await sleep(150)
-      }
+      const preview = await previewMining([target], signal, 150, previewDeadline)
       if (!preview?.ready) throw new Error(`quarry mining preview refused: ${preview?.errors?.join(' / ') ?? 'not ready'}`)
       await mining.start([target])
+      const since = now(); const limit = slowLimitMs(getBlock(t.x, t.y, t.z), t)
       await waitFor(signal, 'quarry mine', mineTimeoutMs, () => {
+        if (now() - since > limit && !isAir(t)) throw slowBreak(t, now() - since, limit)
         const m = getMining()
         if (['failed', 'stopped'].includes(m?.phase)) throw new Error(m.reason ?? 'mining stopped')
         const after = getBlock(t.x, t.y, t.z)
         return after?.known && AIR.has(nameOf(after)) && ['completed', 'idle'].includes(m?.phase)
-      })
+      }, pollMs)
     }
     return { phase: 'completed' }
   }
@@ -150,6 +208,7 @@ function createQuarryRuntimeAdapter (ports) {
   return {
     getState,
     getBlock,
+    ...(typeof worldRevision === 'function' ? { worldRevision: () => worldRevision() } : {}),
     // Hostiles and projectiles for the post-combat settle check (§9.4).
     actors: () => entities().filter(e => e.kind !== 'item' && e.positionKnown !== false && e.position),
     entities: () => entities().filter(e => e.kind === 'item' && e.positionKnown !== false && e.position).map(e => ({ kind: 'item', runtimeId: String(e.runtimeId), name: e.name, count: e.count ?? 1, position: e.position })),
@@ -158,8 +217,12 @@ function createQuarryRuntimeAdapter (ports) {
     escape: (cell, options) => walk(cell, { ...options, path: [cell] }),
     goToStorage: (st, options) => walk(st.stand, options),
     equip: slot => equip(slot),
+    ...(typeof prepareMining === 'function' ? { prepareMining: (tool, options) => prepareMining(tool, options) } : {}),
     place,
     eat: () => eat(),
+    // Asks the server for the real inventory and selected slot; resolves once
+    // a fresh view arrived (or false when it could not be requested).
+    resyncInventory: options => typeof resyncInventory === 'function' ? resyncInventory(options) : false,
     deposit,
     // One more storage chest at the first workable candidate cell (a carried
     // chest, or one crafted from carried wood). Returns { ok, position } or

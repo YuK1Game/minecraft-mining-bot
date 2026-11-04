@@ -23,6 +23,7 @@ const NO_ROUTE_BACKOFF_MS = 2000
 // Sight-stance searches per claim (reset by every shot): a creeper that steps
 // back out of the line is followed again at once.
 const SIGHT_MOVES_PER_CLAIM = 6
+const SIGHT_STALE_RETRIES = 2
 // Repeated no-route outcomes for the same target double the wait (2,4,8,16s).
 const NO_ROUTE_BACKOFF_MAX_MS = 16000
 const RETREAT_PRESSURE_DEFENSE_RANGE = 12
@@ -142,8 +143,26 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     // retakes ranged as soon as the ranged preview is ready.
     // A creeper between reach and the shot distance is evaded (when a retreat
     // hook exists) instead of being left to the slower idle escape.
-    const evadeMode = (c, bowNow) => retreat && profiles.allowedModes(c.target.entityType, { hasBow: bowNow, distance: c.distance, elevated: elevatedFrom(c.target, s) }).includes('evade') ? 'evade' : null
-    const ranked = allActors().filter(e => eligible(e, s) && profileEligible(e, s)).map(e => ({ target: { ...copy(e), runtimeId: id(e.runtimeId), uniqueId: id(e.uniqueId, true) }, scope, ...preferredMode(s, e) })).filter(c => workAllows('canSelectTarget', c.target, s, { distance: c.distance, provoked: provokedBy(s, c.target) }).allowed === true).filter(c => c.distance <= engageRadius && (c.distance <= 2.8 || engageable(c.target, s) || c.target.entityType === 'minecraft:creeper' /* only ever shot from range, never approached: no walking route needed */) && (!retreating || c.distance <= retreatDefenseRange())).map(c => ({ ...c, mode: evadeMode(c, bow) ?? c.mode ?? (mayAcquireApproach(s, c.target, c.distance) ? 'approach' : null) })).map(c => c.mode === 'ranged' && approach && safeSurvey(ranged, c.target).ready !== true && profiles.allowedModes(c.target.entityType, { hasBow: bow, distance: c.distance, elevated: elevatedFrom(c.target, s) }).includes('approach') ? { ...c, mode: 'approach' } : c).filter(c => c.mode && profiles.allowedModes(c.target.entityType, { hasBow: bow, distance: c.distance, elevated: elevatedFrom(c.target, s) }).includes(c.mode) && (c.mode !== 'ranged' || safeSurvey(ranged, c.target).ready === true || approach && c.target.entityType === 'minecraft:creeper' && c.distance >= creeperShotDistance(c.target, s) && c.target.primed !== true && safeSurvey(ranged, c.target).code === 'LOS_BLOCKED') && (backoffs.get(targetKey(scope, c.target)) ?? -Infinity) <= clock()).sort((a, b) => order.indexOf(a.mode) - order.indexOf(b.mode) || a.distance - b.distance || id(a.target.runtimeId).localeCompare(id(b.target.runtimeId)))
+    const ranked = [], surveys = new Map()
+    for (const actor of allActors()) {
+      if (!eligible(actor, s) || !profileEligible(actor, s)) continue
+      const preferred = preferredMode(s, actor), key = targetKey(scope, actor)
+      // Reject distance and retry holds before route, work and bow surveys.
+      if (preferred.distance > engageRadius || retreating && preferred.distance > retreatDefenseRange() || (backoffs.get(key) ?? -Infinity) > clock()) continue
+      const target = { ...copy(actor), runtimeId: id(actor.runtimeId), uniqueId: id(actor.uniqueId, true) }
+      if (workAllows('canSelectTarget', target, s, { distance: preferred.distance, provoked: provokedBy(s, target) }).allowed !== true) continue
+      if (!(preferred.distance <= 2.8 || engageable(target, s) || target.entityType === 'minecraft:creeper')) continue
+      const modes = profiles.allowedModes(target.entityType, { hasBow: bow, distance: preferred.distance, elevated: elevatedFrom(target, s) })
+      let mode = retreat && modes.includes('evade') ? 'evade' : preferred.mode ?? (mayAcquireApproach(s, target, preferred.distance) ? 'approach' : null)
+      // A survey includes inventory, trajectory and friendly-actor checks.
+      // Share it only within this selection; action previews always recheck.
+      const survey = () => { if (!surveys.has(key)) surveys.set(key, safeSurvey(ranged, target)); return surveys.get(key) }
+      if (mode === 'ranged' && approach && survey().ready !== true && modes.includes('approach')) mode = 'approach'
+      if (!mode || !modes.includes(mode)) continue
+      if (mode === 'ranged' && survey().ready !== true && !(approach && target.entityType === 'minecraft:creeper' && preferred.distance >= creeperShotDistance(target, s) && target.primed !== true && survey().code === 'LOS_BLOCKED')) continue
+      ranked.push({ target, scope, ...preferred, mode })
+    }
+    ranked.sort((a, b) => order.indexOf(a.mode) - order.indexOf(b.mode) || a.distance - b.distance || id(a.target.runtimeId).localeCompare(id(b.target.runtimeId)))
     const best = ranked[0] ?? null
     // Target hysteresis: keep the previous target unless another in the same
     // mode tier is clearly closer.
@@ -277,7 +296,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     return null
   }
   function safePreview (controller, target) {
-    try { const p = controller.preview(target.runtimeId); return p && typeof p === 'object' ? p : { ready: false, code: 'INVALID_PREVIEW' } } catch (error) { return { ready: false, code: 'PREVIEW_ERROR', errors: [String(error.message ?? error)] } }
+    try { const p = controller === melee ? controller.preview(target.runtimeId, { critical: false }) : controller.preview(target.runtimeId); return p && typeof p === 'object' ? p : { ready: false, code: 'INVALID_PREVIEW' } } catch (error) { return { ready: false, code: 'PREVIEW_ERROR', errors: [String(error.message ?? error)] } }
   }
   function safeSurvey (controller, target) {
     try { const method = typeof controller.survey === 'function' ? controller.survey : controller.preview; const p = method.call(controller, target.runtimeId); return p && typeof p === 'object' ? p : { ready: false, code: 'INVALID_PREVIEW' } } catch (error) { return { ready: false, code: 'PREVIEW_ERROR', errors: [String(error.message ?? error)] } }
@@ -317,6 +336,14 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     lastResult = { ...outcome, claimId: lease.id, targetRuntimeId: lease.target.runtimeId, targetUniqueId: lease.target.uniqueId, targetName: lease.target.entityType, controllerCalls: lease.controllerCalls, approachCalls: lease.approachCalls, elapsedMs: Math.max(0, clock() - lease.startedAt), blocked: false }
     return copy(lastResult)
   }
+  function staleSightResult (lease, result) {
+    if (result?.code !== 'SIGHT_STALE') { lease.sightStaleRetries = 0; return undefined }
+    if ((lease.sightStaleRetries = (lease.sightStaleRetries ?? 0) + 1) <= SIGHT_STALE_RETRIES) {
+      lease.sightMoves = Math.max(0, lease.sightMoves - 1)
+      return null
+    }
+    return stop('SIGHT_STALE', 'Sight observations kept changing; release the claim before another bounded attempt')
+  }
   async function approachOnce (lease, observation, preview) {
     // Aggressive: a bow target that is not shootable right now (range, sight
     // line) is closed in on instead of being left alone; ranged is retaken on
@@ -331,6 +358,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       lease.sightMoves = (lease.sightMoves ?? 0) + 1
       const moved = await watched(lease, 'repositioning', signal => approach(copy(observation.actor), { signal, claimId: lease.id, scope: copy(lease.scope), purpose: 'sight', maxStepDistance: 18, primaryHostileRuntimeId: lease.target.runtimeId, primaryHostileUniqueId: lease.target.uniqueId }))
       if (moved.outcome) return moved.outcome
+      const stale = staleSightResult(lease, moved.value); if (stale !== undefined) return stale
       if (!moved.error && moved.value?.ready !== false && moved.value?.accepted !== false) return null
       return stop('CREEPER_NO_SIGHT', 'No stance at least 8m from the creeper with a clear bow line')
     }
@@ -351,6 +379,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       lease.sightMoves = (lease.sightMoves ?? 0) + 1
       const moved = await watched(lease, 'repositioning', signal => approach(copy(observation.actor), { signal, claimId: lease.id, scope: copy(lease.scope), purpose: 'sight', maxStepDistance: 6, primaryHostileRuntimeId: lease.target.runtimeId, primaryHostileUniqueId: lease.target.uniqueId }))
       if (moved.outcome) return moved.outcome
+      const stale = staleSightResult(lease, moved.value); if (stale !== undefined) return stale
       if (!moved.error && moved.value?.ready !== false && moved.value?.accepted !== false) return null
     }
     const before = copy(observation.state.position); const beforeDistance = observation.distance

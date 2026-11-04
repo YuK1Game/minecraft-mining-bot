@@ -24,6 +24,91 @@ async function runUntilStopped (j, limitMs = 60000) {
   throw new Error(`timeout in ${j.status().state} ${JSON.stringify(j.status().lastDecision)}`)
 }
 
+test('display status returns cached counts without a synchronous scan and isolates new jobs', async () => {
+  const sim = setup()
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5)
+  let reads = 0; let revision = 0
+  const read = sim.adapter.getBlock
+  sim.adapter.getBlock = (...args) => { reads++; return read(...args) }
+  sim.adapter.worldRevision = () => revision
+  const { j } = job(sim)
+  j.plan(baseConfig({ jobId: 'old', yBottom: 61 }))
+  const before = reads
+  assert.equal(j.status().counts, null)
+  assert.equal(reads, before, 'status did not scan any world cells')
+  j.plan(baseConfig({ jobId: 'new', yTop: 62, yBottom: 62 }))
+  revision++
+  let status = j.status()
+  const until = Date.now() + 5000
+  while (!status.counts && Date.now() < until) { await new Promise(resolve => setTimeout(resolve, 5)); status = j.status() }
+  assert.equal(status.jobId, 'new')
+  assert.equal(status.counts.remaining, 255)
+  assert.equal(status.counts.reserved, 1)
+  assert.equal(status.counts.unknown, 0)
+})
+
+test('mining never credits air from another dimension or life after an asynchronous result', async () => {
+  for (const mode of ['dimension_interrupt', 'new_life_result']) {
+    const sim = setup()
+    sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+    let changed = false
+    const read = sim.adapter.getBlock
+    sim.adapter.getBlock = (...args) => changed ? { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] } : read(...args)
+    sim.adapter.mine = async () => {
+      changed = true
+      if (mode === 'dimension_interrupt') {
+        sim.state.dimension = 'nether'; sim.state.phase = 'connecting'
+        await new Promise(resolve => setTimeout(resolve, 50))
+      } else sim.state.lifecycle.deathId++
+      return { phase: 'completed' }
+    }
+    const { j } = job(sim)
+    assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+    j.start()
+    try {
+      const until = Date.now() + 3000
+      let s = j.status()
+      while (s.lastAction?.status !== 'interrupted' && Date.now() < until) { await new Promise(resolve => setTimeout(resolve, 5)); s = j.status() }
+      assert.equal(s.lastAction?.status, 'interrupted', mode)
+      assert.equal(s.lastAction.confirmationSkipped, 'STALE_SCOPE', mode)
+      assert.equal(s.ledger.minedBlocks ?? 0, 0, mode)
+      assert.equal(sim.stats.mined, 0)
+    } finally { await j.pause() }
+  }
+})
+
+test('mining retains received partial air on same-life combat and manual interruptions', async () => {
+  for (const mode of ['combat', 'pause', 'emergencyStop', 'cancel']) {
+    const sim = setup()
+    sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+    let started = false
+    sim.adapter.mine = (targets, { signal }) => new Promise((resolve, reject) => {
+      const t = targets[0]
+      sim.world.set(t.x, t.y, t.z, 'air')
+      sim.stats.mined++
+      signal.addEventListener('abort', () => reject(new Error('controller stopped')), { once: true })
+      started = true
+    })
+    const { j } = job(sim)
+    assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+    j.start()
+    try {
+      let until = Date.now() + 3000
+      while (!started && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 5))
+      assert.equal(started, true, mode)
+      if (mode === 'combat') {
+        sim.setCombat(true)
+        until = Date.now() + 3000
+        while (j.status().state !== 'COMBAT' && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 5))
+      } else { await j[mode](); await j.drain() }
+      const s = j.status()
+      assert.equal(s.ledger.minedBlocks, 1, mode)
+      assert.equal(s.lastAction.status, 'interrupted', mode)
+      assert.equal(s.lastAction.results.filter(r => r.result === 'removed').length, 1, mode)
+    } finally { await j.pause() }
+  }
+})
+
 test('T02 dry test area: top-down layers removed, drops stored, stair kept as an exception', async () => {
   const sim = setup()
   sim.give('diamond_pickaxe'); sim.give('iron_shovel'); sim.give('bread', 10); sim.give('cobblestone', 16)
@@ -289,4 +374,137 @@ test('collection picks up every item lying in the area, not just the first 24', 
   const s = await runUntilStopped(j)
   const sticks = sim.entities.filter(e => e.name === 'minecraft:stick').length
   assert.equal(sticks, 0, `sticks left ${sticks} (${s.pauseReason})`)
+})
+
+test('collection chooses the shorter walking route instead of an item across a wall', async () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+  sim.world.fill(1, 63, -2, 1, 65, 16, 'stone')
+  sim.entities.push({ id: 6001, name: 'minecraft:stick', count: 1, position: { x: 3.5, y: 63, z: 5.5 } })
+  sim.entities.push({ id: 6002, name: 'minecraft:stick', count: 1, position: { x: -0.5, y: 63, z: 12.5 } })
+  const { j } = job(sim)
+  let firstMove = null
+  const move = sim.adapter.moveTo
+  sim.adapter.moveTo = async (stance, options) => { firstMove ??= { ...stance }; return move(stance, options) }
+  assert.equal(j.plan(baseConfig({ yTop: 62, yBottom: 62, strategy: { collectPendingDrops: 1 } })).ready, true)
+  j.start()
+  try {
+    const until = Date.now() + 5000
+    while (!firstMove && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 5))
+    assert.ok(firstMove, 'collection makes progress')
+    assert.ok(firstMove.z >= 11 && firstMove.x <= 0, JSON.stringify(firstMove))
+  } finally { await j.pause() }
+})
+
+test('collection visits an old drop before newer closer drops at the collection deadline', async () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+  sim.entities.push({ id: 6101, name: 'minecraft:stick', count: 1, position: { x: 14.5, y: 63, z: 14.5 } })
+  let clock = 0; let armed = false; let nextMove = null
+  const { j } = job(sim, { now: () => clock })
+  sim.hooks.afterMine = () => {
+    if (armed) return
+    armed = true; clock = 25000
+    const f = sim.feet()
+    sim.entities.push({ id: 6102, name: 'minecraft:stick', count: 1, position: { x: f.x + 0.5, y: f.y, z: f.z + 3.5 } })
+  }
+  const move = sim.adapter.moveTo
+  sim.adapter.moveTo = async (stance, options) => { if (armed) nextMove ??= { ...stance }; return move(stance, options) }
+  assert.equal(j.plan(baseConfig({ yTop: 62, yBottom: 62 })).ready, true)
+  j.start()
+  try {
+    const until = Date.now() + 5000
+    while (!nextMove && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 5))
+    assert.ok(nextMove, 'collection makes progress')
+    assert.ok(nextMove.x >= 13 && nextMove.z >= 13, JSON.stringify(nextMove))
+  } finally { await j.pause() }
+})
+
+test('speed: drops are not collected after every 8-block batch, and batches stay full', async () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+  const lines = []
+  const { j } = job(sim, { log: l => lines.push(l) })
+  const sizes = []
+  const mine = sim.adapter.mine
+  sim.adapter.mine = async (targets, o) => { sizes.push(targets.length); return mine(targets, o) }
+  assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+  j.start()
+  const s = await runUntilStopped(j)
+  assert.ok(['FINISHED', 'PAUSED'].includes(s.state))
+  const collects = lines.filter(l => /"to":"COLLECT"/.test(l))
+  assert.ok(!collects.some(l => /"collectReason":"batch"/.test(l)), 'no per-batch collection')
+  assert.ok(collects.length < sizes.length / 2, `collections ${collects.length} vs batches ${sizes.length}`)
+  const small = sizes.filter(n => n < 4).length
+  assert.ok(small <= sizes.length / 4, `small batches ${small}/${sizes.length}: ${sizes.join(',')}`)
+  assert.equal(sim.entities.filter(e => !e.stuck).length, 0, 'every drop still ends up collected')
+})
+
+test('speed: an item that stays on the ground after a visit is skipped as stuck, not revisited every collection', async () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+  sim.entities.push({ id: 9001, name: 'minecraft:stick', count: 1, position: { x: 7.5, y: 63, z: 7.5 }, stuck: true })
+  const lines = []
+  const { j } = job(sim, { log: l => lines.push(l) })
+  const visits = []
+  const moveTo = sim.adapter.moveTo
+  sim.adapter.moveTo = async (stance, o) => { if (Math.abs(stance.x - 7) <= 1 && Math.abs(stance.z - 7) <= 1 && stance.y === 63) visits.push(stance); return moveTo(stance, o) }
+  assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+  j.start()
+  await runUntilStopped(j)
+  const stuck = lines.filter(l => /item_stuck/.test(l))
+  assert.ok(stuck.length >= 1, 'the stuck item is reported')
+  assert.ok(stuck.length <= 3, `stuck visits are bounded (${stuck.length})`)
+})
+
+test('live case 2026-11-04: a job started under an earlier pit gets a stair that reaches the real ground', async () => {
+  const sim = setup({ stoneTop: 60, top: 66 })
+  // An earlier job removed y64..66 inside the chunk and left its stair steps.
+  sim.world.fill(0, 64, 0, 15, 66, 15, 'air')
+  sim.world.set(0, 66, 0, 'stone'); sim.world.set(1, 65, 0, 'stone'); sim.world.set(2, 64, 0, 'stone')
+  sim.setFeet({ x: -3, y: 67, z: 5 })
+  sim.world.set(-4, 67, -4, 'chest')
+  sim.give('diamond_pickaxe'); sim.give('bread', 5); sim.give('cobblestone', 16)
+  const { j } = job(sim)
+  const plan = j.plan(baseConfig({ yTop: 63, yBottom: 62, inventory: { storage: [{ position: { x: -4, y: 67, z: -4 }, stand: { x: -3, y: 67, z: -4 } }] } }))
+  assert.equal(plan.ready, true, JSON.stringify(plan.issues))
+  assert.equal(plan.stair.startY, 66, 'the stair continues up to the old steps instead of ending below the rim')
+})
+
+test('live case 2026-11-04: SLOW_BREAK (server slot differs from ours) resyncs the inventory and keeps quarrying', async () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+  const lines = []
+  const { j } = job(sim, { log: l => lines.push(l) })
+  let slow = 1; let resyncs = 0
+  const mine = sim.adapter.mine
+  sim.adapter.mine = async (targets, o) => { if (slow-- > 0) throw Object.assign(new Error('quarry mine: block took 9000ms with minecraft:diamond_pickaxe in hand'), { code: 'SLOW_BREAK' }); return mine(targets, o) }
+  sim.adapter.resyncInventory = async () => { resyncs++; return true }
+  assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+  j.start()
+  const s = await runUntilStopped(j)
+  assert.equal(resyncs, 1)
+  assert.ok(lines.some(l => /slow_break/.test(l)))
+  // Same ending as a normal run of this setup (final check with the stair kept).
+  assert.equal(s.pauseReason, 'UNRESOLVED_EXCEPTIONS', `${s.state} ${s.pauseReason}`)
+  assert.ok(sim.stats.mined > 100, `kept mining after the resync (${sim.stats.mined})`)
+})
+
+test('live case 2026-11-05: an ACTION_FAILED pause resumes itself (bounded) instead of sitting idle', async () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+  const lines = []
+  const { j } = job(sim, { log: l => lines.push(l), autoResumeMs: 30 })
+  let failures = 5
+  // Moves fail until the job pauses with ACTION_FAILED, then work again.
+  const moveTo = sim.adapter.moveTo
+  sim.adapter.moveTo = async (stance, o) => { if (failures > 0 && !/^ACTION_FAILED/.test(j.status().pauseReason ?? '')) throw new Error('transient controller failure'); failures = 0; return moveTo(stance, o) }
+  assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+  j.start()
+  // The first pause is ACTION_FAILED; wait past it for the normal ending.
+  const until = Date.now() + 60000; let s
+  while (Date.now() < until) { s = j.status(); if (/^ACTION_FAILED/.test(s.pauseReason ?? '')) failures = 0; if (s.state === 'PAUSED' && !/^ACTION_FAILED/.test(s.pauseReason ?? '')) break; await new Promise(r => setTimeout(r, 10)) }
+  assert.ok(lines.some(l => /auto_resume/.test(l)), 'resumed automatically')
+  assert.equal(s.pauseReason, 'UNRESOLVED_EXCEPTIONS', `${s.state} ${s.pauseReason}`)
+  assert.ok(sim.stats.mined > 100)
 })

@@ -1,4 +1,5 @@
 'use strict'
+const { equipmentReady } = require('./equipment-readiness')
 const { isDeepStrictEqual: same } = require('node:util')
 const { continuationScope } = require('./base-continuation')
 const { resourceMinHealth } = require('./learning-health')
@@ -115,7 +116,7 @@ function createDepotStorageWork ({ getState, world, crafting, interactions, ches
       session(options, run)
       if (decision.kind === 'close_container') { run.controller = crafting; crafting.closeContainer(); result = { phase: 'requested', serverConfirmed: false } }
       if (decision.kind === 'open_inventory') { run.controller = crafting; result = await crafting.openInventory() }
-      if (decision.kind === 'equip') { run.controller = inventory; result = await inventory.equip(decision.sourceSlot); if (result?.serverConfirmed !== true) throw Error('Real equip confirmation missing') }
+      if (decision.kind === 'equip') { run.controller = inventory; const expectedItem = { ...state.inventory.items.find(item => item.slot === decision.sourceSlot) }; result = await inventory.equip(decision.sourceSlot); const current = session(options, run).state; if (!equipmentReady(result, current, { sourceSlot: decision.sourceSlot, expectedItem, rawItem: crafting.rawItem(result?.slot) })) throw Error('Real equip confirmation missing') }
       if (decision.kind === 'open_table') { run.controller = interactions; result = await interactions.openCraftingTable(decision.position); if (result?.phase !== 'completed' || result.confirmedBy !== 'server_container_open') throw Error('Actual table-open confirmation missing') }
       if (decision.kind === 'craft') {
         run.controller = crafting; const before = count(decision.output)

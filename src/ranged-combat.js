@@ -59,7 +59,7 @@ function bowBodyAim (eye, entity) {
 // The local 1.26.60 schema provides click_air and item_release/release. The
 // primary Bedrock PMMP handler maps those to useHeldItem/releaseHeldItem, and
 // Bow.php reaches normal full draw at 20 ticks, with no synthetic consume action.
-function createRangedCombat ({ client, getState, world, entities, crafting, equip, cancelEquip = null, getInput, getSelfUniqueId, isBusy = () => false, onUncertain = () => {}, version = VERSION, minDistance = 4, maxDistance = 32, cooldownMs = 50, shotTimeoutMs = 2500, fullDrawTicks = 20, fullDrawMs = 1000, latencyTicks = BOW_DEFAULTS.latencyTicks, ballistic = true, now = () => performance.now(), sleep = (ms, signal) => delay(ms, undefined, { signal }), log = () => {} }) {
+function createRangedCombat ({ client, getState, world, entities, crafting, equip, cancelEquip = null, onSelectionSent = null, getInput, getSelfUniqueId, isBusy = () => false, onUncertain = () => {}, version = VERSION, minDistance = 4, maxDistance = 32, cooldownMs = 50, shotTimeoutMs = 2500, fullDrawTicks = 20, fullDrawMs = 1000, latencyTicks = BOW_DEFAULTS.latencyTicks, ballistic = true, now = () => performance.now(), sleep = (ms, signal) => delay(ms, undefined, { signal }), log = () => {} }) {
   if (version !== VERSION) throw new Error('Ranged combat supports Bedrock 1.26.60 only')
   if ([getState, equip, getInput, getSelfUniqueId, isBusy, onUncertain, now, sleep].some(f => typeof f !== 'function') || typeof client?.queue !== 'function' || typeof world?.getBlock !== 'function' || typeof entities?.snapshot !== 'function' || typeof crafting?.snapshot !== 'function' || typeof crafting?.rawItem !== 'function' || cancelEquip != null && typeof cancelEquip !== 'function') throw new Error('Ranged combat requires live state, terrain, actors, confirmed equipment and normal input')
   if (!(minDistance >= 3.2 && maxDistance > minDistance && maxDistance <= 40) || !(cooldownMs >= 50 && cooldownMs <= 5000) || !(shotTimeoutMs >= 500 && shotTimeoutMs <= 10000)) throw new Error('Invalid ranged combat limits')
@@ -77,8 +77,9 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
   clock()
 
   function scopeOf (state) { return JSON.stringify([state.profile, String(state.realm?.id), state.dimension, state.connectionId, state.startedAt, String(state.runtimeEntityId), id(getSelfUniqueId(), true), state.lifecycle?.deathId ?? state.deathId ?? null]) }
-  function session () {
-    const state = getState(); const observed = crafting.snapshot()
+  function session (includeInventory = true) {
+    const state = getState()
+    const observed = !includeInventory && typeof crafting.status === 'function' ? crafting.status() : typeof crafting.inventorySnapshot === 'function' ? crafting.inventorySnapshot() : crafting.snapshot()
     if (state?.phase !== 'spawned' || state.dead || state.isDead || state.spawnPending || !Number.isFinite(state.health) || state.health <= 0 || !finite(state.position)) throw failure('Shooter must be alive in the current spawned world', 'NOT_ALIVE')
     if (!['survival', 0].includes(state.gameMode)) throw failure('Bow use requires survival mode', 'GAME_MODE')
     if (typeof state.profile !== 'string' || state.realm?.id == null || typeof state.connectionId !== 'string' || typeof state.startedAt !== 'string' || !['overworld', 'nether', 'end'].includes(state.dimension) || id(state.runtimeEntityId) === null || id(getSelfUniqueId(), true) === null) throw failure('Complete live shooter scope and unique ID required', 'SCOPE_UNKNOWN')
@@ -197,7 +198,7 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
     if (run !== r || r.cancelReason) throw failure(r.cancelReason ?? 'Ranged engagement cancelled', r.code ?? 'CANCELLED')
     if (r.terminal) throw failure('Target stopped', 'TARGET_STOPPED')
     if (clock() >= r.deadline) throw failure('Ranged engagement duration limit reached', 'DURATION_LIMIT')
-    const s = session()
+    const s = session(false)
     if (s.scope !== r.scope) throw failure('Shooter connection, world or life changed', 'SESSION_CHANGED')
     if (distance(s.state.position, r.origin) > 0.35) throw failure('Shooter moved during the draw', 'SHOOTER_MOVED')
     if (isBusy()) throw failure('Another action took ownership', 'BUSY')
@@ -226,6 +227,9 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
       r.cancelSlot = slot; r.cleanupUnconfirmed = true; cleanup = { scope: r.scope, slot, at: clock() }
       client.queue('mob_equipment', { runtime_entity_id: BigInt(s.state.runtimeEntityId), item: copy(raw), slot, selected_slot: slot, window_id: 'inventory' })
       selectionDirty = true
+      // The server does not echo our own selection: record it locally so the
+      // next equip (e.g. the quarry's pickaxe) sees the slot the server holds.
+      try { onSelectionSent?.(slot) } catch {}
     } catch { /* A dead or replaced session must never receive cleanup packets. */ }
   }
   function cancel (reason = 'Ranged engagement cancelled', code = 'CANCELLED') {
@@ -260,6 +264,7 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
     if (selectionDirty) {
       client.queue('mob_equipment', { runtime_entity_id: BigInt(p.state.runtimeEntityId), item: copy(raw), slot: p.selected, selected_slot: p.selected, window_id: 'inventory' })
       selectionDirty = false
+      try { onSelectionSent?.(p.selected) } catch {}
       await sleep(100, r.controller.signal); assertRun(r)
     }
     input.lookAt(p.aim.lookPoint); const before = input.stats().sent
@@ -335,15 +340,21 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
     task = (async () => {
       let code = 'SHOT_LIMIT'; let reason = 'Ranged shot limit reached'
       try {
+        const requestedBow = copy(crafting.rawItem(p.bow.slot))
         const result = await equip(p.bow.slot)
         r.equipping = false; assertRun(r)
-        if (result?.serverConfirmed !== true) throw failure('Bow equip was not server confirmed', 'EQUIP_UNCONFIRMED')
+        // Selection transmission alone confirms no equipment or shot. Keep
+        // the exact server-observed stack and current selected slot checks.
+        const selectionReady = result?.phase === 'completed' && result.selectionSent === true &&
+          result.sourceSlot === p.bow.slot && result.slot === p.bow.slot && p.bow.slot >= 0 && p.bow.slot <= 8 &&
+          session(false).selected === p.bow.slot && isDeepStrictEqual(crafting.rawItem(p.bow.slot), requestedBow)
+        if (result?.serverConfirmed !== true && !selectionReady) throw failure('Bow equip has no confirmed swap or matching hotbar selection', 'EQUIP_UNCONFIRMED')
         currentBow(inventory())
         while (!r.terminal && r.shotsRequested < maxShots) {
           // Re-anchor between shots only (never during a draw): knockback or
           // a small drift after the last shot must not end the engagement.
           // Movement during a draw still cancels that shot (SHOOTER_MOVED).
-          try { r.origin = copy(session().state.position) } catch { /* assertRun reports it */ }
+          try { r.origin = copy(session(false).state.position) } catch { /* assertRun reports it */ }
           // Two releases in a row without an own arrow: the server is not firing.
           if (r.unconfirmedShots >= 2) throw failure('Ranged shot observation timed out', 'SHOT_UNCONFIRMED')
           assertRun(r)
@@ -376,7 +387,7 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
   // full ranged plan is ready right now.
   function retargetCandidate (r) {
     try {
-      const s = session(), all = entities.snapshot({ kind: 'all' })
+      const s = session(false), all = entities.snapshot({ kind: 'all' })
       const options = all.filter(e => e.runtimeId !== r.target.runtimeId && e.kind === 'mob' && e.hostile === true && e.alive === true && e.positionKnown === true && HOSTILES.has(e.entityType) && finite(e.position) && e.dimension === s.state.dimension)
         .map(e => ({ e, d: distance(s.state.position, e.position) })).filter(({ e, d }) => d > 6 && d <= maxDistance && (e.entityType !== 'minecraft:creeper' || d >= 8)).sort((a, b) => a.d - b.d)
       for (const { e } of options.slice(0, 4)) { try { const p = plan(e.runtimeId); if (p?.aim) return copy(p.target) } catch { /* not shootable now */ } }
@@ -422,19 +433,31 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
   function trackMiss (r, shot, candidate) {
     const origin = copy(candidate.origin), targetId = r.target.runtimeId, startedAt = clock(), aim = shot.aim
     const bodyY = String(r.target.entityType).includes('spider') ? 0.45 : 0.9
-    let last = null, polls = 0
+    let last = null, prev = null, polls = 0, still = 0
     const timer = setInterval(() => {
       try {
         if (++polls > 60) { clearInterval(timer); return }
-        const all = entities.snapshot({ kind: 'all' })
-        const arrow = all.find(e => e.runtimeId === candidate.runtimeId), target = all.find(e => e.runtimeId === targetId)
+        const all = typeof entities.get === 'function' ? null : entities.snapshot({ kind: 'all' })
+        const arrow = all ? all.find(e => e.runtimeId === candidate.runtimeId) : entities.get(candidate.runtimeId)
+        const target = all ? all.find(e => e.runtimeId === targetId) : entities.get(targetId)
         const done = reason => { clearInterval(timer); if (!last) return; try { log(`矢の誤差: target=${String(r.target.entityType).replace('minecraft:', '')} distance=${last.dt.toFixed(1)}m dy=${last.dy.toFixed(2)} side=${last.side.toFixed(2)} along=${last.along.toFixed(2)} lead=${aim?.lead ? Math.hypot(aim.lead.x, aim.lead.z).toFixed(3) : '0'} by=${reason}`) } catch {} }
         if (!arrow || !target || !finite(arrow.position) || !finite(target.position)) return done('lost')
         const a = arrow.position, t = { ...target.position, y: target.position.y + bodyY }
         const da = Math.hypot(a.x - origin.x, a.z - origin.z), dt = Math.hypot(t.x - origin.x, t.z - origin.z)
         const ux = (t.x - origin.x) / dt, uz = (t.z - origin.z) / dt
-        last = { dt, dy: a.y - t.y, side: (a.x - t.x) * -uz + (a.z - t.z) * ux, along: (a.x - t.x) * ux + (a.z - t.z) * uz }
-        if (da >= dt) return done('passed')
+        const at = p => ({ dt, dy: p.y - t.y, side: (p.x - t.x) * -uz + (p.z - t.z) * ux, along: (p.x - t.x) * ux + (p.z - t.z) * uz })
+        // An arrow that stops moving is stuck in a block: report where it stuck.
+        still = prev && Math.hypot(a.x - prev.x, a.y - prev.y, a.z - prev.z) < 0.01 ? still + 1 : 0
+        if (da >= dt) {
+          // Interpolate to the exact target distance instead of reporting a
+          // sample up to one tick (~3 blocks) past it.
+          const dp = prev ? Math.hypot(prev.x - origin.x, prev.z - origin.z) : da
+          const f = prev && da > dp ? (dt - dp) / (da - dp) : 1
+          last = at(prev ? { x: prev.x + (a.x - prev.x) * f, y: prev.y + (a.y - prev.y) * f, z: prev.z + (a.z - prev.z) * f } : a)
+          return done('passed')
+        }
+        last = at(a); prev = { ...a }
+        if (still >= 3) return done('stuck')
         if (clock() - startedAt > 3000) return done('timeout')
       } catch { clearInterval(timer) }
     }, 50)
@@ -458,7 +481,7 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
     } else if (name === 'set_entity_data') {
       const runtimeId = id(packet.runtime_entity_id), candidate = shot.candidates.get(runtimeId)
       if (!candidate || candidate.releasedAt !== shot.releasedAt || candidate.spawnedAt < shot.releasedAt || distance(candidate.origin, shot.origin) > 2) return
-      const entity = entities.snapshot({ kind: 'all' }).find(e => id(e.runtimeId) === runtimeId)
+      const entity = typeof entities.get === 'function' ? entities.get(runtimeId) : entities.snapshot({ kind: 'all' }).find(e => id(e.runtimeId) === runtimeId)
       if (!entity || entity.entityType !== 'minecraft:arrow' || id(entity.uniqueId, true) !== candidate.uniqueId || entity.dimension !== getState().dimension || entity.alive === false) { shot.candidates.delete(runtimeId); return }
       const owners = ownersIn(packet.metadata)
       if (owners === null || owners.some(owner => owner !== id(getSelfUniqueId(), true))) { shot.candidates.delete(runtimeId); return }
@@ -497,7 +520,7 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
     if (getState().dead || getState().isDead || !(getState().health > 0)) { cancel('Shooter died', 'NOT_ALIVE'); return }
     if (['start_game', 'change_dimension', 'disconnect'].includes(name)) { cancel('Connection or dimension changed', 'SESSION_CHANGED'); return }
     if (name === 'respawn' || name === 'entity_event' && id(packet.runtime_entity_id) === id(getState().runtimeEntityId) && ['death_animation', 3].includes(packet.event_id)) { cancel('Shooter died or respawned', 'NOT_ALIVE'); return }
-    const current = entities.snapshot({ kind: 'all' }).find(e => e.runtimeId === r.target.runtimeId)
+    const current = typeof entities.get === 'function' ? entities.get(r.target.runtimeId) : entities.snapshot({ kind: 'all' }).find(e => e.runtimeId === r.target.runtimeId)
     const bound = current && id(current.uniqueId, true) === id(r.target.uniqueId, true) && current.entityType === r.target.entityType
     let dead = false; let by = null
     if (bound && name === 'entity_event' && id(packet.runtime_entity_id) === id(r.target.runtimeId) && ['death_animation', 3].includes(packet.event_id)) { dead = true; by = 'server_death_animation' }

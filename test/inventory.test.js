@@ -512,7 +512,58 @@ test('combat fast path selects a hotbar weapon with one mob_equipment and commit
   const state = { ...base.state, runtimeEntityId: '263' }
   const inv = createInventory({ client: { queue: (name, params) => packets.push({ name, params }) }, getState: () => state, crafting: base.crafting, allocateRequestId: () => -41, commitSelection: slot => { selections.push(slot); state.rawSelectedSlot = slot } })
   const result = await inv.equipForCombat(3)
-  assert.equal(result.confirmedBy, 'hotbar_selection_sent'); assert.deepEqual(selections, [3])
+  assert.equal(result.selectionSent, true); assert.equal(result.serverConfirmed, false); assert.equal(result.confirmedBy, null); assert.deepEqual(selections, [3])
   assert.deepEqual(packets.map(p => p.name), ['mob_equipment']); assert.equal(packets[0].params.selected_slot, 3)
   assert.equal(base.opens(), 0, 'no inventory screen for a hotbar selection')
+})
+
+test('mining handoff reselects once even if the local hotbar already matches, without claiming receipt', async () => {
+  const base = fixture()
+  const packets = [], selections = [], selectionStore = {}
+  const state = { ...base.state, runtimeEntityId: '263' }
+  const make = () => createInventory({ client: { queue: (name, params) => packets.push({ name, params }) }, getState: () => state, crafting: base.crafting, allocateRequestId: () => -41, selectionStore, commitSelection: slot => { selections.push(slot); state.rawSelectedSlot = slot } })
+  let inv = make()
+  await inv.equipForCombat(3)
+  packets.length = 0
+  const result = await inv.equipForMining(3)
+  assert.equal(result.selectionSent, true)
+  assert.equal(result.serverConfirmed, false)
+  assert.equal(result.selectedSlotChanged, false)
+  assert.deepEqual(packets.map(p => p.name), ['mob_equipment'])
+  assert.equal(packets[0].params.item.stack_id, base.raw.get(3).stack_id)
+  assert.equal(base.opens(), 0)
+  inv = make() // Hot reload must preserve provenance of the sent selection.
+  inv.applyPacket('player_hotbar', { window_id: 'inventory', selected_slot: 3 }, { replaying: true })
+  assert.equal((await inv.equip(3)).serverConfirmed, false)
+  inv.applyPacket('mob_equipment', { window_id: 'inventory', selected_slot: 3, runtime_entity_id: '999' })
+  assert.equal((await inv.equip(3)).serverConfirmed, false, 'another actor cannot acknowledge our selection')
+  inv.applyPacket('player_hotbar', { window_id: 'inventory', selected_slot: 3 })
+  assert.equal((await inv.equip(3)).serverConfirmed, true)
+})
+
+test('mining handoff refuses unknown inventory and an empty source without sending equipment', async () => {
+  const base = fixture(), packets = []
+  const state = { ...base.state, runtimeEntityId: '263' }
+  const inv = createInventory({ client: { queue: (...p) => packets.push(p) }, getState: () => state, crafting: base.crafting, allocateRequestId: () => -41, commitSelection: () => {} })
+  base.context.inventoryKnown = false
+  await assert.rejects(inv.equipForMining(3), /持ち物/)
+  base.context.inventoryKnown = true
+  await assert.rejects(inv.equipForMining(4), /アイテム/)
+  assert.equal(packets.length, 0)
+})
+
+test('aborting a main-bag mining handoff cancels only its swap and never sends a late selection', async () => {
+  const base = fixture(), packets = [], controller = new AbortController()
+  base.raw.set(9, item(201, 1, 98))
+  const state = { ...base.state, runtimeEntityId: '263' }
+  const inv = createInventory({ client: { queue: (name, params) => packets.push({ name, params }) }, getState: () => state, crafting: base.crafting, allocateRequestId: () => -41, commitSelection: slot => { state.rawSelectedSlot = slot } })
+  const pending = inv.equipForMining(9, { signal: controller.signal })
+  controller.abort()
+  await assert.rejects(pending, /中断|abort/i)
+  inv.applyPacket('item_stack_response', { responses: [{ request_id: -41, status: 'ok', containers: [] }] })
+  assert.equal(inv.snapshot().busy, false)
+  assert.equal(packets.some(packet => packet.name === 'mob_equipment'), false)
+  const aborted = new AbortController(); aborted.abort()
+  await assert.rejects(inv.equipForMining(3, { signal: aborted.signal }), /abort/i)
+  assert.equal(packets.some(packet => packet.name === 'mob_equipment'), false)
 })

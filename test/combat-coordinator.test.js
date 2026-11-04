@@ -7,7 +7,7 @@ const { createCombatCoordinator } = require(process.env.COMBAT_COORDINATOR_TEST_
 function deferred () { let resolve; let reject; const promise = new Promise((a, b) => { resolve = a; reject = b }); return { promise, resolve, reject } }
 function fixture ({ bow = false, targetX = 2.2, acquireHook = null, resumeHook = null, approachHook = null, meleeHook = null, rangedHook = null, sleepHook = null, drainHook = null, ...options } = {}) {
   let time = 1000; let enabled = true; let resourceMoving = true; let cleanup = false; let staleCleanupResult = false; let meleeReady = true; let rangedReady = true; let activeMelee = null; let activeRanged = null; let coordinator
-  const events = []; const acquisitions = []; const resumes = []; const approaches = []; const meleeCalls = []; const rangedCalls = []; const cancels = []; const drains = []
+  const events = []; const acquisitions = []; const resumes = []; const approaches = []; const meleeCalls = []; const rangedCalls = []; const cancels = []; const drains = []; const previewCalls = []; const surveyCalls = []
   const state = { phase: 'spawned', profile: 'bot', realm: { id: '21225335' }, connectionId: 'scope-A', startedAt: 'start-A', runtimeEntityId: '1', dimension: 'overworld', health: 20, position: { x: 0.5, y: 66.62, z: 0.5 }, lifecycle: { deathId: 0, phase: 'alive' }, inventory: { known: true, items: bow ? [{ name: 'minecraft:bow', count: 1, slot: 0 }, { name: 'minecraft:arrow', count: 8, slot: 10, metadata: 0 }] : [] }, safetyWanted: true, autoWanted: true }
   const target = { runtimeId: '70', uniqueId: '-700', kind: 'mob', entityType: 'minecraft:zombie', hostile: true, alive: true, positionKnown: true, dimension: 'overworld', position: { x: targetX, y: 65, z: 0.5 } }
   const actors = [target]; const removed = []
@@ -16,8 +16,8 @@ function fixture ({ bow = false, targetX = 2.2, acquireHook = null, resumeHook =
   const context = () => ({ coordinator, state, target, actors, removed, events, terminal, stopped, setCleanup: value => { cleanup = value }, setEnabled: value => { enabled = value }, advance: ms => { time += ms }, setMeleeReady: value => { meleeReady = value }, setRangedReady: value => { rangedReady = value } })
   function controller (name) {
     return {
-      preview: runtimeId => { events.push(`preview_${name}`); return { ready: !resourceMoving && (name === 'melee' ? meleeReady : rangedReady), code: resourceMoving ? 'BUSY' : 'LOS_BLOCKED' } },
-      survey: runtimeId => ({ ready: !cleanup && (name === 'melee' ? meleeReady : rangedReady), code: cleanup ? 'CLEANUP_PENDING' : 'LOS_BLOCKED' }),
+      preview: (runtimeId, options) => { events.push(`preview_${name}`); previewCalls.push({ name, runtimeId, options }); return { ready: !resourceMoving && (name === 'melee' ? meleeReady : rangedReady), code: resourceMoving ? 'BUSY' : 'LOS_BLOCKED' } },
+      survey: runtimeId => { surveyCalls.push({ name, runtimeId }); return { ready: !cleanup && (name === 'melee' ? meleeReady : rangedReady), code: cleanup ? 'CLEANUP_PENDING' : 'LOS_BLOCKED' } },
       engage: (runtimeId, args) => {
         events.push(`engage_${name}`); (name === 'melee' ? meleeCalls : rangedCalls).push({ runtimeId, args })
         const hook = name === 'melee' ? meleeHook : rangedHook
@@ -36,8 +36,65 @@ function fixture ({ bow = false, targetX = 2.2, acquireHook = null, resumeHook =
     resume: async args => { resumes.push(args); events.push('resume'); return resumeHook?.({ ...context(), args, resumes }) },
     approach: approachHook ? async (actor, args) => { approaches.push({ actor, args }); events.push('approach'); return approachHook({ ...context(), actor, args }) } : null,
     canAct: () => enabled, now: () => time, sleep: async ms => { time += ms; sleepHook?.(context()); await turn() }, ...options })
-  return { ...context(), coordinator, state, target, actors, removed, events, acquisitions, resumes, approaches, meleeCalls, rangedCalls, cancels, drains, setCleanup: value => { cleanup = value }, setStaleCleanupResult: value => { staleCleanupResult = value }, setEnabled: value => { enabled = value }, setMeleeReady: value => { meleeReady = value }, advance: ms => { time += ms }, resourceMoving: () => resourceMoving }
+  return { ...context(), coordinator, state, target, actors, removed, events, acquisitions, resumes, approaches, meleeCalls, rangedCalls, cancels, drains, previewCalls, surveyCalls, setCleanup: value => { cleanup = value }, setStaleCleanupResult: value => { staleCleanupResult = value }, setEnabled: value => { enabled = value }, setMeleeReady: value => { meleeReady = value }, advance: ms => { time += ms }, resourceMoving: () => resourceMoving }
 }
+
+test('automatic melee previews disable the unused critical-hop prediction before ordinary attacks', async () => {
+  const f = fixture(); await f.coordinator.tick()
+  assert.ok(f.previewCalls.some(call => call.name === 'melee'))
+  assert.ok(f.previewCalls.filter(call => call.name === 'melee').every(call => call.options?.critical === false))
+  assert.equal(f.meleeCalls[0].args.critical, false)
+})
+
+test('one selection surveys each bow target once and resamples on the next tick', async () => {
+  const f = fixture({ bow: true, targetX: 12, approachHook: () => ({ ready: false, reason: 'blocked' }) })
+  await f.coordinator.tick()
+  assert.equal(f.rangedCalls.length, 1)
+  assert.deepEqual(f.surveyCalls, [{ name: 'ranged', runtimeId: '70' }])
+  f.advance(500); f.setRangedReady(false)
+  await f.coordinator.tick()
+  assert.equal(f.surveyCalls.length, 2)
+  assert.equal(f.rangedCalls.length, 1, 'a prior ready survey must not survive into the next selection')
+  assert.ok(f.approaches.length > 0)
+})
+
+test('blocked creeper sight selection shares its survey and never chooses a closing approach', async () => {
+  const f = fixture({ bow: true, targetX: 14, approachHook: () => ({ ready: false, reason: 'blocked' }) })
+  f.target.entityType = 'minecraft:creeper'; f.setRangedReady(false)
+  await f.coordinator.tick()
+  assert.deepEqual(f.surveyCalls, [{ name: 'ranged', runtimeId: '70' }])
+  assert.ok(f.approaches.length > 0)
+  assert.ok(f.approaches.every(call => call.args.purpose === 'sight'))
+})
+
+test('distance and retry holds skip expensive selection callbacks without losing another eligible target', async () => {
+  const routes = [], work = []
+  const f = fixture({ bow: true, targetX: 12, approachHook: () => ({ ready: false, reason: 'blocked' }), canEngage: actor => { routes.push(actor.runtimeId); return true }, workGuard: { canSelectTarget: actor => { work.push(actor.runtimeId); return true }, canContinue: () => true } })
+  f.setRangedReady(false)
+  f.actors.push({ ...f.target, runtimeId: '71', uniqueId: '-701', position: { x: 80, y: 65, z: 0.5 } })
+  await f.coordinator.tick()
+  assert.deepEqual(routes, ['70']); assert.deepEqual(work, ['70']); assert.equal(f.surveyCalls.length, 1)
+  assert.equal((await f.coordinator.tick()).code, 'NO_CANDIDATE')
+  assert.deepEqual(routes, ['70']); assert.deepEqual(work, ['70']); assert.equal(f.surveyCalls.length, 1)
+  f.actors.push({ ...f.target, runtimeId: '72', uniqueId: '-702', position: { x: 2.2, y: 65, z: 0.5 } })
+  await f.coordinator.tick()
+  assert.equal(f.meleeCalls[0].runtimeId, '72')
+  assert.equal(f.surveyCalls.length, 1)
+})
+
+test('stale sight observations retry with fresh decisions only twice and never fall through to an old closing approach', async () => {
+  for (const type of ['minecraft:zombie', 'minecraft:creeper']) {
+    const f = fixture({ bow: true, targetX: 14, approachHook: () => ({ ready: false, code: 'SIGHT_STALE' }) })
+    f.target.entityType = type; f.setRangedReady(false)
+    const result = await f.coordinator.tick()
+    assert.equal(result.code, 'SIGHT_STALE'); assert.equal(f.approaches.length, 3)
+    assert.ok(f.approaches.every(call => call.args.purpose === 'sight'))
+    assert.equal(f.resumes.length, 1); assert.equal(f.coordinator.snapshot().busy, false)
+    assert.equal((await f.coordinator.tick()).code, 'NO_CANDIDATE')
+    f.advance(450); await f.coordinator.tick()
+    assert.equal(f.approaches.length, 6, 'another claim gets its own bounded retries after the ordinary backoff')
+  }
+})
 
 test('selects a near hostile before preview, preempts resource movement through acquire, then re-previews', async () => {
   const f = fixture(); const result = await f.coordinator.tick()

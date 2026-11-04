@@ -185,6 +185,21 @@ test('furnace placement requires a live plan and both block and inventory confir
   assert.ok(actionCalls(g).includes('interactions.cancel'))
 })
 
+test('furnace placement accepts a matching sent hotbar selection and rejects a changed stack', async () => {
+  for (const corrupt of [false, true]) {
+    const f = fixture(); f.items([['stone_pickaxe', 1], ['furnace', 1, 1]]); f.setBlock(position, 'minecraft:air')
+    Object.assign(f.state.inventory.items[1], { stackId: 82, networkId: 61, metadata: 0 })
+    f.baseActions.equip = async decision => {
+      const item = f.state.inventory.items.find(item => item.slot === decision.slot)
+      f.state.rawSelectedSlot = f.state.selectedSlot = item.slot; f.state.heldItem = { ...item }
+      return { phase: 'completed', sourceSlot: item.slot, slot: item.slot, selectionSent: true, serverConfirmed: false, selectedItem: { ...item, stackId: item.stackId + Number(corrupt) } }
+    }
+    if (corrupt) await assert.rejects(f.actions.place_furnace({ target: position, slot: 1 }), error => error.code === 'INVENTORY_SWAP_REQUIRED')
+    else await f.actions.place_furnace({ target: position, slot: 1 })
+    assert.equal(actionCalls(f).includes('interactions.placeBlock'), !corrupt)
+  }
+})
+
 test('placing a furnace outside the hotbar first requires a real inventory swap', async () => {
   const f = fixture()
   f.items([['stone_pickaxe', 1], ['furnace', 1, 20]])

@@ -62,6 +62,20 @@ test('route construction is passive and every movement starts with the real conf
   assert.equal(result.visitedPrefix.length, 3)
 })
 
+test('guarded movement accepts a matching sent sword selection but rejects a different stack', async () => {
+  for (const corrupt of [false, true]) {
+    const f = fixture({ onEquip: ({ state, slot }) => {
+      const item = state.inventory.items.find(item => item.slot === slot)
+      state.rawSelectedSlot = state.selectedSlot = slot; state.heldItem = { ...item }
+      return { phase: 'completed', sourceSlot: slot, slot, selectionSent: true, serverConfirmed: false, selectedItem: { ...item, stackId: item.stackId + Number(corrupt) } }
+    } })
+    Object.assign(f.state.inventory.items[1], { networkId: 300, stackId: 90, metadata: 0 })
+    const result = await f.route.execute([p(1.5)])
+    assert.equal(f.calls.some(call => call.type === 'start'), !corrupt)
+    assert.equal(result.ok, !corrupt); assert.equal(result.serverConfirmed, false)
+  }
+})
+
 test('a missing sword, an unconfirmed ack or a lying ack cannot authorize movement', async () => {
   for (const mode of ['missing', 'unconfirmed', 'lying']) {
     const f = fixture({ onEquip: mode === 'unconfirmed' ? () => ({ serverConfirmed: false }) : mode === 'lying' ? () => ({ serverConfirmed: true }) : undefined })

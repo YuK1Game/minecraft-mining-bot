@@ -54,6 +54,56 @@ function fixture ({ arrows = 3, arrowMetadata = 0, bowNbt = null, bowSlot = 0, e
   return { state, target, actors, bag, blocks, packets, uses, equipCalls, crafting, ranged, observe, input, uncertainties, confirm, now: () => time }
 }
 
+test('ranged uses lightweight inventory and individual death observations while retaining full actor corridor guards', async () => {
+  let snapshots = 0, gets = 0, inventoryReads = 0, statusReads = 0
+  const f = fixture({
+    entities: { snapshot: () => { snapshots++; return structuredClone(f.actors) }, get: runtimeId => { gets++; return structuredClone(f.actors.find(actor => actor.runtimeId === runtimeId) ?? null) } },
+    onRelease: ({ target, ranged }) => { target.alive = false; ranged.applyPacket('entity_event', { runtime_entity_id: '70', event_id: 'death_animation' }) }
+  })
+  const observedInventory = f.crafting.snapshot
+  f.crafting.inventorySnapshot = () => { inventoryReads++; return observedInventory() }
+  f.crafting.status = () => { statusReads++; const { inventory, ...status } = observedInventory(); return status }
+  f.crafting.snapshot = () => { throw new Error('Combat must not enumerate recipes') }
+  const result = await f.ranged.engage('70', { maxShots: 2, durationMs: 6000 })
+  assert.equal(result.targetDead, true); assert.equal(result.shotsRequested, 1)
+  assert.ok(inventoryReads > 0); assert.ok(statusReads > 0); assert.ok(gets > 0); assert.ok(snapshots > 0)
+})
+
+test('a sent or resent hotbar bow selection starts a draw without inventing equipment or shot confirmation', async () => {
+  for (const bowSlot of [0, 1]) {
+    const f = fixture({ bowSlot, autoConfirm: false, equip: async slot => {
+      const changed = f.state.rawServerSelectedSlot !== slot
+      f.state.rawSelectedSlot = f.state.rawServerSelectedSlot = slot
+      return { phase: 'completed', slot, sourceSlot: slot, selectionSent: true, selectedSlotChanged: changed, serverConfirmed: false, confirmedBy: null }
+    } })
+    const result = await f.ranged.engage('70', { maxShots: 1, durationMs: 6000 })
+    assert.equal(result.shotsRequested, 1, JSON.stringify(result)); assert.equal(result.shotsConfirmed, 0)
+    assert.equal(result.serverConfirmed, false); assert.equal(result.targetDead, false); assert.equal(result.attempts.length, 0)
+    assert.equal(f.uses[0].value.data.hotbar_slot, bowSlot)
+  }
+})
+
+test('a hotbar selection flag cannot bypass bow slot, stack, inventory or life checks', async () => {
+  for (const change of [
+    (f, result) => { result.selectionSent = false },
+    (f, result) => { result.phase = 'stopped' },
+    (f, result) => { result.slot = 2 },
+    (f, result) => { result.sourceSlot = 2 },
+    f => { f.state.rawServerSelectedSlot = 0 },
+    f => { f.bag.get(1).stack_id++ },
+    f => { f.state.inventory.known = false },
+    f => { f.state.lifecycle.deathId++ }
+  ]) {
+    const f = fixture({ bowSlot: 1, equip: async slot => {
+      f.state.rawSelectedSlot = f.state.rawServerSelectedSlot = slot
+      const result = { phase: 'completed', slot, sourceSlot: slot, selectionSent: true, serverConfirmed: false }
+      change(f, result); return result
+    } })
+    const result = await f.ranged.engage('70', { maxShots: 1, durationMs: 6000 })
+    assert.equal(result.shotsRequested, 0, JSON.stringify(result)); assert.equal(f.uses.length, 0); assert.equal(result.serverConfirmed, false)
+  }
+})
+
 test('ranged preview needs a real bow, ordinary arrows, hostile unique target and distance beyond melee', () => {
   assert.equal(fixture().ranged.preview('70').ready, true)
   const missing = fixture(); missing.bag.set(0, air()); assert.equal(missing.ranged.preview('70').code, 'NO_BOW')
@@ -317,4 +367,12 @@ test('a mid-draw kill swings the drawn bow to another shootable hostile; with no
   const r2 = await g.ranged.engage('70', { maxShots: 1, durationMs: 10000 })
   assert.equal(g.packets.filter(p => p.name === 'inventory_transaction').length, 0, 'no release without a target')
   assert.equal(r2.targetDead, true)
+})
+test('live case 2026-11-04: the cancel-slot switch is reported so the local selection follows the server', async () => {
+  let cancelled = false; const sent = []
+  const f = fixture({ onSelectionSent: slot => sent.push(slot), onSleep: ({ ranged }) => { if (!cancelled && ranged.snapshot().phase === 'charging') { cancelled = true; ranged.cancel('fixture stop') } } })
+  await f.ranged.engage('70', { maxShots: 1, durationMs: 3000 }).catch(() => null)
+  const cancels = f.packets.filter(p => p.name === 'mob_equipment' && p.params.selected_slot !== 0)
+  assert.ok(cancels.length >= 1, 'a cancel switch was sent')
+  assert.deepEqual(sent.slice(0, 1), [cancels[0].params.selected_slot], 'the same slot is committed locally')
 })

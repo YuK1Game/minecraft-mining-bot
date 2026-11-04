@@ -86,7 +86,7 @@ function requestLocalStatus ({ apiPort, timeoutMs, signal }) {
   })
 }
 
-function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPort = process.env.API_PORT ?? 3000, pollIntervalMs = 1000, pollTimeoutMs = 800, requestStatus = requestLocalStatus, readJsonFile = readJson, writeSnapshot = writeAtomicJson, readHtml = filename => readBounded(filename, 512 * 1024), clock = () => new Date().toISOString() } = {}) {
+function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPort = process.env.API_PORT ?? 3000, pollIntervalMs = 5000, pollTimeoutMs = 800, viewerWindowMs = 15000, requestStatus = requestLocalStatus, readJsonFile = readJson, writeSnapshot = writeAtomicJson, readHtml = filename => readBounded(filename, 512 * 1024), clock = () => new Date().toISOString() } = {}) {
   apiPort = apiPortNumber(apiPort)
   if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 1000 || !Number.isSafeInteger(pollTimeoutMs) || pollTimeoutMs < 1 || pollTimeoutMs > 800) throw new Error('Invalid dashboard polling bounds')
   const cacheFile = path.resolve(workspaceRoot, '.local/dashboard-last.json')
@@ -97,6 +97,9 @@ function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPo
   let mission = null; let latest = null; let lastGood = null
   let apiAvailable = false; let checkedAt = null
   let inFlight = null; let controller = null; let interval = null
+  // The bot's /status is built on the bot's own event loop; polling it while
+  // nobody has the page open only steals time from movement and combat ticks.
+  let lastViewAt = 0
   let initialization = null; let startPromise = null; let stopped = false
 
   const snapshot = () => {
@@ -191,7 +194,7 @@ function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPo
     if (typeof request.url !== 'string' || request.url.length > 2048 || !request.url.startsWith('/') || request.url.startsWith('//')) { send(400, { error: 'Invalid request URL' }); return }
     let url
     try { url = new URL(request.url, canonical) } catch { send(400, { error: 'Invalid request URL' }); return }
-    if (url.pathname === '/api/status') send(200, snapshot())
+    if (url.pathname === '/api/status') { lastViewAt = Date.now(); send(200, snapshot()) }
     else if (url.pathname === '/api/logs/stream' && method === 'GET') streamLogs(request, response)
     else if (url.pathname === '/logs') {
       try { send(200, await readHtml(logsHtmlFile), 'text/html; charset=utf-8') } catch { send(503, { error: 'ログページを準備しています。' }) }
@@ -207,7 +210,7 @@ function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPo
       await initialize()
       if (stopped) throw new Error('Dashboard was stopped')
       await new Promise((resolve, reject) => { server.once('error', reject); server.listen(PORT, HOST, () => { server.removeListener('error', reject); resolve() }) })
-      interval = setInterval(() => { pollOnce().catch(() => {}) }, pollIntervalMs)
+      interval = setInterval(() => { if (viewerWindowMs > 0 && Date.now() - lastViewAt > viewerWindowMs) return; pollOnce().catch(() => {}) }, pollIntervalMs)
       pollOnce().catch(() => {})
       return { url: `http://${HOST}:${PORT}`, port: PORT }
     })()

@@ -47,6 +47,17 @@ test('pinned Bedrock bed representation and real half-height reach agree with lo
   assert.ok(visible.distance <= 4.5)
 })
 
+test('a matching resent bed selection permits placement but still needs actual halves and consumption', async () => {
+  for (const corrupt of [false, true]) {
+    const f = fixture({ equip: async slot => ({ phase: 'completed', sourceSlot: slot, slot, selectionSent: true, serverConfirmed: false, selectedItem: { ...f.state.inventory.items[0], stackId: 82 + Number(corrupt) } }) })
+    f.state.inventory.items[0].stackId = 82
+    const result = await f.actor.execute()
+    assert.equal(f.calls.includes('place'), !corrupt)
+    if (!corrupt) assert.equal(result.lastResult.confirmedBy, 'two_server_bed_halves_and_inventory')
+    else assert.equal(result.ownedBed, null)
+  }
+})
+
 test('night places both server halves, confirms only own sleep metadata, waits for real day, wakes then mines and collects its own bed', async () => {
   const f = fixture()
   assert.equal(f.actor.preview().action, 'place')

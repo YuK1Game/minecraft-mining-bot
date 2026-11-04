@@ -227,6 +227,21 @@ test('a completed mining controller without received air cannot advance into the
   assert.equal(f.calls.filter(call => call.type === 'move_stop').length, 0, 'an unowned controller cannot be stopped')
 })
 
+test('shelter accepts a matching dirt selection and keeps actual block-and-consumption proof', async () => {
+  for (const corrupt of [false, true]) {
+    const f = fixture(); f.setDirt(1)
+    Object.assign(f.state.inventory.items[0], { stackId: 82, networkId: 3, metadata: 0 })
+    f.inventory.equip = async slot => {
+      const item = f.state.inventory.items.find(item => item.slot === slot)
+      f.state.rawSelectedSlot = f.state.selectedSlot = slot; f.state.heldItem = { ...item }
+      return { phase: 'completed', sourceSlot: slot, slot, selectionSent: true, serverConfirmed: false, selectedItem: { ...item, stackId: item.stackId + Number(corrupt) } }
+    }
+    if (corrupt) await assert.rejects(f.shelter.execute({ radius: 0 }), error => error.code === 'EQUIPMENT_NOT_CONFIRMED')
+    else await f.shelter.execute({ radius: 0 })
+    assert.equal(f.shelter.memo().placements.length, corrupt ? 0 : 2)
+  }
+})
+
 test('unconfirmed slot swaps cannot use a different hotbar selection to place the doorway', async () => {
   const f = fixture({ ghostEquip: true })
   await assert.rejects(f.shelter.execute({ radius: 0 }), error => error.code === 'EQUIPMENT_NOT_CONFIRMED')

@@ -347,7 +347,7 @@ async function main () {
   const options = require('bedrock-protocol/src/options')
   const version = config.version ?? options.CURRENT_VERSION
   if (!options.Versions[version]) throw new Error(`未対応の接続バージョンです: ${version}`)
-  const { state, applyPacket: applyState, snapshot: rawSnapshot } = createState(config.profile)
+  const { state, applyPacket: applyState, snapshot: rawSnapshot, snapshotFields: rawFields } = createState(config.profile)
   state.version = version
   state.connectionId = randomUUID()
   const world = createWorld({ version })
@@ -485,7 +485,7 @@ async function main () {
   process.once('SIGINT', () => stop()); process.once('SIGTERM', () => stop())
   const context = {
     client: connection, world, entities, cache, meta, shared, apiUrl: `http://127.0.0.1:${config.port}`,
-    getState: workingSnapshot, getServerState: rawSnapshot, commitInventory, commitSelection, setPrediction, allocate, log, onEmergency: onlineEmergency,
+    getState: workingSnapshot, getServerState: rawSnapshot, getServerFields: rawFields, commitInventory, commitSelection, setPrediction, allocate, log, onEmergency: onlineEmergency,
     registerPacketEvents: packetEvents.registerPacketEvents,
     setEquipmentPrediction: slot => { shared.equipment = { slot, requestedAt: new Date().toISOString() } },
     setCapabilities: values => { Object.assign(state.capabilities, values) }, noteProgress: progress => { shared.lastProgress = progress }
