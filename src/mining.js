@@ -20,6 +20,8 @@ const PICK = new Map([
   ...['gold_ore', 'deepslate_gold_ore', 'redstone_ore', 'deepslate_redstone_ore', 'diamond_ore', 'deepslate_diamond_ore', 'emerald_ore', 'deepslate_emerald_ore'].map(name => [name, 3])
 ])
 const HAZARDS = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|dragon_egg|scaffolding)/
+const QUARRY_HAZARDS = /(?:water|lava|bubble_column)/
+const { blockRule: quarryRule, toolOf: quarryTool } = require('./quarry-rules')
 const blockName = block => String(block?.name ?? '').replace(/^minecraft:/, '')
 const key = position => `${position.x},${position.y},${position.z}`
 const adjacent = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }]
@@ -34,6 +36,12 @@ function targetList (targets) {
     if (position.accessPreparation === 'owned_bed') {
       if (position.expectedName !== 'minecraft:bed' || typeof position.ownershipKey !== 'string' || !position.ownershipKey.length || position.ownershipKey.length > 200) throw new Error('Owned-bed mining requires an exact ownership key')
       Object.assign(target, { accessPreparation: 'owned_bed', expectedName: 'minecraft:bed', ownershipKey: position.ownershipKey })
+    } else if (position.accessPreparation === 'quarry') {
+      // Quarry targets: the quarry planner already chose the block, the tool
+      // and checked falling/fluid dependencies; mining re-checks them live.
+      const rt = position.requiredTool
+      if (typeof position.expectedName !== 'string' || !/^minecraft:[a-z0-9_]+$/.test(position.expectedName) || quarryRule(position.expectedName).kind !== 'dig' || position.expectedRuntimeId != null && !Number.isSafeInteger(position.expectedRuntimeId) || rt != null && (!['pickaxe', 'shovel', 'axe', 'hoe', 'shears'].includes(rt.kind) || !Number.isSafeInteger(rt.tier) || rt.tier < 0 || rt.tier > 4)) throw new Error('Quarry mining needs an expected diggable block and a valid tool requirement')
+      Object.assign(target, { accessPreparation: 'quarry', expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId ?? null, requiredTool: rt ? { kind: rt.kind, tier: rt.tier } : null })
     } else if (position.accessPreparation != null || position.expectedName != null) {
       if (position.accessPreparation !== 'tree_access' || !['minecraft:leaf_litter', 'minecraft:vine'].includes(position.expectedName)) throw new Error('植物の準備採掘には許可された対象名が必要です。')
       Object.assign(target, { accessPreparation: 'tree_access', expectedName: position.expectedName })
@@ -102,14 +110,26 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, getRa
     if (target.accessPreparation === 'tree_access' && (!isDryAccessPlant(block) || block.name !== target.expectedName)) throw new Error('準備採掘の植物が変更されたか、乾いた未保護の植物ではありません。')
     const ownedBed = target.accessPreparation === 'owned_bed' && name === 'bed' && block.name === target.expectedName && typeof verifyOwnedBed === 'function' && verifyOwnedBed(state, target, block) === true
     if (target.accessPreparation === 'owned_bed' && !ownedBed) throw new Error('This bed lacks the current portable-bed ownership proof')
-    if (!HAND.has(name) && !PICK.has(name) && !ownedBed) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
+    const quarry = target.accessPreparation === 'quarry'
+    if (quarry) {
+      if (block.name !== target.expectedName || target.expectedRuntimeId != null && block.runtimeId !== target.expectedRuntimeId) throw new Error('露天掘りの対象ブロックが計画時から変わりました。')
+      if (block.protected === true || block.protectionSource || isProtected(target, state, block)) throw new Error('保護されたブロックは露天掘りでも壊しません。')
+      if (target.requiredTool) {
+        const held = quarryTool(state.heldItem?.name)
+        if (!held || held.kind !== target.requiredTool.kind || held.tier < target.requiredTool.tier) throw new Error(`回収に必要な道具を手に持っていません: ${name}`)
+      }
+    }
+    if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
     if (clearance && (block.name !== 'minecraft:stone' || block.runtimeId !== target.expectedRuntimeId || block.protected === true || block.protectionSource || block.natural === false || isProtected(target, state, block))) throw new Error('Stone clearance target changed or is protected')
-    if (!clearance && PICK.has(name) && pickTier(state) < PICK.get(name)) throw new Error(`適切なツルハシの装備を確認できません: ${name}`)
+    if (!clearance && !quarry && PICK.has(name) && pickTier(state) < PICK.get(name)) throw new Error(`適切なツルハシの装備を確認できません: ${name}`)
     if (block.extra?.some(layer => !AIR.has(blockName(layer)))) throw new Error('対象に水などの追加レイヤーがあります。')
     for (const offset of adjacent) {
       const neighbour = world.getBlock(target.x + offset.x, target.y + offset.y, target.z + offset.z)
       if (!neighbour.known) throw new Error('対象の周辺に未取得のブロックがあります。')
-      if (HAZARDS.test(blockName(neighbour)) || neighbour.extra?.some(layer => HAZARDS.test(blockName(layer)))) {
+      // Quarry: falling neighbours are ordered by the planner (top-down); fluids
+      // and unknown cells still stop the dig.
+      const hazards = quarry ? QUARRY_HAZARDS : HAZARDS
+      if (hazards.test(blockName(neighbour)) || neighbour.extra?.some(layer => hazards.test(blockName(layer)))) {
         throw new Error('対象の隣に液体・落下ブロックなどがあります。')
       }
     }

@@ -10,6 +10,8 @@ const { createInputHistory } = require('./input-history')
 const { createPhysics } = require('./physics')
 const { createWaterPreviewObserver } = require('./water-preview-observer')
 const { createMining } = require('./mining')
+const { createQuarryJob } = require('./quarry-job')
+const { createQuarryRuntimeAdapter } = require('./quarry-runtime-adapter')
 const { createWalker } = require('./walking')
 const { createMovement } = require('./movement')
 const { createNavigator } = require('./navigation')
@@ -322,6 +324,9 @@ function createRuntime (host) {
   let movement = null
   let combat = null
   let excavation = null
+  // Quarry mode (露天掘り): ports are bound per motion generation; the job is
+  // created lazily on first use and survives reloads only as a saved document.
+  let quarryPorts = null, quarryJob = null, quarryRetreatDepth = 0, quarryCombatArmed = false, quarryBehaviorRestore = null
   let tunneling = null
   let stoneAccessProposal = null, stoneAccessSequence = 0
   const STONE_ACCESS_BOUNDS = Object.freeze({ maxDistance: 6, maxVertical: 6, maxRouteSteps: 6, maxRouteDigBlocks: 16, maxExpanded: 3000 })
@@ -856,6 +861,7 @@ function createRuntime (host) {
     if (inventoryRequired && host.shared.inventoryUncertain) throw new Error('操作後の持ち物が未確定です。新しいサーバー情報を待っています。')
     if (!ownedCall && userBehaviorOwns()) throw new Error('利用者指定の戦闘・睡眠・片付け動作が操作を使用中です。')
     if (!ownedCall && pendingStops.size) throw new Error('前の操作の終了処理を待ってください。')
+    if (!ownedCall && quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
     if (!ownedCall && (idleSafety?.snapshot().busy || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy)) throw new Error('前の操作が終わるまで待ってください。')
     if (motionActive() || input?.stats().running || food.snapshot().busy || (furnace.snapshot().busy || chest.snapshot().busy) || inventory.snapshot().busy || crafting.snapshot().pendingRequestId != null || interactions.snapshot().pendingOperation || combat?.snapshot().busy || combat?.snapshot().defending || combat?.snapshot().engaging) throw new Error('前の操作が完了するまで待ってください。')
     if (!ownedCall) host.shared.safetyManualActionAt = Date.now()
@@ -970,7 +976,7 @@ function createRuntime (host) {
     const state = observedState()
     const prospect = prospecting.snapshot()
     const observedOres = prospect.phase === 'idle' ? host.shared.prospecting ?? prospect : prospect
-    return { ownedCampBootstrap: structuredClone(host.shared.ownedCampBootstrap ?? null), workHold: host.shared.legacyWorkHoldLease ? {leaseId:host.shared.legacyWorkHoldLease.id,scope:host.shared.legacyWorkHoldLease.scope,expiresAt:host.shared.legacyWorkHoldLease.expiresAt} : null, recentDamageRetreat: structuredClone(host.shared.recentDamageRetreatDiagnostic ?? null), survivalWorkClearance: state.survivalWorkClearance === true, spawnRangedClearance: state.spawnRangedClearance === true, depotPrebuild: depotPrebuild?.snapshot() ?? null, depotMission: depotMission?.snapshot() ?? null, surfaceReturn: surfaceReturn?.snapshot() ?? null, inventoryResync: structuredClone(host.shared.inventoryResync?.lastRequest ?? null), movementCalibration: structuredClone(movementCalibration), learningShoreEscape: structuredClone(host.shared.learningShoreEscape ?? null), startupPriority: structuredClone(host.shared.startupPriority ?? null), userBehaviors: userBehaviorSnapshot(), lowHealthWater: host.shared.lowHealthWaterDiagnostic ? { ...structuredClone(host.shared.lowHealthWaterDiagnostic), timing: structuredClone(host.shared.lowHealthWaterTiming ?? null) } : null, clearance: structuredClone(host.shared.clearanceDiagnostic ?? null), safety: safetySnapshot(), guardRoute: guardRouteSnapshot(), boundedJumpSearch: structuredClone(boundedJumpSearch), queuedPrediction: inputHistory?.snapshot() ?? null, queuedWireClock: structuredClone(actualWireClock.snapshot()), missionMemory: missionJournal.snapshot(), hut: hut?.snapshot() ?? null, shelter: activeBase()?.snapshot() ?? null, shelterKind: activeBase() === hut ? "hut" : "soil_hill", dayCycleStopTime: host.meta.startGame?.day_cycle_stop_time ?? null, worldClocks: structuredClone(host.shared.worldClocks ?? {}), lastServerMotion: structuredClone(host.shared.lastServerMotion ?? null), lastServerCorrection: structuredClone(host.shared.lastServerCorrection ?? null), worldTime: structuredClone(host.shared.worldTime ?? null), threatPolicy: state.threatPolicy, foraging: foraging?.snapshot() ?? null, food: food.snapshot(), vitals: structuredClone(host.shared.vitals ?? {}), recovery: recovery?.snapshot() ?? null, excavation: excavation?.snapshot() ?? null, tunneling: tunneling?.snapshot() ?? null, heldItem: state.heldItem, runtimeVersion: RUNTIME_VERSION, inventory: state.inventory, inventoryConfidence: { known: !host.shared.inventoryUncertain, unresolved: host.shared.inventoryUncertain ?? null }, stations: structuredClone(host.shared.stations ?? {}), stationCatalog: structuredClone(host.shared.stationCatalog ?? null), portableWorksite: structuredClone(host.shared.portableWorksiteMemo ?? null), prospecting: observedOres, furnace: furnace.snapshot(), chest: chest.snapshot(), entities: state.entities, hostiles: state.hostiles, input: input?.stats() ?? null, mining: mining.snapshot(), walking: walker?.snapshot() ?? null, movement: movement ? { ...movement.snapshot(), runtimeHandoff: structuredClone(host.shared.movementHandoffTiming ?? null) } : null, crafting: crafting.snapshot(), inventoryActions: inventory.snapshot(), interactions: interactions.snapshot(), combat: combat?.snapshot() ?? null, agent: autonomy.snapshot(), idle: { owner: inputOwner, enabled: idleTimer !== null, error: host.shared.idleError ?? null, lastFailure: structuredClone(host.shared.lastInputFailure ?? null) } }
+    return { ownedCampBootstrap: structuredClone(host.shared.ownedCampBootstrap ?? null), workHold: host.shared.legacyWorkHoldLease ? {leaseId:host.shared.legacyWorkHoldLease.id,scope:host.shared.legacyWorkHoldLease.scope,expiresAt:host.shared.legacyWorkHoldLease.expiresAt} : null, recentDamageRetreat: structuredClone(host.shared.recentDamageRetreatDiagnostic ?? null), survivalWorkClearance: state.survivalWorkClearance === true, spawnRangedClearance: state.spawnRangedClearance === true, depotPrebuild: depotPrebuild?.snapshot() ?? null, depotMission: depotMission?.snapshot() ?? null, surfaceReturn: surfaceReturn?.snapshot() ?? null, inventoryResync: structuredClone(host.shared.inventoryResync?.lastRequest ?? null), movementCalibration: structuredClone(movementCalibration), learningShoreEscape: structuredClone(host.shared.learningShoreEscape ?? null), startupPriority: structuredClone(host.shared.startupPriority ?? null), userBehaviors: userBehaviorSnapshot(), lowHealthWater: host.shared.lowHealthWaterDiagnostic ? { ...structuredClone(host.shared.lowHealthWaterDiagnostic), timing: structuredClone(host.shared.lowHealthWaterTiming ?? null) } : null, clearance: structuredClone(host.shared.clearanceDiagnostic ?? null), safety: safetySnapshot(), guardRoute: guardRouteSnapshot(), boundedJumpSearch: structuredClone(boundedJumpSearch), queuedPrediction: inputHistory?.snapshot() ?? null, queuedWireClock: structuredClone(actualWireClock.snapshot()), missionMemory: missionJournal.snapshot(), hut: hut?.snapshot() ?? null, shelter: activeBase()?.snapshot() ?? null, shelterKind: activeBase() === hut ? "hut" : "soil_hill", dayCycleStopTime: host.meta.startGame?.day_cycle_stop_time ?? null, worldClocks: structuredClone(host.shared.worldClocks ?? {}), lastServerMotion: structuredClone(host.shared.lastServerMotion ?? null), lastServerCorrection: structuredClone(host.shared.lastServerCorrection ?? null), worldTime: structuredClone(host.shared.worldTime ?? null), threatPolicy: state.threatPolicy, foraging: foraging?.snapshot() ?? null, food: food.snapshot(), vitals: structuredClone(host.shared.vitals ?? {}), recovery: recovery?.snapshot() ?? null, excavation: excavation?.snapshot() ?? null, quarry: quarrySnapshot(), tunneling: tunneling?.snapshot() ?? null, heldItem: state.heldItem, runtimeVersion: RUNTIME_VERSION, inventory: state.inventory, inventoryConfidence: { known: !host.shared.inventoryUncertain, unresolved: host.shared.inventoryUncertain ?? null }, stations: structuredClone(host.shared.stations ?? {}), stationCatalog: structuredClone(host.shared.stationCatalog ?? null), portableWorksite: structuredClone(host.shared.portableWorksiteMemo ?? null), prospecting: observedOres, furnace: furnace.snapshot(), chest: chest.snapshot(), entities: state.entities, hostiles: state.hostiles, input: input?.stats() ?? null, mining: mining.snapshot(), walking: walker?.snapshot() ?? null, movement: movement ? { ...movement.snapshot(), runtimeHandoff: structuredClone(host.shared.movementHandoffTiming ?? null) } : null, crafting: crafting.snapshot(), inventoryActions: inventory.snapshot(), interactions: interactions.snapshot(), combat: combat?.snapshot() ?? null, agent: autonomy.snapshot(), idle: { owner: inputOwner, enabled: idleTimer !== null, error: host.shared.idleError ?? null, lastFailure: structuredClone(host.shared.lastInputFailure ?? null) } }
   }
   const http = createHttpClient({ baseUrl: host.apiUrl })
   function runnerFoodWalkBody (body) {
@@ -1829,6 +1835,7 @@ function createRuntime (host) {
     const generationMiningState = () => { requireGeneration(); return miningState() }
     const ownedMining = { preview: own(targets => mining.preview(targets)), start: own(targets => operations.mining.start(targets)), stop: reason => currentGeneration() ? mining.stop(reason) : generationStream.stop() }
     const ownedMovement = { preview: own((target, options) => operations.movement.preview(target, tagPortableOwnedMove(target, options))), start: own((target, options) => startMotion('navigation', target, tagPortableOwnedMove(target, options))), stop: reason => portableMovementLease?.kind === 'excavate' ? stopPortableMovement(portableMovementLease, reason) : generationMovement.stop(reason) }
+    quarryPorts = { mining: ownedMining, movement: ownedMovement, getMining: () => mining.snapshot(), getMovement: () => generationMovement.snapshot(), own }
     const recoveryMovement = { ...ownedMovement, start: (target, options) => { recoveryMotionDepth++; try { return ownedMovement.start(target, options) } finally { recoveryMotionDepth-- } } }
     const generationExcavation = createExcavation({ getState: generationMiningState, world: host.world, mining: ownedMining, movement: ownedMovement, getMining: own(() => mining.snapshot()), getMovement: () => generationMovement.snapshot(), onProgress: data => { if (currentGeneration()) host.noteProgress(data) } })
     excavation = generationExcavation
@@ -4291,6 +4298,13 @@ function createRuntime (host) {
     }
     async function moveUserNative (target, context, primary = null, surface = null) {
       const initial = requireUserLease(context), expectedScope = userScope(initial), controller = generationMovement, owner = userBehaviorLease
+      if (context.kind === 'combat' && quarryJob?.holdsWork()) {
+        // Quarry §9.3: ordinary combat steps stay within 8m of the fixed anchor
+        // on the current layer; kite retreats count as emergency escapes.
+        quarryJob.bridge.interrupt(initial, { reason: 'combat_movement' })
+        const verdict = quarryJob.bridge.canMoveTo(target, { reason: quarryRetreatDepth > 0 ? 'emergency_escape' : 'combat' })
+        if (!verdict.allowed) throw Object.assign(new Error(`Quarry combat movement refused: ${verdict.reason}`), { code: 'QUARRY_ANCHOR' })
+      }
       let waterSerial = null
       if (!target || !['x', 'y', 'z'].every(k => Number.isFinite(target[k])) || Math.hypot(target.x - initial.position.x, target.y - initial.position.y + 1.62, target.z - initial.position.z) > 6) throw new Error('User movement exceeds its known six-block step')
       const ensure = () => {
@@ -4422,6 +4436,10 @@ function createRuntime (host) {
     // target to a known standpoint just outside its reach (never a long
     // escape; the ordinary approach brings the bot back in for the next hit).
     async function retreatUserTarget (target, context) {
+      quarryRetreatDepth++
+      try { return await retreatUserTargetInner(target, context) } finally { quarryRetreatDepth-- }
+    }
+    async function retreatUserTargetInner (target, context) {
       // The kite step follows a hit that is often a critical hop: the native
       // planner refuses an airborne origin, so wait briefly for the landing.
       for (let i = 0; i < KITE_LANDING_POLLS; i++) {
@@ -4580,9 +4598,9 @@ function createRuntime (host) {
         acquireControl: acquireUserControl, resumeControl: resumeUserControl, approach: approachUserTarget, retreat: retreatUserTarget,
         rangedOptions: { log: host.log },
         meleeOptions: { log: host.log },
-        coordinatorOptions: { log: host.log, canAcquireMeleeApproach: (target, state) => canAcquireStuckMeleeApproach(target, state) || canAcquireHealthyMeleeApproach(target, state), canEngage: (target, state) => threatReachability.reachableNow(state, target, { world: host.world, entities: host.entities.snapshot({ kind: 'all' }) }), engageRadius: threatReachability.ENGAGE_RADIUS, getRecentDamageAt: () => host.shared.recentDamageNoPrimary?.at ?? null },
+        coordinatorOptions: { log: host.log, canAcquireMeleeApproach: (target, state) => canAcquireStuckMeleeApproach(target, state) || canAcquireHealthyMeleeApproach(target, state), canEngage: (target, state) => threatReachability.reachableNow(state, target, { world: host.world, entities: host.entities.snapshot({ kind: 'all' }) }), engageRadius: threatReachability.ENGAGE_RADIUS, getRecentDamageAt: () => host.shared.recentDamageNoPrimary?.at ?? null, workGuard: { canSelectTarget: quarryCanSelectTarget, canContinue: quarryCanContinue } },
         // A meal in progress finishes first unless a hostile is already close.
-        canAct: () => !(food.snapshot().busy && nearestHostileDistance() > 6) && currentGeneration() && !surfaceReturnOwner && !replaying && host.shared.userBehaviorsEnabled === true && host.shared.autoWanted === true && host.shared.loadingScreenEnded === true && !host.shared.respawnTerrain?.pending && !userBehaviorWakePending,
+        canAct: () => !(food.snapshot().busy && nearestHostileDistance() > 6) && currentGeneration() && !surfaceReturnOwner && !replaying && host.shared.userBehaviorsEnabled === true && (host.shared.autoWanted === true || quarryCombatArmed) && host.shared.loadingScreenEnded === true && !host.shared.respawnTerrain?.pending && !userBehaviorWakePending,
         isBusy: context => !sameLease(context) || !userBehaviorLease?.ready || pendingStops.size > 0 || crafting.snapshot().pendingRequestId != null || (furnace.snapshot().busy || chest.snapshot().busy) || food.snapshot().busy || mining.snapshot().phase === 'mining',
         // A released bow shot with no ammo delta only leaves the arrow count in
         // doubt (no arrow fired = unchanged inventory). Marking the whole
@@ -4867,6 +4885,18 @@ function createRuntime (host) {
   }
 
   const operations = {
+    quarry: {
+      plan: config => { if (!quarryJob?.holdsWork()) requireIdle(); return ensureQuarryJob().plan(config ?? {}) },
+      start: () => { requireIdle(); return ensureQuarryJob().start() },
+      resume: () => { requireIdle(); return ensureQuarryJob().resume() },
+      acceptExceptions: () => ensureQuarryJob().acceptExceptions(),
+      pause: () => quarryJob ? quarryJob.pause('MANUAL_PAUSE') : quarrySnapshot(),
+      emergencyStop: () => quarryJob ? quarryJob.emergencyStop() : quarrySnapshot(),
+      cancel: () => quarryJob ? quarryJob.cancel() : quarrySnapshot(),
+      load: jobId => loadQuarryFile(jobId),
+      status: () => quarrySnapshot(),
+      document: () => quarryJob?.document() ?? structuredClone(host.shared.quarryDocument ?? null)
+    },
     userBehaviors: {
       start: () => { if (disposed || disposing) throw new Error('Runtime is reloading'); host.shared.userBehaviorsEnabled = true; tickUserBehaviors(); return userBehaviorSnapshot() },
       stop: async reason => { host.shared.userBehaviorsEnabled = false; userBehaviors?.cancel(reason ?? 'manual_user_behavior_stop', 'CANCELLED'); await userBehaviors?.drain(); return userBehaviorSnapshot() },
@@ -5585,6 +5615,7 @@ function createRuntime (host) {
     return !!(pendingStops.size || motionActive() || mining.snapshot().phase==='mining' || mining.snapshot().activeTarget || foraging?.snapshot().busy || crafting.snapshot().pendingRequestId!=null || inventory.snapshot().busy || interactions.snapshot().pendingOperation || chest.snapshot().busy || furnace.snapshot().busy || food.snapshot().busy || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || surfaceReturn?.snapshot().busy || guardRoute?.snapshot().busy || depotBuilder?.snapshot().busy || depotStorage?.snapshot().busy || shelter?.snapshot().busy || hut?.snapshot().busy || combat?.snapshot().busy || combat?.snapshot().engaging || userBehaviorOwns())
   }
   function logicalWorkHeld () {
+    if (quarryJob?.holdsWork()) return true
     const scope=userScope(raw()), lease=host.shared.legacyWorkHoldLease
     if (lease) {
       if (lease.scope!==scope) { host.shared.legacyWorkHoldLease=null; if(host.shared.legacyWorkHoldScope===lease.scope)host.shared.legacyWorkHoldScope=null; return false }
@@ -5706,6 +5737,82 @@ function createRuntime (host) {
       void prepareInventoryLifeReceipt().catch(() => { /* Retried on the next resume after its own throttle. */ })
     } catch { /* Throttled or scope not ready yet. */ }
   }
+  // ---- quarry mode (露天掘り, spec v1.2) ----------------------------------
+  function quarryDir () { return require('node:path').resolve(__dirname, '..', '.local', 'quarry') }
+  const quarryStorage = Object.freeze({
+    async save (jobId, doc) {
+      const QUARRY_DIR = quarryDir()
+      const fs = require('node:fs/promises'), path = require('node:path')
+      const safe = String(jobId).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 80) || 'job'
+      await fs.mkdir(QUARRY_DIR, { recursive: true })
+      const file = path.join(QUARRY_DIR, `${safe}.json`), tmp = `${file}.${process.pid}.tmp`
+      await fs.writeFile(tmp, JSON.stringify(doc, null, 1))
+      await fs.rename(tmp, file)
+      host.shared.quarryDocument = doc
+    }
+  })
+  function quarryEvidence (target, state) {
+    let route = null, sight = null
+    try { route = threatReachability.reachableNow(state, target, { world: host.world, entities: host.entities.snapshot({ kind: 'all' }) }) } catch {}
+    try { if (target?.position && state?.position) sight = bowSightClearAt(state.position, { x: target.position.x, y: target.position.y + 0.9, z: target.position.z }) } catch {}
+    return { route, sight }
+  }
+  function quarryCanSelectTarget (target, state, info = {}) { return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
+  function quarryCanContinue (target, state, info = {}) { return quarryJob?.holdsWork() ? quarryJob.bridge.canContinue(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true, retreating: info.retreating === true || quarryRetreatDepth > 0 }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
+  function quarryState () {
+    const state = lightweightUserState()
+    const hunger = host.shared.vitals?.hunger
+    return { ...state, food: Number.isFinite(hunger) ? hunger : Number.isFinite(hunger?.value) ? hunger.value : state.food ?? null, deathCause: host.shared.deathRespawn?.cause ?? null, inventory: host.shared.inventoryUncertain ? { ...state.inventory, uncertain: true } : state.inventory }
+  }
+  function ensureQuarryJob () {
+    if (quarryJob) return quarryJob
+    if (disposed || disposing) throw new Error('行動コードを更新しています。少し待ってからやり直してください。')
+    if (!quarryPorts) throw new Error('移動・採掘の準備がまだ終わっていません。スポーン後にやり直してください。')
+    const ports = quarryPorts, own = ports.own
+    const adapter = createQuarryRuntimeAdapter({
+      getState: quarryState,
+      getBlock: (x, y, z) => planningWorld.getBlock(x, y, z),
+      entities: () => host.entities.snapshot({ kind: 'item' }),
+      mining: ports.mining, getMining: ports.getMining, movement: ports.movement, getMovement: ports.getMovement,
+      equip: own(slot => operations.inventory.equip(slot)),
+      placeQuarry: own(options => { requireIdle(); crafting.closeContainer(); return interactions.placeQuarryBlock(options) }),
+      eat: own(() => operations.food.eat({})),
+      chest: { open: own(position => operations.chest.open(position)), depositItem: own(options => operations.chest.depositItem(options)), close: () => crafting.closeContainer() },
+      stopAll: async reason => { try { ports.mining.stop(reason) } catch {} try { ports.movement.stop(reason) } catch {} try { chest.cancel(reason) } catch {} try { interactions.cancel(reason) } catch {} },
+      combatActive: () => { const b = userBehaviorSnapshot(); return userBehaviorLease?.kind === 'combat' || b.activeKind === 'combat' || b.claim?.kind === 'combat' },
+      threatEvidence: target => quarryEvidence(target, lightweightUserState()),
+      recentDamageAt: () => { const at = Number(host.shared.recentDamageNoPrimary?.at ?? NaN); return Number.isFinite(at) ? at : null },
+      log: message => { try { host.log(message) } catch {} }
+    })
+    adapter.onStarted = () => {
+      const cfg = quarryJob?.document()?.config
+      autonomy.stop('露天掘りを開始します。')
+      if (cfg?.quarryCombat?.enabled !== false) {
+        quarryBehaviorRestore ??= { userBehaviorsEnabled: host.shared.userBehaviorsEnabled === true }
+        host.shared.userBehaviorsEnabled = true
+        quarryCombatArmed = true
+      }
+    }
+    adapter.onFinished = s => {
+      quarryCombatArmed = false
+      if (quarryBehaviorRestore) { host.shared.userBehaviorsEnabled = quarryBehaviorRestore.userBehaviorsEnabled; quarryBehaviorRestore = null }
+      try { host.log(`露天掘り: ${s?.result ?? s?.state}${s?.pauseReason ? ` (${s.pauseReason})` : ''}`) } catch {}
+    }
+    quarryJob = createQuarryJob({ adapter, storage: quarryStorage, log: message => { try { host.log(`露天掘り: ${message}`) } catch {} } })
+    if (host.shared.quarryDocument) { try { quarryJob.load(host.shared.quarryDocument) } catch (error) { host.shared.quarryLoadError = String(error.message).slice(0, 200) } }
+    return quarryJob
+  }
+  function quarrySnapshot () {
+    try { return quarryJob ? quarryJob.status() : host.shared.quarryDocument ? { state: host.shared.quarryDocument.state, jobId: host.shared.quarryDocument.config?.jobId ?? null, pauseReason: host.shared.quarryDocument.pauseReason ?? null, loaded: false } : null } catch (error) { return { error: String(error.message).slice(0, 200) } }
+  }
+  async function loadQuarryFile (jobId) {
+    const fs = require('node:fs/promises'), path = require('node:path')
+    const safe = String(jobId).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 80)
+    const doc = JSON.parse(await fs.readFile(path.join(quarryDir(), `${safe}.json`), 'utf8'))
+    host.shared.quarryDocument = doc
+    return ensureQuarryJob().load(doc)
+  }
+
   function resumeRequested () {
     if (disposed || disposing) return
     ensureInitialLifeReceipt()
@@ -5716,6 +5823,11 @@ function createRuntime (host) {
     if (surfaceReturnOwner || userBehaviorOwns()) return
     resumeSafety()
     if (raw().phase === 'spawned' && host.shared.loadingScreenEnded) startIdle()
+    // A quarry job paused only by a hot reload resumes once on the new code.
+    if (host.shared.quarryAutoResume && quarryPorts && raw().phase === 'spawned' && host.shared.loadingScreenEnded && !raw().spawnPending) {
+      host.shared.quarryAutoResume = false
+      try { const job = ensureQuarryJob(); if (job.status().pauseReason === 'PROCESS_RESTARTED') { job.resume(); return } } catch (error) { host.shared.quarryLoadError = String(error.message).slice(0, 200) }
+    }
     const resume = () => {
       if (logicalWorkHeld()) return
       if (depotMission?.isEnabled()) { void depotMission.resume(); return }
@@ -5734,6 +5846,8 @@ function createRuntime (host) {
     canReload: () => !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && mining.snapshot().phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !food.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(furnace.snapshot().busy || chest.snapshot().busy) && !inventory.snapshot().busy && crafting.snapshot().pendingRequestId == null && !interactions.snapshot().pendingOperation && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging,
     dispose: async reason => {
       if (disposed) return
+      if (quarryJob?.holdsWork()) { try { await quarryJob.pause('PROCESS_RESTARTED'); host.shared.quarryAutoResume = true } catch {} }
+      try { const doc = quarryJob?.document(); if (doc) host.shared.quarryDocument = doc } catch {}
       const memoryFlush = missionJournal.close()
       depotPrebuild?.cancel('Runtime reload')
       const depotFlush = depotMission?.close()

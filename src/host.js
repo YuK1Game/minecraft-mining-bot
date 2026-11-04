@@ -16,6 +16,7 @@ const { createSessionCache } = require('./session-cache')
 const { createHotReloader } = require('./hotreload')
 const { normalizePlayerCorrection } = require('./server-physics')
 const { createRespawnSwim } = require('./respawn-swim')
+const { parseQuarryCommand } = require('./quarry-cli')
 
 const PACKET_EVENTS = ['start_game', 'move_player', 'correct_player_move_prediction', 'server_post_move', 'change_dimension', 'respawn', 'update_attributes', 'set_health', 'death_info', 'item_registry', 'inventory_content', 'inventory_slot', 'mob_equipment', 'player_hotbar', 'set_player_game_type', 'update_player_game_type', 'level_chunk', 'subchunk', 'update_block', 'update_subchunk_blocks', 'crafting_data', 'item_stack_response', 'container_open', 'container_close', 'add_item_entity', 'take_item_entity', 'remove_entity', 'move_entity', 'move_entity_delta', 'add_player', 'add_entity', 'entity_event', 'set_entity_data']
 const CONTROL_EVENTS = new Set(['update_client_input_locks', 'set_movement_authority', 'client_movement_prediction_sync', 'packet_violation_warning'])
@@ -548,10 +549,17 @@ async function main () {
         const command = line.trim()
         if (command === '/quit') stop()
         else if (command === '/status') console.log(JSON.stringify(fullSnapshot(), null, 2))
-        else if (command === '/stop') current().operations.agent.stop('ターミナルから停止しました。')
+        else if (command === '/stop') { current().operations.agent.stop('ターミナルから停止しました。'); void Promise.resolve(current().operations.quarry?.pause()).catch(() => {}) }
         else if (command === '/auto') current().operations.agent.start({})
         else if (command === '/reload') void reloader.reload({ reason: 'terminal' }).catch(error => console.error(errorText(error)))
-        else if (command) log('/status /auto /stop /reload /quit が使えます。')
+        else if (command === '/quarry' || command.startsWith('/quarry ')) {
+          void (async () => {
+            const { method, args } = parseQuarryCommand(command, { position: state.position })
+            const result = await current().operations.quarry[method](...args)
+            console.log(JSON.stringify(method === 'status' || method === 'plan' ? result : { state: result?.state, result: result?.result ?? null, pauseReason: result?.pauseReason ?? null }, null, 2))
+          })().catch(error => console.error(`露天掘り: ${errorText(error)}`))
+        }
+        else if (command) log('/status /auto /stop /reload /quarry /quit が使えます。')
       })
     }
     state.phase = 'authenticating'

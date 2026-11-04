@@ -32,12 +32,20 @@ const MELEE_SELECT_REACH = 3.0
 const profiles = require('./combat-profiles')
 function stop (code, reason, extra = {}) { return { phase: 'stopped', code, reason, targetDead: false, targetRemoved: false, serverConfirmed: false, botCausedDamage: null, botCausedDeath: null, attribution: 'unconfirmed', ...extra } }
 
-function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, resume, approach = null, canAcquireMeleeApproach = null, canEngage = null, engageRadius = 32, getRecentDamageAt = null, retreat = null, log = () => {}, canAct = () => false, now = () => performance.now(), sleep = ms => delay(ms), pollMs = 50, backoffMs = 400, durationMs = 120000, maxChaseDistance = 40, controllerSliceMs = 8000 }) {
+function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, resume, approach = null, canAcquireMeleeApproach = null, canEngage = null, engageRadius = 32, getRecentDamageAt = null, retreat = null, log = () => {}, canAct = () => false, now = () => performance.now(), sleep = ms => delay(ms), pollMs = 50, backoffMs = 400, durationMs = 120000, maxChaseDistance = 40, controllerSliceMs = 8000, workGuard = null }) {
   if ([getState, acquire, resume, canAct, now, sleep].some(f => typeof f !== 'function') || typeof entities?.snapshot !== 'function' || [melee, ranged].some(c => ['preview', 'engage', 'cancel', 'drain', 'snapshot'].some(k => typeof c?.[k] !== 'function')) || approach != null && typeof approach !== 'function' || canAcquireMeleeApproach != null && typeof canAcquireMeleeApproach !== 'function' || canEngage != null && typeof canEngage !== 'function' || retreat != null && typeof retreat !== 'function' || !(engageRadius > 0)) throw new Error('Combat coordinator requires observed state, controllers and protective lease callbacks')
   if (!(pollMs >= 10 && pollMs <= 250) || !(backoffMs >= 100 && backoffMs <= 30000) || !Number.isInteger(durationMs) || durationMs < 1000 || durationMs > 120000 || !(maxChaseDistance > 0 && maxChaseDistance <= 48) || !Number.isInteger(controllerSliceMs) || controllerSliceMs < 1200 || controllerSliceMs > 120000) throw new Error('Invalid combat coordination bounds')
   let claim = null; let worker = null; let sequence = 0; let lastResult = null; let lastError = null; let hpRetreating = false; let lastTargetKey = null
   const backoffs = new Map()
   const noRouteStreaks = new Map()
+  // Optional narrowing from a running work mode (the quarry): which targets
+  // may be selected or kept, and whether the bot may keep fighting where it
+  // is. Absent, combat behaves exactly as before.
+  if (workGuard != null && ['canSelectTarget', 'canContinue'].some(k => typeof workGuard[k] !== 'function')) throw new Error('workGuard needs canSelectTarget and canContinue')
+  function workAllows (kind, target, state, info = {}) {
+    if (!workGuard) return { allowed: true }
+    try { const r = workGuard[kind](copy(target), state, info); return r && typeof r === 'object' ? r : { allowed: r === true } } catch (error) { lastError = String(error.message ?? error); return { allowed: false, reason: 'WORK_GUARD_ERROR' } }
+  }
   const clock = () => { const t = now(); if (!Number.isFinite(t)) throw new Error('Invalid combat coordination clock'); return t }
   clock()
   function readScope (s) {
@@ -135,7 +143,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     // A creeper between reach and the shot distance is evaded (when a retreat
     // hook exists) instead of being left to the slower idle escape.
     const evadeMode = (c, bowNow) => retreat && profiles.allowedModes(c.target.entityType, { hasBow: bowNow, distance: c.distance, elevated: elevatedFrom(c.target, s) }).includes('evade') ? 'evade' : null
-    const ranked = allActors().filter(e => eligible(e, s) && profileEligible(e, s)).map(e => ({ target: { ...copy(e), runtimeId: id(e.runtimeId), uniqueId: id(e.uniqueId, true) }, scope, ...preferredMode(s, e) })).filter(c => c.distance <= engageRadius && (c.distance <= 2.8 || engageable(c.target, s) || c.target.entityType === 'minecraft:creeper' /* only ever shot from range, never approached: no walking route needed */) && (!retreating || c.distance <= retreatDefenseRange())).map(c => ({ ...c, mode: evadeMode(c, bow) ?? c.mode ?? (mayAcquireApproach(s, c.target, c.distance) ? 'approach' : null) })).map(c => c.mode === 'ranged' && approach && safeSurvey(ranged, c.target).ready !== true && profiles.allowedModes(c.target.entityType, { hasBow: bow, distance: c.distance, elevated: elevatedFrom(c.target, s) }).includes('approach') ? { ...c, mode: 'approach' } : c).filter(c => c.mode && profiles.allowedModes(c.target.entityType, { hasBow: bow, distance: c.distance, elevated: elevatedFrom(c.target, s) }).includes(c.mode) && (c.mode !== 'ranged' || safeSurvey(ranged, c.target).ready === true || approach && c.target.entityType === 'minecraft:creeper' && c.distance >= creeperShotDistance(c.target, s) && c.target.primed !== true && safeSurvey(ranged, c.target).code === 'LOS_BLOCKED') && (backoffs.get(targetKey(scope, c.target)) ?? -Infinity) <= clock()).sort((a, b) => order.indexOf(a.mode) - order.indexOf(b.mode) || a.distance - b.distance || id(a.target.runtimeId).localeCompare(id(b.target.runtimeId)))
+    const ranked = allActors().filter(e => eligible(e, s) && profileEligible(e, s)).map(e => ({ target: { ...copy(e), runtimeId: id(e.runtimeId), uniqueId: id(e.uniqueId, true) }, scope, ...preferredMode(s, e) })).filter(c => workAllows('canSelectTarget', c.target, s, { distance: c.distance, provoked: provokedBy(s, c.target) }).allowed === true).filter(c => c.distance <= engageRadius && (c.distance <= 2.8 || engageable(c.target, s) || c.target.entityType === 'minecraft:creeper' /* only ever shot from range, never approached: no walking route needed */) && (!retreating || c.distance <= retreatDefenseRange())).map(c => ({ ...c, mode: evadeMode(c, bow) ?? c.mode ?? (mayAcquireApproach(s, c.target, c.distance) ? 'approach' : null) })).map(c => c.mode === 'ranged' && approach && safeSurvey(ranged, c.target).ready !== true && profiles.allowedModes(c.target.entityType, { hasBow: bow, distance: c.distance, elevated: elevatedFrom(c.target, s) }).includes('approach') ? { ...c, mode: 'approach' } : c).filter(c => c.mode && profiles.allowedModes(c.target.entityType, { hasBow: bow, distance: c.distance, elevated: elevatedFrom(c.target, s) }).includes(c.mode) && (c.mode !== 'ranged' || safeSurvey(ranged, c.target).ready === true || approach && c.target.entityType === 'minecraft:creeper' && c.distance >= creeperShotDistance(c.target, s) && c.target.primed !== true && safeSurvey(ranged, c.target).code === 'LOS_BLOCKED') && (backoffs.get(targetKey(scope, c.target)) ?? -Infinity) <= clock()).sort((a, b) => order.indexOf(a.mode) - order.indexOf(b.mode) || a.distance - b.distance || id(a.target.runtimeId).localeCompare(id(b.target.runtimeId)))
     const best = ranked[0] ?? null
     // Target hysteresis: keep the previous target unless another in the same
     // mode tier is clearly closer.
@@ -175,6 +183,10 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     if (clock() >= lease.deadline) return { outcome: stop('DURATION_LIMIT', 'Bound target coordination reached its duration limit') }
     if (distance(s.position, lease.origin) > maxChaseDistance) return { outcome: stop('CHASE_LIMIT', 'Attacker moved beyond the claim-origin chase bound') }
     const observed = boundObservation(lease, s)
+    if (!observed.outcome && workGuard) {
+      const allowed = workAllows('canContinue', observed.actor, s, { distance: observed.distance, mode: lease.initialMode, retreating: lease.actionLabel === 'creeper_retreat' })
+      if (allowed.allowed !== true) return { outcome: stop('WORK_GUARD', `Work mode bound: ${allowed.reason ?? 'not allowed'}`, { workGuardReason: allowed.reason ?? null }) }
+    }
     if (!observed.outcome && distance(observed.actor.position, lease.origin) > maxChaseDistance) return { outcome: stop('CHASE_LIMIT', 'Bound target moved beyond the claim-origin chase bound') }
     if (!observed.outcome && lease.initialMode === 'evade') {
       lease.lastActor = copy(observed.actor)
@@ -236,7 +248,8 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
           const next = id(ranged.snapshot().targetRuntimeId)
           if (next && next !== id(lease.target.runtimeId)) {
             const actor = allActors().find(e => id(e.runtimeId) === next)
-            if (actor) { lease.kills = (lease.kills ?? 0) + 1; lease.target = { ...copy(actor), runtimeId: id(actor.runtimeId), uniqueId: id(actor.uniqueId, true) }; lastTargetKey = targetKey(lease.scope, lease.target) }
+            if (actor && workAllows('canSelectTarget', actor, getState(), { distance: distance(getState().position, bodyAim(actor)), retarget: true }).allowed !== true) { requestStop(lease, stop('WORK_GUARD_TARGET', 'The running work mode does not allow switching to this hostile')); try { ranged.cancel('Work guard refused the retarget', 'WORK_GUARD_TARGET') } catch {} }
+            else if (actor) { lease.kills = (lease.kills ?? 0) + 1; lease.target = { ...copy(actor), runtimeId: id(actor.runtimeId), uniqueId: id(actor.uniqueId, true) }; lastTargetKey = targetKey(lease.scope, lease.target) }
           }
         } catch { /* the guard below reports observation problems */ }
       }
