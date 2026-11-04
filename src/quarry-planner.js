@@ -507,7 +507,8 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     }
     return isCurrent() ? result.value : null
   }
-  function clearDeferred (reasons = null) { const before = deferred.size; for (const [k, v] of deferred) if (!reasons || reasons.includes(v.reason)) deferred.delete(k); if (deferred.size !== before) recordRevision++ }
+  // keep(key) -> true leaves that cell deferred (e.g. cells of finished layers).
+  function clearDeferred (reasons = null, keep = null) { const before = deferred.size; for (const [k, v] of deferred) if ((!reasons || reasons.includes(v.reason)) && !(keep && keep(k))) deferred.delete(k); if (deferred.size !== before) recordRevision++ }
   function exportRecords () { return { deferred: Object.fromEntries(deferred), temporary: Object.fromEntries(temporary), seals: Object.fromEntries(seals), stair } }
 
   return { pathTo, surveyTop, planStair, stairStepAt, isStairCell, cellStatus, layerSummary, next, reachableFrom, reachableFromAsync, standable, fluidNeighbours, sealPlan, recordPlacement, counts, countsAsync, revision: () => recordRevision, defer, clearDeferred, exportRecords, deferredList: () => [...deferred].map(([k, v]) => ({ position: k, ...v })), sealList: () => [...seals].map(([k, v]) => ({ position: k, ...v })), temporaryList: () => [...temporary].map(([k, v]) => ({ position: k, ...v })) }

@@ -13,6 +13,9 @@ const { createQuarryCombatBridge } = require('./quarry-combat-bridge')
 
 const copy = value => value === undefined ? undefined : structuredClone(value)
 const FEET = 1.62
+const AUTO_RESUME_WINDOW_MS = 600000 // the ACTION_FAILED auto-resume budget resets after this quiet time
+const STORAGE_AREA_RADIUS = 24 // m around the chests checked before leaving the pit
+const STORAGE_WAIT_MS = 20000 // longest wait for the chest area to clear (a long idle wait looks like a stall)
 const SETTLE_EAT_CLEARANCE = 8 // m: no eating in the settle wait with a hostile this close
 const PICKUP_XZ = 1.3 // half player width 0.3 + 1 block reach for item pickup
 const ACTIVE = new Set(['PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT', 'RETURN', 'DEPOSIT', 'RESTOCK', 'HAZARD', 'RECOVER', 'SUSPEND_FOR_COMBAT', 'COMBAT', 'COMBAT_SETTLE', 'RECOVER_AFTER_COMBAT', 'RECONCILE', 'FINAL_CHECK', 'DISCONNECTED'])
@@ -235,6 +238,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // An unroutable stance is already avoided; re-plan without using the retry
     // budget (bounded so a job that can reach nothing still pauses).
     if (error.code === 'NO_ROUTE' && (job.routeSkips = (job.routeSkips ?? 0) + 1) <= 60) { note('stance_unroutable', { message: String(error.message).slice(0, 160), skips: job.routeSkips }); setState('SURVEY'); return }
+    // A rejected / unconfirmed tool swap means our inventory view differs from
+    // the server's: resync it before the retry (throttled) instead of failing.
+    if (/持ち替えを拒否|持ち替え結果を確認できません/.test(String(error.message)) && typeof adapter.resyncInventory === 'function' && now() - (job.equipResyncAt ?? 0) > 15000) {
+      job.equipResyncAt = now()
+      try { await adapter.resyncInventory({}); note('inventory_resynced', { for: 'equip' }) } catch (e) { note('resync_failed', { error: String(e.message ?? e).slice(0, 160) }) }
+      lastInventory = totals(items(adapter.getState()) ?? [])
+      setState('SURVEY'); return
+    }
     // Unknown errors: retry bounded, then pause with the reason (§15.1 max 3).
     job.retry = (job.retry ?? 0) + 1
     if (job.retry > 3) return finish('PAUSED', `ACTION_FAILED:${String(error.message ?? code).slice(0, 160)}`, { pauseDetails: { lastError: String(error.message ?? code).slice(0, 300), lastMoveError: job.lastMoveError ?? null, lastDecision: job.lastDecision ?? null, avoidedStances: [...badStances.keys()].slice(0, 10) } })
@@ -329,13 +340,38 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const s = guard(myEpoch)
     // Re-observe instead of trusting saved cells (§15.3): unreachable and
     // tool deferrals are retried; protected/unbreakable stay.
-    planner.clearDeferred(['UNREACHABLE', 'WAITING_FOR_TOOL', 'TOOL_DURABILITY_RESERVE', 'TOOL_DURABILITY_UNKNOWN', 'TOOL_NOT_IN_HOTBAR'])
+    // MINING_FAILED (and the falling-block chains it holds up) were transient
+    // refusals in practice (pose not settled, face not visible from one stance):
+    // retry them on every reconcile instead of leaving them unmined for good.
+    // Work resumes at the deepest layer reached. Finished layers above are not
+    // revisited: their remaining cells stay recorded (EARLIER_LAYER_LEFTOVER)
+    // and transient deferrals are only retried from the current layer down.
     if (!items(s)) { await sleep(500); return }
+    const floorY = workFloorY()
+    const above = k => Number(k.split(',')[1]) > floorY
+    planner.clearDeferred(['UNREACHABLE', 'WAITING_FOR_TOOL', 'TOOL_DURABILITY_RESERVE', 'TOOL_DURABILITY_UNKNOWN', 'TOOL_NOT_IN_HOTBAR', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK'], above)
+    badStances.clear()
     lastInventory = totals(items(s))
-    job.cursorY = job.yTop
+    if (floorY < job.yTop) {
+      const opts = { tools: items(s), policy: { ...job.config.tools, ...job.config.collection } }
+      let kept = 0
+      for (let y = job.yTop; y > floorY; y--) for (const c of planner.layerSummary(y, opts).pending) { planner.defer(c.position, 'EARLIER_LAYER_LEFTOVER'); kept++ }
+      if (kept) note('earlier_layer_leftovers', { count: kept, above: floorY })
+    }
+    job.cursorY = floorY
     job.retry = 0
     combatBridge.activate({ jobId: job.config.jobId, epoch, travel: p => permits(regions, 'travel', p).allowed })
     setState('SURVEY')
+  }
+
+  // Deepest layer the job has worked (tracked from confirmed mining; for older
+  // documents estimated as the lowest layer that is mostly dug out).
+  function workFloorY () {
+    if (Number.isSafeInteger(job.deepestY)) return Math.max(job.deepestY, job.yBottom ?? -64)
+    let floor = job.yTop
+    for (let y = job.yTop; y >= (job.yBottom ?? -64); y--) { const l = planner.layerSummary(y, {}); if (l.pending.length + l.deferred + l.reserved < 200) floor = y; else break }
+    job.deepestY = floor
+    return floor
   }
 
   async function recoverAfterCombat (myEpoch, s) {
@@ -428,6 +464,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     job.lastDecision = { action: decision.action, reason: decision.reason ?? null, details: decision.details ?? null, y: decision.targets?.[0]?.position?.y ?? decision.y ?? null }
     // Leaving a layer: gather its drops first, while they are still close.
     const nextY = decision.action === 'mine' ? decision.targets?.[0]?.position?.y : null
+    // Before closing a layer, retry its own transient deferrals once so no
+    // leftovers are created that would need a return trip later.
+    if (Number.isFinite(nextY) && Number.isFinite(job.lastMineY) && nextY < job.lastMineY && job.layerRetried !== job.lastMineY) {
+      const ly = job.lastMineY
+      job.layerRetried = ly
+      const before = planner.deferredList().length
+      planner.clearDeferred(['MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK', 'UNREACHABLE'], k => Number(k.split(',')[1]) !== ly)
+      if (planner.deferredList().length < before) { badStances.clear(); note('layer_retry', { y: ly, cells: before - planner.deferredList().length }); return }
+    }
     if (Number.isFinite(nextY) && Number.isFinite(job.lastMineY) && nextY < job.lastMineY && open.length) { job.lastMineY = nextY; await collect(myEpoch, 'layer'); return }
     if (Number.isFinite(nextY)) job.lastMineY = nextY
     if (decision.action === 'finished') { await collect(myEpoch, 'final'); setState('FINAL_CHECK'); return }
@@ -574,8 +619,25 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       lastInventory = totals(items(adapter.getState()) ?? [])
       return
     }
-    if (confirmed) { job.slowBreaks = 0; job.routeSkips = 0; job.autoResumes = 0 }
-    if (failure && !confirmed) { rec.status = 'failed'; rec.error = String(failure.message ?? failure); job.retry = (job.retry ?? 0) + 1; if (job.retry > 3) { for (const t of targets) planner.defer(t, 'MINING_FAILED', { error: rec.error }); job.retry = 0 } ; note('mine_failed', { error: rec.error }); return }
+    if (confirmed) { job.slowBreaks = 0; job.routeSkips = 0; job.autoResumes = 0; for (const r of rec.results ?? []) if (r.result === 'removed') { const y = Number(r.position.split(',')[1]); if (Number.isFinite(y) && Number.isFinite(job.deepestY) && y < job.deepestY) job.deepestY = y } }
+    if (failure && !confirmed) {
+      rec.status = 'failed'; rec.error = String(failure.message ?? failure)
+      // A preview refused for the stance (pose not settled, face not visible
+      // from here) says nothing about the cells: avoid this stance and re-plan.
+      if (/静止|視線が遮られ|未取得|settled|grounded/.test(rec.error) && decision.stance) {
+        badStances.set(`${decision.stance.x},${decision.stance.y},${decision.stance.z}`, 2)
+        // The current stance is never avoided by the planner, so count refusals
+        // per cell too: after 3 the cells wait for the next reconcile (retried
+        // there) instead of looping on the same refusal.
+        job.refusedCells ??= {}
+        for (const t of targets) { const k = `${t.x},${t.y},${t.z}`; job.refusedCells[k] = (job.refusedCells[k] ?? 0) + 1; if (job.refusedCells[k] >= 3) { planner.defer(t, 'MINING_FAILED', { error: rec.error }); delete job.refusedCells[k] } }
+        note('mine_stance_refused', { error: rec.error.slice(0, 160), stance: decision.stance })
+        await sleep(200)
+        return
+      }
+      job.retry = (job.retry ?? 0) + 1; if (job.retry > 3) { for (const t of targets) planner.defer(t, 'MINING_FAILED', { error: rec.error }); job.retry = 0 }
+      note('mine_failed', { error: rec.error }); return
+    }
     job.retry = 0
     rec.status = failure ? 'partial' : 'confirmed'
     batchCount += confirmed
@@ -886,8 +948,31 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     await call(myEpoch, 'return', signal => adapter.goToStorage({ ...st, stand }, { signal, path, travel: c => permits(regions, 'travel', c).allowed }))
   }
 
+  function storageHostiles () {
+    const st = currentStorage() ?? job.config.inventory.storage?.[0]
+    if (!st?.position) return []
+    return (adapter.actors?.() ?? []).filter(e => e.hostile === true && e.alive !== false && e.position && Math.hypot(e.position.x - st.position.x, e.position.z - st.position.z) <= STORAGE_AREA_RADIUS && Math.abs(e.position.y - st.position.y) <= 12)
+  }
+  async function waitForQuietStorage (myEpoch) {
+    const busy = list => list.length >= 3 || list.some(e => /witch|evoker|ravager|vindicator/.test(e.entityType ?? ''))
+    let list = storageHostiles()
+    if (!busy(list)) return
+    note('storage_area_hostile', { count: list.length, types: [...new Set(list.map(e => e.entityType))].slice(0, 6) })
+    const until = now() + STORAGE_WAIT_MS
+    while (now() < until && busy(list)) {
+      guard(myEpoch)
+      if (job.config.quarryCombat.enabled && adapter.combatActive()) throw new QuarryInterrupt('COMBAT')
+      await sleep(2000)
+      list = storageHostiles()
+    }
+    note(busy(list) ? 'storage_area_wait_timeout' : 'storage_area_clear', { count: list.length })
+  }
+
   async function returnAndDeposit (myEpoch, why) {
     if (!job.config.inventory.storage?.length) return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: 'carry-only job is full' } })
+    // Do not walk out of the pit into a group: with several hostiles (or a
+    // witch) around the chests, wait here and let combat take them first.
+    await waitForQuietStorage(myEpoch)
     let st = currentStorage()
     if (!st) {
       // Every chest is full: add one more and keep going.
@@ -946,9 +1031,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job.finalDeposited && job.config.inventory.storage?.length) { await collect(myEpoch, 'final'); job.depositReason = 'final'; await returnAndDeposit(myEpoch, 'final'); return }
     // UNREACHABLE is relative to where the bot stood; re-try from here a few
     // times before treating those cells as exceptions.
-    if (planner.deferredList().some(d => d.reason === 'UNREACHABLE') && (job.unreachableRetries ?? 0) < 3) {
+    // Same for cells put aside after transient mining refusals.
+    if (planner.deferredList().some(d => ['UNREACHABLE', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK'].includes(d.reason)) && (job.unreachableRetries ?? 0) < 3) {
       job.unreachableRetries = (job.unreachableRetries ?? 0) + 1
-      planner.clearDeferred(['UNREACHABLE'])
+      planner.clearDeferred(['UNREACHABLE', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK'])
+      badStances.clear()
       note('unreachable_retry', { attempt: job.unreachableRetries })
       job.cursorY = job.yTop; setState('SURVEY'); return
     }
@@ -995,8 +1082,12 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // A failed action often clears up on its own (a mob in the way, a lag
     // spike): resume automatically up to 3 times, 30s apart, before staying
     // paused. Progress (a confirmed mine) resets the count.
+    // The budget is per burst: 10 minutes after the last automatic resume it
+    // starts again, so a few failures spread over hours never stop the job.
+    if (result === 'PAUSED' && /^ACTION_FAILED/.test(String(reason)) && now() - (job.lastAutoResumeAt ?? 0) > AUTO_RESUME_WINDOW_MS) job.autoResumes = 0
     if (result === 'PAUSED' && /^ACTION_FAILED/.test(String(reason)) && (job.autoResumes ?? 0) < 3 && job.userRunIntent === 'running') {
       job.autoResumes = (job.autoResumes ?? 0) + 1
+      job.lastAutoResumeAt = now()
       const owner = job; const count = job.autoResumes
       const t = setTimeout(() => { try { if (job === owner && job.state === 'PAUSED' && job.pauseReason === reason && job.userRunIntent === 'running') { note('auto_resume', { reason, count }); resume() } } catch {} }, autoResumeMs)
       t.unref?.()

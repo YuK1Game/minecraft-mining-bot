@@ -114,7 +114,9 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
       if(correctionRun&&(fullCorrectionScope(state)!==correctionRun.scope||clock()>=correctionRun.deadline))throw new Error('Original mixed movement scope or deadline ended')
       if (status.route?.boundedJump && jumpScope !== JSON.stringify([state.profile ?? null, state.realm?.id ?? null, state.dimension ?? null, state.connectionId ?? null, state.startedAt ?? null, state.runtimeEntityId ?? null])) throw new Error('Bounded jump session or player changed')
       if (state.dimension !== dimension) throw new Error('Movement stopped because the dimension changed')
-      if (state.health < previousHealth) throw new Error('Movement stopped because the bot took damage')
+      // Combat's own approach expects to be hit (poison, arrows); it re-checks
+      // every poll, so damage alone does not stop that move. Low health still does.
+      if (state.health < previousHealth && state.combatMotion !== true) throw new Error('Movement stopped because the bot took damage')
       if (signature(state) !== rawSignature) throw new Error('An authoritative position update requires replanning')
       previousHealth = state.health
     }
@@ -575,7 +577,7 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
     if (name === 'update_attributes') {
       if (String(packet.runtime_entity_id) !== state.runtimeEntityId) return
       const health = packet.attributes?.find(attribute => attribute.name === 'minecraft:health')?.current
-      if (Number.isFinite(health) && (health <= (status.emergency ? 0 : resourceMinHealth({ ...state, health })) || health < previousHealth)) fail(new Error('Movement stopped because the bot took damage'))
+      if (Number.isFinite(health) && (health <= (status.emergency ? 0 : resourceMinHealth({ ...state, health })) || health < previousHealth && state.combatMotion !== true)) fail(new Error('Movement stopped because the bot took damage'))
       return
     }
     if (name === 'move_player' && String(packet.runtime_id) !== state.runtimeEntityId) return

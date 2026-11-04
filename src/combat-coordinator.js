@@ -24,6 +24,11 @@ const NO_ROUTE_BACKOFF_MS = 2000
 // back out of the line is followed again at once.
 const SIGHT_MOVES_PER_CLAIM = 6
 const SIGHT_STALE_RETRIES = 2
+// A moving bow target makes the sight survey change between polls; keep the
+// claim and re-survey for this long before releasing it (live 2026-11-05:
+// a witch at 6-8m was never shot because each claim ended after 2 polls).
+const SIGHT_STALE_GRACE_MS = 900
+const SIGHT_STALE_MAX_RETRIES = 8
 // Repeated no-route outcomes for the same target double the wait (2,4,8,16s).
 const NO_ROUTE_BACKOFF_MAX_MS = 16000
 const RETREAT_PRESSURE_DEFENSE_RANGE = 12
@@ -337,8 +342,9 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     return copy(lastResult)
   }
   function staleSightResult (lease, result) {
-    if (result?.code !== 'SIGHT_STALE') { lease.sightStaleRetries = 0; return undefined }
-    if ((lease.sightStaleRetries = (lease.sightStaleRetries ?? 0) + 1) <= SIGHT_STALE_RETRIES) {
+    if (result?.code !== 'SIGHT_STALE') { lease.sightStaleRetries = 0; lease.sightStaleSince = null; return undefined }
+    lease.sightStaleSince ??= clock()
+    if ((lease.sightStaleRetries = (lease.sightStaleRetries ?? 0) + 1) <= SIGHT_STALE_RETRIES || clock() - lease.sightStaleSince <= SIGHT_STALE_GRACE_MS && lease.sightStaleRetries <= SIGHT_STALE_MAX_RETRIES) {
       lease.sightMoves = Math.max(0, lease.sightMoves - 1)
       return null
     }
