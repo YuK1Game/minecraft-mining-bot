@@ -1,5 +1,6 @@
 'use strict'
 
+const { equipmentReady } = require('./equipment-readiness')
 const { resourceMinHealth } = require('./learning-health')
 
 const { setTimeout: sleep } = require('node:timers/promises')
@@ -1131,10 +1132,12 @@ function createIdleSafety ({ getState, isIdle, equipSword, closeGui, previewEnga
         }))
         if (emergencyEquipmentSafe(value, op) && await call(run, op, 'Verify emergency equipment support', signal => verifyMeleeBody(copy(value.state), { signal, operationId: op.id })) ) {
           stage(op, 'emergency_equip'); op.owns = true
+          const swordStock = copy(value.state.inventory.items)
           const equipped = await call(run, op, 'Emergency sword equipment', signal => equipSword({ state: copy(value.state), signal, operationId: op.id }), { timeout: 3000, mutation: true })
           await cleanup(run, op, 'Emergency equipment returned')
           value = await inspect(run, op)
-          if (equipped?.serverConfirmed !== true || !swordHeld(value.state)) { await escapeOrStop(run, op, value, 'Actual sword equip is unconfirmed'); return }
+          const expectedSword = swordStock.find(item => item.slot === equipped?.sourceSlot && SWORD.test(item.name) && item.count === 1)
+          if (!equipmentReady(equipped, value.state, { sourceSlot: expectedSword?.slot, expectedItem: expectedSword }) || !swordHeld(value.state)) { await escapeOrStop(run, op, value, 'Actual sword equip is unconfirmed'); return }
           if (value.recovering && !value.threats.threats.length) { report('recovering'); return }
           target = value.threats.threats[0]
           physical = value.state.predicted?.physicsState ?? value.state.physicsState
@@ -1235,9 +1238,11 @@ function createIdleSafety ({ getState, isIdle, equipSword, closeGui, previewEnga
       }
       if (value.unknown || !(value.state.health > 10) || value.threats.threats.length !== 1 || !MELEE.has(target?.name) || target.distance > 4 || value.state.inventory?.known !== true || value.state.inventory.uncertain || !await bodyReady(run, op, value.state, { stationaryMelee: true })) { await escapeOrStop(run, op, value, 'Idle danger cannot be safely defended'); return }
       stage(op, 'equip_sword'); op.owns = true
+      const swordStock = copy(value.state.inventory.items)
       const equipped = await call(run, op, 'equip_sword', signal => equipSword({ state: copy(value.state), signal, operationId: op.id }), { mutation: true })
       value = await inspect(run, op)
-      if (equipped?.serverConfirmed !== true || !swordHeld(value.state)) { await escapeOrStop(run, op, value, 'Actual sword equip is unconfirmed'); return }
+      const expectedSword = swordStock.find(item => item.slot === equipped?.sourceSlot && SWORD.test(item.name) && item.count === 1)
+      if (!equipmentReady(equipped, value.state, { sourceSlot: expectedSword?.slot, expectedItem: expectedSword }) || !swordHeld(value.state)) { await escapeOrStop(run, op, value, 'Actual sword equip is unconfirmed'); return }
       stage(op, 'close_gui')
       await call(run, op, 'close_gui', signal => closeGui({ signal, operationId: op.id }), { mutation: true })
       value = await inspect(run, op)

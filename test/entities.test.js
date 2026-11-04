@@ -228,3 +228,54 @@ test('64-bit IDs remain exact and unsafe numeric IDs never alias an existing act
   tracker.applyPacket('remove_entity', { entity_id_self: '-9007199254740995' })
   assert.equal(tracker.snapshot({ kind: 'all' }).length, 0)
 })
+
+test('version() changes whenever a packet or the self id is applied, so snapshots can be reused safely', () => {
+  const { createEntities } = require('../src/entities')
+  const e = createEntities()
+  const v0 = e.version()
+  e.applyPacket('remove_entity', { entity_id_self: 1n })
+  const v1 = e.version()
+  assert.ok(v1 > v0)
+  e.setSelfRuntimeId('7')
+  assert.ok(e.version() > v1)
+})
+
+test('direct entity reads preserve exact runtime identity, unknown positions and independent observations', () => {
+  const tracker = createEntities()
+  mob(tracker, 'minecraft:zombie', 4n, 9007199254740995n, { x: 1, y: 64, z: 2 })
+  const before = tracker.version(), entity = tracker.get('9007199254740995')
+  assert.deepEqual(entity, tracker.snapshot({ kind: 'all' })[0])
+  entity.position.x = 99
+  assert.equal(tracker.get(9007199254740995n).position.x, 1)
+  assert.equal(tracker.get(Number(9007199254740995n)), null)
+  assert.equal(tracker.get('unknown'), null)
+  assert.equal(tracker.version(), before, 'observation does not advance the received version')
+  tracker.applyPacket('remove_entity', { entity_id_self: 4n })
+  assert.equal(tracker.get(9007199254740995n), null)
+  mob(tracker, 'minecraft:skeleton', 5n, 9007199254740995n, null)
+  assert.equal(tracker.get(9007199254740995n).uniqueId, '5')
+  assert.equal(tracker.get(9007199254740995n).positionKnown, false)
+  assert.equal(tracker.get(9007199254740995n).position, null)
+  tracker.applyPacket('change_dimension', { dimension: 1 })
+  assert.equal(tracker.get(9007199254740995n), null)
+})
+
+test('nearby selection matches the full observation at radius boundaries and keeps unknowns out of distance queries', () => {
+  const tracker = createEntities(), origin = { x: 0, y: 64, z: 0 }
+  mob(tracker, 'minecraft:zombie', 1n, 11n, { x: 3, y: 68, z: 0 })
+  mob(tracker, 'minecraft:skeleton', 2n, 12n, { x: -3, y: 64, z: 4 })
+  mob(tracker, 'minecraft:zombie', 3n, 13n, { x: 5.001, y: 64, z: 0 })
+  mob(tracker, 'minecraft:zombie', 4n, 14n, null)
+  tracker.applyPacket('add_player', { uuid: 'player', username: 'player', unique_id: 5n, runtime_id: 15n, position: origin })
+  tracker.applyPacket('add_item_entity', { entity_id_self: 6n, runtime_entity_id: 16n, item: { network_id: 42, count: 1 }, position: origin })
+  tracker.applyPacket('item_registry', { itemstates: [{ runtime_id: 42, name: 'minecraft:stone' }] })
+  for (const kind of ['all', 'hostile', 'mob', 'player', 'item', 'entity']) {
+    const expected = tracker.snapshot({ kind, includeUnknown: false }).map(entity => ({ ...entity, distance: Math.hypot(entity.position.x, entity.position.y - 64, entity.position.z), horizontalDistance: Math.hypot(entity.position.x, entity.position.z) })).filter(entity => entity.distance <= 5).sort((a, b) => a.distance - b.distance || a.runtimeId.localeCompare(b.runtimeId))
+    assert.deepEqual(tracker.nearby(origin, { radius: 5, kind }), expected)
+  }
+  const near = tracker.nearby(origin, { radius: 5 })
+  near[0].position.x = 99
+  assert.equal(tracker.get(11n).position.x, 3)
+  assert.equal(tracker.get(16n).name, 'minecraft:stone')
+  assert.throws(() => tracker.nearby(origin, { kind: 'invalid' }), /Unknown entity filter/)
+})

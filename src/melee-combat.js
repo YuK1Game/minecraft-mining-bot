@@ -61,8 +61,9 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
     // the existing 200ms freshness requirement; neither kind fabricates an ACK.
     return { kind: 'received_pose', source: state.positionSource, updatedAt: state.positionUpdatedAt ?? null, ageMs: null, predictionOnly: false }
   }
-  function session () {
-    const state = getState(); const raw = getRawState(); const inventory = crafting.snapshot()
+  function session (includeInventory = true) {
+    const state = getState(); const raw = getRawState()
+    const inventory = !includeInventory && typeof crafting.status === 'function' ? crafting.status() : typeof crafting.inventorySnapshot === 'function' ? crafting.inventorySnapshot() : crafting.snapshot()
     if (state?.phase !== 'spawned' || state.dead || state.isDead || state.spawnPending || !(Number.isFinite(state.health) && state.health > 0) || state.lifecycle?.dead || raw?.dead || raw?.isDead || raw?.lifecycle?.dead || raw?.spawnPending || raw?.phase !== 'spawned' || !(Number.isFinite(raw?.health) && raw.health > 0)) throw failure('Attacker must be alive in the spawned world', 'NOT_ALIVE')
     if (!['survival', 0].includes(state.gameMode)) throw failure('Melee combat requires survival mode', 'GAME_MODE')
     if (typeof state.profile !== 'string' || !state.profile || state.realm?.id == null || id(state.realm.id) === null || typeof state.connectionId !== 'string' || !state.connectionId || typeof state.startedAt !== 'string' || !state.startedAt || !['overworld', 'nether', 'end'].includes(state.dimension) || id(state.runtimeEntityId) === null || baseScope(state) !== baseScope(raw)) throw failure('Authoritative and working session scopes must agree', 'SCOPE_UNKNOWN')
@@ -123,14 +124,14 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
     if (!weapon.ready) throw failure('No proven weapon or real empty hotbar hand is available', 'WEAPON_UNKNOWN')
     return { ...s, target: copy(target), aimPoint, workingDistance, rawDistance, inReach: workingDistance <= reach, hopAimTrackable: !tracking || workingDistance <= 16, diagnostics, weapon }
   }
-  function preview (runtimeId) {
-    try { if (run || isBusy({ criticalHopId: null })) throw failure('Another action owns melee input', 'BUSY'); const p = plan(runtimeId); const hop = previewHop ? previewHop({ aimPoint: p.aimPoint }) : { ready: false, reason: 'Native hop unavailable' }; return { ready: true, targetRuntimeId: p.target.runtimeId, targetUniqueId: p.target.uniqueId, ...copy(p.diagnostics), reach, weapon: p.weapon, criticalHop: copy(hop), cooldownRemainingMs: Math.max(0, cooldownMs - (clock() - lastAttack)) } } catch (error) { return { ready: false, code: error.code ?? 'UNSAFE', outcome: error.code === 'OUT_OF_REACH' ? 'out_of_reach' : 'unsafe', ...copy(error.diagnostics ?? {}), errors: [error.message] } }
+  function preview (runtimeId, { critical = true } = {}) {
+    try { if (run || isBusy({ criticalHopId: null })) throw failure('Another action owns melee input', 'BUSY'); const p = plan(runtimeId); const hop = critical === false ? { ready: false, reason: 'Critical hop disabled' } : previewHop ? previewHop({ aimPoint: p.aimPoint }) : { ready: false, reason: 'Native hop unavailable' }; return { ready: true, targetRuntimeId: p.target.runtimeId, targetUniqueId: p.target.uniqueId, ...copy(p.diagnostics), reach, weapon: p.weapon, criticalHop: copy(hop), cooldownRemainingMs: Math.max(0, cooldownMs - (clock() - lastAttack)) } } catch (error) { return { ready: false, code: error.code ?? 'UNSAFE', outcome: error.code === 'OUT_OF_REACH' ? 'out_of_reach' : 'unsafe', ...copy(error.diagnostics ?? {}), errors: [error.message] } }
   }
   function assertRun (r) {
     if (run !== r || r.cancelReason) throw failure(r.cancelReason ?? 'Melee cancelled', r.code ?? 'CANCELLED')
     if (r.terminal) throw failure('Target stopped', 'TARGET_STOPPED')
     if (clock() >= r.deadline) throw failure('Melee duration limit reached', 'DURATION_LIMIT')
-    const s = session()
+    const s = session(false)
     if (s.scope !== r.scope) throw failure('Connection, dimension or life changed', 'SESSION_CHANGED')
     if (isBusy({ criticalHopId: r.hopId, ordinaryInput: r.input !== null })) throw failure('Another action took input ownership', 'BUSY')
     return s
@@ -169,11 +170,16 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
         if (p.weapon.raw.network_id === 0) {
           const slot = p.weapon.slot
           client.queue('mob_equipment', { runtime_entity_id: BigInt(p.state.runtimeEntityId), item: copy(p.weapon.raw), slot, selected_slot: slot, window_id: 'inventory' })
-          await waitFor(r, () => session().selected === slot, 2000)
+          await waitFor(r, () => session(false).selected === slot, 2000)
         } else {
           const result = await equip(p.weapon.slot)
           assertRun(r)
-          if (result?.serverConfirmed !== true) throw failure('Melee weapon equip is not server confirmed', 'EQUIP_UNCONFIRMED')
+          // A hotbar selection is an input request, not a server ACK. It may
+          // prepare an attack only while the same observed stack is selected.
+          const selectionReady = result?.phase === 'completed' && result.selectionSent === true &&
+            result.sourceSlot === p.weapon.slot && result.slot === p.weapon.slot && p.weapon.slot >= 0 && p.weapon.slot <= 8 &&
+            session(false).selected === p.weapon.slot && isDeepStrictEqual(crafting.rawItem(p.weapon.slot), p.weapon.raw)
+          if (result?.serverConfirmed !== true && !selectionReady) throw failure('Melee weapon equip has no confirmed swap or matching hotbar selection', 'EQUIP_UNCONFIRMED')
         }
       } finally { r.equipping = false }
       p = plan(r.target.runtimeId, r.target)
@@ -307,7 +313,7 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
   async function settlePose (signal, maxMs = POSE_SETTLE_MS) {
     const end = performance.now() + maxMs
     while (true) {
-      try { session(); return } catch (error) { if (error.code !== 'POSE_UNTRUSTED' || performance.now() >= end) throw error }
+      try { session(false); return } catch (error) { if (error.code !== 'POSE_UNTRUSTED' || performance.now() >= end) throw error }
       await sleep(25, signal)
     }
   }
@@ -365,7 +371,7 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
     const state = getState()
     if (fullScope(state) !== r.scope) { cancel('Attacker scope changed', 'SESSION_CHANGED'); return }
     if (state.dead || state.isDead || !(state.health > 0) || name === 'entity_event' && id(packet.runtime_entity_id) === id(state.runtimeEntityId) && ['death_animation', 3].includes(packet.event_id)) { cancel('Attacker died', 'NOT_ALIVE'); return }
-    const current = entities.snapshot({ kind: 'all' }).find(e => id(e.runtimeId) === id(r.target.runtimeId))
+    const current = typeof entities.get === 'function' ? entities.get(id(r.target.runtimeId)) : entities.snapshot({ kind: 'all' }).find(e => id(e.runtimeId) === id(r.target.runtimeId))
     const bound = current && id(current.uniqueId, true) === id(r.target.uniqueId, true) && current.entityType === r.target.entityType
     let by = null
     if (bound && name === 'entity_event' && id(packet.runtime_entity_id) === id(r.target.runtimeId) && ['death_animation', 3].includes(packet.event_id)) by = 'server_death_animation'

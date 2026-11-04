@@ -33,6 +33,7 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
   const names = new Map()
   const inventory = new Map()
   const recipes = new Map()
+  let availableRecipes = null
   let inventoryKnown = false
   let authority = false
   let openContainer = null
@@ -66,7 +67,7 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
       const request = opening; opening = null; clearTimeout(request.timer)
       request.reject(new Error('接続が切り替わったためインベントリ表示を中止しました。'))
     }
-    names.clear(); inventory.clear(); recipes.clear()
+    names.clear(); inventory.clear(); recipes.clear(); availableRecipes = null
     inventoryKnown = false
     authority = false
     openContainer = null
@@ -270,7 +271,9 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
       for (const item of packet.itemstates ?? []) names.set(item.runtime_id, nameOf(item.name))
     } else if (name === 'item_registry') {
       for (const item of packet.itemstates ?? []) names.set(item.runtime_id, nameOf(item.name))
+      availableRecipes = null
     } else if (name === 'crafting_data') {
+      availableRecipes = null
       if (packet.clear_recipes) recipes.clear()
       for (const kind of ['shaped', 'shapeless']) {
         for (const recipe of packet[`${kind}_recipes`] ?? []) {
@@ -341,14 +344,27 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
       const request = opening; opening = null; clearTimeout(request.timer); request.reject(new Error(reason))
     }
   }
+  // Busy checks and combat inventory reads must not enumerate server recipes.
+  // Every public result still owns its mutable objects, including cached data.
+  function status () {
+    return { version, authority, inventoryKnown, openContainer: copy(openContainer), pendingRequestId: pending?.id ?? null, lastResult: copy(lastResult) }
+  }
+  function inventorySnapshot () {
+    return { ...status(), inventory: [...inventory].filter(([, item]) => !empty(item)).map(([slot, item]) => ({ slot, name: itemName(item), count: item.count, stackId: item.has_stack_id ? item.stack_id : null })) }
+  }
   function snapshot () {
-    return { version, authority, inventoryKnown, openContainer: copy(openContainer), recipes: recipes.size, pendingRequestId: pending?.id ?? null, lastResult: copy(lastResult), inventory: [...inventory].filter(([, item]) => !empty(item)).map(([slot, item]) => ({ slot, name: itemName(item), count: item.count, stackId: item.has_stack_id ? item.stack_id : null })), availableRecipes: [...recipes.values()].filter(recipe => recipe.output?.some(item => { const name = itemName(item); return RECIPE_OUTPUTS.has(name) || name?.startsWith('minecraft:') && name.endsWith('_planks') && WOODS.has(name.slice(10, -7)) })).map(recipe => ({ id: recipe.recipe_id, networkId: recipe.network_id, output: recipe.output.map(item => ({ name: itemName(item), count: item.count })), width: recipe.width ?? null, height: recipe.height ?? null })) }
+    availableRecipes ??= [...recipes.values()].filter(recipe => recipe.output?.some(item => { const name = itemName(item); return RECIPE_OUTPUTS.has(name) || name?.startsWith('minecraft:') && name.endsWith('_planks') && WOODS.has(name.slice(10, -7)) })).map(recipe => ({ id: recipe.recipe_id, networkId: recipe.network_id, output: recipe.output.map(item => ({ name: itemName(item), count: item.count })), width: recipe.width ?? null, height: recipe.height ?? null }))
+    // Protocol summary fields are scalars; copy the small public shape without
+    // repeatedly serializing it. Keep unusual object values isolated as well.
+    const value = field => field !== null && typeof field === 'object' ? copy(field) : field
+    const recipeView = availableRecipes.map(recipe => ({ id: value(recipe.id), networkId: recipe.networkId, output: recipe.output.map(item => ({ name: item.name, count: value(item.count) })), width: value(recipe.width), height: value(recipe.height) }))
+    return { ...inventorySnapshot(), recipes: recipes.size, availableRecipes: recipeView }
   }
   function describeRecipes (outputName) {
     outputName = nameOf(outputName)
     return [...recipes.values()].filter(recipe => recipe.output?.length === 1 && itemName(recipe.output[0]) === outputName).map(recipe => ({ kind: recipe.kind, id: recipe.recipe_id, networkId: recipe.network_id, block: recipe.block, width: recipe.width, height: recipe.height, input: copy(recipe.input), output: recipe.output.map(item => ({ name: itemName(item), count: item.count })) }))
   }
-  return { applyPacket, preview, craft, openInventory, closeContainer, rawItem, snapshot, describeRecipes, cancel, itemNameOf: networkId => names.get(networkId) ?? null }
+  return { applyPacket, preview, craft, openInventory, closeContainer, rawItem, status, inventorySnapshot, snapshot, describeRecipes, cancel, itemNameOf: networkId => names.get(networkId) ?? null }
 }
 
 module.exports = { createCrafting }

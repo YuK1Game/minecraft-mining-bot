@@ -173,3 +173,12 @@ test('real tunneling plans route around the protected base floor instead of trea
   assert.equal(world.getBlock(0, 5, 0).protected, undefined)
   assert.equal(world.getBlock(0, 5, 0).name, 'minecraft:stone')
 })
+
+test('live case 2026-11-04: ordinary block reads never clone the state; only base candidate cells check the scope', () => {
+  const { createBaseProtection } = require('../src/base-protection')
+  let stateReads = 0
+  const world = { getBlock: (x, y, z) => ({ known: true, position: { x, y, z }, name: 'minecraft:stone', boundingBox: 'block', extra: [] }) }
+  const p = createBaseProtection({ world, getState: () => { stateReads++; return { profile: 'bot', realm: { id: '1' }, dimension: 'overworld' } }, getHutMemo: () => null, getShelterMemo: () => null, ownerProfile: 'bot' })
+  for (let i = 0; i < 1000; i++) p.getBlock(i, 64, 0)
+  assert.equal(stateReads, 0)
+})

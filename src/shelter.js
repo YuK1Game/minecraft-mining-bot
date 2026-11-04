@@ -1,5 +1,6 @@
 'use strict'
 
+const { equipmentReady } = require('./equipment-readiness')
 const { resourceMinHealth } = require('./learning-health')
 
 const { setTimeout: sleep } = require('node:timers/promises')
@@ -273,10 +274,11 @@ function createShelter ({ getState, world, planner, mining, getMining, movement,
     const selected = current.rawServerSelectedSlot ?? current.rawSelectedSlot
     if (selected !== item.slot || current.equipmentServerConfirmed === false) {
       budget(run); run.owned.inventory = true
+      const expectedDirt = copy(item)
       const equipped = await call(run, 'Confirmed dirt slot swap', () => inventory.equip(item.slot))
       current = check(run)
       const slot = current.rawServerSelectedSlot ?? current.rawSelectedSlot
-      if (equipped?.phase !== 'completed' || equipped.serverConfirmed !== true || !current.inventory.items.some(value => value.slot === slot && nameOf(value) === 'dirt' && value.count > 0)) throw new ShelterError('Dirt was not confirmed in the server-selected slot', 'EQUIPMENT_NOT_CONFIRMED')
+      if (equipped?.phase !== 'completed' || !equipmentReady(equipped, current, { sourceSlot: expectedDirt.slot, expectedItem: expectedDirt }) || !current.inventory.items.some(value => value.slot === slot && nameOf(value) === 'dirt' && value.count > 0)) throw new ShelterError('Dirt was not confirmed in the server-selected slot', 'EQUIPMENT_NOT_CONFIRMED')
       run.owned.inventory = false
     }
     const slot = current.rawServerSelectedSlot ?? current.rawSelectedSlot

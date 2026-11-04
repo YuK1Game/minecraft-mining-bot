@@ -72,6 +72,7 @@ function createSim ({ loaded = { xMin: -40, xMax: 60, yMin: -64, yMax: 140, zMin
   }
   function pickup () {
     for (const e of [...entities]) {
+      if (e.stuck) continue // test hook: an item the server never lets us pick up
       const p = state.position
       if (Math.abs(e.position.x - p.x) <= 1.5 && Math.abs(e.position.z - p.z) <= 1.5 && e.position.y >= p.y - 1.62 - 1.2 && e.position.y <= p.y + 0.5) {
         const got = give(e.name, e.count)

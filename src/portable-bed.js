@@ -1,5 +1,6 @@
 'use strict'
 
+const { equipmentReady } = require('./equipment-readiness')
 const { traceBlockFace } = require('./aim')
 const { evaluateThreats } = require('./threats')
 
@@ -207,7 +208,7 @@ function createPortableBed ({ getState, getBlock, getClock, getMemory, setMemory
       const slot = equipped?.slot ?? state.rawServerSelectedSlot ?? state.rawSelectedSlot
       const held = state.inventory.items.find(item => item.slot === slot)
       const selected = state.rawServerSelectedSlot ?? state.rawSelectedSlot ?? state.selectedSlot
-      if (equipped?.serverConfirmed !== true || selected !== slot || !bedItem(held) || held.metadata !== decision.item.metadata || state.equipmentServerConfirmed === false || state.heldItem?.name !== BED || state.heldItem.metadata !== decision.item.metadata) throw new Error('Bed equipment was not server-confirmed')
+      if (!equipmentReady(equipped, state, { sourceSlot: decision.item.slot, expectedItem: decision.item }) || selected !== slot || !bedItem(held) || held.metadata !== decision.item.metadata || state.equipmentServerConfirmed === false || state.heldItem?.name !== BED || state.heldItem.metadata !== decision.item.metadata) throw new Error('Bed equipment was not server-confirmed')
       if (![decision.plan.foot, ...decision.plan.heads].every(p => air(getBlock(p.x, p.y, p.z)) && air(getBlock(p.x, p.y + 1, p.z)) && support(getBlock(p.x, p.y - 1, p.z)))) throw new Error('Bed placement space changed before the normal item use')
       report('placing_bed')
       const receipt = await place({ position: decision.plan.foot, slot }, { signal: run.controller.signal })

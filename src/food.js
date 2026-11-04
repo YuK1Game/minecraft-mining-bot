@@ -286,7 +286,15 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
     try {
       if (equip) {
         const equipped = await Promise.race([Promise.resolve().then(() => equip(initial.item.slot, { allowEmergencyRotten: initial.emergency })), cancelled])
-        if (equipped?.serverConfirmed !== true) throw failure('食料の主手への移動が未確定です。', 'EQUIPMENT_NOT_CONFIRMED')
+        const current = assertCurrent(attempt)
+        // Sending a hotbar selection only prepares use. Accept it for the
+        // exact observed stack in the same connection/life; consumption still
+        // requires the normal server inventory and acknowledgement receipts.
+        const selectionReady = equipped?.phase === 'completed' && equipped.selectionSent === true &&
+          equipped.sourceSlot === initial.item.slot && equipped.slot === initial.item.slot &&
+          initial.item.slot >= 0 && initial.item.slot <= 8 && current.selected === initial.item.slot &&
+          sameRaw(crafting.rawItem(initial.item.slot), initial.raw)
+        if (equipped?.serverConfirmed !== true && !selectionReady) throw failure('食料の主手への移動が未確定です。', 'EQUIPMENT_NOT_CONFIRMED')
       }
       assertCurrent(attempt)
       const current = plan({ slot: session().selected, allowEmergencyRotten: options.allowEmergencyRotten === true })

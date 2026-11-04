@@ -13,6 +13,10 @@ const FACES = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }
 const HORIZONTAL = FACES.filter(f => f.y === 0)
 const EYE = 1.62
 const REACH = 4.5
+const STAIR_LOOKUP = 8 // blocks above yTop searched for the real ground at the stair corner
+const STANCE_CANDIDATES = 6 // stances compared when looking for a fuller batch
+const STANCE_EXTRA_TRAVEL = 4 // extra walking (path steps) accepted for a fuller batch
+const TARGET_CANDIDATES = 4 // compare a bounded number of workable targets in this layer
 const UNSAFE_FLOOR = /(?:magma|campfire|powder_snow|cactus|sweet_berry|wither_rose|pointed_dripstone|scaffolding|leaves|_carpet$|snow_layer|lava|water|fire)/
 const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z })
 const same = (a, b) => a.x === b.x && a.y === b.y && a.z === b.z
@@ -26,6 +30,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
   const temporary = new Map(Object.entries(records.temporary ?? {}))
   const seals = new Map(Object.entries(records.seals ?? {}))
   let stair = records.stair ?? null
+  let recordRevision = 0
 
   const read = p => getBlock(p.x, p.y, p.z)
   // Cells the bot's own structures claim (depot, tunnel floors, portable camp)
@@ -84,9 +89,21 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     const corners = [{ x: b.xMin, z: b.zMin }, { x: b.xMax, z: b.zMin }, { x: b.xMax, z: b.zMax }, { x: b.xMin, z: b.zMax }]
     const corner = entry ? corners.sort((p, q) => Math.hypot(p.x - entry.x, p.z - entry.z) - Math.hypot(q.x - entry.x, q.z - entry.z))[0] : corners[0]
     const path = ring(chunk, corner)
-    const startY = groundY(path[0].x, path[0].z, yTop)
+    let startY = groundY(path[0].x, path[0].z, yTop)
     if (startY === null) return null
+    // A job that starts below the surrounding ground (e.g. under an earlier
+    // pit) would otherwise get a stair whose top ends below the rim, with no
+    // walkable way out. When the corner's real ground lies a little above
+    // yTop and every step up there is already solid, extend the stair to it
+    // (steps above yTop are outside the job and are never mined).
+    const above = groundY(path[0].x, path[0].z, yTop + STAIR_LOOKUP)
+    if (above !== null && above > startY) {
+      let ok = true
+      for (let y = above; y > yTop && ok; y--) { const [x, z] = [path[(above - y) % path.length].x, path[(above - y) % path.length].z]; const sb = read({ x, y, z }); ok = known(sb) && sb.boundingBox === 'block' && ruleOf(sb).kind === 'dig' && !ruleOf(sb).gravity }
+      if (ok) startY = above
+    }
     stair = { startY, path: path.map(c => [c.x, c.z]) }
+    recordRevision++
     return stair
   }
   function stairStepAt (y) {
@@ -102,7 +119,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     if (!known(b)) return { status: 'unknown' }
     const k = key(p.x, p.y, p.z)
     const d = deferred.get(k)
-    if (d && d.name !== b.name) deferred.delete(k)
+    if (d && d.name !== b.name) { deferred.delete(k); recordRevision++ }
     if (AIR.has(nameOf(b)) && !fluidLayer(b)) return { status: 'done' }
     if (isStairCell(p)) return { status: 'reserved', reason: 'STAIR', name: b.name }
     if (seals.has(k)) return { status: 'reserved', reason: 'PERMANENT_SEAL', name: b.name }
@@ -120,6 +137,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
   function defer (p, reason, extra = {}) {
     const b = read(p)
     deferred.set(key(p.x, p.y, p.z), { reason, name: known(b) ? b.name : null, ...extra })
+    recordRevision++
   }
 
   // Support/connection protection: a protected block keeps the cell under it.
@@ -142,8 +160,8 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
   }
   function fluidComponent (start, limit) {
     const seen = new Set([key(start.x, start.y, start.z)]); const queue = [start]
-    while (queue.length && seen.size <= limit) {
-      const p = queue.shift()
+    for (let head = 0; head < queue.length && seen.size <= limit; head++) {
+      const p = queue[head]
       for (const f of FACES) { const n = add(p, f); const k = key(n.x, n.y, n.z); if (seen.has(k)) continue; if (fluid(read(n))) { seen.add(k); queue.push(n) } }
     }
     return seen.size
@@ -183,14 +201,28 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     }
     return out
   }
-  function reachableFrom (origin) {
+  function * reachableSearch (origin) {
     const dist = new Map(); if (!origin) return dist
     const queue = [origin]; dist.set(key(origin.x, origin.y, origin.z), 0)
-    while (queue.length && dist.size < cfg.bfsLimit) {
-      const p = queue.shift(); const d = dist.get(key(p.x, p.y, p.z))
+    let slice = performance.now()
+    for (let head = 0; head < queue.length && dist.size < cfg.bfsLimit; head++) {
+      const p = queue[head]; const d = dist.get(key(p.x, p.y, p.z))
       for (const n of neighboursOf(p)) { const k = key(n.x, n.y, n.z); if (!dist.has(k)) { dist.set(k, d + 1); queue.push(n) } }
+      if ((head & 31) === 31 && performance.now() - slice >= 8) { yield; slice = performance.now() }
     }
     return dist
+  }
+  function reachableFrom (origin) {
+    const search = reachableSearch(origin)
+    let result = search.next()
+    while (!result.done) result = search.next()
+    return result.value
+  }
+  async function reachableFromAsync (origin) {
+    const search = reachableSearch(origin)
+    let result = search.next()
+    while (!result.done) { await new Promise(resolve => setImmediate(resolve)); result = search.next() }
+    return result.value
   }
 
   // Shortest conservative walk (cells, feet positions) or null.
@@ -198,8 +230,8 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     if (!origin || !goal) return null
     const gk = key(goal.x, goal.y, goal.z); const start = key(origin.x, origin.y, origin.z)
     const parent = new Map([[start, null]]); const queue = [origin]
-    while (queue.length && parent.size < cfg.bfsLimit) {
-      const p = queue.shift(); const pk = key(p.x, p.y, p.z)
+    for (let head = 0; head < queue.length && parent.size < cfg.bfsLimit; head++) {
+      const p = queue[head]; const pk = key(p.x, p.y, p.z)
       if (pk === gk) break
       for (const n of neighboursOf(p)) { const k = key(n.x, n.y, n.z); if (!parent.has(k)) { parent.set(k, pk); queue.push(n) } }
     }
@@ -221,7 +253,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
   // Nearest walkable stance with a visible face of t. Candidates are filtered
   // and ordered cheaply first; the face ray-cast (the expensive part) runs
   // only until one succeeds, and at most maxAimTries times per target.
-  function stancesFor (t, reach, removed, maxAimTries = 24) {
+  function stancesFor (t, reach, removed, maxAimTries = 24, maxResults = 1) {
     const candidates = []
     for (const [k, d] of reach) {
       if (d > 0 && avoidStances.has(k)) continue // a stance the bot repeatedly failed to reach
@@ -234,12 +266,14 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
       candidates.push({ stance: s, distance: d, eyeDist })
     }
     candidates.sort((a, b) => a.distance - b.distance || a.eyeDist - b.eyeDist)
+    const found = []
     for (let i = 0; i < candidates.length && i < maxAimTries; i++) {
       const c = candidates[i]
+      if (found.length && c.distance > found[0].distance + STANCE_EXTRA_TRAVEL) break
       const aim = selectVisibleBlockFace({ eye: eyeOf(c.stance), target: t, world: { getBlock }, maxReach: REACH, removed })
-      if (aim) return [{ stance: c.stance, distance: c.distance, aim }]
+      if (aim) { found.push({ stance: c.stance, distance: c.distance, aim }); if (found.length >= maxResults) break }
     }
-    return []
+    return found
   }
 
   // ---- layer and next action ---------------------------------------------
@@ -270,12 +304,12 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
   // Planning is chunked: the event loop is released every ~12ms so live
   // input streams (movement, idle input, combat ticks) never miss a tick.
   const yieldNow = () => new Promise(resolve => setImmediate(resolve))
-  async function next ({ feet, yTop, tools, policy = {}, inventoryItems = [], maxBatch = cfg.maxBlocksPerBatch, avoid = null }) {
+  async function next ({ feet, yTop, tools, policy = {}, inventoryItems = [], maxBatch = cfg.maxBlocksPerBatch, avoid = null, selectedSlot = null }) {
     let slice = performance.now()
     const breathe = async () => { if (performance.now() - slice > 12) { await yieldNow(); slice = performance.now() } }
     avoidStances = avoid instanceof Set ? avoid : new Set()
     if (!Number.isSafeInteger(yTop)) return { action: 'pause', reason: 'Y_TOP_UNKNOWN' }
-    const reach = reachableFrom(feet)
+    const reach = await reachableFromAsync(feet)
     if (!reach.size) return { action: 'pause', reason: 'NO_STANDING_POSITION' }
     for (let y = yTop; y >= regions.yBottom; y--) {
       await breathe()
@@ -311,8 +345,22 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
           }
         }
       }
-      for (const target of layer.pending) {
+      // Nearby targets make a cheap shortlist; compare the actual reachable
+      // stance distance and batch size before committing to a move. No lower
+      // layer participates, and every candidate retains all live safety checks.
+      // Reordering a thin roof can remove the only way to reach its centre.
+      // Keep the proven sweep and fullest-batch stance rule whenever the next
+      // layer is not entirely known solid support. Valuable single-block work
+      // must not lose a usable tool's last budget to cheaper bulk batches.
+      const stableFloor = layer.pending.every(t => solidFloor(read(add(t.position, { x: 0, y: -1, z: 0 }))))
+      const ordered = stableFloor ? [...layer.pending].sort((a, b) => Number(b.rule?.ore === true) - Number(a.rule?.ore === true) || Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z)) : layer.pending
+      let best = null; let compared = 0
+      for (const target of ordered) {
         await breathe()
+        if (best?.action.targets.some(t => same(t.position, target.position))) {
+          if (++compared >= TARGET_CANDIDATES) break
+          continue
+        }
         const support = protectsSupport(target.position)
         if (support) { defer(target.position, support); continue }
         const hazards = fluidNeighbours(target.position)
@@ -326,9 +374,15 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
             return { action: 'pause', reason: placement.reason, details: { target: target.position, fluid: h.position } }
           }
         }
-        const action = mineAction(target, reach, tools, policy, layer.pending, maxBatch)
-        if (action) return action
+        const action = mineAction(target, reach, tools, policy, ordered, maxBatch, stableFloor)
+        if (action) {
+          if (!stableFloor || target.rule?.ore) return action
+          const cost = (action.travel + 4 + (Number.isInteger(selectedSlot) && action.tool?.slot != null && action.tool.slot !== selectedSlot ? 2 : 0)) / action.targets.length
+          if (!best || cost < best.cost) best = { action, cost }
+          if (++compared >= TARGET_CANDIDATES || action.travel === 0 && action.targets.length === maxBatch) break
+        }
       }
+      if (best) return best.action
       // Nothing reachable in this layer: defer the remaining cells with reason
       // so the same cells are not retried forever (§5.3).
       const unreachable = layer.pending.filter(t => !deferred.has(key(t.position.x, t.position.y, t.position.z)))
@@ -338,15 +392,30 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     return { action: 'finished' }
   }
 
-  function mineAction (target, reach, tools, policy, layerPending, maxBatch) {
-    const removed = new Set()
-    const stances = stancesFor(target.position, reach, removed)
+  function mineAction (target, reach, tools, policy, layerPending, maxBatch, compareTravel = false) {
+    const stances = stancesFor(target.position, reach, new Set(), 24, STANCE_CANDIDATES)
     if (!stances.length) return null
-    const chosen = stances[0]
     const valuable = target.rule?.ore === true
     // A batch never spends a tool below its durability reserve (§8.1).
     const budget = target.tool && target.tool.kind !== 'hand' && Number.isFinite(target.tool.remaining) ? Math.max(1, target.tool.remaining - target.tool.reserve) : Infinity
     const limit = Math.min(valuable ? 1 : maxBatch, budget)
+    // Small batches cost a move and a mining start each. Besides the nearest
+    // stance, try a few other cheap stances (a little more walking) and keep
+    // the one that reaches the most pending cells of this layer.
+    const nearest = stances[0].distance ?? 0
+    const options = stances.filter((c, i) => i === 0 || (c.distance ?? 0) <= nearest + STANCE_EXTRA_TRAVEL).slice(0, STANCE_CANDIDATES)
+    let best = null
+    for (const chosen of options) {
+      const batch = batchFrom(chosen, target, layerPending, limit)
+      const cost = ((chosen.distance ?? 0) + 4) / batch.length
+      if (!best || (compareTravel ? cost < best.cost : batch.length > best.batch.length)) best = { chosen, batch, cost }
+      if (batch.length >= limit && (!compareTravel || chosen.distance === nearest)) break
+    }
+    return { action: 'mine', stance: best.chosen.stance, travel: best.chosen.distance, tool: target.tool ?? { kind: 'hand' }, targets: best.batch }
+  }
+
+  function batchFrom (chosen, target, layerPending, limit) {
+    const removed = new Set()
     const batch = [{ position: target.position, name: target.name, runtimeId: target.runtimeId, tool: target.tool, aim: chosen.aim }]
     removed.add(key(target.position.x, target.position.y, target.position.z))
     let misses = 0
@@ -361,7 +430,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
       batch.push({ position: other.position, name: other.name, runtimeId: other.runtimeId, tool: other.tool, aim })
       removed.add(key(other.position.x, other.position.y, other.position.z))
     }
-    return { action: 'mine', stance: chosen.stance, travel: chosen.distance, tool: target.tool ?? { kind: 'hand' }, targets: batch }
+    return batch
   }
 
   // Finds a block in hand range to click so a seal/plug/stair block lands at
@@ -406,22 +475,42 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     const k = key(p.x, p.y, p.z)
     if (purpose === 'seal') seals.set(k, { material, at: Date.now() })
     else temporary.set(k, { purpose, material, at: Date.now() })
+    recordRevision++
   }
-  function counts (yTop) {
+  function * countCells (yTop) {
     let remaining = 0; let unknown = 0; let reserved = 0; let deferredCount = 0
-    if (Number.isSafeInteger(yTop)) for (let y = yTop; y >= regions.yBottom; y--) for (const p of layerCells(y)) {
+    let visited = 0; let slice = performance.now()
+    if (Number.isSafeInteger(yTop)) for (let y = yTop; y >= regions.yBottom; y--) for (const chunk of regions.chunks) for (const p of serpentineLayer(chunk, y)) {
       const c = cellStatus(p)
       if (c.status === 'pending' || c.status === 'fluid' || c.status === 'blocked') remaining++
       else if (c.status === 'unknown') unknown++
       else if (c.status === 'reserved') reserved++
       else if (c.status === 'deferred') deferredCount++
+      if (++visited % 128 === 0 && performance.now() - slice >= 8) { yield; slice = performance.now() }
     }
     return { remaining, unknown, reserved, deferred: deferredCount }
   }
-  function clearDeferred (reasons = null) { for (const [k, v] of deferred) if (!reasons || reasons.includes(v.reason)) deferred.delete(k) }
+  function counts (yTop) {
+    const scan = countCells(yTop)
+    let result = scan.next()
+    while (!result.done) result = scan.next()
+    return result.value
+  }
+  async function countsAsync (yTop, isCurrent = () => true) {
+    if (!isCurrent()) return null
+    const scan = countCells(yTop)
+    let result = scan.next()
+    while (!result.done) {
+      await new Promise(resolve => setImmediate(resolve))
+      if (!isCurrent()) return null
+      result = scan.next()
+    }
+    return isCurrent() ? result.value : null
+  }
+  function clearDeferred (reasons = null) { const before = deferred.size; for (const [k, v] of deferred) if (!reasons || reasons.includes(v.reason)) deferred.delete(k); if (deferred.size !== before) recordRevision++ }
   function exportRecords () { return { deferred: Object.fromEntries(deferred), temporary: Object.fromEntries(temporary), seals: Object.fromEntries(seals), stair } }
 
-  return { pathTo, surveyTop, planStair, stairStepAt, isStairCell, cellStatus, layerSummary, next, reachableFrom, standable, fluidNeighbours, sealPlan, recordPlacement, counts, defer, clearDeferred, exportRecords, deferredList: () => [...deferred].map(([k, v]) => ({ position: k, ...v })), sealList: () => [...seals].map(([k, v]) => ({ position: k, ...v })), temporaryList: () => [...temporary].map(([k, v]) => ({ position: k, ...v })) }
+  return { pathTo, surveyTop, planStair, stairStepAt, isStairCell, cellStatus, layerSummary, next, reachableFrom, reachableFromAsync, standable, fluidNeighbours, sealPlan, recordPlacement, counts, countsAsync, revision: () => recordRevision, defer, clearDeferred, exportRecords, deferredList: () => [...deferred].map(([k, v]) => ({ position: k, ...v })), sealList: () => [...seals].map(([k, v]) => ({ position: k, ...v })), temporaryList: () => [...temporary].map(([k, v]) => ({ position: k, ...v })) }
 }
 
 module.exports = { createQuarryPlanner }

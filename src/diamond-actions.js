@@ -1,5 +1,6 @@
 'use strict'
 
+const { equipmentReady } = require('./equipment-readiness')
 const { setTimeout: sleep } = require('node:timers/promises')
 const { evaluateThreats } = require('./threats')
 const { resourceMinHealth } = require('./learning-health')
@@ -205,11 +206,12 @@ function createDiamondActions ({ request, refreshState, getState, baseActions = 
       const selected = before.rawServerSelectedSlot ?? before.rawSelectedSlot ?? before.selectedSlot
       if (item.slot !== selected || before.equipmentServerConfirmed === false || !Number.isInteger(selected) || selected < 0 || selected > 8) {
         if (typeof baseActions.equip !== 'function') throw required('equip')
+        const requestedItem = { ...item }
         const equipped = await baseActions.equip({ item: 'minecraft:furnace', slot: item.slot }, context)
         before = await read(context, before)
         const confirmedSlot = before.rawServerSelectedSlot ?? before.rawSelectedSlot ?? before.selectedSlot
         item = before.inventory.items.find(item => nameOf(item.name) === 'minecraft:furnace' && item.count > 0 && item.slot === confirmedSlot && item.slot >= 0 && item.slot <= 8)
-        if (equipped?.phase !== 'completed' || equipped.serverConfirmed !== true || before.equipmentServerConfirmed === false || !item) throw new DiamondActionError('かまどをサーバーで確定した選択スロットへ移した確認が必要です。', 'INVENTORY_SWAP_REQUIRED')
+        if (equipped?.phase !== 'completed' || !equipmentReady(equipped, before, { sourceSlot: requestedItem.slot, expectedItem: requestedItem }) || before.equipmentServerConfirmed === false || !item) throw new DiamondActionError('かまどをサーバーで確定した選択スロットへ移した確認が必要です。', 'INVENTORY_SWAP_REQUIRED')
       }
       if (!Number.isInteger(item.slot) || item.slot < 0) throw new DiamondActionError('設置する実スロットが不明です。', 'INVALID_SLOT')
       const data = { position: { ...decision.target }, slot: item.slot }

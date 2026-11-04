@@ -110,14 +110,28 @@ test('T19/T32/T37/T39 combat suspends work, settles 3s, waits for 90% HP, then r
   const j = createQuarryJob({ adapter: sim.adapter, sleep: () => new Promise(r => setImmediate(r)), pollMs: 5 })
   j.plan(cfg)
   let mineDuringCombat = 0
+  let prepared = 0
+  sim.adapter.prepareMining = async tool => {
+    assert.equal(sim.adapter.combatActive(), false); prepared++
+    assert.ok(tool.slot >= 9, 'the resumed tool starts in the main bag')
+    const item = sim.state.inventory.items.find(i => i.slot === tool.slot)
+    assert.ok(item)
+    item.slot = 7
+    sim.state.selectedSlot = 7
+    sim.state.heldItem = { name: item.name, slot: 7 }
+    return { slot: 7 }
+  }
   sim.hooks.beforeMine = () => { if (j.status().state === 'COMBAT') mineDuringCombat++ }
   j.start()
   await until(() => sim.stats.mined > 40)
+  assert.equal(prepared, 0, 'normal batches do not resynchronise the hand')
   sim.setCombat(true)
   await until(() => j.status().state === 'COMBAT')
   const minedAtCombat = sim.stats.mined
   const anchor = j.status().combat.anchor
   assert.ok(anchor)
+  for (const item of sim.state.inventory.items) if (/_(pickaxe|shovel)$/.test(item.name)) item.slot += 12
+  sim.state.heldItem = null
   await new Promise(r => setTimeout(r, 200))
   assert.equal(sim.stats.mined, minedAtCombat, 'no new digging while combat owns input')
   sim.state.health = 14
@@ -131,6 +145,7 @@ test('T19/T32/T37/T39 combat suspends work, settles 3s, waits for 90% HP, then r
   assert.equal(sim.stats.mined, minedAtCombat)
   sim.state.health = 19
   await until(() => sim.stats.mined > minedAtCombat + 5)
+  assert.equal(prepared, 1, 'the first resumed batch prepares the hand exactly once')
   assert.equal(mineDuringCombat, 0)
   assert.equal(j.status().combat.anchor, null, 'anchor released only on resume')
   await j.pause()
@@ -188,4 +203,18 @@ test('T16 disconnect: work stops, reconnect reconciles and continues without re-
   sim.state.connectionId = 'c2'; sim.state.phase = 'spawned'
   await until(() => sim.stats.mined > mined + 5)
   await j.pause()
+})
+
+test('live case 2026-11-04: pushed past the anchor radius, an adjacent attacker is still fought back', () => {
+  const { b } = bridge()
+  b.interrupt(bot(0, 64, 0), { reason: 'combat_claim' })
+  // Knockback / a safety step carried the bot 10m from the anchor.
+  const here = bot(10, 64, 0)
+  const close = mob('zombie', 12, 64, 0, { runtimeId: 'zc' })
+  assert.equal(b.canSelectTarget(close, here, { route: true }).allowed, true)
+  const r = b.canContinue(close, here, { route: true })
+  assert.equal(r.allowed, true, `adjacent zombie refused: ${r.reason}`)
+  assert.equal(b.canContinue(mob('zombie', 15, 64, 0, { runtimeId: 'zf' }), here, { route: true, provoked: true }).allowed, true, 'one that just hit us is answered too')
+  // Not chased: a non-immediate target outside the radius stays refused.
+  assert.equal(b.canContinue(mob('zombie', 16, 64, 0, { runtimeId: 'zm' }), here, { route: true }).reason, 'ANCHOR_LIMIT')
 })

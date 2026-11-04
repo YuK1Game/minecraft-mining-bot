@@ -169,7 +169,11 @@ function createEntities ({ limit = 512, selfRuntimeId = null, clock = () => new 
     setPosition(entity, position, source, partial)
     touch(entity)
   }
+  // Bumped by everything that can change the tracked entities, so readers can
+  // reuse a snapshot until it changes.
+  let version = 0
   function applyPacket (name, packet) {
+    version++
     if (name === 'start_game') {
       clear(); names.clear()
       ownRuntimeId = normalizeId(packet.runtime_entity_id)
@@ -238,30 +242,43 @@ function createEntities ({ limit = 512, selfRuntimeId = null, clock = () => new 
     if (kind === 'hostile') return entity.hostile && entity.alive
     return entity.kind === kind
   }
-  function snapshot ({ kind = 'item', includeUnknown = kind !== 'item' } = {}) {
+  function validateKind (kind) {
     if (!['item', 'mob', 'player', 'entity', 'all', 'hostile'].includes(kind)) throw new Error('Unknown entity filter')
+  }
+  function observe (entity) {
+    const { coordinates, ordinal, ...observed } = entity
+    return structuredClone({ ...observed, positionKnown: entity.position !== null, name: entity.kind === 'item' ? names.get(entity.networkId) ?? null : entity.entityType })
+  }
+  function get (runtimeId) {
+    const entity = entities.get(normalizeId(runtimeId))
+    return entity ? observe(entity) : null
+  }
+  function snapshot ({ kind = 'item', includeUnknown = kind !== 'item' } = {}) {
+    validateKind(kind)
     return [...entities.values()]
       .filter(entity => matchesKind(entity, kind) && (includeUnknown || entity.position !== null))
       .sort((a, b) => a.ordinal - b.ordinal)
-      .map(entity => {
-        const { coordinates, ordinal, ...observed } = entity
-        return structuredClone({ ...observed, positionKnown: entity.position !== null, name: entity.kind === 'item' ? names.get(entity.networkId) ?? null : entity.entityType })
-      })
+      .map(observe)
   }
   function nearby (position, { radius = 12, kind = 'hostile' } = {}) {
     if (!validPosition(position) || !Number.isFinite(radius) || radius < 0 || radius > 256) throw new Error('Nearby query needs a finite position and radius between 0 and 256')
-    return snapshot({ kind, includeUnknown: false })
-      .map(entity => ({ ...entity, distance: Math.hypot(entity.position.x - position.x, entity.position.y - position.y, entity.position.z - position.z), horizontalDistance: Math.hypot(entity.position.x - position.x, entity.position.z - position.z) }))
-      .filter(entity => entity.distance <= radius)
-      .sort((a, b) => a.distance - b.distance || a.runtimeId.localeCompare(b.runtimeId))
+    validateKind(kind)
+    const nearby = []
+    for (const entity of entities.values()) {
+      if (!matchesKind(entity, kind) || entity.position === null) continue
+      const distance = Math.hypot(entity.position.x - position.x, entity.position.y - position.y, entity.position.z - position.z)
+      if (distance <= radius) nearby.push({ ...observe(entity), distance, horizontalDistance: Math.hypot(entity.position.x - position.x, entity.position.z - position.z) })
+    }
+    return nearby.sort((a, b) => a.distance - b.distance || a.runtimeId.localeCompare(b.runtimeId))
   }
   function setSelfRuntimeId (value) {
+    version++
     const id = normalizeId(value)
     if (value != null && id === null) throw new Error('Invalid self runtime ID')
     ownRuntimeId = id
     if (id !== null) forget(id)
   }
-  return { applyPacket, snapshot, motion, snapshotRemoved: () => structuredClone([...removed.values()]), nearby, setSelfRuntimeId, stats: () => ({ dimension, selfRuntimeId: ownRuntimeId, size: entities.size, limit, unknownPositions: [...entities.values()].filter(entity => !entity.position).length, liveHostiles: [...entities.values()].filter(entity => entity.hostile && entity.alive).length, ignoredUpdates }) }
+  return { applyPacket, snapshot, get, version: () => version, motion, snapshotRemoved: () => structuredClone([...removed.values()]), nearby, setSelfRuntimeId, stats: () => ({ dimension, selfRuntimeId: ownRuntimeId, size: entities.size, limit, unknownPositions: [...entities.values()].filter(entity => !entity.position).length, liveHostiles: [...entities.values()].filter(entity => entity.hostile && entity.alive).length, ignoredUpdates }) }
 }
 
 module.exports = { createEntities }

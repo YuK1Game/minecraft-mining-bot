@@ -13,6 +13,8 @@ const { createQuarryCombatBridge } = require('./quarry-combat-bridge')
 
 const copy = value => value === undefined ? undefined : structuredClone(value)
 const FEET = 1.62
+const SETTLE_EAT_CLEARANCE = 8 // m: no eating in the settle wait with a hostile this close
+const PICKUP_XZ = 1.3 // half player width 0.3 + 1 block reach for item pickup
 const ACTIVE = new Set(['PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT', 'RETURN', 'DEPOSIT', 'RESTOCK', 'HAZARD', 'RECOVER', 'SUSPEND_FOR_COMBAT', 'COMBAT', 'COMBAT_SETTLE', 'RECOVER_AFTER_COMBAT', 'RECONCILE', 'FINAL_CHECK', 'DISCONNECTED'])
 const RESULT = new Set(['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS', 'PAUSED', 'CANCELLED', 'FAILED'])
 // Deferrals that are planned exclusions, not exceptions (§16.3).
@@ -35,7 +37,7 @@ function defaults (config = {}) {
     allowExceptions: c.allowExceptions === true,
     permissions: { infrastructureRegion: [], protectedRegion: [], travelRegion: null, ...(c.permissions ?? {}) },
     boundarySeal: { enabled: true, horizontalMargin: 1, ...(c.boundarySeal ?? {}) },
-    strategy: { maxBlocksPerBatch: 8, collectWithinSeconds: 30, maxStepDown: 1, largeFluidCells: 12, ...(c.strategy ?? {}) },
+    strategy: { maxBlocksPerBatch: 8, collectWithinSeconds: 30, collectAfterSeconds: 20, collectPendingDrops: 24, stuckItemMs: 60000, maxStepDown: 1, largeFluidCells: 12, ...(c.strategy ?? {}) },
     tools: { reserveMinUses: 8, reserveFraction: 0.10, returnUses: 0, reservedTools: [], ...(c.tools ?? {}) },
     collection: { orePolicy: 'maximize_yield', buildingBlockPolicy: 'preserve_if_possible', ...(c.collection ?? {}) },
     inventory: { minFreeSlots: 6, keepSealBlocks: 32, storage: [], ...(c.inventory ?? {}) },
@@ -45,7 +47,7 @@ function defaults (config = {}) {
   }
 }
 
-function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, bridge = null, pollMs = 50 } = {}) {
+function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, bridge = null, pollMs = 50, autoResumeMs = 30000 } = {}) {
   const required = ['getState', 'getBlock', 'entities', 'mine', 'moveTo', 'equip', 'stopAll', 'combatActive']
   if (!adapter || required.some(k => typeof adapter[k] !== 'function')) throw new Error(`Quarry adapter needs ${required.join(', ')}`)
   const combatBridge = bridge ?? createQuarryCombatBridge({ now })
@@ -53,8 +55,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   let planner = null; let regions = null; let ledger = createLedger()
   let worker = null; let epoch = 0; let abort = null
   const badStances = new Map() // stance key -> consecutive move failures
-  let countsCache = null // status() is polled; full-range counts are cached briefly
+  let countsCache = null // display-only; completion always performs its own full scan
+  let countsWork = null; let countsRevision = 0
   let lastInventory = null; let pendingDrops = []; let batchCount = 0
+  const stuckItems = new Map() // item runtimeId -> skip until (ms)
   const events = []
 
   const note = (type, details = {}) => { const e = { at: new Date(now()).toISOString(), type, ...copy(details) }; events.push(e); if (events.length > 200) events.shift(); try { log(`[quarry] ${type} ${JSON.stringify(details).slice(0, 300)}`) } catch {} }
@@ -67,7 +71,12 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   function setState (state, extra = {}) {
     if (!job) return
-    if (job.state !== state) note('state', { from: job.state, to: state, ...extra })
+    if (job.state !== state) {
+      note('state', { from: job.state, to: state, ...extra })
+      // A recovery wait timer belongs to one stay in a recovery state; a stale
+      // one (e.g. from before a combat interruption or death) would pause at once.
+      if (state === 'RECOVER' || state === 'RECOVER_AFTER_COMBAT') job.recoverWaitSince = null
+    }
     job.state = state
     Object.assign(job, extra)
   }
@@ -223,6 +232,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // An action broken because combat/safety took control is handled as
     // that interruption and does not use up the retry budget.
     if (job.config.quarryCombat.enabled && adapter.combatActive()) return suspendForCombat()
+    // An unroutable stance is already avoided; re-plan without using the retry
+    // budget (bounded so a job that can reach nothing still pauses).
+    if (error.code === 'NO_ROUTE' && (job.routeSkips = (job.routeSkips ?? 0) + 1) <= 60) { note('stance_unroutable', { message: String(error.message).slice(0, 160), skips: job.routeSkips }); setState('SURVEY'); return }
     // Unknown errors: retry bounded, then pause with the reason (§15.1 max 3).
     job.retry = (job.retry ?? 0) + 1
     if (job.retry > 3) return finish('PAUSED', `ACTION_FAILED:${String(error.message ?? code).slice(0, 160)}`, { pauseDetails: { lastError: String(error.message ?? code).slice(0, 300), lastMoveError: job.lastMoveError ?? null, lastDecision: job.lastDecision ?? null, avoidedStances: [...badStances.keys()].slice(0, 10) } })
@@ -233,6 +245,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   function suspendForCombat () {
+    job.miningEquipmentPending = true
     if (job.state === 'COMBAT' || job.state === 'COMBAT_SETTLE') { setState('COMBAT'); return }
     const s = adapter.getState()
     const resumeTo = ['RETURN', 'DEPOSIT', 'RESTOCK', 'FINAL_CHECK'].includes(job.state) ? job.state : 'SURVEY'
@@ -263,8 +276,19 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         if (adapter.combatActive()) { setState('COMBAT'); return }
         const r = combatBridge.settle(s, adapter.actors?.() ?? adapter.entities(), { evidenceFor: e => adapter.threatEvidence?.(e) ?? {}, recentDamageAt: adapter.recentDamageAt?.() ?? null, hazard: hazardNow(s) !== null })
         job.settle = r
-        if (r.settled) setState('RECOVER_AFTER_COMBAT')
-        else await sleep(100)
+        if (r.settled) { setState('RECOVER_AFTER_COMBAT'); return }
+        // A threat the combat layer does not engage can hold the settle open
+        // for minutes while it keeps hurting us; eat meanwhile so health can
+        // regenerate instead of only waiting (throttled). Never while a hostile
+        // is close enough to reach us: eating swaps the weapon out of the hand
+        // and is cancelled by the next hit anyway.
+        const closeHostile = s?.position && (adapter.actors?.() ?? []).some(e => e.hostile === true && e.alive !== false && e.position && Math.hypot(e.position.x - s.position.x, e.position.y - (s.position.y - FEET), e.position.z - s.position.z) <= SETTLE_EAT_CLEARANCE)
+        const hitRecently = Number.isFinite(adapter.recentDamageAt?.()) && now() - adapter.recentDamageAt() < 2000
+        if (s && !closeHostile && !hitRecently && (healthRatio(s) < job.config.safety.resumeHealthRatio || (foodOf(s) ?? 20) < (job.config.quarryCombat.minFoodLevel ?? 18)) && now() - (job.settleEatAt ?? 0) > 5000) {
+          job.settleEatAt = now()
+          if (await tryEat(myEpoch, true)) return
+        }
+        await sleep(100)
         return
       }
       case 'RECOVER_AFTER_COMBAT': return recoverAfterCombat(myEpoch, s)
@@ -347,7 +371,17 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const food = foodOf(s)
     if (!(Number.isFinite(food) && (food <= job.config.safety.eatFoodLevel || recovering && food < 20))) return false
     if (!inv.some(i => isFood(i.name))) return false
-    try { await call(myEpoch, 'eat', signal => adapter.eat({ signal })); note('ate', { food }); return true } catch (error) { if (error instanceof QuarryInterrupt) throw error; note('eat_failed', { error: error.message }); return false }
+    try { await call(myEpoch, 'eat', signal => adapter.eat({ signal })); note('ate', { food }); return true } catch (error) {
+      if (error instanceof QuarryInterrupt) throw error
+      note('eat_failed', { error: error.message })
+      // Eating needs a server-confirmed inventory; after a fight (bow use) it
+      // can stay unconfirmed. Ask the server for it instead of retrying blind.
+      if (/サーバーで確定した持ち物|inventory/i.test(String(error.message)) && typeof adapter.resyncInventory === 'function' && now() - (job.eatResyncAt ?? 0) > 5000) {
+        job.eatResyncAt = now()
+        try { await call(myEpoch, 'resync', signal => adapter.resyncInventory({ signal })); note('inventory_resynced', { for: 'eat' }) } catch (e) { if (e instanceof QuarryInterrupt) throw e; note('resync_failed', { error: String(e.message ?? e).slice(0, 200) }) }
+      }
+      return false
+    }
   }
 
   async function recoverHealth (myEpoch) {
@@ -378,14 +412,24 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     observeInventory(job.state)
     // Capacity: collect then return before the bag is full (§10.3, §11.1).
     if (freeSlots(inv) < job.config.inventory.minFreeSlots) { await collect(myEpoch, 'capacity'); job.depositReason = 'capacity'; setState('RETURN'); return }
-    // Oldest drop deadline / batch size (§10.1).
-    const open = pendingDrops.filter(d => !d.unreachable)
+    // Oldest drop deadline / pending count (§10.1). Collection is not tied to
+    // each 8-block batch: drops are gathered when the oldest reaches
+    // collectAfterSeconds (inside the spec's collectWithinSeconds), when many
+    // are pending, or before the job leaves the layer / returns / pauses.
+    observeDrops()
+    const open = openDrops()
     const oldest = open.length ? Math.min(...open.map(d => d.firstSeen)) : null
-    if (batchCount >= job.config.strategy.maxBlocksPerBatch || oldest !== null && now() - oldest >= job.config.strategy.collectWithinSeconds * 1000) { await collect(myEpoch, batchCount >= job.config.strategy.maxBlocksPerBatch ? 'batch' : 'deadline'); return }
+    const st = job.config.strategy
+    if (oldest !== null && now() - oldest >= Math.min(st.collectAfterSeconds, st.collectWithinSeconds) * 1000) { await collect(myEpoch, 'deadline'); return }
+    if (open.length >= st.collectPendingDrops) { await collect(myEpoch, 'pending'); return }
     setState('PLAN')
     rebindTravelIfOutside(s)
-    const decision = await planner.next({ feet: feetCell(s), yTop: job.cursorY ?? job.yTop, tools: inv, policy: { ...job.config.tools, ...job.config.collection }, inventoryItems: inv, maxBatch: job.config.strategy.maxBlocksPerBatch - batchCount, avoid: new Set([...badStances].filter(([, n]) => n >= 2).map(([k]) => k)) })
+    const decision = await planner.next({ feet: feetCell(s), yTop: job.cursorY ?? job.yTop, tools: inv, policy: { ...job.config.tools, ...job.config.collection }, inventoryItems: inv, maxBatch: st.maxBlocksPerBatch, selectedSlot: s.selectedSlot, avoid: new Set([...badStances].filter(([, n]) => n >= 2).map(([k]) => k)) })
     job.lastDecision = { action: decision.action, reason: decision.reason ?? null, details: decision.details ?? null, y: decision.targets?.[0]?.position?.y ?? decision.y ?? null }
+    // Leaving a layer: gather its drops first, while they are still close.
+    const nextY = decision.action === 'mine' ? decision.targets?.[0]?.position?.y : null
+    if (Number.isFinite(nextY) && Number.isFinite(job.lastMineY) && nextY < job.lastMineY && open.length) { job.lastMineY = nextY; await collect(myEpoch, 'layer'); return }
+    if (Number.isFinite(nextY)) job.lastMineY = nextY
     if (decision.action === 'finished') { await collect(myEpoch, 'final'); setState('FINAL_CHECK'); return }
     if (decision.action === 'deferred') { note('deferred', { reason: decision.reason, count: decision.count, y: decision.y }); return }
     if (decision.action === 'pause') { await collect(myEpoch, 'before_pause'); return finish('PAUSED', decision.reason, { pauseDetails: decision.details ?? null }) }
@@ -422,7 +466,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // The whole route is checked against travel permission and step limits;
     // the adapter walks it in short verified segments (§5.2, §6.1).
     const path = planner.pathTo(f, stance)
-    if (!path) throw new Error(`No permitted walking route to ${JSON.stringify(stance)}`)
+    // No route: avoid this stance from now on so the planner picks another one
+    // (or defers the cells as UNREACHABLE) instead of retrying the same move.
+    if (!path) { badStances.set(`${stance.x},${stance.y},${stance.z}`, 2); throw Object.assign(new Error(`No permitted walking route to ${JSON.stringify(stance)}`), { code: 'NO_ROUTE' }) }
     const sk = `${stance.x},${stance.y},${stance.z}`
     try { await call(myEpoch, 'move', signal => adapter.moveTo(stance, { signal, path, maxStepDown: job.config.strategy.maxStepDown, travel: c => permits(regions, 'travel', c).allowed })) } catch (error) {
       // A move broken by a fight or a safety escape is an interruption, not a
@@ -464,33 +510,87 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   async function mine (myEpoch, decision) {
     // Capacity check against worst-case drops of the whole batch (T06).
-    const inv = items(guard(myEpoch))
+    const initial = guard(myEpoch)
+    const receiptScope = { job, epoch: myEpoch, scope: scopeOf(initial), life: lifeOf(initial) }
+    const inv = items(initial)
     const drops = decision.targets.flatMap(t => (blockRule(t.name).drops ?? []).slice(0, 2).map(name => ({ name, count: blockRule(t.name).maxDrop ?? 1 })))
     if (!canAccept(inv, drops)) { note('capacity_before_mine', { drops: drops.length }); await collect(myEpoch, 'capacity'); job.depositReason = 'capacity'; setState('RETURN'); return }
     await moveToStance(myEpoch, decision.stance)
-    await equipTool(myEpoch, decision.tool)
+    let tool = decision.tool; let prepared = false
+    if (job.miningEquipmentPending && typeof adapter.prepareMining === 'function') {
+      const result = await call(myEpoch, 'prepare_mining', signal => adapter.prepareMining(tool, { signal }))
+      guard(myEpoch)
+      if (result === false) throw new Error('Mining equipment preparation was not confirmed')
+      // Preparing a tool in the main bag can swap it into another slot. The
+      // old source slot now holds a different item and must never be re-used.
+      if (result?.slot != null && tool.kind !== 'hand') {
+        if (!Number.isInteger(result.slot) || result.slot < 0 || result.slot > 8) throw new Error('Mining equipment preparation returned an invalid selected slot')
+        tool = { ...tool, slot: result.slot }
+      }
+      prepared = true
+    }
+    await equipTool(myEpoch, tool)
+    guard(myEpoch)
+    if (prepared) job.miningEquipmentPending = false
     // Re-plan from the actual stance; the world may have changed while moving.
     setState('MINE')
     const targets = decision.targets.map(t => ({ x: t.position.x, y: t.position.y, z: t.position.z, expectedName: t.name, expectedRuntimeId: t.runtimeId ?? null, requiredTool: blockRule(t.name).needs ? { kind: blockRule(t.name).needs, tier: blockRule(t.name).tier } : null }))
     const rec = recordAction({ type: 'mine', stance: decision.stance, targets: targets.map(t => ({ x: t.x, y: t.y, z: t.z, name: t.expectedName })), tool: decision.tool?.name ?? 'hand' })
+    const confirmCurrent = interruption => {
+      const state = adapter.getState()
+      // A manual stop advances the epoch before draining this same job. Its
+      // received partial result still belongs to this life; a replaced job,
+      // connection, dimension or respawn must never borrow another world's air.
+      const stoppedHere = ['EPOCH_CHANGED', 'STOP_REQUESTED', 'ABORTED'].includes(interruption?.code) && ['paused', 'stopped', 'cancelled'].includes(job?.userRunIntent) && epoch === receiptScope.epoch + 1
+      if (job !== receiptScope.job || state?.phase !== 'spawned' || state.dead || scopeOf(state) !== receiptScope.scope || lifeOf(state) !== receiptScope.life || epoch !== receiptScope.epoch && !stoppedHere) {
+        rec.results = []; rec.confirmationSkipped = 'STALE_SCOPE'
+        return 0
+      }
+      return confirmMined(rec, targets)
+    }
     if (job.config.persistence.checkpointAfterBatch) await save('mine_intent')
     let failure = null
-    try { await call(myEpoch, 'mine', signal => adapter.mine(targets, { signal })) } catch (error) { if (error instanceof QuarryInterrupt) { rec.status = 'interrupted'; confirmMined(rec, targets); throw error } failure = error }
-    const confirmed = confirmMined(rec, targets)
+    try {
+      await call(myEpoch, 'mine', signal => adapter.mine(targets, { signal }))
+      guard(myEpoch)
+    } catch (error) {
+      // A controller may reject because stopAll ran just before the watcher.
+      // Classify that as the current interruption before counting partial air.
+      let interruption = error
+      if (!(error instanceof QuarryInterrupt)) { try { guard(myEpoch) } catch (current) { interruption = current } }
+      if (interruption instanceof QuarryInterrupt) { rec.status = 'interrupted'; confirmCurrent(interruption); throw interruption }
+      failure = error
+    }
+    const confirmed = confirmCurrent()
+    // The server broke a block far slower than the held tool allows: its
+    // selected slot / held item differs from our view. Resync the inventory
+    // from the server and re-plan (equipTool then really re-sends the slot).
+    if (failure?.code === 'SLOW_BREAK') {
+      rec.status = confirmed ? 'partial' : 'failed'; rec.error = String(failure.message)
+      job.slowBreaks = (job.slowBreaks ?? 0) + 1
+      note('slow_break', { message: failure.message, held: adapter.getState()?.heldItem?.name ?? null, selectedSlot: adapter.getState()?.selectedSlot ?? null, count: job.slowBreaks })
+      if (job.slowBreaks >= 3) return finish('PAUSED', 'SLOW_BREAK_PERSISTS', { pauseDetails: { lastError: rec.error, held: adapter.getState()?.heldItem?.name ?? null } })
+      try { await call(myEpoch, 'resync', signal => adapter.resyncInventory?.({ signal })) } catch (error) { if (error instanceof QuarryInterrupt) throw error; note('resync_failed', { error: String(error.message ?? error).slice(0, 200) }) }
+      lastInventory = totals(items(adapter.getState()) ?? [])
+      return
+    }
+    if (confirmed) { job.slowBreaks = 0; job.routeSkips = 0; job.autoResumes = 0 }
     if (failure && !confirmed) { rec.status = 'failed'; rec.error = String(failure.message ?? failure); job.retry = (job.retry ?? 0) + 1; if (job.retry > 3) { for (const t of targets) planner.defer(t, 'MINING_FAILED', { error: rec.error }); job.retry = 0 } ; note('mine_failed', { error: rec.error }); return }
     job.retry = 0
     rec.status = failure ? 'partial' : 'confirmed'
     batchCount += confirmed
-    // Track fresh drops near the targets for the 30s collection rule.
-    await sleep(150)
+    // Track fresh drops near the targets for the collection deadline. Drop
+    // entities can arrive a moment after the air; ones missed here are picked
+    // up by observeDrops() on the next work tick, so there is no fixed wait.
     trackDrops(targets)
-    if (decision.targets.some(t => blockRule(t.name).ore)) await collect(myEpoch, 'valuable')
+    if (decision.targets.some(t => blockRule(t.name).ore)) { await sleep(150); trackDrops(targets); await collect(myEpoch, 'valuable') }
     if (job.config.persistence.checkpointAfterBatch) { job.checkpoint = { at: new Date(now()).toISOString(), layer: job.cursorY, position: copy(adapter.getState().position), batchCount }; await save('batch') }
   }
 
   // Each target is re-read: air counts as removed; a different block (sand
   // fell in, water flowed) stays for re-planning (§15.1, T09).
   function confirmMined (rec, targets) {
+    countsRevision++
     let n = 0
     rec.results = []
     for (const t of targets) {
@@ -515,6 +615,29 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
   }
 
+  // Items lying in the travel region that are not tracked yet (late drop
+  // entities, loot) start their collection clock when first seen.
+  function observeDrops () {
+    const live = new Set()
+    for (const e of adapter.entities()) {
+      if (e.kind !== 'item' || !e.position) continue
+      live.add(e.runtimeId)
+      if (pendingDrops.some(d => d.runtimeId === e.runtimeId)) continue
+      if (!permits(regions, 'travel', { x: Math.floor(e.position.x), y: Math.floor(e.position.y + 0.01), z: Math.floor(e.position.z) }).allowed) continue
+      pendingDrops.push({ runtimeId: e.runtimeId, name: e.name, count: e.count, position: copy(e.position), firstSeen: now(), mixed: true })
+    }
+    pendingDrops = pendingDrops.filter(d => live.has(d.runtimeId))
+    for (const [id, until] of stuckItems) if (until <= now() || !live.has(id)) stuckItems.delete(id)
+  }
+  const openDrops = () => pendingDrops.filter(d => !d.unreachable && !stuckItems.has(d.runtimeId))
+
+  // Bedrock picks an item up when it touches the player's box grown by about
+  // 1 block sideways and 0.5 block up/down. A stand one block above an item
+  // (feet y+1) never reaches it, and a diagonal stand can miss it sideways.
+  function inPickupRange (feet, p) {
+    return Math.abs(p.x - feet.x) <= PICKUP_XZ && Math.abs(p.z - feet.z) <= PICKUP_XZ && p.y + 0.25 >= feet.y - 0.5 && p.y <= feet.y + 1.8 + 0.5
+  }
+
   // Collect drops (§10.2): walk next to each, then confirm by inventory gain.
   async function collect (myEpoch, why) {
     setState('COLLECT', { collectReason: why })
@@ -528,23 +651,70 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // job's own drops (mixed items count as "picked" only when they enter the
     // bag).
     for (const e of ents.values()) if (!remaining.some(d => d.runtimeId === e.runtimeId) && permits(regions, 'travel', { x: Math.floor(e.position.x), y: Math.floor(e.position.y + 0.01), z: Math.floor(e.position.z) }).allowed) remaining.push({ runtimeId: e.runtimeId, name: e.name, count: e.count, position: copy(e.position), firstSeen: now(), mixed: true })
-    remaining.sort((a, b) => a.firstSeen - b.firstSeen || Math.hypot(a.position.x - s.position.x, a.position.z - s.position.z) - Math.hypot(b.position.x - s.position.x, b.position.z - s.position.z))
-    const unreachable = []
+    // Stuck items (still on the ground after a visit) are skipped for a while,
+    // except on the final sweep.
+    const skipped = []
+    for (let k = remaining.length - 1; k >= 0; k--) if (why !== 'final' && (stuckItems.has(remaining[k].runtimeId) || remaining[k].reason === 'STUCK_REPEATED')) skipped.push(...remaining.splice(k, 1))
+    const unreachable = skipped.map(d => ({ ...d, reason: d.reason === 'STUCK_REPEATED' ? d.reason : 'STUCK' }))
     let needRoom = false
     const PASS = 48
-    for (const [i, d] of remaining.entries()) {
-      // Items beyond this pass, or left after the bag filled, stay tracked.
-      if (i >= PASS || needRoom) { unreachable.push({ ...d, reason: needRoom ? 'NO_CAPACITY' : 'NEXT_PASS' }); continue }
+    const around = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
+    const present = id => adapter.entities().some(e => e.runtimeId === id)
+    const waitGone = async (id, ms) => { const until = now() + ms; while (now() < until && present(id)) await sleep(50); return !present(id) }
+    let visits = 0
+    // Rank by actual reachable paths, not distance through a wall or pit.
+    // Drops at the collection deadline come first; a nearby stand can still
+    // cover several items passively. Recompute after each confirmed move.
+    while (remaining.length) {
+      const here = guard(myEpoch); const feet = { x: here.position.x, y: here.position.y - FEET, z: here.position.z }
+      const live = new Set(adapter.entities().map(e => e.runtimeId))
+      for (let i = remaining.length - 1; i >= 0; i--) if (!live.has(remaining[i].runtimeId)) remaining.splice(i, 1)
+      if (!remaining.length) break
+      if (visits >= PASS || needRoom) { unreachable.push(...remaining.splice(0).map(d => ({ ...d, reason: needRoom ? 'NO_CAPACITY' : 'NEXT_PASS' }))); break }
+      const reach = await planner.reachableFromAsync(feetCell(here))
+      guard(myEpoch)
+      const candidates = new Map()
+      for (let i = 0; i < remaining.length; i++) {
+        if (i && i % 16 === 0) { await new Promise(resolve => setImmediate(resolve)); guard(myEpoch) }
+        const d = remaining[i]
+        const cell = { x: Math.floor(d.position.x), y: Math.floor(d.position.y + 0.01), z: Math.floor(d.position.z) }
+        const stands = [0, -1, 1].flatMap(dy => around.map(([dx, dz]) => ({ x: cell.x + dx, y: cell.y + dy, z: cell.z + dz })))
+          .filter(c => inPickupRange({ x: c.x + 0.5, y: c.y, z: c.z + 0.5 }, d.position) && planner.standable(c) && permits(regions, 'travel', c).allowed && reach.has(`${c.x},${c.y},${c.z}`))
+        const distance = c => reach.get(`${c.x},${c.y},${c.z}`)
+        const nearest = stands.length ? Math.min(...stands.map(distance)) : Infinity
+        candidates.set(d, { stands, distance, nearest: inPickupRange(feet, d.position) ? 0 : nearest })
+      }
+      const dueAt = now() - Math.min(job.config.strategy.collectAfterSeconds, job.config.strategy.collectWithinSeconds) * 1000
+      remaining.sort((a, b) => {
+        const ca = candidates.get(a); const cb = candidates.get(b)
+        const reachable = Number(Number.isFinite(cb.nearest)) - Number(Number.isFinite(ca.nearest))
+        if (reachable) return reachable
+        const aDue = a.firstSeen <= dueAt; const bDue = b.firstSeen <= dueAt
+        return Number(bDue) - Number(aDue) || (aDue && bDue ? a.firstSeen - b.firstSeen : 0) || ca.nearest - cb.nearest || a.firstSeen - b.firstSeen
+      })
+      const d = remaining.shift()
+      if (!present(d.runtimeId)) continue
       const inv = items(guard(myEpoch))
+      if (!inv) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
       if (!canAccept(inv, [{ name: d.name ?? 'unknown', count: d.count ?? 1 }])) { needRoom = true; unreachable.push({ ...d, reason: 'NO_CAPACITY' }); continue }
-      const cell = { x: Math.floor(d.position.x), y: Math.floor(d.position.y + 0.01), z: Math.floor(d.position.z) }
-      const reach = planner.reachableFrom(feetCell(guard(myEpoch)))
-      const around = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
-      const target = [0, 1, -1].flatMap(dy => around.map(([dx, dz]) => ({ x: cell.x + dx, y: cell.y + dy, z: cell.z + dz }))).find(c => planner.standable(c) && permits(regions, 'travel', c).allowed && reach.has(`${c.x},${c.y},${c.z}`))
+      // Already within pickup range: no walk, just a short wait.
+      if (inPickupRange(feet, d.position) && await waitGone(d.runtimeId, 400)) continue
+      const candidate = candidates.get(d)
+      const stands = candidate.stands.filter(c => candidate.distance(c) <= candidate.nearest + 4)
+      const covers = c => remaining.filter(o => inPickupRange({ x: c.x + 0.5, y: c.y, z: c.z + 0.5 }, o.position)).length
+      stands.sort((a, b) => (candidate.distance(a) + 2) / (covers(a) + 1) - (candidate.distance(b) + 2) / (covers(b) + 1) || candidate.distance(a) - candidate.distance(b))
+      const target = stands[0]
       if (!target) { unreachable.push({ ...d, reason: 'UNREACHABLE' }); continue }
+      visits++
       try { await moveToStance(myEpoch, target) } catch (error) { if (error instanceof QuarryInterrupt) throw error; unreachable.push({ ...d, reason: 'MOVE_FAILED' }); continue }
-      const until = now() + 2500
-      while (now() < until && adapter.entities().some(e => e.runtimeId === d.runtimeId)) await sleep(100)
+      if (await waitGone(d.runtimeId, 600)) continue
+      // Still on the ground beside us: skip it for a while instead of coming
+      // back after every batch; after repeated misses it is written off until
+      // the final sweep.
+      d.stuckVisits = (d.stuckVisits ?? 0) + 1
+      stuckItems.set(d.runtimeId, now() + job.config.strategy.stuckItemMs)
+      note('item_stuck', { name: d.name, position: d.position, stand: target, visits: d.stuckVisits })
+      unreachable.push({ ...d, reason: d.stuckVisits >= 2 ? 'STUCK_REPEATED' : 'STUCK' })
     }
     const after = totals(items(guard(myEpoch)) ?? [])
     for (const x of diff(before, after)) if (x.delta > 0) note('collected', x)
@@ -552,7 +722,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // Items still on the ground stay tracked: capacity misses are retried after
     // a deposit, unreachable ones are only written off at the end (§10.2).
     const still = new Set(adapter.entities().filter(e => e.kind === 'item').map(e => e.runtimeId))
-    pendingDrops = unreachable.filter(d => still.has(d.runtimeId)).map(d => ({ ...d, unreachable: !['NO_CAPACITY', 'NEXT_PASS'].includes(d.reason) }))
+    pendingDrops = unreachable.filter(d => still.has(d.runtimeId)).map(d => ({ ...d, unreachable: !['NO_CAPACITY', 'NEXT_PASS', 'STUCK'].includes(d.reason) }))
     job.unreachableItems = pendingDrops.filter(d => d.unreachable).map(d => ({ name: d.name, count: d.count, position: d.position, reason: d.reason }))
     batchCount = 0
     // The bag could not take everything: empty it into the chests, then the
@@ -580,6 +750,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!(b?.known && nameOf(b) === nameOf(decision.material))) { rec.status = 'unconfirmed'; return }
     rec.status = 'confirmed'; job.placeFailures = 0
     planner.recordPlacement(decision.position, decision.purpose, decision.material)
+    countsRevision++
     ledger.add(decision.purpose === 'seal' ? 'placedSeal' : 'placedTemporary', decision.material)
     // Fluids keep moving after a seal: observe several times before work
     // continues; a still-changing flow pauses instead of guessing (§12.1).
@@ -821,6 +992,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   async function finish (result, reason, extra = {}) {
     if (!job) return
+    // A failed action often clears up on its own (a mob in the way, a lag
+    // spike): resume automatically up to 3 times, 30s apart, before staying
+    // paused. Progress (a confirmed mine) resets the count.
+    if (result === 'PAUSED' && /^ACTION_FAILED/.test(String(reason)) && (job.autoResumes ?? 0) < 3 && job.userRunIntent === 'running') {
+      job.autoResumes = (job.autoResumes ?? 0) + 1
+      const owner = job; const count = job.autoResumes
+      const t = setTimeout(() => { try { if (job === owner && job.state === 'PAUSED' && job.pauseReason === reason && job.userRunIntent === 'running') { note('auto_resume', { reason, count }); resume() } } catch {} }, autoResumeMs)
+      t.unref?.()
+    }
     const paused = result === 'PAUSED'
     if (!paused) {
       const still = new Set(adapter.entities().filter(e => e.kind === 'item').map(e => e.runtimeId))
@@ -918,14 +1098,30 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return status()
   }
 
+  function displayCounts (state) {
+    if (job.yTop == null || !planner) return null
+    const owner = job; const source = planner; const generation = epoch
+    const scope = scopeOf(state); const life = lifeOf(state)
+    const localRevision = countsRevision; const records = source.revision()
+    const world = adapter.worldRevision?.() ?? null
+    const isCurrent = () => job === owner && planner === source && epoch === generation && countsRevision === localRevision && source.revision() === records && (adapter.worldRevision?.() ?? null) === world && scopeOf(adapter.getState()) === scope && lifeOf(adapter.getState()) === life
+    const cache = countsCache?.job === owner && countsCache.planner === source && countsCache.scope === scope && countsCache.life === life ? countsCache : null
+    if (!countsWork && (!cache || now() - cache.at >= 2000)) {
+      // Start outside the status request; even the first display never scans
+      // a deep quarry synchronously. An obsolete scan cannot publish a value.
+      const work = new Promise(resolve => setImmediate(resolve)).then(() => source.countsAsync(owner.yTop, isCurrent)).then(value => {
+        if (value && isCurrent()) countsCache = { job: owner, planner: source, scope, life, at: now(), value }
+      }).catch(() => {}).finally(() => { if (countsWork === work) countsWork = null })
+      countsWork = work
+    }
+    return cache?.value ?? null
+  }
+
   function status () {
     if (!job) return { state: 'IDLE', job: null }
     const s = adapter.getState()
     const inv = items(s)
-    const counts = (() => {
-      if (countsCache && now() - countsCache.at < 2000 && countsCache.planner === planner) return countsCache.value
-      try { const value = job.yTop != null && planner ? planner.counts(job.yTop) : null; countsCache = { at: now(), planner, value }; return value } catch { return null }
-    })()
+    const counts = displayCounts(s)
     return copy({
       jobId: job.config.jobId, state: job.state, userRunIntent: job.userRunIntent, result: job.result, pauseReason: job.pauseReason, pauseDetails: job.pauseDetails ?? null,
       chunks: regions?.chunks ?? null, yTop: job.yTop, yBottom: regions?.yBottom ?? null, currentY: job.lastDecision?.y ?? job.cursorY,

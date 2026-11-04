@@ -12,8 +12,22 @@ function createBaseProtection ({ world, getState, getHutMemo = () => null, getSh
   let previous = null
   let protectedCells = new Set()
   let rebuilds = 0
+  // Cells the memos could protect, ignoring scope. Reading the state is a full
+  // clone, so it is only done for a block that is one of these candidates
+  // (reading it on every getBlock cost ~25% of the CPU in planning loops).
+  const ANY_SCOPE = Symbol('any scope')
+  let candidateFor = null; let candidates = new Set()
+  function candidateCells () {
+    const hut = getHutMemo(); const shelter = getShelterMemo()
+    if (candidateFor && candidateFor.hut === hut && candidateFor.shelter === shelter) return candidates
+    const next = new Set([...hutCells(hut, ANY_SCOPE), ...shelterCells(shelter, ANY_SCOPE)].map(key))
+    if (next.size > maxBlocks) throw new Error('The confirmed base protection area exceeds its bounded planning view')
+    candidates = next; candidateFor = { hut, shelter }
+    return candidates
+  }
 
   function scoped (memo, state) {
+    if (state === ANY_SCOPE) return true
     const scope = memo?.scope
     const profile = scope?.profile ?? memo?.profile ?? ownerProfile
     return scope && typeof profile === 'string' && profile.length > 0 && profile === state?.profile && scope.realmId != null && state?.realm?.id != null && String(scope.realmId) === String(state.realm.id) && ['overworld', 'nether', 'end'].includes(scope.dimension) && scope.dimension === state?.dimension
@@ -72,13 +86,18 @@ function createBaseProtection ({ world, getState, getHutMemo = () => null, getSh
     return { ...block, protected: true, protectionSource: 'bot_base' }
   }
   function getBlock (x, y, z) {
+    const block = world.getBlock(x, y, z)
+    if (!candidateCells().has(`${x},${y},${z}`)) return block
     refresh()
-    return overlay(world.getBlock(x, y, z), { x, y, z })
+    return overlay(block, { x, y, z })
   }
   function getArea (center, radius = 1) {
     if (typeof world.getArea !== 'function') throw new Error('The raw world does not expose area observations')
+    const area = world.getArea(center, radius)
+    const cells = candidateCells()
+    if (!area.some(block => block?.position && cells.has(key(block.position)))) return area
     refresh()
-    return world.getArea(center, radius).map(block => overlay(block, block?.position))
+    return area.map(block => overlay(block, block?.position))
   }
   return { getBlock, getArea, getRawBlock: (x, y, z) => world.getBlock(x, y, z), stats: () => { refresh(); return { protectedBlocks: protectedCells.size, rebuilds } } }
 }

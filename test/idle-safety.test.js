@@ -1382,6 +1382,19 @@ test('known closed usable refuge and death need no idle action, even with low he
   }
 })
 
+test('idle defense accepts a matching resent sword selection without treating another stack as ready', async t => {
+  for (const corrupt of [false, true]) {
+    const f = fixture(t, { equipSword: (context, { state }) => {
+      const item = state.inventory.items[0]
+      return { phase: 'completed', sourceSlot: item.slot, slot: item.slot, selectionSent: true, serverConfirmed: false, selectedItem: { ...item, stackId: item.stackId + Number(corrupt) } }
+    } })
+    Object.assign(f.state.inventory.items[0], { networkId: 300, stackId: 90, metadata: 0 })
+    f.state.heldItem = { ...f.state.inventory.items[0] }
+    await f.start(); f.actors.push(f.enemy()); await f.tick(); await f.safety.drain()
+    assert.equal(f.calls.some(call => call.type === 'engage'), !corrupt)
+  }
+})
+
 test('a single known close melee enemy uses confirmed sword, closed GUI and exact bounded oracle defense', async t => {
   const f = fixture(t); await f.start(); f.state.crafting.openContainer = { windowId: 7 }; f.actors.push(f.enemy())
   await f.tick()

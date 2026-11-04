@@ -1,5 +1,9 @@
 'use strict'
 
+const { createActorReader } = require('./runtime-observation-views')
+const { profileCpu, measureSnapshots } = require('./runtime-diagnostics')
+const { createSightStanceSearch } = require('./sight-stance-search')
+
 const { resourceMinHealth } = require('./learning-health')
 
 const { setTimeout: delay } = require('node:timers/promises')
@@ -366,10 +370,25 @@ function createRuntime (host) {
   let disposing = false
   let replaying = true
   let readDurability = null
+  function craftStatus () { return typeof crafting.status === 'function' ? crafting.status() : crafting.snapshot() }
+  function craftInventory () { return typeof crafting.inventorySnapshot === 'function' ? crafting.inventorySnapshot() : crafting.snapshot() }
   const working = () => {
     const state = host.getState()
     if (readDurability) {
-      state.inventory.items = state.inventory.items.map(item => readDurability(item, crafting.rawItem(item.slot)))
+      // Older connected hosts omit stack IDs from their public inventory.
+      // Fill only missing fields from the matching received crafting inventory;
+      // an explicitly unknown server stack ID remains unknown.
+      if (state.inventory.items.some(item => !Object.hasOwn(item, 'stackId'))) {
+        const received = craftInventory()
+        const bySlot = received.inventoryKnown ? new Map((received.inventory ?? []).map(item => [item.slot, item])) : new Map()
+        state.inventory.items = state.inventory.items.map(item => {
+          if (Object.hasOwn(item, 'stackId')) return item
+          const observed = bySlot.get(item.slot)
+          return { ...item, stackId: observed?.name === item.name && observed.count === item.count ? observed.stackId : null }
+        })
+      }
+      // Only tools read durability; skip cloning the raw stack for everything else.
+      state.inventory.items = state.inventory.items.map(item => /_(?:pickaxe|sword|shovel|axe|hoe)$/.test(item?.name ?? '') ? readDurability(item, crafting.rawItem(item.slot)) : item)
       if (state.heldItem) state.heldItem = state.inventory.items.find(item => item.slot === state.heldItem.slot) ?? null
     }
     if (host.shared.inventoryUncertain) state.inventory = { ...state.inventory, known: false, uncertain: true }
@@ -381,7 +400,10 @@ function createRuntime (host) {
     return state
   }
   const raw = () => host.getServerState()
-  const actualWireClock = createActualQueuedWireClock({ client: host.client, shared: host.shared, getState: host.getServerState.bind(host) })
+  const rawFields = fields => typeof host.getServerFields === 'function' ? host.getServerFields(fields) : raw()
+  const scopeFields = ['profile', 'realm', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId']
+  const rawScope = () => rawFields(scopeFields)
+  const actualWireClock = createActualQueuedWireClock({ client: host.client, shared: host.shared, getState: () => rawFields(['connectionId', 'startedAt', 'runtimeEntityId']) })
   const actualLifeId = () => Number.isSafeInteger(host.shared.deathRespawn?.deathId) ? host.shared.deathRespawn.deathId : 0
   const userScope = state => JSON.stringify([state.profile ?? host.meta.profile ?? null, state.realm?.id == null ? null : String(state.realm.id), state.connectionId ?? null, state.startedAt ?? null, state.dimension ?? null, String(state.runtimeEntityId ?? ''), actualLifeId()])
   function userBehaviorError (error, source) { host.shared.userBehaviorError = { source, message: String(error?.message ?? error).slice(0, 300), at: new Date().toISOString() } }
@@ -398,8 +420,9 @@ function createRuntime (host) {
     const current = Number.isFinite(stamp) && Date.now() - stamp >= 0 && Date.now() - stamp <= 200 && (state.positionSource !== 'client_prediction' || physical?.position && ['x', 'y', 'z'].every(axis => Number.isFinite(physical.position[axis]) && Math.abs(physical.position[axis] + (axis === 'y' ? 1.62 : 0) - state.position[axis]) <= 1e-6))
     if (actor && current && Math.hypot(state.position.x - actor.position.x, state.position.y - actor.position.y - (['minecraft:spider', 'minecraft:cave_spider', 'minecraft:silverfish', 'minecraft:endermite', 'minecraft:slime', 'minecraft:magma_cube', 'minecraft:vex', 'minecraft:phantom'].includes(actor.entityType) ? 0.2 : 0.9), state.position.z - actor.position.z) <= 2.8) admission.engagementReached = true
   }
+  const allActors = createActorReader(host.entities)
   function lightweightUserState () {
-    const state = working(), observed = raw(), actors = host.entities.snapshot({ kind: 'all' })
+    const state = working(), observed = raw(), actors = allActors()
     const dead = observed.dead === true || observed.isDead === true || observed.health === 0
     const current = { ...state, profile: state.profile ?? host.meta.profile, dead: state.dead === true || dead, isDead: state.isDead === true || dead, threatPolicy: host.shared.autoWanted ? 'online_learning' : 'balanced_mining', entities: actors, hostiles: actors.filter(e => e.hostile && e.alive), entityStats: host.entities.stats?.() ?? { unknownPositions: actors.filter(e => e.positionKnown !== true).length }, lifecycle: { ...(state.lifecycle ?? {}), deathId: actualLifeId(), dead, phase: dead ? 'dead' : 'alive' } }
     rememberCurrentMeleeReach(current)
@@ -644,7 +667,7 @@ function createRuntime (host) {
       reachabilityTimer = null
       try {
         if (disposed || disposing || raw().phase !== 'spawned') return
-        threatReachability.refresh(working(), host.entities.snapshot({ kind: 'all' }), { world: host.world })
+        threatReachability.refresh(working(), allActors(), { world: host.world })
       } catch { /* Unknown reachability keeps the normal threat policy. */ }
     }, 100)
     reachabilityTimer.unref?.()
@@ -652,7 +675,7 @@ function createRuntime (host) {
   const observedState = () => {
     const startedAt = performance.now()
     const state = working()
-    const entities = annotateTerrainThreats(state, host.entities.snapshot({ kind: 'all' }), { world: host.world })
+    const entities = annotateTerrainThreats(state, allActors(), { world: host.world, ownedEntities: true })
     refreshThreatReachability()
     if (process.env.MINECRAFT_CAPTURE_EMERGENCY === '1') {
       host.shared.perfObservations ??= {}
@@ -677,7 +700,7 @@ function createRuntime (host) {
   const UserCombatItem = require('prismarine-item')(`bedrock_${host.meta.version}`)
   const furnace = createFurnace({ client: host.client, getState: working, crafting, version: host.meta.version, allocateRequestId: () => host.allocate('craft'), onUncertain, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
   const prospecting = createProspecting({ client: host.client, getState: working, world: host.world })
-  const inventory = createInventory({ client: host.client, getState: working, crafting, allocateRequestId: () => host.allocate('craft'), commitSelection: typeof host.commitSelection === 'function' ? slot => host.commitSelection(slot) : null, onUncertain, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
+  const inventory = createInventory({ client: host.client, getState: working, crafting, allocateRequestId: () => host.allocate('craft'), commitSelection: typeof host.commitSelection === 'function' ? slot => host.commitSelection(slot) : null, selectionStore: host.shared.inventorySelection ??= {}, onUncertain, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
   let armorTask = null
   const armor = createArmor({ client: host.client, getState: working, crafting, allocateRequestId: () => host.allocate('craft'), store: host.shared.armorStore ??= {}, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) }, log: message => host.log(message) })
   function canEmergencyEatHere () {
@@ -707,7 +730,7 @@ function createRuntime (host) {
     host.commitInventory({ window_id: 'inventory', input, changedSlots: [delta.slot], fullRefresh: false, source: delta.source, requestId: delta.requestId })
     host.shared.lastChestInventoryUpdate = { source: delta.source, requestId: delta.requestId, changedSlots: [delta.slot], fullRefresh: false, at: new Date().toISOString() }
   }
-  const chest = createChest({ client: host.client, getState: () => { const state = working(); return { ...state, profile: state.profile ?? host.meta.profile, lifecycle: { ...(state.lifecycle ?? {}), deathId: Number.isSafeInteger(host.shared.deathRespawn?.deathId) ? actualLifeId() : null } } }, world: host.world, crafting, interactions, version: host.meta.version, allocateRequestId: () => host.allocate('craft'), onUncertain, onInventory: commitChestMainDelta })
+  const chest = createChest({ client: host.client, getState: () => { const state = working(); return { ...state, profile: state.profile ?? host.meta.profile, lifecycle: { ...(state.lifecycle ?? {}), deathId: foodKnownLife() } } }, world: host.world, crafting, interactions, version: host.meta.version, allocateRequestId: () => host.allocate('craft'), onUncertain, onInventory: commitChestMainDelta })
 
   async function executeSurfaceReturn (options = {}, context = {}) {
     if (disposed || disposing || !surfaceReturn || surfaceReturnOwner || userBehaviorOwns() || autonomy.snapshot().actionActive) throw new Error('地上への移動処理が使用中です。')
@@ -787,7 +810,7 @@ function createRuntime (host) {
     if (inputOwner === 'idle' && !ownedCall && !pendingStops.size && !motionActive() && idlePhysicsState.onGround === true && !idlePhysicsState.isInWater && !idlePhysicsState.isInLava && Math.hypot(idlePhysicsState.velocity.x, idlePhysicsState.velocity.z) < 0.006 && idlePhysicsState.velocity.y <= 0.05 && idlePhysicsState.velocity.y >= -0.12) {
       try {
         idleOriginNavigator ??= createNavigator({ world: planningWorld, version: host.meta.version, allowWater: true, physics: idlePhysics })
-        if (!idleOriginNavigator.verifyOrigin(idlePhysicsState) && !autonomy.snapshot().busy && !idleSafety?.snapshot().busy && !guardRoute?.snapshot().busy && !excavation?.snapshot().busy && !tunneling?.snapshot().busy && !recovery?.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !shelter?.snapshot().busy && !hut?.snapshot().busy && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging && !food.snapshot().busy && !(furnace.snapshot().busy || chest.snapshot().busy) && !inventory.snapshot().busy && crafting.snapshot().pendingRequestId == null && !interactions.snapshot().pendingOperation) {
+        if (!idleOriginNavigator.verifyOrigin(idlePhysicsState) && !autonomy.snapshot().busy && !idleSafety?.snapshot().busy && !guardRoute?.snapshot().busy && !excavation?.snapshot().busy && !tunneling?.snapshot().busy && !recovery?.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !shelter?.snapshot().busy && !hut?.snapshot().busy && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging && !food.snapshot().busy && !(furnace.snapshot().busy || chest.snapshot().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation) {
           const observed = raw()
           const sameScope = ['profile', 'startedAt', 'connectionId', 'runtimeEntityId', 'dimension'].every(key => observed[key] != null && observed[key] === state[key]) && observed.realm?.id != null && String(observed.realm.id) === String(state.realm?.id)
           const sameRawPose = observed.position && state.rawServerPosition && ['x', 'y', 'z'].every(axis => Number.isFinite(observed.position[axis]) && observed.position[axis] === state.rawServerPosition[axis])
@@ -863,7 +886,7 @@ function createRuntime (host) {
     if (!ownedCall && pendingStops.size) throw new Error('前の操作の終了処理を待ってください。')
     if (!ownedCall && quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
     if (!ownedCall && (idleSafety?.snapshot().busy || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy)) throw new Error('前の操作が終わるまで待ってください。')
-    if (motionActive() || input?.stats().running || food.snapshot().busy || (furnace.snapshot().busy || chest.snapshot().busy) || inventory.snapshot().busy || crafting.snapshot().pendingRequestId != null || interactions.snapshot().pendingOperation || combat?.snapshot().busy || combat?.snapshot().defending || combat?.snapshot().engaging) throw new Error('前の操作が完了するまで待ってください。')
+    if (motionActive() || input?.stats().running || food.snapshot().busy || (furnace.snapshot().busy || chest.snapshot().busy) || inventory.snapshot().busy || craftStatus().pendingRequestId != null || interactions.snapshot().pendingOperation || combat?.snapshot().busy || combat?.snapshot().defending || combat?.snapshot().engaging) throw new Error('前の操作が完了するまで待ってください。')
     if (!ownedCall) host.shared.safetyManualActionAt = Date.now()
   }
   function inventoryLifeBaseKey (state) { return JSON.stringify([state.profile ?? host.meta.profile ?? null, state.realm?.id == null ? null : String(state.realm.id), state.connectionId ?? null, state.startedAt ?? null, String(state.runtimeEntityId ?? ''), state.dimension ?? null]) }
@@ -900,7 +923,7 @@ function createRuntime (host) {
   }
   function inventoryResyncIdle () {
     const behavior = userBehaviorSnapshot()
-    if (ownedCall || pendingStops.size || userBehaviorOwns() || userBehaviorTickTask || behavior.cleanupUnconfirmed || inputOwner === 'task' || motionActive() || input?.stats().running || autonomy.snapshot().actionActive || idleSafety?.snapshot().busy || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy || mining.snapshot().phase === 'mining' || walker?.snapshot().phase === 'walking' || food.snapshot().busy || food.snapshot().pendingRequestId != null || inventory.snapshot().busy || (furnace.snapshot().busy || chest.snapshot().busy) || furnace.snapshot().waitingOutput || interactions.snapshot().pendingOperation || combat?.snapshot().busy || combat?.snapshot().defending || combat?.snapshot().engaging || host.shared.equipment != null || crafting.snapshot().pendingRequestId != null) throw Object.assign(new Error('現在の操作が完了してから持ち物を再同期します。'), { code: 'BUSY' })
+    if (ownedCall || pendingStops.size || userBehaviorOwns() || userBehaviorTickTask || behavior.cleanupUnconfirmed || inputOwner === 'task' || motionActive() || input?.stats().running || autonomy.snapshot().actionActive || idleSafety?.snapshot().busy || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy || mining.snapshot().phase === 'mining' || walker?.snapshot().phase === 'walking' || food.snapshot().busy || food.snapshot().pendingRequestId != null || inventory.snapshot().busy || (furnace.snapshot().busy || chest.snapshot().busy) || furnace.snapshot().waitingOutput || interactions.snapshot().pendingOperation || combat?.snapshot().busy || combat?.snapshot().defending || combat?.snapshot().engaging || host.shared.equipment != null || craftStatus().pendingRequestId != null) throw Object.assign(new Error('現在の操作が完了してから持ち物を再同期します。'), { code: 'BUSY' })
   }
   function requestInventoryResync (source = 'manual') {
     const scope = inventoryResyncScope()
@@ -930,7 +953,7 @@ function createRuntime (host) {
     for (const e of host.entities.snapshot({ kind: 'all' })) if (e.hostile === true && e.alive !== false && e.position) best = Math.min(best, Math.hypot(e.position.x - s.position.x, e.position.y - s.position.y, e.position.z - s.position.z))
     return best
   }
-  function armorWorkFree () { return !inventory.snapshot().busy && !crafting.snapshot().openContainer && crafting.snapshot().pendingRequestId == null }
+  function armorWorkFree () { return !inventory.snapshot().busy && !craftStatus().openContainer && craftStatus().pendingRequestId == null }
   function maybeEquipArmor () {
     if (host.shared.autoWanted !== true || armorTask || Date.now() - (host.shared.armorCheckedAt ?? 0) < 3000) return
     host.shared.armorCheckedAt = Date.now()
@@ -1731,7 +1754,7 @@ function createRuntime (host) {
 
   function initialiseMotion () {
     if (disposed || disposing || raw().phase !== 'spawned' || !host.meta.startGame) return
-    if (userBehaviorGenerationScope === userScope(raw()) && userBehaviorOwns()) return
+    if (userBehaviorGenerationScope === userScope(rawScope()) && userBehaviorOwns()) return
     if (host.meta.version !== host.world.stats().version) throw new Error('接続版と地形データの版が違うため操作しません。')
     inputHistory?.invalidate('motion_generation_changed')
     if (inputStream) {
@@ -2190,7 +2213,7 @@ function createRuntime (host) {
       // initial handoff. Only its dispatched action blocks that handoff; all
       // concrete foreign actor checks below retain their ownership rules.
       const protectedEpisode = context.episodeActive && idleSafety?.snapshot().busy === true
-      if ((!ownEscape && generationGuardRoute.snapshot().busy) || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || generationShelter.snapshot().busy || (!protectedEpisode && autonomy.snapshot().actionActive === true) || food.snapshot().busy || (furnace.snapshot().busy || chest.snapshot().busy) || crafting.snapshot().pendingRequestId != null) return false
+      if ((!ownEscape && generationGuardRoute.snapshot().busy) || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || generationShelter.snapshot().busy || (!protectedEpisode && autonomy.snapshot().actionActive === true) || food.snapshot().busy || (furnace.snapshot().busy || chest.snapshot().busy) || craftStatus().pendingRequestId != null) return false
       if ((!ownHut && (generationHut.snapshot().busy || !ownEmergencyMining && mining.snapshot().phase === 'mining' || interactions.snapshot().pendingOperation)) || (!ownHut && !ownEscape && motionActive())) return false
       if (!ownHut && !ownEscape && !ownActor('inventory') && inventory.snapshot().busy) return false
       const fight = generationCombat.snapshot()
@@ -4095,7 +4118,7 @@ function createRuntime (host) {
       if (protection.running !== true) return true
       try {
         const selected = state.rawServerSelectedSlot ?? state.rawSelectedSlot
-        const weapon = require('./melee-weapons').selectMeleeWeapon({ items: crafting.snapshot().inventory ?? [], rawItem: crafting.rawItem, selectedSlot: selected, target: actor })
+        const weapon = require('./melee-weapons').selectMeleeWeapon({ items: craftInventory().inventory ?? [], rawItem: crafting.rawItem, selectedSlot: selected, target: actor })
         const motion = generationMovement.snapshot(), age = Date.now() - motion.queuedAt
         // A real in-flight escape must not be exchanged for an unarmed trade.
         // Without a moving escape, normal positive-health near defense remains.
@@ -4371,7 +4394,7 @@ function createRuntime (host) {
       return state.inventory?.known === true && !state.inventory.uncertain && Array.isArray(state.inventory.items) && state.inventory.items.some(i => i.name === 'minecraft:bow' && i.count === 1) && state.inventory.items.some(i => i.name === 'minecraft:arrow' && Number.isSafeInteger(i.count) && i.count > 0)
     }
     function knownUserSword (state) {
-      const inventory = crafting.snapshot()
+      const inventory = craftInventory()
       if (state.inventory?.known !== true || state.inventory.uncertain || state.inventoryConfidence?.known === false || !Array.isArray(state.inventory.items) || inventory.authority !== true || inventory.inventoryKnown !== true || inventory.pendingRequestId != null) return false
       return state.inventory.items.some(item => {
         if (!/^minecraft:(?:wooden|golden|stone|copper|iron|diamond|netherite)_sword$/.test(item.name) || item.count !== 1 || !Number.isInteger(item.slot) || item.slot < 0 || item.slot > 35) return false
@@ -4477,56 +4500,22 @@ function createRuntime (host) {
       for (let i = 1; i < steps; i++) { const f = i / steps; if (!ok({ x: from.x + (to.x - from.x) * f, y: from.y + (to.y - from.y) * f, z: from.z + (to.z - from.z) * f })) return false }
       return true
     }
-    async function seekSightStance (target, context) {
-      const state = requireUserLease(context), feet = { x: state.position.x, y: Math.round(state.position.y - 1.62), z: state.position.z }
-      // Aim the stance at where the target will be in ~0.5s (it keeps walking).
-      let v = null; try { v = host.entities.motion?.(target.runtimeId)?.velocity ?? null } catch { v = null }
-      const lead = v && Number.isFinite(v.x) && Number.isFinite(v.z) ? 10 : 0
-      const body = { x: target.position.x + (lead ? v.x * lead : 0), y: target.position.y + 0.9, z: target.position.z + (lead ? v.z * lead : 0) }
-      // Rings out to 10m (nearest first), higher ground and the side with fewer
-      // hostiles preferred. Around a creeper every candidate keeps >= 8m from
-      // it (moving back to open a line is allowed, closing in is not).
-      const creeper = target.entityType === 'minecraft:creeper', minRange = creeper ? 8 : 6
-      const others = host.entities.snapshot({ kind: 'all' }).filter(e => e.hostile === true && e.alive !== false && e.position && String(e.runtimeId) !== String(target.runtimeId))
-      const crowdAt = p => others.filter(e => Math.hypot(e.position.x - p.x, e.position.z - p.z) < 8).length
-      const candidates = []
-      // Every cell within 10m (ring sampling missed spots like a ledge corner).
-      // Out to 16m: a target knocked back onto a ledge needs a farther, lower
-      // angle; nearer cells still sort first.
-      for (let ox = -16; ox <= 16; ox++) for (let oz = -16; oz <= 16; oz++) for (const dy of [2, 1, 0, -1, -2]) {
-        const radius = Math.hypot(ox, oz); if (radius < 1 || radius > 16) continue
-        const p = { x: Math.floor(feet.x) + ox + 0.5, y: feet.y + dy, z: Math.floor(feet.z) + oz + 0.5 }
-        const range = Math.hypot(p.x - body.x, p.z - body.z)
-        // A creeper 1.5+ blocks above/below this stance may be shot from 6.5m.
-        if (range < (creeper && Math.abs(target.position.y - p.y) >= 1.5 ? 6.5 : minRange) || range > 30) continue
-        candidates.push({ p, score: radius - dy * 1.5 + crowdAt(p) * 2 })
-      }
-      candidates.sort((a, b) => a.score - b.score)
-      const started = performance.now(), tally = { total: candidates.length, tried: 0, stand: 0, sight: 0, route: 0 }
-      for (const { p } of candidates) {
-        if (performance.now() - started > 60) break
-        tally.tried++
-        // Cheap block test first (open feet+head, solid floor), then the sight
-        // ray; only survivors pay for the full standing geometry and a route.
-        const cell = (dy) => host.world.getBlock(Math.floor(p.x), p.y + dy, Math.floor(p.z))
-        const open = b => b?.known === true && (b.boundingBox === 'empty' || /air/.test(String(b.name))) && !/water|lava/.test(String(b.name))
-        if (!open(cell(0)) || !open(cell(1)) || cell(-1)?.boundingBox !== 'block') continue
-        tally.stand++
-        if (!bowSightClear({ x: p.x, y: p.y + 1.62, z: p.z }, body)) continue
-        tally.sight++
-        requireUserLease(context)
-        const probe = { ...state, position: { x: p.x, y: p.y + 1.62, z: p.z }, predicted: null, physicsState: null }
-        if (!fullStandingGeometry(probe, p)) continue
+    const seekSightStance = createSightStanceSearch({
+      requireLease: requireUserLease,
+      getTarget: id => typeof host.entities.get === 'function' ? host.entities.get(id) : allActors().find(actor => String(actor.runtimeId) === String(id)),
+      getActors: allActors,
+      getVelocity: id => host.entities.motion?.(id)?.velocity ?? null,
+      getWorldRevision: () => host.world.revision?.() ?? null,
+      getBlock: (x, y, z) => host.world.getBlock(x, y, z),
+      sightClear: bowSightClear,
+      standingClear: fullStandingGeometry,
+      previewRoute: (point, state, target) => {
         motionOrigin = working()
-        if (!generationMovement.preview(p, { emergency: true, allowWater: false, maxDistance: 18, maxExpanded: 900, avoidance: userAvoidance(state, target) })?.ready) continue
-        tally.route++
-        try { host.log(`射線の通る位置へ移動: target=${String(target.entityType).replace('minecraft:', '')} dy=${p.y - feet.y} d=${Math.hypot(p.x - feet.x, p.z - feet.z).toFixed(1)}m`) } catch {}
-        const result = await moveUserNative(p, context, target)
-        return { ...result, code: 'SIGHT_STANCE', partialApproach: true, targetReached: false, serverConfirmed: false }
-      }
-      try { host.log(`射線確保の候補なし: target=${String(target.entityType).replace('minecraft:', '')} ${JSON.stringify(tally)} ${Math.round(performance.now() - started)}ms`) } catch {}
-      return { ready: false, reason: 'No standable cell with a clear bow sight line nearby' }
-    }
+        return generationMovement.preview(point, { emergency: true, allowWater: false, maxDistance: 18, maxExpanded: 900, avoidance: userAvoidance(state, target) })
+      },
+      move: moveUserNative,
+      log: message => host.log(message)
+    })
     async function approachUserTarget (target, context) {
       if (context?.purpose === 'sight') return seekSightStance(target, context)
       const surface = await approachSurfaceMelee(target, context)
@@ -4596,19 +4585,19 @@ function createRuntime (host) {
         moveBed: (value, context) => moveUserNative(value.target, context), collectBed: (value, context) => moveUserNative({ x: value.position.x + 0.5, y: value.position.y, z: value.position.z + 0.5 }, context),
         cancelBedActions: async (reason, context) => { if (!sameLease(context)) return { cleaned: true }; mining.stop(reason); interactions.cancel(reason); inventory.cancel(reason); generationMovement.stop(reason); stopOrdinaryUserStream(); return { cleaned: true } },
         acquireControl: acquireUserControl, resumeControl: resumeUserControl, approach: approachUserTarget, retreat: retreatUserTarget,
-        rangedOptions: { log: host.log },
+        rangedOptions: { log: host.log, onSelectionSent: slot => host.commitSelection(slot) },
         meleeOptions: { log: host.log },
         coordinatorOptions: { log: host.log, canAcquireMeleeApproach: (target, state) => canAcquireStuckMeleeApproach(target, state) || canAcquireHealthyMeleeApproach(target, state), canEngage: (target, state) => threatReachability.reachableNow(state, target, { world: host.world, entities: host.entities.snapshot({ kind: 'all' }) }), engageRadius: threatReachability.ENGAGE_RADIUS, getRecentDamageAt: () => host.shared.recentDamageNoPrimary?.at ?? null, workGuard: { canSelectTarget: quarryCanSelectTarget, canContinue: quarryCanContinue } },
         // A meal in progress finishes first unless a hostile is already close.
         canAct: () => !(food.snapshot().busy && nearestHostileDistance() > 6) && currentGeneration() && !surfaceReturnOwner && !replaying && host.shared.userBehaviorsEnabled === true && (host.shared.autoWanted === true || quarryCombatArmed) && host.shared.loadingScreenEnded === true && !host.shared.respawnTerrain?.pending && !userBehaviorWakePending,
-        isBusy: context => !sameLease(context) || !userBehaviorLease?.ready || pendingStops.size > 0 || crafting.snapshot().pendingRequestId != null || (furnace.snapshot().busy || chest.snapshot().busy) || food.snapshot().busy || mining.snapshot().phase === 'mining',
+        isBusy: context => !sameLease(context) || !userBehaviorLease?.ready || pendingStops.size > 0 || craftStatus().pendingRequestId != null || (furnace.snapshot().busy || chest.snapshot().busy) || food.snapshot().busy || mining.snapshot().phase === 'mining',
         // A released bow shot with no ammo delta only leaves the arrow count in
         // doubt (no arrow fired = unchanged inventory). Marking the whole
         // inventory unknown disabled every attack until a full resync and got
         // the bot killed by a zombie, so it is recorded separately.
         onUncertain: details => { if (details?.operation === 'ranged_shot') { host.shared.rangedShotUncertain = { ...details, at: new Date().toISOString() }; try { host.log(`射撃未確認: 矢の消費が確認できませんでした（持ち物は不明扱いにしません）`) } catch {} ; return } onUncertain(details) }, onProgress: value => { if (currentGeneration()) host.shared.userBehaviorProgress = { busy: value.busy, sleeping: value.sleeping, activeKind: value.activeKind, at: new Date().toISOString() } }, version: host.meta.version
       })
-      userBehaviorGenerationScope = userScope(raw())
+      userBehaviorGenerationScope = userScope(rawScope())
       if (!userBehaviorTimer) userBehaviorTimer = setInterval(() => { try { tickUserBehaviors() } catch (error) { userBehaviorError(error, 'timer') } }, 50) // one game tick: combat decisions must not lag a real-time fight
     } catch (error) { userBehaviors = null; userBehaviorError(error, 'initialise') }
     host.setCapabilities({ mining: true, movement: true, flatWalking: true, navigationPrediction: true, crafting: true, interactions: true, guardRoute: true, idleSafety: true })
@@ -4617,8 +4606,12 @@ function createRuntime (host) {
   function applyPacket (name, packet, { entityDangerChanged = true } = {}) {
     if (['start_game', 'change_dimension'].includes(name)) portableConstraintCache = null
     if (disposed) return
+    if (!replaying && !disposing) mining?.applyPacket?.(name, packet)
     if (!replaying) logCreeperFuse(name, packet)
-    if (!replaying && name === 'mob_effect') host.shared.ownDamageEffects = observeOwnDamageEffect(host.shared.ownDamageEffects, packet, { ...raw(), lifecycle: { phase: raw().dead ? 'dead' : 'alive', deathId: actualLifeId(), dead: raw().dead === true } })
+    if (!replaying && name === 'mob_effect') {
+      const received = raw()
+      host.shared.ownDamageEffects = observeOwnDamageEffect(host.shared.ownDamageEffects, packet, { ...received, lifecycle: { phase: received.dead ? 'dead' : 'alive', deathId: actualLifeId(), dead: received.dead === true } })
+    }
     if (!replaying && (name === 'set_entity_motion' && String(packet.runtime_entity_id) === String(raw().runtimeEntityId) || name === 'motion_prediction_hints' && String(packet.entity_runtime_id) === String(raw().runtimeEntityId))) userBehaviorForceRevision++
     if (!replaying && inputHistory && !userBehaviorSleeping && !userBehaviorWakePending) {
       if (stationaryRawPending && (name === 'set_health' || name === 'update_attributes' && String(packet.runtime_entity_id) === String(raw().runtimeEntityId))) completeStationaryRawHealth()
@@ -4692,11 +4685,14 @@ function createRuntime (host) {
     }
     if (!replaying && name === 'inventory_content' && (packet.window_id === 'inventory' || packet.window_id === 0)) observeInventoryResync(packet)
     if (!replaying && name === 'inventory_content' && (packet.window_id === 'inventory' || packet.window_id === 0)) host.shared.inventoryUncertain = null
-    if (!replaying && (name === 'death_info' || raw().health === 0 || raw().dead || raw().isDead)) host.shared.initialLifeDeathKey = inventoryLifeBaseKey(raw())
+    if (!replaying) {
+      const life = rawFields(['health', 'dead', 'isDead'])
+      if (name === 'death_info' || life.health === 0 || life.dead || life.isDead) host.shared.initialLifeDeathKey = inventoryLifeBaseKey(rawScope())
+    }
     crafting.applyPacket(name, packet)
     furnace.applyPacket(name, packet)
     chest.applyPacket(name, packet, { replaying })
-    inventory.applyPacket(name, packet)
+    inventory.applyPacket(name, packet, { replaying })
     // A reload replays the cached start_game; that is not a new world for armor.
     if (!(replaying && ['start_game', 'change_dimension', 'respawn'].includes(name))) armor.applyPacket(name, packet)
     food.applyPacket(name, packet)
@@ -4750,9 +4746,10 @@ function createRuntime (host) {
     if (name === 'set_entity_data' && entityDangerChanged) inspectIdleEscapePacket?.()
     if (!replaying) {
       try { userBehaviors?.applyPacket(name, packet); synchronizeUserSleep() } catch (error) { userBehaviorError(error, 'wire_packet') }
-      if (raw().dead || raw().isDead || raw().health === 0) clearNavigationDestination()
-      if (userBehaviorWakePending && !userBehaviorSleeping && raw().positionUpdatedAt !== userBehaviorSleepStamp && ['move_player', 'server_post_move', 'correct_player_move_prediction', 'respawn'].includes(name)) { userBehaviorWakePending = false; userBehaviorSleepWitness = null; idlePhysicsState = null; motionOrigin = null; observeStationaryRaw(); void Promise.resolve(resumeRequested()).catch(error => userBehaviorError(error, 'wake_resume')) }
-      const intent = navigationDestination(raw()), observed = raw()
+      const receivedState = raw()
+      if (receivedState.dead || receivedState.isDead || receivedState.health === 0) clearNavigationDestination()
+      if (userBehaviorWakePending && !userBehaviorSleeping && receivedState.positionUpdatedAt !== userBehaviorSleepStamp && ['move_player', 'server_post_move', 'correct_player_move_prediction', 'respawn'].includes(name)) { userBehaviorWakePending = false; userBehaviorSleepWitness = null; idlePhysicsState = null; motionOrigin = null; observeStationaryRaw(); void Promise.resolve(resumeRequested()).catch(error => userBehaviorError(error, 'wake_resume')) }
+      const observed = raw(), intent = navigationDestination(observed)
       if (intent && observed.position && observed.positionSource !== 'client_prediction' && Math.hypot(observed.position.x - intent.position.x, observed.position.z - intent.position.z) <= 0.4 && Math.abs(observed.position.y - 1.62 - intent.position.y) <= 0.15) clearNavigationDestination()
     }
   }
@@ -4974,6 +4971,16 @@ function createRuntime (host) {
       },
       // Read-only test helper: dry, flat, open areas in received terrain.
       findFlatArea: (options = {}) => findFlatArea(options),
+      // Read-only: in-process CPU profile (no inspector port is opened). Saves
+      // .local/cpu-<time>.cpuprofile and returns the top self-time functions.
+      cpuProfile: ms => profileCpu(ms),
+      // Read-only: the raw server item in a slot (NBT, enchantments) as JSON.
+      rawItem: slot => { const r = crafting.rawItem(Number(slot)); return r ? JSON.parse(JSON.stringify(r, (k, v) => typeof v === 'bigint' ? String(v) : v)) : null },
+      // Read-only: milliseconds spent in each part of the /status snapshot.
+      snapshotTimings: () => {
+        const parts = { userBehaviors: () => userBehaviorSnapshot(), safety: () => safetySnapshot(), guardRoute: () => guardRouteSnapshot(), queuedPrediction: () => inputHistory?.snapshot(), missionMemory: () => missionJournal.snapshot(), hut: () => hut?.snapshot(), shelter: () => activeBase()?.snapshot(), foraging: () => foraging?.snapshot(), food: () => food.snapshot(), recovery: () => recovery?.snapshot(), excavation: () => excavation?.snapshot(), quarry: () => quarrySnapshot(), tunneling: () => tunneling?.snapshot(), furnace: () => furnace.snapshot(), chest: () => chest.snapshot(), mining: () => mining.snapshot(), walking: () => walker?.snapshot(), movement: () => movement?.snapshot(), crafting: () => crafting.snapshot(), inventoryActions: () => inventory.snapshot(), interactions: () => interactions.snapshot(), combat: () => combat?.snapshot(), agent: () => autonomy.snapshot(), depotPrebuild: () => depotPrebuild?.snapshot(), depotMission: () => depotMission?.snapshot(), surfaceReturn: () => surfaceReturn?.snapshot(), entitiesAll: () => host.entities.snapshot({ kind: 'all' }), worldStats: () => host.world.stats() }
+        return measureSnapshots(parts)
+      },
       armor: () => armor.snapshot(),
       sightFrom: (x, y, z) => { const p = raw().position; const hs = host.entities.snapshot({ kind: 'all' }).filter(e => e.hostile && e.alive !== false && e.position && Math.hypot(e.position.x - x, e.position.z - z) < 32); return hs.map(e => ({ type: e.entityType, runtimeId: e.runtimeId, distance: +Math.hypot(e.position.x - x, e.position.y - y, e.position.z - z).toFixed(1), clear: bowSightClearAt({ x, y: y + 1.62, z }, { x: e.position.x, y: e.position.y + 0.9, z: e.position.z }), clearFromBot: p ? bowSightClearAt(p, { x: e.position.x, y: e.position.y + 0.9, z: e.position.z }) : null })).sort((a, b) => a.distance - b.distance).slice(0, 8) },
       blocksAround: () => { const p = raw().position; if (!p) return null; const fx = Math.floor(p.x), fy = Math.floor(p.y - 1.62), fz = Math.floor(p.z), rows = []; for (let dy = 2; dy >= -1; dy--) { const lines = []; for (let dz = -2; dz <= 2; dz++) { let line = ''; for (let dx = -2; dx <= 2; dx++) { const b = host.world.getBlock(fx + dx, fy + dy, fz + dz); line += !b?.known ? '?' : /air/.test(b.name) ? '.' : /water/.test(b.name) ? '~' : b.boundingBox === 'empty' ? ',' : '#' } lines.push(line) } rows.push({ dy, lines: lines.join(' ') }) } return { feet: { x: fx, y: fy, z: fz }, exact: p, rows } },
@@ -5199,7 +5206,7 @@ function createRuntime (host) {
         if (disposed || disposing) throw new Error('Runtime is reloading')
         const options=reason&&typeof reason==='object'?reason:null, ttlMs=options?.ttlMs
         if(ttlMs!=null&&(!Number.isSafeInteger(ttlMs)||ttlMs<1000||ttlMs>60000))throw Error('Work hold ttlMs must be an integer1000..60000')
-        const scope=userScope(raw()), lease=ttlMs==null?null:{id:require('node:crypto').randomUUID(),scope,createdAt:Date.now(),expiresAt:Date.now()+ttlMs}
+        const scope=userScope(rawScope()), lease=ttlMs==null?null:{id:require('node:crypto').randomUUID(),scope,createdAt:Date.now(),expiresAt:Date.now()+ttlMs}
         host.shared.legacyWorkHoldScope=scope;host.shared.legacyWorkHoldLease=lease
         autonomy.stop(options?.reason ?? (typeof reason==='string'?reason:'Logical work handoff'))
         await autonomy.tick()
@@ -5524,7 +5531,7 @@ function createRuntime (host) {
     return {...state,inventory,food:food.snapshot(),crafting:crafting.snapshot()}
   }
   function prebuildIdle () {
-    const idle = !disposed && !disposing && !userBehaviorOwns() && !pendingStops.size && !surfaceReturnOwner && !autonomy.snapshot().actionActive && !motionActive() && !input?.stats().running && !idleSafety?.snapshot().busy && mining.snapshot().phase!=='mining' && !food.snapshot().busy && !inventory.snapshot().busy && crafting.snapshot().pendingRequestId==null && !interactions.snapshot().pendingOperation && !depotBuilder?.snapshot().busy && !depotStorage?.snapshot().busy && !foraging?.snapshot().busy && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !guardRoute?.snapshot().busy && !chest.snapshot().busy && !furnace.snapshot().busy && !combat?.snapshot().busy && !combat?.snapshot().engaging
+    const idle = !disposed && !disposing && !userBehaviorOwns() && !pendingStops.size && !surfaceReturnOwner && !autonomy.snapshot().actionActive && !motionActive() && !input?.stats().running && !idleSafety?.snapshot().busy && mining.snapshot().phase!=='mining' && !food.snapshot().busy && !inventory.snapshot().busy && craftStatus().pendingRequestId==null && !interactions.snapshot().pendingOperation && !depotBuilder?.snapshot().busy && !depotStorage?.snapshot().busy && !foraging?.snapshot().busy && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !guardRoute?.snapshot().busy && !chest.snapshot().busy && !furnace.snapshot().busy && !combat?.snapshot().busy && !combat?.snapshot().engaging
     if (!idle) return false
     if (working().survivalWorkClearance === true) {
       if (!idleSafety?.snapshot().running || host.shared.safetyWanted !== true) { resumeSafety(); return false }
@@ -5595,11 +5602,11 @@ function createRuntime (host) {
     observeStationaryRaw()
   }
   function physicalWorkBusy () {
-    return !!(pendingStops.size || motionActive() || mining.snapshot().phase==='mining' || mining.snapshot().activeTarget || foraging?.snapshot().busy || crafting.snapshot().pendingRequestId!=null || inventory.snapshot().busy || interactions.snapshot().pendingOperation || chest.snapshot().busy || furnace.snapshot().busy || food.snapshot().busy || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || surfaceReturn?.snapshot().busy || guardRoute?.snapshot().busy || depotBuilder?.snapshot().busy || depotStorage?.snapshot().busy || shelter?.snapshot().busy || hut?.snapshot().busy || combat?.snapshot().busy || combat?.snapshot().engaging || userBehaviorOwns())
+    return !!(pendingStops.size || motionActive() || mining.snapshot().phase==='mining' || mining.snapshot().activeTarget || foraging?.snapshot().busy || craftStatus().pendingRequestId!=null || inventory.snapshot().busy || interactions.snapshot().pendingOperation || chest.snapshot().busy || furnace.snapshot().busy || food.snapshot().busy || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || surfaceReturn?.snapshot().busy || guardRoute?.snapshot().busy || depotBuilder?.snapshot().busy || depotStorage?.snapshot().busy || shelter?.snapshot().busy || hut?.snapshot().busy || combat?.snapshot().busy || combat?.snapshot().engaging || userBehaviorOwns())
   }
   function logicalWorkHeld () {
     if (quarryJob?.holdsWork()) return true
-    const scope=userScope(raw()), lease=host.shared.legacyWorkHoldLease
+    const scope=userScope(rawScope()), lease=host.shared.legacyWorkHoldLease
     if (lease) {
       if (lease.scope!==scope) { host.shared.legacyWorkHoldLease=null; if(host.shared.legacyWorkHoldScope===lease.scope)host.shared.legacyWorkHoldScope=null; return false }
       if (Date.now()<lease.expiresAt || physicalWorkBusy()) return true
@@ -5810,9 +5817,31 @@ function createRuntime (host) {
     const adapter = createQuarryRuntimeAdapter({
       getState: quarryState,
       getBlock: quarryBlockReader(),
+      worldRevision: () => host.world.revision?.() ?? null,
       entities: () => host.entities.snapshot({ kind: 'all' }),
       mining: ports.mining, getMining: ports.getMining, movement: ports.movement, getMovement: ports.getMovement,
       equip: own(slot => operations.inventory.equip(slot)),
+      prepareMining: own(async (tool, { signal } = {}) => {
+        if (signal?.aborted) throw new Error('採掘再開は中断されました。')
+        if (tool.kind === 'hand') return { prepared: true }
+        requireIdle()
+        const state = quarryState(), item = state.inventory?.items?.find(item => item.slot === tool.slot)
+        if (state.inventory?.known !== true || state.inventory.uncertain || item?.name !== tool.name || !(item.count > 0)) throw new Error('採掘再開前の道具を確認できません。')
+        return inventory.equipForMining(tool.slot, { signal })
+      }),
+      // Fresh inventory + selected slot from the server (quarry SLOW_BREAK).
+      resyncInventory: async ({ signal } = {}) => {
+        const startedAt = Date.now(); let sent = false; let lastError = null
+        while (Date.now() - startedAt < 5000) {
+          if (signal?.aborted) return false
+          if (!sent) { try { await requestInventoryResyncWithReceipt('quarry_slow_break'); sent = true } catch (error) { lastError = error } }
+          const r = host.shared.inventoryResync?.lastRequest
+          if (sent && r?.status === 'FRESH_MAIN_OBSERVED' && Date.parse(r.requestedAt) >= startedAt - 50) return true
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+        if (!sent && lastError) throw lastError
+        return false
+      },
       placeQuarry: own(options => { requireIdle(); crafting.closeContainer(); return interactions.placeQuarryBlock(options) }),
       eat: own(() => operations.food.eat({})),
       chest: { open: own(position => operations.chest.open(position)), depositItem: own(options => operations.chest.depositItem(options)), close: () => crafting.closeContainer() },
@@ -5854,6 +5883,30 @@ function createRuntime (host) {
     return ensureQuarryJob().load(doc)
   }
 
+  // After a bot restart no quarry job is loaded, so an interrupted job would
+  // sit idle. Once per process: load the most recently saved job that was
+  // neither finished nor paused on purpose, and resume it when its pause is a
+  // recoverable one (restart, disconnect, a failed action, unreachable storage,
+  // stalled recovery). Hazards, exceptions, deaths and manual pauses stay paused.
+  const QUARRY_AUTO_RESUMABLE = /^(PROCESS_RESTARTED|DISCONNECTED|ACTION_FAILED|STORAGE_UNREACHABLE|RECOVERY_NOT_PROGRESSING|HEALTH_NOT_RECOVERING)/
+  async function restoreQuarryJob () {
+    const fs = require('node:fs/promises'), path = require('node:path')
+    if (ensureQuarryJob().status()) return { skipped: 'job_loaded' }
+    let names = []
+    try { names = (await fs.readdir(quarryDir())).filter(n => /^quarry_[A-Za-z0-9_-]+.json$/.test(n)) } catch { return { skipped: 'no_dir' } }
+    const docs = []
+    for (const n of names) { try { const d = JSON.parse(await fs.readFile(path.join(quarryDir(), n), 'utf8')); docs.push(d) } catch {} }
+    const candidate = docs.filter(d => d?.config?.jobId && d.state !== 'FINISHED' && d.result?.type !== 'FINISHED' && d.result?.type !== 'CANCELLED' && d.userRunIntent === 'running' && Date.now() - Date.parse(d.savedAt ?? 0) < 24 * 3600e3).sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))[0]
+    if (!candidate) return { skipped: 'none' }
+    const status = await loadQuarryFile(candidate.config.jobId)
+    const reason = status?.pauseReason ?? ''
+    host.log(`露天掘り: 再起動後にジョブを読み込みました: ${candidate.config.jobId} (${reason || status?.state})`)
+    if (!QUARRY_AUTO_RESUMABLE.test(reason)) return { loaded: candidate.config.jobId, resumed: false, reason }
+    ensureQuarryJob().resume()
+    host.log(`露天掘り: 自動で再開しました: ${candidate.config.jobId}`)
+    return { loaded: candidate.config.jobId, resumed: true, reason }
+  }
+
   function resumeRequested () {
     if (disposed || disposing) return
     ensureInitialLifeReceipt()
@@ -5864,6 +5917,10 @@ function createRuntime (host) {
     if (surfaceReturnOwner || userBehaviorOwns()) return
     resumeSafety()
     if (raw().phase === 'spawned' && host.shared.loadingScreenEnded) startIdle()
+    if (!host.shared.quarryRestoreTried && quarryPorts && raw().phase === 'spawned' && host.shared.loadingScreenEnded && !raw().spawnPending && raw().inventory?.known === true && !host.shared.inventoryUncertain) {
+      host.shared.quarryRestoreTried = true
+      void restoreQuarryJob().then(r => { host.shared.quarryRestore = r }).catch(error => { host.shared.quarryRestore = { error: String(error.message).slice(0, 200) } })
+    }
     // A quarry job paused only by a hot reload resumes once on the new code.
     if (host.shared.quarryAutoResume && quarryPorts && raw().phase === 'spawned' && host.shared.loadingScreenEnded && !raw().spawnPending) {
       host.shared.quarryAutoResume = false
@@ -5877,6 +5934,11 @@ function createRuntime (host) {
       // The next normal behavior tick retries; never start over that owner.
       if (!disposed && !disposing && !pendingStops.size && !userBehaviorOwns() && !host.shared.respawnTerrain?.pending && host.shared.autoWanted && raw().phase === 'spawned' && !raw().spawnPending && host.shared.loadingScreenEnded && !status.running && !status.busy && !status.actionActive) autonomy.start({ objective: 'diamond', diamondCount: 1, maxRunMs: 7200000, maxWaitTicks: 1200, ...host.shared.autoOptions, progress: host.shared.autonomyProgress })
     }
+    // resumeRequested runs after every user-behavior tick (~20/s); a depot
+    // resume rebuilds hut/shelter snapshots each time. At most once a second.
+    const depotDue = Date.now() - (host.shared.depotResumeAttemptAt ?? 0) >= 1000
+    if (!logicalWorkHeld() && depotMission?.isEnabled() && !depotDue) return Promise.resolve(null)
+    if (!logicalWorkHeld() && depotMission?.isEnabled()) host.shared.depotResumeAttemptAt = Date.now()
     return Promise.resolve(logicalWorkHeld() ? null : depotMission?.resume()).then(() => {
       if (missionJournal.enabled) return missionJournal.load().then(result => { if (missionReady(result)) resume() })
       resume()
@@ -5884,7 +5946,7 @@ function createRuntime (host) {
   }
   return {
     operations, snapshot: getSnapshot, applyPacket, onSpawn, onRespawn, stopActions, resumeRequested,
-    canReload: () => !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && mining.snapshot().phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !food.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(furnace.snapshot().busy || chest.snapshot().busy) && !inventory.snapshot().busy && crafting.snapshot().pendingRequestId == null && !interactions.snapshot().pendingOperation && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging,
+    canReload: () => !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && mining.snapshot().phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !food.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(furnace.snapshot().busy || chest.snapshot().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging,
     dispose: async reason => {
       if (disposed) return
       if (quarryJob?.holdsWork()) { try { await quarryJob.pause('PROCESS_RESTARTED'); host.shared.quarryAutoResume = true } catch {} }
