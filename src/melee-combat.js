@@ -311,9 +311,10 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
   // briefly for it instead of abandoning a near fight. The freshness rule
   // itself is unchanged and a pose that never refreshes still stops the run.
   async function settlePose (signal, maxMs = POSE_SETTLE_MS) {
-    const end = performance.now() + maxMs
+    // Keep pose waiting on the same monotonic clock as the engagement deadline.
+    const end = clock() + maxMs
     while (true) {
-      try { session(false); return } catch (error) { if (error.code !== 'POSE_UNTRUSTED' || performance.now() >= end) throw error }
+      try { session(false); return } catch (error) { if (error.code !== 'POSE_UNTRUSTED' || clock() >= end) throw error }
       await sleep(25, signal)
     }
   }

@@ -24,6 +24,7 @@ const RESULT = new Set(['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS', 'PAUSED', 'CAN
 // Deferrals that are planned exclusions, not exceptions (§16.3).
 const PLANNED_EXCLUSIONS = new Set(['UNBREAKABLE'])
 const TOOL_WAIT = new Set(['WAITING_FOR_TOOL', 'TOOL_DURABILITY_RESERVE', 'TOOL_DURABILITY_UNKNOWN', 'TOOL_NOT_IN_HOTBAR'])
+const TRANSIENT_DEFER = ['UNREACHABLE', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK']
 
 class QuarryInterrupt extends Error { constructor (code, message) { super(message ?? code); this.code = code } }
 
@@ -167,7 +168,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     const sealCells = regs.seal.ready ? regs.seal.columns.size * (regs.seal.yMax - regs.seal.yMin + 1) : 0
     const summary = { ready: issues.length === 0, issues, warnings, jobId: config.jobId, chunks: regs.chunks, yTop, yTopProvisional: unknownAbove > 0, yBottom: regs.yBottom, columns: regs.columns.size, counts, survey, stair, boundarySeal: { enabled: regs.seal.enabled, ready: regs.seal.ready, columns: regs.seal.columns.size, yMin: regs.seal.yMin, yMax: regs.seal.yMax, cells: sealCells, placementOnly: true }, travelRegion: regs.travel, storage: storageList }
-    job = { config, state: 'IDLE', planned: summary, yTop, cursorY: yTop, records: { stair }, ledger: {}, userRunIntent: 'idle', result: null, pauseReason: null, interruption: null, checkpoint: null, actions: [], deaths: [], startedAt: null, scope: null, life: null }
+    job = { config, state: 'IDLE', planned: summary, yTop, cursorY: yTop, deepestY: yTop, records: { stair }, ledger: {}, userRunIntent: 'idle', result: null, pauseReason: null, interruption: null, checkpoint: null, actions: [], deaths: [], startedAt: null, scope: null, life: null }
     regions = regs; planner = pl; ledger = createLedger()
     return copy(summary)
   }
@@ -359,17 +360,12 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // and transient deferrals are only retried from the current layer down.
     if (!items(s)) { await sleep(500); return }
     const floorY = workFloorY()
-    const above = k => Number(k.split(',')[1]) > floorY
-    planner.clearDeferred(['UNREACHABLE', 'WAITING_FOR_TOOL', 'TOOL_DURABILITY_RESERVE', 'TOOL_DURABILITY_UNKNOWN', 'TOOL_NOT_IN_HOTBAR', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK'], above)
+    clearWorkDeferred([...TRANSIENT_DEFER, ...TOOL_WAIT])
     badStances.clear()
     lastInventory = totals(items(s))
-    if (floorY < job.yTop) {
-      const opts = { tools: items(s), policy: { ...job.config.tools, ...job.config.collection } }
-      let kept = 0
-      for (let y = job.yTop; y > floorY; y--) for (const c of planner.layerSummary(y, opts).pending) { planner.defer(c.position, 'EARLIER_LAYER_LEFTOVER'); kept++ }
-      if (kept) note('earlier_layer_leftovers', { count: kept, above: floorY })
-    }
+    keepEarlierLayers(floorY)
     job.cursorY = floorY
+    if (Number.isSafeInteger(job.lastMineY) && job.lastMineY > floorY) job.lastMineY = floorY
     job.retry = 0
     combatBridge.activate({ jobId: job.config.jobId, epoch, travel: p => permits(regions, 'travel', p).allowed })
     setState('SURVEY')
@@ -378,11 +374,50 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // Deepest layer the job has worked (tracked from confirmed mining; for older
   // documents estimated as the lowest layer that is mostly dug out).
   function workFloorY () {
-    if (Number.isSafeInteger(job.deepestY)) return Math.max(job.deepestY, job.yBottom ?? -64)
-    let floor = job.yTop
-    for (let y = job.yTop; y >= (job.yBottom ?? -64); y--) { const l = planner.layerSummary(y, {}); if (l.pending.length + l.deferred + l.reserved < 200) floor = y; else break }
+    const bounded = y => Math.max(regions.yBottom, Math.min(job.yTop, y))
+    if (Number.isSafeInteger(job.deepestY)) return (job.deepestY = bounded(job.deepestY))
+    // Preserve a legacy document's work cursor, but never infer progress from
+    // unknown cells or scan beyond this job's configured lower bound.
+    let floor = bounded(Number.isSafeInteger(job.cursorY) ? job.cursorY : job.yTop)
+    for (let y = floor; y >= regions.yBottom; y--) {
+      const l = planner.layerSummary(y, {})
+      if (l.unknown || l.pending.length + l.deferred + l.reserved + l.blocked.length + l.fluid.length >= 200) break
+      floor = y
+    }
     job.deepestY = floor
     return floor
+  }
+
+  // Every retry is limited to the active work floor and the layers below it.
+  // The full job region stays intact for storage travel and final verification.
+  function clearWorkDeferred (reasons, onlyY = null) {
+    const floorY = workFloorY(); const before = planner.deferredList().length
+    planner.clearDeferred(reasons, k => { const y = Number(k.split(',')[1]); return y > floorY || onlyY !== null && y !== onlyY })
+    return before - planner.deferredList().length
+  }
+
+  function keepEarlierLayers (floorY) {
+    if (!(floorY < job.yTop)) return
+    let kept = 0
+    const keep = p => {
+      const c = planner.cellStatus(p)
+      if (['done', 'reserved', 'unknown'].includes(c.status) || c.reason === 'EARLIER_LAYER_LEFTOVER') return
+      // Preserve protection/unbreakable reasons and their existing acceptance
+      // policy; only retryable work turns into an earlier-layer exception.
+      if (c.status === 'deferred' && !TRANSIENT_DEFER.includes(c.reason) && !TOOL_WAIT.has(c.reason)) return
+      if (c.status === 'blocked' && c.reason && !TOOL_WAIT.has(c.reason)) planner.defer(p, c.reason)
+      else planner.defer(p, 'EARLIER_LAYER_LEFTOVER', { previousReason: c.reason ?? c.status })
+      kept++
+    }
+    for (const d of planner.deferredList()) {
+      const [x, y, z] = d.position.split(',').map(Number)
+      if (y > floorY) keep({ x, y, z })
+    }
+    for (let y = job.yTop; y > floorY; y--) {
+      const layer = planner.layerSummary(y, {})
+      for (const c of [...layer.pending, ...layer.blocked, ...layer.fluid]) keep(c.position)
+    }
+    if (kept) note('earlier_layer_leftovers', { count: kept, above: floorY })
   }
 
   async function recoverAfterCombat (myEpoch, s) {
@@ -404,7 +439,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (job.userRunIntent !== 'running') return
     // Replan from the current state, never replay old inputs (§9.7).
     const back = job.interruption?.resumeTo ?? 'SURVEY'
-    planner.clearDeferred(['UNREACHABLE'])
+    clearWorkDeferred(['UNREACHABLE'])
+    job.cursorY = workFloorY()
     combatBridge.resumed()
     job.interruption = null
     epoch++
@@ -471,18 +507,18 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (open.length >= st.collectPendingDrops) { await collect(myEpoch, 'pending'); return }
     setState('PLAN')
     rebindTravelIfOutside(s)
-    const decision = await planner.next({ feet: feetCell(s), yTop: job.cursorY ?? job.yTop, tools: inv, policy: { ...job.config.tools, ...job.config.collection }, inventoryItems: inv, maxBatch: st.maxBlocksPerBatch, selectedSlot: s.selectedSlot, avoid: new Set([...badStances].filter(([, n]) => n >= 2).map(([k]) => k)) })
+    job.cursorY = workFloorY()
+    const decision = await planner.next({ feet: feetCell(s), yTop: job.cursorY, tools: inv, policy: { ...job.config.tools, ...job.config.collection }, inventoryItems: inv, maxBatch: st.maxBlocksPerBatch, selectedSlot: s.selectedSlot, avoid: new Set([...badStances].filter(([, n]) => n >= 2).map(([k]) => k)) })
     job.lastDecision = { action: decision.action, reason: decision.reason ?? null, details: decision.details ?? null, y: decision.targets?.[0]?.position?.y ?? decision.y ?? null }
     // Leaving a layer: gather its drops first, while they are still close.
     const nextY = decision.action === 'mine' ? decision.targets?.[0]?.position?.y : null
     // Before closing a layer, retry its own transient deferrals once so no
     // leftovers are created that would need a return trip later.
-    if (Number.isFinite(nextY) && Number.isFinite(job.lastMineY) && nextY < job.lastMineY && job.layerRetried !== job.lastMineY) {
+    if (Number.isFinite(nextY) && Number.isFinite(job.lastMineY) && job.lastMineY <= job.cursorY && nextY < job.lastMineY && job.layerRetried !== job.lastMineY) {
       const ly = job.lastMineY
       job.layerRetried = ly
-      const before = planner.deferredList().length
-      planner.clearDeferred(['MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK', 'UNREACHABLE'], k => Number(k.split(',')[1]) !== ly)
-      if (planner.deferredList().length < before) { badStances.clear(); note('layer_retry', { y: ly, cells: before - planner.deferredList().length }); return }
+      const cleared = clearWorkDeferred(TRANSIENT_DEFER, ly)
+      if (cleared) { badStances.clear(); note('layer_retry', { y: ly, cells: cleared }); return }
     }
     if (Number.isFinite(nextY) && Number.isFinite(job.lastMineY) && nextY < job.lastMineY && open.length) { job.lastMineY = nextY; await collect(myEpoch, 'layer'); return }
     if (Number.isFinite(nextY)) job.lastMineY = nextY
@@ -509,7 +545,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const records = planner.exportRecords()
     regions = next
     planner = createQuarryPlanner({ regions, getBlock: adapter.getBlock, config: job.config.strategy, records })
-    planner.clearDeferred(['UNREACHABLE'])
+    clearWorkDeferred(['UNREACHABLE'])
+    job.cursorY = workFloorY()
     note('travel_rebound', { feet: f })
     return true
   }
@@ -630,7 +667,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       lastInventory = totals(items(adapter.getState()) ?? [])
       return
     }
-    if (confirmed) { job.slowBreaks = 0; job.routeSkips = 0; job.autoResumes = 0; for (const r of rec.results ?? []) if (r.result === 'removed') { const y = Number(r.position.split(',')[1]); if (Number.isFinite(y) && Number.isFinite(job.deepestY) && y < job.deepestY) job.deepestY = y } }
+    if (confirmed) { job.slowBreaks = 0; job.routeSkips = 0; job.autoResumes = 0 }
     if (failure && !confirmed) {
       rec.status = 'failed'; rec.error = String(failure.message ?? failure)
       // A preview refused for the stance (pose not settled, face not visible
@@ -671,6 +708,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const k = `${t.x},${t.y},${t.z}`
       if (b?.known && AIR.has(nameOf(b)) && !(b.extra ?? []).length) {
         n++
+        if (Number.isSafeInteger(t.y) && t.y >= regions.yBottom && t.y <= job.yTop) {
+          job.deepestY = Math.min(workFloorY(), t.y)
+          job.cursorY = job.deepestY
+        }
         const temp = planner.temporaryList().find(e => e.position === k)
         if (temp) ledger.add('reminedTemporary', t.expectedName)
         else ledger.add('minedBlocks', t.expectedName)
@@ -1086,21 +1127,23 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   async function finalCheck (myEpoch) {
     guard(myEpoch)
+    const floorY = workFloorY()
+    keepEarlierLayers(floorY)
     // Re-scan the whole range (§16.3): unknown never completes.
     const counts = planner.counts(job.yTop)
     job.finalCounts = counts
-    if (counts.remaining > 0) { job.cursorY = job.yTop; setState('SURVEY'); return }
     if (counts.unknown > 0) return finish('PAUSED', 'UNOBSERVED_CELLS', { pauseDetails: counts })
+    if (counts.remaining > 0) { job.cursorY = floorY; setState('SURVEY'); return }
     if (!job.finalDeposited && job.config.inventory.storage?.length) { await collect(myEpoch, 'final'); job.depositReason = 'final'; await returnAndDeposit(myEpoch, 'final'); return }
     // UNREACHABLE is relative to where the bot stood; re-try from here a few
     // times before treating those cells as exceptions.
     // Same for cells put aside after transient mining refusals.
-    if (planner.deferredList().some(d => ['UNREACHABLE', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK'].includes(d.reason)) && (job.unreachableRetries ?? 0) < 3) {
+    if (planner.deferredList().some(d => Number(d.position.split(',')[1]) <= floorY && TRANSIENT_DEFER.includes(d.reason)) && (job.unreachableRetries ?? 0) < 3) {
       job.unreachableRetries = (job.unreachableRetries ?? 0) + 1
-      planner.clearDeferred(['UNREACHABLE', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK'])
+      clearWorkDeferred(TRANSIENT_DEFER)
       badStances.clear()
       note('unreachable_retry', { attempt: job.unreachableRetries })
-      job.cursorY = job.yTop; setState('SURVEY'); return
+      job.cursorY = floorY; setState('SURVEY'); return
     }
     // One last sweep for anything still lying in the area (drops that were
     // unreachable earlier, items that fell later), then store it as well.

@@ -26,17 +26,18 @@ source += '\nmodule.exports = { scene, setHooks: value => { testHooks = value } 
 const loaded = { exports: {} }
 new vm.Script(Module.wrap(source), { filename }).runInThisContext()(loaded.exports, Module.createRequire(filename), loaded, filename, path.dirname(filename))
 
-function fixture (t, { legacy = false } = {}) {
+function fixture (t, { legacy = false, processNow = null } = {}) {
   let elapsed = 0, actualInput
   const epoch = Date.parse('2026-11-02T00:00:00Z'), frames = []
-  t.mock.method(Date, 'now', () => epoch + elapsed)
-  t.mock.method(performance, 'now', () => elapsed)
+  const now = () => elapsed, wallNow = () => epoch + elapsed
+  t.mock.method(Date, 'now', wallNow)
+  t.mock.method(performance, 'now', processNow ?? now)
   const hooks = {
     physics: options => prepared.withWorld(options.world, { allowWater: options.allowWater ?? false }),
     navigator: options => createNavigator({ ...options, physics: options.physics ?? prepared.withWorld(options.world, { allowWater: options.allowWater ?? false }) }),
-    history: createInputHistory,
+    history: options => createInputHistory({ ...options, now: wallNow }),
     input: options => {
-      actualInput = createInput({ ...options, clock: () => elapsed, startGameReceivedAt: 0, onQueuedFrame: frame => { frames.push(copy(frame)); options.onQueuedFrame?.(frame) } })
+      actualInput = createInput({ ...options, clock: now, startGameReceivedAt: 0, onQueuedFrame: frame => { frames.push(copy(frame)); options.onQueuedFrame?.(frame) } })
       return actualInput
     },
     instrument: runtimeSource => {
@@ -49,7 +50,7 @@ function fixture (t, { legacy = false } = {}) {
   loaded.exports.setHooks(hooks)
   const f = loaded.exports.scene(t)
   f.raw.positionUpdatedAt = new Date(epoch).toISOString()
-  f.host.setPrediction = prediction => { f.shared.prediction = { ...copy(prediction), source: 'client_prediction', serverConfirmed: false, updatedAt: new Date(Date.now()).toISOString() } }
+  f.host.setPrediction = prediction => { f.shared.prediction = { ...copy(prediction), source: 'client_prediction', serverConfirmed: false, updatedAt: new Date(wallNow()).toISOString() } }
   f.host.getState = () => ({ ...copy(f.raw), rawServerPosition: copy(f.raw.position), rawServerPositionUpdatedAt: f.raw.positionUpdatedAt, ...(f.shared.prediction ? { position: copy(f.shared.prediction.position), predicted: copy(f.shared.prediction), positionSource: 'client_prediction', positionServerConfirmed: false, positionUpdatedAt: f.shared.prediction.updatedAt } : {}) })
   const advance = async ms => {
     for (let remaining = ms; remaining > 0;) { const step = Math.min(25, remaining); elapsed += step; f.advance(step); remaining -= step; await turn() }
@@ -78,8 +79,8 @@ function fixture (t, { legacy = false } = {}) {
       f.runtime.applyPacket('inventory_slot', { window_id: 'inventory', slot: 14, item: empty() })
       publishInventory()
       return { serverConfirmed: true }
-    }, isBusy: () => false, now: () => elapsed, wallNow: Date.now, sleep: advance })
-  const passive = createMeleeCombat({ client: f.host.client, world: f.host.world, entities: f.host.entities, crafting: f.facadeOptions.crafting, getState: f.facadeOptions.getState, getRawState: f.facadeOptions.getRawState, getInput: f.facadeOptions.getInput, equip: async () => assert.fail('Passive preview cannot equip'), isBusy: () => false, now: () => elapsed, wallNow: Date.now })
+    }, isBusy: () => false, now, wallNow, sleep: advance })
+  const passive = createMeleeCombat({ client: f.host.client, world: f.host.world, entities: f.host.entities, crafting: f.facadeOptions.crafting, getState: f.facadeOptions.getState, getRawState: f.facadeOptions.getRawState, getInput: f.facadeOptions.getInput, equip: async () => assert.fail('Passive preview cannot equip'), isBusy: () => false, now, wallNow })
   t.after(() => actualInput.stop(false))
   return { ...f, frames, melee, passive, advance, context, elapsed: () => elapsed, equipCalls: () => equipCalls, actualInput: () => actualInput, seedQueuedModel: () => { f.facadeOptions.getInput().start(); assert.equal(frames.length, 1); assert.equal(frames[0].modeled, true); assert.equal(frames[0].receiptConfirmed, true) } }
 }
@@ -118,6 +119,44 @@ test('old early combat acquisition before first resume leaves the model stale an
   assert.equal(r.preview.code, 'POSE_UNTRUSTED')
   assert.equal(f.wire.filter(p => p.name === 'inventory_transaction').length, 0)
   await f.facadeOptions.resumeControl({ ...r.ctx, token: r.token })
+})
+
+test('stale-pose settling uses the injected combat clock even when the process clock advances at a different rate', async t => {
+  let processTime = 0
+  const f = fixture(t, { legacy: true, processNow: () => ++processTime })
+  const r = await delayedCombat(f)
+  assert.equal(r.result.code, 'POSE_UNTRUSTED')
+  assert.equal(f.elapsed(), 750, '350ms equip plus the bounded 400ms pose wait must use one clock')
+  assert.equal(r.result.hitsRequested, 0)
+  assert.equal(r.preview.code, 'POSE_UNTRUSTED')
+  assert.equal(f.frames.length, r.before)
+  assert.equal(f.wire.filter(packet => packet.name === 'inventory_transaction').length, 0)
+  await f.facadeOptions.resumeControl({ ...r.ctx, token: r.token })
+})
+
+test('fresh and stale combat fixtures retain their own clocks in either execution order', async t => {
+  for (const [order, cases] of [['fresh-first', [false, true]], ['stale-first', [true, false]]]) {
+    for (const legacy of cases) {
+      await t.test(`${order}: ${legacy ? 'stale pose rejected' : 'fresh input retained'}`, async child => {
+        const f = fixture(child, { legacy }), r = await delayedCombat(f)
+        assert.equal(f.equipCalls(), 1)
+        assert.equal(r.result.serverConfirmed, false)
+        if (legacy) {
+          assert.equal(r.result.code, 'POSE_UNTRUSTED')
+          assert.equal(f.elapsed(), 750)
+          assert.equal(r.result.hitsRequested, 0)
+          assert.equal(f.frames.length, r.before)
+          assert.equal(f.wire.filter(packet => packet.name === 'inventory_transaction').length, 0)
+        } else {
+          assert.equal(r.result.hitsRequested, 1)
+          assert.ok(f.frames.length - r.before >= 7)
+          assert.equal(r.preview.ready, true)
+          assert.ok(r.preview.currentPose.ageMs <= 50)
+        }
+        await f.facadeOptions.resumeControl({ ...r.ctx, token: r.token })
+      })
+    }
+  }
 })
 
 test('combat acquisition starts the missing idle timer and maintains real queued Native poses through delayed equip', async t => {
