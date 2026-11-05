@@ -3,6 +3,7 @@
 const { createActorReader } = require('./runtime-observation-views')
 const { profileCpu, measureSnapshots } = require('./runtime-diagnostics')
 const { createSightStanceSearch } = require('./sight-stance-search')
+const { createQuarryPortableStorage } = require('./quarry-portable-storage')
 
 const { resourceMinHealth } = require('./learning-health')
 
@@ -330,7 +331,7 @@ function createRuntime (host) {
   let excavation = null
   // Quarry mode (露天掘り): ports are bound per motion generation; the job is
   // created lazily on first use and survives reloads only as a saved document.
-  let quarryPorts = null, quarryJob = null, quarryRetreatDepth = 0, quarryCombatArmed = false, quarryBehaviorRestore = null
+  let quarryPorts = null, quarryJob = null, quarryRetreatDepth = 0, quarryCombatArmed = false, quarryBehaviorRestore = null, quarryPortableStorage = null
   let tunneling = null
   let stoneAccessProposal = null, stoneAccessSequence = 0
   const STONE_ACCESS_BOUNDS = Object.freeze({ maxDistance: 6, maxVertical: 6, maxRouteSteps: 6, maxRouteDigBlocks: 16, maxExpanded: 3000 })
@@ -741,7 +742,7 @@ function createRuntime (host) {
   // or not). Marking the whole inventory unknown disabled every attack in the
   // fight that interrupted it, so it is recorded on its own.
   const food = createFood({ client: host.client, getState: () => { const state = working(); return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: foodKnownLife() } } }, crafting, getInput: () => input, equip: (slot, options) => inventory.equipForFood(slot, options), allocateLegacyId: () => host.allocate('interaction'), canEmergencyEat: canEmergencyEatHere, onUncertain: details => { host.shared.foodUncertain = { ...details, at: new Date().toISOString() }; try { host.log(`食事の結果が未確認です（持ち物全体は不明扱いにしません）: ${String(details?.reason ?? '').slice(0, 80)}`) } catch {} }, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
-  const mining = createMining({ getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true })
+  const mining = createMining({ getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true, verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true })
   const interactions = createInteractions({ client: host.client, getState: () => ({ ...working(), lifecycle: { deathId: actualLifeId() } }), world: host.world, crafting, getInput: () => input, version: host.meta.version, onInventory, onUncertain, allocateLegacyId: () => host.allocate('interaction') })
 
   function commitChestMainDelta (delta) {
@@ -4919,6 +4920,7 @@ function createRuntime (host) {
       plan: config => { if (!quarryJob?.holdsWork()) requireIdle(); return ensureQuarryJob().plan(config ?? {}) },
       start: () => { requireIdle(); return ensureQuarryJob().start() },
       resume: () => { requireIdle(); return ensureQuarryJob().resume() },
+      storeCarried: options => { requireIdle(); return ensureQuarryJob().storeCarriedNow(options ?? {}) },
       acceptExceptions: () => ensureQuarryJob().acceptExceptions(),
       pause: () => quarryJob ? quarryJob.pause('MANUAL_PAUSE') : quarrySnapshot(),
       emergencyStop: () => quarryJob ? quarryJob.emergencyStop() : quarrySnapshot(),
@@ -5927,6 +5929,50 @@ function createRuntime (host) {
       eat: own(() => operations.food.eat({})),
       chest: { open: own(position => operations.chest.open(position)), depositItem: own(options => operations.chest.depositItem(options)), close: () => crafting.closeContainer() },
       addChest: own(options => { requireIdle(); crafting.closeContainer(); return quarryAddChest(options) }),
+      storeCarried: (request, options) => {
+        quarryPortableStorage ??= createQuarryPortableStorage({
+          getState: quarryState,
+          getBlock: (x, y, z) => host.world.getBlock(x, y, z),
+          crafting,
+          chest: {
+            open: own((position, slot, settings) => { requireIdle(); crafting.closeContainer(); return chest.open(position, slot, settings) }),
+            depositItem: own(settings => { requireIdle(); return chest.depositItem(settings) }),
+            snapshot: () => chest.snapshot(), rawItem: slot => chest.rawItem(slot),
+            close: () => crafting.closeContainer()
+          },
+          interactions: {
+            previewPlace: settings => interactions.previewPlace(settings),
+            placeBlock: own(settings => { requireIdle(); crafting.closeContainer(); return interactions.placeBlock(settings) })
+          },
+          equip: own(slot => operations.inventory.equip(slot)),
+          moveTo: (cell, settings) => adapter.moveTo(cell, settings),
+          previewMove: cell => ports.movement.preview({ x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }, { allowWater: false, maxDistance: 8, maxExpanded: 500 }),
+          mine: async (target, { signal } = {}) => {
+            signal?.throwIfAborted()
+            // Reclaim our box by hand; reserve tools are not spent on packing.
+            const state = quarryState()
+            const damaging = name => /_(sword|pickaxe|axe|shovel|hoe)$|^minecraft:(bow|crossbow|shears|trident|fishing_rod|flint_and_steel)$/.test(name ?? '')
+            if (damaging(state.heldItem?.name)) {
+              const held = state.inventory?.items?.find(item => item.count > 0 && !damaging(item.name) && item.durabilityKnown !== true)
+              if (!held) throw new Error('箱回収に使う非耐久アイテムがありません。')
+              await own(slot => operations.inventory.equip(slot))(held.slot)
+            }
+            signal?.throwIfAborted()
+            crafting.closeContainer()
+            return ports.mining.start([target])
+          },
+          getMining: () => ports.getMining(), stopMining: reason => ports.mining.stop(reason),
+          getEntities: () => host.entities.snapshot({ kind: 'all' }),
+          cancelAction: (kind, reason) => {
+            if (kind === 'equip') inventory.cancel(reason)
+            else if (kind === 'place' || kind === 'interaction') interactions.cancel(reason)
+            else if (kind === 'open' || kind === 'deposit' || kind === 'chest') { chest.cancel(reason); interactions.cancel(reason); crafting.closeContainer() }
+            else if (kind === 'mine' || kind === 'mining') { inventory.cancel(reason); ports.mining.stop(reason) }
+            else if (kind === 'move' || kind === 'movement') ports.movement.stop(reason)
+          }
+        })
+        return quarryPortableStorage.storeCarried(request, options)
+      },
       craftTorches: own(options => { requireIdle(); return quarryCraftTorches(options) }),
       placeTorch: own(options => { requireIdle(); crafting.closeContainer(); return quarryPlaceTorch(options) }),
       stopAll: async reason => { try { ports.mining.stop(reason) } catch {} try { ports.movement.stop(reason) } catch {} try { chest.cancel(reason) } catch {} try { interactions.cancel(reason) } catch {} },

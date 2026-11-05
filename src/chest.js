@@ -2,9 +2,10 @@
 
 const { isDeepStrictEqual } = require('node:util')
 const { resourceMinHealth } = require('./learning-health')
+const { isShulkerBox, storageContainerType, storageWindowMatches } = require('./container-types')
 
 // Bedrock 1.26.60: WindowType 0=container; ContainerEnumName 7=LevelEntity,
-// 12=CombinedHotbarAndInventory. Names below are the installed codec names.
+// 12=CombinedHotbarAndInventory, 30=ShulkerBox. Both storage windows use type0.
 // Mojang: /1.26.60/packets/item-stack-request-packet/; Geyser's
 // ChestInventoryTranslator.java maps real chest slots directly to LEVEL_ENTITY.
 // A matching response and a fresh actual chest descriptor are mandatory.
@@ -45,14 +46,14 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
   }
   function blockAt (target) {
     const block = world.getBlock(target.x, target.y, target.z)
-    if (block?.known !== true || block.name !== 'minecraft:chest' || block.extra?.length || !Number.isInteger(block.runtimeId)) throw new Error('対象の実チェストを確認できません。')
+    if (block?.known !== true || !storageContainerType(block.name) || block.extra?.length || !Number.isInteger(block.runtimeId)) throw new Error('対象の実チェストまたはシュルカーボックスを確認できません。')
     return block
   }
   function matchingScope (a, b) { return isDeepStrictEqual(a, b) }
   function validate (attempt = pending, inventoryRequired = false) {
     const current = base()
     if (attempt && !matchingScope(current.scope, attempt.scope)) throw new Error('チェスト操作中に接続またはlifeが変わりました。')
-    if (attempt) blockAt(attempt.position)
+    if (attempt) { const block = blockAt(attempt.position); if (attempt.blockName && block.name !== attempt.blockName) throw new Error('操作対象の収納容器が置き換わりました。') }
     if (inventoryRequired) {
       const observed = crafting.snapshot()
       if (inventoryUncertain || observed.authority !== true || observed.inventoryKnown !== true || current.state.inventory?.known !== true || observed.pendingRequestId != null) throw new Error('サーバー権威の確定した持ち物が必要です。')
@@ -62,9 +63,9 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
   }
   function activeWindow () {
     const { scope } = validate(null, true), open = crafting.snapshot().openContainer
-    if (!window || !matchingScope(window.scope, scope) || !contentsKnown || window.replayed || !Array.from({ length: 27 }, (_, slot) => validRaw(slots.get(slot))).every(Boolean)) throw new Error('チェストの実際の27スロットを受信してください。')
-    if (windowId(open?.id) !== window.id || !['container', 0].includes(open?.type)) throw new Error('現在開いているチェストを確認できません。')
-    blockAt(window.position)
+    if (!window || !matchingScope(window.scope, scope) || !contentsKnown || window.replayed || !window.slotCount || !Array.from({ length: window.slotCount }, (_, slot) => validRaw(slots.get(slot))).every(Boolean)) throw new Error('収納容器の実際の27または54スロットをすべて受信してください。')
+    if (windowId(open?.id) !== window.id || !storageWindowMatches(open?.type, storageContainerType(window.blockName))) throw new Error('現在開いている収納容器を確認できません。')
+    if (blockAt(window.position).name !== window.blockName) throw new Error('開いている収納容器が置き換わりました。')
     return { scope, open }
   }
   function markUncertain (attempt, reason) {
@@ -94,12 +95,12 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
       if (attempt.kind === 'open') {
         if (!attempt.childDone || !window || window.epoch <= attempt.beforeEpoch || window.replayed || !samePosition(window.position, attempt.position) || !contentsKnown) return
         activeWindow()
-        finish(attempt, { phase: 'completed', operation: 'open', serverConfirmed: true, confirmedBy: 'server_container_open_and_full_content', windowId: window.id, position: copy(window.position), scope: copy(window.scope), slotCount: 27 })
+        finish(attempt, { phase: 'completed', operation: 'open', serverConfirmed: true, confirmedBy: 'server_container_open_and_full_content', windowId: window.id, position: copy(window.position), scope: copy(window.scope), kind: window.kind, blockName: window.blockName, slotCount: window.slotCount })
         return
       }
-      if (!window || window.epoch !== attempt.epoch || window.id !== attempt.windowId || !samePosition(window.position, attempt.position)) throw new Error('チェスト画面が変わりました。')
+      if (!window || window.epoch !== attempt.epoch || window.id !== attempt.windowId || !samePosition(window.position, attempt.position) || !contentsKnown || window.slotCount !== attempt.slotCount || window.blockName !== attempt.blockName) throw new Error('チェスト画面または受信済みの容器サイズが変わりました。')
       const open = crafting.snapshot().openContainer
-      if (windowId(open?.id) !== attempt.windowId || !['container', 0].includes(open?.type)) throw new Error('チェストが閉じられました。')
+      if (windowId(open?.id) !== attempt.windowId || !storageWindowMatches(open?.type, storageContainerType(attempt.blockName))) throw new Error('チェストが閉じられました。')
       if (!attempt.accepted || attempt.reconciling || (slotVersions.get(attempt.chestSlot) ?? 0) <= attempt.beforeSequence) return
       const chest = slots.get(attempt.chestSlot)
       const playerCount = attempt.source.count - attempt.count, chestCount = attempt.destination.count + attempt.count
@@ -142,14 +143,15 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
     attempt.timer = setTimeout(() => { if (pending === attempt) cancel('チェスト操作の実際の完了を確認できませんでした。') }, timeoutMs)
     attempt.poll = setInterval(check, 50)
   }
-  function open (target, slot) {
+  function open (target, slot, { expectedSlots = null } = {}) {
     if (pending) throw new Error('前のチェスト操作の完了を待ってください。')
     if (!position(target)) throw new Error('チェスト座標は範囲内の整数で指定してください。')
-    const { scope } = validate(null, true); blockAt(target)
+    const { scope } = validate(null, true), block = blockAt(target), container = storageContainerType(block.name)
+    if (expectedSlots != null && !container.sizes.includes(expectedSlots)) throw new Error('この収納容器で確認するスロット数が不正です。')
     const controller = interactions
     if (typeof controller?.openChest !== 'function') throw new Error('正規のチェストを開く操作がまだ結合されていません。')
     return new Promise((resolve, reject) => {
-      const attempt = pending = { kind: 'open', position: copy(target), scope, beforeEpoch: epoch, controller, childStarted: false, childDone: false, resolve, reject }
+      const attempt = pending = { kind: 'open', position: copy(target), blockName: block.name, expectedSlots, scope, beforeEpoch: epoch, controller, childStarted: false, childDone: false, resolve, reject }
       arm(attempt); lastResult = { phase: 'requested', operation: 'open', position: copy(target), serverConfirmed: false }
       try {
         attempt.childStarted = true
@@ -164,20 +166,24 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
     const source = crafting.rawItem(sourceSlot)
     const name = names.get(source.network_id)
     if (typeof expectedName !== 'string' || !expectedName || rawEmpty(source) || !name || name !== canonical(expectedName) || source.count < count) throw new Error(operation === 'deposit_diamond' ? '指定スロットに受信済みの実ダイヤがありません。' : '指定スロットの実アイテム・期待名・個数が一致しません。')
-    const compatible = raw => validRaw(raw) && (rawEmpty(raw) || isDeepStrictEqual(identity(raw), identity(source))) && raw.count + count <= 64
+    if (window.kind === 'shulker' && isShulkerBox(name)) throw new Error('シュルカーボックスの中へシュルカーボックスは収納できません。')
+    const stackLimit = isShulkerBox(name) ? 1 : 64
+    const compatible = raw => validRaw(raw) && (rawEmpty(raw) || isDeepStrictEqual(identity(raw), identity(source))) && raw.count + count <= stackLimit
     if (chestSlot == null) {
-      chestSlot = Array.from({ length: 27 }, (_, slot) => slot).find(slot => !rawEmpty(slots.get(slot)) && compatible(slots.get(slot)))
-      if (chestSlot == null) chestSlot = Array.from({ length: 27 }, (_, slot) => slot).find(slot => rawEmpty(slots.get(slot)) && compatible(slots.get(slot)))
+      chestSlot = Array.from({ length: window.slotCount }, (_, slot) => slot).find(slot => !rawEmpty(slots.get(slot)) && compatible(slots.get(slot)))
+      if (chestSlot == null) chestSlot = Array.from({ length: window.slotCount }, (_, slot) => slot).find(slot => rawEmpty(slots.get(slot)) && compatible(slots.get(slot)))
+      if (chestSlot == null) throw Object.assign(new Error('実アイテムを置ける受信済みのチェスト枠がありません。'), { code: 'CONTAINER_FULL' })
     }
-    if (!Number.isInteger(chestSlot) || chestSlot < 0 || chestSlot > 26 || !compatible(slots.get(chestSlot))) throw new Error('実アイテムを置ける受信済みのチェスト枠がありません。')
+    if (!Number.isInteger(chestSlot) || chestSlot < 0 || chestSlot >= window.slotCount || !compatible(slots.get(chestSlot))) throw new Error('実アイテムを置ける受信済みのチェスト枠がありません。')
     const id = allocateRequestId()
     if (!Number.isInteger(id) || id >= 0 || id < -2147483647 || Math.abs(id % 2) !== 1) throw new Error('接続が管理する負の32ビット奇数の要求IDが必要です。')
     const destination = copy(slots.get(chestSlot))
     return new Promise((resolve, reject) => {
-      const attempt = pending = { kind: 'deposit', operation, name, id, position: copy(window.position), scope, windowId: window.id, epoch: window.epoch, beforeSequence: sequence, playerSlot: sourceSlot, chestSlot, count, source: copy(source), destination, accepted: false, wireSent: false, rejected: false, confirmed: false, resolve, reject }
+      const container = storageContainerType(window.blockName)
+      const attempt = pending = { kind: 'deposit', operation, name, id, position: copy(window.position), blockName: window.blockName, slotCount: window.slotCount, slotType: container.slotType, slotTypeId: container.slotTypeId, scope, windowId: window.id, epoch: window.epoch, beforeSequence: sequence, playerSlot: sourceSlot, chestSlot, count, source: copy(source), destination, accepted: false, wireSent: false, rejected: false, confirmed: false, resolve, reject }
       arm(attempt); lastResult = { phase: 'requested', operation, requestId: id, count, serverConfirmed: false }
       try {
-        client.queue('item_stack_request', { requests: [{ request_id: id, actions: [{ type_id: 'place', legacy_type_id: 1, count, source: stackSlot('hotbar_and_inventory', sourceSlot, source), destination: stackSlot('container', chestSlot, destination) }], custom_names: [], cause: -1 }] })
+        client.queue('item_stack_request', { requests: [{ request_id: id, actions: [{ type_id: 'place', legacy_type_id: 1, count, source: stackSlot('hotbar_and_inventory', sourceSlot, source), destination: stackSlot(attempt.slotType, chestSlot, destination) }], custom_names: [], cause: -1 }] })
         attempt.wireSent = true
       } catch (error) { cancel(error.message) }
     })
@@ -188,7 +194,7 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
       if (container.slot_type?.dynamic_container_id != null) continue
       const type = container.slot_type?.container_id
       if (['hotbar_and_inventory', 'inventory', 'hotbar', 12, 28, 29].includes(type)) for (const slot of container.slots ?? []) if (slot.slot === attempt.playerSlot) player.push(slot)
-      if (['container', 7].includes(type)) for (const slot of container.slots ?? []) if (slot.slot === attempt.chestSlot) chest.push(slot)
+      if ([attempt.slotType, attempt.slotTypeId].includes(type)) for (const slot of container.slots ?? []) if (slot.slot === attempt.chestSlot) chest.push(slot)
     }
     const valid = (slot, expected) => slot && slot.count === expected && (expected === 0 ? slot.item_stack_id == null || slot.item_stack_id === 0 : Number.isInteger(slot.item_stack_id) && slot.item_stack_id > 0 && slot.item_stack_id <= 2147483647)
     if (player.length > 1 || chest.length > 1 || player.length && !valid(player[0], attempt.source.count - attempt.count) || chest.length && !valid(chest[0], attempt.destination.count + attempt.count)) throw new Error('受理応答の移動元・移動先の個数または実IDが一致しません。')
@@ -215,20 +221,31 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
       if (pending?.kind === 'deposit') cancel('コンテナの画面が切り替わりました。')
       clearWindow()
       const id = windowId(packet.window_id), target = packet.coordinates
-      if (['container', 0].includes(packet.window_type) && id > 0 && id <= 100 && position(target)) {
-        try { blockAt(target); window = { id, type: 'container', position: copy(target), scope: copy(current.scope), epoch, replayed: replaying } } catch { /* Other container type/block is not a chest. */ }
+      if (id > 0 && id <= 100 && position(target)) {
+        try {
+          const block = blockAt(target), container = storageContainerType(block.name)
+          if (storageWindowMatches(packet.window_type, container)) window = { id, type: container.windowType, kind: container.kind, blockName: block.name, slotCount: null, expectedSlots: pending?.kind === 'open' && samePosition(pending.position, target) ? pending.expectedSlots : null, position: copy(target), scope: copy(current.scope), epoch, replayed: replaying }
+        } catch { /* Only supported observed storage blocks bind a window. */ }
       }
       observationSource = replaying ? 'cache_replay' : 'server_container_open'
     } else if (name === 'container_close' && windowId(packet.window_id) === window?.id) {
-      cancel('チェストが閉じられました。'); clearWindow(); observationSource = 'server_container_close'
+      // A caller may close the old GUI immediately before requesting a new
+      // one. Its delayed close receipt does not close the new, not-yet-seen
+      // window. Once the new window has arrived, closure still cancels it.
+      if (pending?.kind !== 'open' || window.epoch > pending.beforeEpoch) cancel('チェストが閉じられました。')
+      clearWindow(); observationSource = 'server_container_close'
     } else if (name === 'inventory_content' && window && windowId(packet.window_id) === window.id) {
       slots.clear(); slotVersions.clear()
-      contentsKnown = Array.isArray(packet.input) && packet.input.length === 27 && packet.input.every(validRaw)
-      if (contentsKnown) packet.input.forEach((raw, slot) => { slots.set(slot, copy(raw)); slotVersions.set(slot, replaying ? 0 : ++sequence) })
+      const size = Array.isArray(packet.input) ? packet.input.length : null, container = storageContainerType(window.blockName)
+      contentsKnown = container.sizes.includes(size) && (window.expectedSlots == null || size === window.expectedSlots) && (window.slotCount == null || size === window.slotCount) && Array.from({ length: size }, (_, slot) => validRaw(packet.input[slot])).every(Boolean)
+      if (contentsKnown) { window.slotCount = size; packet.input.forEach((raw, slot) => { slots.set(slot, copy(raw)); slotVersions.set(slot, replaying ? 0 : ++sequence) }) }
       observationSource = replaying ? 'cache_replay' : 'server_inventory_content'
-    } else if (name === 'inventory_slot' && window && windowId(packet.window_id) === window.id && Number.isInteger(packet.slot) && packet.slot >= 0 && packet.slot < 27) {
-      if (validRaw(packet.item)) { slots.set(packet.slot, copy(packet.item)); slotVersions.set(packet.slot, replaying ? 0 : ++sequence) } else { slots.delete(packet.slot); slotVersions.delete(packet.slot) }
-      contentsKnown = Array.from({ length: 27 }, (_, slot) => validRaw(slots.get(slot))).every(Boolean)
+    } else if (name === 'inventory_slot' && window && windowId(packet.window_id) === window.id) {
+      if (window.slotCount == null || !Number.isInteger(packet.slot) || packet.slot < 0 || packet.slot >= window.slotCount) { slots.clear(); slotVersions.clear(); contentsKnown = false }
+      else {
+        if (validRaw(packet.item)) { slots.set(packet.slot, copy(packet.item)); slotVersions.set(packet.slot, replaying ? 0 : ++sequence) } else { slots.delete(packet.slot); slotVersions.delete(packet.slot) }
+        contentsKnown = Array.from({ length: window.slotCount }, (_, slot) => validRaw(slots.get(slot))).every(Boolean)
+      }
       observationSource = replaying ? 'cache_replay' : 'server_inventory_slot'
     }
     if (!replaying && name === 'inventory_content' && windowId(packet.window_id) === 0 && Array.isArray(packet.input) && packet.input.length === 36 && packet.input.every(validRaw)) {
@@ -246,12 +263,12 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
   }
   function snapshot () {
     let matches = false
-    try { const { scope } = base(); matches = Boolean(window && matchingScope(window.scope, scope)); if (matches) blockAt(window.position) } catch { matches = false }
+    try { const { scope } = base(); matches = Boolean(window && matchingScope(window.scope, scope)); if (matches) matches = blockAt(window.position).name === window.blockName } catch { matches = false }
     const open = crafting.snapshot().openContainer
-    matches = matches && windowId(open?.id) === window?.id && ['container', 0].includes(open?.type)
-    return { version, window: copy(window), contentsKnown: matches && contentsKnown, needsOpen: !matches || !contentsKnown || window?.replayed === true, inventoryUncertain, busy: pending !== null, pendingRequestId: pending?.id ?? null, observationSource, slots: Array.from({ length: 27 }, (_, slot) => { const raw = slots.get(slot); return { slot, known: matches && validRaw(raw), name: raw && !rawEmpty(raw) ? names.get(raw.network_id) ?? null : null, count: matches && raw ? raw.count : null, stackId: matches && validRaw(raw) && !rawEmpty(raw) ? raw.stack_id : null } }), lastResult: copy(lastResult) }
+    matches = matches && windowId(open?.id) === window?.id && storageWindowMatches(open?.type, storageContainerType(window?.blockName))
+    return { version, window: copy(window), kind: window?.kind ?? null, blockName: window?.blockName ?? null, slotCount: window?.slotCount ?? null, contentsKnown: matches && contentsKnown, needsOpen: !matches || !contentsKnown || window?.replayed === true, inventoryUncertain, busy: pending !== null, pendingRequestId: pending?.id ?? null, observationSource, slots: Array.from({ length: window?.slotCount ?? window?.expectedSlots ?? 27 }, (_, slot) => { const raw = slots.get(slot); return { slot, known: matches && validRaw(raw), name: raw && !rawEmpty(raw) ? names.get(raw.network_id) ?? null : null, count: matches && raw ? raw.count : null, stackId: matches && validRaw(raw) && !rawEmpty(raw) ? raw.stack_id : null } }), lastResult: copy(lastResult) }
   }
-  return { open, depositDiamond: options => deposit({ ...options, expectedName: 'minecraft:diamond' }, 'deposit_diamond'), depositItem: options => deposit(options, 'deposit_item'), applyPacket, snapshot, cancel, rawItem: slot => Number.isInteger(slot) && slot >= 0 && slot < 27 && slots.has(slot) ? copy(slots.get(slot)) : null }
+  return { open, depositDiamond: options => deposit({ ...options, expectedName: 'minecraft:diamond' }, 'deposit_diamond'), depositItem: options => deposit(options, 'deposit_item'), applyPacket, snapshot, cancel, rawItem: slot => Number.isInteger(slot) && slot >= 0 && slot < (window?.slotCount ?? 0) && slots.has(slot) ? copy(slots.get(slot)) : null }
 }
 
 module.exports = { createChest }

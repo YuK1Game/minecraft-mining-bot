@@ -5,6 +5,7 @@ const { resourceMinHealth } = require('./learning-health')
 const { selectVisibleBlockFace, traceBlockFace } = require('./aim')
 const { isDryAccessPlant } = require('./action-access')
 const { bedVisibleFace } = require('./portable-bed')
+const { isShulkerBlock } = require('./container-types')
 
 const AIR = new Set(['air', 'cave_air', 'void_air'])
 // Keep processed wood out of automatic harvesting. The caller must still select
@@ -36,6 +37,9 @@ function targetList (targets) {
     if (position.accessPreparation === 'owned_bed') {
       if (position.expectedName !== 'minecraft:bed' || typeof position.ownershipKey !== 'string' || !position.ownershipKey.length || position.ownershipKey.length > 200) throw new Error('Owned-bed mining requires an exact ownership key')
       Object.assign(target, { accessPreparation: 'owned_bed', expectedName: 'minecraft:bed', ownershipKey: position.ownershipKey })
+    } else if (position.accessPreparation === 'owned_shulker') {
+      if (typeof position.expectedName !== 'string' || !position.expectedName.startsWith('minecraft:') || !isShulkerBlock(position.expectedName) || typeof position.ownershipKey !== 'string' || !position.ownershipKey.length || position.ownershipKey.length > 200 || position.expectedRuntimeId != null && (!Number.isSafeInteger(position.expectedRuntimeId) || position.expectedRuntimeId < 0 || position.expectedRuntimeId > 4294967295)) throw new Error('Owned-shulker mining requires an actual block name, ownership key and optional received runtime ID')
+      Object.assign(target, { accessPreparation: 'owned_shulker', expectedName: position.expectedName, ownershipKey: position.ownershipKey, expectedRuntimeId: position.expectedRuntimeId ?? null })
     } else if (position.accessPreparation === 'quarry') {
       // Quarry targets: the quarry planner already chose the block, the tool
       // and checked falling/fluid dependencies; mining re-checks them live.
@@ -58,19 +62,35 @@ function pickTier (state) {
   return { wooden_pickaxe: 1, golden_pickaxe: 1, stone_pickaxe: 2, iron_pickaxe: 3, diamond_pickaxe: 4, netherite_pickaxe: 4 }[name] ?? 0
 }
 
-function createMining ({ getState, world, getInput, verifyOwnedBed = null, getRawItem = null, isProtected = () => false, now = Date.now, blockTimeoutMs = 15000 }) {
+function createMining ({ getState, world, getInput, verifyOwnedBed = null, verifyOwnedShulker = null, getRawItem = null, isProtected = () => false, now = Date.now, blockTimeoutMs = 15000 }) {
   if (getRawItem !== null && typeof getRawItem !== 'function' || typeof isProtected !== 'function') throw new Error('Clearance inventory/protection readers must be functions')
   if (verifyOwnedBed !== null && typeof verifyOwnedBed !== 'function') throw new Error('Owned-bed verification must be an explicit callback')
+  if (verifyOwnedShulker !== null && typeof verifyOwnedShulker !== 'function') throw new Error('Owned-shulker verification must be an explicit callback')
   let timer = null
   let activeInput = null
   let expected = null
   let origin = null
   let dimension = null
   let ownedScope = null
+  let shulkerScope = null
   let accessPin = null
   const bedScope = state => JSON.stringify([state.profile ?? null, state.realm?.id ?? null, state.connectionId ?? null, state.startedAt ?? null, String(state.runtimeEntityId ?? ''), state.lifecycle?.deathId ?? null])
   let startedBlockAt = 0
   let status = { phase: 'idle', activeTarget: null, completed: [], remaining: [], reason: null }
+
+  function currentShulkerScope (state) {
+    const life = state.lifecycle?.deathId
+    if (state.phase !== 'spawned' || state.dead || state.isDead || state.lifecycle?.dead || state.spawnPending || !Number.isFinite(state.health) || state.health <= resourceMinHealth(state) || state.inventory?.known !== true || state.inventory.uncertain || typeof state.profile !== 'string' || !state.profile || state.realm?.id == null || !String(state.realm.id) || typeof state.connectionId !== 'string' || !state.connectionId || typeof state.startedAt !== 'string' || !Number.isFinite(Date.parse(state.startedAt)) || !/^[1-9]\d*$/.test(String(state.runtimeEntityId ?? '')) || state.dimension == null || !Number.isSafeInteger(life) || life < 0) throw new Error('Owned-shulker mining requires the current observed inventory, connection and living scope')
+    return JSON.stringify([state.profile, String(state.realm.id), state.connectionId, state.startedAt, String(state.runtimeEntityId), state.dimension, life])
+  }
+
+  function requireOwnedShulker (target, state, block) {
+    const scope = currentShulkerScope(state)
+    if (shulkerScope !== null && status.phase === 'mining' && scope !== shulkerScope) throw new Error('Owned-shulker mining changed connection or life')
+    // The owner verifies the same placement receipt even when the current
+    // received block is AIR. AIR proves destruction, never item recovery.
+    if (typeof verifyOwnedShulker !== 'function' || verifyOwnedShulker(state, target, block) !== true) throw new Error('This shulker lacks the current placement ownership proof')
+  }
 
   function clearanceScope (state) {
     const life = state.lifecycle?.deathId
@@ -110,6 +130,11 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, getRa
     if (target.accessPreparation === 'tree_access' && (!isDryAccessPlant(block) || block.name !== target.expectedName)) throw new Error('準備採掘の植物が変更されたか、乾いた未保護の植物ではありません。')
     const ownedBed = target.accessPreparation === 'owned_bed' && name === 'bed' && block.name === target.expectedName && typeof verifyOwnedBed === 'function' && verifyOwnedBed(state, target, block) === true
     if (target.accessPreparation === 'owned_bed' && !ownedBed) throw new Error('This bed lacks the current portable-bed ownership proof')
+    const ownedShulker = target.accessPreparation === 'owned_shulker'
+    if (ownedShulker) {
+      if (!isShulkerBlock(block.name) || block.name !== target.expectedName || target.expectedRuntimeId != null && block.runtimeId !== target.expectedRuntimeId) throw new Error('Owned shulker block changed from its placement receipt')
+      requireOwnedShulker(target, state, block)
+    }
     const quarry = target.accessPreparation === 'quarry'
     if (quarry) {
       if (block.name !== target.expectedName || target.expectedRuntimeId != null && block.runtimeId !== target.expectedRuntimeId) throw new Error('露天掘りの対象ブロックが計画時から変わりました。')
@@ -119,7 +144,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, getRa
         if (!held || held.kind !== target.requiredTool.kind || held.tier < target.requiredTool.tier) throw new Error(`回収に必要な道具を手に持っていません: ${name}`)
       }
     }
-    if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
+    if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
     if (clearance && (block.name !== 'minecraft:stone' || block.runtimeId !== target.expectedRuntimeId || block.protected === true || block.protectionSource || block.natural === false || isProtected(target, state, block))) throw new Error('Stone clearance target changed or is protected')
     if (!clearance && !quarry && PICK.has(name) && pickTier(state) < PICK.get(name)) throw new Error(`適切なツルハシの装備を確認できません: ${name}`)
     if (block.extra?.some(layer => !AIR.has(blockName(layer)))) throw new Error('対象に水などの追加レイヤーがあります。')
@@ -195,13 +220,16 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, getRa
       }
       const target = status.activeTarget
       if (ownedScope && (ownedScope !== bedScope(state) || state.dead || state.isDead || !(state.health > 0))) throw new Error('Owned-bed mining changed player life or connection')
+      if (shulkerScope !== null && currentShulkerScope(state) !== shulkerScope) throw new Error('Owned-shulker mining changed connection or life')
       if (target.accessPreparation === 'stone_clearance') clearanceEquipment(state)
       const block = world.getBlock(target.x, target.y, target.z)
+      if (target.accessPreparation === 'owned_shulker') requireOwnedShulker(target, state, block)
       if (target.accessPreparation === 'stone_clearance' && (block.protected === true || block.protectionSource || isProtected(target, state, block))) throw new Error('Stone clearance target became protected')
       if (block.known && AIR.has(blockName(block))) {
         activeInput.stop()
         status.completed.push(status.remaining.shift())
         if (status.operation === 'access_clearance') { status.blockCleared = true; status.confirmedBy = 'received_block_air'; status.serverConfirmed = true }
+        if (target.accessPreparation === 'owned_shulker') { status.blockCleared = true; status.confirmedBy = 'received_block_air'; status.serverConfirmed = true }
         beginNext()
         return
       }
@@ -243,7 +271,9 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, getRa
     origin = { ...getState().position }
     dimension = getState().dimension
     ownedScope = targets.some(target => target.accessPreparation === 'owned_bed') ? bedScope(getState()) : null
-    status = { phase: 'mining', activeTarget: null, completed: [], remaining: structuredClone(targets), reason: null, ...(clearance ? {operation:'access_clearance',willDrop:false,collected:false,blockCleared:false,serverConfirmed:false} : {}) }
+    const ownsShulker = targets.some(target => target.accessPreparation === 'owned_shulker')
+    shulkerScope = ownsShulker ? currentShulkerScope(getState()) : null
+    status = { phase: 'mining', activeTarget: null, completed: [], remaining: structuredClone(targets), reason: null, ...(clearance ? {operation:'access_clearance',willDrop:false,collected:false,blockCleared:false,serverConfirmed:false} : ownsShulker ? { operation: 'owned_shulker', collected: false, blockCleared: false, serverConfirmed: false } : {}) }
     try {
       beginNext()
       timer = setInterval(check, 100)

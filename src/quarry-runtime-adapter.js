@@ -12,7 +12,7 @@ const FEET = 1.62
 function createQuarryRuntimeAdapter (ports) {
   const {
     getState, getBlock, entities, mining, getMining, movement, getMovement, equip, placeQuarry, eat, resyncInventory = null, craftTorches = null, placeTorch = null, prepareMining = null,
-    chest, addChest = null, stopAll, combatActive, threatEvidence = null, recentDamageAt = null, harmfulEffect = null, worldRevision = null,
+    chest, addChest = null, storeCarried = null, stopAll, combatActive, threatEvidence = null, recentDamageAt = null, harmfulEffect = null, worldRevision = null,
     sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now,
     segmentCells = 6, segmentTimeoutMs = 20000, mineTimeoutMs = 15000, previewSettleMs = 3000, shortStopMs = 1500, pollMs = 25, slowBreakMinMs = 1500, log = () => {}
   } = ports
@@ -228,6 +228,7 @@ function createQuarryRuntimeAdapter (ports) {
     // a fresh view arrived (or false when it could not be requested).
     resyncInventory: options => typeof resyncInventory === 'function' ? resyncInventory(options) : false,
     deposit,
+    ...(typeof storeCarried === 'function' ? { storeCarried: (request, options) => storeCarried(request, options) } : {}),
     // One more storage chest at the first workable candidate cell (a carried
     // chest, or one crafted from carried wood). Returns { ok, position } or
     // { ok: false, reason }.

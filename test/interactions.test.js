@@ -4,7 +4,8 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
 const { createInteractions } = require('../src/interactions')
-const { buildStationaryInput } = require('../src/input')
+const { buildStationaryInput, createInput } = require('../src/input')
+const { SHULKER_BLOCKS } = require('../src/container-types')
 
 const extra = { has_nbt: 'false', can_place_on: [], can_destroy: [] }
 const emptyItem = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra })
@@ -35,6 +36,119 @@ function fixture (options = {}) {
   const interactions = createInteractions({ client: { queue: (name, params) => packets.push({ name, params }) }, getState: () => state, world, crafting, getInput: () => input, onInventory: packet => confirmed.push(packet), onUncertain: info => { uncertainties.push(info); onUncertain?.(info) }, timeoutMs: 1000, ...creationOptions })
   return { interactions, state, target, setBlock, blocks, raw, names, input, packets, transactions, confirmed, uncertainties, crafting }
 }
+
+function alignedFixture (options) {
+  const f = fixture(options)
+  const stats = { running: false, target: null, sent: 30, owner: 'task', rotation: null, lastError: null }
+  f.input.stats = () => structuredClone(stats)
+  f.input.lookAt = target => {
+    const dx = target.x - f.state.position.x, dy = target.y - f.state.position.y, dz = target.z - f.state.position.z
+    stats.rotation = { pitch: -Math.atan2(dy, Math.hypot(dx, dz)) * 180 / Math.PI, yaw: Math.atan2(-dx, dz) * 180 / Math.PI }
+    return structuredClone(stats.rotation)
+  }
+  f.input.start = () => { stats.running = true }
+  f.input.stop = () => { stats.running = false }
+  return { ...f, stats, queuedFrames: count => { stats.sent += count; f.interactions.applyPacket('test_queued_input', {}) } }
+}
+
+test('aligned placement waits for two queued rotation frames, sends once and still requires real block plus inventory', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const f = alignedFixture(); t.after(() => f.interactions.cancel())
+  const placed = f.interactions.placeBlock({ position: f.target, slot: 0, alignFacing: true })
+  assert.equal(f.transactions.length, 0)
+  t.mock.timers.tick(500)
+  assert.equal(f.transactions.length, 0, 'elapsed time without queued input is not an alignment receipt')
+  f.queuedFrames(1)
+  assert.equal(f.transactions.length, 0)
+  f.queuedFrames(1)
+  assert.equal(f.transactions.length, 1)
+  f.queuedFrames(4)
+  assert.equal(f.transactions.length, 1)
+  f.setBlock(f.target, 'crafting_table')
+  f.interactions.applyPacket('update_block', {})
+  assert.equal(f.interactions.snapshot().pendingOperation, 'place')
+  f.raw.set(0, emptyItem())
+  f.interactions.applyPacket('inventory_slot', { window_id: 'inventory', slot: 0, item: emptyItem() })
+  assert.equal((await placed).confirmedBy, 'server_block_and_inventory')
+})
+
+test('real AuthInput stream queues two orientation-only frames before aligned item use', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const f = fixture(), frames = []
+  Object.assign(f.input, createInput({ client: { queue: (name, packet) => { assert.equal(name, 'player_auth_input'); frames.push(structuredClone(packet)) } }, getState: () => f.state, version: '1.26.60', startGame: { player_gamemode: 'survival', server_authoritative_block_breaking: true, current_tick: 1n }, startGameReceivedAt: 0, clock: () => 0 }))
+  const placed = f.interactions.placeBlock({ position: f.target, slot: 0, alignFacing: true })
+  assert.equal(frames.length, 1)
+  assert.equal(frames[0].transaction, null)
+  t.mock.timers.tick(50)
+  assert.equal(frames.length, 2)
+  assert.equal(frames[1].transaction, null)
+  assert.equal(frames[0].yaw, -90)
+  assert.equal(frames[1].yaw, frames[0].yaw)
+  t.mock.timers.tick(100)
+  const used = frames.filter(frame => frame.transaction)
+  assert.equal(used.length, 1)
+  assert.equal(used[0].yaw, frames[0].yaw)
+  assert.equal(used[0].transaction.data.held_item.stack_id, 92)
+  f.interactions.cancel('test complete'); await assert.rejects(placed)
+})
+
+test('aligned placement cancels before sending after cancellation, movement, item, slot, rotation, ownership or generation changes', async () => {
+  const changes = {
+    cancel: f => f.interactions.cancel('manual stop'),
+    move: f => { f.state.position.x += 1 },
+    slot: f => { f.state.selectedSlot = 2 },
+    serverSlot: f => f.interactions.applyPacket('player_hotbar', { window_id: 'inventory', selected_slot: 2 }),
+    count: f => { f.raw.get(0).count++ },
+    stack: f => { f.raw.get(0).stack_id++ },
+    itemData: f => { f.raw.get(0).metadata++ },
+    unknownInventory: f => { f.state.inventory.known = false },
+    rotation: f => { f.stats.rotation.yaw += 90 },
+    stopped: f => { f.stats.running = false },
+    owner: f => { f.stats.owner = 'combat' },
+    generation: f => { f.stats.owner = 'stale'; f.stats.running = false },
+    connection: f => { f.state.connectionId = 'new-connection' },
+    life: f => { f.state.lifecycle = { deathId: 2 } },
+    death: f => { f.state.health = 0 },
+    support: f => f.setBlock({ x: 1, y: 64, z: 0 }, 'air')
+  }
+  for (const [reason, change] of Object.entries(changes)) {
+    const f = alignedFixture()
+    const placed = f.interactions.placeBlock({ position: f.target, slot: 0, alignFacing: true })
+    const rejected = assert.rejects(placed, Error, reason)
+    f.queuedFrames(1); change(f); f.queuedFrames(1)
+    await rejected
+    f.queuedFrames(5)
+    assert.equal(f.transactions.length, 0, reason)
+    assert.equal(f.uncertainties.length, 0, reason)
+  }
+})
+
+test('alignment allows an unchanged unechoed selection or confirmation of the requested slot', async () => {
+  for (const confirm of [false, true]) {
+    const f = alignedFixture(); f.state.rawSelectedSlot = 4
+    const placed = f.interactions.placeBlock({ position: f.target, slot: 0, alignFacing: true })
+    f.queuedFrames(1)
+    if (confirm) f.state.rawSelectedSlot = 0
+    f.queuedFrames(1)
+    assert.equal(f.transactions.length, 1)
+    f.interactions.cancel('cleanup'); await assert.rejects(placed)
+  }
+})
+
+test('alignment removes an unsent transaction on cancellation even when input was already running', async () => {
+  const f = alignedFixture(); f.stats.running = true
+  let queued = null
+  f.input.sendTransaction = transaction => { queued = transaction }
+  f.input.stop = () => { queued = null; f.stats.running = false }
+  const placed = f.interactions.placeBlock({ position: f.target, slot: 0, alignFacing: true })
+  f.queuedFrames(2)
+  assert.ok(queued)
+  f.raw.get(0).stack_id++
+  f.interactions.applyPacket('inventory_slot', {})
+  await assert.rejects(placed, /持ち物/)
+  assert.equal(queued, null)
+  assert.equal(f.uncertainties.length, 0)
+})
 
 test('online learning HP1 table placement preserves real stack, known support and own-body gates', () => {
   const f = fixture(); f.state.health = 1
@@ -323,6 +437,55 @@ test('furnace and lit furnace open only on the matching location and furnace win
     assert.equal(result.confirmedBy, 'server_container_open')
     assert.equal(f.uncertainties.length, 0)
   }
+})
+
+test('all actual shulker colors place normally and require their exact received block plus item consumption', async t => {
+  const data = require('minecraft-data')('bedrock_1.26.60')
+  for (const name of SHULKER_BLOCKS) {
+    const f = fixture(); t.after(() => f.interactions.cancel())
+    const definition = data.itemsByName[name.slice(10)]
+    assert.ok(definition?.blockStateId != null, name)
+    f.names.set(definition.id, name)
+    f.raw.set(0, { ...f.raw.get(0), network_id: definition.id, block_runtime_id: definition.blockStateId })
+    const preview = f.interactions.previewPlace({ position: f.target, slot: 0 })
+    assert.equal(preview.ready, true, name); assert.equal(preview.expectedBlock, name)
+    const placing = f.interactions.placeBlock({ position: f.target, slot: 0 })
+    f.setBlock(f.target, name.slice(10), definition.blockStateId)
+    f.interactions.applyPacket('update_block', { position: f.target, block_runtime_id: definition.blockStateId })
+    assert.equal(f.interactions.snapshot().pendingOperation, 'place')
+    f.raw.set(0, emptyItem()); f.interactions.applyPacket('inventory_slot', { window_id: 'inventory', slot: 0, item: emptyItem() })
+    const result = await placing
+    assert.equal(result.blockName, name); assert.equal(result.confirmedBy, 'server_block_and_inventory')
+  }
+})
+
+test('shulker open uses WindowType.container0, never the unrelated WindowType30, and exact coordinates', async t => {
+  for (const method of ['openChest', 'openShulker']) {
+    const f = fixture(); t.after(() => f.interactions.cancel()); f.setBlock(f.target, 'blue_shulker_box')
+    assert.equal(f.interactions.previewOpenChest(f.target, 0).ready, true)
+    assert.equal(f.interactions.previewOpenShulker(f.target, 0).ready, true)
+    const opening = f.interactions[method](f.target, 0)
+    const encode = createSerializer('1.26.60'), decode = createDeserializer('1.26.60')
+    const receive = packet => f.interactions.applyPacket('container_open', decode.parsePacketBuffer(encode.createPacketBuffer({ name: 'container_open', params: { runtime_entity_id: -1n, ...packet } })).data.params)
+    receive({ window_id: 5, window_type: 'cartography', coordinates: f.target })
+    assert.equal(f.interactions.snapshot().pendingOperation, 'open')
+    receive({ window_id: 5, window_type: 'container', coordinates: { ...f.target, x: 2 } })
+    assert.equal(f.interactions.snapshot().pendingOperation, 'open')
+    receive({ window_id: 5, window_type: 'container', coordinates: f.target })
+    assert.equal((await opening).confirmedBy, 'server_container_open')
+  }
+})
+
+test('shulker placement preserves unknown-ground and exact-item rules including unsupported legacy generic items', () => {
+  const f = fixture(); f.names.set(205, 'minecraft:undyed_shulker_box')
+  f.raw.set(0, { ...f.raw.get(0), network_id: 205 })
+  f.blocks.set('1,64,0', { known: false })
+  assert.equal(f.interactions.previewPlace({ position: f.target, slot: 0 }).ready, false)
+  f.setBlock({ x: 1, y: 64, z: 0 }, 'stone')
+  assert.equal(f.interactions.previewPlace({ position: f.target, slot: 0 }).ready, true)
+  f.names.set(205, 'minecraft:shulker_box')
+  assert.equal(f.interactions.previewPlace({ position: f.target, slot: 0 }).ready, false)
+  assert.equal(f.transactions.length, 0)
 })
 
 test('untransmitted placement cannot claim external world changes and uncertain raw contents never become invented empty items', async () => {

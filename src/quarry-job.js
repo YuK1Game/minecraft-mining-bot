@@ -8,7 +8,7 @@
 const { buildRegions, permits, chunkBounds } = require('./quarry-region')
 const { createQuarryPlanner } = require('./quarry-planner')
 const { blockRule, nameOf, selectTool, AIR } = require('./quarry-rules')
-const { keepPlan, canAccept, totals, diff, createLedger, freeSlots, isFood } = require('./quarry-inventory')
+const { keepPlan, canAccept, totals, diff, createLedger, freeSlots, isFood, selectCarriedStorage, isShulkerBox } = require('./quarry-inventory')
 const { createQuarryCombatBridge } = require('./quarry-combat-bridge')
 
 const copy = value => value === undefined ? undefined : structuredClone(value)
@@ -19,7 +19,7 @@ const STORAGE_AREA_RADIUS = 24 // m around the chests checked before leaving the
 const STORAGE_WAIT_MS = 20000 // longest wait for the chest area to clear (a long idle wait looks like a stall)
 const SETTLE_EAT_CLEARANCE = 8 // m: no eating in the settle wait with a hostile this close
 const PICKUP_XZ = 1.3 // half player width 0.3 + 1 block reach for item pickup
-const ACTIVE = new Set(['PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT', 'RETURN', 'DEPOSIT', 'RESTOCK', 'HAZARD', 'RECOVER', 'SUSPEND_FOR_COMBAT', 'COMBAT', 'COMBAT_SETTLE', 'RECOVER_AFTER_COMBAT', 'RECONCILE', 'FINAL_CHECK', 'DISCONNECTED'])
+const ACTIVE = new Set(['PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT', 'RETURN', 'DEPOSIT', 'PORTABLE_STORAGE', 'RESTOCK', 'HAZARD', 'RECOVER', 'SUSPEND_FOR_COMBAT', 'COMBAT', 'COMBAT_SETTLE', 'RECOVER_AFTER_COMBAT', 'RECONCILE', 'FINAL_CHECK', 'DISCONNECTED'])
 const RESULT = new Set(['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS', 'PAUSED', 'CANCELLED', 'FAILED'])
 // Deferrals that are planned exclusions, not exceptions (§16.3).
 const PLANNED_EXCLUSIONS = new Set(['UNBREAKABLE'])
@@ -62,6 +62,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   const badStances = new Map() // stance key -> consecutive move failures
   let countsCache = null // display-only; completion always performs its own full scan
   let countsWork = null; let countsRevision = 0
+  let saveChain = Promise.resolve()
   let lastInventory = null; let pendingDrops = []; let batchCount = 0
   const stuckItems = new Map() // item runtimeId -> skip until (ms)
   const events = []
@@ -91,10 +92,31 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     job.records = planner?.exportRecords() ?? job.records
     job.ledger = ledger.export()
     job.savedAt = new Date(now()).toISOString()
-    try { await storage.save(job.config.jobId, copy({ ...job, events: events.slice(-50) })); return true } catch (error) {
+    const id = job.config.jobId; const document = copy({ ...job, events: events.slice(-50) })
+    const write = saveChain.then(() => storage.save(id, document))
+    saveChain = write.catch(() => {})
+    try { await write; return true } catch (error) {
       note('persistence_failed', { why, error: String(error.message ?? error) })
       throw new QuarryInterrupt('PERSISTENCE_FAILED', 'Checkpoint could not be saved; new breaking stops (§15.2)')
     }
+  }
+
+  function planningBlocks (config) {
+    const protectedBoxes = config.permissions?.protectedRegion ?? []
+    return (x, y, z) => {
+      const block = adapter.getBlock(x, y, z)
+      if (block?.known !== true || block.protected || block.protectionSource) return block
+      const permanent = protectedBoxes.some(b => x >= b.xMin && x <= b.xMax && y >= b.yMin && y <= b.yMax && z >= b.zMin && z <= b.zMax)
+      const temporary = job?.portableStorage?.checkpoint?.placed?.some(c => c.position?.x === x && c.position?.z === z && (c.position.y === y || c.position.y - 1 === y))
+      return permanent || temporary ? { ...block, protected: true, protectionSource: 'quarry_storage' } : block
+    }
+  }
+
+  function rebuildPlanner () {
+    const records = planner?.exportRecords() ?? job.records ?? {}
+    regions = makeRegions(job.config, job.yTop, adapter.getState())
+    planner = createQuarryPlanner({ regions, getBlock: planningBlocks(job.config), config: job.config.strategy, records })
+    countsRevision++
   }
 
   // ---- planning (no world changes, §4.1 plan) ---------------------------
@@ -118,7 +140,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   function plan (input) {
-    if (job && ACTIVE.has(job.state)) throw new Error('A quarry job is running; pause or cancel it first')
+    if (worker || job && ACTIVE.has(job.state)) throw new Error('A quarry job is running; pause or cancel it first')
     const config = defaults(input)
     const state = adapter.getState()
     const issues = []; const warnings = []
@@ -126,7 +148,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (state?.gameMode !== 'survival' && state?.gameMode !== 0) issues.push('NOT_SURVIVAL')
     if (state?.dimension && state.dimension !== config.dimension.replace(/^minecraft:/, '')) issues.push('WRONG_DIMENSION')
     let regs = makeRegions(config, Number.isSafeInteger(config.yTop) ? config.yTop : null, state)
-    const p = createQuarryPlanner({ regions: regs, getBlock: adapter.getBlock, config: config.strategy })
+    const p = createQuarryPlanner({ regions: regs, getBlock: planningBlocks(config), config: config.strategy })
     let yTop = Number.isSafeInteger(config.yTop) ? config.yTop : null
     let unknownAbove = 0
     if (yTop === null) { const s = p.surveyTop(); yTop = s.yTop; unknownAbove = s.unknownAbove }
@@ -136,7 +158,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const inv = items(state)
     if (!inv) issues.push('INVENTORY_UNKNOWN')
     const storageList = config.inventory.storage ?? []
-    if (!storageList.length && config.inventory.carryOnly !== true) issues.push('NO_STORAGE_REGISTERED')
+    if (!storageList.length && config.inventory.carryOnly !== true && !(typeof adapter.storeCarried === 'function' && selectCarriedStorage(inv))) issues.push('NO_STORAGE_REGISTERED')
     for (const s of storageList) {
       const b = s?.position ? adapter.getBlock(s.position.x, s.position.y, s.position.z) : null
       if (!b?.known || !/chest|barrel/.test(nameOf(b))) issues.push(`STORAGE_NOT_OBSERVED:${JSON.stringify(s?.position ?? null)}`)
@@ -148,7 +170,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (!inv.some(i => isFood(i.name))) warnings.push({ code: 'NO_FOOD' })
       if (!inv.some(i => /cobblestone|cobbled_deepslate|^dirt$|^stone$/.test(nameOf(i)))) warnings.push({ code: 'NO_SEAL_MATERIAL', note: 'Water/lava and stair repairs will pause' })
     }
-    const pl = createQuarryPlanner({ regions: regs, getBlock: adapter.getBlock, config: config.strategy })
+    const pl = createQuarryPlanner({ regions: regs, getBlock: planningBlocks(config), config: config.strategy })
     let stair = null; let counts = null; let survey = null
     if (yTop !== null) {
       const entry = storageList[0]?.position ?? (state?.position ? feetCell(state) : null)
@@ -489,6 +511,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const hz = hazardNow(s)
     if (hz) return escapeHazard(myEpoch, hz)
     if (healthRatio(s) <= job.config.safety.retreatHealthRatio) { note('low_health', { health: s.health }); setState('RECOVER'); return }
+    if (job.portableStorage) return returnAndDeposit(myEpoch, job.portableStorage.why ?? 'capacity')
     await tryEat(myEpoch)
     const inv = items(s)
     if (!inv) { await sleep(300); return }
@@ -544,7 +567,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     job.travelReboundFailed = false
     const records = planner.exportRecords()
     regions = next
-    planner = createQuarryPlanner({ regions, getBlock: adapter.getBlock, config: job.config.strategy, records })
+    planner = createQuarryPlanner({ regions, getBlock: planningBlocks(job.config), config: job.config.strategy, records })
     clearWorkDeferred(['UNREACHABLE'])
     job.cursorY = workFloorY()
     note('travel_rebound', { feet: f })
@@ -841,7 +864,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     batchCount = 0
     // The bag could not take everything: empty it into the chests, then the
     // left-over drops are picked up on the next collection.
-    if (needRoom && job.config.inventory.storage?.length) { note('collect_needs_room', { left: pendingDrops.filter(d => !d.unreachable).length }); job.depositReason = 'capacity'; setState('RETURN'); return }
+    if (needRoom && hasStorageOption()) { note('collect_needs_room', { left: pendingDrops.filter(d => !d.unreachable).length }); job.depositReason = 'capacity'; setState('RETURN'); return }
     setState('PLAN')
   }
 
@@ -987,7 +1010,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // The travel region includes every chest; rebuild it for the new one.
     const records = planner.exportRecords()
     regions = makeRegions(job.config, job.yTop, adapter.getState())
-    planner = createQuarryPlanner({ regions, getBlock: adapter.getBlock, config: job.config.strategy, records })
+    planner = createQuarryPlanner({ regions, getBlock: planningBlocks(job.config), config: job.config.strategy, records })
     note('storage_added', { position: entry.position, chests: job.config.inventory.storage.length, crafted: r.crafted ?? null })
     await save('storage_added')
     return { ok: true, storage: entry }
@@ -1025,7 +1048,134 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     note(busy(list) ? 'storage_area_wait_timeout' : 'storage_area_clear', { count: list.length })
   }
 
+  function hasStorageOption () {
+    return !!job.portableStorage || !!job.config.inventory.storage?.length || typeof adapter.storeCarried === 'function' && !!selectCarriedStorage(items(adapter.getState()))
+  }
+
+  const storagePoint = p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]) && Math.abs(p[k]) <= 30000000)
+  function protectStorageCells (positions, stand = null) {
+    const boxes = job.config.permissions.protectedRegion ??= []
+    let changed = false
+    for (const p of positions) {
+      if (!storagePoint(p)) throw new Error('Carried storage needs exact block positions')
+      if (boxes.some(b => b.xMin === p.x && b.xMax === p.x && b.zMin === p.z && b.zMax === p.z && b.yMin <= p.y - 1 && b.yMax >= p.y)) continue
+      boxes.push({ xMin: p.x, xMax: p.x, yMin: p.y - 1, yMax: p.y, zMin: p.z, zMax: p.z, source: 'quarry_storage' })
+      changed = true
+    }
+    // A saved interaction stand remains useful only while its supporting cell
+    // survives. Protect the floor alone so the bot may still walk onto it.
+    if (storagePoint(stand) && !boxes.some(b => b.xMin <= stand.x && b.xMax >= stand.x && b.zMin <= stand.z && b.zMax >= stand.z && b.yMin <= stand.y - 1 && b.yMax >= stand.y - 1)) {
+      boxes.push({ xMin: stand.x, xMax: stand.x, yMin: stand.y - 1, yMax: stand.y - 1, zMin: stand.z, zMax: stand.z, source: 'quarry_storage_stand' })
+      changed = true
+    }
+    if (changed) rebuildPlanner()
+  }
+
+  function registerCarriedStorage (entries, active) {
+    if (!Array.isArray(entries) || !entries.length) throw new Error('Placed carried chest lacks its storage receipt')
+    const list = job.config.inventory.storage ??= []
+    for (const entry of entries) {
+      const positions = entry.slotCount === 54 ? entry.pairedPositions : [entry.position]
+      if (!storagePoint(entry.position) || !Array.isArray(positions) || positions.length !== (active.selection.kind === 'double_chest' ? 2 : 1) || !positions.every(storagePoint) || !positions.some(p => posKey(p) === posKey(entry.position))) throw new Error('Carried chest footprint is unconfirmed')
+      if (positions.length === 2 && (entry.slotCount !== 54 || positions[0].y !== positions[1].y || Math.abs(positions[0].x - positions[1].x) + Math.abs(positions[0].z - positions[1].z) !== 1)) throw new Error('Double chest must have two adjacent confirmed cells')
+      if (positions.some(p => !(active.checkpoint?.placed ?? []).some(c => c.name === 'minecraft:chest' && c.confirmedBy === 'server_block_and_inventory' && posKey(c.position) === posKey(p)))) throw new Error('Carried chest lacks this operation placement ownership receipts')
+      if (positions.some(p => { const b = adapter.getBlock(p.x, p.y, p.z); return b?.known !== true || nameOf(b) !== 'chest' })) throw new Error('Carried chest blocks are not received from the server')
+      const record = { ...copy(entry), slotCount: positions.length === 2 ? 54 : 27, addedBy: 'carried', operationId: active.operationId }
+      const prior = list.findIndex(st => posKey(st.position) === posKey(record.position))
+      if (prior < 0) list.push(record); else list[prior] = { ...list[prior], ...record }
+      protectStorageCells(positions, entry.stand)
+    }
+    rebuildPlanner()
+  }
+
+  async function storeCarried (myEpoch, why, depositLimit = null) {
+    const state = guard(myEpoch); const inv = items(state)
+    if (!inv) { await sleep(300); return true }
+    const deposits = job.portableStorage?.depositLimit ?? depositLimit ?? keepPlan(inv, job.config.inventory).deposits
+    if (!job.portableStorage && !deposits.length) return false
+    if (typeof adapter.storeCarried !== 'function') {
+      if (job.portableStorage) { await finish('PAUSED', 'CARRIED_STORAGE_UNAVAILABLE'); return true }
+      return false
+    }
+    const selection = job.portableStorage?.selection ?? selectCarriedStorage(inv, { excludedShulkerKeys: job.exhaustedShulkerKeys ?? [] })
+    if (!selection) return false
+    if (!job.portableStorage) {
+      job.portableStorageSequence = (job.portableStorageSequence ?? 0) + 1
+      job.portableStorage = { operationId: `${job.config.jobId}:storage:${job.portableStorageSequence}`, selection: copy(selection), checkpoint: null, why, ...(depositLimit ? { depositLimit: copy(depositLimit) } : {}) }
+      await save('carried_storage_intent')
+    }
+    const owner = job; const active = job.portableStorage
+    const rec = recordAction({ type: 'carried_storage', operationId: active.operationId, kind: selection.kind, why: active.why })
+    setState(why === 'manual' ? 'PORTABLE_STORAGE' : 'DEPOSIT')
+    const onCheckpoint = async checkpoint => {
+      if (job !== owner || job.portableStorage !== active || checkpoint?.operationId !== active.operationId || checkpoint?.jobId !== owner.config.jobId || checkpoint?.kind !== selection.kind) throw new Error('Carried storage checkpoint belongs to another operation')
+      active.checkpoint = copy(checkpoint)
+      if (selection.kind !== 'shulker') {
+        const placed = (checkpoint.placed ?? []).filter(c => c.name === 'minecraft:chest' && storagePoint(c.position)).map(c => c.position)
+        if (placed.length) protectStorageCells(placed, checkpoint.stand)
+      }
+      // Delayed confirmed receipts may still be saved after a manual stop, but
+      // can never overwrite a replacement job or a later storage operation.
+      await save('carried_storage_checkpoint')
+    }
+    let result
+    try {
+      result = await call(myEpoch, 'carried_storage', signal => adapter.storeCarried({ jobId: owner.config.jobId, operationId: active.operationId, selection: copy(selection), deposits, inventoryPolicy: copy(job.config.inventory), checkpoint: copy(active.checkpoint) }, {
+        signal, onCheckpoint,
+        canPlace: p => storagePoint(p) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 })
+      }))
+      guard(myEpoch)
+      if (result?.checkpoint) await onCheckpoint(result.checkpoint)
+      if (!['completed', 'full'].includes(result?.status) || result.serverConfirmed !== true || selection.kind === 'shulker' && result.recovered !== true) {
+        rec.status = 'blocked'; rec.result = copy(result)
+        await finish('PAUSED', 'CARRIED_STORAGE_BLOCKED', { pauseDetails: { reason: result?.reason ?? 'UNCONFIRMED_RESULT', operationId: active.operationId, kind: selection.kind } })
+        return true
+      }
+      if (selection.kind !== 'shulker') registerCarriedStorage(result.storage, active)
+      const receipts = job.carriedStorageReceipts ??= []
+      if (!receipts.includes(active.operationId)) {
+        for (const d of result.deposited ?? []) {
+          if (typeof d.name !== 'string' || !Number.isSafeInteger(d.count) || d.count < 1 || isShulkerBox(d.name)) throw new Error('Carried storage transfer receipt is invalid')
+          ledger.add('deposited', d.name, d.count)
+        }
+        receipts.push(active.operationId)
+        if (receipts.length > 128) receipts.splice(0, receipts.length - 128)
+      }
+      if (selection.kind === 'shulker' && result.status === 'full') {
+        if (!Array.isArray(result.exhaustedShulkerKeys) || !result.exhaustedShulkerKeys.length || !result.exhaustedShulkerKeys.every(k => typeof k === 'string' && k.length)) throw new Error('Recovered full shulker lacks its current inventory identity')
+        job.exhaustedShulkerKeys = [...new Set([...(job.exhaustedShulkerKeys ?? []), ...result.exhaustedShulkerKeys])].slice(-128)
+      } else if (selection.kind !== 'shulker' && result.status === 'full') {
+        job.fullStorage = [...new Set([...(job.fullStorage ?? []), ...result.storage.map(st => posKey(st.position))])]
+      }
+      rec.status = 'confirmed'; rec.result = copy(result)
+      job.portableStorage = null
+      rebuildPlanner()
+      const fresh = items(guard(myEpoch))
+      if (!fresh) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
+      lastInventory = totals(fresh)
+      await save('carried_storage_done')
+      note('carried_storage_done', { kind: selection.kind, status: result.status, operationId: active.operationId, deposited: (result.deposited ?? []).reduce((n, d) => n + d.count, 0) })
+      const remaining = keepPlan(fresh, job.config.inventory).deposits.length
+      if (remaining && result.status === 'completed' && !(result.deposited?.length)) {
+        await finish('PAUSED', 'CARRIED_STORAGE_NO_PROGRESS', { pauseDetails: { operationId: active.operationId, kind: selection.kind } })
+        return true
+      }
+      if (why === 'final') {
+        if (!remaining) setState('FINAL_CHECK', { finalDeposited: true })
+        else setState('RETURN')
+      } else if (!remaining && freeSlots(fresh) >= job.config.inventory.minFreeSlots) setState('SURVEY')
+      else setState('RETURN')
+      return true
+    } catch (error) {
+      if (error instanceof QuarryInterrupt) throw error
+      rec.status = 'failed'; rec.error = String(error.message ?? error)
+      await finish('PAUSED', 'CARRIED_STORAGE_FAILED', { pauseDetails: { operationId: active.operationId, kind: selection.kind, error: rec.error.slice(0, 200) } })
+      return true
+    }
+  }
+
   async function returnAndDeposit (myEpoch, why) {
+    if (await storeCarried(myEpoch, why)) return
     if (!job.config.inventory.storage?.length) return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: 'carry-only job is full' } })
     // Do not walk out of the pit into a group: with several hostiles (or a
     // witch) around the chests, wait here and let combat take them first.
@@ -1127,6 +1277,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   async function finalCheck (myEpoch) {
     guard(myEpoch)
+    if (job.portableStorage) return returnAndDeposit(myEpoch, job.portableStorage.why ?? 'final')
     const floorY = workFloorY()
     keepEarlierLayers(floorY)
     // Re-scan the whole range (§16.3): unknown never completes.
@@ -1134,7 +1285,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     job.finalCounts = counts
     if (counts.unknown > 0) return finish('PAUSED', 'UNOBSERVED_CELLS', { pauseDetails: counts })
     if (counts.remaining > 0) { job.cursorY = floorY; setState('SURVEY'); return }
-    if (!job.finalDeposited && job.config.inventory.storage?.length) { await collect(myEpoch, 'final'); job.depositReason = 'final'; await returnAndDeposit(myEpoch, 'final'); return }
+    if (!job.finalDeposited && hasStorageOption()) { await collect(myEpoch, 'final'); job.depositReason = 'final'; await returnAndDeposit(myEpoch, 'final'); return }
     // UNREACHABLE is relative to where the bot stood; re-try from here a few
     // times before treating those cells as exceptions.
     // Same for cells put aside after transient mining refusals.
@@ -1152,7 +1303,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const lying = adapter.entities().filter(e => e.kind === 'item' && e.position && permits(regions, 'travel', { x: Math.floor(e.position.x), y: Math.floor(e.position.y + 0.01), z: Math.floor(e.position.z) }).allowed).length
       if (lying) {
         note('final_sweep', { items: lying })
-        if (job.config.inventory.storage?.length) job.finalDeposited = false
+        if (hasStorageOption()) job.finalDeposited = false
         await collect(myEpoch, 'final_sweep')
         if (job.state === 'PLAN') setState('FINAL_CHECK')
         return
@@ -1215,6 +1366,52 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   // ---- operations (§4.1) -------------------------------------------------
+  async function storeCarriedNow ({ deposits } = {}) {
+    if (!job || job.state !== 'PAUSED' || worker) throw new Error('Carried storage can run only while the quarry is fully paused')
+    const state = adapter.getState(); const inv = items(state)
+    if (state?.phase !== 'spawned' || state.dead || !inv || job.scope !== scopeOf(state) || job.life !== lifeOf(state)) throw new Error('Carried storage requires the paused job current connection, life and confirmed inventory')
+    if (job.portableStorage && deposits !== undefined) throw new Error('Resume the saved carried-storage operation without replacing its transfer limit')
+    let limit = null
+    if (deposits !== undefined) {
+      if (!Array.isArray(deposits) || !deposits.length || deposits.length > 36) throw new Error('Carried storage needs one to 36 bounded deposit requests')
+      const available = new Map(keepPlan(inv, job.config.inventory).deposits.map(item => [`${item.slot}:${nameOf(item)}`, item.count]))
+      limit = deposits.map(item => {
+        const key = `${item?.slot}:${nameOf(item)}`; const room = available.get(key) ?? 0
+        if (!Number.isInteger(item?.slot) || typeof item.name !== 'string' || !Number.isSafeInteger(item.count) || item.count <= 0 || item.count > room || isShulkerBox(item.name)) throw new Error('The requested transfer exceeds the current depositable inventory')
+        available.set(key, room - item.count)
+        return { slot: item.slot, name: item.name, count: item.count }
+      })
+    }
+    const owner = job
+    const prior = { userRunIntent: job.userRunIntent, pauseReason: job.pauseReason, pauseDetails: copy(job.pauseDetails), result: copy(job.result) }
+    const myEpoch = ++epoch
+    abort = new AbortController(); job.userRunIntent = 'running'
+    setState('PORTABLE_STORAGE')
+    adapter.onStarted?.(status())
+    let storageCompleted = false
+    const task = (async () => {
+      try {
+        const handled = await storeCarried(myEpoch, 'manual', limit)
+        const rec = job.actions.findLast(action => action.type === 'carried_storage')
+        const result = handled ? copy(rec?.result ?? { status: 'blocked', reason: job.pauseReason ?? rec?.error ?? 'UNCONFIRMED_RESULT' }) : { status: 'blocked', reason: 'NO_CARRIED_STORAGE' }
+        storageCompleted = ['completed', 'full'].includes(result.status) && result.serverConfirmed === true
+        return result
+      } finally {
+        if (job === owner && epoch === myEpoch) {
+          const failed = job.state === 'PAUSED' && /^CARRIED_STORAGE_/.test(job.pauseReason ?? '')
+          job.userRunIntent = prior.userRunIntent
+          if (!failed) Object.assign(job, { pauseReason: prior.pauseReason, pauseDetails: prior.pauseDetails, result: prior.result })
+          if (storageCompleted && /^CARRIED_STORAGE_/.test(prior.pauseReason ?? '')) Object.assign(job, { pauseReason: 'MANUAL_PAUSE', pauseDetails: null, result: null })
+          setState('PAUSED')
+          await save('carried_storage_manual_done')
+          try { adapter.onFinished?.(status()) } catch {}
+        }
+      }
+    })()
+    worker = task
+    try { const storageResult = await task; return { ...status(), storageResult } } finally { if (worker === task) worker = null }
+  }
+
   function start () {
     if (!job) throw new Error('Run plan first')
     if (!job.planned?.ready) throw new Error(`Plan is not ready: ${job.planned.issues.join(', ')}`)
@@ -1286,10 +1483,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // Restores a saved job document without running it (§15.2, §15.3).
   function load (doc) {
     if (!doc?.config || doc.config.schemaVersion !== 2) throw new Error('Unsupported quarry job document')
-    if (job && ACTIVE.has(job.state)) throw new Error('A quarry job is running')
+    if (worker || job && ACTIVE.has(job.state)) throw new Error('A quarry job is running')
     job = copy(doc)
     regions = makeRegions(job.config, job.yTop, adapter.getState())
-    planner = createQuarryPlanner({ regions, getBlock: adapter.getBlock, config: job.config.strategy, records: job.records ?? {} })
+    planner = createQuarryPlanner({ regions, getBlock: planningBlocks(job.config), config: job.config.strategy, records: job.records ?? {} })
     ledger = createLedger(job.ledger ?? {})
     if (ACTIVE.has(job.state)) { job.state = 'PAUSED'; job.pauseReason = 'PROCESS_RESTARTED'; job.userRunIntent = 'paused' }
     return status()
@@ -1326,13 +1523,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       freeSlots: inv ? freeSlots(inv) : null, health: s?.health ?? null, food: foodOf(s), held: s?.heldItem?.name ?? null,
       ledger: ledger.summary(), ledgerDetail: ledger.export(), pendingDrops: pendingDrops.length, unreachableItems: job.unreachableItems ?? [],
       combat: { ...combatBridge.snapshot(), settle: job.settle ?? null, recovery: job.recovery ?? null, interruption: job.interruption },
+      portableStorage: job.portableStorage ? { operationId: job.portableStorage.operationId, kind: job.portableStorage.selection?.kind, stage: job.portableStorage.checkpoint?.stage ?? 'intent', positions: copy(job.portableStorage.checkpoint?.positions ?? []), why: job.portableStorage.why } : null,
       lastDecision: job.lastDecision ?? null, lastAction: job.actions.at(-1) ?? null, deaths: job.deaths, planned: job.planned, events: events.slice(-15)
     })
   }
 
   function holdsWork () { return !!job && ACTIVE.has(job.state) }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, acceptExceptions, status, load, document, holdsWork, bridge: combatBridge, drain: () => worker ?? Promise.resolve() }
+  return { plan, start, pause, emergencyStop, resume, cancel, acceptExceptions, storeCarriedNow, status, load, document, holdsWork, bridge: combatBridge, drain: () => worker ?? Promise.resolve() }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults }

@@ -10,8 +10,31 @@ const STACK1 = /(_sword|_pickaxe|_axe|_shovel|_hoe|_helmet|_chestplate|_leggings
 const FOOD = /^(bread|cooked_[a-z_]+|baked_potato|apple|golden_apple|enchanted_golden_apple|golden_carrot|carrot|potato|beetroot|melon_slice|sweet_berries|glow_berries|cookie|pumpkin_pie|dried_kelp|mushroom_stew|rabbit_stew|beetroot_soup|beef|porkchop|mutton|chicken|rabbit|cod|salmon)$/
 const KEEP = /^(torch|soul_torch|bucket|water_bucket|lava_bucket|bow|crossbow|arrow|spectral_arrow|tipped_arrow|shield|totem_of_undying|bed|.*_bed|.*_helmet|.*_chestplate|.*_leggings|.*_boots|ladder|scaffolding|flint_and_steel|ender_pearl)$/
 
-const maxStack = name => { const n = nameOf(name); return STACK1.test(n) ? 1 : STACK16.test(n) ? 16 : 64 }
+const isShulkerBox = name => /(?:^|_)shulker_box$/.test(nameOf(name))
+const maxStack = name => { const n = nameOf(name); return isShulkerBox(n) || STACK1.test(n) ? 1 : STACK16.test(n) ? 16 : 64 }
 const isFood = name => FOOD.test(nameOf(name))
+
+// Use the received stack identity when available. Recovery can move a shulker
+// to another slot and give it a new stack ID; its controller returns the new
+// key when a full box must be skipped for the remainder of a storage pass.
+function carriedContainerKey (item) {
+  const stack = item?.stackId ?? item?.stack_id
+  return Number.isSafeInteger(stack) && stack > 0 ? `${nameOf(item)}:stack:${stack}` : `${nameOf(item)}:slot:${item?.slot}`
+}
+
+function selectCarriedStorage (items, { excludedShulkerKeys = [] } = {}) {
+  const available = [...(items ?? [])].filter(item => Number.isInteger(item?.slot) && item.slot >= 0 && item.slot < SLOTS && Number.isSafeInteger(item.count) && item.count > 0).sort((a, b) => a.slot - b.slot)
+  const excluded = new Set(excludedShulkerKeys)
+  const source = (item, count) => ({ slot: item.slot, name: item.name, count, ...(Number.isSafeInteger(item.stackId ?? item.stack_id) ? { stackId: item.stackId ?? item.stack_id } : {}) })
+  const box = available.find(item => isShulkerBox(item.name) && item.count === 1 && !excluded.has(carriedContainerKey(item)))
+  if (box) return { kind: 'shulker', key: carriedContainerKey(box), sources: [source(box, 1)] }
+  const chests = available.filter(item => nameOf(item) === 'chest')
+  const count = Math.min(2, chests.reduce((sum, item) => sum + item.count, 0))
+  if (!count) return null
+  const sources = []; let left = count
+  for (const item of chests) { if (!left) break; const take = Math.min(left, item.count); sources.push(source(item, take)); left -= take }
+  return { kind: count === 2 ? 'double_chest' : 'single_chest', key: sources.map(item => `${carriedContainerKey(item)}:${item.count}`).join('|'), sources }
+}
 
 // What stays with the bot on deposit (§11.1): tools, weapons, armour, food,
 // emergency items and up to keepSealBlocks of seal/stair material.
@@ -24,7 +47,7 @@ function keepPlan (items, { keepSealBlocks = 32, keepFood = 64, keepLogs = 4, ke
   const sorted = [...(items ?? [])].filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot < SLOTS).sort((a, b) => a.slot - b.slot)
   for (const item of sorted) {
     const n = nameOf(item)
-    if (toolOf(item) || KEEP.test(n) || n === 'chest' || n === 'crafting_table') { keep.set(item.slot, item.count); continue }
+    if (toolOf(item) || KEEP.test(n) || isShulkerBox(n) || n === 'chest' || n === 'crafting_table') { keep.set(item.slot, item.count); continue }
     if (/_(log|stem)$/.test(n) && logs < keepLogs) { const k = Math.min(item.count, keepLogs - logs); logs += k; keep.set(item.slot, k); continue }
     if (/^(coal|charcoal)$/.test(n) && coal < keepCoal) { const k = Math.min(item.count, keepCoal - coal); coal += k; keep.set(item.slot, k); continue }
     if (n === 'stick' && sticks < keepSticks) { const k = Math.min(item.count, keepSticks - sticks); sticks += k; keep.set(item.slot, k); continue }
@@ -82,4 +105,4 @@ function createLedger (saved = {}) {
   return { add, export: () => structuredClone(ledger), summary: () => Object.fromEntries(buckets.map(b => [b, Object.values(ledger[b]).reduce((s, v) => s + v, 0)])) }
 }
 
-module.exports = { keepPlan, freeSlots, canAccept, totals, diff, createLedger, maxStack, isFood, SLOTS }
+module.exports = { keepPlan, freeSlots, canAccept, totals, diff, createLedger, maxStack, isFood, isShulkerBox, carriedContainerKey, selectCarriedStorage, SLOTS }

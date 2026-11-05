@@ -6,6 +6,7 @@ const { setTimeout: delay } = require('node:timers/promises')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
 const { createCrafting } = require('../src/crafting')
 const { createChest } = require('../src/chest')
+const { SHULKER_BLOCKS } = require('../src/container-types')
 
 const extra = () => ({ has_nbt: 'false', can_place_on: [], can_destroy: [] })
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: extra() })
@@ -13,13 +14,13 @@ const item = (id, count, stack) => ({ network_id: id, count, metadata: 0, has_st
 const target = { x: 1, y: 64, z: 1 }
 const registry = [{ runtime_id: 401, name: 'minecraft:diamond' }, { runtime_id: 402, name: 'minecraft:dirt' }]
 
-function fixture ({ opened = true, contents = true, timeoutMs = 300, slots = 27, actualCrafting = false, wireDecode = false, reconcile = false } = {}) {
+function fixture ({ opened = true, contents = true, timeoutMs = 300, slots = 27, actualCrafting = false, wireDecode = false, reconcile = false, blockName = 'minecraft:chest' } = {}) {
   const state = { phase: 'spawned', profile: 'bot', realm: { id: '21225335' }, connectionId: 'chest-test-connection', startedAt: '2026-11-01T14:20:00.000Z', runtimeEntityId: '13639', dimension: 'overworld', lifecycle: { deathId: 0, dead: false }, gameMode: 'survival', health: 20, inventory: { known: true } }
   const packets = [], uncertain = [], reconciliations = [], bag = Array.from({ length: 36 }, air)
   bag[14] = item(401, 2, 88)
   let observed = { authority: true, inventoryKnown: true, pendingRequestId: null, openContainer: null }
   let next = -501, childCancelCount = 0, childOpenCount = 0
-  let block = { ...target, known: true, name: 'minecraft:chest', runtimeId: 123456, extra: [] }
+  let block = { ...target, known: true, name: blockName, runtimeId: 123456, extra: [] }
   const client = { queue: (name, params) => packets.push({ name, params: structuredClone(params) }) }
   const serializer = createSerializer('1.26.60'), parser = createDeserializer('1.26.60')
   const codec = (name, params) => wireDecode ? parser.parsePacketBuffer(serializer.createPacketBuffer({ name, params })).data.params : params
@@ -48,6 +49,29 @@ function fixture ({ opened = true, contents = true, timeoutMs = 300, slots = 27,
 }
 
 // These use controlled server observations, not live Realm storage or item credit.
+test('closing a previous chest window cannot cancel a fresh open awaiting its new receipt', async () => {
+  const f = fixture()
+  const opening = f.chest.open(target, 2)
+  f.observe('container_close', { window_id: 5 })
+  await delay(0)
+  assert.equal(f.chest.snapshot().busy, true)
+  assert.equal(f.chest.snapshot().contentsKnown, false)
+  f.openedPacket(); f.content()
+  const result = await opening
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(result.slotCount, 27)
+})
+
+test('closing the newly received chest window still cancels its pending open', async () => {
+  const f = fixture({ opened: false })
+  const opening = f.chest.open(target, 2)
+  const rejected = assert.rejects(opening, /閉じられ/)
+  f.openedPacket()
+  f.observe('container_close', { window_id: 5 })
+  await rejected
+  assert.equal(f.chest.snapshot().contentsKnown, false)
+})
+
 test('real 1.26.60 codec + actual Crafting: one diamond needs ACK and both fresh server slot descriptors', async () => {
   const f = fixture({ actualCrafting: true, wireDecode: true })
   assert.equal(f.chest.snapshot().contentsKnown, true)
@@ -84,16 +108,121 @@ test('open waits actual same-coordinate window plus all 27 received slots after 
   assert.equal(f.packets.length, 0, 'opening delegates the existing authoritative block-use controller')
 })
 
-test('empty/unreceived/double-chest windows never create 27 phantom empty slots or send a transfer', () => {
+test('empty, unreceived and malformed windows never create phantom empty slots or send a transfer', () => {
   const missing = fixture({ contents: false })
   assert.throws(() => missing.chest.depositDiamond({ sourceSlot: 14 }), /27/)
   assert.equal(missing.chest.rawItem(0), null)
-  const doubled = fixture({ slots: 54 })
-  assert.equal(doubled.chest.snapshot().contentsKnown, false)
-  assert.throws(() => doubled.chest.depositDiamond({ sourceSlot: 14 }), /27/)
-  assert.equal(doubled.packets.length, 0)
+  const partial = fixture({ slots: 53 })
+  assert.equal(partial.chest.snapshot().contentsKnown, false)
+  assert.throws(() => partial.chest.depositDiamond({ sourceSlot: 14 }), /27/)
+  assert.equal(partial.packets.length, 0)
   const bad = fixture(); bad.chestSlot(0, { ...air(), has_stack_id: true, stack_id: 7 })
   assert.throws(() => bad.chest.depositDiamond({ sourceSlot: 14 }), /27/)
+})
+
+test('a fresh 54-slot chest uses the second half and confirms its real ACK and slot changes', async () => {
+  const f = fixture({ slots: 54, wireDecode: true, actualCrafting: true })
+  assert.equal(f.chest.snapshot().slotCount, 54); assert.equal(f.chest.snapshot().slots.length, 54)
+  for (let slot = 0; slot < 53; slot++) f.chestSlot(slot, item(402, 64, 200 + slot))
+  const putting = f.chest.depositDiamond({ sourceSlot: 14 })
+  const wire = createDeserializer('1.26.60').parsePacketBuffer(createSerializer('1.26.60').createPacketBuffer(f.packets[0])).data.params.requests[0].actions[0]
+  assert.equal(wire.destination.slot, 53); assert.equal(wire.destination.slot_type.container_id, 'container')
+  f.observe('item_stack_response', f.codec('item_stack_response', itemAck(14, 1, 89, 53, 1, 90)))
+  assert.equal(f.chest.snapshot().busy, true)
+  f.main(14, item(401, 1, 89)); assert.equal(f.chest.snapshot().busy, true)
+  f.chestSlot(53, item(401, 1, 90))
+  const result = await putting
+  assert.equal(result.serverConfirmed, true); assert.equal(result.chestSlot, 53)
+  assert.equal(f.chest.rawItem(53).stack_id, 90); assert.equal(f.chest.rawItem(54), null)
+})
+
+test('an expected double chest cannot open from 27 slots or a partially malformed 54-slot content', async () => {
+  const f = fixture({ opened: false })
+  const opening = f.chest.open(target, 0, { expectedSlots: 54 })
+  await delay(0); f.openedPacket(); f.content(27)
+  assert.equal(f.chest.snapshot().busy, true); assert.equal(f.chest.snapshot().contentsKnown, false)
+  assert.equal(f.chest.snapshot().slots.length, 54)
+  assert.ok(f.chest.snapshot().slots.every(slot => slot.known === false && slot.count === null))
+  for (let slot = 0; slot < 54; slot++) f.chestSlot(slot, air())
+  assert.equal(f.chest.snapshot().contentsKnown, false, 'individual slots cannot prove an unopened layout size')
+  const incomplete = Array.from({ length: 54 }, air); incomplete[53] = null
+  f.observe('inventory_content', { window_id: 5, input: incomplete })
+  assert.equal(f.chest.snapshot().busy, true); assert.equal(f.chest.snapshot().contentsKnown, false)
+  f.content(54)
+  const result = await opening
+  assert.equal(result.slotCount, 54); assert.equal(result.kind, 'chest')
+  assert.equal(result.confirmedBy, 'server_container_open_and_full_content')
+})
+
+test('a known double chest never shrinks to 27 slots in the same window', () => {
+  const f = fixture({ slots: 54 })
+  f.content(27)
+  assert.equal(f.chest.snapshot().slotCount, 54); assert.equal(f.chest.snapshot().contentsKnown, false)
+  assert.throws(() => f.chest.depositDiamond({ sourceSlot: 14 }), /27/)
+  assert.equal(f.packets.length, 0)
+})
+
+test('only a fully received container without a compatible destination reports CONTAINER_FULL', () => {
+  for (const slots of [27, 54]) {
+    const f = fixture({ slots })
+    for (let slot = 0; slot < slots; slot++) f.chestSlot(slot, item(402, 64, 200 + slot))
+    assert.throws(() => f.chest.depositDiamond({ sourceSlot: 14 }), error => error.code === 'CONTAINER_FULL')
+    f.chestSlot(slots - 1, null)
+    assert.throws(() => f.chest.depositDiamond({ sourceSlot: 14 }), error => error.code !== 'CONTAINER_FULL')
+    assert.equal(f.packets.length, 0)
+  }
+  const sparse = fixture({ contents: false })
+  sparse.observe('inventory_content', { window_id: 5, input: new Array(54) })
+  assert.equal(sparse.chest.snapshot().contentsKnown, false)
+  const wrongIndex = fixture({ slots: 54 }); wrongIndex.chestSlot(54, air())
+  assert.equal(wrongIndex.chest.snapshot().contentsKnown, false)
+  assert.throws(() => wrongIndex.chest.depositDiamond({ sourceSlot: 14 }), error => error.code !== 'CONTAINER_FULL')
+})
+
+test('all 17 actual shulker block names bind a 27-slot container window, never a 54-slot shulker', () => {
+  for (const blockName of SHULKER_BLOCKS) {
+    const f = fixture({ blockName })
+    assert.equal(f.chest.snapshot().contentsKnown, true, blockName)
+    assert.equal(f.chest.snapshot().kind, 'shulker'); assert.equal(f.chest.snapshot().blockName, blockName)
+    assert.equal(f.chest.snapshot().slotCount, 27)
+    f.content(54); assert.equal(f.chest.snapshot().contentsKnown, false)
+    assert.throws(() => f.chest.open(target, 0, { expectedSlots: 54 }), /スロット数/)
+  }
+})
+
+test('shulker deposits use codec slot type30 and still need matching ACK plus player and container evidence', async () => {
+  const f = fixture({ blockName: 'minecraft:undyed_shulker_box', wireDecode: true, actualCrafting: true })
+  const putting = f.chest.depositDiamond({ sourceSlot: 14 })
+  const wire = createDeserializer('1.26.60').parsePacketBuffer(createSerializer('1.26.60').createPacketBuffer(f.packets[0])).data.params.requests[0].actions[0]
+  assert.equal(wire.destination.slot_type.container_id, 'shulker')
+  const ack = itemAck(14, 1, 89, 0, 1, 90); ack.responses[0].containers[1].slot_type.container_id = 'shulker'
+  f.observe('item_stack_response', f.codec('item_stack_response', ack))
+  assert.equal(f.chest.snapshot().busy, true)
+  f.main(14, item(401, 1, 89)); assert.equal(f.chest.snapshot().busy, true)
+  f.chestSlot(0, item(401, 1, 90))
+  const result = await putting
+  assert.equal(result.serverConfirmed, true); assert.equal(result.containerConfirmed, true); assert.equal(result.inventoryConfirmed, true)
+})
+
+test('shulker nesting is rejected for undyed, every color and the legacy generic item before any request', () => {
+  for (const name of [...SHULKER_BLOCKS, 'minecraft:shulker_box']) {
+    const f = fixture({ blockName: 'minecraft:blue_shulker_box' })
+    f.observe('item_registry', { itemstates: [{ runtime_id: 500, name }] }); f.main(14, item(500, 1, 55))
+    assert.throws(() => f.chest.depositItem({ sourceSlot: 14, expectedName: name }), /シュルカー/)
+    assert.equal(f.packets.length, 0)
+  }
+})
+
+test('a replaced container block or changed layout cannot complete an in-flight transfer', async () => {
+  for (const change of ['block', 'layout']) {
+    const f = fixture({ slots: 54 })
+    const putting = f.chest.depositDiamond({ sourceSlot: 14, chestSlot: 53 }), rejected = assert.rejects(putting)
+    if (change === 'block') { f.setBlock({ known: true, name: 'minecraft:blue_shulker_box', runtimeId: 12, extra: [] }); f.chestSlot(53, item(401, 1, 90)) }
+    else f.content(27)
+    await rejected
+    assert.equal(f.chest.snapshot().lastResult.serverConfirmed, false)
+    assert.equal(f.crafting.rawItem(14).count, 2)
+  }
 })
 
 test('exact stack-identity merges and inventory slot35 use actual source and destination stack IDs', async () => {
@@ -342,9 +471,10 @@ test('positive remaining source requires the actual ACK stack ID and projects on
 })
 
 function itemAck (sourceSlot, remaining, sourceId, chestSlot, chestCount, chestId) {
+  const observed = (slot, count, itemStackId) => ({ slot, hotbar_slot: slot, count, item_stack_id: itemStackId ?? 0, custom_name: '', filtered_custom_name: '', durability_correction: 0 })
   return { responses: [{ request_id: -501, status: 'ok', containers: [
-    { slot_type: { container_id: 'hotbar_and_inventory' }, slots: [{ slot: sourceSlot, count: remaining, ...(sourceId != null ? { item_stack_id: sourceId } : {}) }] },
-    { slot_type: { container_id: 'container' }, slots: [{ slot: chestSlot, count: chestCount, item_stack_id: chestId }] }
+    { slot_type: { container_id: 'hotbar_and_inventory', dynamic_container_id: null }, slots: [observed(sourceSlot, remaining, sourceId)] },
+    { slot_type: { container_id: 'container', dynamic_container_id: null }, slots: [observed(chestSlot, chestCount, chestId)] }
   ] }] }
 }
 
