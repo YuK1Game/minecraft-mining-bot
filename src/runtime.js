@@ -5811,6 +5811,43 @@ function createRuntime (host) {
   // placed at another candidate), and the chest is crafted and placed. Only a
   // server-confirmed chest block counts; nothing comes from commands.
   let quarryChestWork = null
+  // Torches for the chest area (quarry). Crafted normally from carried coal or
+  // charcoal plus sticks (planks from a carried log if needed); never by command.
+  async function quarryCraftTorches ({ want = 8, signal } = {}) {
+    const inv = () => lightweightUserState().inventory?.items ?? []
+    const count = re => inv().filter(i => re.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
+    const torches = () => count(/^minecraft:torch$/)
+    if (torches() >= want) return { ok: true, torches: torches() }
+    if (!count(/^minecraft:(coal|charcoal)$/)) return { ok: torches() > 0, reason: 'NO_COAL', torches: torches() }
+    const made = []
+    try {
+      await crafting.openInventory()
+      for (let guard = 0; guard < 6 && torches() < want && count(/^minecraft:(coal|charcoal)$/); guard++) {
+        if (signal?.aborted) throw new Error('quarry torch crafting aborted')
+        if (!count(/^minecraft:stick$/)) {
+          if (!count(/_planks$/)) {
+            const log = inv().find(i => /^minecraft:[a-z_]+_log$/.test(i.name ?? '') && !/stripped/.test(i.name))
+            if (!log) return { ok: torches() > 0, reason: 'NO_WOOD', torches: torches(), made }
+            await crafting.craft(log.name.replace(/_log$/, '_planks'), { times: 1 }); made.push('planks')
+          }
+          await crafting.craft('minecraft:stick', { times: 1 }); made.push('stick')
+        }
+        await crafting.craft('minecraft:torch', { times: 1 }); made.push('torch')
+      }
+    } catch (error) { return { ok: torches() > 0, reason: 'CRAFT_FAILED', error: String(error.message).slice(0, 160), torches: torches(), made } }
+    finally { try { crafting.closeContainer() } catch {} }
+    return { ok: torches() > 0, torches: torches(), made }
+  }
+  async function quarryPlaceTorch ({ position, signal } = {}) {
+    let item = (lightweightUserState().inventory?.items ?? []).find(i => i.name === 'minecraft:torch' && i.count > 0)
+    if (!item) return { ok: false, reason: 'NO_TORCH' }
+    if (item.slot > 8) { await operations.inventory.equip(item.slot); item = (lightweightUserState().inventory?.items ?? []).find(i => i.name === 'minecraft:torch' && i.count > 0 && i.slot <= 8) }
+    if (!item) return { ok: false, reason: 'TORCH_NOT_IN_HOTBAR' }
+    if (signal?.aborted) throw new Error('quarry torch placement aborted')
+    await interactions.placeBlock({ position, slot: item.slot, face: 1 })
+    const b = host.world.getBlock(position.x, position.y, position.z)
+    return { ok: b?.known === true && b.name === 'minecraft:torch', block: b?.name ?? null }
+  }
   async function quarryAddChest ({ candidates = [], signal } = {}) {
     quarryChestWork ??= createDepotStorageWork({ getState: () => lightweightUserState(), world: host.world, crafting, interactions, chest, inventory })
     const isAir = p => { const b = host.world.getBlock(p.x, p.y, p.z); return b?.known === true && /^minecraft:(air|cave_air|void_air)$/.test(b.name) }
@@ -5890,6 +5927,8 @@ function createRuntime (host) {
       eat: own(() => operations.food.eat({})),
       chest: { open: own(position => operations.chest.open(position)), depositItem: own(options => operations.chest.depositItem(options)), close: () => crafting.closeContainer() },
       addChest: own(options => { requireIdle(); crafting.closeContainer(); return quarryAddChest(options) }),
+      craftTorches: own(options => { requireIdle(); return quarryCraftTorches(options) }),
+      placeTorch: own(options => { requireIdle(); crafting.closeContainer(); return quarryPlaceTorch(options) }),
       stopAll: async reason => { try { ports.mining.stop(reason) } catch {} try { ports.movement.stop(reason) } catch {} try { chest.cancel(reason) } catch {} try { interactions.cancel(reason) } catch {} },
       // Idle-protection escapes move the bot too; treat them like a fight so the
       // quarry yields movement instead of racing them.

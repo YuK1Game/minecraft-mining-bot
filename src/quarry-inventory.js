@@ -17,14 +17,17 @@ const isFood = name => FOOD.test(nameOf(name))
 // emergency items and up to keepSealBlocks of seal/stair material.
 // Material for one more storage chest is kept too: carried chests and a
 // crafting table, plus a few logs/planks (2 logs make a chest, 1 a table).
-function keepPlan (items, { keepSealBlocks = 32, keepFood = 64, keepLogs = 4, keepPlanks = 12 } = {}) {
+// A little coal and a few sticks stay too, to craft torches for the chest area.
+function keepPlan (items, { keepSealBlocks = 32, keepFood = 64, keepLogs = 4, keepPlanks = 12, keepCoal = 4, keepSticks = 4 } = {}) {
   const keep = new Map() // slot -> count kept
-  let seal = 0; let food = 0; let logs = 0; let planks = 0
+  let seal = 0; let food = 0; let logs = 0; let planks = 0; let coal = 0; let sticks = 0
   const sorted = [...(items ?? [])].filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot < SLOTS).sort((a, b) => a.slot - b.slot)
   for (const item of sorted) {
     const n = nameOf(item)
     if (toolOf(item) || KEEP.test(n) || n === 'chest' || n === 'crafting_table') { keep.set(item.slot, item.count); continue }
     if (/_(log|stem)$/.test(n) && logs < keepLogs) { const k = Math.min(item.count, keepLogs - logs); logs += k; keep.set(item.slot, k); continue }
+    if (/^(coal|charcoal)$/.test(n) && coal < keepCoal) { const k = Math.min(item.count, keepCoal - coal); coal += k; keep.set(item.slot, k); continue }
+    if (n === 'stick' && sticks < keepSticks) { const k = Math.min(item.count, keepSticks - sticks); sticks += k; keep.set(item.slot, k); continue }
     if (/_planks$/.test(n) && planks < keepPlanks) { const k = Math.min(item.count, keepPlanks - planks); planks += k; keep.set(item.slot, k); continue }
     if (isFood(n) && food < keepFood) { const k = Math.min(item.count, keepFood - food); food += k; keep.set(item.slot, k); continue }
     if (SEAL_MATERIALS.includes(n) && seal < keepSealBlocks) { const k = Math.min(item.count, keepSealBlocks - seal); seal += k; keep.set(item.slot, k) }

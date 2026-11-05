@@ -11,7 +11,7 @@ const FEET = 1.62
 
 function createQuarryRuntimeAdapter (ports) {
   const {
-    getState, getBlock, entities, mining, getMining, movement, getMovement, equip, placeQuarry, eat, resyncInventory = null, prepareMining = null,
+    getState, getBlock, entities, mining, getMining, movement, getMovement, equip, placeQuarry, eat, resyncInventory = null, craftTorches = null, placeTorch = null, prepareMining = null,
     chest, addChest = null, stopAll, combatActive, threatEvidence = null, recentDamageAt = null, harmfulEffect = null, worldRevision = null,
     sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now,
     segmentCells = 6, segmentTimeoutMs = 20000, mineTimeoutMs = 15000, previewSettleMs = 3000, shortStopMs = 1500, pollMs = 25, slowBreakMinMs = 1500, log = () => {}
@@ -220,6 +220,10 @@ function createQuarryRuntimeAdapter (ports) {
     ...(typeof prepareMining === 'function' ? { prepareMining: (tool, options) => prepareMining(tool, options) } : {}),
     place,
     eat: () => eat(),
+    // Torches for the chest area: crafted from carried coal/charcoal and wood,
+    // placed on the top face of the block below; both are server-confirmed.
+    craftTorches: options => typeof craftTorches === 'function' ? craftTorches(options) : { ok: false, reason: 'UNSUPPORTED' },
+    placeTorch: options => typeof placeTorch === 'function' ? placeTorch(options) : { ok: false, reason: 'UNSUPPORTED' },
     // Asks the server for the real inventory and selected slot; resolves once
     // a fresh view arrived (or false when it could not be requested).
     resyncInventory: options => typeof resyncInventory === 'function' ? resyncInventory(options) : false,

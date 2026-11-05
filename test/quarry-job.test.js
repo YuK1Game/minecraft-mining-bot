@@ -541,3 +541,23 @@ test('live case 2026-11-05: a stance whose mining preview is refused (pose not s
   assert.equal(failed.length, 0, `cells written off: ${JSON.stringify(failed.slice(0, 3))}`)
   assert.equal(s.pauseReason, 'UNRESOLVED_EXCEPTIONS')
 })
+
+test('live case 2026-11-05: after a deposit the chest area is lit with crafted torches (normal placement, once)', async () => {
+  const sim = setup({ stoneTop: 60, top: 62, chestSlots: 64 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5)
+  for (let n = 0; n < 31; n++) sim.give('andesite', 64) // nearly full: the first capacity check deposits
+  sim.give('coal', 2)
+  let crafts = 0; const placed = []
+  sim.adapter.craftTorches = async ({ want }) => { crafts++; sim.give('torch', 8); return { ok: true, torches: 8 } }
+  sim.adapter.placeTorch = async ({ position }) => { sim.world.set(position.x, position.y, position.z, 'torch'); placed.push(position); return { ok: true } }
+  const lines = []
+  const { j } = job(sim, { log: l => lines.push(l) })
+  assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+  j.start()
+  const until = Date.now() + 30000
+  while (Date.now() < until && !lines.some(l => /storage_lit/.test(l))) await new Promise(r => setTimeout(r, 10))
+  j.emergencyStop?.()
+  assert.equal(crafts, 1)
+  assert.ok(placed.length >= 2, `torches placed: ${placed.length}`)
+  assert.ok(placed.every(p => !(p.x >= 0 && p.x <= 15 && p.z >= 0 && p.z <= 15)), 'never inside the quarry columns')
+})
