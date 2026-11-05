@@ -13,6 +13,7 @@ const { createQuarryCombatBridge } = require('./quarry-combat-bridge')
 
 const copy = value => value === undefined ? undefined : structuredClone(value)
 const FEET = 1.62
+const SETTLE_MAX_WAIT_MS = 45000 // longest post-combat settle wait for threats that do not come
 const AUTO_RESUME_WINDOW_MS = 600000 // the ACTION_FAILED auto-resume budget resets after this quiet time
 const STORAGE_AREA_RADIUS = 24 // m around the chests checked before leaving the pit
 const STORAGE_WAIT_MS = 20000 // longest wait for the chest area to clear (a long idle wait looks like a stall)
@@ -76,6 +77,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job) return
     if (job.state !== state) {
       note('state', { from: job.state, to: state, ...extra })
+      if (state === 'COMBAT_SETTLE' && job.state !== 'COMBAT') job.settleWaitSince = null
       // A recovery wait timer belongs to one stay in a recovery state; a stale
       // one (e.g. from before a combat interruption or death) would pause at once.
       if (state === 'RECOVER' || state === 'RECOVER_AFTER_COMBAT') job.recoverWaitSince = null
@@ -287,7 +289,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         if (adapter.combatActive()) { setState('COMBAT'); return }
         const r = combatBridge.settle(s, adapter.actors?.() ?? adapter.entities(), { evidenceFor: e => adapter.threatEvidence?.(e) ?? {}, recentDamageAt: adapter.recentDamageAt?.() ?? null, hazard: hazardNow(s) !== null })
         job.settle = r
-        if (r.settled) { setState('RECOVER_AFTER_COMBAT'); return }
+        if (r.settled) { job.settleWaitSince = null; setState('RECOVER_AFTER_COMBAT'); return }
+        // Threats that never come (a slime chunk spawning below y40, mobs on the
+        // rim) kept the settle open for ~50 minutes. After SETTLE_MAX_WAIT_MS
+        // without a recent hit or hazard, go back to work; combat still takes
+        // anything that comes close.
+        job.settleWaitSince ??= now()
+        if (now() - job.settleWaitSince > SETTLE_MAX_WAIT_MS && !r.reasons.includes('RECENT_ATTACKER') && !r.reasons.includes('IMMEDIATE_HAZARD') && !r.reasons.includes('PROJECTILE_NEARBY')) {
+          note('settle_timeout', { reasons: r.reasons.slice(0, 4), waitedMs: now() - job.settleWaitSince })
+          job.settleWaitSince = null; setState('RECOVER_AFTER_COMBAT'); return
+        }
         // A threat the combat layer does not engage can hold the settle open
         // for minutes while it keeps hurting us; eat meanwhile so health can
         // regenerate instead of only waiting (throttled). Never while a hostile
@@ -1030,7 +1041,47 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (keepPlan(items(adapter.getState()) ?? [], job.config.inventory).deposits.length) { setState('RETURN'); return }
     }
     if (why === 'final') { setState('FINAL_CHECK', { finalDeposited: true }); return }
+    await lightStorageArea(myEpoch)
     setState('SURVEY')
+  }
+
+  // Light the chest area once (again when a chest was added): mobs that spawned
+  // around the chests caused most deaths on the surface. Normal crafting and
+  // placement only; every failure is logged and skipped, never a pause.
+  async function lightStorageArea (myEpoch) {
+    const list = (job.config.inventory.storage ?? []).map(st => st.position).filter(Boolean)
+    if (!list.length || typeof adapter.craftTorches !== 'function' || typeof adapter.placeTorch !== 'function') return
+    if (job.storageLitFor === list.length || now() - (job.lightAttemptAt ?? 0) < 600000) return
+    job.lightAttemptAt = now()
+    const nearTorch = (p, r) => { for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) for (let dy = -2; dy <= 2; dy++) { const b = adapter.getBlock(p.x + dx, p.y + dy, p.z + dz); if (b?.known && /torch|lantern/.test(nameOf(b))) return true } return false }
+    const cells = []
+    for (const c of list) {
+      for (const [dx, dz] of [[3, 0], [-3, 0], [0, 3], [0, -3], [3, 3], [-3, 3], [3, -3], [-3, -3]]) {
+        for (const dy of [0, 1, -1]) {
+          const p = { x: c.x + dx, y: c.y + dy, z: c.z + dz }
+          const at = adapter.getBlock(p.x, p.y, p.z); const below = adapter.getBlock(p.x, p.y - 1, p.z)
+          if (!(at?.known && AIR.has(nameOf(at)) && !(at.extra ?? []).length && below?.known && below.boundingBox === 'block' && !/chest|crafting_table|leaves|torch/.test(nameOf(below)))) continue
+          if (regions.columns.has(p.x + ',' + p.z) || cells.some(o => Math.hypot(o.x - p.x, o.z - p.z) < 4) || nearTorch(p, 3)) break
+          cells.push(p); break
+        }
+      }
+    }
+    if (!cells.length) { job.storageLitFor = list.length; return }
+    const crafted = await call(myEpoch, 'craft_torches', signal => adapter.craftTorches({ want: Math.min(8, cells.length), signal })).catch(error => { if (error instanceof QuarryInterrupt) throw error; return { ok: false, error: String(error.message ?? error).slice(0, 160) } })
+    note('torches_crafted', crafted ?? {})
+    if (!crafted?.torches) return
+    let placed = 0
+    for (const p of cells.slice(0, Math.min(8, crafted.torches))) {
+      const reach = planner.reachableFrom(feetCell(guard(myEpoch)))
+      const stand = [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2]].map(([dx, dz]) => ({ x: p.x + dx, y: p.y, z: p.z + dz })).find(c => planner.standable(c) && reach.has(c.x + ',' + c.y + ',' + c.z))
+      if (!stand) continue
+      try { await moveToStance(myEpoch, stand) } catch (error) { if (error instanceof QuarryInterrupt) throw error; continue }
+      const r = await call(myEpoch, 'place_torch', signal => adapter.placeTorch({ position: p, signal })).catch(error => { if (error instanceof QuarryInterrupt) throw error; return { ok: false, error: String(error.message ?? error).slice(0, 120) } })
+      if (r?.ok) placed++
+      else note('torch_failed', { position: p, ...(r ?? {}) })
+    }
+    note('storage_lit', { placed, cells: cells.length, chests: list.length })
+    if (placed) job.storageLitFor = list.length
   }
 
   async function finalCheck (myEpoch) {
