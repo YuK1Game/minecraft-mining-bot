@@ -1190,7 +1190,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // A chest whose stand cannot be walked to right now is skipped like a full
     // one (retried after the next resume) instead of failing the whole action.
     try { await goToStorage(myEpoch, st) } catch (error) {
-      if (error instanceof QuarryInterrupt) throw error
+      if (error instanceof QuarryInterrupt && error.code !== 'STORAGE_UNREACHABLE') throw error
       note('storage_unroutable', { position: st.position, error: String(error.message ?? error).slice(0, 160) })
       job.fullStorage = [...new Set([...(job.fullStorage ?? []), posKey(st.position)])]
       return
