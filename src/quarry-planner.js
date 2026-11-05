@@ -18,6 +18,8 @@ const STANCE_CANDIDATES = 6 // stances compared when looking for a fuller batch
 const STANCE_EXTRA_TRAVEL = 4 // extra walking (path steps) accepted for a fuller batch
 const TARGET_CANDIDATES = 4 // compare a bounded number of workable targets in this layer
 const UNSAFE_FLOOR = /(?:magma|campfire|powder_snow|cactus|sweet_berry|wither_rose|pointed_dripstone|scaffolding|leaves|_carpet$|snow_layer|lava|water|fire)/
+// Chest collision tops are below the integer feet height used by this graph.
+const NON_UNIT_FLOOR = new Set(['chest', 'trapped_chest', 'ender_chest'])
 const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z })
 const same = (a, b) => a.x === b.x && a.y === b.y && a.z === b.z
 
@@ -40,7 +42,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
   const airLike = b => known(b) && AIR.has(nameOf(b)) && !fluidLayer(b)
   const fluid = b => known(b) && (isFluidName(b.name) || fluidLayer(b))
   const passable = b => known(b) && !fluid(b) && (AIR.has(nameOf(b)) || b.boundingBox === 'empty' && blockRule(b.name).plant === true)
-  const solidFloor = b => known(b) && b.boundingBox === 'block' && !fluid(b) && !UNSAFE_FLOOR.test(nameOf(b))
+  const solidFloor = b => known(b) && b.boundingBox === 'block' && !fluid(b) && !UNSAFE_FLOOR.test(nameOf(b)) && !NON_UNIT_FLOOR.has(nameOf(b))
   const inRegion = p => permits(regions, 'break', p).allowed
 
   // ---- vertical extent -------------------------------------------------
