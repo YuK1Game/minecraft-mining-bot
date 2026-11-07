@@ -1,9 +1,24 @@
 'use strict'
 
 const path = require('node:path')
+// TAP reports may be read on a different OS from the one that produced them.
+// Never resolve an already absolute POSIX root through Windows' current drive.
 function normalize (text, root) {
   let value = String(text ?? '').replaceAll('\\', '/')
-  if (root) value = value.replaceAll(path.resolve(root).replaceAll('\\', '/') + '/', '')
+  if (!root) return value
+  const supplied = String(root).replaceAll('\\', '/')
+  const windows = /^[A-Za-z]:\//.test(supplied) || supplied.startsWith('//')
+  const absolute = windows
+    ? path.win32.normalize(String(root)).replaceAll('\\', '/')
+    : path.posix.isAbsolute(supplied) ? path.posix.normalize(supplied) : path.resolve(root).replaceAll('\\', '/')
+  // Node's TAP diagnostic formatter can double the slashes of a Windows path.
+  // Normalize just known checkout prefixes; do not alter unrelated paths/URLs.
+  const prefix = absolute.replace(/\/$/, '') + '/'
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = windows ? escaped.replaceAll('/', '/+') : escaped
+  value = value.replace(new RegExp(pattern, windows ? 'gi' : 'g'), '')
+  // Relative Windows source locations also contain doubled separators.
+  if (windows && /^(?:test|src|scripts)\//.test(value)) value = value.replace(/\/+/g, '/')
   return value
 }
 function parseTap (text, { root = '' } = {}) {
