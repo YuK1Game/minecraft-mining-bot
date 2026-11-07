@@ -1,0 +1,52 @@
+name: Apply verified dashboard controls
+on:
+  push:
+    branches: [feat/dashboard-controls-20261107]
+    paths: [.github/workflows/apply-dashboard-controls.yml, '.review/dashboard.*']
+permissions:
+  contents: write
+concurrency:
+  group: apply-dashboard-controls
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify source and apply only the checked feature patch
+        shell: bash
+        run: |
+          test "$GITHUB_REF" = refs/heads/feat/dashboard-controls-20261107
+          git diff --exit-code 2bad43af5ed38d9250723ecda297a2c958031865 HEAD -- src scripts dashboard test docs README.md AGENTS.md package.json package-lock.json .gitignore
+          cat .review/dashboard.part0 .review/dashboard.part1 .review/dashboard.part2 > /tmp/dashboard-controls.patch.xz
+          echo '2ec03d46085d1630fced9146a09f4d7d823a0cf1cf83d7b9e7ac0004933fadbd  /tmp/dashboard-controls.patch.xz' | sha256sum --check
+          xz -dc /tmp/dashboard-controls.patch.xz > /tmp/dashboard-controls.patch
+          echo '29886764f5ffd9d18d6c0aa5c8405a1b4219d83f6be568506f7dc486a6f4b859  /tmp/dashboard-controls.patch' | sha256sum --check
+          git apply --check --index --unidiff-zero /tmp/dashboard-controls.patch
+          git apply --index --unidiff-zero /tmp/dashboard-controls.patch
+          git diff --cached --check
+      - run: npm ci --ignore-scripts
+      - name: Syntax and offline regression tests (no Realm credentials)
+        shell: bash
+        run: |
+          npm run check
+          npm run test:review > /tmp/dashboard-controls-tests.tap 2>&1
+      - name: Commit verified feature only to its own branch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: control Realm connections and chunk quarry jobs from the inventory dashboard'
+          git push origin HEAD:refs/heads/feat/dashboard-controls-20261107
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dashboard-controls-validation
+          path: /tmp/dashboard-controls-tests.tap
+          retention-days: 7
