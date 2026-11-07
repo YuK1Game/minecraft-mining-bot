@@ -23,6 +23,7 @@ function defer () {
 }
 async function turns (count = 16) { for (let i=0;i<count;i++) await turn() }
 function scene (t) {
+  const directory = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'minecraft-combat-priority-'))
   const events=[], flags={meal:false,armor:false,prebuild:false}
   const release=defer(), bedRelease=defer(), attackRelease=defer()
   let options,facade,f,combatContext
@@ -45,6 +46,7 @@ function scene (t) {
     async execute(){events.push({kind:'bed'});if(flags.holdBed){flags.bedBusy=true;await bedRelease.promise;flags.bedBusy=false}return {sleeping:!!flags.sleeping}}
   }
   const modules={
+    './quarry-store': { createQuarryStore: options => require('../src/quarry-store').createQuarryStore({ ...options, directory }) },
     './user-behaviors': { createUserBehaviors: o=>{
       options=o
       facade=createUserBehaviors({...o,controllers:{melee:attack('melee'),ranged:attack('ranged'),bed},
@@ -95,6 +97,7 @@ function scene (t) {
     }
   }
   f=loaded.exports(t,{runtimeOverrides:modules})
+  t.after(() => fs.promises.rm(directory, { recursive: true, force: true }))
   const rawStack=(network_id,count,stack_id)=>({network_id,count,stack_id,metadata:0,has_stack_id:!!count,block_runtime_id:0,extra:{has_nbt:'false',can_destroy:[],can_place_on:[]}})
   const bow=rawStack(302,1,17), arrow=rawStack(303,30,18), sword=rawStack(318,1,19)
   const main=Array.from({length:36},()=>rawStack(0,0,0))

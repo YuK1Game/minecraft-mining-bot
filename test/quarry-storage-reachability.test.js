@@ -51,7 +51,7 @@ for (const interruption of ['stop', 'combat', 'death']) {
   test(`a ${interruption} interruption while returning does not skip the chest`, async () => {
     const { sim, j, docs, lines } = fixture()
     let returning = false
-    sim.adapter.goToStorage = async () => { returning = true; await new Promise(() => {}) }
+    sim.adapter.goToStorage = async (storage, { signal }) => { returning = true; await new Promise((resolve, reject) => { if (signal.aborted) reject(signal.reason); else signal.addEventListener('abort', () => reject(signal.reason), { once: true }) }) }
     j.start()
     try {
       await until(() => returning, 'return movement started')
@@ -76,9 +76,26 @@ for (const interruption of ['stop', 'combat', 'death']) {
 
 const dangerousActors = () => [{ kind: 'mob', hostile: true, alive: true, entityType: 'minecraft:creeper', position: { x: -4, y: 63, z: -4 } }]
 
+// The fake clock advances on every immediate. Do not let a real 5ms polling
+// interval accidentally include a second storage cycle on a faster CI runner.
+// Hold the first received deposit result until assertions have observed it;
+// then cancel the job and release that same result for ordinary cleanup.
+function holdFirstDeposit (f) {
+  let release
+  const observed = new Promise(resolve => { release = resolve })
+  const deposit = f.sim.adapter.deposit
+  f.sim.adapter.deposit = async (...args) => {
+    const result = await deposit(...args)
+    if (f.sim.stats.deposits > 0) await observed
+    return result
+  }
+  return async () => { const stopping = f.j.pause(); release(); await stopping }
+}
+
 test('an unreachable old chest is skipped before its hostile wait; the usable chest still waits once', async () => {
   const f = fixture({ unreachableFirst: true, fakeClock: true })
   f.sim.adapter.actors = dangerousActors
+  const stop = holdFirstDeposit(f)
   f.j.start()
   try {
     await until(() => f.sim.stats.deposits > 0 || f.j.status().state === 'PAUSED', 'reachable chest received storage')
@@ -87,7 +104,7 @@ test('an unreachable old chest is skipped before its hostile wait; the usable ch
     assert.equal(f.lines.filter(line => line.includes('storage_area_wait_timeout')).length, 1)
     assert.equal(f.sleeps.filter(ms => ms === 2000).length, 10)
     assert.ok(f.docs.some(d => d.fullStorage?.includes(`${f.first.position.x},${f.first.position.y},${f.first.position.z}`)))
-  } finally { await f.j.pause() }
+  } finally { await stop() }
 })
 
 test('a valid planner path with no native first segment is skipped before the hostile wait', async () => {
@@ -96,6 +113,7 @@ test('a valid planner path with no native first segment is skipped before the ho
   f.sim.adapter.previewStorage = async (st, options) => { previews.push({ position: st.position, path: options.path }); return { ready: st.position.z !== f.first.position.z, reason: 'No ready native storage segment' } }
   const go = f.sim.adapter.goToStorage
   f.sim.adapter.goToStorage = async (st, options) => { travelled.push(st.position); return go(st, options) }
+  const stop = holdFirstDeposit(f)
   f.j.start()
   try {
     await until(() => f.sim.stats.deposits > 0 || f.j.status().state === 'PAUSED', 'native ready storage received items')
@@ -105,7 +123,7 @@ test('a valid planner path with no native first segment is skipped before the ho
     assert.deepEqual(travelled[0], f.second.position)
     assert.equal(f.lines.filter(line => line.includes('storage_area_hostile')).length, 1)
     assert.ok(f.lines.some(line => line.includes('storage_unroutable')))
-  } finally { await f.j.pause() }
+  } finally { await stop() }
 })
 
 test('all full chests at the expansion cap cause no hostile wait before the bounded storage pause', async () => {
@@ -146,6 +164,7 @@ test('actual return recomputes the path after the hostile wait instead of reusin
   f.sim.adapter.previewStorage = (st, options) => { previews.push(options.path); return { ready: true } }
   const go = f.sim.adapter.goToStorage
   f.sim.adapter.goToStorage = async (st, options) => { returned.push(options.path); return go(st, options) }
+  const stop = holdFirstDeposit(f)
   f.j.start()
   try {
     await until(() => f.sim.stats.deposits > 0 || f.j.status().state === 'PAUSED', 'fresh actual path moved')
@@ -153,13 +172,13 @@ test('actual return recomputes the path after the hostile wait instead of reusin
     assert.deepEqual(previews[0][0], origin)
     assert.deepEqual(returned[0][0], { x: -2, y: 63, z: 5 })
     assert.equal(f.lines.filter(line => line.includes('storage_area_wait_timeout')).length, 1)
-  } finally { await f.j.pause() }
+  } finally { await stop() }
 })
 
 for (const interruption of ['stop', 'combat', 'death']) {
   test(`a ${interruption} interruption during storage preview is never cached as a route failure`, async () => {
     const f = fixture(); let previewing = false
-    f.sim.adapter.previewStorage = async () => { previewing = true; await new Promise(() => {}) }
+    f.sim.adapter.previewStorage = async (storage, { signal }) => { previewing = true; await new Promise((resolve, reject) => { if (signal.aborted) reject(signal.reason); else signal.addEventListener('abort', () => reject(signal.reason), { once: true }) }) }
     f.j.start()
     try {
       await until(() => previewing, 'storage preview started')

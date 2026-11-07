@@ -20,3 +20,6 @@ coverage/
 Thumbs.db
 .vscode/
 .idea/
+
+# Local comparison reports (CI uploads them separately).
+test-results/

@@ -4,6 +4,7 @@ const http = require('node:http')
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const { randomUUID } = require('node:crypto')
+const { streamLog } = require('./lib/log-stream')
 const { sanitizeStatus, sanitizeCachedStatus } = require('./lib/dashboard-state')
 
 const HOST = '127.0.0.1'
@@ -140,41 +141,11 @@ function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPo
     return inFlight
   }
 
-  // Live Bot log (Server-Sent Events): the last lines of .local/bot.log, then
-  // newly appended lines, polled every 500ms. A shrinking file (rotation)
-  // restarts from its beginning. Read-only; nothing is sent to the Bot.
+  const logClients = new Set()
   function streamLogs (request, response) {
-    const syncFs = require('node:fs')
-    response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Content-Type-Options': 'nosniff' })
-    request.socket.setTimeout(0)
-    let offset = 0, closed = false, partial = ''
-    const emit = text => {
-      const lines = (partial + text).split('\n'); partial = lines.pop()
-      for (const line of lines) if (line) response.write(`data: ${JSON.stringify(line)}\n\n`)
-    }
-    try {
-      const size = syncFs.statSync(logFile).size, start = Math.max(0, size - LOG_TAIL_BYTES)
-      const fd = syncFs.openSync(logFile, 'r'), buffer = Buffer.alloc(size - start)
-      syncFs.readSync(fd, buffer, 0, buffer.length, start); syncFs.closeSync(fd)
-      const text = buffer.toString('utf8'), lines = text.split('\n'); if (start > 0) lines.shift()
-      partial = ''; emit(lines.slice(-LOG_TAIL_LINES).join('\n') + (text.endsWith('\n') ? '\n' : ''))
-      offset = size
-    } catch { response.write(`data: ${JSON.stringify('(ログファイルはまだありません。Bot を再起動すると .local/bot.log に書き込まれます)')}\n\n`) }
-    const timer = setInterval(() => {
-      if (closed) return
-      try {
-        const size = syncFs.statSync(logFile).size
-        if (size < offset) { offset = 0; partial = '' }
-        if (size > offset) {
-          const length = Math.min(size - offset, 1024 * 1024)
-          const fd = syncFs.openSync(logFile, 'r'), buffer = Buffer.alloc(length)
-          syncFs.readSync(fd, buffer, 0, length, offset); syncFs.closeSync(fd)
-          offset += length; emit(buffer.toString('utf8'))
-        } else response.write(': keepalive\n\n')
-      } catch { /* File may be rotating; retry on the next tick. */ }
-    }, 500)
-    const close = () => { closed = true; clearInterval(timer) }
-    request.on('close', close); response.on('error', close)
+    let close
+    close = streamLog({ filename: logFile, request, response, tailBytes: LOG_TAIL_BYTES, tailLines: LOG_TAIL_LINES, onClose: () => logClients.delete(close) })
+    logClients.add(close)
   }
   async function handler (request, response) {
     const method = request.method
@@ -230,6 +201,7 @@ function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPo
     clearInterval(interval); interval = null
     controller?.abort()
     await inFlight?.catch(() => {})
+    for (const close of [...logClients]) close()
     if (server.listening) await new Promise(resolve => server.close(resolve))
   }
   return { server, handler, initialize, pollOnce, snapshot, start, stop }

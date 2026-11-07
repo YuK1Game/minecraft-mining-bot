@@ -136,7 +136,7 @@ function inventoryDetails (input, inventoryKnown) {
 function numericFields (input, fields) {
   return Object.fromEntries(fields.map(key => [key, integer(input?.[key])]))
 }
-const quarryStates = new Set(['IDLE', 'PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT', 'RETURN', 'DEPOSIT', 'PORTABLE_STORAGE', 'RESTOCK', 'HAZARD', 'RECOVER', 'SUSPEND_FOR_COMBAT', 'COMBAT', 'COMBAT_SETTLE', 'RECOVER_AFTER_COMBAT', 'RECONCILE', 'FINAL_CHECK', 'EGRESS_PREPARE', 'EGRESS', 'DISCONNECTED', 'PAUSED', 'FINISHED'])
+const quarryStates = new Set(['STOPPING', 'IDLE', 'PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT', 'RETURN', 'DEPOSIT', 'PORTABLE_STORAGE', 'RESTOCK', 'HAZARD', 'RECOVER', 'SUSPEND_FOR_COMBAT', 'COMBAT', 'COMBAT_SETTLE', 'RECOVER_AFTER_COMBAT', 'RECONCILE', 'FINAL_CHECK', 'EGRESS_PREPARE', 'EGRESS', 'DISCONNECTED', 'PAUSED', 'FINISHED'])
 function quarryEgress (input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
   const column = input.column && integer(input.column.x, -30000000, 30000000) !== null && integer(input.column.z, -30000000, 30000000) !== null ? { x: input.column.x, z: input.column.z } : null
@@ -156,7 +156,9 @@ function quarryState (input) {
   const result = input.result && typeof input.result === 'object' ? { type: text(input.result.type, 80), reason: text(input.result.reason, 160), at: timestamp(input.result.at) } : null
   return {
     state: quarryStates.has(input.state) ? input.state : 'UNKNOWN', jobId: text(input.jobId, 120), loaded: input.loaded !== false,
-    userRunIntent: ['running', 'paused', 'finished'].includes(input.userRunIntent) ? input.userRunIntent : null,
+    draining: input.draining === true,
+    persistence: input.persistence ? { status: ['saved', 'failed'].includes(input.persistence.status) ? input.persistence.status : 'unknown', savedAt: timestamp(input.persistence.savedAt), error: text(input.persistence.error, 300), fileSynced: input.persistence.fileSynced === true, directorySynced: input.persistence.directorySynced === true } : null,
+    userRunIntent: ['running', 'paused', 'stopped', 'cancelled', 'finished'].includes(input.userRunIntent) ? input.userRunIntent : null,
     result, pauseReason: text(input.pauseReason, 240), error: text(input.error, 240),
     chunks: (Array.isArray(input.chunks) ? input.chunks : []).slice(0, 64).filter(c => c && integer(c.x, -1875000, 1875000) !== null && integer(c.z, -1875000, 1875000) !== null).map(c => ({ x: c.x, z: c.z })),
     yTop: integer(input.yTop, -2048, 2048), yBottom: integer(input.yBottom, -2048, 2048), currentY: integer(input.currentY, -2048, 2048),
@@ -172,14 +174,14 @@ function quarryState (input) {
 
 function decorate (base) {
   const q = base.quarry
-  const labels = { IDLE: '露天掘りの計画を待っています', PREFLIGHT: '開始前の確認', SURVEY: '採掘範囲を確認中', PLAN: '次の採掘を計画中', MOVE: '採掘位置へ移動中', MINE: '露天掘りを実行中', COLLECT: 'ドロップを回収中', RETURN: '搬入先へ移動中', DEPOSIT: 'アイテムを搬入中', PORTABLE_STORAGE: '携帯収納へ搬入中', RESTOCK: '道具・資材を補充中', HAZARD: '水・溶岩に対処中', RECOVER: '体力の回復を待っています', SUSPEND_FOR_COMBAT: '戦闘へ切り替え中', COMBAT: '戦闘中', COMBAT_SETTLE: '戦闘後の安全を確認中', RECOVER_AFTER_COMBAT: '採掘への復帰を確認中', RECONCILE: '保存された作業を確認中', FINAL_CHECK: '掘り残しと搬入を確認中', DISCONNECTED: '再接続を待っています', PAUSED: '露天掘りを一時停止中', FINISHED: '露天掘りのジョブが終了しました' }
+  const labels = { STOPPING: '作業の停止と状態保存を確認中', IDLE: '露天掘りの計画を待っています', PREFLIGHT: '開始前の確認', SURVEY: '採掘範囲を確認中', PLAN: '次の採掘を計画中', MOVE: '採掘位置へ移動中', MINE: '露天掘りを実行中', COLLECT: 'ドロップを回収中', RETURN: '搬入先へ移動中', DEPOSIT: 'アイテムを搬入中', PORTABLE_STORAGE: '携帯収納へ搬入中', RESTOCK: '道具・資材を補充中', HAZARD: '水・溶岩に対処中', RECOVER: '体力の回復を待っています', SUSPEND_FOR_COMBAT: '戦闘へ切り替え中', COMBAT: '戦闘中', COMBAT_SETTLE: '戦闘後の安全を確認中', RECOVER_AFTER_COMBAT: '採掘への復帰を確認中', RECONCILE: '保存された作業を確認中', FINAL_CHECK: '掘り残しと搬入を確認中', DISCONNECTED: '再接続を待っています', PAUSED: '露天掘りを一時停止中', FINISHED: '露天掘りのジョブが終了しました' }
   labels.EGRESS_PREPARE = '地上への脱出を準備中'
   labels.EGRESS = '土柱で地上へ移動中'
   const exitConfirmed = q?.egress?.mode !== 'adjacent_pillar' || (q.egress.miningCompleted === true && q.egress.surfaceReturned === true)
   const completed = q?.state === 'FINISHED' && ['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS'].includes(q.result?.type) && exitConfirmed
-  const waiting = !base.online || !q || !q.loaded || ['IDLE', 'PAUSED', 'DISCONNECTED', 'UNKNOWN'].includes(q.state)
+  const waiting = !base.online || !q || !q.loaded || ['IDLE', 'STOPPING', 'PAUSED', 'DISCONNECTED', 'UNKNOWN'].includes(q.state)
   const title = q ? completed ? q.result.type === 'COMPLETED_WITH_EXCEPTIONS' ? '露天掘り完了（保留箇所あり）' : '露天掘り完了' : labels[q.state] ?? '露天掘りの状態を確認中' : '露天掘りの計画を待っています'
-  const detail = base.stale ? '最終確認時の情報です。現在の状態は未確認です。' : q?.pauseReason ?? q?.egress?.reason ?? q?.error ?? (q?.currentY != null ? `作業層 Y ${q.currentY}` : 'サーバーから確認できた情報を表示します。')
+  const detail = base.stale ? '最終確認時の情報です。現在の状態は未確認です。' : (q?.persistence?.status === 'failed' ? '状態保存に失敗しています。自動再開は禁止されています。' : q?.draining && q?.state === 'PAUSED' ? '入力は停止済みです。処理と保存の完了を確認しています。' : null) ?? q?.pauseReason ?? q?.egress?.reason ?? q?.error ?? (q?.currentY != null ? `作業層 Y ${q.currentY}` : 'サーバーから確認できた情報を表示します。')
   return { ...base, goal: 'quarry', work: { title, detail, state: base.stale ? 'waiting' : completed ? 'complete' : waiting ? 'waiting' : q.state === 'FINISHED' ? 'stopped' : 'running', updatedAt: base.observedAt, next: null }, milestones: [], recentEvents: q?.events ?? [] }
 }
 

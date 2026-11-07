@@ -1,5 +1,7 @@
 'use strict'
 const { isDeepStrictEqual } = require('node:util')
+const { randomUUID } = require('node:crypto')
+const { validateJobId, newJobId, worldIdentity, assertJobWorld, documentInstance } = require('./quarry-job-identity')
 
 // Quarry job manager (spec v1.2 §4, §8-§11, §14-§16, §18): one job, explicit
 // states, a single owner of quarry inputs, journal/checkpoints and the combat
@@ -11,6 +13,7 @@ const { createQuarryPlanner } = require('./quarry-planner')
 const { blockRule, nameOf, selectTool, toolState, AIR } = require('./quarry-rules')
 const { keepPlan, canAccept, totals, diff, createLedger, freeSlots, isFood, selectCarriedStorage, isShulkerBox, carriedContainerKey } = require('./quarry-inventory')
 const { createQuarryCombatBridge } = require('./quarry-combat-bridge')
+const { miningUsesAfterExitReserve } = require('./quarry-exit-reserve')
 const { normalizeExit, dirtCount, planQuarryExit } = require('./quarry-exit-plan')
 const { supplyNeeds, storageSupplyExclusions } = require('./quarry-supplies')
 const { UNSENT_PLACE_REASON } = require('./quarry-portable-storage')
@@ -41,7 +44,7 @@ function defaults (config = {}) {
   const exit = normalizeExit(c.exit)
   return {
     schemaVersion: 2,
-    jobId: c.jobId ?? `quarry_${Date.now().toString(36)}`,
+    jobId: validateJobId(c.jobId ?? newJobId()),
     dimension: c.dimension ?? 'overworld',
     target: c.target,
     yTop: c.yTop ?? 'auto',
@@ -62,13 +65,29 @@ function defaults (config = {}) {
   }
 }
 
-function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, bridge = null, pollMs = 50, autoResumeMs = 30000 } = {}) {
+function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, bridge = null, pollMs = 50, autoResumeMs = 30000, stopTimeoutMs = 5000 } = {}) {
   const required = ['getState', 'getBlock', 'entities', 'mine', 'moveTo', 'equip', 'stopAll', 'combatActive']
   if (!adapter || required.some(k => typeof adapter[k] !== 'function')) throw new Error(`Quarry adapter needs ${required.join(', ')}`)
+  if (!Number.isFinite(stopTimeoutMs) || stopTimeoutMs < 1 || stopTimeoutMs > 60000) throw new Error('Invalid quarry stop timeout')
   const combatBridge = bridge ?? createQuarryCombatBridge({ now })
   let job = null // persistent document
   let planner = null; let regions = null; let ledger = createLedger()
-  let worker = null; let epoch = 0; let abort = null
+  let worker = null; let loopWorker = null; let epoch = 0; let abort = null
+  let stopTask = null; let autoResumeTimer = null; let savesInFlight = 0
+  const pendingActions = new Set()
+  const busyError = () => Object.assign(new Error('QUARRY_BUSY: previous work or checkpoint is still draining'), { code: 'QUARRY_BUSY' })
+  function requireDrained () { if (worker || stopTask || pendingActions.size || savesInFlight) throw busyError() }
+  function clearAutoResume () { clearTimeout(autoResumeTimer); autoResumeTimer = null }
+  function launchWorker () {
+    const owner = job
+    const task = loop()
+    worker = task; loopWorker = task
+    void task.then(() => { if (worker === task) worker = null; if (loopWorker === task) loopWorker = null }, error => {
+      if (job === owner) { note('worker_failed', { error: String(error.message ?? error) }); job.userRunIntent = 'paused'; setState('PAUSED', { pauseReason: 'WORKER_FAILED' }) }
+      if (worker === task) worker = null
+      if (loopWorker === task) loopWorker = null
+    })
+  }
   let reconcilingSupplyPlacement = false
   let reconcilingCarriedPlacement = false
   const badStances = new Map() // stance key -> consecutive move failures
@@ -139,16 +158,33 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
   async function save (why) {
     if (!job || !storage) return true
-    job.records = planner?.exportRecords() ?? job.records
-    job.ledger = ledger.export()
-    job.savedAt = new Date(now()).toISOString()
-    const id = job.config.jobId; const document = copy({ ...job, events: events.slice(-50) })
-    const write = saveChain.then(() => storage.save(id, document))
+    const owner = job
+    owner.records = planner?.exportRecords() ?? owner.records
+    owner.ledger = ledger.export()
+    const savedAt = new Date(now()).toISOString()
+    const document = copy({ ...owner, savedAt, persistence: { status: 'saved', savedAt }, events: events.slice(-50) })
+    savesInFlight++
+    const write = saveChain.then(() => storage.save(owner.config.jobId, document))
     saveChain = write.catch(() => {})
-    try { await write; return true } catch (error) {
+    try {
+      const receipt = await write
+      if (job === owner) { owner.savedAt = savedAt; owner.persistence = { status: 'saved', savedAt, ...(receipt ?? {}) } }
+      return true
+    } catch (error) {
+      if (job === owner) owner.persistence = { status: 'failed', why, error: String(error.message ?? error).slice(0, 300), failedAt: new Date(now()).toISOString(), lastSavedAt: owner.savedAt ?? null }
       note('persistence_failed', { why, error: String(error.message ?? error) })
       throw new QuarryInterrupt('PERSISTENCE_FAILED', 'Checkpoint could not be saved; new breaking stops (§15.2)')
-    }
+    } finally { savesInFlight-- }
+  }
+  async function retryPersistence () {
+    requireDrained()
+    if (!job || job.state !== 'PAUSED') throw new Error('Persistence retry requires a paused job')
+    clearAutoResume()
+    job.userRunIntent = 'paused'
+    job.pauseReason = 'MANUAL_PAUSE'
+    job.result = { type: 'PAUSED', reason: 'MANUAL_PAUSE', at: new Date(now()).toISOString() }
+    try { await save('manual_persistence_retry') } catch (error) { job.pauseReason = 'PERSISTENCE_FAILED'; job.result.reason = job.pauseReason; throw error }
+    return status()
   }
 
   function planningBlocks (config) {
@@ -186,14 +222,19 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   function makeRegions (config, yTop, state) {
     const base = { target: config.target, yTop, yBottom: config.yBottom, worldMinY: config.worldMinY, worldMaxY: config.worldMaxY, boundarySeal: config.boundarySeal, infrastructureRegion: config.permissions.infrastructureRegion, protectedRegion: config.permissions.protectedRegion }
     const first = buildRegions({ ...base, travelRegion: [] })
-    return buildRegions({ ...base, travelRegion: buildTravel(config, { ...first, yTop }, state) })
+    const result = buildRegions({ ...base, travelRegion: buildTravel(config, { ...first, yTop }, state) })
+    if (job?.config === config && job.exitReservation?.plan) result.exitReservation = job.exitReservation.plan
+    return result
   }
 
   function plan (input) {
-    if (worker || job && ACTIVE.has(job.state)) throw new Error('A quarry job is running; pause or cancel it first')
+    requireDrained()
+    if (job && ACTIVE.has(job.state)) throw new Error('A quarry job is running; pause or cancel it first')
+    clearAutoResume()
     const config = defaults(input)
     const state = adapter.getState()
     const issues = []; const warnings = []
+    if (!worldIdentity(state)) issues.push('WORLD_IDENTITY_UNKNOWN')
     if (config.inventory.pickupMode !== undefined && !['active', 'passive'].includes(config.inventory.pickupMode)) issues.push('INVALID_PICKUP_MODE')
     if (config.inventory.depositWhen !== undefined && !['capacity', 'full'].includes(config.inventory.depositWhen)) issues.push('INVALID_DEPOSIT_POLICY')
     if (!validStoragePair(config.inventory)) issues.push('UNSUPPORTED_STORAGE_POLICY')
@@ -249,7 +290,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     const sealCells = regs.seal.ready ? regs.seal.columns.size * (regs.seal.yMax - regs.seal.yMin + 1) : 0
     const summary = { ready: issues.length === 0, issues, warnings, jobId: config.jobId, chunks: regs.chunks, yTop, yTopProvisional: unknownAbove > 0, yBottom: regs.yBottom, columns: regs.columns.size, counts, survey, stair, boundarySeal: { enabled: regs.seal.enabled, ready: regs.seal.ready, columns: regs.seal.columns.size, yMin: regs.seal.yMin, yMax: regs.seal.yMax, cells: sealCells, placementOnly: true }, travelRegion: regs.travel, storage: storageList }
-    job = { config, state: 'IDLE', planned: summary, yTop, cursorY: yTop, deepestY: yTop, records: { stair }, ledger: {}, userRunIntent: 'idle', result: null, pauseReason: null, interruption: null, checkpoint: null, actions: [], deaths: [], startedAt: null, scope: null, life: null }
+    job = { config, instanceId: randomUUID(), world: worldIdentity(state), actionSequence: 0, state: 'IDLE', planned: summary, yTop, cursorY: yTop, deepestY: yTop, records: { stair }, ledger: {}, userRunIntent: 'idle', result: null, pauseReason: null, interruption: null, checkpoint: null, actions: [], deaths: [], startedAt: null, scope: null, life: null }
     regions = regs; planner = pl; ledger = createLedger()
     return copy(summary)
   }
@@ -260,6 +301,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (job.userRunIntent !== 'running') throw new QuarryInterrupt('STOP_REQUESTED')
     if (abort?.signal.aborted) throw new QuarryInterrupt(abort.signal.reason?.code ?? 'ABORTED')
     const s = adapter.getState()
+    try { assertJobWorld(job, s) } catch (error) { throw new QuarryInterrupt(error.code ?? 'WORLD_MISMATCH') }
+    if (job.persistence?.status === 'failed') throw new QuarryInterrupt('PERSISTENCE_FAILED')
     if (s?.dead || s?.isDead || s?.lifecycle?.dead || s?.health === 0 || s?.phase !== 'spawned') throw new QuarryInterrupt(s?.dead || s?.isDead || s?.lifecycle?.dead || s?.health === 0 ? 'DEAD' : 'DISCONNECTED')
     if (job.scope && scopeOf(s) !== job.scope) throw new QuarryInterrupt(lifeOf(s) !== job.life ? 'DEAD' : 'DISCONNECTED')
     if (job.life != null && lifeOf(s) !== job.life) throw new QuarryInterrupt('DEAD')
@@ -274,7 +317,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const watch = new Promise((resolve, reject) => {
       watcher = setInterval(() => { try { guard(myEpoch) } catch (error) { local.abort(error); reject(error) } }, pollMs)
     })
-    const task = Promise.resolve().then(() => fn(local.signal))
+    const task = Promise.resolve().then(() => { guard(myEpoch); return fn(local.signal) })
+    pendingActions.add(task)
+    void task.then(() => pendingActions.delete(task), () => pendingActions.delete(task))
     try { return await Promise.race([task, watch]) } catch (error) {
       if (drain) {
         local.abort(error)
@@ -284,7 +329,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     } finally { clearInterval(watcher) }
   }
   function recordAction (action) {
-    const rec = { id: `${job.config.jobId}:${epoch}:${job.actions.length + 1}`, epoch, at: new Date(now()).toISOString(), status: 'intent', ...copy(action) }
+    const sequence = job.actionSequence = (job.actionSequence ?? 0) + 1
+    const rec = { id: `${job.config.jobId}:${sequence}:${randomUUID()}`, sequence, epoch, at: new Date(now()).toISOString(), status: 'intent', ...copy(action) }
     job.actions.push(rec); if (job.actions.length > 100) job.actions.shift()
     return rec
   }
@@ -326,7 +372,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // An uncertain jump/place must be reconciled from its own saved receipts;
     // it can never use the ordinary ACTION_FAILED retry or return underground.
     if (job.egress?.operationId && !job.surfaceReturnedAt) return finish('PAUSED', /^EXIT_/.test(code) ? code : 'EXIT_UNCONFIRMED', { pauseDetails: { error: String(error.message ?? code).slice(0, 300), operationId: job.egress.operationId } })
-    if (['PERSISTENCE_FAILED', 'STORAGE_UNREACHABLE', 'NO_STORAGE'].includes(code)) return finish('PAUSED', code)
+    if (['WORLD_MISMATCH', 'WORLD_IDENTITY_UNKNOWN', 'PERSISTENCE_FAILED', 'STORAGE_UNREACHABLE', 'NO_STORAGE'].includes(code)) return finish('PAUSED', code)
     if (['SEAL_UNSAFE_STANCE', 'SEAL_MATERIAL_MISSING', 'SEAL_CONTEXT_CHANGED', 'FLUID_SOURCE_CHANGED', 'BOUNDARY_CONTEXT_CHANGED'].includes(code)) return finish('PAUSED', code, { pauseDetails: copy(error.details ?? null) })
     if (/^DROP_/.test(code)) return finish('PAUSED', code, { pauseDetails: copy(error.details ?? { reason: code }) })
     if (['HAZARD', 'LOW_HEALTH'].includes(code)) return
@@ -371,7 +417,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const s = adapter.getState()
     switch (job.state) {
       case 'DISCONNECTED': {
-        if (s?.phase === 'spawned' && !s.dead) { job.scope = scopeOf(s); job.life = lifeOf(s); setState('RECONCILE') } else await sleep(500)
+        if (s?.phase === 'spawned' && !s.dead) { assertJobWorld(job, s); job.scope = scopeOf(s); job.life = lifeOf(s); setState('RECONCILE') } else await sleep(500)
         return
       }
       case 'COMBAT': {
@@ -435,6 +481,30 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return null
   }
 
+  async function prepareExit (myEpoch) {
+    if (job.config.exit?.mode !== 'adjacent_pillar' || typeof adapter.egress !== 'function' || job.miningCompletedAt || job.surfaceReturnedAt) return true
+    const state = guard(myEpoch), read = planningBlocks(job.config)
+    let unknown = false
+    const result = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(state), getBlock: (x, y, z) => { const b = read(x, y, z); if (b?.known !== true) unknown = true; return b }, inventory: items(state), policy: { ...job.config.tools, ...job.config.collection }, exit: job.config.exit, preflight: true, reservation: job.exitReservation?.plan ?? null })
+    guard(myEpoch)
+    job.exitPreflight = { checkedAt: new Date(now()).toISOString(), layer: job.cursorY, ready: result.ok, reason: result.reason ?? null, details: copy(result.details ?? null), predictionOnly: true }
+    if (!result.ok) {
+      if (result.reason === 'EXIT_COLUMN_UNAVAILABLE' && unknown && await requestTerrainObservation(myEpoch, 'egress')) return false
+      if (result.plan && ['EXIT_MATERIAL_MISSING', 'EXIT_TOOL_MISSING'].includes(result.reason) && job.config.inventory.supplyBoxes?.length) {
+        job.config.inventory.keepExitDirt = Math.max(job.config.inventory.keepExitDirt ?? 0, result.plan.totalDirt)
+        if (await restock(myEpoch, 'PREFLIGHT', true)) return false
+      }
+      await finish('PAUSED', result.reason ?? 'EXIT_PREFLIGHT_FAILED', { pauseDetails: { ...copy(result.details ?? {}), stage: 'before_excavation' } })
+      return false
+    }
+    if (!job.exitReservation) job.exitReservation = { plan: copy(result.plan), selectedAt: new Date(now()).toISOString() }
+    else job.exitReservation.plan = copy(result.plan)
+    job.config.inventory.keepExitDirt = Math.max(job.config.inventory.keepExitDirt ?? 0, result.plan.totalDirt)
+    regions.exitReservation = job.exitReservation.plan
+    await save('exit_preflight')
+    return true
+  }
+
   async function preflight (myEpoch) {
     const s = guard(myEpoch)
     if (!items(s)) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
@@ -443,6 +513,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!Object.keys(ledger.export().startInventory).length) for (const [n, c] of lastInventory) ledger.add('startInventory', n, c)
     combatBridge.activate({ jobId: job.config.jobId, epoch, travel: p => permits(regions, 'travel', p).allowed })
     await save('start')
+    if (!(await prepareExit(myEpoch))) return
     if (await restock(myEpoch, 'SURVEY', true)) return
     setState('SURVEY')
   }
@@ -461,6 +532,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!items(s)) { await sleep(500); return }
     if (job.surfaceReturnedAt) { setState('FINAL_CHECK'); return }
     if (job.miningCompletedAt && job.config.exit?.mode === 'adjacent_pillar') { setState('EGRESS'); return }
+    if (!(await prepareExit(myEpoch))) return
     const floorY = workFloorY()
     clearWorkDeferred([...TRANSIENT_DEFER, ...TOOL_WAIT])
     badStances.clear()
@@ -588,6 +660,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   // ---- normal work -------------------------------------------------------
   async function work (myEpoch) {
+    if (job.exitPreflight?.layer !== job.cursorY && !(await prepareExit(myEpoch))) return
     const s = guard(myEpoch)
     const hz = hazardNow(s)
     if (hz) return escapeHazard(myEpoch, hz)
@@ -835,6 +908,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         throw error
       }
     }
+    const exitUses = miningUsesAfterExitReserve(tool, beforeDispatch, job.exitReservation?.plan, job.config.tools)
+    if (exitUses < plannedTargets.length) plannedTargets = plannedTargets.slice(0, exitUses)
+    if (!plannedTargets.length) return finish('PAUSED', 'EXIT_TOOL_RESERVE', { pauseDetails: { tool: tool.name, reservedUses: job.exitReservation?.plan?.toolUses ?? [] } })
     if (prepared) job.miningEquipmentPending = false
     // Re-plan from the actual stance; the world may have changed while moving.
     setState('MINE')
@@ -1914,7 +1990,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job.egress?.operationId) {
       const read = planningBlocks(job.config); let unknownExitTerrain = false
       const exitBlocks = (x, y, z) => { const b = read(x, y, z); if (b?.known !== true) unknownExitTerrain = true; return b }
-      const selected = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(s), getBlock: exitBlocks, inventory: items(s), policy: { ...job.config.tools, ...job.config.collection }, minFreeSlots: job.config.inventory.minFreeSlots, exit: job.config.exit, reachable: planner.reachableFrom(feetCell(s)) })
+      const selected = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(s), getBlock: exitBlocks, inventory: items(s), policy: { ...job.config.tools, ...job.config.collection }, minFreeSlots: job.config.inventory.minFreeSlots, exit: job.config.exit, reservation: job.exitReservation?.plan ?? null, reachable: planner.reachableFrom(feetCell(s)) })
       job.egress = { phase: selected.ok ? 'planned' : 'blocked', reason: selected.reason ?? null, plan: copy(selected.plan ?? null), operationId: null, checkpoint: null, scope: scopeOf(s), life: lifeOf(s) }
       if (selected.plan) job.config.inventory.keepExitDirt = selected.plan.totalDirt
       if (!selected.ok && selected.reason === 'EXIT_COLUMN_UNAVAILABLE' && unknownExitTerrain && await requestTerrainObservation(myEpoch, 'egress')) { job.egress.phase = 'planned'; job.egress.reason = 'EXIT_TERRAIN_PENDING'; return }
@@ -1975,13 +2051,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // The budget is per burst: 10 minutes after the last automatic resume it
     // starts again, so a few failures spread over hours never stop the job.
     if (result === 'PAUSED' && /^ACTION_FAILED/.test(String(reason)) && now() - (job.lastAutoResumeAt ?? 0) > AUTO_RESUME_WINDOW_MS) job.autoResumes = 0
-    if (result === 'PAUSED' && /^ACTION_FAILED/.test(String(reason)) && (job.autoResumes ?? 0) < 3 && job.userRunIntent === 'running') {
-      job.autoResumes = (job.autoResumes ?? 0) + 1
-      job.lastAutoResumeAt = now()
-      const owner = job; const count = job.autoResumes
-      const t = setTimeout(() => { try { if (job === owner && job.state === 'PAUSED' && job.pauseReason === reason && job.userRunIntent === 'running') { note('auto_resume', { reason, count }); resume() } } catch {} }, autoResumeMs)
-      t.unref?.()
-    }
+    clearAutoResume()
     const paused = result === 'PAUSED'
     if (!paused) {
       const still = new Set(adapter.entities().filter(e => e.kind === 'item').map(e => e.runtimeId))
@@ -1993,8 +2063,27 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!paused) job.userRunIntent = 'finished'
     if (!paused) combatBridge.deactivate()
     setState(paused ? 'PAUSED' : 'FINISHED', { pauseDetails: extra.pauseDetails ?? null })
-    try { await adapter.stopAll(`quarry:${result}`) } catch {}
-    try { await save(`finish:${result}`) } catch {}
+    try { if (!adapter.combatActive()) await adapter.stopAll(`quarry:${result}`) } catch (error) { note('stop_failed', { error: String(error.message ?? error) }) }
+    try { await save(`finish:${result}`) } catch (error) {
+      // In-memory completion is not durable completion. Never publish success
+      // or schedule an automatic retry over a stale running checkpoint.
+      job.userRunIntent = 'paused'
+      job.pauseReason = 'PERSISTENCE_FAILED'
+      job.result = { type: 'PAUSED', reason: 'PERSISTENCE_FAILED', intendedResult: result, at: new Date(now()).toISOString() }
+      setState('PAUSED')
+    }
+    if (job.persistence?.status !== 'failed' && result === 'PAUSED' && /^ACTION_FAILED/.test(String(reason)) && (job.autoResumes ?? 0) < 3 && job.userRunIntent === 'running') {
+      const owner = job, expectedEpoch = epoch
+      const retry = () => {
+        autoResumeTimer = null
+        if (job !== owner || epoch !== expectedEpoch || job.state !== 'PAUSED' || job.pauseReason !== reason || job.userRunIntent !== 'running') return
+        if (worker || stopTask || pendingActions.size || savesInFlight) { autoResumeTimer = setTimeout(retry, 100); autoResumeTimer.unref?.(); return }
+        job.autoResumes = (job.autoResumes ?? 0) + 1; job.lastAutoResumeAt = now()
+        note('auto_resume', { reason, count: job.autoResumes })
+        try { resume() } catch (error) { note('auto_resume_failed', { error: String(error.message ?? error) }) }
+      }
+      autoResumeTimer = setTimeout(retry, autoResumeMs); autoResumeTimer.unref?.()
+    }
     try { adapter.onFinished?.(status()) } catch {}
   }
 
@@ -2045,6 +2134,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     rebuildPlanner()
     job.planned.exit = copy(exit)
     note('exit_configured', { mode: exit.mode, migrationFloorY: exit.migrationFloorY ?? null, reservedDirt: exit.reservedDirt })
+    job.exitReservation = null; job.exitPreflight = null; delete regions.exitReservation
     await save('exit_configured')
     return status()
   }
@@ -2209,7 +2299,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
     })()
     worker = task
-    try { const supplyResult = await task; return { ...status(), supplyResult } } finally { if (worker === task) worker = null }
+    let supplyResult
+    try { supplyResult = await task } finally { if (worker === task) worker = null }
+    return { ...status(), supplyResult }
   }
   async function storeCarriedNow ({ deposits } = {}) {
     if (!job || job.state !== 'PAUSED' || worker) throw new Error('Carried storage can run only while the quarry is fully paused')
@@ -2255,11 +2347,17 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
     })()
     worker = task
-    try { const storageResult = await task; return { ...status(), storageResult } } finally { if (worker === task) worker = null }
+    let storageResult
+    try { storageResult = await task } finally { if (worker === task) worker = null }
+    return { ...status(), storageResult }
   }
 
   function start () {
     if (reconcilingSupplyPlacement || reconcilingCarriedPlacement) throw new Error('Placement reconciliation is still running')
+    requireDrained()
+    if (job) assertJobWorld(job, adapter.getState())
+    if (job?.persistence?.status === 'failed') throw new QuarryInterrupt('PERSISTENCE_FAILED')
+    clearAutoResume()
     if (!job) throw new Error('Run plan first')
     if (!job.planned?.ready) throw new Error(`Plan is not ready: ${job.planned.issues.join(', ')}`)
     if (ACTIVE.has(job.state)) return status()
@@ -2268,11 +2366,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     abort = new AbortController()
     setState('PREFLIGHT')
     adapter.onStarted?.(status())
-    worker = loop().finally(() => { worker = null })
+    launchWorker()
     return status()
   }
   function resume () {
     if (reconcilingSupplyPlacement || reconcilingCarriedPlacement) throw new Error('Placement reconciliation is still running')
+    requireDrained()
+    if (job) assertJobWorld(job, adapter.getState())
+    if (job?.persistence?.status === 'failed') throw new QuarryInterrupt('PERSISTENCE_FAILED')
+    clearAutoResume()
     if (!job) throw new Error('No quarry job')
     if (ACTIVE.has(job.state)) return status()
     if (!['PAUSED', 'IDLE', 'DISCONNECTED'].includes(job.state)) throw new Error(`Cannot resume from ${job.state}`)
@@ -2293,36 +2395,69 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     abort = new AbortController()
     setState(job.scope ? 'RECONCILE' : 'PREFLIGHT', { pauseReason: null, result: null })
     adapter.onStarted?.(status())
-    worker = loop().finally(() => { worker = null })
+    launchWorker()
     return status()
   }
-  async function pause (reason = 'MANUAL_PAUSE') {
-    if (!job) return status()
-    if (!ACTIVE.has(job.state)) { if (job.state === 'PAUSED') job.userRunIntent = 'paused'; return status() }
-    job.userRunIntent = 'paused'; epoch++
+  function stopJob (intent, reason, result = 'PAUSED') {
+    if (!job) return Promise.resolve(status())
+    clearAutoResume()
+    // Repeated stop requests join the same drain; emergency/cancel intent wins.
+    const priority = { paused: 1, stopped: 2, cancelled: 3 }
+    if (stopTask) {
+      if ((priority[intent] ?? 0) > (priority[job.userRunIntent] ?? 0)) { job.userRunIntent = intent; job.requestedStop = { reason, result } }
+      return stopTask
+    }
+    if (job.state === 'FINISHED') return Promise.resolve(status())
+    const owner = job, previousWorker = worker
+    // Manual intent must be durable without erasing an unresolved storage
+    // checkpoint's reason/details. PROCESS_RESTARTED is special: a later
+    // explicit manual pause must withdraw its automatic-resume permission.
+    const preserveFailure = intent === 'paused' && reason === 'MANUAL_PAUSE' && job.state === 'PAUSED' && job.pauseReason && job.pauseReason !== 'PROCESS_RESTARTED'
+    const effectiveReason = preserveFailure ? job.pauseReason : reason
+    const pauseDetails = preserveFailure ? copy(job.pauseDetails ?? null) : null
+    job.userRunIntent = intent; job.requestedStop = { reason: effectiveReason, result, pauseDetails }; epoch++
     abort?.abort(new QuarryInterrupt('STOP_REQUESTED'))
-    try { await adapter.stopAll('quarry_pause') } catch {}
-    await worker?.catch(() => {})
-    await finish('PAUSED', reason)
-    return status()
+    // Stop input synchronously before awaiting any persistence or controller.
+    let stopping
+    try { stopping = worker || ACTIVE.has(job.state) || pendingActions.size ? adapter.combatActive() ? Promise.resolve() : Promise.resolve(adapter.stopAll(`quarry:${reason}`)) : Promise.resolve() } catch (error) { stopping = Promise.reject(error) }
+    pendingActions.add(stopping)
+    void stopping.then(() => pendingActions.delete(stopping), () => pendingActions.delete(stopping))
+    // Persist intent before waiting for slow/failed child controllers. A crash
+    // during draining must not leave the last checkpoint saying "running".
+    const intentSaved = save('stop_intent').catch(error => { note('stop_intent_save_failed', { error: String(error.message ?? error) }) })
+    const operation = (async () => {
+      let stopError = null, timer
+      const drained = (async () => {
+        try { await stopping } catch (error) { stopError = error; note('stop_failed', { error: String(error.message ?? error) }) }
+        await previousWorker?.catch(() => {})
+        await Promise.allSettled([...pendingActions])
+        await intentSaved
+      })()
+      try {
+        await Promise.race([drained, new Promise((resolve, reject) => { timer = setTimeout(() => reject(new QuarryInterrupt('STOP_UNCONFIRMED')), stopTimeoutMs) })])
+      } catch (error) {
+        if (job !== owner) throw busyError()
+        job.result = { type: 'PAUSED', reason: 'STOP_UNCONFIRMED', at: new Date(now()).toISOString() }
+        setState('PAUSED', { pauseReason: 'STOP_UNCONFIRMED', pauseDetails: { pendingActions: pendingActions.size, timeoutMs: stopTimeoutMs } })
+        await save('stop_unconfirmed')
+        // Pending tasks stay fenced; timing out never grants a new owner.
+        throw error
+      } finally { clearTimeout(timer) }
+      if (job !== owner) throw busyError()
+      const request = job.requestedStop
+      delete job.requestedStop
+      await finish(stopError ? 'PAUSED' : request.result, stopError ? 'STOP_UNCONFIRMED' : request.reason, { pauseDetails: request.pauseDetails ?? null })
+      if (job.persistence?.status === 'failed') throw new QuarryInterrupt('PERSISTENCE_FAILED')
+      if (stopError) throw new QuarryInterrupt('STOP_UNCONFIRMED')
+      return status()
+    })()
+    const task = operation.then(() => { if (stopTask === task) stopTask = null; return status() }, error => { if (stopTask === task) stopTask = null; throw error })
+    stopTask = task
+    return task
   }
-  async function emergencyStop () {
-    if (!job) return null
-    job.userRunIntent = 'stopped'; epoch++
-    abort?.abort(new QuarryInterrupt('STOP_REQUESTED'))
-    try { await adapter.stopAll('quarry_emergency_stop') } catch {}
-    await finish('PAUSED', 'EMERGENCY_STOP')
-    return status()
-  }
-  async function cancel () {
-    if (!job) return null
-    job.userRunIntent = 'cancelled'; epoch++
-    abort?.abort(new QuarryInterrupt('STOP_REQUESTED'))
-    try { await adapter.stopAll('quarry_cancel') } catch {}
-    await worker?.catch(() => {})
-    await finish('CANCELLED', 'MANUAL_CANCEL')
-    return status()
-  }
+  function pause (reason = 'MANUAL_PAUSE') { return stopJob('paused', reason) }
+  function emergencyStop () { return stopJob('stopped', 'EMERGENCY_STOP') }
+  function cancel () { return stopJob('cancelled', 'MANUAL_CANCEL', 'CANCELLED') }
   function acceptExceptions () {
     if (!job || job.state !== 'PAUSED' || job.pauseReason !== 'UNRESOLVED_EXCEPTIONS') throw new Error('No exceptions are waiting for acceptance')
     job.acceptedExceptions = true
@@ -2331,11 +2466,18 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // Restores a saved job document without running it (§15.2, §15.3).
   function load (doc) {
     if (!doc?.config || doc.config.schemaVersion !== 2) throw new Error('Unsupported quarry job document')
-    if (worker || job && ACTIVE.has(job.state)) throw new Error('A quarry job is running')
+    requireDrained()
+    if (job && ACTIVE.has(job.state)) throw new Error('A quarry job is running')
+    validateJobId(doc.config.jobId)
+    const world = assertJobWorld(doc, adapter.getState())
+    clearAutoResume()
     if (!validStoragePair(doc.config.inventory)) throw new Error('Unsupported saved storage policy')
     const pendingStorage = doc.pendingStorageConfiguration
     if (pendingStorage != null && (typeof pendingStorage !== 'object' || Array.isArray(pendingStorage) || Object.keys(pendingStorage).some(key => !['pickupMode', 'depositWhen', 'requestedAt'].includes(key)) || typeof pendingStorage.pickupMode !== 'string' || typeof pendingStorage.depositWhen !== 'string' || !validStoragePair(pendingStorage) || pendingStorage.requestedAt !== undefined && (typeof pendingStorage.requestedAt !== 'string' || !Number.isFinite(Date.parse(pendingStorage.requestedAt))))) throw new Error('Invalid pending storage configuration')
     job = copy(doc)
+    job.world = world
+    job.instanceId = documentInstance(doc)
+    job.actionSequence ??= Math.max(0, ...(job.actions ?? []).map(action => action.sequence ?? 0))
     // Missing exit settings identify older saved jobs. Loading alone never
     // changes their staircase policy; migration is explicit via configureExit.
     job.config.exit = normalizeExit(job.config.exit, { legacy: !job.config.exit })
@@ -2343,7 +2485,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     regions = makeRegions(job.config, job.yTop, adapter.getState())
     planner = createQuarryPlanner({ regions, getBlock: planningBlocks(job.config), config: job.config.strategy, records: job.records ?? {}, exit: job.config.exit })
     ledger = createLedger(job.ledger ?? {})
-    if (ACTIVE.has(job.state)) { job.state = 'PAUSED'; job.pauseReason = 'PROCESS_RESTARTED'; job.userRunIntent = 'paused' }
+    if (ACTIVE.has(job.state)) {
+      job.state = 'PAUSED'
+      job.pauseReason = job.requestedStop?.reason ?? (job.userRunIntent === 'running' ? 'PROCESS_RESTARTED' : job.userRunIntent === 'stopped' ? 'EMERGENCY_STOP' : job.userRunIntent === 'cancelled' ? 'MANUAL_CANCEL' : 'MANUAL_PAUSE')
+      if (job.userRunIntent === 'running') job.userRunIntent = 'paused'
+    }
     return status()
   }
 
@@ -2373,7 +2519,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const counts = displayCounts(s)
     const finalCarried = inv ? keepPlan(inv, inventoryPolicy()).deposits : null
     return copy({
-      jobId: job.config.jobId, state: job.state, userRunIntent: job.userRunIntent, result: job.result, pauseReason: job.pauseReason, pauseDetails: job.pauseDetails ?? null,
+      jobId: job.config.jobId, state: ['PAUSED', 'FINISHED'].includes(job.state) && (loopWorker || stopTask || pendingActions.size || savesInFlight) ? 'STOPPING' : job.state, draining: !!(worker || stopTask || pendingActions.size || savesInFlight), persistence: copy(job.persistence ?? null), world: copy(job.world), userRunIntent: job.userRunIntent, result: job.result, pauseReason: job.pauseReason, pauseDetails: job.pauseDetails ?? null,
       chunks: regions?.chunks ?? null, yTop: job.yTop, yBottom: regions?.yBottom ?? null, currentY: job.lastDecision?.y ?? job.cursorY,
       counts, deferred: planner?.deferredList().slice(0, 30) ?? [], deferredCount: planner?.deferredList().length ?? 0, temporary: planner?.temporaryList() ?? [], seals: planner?.sealList() ?? [],
       freeSlots: inv ? freeSlots(inv) : null, health: s?.health ?? null, food: foodOf(s), held: s?.heldItem?.name ?? null,
@@ -2411,14 +2557,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     return planner.pathTo(origin, goal)
   }
-  function holdsWork () { return !!job && ACTIVE.has(job.state) }
+  function holdsWork () { return !!job && (ACTIVE.has(job.state) || !!worker || !!stopTask || pendingActions.size > 0) }
   function egressStatus (inv) {
-    const e = job.egress; const p = e?.plan; const exit = job.config.exit ?? normalizeExit({}, { legacy: true })
+    const e = job.egress; const p = e?.plan ?? job.exitReservation?.plan; const exit = job.config.exit ?? normalizeExit({}, { legacy: true })
     const available = inv ? dirtCount(inv) : null
-    return { mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
+    return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => worker ?? Promise.resolve() }
+  return { plan, start, pause, emergencyStop, resume, cancel, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults }
