@@ -137,5 +137,5 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 - **既存コードを変える前にバックアップ**: ローカル作業ではこれまで `backup/<内容>-<日付>/` に変更前のファイルを保存している。
 - **秘密情報**: `.auth/`、`.env` は読まない・出力しない・コミットしない。リポジトリは公開です。
 - **ユーザーとのやり取りは日本語**で、時刻は **JST（UTC+9）** で書く。
-- ローカル作業フォルダ（Windows の `G:\Projects\MinecraftBot`）は Git 管理ではなく、GitHub（`YuK1Game/minecraft-mining-bot`）へは手動で同期している。どちらが新しいかを確認してから作業する。
+- ローカル作業フォルダ（Windows の `G:\Projects\MinecraftBot`）は Git 管理されており、`main` ブランチが GitHub（`YuK1Game/minecraft-mining-bot`）の `origin/main` を追跡している。作業前に `git status` とリモートとの差分を確認する。
 - 参考実装や通信仕様は `docs/bedrock-bot-references.md`、`docs/bedrock-references.md` を参照。
