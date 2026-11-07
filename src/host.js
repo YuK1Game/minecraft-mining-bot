@@ -337,36 +337,7 @@ function createHostPacketReceiver ({ state, shared, meta, cache, applyState, wor
 
 // Append-only live log for the dashboard (.local/bot.log), rotated at 5MB to
 // bot.log.1. Writes are fire-and-forget; a disk error never affects the Bot.
-const liveLog = (() => {
-  const syncFs = require('node:fs')
-  const file = path.resolve(__dirname, '..', '.local', 'bot.log')
-  const limit = 5 * 1024 * 1024
-  let stream = null, written = 0
-  const open = () => {
-    try {
-      syncFs.mkdirSync(path.dirname(file), { recursive: true })
-      try { written = syncFs.statSync(file).size } catch { written = 0 }
-      stream = syncFs.createWriteStream(file, { flags: 'a' })
-      stream.on('error', () => { stream = null })
-    } catch { stream = null }
-  }
-  return {
-    file,
-    write (line) {
-      try {
-        if (!stream) open()
-        if (!stream) return
-        const data = line + '\n'
-        if (written + data.length > limit) {
-          stream.end(); stream = null
-          try { syncFs.renameSync(file, file + '.1') } catch {}
-          open(); if (!stream) return
-        }
-        stream.write(data); written += Buffer.byteLength(data)
-      } catch { /* Logging must never affect the Bot. */ }
-    }
-  }
-})()
+const liveLog = require('./live-log').createLiveLog({ file: path.resolve(__dirname, '..', '.local', 'bot.log') })
 
 async function main () {
   const args = process.argv.slice(2)
@@ -512,7 +483,7 @@ async function main () {
     process.exitCode = code
     const deadline = setTimeout(() => process.exit(code), 5000).unref()
     const finish = () => { clearTimeout(deadline); process.exit(code) }
-    void Promise.resolve(cleanup).then(finish, error => { console.error(`終了時の記録確認: ${errorText(error)}`); finish() })
+    void Promise.all([cleanup, liveLog.close()]).then(finish, error => { console.error(`終了時の記録確認: ${errorText(error)}`); finish() })
   }
   process.once('SIGINT', () => stop()); process.once('SIGTERM', () => stop())
   const context = {

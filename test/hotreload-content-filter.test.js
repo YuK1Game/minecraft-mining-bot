@@ -7,7 +7,8 @@ const {createHotReloader}=loaded.exports
 async function until(check,label='owned watcher condition',ms=1500){const end=Date.now()+ms;while(Date.now()<end){if(check())return;await delay(5)}assert.fail(label)}
 function deferred(){let resolve;const promise=new Promise(r=>{resolve=r});return{promise,resolve}}
 function workspace(t){
- const directory=fs.mkdtempSync(path.join(os.tmpdir(),'mc-content-filter-')),created=new Set(),managers=[],errors=[],events=[],client={identity:'controlled-stable-client',connected:true},context={client,events,construct:null}
+ // Canonicalize the owned fixture too: Windows TEMP can use a short-path alias.
+ const directory=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'mc-content-filter-'))),created=new Set(),managers=[],errors=[],events=[],client={identity:'controlled-stable-client',connected:true},context={client,events,construct:null}
  let notices=0;const observer=fs.watch(directory,()=>{notices++})
  function write(name,text){const file=path.resolve(directory,name);assert.equal(path.dirname(file),directory);created.add(file);fs.writeFileSync(file,text);return file}
  const helper=write('helper.js','exports.value=1\n'),stable=write('world.js','exports.marker="original-stable"\n')
@@ -17,7 +18,7 @@ function workspace(t){
  t.after(async()=>{
   for(const actor of managers)actor.stop();observer.close();await until(()=>managers.every(actor=>!actor.snapshot().pending),'owned reload did not drain after its watcher stop',600)
   for(const actor of managers)if(actor.current)await actor.current.dispose('owned_test_end')
-  const actual=fs.realpathSync(directory),tempRoot=path.resolve(os.tmpdir())+path.sep
+  const actual=fs.realpathSync.native(directory),tempRoot=fs.realpathSync.native(os.tmpdir())+path.sep
   assert.ok(actual.toLowerCase().startsWith(tempRoot.toLowerCase()));assert.ok(path.basename(actual).startsWith('mc-content-filter-'))
   for(const file of created){assert.equal(path.dirname(file),directory);delete require.cache[file];try{fs.unlinkSync(file)}catch(e){if(e.code!=='ENOENT')throw e}}
   fs.rmdirSync(directory)

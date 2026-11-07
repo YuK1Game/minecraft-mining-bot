@@ -151,6 +151,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     const d = distance(s.position, bodyAim(e))
     return profiles.engagementAllowed(e.entityType, { distance: d, provoked: provokedBy(s, e) })
   }
+  let scanCursor = 0
   function selectCandidate () {
     const s = getState(); const scope = readScope(s)
     if (!live(s) || !scope || !enabled()) return null
@@ -165,7 +166,10 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     // A creeper between reach and the shot distance is evaded (when a retreat
     // hook exists) instead of being left to the slower idle escape.
     const ranked = [], surveys = new Map()
-    for (const actor of allActors()) {
+    const actors = allActors(), start = actors.length ? scanCursor++ % actors.length : 0
+    // Rotate the cheap candidate scan so a global CPU budget cannot starve
+    // the same later actors after every terrain revision. Final ranking is unchanged.
+    for (const actor of [...actors.slice(start), ...actors.slice(0, start)]) {
       if (!eligible(actor, s) || !profileEligible(actor, s)) continue
       const preferred = preferredMode(s, actor), key = targetKey(scope, actor)
       // Reject distance and retry holds before route, work and bow surveys.

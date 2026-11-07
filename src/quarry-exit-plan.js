@@ -35,7 +35,7 @@ function permitsExitAction (plan, kind, p) {
   return false
 }
 
-function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, inventory = [], policy = {}, minFreeSlots = 6, exit = {}, reachable = null } = {}) {
+function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, inventory = [], policy = {}, minFreeSlots = 6, exit = {}, reachable = null, preflight = false, reservation = null } = {}) {
   if (!regions?.chunks?.length || !point(feet) || typeof getBlock !== 'function' || !Number.isSafeInteger(yTop)) return { ok: false, reason: 'EXIT_COLUMN_UNAVAILABLE', details: { reason: 'INVALID_EXIT_CONTEXT' } }
   const options = normalizeExit(exit)
   const read = p => getBlock(p.x, p.y, p.z)
@@ -51,6 +51,9 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
     return null
   }
   const empty = p => !unsafe(p) && AIR.has(nameOf(read(p)))
+  // Preflight may plan to clear an observed, diggable entry inside the quarry.
+  // It never changes that cell to observed air or grants execution permission.
+  const entryClearable = p => empty(p) || preflight && regions.columns.has(`${p.x},${p.z}`) && p.y >= regions.yBottom && p.y <= yTop && !unsafe(p) && blockRule(read(p).name).kind === 'dig'
   const floor = p => { const b = read(p); const r = blockRule(b?.name); if (b?.known && nameOf(b) === 'bedrock' && !protectedAt(p) && !b.protected && !b.protectionSource && !b.extra?.length) return b.boundingBox === 'block'; return !unsafe(p) && b.boundingBox === 'block' && r.kind === 'dig' && !r.leaves && !r.plant && !/_log$|_wood$|_stem$/.test(nameOf(b)) }
   const candidates = []
   const sides = options.side === 'auto' ? ['east', 'west', 'north', 'south'] : [options.side]
@@ -67,10 +70,11 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
   }
   const attempts = []; const plans = []
   for (const { side, column } of candidates) {
+    if (reservation && (column.x !== reservation.column?.x || column.z !== reservation.column?.z || side !== reservation.side)) continue
     const normal = SIDE_NORMALS[side]
     const startFeet = { ...column, y: regions.yBottom }
     const entry = { x: column.x - normal.x, y: startFeet.y, z: column.z - normal.z }
-    if (!empty(entry) || !empty({ ...entry, y: entry.y + 1 }) || !floor({ ...entry, y: entry.y - 1 }) || !floor({ ...startFeet, y: startFeet.y - 1 }) || reachable && !reachable.has(key(entry))) { attempts.push({ side, column, reason: 'ENTRY_UNAVAILABLE' }); continue }
+    if (!entryClearable(entry) || !entryClearable({ ...entry, y: entry.y + 1 }) || !floor({ ...entry, y: entry.y - 1 }) || !floor({ ...startFeet, y: startFeet.y - 1 }) || reachable && !reachable.has(key(entry))) { attempts.push({ side, column, reason: 'ENTRY_UNAVAILABLE' }); continue }
     let landing = null
     const x = column.x + normal.x, z = column.z + normal.z
     // yTop is the maximum inside the quarry. A neighbouring surface can be
@@ -132,8 +136,8 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
     let reason = null; let details = null
     if (missingTool) { reason = 'EXIT_TOOL_MISSING'; details = missingTool }
     else if (dirtCount(inventory) < plan.totalDirt) { reason = 'EXIT_MATERIAL_MISSING'; details = { dirtAvailable: dirtCount(inventory), requiredDirt: plan.requiredDirt, reserveDirt: plan.reserveDirt, totalDirt: plan.totalDirt } }
-    else if (!canAccept(inventory, plan.drops, { minFreeSlots })) { reason = 'EXIT_INVENTORY_CAPACITY'; details = { drops: plan.drops, minFreeSlots } }
-    if (!reason) return { ok: true, plan }
+    else if (!preflight && !canAccept(inventory, plan.drops, { minFreeSlots })) { reason = 'EXIT_INVENTORY_CAPACITY'; details = { drops: plan.drops, minFreeSlots } }
+    if (!reason) return { ok: true, plan, preflight, serverConfirmed: false }
     blocked ??= { ok: false, reason, details, plan }
   }
   return blocked
