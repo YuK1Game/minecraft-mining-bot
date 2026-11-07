@@ -18,7 +18,7 @@ const { normalizePlayerCorrection } = require('./server-physics')
 const { createRespawnSwim } = require('./respawn-swim')
 const { parseQuarryCommand } = require('./quarry-cli')
 
-const PACKET_EVENTS = ['start_game', 'move_player', 'correct_player_move_prediction', 'server_post_move', 'change_dimension', 'respawn', 'update_attributes', 'set_health', 'death_info', 'item_registry', 'inventory_content', 'inventory_slot', 'mob_equipment', 'player_hotbar', 'set_player_game_type', 'update_player_game_type', 'level_chunk', 'subchunk', 'update_block', 'update_subchunk_blocks', 'crafting_data', 'item_stack_response', 'container_open', 'container_close', 'add_item_entity', 'take_item_entity', 'remove_entity', 'move_entity', 'move_entity_delta', 'add_player', 'add_entity', 'entity_event', 'set_entity_data']
+const PACKET_EVENTS = ['start_game', 'move_player', 'correct_player_move_prediction', 'server_post_move', 'change_dimension', 'respawn', 'update_attributes', 'set_health', 'death_info', 'item_registry', 'inventory_content', 'inventory_slot', 'mob_equipment', 'player_hotbar', 'set_player_game_type', 'update_player_game_type', 'level_chunk', 'subchunk', 'update_block', 'update_subchunk_blocks', 'crafting_data', 'item_stack_response', 'container_open', 'container_close', 'add_item_entity', 'take_item_entity', 'remove_entity', 'move_entity', 'move_entity_delta', 'add_player', 'add_entity', 'entity_event', 'set_entity_data', 'command_output']
 const CONTROL_EVENTS = new Set(['update_client_input_locks', 'set_movement_authority', 'client_movement_prediction_sync', 'packet_violation_warning'])
 const TRANSPORT_EVENTS = new Set(['error', 'close', 'connect', 'spawn', 'join', 'kick', 'newListener', 'removeListener'])
 
@@ -81,14 +81,46 @@ function resumeRuntimeSafely (runtime, { shared, source = 'resume', onError = ()
   } catch (error) { return failed(error) }
 }
 
-function createOnlineEmergencyHandler ({ getState, getShared, getCurrent, report = () => {} }) {
+function formatOnlineEmergency (receipt) {
+  const line = receipt.resumeError
+    ? `行動の再開を見送り、接続を保持します: online_emergency: ${receipt.resumeError}`
+    : `危険を検知しました。接続を保持し、通常の保護と復帰を続けます: ${receipt.reasonCode}`
+  return receipt.suppressedCount > 0 ? `${line}（直前の同一危険ログ ${receipt.suppressedCount} 件を省略）` : line
+}
+
+function createOnlineEmergencyHandler ({ getState, getShared, getCurrent, getLife = state => state.lifecycle?.deathId ?? state.deathId, now = Date.now, report = () => {} }) {
+  const scopeOf = state => JSON.stringify([state.connectionId, state.startedAt, String(state.runtimeEntityId ?? ''), state.dimension, getLife(state) ?? null])
+  let group = null
+  function emit (receipt, currentGroup, when) {
+    const suppressedCount = currentGroup?.suppressed ?? 0
+    if (currentGroup) {
+      currentGroup.lastReportedAt = when
+      currentGroup.suppressed = 0
+    }
+    try { report({ ...receipt, suppressedCount }) } catch { /* Diagnostic failures must not stop protection. */ }
+  }
   return details => {
     const state = getState(); const shared = getShared()
     if (details?.connectionId != null && details.connectionId !== state.connectionId) return { accepted: false, reason: 'connection_changed' }
-    const receipt = { status: 'remaining_online', reason: String(details?.reason ?? 'Local danger observed').slice(0, 300), reasonCode: String(details?.reasonCode ?? 'LOCAL_DANGER').slice(0, 80), connectionId: state.connectionId, health: state.health, at: new Date().toISOString() }
+    const when = now(), scope = scopeOf(state)
+    const reason = String(details?.reason ?? 'Local danger observed'), reasonCode = String(details?.reasonCode ?? 'LOCAL_DANGER')
+    const changed = !group || group.scope !== scope || group.reasonCode !== reasonCode || group.reason !== reason
+    if (changed) group = { scope, reason, reasonCode, lastReportedAt: null, lastHealth: null, suppressed: group?.scope === scope ? group.suppressed : 0 }
+    const owner = group
+    const damaged = Number.isFinite(owner.lastHealth) && Number.isFinite(state.health) && state.health < owner.lastHealth
+    if (Number.isFinite(state.health)) owner.lastHealth = state.health
+    const receipt = { status: 'remaining_online', reason: reason.slice(0, 300), reasonCode: reasonCode.slice(0, 80), connectionId: state.connectionId, health: state.health, at: new Date(when).toISOString() }
     shared.onlineEmergency = receipt
-    report(receipt)
-    resumeRuntimeSafely(getCurrent(), { shared, source: 'online_emergency', onError: failure => { receipt.resumeError = failure.message; report(receipt) } })
+    if (changed || damaged || when < owner.lastReportedAt || when - owner.lastReportedAt >= 5000) emit(receipt, owner, when)
+    else owner.suppressed++
+    resumeRuntimeSafely(getCurrent(), { source: 'online_emergency', onError: failure => {
+      const sameScope = getShared() === shared && scopeOf(getState()) === scope
+      if (sameScope && shared.onlineEmergency === receipt) {
+        receipt.resumeError = failure.message
+        shared.runtimeResumeError = failure
+      }
+      emit({ ...receipt, resumeError: failure.message }, sameScope && group === owner ? owner : null, now())
+    } })
     return { accepted: true, ...receipt }
   }
 }
@@ -377,7 +409,7 @@ async function main () {
     liveLog.write(line)
   }
   const reportResumeError = receipt => log(`行動の再開を見送り、接続を保持します: ${receipt.source}: ${receipt.message}`)
-  const onlineEmergency = createOnlineEmergencyHandler({ getState: () => state, getShared: () => shared, getCurrent: current, report: receipt => receipt.resumeError ? reportResumeError({ source: 'online_emergency', message: receipt.resumeError }) : log(`危険を検知しました。接続を保持し、通常の保護と復帰を続けます: ${receipt.reasonCode}`) })
+  const onlineEmergency = createOnlineEmergencyHandler({ getState: () => state, getShared: () => shared, getCurrent: current, getLife: () => lifecycle?.stats().deathId, now: Date.now, report: receipt => log(formatOnlineEmergency(receipt)) })
   const deathRespawn = createDeathRespawnReflex({ getState: () => state, getShared: () => shared, getLifecycle: () => lifecycle, getCurrent: current, isStopping: () => stopping, report: result => log(`死亡後の通常リスポーン: ${result.phase}${result.reason ? ` (${result.reason})` : ''}`) })
   const startupCreeperEvents = []
   const receiver = createHostPacketReceiver({ state, shared, meta, cache, applyState, world, entities, getLifecycle: () => lifecycle, getCurrent: current, log })
@@ -616,4 +648,4 @@ async function main () {
   } catch (error) { if (!stopping) { console.error(errorText(error)); stop(error.code === 'CANCELLED' ? 0 : 1) } }
 }
 
-module.exports = { main, errorText, createHostPacketEvents, createHostPacketReceiver, startupFuseDanger, createStartupFuseGuard, resumeRuntimeSafely, createOnlineEmergencyHandler, createDeathRespawnReflex, requestStartupTerrain, respawnTerrainKnown, createRespawnTerrainHandoff }
+module.exports = { main, errorText, createHostPacketEvents, createHostPacketReceiver, startupFuseDanger, createStartupFuseGuard, resumeRuntimeSafely, formatOnlineEmergency, createOnlineEmergencyHandler, createDeathRespawnReflex, requestStartupTerrain, respawnTerrainKnown, createRespawnTerrainHandoff }

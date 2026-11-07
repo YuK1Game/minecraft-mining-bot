@@ -20,6 +20,11 @@ function id (value, signed = false) {
   try { const n = BigInt(value); return n >= (signed ? -(1n << 63n) : 0n) && n < 1n << (signed ? 63n : 64n) ? String(n) : null } catch { return null }
 }
 function failure (message, code) { return Object.assign(new Error(message), { code }) }
+const logBinding = (state, target) => ({
+  runtimeId: id(target.runtimeId), uniqueId: id(target.uniqueId, true),
+  scope: { connectionId: String(state.connectionId).slice(0, 120), startedAt: String(state.startedAt).slice(0, 80), dimension: state.dimension, selfRuntimeId: id(state.runtimeEntityId) },
+  life: state.lifecycle?.deathId ?? state.deathId ?? null
+})
 function bodyAim (target) { return { ...target.position, y: target.position.y + (['minecraft:spider', 'minecraft:cave_spider', 'minecraft:silverfish', 'minecraft:endermite', 'minecraft:slime', 'minecraft:magma_cube', 'minecraft:vex', 'minecraft:phantom'].includes(target.entityType) ? 0.2 : 0.9) } }
 function descendingCriticalFrame (movement, criticalHopId, { wallNow = Date.now(), workingPosition } = {}) {
   const m = movement; const p = m?.physicsState
@@ -194,7 +199,7 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
     client.queue('inventory_transaction', { transaction })
     const gap = Number.isFinite(lastAttack) ? Math.round(clock() - lastAttack) : null
     lastAttack = clock(); r.hitsRequested++
-    try { log(`剣で攻撃: target=${String(p.target.entityType).replace('minecraft:', '')} gap=${gap ?? '-'}ms critical=${critical} hit=${r.hitsRequested}`) } catch { /* logging only */ }
+    try { log(`剣で攻撃: target=${String(p.target.entityType).replace('minecraft:', '')} gap=${gap ?? '-'}ms critical=${critical} hit=${r.hitsRequested} context=${JSON.stringify(logBinding(p.state, p.target))}`) } catch { /* logging only */ }
     const attempt = { targetRuntimeId: p.target.runtimeId, targetUniqueId: p.target.uniqueId, weapon: weapon.name, provenNormalDamage: weapon.damage, damageSource: weapon.source, damageKnown: weapon.damageKnown, weaponWarnings: copy(weapon.warnings), unknownWeaponCandidates: copy(weapon.unknownCandidates), selectionBasis: weapon.selectionBasis, enchantmentBonus: weapon.enchantmentBonus, criticalAttempt: critical, criticalHitConfirmed: false, queuedTick, criticalHopId: hopId, serverConfirmed: false, hitConfirmed: false }
     r.attempts.push(attempt); r.phase = 'cooldown'
   }

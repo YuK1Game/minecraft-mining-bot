@@ -24,10 +24,11 @@ test('live status exposes foot coordinates, real counts and Japanese labels with
   assert.equal(status.inventory[1].label, '木のつるはし')
   assert.equal(status.inventory[1].durabilityRemaining, 59)
   assert.equal(status.inventory[1].maxDurability, null)
-  assert.equal(status.milestones.find(row => row.id === 'diamond').status, 'pending')
+  assert.equal(status.goal, 'quarry')
+  assert.deepEqual(status.milestones, [])
 })
 
-test('missing values remain unknown and a mission completion claim cannot create an actual diamond', () => {
+test('missing values remain unknown and the former diamond mission cannot create progress', () => {
   const mission = { version: 1, work: { title: '採掘', state: 'complete' }, milestones: [{ id: 'diamond', label: 'ダイヤ', status: 'done', detail: 'unverified claim' }] }
   const status = sanitizeStatus({}, { ...options, apiAvailable: false, mission })
   assert.equal(status.online, false)
@@ -36,9 +37,10 @@ test('missing values remain unknown and a mission completion claim cannot create
   assert.equal(status.position, null)
   assert.equal(status.inventoryKnown, false)
   assert.deepEqual(status.inventory, [])
-  assert.equal(status.work.state, 'waiting')
-  assert.equal(status.milestones[0].status, 'pending')
-  assert.match(status.milestones[0].detail, /未確認/)
+  assert.notEqual(status.work.state, 'complete')
+  assert.equal(status.goal, 'quarry')
+  assert.deepEqual(status.milestones, [])
+  assert.doesNotMatch(status.work.title, /ダイヤ/)
 })
 
 test('authentication is available but not alive, while observed death and zero hunger remain real zeroes', () => {
@@ -69,20 +71,23 @@ test('offline cache keeps observation time and foot height without counting a se
   assert.equal(sanitizeCachedStatus({ version: 1, health: 20 }), null)
 })
 
-test('only confirmed inventory can mark the diamond complete and historical gear is distinguished from current items', () => {
+test('carried diamonds remain inventory items and cannot complete the quarry goal', () => {
   const value = raw(); value.inventory.items.push({ name: 'minecraft:diamond', count: 1 })
   const mission = { version: 1, milestones: [{ id: 'sword', label: '剣', status: 'done', detail: '過去に作成' }, { id: 'pick', label: 'つるはし', status: 'pending' }, { id: 'base', label: '小屋', status: 'history', detail: '建築実績。現在の閉鎖は未確認。' }] }
   const status = sanitizeStatus(value, { ...options, mission })
-  assert.equal(status.milestones.find(row => row.id === 'diamond').status, 'done')
-  assert.equal(status.milestones.find(row => row.id === 'sword').status, 'history')
-  assert.equal(status.milestones.find(row => row.id === 'pick').status, 'done')
-  assert.equal(status.milestones.find(row => row.id === 'base').status, 'history')
+  assert.equal(status.inventory.find(row => row.name === 'minecraft:diamond').count, 1)
+  assert.equal(status.goal, 'quarry')
+  assert.deepEqual(status.milestones, [])
+  assert.notEqual(status.work.state, 'complete')
   const past = sanitizeCachedStatus(status, { checkedAt: later })
-  assert.match(past.milestones.find(row => row.id === 'diamond').detail, /最終確認時|過去/)
+  assert.equal(past.stale, true)
+  assert.equal(past.inventory.find(row => row.name === 'minecraft:diamond').count, 1)
+  assert.deepEqual(past.milestones, [])
   value.inventory.uncertain = true
   const uncertain = sanitizeStatus(value, options)
   assert.equal(uncertain.inventoryKnown, false)
-  assert.equal(uncertain.milestones.find(row => row.id === 'diamond').status, 'pending')
+  assert.deepEqual(uncertain.inventory, [])
+  assert.notEqual(uncertain.work.state, 'complete')
 })
 
 test('privacy whitelist removes auth, accounts, raw NBT, stack IDs, caches and arbitrary internal data', () => {
@@ -98,9 +103,8 @@ test('privacy whitelist removes auth, accounts, raw NBT, stack IDs, caches and a
   const serialized = JSON.stringify(status)
   for (const privateValue of ['private-access-token', 'private-refresh-token', 'private-auth-code', 'private-email', 'private-raw-nbt', 'private-session-cache', 'private-memo', 'stackId', 'private-realm-id']) assert.ok(!serialized.includes(privateValue), privateValue)
   assert.equal(status.inventory.find(row => row.name === 'mod:unknown').label, 'mod:unknown')
-  assert.equal(status.hut.known, false)
-  assert.equal(status.hut.closed, null)
-  assert.equal(status.milestones.find(row => row.id === 'diamond').status, 'pending')
+  assert.equal(status.hut, undefined)
+  assert.deepEqual(status.milestones, [])
 })
 
 test('mission JSON is a bounded text description and has no authority over raw player/items or hidden fields', () => {
@@ -112,4 +116,96 @@ test('mission JSON is a bounded text description and has no authority over raw p
   assert.equal(mission.recentEvents.length, 24)
   assert.ok(!JSON.stringify(mission).includes('hidden'))
   assert.equal(sanitizeMission({ version: 2 }), null)
+})
+
+test('item durability, enchants and received shulker contents survive an offline cache round trip', () => {
+  const value = raw()
+  const slots = Array.from({ length: 36 }, (_, slot) => ({ slot, known: true, empty: true, name: null, count: 0 }))
+  slots[9] = {
+    slot: 9, known: true, empty: false, name: 'minecraft:iron_pickaxe', count: 1,
+    durabilityKnown: true, maxDurability: 250, durabilityRemaining: 171,
+    displayName: '<script>literal tool name</script>', lore: ['採掘道具'],
+    enchantmentsKnown: true, enchantments: [{ id: 15, name: 'efficiency', label: '効率', level: 3 }],
+    stackId: 998877, extra: { nbt: { secret: 'private-nested-nbt' } }
+  }
+  const contents = Array(27).fill(null)
+  contents[7] = { slot: 7, known: true, empty: false, name: 'minecraft:cobblestone', count: 64 }
+  slots[10] = { slot: 10, known: true, empty: false, name: 'minecraft:shulker_box', count: 1, container: { known: true, slotCount: 27, slots: contents } }
+  value.inventoryDetails = { known: true, uncertain: false, observedAt, selectedSlot: 0, slots, containers: [{ id: 'fake', name: 'private-summary-only' }] }
+  const observed = sanitizeStatus(value, options)
+  const detail = observed.inventoryDetails
+  assert.equal(detail.known, true)
+  assert.equal(detail.slots.length, 36)
+  assert.equal(detail.slots[0].empty, true)
+  assert.equal(detail.slots[9].durabilityRemaining, 171)
+  assert.equal(detail.slots[9].durabilityUsed, 79)
+  assert.equal(detail.slots[9].enchantments[0].level, 3)
+  assert.equal(detail.slots[9].displayName, '<script>literal tool name</script>')
+  assert.equal(detail.containers.length, 1)
+  assert.equal(detail.containers[0].sourceSlot, 10)
+  assert.equal(detail.containers[0].slots[0].empty, true)
+  assert.equal(detail.containers[0].slots[7].count, 64)
+  assert.doesNotMatch(JSON.stringify(observed), /998877|stackId|private-nested-nbt|private-summary-only/)
+  const cached = sanitizeCachedStatus(observed, { checkedAt: later })
+  assert.equal(cached.stale, true)
+  assert.equal(cached.inventoryDetails.observedAt, observedAt)
+  assert.deepEqual(cached.inventoryDetails.slots[9], detail.slots[9])
+  assert.equal(cached.inventoryDetails.containers[0].slots[7].count, 64)
+})
+
+test('unobserved contents, invalid wear and predicted slots do not become confirmed empty or usable items', () => {
+  const value = raw()
+  value.inventoryDetails = { known: true, slots: [
+    { slot: 0, known: true, empty: false, name: 'minecraft:iron_pickaxe', count: 1, durabilityKnown: true, maxDurability: 250, durabilityRemaining: 251 },
+    { slot: 1, known: true, empty: false, name: 'minecraft:shulker_box', count: 1, container: { known: false, slotCount: 27, slots: null, reason: 'NBT_UNOBSERVED' } },
+    { slot: 2, known: true, empty: false, name: 'minecraft:diamond', count: 64, source: 'client_prediction' }
+  ] }
+  const detail = sanitizeStatus(value, options).inventoryDetails
+  assert.equal(detail.known, false)
+  assert.equal(detail.slots[0].durabilityKnown, false)
+  assert.equal(detail.slots[0].durabilityRemaining, null)
+  assert.equal(detail.slots[1].container.known, false)
+  assert.equal(detail.slots[1].container.slots, null)
+  assert.equal(detail.slots[2].known, false)
+  assert.equal(detail.slots[2].empty, false)
+  assert.equal(detail.slots[3].known, false)
+  assert.equal(detail.slots[3].empty, false)
+  value.inventory.uncertain = true
+  const uncertain = sanitizeStatus(value, options).inventoryDetails
+  assert.equal(uncertain.known, false)
+  assert.equal(uncertain.containers.length, 0)
+  assert.equal(uncertain.slots.every(slot => slot.known === false), true)
+})
+
+test('truncated, sparse or invalid container contents remain unconfirmed through the public cache', () => {
+  const malformed = [Array(26).fill(null), Array(28).fill(null), Array(27)]
+  for (const item of [
+    { slot: 7, known: true, empty: false, name: 'minecraft:cobblestone', count: -1 },
+    { slot: 7, known: false, empty: false, name: null, count: null },
+    { slot: 7, known: true, empty: false, name: 'minecraft:diamond', count: 64, source: 'client_prediction' }
+  ]) {
+    const contents = Array(27).fill(null)
+    contents[7] = item
+    malformed.push(contents)
+  }
+  for (const contents of malformed) {
+    const value = raw()
+    const slots = Array.from({ length: 36 }, (_, slot) => ({ slot, known: true, empty: true, count: 0 }))
+    slots[0] = { slot: 0, known: true, empty: false, name: 'minecraft:shulker_box', count: 1, container: { known: true, slotCount: 27, slots: contents } }
+    value.inventoryDetails = {
+      known: true, observedAt, slots,
+      openContainer: { id: 'window:1', kind: 'chest', known: true, slotCount: 27, slots: contents }
+    }
+    const observed = sanitizeStatus(value, options)
+    for (const status of [observed, sanitizeCachedStatus(observed, { checkedAt: later })]) {
+      assert.equal(status.inventoryDetails.slots[0].known, true)
+      assert.equal(status.inventoryDetails.slots[0].count, 1)
+      assert.equal(status.inventoryDetails.slots[0].container.known, false)
+      assert.equal(status.inventoryDetails.slots[0].container.slots, null)
+      assert.equal(status.inventoryDetails.containers[0].known, false)
+      assert.equal(status.inventoryDetails.containers[0].slots, null)
+      assert.equal(status.inventoryDetails.openContainer.known, false)
+      assert.equal(status.inventoryDetails.openContainer.slots, null)
+    }
+  }
 })

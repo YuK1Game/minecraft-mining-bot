@@ -4,16 +4,17 @@ const http = require('node:http')
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const { randomUUID } = require('node:crypto')
-const { sanitizeStatus, sanitizeCachedStatus, sanitizeMission } = require('./lib/dashboard-state')
+const { sanitizeStatus, sanitizeCachedStatus } = require('./lib/dashboard-state')
 
 const HOST = '127.0.0.1'
 const PORT = 3001
-// Live log page: initial tail sent on connect.
+// Integrated dashboard log: initial tail sent on connect.
 const LOG_TAIL_LINES = 300
 const LOG_TAIL_BYTES = 256 * 1024
-const CACHE_BYTES = 256 * 1024
-const MISSION_BYTES = 64 * 1024
-const STATUS_BYTES = 1024 * 1024
+const CACHE_BYTES = 2 * 1024 * 1024
+const STATUS_BYTES = 2 * 1024 * 1024
+const TEXTURE_BYTES = 512 * 1024
+const TEXTURE_MANIFEST_BYTES = 2 * 1024 * 1024
 
 function apiPortNumber (value) {
   if (!['number', 'string'].includes(typeof value)) throw new Error('API_PORTには1〜65535のポート番号を指定してください。')
@@ -86,15 +87,14 @@ function requestLocalStatus ({ apiPort, timeoutMs, signal }) {
   })
 }
 
-function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPort = process.env.API_PORT ?? 3000, pollIntervalMs = 5000, pollTimeoutMs = 800, viewerWindowMs = 15000, requestStatus = requestLocalStatus, readJsonFile = readJson, writeSnapshot = writeAtomicJson, readHtml = filename => readBounded(filename, 512 * 1024), clock = () => new Date().toISOString() } = {}) {
+function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPort = process.env.API_PORT ?? 3000, pollIntervalMs = 5000, pollTimeoutMs = 800, viewerWindowMs = 15000, requestStatus = requestLocalStatus, readJsonFile = readJson, writeSnapshot = writeAtomicJson, readHtml = filename => readBounded(filename, 512 * 1024), readAsset = readBounded, clock = () => new Date().toISOString() } = {}) {
   apiPort = apiPortNumber(apiPort)
   if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 1000 || !Number.isSafeInteger(pollTimeoutMs) || pollTimeoutMs < 1 || pollTimeoutMs > 800) throw new Error('Invalid dashboard polling bounds')
   const cacheFile = path.resolve(workspaceRoot, '.local/dashboard-last.json')
-  const missionFile = path.resolve(workspaceRoot, '.local/mission-status.json')
   const htmlFile = path.resolve(workspaceRoot, 'dashboard/index.html')
-  const logsHtmlFile = path.resolve(workspaceRoot, 'dashboard/logs.html')
+  const textureRoot = path.resolve(workspaceRoot, 'dashboard/assets/minecraft')
   const logFile = path.resolve(workspaceRoot, '.local/bot.log')
-  let mission = null; let latest = null; let lastGood = null
+  let latest = null; let lastGood = null
   let apiAvailable = false; let checkedAt = null
   let inFlight = null; let controller = null; let interval = null
   // The bot's /status is built on the bot's own event loop; polling it while
@@ -104,15 +104,11 @@ function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPo
 
   const snapshot = () => {
     const input = apiAvailable ? latest : lastGood
-    return input ? sanitizeCachedStatus(input, { apiAvailable, checkedAt, mission }) : sanitizeStatus({}, { apiAvailable: false, observedAt: null, checkedAt, mission })
-  }
-  async function loadMission () {
-    try { mission = sanitizeMission(await readJsonFile(missionFile, MISSION_BYTES)) } catch { mission = null }
+    return input ? sanitizeCachedStatus(input, { apiAvailable, checkedAt }) : sanitizeStatus({}, { apiAvailable: false, observedAt: null, checkedAt })
   }
   function initialize () {
     initialization ??= (async () => {
       try { lastGood = sanitizeCachedStatus(await readJsonFile(cacheFile, CACHE_BYTES), { apiAvailable: false, checkedAt: null }) } catch { lastGood = null }
-      await loadMission()
       return snapshot()
     })()
     return initialization
@@ -124,14 +120,13 @@ function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPo
     const signal = controller.signal
     inFlight = (async () => {
       await initialize()
-      await loadMission()
       if (stopped || signal.aborted) return snapshot()
       checkedAt = clock()
       try {
         const raw = await requestStatus({ apiPort, timeoutMs: pollTimeoutMs, signal })
         if (stopped || signal.aborted) return snapshot()
         if (!raw || Array.isArray(raw) || typeof raw.phase !== 'string') throw new Error('Invalid status response')
-        latest = sanitizeStatus(raw, { apiAvailable: true, checkedAt, observedAt: clock(), mission })
+        latest = sanitizeStatus(raw, { apiAvailable: true, checkedAt, observedAt: clock() })
         apiAvailable = true
         // Auth/loading observations are current but cannot erase the last
         // useful world/inventory observation when the Bot later goes offline.
@@ -189,17 +184,31 @@ function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPo
       response.end(method === 'HEAD' ? undefined : data)
     }
     const canonical = `http://${HOST}:${PORT}`
-    if (request.headers.host !== `${HOST}:${PORT}` || request.headers.origin != null && request.headers.origin !== canonical || request.headers['sec-fetch-site'] === 'cross-site') { request.resume?.(); send(403, { error: 'このPCの進捗ページから利用してください。' }); return }
-    if (!['GET', 'HEAD'].includes(method)) { request.resume?.(); send(405, { error: '進捗表示は読み取り専用です。' }, undefined, { Allow: 'GET, HEAD' }); return }
+    if (request.headers.host !== `${HOST}:${PORT}` || request.headers.origin != null && request.headers.origin !== canonical || request.headers['sec-fetch-site'] === 'cross-site') { request.resume?.(); send(403, { error: 'このPCのBot監視ページから利用してください。' }); return }
+    if (!['GET', 'HEAD'].includes(method)) { request.resume?.(); send(405, { error: 'Bot監視ページは読み取り専用です。' }, undefined, { Allow: 'GET, HEAD' }); return }
     if (typeof request.url !== 'string' || request.url.length > 2048 || !request.url.startsWith('/') || request.url.startsWith('//')) { send(400, { error: 'Invalid request URL' }); return }
     let url
     try { url = new URL(request.url, canonical) } catch { send(400, { error: 'Invalid request URL' }); return }
-    if (url.pathname === '/api/status') { lastViewAt = Date.now(); send(200, snapshot()) }
+    if (url.pathname.startsWith('/assets/minecraft/')) {
+      if (request.url.split('?')[0] !== url.pathname) { send(404, { error: 'Not found' }); return }
+      const relative = url.pathname.slice('/assets/minecraft/'.length)
+      const manifest = relative === 'manifest.json'
+      // Only shipped vanilla PNGs and the public mapping can be read. Each
+      // segment is explicit so encoded paths, backslashes and dot segments
+      // cannot become a general-purpose workspace file server.
+      if (!manifest && !/^textures\/(?:items|blocks)\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.png$/.test(relative)) { send(404, { error: 'Not found' }); return }
+      const filename = path.resolve(textureRoot, relative)
+      if (!filename.startsWith(textureRoot + path.sep)) { send(404, { error: 'Not found' }); return }
+      try {
+        const data = await readAsset(filename, manifest ? TEXTURE_MANIFEST_BYTES : TEXTURE_BYTES)
+        send(200, data, manifest ? 'application/json; charset=utf-8' : 'image/png', manifest ? {} : { 'Cache-Control': 'private, max-age=86400' })
+      } catch { send(404, { error: 'Texture unavailable' }) }
+    } else if (url.pathname === '/api/status') { lastViewAt = Date.now(); send(200, snapshot()) }
     else if (url.pathname === '/api/logs/stream' && method === 'GET') streamLogs(request, response)
-    else if (url.pathname === '/logs') {
-      try { send(200, await readHtml(logsHtmlFile), 'text/html; charset=utf-8') } catch { send(503, { error: 'ログページを準備しています。' }) }
+    else if (url.pathname === '/logs' || url.pathname === '/logs/') {
+      send(302, '', 'text/plain; charset=utf-8', { Location: '/#logs' })
     } else if (url.pathname === '/') {
-      try { send(200, await readHtml(htmlFile), 'text/html; charset=utf-8') } catch { send(503, { error: '進捗ページを準備しています。' }) }
+      try { send(200, await readHtml(htmlFile), 'text/html; charset=utf-8') } catch { send(503, { error: 'Bot監視ページを準備しています。' }) }
     } else send(404, { error: 'Not found' })
   }
   const server = http.createServer({ maxHeaderSize: 8192, requestTimeout: 3000, headersTimeout: 2000, keepAliveTimeout: 1000 }, (request, response) => { handler(request, response).catch(() => { if (!response.headersSent) { response.writeHead(500, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); response.end('{"error":"Dashboard unavailable"}') } else response.destroy() }) })
@@ -228,7 +237,7 @@ function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPo
 
 if (require.main === module) {
   const dashboard = createDashboard()
-  dashboard.start().then(({ url }) => console.log(`進捗ページ: ${url}`)).catch(error => { console.error(error.message); process.exitCode = 1 })
+  dashboard.start().then(({ url }) => console.log(`Bot監視ページ: ${url}`)).catch(error => { console.error(error.message); process.exitCode = 1 })
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { dashboard.stop().then(() => { process.exitCode = 0 }).catch(() => { process.exitCode = 1 }) })
 }
 

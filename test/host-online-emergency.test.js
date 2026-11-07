@@ -3,11 +3,77 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const { createStartupFuseGuard, createOnlineEmergencyHandler, createDeathRespawnReflex, createRespawnTerrainHandoff } = require('../src/host')
+const { createStartupFuseGuard, createOnlineEmergencyHandler, formatOnlineEmergency, createDeathRespawnReflex, createRespawnTerrainHandoff } = require('../src/host')
 const { createLifecycle } = require('../src/lifecycle')
 
 const flush = () => new Promise(resolve => setImmediate(resolve))
 function deferred () { let resolve; const promise = new Promise(yes => { resolve = yes }); return { promise, resolve } }
+
+function emergencyFixture (resume = () => {}) {
+  let time = 0, deathId = 0, resumes = 0
+  const state = { connectionId: 'one', startedAt: 'start', runtimeEntityId: '41', dimension: 'overworld', health: 6 }
+  const shared = {}, reports = []
+  const emergency = createOnlineEmergencyHandler({ getState: () => state, getShared: () => shared, getLife: () => deathId, now: () => time, getCurrent: () => ({ resumeRequested: () => resume(++resumes) }), report: value => reports.push(value) })
+  return { state, shared, reports, emergency, time: value => { time = value }, newLife: () => { deathId++ }, resumes: () => resumes }
+}
+
+test('five-second reporting window preserves every receipt and every resume and counts the omitted repetitions', () => {
+  const f = emergencyFixture(), danger = { reasonCode: 'LOW_HEALTH', reason: 'enemy nearby' }
+  for (const at of [0, 100, 1000, 4999, 5000]) {
+    f.time(at)
+    const prior = f.shared.onlineEmergency, receipt = f.emergency(danger)
+    assert.equal(receipt.accepted, true)
+    assert.equal(f.shared.onlineEmergency.at, new Date(at).toISOString())
+    assert.notStrictEqual(f.shared.onlineEmergency, prior)
+  }
+  assert.equal(f.resumes(), 5)
+  assert.deepEqual(f.reports.map(row => row.suppressedCount), [0, 3])
+  assert.doesNotMatch(formatOnlineEmergency(f.reports[0]), /省略/)
+  assert.match(formatOnlineEmergency(f.reports[1]), /3 件を省略/)
+})
+
+test('a health drop from the last observation, a new reason or a new scope is immediately visible', () => {
+  const f = emergencyFixture(), a = { reasonCode: 'DANGER', reason: 'skeleton' }
+  f.emergency(a)
+  f.time(1); f.state.health = 10; f.emergency(a)
+  f.time(2); f.state.health = 9; f.emergency(a)
+  assert.deepEqual(f.reports.map(row => [row.health, row.suppressedCount]), [[6, 0], [9, 1]])
+  f.time(3); f.emergency({ ...a, reason: 'witch' })
+  f.time(4); const b = { reasonCode: 'NO_ROUTE', reason: 'witch' }; f.emergency(b)
+  for (const change of [() => { f.state.connectionId = 'two' }, () => { f.state.startedAt = 'later' }, () => { f.state.runtimeEntityId = '42' }, () => { f.state.dimension = 'nether' }, f.newLife]) {
+    const before = f.reports.length; change(); f.emergency(b); assert.equal(f.reports.length, before + 1)
+  }
+  assert.equal(f.reports.length, 9); assert.equal(f.resumes(), 10)
+})
+
+test('a delayed failure reports immediately without changing the current life or extending its reporting window', async () => {
+  let rejectOld
+  const old = new Promise((resolve, reject) => { rejectOld = reject })
+  const f = emergencyFixture(n => { if (n === 1) return old; if (n === 2) throw new Error('current life failure') })
+  const danger = { reasonCode: 'DANGER' }
+  f.emergency(danger)
+  const oldReceipt = f.shared.onlineEmergency
+  f.time(100); f.newLife(); f.emergency(danger)
+  const current = f.shared.onlineEmergency, failure = f.shared.runtimeResumeError
+  assert.equal(current.resumeError, 'current life failure')
+  f.time(4900); rejectOld(new Error('previous life failure')); await flush()
+  assert.match(f.reports.at(-1).resumeError, /previous life/)
+  assert.equal(oldReceipt.resumeError, undefined)
+  assert.strictEqual(f.shared.onlineEmergency, current)
+  assert.strictEqual(f.shared.runtimeResumeError, failure)
+  f.time(5099); f.emergency(danger); assert.equal(f.reports.length, 4)
+  f.time(5100); f.emergency(danger); assert.equal(f.reports.length, 5)
+  assert.equal(f.reports.at(-1).suppressedCount, 1)
+})
+
+test('a repeated danger whose resume fails immediately reports the failure and its omission count', () => {
+  const f = emergencyFixture(n => { if (n === 2) throw new Error('resume failed') })
+  f.emergency({ reason: 'same danger' })
+  f.time(100); const receipt = f.emergency({ reason: 'same danger' })
+  assert.equal(f.resumes(), 2); assert.equal(f.reports.length, 2)
+  assert.equal(receipt.resumeError, 'resume failed'); assert.equal(f.reports[1].suppressedCount, 1)
+  assert.match(formatOnlineEmergency(f.reports[1]), /resume failed.*1 件を省略/)
+})
 
 test('startup fuse, low health and unavailable defense stay online with protection and goal intent intact', () => {
   const state = { phase: 'joined', health: 5, runtimeEntityId: '41', connectionId: 'socket', dimension: 'overworld', position: { x: 0, y: 66, z: 0 } }

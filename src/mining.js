@@ -1,4 +1,5 @@
 'use strict'
+const { isDeepStrictEqual } = require('node:util')
 
 const { resourceMinHealth } = require('./learning-health')
 
@@ -6,6 +7,7 @@ const { selectVisibleBlockFace, traceBlockFace } = require('./aim')
 const { isDryAccessPlant } = require('./action-access')
 const { bedVisibleFace } = require('./portable-bed')
 const { isShulkerBlock } = require('./container-types')
+const { fluidRoofNeighbourSafe } = require('./quarry-fluid-roof-safety')
 
 const AIR = new Set(['air', 'cave_air', 'void_air'])
 // Keep processed wood out of automatic harvesting. The caller must still select
@@ -40,12 +42,23 @@ function targetList (targets) {
     } else if (position.accessPreparation === 'owned_shulker') {
       if (typeof position.expectedName !== 'string' || !position.expectedName.startsWith('minecraft:') || !isShulkerBlock(position.expectedName) || typeof position.ownershipKey !== 'string' || !position.ownershipKey.length || position.ownershipKey.length > 200 || position.expectedRuntimeId != null && (!Number.isSafeInteger(position.expectedRuntimeId) || position.expectedRuntimeId < 0 || position.expectedRuntimeId > 4294967295)) throw new Error('Owned-shulker mining requires an actual block name, ownership key and optional received runtime ID')
       Object.assign(target, { accessPreparation: 'owned_shulker', expectedName: position.expectedName, ownershipKey: position.ownershipKey, expectedRuntimeId: position.expectedRuntimeId ?? null })
-    } else if (position.accessPreparation === 'quarry') {
+    } else if (position.accessPreparation === 'quarry' || position.accessPreparation === 'quarry_fluid_roof') {
       // Quarry targets: the quarry planner already chose the block, the tool
       // and checked falling/fluid dependencies; mining re-checks them live.
       const rt = position.requiredTool
+      if (rt?.reserve != null && (!Number.isSafeInteger(rt.reserve) || rt.reserve < 1)) throw new Error('Quarry tool reserve must leave at least one received durability use')
       if (typeof position.expectedName !== 'string' || !/^minecraft:[a-z0-9_]+$/.test(position.expectedName) || quarryRule(position.expectedName).kind !== 'dig' || position.expectedRuntimeId != null && !Number.isSafeInteger(position.expectedRuntimeId) || rt != null && (!['pickaxe', 'shovel', 'axe', 'hoe', 'shears'].includes(rt.kind) || !Number.isSafeInteger(rt.tier) || rt.tier < 0 || rt.tier > 4)) throw new Error('Quarry mining needs an expected diggable block and a valid tool requirement')
-      Object.assign(target, { accessPreparation: 'quarry', expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId ?? null, requiredTool: rt ? { kind: rt.kind, tier: rt.tier } : null })
+      Object.assign(target, { accessPreparation: position.accessPreparation, expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId ?? null, requiredTool: rt ? { kind: rt.kind, tier: rt.tier, ...(rt.reserve != null ? { reserve: rt.reserve } : {}) } : null })
+      if (position.expectedName === 'minecraft:leaf_litter') {
+        const props = position.expectedProperties
+        if (!Number.isInteger(position.expectedRuntimeId) || position.expectedRuntimeId < 0 || position.expectedRuntimeId > 4294967295 || rt != null || !props || Array.isArray(props) || Object.keys(props).length !== 2 || !Number.isInteger(props.growth) || props.growth < 0 || props.growth > 3 || !['north', 'south', 'east', 'west'].includes(props['minecraft:cardinal_direction'])) throw new Error('Leaf-litter quarry mining requires exact received growth0..3 properties, runtime and non-tool hand')
+        target.expectedProperties = structuredClone(props)
+      }
+      if (position.accessPreparation === 'quarry_fluid_roof') {
+        const source = position.fluidSource, p = source?.position, rule = quarryRule(position.expectedName)
+        if (targets.length !== 1 || rule.gravity || !rt || !Number.isSafeInteger(rt.reserve) || rt.reserve < 1 || rule.needs && (rt.kind !== rule.needs || rt.tier < rule.tier) || !p || !['x', 'y', 'z'].every(axis => Number.isSafeInteger(p[axis]) && Math.abs(p[axis]) <= 30000000) || p.x !== target.x || p.y !== target.y - 1 || p.z !== target.z || !['minecraft:lava', 'minecraft:flowing_lava', 'minecraft:water', 'minecraft:flowing_water'].includes(source.expectedName) || !Number.isSafeInteger(source.expectedRuntimeId) || source.expectedRuntimeId < 0 || source.expectedRuntimeId > 4294967295) throw new Error('Fluid-roof mining requires one non-gravity roof, a reserved proper tool and its exact immediately-below water/lava source')
+        target.fluidSource = { position: { x: p.x, y: p.y, z: p.z }, expectedName: source.expectedName, expectedRuntimeId: source.expectedRuntimeId }
+      }
     } else if (position.accessPreparation != null || position.expectedName != null) {
       if (position.accessPreparation !== 'tree_access' || !['minecraft:leaf_litter', 'minecraft:vine'].includes(position.expectedName)) throw new Error('植物の準備採掘には許可された対象名が必要です。')
       Object.assign(target, { accessPreparation: 'tree_access', expectedName: position.expectedName })
@@ -73,6 +86,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
   let dimension = null
   let ownedScope = null
   let shulkerScope = null
+  let fluidRoofScope = null
   let accessPin = null
   const bedScope = state => JSON.stringify([state.profile ?? null, state.realm?.id ?? null, state.connectionId ?? null, state.startedAt ?? null, String(state.runtimeEntityId ?? ''), state.lifecycle?.deathId ?? null])
   let startedBlockAt = 0
@@ -108,6 +122,31 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     if (!options || Array.isArray(options) || options.targets != null || !options.position || Object.keys(options.position).some(k => !['x','y','z'].includes(k)) || !Number.isSafeInteger(options.expectedRuntimeId) || options.expectedRuntimeId < 0 || options.expectedRuntimeId > 4294967295) throw new Error('Stone clearance needs one exact position and received runtime ID')
     return { ...targetList([options.position])[0], accessPreparation:'stone_clearance', expectedName:'minecraft:stone', expectedRuntimeId:options.expectedRuntimeId }
   }
+  function validateFluidRoofContext (target, state, block, allowReceivedAir = false) {
+    const scope = clearanceScope(state)
+    if (fluidRoofScope !== null && status.phase === 'mining' && scope !== fluidRoofScope) throw new Error('Fluid-roof mining changed connection or life')
+    const maxHealth = Number.isFinite(state.maxHealth) && state.maxHealth > 0 ? state.maxHealth : 20
+    if (!Number.isFinite(state.health) || state.health / maxHealth < 0.70 || state.inventory?.known !== true || state.inventory.uncertain || state.dead || state.isDead || state.lifecycle?.dead || state.phase !== 'spawned') throw new Error('Fluid-roof mining requires at least 70% observed health and known inventory')
+    const feetY = state.position.y - 1.62
+    const feet = { x: Math.floor(state.position.x), y: Math.floor(feetY + 0.001), z: Math.floor(state.position.z) }
+    if (feetY < target.y + 1 - 1e-4 || feet.x === target.x && feet.z === target.z) throw new Error('Fluid-roof mining needs a separate dry column above the roof')
+    const floor = world.getBlock(feet.x, feet.y - 1, feet.z)
+    if (!fluidRoofNeighbourSafe(floor) || floor.boundingBox !== 'block') throw new Error('Fluid-roof mining requires a received dry full support block')
+    for (const y of [feet.y, feet.y + 1]) {
+      const body = world.getBlock(feet.x, y, feet.z)
+      if (body?.known !== true || !AIR.has(blockName(body)) || body.extra?.length) throw new Error('Fluid-roof mining requires a known dry clear body')
+    }
+    if (block.protected === true || block.protectionSource || isProtected(target, state, block)) throw new Error('Protected fluid roofs cannot be mined')
+    if (!(allowReceivedAir && AIR.has(blockName(block))) && (block.boundingBox !== 'block' || block.diggable !== true || quarryRule(block.name).kind !== 'dig' || quarryRule(block.name).gravity || block.extra?.length)) throw new Error('Fluid roof must remain a diggable full non-gravity block')
+    const source = target.fluidSource, p = source.position
+    const lava = world.getBlock(p.x, p.y, p.z)
+    if (p.x !== target.x || p.y !== target.y - 1 || p.z !== target.z || lava?.known !== true || lava.name !== source.expectedName || lava.runtimeId !== source.expectedRuntimeId || lava.properties?.liquid_depth !== 0 || lava.extra?.length) throw new Error('Fluid-roof immediately-below source changed or is unobserved')
+    for (const d of adjacent) {
+      if (d.y === -1) continue
+      const b = world.getBlock(target.x + d.x, target.y + d.y, target.z + d.z)
+      if (!fluidRoofNeighbourSafe(b)) throw new Error('Fluid-roof other neighbours must remain received and dry')
+    }
+  }
   function validate (target, state, removed = new Set(), previousAim = null) {
     if (state.phase !== 'spawned' || !state.position) throw new Error('ワールドへの参加と位置取得が必要です。')
     if (state.gameMode !== 'survival' && state.gameMode !== 0) throw new Error('サバイバルモード専用です。')
@@ -135,15 +174,22 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
       if (!isShulkerBlock(block.name) || block.name !== target.expectedName || target.expectedRuntimeId != null && block.runtimeId !== target.expectedRuntimeId) throw new Error('Owned shulker block changed from its placement receipt')
       requireOwnedShulker(target, state, block)
     }
-    const quarry = target.accessPreparation === 'quarry'
+    const fluidRoof = target.accessPreparation === 'quarry_fluid_roof'
+    const quarry = target.accessPreparation === 'quarry' || fluidRoof
     if (quarry) {
       if (block.name !== target.expectedName || target.expectedRuntimeId != null && block.runtimeId !== target.expectedRuntimeId) throw new Error('露天掘りの対象ブロックが計画時から変わりました。')
+      if (target.expectedName === 'minecraft:leaf_litter' && (!isDeepStrictEqual(block.properties, target.expectedProperties) || quarryTool(state.heldItem?.name))) throw new Error('Leaf-litter received properties or non-tool hand changed before quarry mining')
       if (block.protected === true || block.protectionSource || isProtected(target, state, block)) throw new Error('保護されたブロックは露天掘りでも壊しません。')
       if (target.requiredTool) {
         const held = quarryTool(state.heldItem?.name)
         if (!held || held.kind !== target.requiredTool.kind || held.tier < target.requiredTool.tier) throw new Error(`回収に必要な道具を手に持っていません: ${name}`)
+        if (target.requiredTool.reserve != null) {
+          if (state.heldItem?.durabilityKnown !== true || !Number.isFinite(state.heldItem?.durabilityRemaining)) throw new Error('TOOL_DURABILITY_UNKNOWN')
+          if (state.heldItem.durabilityRemaining <= target.requiredTool.reserve) throw new Error('TOOL_DURABILITY_RESERVE')
+        }
       }
     }
+    if (fluidRoof) validateFluidRoofContext(target, state, block)
     if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
     if (clearance && (block.name !== 'minecraft:stone' || block.runtimeId !== target.expectedRuntimeId || block.protected === true || block.protectionSource || block.natural === false || isProtected(target, state, block))) throw new Error('Stone clearance target changed or is protected')
     if (!clearance && !quarry && PICK.has(name) && pickTier(state) < PICK.get(name)) throw new Error(`適切なツルハシの装備を確認できません: ${name}`)
@@ -151,6 +197,9 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     for (const offset of adjacent) {
       const neighbour = world.getBlock(target.x + offset.x, target.y + offset.y, target.z + offset.z)
       if (!neighbour.known) throw new Error('対象の周辺に未取得のブロックがあります。')
+      // Only this already-verified, exact source directly below the one roof
+      // is exceptional. All other quarry hazards and unknown cells still deny.
+      if (fluidRoof && offset.y === -1) continue
       // Quarry: falling neighbours are ordered by the planner (top-down); fluids
       // and unknown cells still stop the dig.
       const hazards = quarry ? QUARRY_HAZARDS : HAZARDS
@@ -223,6 +272,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
       if (shulkerScope !== null && currentShulkerScope(state) !== shulkerScope) throw new Error('Owned-shulker mining changed connection or life')
       if (target.accessPreparation === 'stone_clearance') clearanceEquipment(state)
       const block = world.getBlock(target.x, target.y, target.z)
+      if (target.accessPreparation === 'quarry_fluid_roof') validateFluidRoofContext(target, state, block, true)
       if (target.accessPreparation === 'owned_shulker') requireOwnedShulker(target, state, block)
       if (target.accessPreparation === 'stone_clearance' && (block.protected === true || block.protectionSource || isProtected(target, state, block))) throw new Error('Stone clearance target became protected')
       if (block.known && AIR.has(blockName(block))) {
@@ -230,6 +280,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
         status.completed.push(status.remaining.shift())
         if (status.operation === 'access_clearance') { status.blockCleared = true; status.confirmedBy = 'received_block_air'; status.serverConfirmed = true }
         if (target.accessPreparation === 'owned_shulker') { status.blockCleared = true; status.confirmedBy = 'received_block_air'; status.serverConfirmed = true }
+        if (target.accessPreparation === 'quarry_fluid_roof') { status.blockCleared = true; status.confirmedBy = 'received_block_air'; status.serverConfirmed = true }
         beginNext()
         return
       }
@@ -247,7 +298,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
   function applyPacket (name, packet) {
     if (status.phase !== 'mining' || !status.activeTarget) return
     const target = status.activeTarget
-    const touches = entry => entry?.position && ['x', 'y', 'z'].every(axis => entry.position[axis] === target[axis])
+    const touches = entry => entry?.position && (['x', 'y', 'z'].every(axis => entry.position[axis] === target[axis]) || target.accessPreparation === 'quarry_fluid_roof' && ['x', 'y', 'z'].reduce((sum, axis) => sum + Math.abs(entry.position[axis] - target[axis]), 0) === 1)
     if (name === 'update_block') { if (!touches(packet)) return }
     else if (name === 'update_subchunk_blocks') { if (![...(packet.blocks ?? []), ...(packet.extra ?? [])].some(touches)) return }
     else if (name !== 'subchunk' && name !== 'level_chunk') return
@@ -273,7 +324,9 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     ownedScope = targets.some(target => target.accessPreparation === 'owned_bed') ? bedScope(getState()) : null
     const ownsShulker = targets.some(target => target.accessPreparation === 'owned_shulker')
     shulkerScope = ownsShulker ? currentShulkerScope(getState()) : null
-    status = { phase: 'mining', activeTarget: null, completed: [], remaining: structuredClone(targets), reason: null, ...(clearance ? {operation:'access_clearance',willDrop:false,collected:false,blockCleared:false,serverConfirmed:false} : ownsShulker ? { operation: 'owned_shulker', collected: false, blockCleared: false, serverConfirmed: false } : {}) }
+    const fluidRoof = targets.some(target => target.accessPreparation === 'quarry_fluid_roof')
+    fluidRoofScope = fluidRoof ? clearanceScope(getState()) : null
+    status = { phase: 'mining', activeTarget: null, completed: [], remaining: structuredClone(targets), reason: null, ...(clearance ? {operation:'access_clearance',willDrop:false,collected:false,blockCleared:false,serverConfirmed:false} : ownsShulker ? { operation: 'owned_shulker', collected: false, blockCleared: false, serverConfirmed: false } : fluidRoof ? { operation: 'quarry_fluid_roof', blockCleared: false, serverConfirmed: false } : {}) }
     try {
       beginNext()
       timer = setInterval(check, 100)

@@ -3,6 +3,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setImmediate: turn } = require('node:timers/promises')
 const { createCombatCoordinator } = require(process.env.COMBAT_COORDINATOR_TEST_SOURCE ?? '../src/combat-coordinator')
+const { createQuarryCombatBridge } = require('../src/quarry-combat-bridge')
 
 function deferred () { let resolve; let reject; const promise = new Promise((a, b) => { resolve = a; reject = b }); return { promise, resolve, reject } }
 function fixture ({ bow = false, targetX = 2.2, acquireHook = null, resumeHook = null, approachHook = null, meleeHook = null, rangedHook = null, sleepHook = null, drainHook = null, ...options } = {}) {
@@ -55,7 +56,7 @@ test('one selection surveys each bow target once and resamples on the next tick'
   await f.coordinator.tick()
   assert.equal(f.surveyCalls.length, 2)
   assert.equal(f.rangedCalls.length, 1, 'a prior ready survey must not survive into the next selection')
-  assert.ok(f.approaches.length > 0)
+  assert.equal(f.approaches.length, 0, 'a newly blocked shot leaves resource work alone')
 })
 
 test('blocked creeper sight selection shares its survey and never chooses a closing approach', async () => {
@@ -63,19 +64,19 @@ test('blocked creeper sight selection shares its survey and never chooses a clos
   f.target.entityType = 'minecraft:creeper'; f.setRangedReady(false)
   await f.coordinator.tick()
   assert.deepEqual(f.surveyCalls, [{ name: 'ranged', runtimeId: '70' }])
-  assert.ok(f.approaches.length > 0)
-  assert.ok(f.approaches.every(call => call.args.purpose === 'sight'))
+  assert.equal(f.approaches.length, 0)
+  assert.equal(f.acquisitions.length, 0)
 })
 
 test('distance and retry holds skip expensive selection callbacks without losing another eligible target', async () => {
   const routes = [], work = []
-  const f = fixture({ bow: true, targetX: 12, approachHook: () => ({ ready: false, reason: 'blocked' }), canEngage: actor => { routes.push(actor.runtimeId); return true }, workGuard: { canSelectTarget: actor => { work.push(actor.runtimeId); return true }, canContinue: () => true } })
-  f.setRangedReady(false)
+  const f = fixture({ bow: true, targetX: 12, rangedHook: ({ stopped }) => stopped('NO_READY_ACTION'), canEngage: actor => { routes.push(actor.runtimeId); return true }, workGuard: { canSelectTarget: actor => { work.push(actor.runtimeId); return true }, canContinue: () => true } })
   f.actors.push({ ...f.target, runtimeId: '71', uniqueId: '-701', position: { x: 80, y: 65, z: 0.5 } })
   await f.coordinator.tick()
-  assert.deepEqual(routes, ['70']); assert.deepEqual(work, ['70']); assert.equal(f.surveyCalls.length, 1)
+  assert.ok(routes.length > 0); assert.ok(routes.every(id => id === '70')); assert.deepEqual(work, ['70']); assert.equal(f.surveyCalls.length, 1)
+  const checked = routes.length
   assert.equal((await f.coordinator.tick()).code, 'NO_CANDIDATE')
-  assert.deepEqual(routes, ['70']); assert.deepEqual(work, ['70']); assert.equal(f.surveyCalls.length, 1)
+  assert.equal(routes.length, checked); assert.deepEqual(work, ['70']); assert.equal(f.surveyCalls.length, 1)
   f.actors.push({ ...f.target, runtimeId: '72', uniqueId: '-702', position: { x: 2.2, y: 65, z: 0.5 } })
   await f.coordinator.tick()
   assert.equal(f.meleeCalls[0].runtimeId, '72')
@@ -84,16 +85,16 @@ test('distance and retry holds skip expensive selection callbacks without losing
 
 test('stale sight observations retry with fresh decisions within a bounded grace (moving bow targets) and never fall through to an old closing approach', async () => {
   for (const type of ['minecraft:zombie', 'minecraft:creeper']) {
-    const f = fixture({ bow: true, targetX: 14, approachHook: () => ({ ready: false, code: 'SIGHT_STALE' }) })
-    f.target.entityType = type; f.setRangedReady(false)
+    const f = fixture({ bow: true, targetX: 14, rangedHook: ({ stopped }) => stopped('SIGHT_STALE') })
+    f.target.entityType = type
     const result = await f.coordinator.tick()
     // Frozen fixture clock: the 0.9s grace never expires, so the 8-retry cap ends the claim.
-    assert.equal(result.code, 'SIGHT_STALE'); assert.equal(f.approaches.length, 9)
-    assert.ok(f.approaches.every(call => call.args.purpose === 'sight'))
+    assert.equal(result.code, 'SIGHT_STALE'); assert.equal(f.rangedCalls.length, 9)
+    assert.equal(f.approaches.length, 0)
     assert.equal(f.resumes.length, 1); assert.equal(f.coordinator.snapshot().busy, false)
     assert.equal((await f.coordinator.tick()).code, 'NO_CANDIDATE')
     f.advance(450); await f.coordinator.tick()
-    assert.equal(f.approaches.length, 18, 'another claim gets its own bounded retries after the ordinary backoff')
+    assert.equal(f.rangedCalls.length, 18, 'another claim gets its own bounded retries after the ordinary backoff')
   }
 })
 
@@ -218,10 +219,11 @@ test('two no-progress controller returns release safely rather than spin under a
   const f = fixture({ meleeHook: ({ stopped }) => ({ ...stopped('HIT_LIMIT'), hitsRequested: 0 }) })
   const r = await f.coordinator.tick(); assert.equal(r.code, 'NO_PROGRESS'); assert.equal(f.meleeCalls.length, 2); assert.equal(f.resumes.length, 1); assert.equal(f.coordinator.snapshot().busy, false)
 })
-test('combat mode needs a near melee target or current route evidence within the 32-block engage radius', async () => {
+test('combat mode requires a current threat verdict for every target within the 32-block engage radius', async () => {
   const blocked = fixture({ bow: true, targetX: 8, canEngage: () => false }); const r = await blocked.coordinator.tick()
   assert.equal(r.code, 'NO_CANDIDATE'); assert.equal(blocked.acquisitions.length, 0); assert.equal(blocked.resourceMoving(), true)
-  const near = fixture({ canEngage: () => false }); assert.equal((await near.coordinator.tick()).targetDead, true)
+  const near = fixture({ canEngage: () => false }); assert.equal((await near.coordinator.tick()).code, 'NO_CANDIDATE')
+  assert.equal(near.acquisitions.length, 0)
   const routed = fixture({ bow: true, targetX: 8, canEngage: () => true }); await routed.coordinator.tick(); assert.equal(routed.acquisitions.length, 1)
   const far = fixture({ bow: true, targetX: 8, canEngage: () => true, engageRadius: 4 }); assert.equal((await far.coordinator.tick()).code, 'NO_CANDIDATE')
 })
@@ -259,6 +261,44 @@ test('a creeper closing fast during ranged fire ends the claim with one bounded 
   assert.equal(r.creeperRetreat, 'stepped'); assert.equal(retreats.length, 1); assert.deepEqual(retreats[0].radii, [9, 10, 8.5]); assert.equal(retreats[0].maxStep, 6)
   assert.ok(f.target.position.x > 8, 'stopped before the creeper reached the 8-block shot distance')
 })
+test('a pure creeper evade keeps its retreat permission between two steps across the quarry anchor', async () => {
+  const bridge = createQuarryCombatBridge(); bridge.activate({ jobId: 'quarry', epoch: 1 })
+  const steps = []
+  const f = fixture({ bow: true, targetX: 2.8, workGuard: bridge, retreat: async () => {
+    f.state.position.x += 2
+    steps.push(f.state.position.x)
+    return { ready: true }
+  } })
+  f.state.position.x = 8
+  f.target.entityType = 'minecraft:creeper'
+  bridge.interrupt(f.state, { anchor: { x: 0.5, y: 65, z: 0.5 } })
+  assert.equal(bridge.canMoveTo({ x: 10, y: 65, z: 0.5 }).reason, 'BEYOND_ANCHOR_RADIUS')
+  const result = await f.coordinator.tick()
+  assert.equal(result.code, 'CREEPER_EVADED')
+  assert.deepEqual(steps, [10, 12]); assert.equal(f.acquisitions.length, 1)
+  assert.equal(f.meleeCalls.length + f.rangedCalls.length + f.approaches.length, 0)
+})
+
+test('ordinary approach, melee and ranged claims remain bound to the quarry anchor', async () => {
+  for (const mode of ['approach', 'melee', 'ranged']) {
+    const bridge = createQuarryCombatBridge(); bridge.activate({ jobId: 'quarry', epoch: 1 })
+    const f = fixture({ bow: mode === 'ranged', targetX: { approach: 13.5, melee: 10, ranged: 19 }[mode], workGuard: bridge,
+      canAcquireMeleeApproach: () => true, approachHook: () => assert.fail('ordinary approach outside the anchor'),
+      acquireHook: ({ state, target }) => {
+        state.position.x = 10
+        if (mode === 'melee') target.position.x = 15
+        return { acquired: true, token: 'root-token' }
+      }
+    })
+    f.state.position.x = 8
+    if (mode === 'ranged') f.target.entityType = 'minecraft:creeper'
+    bridge.interrupt(f.state, { anchor: { x: 0.5, y: 65, z: 0.5 } })
+    const result = await f.coordinator.tick()
+    assert.equal(result.code, 'WORK_GUARD', mode); assert.equal(result.workGuardReason, 'ANCHOR_LIMIT', mode)
+    assert.equal(f.meleeCalls.length + f.rangedCalls.length + f.approaches.length, 0, mode)
+  }
+})
+
 test('a creeper inside the shot distance gets an evade claim: repeated retreat steps, no attack, ending once it is 9m away', async () => {
   const retreats = []
   const f = fixture({ bow: true, targetX: 6, retreat: async (actor, args) => { retreats.push(args); f.target.position.x += 2; return { ready: true } } })
@@ -289,19 +329,19 @@ test('low HP: one close hostile is pressed with continuous hits (no kite); two c
   pinned.actors.push({ ...structuredClone(pinned.target), runtimeId: '72', uniqueId: '-702', position: { x: 3, y: 65, z: 2 } })
   await pinned.coordinator.tick(); assert.equal(pinned.acquisitions.length, 1, 'an adjacent hostile is fought, not fled')
 })
-test('a blocked bow line first asks for a short sight stance before walking at the enemy', async () => {
+test('a blocked bow line does not acquire or search for a sight stance', async () => {
   const f = fixture({ bow: true, targetX: 12, approachHook: ({ args }) => args.purpose === 'sight' ? { ready: false, reason: 'none nearby' } : { ready: false, reason: 'no stance' } })
   f.setRangedReady?.(false)
-  await f.coordinator.tick()
+  const result = await f.coordinator.tick()
   const purposes = f.approaches.map(a => a.args.purpose ?? 'melee')
-  assert.ok(purposes.length >= 1, JSON.stringify(purposes)); assert.equal(purposes[0], 'sight')
+  assert.equal(result.code, 'NO_CANDIDATE'); assert.equal(f.acquisitions.length, 0); assert.deepEqual(purposes, [])
 })
-test('a creeper behind terrain (>= 8m) gets only a sight-stance request, never a closing approach', async () => {
+test('a creeper behind terrain (>= 8m) leaves resource control untouched', async () => {
   const f = fixture({ bow: true, targetX: 14, approachHook: ({ args }) => ({ ready: false, reason: args.purpose ?? 'melee' }) })
   f.target.entityType = 'minecraft:creeper'; f.setRangedReady(false)
   const r = await f.coordinator.tick()
   const purposes = f.approaches.map(a => a.args.purpose ?? 'melee')
-  assert.ok(purposes.length >= 1, JSON.stringify(r)); assert.ok(purposes.every(p => p === 'sight'), JSON.stringify(purposes))
-  assert.equal(r.code, 'CREEPER_NO_SIGHT')
+  assert.deepEqual(purposes, []); assert.equal(f.acquisitions.length, 0)
+  assert.equal(r.code, 'NO_CANDIDATE'); assert.equal(f.resourceMoving(), true)
 })
 

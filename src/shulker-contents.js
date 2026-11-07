@@ -86,4 +86,45 @@ function compareShulkerContents (boxRaw, rawSlots, options) {
   return { known: true, matches, ...(matches ? {} : { reason: 'CONTENTS_MISMATCH' }) }
 }
 
-module.exports = { readShulkerContents, readContainerContents, compareShulkerContents }
+// Diagnostic views must not weaken the comparison or dump unbounded item NBT.
+// Keep this off the 50ms recovery poll: callers request it on final failure.
+function diagnoseShulkerContents (boxRaw, rawSlots, options) {
+  const comparison = compareShulkerContents(boxRaw, rawSlots, options)
+  const actual = readShulkerContents(boxRaw, options), expected = readContainerContents(rawSlots, options)
+  const differences = [], limits = { maxDifferences: 32, maxVisited: 512, maxDepth: 16 }
+  let visited = 0, truncated = false
+  const preview = value => {
+    if (value === undefined) return { missing: true }
+    if (typeof value === 'string') return value.length <= 120 ? value : `${value.slice(0, 120)}…`
+    if (typeof value === 'bigint') return String(value)
+    if (Array.isArray(value)) return { type: 'array', length: value.length }
+    if (value && typeof value === 'object') return { type: 'object', keys: Object.keys(value).slice(0, 8).map(key => key.slice(0, 48)) }
+    return value
+  }
+  const difference = (path, wanted, received) => {
+    if (differences.length >= limits.maxDifferences) { truncated = true; return }
+    differences.push({ path: path.slice(0, 240), expected: preview(wanted), actual: preview(received) })
+  }
+  const visit = (wanted, received, path, depth) => {
+    if (visited++ >= limits.maxVisited || differences.length >= limits.maxDifferences) { truncated = true; return }
+    if (isDeepStrictEqual(wanted, received)) return
+    if (depth >= limits.maxDepth) { truncated = true; difference(path, wanted, received); return }
+    if (wanted && received && typeof wanted === 'object' && typeof received === 'object' && Array.isArray(wanted) === Array.isArray(received)) {
+      const keys = [...new Set([...Object.keys(wanted), ...Object.keys(received)])]
+      for (const key of keys) {
+        if (visited >= limits.maxVisited || differences.length >= limits.maxDifferences) { truncated = true; break }
+        const segment = Array.isArray(wanted) ? `[${key}]` : `.${key}`
+        visit(wanted[key], received[key], path + segment, depth + 1)
+      }
+    } else difference(path, wanted, received)
+  }
+  if (actual.known && expected.known && !comparison.matches) visit(expected.slots, actual.slots, 'slots', 0)
+  return {
+    ...comparison, status: !comparison.known ? 'UNKNOWN' : comparison.matches ? 'PASS' : 'FAIL',
+    expected: { known: expected.known, reason: expected.reason ?? null, slotCount: expected.known ? expected.slots.length : null },
+    actual: { known: actual.known, reason: actual.reason ?? null, slotCount: actual.known ? actual.slots.length : null },
+    differences, truncated, limits
+  }
+}
+
+module.exports = { readShulkerContents, readContainerContents, compareShulkerContents, diagnoseShulkerContents }

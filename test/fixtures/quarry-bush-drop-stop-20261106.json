@@ -1,0 +1,24 @@
+{
+  "capturedFrom": "Realm read-only /blocks and /status after quarry_debug_land_m3_m13_safe_20261106 stopped",
+  "stoppedAtJst": "2026-11-06T13:56:55.121+09:00",
+  "gameVersion": "bedrock_1.26.60",
+  "originFeet": { "x": -44, "y": 94, "z": -194 },
+  "nextStance": { "x": -44, "y": 94, "z": -195 },
+  "target": {
+    "known": true,
+    "position": { "x": -46, "y": 94, "z": -199 },
+    "name": "minecraft:bush",
+    "runtimeId": 2961272235,
+    "properties": {},
+    "boundingBox": "empty",
+    "hardness": 0,
+    "diggable": true,
+    "extra": []
+  },
+  "selectedTool": { "ok": true, "kind": "hand", "slot": null, "name": null, "tier": 0 },
+  "heldItem": { "name": "minecraft:undyed_shulker_box", "slot": 8, "stackId": 1248 },
+  "registry": { "id": 1278, "name": "bush", "hardness": 0, "diggable": true, "boundingBox": "empty", "drops": [], "itemId": -1023 },
+  "ruleSource": "https://feedback.minecraft.net/hc/en-us/articles/34234917741325-Minecraft-Beta-Preview-1-21-70-23",
+  "ordinaryHand": { "minimum": [], "maximum": [] },
+  "shearsOrSilk": { "minimum": [{ "name": "bush", "count": 1 }], "maximum": [{ "name": "bush", "count": 1 }] }
+}

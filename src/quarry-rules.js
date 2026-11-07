@@ -30,17 +30,6 @@ function toolOf (item) {
 // silkKeeps / fortune: enchantment relevance }.
 const STONE_LIKE = ['stone', 'cobblestone', 'mossy_cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'polished_andesite', 'polished_diorite', 'polished_granite', 'tuff', 'calcite', 'dripstone_block', 'sandstone', 'red_sandstone', 'smooth_stone', 'netherrack', 'blackstone', 'basalt', 'smooth_basalt', 'end_stone', 'terracotta', 'amethyst_block', 'magma']
 const STONE_DROP = { stone: 'cobblestone', deepslate: 'cobbled_deepslate' }
-const ORES = {
-  coal_ore: [1, 'coal', 1], deepslate_coal_ore: [1, 'coal', 1],
-  nether_quartz_ore: [1, 'quartz', 1], nether_gold_ore: [1, 'gold_nugget', 6],
-  copper_ore: [2, 'raw_copper', 5], deepslate_copper_ore: [2, 'raw_copper', 5],
-  iron_ore: [2, 'raw_iron', 1], deepslate_iron_ore: [2, 'raw_iron', 1],
-  lapis_ore: [2, 'lapis_lazuli', 9], deepslate_lapis_ore: [2, 'lapis_lazuli', 9],
-  gold_ore: [3, 'raw_gold', 1], deepslate_gold_ore: [3, 'raw_gold', 1],
-  redstone_ore: [3, 'redstone', 5], deepslate_redstone_ore: [3, 'redstone', 5], lit_redstone_ore: [3, 'redstone', 5], lit_deepslate_redstone_ore: [3, 'redstone', 5],
-  diamond_ore: [3, 'diamond', 1], deepslate_diamond_ore: [3, 'diamond', 1],
-  emerald_ore: [3, 'emerald', 1], deepslate_emerald_ore: [3, 'emerald', 1]
-}
 const SHOVEL = { dirt: 'dirt', grass_block: 'dirt', coarse_dirt: 'coarse_dirt', rooted_dirt: 'rooted_dirt', podzol: 'dirt', mycelium: 'dirt', dirt_with_roots: 'dirt_with_roots', mud: 'mud', farmland: 'dirt', grass_path: 'dirt', dirt_path: 'dirt', sand: 'sand', red_sand: 'red_sand', gravel: 'gravel', soul_sand: 'soul_sand', soul_soil: 'soul_soil', clay: 'clay_ball' }
 const LOG_WOODS = ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'crimson', 'warped']
 const LEAVES = ['oak_leaves', 'spruce_leaves', 'birch_leaves', 'jungle_leaves', 'acacia_leaves', 'dark_oak_leaves', 'mangrove_leaves', 'cherry_leaves', 'pale_oak_leaves', 'azalea_leaves', 'azalea_leaves_flowered']
@@ -49,6 +38,9 @@ const PLANTS = ['short_grass', 'tallgrass', 'tall_grass', 'fern', 'large_fern', 
 
 // Never broken automatically; each gets a deferral reason (§13).
 const PROTECTED = [
+  // Quarry leaves ores in place regardless of tools or legacy drop settings.
+  // Unknown future ore names are protected too, rather than assumed diggable.
+  [/(?:_ore$|^ancient_debris$)/, 'PROTECTED_ORE'],
   [/^(bedrock|barrier|structure_block|structure_void|command_block|chain_command_block|repeating_command_block|jigsaw|end_portal|end_portal_frame|end_gateway|portal|nether_portal|reinforced_deepslate|light_block.*)$/, 'UNBREAKABLE'],
   [/(chest|barrel|shulker_box|furnace|smoker|hopper|dispenser|dropper|crafter|brewing_stand|lectern|decorated_pot|chiseled_bookshelf|crafting_table|smithing_table|anvil|enchanting_table|beacon|bed$|_sign$|_hanging_sign$|campfire|jukebox|ender_chest)/, 'CONTAINER_OR_FACILITY'],
   [/^(mob_spawner|spawner|trial_spawner|vault)$/, 'SPAWNER_OR_TRIAL'],
@@ -69,7 +61,6 @@ function blockRule (blockName) {
   for (const [pattern, reason] of PROTECTED) if (pattern.test(name)) return { kind: 'protected', reason }
   const gravity = GRAVITY.has(name) || isConcretePowder(name)
   if (STONE_LIKE.includes(name)) return { kind: 'dig', tool: 'pickaxe', needs: 'pickaxe', tier: 1, drops: [STONE_DROP[name] ?? name], maxDrop: 1, silkKeeps: name in STONE_DROP, gravity }
-  if (name in ORES) { const [tier, drop, maxDrop] = ORES[name]; return { kind: 'dig', tool: 'pickaxe', needs: 'pickaxe', tier, drops: [drop, name], maxDrop: maxDrop * 4, ore: true, silkKeeps: true, fortune: true, gravity } }
   if (name === 'obsidian' || name === 'crying_obsidian') return { kind: 'dig', tool: 'pickaxe', needs: 'pickaxe', tier: 4, drops: [name], maxDrop: 1, slow: true, gravity }
   if (name in SHOVEL) return { kind: 'dig', tool: 'shovel', needs: null, tier: 0, drops: name === 'gravel' ? ['gravel', 'flint'] : [SHOVEL[name]], maxDrop: name === 'clay' ? 4 : 1, gravity }
   if (name === 'snow') return { kind: 'dig', tool: 'shovel', needs: 'shovel', tier: 1, drops: ['snowball'], maxDrop: 4, gravity }
@@ -97,9 +88,10 @@ function enchantLevel (item, enchant) {
   return found && Number.isSafeInteger(found.level) ? found.level : 0
 }
 
-// Units the bot keeps unused on a tool (§8.1): max(8, ceil(10% of max), return + 2).
-function reserveUses (maxDurability, { reserveMinUses = 8, reserveFraction = 0.10, returnUses = 0 } = {}) {
-  return Math.max(reserveMinUses, Math.ceil(maxDurability * reserveFraction), returnUses + 2)
+// Keep one real use remaining by default. Explicit larger min/fraction/return
+// reservations remain supported, with no hidden extra two-use buffer.
+function reserveUses (maxDurability, { reserveMinUses = 1, reserveFraction = 0, returnUses = 0 } = {}) {
+  return Math.max(1, reserveMinUses, Math.ceil(maxDurability * reserveFraction), returnUses)
 }
 
 function toolState (item, options) {

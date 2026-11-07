@@ -47,7 +47,11 @@ function createQuarryCombatBridge ({ now = Date.now, config = {} } = {}) {
     const c = classOf(e.entityType)
     const recent = evidence.provoked === true
     const d = distanceTo(state, e)
-    if (recent || e.primed === true && c === 'creeper' || d <= cfg.immediateRadius) return { threat: true, immediate: true, class: c, distance: d }
+    if (recent || e.primed === true && c === 'creeper') return { threat: true, immediate: true, class: c, distance: d }
+    // Runtime's current attack-access verdict also governs settling after a
+    // real fight. A known blocked shot must not hold mining for another45s.
+    if (evidence.intercept === false) return { threat: false, class: c, distance: d, uncertain: evidence.unknown === true && evidence.sight !== false }
+    if (d <= cfg.immediateRadius) return { threat: true, immediate: true, class: c, distance: d }
     const route = evidence.route; const sight = evidence.sight
     const fallsOnto = Number.isFinite(e.position?.y) && e.position.y > feetOf(state).y + 1 && distH(feetOf(state), e.position) <= 3
     if (c === 'melee') return { threat: route !== false || fallsOnto, class: c, distance: d, uncertain: route == null }
@@ -110,6 +114,7 @@ function createQuarryCombatBridge ({ now = Date.now, config = {} } = {}) {
   function canMoveTo (position, { reason = 'combat', waypoints = [] } = {}) {
     if (!active || !anchor) return { allowed: true, reason: 'NO_QUARRY_ANCHOR' }
     if (reason === 'emergency_escape') return { allowed: true, reason: 'EMERGENCY_ESCAPE', emergency: true }
+    if (reason === 'emergency_counterhit') return { allowed: true, reason: 'EMERGENCY_COUNTERHIT', emergency: true }
     for (const p of [...waypoints, position]) {
       if (!finite(p)) return { allowed: false, reason: 'UNKNOWN_WAYPOINT' }
       const h = distH(anchor, p)

@@ -17,7 +17,7 @@ function job (sim, opts = {}) {
   const j = createQuarryJob({ adapter: sim.adapter, storage: { save: async (id, doc) => { docs.push(doc) } }, sleep: () => new Promise(r => setImmediate(r)), pollMs: 5, ...opts })
   return { j, docs }
 }
-const baseConfig = (extra = {}) => ({ jobId: 't', target: { chunks: [{ x: 0, z: 0 }] }, yBottom: 60, worldMinY: 50, worldMaxY: 90, inventory: { storage: [{ position: { x: -4, y: 63, z: -4 }, stand: { x: -3, y: 63, z: -4 } }] }, ...extra })
+const baseConfig = (extra = {}) => ({ jobId: 't', exit: { mode: 'legacy_stair' }, target: { chunks: [{ x: 0, z: 0 }] }, yBottom: 60, worldMinY: 50, worldMaxY: 90, inventory: { storage: [{ position: { x: -4, y: 63, z: -4 }, stand: { x: -3, y: 63, z: -4 } }] }, ...extra })
 async function runUntilStopped (j, limitMs = 60000) {
   const until = Date.now() + limitMs
   while (Date.now() < until) { const s = j.status(); if (['PAUSED', 'FINISHED'].includes(s.state)) return s; await new Promise(r => setTimeout(r, 5)) }
@@ -140,26 +140,30 @@ test('T02 dry test area: top-down layers removed, drops stored, stair kept as an
   const pick = sim.state.inventory.items.find(i => i.name === 'minecraft:diamond_pickaxe')
   assert.ok(pick.durabilityRemaining > 1000)
   const shovel = sim.state.inventory.items.find(i => i.name === 'minecraft:iron_shovel')
-  assert.ok(shovel.durabilityRemaining >= 25, `shovel kept its reserve: ${shovel.durabilityRemaining}`)
+  assert.ok(shovel.durabilityRemaining >= 1, `shovel kept its last use: ${shovel.durabilityRemaining}`)
 })
 
-test('T03 ore without a harvesting pickaxe is kept and mined after resupply', async () => {
+test('T03 ores stay protected through tool resupply and explicit exception acceptance', async () => {
   const sim = setup({ stoneTop: 61, top: 62 })
   sim.world.set(7, 61, 7, 'iron_ore')
-  sim.give('wooden_pickaxe'); sim.give('iron_shovel'); sim.give('bread', 5); sim.give('cobblestone', 8)
+  sim.give('diamond_pickaxe'); sim.give('iron_shovel'); sim.give('bread', 5); sim.give('cobblestone', 8)
   const { j } = job(sim)
   assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
   j.start()
   let s = await runUntilStopped(j)
-  assert.equal(s.pauseReason, 'WAITING_FOR_TOOL')
-  assert.equal(s.pauseDetails.needs['pickaxe:2'], 1)
+  assert.equal(s.pauseReason, 'UNRESOLVED_EXCEPTIONS')
   assert.equal(sim.world.name(7, 61, 7), 'iron_ore')
-  assert.ok(s.deferred.some(d => d.position === '7,61,7' && d.reason === 'WAITING_FOR_TOOL'))
-  sim.give('stone_pickaxe')
+  assert.ok(s.deferred.some(d => d.position === '7,61,7' && d.reason === 'PROTECTED_ORE'))
+  sim.give('diamond_pickaxe')
   j.resume()
   s = await runUntilStopped(j)
-  assert.equal(sim.world.name(7, 61, 7), 'air')
-  assert.ok(sim.chest.some(c => c.name === 'minecraft:raw_iron') || sim.state.inventory.items.some(i => i.name === 'minecraft:raw_iron'))
+  assert.equal(s.pauseReason, 'UNRESOLVED_EXCEPTIONS')
+  assert.equal(sim.world.name(7, 61, 7), 'iron_ore')
+  j.acceptExceptions()
+  s = await runUntilStopped(j)
+  assert.equal(s.result.type, 'COMPLETED_WITH_EXCEPTIONS')
+  assert.equal(sim.world.name(7, 61, 7), 'iron_ore')
+  assert.equal(sim.chest.some(c => c.name === 'minecraft:raw_iron') || sim.state.inventory.items.some(i => i.name === 'minecraft:raw_iron'), false)
 })
 
 test('T05 a worn tool is never used below its reserve', async () => {
@@ -172,7 +176,7 @@ test('T05 a worn tool is never used below its reserve', async () => {
   j.start()
   const s = await runUntilStopped(j)
   assert.equal(s.state, 'PAUSED')
-  assert.ok(pick.durabilityRemaining >= 14, `reserve kept: ${pick.durabilityRemaining}`)
+  assert.equal(pick.durabilityRemaining, 1, `last use kept: ${pick.durabilityRemaining}`)
   assert.ok(s.deferred.some(d => d.reason === 'TOOL_DURABILITY_RESERVE'))
 })
 

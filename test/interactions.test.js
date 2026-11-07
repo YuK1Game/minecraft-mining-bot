@@ -29,13 +29,46 @@ function fixture (options = {}) {
   }
   const packets = []
   const transactions = []
-  let running = false
+  let running = false, stateReads = 0
   const input = { stats: () => ({ running, target: null }), lookAt () {}, start () { running = true }, stop () { running = false }, sendTransaction: (transaction, options = {}) => { transactions.push(transaction); options.onSent?.() } }
   const confirmed = []
   const uncertainties = []
-  const interactions = createInteractions({ client: { queue: (name, params) => packets.push({ name, params }) }, getState: () => state, world, crafting, getInput: () => input, onInventory: packet => confirmed.push(packet), onUncertain: info => { uncertainties.push(info); onUncertain?.(info) }, timeoutMs: 1000, ...creationOptions })
-  return { interactions, state, target, setBlock, blocks, raw, names, input, packets, transactions, confirmed, uncertainties, crafting }
+  const interactions = createInteractions({ client: { queue: (name, params) => packets.push({ name, params }) }, getState: () => { stateReads++; return state }, world, crafting, getInput: () => input, onInventory: packet => confirmed.push(packet), onUncertain: info => { uncertainties.push(info); onUncertain?.(info) }, timeoutMs: 1000, ...creationOptions })
+  return { interactions, state, target, setBlock, blocks, raw, names, input, packets, transactions, confirmed, uncertainties, crafting, get stateReads () { return stateReads } }
 }
+
+test('chunk and unrelated mob bursts do not read full interaction state, even during a sent placement', async () => {
+  for (const placing of [false, true]) {
+    const f = fixture(), pending = placing ? f.interactions.placeBlock({ position: f.target, slot: 0 }) : null
+    const rejected = pending ? assert.rejects(pending, /test cleanup/) : null
+    const before = f.stateReads
+    for (let i = 0; i < 100; i++) {
+      f.interactions.applyPacket('level_chunk', {})
+      f.interactions.applyPacket('subchunk', {})
+      f.interactions.applyPacket('move_entity_delta', { runtime_entity_id: 999n })
+      f.interactions.applyPacket('entity_event', { runtime_entity_id: 999n, event_id: 'hurt_animation' })
+      f.interactions.applyPacket('update_attributes', { runtime_entity_id: 999n, attributes: [] })
+      f.interactions.applyPacket('mob_equipment', { runtime_entity_id: 999n, selected_slot: 0, window_id: 'inventory' })
+      f.interactions.applyPacket('move_player', { runtime_id: 999n })
+    }
+    assert.equal(f.stateReads - before, 0)
+    if (placing) { f.interactions.cancel('test cleanup'); await rejected }
+  }
+})
+
+test('other-player occupancy tracking stays active without full snapshots on moves and removal', () => {
+  const f = fixture()
+  f.interactions.applyPacket('start_game', { runtime_entity_id: 41n })
+  const before = f.stateReads
+  f.interactions.applyPacket('add_player', { runtime_id: 50n, unique_id: 90n, position: { x: 1.5, y: 66.62, z: 0.5 } })
+  f.interactions.applyPacket('move_player', { runtime_id: 50n, position: { x: 1.5, y: 66.62, z: 0.5 } })
+  assert.equal(f.interactions.snapshot().trackedPlayers, 1)
+  assert.equal(f.stateReads - before, 0)
+  assert.equal(f.interactions.previewPlace({ position: f.target, slot: 0 }).ready, false)
+  f.interactions.applyPacket('remove_entity', { entity_id_self: 90n })
+  assert.equal(f.interactions.snapshot().trackedPlayers, 0)
+  assert.equal(f.interactions.previewPlace({ position: f.target, slot: 0 }).ready, true)
+})
 
 function alignedFixture (options) {
   const f = fixture(options)
@@ -48,7 +81,7 @@ function alignedFixture (options) {
   }
   f.input.start = () => { stats.running = true }
   f.input.stop = () => { stats.running = false }
-  return { ...f, stats, queuedFrames: count => { stats.sent += count; f.interactions.applyPacket('test_queued_input', {}) } }
+  return { ...f, stats, queuedFrames: count => { stats.sent += count; f.interactions.applyPacket('update_attributes', {}) } }
 }
 
 test('aligned placement waits for two queued rotation frames, sends once and still requires real block plus inventory', async t => {

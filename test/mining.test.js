@@ -63,6 +63,172 @@ test('tool requirement prevents ore loss until an appropriate selected pickaxe i
   assert.equal(mining.preview([target]).ready, true)
 })
 
+test('quarry tools may make the final safe use at remaining two but never start with the last one', () => {
+  const f = fixture()
+  f.set(f.target, 'stone')
+  f.state.selectedSlot = 0
+  f.state.heldItem = { name: 'minecraft:diamond_pickaxe', durabilityKnown: true, durabilityRemaining: 2 }
+  const target = { ...f.target, accessPreparation: 'quarry', expectedName: 'minecraft:stone', requiredTool: { kind: 'pickaxe', tier: 1, reserve: 1 } }
+  assert.equal(f.mining.preview([target]).ready, true)
+  f.state.heldItem.durabilityRemaining = 1
+  assert.equal(f.mining.preview([target]).ready, false)
+  f.state.heldItem.durabilityRemaining = 2
+  f.state.heldItem.durabilityKnown = false
+  assert.equal(f.mining.preview([target]).ready, false)
+  assert.equal(f.actions.length, 0)
+})
+
+test('a late received last-durability update stops an active quarry break before another use', async () => {
+  const f = fixture()
+  f.set(f.target, 'stone')
+  f.state.selectedSlot = 0
+  f.state.heldItem = { name: 'minecraft:diamond_pickaxe', durabilityKnown: true, durabilityRemaining: 2 }
+  const target = { ...f.target, accessPreparation: 'quarry', expectedName: 'minecraft:stone', requiredTool: { kind: 'pickaxe', tier: 1, reserve: 1 } }
+  f.mining.start([target])
+  f.state.heldItem.durabilityRemaining = 1
+  await setTimeout(150)
+  assert.equal(f.mining.snapshot().phase, 'failed')
+  assert.equal(f.mining.snapshot().reason, 'TOOL_DURABILITY_RESERVE')
+  assert.equal(f.actions.filter(action => action[0] === 'start_break').length, 1)
+  assert.equal(f.actions.filter(action => action[0] === 'finish_break').length, 0)
+})
+
+function fluidRoofFixture () {
+  const f = fixture(), roof = { x: 1, y: 64, z: 0 }, source = { x: 1, y: 63, z: 0 }
+  f.blocks.delete(f.id(f.target))
+  f.set(roof, 'deepslate', 143)
+  Object.assign(f.blocks.get(f.id(roof)), { boundingBox: 'block', diggable: true, properties: {} })
+  Object.assign(f.blocks.get('0,64,0'), { boundingBox: 'block', diggable: true })
+  f.set(source, 'lava', 222)
+  Object.assign(f.blocks.get(f.id(source)), { boundingBox: 'empty', diggable: false, properties: { liquid_depth: 0 } })
+  Object.assign(f.state, { profile: 'test', realm: { id: 'realm' }, connectionId: 'connection', startedAt: '2026-11-05T00:00:00.000Z', runtimeEntityId: '1', lifecycle: { deathId: 1 }, maxHealth: 20, selectedSlot: 0, heldItem: { name: 'minecraft:diamond_pickaxe', durabilityKnown: true, durabilityRemaining: 10 } })
+  const request = { ...roof, accessPreparation: 'quarry_fluid_roof', expectedName: 'minecraft:deepslate', expectedRuntimeId: 143, requiredTool: { kind: 'pickaxe', tier: 1, reserve: 1 }, fluidSource: { position: source, expectedName: 'minecraft:lava', expectedRuntimeId: 222 } }
+  return { ...f, roof, source, request }
+}
+
+test('the single fluid-roof primitive permits only its exact below-source exception; ordinary quarry still refuses it', () => {
+  const f = fluidRoofFixture()
+  assert.equal(f.mining.preview([f.request]).ready, true)
+  assert.equal(f.mining.preview([{ ...f.request, accessPreparation: 'quarry' }]).ready, false)
+  assert.equal(f.mining.preview([f.roof]).ready, false)
+  assert.equal(f.actions.length, 0)
+})
+
+test('fluid-roof payload cannot batch, mine gravity caps, omit reserve or point at a different fluid/source', () => {
+  const f = fluidRoofFixture()
+  for (const change of [
+    r => { r.fluidSource.position.y-- }, r => { r.fluidSource.position.x++ },
+    r => { r.fluidSource.expectedName = 'minecraft:bubble_column' },
+    r => { r.fluidSource.expectedRuntimeId = -1 }, r => { r.fluidSource.expectedRuntimeId = 4294967296 },
+    r => { r.expectedName = 'minecraft:gravel' }, r => { r.expectedName = 'minecraft:chest' },
+    r => { r.requiredTool.reserve = 0 }, r => { delete r.requiredTool.reserve },
+    r => { r.requiredTool.kind = 'axe' }, r => { r.requiredTool.tier = 0 }
+  ]) {
+    const request = structuredClone(f.request); change(request)
+    assert.throws(() => f.mining.preview([request]))
+  }
+  assert.throws(() => f.mining.start([f.request, { x: 2, y: 65, z: 0 }]), /one non-gravity roof/)
+  assert.equal(f.actions.length, 0)
+})
+
+test('water roofs use the same exact-source dry-neighbour and tool-reserve gates as lava', () => {
+  const f = fluidRoofFixture()
+  f.blocks.get(f.id(f.source)).name = 'minecraft:water'
+  f.request.fluidSource.expectedName = 'minecraft:water'
+  assert.equal(f.mining.preview([f.request]).ready, true)
+  f.blocks.get(f.id(f.source)).properties.liquid_depth = 1
+  assert.equal(f.mining.preview([f.request]).ready, false)
+  assert.equal(f.actions.length, 0)
+})
+
+test('fluid-roof preview refuses changed/unknown sources, extra fluid layers and another wet face', () => {
+  for (const change of [
+    f => { f.blocks.set(f.id(f.source), { known: false }) },
+    f => { f.blocks.get(f.id(f.source)).runtimeId++ },
+    f => { f.blocks.get(f.id(f.source)).name = 'minecraft:flowing_lava' },
+    f => { f.blocks.get(f.id(f.source)).properties.liquid_depth = 2 },
+    f => { f.blocks.get(f.id(f.source)).extra = [{ name: 'minecraft:water' }] },
+    f => { f.blocks.get(f.id(f.roof)).extra = [{ name: 'minecraft:water' }] },
+    f => { f.set({ ...f.roof, x: f.roof.x + 1 }, 'water') },
+    f => { f.set({ ...f.roof, y: f.roof.y + 1 }, 'lava') },
+    f => { f.blocks.set(f.id({ ...f.roof, x: f.roof.x + 1 }), { known: false }) }
+  ]) {
+    const f = fluidRoofFixture(); change(f)
+    assert.equal(f.mining.preview([f.request]).ready, false)
+    assert.equal(f.actions.length, 0)
+  }
+})
+
+test('fluid-roof requires 70% health, a separate elevated dry body, full floor and actual reserved tool', () => {
+  for (const change of [
+    f => { f.state.health = 13.99 }, f => { f.state.maxHealth = 40; f.state.health = 27 },
+    f => { f.state.position.x = 1.5 }, f => { f.state.position.y -= 1 },
+    f => { f.blocks.set('0,65,0', { known: false }) }, f => { f.set({ x: 0, y: 66, z: 0 }, 'water') },
+    f => { f.blocks.get('0,64,0').boundingBox = 'empty' }, f => { f.set({ x: 0, y: 64, z: 0 }, 'magma') },
+    f => { f.blocks.get(f.id(f.roof)).protected = true }, f => { f.blocks.get(f.id(f.roof)).diggable = false },
+    f => { f.state.inventory.uncertain = true }, f => { f.state.heldItem.name = 'minecraft:diamond_axe' },
+    f => { f.state.heldItem.durabilityRemaining = 1 }, f => { f.state.heldItem.durabilityKnown = false },
+    f => { delete f.state.lifecycle }
+  ]) {
+    const f = fluidRoofFixture(); change(f)
+    assert.equal(f.mining.preview([f.request]).ready, false)
+    assert.equal(f.actions.length, 0)
+  }
+  const exact = fluidRoofFixture(); exact.state.health = 14
+  assert.equal(exact.mining.preview([exact.request]).ready, true)
+})
+
+test('fluid-roof completes only from received air while preserving the safe final tool use', async t => {
+  const f = fluidRoofFixture(); t.after(() => f.mining.stop())
+  f.state.heldItem.durabilityRemaining = 2
+  const started = f.mining.start([f.request])
+  assert.equal(started.operation, 'quarry_fluid_roof')
+  assert.equal(started.serverConfirmed, false)
+  f.mining.applyPacket('update_block', { position: f.roof })
+  await Promise.resolve()
+  assert.equal(f.mining.snapshot().phase, 'mining')
+  assert.equal(f.mining.snapshot().completed.length, 0)
+  f.set(f.roof, 'air', 0)
+  f.state.heldItem.durabilityRemaining = 1
+  f.mining.applyPacket('update_block', { position: f.roof })
+  await Promise.resolve()
+  const result = f.mining.snapshot()
+  assert.equal(result.phase, 'completed', JSON.stringify(result))
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(result.confirmedBy, 'received_block_air')
+  assert.equal(result.completed.length, 1)
+  assert.equal(f.actions.filter(a => a[0] === 'start_break').length, 1)
+})
+
+test('a changed source wakes and aborts a fluid-roof break immediately without waiting for the watchdog', async t => {
+  const f = fluidRoofFixture(); t.after(() => f.mining.stop())
+  f.mining.start([f.request])
+  f.blocks.get(f.id(f.source)).properties.liquid_depth = 2
+  f.mining.applyPacket('update_block', { position: f.source })
+  await Promise.resolve()
+  const result = f.mining.snapshot()
+  assert.equal(result.phase, 'failed')
+  assert.match(result.reason, /source changed/)
+  assert.equal(result.completed.length, 0)
+})
+
+test('received roof air cannot hide a new wet face, source replacement, protection, life or unsafe health', async () => {
+  for (const change of [
+    f => { f.blocks.get(f.id(f.source)).runtimeId++ },
+    f => { f.set({ ...f.roof, z: 1 }, 'water') },
+    f => { f.state.health = 13 }, f => { f.state.lifecycle.deathId++ },
+    f => { f.blocks.get(f.id(f.roof)).protected = true }
+  ]) {
+    const f = fluidRoofFixture()
+    f.mining.start([f.request]); f.set(f.roof, 'air', 0); change(f)
+    f.mining.applyPacket('update_block', { position: f.roof })
+    await Promise.resolve()
+    assert.equal(f.mining.snapshot().phase, 'failed')
+    assert.equal(f.mining.snapshot().completed.length, 0)
+    f.mining.stop()
+  }
+})
+
 test('bare hands can harvest tree logs while processed wood and unsafe targets remain refused', () => {
   const { mining, set, target, actions } = fixture()
   for (const name of ['oak_log', 'spruce_log', 'pale_oak_log', 'poplar_log']) {

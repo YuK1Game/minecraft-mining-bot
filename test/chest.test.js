@@ -19,7 +19,7 @@ function fixture ({ opened = true, contents = true, timeoutMs = 300, slots = 27,
   const packets = [], uncertain = [], reconciliations = [], bag = Array.from({ length: 36 }, air)
   bag[14] = item(401, 2, 88)
   let observed = { authority: true, inventoryKnown: true, pendingRequestId: null, openContainer: null }
-  let next = -501, childCancelCount = 0, childOpenCount = 0
+  let next = -501, childCancelCount = 0, childOpenCount = 0, stateReads = 0
   let block = { ...target, known: true, name: blockName, runtimeId: 123456, extra: [] }
   const client = { queue: (name, params) => packets.push({ name, params: structuredClone(params) }) }
   const serializer = createSerializer('1.26.60'), parser = createDeserializer('1.26.60')
@@ -34,7 +34,7 @@ function fixture ({ opened = true, contents = true, timeoutMs = 300, slots = 27,
     }
   }
   const interactions = { openChest: () => { childOpenCount++; return Promise.resolve({ serverConfirmed: true }) }, cancel: () => { childCancelCount++ } }
-  const chest = createChest({ client, getState: () => state, world: { getBlock: () => structuredClone(block) }, crafting, interactions, timeoutMs, allocateRequestId: () => { const id = next; next -= 2; return id }, onInventory: delta => { reconciliations.push(structuredClone(delta)); if (reconcile) crafting.applyPacket('inventory_slot', delta) }, onUncertain: value => uncertain.push(value) })
+  const chest = createChest({ client, getState: () => { stateReads++; return state }, world: { getBlock: () => structuredClone(block) }, crafting, interactions, timeoutMs, allocateRequestId: () => { const id = next; next -= 2; return id }, onInventory: delta => { reconciliations.push(structuredClone(delta)); if (reconcile) crafting.applyPacket('inventory_slot', delta) }, onUncertain: value => uncertain.push(value) })
   function observe (name, packet, options) { crafting.applyPacket(name, packet); chest.applyPacket(name, packet, options) }
   function content (size = slots) { observe('inventory_content', codec('inventory_content', { window_id: 5, input: Array.from({ length: size }, air), container: { container_id: 'container', dynamic_container_id: null }, storage_item: air() })) }
   function openedPacket (p = target, id = 5) { observe('container_open', codec('container_open', { window_id: id, window_type: 'container', coordinates: p, runtime_entity_id: -1n })) }
@@ -45,8 +45,26 @@ function fixture ({ opened = true, contents = true, timeoutMs = 300, slots = 27,
   observe('item_registry', { itemstates: registry })
   observe('inventory_content', codec('inventory_content', { window_id: 'inventory', input: bag, container: { container_id: 'inventory', dynamic_container_id: null }, storage_item: air() }))
   if (opened) { openedPacket(); if (contents) content() }
-  return { state, chest, crafting, client, packets, uncertain, reconciliations, interactions, observed, bag, observe, content, openedPacket, main, chestSlot, ack, get childOpenCount () { return childOpenCount }, get childCancelCount () { return childCancelCount }, setBlock: value => { block = value }, codec }
+  return { state, chest, crafting, client, packets, uncertain, reconciliations, interactions, observed, bag, observe, content, openedPacket, main, chestSlot, ack, get stateReads () { return stateReads }, get childOpenCount () { return childOpenCount }, get childCancelCount () { return childCancelCount }, setBlock: value => { block = value }, codec }
 }
+
+test('chunk and unrelated mob bursts never take full chest state, idle or during a deposit', async () => {
+  for (const depositing of [false, true]) {
+    const f = fixture(), transfer = depositing ? f.chest.depositDiamond({ sourceSlot: 14 }) : null
+    const rejected = transfer ? assert.rejects(transfer, /test cleanup/) : null
+    const before = f.stateReads
+    for (let i = 0; i < 100; i++) {
+      f.observe('level_chunk', {})
+      f.observe('subchunk', {})
+      f.observe('move_entity_delta', { runtime_entity_id: 999n })
+      f.observe('entity_event', { runtime_entity_id: 999n, event_id: 'hurt_animation' })
+      f.observe('update_attributes', { runtime_entity_id: 999n, attributes: [] })
+      f.observe('move_player', { runtime_id: 999n })
+    }
+    assert.equal(f.stateReads - before, 0)
+    if (depositing) { f.chest.cancel('test cleanup'); await rejected }
+  }
+})
 
 // These use controlled server observations, not live Realm storage or item credit.
 test('closing a previous chest window cannot cancel a fresh open awaiting its new receipt', async () => {

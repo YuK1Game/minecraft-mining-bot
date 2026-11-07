@@ -6,8 +6,10 @@
 // never treated as air.
 
 const { selectVisibleBlockFace } = require('./aim')
+const { isDeepStrictEqual } = require('node:util')
 const { blockRule, nameOf, AIR, isFluidName, isGravityName, fluidLayer, selectTool, SEAL_MATERIALS } = require('./quarry-rules')
 const { permits, chunkBounds, serpentineLayer, key } = require('./quarry-region')
+const { fluidRoofNeighbourSafe } = require('./quarry-fluid-roof-safety')
 
 const FACES = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }]
 const HORIZONTAL = FACES.filter(f => f.y === 0)
@@ -23,7 +25,7 @@ const NON_UNIT_FLOOR = new Set(['chest', 'trapped_chest', 'ender_chest'])
 const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z })
 const same = (a, b) => a.x === b.x && a.y === b.y && a.z === b.z
 
-function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) {
+function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, exit = null }) {
   if (typeof getBlock !== 'function' || !regions?.columns) throw new Error('Quarry planner needs regions and a block reader')
   const cfg = { maxBlocksPerBatch: 8, maxStepDown: 1, largeFluidCells: 12, bfsLimit: 24000, ...config }
   // Persistent per-cell records: deferred, reserved (stair), temporary (own
@@ -85,6 +87,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     return null
   }
   function planStair ({ entry = null, yTop }) {
+    if (exit?.mode === 'adjacent_pillar') return null
     if (stair) return stair
     const chunk = regions.chunks[0]
     const b = chunkBounds(chunk)
@@ -110,6 +113,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
   }
   function stairStepAt (y) {
     if (!stair || y > stair.startY || y < regions.yBottom) return null
+    if (exit?.mode === 'adjacent_pillar' && (!Number.isSafeInteger(exit.migrationFloorY) || y <= exit.migrationFloorY)) return null
     const k = stair.startY - y; const [x, z] = stair.path[k % stair.path.length]
     return { x, y, z, k }
   }
@@ -132,9 +136,9 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     if (tools) {
       const tool = selectTool(rule, tools, policy)
       if (!tool.ok) return { status: 'blocked', reason: tool.reason, name: b.name, rule, needs: tool.needs }
-      return { status: 'pending', name: b.name, rule, tool, runtimeId: b.runtimeId }
+      return { status: 'pending', name: b.name, rule, tool, runtimeId: b.runtimeId, ...(nameOf(b) === 'leaf_litter' ? { properties: structuredClone(b.properties ?? null) } : {}) }
     }
-    return { status: 'pending', name: b.name, rule, runtimeId: b.runtimeId }
+    return { status: 'pending', name: b.name, rule, runtimeId: b.runtimeId, ...(nameOf(b) === 'leaf_litter' ? { properties: structuredClone(b.properties ?? null) } : {}) }
   }
   function defer (p, reason, extra = {}) {
     const b = read(p)
@@ -168,20 +172,160 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     }
     return seen.size
   }
+  function singleLavaSource (start) {
+    const seen = new Set([key(start.x, start.y, start.z)]); const cells = [start]; const sources = []
+    let highest = -Infinity
+    for (let head = 0; head < cells.length; head++) {
+      const p = cells[head]; const b = read(p)
+      if (!known(b) || !['lava', 'flowing_lava'].includes(nameOf(b)) || (b.extra ?? []).length) return { ok: false, reason: 'SOURCE_COMPONENT_NOT_PLAIN_LAVA' }
+      const raw = b.properties?.liquid_depth ?? b.properties?.['minecraft:liquid_depth']; const depth = raw?.value ?? raw
+      if (!Number.isInteger(depth) || depth < 0 || depth > 15) return { ok: false, reason: 'SOURCE_DEPTH_UNKNOWN' }
+      if (depth === 0) sources.push(p)
+      highest = Math.max(highest, p.y)
+      for (const f of FACES) {
+        const n = add(p, f); const k = key(n.x, n.y, n.z); const next = read(n)
+        if (!known(next)) return { ok: false, reason: 'SOURCE_BOUNDARY_UNKNOWN' }
+        if (!fluid(next) || seen.has(k)) continue
+        if (!['lava', 'flowing_lava'].includes(nameOf(next)) || (next.extra ?? []).length) return { ok: false, reason: 'SOURCE_COMPONENT_MIXED_FLUID' }
+        if (seen.size >= 512) return { ok: false, reason: 'SOURCE_COMPONENT_LIMIT' }
+        seen.add(k); cells.push(n)
+      }
+    }
+    if (sources.length !== 1 || sources[0].y !== highest) return { ok: false, reason: sources.length !== 1 ? 'SOURCE_NOT_UNIQUE' : 'SOURCE_NOT_HIGHEST' }
+    const position = sources[0]; const b = read(position)
+    if (!Number.isInteger(b.runtimeId) || b.runtimeId < 0 || b.runtimeId > 0xffffffff || b.protected || b.protectionSource) return { ok: false, reason: 'SOURCE_FINGERPRINT_UNSAFE' }
+    return { ok: true, source: { position, expectedName: b.name, expectedRuntimeId: b.runtimeId }, cells }
+  }
+  // A source-only job never turns a convenient flowing cell into a plug.
+  // Prove the finite received component, including all six faces, before
+  // choosing its highest source. Other sources are handled on the next plan.
+  function sourceComponent (start) {
+    const first = read(start); const family = /^(?:flowing_)?(water|lava)$/.exec(nameOf(first))?.[1]
+    if (!family) return { ok: false, reason: 'SOURCE_COMPONENT_NOT_PLAIN_FLUID' }
+    const seen = new Set([key(start.x, start.y, start.z)]); const cells = [start]; const sources = []
+    for (let head = 0; head < cells.length; head++) {
+      const p = cells[head]; const b = read(p)
+      if (!known(b) || ![family, `flowing_${family}`].includes(nameOf(b)) || b.extra?.length) return { ok: false, reason: 'SOURCE_COMPONENT_MIXED_FLUID' }
+      const raw = b.properties?.liquid_depth ?? b.properties?.['minecraft:liquid_depth']; const depth = raw?.value ?? raw
+      if (!Number.isInteger(depth) || depth < 0 || depth > 15) return { ok: false, reason: 'SOURCE_DEPTH_UNKNOWN' }
+      if (depth === 0) {
+        if (!permits(regions, 'seal', p).allowed || b.protected || b.protectionSource || !Number.isInteger(b.runtimeId) || b.runtimeId < 0 || b.runtimeId > 0xffffffff) return { ok: false, reason: 'SOURCE_OUTSIDE_OR_PROTECTED' }
+        sources.push({ position: { ...p }, expectedName: b.name, expectedRuntimeId: b.runtimeId })
+      }
+      for (const f of FACES) {
+        const n = add(p, f); const k = key(n.x, n.y, n.z); const b = read(n)
+        if (!known(b)) return { ok: false, reason: 'SOURCE_BOUNDARY_UNKNOWN' }
+        if (!fluid(b) || seen.has(k)) continue
+        if (seen.size >= 512) return { ok: false, reason: 'SOURCE_COMPONENT_LIMIT' }
+        seen.add(k); cells.push(n)
+      }
+    }
+    sources.sort((a, b) => b.position.y - a.position.y || a.position.x - b.position.x || a.position.z - b.position.z)
+    return { ok: true, sources, cells, family }
+  }
   // Where to put a block so the fluid next to target stops. Returns placement
   // plans or a pause reason (§12.1, T12, T23-T25).
   function sealPlan (fluidCell) {
-    const p = fluidCell.position
+    let p = fluidCell.position
     const b = read(p)
     if (!known(b)) return { ok: false, reason: 'UNOBSERVED_FLUID_CELL', position: p }
     // Only air or plain fluid cells take a seal; never a solid/waterlogged block.
     if (!isFluidName(b.name) && !AIR.has(nameOf(b))) return { ok: false, reason: 'SEAL_CELL_OCCUPIED', position: p }
-    const size = fluidComponent(p, cfg.largeFluidCells + 1)
-    if (size > cfg.largeFluidCells) return { ok: false, reason: 'LARGE_FLUID_AREA', position: p, size }
+    if (regions.seal.sourceOnly) {
+      const component = sourceComponent(p)
+      if (!component.ok) return { ...component, position: p }
+      if (!component.sources.length) return { ok: true, waitFluid: true, cells: component.cells, size: component.cells.length }
+      const source = component.sources[0]
+      return { ok: true, position: source.position, purpose: permits(regions, 'place', source.position).allowed ? 'plug' : 'seal', lava: component.family === 'lava', materialRequired: 'dirt', sourceSeal: { source, sources: component.sources, cells: component.cells, size: component.cells.length, sourceOnly: true } }
+    }
+    let size = fluidComponent(p, cfg.largeFluidCells + 1); let sourceSeal = null
+    if (size > cfg.largeFluidCells) {
+      const source = ['lava', 'flowing_lava'].includes(nameOf(b)) ? singleLavaSource(p) : { ok: false, reason: 'SOURCE_NOT_LAVA' }
+      if (!source.ok) return { ok: false, reason: 'LARGE_FLUID_AREA', position: p, size, sourceFailure: source.reason }
+      p = source.source.position; size = source.cells.length
+      sourceSeal = { source: source.source, cells: source.cells, size }
+    }
     const inside = permits(regions, 'place', p).allowed
     const seal = permits(regions, 'seal', p)
     if (!inside && !seal.allowed) return { ok: false, reason: seal.reason === 'SEAL_REGION_NOT_FIXED' ? 'SEAL_REGION_NOT_FIXED' : 'SEAL_OUTSIDE_PERMITTED_REGION', position: p }
-    return { ok: true, position: p, purpose: inside ? 'plug' : 'seal', lava: fluidCell.lava === true, size }
+    return { ok: true, position: p, purpose: inside ? 'plug' : 'seal', lava: fluidCell.lava === true || ['lava', 'flowing_lava'].includes(nameOf(b)), size, ...(sourceSeal ? { sourceSeal } : {}) }
+  }
+
+  // A roof above the outer cell distinguishes a cave aperture from open sky.
+  // We never mine/replace this roof or any outside solid. No roof through the
+  // fully received top margin means there is no underground opening to close.
+  async function boundaryOpening (y, reach, inventoryItems, tools, policy, workY, breathe, feet) {
+    if (!regions.seal.closeOpenings) return null
+    for (const column of regions.seal.columns) {
+      await breathe()
+      const [x, z] = column.split(',').map(Number); const p = { x, y, z }
+      const inner = HORIZONTAL.map(d => add(p, d)).filter(n => regions.columns.has(`${n.x},${n.z}`))
+      if (!inner.length || !inner.some(n => airLike(read(n)) || fluid(read(n)))) continue
+      const b = read(p)
+      if (!known(b)) return { action: 'pause', reason: 'BOUNDARY_UNOBSERVED', details: { position: p } }
+      if (!airLike(b) && !fluid(b)) continue
+      if (!permits(regions, 'seal', p).allowed || b.protected || b.protectionSource) return { action: 'pause', reason: 'BOUNDARY_PROTECTED', details: { position: p } }
+      if (fluid(b)) {
+        const plan = sealPlan({ position: p })
+        if (!plan.ok) return { action: 'pause', reason: plan.reason, details: { position: p } }
+        const action = fluidAction(plan, reach, inventoryItems, tools, policy, workY)
+        return action.action ? action : { action: 'pause', reason: action.reason, details: { position: p } }
+      }
+      let roof = null
+      for (let top = y + 1; top <= Math.min(regions.worldMaxY, regions.yTop + 18); top++) {
+        const n = { x, y: top, z }; const above = read(n)
+        if (!known(above)) return { action: 'pause', reason: 'BOUNDARY_UNOBSERVED', details: { position: n } }
+        if (solidFloor(above) && !ruleOf(above).leaves && !ruleOf(above).plant) { roof = n; break }
+      }
+      if (!roof) continue
+      const plan = { position: p, purpose: 'seal', materialRequired: 'dirt', boundaryOpening: { inside: inner.find(n => airLike(read(n)) || fluid(read(n))), roof } }
+      const action = placementFor(plan, reach, inventoryItems)
+      if (action.reason === 'NO_SAFE_SEAL_STANCE') {
+        const access = await boundarySealAccess(plan, feet, reach, inventoryItems, tools, policy, breathe)
+        if (access) return access
+      }
+      return action.action ? action : { action: 'pause', reason: action.reason, details: { position: p } }
+    }
+    return null
+  }
+
+  async function previewSealPlacement (plan, feet, inventoryItems, avoid = null) {
+    const reach = await reachableFromAsync(feet)
+    const allowed = avoid instanceof Set ? new Map([...reach].filter(([k]) => !avoid.has(k))) : reach
+    return placementFor(plan, allowed, inventoryItems)
+  }
+
+  // Prepare one ordinary cell of the boundary's current layer, only if an
+  // isolated hypothetical removal makes the existing safe seal reachable.
+  // The virtual planner never records progress or returns a seal to execute.
+  async function boundarySealAccess (plan, feet, reach, inventoryItems, tools, policy, breathe) {
+    const p = plan.position, opening = plan.boundaryOpening
+    if (!feet || !opening || plan.purpose !== 'seal' || plan.sourceSeal || plan.lava || !airLike(read(p)) || read(p).extra?.length || !airLike(read(opening.inside)) || read(opening.inside).extra?.length || !solidFloor(read(opening.roof)) || read(opening.roof).extra?.length || isGravityName(read(opening.roof).name)) return null
+    const fixed = [p, opening.inside, opening.roof].map(position => ({ position, block: structuredClone(read(position)) }))
+    const candidates = []
+    for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) {
+      await breathe()
+      if (Math.hypot(dx, dz) > 4) continue
+      const position = { x: p.x + dx, y: p.y, z: p.z + dz }, block = read(position), below = read(add(position, { x: 0, y: -1, z: 0 })), head = read(add(position, { x: 0, y: 1, z: 0 }))
+      const rule = ruleOf(block)
+      if (!regions.columns.has(`${position.x},${position.z}`) || !inRegion(position) || !known(block) || block.diggable === false || !Number.isInteger(block.runtimeId) || block.runtimeId < 0 || block.runtimeId > 0xffffffff || block.boundingBox !== 'block' || block.extra?.length || block.nbt != null || block.blockEntity != null || block.block_entity != null || rule.kind !== 'dig' || rule.gravity || rule.ore || rule.leaves || rule.plant || isGravityName(block.name) || !solidFloor(below) || isGravityName(below.name) || below.shapes && !isDeepStrictEqual(below.shapes, [[0, 0, 0, 1, 1, 1]]) || !airLike(head) || head.extra?.length || fluidNeighbours(position).length || protectsSupport(position) || isStairCell(position)) continue
+      const target = cellStatus(position, { tools, policy })
+      if (target.status !== 'pending' || !mineAction({ position, ...target }, reach, tools, policy, [{ position, ...target }], 1)) continue
+      candidates.push({ position, block: structuredClone(block), below: structuredClone(below), head: structuredClone(head) })
+    }
+    candidates.sort((a, b) => Math.hypot(a.position.x - p.x, a.position.z - p.z) - Math.hypot(b.position.x - p.x, b.position.z - p.z))
+    for (const candidate of candidates.slice(0, 16)) {
+      await breathe()
+      const c = candidate.position
+      const virtual = createQuarryPlanner({ regions, config: cfg, exit, records: structuredClone(exportRecords()), getBlock: (x, y, z) => x === c.x && y === c.y && z === c.z ? { known: true, name: 'minecraft:air', boundingBox: 'empty', runtimeId: 0, properties: {}, extra: [] } : getBlock(x, y, z) })
+      const preview = await virtual.previewSealPlacement(structuredClone(plan), feet, inventoryItems, new Set(avoidStances))
+      if (preview.action !== 'seal' || !same(preview.position, p) || !preview.boundaryOpening || !same(preview.boundaryOpening.inside, opening.inside) || !same(preview.boundaryOpening.roof, opening.roof)) continue
+      if (!fixed.every(entry => isDeepStrictEqual(read(entry.position), entry.block)) || !isDeepStrictEqual(read(c), candidate.block) || !isDeepStrictEqual(read(add(c, { x: 0, y: -1, z: 0 })), candidate.below) || !isDeepStrictEqual(read(add(c, { x: 0, y: 1, z: 0 })), candidate.head) || fluidNeighbours(c).length) continue
+      const target = cellStatus(c, { tools, policy })
+      const action = target.status === 'pending' ? mineAction({ position: c, ...target }, reach, tools, policy, [{ position: c, ...target }], 1) : null
+      if (action) return { ...action, reason: 'BOUNDARY_SEAL_ACCESS', boundarySealAccess: { sealPosition: { ...p }, accessPosition: { ...c }, expectedName: candidate.block.name, expectedRuntimeId: candidate.block.runtimeId, previewOnly: true } }
+    }
+    return null
   }
 
   // ---- walking graph (conservative mirror of normal movement) ------------
@@ -189,6 +333,9 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
   function standable (p) {
     return passable(read(p)) && passable(read(add(p, { x: 0, y: 1, z: 0 }))) && solidFloor(read(add(p, { x: 0, y: -1, z: 0 })))
   }
+  // A placement can trigger neighbouring gravity blocks. Walking on a
+  // received gravel floor remains legal, but it is never a sealing stance.
+  const safeSealStance = p => standable(p) && !isGravityName(read(add(p, { x: 0, y: -1, z: 0 })).name)
   function neighboursOf (p) {
     const out = []
     for (const h of HORIZONTAL) {
@@ -261,6 +408,9 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
       if (d > 0 && avoidStances.has(k)) continue // a stance the bot repeatedly failed to reach
       const [x, y, z] = k.split(',').map(Number); const s = { x, y, z }
       if (Math.abs(s.x + 0.5 - (t.x + 0.5)) > REACH + 0.5 || Math.abs(s.z + 0.5 - (t.z + 0.5)) > REACH + 0.5 || s.y + EYE - (t.y + 0.5) > REACH + 0.5 || t.y + 0.5 - (s.y + EYE) > REACH + 0.5) continue
+      // A known gravel surface may remain a normal walking connector, but
+      // mining.validate refuses it as the final grounded mining stance.
+      if (!standable(s) || isGravityName(read(add(s, { x: 0, y: -1, z: 0 })).name)) continue
       const e = eyeOf(s)
       const eyeDist = Math.hypot(t.x + 0.5 - e.x, t.y + 0.5 - e.y, t.z + 0.5 - e.z)
       if (eyeDist > REACH + 0.9) continue
@@ -286,12 +436,12 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
   }
   // Summarises a layer: pending targets, deferrals and unknown cells.
   function layerSummary (y, opts) {
-    const s = { y, pending: [], unknown: 0, deferred: 0, reserved: 0, fluid: [], blocked: [] }
+    const s = { y, pending: [], unknown: 0, deferred: 0, reserved: 0, fluid: [], blocked: [], toolWait: [] }
     for (const p of layerCells(y)) {
       const c = cellStatus(p, opts)
       if (c.status === 'pending') s.pending.push({ position: p, ...c })
       else if (c.status === 'unknown') s.unknown++
-      else if (c.status === 'deferred') s.deferred++
+      else if (c.status === 'deferred') { s.deferred++; if (/^(WAITING_FOR_TOOL|TOOL_DURABILITY_RESERVE|TOOL_DURABILITY_UNKNOWN|TOOL_NOT_IN_HOTBAR)$/.test(c.reason)) s.toolWait.push({ position: p, ...c }) }
       else if (c.status === 'reserved') s.reserved++
       else if (c.status === 'fluid') s.fluid.push({ position: p, ...c })
       else if (c.status === 'blocked') s.blocked.push({ position: p, ...c })
@@ -319,15 +469,26 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
       // Protected and unharvestable cells are deferred with their reason once.
       for (const blocked of layer.blocked) defer(blocked.position, blocked.reason, blocked.needs ? { needs: blocked.needs } : {})
       if (layer.unknown && !layer.pending.length) return { action: 'pause', reason: 'UNOBSERVED_CELLS', details: { y, unknown: layer.unknown } }
+      const opening = await boundaryOpening(y, reach, inventoryItems, tools, policy, yTop, breathe, feet)
+      if (opening) return opening
       // Fluids inside the layer: plug small ones, pause on large ones.
       for (const f of layer.fluid) {
         const plan = sealPlan({ position: f.position, name: f.name, lava: /lava/.test(nameOf(f.name)) })
         if (!plan.ok) return { action: 'pause', reason: plan.reason, details: { position: f.position, size: plan.size } }
-        const placement = placementFor(plan, reach, inventoryItems)
+        const placement = fluidAction(plan, reach, inventoryItems, tools, policy, yTop)
         if (placement.action) return placement
         return { action: 'pause', reason: placement.reason, details: { position: f.position } }
       }
-      if (!layer.pending.length) { if (layer.unknown) return { action: 'pause', reason: 'UNOBSERVED_CELLS', details: { y, unknown: layer.unknown } }; continue }
+      if (!layer.pending.length) {
+        const toolWait = [...layer.toolWait, ...layer.blocked.filter(c => /^(WAITING_FOR_TOOL|TOOL_DURABILITY_RESERVE|TOOL_DURABILITY_UNKNOWN|TOOL_NOT_IN_HOTBAR)$/.test(c.reason))]
+        if (toolWait.length) {
+          const needs = {}; const byReason = {}
+          for (const c of toolWait) { const n = `${c.needs?.kind ?? 'unknown'}${c.needs?.tier != null ? `:${c.needs.tier}` : ''}`; needs[n] = (needs[n] ?? 0) + 1; byReason[c.reason] = (byReason[c.reason] ?? 0) + 1 }
+          return { action: 'pause', reason: 'WAITING_FOR_TOOL', details: { y, cells: toolWait.length, needs, byReason, examples: toolWait.slice(0, 10) } }
+        }
+        if (layer.unknown) return { action: 'pause', reason: 'UNOBSERVED_CELLS', details: { y, unknown: layer.unknown } }
+        continue
+      }
       // Stair upkeep before the layer is opened.
       const step = stairStepAt(y)
       if (step) {
@@ -371,7 +532,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
           for (const h of hazards) {
             const plan = sealPlan(h)
             if (!plan.ok) return { action: 'pause', reason: plan.reason, details: { target: target.position, fluid: h.position, size: plan.size } }
-            const placement = placementFor(plan, reach, inventoryItems)
+            const placement = fluidAction(plan, reach, inventoryItems, tools, policy, yTop)
             if (placement.action) return placement
             return { action: 'pause', reason: placement.reason, details: { target: target.position, fluid: h.position } }
           }
@@ -416,9 +577,33 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
     return { action: 'mine', stance: best.chosen.stance, travel: best.chosen.distance, tool: target.tool ?? { kind: 'hand' }, targets: best.batch }
   }
 
+  function fluidAction (plan, reach, inventoryItems, tools, policy, workY) {
+    if (plan.waitFluid) return { action: 'wait_fluid', cells: structuredClone(plan.cells), reason: 'FLUID_DRAIN_PENDING' }
+    const placement = placementFor(plan, reach, inventoryItems)
+    if (placement.action || !plan.sourceSeal || placement.reason !== 'NO_SAFE_SEAL_STANCE') return placement
+    const source = plan.sourceSeal.source; const roof = { ...source.position, y: source.position.y + 1 }; const b = read(roof)
+    const rule = known(b) ? ruleOf(b) : null
+    if (roof.y !== workY || !inRegion(roof) || isStairCell(roof) || !known(b) || b.diggable === false || b.boundingBox !== 'block' || rule?.kind !== 'dig' || rule.gravity || rule.plant || rule.leaves || protectsSupport(roof)) return placement
+    if (FACES.filter(f => f.y !== -1).some(f => !fluidRoofNeighbourSafe(read(add(roof, f))))) return placement
+    const status = cellStatus(roof, { tools, policy })
+    if (status.status !== 'pending') return placement
+    const selected = selectTool(rule, tools, policy)
+    if (!selected.ok) return { reason: 'WAITING_FOR_TOOL' }
+    const dryReach = new Map()
+    for (const [k, distance] of reach) {
+      const [x, y, z] = k.split(',').map(Number); const s = { x, y, z }
+      if (y < roof.y + 1 || x === roof.x && z === roof.z || Math.abs(x - roof.x) > 5 || Math.abs(z - roof.z) > 5 || !standable(s)) continue
+      if ([s, add(s, { x: 0, y: 1, z: 0 })].some(p => FACES.some(f => { const n = read(add(p, f)); return !known(n) || fluid(n) }))) continue
+      dryReach.set(k, distance)
+    }
+    const stance = stancesFor(roof, dryReach, new Set(), 24, 1)[0]
+    if (!stance) return placement
+    return { action: 'mine', reason: 'FLUID_SOURCE_ACCESS', stance: stance.stance, travel: stance.distance, tool: selected, targets: [{ position: roof, name: b.name, runtimeId: b.runtimeId, tool: selected, aim: stance.aim, accessPreparation: 'quarry_fluid_roof', fluidSource: structuredClone(source) }] }
+  }
+
   function batchFrom (chosen, target, layerPending, limit) {
     const removed = new Set()
-    const batch = [{ position: target.position, name: target.name, runtimeId: target.runtimeId, tool: target.tool, aim: chosen.aim }]
+    const batch = [{ position: target.position, name: target.name, runtimeId: target.runtimeId, tool: target.tool, aim: chosen.aim, ...(nameOf(target.name) === 'leaf_litter' ? { properties: structuredClone(target.properties ?? null) } : {}) }]
     removed.add(key(target.position.x, target.position.y, target.position.z))
     let misses = 0
     for (const other of layerPending) {
@@ -429,7 +614,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
       if (fluidNeighbours(other.position).length) continue
       const aim = selectVisibleBlockFace({ eye: eyeOf(chosen.stance), target: other.position, world: { getBlock }, maxReach: REACH, removed })
       if (!aim) { misses++; continue }
-      batch.push({ position: other.position, name: other.name, runtimeId: other.runtimeId, tool: other.tool, aim })
+      batch.push({ position: other.position, name: other.name, runtimeId: other.runtimeId, tool: other.tool, aim, ...(nameOf(other.name) === 'leaf_litter' ? { properties: structuredClone(other.properties ?? null) } : {}) })
       removed.add(key(other.position.x, other.position.y, other.position.z))
     }
     return batch
@@ -438,11 +623,16 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
   // Finds a block in hand range to click so a seal/plug/stair block lands at
   // plan.position. Faces may be clicked through fluid but not through solids.
   function placementFor (plan, reach, inventoryItems) {
-    const material = (inventoryItems ?? []).filter(i => SEAL_MATERIALS.includes(nameOf(i)) && i.count > 0 && i.slot >= 0 && i.slot <= 8).sort((a, b) => b.count - a.count)[0]
+    const exitDirt = exit?.mode === 'adjacent_pillar' ? exit.reservedDirt ?? 192 : 0
+    const dirtTotal = (inventoryItems ?? []).filter(i => nameOf(i) === 'dirt' && i.slot >= 0 && i.slot < 36).reduce((n, i) => n + i.count, 0)
+    const eligible = (inventoryItems ?? []).filter(i => SEAL_MATERIALS.includes(nameOf(i)) && (!plan.materialRequired || nameOf(i) === plan.materialRequired) && i.count > 0 && i.slot >= 0 && i.slot < 36 && (nameOf(i) !== 'dirt' || dirtTotal > exitDirt)).sort((a, b) => b.count - a.count)
+    const material = eligible.find(i => i.slot <= 8)
+    if (!material && plan.materialRequired && eligible.length) return { action: 'equip_seal', slot: eligible[0].slot, material: eligible[0].name }
     if (!material) return { reason: 'SEAL_MATERIAL_MISSING' }
     const p = plan.position
     for (const [k, d] of reach) {
       const [x, y, z] = k.split(',').map(Number); const s = { x, y, z }
+      if (!safeSealStance(s)) continue
       if (plan.lava && FACES.some(f => fluid(read(add(s, f))) || fluid(read(add(add(s, { x: 0, y: 1, z: 0 }), f))))) continue
       const eye = eyeOf(s)
       if ((p.x === s.x && p.z === s.z && (p.y === s.y || p.y === s.y + 1))) continue // never place into own body
@@ -453,10 +643,13 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
         // Clicked face points back toward the placement cell.
         const face = faceIndex({ x: -f.x, y: -f.y, z: -f.z })
         const point = { x: clicked.x + 0.5 - f.x * 0.5, y: clicked.y + 0.5 - f.y * 0.5, z: clicked.z + 0.5 - f.z * 0.5 }
+        // A ray that ignores the clicked cube must still approach its outer
+        // face. Otherwise the underside of a roof looks clickable from above.
+        if ((eye.x - point.x) * -f.x + (eye.y - point.y) * -f.y + (eye.z - point.z) * -f.z <= 1e-6) continue
         const dist = Math.hypot(point.x - eye.x, point.y - eye.y, point.z - eye.z)
         if (dist > REACH) continue
         if (!sightThrough(eye, point, clicked)) continue
-        return { action: plan.purpose === 'stair' ? 'stair_place' : 'seal', purpose: plan.purpose, stance: s, travel: d, position: p, clicked, face, point, slot: material.slot, material: material.name }
+        return { action: plan.purpose === 'stair' ? 'stair_place' : 'seal', purpose: plan.purpose, stance: s, travel: d, position: p, clicked, face, point, slot: material.slot, material: material.name, ...(plan.materialRequired ? { materialRequired: plan.materialRequired } : {}), ...(plan.boundaryOpening ? { boundaryOpening: structuredClone(plan.boundaryOpening) } : {}), ...(plan.sourceSeal ? { sourceSeal: structuredClone(plan.sourceSeal) } : {}) }
       }
     }
     return { reason: 'NO_SAFE_SEAL_STANCE' }
@@ -513,7 +706,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {} }) 
   function clearDeferred (reasons = null, keep = null) { const before = deferred.size; for (const [k, v] of deferred) if ((!reasons || reasons.includes(v.reason)) && !(keep && keep(k))) deferred.delete(k); if (deferred.size !== before) recordRevision++ }
   function exportRecords () { return { deferred: Object.fromEntries(deferred), temporary: Object.fromEntries(temporary), seals: Object.fromEntries(seals), stair } }
 
-  return { pathTo, surveyTop, planStair, stairStepAt, isStairCell, cellStatus, layerSummary, next, reachableFrom, reachableFromAsync, standable, fluidNeighbours, sealPlan, recordPlacement, counts, countsAsync, revision: () => recordRevision, defer, clearDeferred, exportRecords, deferredList: () => [...deferred].map(([k, v]) => ({ position: k, ...v })), sealList: () => [...seals].map(([k, v]) => ({ position: k, ...v })), temporaryList: () => [...temporary].map(([k, v]) => ({ position: k, ...v })) }
+  return { pathTo, surveyTop, planStair, stairStepAt, isStairCell, cellStatus, layerSummary, next, previewSealPlacement, reachableFrom, reachableFromAsync, standable, safeSealStance, fluidNeighbours, sealPlan, recordPlacement, counts, countsAsync, revision: () => recordRevision, defer, clearDeferred, exportRecords, deferredList: () => [...deferred].map(([k, v]) => ({ position: k, ...v })), sealList: () => [...seals].map(([k, v]) => ({ position: k, ...v })), temporaryList: () => [...temporary].map(([k, v]) => ({ position: k, ...v })) }
 }
 
 module.exports = { createQuarryPlanner }

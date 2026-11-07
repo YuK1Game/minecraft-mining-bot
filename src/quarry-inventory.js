@@ -3,6 +3,8 @@
 // Quarry capacity, keep-list and ledger helpers (spec v1.2 §11, §16.2).
 
 const { nameOf, toolOf, SEAL_MATERIALS } = require('./quarry-rules')
+const { foodNutrition } = require('./food')
+const { surplusToolSlots } = require('./quarry-surplus-tools')
 
 const SLOTS = 36
 const STACK16 = /^(snowball|egg|ender_pearl|honey_bottle|sign|.*_sign|bucket|armor_stand|banner|.*_banner)$/
@@ -41,19 +43,29 @@ function selectCarriedStorage (items, { excludedShulkerKeys = [] } = {}) {
 // Material for one more storage chest is kept too: carried chests and a
 // crafting table, plus a few logs/planks (2 logs make a chest, 1 a table).
 // A little coal and a few sticks stay too, to craft torches for the chest area.
-function keepPlan (items, { keepSealBlocks = 32, keepFood = 64, keepLogs = 4, keepPlanks = 12, keepCoal = 4, keepSticks = 4 } = {}) {
+function keepPlan (items, { keepSealBlocks = 32, keepSealMaterial = null, keepFood = 64, keepLogs = 4, keepPlanks = 12, keepCoal = 4, keepSticks = 4, keepExitDirt = 0, autoSupplies = false, supplyBoxes = [], toolPolicy = {}, storeInferiorTools = true } = {}) {
   const keep = new Map() // slot -> count kept
-  let seal = 0; let food = 0; let logs = 0; let planks = 0; let coal = 0; let sticks = 0
+  let seal = 0; let food = 0; let logs = 0; let planks = 0; let coal = 0; let sticks = 0; let exitDirt = 0
   const sorted = [...(items ?? [])].filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot < SLOTS).sort((a, b) => a.slot - b.slot)
+  const surplus = surplusToolSlots(sorted, { enabled: autoSupplies === true && storeInferiorTools !== false, supplyBoxes, toolPolicy })
+  // Reserve meals by hunger restoration before a low-slot stack fills the
+  // food allowance. Other KEEP categories and deposit order stay slot-based.
+  for (const item of sorted.filter(i => isFood(i.name)).sort((a, b) => foodNutrition(b.name) - foodNutrition(a.name) || a.slot - b.slot)) {
+    if (food >= keepFood) break
+    const count = Math.min(item.count, keepFood - food)
+    food += count; keep.set(item.slot, count)
+  }
   for (const item of sorted) {
     const n = nameOf(item)
+    if (n === 'dirt' && exitDirt < keepExitDirt) { const k = Math.min(item.count, keepExitDirt - exitDirt); keep.set(item.slot, k); exitDirt += k; if (k === item.count) continue }
+    if (surplus.has(item.slot)) continue
     if (toolOf(item) || KEEP.test(n) || isShulkerBox(n) || n === 'chest' || n === 'crafting_table') { keep.set(item.slot, item.count); continue }
     if (/_(log|stem)$/.test(n) && logs < keepLogs) { const k = Math.min(item.count, keepLogs - logs); logs += k; keep.set(item.slot, k); continue }
     if (/^(coal|charcoal)$/.test(n) && coal < keepCoal) { const k = Math.min(item.count, keepCoal - coal); coal += k; keep.set(item.slot, k); continue }
     if (n === 'stick' && sticks < keepSticks) { const k = Math.min(item.count, keepSticks - sticks); sticks += k; keep.set(item.slot, k); continue }
     if (/_planks$/.test(n) && planks < keepPlanks) { const k = Math.min(item.count, keepPlanks - planks); planks += k; keep.set(item.slot, k); continue }
-    if (isFood(n) && food < keepFood) { const k = Math.min(item.count, keepFood - food); food += k; keep.set(item.slot, k); continue }
-    if (SEAL_MATERIALS.includes(n) && seal < keepSealBlocks) { const k = Math.min(item.count, keepSealBlocks - seal); seal += k; keep.set(item.slot, k) }
+    if (isFood(n) && keep.has(item.slot)) continue
+    if (SEAL_MATERIALS.includes(n) && (!keepSealMaterial || n === nameOf(keepSealMaterial)) && seal < keepSealBlocks) { const prior = keep.get(item.slot) ?? 0; const k = Math.min(item.count - prior, keepSealBlocks - seal); seal += k; keep.set(item.slot, prior + k) }
   }
   const deposits = []
   for (const item of sorted) { const k = keep.get(item.slot) ?? 0; if (item.count > k) deposits.push({ slot: item.slot, name: item.name, count: item.count - k }) }
@@ -67,8 +79,9 @@ function freeSlots (items) {
 
 // Can the next dig's worst-case drops be held (§11.1, T06)? Different
 // enchantment/damage/custom data never stack; only plain stacks are topped up.
-function canAccept (items, drops) {
+function canAccept (items, drops, { minFreeSlots = 0 } = {}) {
   let free = freeSlots(items)
+  if (free < minFreeSlots) return false
   const room = new Map()
   for (const i of items ?? []) {
     if (!Number.isInteger(i.slot) || i.slot < 0 || i.slot >= SLOTS || i.custom || i.enchantments?.length || i.durabilityKnown) continue
@@ -80,7 +93,7 @@ function canAccept (items, drops) {
     const n = nameOf(d.name)
     const r = room.get(n) ?? 0
     const used = Math.min(r, left); left -= used; room.set(n, r - used)
-    while (left > 0) { if (free <= 0) return false; free--; const take = Math.min(maxStack(n), left); left -= take; room.set(n, (room.get(n) ?? 0) + maxStack(n) - take) }
+    while (left > 0) { if (free <= minFreeSlots) return false; free--; const take = Math.min(maxStack(n), left); left -= take; room.set(n, (room.get(n) ?? 0) + maxStack(n) - take) }
   }
   return true
 }

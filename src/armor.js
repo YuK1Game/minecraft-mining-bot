@@ -42,6 +42,7 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   const worn = store.worn instanceof Map ? store.worn : (store.worn = new Map())
   let operation = null
   let lastResult = null
+  let preemptionRevision = 0, runningBatches = 0
 
   const nameOf = raw => empty(raw) ? null : (typeof crafting.itemNameOf === 'function' ? crafting.itemNameOf(raw.network_id) : null)
   function wornScore (slot) { const name = nameOf(worn.get(slot)); return name ? armorInfo(name)?.score ?? 0 : 0 }
@@ -69,30 +70,42 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   function preview () { return ready() ? nextUpgrade() : null }
 
   async function equipBest ({ maxMoves = 4 } = {}) {
-    const moved = []
-    for (let i = 0; i < maxMoves; i++) {
-      const next = preview()
-      if (!next) break
-      const result = await move(next)
-      moved.push(result)
-      if (!result.serverConfirmed) break
-    }
-    return moved
+    const moved = [], revision = preemptionRevision
+    runningBatches++
+    try {
+      for (let i = 0; i < maxMoves && revision === preemptionRevision; i++) {
+        const next = preview()
+        if (!next) break
+        const result = await move(next, revision)
+        moved.push(result)
+        if (!result.serverConfirmed) break
+      }
+      return moved
+    } finally { runningBatches-- }
   }
 
-  async function move (next) {
+  function preemptForCombat (reason = 'user_behavior') {
+    preemptionRevision++
+    if (operation) { operation.preemptedForCombat = true; operation.preemptionReason = String(reason) }
+    // A sent request is still authoritative when its real reply arrives.
+    return { preempted: runningBatches > 0 || !!operation, pendingRequestId: operation?.wireSent ? operation.id : null }
+  }
+
+  async function move (next, revision) {
     const raw = crafting.rawItem(next.sourceSlot)
     if (empty(raw) || raw.has_stack_id !== true || !(raw.stack_id > 0)) return (lastResult = { phase: 'failed', reason: 'source stack unknown', ...next })
     const current = worn.get(next.armorSlot)
     const id = allocateRequestId()
-    const attempt = operation = { id, next, raw: copy(raw), previous: empty(current) ? null : copy(current), accepted: false, done: null, startedAt: now() }
+    const attempt = operation = { id, next, raw: copy(raw), previous: empty(current) ? null : copy(current), accepted: false, done: null, startedAt: now(), revision, wireSent: false }
     let openedHere = false
     try {
       if (!crafting.snapshot().openContainer) { await crafting.openInventory(); openedHere = true }
+      if (revision !== preemptionRevision || attempt.preemptedForCombat) return { phase: 'stopped', code: 'COMBAT_PREEMPTED', serverConfirmed: false, ...next }
       const action = empty(current)
         ? { type_id: 'place', legacy_type_id: 1, count: 1, source: { slot_type: copy(MAIN), slot: next.sourceSlot, stack_id: raw.stack_id }, destination: { slot_type: copy(ARMOR), slot: next.armorSlot, stack_id: 0 } }
         : { type_id: 'swap', legacy_type_id: 2, source: { slot_type: copy(MAIN), slot: next.sourceSlot, stack_id: raw.stack_id }, destination: { slot_type: copy(ARMOR), slot: next.armorSlot, stack_id: current.stack_id } }
       const settled = new Promise(resolve => { attempt.done = resolve })
+      attempt.wireSent = true
       client.queue('item_stack_request', { requests: [{ request_id: id, actions: [action], custom_names: [], cause: -1 }] })
       const timer = setTimeout(() => attempt.done?.({ phase: 'failed', reason: 'no server response' }), timeoutMs)
       const result = await settled
@@ -105,7 +118,7 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
       return copy(lastResult)
     } finally {
       if (operation === attempt) operation = null
-      if (openedHere) { try { crafting.closeContainer() } catch { /* a pending craft owns the screen */ } }
+      if (openedHere && revision === preemptionRevision && !attempt.preemptedForCombat) { try { crafting.closeContainer() } catch { /* a pending craft owns the screen */ } }
     }
   }
 
@@ -148,7 +161,7 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   function snapshot () {
     return { busy: !!operation, known: store.known === true, worn: PIECES.map(([piece, slot]) => ({ piece, name: nameOf(worn.get(slot)) })), next: store.known ? nextUpgrade() : null, lastResult: copy(lastResult) }
   }
-  return { preview, equipBest, applyPacket, snapshot }
+  return { preview, equipBest, preemptForCombat, applyPacket, snapshot }
 }
 
 module.exports = { createArmor, armorInfo }

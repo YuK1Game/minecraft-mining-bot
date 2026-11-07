@@ -14,11 +14,10 @@ function coupled(t,{blocked=false,afterAcquire=null,afterShot=null,legacy=false,
   const c=createCombatCoordinator({getState:()=>f.state,entities:{snapshot:()=>structuredClone(f.actors)},melee,ranged,acquire:async()=>{acquires++;busy=false;afterAcquire?.(f);return{acquired:true,token:'owned-fixture'}},resume:async()=>{resumes++;busy=true},approach:async()=>{approaches++;f.state.position.x=f.target.position.x-2;return{ready:true}},canAct:()=>enabled,canAcquireMeleeApproach:()=>true,now:()=>time,sleep:async ms=>{time+=ms;if(stopAfterShot&&f.ranged.snapshot().lastResult?.shotsRequested>=1)enabled=false;await turn()},durationMs:5000,controllerSliceMs:1200})
   return{f,c,auth,counts:()=>({acquires,resumes,approaches,meleeCalls}),busy:()=>busy}
 }
-// Aggressive policy (user request 2026-11-02): a bow target that cannot be shot
-// right now is closed in on instead of being left to resource work.
-test('unshootable far target is closed in on, never shot through the block and never credited',async t=>{
+// Current user policy: a blocked bow line returns priority to resource work.
+test('unshootable far target leaves work untouched, is never shot through the block and never credited',async t=>{
   const h=coupled(t,{blocked:true});assert.equal(h.f.ranged.preview('70').code,'BUSY');assert.equal(h.f.ranged.survey('70').ready,false)
-  const r=await h.c.tick();assert.equal(r.targetDead,false);assert.ok(h.counts().acquires<=1);assert.ok(h.counts().approaches>=h.counts().acquires);assert.equal(h.f.packets.filter(p=>p.name==='inventory_transaction').length,0)
+  const r=await h.c.tick();assert.equal(r.targetDead,false);assert.equal(h.counts().acquires,0);assert.equal(h.counts().approaches,0);assert.equal(h.f.packets.filter(p=>p.name==='inventory_transaction').length,0)
 })
 test('ready far survey ignores only outside ownership, then ordinary real Input equip/draw/release proceeds without a melee chase or hit credit',async t=>{
   const h=coupled(t);assert.equal(h.f.ranged.preview('70').code,'BUSY');assert.equal(h.f.ranged.survey('70').ready,true);assert.equal(h.auth.length,0)
@@ -27,9 +26,9 @@ test('ready far survey ignores only outside ownership, then ordinary real Input 
   const bytes=createSerializer('1.26.60').createPacketBuffer(use),decoded=createDeserializer('1.26.60').parsePacketBuffer(bytes).data;assert.equal(decoded.name,'player_auth_input')
   assert.equal(r.serverConfirmed,false);assert.equal(r.targetDead,false);assert.equal(h.f.ranged.snapshot().cleanupUnconfirmed,false);assert.equal(h.f.ranged.snapshot().lastResult.shotsConfirmed,1)
 })
-test('a wall appearing after claim makes the bot close in instead of releasing a blocked shot',async t=>{
+test('a wall appearing after claim releases the blocked shot without an approach',async t=>{
   const h=coupled(t,{afterAcquire:f=>f.blocks.set('5,66,0',{known:true,name:'minecraft:stone',extra:[]})}),r=await h.c.tick()
-  assert.equal(r.targetDead,false);assert.ok(h.counts().approaches>=1);assert.equal(h.f.packets.filter(p=>p.name==='inventory_transaction').length,0);assert.equal(h.counts().resumes,1)
+  assert.equal(r.targetDead,false);assert.equal(r.code,'LOS_BLOCKED');assert.equal(h.counts().approaches,0);assert.equal(h.f.packets.filter(p=>p.name==='inventory_transaction').length,0);assert.equal(h.counts().resumes,1)
 })
 test('real ammo exhaustion after one direct shot fires no second arrow and closes in for melee instead',async t=>{
   const h=coupled(t,{arrows:1,stopAfterShot:false}),r=await h.c.tick();assert.equal(h.f.packets.filter(p=>p.name==='inventory_transaction').length,1);assert.equal(r.targetDead,false,JSON.stringify({r,last:h.f.ranged.snapshot().lastResult}));assert.ok(h.counts().approaches>=1);assert.equal(h.counts().resumes,1)

@@ -267,15 +267,30 @@ function createPortableBed ({ getState, getBlock, getClock, getMemory, setMemory
     return run.task.then(snapshot)
   }
   function applyPacket (name, packet = {}) {
+    // These are the only observations consumed below. In particular, terrain
+    // chunks and actor movement must not clone the complete observed state.
+    const boundaryPacket = ['start_game', 'change_dimension', 'close', 'disconnect', 'respawn'].includes(name)
+    if (!boundaryPacket) {
+      if (name === 'set_health') { if (!Number.isFinite(packet.health)) return false }
+      else if (name === 'update_attributes') { if (!packet.attributes?.some(a => a.name === 'minecraft:health')) return false }
+      else if (name === 'entity_event') { if (!['death_animation', 3, 'respawn', 18].includes(packet.event_id)) return false }
+      else if (name === 'set_entity_data') { if (!packet.metadata?.some(e => [26, 'player_flags', 28, 'player_bed_position', 133, 'bed_enter_position'].includes(e.key))) return false }
+      else if (name === 'animate') { if (!['wake_up', 3].includes(packet.action_id)) return false }
+      else if (['update_block', 'update_subchunk_blocks'].includes(name)) {
+        if (!memory.record || memory.record.invalidated || memory.record.phase === 'retrieving') return false
+        if (name === 'update_block' && integer(packet.position) && ![memory.record.foot, memory.record.head].some(part => same(part?.position, packet.position))) return false
+      } else return false
+    }
     const state = getState(), own = id => id != null && state.runtimeEntityId != null && String(id) === String(state.runtimeEntityId)
     const health = name === 'set_health' ? packet.health : name === 'update_attributes' && own(packet.runtime_entity_id) ? packet.attributes?.find(attribute => attribute.name === 'minecraft:health')?.current : null
     const death = Number.isFinite(health) && health <= 0 || name === 'entity_event' && own(packet.runtime_entity_id) && ['death_animation', 3].includes(packet.event_id)
-    const boundary = ['start_game', 'change_dimension', 'close', 'disconnect'].includes(name) || name === 'entity_event' && own(packet.runtime_entity_id) && ['respawn', 18].includes(packet.event_id)
+    const boundary = boundaryPacket || name === 'entity_event' && own(packet.runtime_entity_id) && ['respawn', 18].includes(packet.event_id)
     if (death || boundary) {
       if (!death || !memory.deadObserved) memory.lifeSerial = (memory.lifeSerial ?? 0) + 1
-      memory.deadObserved = death; memory.sleep = null; memory.lastSleep = null; save(); cancel('Bed life changed'); return
+      memory.deadObserved = death; memory.sleep = null; memory.lastSleep = null; save(); cancel('Bed life changed'); return true
     }
-    if (Number.isFinite(health) && health > 0 && memory.deadObserved && state.dead === false && !state.lifecycle?.dead) { memory.deadObserved = false; save() }
+    let changed = false
+    if (Number.isFinite(health) && health > 0 && memory.deadObserved && state.dead === false && !state.lifecycle?.dead) { memory.deadObserved = false; save(); changed = true }
     if (name === 'set_entity_data' && own(packet.runtime_entity_id)) {
       let sleeping = null; let bedPosition = memory.sleep?.scope === lifeKey(state) ? memory.sleep.bedPosition : null
       for (const entry of packet.metadata ?? []) {
@@ -286,15 +301,16 @@ function createPortableBed ({ getState, getBlock, getClock, getMemory, setMemory
       if (sleeping !== null || bedPosition) {
         memory.sleep = { sleeping: sleeping ?? prior?.sleeping ?? null, bedPosition, scope: lifeKey(state), sequence: ++memory.sequence, source: 'own_server_metadata', at: now() }
         if (memory.sleep.sleeping === true && owned(state) && (same(bedPosition, memory.record.foot.position) || same(bedPosition, memory.record.head.position))) memory.lastSleep = copy(memory.sleep)
-        save()
+        save(); changed = true
       }
     } else if (name === 'animate' && own(packet.runtime_entity_id) && ['wake_up', 3].includes(packet.action_id)) {
-      memory.sleep = { sleeping: false, bedPosition: memory.sleep?.bedPosition ?? null, scope: lifeKey(state), sequence: ++memory.sequence, source: 'own_server_wake_animation', at: now() }; save()
+      memory.sleep = { sleeping: false, bedPosition: memory.sleep?.bedPosition ?? null, scope: lifeKey(state), sequence: ++memory.sequence, source: 'own_server_wake_animation', at: now() }; save(); changed = true
     }
     if (['update_block', 'update_subchunk_blocks'].includes(name) && owned(state) && memory.record.phase !== 'retrieving') {
       const parts = [memory.record.foot, memory.record.head].map(part => getBlock(part.position.x, part.position.y, part.position.z))
-      if (parts.some(block => block?.known === true && block.name !== BED) || parts.every(block => block?.known === true) && !pairMatches(memory.record, getBlock).valid) { memory.record.invalidated = true; memory.record.invalidation = 'received_bed_replacement'; save() }
+      if (parts.some(block => block?.known === true && block.name !== BED) || parts.every(block => block?.known === true) && !pairMatches(memory.record, getBlock).valid) { memory.record.invalidated = true; memory.record.invalidation = 'received_bed_replacement'; save(); changed = true }
     }
+    return changed
   }
   function ownsTarget (state, target, block) {
     const checked = safeState()

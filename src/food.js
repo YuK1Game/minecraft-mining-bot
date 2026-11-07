@@ -47,6 +47,18 @@ const isSupportedFood = (name, state = null) => {
   const normalized = String(name).includes(':') ? name : `minecraft:${name}`
   return FOODS.has(normalized) || normalized === 'minecraft:chicken' && resourceMinHealth(state) === 0 && chickenRisk() !== null
 }
+const nutritionCache = new Map()
+function foodNutrition (name, state = null) {
+  const normalized = String(name).includes(':') ? name : `minecraft:${name}`
+  // Ranking never admits a new food or changes the risky-food policy.
+  if (!isSupportedFood(normalized, state)) return 0
+  if (!nutritionCache.has(normalized)) {
+    const item = require('minecraft-data')('bedrock_1.26.60').itemsByName[normalized.slice(10)]
+    const nutrition = item?.nbt?.value?.components?.value?.['minecraft:food']?.value?.nutrition?.value
+    nutritionCache.set(normalized, Number.isSafeInteger(nutrition) && nutrition > 0 ? nutrition : 0)
+  }
+  return nutritionCache.get(normalized)
+}
 function failure (message, code, capability) { const error = new Error(message); error.code = code; if (capability) error.capability = capability; return error }
 
 // Primary server paths: PMMP InGamePacketHandler ACTION_CLICK_AIR and Dragonfly
@@ -181,7 +193,7 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
     const emergency = allowEmergencyRotten && !healthyAvailable && Number.isFinite(hunger) && hunger < 18 && canEmergencyEat() === true
     const candidates = items.filter(item => (isSupportedFood(item.name, state) || emergency && item.name === 'minecraft:rotten_flesh') && item.count > 0 && Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && (slot == null || slot === item.slot))
     const preferred = slot == null && candidates.some(item => FOODS.has(item.name)) ? candidates.filter(item => FOODS.has(item.name)) : candidates
-    const item = preferred.find(item => item.slot === selected) ?? preferred[0]
+    const item = preferred.sort((a, b) => foodNutrition(b.name, state) - foodNutrition(a.name, state) || Number(b.slot === selected) - Number(a.slot === selected) || a.slot - b.slot)[0]
     if (!item) throw failure('持っている対応食料がありません。食料の入手が必要です。', 'FOOD_NOT_IN_INVENTORY', 'food_acquisition')
     if (item.name === 'minecraft:chicken' && (!Number.isFinite(hunger) || hunger < 0 || hunger > 20)) throw failure('生の鶏肉を使うには実際の空腹値の受信が必要です。', 'HUNGER_UNKNOWN')
     rawInventory()
@@ -214,6 +226,27 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
     uncertain(attempt, reason)
     attempt.rejectCancel(new Error(reason))
   }
+  // Root calls this before starting the replacement combat producer. Retire
+  // the captured food producer synchronously; its promise may settle later.
+  function preemptForCombat (reason = 'user_behavior') {
+    const attempt = operation
+    if (!attempt || attempt.combatPreempted) return { preempted: false, inputStopped: false }
+    const input = attempt.input, state = getState(), slot = state.rawServerSelectedSlot ?? state.rawSelectedSlot
+    const raw = crafting.rawItem(slot)
+    let ownsInput = false
+    try {
+      ownsInput = !!input && getInput() === input && operationScope(state) === operationScope(attempt.initial.state) && state.phase === 'spawned' && !state.dead && !state.isDead && !state.lifecycle?.dead && !state.spawnPending && state.health > 0 && slot === attempt.plan?.selected && valid(raw) && !empty(raw) && isDeepStrictEqual(identity(raw), identity(attempt.plan.raw)) && input.stats().running === true && input.stats().target == null
+    } catch { /* An unproven input may already belong to its replacement. */ }
+    if (ownsInput) release(attempt)
+    attempt.combatPreempted = true
+    attempt.input = null
+    attempt.completionQueued = false
+    let inputStopped = false
+    if (ownsInput) { try { input.stop(); inputStopped = true } catch { /* Root still revokes the stream; late cleanup remains disarmed. */ } }
+    receiptEvent(attempt, 'combat_preempted', { inputStopped, released: attempt.released === true })
+    cancel(reason)
+    return { preempted: true, inputStopped, released: attempt.released === true, wireSent: attempt.wireSent, serverConfirmed: attempt.serverConfirmed }
+  }
   function assertCurrent (attempt) {
     if (operation !== attempt || attempt.cancelled) throw failure('食事操作を停止しました。', 'CANCELLED')
     const current = session()
@@ -229,11 +262,11 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
     return { legacy: { legacy_request_id: completion ? attempt.id : 0, legacy_transactions: completion ? [{ container_id: 12, changed_slots: [{ slot_id: p.selected }] }] : null }, actions: completion ? [{ source_type: 'container', window_id: 0, flags: null, slot: p.selected, old_item: copy(p.raw), new_item: p.raw.count === 1 ? air() : { ...copy(p.raw), count: p.raw.count - 1 } }] : [], data: { action_type: 'click_air', trigger_type: completion ? 'simulation_tick' : 'player_input', block_position: { x: 0, y: 0, z: 0 }, face: 0, hotbar_slot: p.selected, hand: 'main_hand', held_item: copy(p.raw), player_pos: copy(getState().position), click_pos: { x: 0, y: 0, z: 0 }, block_runtime_id: 0, client_prediction: 'success', client_cooldown_state: 'off' } }
   }
   function release (attempt) {
-    if (!attempt.wireSent || !attempt.plan) return
+    if (attempt.combatPreempted || attempt.released || !attempt.wireSent || !attempt.plan) return
     const state = getState()
     const slot = state.rawServerSelectedSlot ?? state.rawSelectedSlot
     const raw = crafting.rawItem(slot)
-    if (state.phase !== 'spawned' || state.dead || state.isDead || !(state.health > 0) || operationScope(state) !== operationScope(attempt.initial.state) || state.lifecycle?.dead || state.spawnPending || slot !== attempt.plan.selected || !valid(raw) || empty(raw) || !finite(state.position)) return
+    if (state.phase !== 'spawned' || state.dead || state.isDead || !(state.health > 0) || operationScope(state) !== operationScope(attempt.initial.state) || state.lifecycle?.dead || state.spawnPending || slot !== attempt.plan.selected || !valid(raw) || empty(raw) || !isDeepStrictEqual(identity(raw), identity(attempt.plan.raw)) || !finite(state.position)) return
     try { client.queue('inventory_transaction', { transaction: { legacy: { legacy_request_id: 0, legacy_transactions: null }, transaction_type: 'item_release', actions: [], transaction_data: { action_type: 'release', hotbar_slot: slot, held_item: copy(raw), head_pos: copy(state.position), hand: 'main_hand' } } }); attempt.released = true } catch { /* Does not turn an observed consumption into a failure. */ }
   }
   function complete (attempt, confirmedBy) {
@@ -318,8 +351,7 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
       throw error
     } finally {
       clearTimeout(timeout); clearInterval(polling)
-      release(attempt)
-      attempt.input?.stop()
+      if (!attempt.combatPreempted) { release(attempt); attempt.input?.stop() }
       if (operation === attempt) operation = null
     }
   }
@@ -365,7 +397,7 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
     checkObserved(attempt)
     } finally { finishReceiptTrace(tracedAttempt, tracedReceipt) }
   }
-  return { preview, eat, applyPacket, cancel, restoreHunger, restoreInitialHunger, snapshot: () => ({ busy: operation !== null, phase: operation?.phase ?? lastResult?.phase ?? 'idle', pendingRequestId: operation?.id ?? null, inventoryUncertain, hunger, receiptTrace: operation && !operation.serverConfirmed && !operation.cancelled ? copy(lastReceiptTrace) : null, lastResult: copy(lastResult) }) }
+  return { preview, eat, applyPacket, cancel, preemptForCombat, restoreHunger, restoreInitialHunger, snapshot: () => ({ busy: operation !== null && !operation.combatPreempted, phase: operation?.combatPreempted ? 'preempted_for_combat' : operation?.phase ?? lastResult?.phase ?? 'idle', pendingRequestId: operation?.id ?? null, inventoryUncertain, hunger, receiptTrace: operation && !operation.serverConfirmed && !operation.cancelled ? copy(lastReceiptTrace) : null, lastResult: copy(lastResult) }) }
 }
 
-module.exports = { createFood, isSupportedFood }
+module.exports = { createFood, isSupportedFood, foodNutrition }

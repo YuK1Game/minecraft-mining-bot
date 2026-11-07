@@ -30,15 +30,18 @@ function fixture (kind = 'shulker', options = {}) {
   const getState = () => ({ ...copy(state), inventory: { ...state.inventory, items: items() } })
   const getBlock = (x, y, z) => options.unknownWorld ? { known: false } : copy(blocks.get(`${x},${y},${z}`) ?? { known: true, name: y < 65 ? 'minecraft:stone' : 'minecraft:air', runtimeId: y < 65 ? 1 : 0, boundingBox: y < 65 ? 'block' : 'empty', extra: [] })
   const crafting = { inventorySnapshot: () => ({ authority: true, inventoryKnown: true, pendingRequestId: null, inventory: items(), openContainer: copy(open) }), rawItem: slot => slot >= 0 && slot < 36 ? copy(bag[slot]) : null, itemNameOf: id => names.get(id), closeContainer: () => { events.push({ type: 'close' }); open = null } }
+  let windowEpoch = 0, openedScope = null
   const chest = {
     open: async (position, slot, { expectedSlots }) => {
       events.push({ type: 'open', expectedSlots, position: copy(position) }); activePosition = copy(position)
       const count = options.wrongSize ?? expectedSlots
       if (!containers.has(key(position))) containers.set(key(position), Array.from({ length: count }, (_, slot) => options.full ? item(3, 64, 200 + slot) : airItem()))
-      activeSlots = containers.get(key(position)); open = { id: 7, type: 'container' }
-      return { serverConfirmed: true, confirmedBy: 'server_container_open_and_full_content', windowId: 7, slotCount: count, position: copy(position) }
+      activeSlots = containers.get(key(position)); open = { id: 7, type: 'container', coordinates: copy(position) }
+      windowEpoch++
+      openedScope = { profile: state.profile, realmId: String(state.realm.id), connectionId: state.connectionId, startedAt: state.startedAt, runtimeEntityId: String(state.runtimeEntityId), dimension: state.dimension, life: state.lifecycle.deathId }
+      return { serverConfirmed: true, confirmedBy: 'server_container_open_and_full_content', windowId: 7, slotCount: count, position: copy(position), scope: copy(openedScope) }
     },
-    snapshot: () => ({ contentsKnown: !!open && !options.unknownContents, slotCount: activeSlots?.length, window: { id: 7, position: copy(activePosition) } }),
+    snapshot: () => ({ contentsKnown: !!open && !options.unknownContents, slotCount: activeSlots?.length, observationSource: 'server_inventory_content', window: { id: 7, type: 'container', position: copy(activePosition), epoch: windowEpoch, scope: copy(openedScope), replayed: false } }),
     rawItem: slot => activeSlots?.[slot] ? copy(activeSlots[slot]) : null,
     depositItem: async ({ sourceSlot, count, chestSlot, expectedName }) => {
       events.push({ type: 'deposit', sourceSlot, count, chestSlot })

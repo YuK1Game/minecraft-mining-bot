@@ -6,6 +6,12 @@ const { createRangedCombat } = require('./ranged-combat')
 const { createCombatCoordinator } = require('./combat-coordinator')
 const { createPortableBed } = require('./portable-bed')
 
+// Movement and chunk packets are observed by the world/entity controllers and
+// read on the next normal combat tick; none of these packet handlers use them.
+const BEHAVIOR_PACKETS = new Set(['start_game', 'change_dimension', 'close', 'disconnect', 'respawn', 'set_health', 'update_attributes', 'entity_event', 'set_player_game_type', 'update_player_game_type', 'set_entity_data', 'animate', 'update_block', 'update_subchunk_blocks', 'add_entity', 'remove_entity', 'mob_equipment', 'player_hotbar', 'inventory_content', 'inventory_slot', 'sleep', 'wake', 'dead'])
+const BED_PACKETS = new Set(['start_game', 'change_dimension', 'close', 'disconnect', 'respawn', 'set_health', 'update_attributes', 'entity_event', 'set_entity_data', 'animate', 'update_block', 'update_subchunk_blocks', 'sleep', 'wake', 'dead'])
+const LIFECYCLE_PACKETS = new Set(['start_game', 'change_dimension', 'close', 'disconnect', 'respawn', 'set_health', 'set_player_game_type', 'update_player_game_type', 'dead'])
+
 function createUserBehaviors ({ client, getState, getRawState, world, entities, crafting, inventory, getInput, getSelfUniqueId, previewHop = null, startHop = null, getMovement = null, stopHop = null, getItemComponents = null, getTargetWet = null, getClock, getBedMemory, setBedMemory, placeBed, useBed, wakeBed, mineBed, collectBed = null, moveBed = null, cancelBedActions = () => {}, acquireControl, resumeControl, approach = null, retreat = null, canAct = () => false, isBusy = () => false, onUncertain = () => {}, onProgress = () => {}, version = '1.26.60', now = () => performance.now(), wallNow = Date.now, sleep, meleeOptions = {}, rangedOptions = {}, coordinatorOptions = {}, bedOptions = {}, controllers = {} } = {}) {
   if ([getState, getRawState, getInput, getClock, getBedMemory, setBedMemory, placeBed, useBed, wakeBed, mineBed, cancelBedActions, acquireControl, resumeControl, canAct, isBusy, now, wallNow].some(fn => typeof fn !== 'function') || typeof inventory?.equipForCombat !== 'function') throw new Error('User behaviors require observed controllers and scoped Root protective-control callbacks')
   let control = null, sequence = 0, bedWorker = null, combatTask = null, stoppingBed = null, lastError = null, lastScope = null
@@ -93,7 +99,13 @@ function createUserBehaviors ({ client, getState, getRawState, world, entities, 
   }
   async function acquireCombat (args) {
     if (bedStatus.sleeping) return { acquired: false, reason: 'SERVER_SLEEPING' }
-    if (!await stopBed('Combat priority preempts bed work', true)) return { acquired: false, reason: 'BED_CLEANUP_UNCONFIRMED' }
+    if (control?.kind === 'bed') {
+      const previous = control
+      // Abort before detaching. Its late worker/release sees another lease
+      // and cannot resume bed work or release the new combat owner.
+      void stopBed('Combat priority preempts bed work', true).catch(error => { lastError = message(error) })
+      if (control === previous) control = null
+    }
     if (bedStatus.sleeping) return { acquired: false, reason: 'SERVER_SLEEPING' }
     if (control) return { acquired: false, reason: 'CONTROL_HELD' }
     const lease = { kind: 'combat', id: `combat:${args.claimId}`, engineId: args.claimId, scope: args.scope, phase: 'acquiring', acquired: false, token: null, blocked: false }
@@ -116,7 +128,7 @@ function createUserBehaviors ({ client, getState, getRawState, world, entities, 
   combat = controllers.combat ?? createCombatCoordinator({ ...coordinatorOptions, getState, entities, melee, ranged, acquire: acquireCombat, resume: resumeCombat,
     approach: approach ? (actor, options) => { const lease = requireLease('combat', options.signal); if (lease.engineId !== options.claimId) throw new Error('Combat approach claim changed'); return approach(actor, context(lease, { ...options, kind: 'combat', claimId: lease.id, coordinatorClaimId: options.claimId, token: lease.token })) } : null,
     retreat: retreat ? (actor, options) => { const lease = requireLease('combat', options.signal); if (lease.engineId !== options.claimId) throw new Error('Combat retreat claim changed'); return retreat(actor, context(lease, { ...options, kind: 'combat', claimId: lease.id, coordinatorClaimId: options.claimId, token: lease.token })) } : null,
-    canAct: options => !bedStatus.sleeping && !(control?.kind === 'bed' && control.blocked) && allowed('combat', { ...options, claimId: options.claimId == null ? null : `combat:${options.claimId}`, coordinatorClaimId: options.claimId, token: control?.kind === 'combat' ? control.token : null }), now, ...(sleep ? { sleep } : {}) })
+    canAct: options => !bedStatus.sleeping && allowed('combat', { ...options, claimId: options.claimId == null ? null : `combat:${options.claimId}`, coordinatorClaimId: options.claimId, token: control?.kind === 'combat' ? control.token : null }), now, ...(sleep ? { sleep } : {}) })
 
   function startBed (observedSleep = false) {
     if (bedWorker || combatHeld() || control?.kind === 'combat') return
@@ -166,7 +178,6 @@ function createUserBehaviors ({ client, getState, getRawState, world, entities, 
       }
       if (control?.kind === 'bed' && control.blocked) {
         if (!stoppingBed && clock() >= (control.retryAt ?? 0)) { const task = stopBed('Retry confirmed bed cleanup'); stoppingBed = task; void task.finally(() => { if (stoppingBed === task) stoppingBed = null }) }
-        return Promise.resolve(snapshot())
       }
       const nextCombat = combat.tick()
       if (combatTask !== nextCombat) { combatTask = nextCombat; void Promise.resolve(nextCombat).catch(error => { lastError = message(error) }).finally(() => { if (combatTask === nextCombat) combatTask = null; publish() }) }
@@ -176,11 +187,17 @@ function createUserBehaviors ({ client, getState, getRawState, world, entities, 
       return Promise.resolve(snapshot())
     } catch (error) { lastError = message(error); cancel(lastError, 'OBSERVATION_ERROR'); return Promise.resolve(snapshot()) }
   }
-  function applyPacket (name, packet) {
-    for (const [label, controller] of [['melee', melee], ['ranged', ranged], ['bed', bed]]) { try { controller.applyPacket(name, packet) } catch (error) { lastError = `${label}: ${message(error)}`; combat.cancel(lastError, 'OBSERVATION_ERROR') } }
-    refreshBed()
+  function applyPacket (name, packet = {}) {
+    if (!BEHAVIOR_PACKETS.has(name)) return
+    let bedChanged = false
+    for (const [label, controller] of [['melee', melee], ['ranged', ranged], ['bed', bed]]) {
+      if (label === 'bed' && !BED_PACKETS.has(name)) continue
+      try { const changed = controller.applyPacket(name, packet); if (label === 'bed' && changed !== false) bedChanged = true } catch (error) { lastError = `${label}: ${message(error)}`; combat.cancel(lastError, 'OBSERVATION_ERROR') }
+    }
+    if (bedChanged) refreshBed()
     if (bedStatus.sleeping) combat.cancel('Own server sleep pauses combat', 'SERVER_SLEEPING')
-    try { const state = getState(); if (!live(state) || lastScope != null && lastScope !== scopeKey(state)) cancel('Observed player lifecycle changed', 'SESSION_CHANGED') } catch (error) { cancel(message(error), 'OBSERVATION_ERROR') }
+    const lifecycle = LIFECYCLE_PACKETS.has(name) || name === 'update_attributes' && packet.attributes?.some(a => a.name === 'minecraft:health') || name === 'entity_event' && ['death_animation', 3, 'respawn', 18].includes(packet.event_id)
+    if (lifecycle) { try { const state = getState(); if (!live(state) || lastScope != null && lastScope !== scopeKey(state)) cancel('Observed player lifecycle changed', 'SESSION_CHANGED') } catch (error) { cancel(message(error), 'OBSERVATION_ERROR') } }
     publish()
   }
   function cancel (reason = 'User behaviors cancelled', code = 'CANCELLED') {

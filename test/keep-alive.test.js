@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
-const { createKeepAlive } = require('../scripts/keep-alive')
+const { createKeepAlive, main } = require('../scripts/keep-alive')
 
 function fixture (options = {}) {
   let time = 0; let nextTimer = 0
@@ -81,6 +81,31 @@ test('nonzero exits use 2-60 second exponential delays and cannot overlap a chil
   assert.deepEqual(delays, [2000, 4000, 8000, 16000, 32000, 60000, 60000])
   await f.supervisor.stop()
   assert.equal(f.timers.size, 0)
+})
+
+test('CLI worker mode is preserved through an abnormal exit and a supervised reconnect', async () => {
+  for (const connectOnly of [false, true]) {
+    let f
+    main(connectOnly ? ['--connect-only'] : [], ({ autoStart }) => { f = fixture({ autoStart }); return f.supervisor })
+    const expected = ['--env-file-if-exists=.env', 'src/main.js', ...(connectOnly ? [] : ['--auto'])]
+    assert.deepEqual(f.spawns[0].args, expected)
+    f.children[0].finish(1); assert.equal(f.supervisor.snapshot().nextDelayMs, 2000)
+    f.advance(2000); assert.deepEqual(f.spawns[1].args, expected)
+    f.children[1].finish(0); assert.equal((await f.supervisor.done).exitCode, 0)
+  }
+})
+
+test('help and invalid supervisor arguments finish before launching a worker', t => {
+  const output = []
+  t.mock.method(console, 'log', line => output.push(line))
+  const previous = process.exitCode
+  try {
+    for (const [args, code] of [[['--help'], 0], [['--connect-only', '--help'], 0], [['--unknown'], 2], [['--connect-only', '--connect-only'], 2]]) {
+      process.exitCode = 0
+      assert.equal(main(args, () => assert.fail('unexpected launch')), null)
+      assert.equal(process.exitCode, code); assert.match(output.at(-1), /--connect-only/)
+    }
+  } finally { process.exitCode = previous }
 })
 
 test('the default ten-minute limit permits five restarts after the initial launch and then stops', async () => {

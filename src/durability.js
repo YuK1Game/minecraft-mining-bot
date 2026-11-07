@@ -11,6 +11,25 @@ function enchantmentsOf (raw) {
   return list.map(e => ({ name: ENCHANTMENT_NAMES[e?.id?.value] ?? `id_${e?.id?.value}`, level: Number(e?.lvl?.value) || 0 })).filter(e => e.level > 0)
 }
 
+function enchantmentsKnown (raw) {
+  const extra = raw?.extra
+  if ([false, 'false', 0].includes(extra?.has_nbt)) return extra.nbt == null
+  const root = extra?.nbt?.nbt ?? extra?.nbt
+  if (![true, 'true', 65535].includes(extra?.has_nbt) || root?.type !== 'compound' || !root.value || typeof root.value !== 'object') return false
+  const list = root.value.ench
+  if (list == null) return true
+  if (list.type !== 'list' || !Array.isArray(list.value?.value) || !['compound', 'end'].includes(list.value.type) || list.value.type === 'end' && list.value.value.length) return false
+  return list.value.value.every(entry => ['short', 'int'].includes(entry?.id?.type) && Number.isSafeInteger(entry.id.value) && entry.id.value >= 0 && ['short', 'int'].includes(entry?.lvl?.type) && Number.isSafeInteger(entry.lvl.value) && entry.lvl.value > 0)
+}
+
+function surplusToolMetadataKnown (raw) {
+  const extra = raw?.extra
+  if (!Array.isArray(extra?.can_place_on) || extra.can_place_on.length || !Array.isArray(extra.can_destroy) || extra.can_destroy.length || !enchantmentsKnown(raw)) return false
+  if ([false, 'false', 0].includes(extra.has_nbt)) return extra.nbt == null
+  const root = extra.nbt?.nbt ?? extra.nbt
+  return root?.type === 'compound' && Object.keys(root.value).every(key => key === 'Damage' || key === 'ench') && (root.value.Damage == null || ['int', 'short'].includes(root.value.Damage.type) && Number.isSafeInteger(root.value.Damage.value) && root.value.Damage.value >= 0)
+}
+
 function createDurabilityReader (version = '1.26.60') {
   const Item = createItem(`bedrock_${version}`)
   return function durability (description, raw) {
@@ -24,7 +43,7 @@ function createDurabilityReader (version = '1.26.60') {
       }
       const parsed = Item.fromNotch(structuredClone(raw))
       if (`minecraft:${parsed.name}` !== description.name || !Number.isInteger(parsed.maxDurability) || !Number.isInteger(parsed.durabilityUsed) || parsed.durabilityUsed < 0 || parsed.durabilityUsed > parsed.maxDurability) return { ...description, durabilityKnown: false }
-      return { ...description, enchantments: enchantmentsOf(raw), stackId: raw.stack_id, durabilityKnown: true, durabilityUsed: parsed.durabilityUsed, maxDurability: parsed.maxDurability, durabilityRemaining: parsed.maxDurability - parsed.durabilityUsed, durabilitySource: 'server_item_nbt' }
+      return { ...description, enchantments: enchantmentsOf(raw), enchantmentsKnown: enchantmentsKnown(raw), surplusToolMetadataKnown: surplusToolMetadataKnown(raw), stackId: raw.stack_id, durabilityKnown: true, durabilityUsed: parsed.durabilityUsed, maxDurability: parsed.maxDurability, durabilityRemaining: parsed.maxDurability - parsed.durabilityUsed, durabilitySource: 'server_item_nbt' }
     } catch { return { ...description, durabilityKnown: false } }
   }
 }

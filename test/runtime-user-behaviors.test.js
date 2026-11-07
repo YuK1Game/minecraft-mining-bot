@@ -8,7 +8,7 @@ const { createSessionCache } = require('../src/session-cache')
 const actualAutonomy = require('../src/autonomy')
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })
 
-function scene (t, { realFacade = false, nativeStanding = false } = {}) {
+function scene (t, { realFacade = false, nativeStanding = false, runtimeOverrides = {} } = {}) {
   t.mock.timers.enable({ apis: ['setInterval'] })
   let worldReads = 0, tick = 1000n, sent = 0, running = false, predicted = null, movementState = { phase: 'idle', running: false, sent: 0 }, facadeOptions, recoveryOptions, autonomyOptions, historyRevision = 0
   const events = [], wire = [], facadeWire = [], movementStarts = [], recoverPreviews = { sync: 0, async: 0 }, counters = { invalidates: [], facadeTicks: 0, facadeCancels: 0, idleStarts: 0, inputStops: 0, autonomyStarts: 0 }
@@ -32,6 +32,7 @@ function scene (t, { realFacade = false, nativeStanding = false } = {}) {
     './user-behaviors': { createUserBehaviors: options => { facadeOptions = options; return realFacade ? require('../src/user-behaviors').createUserBehaviors(options) : facade } }
   }
   if (nativeStanding) { delete overrides['./physics']; delete overrides['./navigation'] }
+  Object.assign(overrides, runtimeOverrides)
   const game = { current_tick: 1000n, entity_id: 101n, runtime_entity_id: 1n, player_position: raw.position, player_gamemode: 'survival', world_gamemode: 'survival', server_authoritative_inventory: true, server_authoritative_block_breaking: true }
   const cache = createSessionCache(); cache.observe('start_game', game); cache.observe('item_registry', { itemstates: [{ runtime_id: 300, name: 'minecraft:stick' }] }); cache.observe('inventory_content', { window_id: 'inventory', input: Array.from({ length: 36 }, air) }); cache.observe('player_hotbar', { window_id: 'inventory', selected_slot: 0 })
   const host = { shared, cache, client: { queue: (name, p) => { wire.push({ name, p }); return name === 'player_auth_input' ? { tick: p.tick } : undefined }, close: () => assert.fail('Runtime must not close a client'), disconnect: () => assert.fail('Runtime must not disconnect'), connect: () => assert.fail('Runtime must not connect') }, meta: { profile: 'bot', version: '1.26.60', startGame: game, startGameReceivedAt: 0 }, apiUrl: 'http://127.0.0.1:49999',
@@ -58,6 +59,98 @@ function capturedPhantomScene (t) {
   return { ...f, target }
 }
 
+function manualArmorFixture (t, { includeDestination = true } = {}) {
+  const f = scene(t), pieces = ['helmet', 'chestplate', 'leggings', 'boots']
+  const rawItem = slot => ({ ...air(), network_id: 400 + slot, count: 1, has_stack_id: true, stack_id: 100 + slot, extra: { ...air().extra, has_nbt: true, nbt: { version: 1, nbt: { type: 'compound', name: '', value: { ench: { type: 'list', value: { type: 'compound', value: [{ id: { type: 'short', value: 0 }, lvl: { type: 'short', value: 4 } }] } } } } } } })
+  f.runtime.applyPacket('item_registry', { itemstates: pieces.map((piece, slot) => ({ runtime_id: 400 + slot, name: `minecraft:diamond_${piece}` })) })
+  f.runtime.applyPacket('inventory_content', { window_id: 'inventory', input: Array.from({ length: 36 }, (_, slot) => slot < 4 ? rawItem(slot) : air()) })
+  f.runtime.applyPacket('inventory_content', { window_id: 'armor', input: Array.from({ length: 4 }, air) })
+  const queue = f.host.client.queue.bind(f.host.client), requests = []
+  f.host.client.queue = (name, packet) => {
+    const result = queue(name, packet)
+    if (name === 'interact') queueMicrotask(() => f.runtime.applyPacket('container_open', { window_id: 'inventory', window_type: 'inventory' }))
+    if (name === 'item_stack_request') {
+      const request = packet.requests[0], destination = request.actions[0].destination
+      requests.push(destination.slot)
+      assert.equal(destination.slot_type.container_id, 'armor')
+      const containers = includeDestination ? [{ slot_type: { container_id: 'armor' }, slots: [{ slot: destination.slot, count: 1, item_stack_id: 550 + destination.slot }] }] : []
+      queueMicrotask(() => f.runtime.applyPacket('item_stack_response', { responses: [{ request_id: request.request_id, status: 'ok', containers }] }))
+    }
+    return result
+  }
+  return { f, pieces, requests }
+}
+
+test('manual armor equip uses actual accepted armor moves while automatic behaviors stay off', async t => {
+  const { f, pieces, requests } = manualArmorFixture(t)
+  const task = f.runtime.operations.armor.equipBest()
+  assert.equal(f.runtime.canReload(), false)
+  const result = await task
+  assert.equal(result.serverConfirmed, true, JSON.stringify(result)); assert.equal(result.moves.length, 4)
+  assert.deepEqual(requests.sort(), [0, 1, 2, 3]); assert.deepEqual(result.worn.map(item => item.name), pieces.map(piece => `minecraft:diamond_${piece}`))
+  assert.equal(f.shared.autoWanted, false); assert.equal(f.counters.autonomyStarts, 0)
+})
+
+test('manual armor equip refuses nearby hostiles and never credits a bare ACK without the matching worn piece', async t => {
+  const { f, requests } = manualArmorFixture(t, { includeDestination: false })
+  f.actors.push({ kind: 'mob', runtimeId: 'danger', hostile: true, alive: true, position: { ...f.raw.position } })
+  await assert.rejects(f.runtime.operations.armor.equipBest(), /8m/)
+  assert.equal(requests.length, 0)
+  f.actors.length = 0
+  const result = await f.runtime.operations.armor.equipBest()
+  assert.equal(result.phase, 'blocked'); assert.equal(result.serverConfirmed, false)
+  assert.equal(result.reason, 'ARMOR_SLOT_UNCONFIRMED'); assert.equal(result.moves.length, 0); assert.equal(requests.length, 1)
+})
+
+test('runtime shares observed portable-container ports for quarry supplies and keeps resync outside the action owner', async t => {
+  const { createQuarryRuntimeAdapter } = require('../src/quarry-runtime-adapter')
+  const calls = [], signal = new AbortController().signal, checkpoint = async () => {}
+  let held = false, busy = false, adapter
+  const chest = { snapshot: () => ({ busy: false }), rawItem: slot => slot, applyPacket () {}, cancel () {}, depositDiamond () {},
+    open (position, slot, settings) { calls.push(['open', settings.expectedSlots]); return { position, slotCount: settings.expectedSlots } },
+    withdrawItem (request) { calls.push(['withdraw', request.chestSlot]); return { serverConfirmed: true } },
+    depositItem (request) { calls.push(['deposit', request.sourceSlot]); return { serverConfirmed: true } }
+  }
+  const f = scene(t, { runtimeOverrides: {
+    './chest': { createChest: () => chest },
+    './quarry-runtime-adapter': { createQuarryRuntimeAdapter: ports => ({ ...createQuarryRuntimeAdapter(ports), resyncInventory: async options => {
+      assert.strictEqual(options.signal, signal)
+      assert.throws(() => f.runtime.operations.chest.depositItem({ sourceSlot: 17 }), /露天掘りの作業中/)
+      calls.push(['resync']); return true
+    } }) },
+    './quarry-job': { createQuarryJob: options => {
+      adapter = options.adapter
+      return { holdsWork: () => held, document: () => null, status: () => ({ state: 'PAUSED' }),
+        configureSupplies: () => adapter.discoverSupplies(),
+        restockSuppliesNow: async () => { held = true; try { return await adapter.restockSupplies({ jobId: 'job', operationId: 'restock' }, { signal, onCheckpoint: checkpoint }) } finally { held = false } }
+      }
+    } },
+    './quarry-portable-storage': { createQuarryPortableStorage: ports => ({ storeCarried: async (request, options) => {
+      assert.equal(request.operationId, 'restock'); assert.strictEqual(options.signal, signal)
+      return ports.workWithContainer({ request, position: { x: 2, y: 65, z: 2 } }, options)
+    } }) },
+    './quarry-supplies': { createQuarrySupplies: ports => ({
+      discoverBindings: () => { calls.push(['discover']); return { ok: true, bindings: ['fixture'] } },
+      snapshot: () => ({ busy }), cancel: reason => calls.push(['cancel', reason]),
+      run: async (request, options) => {
+        assert.strictEqual(options.onCheckpoint, checkpoint); busy = true
+        try { await ports.refreshInventory(options); return await ports.getPortable().storeCarried(request, options) } finally { busy = false }
+      },
+      workWithContainer: async (context, options) => {
+        assert.equal(f.runtime.canReload(), false); assert.strictEqual(options.signal, signal)
+        await ports.chest.open(context.position, undefined, { expectedSlots: 27 })
+        const receipt = await ports.chest.withdrawItem({ chestSlot: 3 }); await ports.chest.depositItem({ sourceSlot: 9 }); ports.chest.close()
+        return receipt
+      }
+    }) }
+  } })
+  assert.deepEqual(await f.runtime.operations.quarry.configureSupplies(), { ok: true, bindings: ['fixture'] })
+  assert.deepEqual(await f.runtime.operations.quarry.restockSuppliesNow(), { serverConfirmed: true })
+  await adapter.stopAll('fixture-stop')
+  assert.deepEqual(calls, [['discover'], ['resync'], ['open', 27], ['withdraw', 3], ['deposit', 9], ['cancel', 'fixture-stop']])
+  assert.equal(f.shared.autoWanted, false); assert.equal(f.counters.autonomyStarts, 0)
+})
+
 test('captured Phantom3.501m uses the existing near approach lease rather than falsefar4.045m admission', async t => {
   const f = capturedPhantomScene(t), context = { kind: 'combat', claimId: 'combat:phantom', scope: f.scope(), target: structuredClone(f.target) }
   const range = offset => Math.hypot(f.raw.position.x - f.target.position.x, f.raw.position.y - f.target.position.y - offset, f.raw.position.z - f.target.position.z)
@@ -69,11 +162,14 @@ test('captured Phantom3.501m uses the existing near approach lease rather than f
   await f.facadeOptions.resumeControl({ ...context, token })
 })
 
-test('actual Phantom outside four metres still cannot borrow near admission', async t => {
+test('far Phantom contact acquires combat priority without borrowing near approach admission', async t => {
   const f = capturedPhantomScene(t); f.target.position.x += 4
   const context = { kind: 'combat', claimId: 'combat:farphantom', scope: f.scope(), target: structuredClone(f.target) }
-  assert.equal((await f.facadeOptions.acquireControl(context)).acquired, false)
+  const token = await f.facadeOptions.acquireControl(context)
+  assert.notEqual(token.acquired, false)
+  assert.equal(f.runtime.snapshot().userBehaviors.approachAdmission, null)
   assert.equal(f.wire.length, 0)
+  await f.facadeOptions.resumeControl({ ...context, token })
 })
 
 test('changed PhantomUID after near acquisition rejects the actual approach before movement', async t => {

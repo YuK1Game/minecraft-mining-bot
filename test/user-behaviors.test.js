@@ -31,7 +31,7 @@ function fixture ({ real = false } = {}) {
     client: { queue: (...args) => packets.push(args) }, getState: () => state, getRawState: () => state, world, entities, crafting: { snapshot: () => ({ authority: true, inventoryKnown: true, inventory: [], pendingRequestId: null }), rawItem: empty }, inventory: { equipForCombat: async slot => ({ slot, serverConfirmed: true }), cancel: () => {} }, getInput: () => ({ stats: () => ({ running: false, target: null, sent: 0 }), stop () {}, lookAt () {}, start () {} }), getSelfUniqueId: () => 1n,
     getClock: () => ({ time: sleepDay ? 25000 : 13000, source: 'server_sync_world_clocks' }), getBedMemory: () => null, setBedMemory () {}, placeBed: async () => { throw new Error('No real bed item in smoke test') }, useBed: async () => {}, wakeBed: async () => {}, mineBed: async () => {}, cancelBedActions: async () => { events.push('root_bed_cleanup'); return { cleaned: cleanupKnown } },
     canAct: () => enabled, now: () => time, wallNow: () => time, sleep: async () => turn(),
-    acquireControl: async args => { assert.equal(rootHeld, null, 'one protective Root owner at a time'); const token = { id: ++rootSequence }; rootHeld = { kind: args.kind, claimId: args.claimId, token }; rootCalls.push({ type: 'acquire', ...args, token }); events.push(`acquire_${args.kind}`); return { acquired: true, token } },
+    acquireControl: async args => { if (rootHeld) { assert.equal(args.kind, 'combat'); assert.equal(rootHeld.kind, 'bed'); events.push('preempt_bed_root') }; const token = { id: ++rootSequence }; rootHeld = { kind: args.kind, claimId: args.claimId, token }; rootCalls.push({ type: 'acquire', ...args, token }); events.push(`acquire_${args.kind}`); return { acquired: true, token } },
     resumeControl: async args => { rootCalls.push({ type: 'resume', ...args }); assert.equal(args.kind, rootHeld.kind); assert.equal(args.claimId, rootHeld.claimId); assert.strictEqual(args.token, rootHeld.token); events.push(`resume_${args.kind}`); rootHeld = null; return { resumed: true } },
     ...(real ? {} : { controllers: { melee, ranged, bed } })
   }
@@ -49,7 +49,7 @@ test('the real thin composition instantiates existing controllers at HP1 with no
   assert.deepEqual(f.packets, [])
 })
 
-test('a stored pending bed task does not coalesce away close combat; cleanup and exact-token bed release precede combat acquisition', async () => {
+test('close combat atomically preempts pending bed work without waiting for its cleanup or release', async () => {
   const f = fixture()
   await f.facade.tick(); await turns()
   assert.equal(f.facade.snapshot().claim.kind, 'bed')
@@ -57,30 +57,23 @@ test('a stored pending bed task does not coalesce away close combat; cleanup and
   f.actors.push(f.hostile())
   await f.facade.tick(); await turns(35)
   assert.ok(f.events.includes('engage_melee'))
-  assert.ok(f.events.indexOf('bed_drain') < f.events.indexOf('resume_bed'))
-  assert.ok(f.events.indexOf('resume_bed') < f.events.indexOf('acquire_combat'))
-  const released = f.rootCalls.find(call => call.type === 'resume' && call.kind === 'bed')
-  assert.equal(released.canActNow, false, 'a preemption release cannot wake resources between owners')
+  assert.ok(f.events.indexOf('bed_cancel') < f.events.indexOf('acquire_combat'))
+  assert.equal(f.events.includes('resume_bed'), false, 'the old bed owner cannot release or resume between combat inputs')
   const combat = f.rootCalls.find(call => call.type === 'acquire' && call.kind === 'combat')
   assert.match(combat.claimId, /^combat:/)
   assert.equal(combat.coordinatorClaimId, 1)
   const lateResumes = f.rootCalls.filter(call => call.type === 'resume' && call.kind === 'bed')
-  assert.equal(lateResumes.length, 1, 'bed finally cannot release a later combat owner')
+  assert.equal(lateResumes.length, 0, 'bed finally cannot release a later combat owner')
   f.setBed(false); f.facade.cancel('End fixture'); await f.facade.drain()
 })
 
-test('unknown bed cleanup keeps the protective claim blocked and never resumes resources or starts combat', async () => {
+test('unknown bed cleanup does not block combat and cannot release its new owner', async () => {
   const f = fixture(); await f.facade.tick(); await turns()
   f.setCleanup(false); f.actors.push(f.hostile())
   await f.facade.tick(); await turns(30)
-  const held = f.facade.snapshot()
-  assert.equal(held.busy, true)
-  assert.equal(held.blocked, true)
-  assert.equal(held.cleanupUnconfirmed, true)
-  assert.equal(f.rootCalls.some(call => call.type === 'resume'), false)
-  assert.equal(f.events.includes('engage_melee'), false)
-  f.setCleanup(true); f.advance(2500); await f.facade.tick(); await turns(20); await f.facade.tick(); await turns(25)
   assert.ok(f.events.includes('engage_melee'))
+  assert.equal(f.rootCalls.some(call => call.type === 'resume' && call.kind === 'bed'), false)
+  f.setCleanup(true)
   f.setBed(false); f.facade.cancel('End fixture'); await f.facade.drain()
 })
 

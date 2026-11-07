@@ -9,6 +9,7 @@ const names = new Map(Object.entries({
 const woods = { oak: 'オーク', spruce: 'トウヒ', birch: 'シラカバ', jungle: 'ジャングル', acacia: 'アカシア', dark_oak: 'ダークオーク', mangrove: 'マングローブ', cherry: 'サクラ', pale_oak: 'ペールオーク' }
 const materials = { wooden: '木', stone: '石', iron: '鉄', golden: '金', diamond: 'ダイヤ', netherite: 'ネザライト' }
 const tools = { sword: '剣', pickaxe: 'つるはし', axe: '斧', shovel: 'シャベル', hoe: 'クワ' }
+const armorNames = { helmet: 'ヘルメット', chestplate: 'チェストプレート', leggings: 'レギンス', boots: 'ブーツ' }
 const serverPositionSources = new Set(['start_game', 'move_player', 'correct_player_move_prediction', 'server_post_move', 'respawn', 'change_dimension'])
 
 function text (value, maximum = 240) {
@@ -34,6 +35,11 @@ function itemLabel (name) {
     if (local === `${wood}_sapling`) return `${label}の苗木`
   }
   for (const [material, label] of Object.entries(materials)) for (const [tool, suffix] of Object.entries(tools)) if (local === `${material}_${tool}`) return `${label}の${suffix}`
+  for (const [material, label] of Object.entries({ ...materials, leather: '革', chainmail: 'チェーン', turtle: 'カメ' })) for (const [piece, suffix] of Object.entries(armorNames)) if (local === `${material}_${piece}`) return `${label}の${suffix}`
+  const extras = { bow: '弓', crossbow: 'クロスボウ', arrow: '矢', shield: '盾', trident: 'トライデント', elytra: 'エリトラ', shears: 'ハサミ', fishing_rod: '釣り竿', totem_of_undying: '不死のトーテム', water_bucket: '水入りバケツ', bucket: 'バケツ', enchanted_book: 'エンチャントの本', shulker_box: 'シュルカーボックス', undyed_shulker_box: 'シュルカーボックス' }
+  if (extras[local]) return extras[local]
+  const colors = { white: '白色', orange: '橙色', magenta: '赤紫色', light_blue: '空色', yellow: '黄色', lime: '黄緑色', pink: '桃色', gray: '灰色', light_gray: '薄灰色', cyan: '青緑色', purple: '紫色', blue: '青色', brown: '茶色', green: '緑色', red: '赤色', black: '黒色' }
+  for (const [color, label] of Object.entries(colors)) if (local === `${color}_shulker_box`) return `${label}のシュルカーボックス`
   return name === 'unknown' ? '不明なアイテム' : name
 }
 
@@ -67,53 +73,117 @@ function sanitizeMission (input) {
   return { version: 1, work, milestones, recentEvents }
 }
 
-function depotState (input) {
-  if (!input || typeof input.enabled !== 'boolean') return null
-  const policy = input.policy ?? input
-  const deposited = Number.isSafeInteger(policy.deposited) && policy.deposited >= 0 && policy.deposited <= 1000000 ? policy.deposited : 0
-  return { enabled: input.enabled, busy: input.busy === true, phase: text(input.phase, 64) ?? 'unknown', policyPhase: text(input.policy ? policy.phase : input.policyPhase ?? input.phase, 64), deposited, secured: input.policy ? policy.depositConfirmedForCurrentLife === true : input.secured === true, baseKnown: input.policy ? Boolean(policy.base && typeof policy.base === 'object') : input.baseKnown === true, chestKnown: input.policy ? Boolean(policy.chest && typeof policy.chest === 'object') : input.chestKnown === true, lastError: text(input.lastError, 200), resource: ['logs','stone','iron','food'].includes(input.lastIntent?.resource ?? input.resource) ? input.lastIntent?.resource ?? input.resource : null }
-}
-function depotDisplay (base, depot, diamondCount) {
-  const phase = depot.phase
-  const titles = { return_surface: 'ダイヤを地上へ持ち帰る', establish_base: '拠点を整える', ensure_chest: 'チェストを準備する', deposit_diamond: 'ダイヤをチェストへ保管', observe_storage: 'チェストを確認する', observe_inventory: '所持品を確認する', safety: '周囲の安全を確認', work: '拠点から継続作業', maintain: '装備と食料を整える' }
-  const next = { return_surface: '拠点づくり', establish_base: 'チェストの準備', ensure_chest: 'ダイヤの保管', deposit_diamond: '保管を確認して継続', observe_storage: '保管を確認して継続', observe_inventory: '確認後に再判断', safety: '安全を確認して再開', work: '採集・補充を継続', maintain: '整えたら継続' }
-  const secured = base.online && base.inventoryKnown && depot.secured && depot.deposited >= 1
-  const work = { title: !depot.enabled ? '自動作業は停止中' : !base.online && !base.stale ? '復帰を待っています' : depot.lastError ? '作業を再確認しています' : titles[phase] ?? '次の作業を確認', detail: depot.lastError ?? (phase === 'return_surface' && base.position ? '足元 Y ' + base.position.y.toFixed(1) : ''), state: !depot.enabled ? 'stopped' : !base.online || depot.lastError || ['safety','observe_inventory','observe_storage'].includes(phase) ? 'waiting' : 'running', updatedAt: base.observedAt, next: next[phase] ?? '現在の状態から再判断' }
-  const active = {return_surface:2,establish_base:3,ensure_chest:4,deposit_diamond:5,observe_storage:5,work:6,maintain:6}[phase]
-  const rows = [
-    {id:'prepare',label:'準備',status:base.online?'done':'history'},
-    {id:'diamond',label:'ダイヤ',status:base.inventoryKnown&&diamondCount>=1||secured?'done':depot.deposited>0?'history':'pending'},
-    {id:'return',label:'帰還',status:depot.baseKnown?'history':'pending'},
-    {id:'base',label:'拠点',status:depot.baseKnown?'history':'pending'},
-    {id:'chest',label:'チェスト',status:secured?'done':depot.chestKnown?'history':'pending'},
-    {id:'deposit',label:'保管',status:secured?'done':depot.deposited>0?'history':'pending'},
-    {id:'continuous',label:'継続',status:'pending'}
-  ]
-  if (depot.enabled && base.online && Number.isInteger(active) && (active !== 6 || secured)) rows[active].status = 'active'
-  if (base.stale || !base.online) for (const row of rows) if (row.status === 'done' || row.status === 'active') row.status = 'history'
-  return {work,milestones:rows}
+// Public dashboard views are allowlists. Raw NBT, stack identities, session
+// details and arbitrary runtime fields never leave the local Bot API.
+const integer = (value, min = 0, max = 1000000000) => Number.isSafeInteger(value) && value >= min && value <= max ? value : null
+const unknownSlot = slot => ({ slot, known: false, empty: false, name: null, count: null })
+
+function inspectSlots (input, size, known, depth = 0) {
+  const indexed = new Map()
+  for (const item of Array.isArray(input) ? input.slice(0, size) : []) if (item && integer(item.slot, 0, size - 1) !== null && !indexed.has(item.slot)) indexed.set(item.slot, item)
+  return Array.from({ length: size }, (_, slot) => {
+    const item = indexed.get(slot)
+    // Nested container nulls explicitly denote an observed empty slot.
+    if (known && Array.isArray(input) && input.length === size && input[slot] === null) return { slot, known: true, empty: true, name: null, count: 0 }
+    if (!known || !item || item.known !== true || item.serverConfirmed === false || item.source === 'client_prediction') return unknownSlot(slot)
+    if (item.empty === true && item.count === 0) return { slot, known: true, empty: true, name: null, count: 0 }
+    const count = integer(item.count, 1, 65535)
+    if (count === null) return unknownSlot(slot)
+    const name = text(item.name, 120)
+    const maximum = integer(item.maxDurability, 1, 1000000)
+    const remaining = item.durabilityKnown === true && maximum !== null ? integer(item.durabilityRemaining, 0, maximum) : null
+    const row = {
+      slot, known: true, empty: false, name, label: name ? itemLabel(name) : '不明なアイテム', count,
+      identityKnown: name !== null && item.identityKnown !== false,
+      displayName: text(item.displayName, 160), metadata: integer(item.metadata, 0, 2147483647),
+      lore: (Array.isArray(item.lore) ? item.lore : []).slice(0, 8).map(line => text(line, 256)).filter(line => line !== null),
+      maxStackSize: integer(item.maxStackSize, 1, 65535), durabilityApplicable: item.durabilityApplicable === true || maximum !== null,
+      durabilityKnown: remaining !== null && maximum !== null, durabilityRemaining: remaining, maxDurability: maximum,
+      durabilityUsed: remaining !== null && maximum !== null ? maximum - remaining : null,
+      enchantmentsKnown: item.enchantmentsKnown === true,
+      enchantments: (Array.isArray(item.enchantments) ? item.enchantments : []).slice(0, 32).filter(e => e && integer(e.id, 0, 65535) !== null && integer(e.level, 1, 32767) !== null).map(e => ({ id: e.id, name: text(e.name, 80), label: text(e.label, 100) ?? '不明なエンチャント', level: e.level })),
+      unbreakable: typeof item.unbreakable === 'boolean' ? item.unbreakable : null, repairCost: integer(item.repairCost, 0, 2147483647)
+    }
+    if (depth < 1 && item.container) row.container = inspectContainer(item.container, true, depth + 1)
+    if (['helmet', 'chestplate', 'leggings', 'boots'].includes(item.piece)) row.piece = item.piece
+    return row
+  })
 }
 
-function decorate (base, mission, fallbackWork = null) {
-  const current = sanitizeMission(mission)
-  const observation = base.stale ? '最終確認時の所持品' : 'サーバーの所持品'
-  const inventory = base.inventoryKnown ? base.inventory : []
-  const diamondCount = inventory.filter(row => row.name === 'minecraft:diamond').reduce((sum, row) => sum + row.count, 0)
-  const work = current?.work ?? fallbackWork ?? { title: base.apiAvailable ? base.online ? 'Botの状態を確認しています' : 'Botは接続中です' : 'Botはオフラインです', detail: base.observedAt ? '最後に確認した情報を表示しています。' : 'まだ状態を確認できていません。', state: base.online ? 'running' : base.apiAvailable ? 'waiting' : 'stopped', updatedAt: base.observedAt, next: null }
-  if (work.state === 'complete' && diamondCount < 1) { work.state = 'waiting'; work.detail = `${work.detail ?? ''}\nダイヤのサーバー所持確認はまだ完了していません。`.trim().slice(0, 1200) }
-  const milestones = (current?.milestones ?? []).filter(row => row.id !== 'diamond')
-  for (const row of milestones) {
-    const tool = ['sword', 'pick', 'pickaxe'].includes(row.id) ? row.id === 'sword' ? /_sword$/ : /_pickaxe$/ : null
-    if (tool && inventory.some(item => tool.test(item.name))) { row.status = 'done'; row.detail = `${observation}で確認しています。${base.stale ? '現在の所持状況は未確認です。' : ''}` }
-    else if (tool && row.status === 'done' && base.inventoryKnown) { row.status = 'history'; row.detail = `${row.detail ?? ''} 作成・所持の実績です。表示中の所持品にはありません。`.trim().slice(0, 1000) }
+function inspectContainer (input, parentKnown = true, depth = 1) {
+  const size = integer(input?.slotCount, 1, 54) ?? 27
+  const candidate = parentKnown && input?.known === true && Array.isArray(input.slots) && input.slots.length === size
+  const slots = candidate ? inspectSlots(input.slots, size, true, depth) : null
+  const known = !!slots && slots.every(slot => slot.known)
+  return { known, slotCount: size, slots: known ? slots : null, reason: known ? null : text(input?.reason, 160) ?? 'CONTENTS_UNOBSERVED' }
+}
+
+function inventoryDetails (input, inventoryKnown) {
+  const trustworthy = !!input && inventoryKnown && input.uncertain !== true
+  const slots = inspectSlots(input?.slots, 36, trustworthy)
+  const equipment = (value, size) => ({ known: value?.known === true, observedAt: timestamp(value?.observedAt), slots: inspectSlots(value?.slots, size, value?.known === true) })
+  const armor = equipment(input?.armor, 4), offhand = equipment(input?.offhand, 1)
+  armor.known = armor.known && armor.slots.every(slot => slot.known)
+  offhand.known = offhand.known && offhand.slots.every(slot => slot.known)
+  // Derive carried containers from the same slots; a separate summary may
+  // never resurrect a box that disappeared from the observed inventory.
+  const containers = slots.filter(item => item.container).map(item => ({ id: `inventory:${item.slot}`, kind: 'shulker', name: item.displayName ?? item.label, location: 'inventory', sourceSlot: item.slot, observedAt: timestamp(input?.observedAt), ...item.container }))
+  const open = input?.openContainer
+  const openContainer = open && ['chest', 'single_chest', 'double_chest', 'shulker', 'shulker_box', 'ender_chest', 'barrel'].includes(open.kind) ? { id: text(open.id, 80), kind: open.kind, name: text(open.name, 160), position: point(open.position), observedAt: timestamp(open.observedAt), ...inspectContainer(open) } : null
+  return { known: trustworthy && slots.every(slot => slot.known), uncertain: input?.uncertain === true || !inventoryKnown, observedAt: timestamp(input?.observedAt), selectedSlot: integer(input?.selectedSlot, 0, 8), selectedSlotSource: text(input?.selectedSlotSource, 80), slotCount: 36, slots, armor, offhand, containers, openContainer }
+}
+
+function numericFields (input, fields) {
+  return Object.fromEntries(fields.map(key => [key, integer(input?.[key])]))
+}
+const quarryStates = new Set(['IDLE', 'PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT', 'RETURN', 'DEPOSIT', 'PORTABLE_STORAGE', 'RESTOCK', 'HAZARD', 'RECOVER', 'SUSPEND_FOR_COMBAT', 'COMBAT', 'COMBAT_SETTLE', 'RECOVER_AFTER_COMBAT', 'RECONCILE', 'FINAL_CHECK', 'EGRESS_PREPARE', 'EGRESS', 'DISCONNECTED', 'PAUSED', 'FINISHED'])
+function quarryEgress (input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const column = input.column && integer(input.column.x, -30000000, 30000000) !== null && integer(input.column.z, -30000000, 30000000) !== null ? { x: input.column.x, z: input.column.z } : null
+  return {
+    mode: ['adjacent_pillar', 'legacy_stair'].includes(input.mode) ? input.mode : null,
+    phase: ['planned', 'running', 'blocked', 'completed'].includes(input.phase) ? input.phase : null,
+    miningCompleted: typeof input.miningCompleted === 'boolean' ? input.miningCompleted : null,
+    surfaceReturned: typeof input.surfaceReturned === 'boolean' ? input.surfaceReturned : null,
+    migrationFloorY: integer(input.migrationFloorY, -2048, 2048), column,
+    entry: point(input.entry), landing: point(input.landing), startFeet: point(input.startFeet), targetFeetY: integer(input.targetFeetY, -2048, 2048),
+    ...numericFields(input, ['requiredDirt', 'reserveDirt', 'totalDirt', 'reservedDirt', 'dirtAvailable', 'dirtMissing', 'estimatedDirtMissing']),
+    reason: text(input.reason, 160), checkpointStage: text(input.checkpointStage, 80), operationId: text(input.operationId, 160)
   }
-  const requestedDiamond = current?.milestones.find(row => row.id === 'diamond')
-  milestones.push({ id: 'diamond', label: requestedDiamond?.label ?? 'ダイヤを1個採取', status: diamondCount >= 1 ? 'done' : 'pending', detail: diamondCount >= 1 ? `${observation}で${diamondCount}個を確認しました。${base.stale ? '過去の実確認値です。' : ''}` : base.inventoryKnown ? `${observation}にダイヤはまだありません。` : '所持品が未確認のため、達成とは判定しません。' })
-  const depot = base.depotMission ? depotDisplay(base, base.depotMission, diamondCount) : null
-  return { ...base, work: depot?.work ?? work, milestones: depot?.milestones ?? milestones, recentEvents: current?.recentEvents ?? [] }
+}
+function quarryState (input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const result = input.result && typeof input.result === 'object' ? { type: text(input.result.type, 80), reason: text(input.result.reason, 160), at: timestamp(input.result.at) } : null
+  return {
+    state: quarryStates.has(input.state) ? input.state : 'UNKNOWN', jobId: text(input.jobId, 120), loaded: input.loaded !== false,
+    userRunIntent: ['running', 'paused', 'finished'].includes(input.userRunIntent) ? input.userRunIntent : null,
+    result, pauseReason: text(input.pauseReason, 240), error: text(input.error, 240),
+    chunks: (Array.isArray(input.chunks) ? input.chunks : []).slice(0, 64).filter(c => c && integer(c.x, -1875000, 1875000) !== null && integer(c.z, -1875000, 1875000) !== null).map(c => ({ x: c.x, z: c.z })),
+    yTop: integer(input.yTop, -2048, 2048), yBottom: integer(input.yBottom, -2048, 2048), currentY: integer(input.currentY, -2048, 2048),
+    counts: input.counts ? numericFields(input.counts, ['remaining', 'unknown', 'reserved', 'deferred']) : null,
+    ledger: input.ledger ? numericFields(input.ledger, ['minedBlocks', 'picked', 'loot', 'deposited', 'placedTemporary', 'placedSeal', 'reminedTemporary', 'lost', 'unaccounted', 'startInventory']) : null,
+    pendingDrops: integer(input.pendingDrops), freeSlots: integer(input.freeSlots, 0, 36), deferredCount: integer(input.deferredCount),
+    deaths: Array.isArray(input.deaths) ? input.deaths.slice(-1000).map(d => ({ at: timestamp(d?.at), whilePaused: d?.whilePaused === true })) : [],
+    portableStorage: input.portableStorage ? { kind: text(input.portableStorage.kind, 80), stage: text(input.portableStorage.stage, 80), why: text(input.portableStorage.why, 80) } : null,
+    egress: quarryEgress(input.egress),
+    events: (Array.isArray(input.events) ? input.events : []).slice(-15).filter(e => e && typeof e === 'object').map(e => ({ at: timestamp(e.at), type: text(e.type, 80), state: text(e.state, 80), reason: text(e.reason, 200) }))
+  }
 }
 
-function sanitizeStatus (raw, { observedAt = new Date().toISOString(), checkedAt = observedAt, apiAvailable = true, mission = null } = {}) {
+function decorate (base) {
+  const q = base.quarry
+  const labels = { IDLE: '露天掘りの計画を待っています', PREFLIGHT: '開始前の確認', SURVEY: '採掘範囲を確認中', PLAN: '次の採掘を計画中', MOVE: '採掘位置へ移動中', MINE: '露天掘りを実行中', COLLECT: 'ドロップを回収中', RETURN: '搬入先へ移動中', DEPOSIT: 'アイテムを搬入中', PORTABLE_STORAGE: '携帯収納へ搬入中', RESTOCK: '道具・資材を補充中', HAZARD: '水・溶岩に対処中', RECOVER: '体力の回復を待っています', SUSPEND_FOR_COMBAT: '戦闘へ切り替え中', COMBAT: '戦闘中', COMBAT_SETTLE: '戦闘後の安全を確認中', RECOVER_AFTER_COMBAT: '採掘への復帰を確認中', RECONCILE: '保存された作業を確認中', FINAL_CHECK: '掘り残しと搬入を確認中', DISCONNECTED: '再接続を待っています', PAUSED: '露天掘りを一時停止中', FINISHED: '露天掘りのジョブが終了しました' }
+  labels.EGRESS_PREPARE = '地上への脱出を準備中'
+  labels.EGRESS = '土柱で地上へ移動中'
+  const exitConfirmed = q?.egress?.mode !== 'adjacent_pillar' || (q.egress.miningCompleted === true && q.egress.surfaceReturned === true)
+  const completed = q?.state === 'FINISHED' && ['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS'].includes(q.result?.type) && exitConfirmed
+  const waiting = !base.online || !q || !q.loaded || ['IDLE', 'PAUSED', 'DISCONNECTED', 'UNKNOWN'].includes(q.state)
+  const title = q ? completed ? q.result.type === 'COMPLETED_WITH_EXCEPTIONS' ? '露天掘り完了（保留箇所あり）' : '露天掘り完了' : labels[q.state] ?? '露天掘りの状態を確認中' : '露天掘りの計画を待っています'
+  const detail = base.stale ? '最終確認時の情報です。現在の状態は未確認です。' : q?.pauseReason ?? q?.egress?.reason ?? q?.error ?? (q?.currentY != null ? `作業層 Y ${q.currentY}` : 'サーバーから確認できた情報を表示します。')
+  return { ...base, goal: 'quarry', work: { title, detail, state: base.stale ? 'waiting' : completed ? 'complete' : waiting ? 'waiting' : q.state === 'FINISHED' ? 'stopped' : 'running', updatedAt: base.observedAt, next: null }, milestones: [], recentEvents: q?.events ?? [] }
+}
+
+function sanitizeStatus (raw, { observedAt = new Date().toISOString(), checkedAt = observedAt, apiAvailable = true } = {}) {
   raw = raw && typeof raw === 'object' ? raw : {}
   const health = number(raw.health)
   const inventoryKnown = raw.inventory?.known === true && !raw.inventory.uncertain && raw.inventoryConfidence?.known !== false && !raw.inventoryConfidence?.unresolved && Array.isArray(raw.inventory.items)
@@ -124,23 +194,14 @@ function sanitizeStatus (raw, { observedAt = new Date().toISOString(), checkedAt
   const position = eye ? { x: eye.x, y: eye.y - EYE_HEIGHT, z: eye.z, source, confirmed: raw.positionServerConfirmed !== false && serverPositionSources.has(source) } : null
   const hungerEntry = raw.vitals?.hunger ?? raw.food?.hunger ?? raw.hunger
   const hunger = hungerEntry?.source === 'client_prediction' ? null : number(typeof hungerEntry === 'object' ? hungerEntry?.value : hungerEntry, 0, 20)
-  const hut = raw.hut ?? raw.shelter
-  const knownHut = !!(hut?.geometryVerified && hut.serverConfirmed)
-  const hutPosition = point(hut?.position ?? hut?.memo?.site?.center ?? hut?.memo?.site?.innerStandpoint)
-  const base = { version: 1, apiAvailable: apiAvailable === true, online: apiAvailable === true && alive, stale: apiAvailable !== true, checkedAt: timestamp(checkedAt), observedAt: timestamp(observedAt), phase: apiAvailable !== true ? 'offline' : actualPhase === 'spawned' && (health === 0 || raw.dead || raw.isDead || raw.lifecycle?.dead) ? 'dead' : actualPhase, playerName: text(raw.playerName, 80), realmName: text(raw.realm?.name ?? raw.realmName, 160), health, hunger, position, inventoryKnown, inventory: inventoryItems(raw.inventory?.items, inventoryKnown), hut: { inside: knownHut ? hut.inside === true : null, closed: knownHut ? hut.closed === true || hut.entranceClosed === true : null, usable: knownHut ? hut.usable === true : null, known: apiAvailable === true && knownHut, position: hutPosition }, connectionId: text(raw.connectionId, 80) }
-  base.depotMission = depotState(raw.depotMission)
-  if (base.depotMission && !alive) base.depotMission.secured = false
-  return decorate(base, mission)
+  return decorate({ version: 1, apiAvailable: apiAvailable === true, online: apiAvailable === true && alive, stale: apiAvailable !== true, checkedAt: timestamp(checkedAt), observedAt: timestamp(observedAt), phase: apiAvailable !== true ? 'offline' : actualPhase === 'spawned' && (health === 0 || raw.dead || raw.isDead || raw.lifecycle?.dead) ? 'dead' : actualPhase, playerName: text(raw.playerName, 80), realmName: text(raw.realm?.name ?? raw.realmName, 160), health, hunger, position, inventoryKnown, inventory: inventoryItems(raw.inventory?.items, inventoryKnown), inventoryDetails: inventoryDetails(raw.inventoryDetails, inventoryKnown), quarry: quarryState(raw.quarry), connectionId: text(raw.connectionId, 80) })
 }
 
-function sanitizeCachedStatus (input, { checkedAt = new Date().toISOString(), apiAvailable = false, mission = null } = {}) {
+function sanitizeCachedStatus (input, { checkedAt = new Date().toISOString(), apiAvailable = false } = {}) {
   if (!input || input.version !== 1 || !timestamp(input.observedAt)) return null
   const inventoryKnown = input.inventoryKnown === true && Array.isArray(input.inventory)
   const cachedPosition = point(input.position)
-  const cachedMission = sanitizeMission({ version: 1, work: input.work, milestones: input.milestones, recentEvents: input.recentEvents })
-  const base = { version: 1, apiAvailable: apiAvailable === true, online: apiAvailable === true && input.online === true, stale: apiAvailable !== true, checkedAt: timestamp(checkedAt), observedAt: timestamp(input.observedAt), phase: apiAvailable === true ? text(input.phase, 64) ?? 'unknown' : 'offline', playerName: text(input.playerName, 80), realmName: text(input.realmName, 160), health: number(input.health), hunger: number(input.hunger, 0, 20), position: cachedPosition ? { ...cachedPosition, source: text(input.position.source, 80) ?? 'unknown', confirmed: input.position.confirmed === true } : null, inventoryKnown, inventory: inventoryItems(input.inventory, inventoryKnown, true), hut: { inside: typeof input.hut?.inside === 'boolean' ? input.hut.inside : null, closed: typeof input.hut?.closed === 'boolean' ? input.hut.closed : null, usable: typeof input.hut?.usable === 'boolean' ? input.hut.usable : null, known: apiAvailable === true && input.hut?.known === true, position: point(input.hut?.position) }, connectionId: text(input.connectionId, 80) }
-  base.depotMission = depotState(input.depotMission)
-  return decorate(base, mission ?? cachedMission, cachedMission?.work)
+  return decorate({ version: 1, apiAvailable: apiAvailable === true, online: apiAvailable === true && input.online === true, stale: apiAvailable !== true, checkedAt: timestamp(checkedAt), observedAt: timestamp(input.observedAt), phase: apiAvailable === true ? text(input.phase, 64) ?? 'unknown' : 'offline', playerName: text(input.playerName, 80), realmName: text(input.realmName, 160), health: number(input.health), hunger: number(input.hunger, 0, 20), position: cachedPosition ? { ...cachedPosition, source: text(input.position.source, 80) ?? 'unknown', confirmed: input.position.confirmed === true } : null, inventoryKnown, inventory: inventoryItems(input.inventory, inventoryKnown, true), inventoryDetails: inventoryDetails(input.inventoryDetails, inventoryKnown), quarry: quarryState(input.quarry), connectionId: text(input.connectionId, 80) })
 }
 
 module.exports = { sanitizeStatus, sanitizeCachedStatus, sanitizeMission, itemLabel }

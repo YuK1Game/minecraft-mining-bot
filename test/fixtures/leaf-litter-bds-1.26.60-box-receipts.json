@@ -1,0 +1,2235 @@
+{
+  "local": true,
+  "version": "1.26.60",
+  "port": 45978,
+  "target": {
+    "x": 1,
+    "y": 201,
+    "z": 0
+  },
+  "runs": [
+    {
+      "growth": 1,
+      "direction": "north",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 10,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 2,
+              "stackId": 3
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 4,
+          "id": 3248259543,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 1
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "north"
+            }
+          }
+        },
+        {
+          "seq": 5,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 6,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 7,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 8,
+          "position": {
+            "x": 1.228377342224121,
+            "y": 201.8194122314453,
+            "z": 0.4875006675720215
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 9,
+          "position": {
+            "x": 1.7025829553604126,
+            "y": 201.4779510498047,
+            "z": 0.5550732016563416
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof1X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 10,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 2,
+          "stackId": 3
+        }
+      ],
+      "delta": 2,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 2,
+      "direction": "north",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 19,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 3,
+              "stackId": 6
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 12,
+          "id": 3947055068,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 2
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "north"
+            }
+          }
+        },
+        {
+          "seq": 13,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 14,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 15,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 16,
+          "position": {
+            "x": 1.2298935651779175,
+            "y": 201.90806579589844,
+            "z": 0.4495065212249756
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 17,
+          "position": {
+            "x": 1.661461591720581,
+            "y": 201.6817626953125,
+            "z": 0.7822964191436768
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 18,
+          "position": {
+            "x": 1.6590136289596558,
+            "y": 201.62026977539062,
+            "z": 0.849967360496521
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof2X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 19,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 3,
+          "stackId": 6
+        }
+      ],
+      "delta": 3,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 3,
+      "direction": "north",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 29,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 4,
+              "stackId": 10
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 21,
+          "id": 3693557529,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 3
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "north"
+            }
+          }
+        },
+        {
+          "seq": 22,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 23,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 24,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 25,
+          "position": {
+            "x": 1.5039130449295044,
+            "y": 201.59774780273438,
+            "z": 0.7347251176834106
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 26,
+          "position": {
+            "x": 1.5010608434677124,
+            "y": 201.34617614746094,
+            "z": 0.638404130935669
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 27,
+          "position": {
+            "x": 1.8460004329681396,
+            "y": 201.52601623535156,
+            "z": 0.806420087814331
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 28,
+          "position": {
+            "x": 1.6863183975219727,
+            "y": 201.3909912109375,
+            "z": 0.15611526370048523
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof3X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 29,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 4,
+          "stackId": 10
+        }
+      ],
+      "delta": 4,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 0,
+      "direction": "north",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 36,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 1,
+              "stackId": 11
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 31,
+          "id": 4221994522,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 0
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "north"
+            }
+          }
+        },
+        {
+          "seq": 32,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 33,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 34,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 35,
+          "position": {
+            "x": 1.6830558776855469,
+            "y": 201.35264587402344,
+            "z": 0.39459091424942017
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof4X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 36,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 1,
+          "stackId": 11
+        }
+      ],
+      "delta": 1,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 1,
+      "direction": "west",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 44,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 2,
+              "stackId": 13
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 38,
+          "id": 1833559294,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 1
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "west"
+            }
+          }
+        },
+        {
+          "seq": 39,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 40,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 41,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 42,
+          "position": {
+            "x": 1.5353158712387085,
+            "y": 201.42282104492188,
+            "z": 0.5755276679992676
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 43,
+          "position": {
+            "x": 1.6219804286956787,
+            "y": 201.3826446533203,
+            "z": 0.6776916980743408
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof5X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 44,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 2,
+          "stackId": 13
+        }
+      ],
+      "delta": 2,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 2,
+      "direction": "west",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 53,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 3,
+              "stackId": 16
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 46,
+          "id": 2853226491,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 2
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "west"
+            }
+          }
+        },
+        {
+          "seq": 47,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 48,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 49,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 50,
+          "position": {
+            "x": 1.8479361534118652,
+            "y": 201.41648864746094,
+            "z": 0.48353105783462524
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 51,
+          "position": {
+            "x": 1.3455867767333984,
+            "y": 201.92320251464844,
+            "z": 0.3986455798149109
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 52,
+          "position": {
+            "x": 1.4530127048492432,
+            "y": 201.66552734375,
+            "z": 0.5331419706344604
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof6X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 53,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 3,
+          "stackId": 16
+        }
+      ],
+      "delta": 3,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 3,
+      "direction": "west",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 63,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 4,
+              "stackId": 20
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 55,
+          "id": 90463784,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 3
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "west"
+            }
+          }
+        },
+        {
+          "seq": 56,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 57,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 58,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 59,
+          "position": {
+            "x": 1.4372360706329346,
+            "y": 201.67311096191406,
+            "z": 0.8447844982147217
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 60,
+          "position": {
+            "x": 1.5500820875167847,
+            "y": 201.2986602783203,
+            "z": 0.264832466840744
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 61,
+          "position": {
+            "x": 1.4102855920791626,
+            "y": 201.38201904296875,
+            "z": 0.8336683511734009
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 62,
+          "position": {
+            "x": 1.4691040515899658,
+            "y": 201.89959716796875,
+            "z": 0.6533591747283936
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof7X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 63,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 4,
+          "stackId": 20
+        }
+      ],
+      "delta": 4,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 0,
+      "direction": "west",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 70,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 1,
+              "stackId": 21
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 65,
+          "id": 537536753,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 0
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "west"
+            }
+          }
+        },
+        {
+          "seq": 66,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 67,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 68,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 69,
+          "position": {
+            "x": 1.2498642206192017,
+            "y": 201.71620178222656,
+            "z": 0.7138622999191284
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof8X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 70,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 1,
+          "stackId": 21
+        }
+      ],
+      "delta": 1,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 1,
+      "direction": "east",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 78,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 2,
+              "stackId": 23
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 72,
+          "id": 3649828412,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 1
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "east"
+            }
+          }
+        },
+        {
+          "seq": 73,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 74,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 75,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 76,
+          "position": {
+            "x": 1.3308868408203125,
+            "y": 201.57470703125,
+            "z": 0.5060208439826965
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 77,
+          "position": {
+            "x": 1.5270251035690308,
+            "y": 201.73663330078125,
+            "z": 0.4599837064743042
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof9X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 78,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 2,
+          "stackId": 23
+        }
+      ],
+      "delta": 2,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 2,
+      "direction": "east",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 87,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 3,
+              "stackId": 26
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 80,
+          "id": 10836905,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 2
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "east"
+            }
+          }
+        },
+        {
+          "seq": 81,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 82,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 83,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 84,
+          "position": {
+            "x": 1.3683266639709473,
+            "y": 201.93801879882812,
+            "z": 0.5814884901046753
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 85,
+          "position": {
+            "x": 1.8342747688293457,
+            "y": 201.76272583007812,
+            "z": 0.44287192821502686
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 86,
+          "position": {
+            "x": 1.2277864217758179,
+            "y": 201.63157653808594,
+            "z": 0.7532426118850708
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof10X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 87,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 3,
+          "stackId": 26
+        }
+      ],
+      "delta": 3,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 3,
+      "direction": "east",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 97,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 4,
+              "stackId": 30
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 89,
+          "id": 1488016474,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 3
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "east"
+            }
+          }
+        },
+        {
+          "seq": 90,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 91,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 92,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 93,
+          "position": {
+            "x": 1.280421257019043,
+            "y": 201.52549743652344,
+            "z": 0.3344723880290985
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 94,
+          "position": {
+            "x": 1.2648043632507324,
+            "y": 201.41998291015625,
+            "z": 0.6986267566680908
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 95,
+          "position": {
+            "x": 1.7411677837371826,
+            "y": 201.481689453125,
+            "z": 0.4307138919830322
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 96,
+          "position": {
+            "x": 1.3928964138031006,
+            "y": 201.30572509765625,
+            "z": 0.4891403913497925
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof11X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 97,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 4,
+          "stackId": 30
+        }
+      ],
+      "delta": 4,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 0,
+      "direction": "east",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 104,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 1,
+              "stackId": 31
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 99,
+          "id": 2881089219,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 0
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "east"
+            }
+          }
+        },
+        {
+          "seq": 100,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 101,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 102,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 103,
+          "position": {
+            "x": 1.443681240081787,
+            "y": 201.59568786621094,
+            "z": 0.7677247524261475
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof12X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 104,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 1,
+          "stackId": 31
+        }
+      ],
+      "delta": 1,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 1,
+      "direction": "south",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 112,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 2,
+              "stackId": 33
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 106,
+          "id": 2705939541,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 1
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "south"
+            }
+          }
+        },
+        {
+          "seq": 107,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 108,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 109,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 110,
+          "position": {
+            "x": 1.6936683654785156,
+            "y": 201.94822692871094,
+            "z": 0.2991071939468384
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 111,
+          "position": {
+            "x": 1.6255958080291748,
+            "y": 201.43618774414062,
+            "z": 0.2439584732055664
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof13X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 112,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 2,
+          "stackId": 33
+        }
+      ],
+      "delta": 2,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 2,
+      "direction": "south",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 121,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 3,
+              "stackId": 36
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 114,
+          "id": 1466627666,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 2
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "south"
+            }
+          }
+        },
+        {
+          "seq": 115,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 116,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 117,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 118,
+          "position": {
+            "x": 1.6778452396392822,
+            "y": 201.413818359375,
+            "z": 0.25150394439697266
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 119,
+          "position": {
+            "x": 1.4427688121795654,
+            "y": 201.83665466308594,
+            "z": 0.5060648918151855
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 120,
+          "position": {
+            "x": 1.7555314302444458,
+            "y": 201.74288940429688,
+            "z": 0.46172624826431274
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof14X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 121,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 3,
+          "stackId": 36
+        }
+      ],
+      "delta": 3,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 3,
+      "direction": "south",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 131,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 4,
+              "stackId": 40
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 123,
+          "id": 1541214755,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 3
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "south"
+            }
+          }
+        },
+        {
+          "seq": 124,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 125,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 126,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 127,
+          "position": {
+            "x": 1.3843752145767212,
+            "y": 201.3821258544922,
+            "z": 0.8327213525772095
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 128,
+          "position": {
+            "x": 1.7280248403549194,
+            "y": 201.62759399414062,
+            "z": 0.5561449527740479
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 129,
+          "position": {
+            "x": 1.6182461977005005,
+            "y": 201.58912658691406,
+            "z": 0.25572264194488525
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 130,
+          "position": {
+            "x": 1.4396510124206543,
+            "y": 201.84877014160156,
+            "z": 0.7067677974700928
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof15X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 131,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 4,
+          "stackId": 40
+        }
+      ],
+      "delta": 4,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 0,
+      "direction": "south",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 138,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 1,
+              "stackId": 41
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 133,
+          "id": 2202755068,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 0
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "south"
+            }
+          }
+        },
+        {
+          "seq": 134,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 135,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 136,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 137,
+          "position": {
+            "x": 1.2292062044143677,
+            "y": 201.3651123046875,
+            "z": 0.4027731418609619
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof16X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 138,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 1,
+          "stackId": 41
+        }
+      ],
+      "delta": 1,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 1,
+      "direction": "north",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 146,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 2,
+              "stackId": 43
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 140,
+          "id": 3248259543,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 1
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "north"
+            }
+          }
+        },
+        {
+          "seq": 141,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 142,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 143,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 144,
+          "position": {
+            "x": 1.2554888725280762,
+            "y": 201.6274871826172,
+            "z": 0.25282514095306396
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 145,
+          "position": {
+            "x": 1.6036691665649414,
+            "y": 201.48794555664062,
+            "z": 0.22000819444656372
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof17X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 146,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 2,
+          "stackId": 43
+        }
+      ],
+      "delta": 2,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 2,
+      "direction": "north",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 155,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 3,
+              "stackId": 46
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 148,
+          "id": 3947055068,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 2
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "north"
+            }
+          }
+        },
+        {
+          "seq": 149,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 150,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 151,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 152,
+          "position": {
+            "x": 1.354472041130066,
+            "y": 201.96173095703125,
+            "z": 0.4735736846923828
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 153,
+          "position": {
+            "x": 1.5225383043289185,
+            "y": 201.4442901611328,
+            "z": 0.3357316851615906
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 154,
+          "position": {
+            "x": 1.185410499572754,
+            "y": 201.36141967773438,
+            "z": 0.6197718977928162
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof18X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 155,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 3,
+          "stackId": 46
+        }
+      ],
+      "delta": 3,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 1,
+      "direction": "north",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 163,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 2,
+              "stackId": 48
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 157,
+          "id": 3248259543,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 1
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "north"
+            }
+          }
+        },
+        {
+          "seq": 158,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 159,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 160,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 161,
+          "position": {
+            "x": 1.3791805505752563,
+            "y": 201.49354553222656,
+            "z": 0.3281245231628418
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 162,
+          "position": {
+            "x": 1.6184049844741821,
+            "y": 201.65980529785156,
+            "z": 0.48408401012420654
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof19X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 163,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 2,
+          "stackId": 48
+        }
+      ],
+      "delta": 2,
+      "serverConfirmed": true
+    },
+    {
+      "growth": 2,
+      "direction": "north",
+      "before": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        }
+      ],
+      "mainPackets": [
+        {
+          "seq": 172,
+          "bag": [
+            {
+              "slot": 0,
+              "name": "minecraft:undyed_shulker_box",
+              "count": 1,
+              "stackId": 1
+            },
+            {
+              "slot": 1,
+              "name": "minecraft:leaf_litter",
+              "count": 3,
+              "stackId": 51
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "seq": 165,
+          "id": 3947055068,
+          "name": "leaf_litter",
+          "properties": {
+            "growth": {
+              "type": "int",
+              "value": 2
+            },
+            "minecraft:cardinal_direction": {
+              "type": "string",
+              "value": "north"
+            }
+          }
+        },
+        {
+          "seq": 166,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 167,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        },
+        {
+          "seq": 168,
+          "id": 3690217760,
+          "name": "air",
+          "properties": {}
+        }
+      ],
+      "drops": [
+        {
+          "seq": 169,
+          "position": {
+            "x": 1.2322132587432861,
+            "y": 201.97499084472656,
+            "z": 0.4365231990814209
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 170,
+          "position": {
+            "x": 1.2993619441986084,
+            "y": 201.33981323242188,
+            "z": 0.6959850788116455
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        },
+        {
+          "seq": 171,
+          "position": {
+            "x": 1.377058506011963,
+            "y": 201.9644775390625,
+            "z": 0.5173913240432739
+          },
+          "count": 1,
+          "type": "minecraft:leaf_litter"
+        }
+      ],
+      "handProof": "received text {\"type\":\"announcement\",\"message\":\"[LeafProbe] LeafHandProof20X\",\"source\":\"LeafProbe\"}",
+      "fullMainSeq": 172,
+      "after": [
+        {
+          "slot": 0,
+          "name": "minecraft:undyed_shulker_box",
+          "count": 1,
+          "stackId": 1
+        },
+        {
+          "slot": 1,
+          "name": "minecraft:leaf_litter",
+          "count": 3,
+          "stackId": 51
+        }
+      ],
+      "delta": 3,
+      "serverConfirmed": true
+    }
+  ],
+  "complete": true,
+  "serverStopped": true,
+  "closedAt": "2026-11-06T05:21:13.873Z"
+}

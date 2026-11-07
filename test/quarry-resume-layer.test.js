@@ -15,7 +15,7 @@ function fixture () {
   flatTerrain(sim, { x1: BOX.xMin, x2: BOX.xMax, z1: BOX.zMin, z2: BOX.zMax, bedrock: 50, stoneTop: 60, top: 62 })
   sim.world.set(-4, 63, -4, 'chest'); sim.setFeet({ x: -3, y: 63, z: 5 })
   sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
-  const config = { jobId: 'resume_layer', target: { chunks: [{ x: 0, z: 0 }] }, yBottom: 61, worldMinY: 50, worldMaxY: 70, inventory: { storage: [{ position: { x: -4, y: 63, z: -4 }, stand: { x: -3, y: 63, z: -4 } }] } }
+  const config = { jobId: 'resume_layer', exit: { mode: 'legacy_stair' }, target: { chunks: [{ x: 0, z: 0 }] }, yBottom: 61, worldMinY: 50, worldMaxY: 70, inventory: { storage: [{ position: { x: -4, y: 63, z: -4 }, stand: { x: -3, y: 63, z: -4 } }] } }
   const options = { adapter: sim.adapter, sleep: () => new Promise(resolve => setImmediate(resolve)), pollMs: 5 }
   const planned = createQuarryJob(options)
   assert.equal(planned.plan(config).ready, true)
@@ -137,7 +137,7 @@ test('combat recovery and an outside travel rebind keep the saved mining floor',
   } finally { await job.pause() }
 })
 
-test('upper protection and unbreakable reasons survive while fluids and ores remain explicit leftovers', async () => {
+test('upper protection, ores and unbreakable reasons survive while fluids remain explicit leftovers', async () => {
   const f = fixture()
   const cells = [
     { x: 7, y: 62, z: 7, name: 'bedrock', reason: 'UNBREAKABLE', saved: true },
@@ -145,7 +145,7 @@ test('upper protection and unbreakable reasons survive while fluids and ores rem
     { x: 11, y: 62, z: 11, name: 'chest', reason: 'CONTAINER_OR_FACILITY', saved: true },
     { x: 13, y: 62, z: 13, name: 'chest', reason: 'CONTAINER_OR_FACILITY' },
     { x: 12, y: 62, z: 5, name: 'water', reason: 'EARLIER_LAYER_LEFTOVER' },
-    { x: 9, y: 62, z: 3, name: 'diamond_ore', reason: 'EARLIER_LAYER_LEFTOVER' }
+    { x: 9, y: 62, z: 3, name: 'diamond_ore', reason: 'PROTECTED_ORE' }
   ]
   for (const c of cells) {
     f.sim.world.set(c.x, c.y, c.z, c.name)

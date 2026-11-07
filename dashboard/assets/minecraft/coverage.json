@@ -1,0 +1,29 @@
+{
+  "officialItemCount": 1627,
+  "mappedOfficialItems": 1608,
+  "manifestItems": 1622,
+  "pngFiles": 2158,
+  "pngBytes": 883585,
+  "manifestBytes": 510777,
+  "missingItems": [
+    "minecraft:banner",
+    "minecraft:cactus",
+    "minecraft:dark_oak_leaves",
+    "minecraft:fern",
+    "minecraft:firework_star",
+    "minecraft:frostbite_spawn_egg",
+    "minecraft:ice_ball",
+    "minecraft:ice_crystal",
+    "minecraft:icicle",
+    "minecraft:leather_boots",
+    "minecraft:leather_helmet",
+    "minecraft:leather_horse_armor",
+    "minecraft:leather_leggings",
+    "minecraft:lilac",
+    "minecraft:scaffolding",
+    "minecraft:shelf_mushroom",
+    "minecraft:shield",
+    "minecraft:tropical_fish_spawn_egg",
+    "minecraft:zombie_pigman_spawn_egg"
+  ]
+}

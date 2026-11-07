@@ -5,7 +5,8 @@ const path = require('node:path')
 
 // Importing this file does not launch a client, read configuration/credentials,
 // inspect child output, attach signal handlers or schedule a timer.
-function createKeepAlive ({ spawn = nodeSpawn, execPath = process.execPath, cwd = path.resolve(__dirname, '..'), signals = process, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, baseDelayMs = 2000, maxDelayMs = 60000, restartWindowMs = 600000, maxRestarts = 5, stopGraceMs = 5000, forceCloseMs = 1000, onState = () => {}, onStop = () => {} } = {}) {
+function createKeepAlive ({ autoStart = true, spawn = nodeSpawn, execPath = process.execPath, cwd = path.resolve(__dirname, '..'), signals = process, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, baseDelayMs = 2000, maxDelayMs = 60000, restartWindowMs = 600000, maxRestarts = 5, stopGraceMs = 5000, forceCloseMs = 1000, onState = () => {}, onStop = () => {} } = {}) {
+  if (typeof autoStart !== 'boolean') throw new Error('autoStart must be a boolean')
   if ([spawn, now, setTimer, clearTimer, onState, onStop].some(value => typeof value !== 'function') || typeof execPath !== 'string' || !execPath || typeof cwd !== 'string' || !cwd || signals != null && (typeof signals.on !== 'function' || typeof signals.off !== 'function')) throw new Error('Invalid keep-alive dependencies')
   if (![baseDelayMs, maxDelayMs, restartWindowMs, stopGraceMs, forceCloseMs].every(value => Number.isFinite(value) && value > 0) || maxDelayMs < baseDelayMs || !Number.isInteger(maxRestarts) || maxRestarts < 0 || maxRestarts > 1000) throw new Error('Invalid keep-alive retry limits')
   let child = null
@@ -118,7 +119,9 @@ function createKeepAlive ({ spawn = nodeSpawn, execPath = process.execPath, cwd 
     status.starts++; status.phase = 'running'; status.reason = null
     exitInfo = null; childExited = false; childStartedAt = time()
     let next
-    try { next = spawn(execPath, ['--env-file-if-exists=.env', 'src/main.js', '--auto'], { cwd, stdio: 'inherit', windowsHide: true }) } catch { finish('spawn_error', 1); return }
+    const args = ['--env-file-if-exists=.env', 'src/main.js']
+    if (autoStart) args.push('--auto')
+    try { next = spawn(execPath, args, { cwd, stdio: 'inherit', windowsHide: true }) } catch { finish('spawn_error', 1); return }
     if (!next || typeof next.on !== 'function' || typeof next.off !== 'function' || typeof next.kill !== 'function') { finish('invalid_spawn_result', 1); return }
     child = next; status.childPid = Number.isInteger(next.pid) ? next.pid : null
     const owned = next
@@ -164,13 +167,15 @@ function createKeepAlive ({ spawn = nodeSpawn, execPath = process.execPath, cwd 
   return { start, stop, snapshot, done }
 }
 
-function main () {
-  if (process.argv.slice(2).length) {
-    console.log('使い方: node scripts/keep-alive.js（Botの異常終了時だけ再接続します）')
-    if (!process.argv.slice(2).every(arg => arg === '--help')) process.exitCode = 2
+function main (args = process.argv.slice(2), createSupervisor = createKeepAlive) {
+  const valid = args.every(arg => arg === '--connect-only' || arg === '--help') && args.filter(arg => arg === '--connect-only').length <= 1
+  if (!valid || args.includes('--help')) {
+    console.log('使い方: node scripts/keep-alive.js [--connect-only] [--help]\n既定は旧サバイバル自律も開始します。--connect-only は接続だけで起動します。異常終了時には同じモードで再接続します。')
+    if (!valid) process.exitCode = 2
     return null
   }
-  const supervisor = createKeepAlive({
+  const supervisor = createSupervisor({
+    autoStart: !args.includes('--connect-only'),
     onState: state => { if (state.phase === 'backoff') console.log(`Botが異常終了しました。${state.nextDelayMs / 1000}秒後に再接続します。`) },
     onStop: state => { process.exitCode = state.exitCode; if (state.reason === 'restart_limit') console.error('短時間の再接続が上限に達したため停止しました。') }
   })

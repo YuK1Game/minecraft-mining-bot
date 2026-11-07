@@ -57,7 +57,7 @@ function fixture (containers = []) {
   const storage = { save: async (id, doc) => { saving++; maxSaving = Math.max(maxSaving, saving); await new Promise(resolve => setImmediate(resolve)); docs.push(structuredClone(doc)); saving-- } }
   const options = { adapter: sim.adapter, storage, sleep: () => new Promise(resolve => setImmediate(resolve)), pollMs: 5 }
   const job = createQuarryJob(options)
-  assert.equal(job.plan({ jobId: 'carried', target: { chunks: [{ x: 0, z: 0 }] }, yBottom: 62, worldMinY: 50, worldMaxY: 70, inventory: { carryOnly: true, storage: [] } }).ready, true)
+  assert.equal(job.plan({ jobId: 'carried', exit: { mode: 'legacy_stair' }, target: { chunks: [{ x: 0, z: 0 }] }, yBottom: 62, worldMinY: 50, worldMaxY: 70, inventory: { carryOnly: true, storage: [] } }).ready, true)
   const saved = job.document()
   Object.assign(saved, { state: 'PAUSED', pauseReason: 'MANUAL_PAUSE', userRunIntent: 'paused', scope: JSON.stringify([sim.state.profile, sim.state.realm.id, sim.state.dimension, sim.state.connectionId, sim.state.startedAt]), life: sim.state.lifecycle.deathId })
   job.load(saved)

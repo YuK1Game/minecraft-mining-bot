@@ -14,5 +14,7 @@ const CHEST = Object.freeze({ kind: 'chest', windowType: 'container', windowType
 const SHULKER = Object.freeze({ kind: 'shulker', windowType: 'container', windowTypeId: 0, slotType: 'shulker', slotTypeId: 30, sizes: Object.freeze([27]) })
 const storageContainerType = blockName => canonical(blockName) === 'minecraft:chest' ? CHEST : isShulkerBlock(blockName) ? SHULKER : null
 const storageWindowMatches = (type, descriptor) => !!descriptor && (type === descriptor.windowType || type === descriptor.windowTypeId)
+const canonicalWindowId = value => value === 'inventory' ? 0 : value === 'first' ? 1 : value === 'last' ? 100 : Number.isInteger(value) ? value : null
+const sameWindowId = (a, b) => canonicalWindowId(a) !== null && canonicalWindowId(a) === canonicalWindowId(b)
 
-module.exports = { SHULKER_COLORS, SHULKER_BLOCKS, isShulkerBox, isShulkerBlock, storageContainerType, storageWindowMatches }
+module.exports = { SHULKER_COLORS, SHULKER_BLOCKS, isShulkerBox, isShulkerBlock, storageContainerType, storageWindowMatches, canonicalWindowId, sameWindowId }

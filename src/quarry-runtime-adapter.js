@@ -12,7 +12,7 @@ const FEET = 1.62
 function createQuarryRuntimeAdapter (ports) {
   const {
     getState, getBlock, entities, mining, getMining, movement, getMovement, equip, placeQuarry, eat, resyncInventory = null, craftTorches = null, placeTorch = null, prepareMining = null,
-    chest, addChest = null, storeCarried = null, stopAll, combatActive, threatEvidence = null, recentDamageAt = null, harmfulEffect = null, worldRevision = null,
+    chest, addChest = null, storeCarried = null, restockSupplies = null, discoverSupplies = null, reconcileSupplyPlacement = null, reconcileCarriedPlacement = null, reconcileRejectedDeposit = null, reconcileObservedPlacement = null, egress = null, requestTerrain = null, previewStorageRoute = null, stopAll, combatActive, userControlInterruption = null, threatEvidence = null, recentDamageAt = null, harmfulEffect = null, worldRevision = null,
     sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now,
     segmentCells = 6, segmentTimeoutMs = 20000, mineTimeoutMs = 15000, previewSettleMs = 3000, shortStopMs = 1500, pollMs = 25, slowBreakMinMs = 1500, log = () => {}
   } = ports
@@ -34,12 +34,41 @@ function createQuarryRuntimeAdapter (ports) {
     }
   }
 
+  // A path's permitted endpoints do not constrain the native navigator's
+  // detours. Keep this extra boundary opt-in for quarry-owned walking only.
+  function checkTravelFeet (feet, travel) {
+    if (!feet || !['x', 'y', 'z'].every(axis => Number.isFinite(feet[axis]))) throw Object.assign(new Error('QUARRY_TRAVEL_ROUTE_UNCONFIRMED'), { code: 'QUARRY_TRAVEL_ROUTE_UNCONFIRMED' })
+    const x = Math.floor(feet.x), z = Math.floor(feet.z)
+    // Physics positions are feet; its standing body is 1.8m tall. Include
+    // the intermediate cell while jumping across an integer head boundary.
+    const bottom = Math.floor(feet.y + 1e-6), top = Math.floor(feet.y + 1.8 - 1e-6)
+    for (let y = bottom; y <= top; y++) {
+      const p = { x, y, z }
+      if (travel(p) !== true) throw Object.assign(new Error(`QUARRY_TRAVEL_NOT_PERMITTED: ${x},${y},${z}`), { code: 'QUARRY_TRAVEL_NOT_PERMITTED' })
+      let block
+      try { block = getBlock(x, y, z) } catch { /* An unavailable cell is unknown. */ }
+      if (block?.known !== true) throw Object.assign(new Error(`QUARRY_TRAVEL_TERRAIN_UNKNOWN: ${x},${y},${z}`), { code: 'QUARRY_TRAVEL_TERRAIN_UNKNOWN' })
+    }
+  }
+
   // One short native move to a feet cell, confirmed by a grounded arrival.
-  async function step (cell, signal) {
+  async function step (cell, signal, travel) {
     const target = centre(cell)
-    const options = { allowWater: false }
+    const options = { allowWater: false, ...(travel ? { beforeInput: frame => {
+      aborted(signal)
+      checkTravelFeet(feetOf(getState()), travel)
+      checkTravelFeet(frame?.predictedState?.position, travel)
+      return true
+    } } : {}) }
     const preview = await movement.preview(target, options)
     if (!preview?.ready) return { ok: false, reason: preview?.reason ?? preview?.errors?.join(' / ') ?? 'movement preview not ready' }
+    if (travel) {
+      aborted(signal)
+      if (!Array.isArray(preview.waypoints) || !preview.waypoints.length) throw Object.assign(new Error('QUARRY_TRAVEL_ROUTE_UNCONFIRMED'), { code: 'QUARRY_TRAVEL_ROUTE_UNCONFIRMED' })
+      checkTravelFeet(feetOf(getState()), travel)
+      checkTravelFeet(target, travel)
+      for (const waypoint of preview.waypoints) checkTravelFeet(waypoint?.position, travel)
+    }
     await movement.start(target, options)
     // A native move that ends short (server correction, replan request) is
     // reported back so the walker can re-plan from where the bot actually is
@@ -63,16 +92,17 @@ function createQuarryRuntimeAdapter (ports) {
 
   // Walks the job's permitted route in verified segments. When the native
   // planner refuses a long segment it retries with shorter ones.
-  async function walk (goal, { signal, path } = {}) {
+  async function walk (goal, { signal, path, travel } = {}) {
+    if (travel !== undefined && typeof travel !== 'function') throw Object.assign(new Error('QUARRY_TRAVEL_GUARD_INVALID'), { code: 'QUARRY_TRAVEL_GUARD_INVALID' })
     const route = Array.isArray(path) && path.length ? path : [goal]
     let index = Math.max(0, route.findIndex(c => same(c, cellOf(getState()))))
     while (!same(cellOf(getState()), goal)) {
       aborted(signal)
       let span = Math.min(segmentCells, route.length - 1 - index)
-      if (span <= 0) { const r = await step(goal, signal); if (!r.ok) throw new Error(`quarry move refused: ${r.reason}`); break }
+      if (span <= 0) { const r = await step(goal, signal, travel); if (!r.ok) throw new Error(`quarry move refused: ${r.reason}`); break }
       let moved = false; let last = null
       for (; span >= 1; span = span > 2 ? Math.floor(span / 2) : span - 1) {
-        const r = await step(route[index + span], signal)
+        const r = await step(route[index + span], signal, travel)
         if (r.ok) { index += span; moved = true; break }
         last = r.reason
         if (same(cellOf(getState()), goal)) { moved = true; break }
@@ -84,6 +114,35 @@ function createQuarryRuntimeAdapter (ports) {
       if (found >= 0) index = found
     }
     return { phase: 'completed' }
+  }
+
+  async function previewStorage (storage, { signal, path, travel } = {}) {
+    aborted(signal)
+    const busy = () => { const m = getMovement?.(); return ['moving', 'walking', 'settling'].includes(m?.phase) || m?.running === true || getMining?.()?.phase === 'mining' }
+    if (busy()) throw Object.assign(new Error('Storage route preview is waiting for the current movement or mining'), { code: 'BUSY' })
+    const goal = storage?.stand
+    if (!goal || !['x', 'y', 'z'].every(k => Number.isSafeInteger(goal[k]))) return { ready: false, reason: 'STORAGE_STAND_UNKNOWN', serverConfirmed: false }
+    const route = Array.isArray(path) && path.length ? path : [goal]
+    if (route.length > 24000 || !same(route.at(-1), goal) || route.some(p => !p || !['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])) || travel && travel(p) !== true)) return { ready: false, reason: 'STORAGE_PATH_NOT_PERMITTED', serverConfirmed: false }
+    const origin = cellOf(getState())
+    if (same(origin, goal)) return { ready: true, predictionOnly: true, serverConfirmed: false, target: goal }
+    const index = route.findIndex(p => same(p, origin))
+    if (path?.length && index < 0) throw Object.assign(new Error('Storage path origin changed before preview'), { code: 'BUSY' })
+    const start = Math.max(0, index)
+    let span = Math.min(segmentCells, route.length - 1 - start)
+    const preview = typeof previewStorageRoute === 'function' ? previewStorageRoute : (target, options) => movement.preview(target, options)
+    let reason = null
+    do {
+      const target = span > 0 ? route[start + span] : goal
+      const result = await preview(centre(target), { allowWater: false })
+      aborted(signal)
+      if (busy() || !same(cellOf(getState()), origin)) throw Object.assign(new Error('Storage route preview origin or owner changed'), { code: 'BUSY' })
+      if (result?.ready === true) return { ready: true, predictionOnly: true, serverConfirmed: false, target, segmentCells: Math.max(1, span) }
+      reason = result?.reason ?? result?.errors?.join(' / ') ?? 'No ready normal movement route'
+      if (span <= 1) break
+      span = span > 2 ? Math.floor(span / 2) : span - 1
+    } while (span >= 1)
+    return { ready: false, reason, predictionOnly: true, serverConfirmed: false }
   }
 
   // Break-time watchdog. The server decides how long a block takes from the
@@ -108,7 +167,7 @@ function createQuarryRuntimeAdapter (ports) {
     return Object.assign(new Error(`quarry mine: block ${t.x},${t.y},${t.z} took ${elapsed}ms (limit ${limit}ms) with ${getState()?.heldItem?.name ?? 'nothing'} in hand`), { code: 'SLOW_BREAK', elapsedMs: elapsed, limitMs: limit })
   }
 
-  const toTarget = t => ({ x: t.x, y: t.y, z: t.z, accessPreparation: 'quarry', expectedName: t.expectedName, expectedRuntimeId: t.expectedRuntimeId ?? null, requiredTool: t.requiredTool ?? null })
+  const toTarget = t => ({ x: t.x, y: t.y, z: t.z, accessPreparation: t.accessPreparation ?? 'quarry', expectedName: t.expectedName, expectedRuntimeId: t.expectedRuntimeId ?? null, requiredTool: t.requiredTool ?? null, ...(t.expectedProperties != null ? { expectedProperties: structuredClone(t.expectedProperties) } : {}), ...(t.fluidSource ? { fluidSource: structuredClone(t.fluidSource) } : {}) })
   const isAir = t => { const b = getBlock(t.x, t.y, t.z); return b?.known && AIR.has(nameOf(b)) }
 
   // Only an unsettled arrival can improve merely by waiting. A changed block,
@@ -154,7 +213,7 @@ function createQuarryRuntimeAdapter (ports) {
       aborted(signal)
       const b = getBlock(t.x, t.y, t.z)
       if (b?.known && AIR.has(nameOf(b))) continue
-      const target = { x: t.x, y: t.y, z: t.z, accessPreparation: 'quarry', expectedName: t.expectedName, expectedRuntimeId: t.expectedRuntimeId ?? null, requiredTool: t.requiredTool ?? null }
+      const target = toTarget(t)
       // Right after a move the pose may not be confirmed still and grounded
       // yet; give the preview a short settle window before failing.
       const preview = await previewMining([target], signal, 150, previewDeadline)
@@ -206,8 +265,10 @@ function createQuarryRuntimeAdapter (ports) {
   }
 
   return {
+    ...(typeof userControlInterruption === 'function' ? { userControlInterruption: () => userControlInterruption() } : {}),
     getState,
     getBlock,
+    ...(typeof requestTerrain === 'function' ? { requestTerrain: (request, options) => requestTerrain(request, options) } : {}),
     ...(typeof worldRevision === 'function' ? { worldRevision: () => worldRevision() } : {}),
     // Hostiles and projectiles for the post-combat settle check (§9.4).
     actors: () => entities().filter(e => e.kind !== 'item' && e.positionKnown !== false && e.position),
@@ -216,6 +277,7 @@ function createQuarryRuntimeAdapter (ports) {
     moveTo: (stance, options) => walk(stance, options),
     escape: (cell, options) => walk(cell, { ...options, path: [cell] }),
     goToStorage: (st, options) => walk(st.stand, options),
+    previewStorage,
     equip: slot => equip(slot),
     ...(typeof prepareMining === 'function' ? { prepareMining: (tool, options) => prepareMining(tool, options) } : {}),
     place,
@@ -229,6 +291,13 @@ function createQuarryRuntimeAdapter (ports) {
     resyncInventory: options => typeof resyncInventory === 'function' ? resyncInventory(options) : false,
     deposit,
     ...(typeof storeCarried === 'function' ? { storeCarried: (request, options) => storeCarried(request, options) } : {}),
+    ...(typeof restockSupplies === 'function' ? { restockSupplies: (request, options) => restockSupplies(request, options) } : {}),
+    ...(typeof discoverSupplies === 'function' ? { discoverSupplies: () => discoverSupplies() } : {}),
+    ...(typeof reconcileSupplyPlacement === 'function' ? { reconcileSupplyPlacement: (request, options) => reconcileSupplyPlacement(request, options) } : {}),
+    ...(typeof reconcileCarriedPlacement === 'function' ? { reconcileCarriedPlacement: (request, options) => reconcileCarriedPlacement(request, options) } : {}),
+    ...(typeof reconcileRejectedDeposit === 'function' ? { reconcileRejectedDeposit: (request, options) => reconcileRejectedDeposit(request, options) } : {}),
+    ...(typeof reconcileObservedPlacement === 'function' ? { reconcileObservedPlacement: (request, options) => reconcileObservedPlacement(request, options) } : {}),
+    ...(typeof egress === 'function' ? { egress: (request, options) => egress(request, options) } : {}),
     // One more storage chest at the first workable candidate cell (a carried
     // chest, or one crafted from carried wood). Returns { ok, position } or
     // { ok: false, reason }.

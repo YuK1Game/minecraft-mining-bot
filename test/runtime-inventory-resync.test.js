@@ -36,7 +36,7 @@ test('explicit resync at unknown inventory sends one content-free request and do
  assert.equal(f.runtime.operations.inventory.resyncStatus().status,'REQUEST_SENT')
 })
 
-test('rate20sec and maximum3 requests per actual life persist across Runtime recreation and dimension changes',async t=>{
+test('rate20sec and three unconfirmed attempts per retry window persist across Runtime recreation and dimension changes',async t=>{
  const f=fixture(t);f.runtime.operations.inventory.resync();assert.throws(()=>f.runtime.operations.inventory.resync(),e=>e.code==='RESYNC_RATE_LIMIT')
  f.setTime(120000);f.raw.dimension='nether';f.runtime.operations.inventory.resync();assert.equal(f.host.shared.inventoryResync.count,2)
  await f.runtime.dispose('hot reload unit');const next=f.create();f.setTime(140000);next.operations.inventory.resync();assert.equal(f.host.shared.inventoryResync.count,3)
@@ -79,7 +79,7 @@ test('a fresh baseline after a different life is normal Host recovery but not co
  f.runtime.applyPacket('inventory_content',structuredClone(sample.freshMain));assert.equal(f.host.shared.inventoryUncertain,null);assert.equal(f.runtime.operations.inventory.resyncStatus().freshMainObserved,false)
 })
 
-test('automatic NoLogout resync waits 0.5sec, respects ownership and shares the same rate/life budget',t=>{
+test('automatic NoLogout resync waits 0.5sec, respects ownership and shares the bounded retry window',t=>{
  const f=fixture(t);f.host.shared.autoWanted=true;f.host.shared.inventoryUncertain.at=f.time()-300;f.advance(50);assert.equal(f.packets().length,0)
  f.setTime(101500);f.host.shared.testFoodBusy=true;f.advance(50);assert.equal(f.packets().length,0)
  f.host.shared.testFoodBusy=false;f.advance(50);assert.equal(f.packets().length,1);assert.equal(f.runtime.operations.inventory.resyncStatus().source,'automatic');assert.ok(f.host.shared.inventoryUncertain)
@@ -87,10 +87,78 @@ test('automatic NoLogout resync waits 0.5sec, respects ownership and shares the 
  f.setTime(121500);f.advance(50);assert.equal(f.packets().length,2)
  f.setTime(141500);f.advance(50);assert.equal(f.packets().length,3)
  f.setTime(181500);f.advance(500);assert.equal(f.packets().length,3)
+ f.setTime(221500);f.advance(50);assert.equal(f.packets().length,4);assert.equal(f.host.shared.inventoryResync.count,1)
 })
 
 test('manual stopped agent never triggers automatic resync; malformed uncertain age and read-only snapshots cannot send',t=>{
  const f=fixture(t);f.host.shared.autoWanted=false;f.advance(1000);f.runtime.snapshot();f.runtime.operations.inventory.resyncStatus();assert.equal(f.packets().length,0)
  f.host.shared.autoWanted=true;f.host.shared.inventoryUncertain.at='unknown';f.advance(1000);assert.equal(f.packets().length,0)
  f.runtime.operations.inventory.resync();assert.equal(f.packets().length,1)
+})
+
+test('each genuine fresh full-main receipt resets the consecutive budget while preserving the20sec cooldown',t=>{
+ const f=fixture(t),keys=[]
+ for(let i=0;i<5;i++){
+  f.setTime(100000+i*20000);f.runtime.operations.inventory.resync()
+  assert.equal(f.host.shared.inventoryResync.count,1)
+  f.runtime.applyPacket('inventory_content',structuredClone(sample.freshMain))
+  assert.equal(f.runtime.operations.inventory.resyncStatus().status,'FRESH_MAIN_OBSERVED')
+  assert.equal(f.host.shared.inventoryResync.count,0)
+  keys.push(f.host.shared.inventoryResync.lastSuccessResetKey)
+  assert.throws(()=>f.runtime.operations.inventory.resync(),e=>e.code==='RESYNC_RATE_LIMIT')
+ }
+ assert.equal(f.packets().length,5)
+ assert.equal(new Set(keys).size,5,'every reset belongs to a different requestedAt/full-count correlation')
+})
+
+test('three unanswered attempts recover only after their120sec window without changing inventory authority',t=>{
+ const f=fixture(t),uncertain=f.host.shared.inventoryUncertain
+ for(const time of [100000,120000,140000]){f.setTime(time);f.runtime.operations.inventory.resync()}
+ f.setTime(219999);assert.throws(()=>f.runtime.operations.inventory.resync(),e=>e.code==='RESYNC_LIFE_LIMIT')
+ assert.equal(f.packets().length,3)
+ assert.strictEqual(f.host.shared.inventoryUncertain,uncertain)
+ f.setTime(220000);f.runtime.operations.inventory.resync()
+ assert.equal(f.packets().length,4);assert.equal(f.host.shared.inventoryResync.count,1)
+ assert.equal(f.host.shared.inventoryResync.retryWindowStartedAt,220000)
+ assert.strictEqual(f.host.shared.inventoryUncertain,uncertain)
+ assert.equal(f.runtime.operations.inventory.resyncStatus().freshMainObserved,false)
+})
+
+test('an already-used old fresh success cannot reset later failed attempts again',t=>{
+ const f=fixture(t)
+ f.runtime.operations.inventory.resync();f.runtime.applyPacket('inventory_content',structuredClone(sample.freshMain))
+ const oldSuccess=structuredClone(f.host.shared.inventoryResync.lastRequest),resetKey=f.host.shared.inventoryResync.lastSuccessResetKey
+ for(const time of [120000,140000,160000]){f.setTime(time);f.runtime.operations.inventory.resync()}
+ assert.equal(f.host.shared.inventoryResync.count,3)
+ f.host.shared.inventoryResync.lastRequest=oldSuccess
+ f.setTime(180000);assert.throws(()=>f.runtime.operations.inventory.resync(),e=>e.code==='RESYNC_LIFE_LIMIT')
+ f.runtime.applyPacket('inventory_content',structuredClone(sample.freshMain))
+ assert.equal(f.host.shared.inventoryResync.count,3)
+ assert.equal(f.host.shared.inventoryResync.lastSuccessResetKey,resetKey)
+ assert.equal(f.packets().length,4)
+})
+
+test('a valid pre-fix fresh ledger normalizes its lifetime count once at the next request',t=>{
+ const f=fixture(t)
+ f.runtime.operations.inventory.resync();f.runtime.applyPacket('inventory_content',structuredClone(sample.freshMain))
+ const oldSuccess=structuredClone(f.host.shared.inventoryResync.lastRequest)
+ f.host.shared.inventoryResync.count=3;delete f.host.shared.inventoryResync.lastSuccessResetKey
+ f.setTime(120000);f.runtime.operations.inventory.resync()
+ assert.equal(f.host.shared.inventoryResync.count,1)
+ assert.ok(f.host.shared.inventoryResync.lastSuccessResetKey)
+ assert.equal(f.packets().length,2)
+ f.setTime(140000);f.runtime.operations.inventory.resync();f.setTime(160000);f.runtime.operations.inventory.resync()
+ f.host.shared.inventoryResync.lastRequest=oldSuccess
+ f.setTime(180000);assert.throws(()=>f.runtime.operations.inventory.resync(),e=>e.code==='RESYNC_LIFE_LIMIT')
+ assert.equal(f.host.shared.inventoryResync.count,3)
+})
+
+test('queue failure remains an unconfirmed attempt and does not clear uncertainty',t=>{
+ const f=fixture(t),uncertain=f.host.shared.inventoryUncertain
+ f.host.client.queue=()=>{throw new Error('queue unavailable')}
+ for(const time of [100000,120000,140000]){f.setTime(time);assert.throws(()=>f.runtime.operations.inventory.resync(),/queue unavailable/)}
+ assert.equal(f.host.shared.inventoryResync.count,3)
+ assert.equal(f.runtime.operations.inventory.resyncStatus().status,'QUEUE_FAILED')
+ assert.strictEqual(f.host.shared.inventoryUncertain,uncertain)
+ f.setTime(160000);assert.throws(()=>f.runtime.operations.inventory.resync(),e=>e.code==='RESYNC_LIFE_LIMIT')
 })

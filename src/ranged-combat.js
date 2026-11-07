@@ -23,6 +23,11 @@ const id = (value, signed = false) => {
   try { const n = BigInt(value); return n >= (signed ? -(1n << 63n) : 0n) && n < (1n << (signed ? 63n : 64n)) ? String(n) : null } catch { return null }
 }
 const validRaw = raw => raw && Number.isInteger(raw.network_id) && raw.network_id >= -32768 && raw.network_id <= 32767 && Number.isInteger(raw.count) && (raw.network_id === 0 ? raw.count === 0 : raw.count > 0 && raw.has_stack_id === true && Number.isInteger(raw.stack_id) && raw.stack_id > 0 && raw.stack_id <= 2147483647)
+const logBinding = (state, target) => ({
+  runtimeId: id(target.runtimeId), uniqueId: id(target.uniqueId, true),
+  scope: { connectionId: String(state.connectionId).slice(0, 120), startedAt: String(state.startedAt).slice(0, 80), dimension: state.dimension, selfRuntimeId: id(state.runtimeEntityId) },
+  life: state.lifecycle?.deathId ?? state.deathId ?? null
+})
 function failure (message, code) { return Object.assign(new Error(message), { code }) }
 
 function confirmedInfinity (raw, infinity) {
@@ -295,12 +300,13 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
     await waitFor(r, () => shot.startSent !== null && clock() - shot.startedAt >= fullDrawMs && input.stats().sent >= shot.startSent + fullDrawTicks, 4000, revalidate)
     const latest = revalidate(); assertRun(r)
     shot.released = true; shot.phase = 'awaiting_fire'; shot.aim = latest.aim; shot.releaseRevision = inventoryRevision; shot.releasedAt = clock(); lastRelease = clock(); r.shotsRequested++
+    shot.target = copy(latest.target); shot.logContext = logBinding(latest.state, latest.target); shot.number = r.shotsRequested; r.lastReleasedShot = shot
     // Ammo baseline at release: the previous arrow's inventory delta has long
     // arrived during this 1s draw.
     // Only while an earlier arrow is still unconfirmed: its delta may land
     // after this draw started. Otherwise the draw-start count is the baseline.
     if (r.pending.length) { try { shot.arrows = inventory().arrows } catch { /* keep the draw-start count */ } }
-    try { log(`矢を発射: target=${String(latest.target.entityType).replace('minecraft:', '')} distance=${distance(latest.state.position, latest.target.position).toFixed(1)}m aim=${latest.aim.mode ?? latest.aim.aimMode ?? '?'} shot=${r.shotsRequested} draw=${Math.round(shot.releasedAt - shot.startedAt)}ms`) } catch { /* Logging only. */ }
+    try { log(`矢を発射: target=${String(latest.target.entityType).replace('minecraft:', '')} distance=${distance(latest.state.position, latest.target.position).toFixed(1)}m aim=${latest.aim.mode ?? latest.aim.aimMode ?? '?'} shot=${r.shotsRequested} draw=${Math.round(shot.releasedAt - shot.startedAt)}ms context=${JSON.stringify(logBinding(latest.state, latest.target))}`) } catch { /* Logging only. */ }
     client.queue('inventory_transaction', { transaction: { legacy: { legacy_request_id: 0, legacy_transactions: null }, transaction_type: 'item_release', actions: [], transaction_data: { action_type: 'release', hotbar_slot: shot.slot, held_item: copy(currentBow(latest)), head_pos: copy(latest.state.position), hand: 'main_hand' } } })
     // Confirmation (own arrow spawn + ammo delta) runs in parallel: the next
     // draw starts right away instead of waiting ~100ms for the server echo.
@@ -431,8 +437,11 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
   // the target's horizontal distance relative to the target body centre
   // (dy = high/low, side = right/left of the line of fire, + = right).
   function trackMiss (r, shot, candidate) {
-    const origin = copy(candidate.origin), targetId = r.target.runtimeId, startedAt = clock(), aim = shot.aim
-    const bodyY = String(r.target.entityType).includes('spider') ? 0.45 : 0.9
+    const origin = copy(candidate.origin), targetId = (shot.target ?? r.target).runtimeId, startedAt = clock(), aim = shot.aim
+    // The drawn bow can retarget while an earlier arrow is still flying.
+    // Keep that arrow's diagnostic bound to its original observed target.
+    const targetBinding = copy(shot.target ?? r.target), binding = copy(shot.logContext ?? logBinding(getState(), targetBinding))
+    const bodyY = String(targetBinding.entityType).includes('spider') ? 0.45 : 0.9
     let last = null, prev = null, polls = 0, still = 0
     const timer = setInterval(() => {
       try {
@@ -440,7 +449,9 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
         const all = typeof entities.get === 'function' ? null : entities.snapshot({ kind: 'all' })
         const arrow = all ? all.find(e => e.runtimeId === candidate.runtimeId) : entities.get(candidate.runtimeId)
         const target = all ? all.find(e => e.runtimeId === targetId) : entities.get(targetId)
-        const done = reason => { clearInterval(timer); if (!last) return; try { log(`矢の誤差: target=${String(r.target.entityType).replace('minecraft:', '')} distance=${last.dt.toFixed(1)}m dy=${last.dy.toFixed(2)} side=${last.side.toFixed(2)} along=${last.along.toFixed(2)} lead=${aim?.lead ? Math.hypot(aim.lead.x, aim.lead.z).toFixed(3) : '0'} by=${reason}`) } catch {} }
+        const done = reason => { clearInterval(timer); if (!last) return; try { log(`矢の誤差: target=${String(targetBinding.entityType).replace('minecraft:', '')} distance=${last.dt.toFixed(1)}m dy=${last.dy.toFixed(2)} side=${last.side.toFixed(2)} along=${last.along.toFixed(2)} lead=${aim?.lead ? Math.hypot(aim.lead.x, aim.lead.z).toFixed(3) : '0'} by=${reason} context=${JSON.stringify({ ...binding, arrowRuntimeId: id(candidate.runtimeId) })}`) } catch {} }
+        if (scopeOf(getState()) !== r.scope) return done('scope_changed')
+        if (target && id(target.uniqueId, true) !== id(targetBinding.uniqueId, true)) return done('target_changed')
         if (!arrow || !target || !finite(arrow.position) || !finite(target.position)) return done('lost')
         const a = arrow.position, t = { ...target.position, y: target.position.y + bodyY }
         const da = Math.hypot(a.x - origin.x, a.z - origin.z), dt = Math.hypot(t.x - origin.x, t.z - origin.z)
@@ -530,13 +541,16 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
       // another shootable hostile within range; with none, cancel the draw so
       // no arrow is spent.
       const next = r.shot && r.shot.startSent != null && !r.shot.released ? retargetCandidate(r) : null
-      if (next) { r.kills = (r.kills ?? 0) + 1; r.retargets = (r.retargets ?? 0) + 1; try { log(`引き絞りを保ったまま標的を切替: ${String(r.target.entityType).replace('minecraft:', '')} → ${String(next.entityType).replace('minecraft:', '')}`) } catch {} r.target = next; return }
+      if (next) { r.kills = (r.kills ?? 0) + 1; r.retargets = (r.retargets ?? 0) + 1; try { log(`引き絞りを保ったまま標的を切替: ${String(r.target.entityType).replace('minecraft:', '')} → ${String(next.entityType).replace('minecraft:', '')} context=${JSON.stringify({ ...logBinding(getState(), r.target), nextRuntimeId: id(next.runtimeId), nextUniqueId: id(next.uniqueId, true) })}`) } catch {} r.target = next; return }
       r.terminal = { dead: true, by }; cancelDraw(r); r.controller.abort(); return
     }
     if (name === 'remove_entity' && id(packet.entity_id_self, true) === id(r.target.uniqueId, true)) { r.terminal = { dead: false, removed: true, by: 'server_remove_unique_id' }; cancelDraw(r); r.controller.abort(); return }
     if ((name === 'mob_equipment' && id(packet.runtime_entity_id) === id(getState().runtimeEntityId) || name === 'player_hotbar') && inventoryWindow(packet.window_id) && packet.selected_slot === r.cancelSlot) r.cleanupUnconfirmed = false
-    if (name === 'entity_event' && id(packet.runtime_entity_id) === id(r.target.runtimeId) && ['hurt_animation', 2].includes(packet.event_id) && clock() - lastRelease <= 3000) {
-      try { log(`矢が命中: target=${String(r.target.entityType).replace('minecraft:', '')} +${Math.round(clock() - lastRelease)}ms after shot ${r.shotsRequested}`) } catch {}
+    const released = r.lastReleasedShot
+    if (bound && released?.released && released.scope === r.scope && id(released.target?.runtimeId) === id(r.target.runtimeId) && id(released.target?.uniqueId, true) === id(r.target.uniqueId, true) && name === 'entity_event' && id(packet.runtime_entity_id) === id(r.target.runtimeId) && ['hurt_animation', 2].includes(packet.event_id) && clock() - released.releasedAt >= 0 && clock() - released.releasedAt <= 3000) {
+      // A hurt event identifies the target, not the projectile or attacker.
+      // It is evidence of damage after a shot, never an attributed bow hit.
+      try { log(`射撃後の標的ダメージ: target=${String(r.target.entityType).replace('minecraft:', '')} +${Math.round(clock() - released.releasedAt)}ms after shot ${released.number} context=${JSON.stringify({ ...released.logContext, damageSource: 'unknown', hitConfirmed: false })}`) } catch {}
     }
     if (r.shot && !r.shot.released && r.shot.startSent != null && name === 'set_entity_data' && id(packet.runtime_entity_id) === id(getState().runtimeEntityId)) {
       const flags = (packet.metadata ?? []).find(e => e?.key === 'flags' || e?.key === 0)?.value

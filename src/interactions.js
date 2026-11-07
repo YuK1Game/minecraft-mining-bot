@@ -1,8 +1,10 @@
 'use strict'
 
 const { isDeepStrictEqual } = require('node:util')
+const { serialize } = require('node:v8')
 const { resourceMinHealth } = require('./learning-health')
 const { SHULKER_BLOCKS } = require('./container-types')
+const { interactionSightError, sightPassable } = require('./interaction-sight')
 
 const { stationVisibleFace } = require('./action-access')
 const { bedVisibleFace, bedFingerprint, BED_HEIGHT } = require('./portable-bed')
@@ -14,6 +16,7 @@ const PLACEABLE = new Set(['minecraft:crafting_table', 'minecraft:furnace', 'min
 const GROUND = new Set(['dirt', 'grass_block', 'coarse_dirt', 'rooted_dirt', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite'].map(name => `minecraft:${name}`))
 const CONTAINERS = { chest: { blocks: ['minecraft:chest', ...SHULKER_BLOCKS], types: ['container', 0] }, shulker: { blocks: SHULKER_BLOCKS, types: ['container', 0] }, workbench: { blocks: ['minecraft:crafting_table'], types: ['workbench', 1] }, furnace: { blocks: ['minecraft:furnace', 'minecraft:lit_furnace'], types: ['furnace', 2] } }
 const FACE = [{ x: 0, y: -1, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: -1 }, { x: 0, y: 0, z: 1 }, { x: -1, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }]
+const OBSERVATION_PACKETS = new Set(['respawn', 'update_attributes', 'set_health', 'death_info', 'entity_event', 'correct_player_move_prediction', 'server_post_move', 'set_player_game_type', 'update_player_game_type', 'update_block', 'update_subchunk_blocks', 'inventory_content', 'inventory_slot', 'item_stack_response', 'container_open', 'container_close'])
 const emptyExtra = () => ({ has_nbt: 'false', can_place_on: [], can_destroy: [] })
 const airItem = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: emptyExtra() })
 const samePosition = (a, b) => a && b && a.x === b.x && a.y === b.y && a.z === b.z
@@ -32,7 +35,6 @@ function placedBlockMatches (block, expected) {
   if (expected === 'minecraft:torch') return block.name === expected && block.boundingBox === 'empty' && !block.extra?.length && block.properties?.torch_facing_direction === 'top'
   return block.name === expected || expected === 'minecraft:furnace' && block.name === 'minecraft:lit_furnace'
 }
-const sightPassable = block => block?.known === true && !block.extra?.length && (AIR.has(block.name) || block.name === 'minecraft:torch' && block.boundingBox === 'empty')
 function overlapsPlayer (block, position, conservative = false) {
   const bottom = position.y - 1.62
   const top = conservative ? position.y + 1.8 : bottom + 1.8
@@ -49,6 +51,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
   let pending = null
   let selected = { requestedSlot: null, confirmedSlot: null }
   let lastResult = null
+  let ownRuntimeId = null
 
   function notifyUncertain (request, reason) {
     if (request.kind !== 'place' || !request.wireSent || request.serverRejected || request.serverConfirmed || request.uncertaintyNotified) return
@@ -58,6 +61,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
 
   function session (bedOnly = false) {
     const state = getState()
+    ownRuntimeId = state.runtimeEntityId == null ? null : String(state.runtimeEntityId)
     if (state.dead === true || state.isDead === true || state.health === 0 || state.phase === 'dead') throw new Error('死亡状態では設置・使用操作できません。')
     if (state.phase !== 'spawned' || !finitePosition(state.position)) throw new Error('ワールドへの参加と位置取得が必要です。')
     if (state.gameMode !== 'survival' && state.gameMode !== 0) throw new Error('サバイバルモード専用です。')
@@ -84,16 +88,8 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
   }
   function lineOfSight (point, clicked, bedOnly = false) {
     const eye = session(bedOnly).position
-    const distance = Math.hypot(point.x - eye.x, point.y - eye.y, point.z - eye.z)
-    if (distance > 4.5) throw new Error('操作対象が手の届く範囲外です。')
-    const steps = Math.max(1, Math.ceil(distance / 0.05))
-    for (let step = 0; step < steps; step++) {
-      const ratio = step / steps
-      const pos = { x: Math.floor(eye.x + (point.x - eye.x) * ratio), y: Math.floor(eye.y + (point.y - eye.y) * ratio), z: Math.floor(eye.z + (point.z - eye.z) * ratio) }
-      if (samePosition(pos, clicked)) continue
-      const block = world.getBlock(pos.x, pos.y, pos.z)
-      if (!sightPassable(block)) throw new Error('操作対象への視線が遮られているか、未取得です。')
-    }
+    const error = interactionSightError(pos => world.getBlock(pos.x, pos.y, pos.z), eye, point, clicked)
+    if (error) throw new Error(error)
   }
   function placementPlan ({ position, slot, face, alignFacing = false }, requiredBlock = null) {
     if (typeof alignFacing !== 'boolean') throw new Error('設置前の向き合わせは真偽値で指定してください。')
@@ -277,7 +273,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     if (plan.blockRuntimeId !== request.plan.blockRuntimeId || !isDeepStrictEqual(plan.raw, request.plan.raw)) throw new Error('向き合わせ中に設置面または持ち物が変わりました。')
     sendRequest(request)
   }
-  function check () {
+  function check (sourceReceiptObserved = false) {
     if (!pending) return
     try {
       const state = session(pending.plan.expectedBlock === 'minecraft:bed' && ['place', 'bed_use'].includes(pending.kind))
@@ -287,13 +283,39 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
           if (pending.plan.alignFacing) checkAlignment(pending, state)
           return
         }
-        if (crafting.snapshot().inventoryKnown === false || state.inventory?.known === false) throw new Error('設置結果の持ち物が不明になりました。')
+        const inventory = crafting.snapshot()
+        if (inventory.inventoryKnown === false || state.inventory?.known === false) throw new Error('設置結果の持ち物が不明になりました。')
         const block = world.getBlock(pending.plan.target.x, pending.plan.target.y, pending.plan.target.z)
         const raw = crafting.rawItem(pending.plan.slot)
-        const consumed = validItem(raw) && (raw.network_id === 0 && raw.count === 0 && pending.plan.raw.count === 1 || raw.network_id === pending.plan.raw.network_id && raw.count === pending.plan.raw.count - 1)
-        if (block.known && placedBlockMatches(block, pending.plan.expectedBlock) && consumed) {
+        let consumed = validItem(raw) && (raw.network_id === 0 && raw.count === 0 && pending.plan.raw.count === 1 || raw.network_id === pending.plan.raw.network_id && raw.count === pending.plan.raw.count - 1)
+        const observedAt = Date.now(), singleBox = pending.plan.raw.count === 1 && SHULKER_BLOCKS.includes(pending.plan.expectedBlock)
+        const blockMatches = block?.known === true && placedBlockMatches(block, pending.plan.expectedBlock)
+        if (singleBox) {
+          if (inventory.inventoryKnown !== true || state.inventory?.known !== true || state.inventory.uncertain) throw new Error('設置結果の持ち物が不明になりました。')
+          if (blockMatches) pending.blockObservedAt ??= observedAt
+          else pending.blockObservedAt = null
+          if (pending.sourceConsumption || consumed) {
+            const main = Array.from({ length: 36 }, (_, slot) => crafting.rawItem(slot))
+            if (main.some(item => validItem(item) && item.count > 0 && item.stack_id === pending.plan.raw.stack_id)) throw new Error('設置元のシュルカーボックスが持ち物に戻ったため確認を停止しました。')
+            if (main.some(item => !validItem(item)) || !validItem(raw)) return
+            const heldName = raw.network_id === 0 ? null : crafting.itemNameOf?.(raw.network_id) ?? inventory.inventory?.find(item => item.slot === pending.plan.slot && item.stackId === raw.stack_id && item.count === raw.count)?.name
+            if (raw.count > 0 && (raw.network_id === pending.plan.raw.network_id || SHULKER_BLOCKS.includes(heldName))) throw new Error('設置元のスロットに別のシュルカーボックスがあるため確認を停止しました。')
+            if (raw.count > 0 && typeof heldName !== 'string') return
+          }
+          // Empty is retained only after this request was sent, in this scope.
+          // A different item alone never establishes consumption.
+          if (consumed && sourceReceiptObserved === true && !pending.sourceConsumption) pending.sourceConsumption = { requestId: pending.id, scope: pending.scope, slot: pending.plan.slot, sourceBefore: serialize(pending.plan.raw).toString('base64'), sourceAfter: serialize(raw).toString('base64'), observedAt }
+          const witness = pending.sourceConsumption
+          consumed = witness?.requestId === pending.id && witness.scope === pending.scope && witness.slot === pending.plan.slot
+        }
+        if (blockMatches && consumed) {
           selected.confirmedSlot = pending.plan.slot
-          finish({ phase: 'completed', operation: 'place', position: pending.plan.target, blockName: block.name, expectedBlock: pending.plan.expectedBlock, confirmedBy: 'server_block_and_inventory' })
+          // Preserve what was actually observed now. A later ordinary pickup
+          // can fill this slot before the caller resumes its promise.
+          const life = state.lifecycle?.deathId ?? state.deathId ?? null
+          const witness = singleBox ? pending.sourceConsumption : null
+          const placementObservation = { version: 1, scope: { profile: state.profile ?? null, realmId: state.realm?.id == null ? null : String(state.realm.id), dimension: state.dimension, connectionId: state.connectionId ?? null, startedAt: state.startedAt ?? null, runtimeEntityId: state.runtimeEntityId == null ? null : String(state.runtimeEntityId), life }, life, requestId: pending.id, slot: pending.plan.slot, rawEncoding: 'v8-base64', sourceBefore: witness?.sourceBefore ?? serialize(pending.plan.raw).toString('base64'), sourceAfter: witness?.sourceAfter ?? serialize(raw).toString('base64'), sourceObservedAt: witness?.observedAt ?? observedAt, blockObservedAt: singleBox ? pending.blockObservedAt : observedAt, targetBlock: { position: copy(pending.plan.target), name: block.name, runtimeId: block.runtimeId }, transactionQueued: pending.transactionQueued === true, wireSent: pending.wireSent === true, observedAt }
+          finish({ phase: 'completed', operation: 'place', position: pending.plan.target, blockName: block.name, expectedBlock: pending.plan.expectedBlock, requestId: pending.id, placementObservation, confirmedBy: 'server_block_and_inventory' })
         }
       }
     } catch (error) { cancel(error.message) }
@@ -328,7 +350,35 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     })
   }
   function applyPacket (name, packet) {
-    const state = getState()
+    let sourceReceiptObserved = false
+    if (name === 'start_game' || name === 'change_dimension' || name === 'disconnect') {
+      cancel('接続・次元が変わりました。'); players.clear(); selected = { requestedSlot: null, confirmedSlot: null }
+      ownRuntimeId = name === 'start_game' && packet.runtime_entity_id != null ? String(packet.runtime_entity_id) : null
+      return
+    }
+    // Player occupancy and our own equipment echoes need only small cached
+    // identities. Never build the full inventory/world snapshot for chunk or
+    // unrelated mob traffic, including while a placement is pending.
+    if (name === 'add_player') {
+      if (ownRuntimeId == null) { const state = getState(); ownRuntimeId = state.runtimeEntityId == null ? null : String(state.runtimeEntityId) }
+      if (String(packet.runtime_id) !== ownRuntimeId && finitePosition(packet.position)) players.set(String(packet.runtime_id), { uniqueId: String(packet.unique_id), position: copy(packet.position) })
+      return
+    }
+    if (name === 'remove_entity') {
+      for (const [id, player] of players) if (player.uniqueId === String(packet.entity_id_self)) players.delete(id)
+      return
+    }
+    if (name === 'move_player') {
+      if (players.has(String(packet.runtime_id)) && finitePosition(packet.position)) players.get(String(packet.runtime_id)).position = copy(packet.position)
+      if (!pending || packet.runtime_id != null && ownRuntimeId != null && String(packet.runtime_id) !== ownRuntimeId) return
+    } else if (name === 'mob_equipment') {
+      if (ownRuntimeId == null || String(packet.runtime_entity_id) !== ownRuntimeId) return
+      if (!pending && selected.requestedSlot == null) return
+    } else if (name !== 'player_hotbar') {
+      if (!pending || !OBSERVATION_PACKETS.has(name)) return
+      const actor = ['update_attributes', 'entity_event', 'respawn', 'update_player_game_type'].includes(name) ? packet.runtime_entity_id : null
+      if (actor != null && ownRuntimeId != null && String(actor) !== ownRuntimeId) return
+    }
     if (pending) {
       try {
         const current = session(pending.plan.expectedBlock === 'minecraft:bed' && ['place', 'bed_use'].includes(pending.kind))
@@ -339,11 +389,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
         }
       } catch (error) { cancel(error.message) }
     }
-    if (name === 'start_game' || name === 'change_dimension') { cancel('接続・次元が変わりました。'); players.clear(); selected = { requestedSlot: null, confirmedSlot: null } }
-    if (name === 'add_player' && String(packet.runtime_id) !== state.runtimeEntityId && finitePosition(packet.position)) players.set(String(packet.runtime_id), { uniqueId: String(packet.unique_id), position: copy(packet.position) })
-    if (name === 'move_player' && players.has(String(packet.runtime_id)) && finitePosition(packet.position)) players.get(String(packet.runtime_id)).position = copy(packet.position)
-    if (name === 'remove_entity') for (const [id, player] of players) if (player.uniqueId === String(packet.entity_id_self)) players.delete(id)
-    if (name === 'mob_equipment' && String(packet.runtime_entity_id) === state.runtimeEntityId && inventoryWindow(packet.window_id) && packet.selected_slot === selected.requestedSlot) selected.confirmedSlot = packet.selected_slot
+    if (name === 'mob_equipment' && inventoryWindow(packet.window_id) && packet.selected_slot === selected.requestedSlot) selected.confirmedSlot = packet.selected_slot
     if (name === 'player_hotbar' && inventoryWindow(packet.window_id) && packet.selected_slot === selected.requestedSlot) selected.confirmedSlot = packet.selected_slot
     if (pending?.plan.alignFacing && !pending.wireSent && inventoryWindow(packet.window_id) && (name === 'player_hotbar' || name === 'mob_equipment' && String(packet.runtime_entity_id) === state.runtimeEntityId) && packet.selected_slot !== pending.plan.slot) cancel('向き合わせ中に選択スロットが変わりました。')
     if (name === 'item_stack_response' && pending?.kind === 'place') {
@@ -355,7 +401,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
           if (!['inventory', 'hotbar', 'hotbar_and_inventory', 12, 28, 29].includes(container.slot_type?.container_id) || container.slot_type?.dynamic_container_id != null) continue
           const slot = container.slots?.find(slot => slot.slot === request.plan.slot && slot.count === request.plan.raw.count - 1)
           if (!slot || slot.count > 0 && (!Number.isInteger(slot.item_stack_id) || slot.item_stack_id <= 0)) continue
-          try { publishItem(request.plan.slot, slot.count ? { ...copy(request.plan.raw), count: slot.count, has_stack_id: true, stack_id: slot.item_stack_id } : airItem()) } catch (error) { cancel(error.message); return }
+          try { publishItem(request.plan.slot, slot.count ? { ...copy(request.plan.raw), count: slot.count, has_stack_id: true, stack_id: slot.item_stack_id } : airItem()); sourceReceiptObserved = true } catch (error) { cancel(error.message); return }
         }
       }
     }
@@ -363,7 +409,11 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
       selected.confirmedSlot = pending.plan.slot
       finish({ phase: 'completed', operation: 'open', position: pending.plan.target, windowId: packet.window_id, windowType: packet.window_type, blockName: pending.plan.expectedBlock, confirmedBy: 'server_container_open' })
     }
-    check()
+    if (pending?.kind === 'place' && pending.wireSent) {
+      const received = name === 'inventory_slot' && inventoryWindow(packet.window_id) && packet.slot === pending.plan.slot ? packet.item : name === 'inventory_content' && inventoryWindow(packet.window_id) && Array.isArray(packet.input) && packet.input.length === 36 ? packet.input[pending.plan.slot] : null
+      if (validItem(received) && isDeepStrictEqual(received, crafting.rawItem(pending.plan.slot))) sourceReceiptObserved = true
+    }
+    check(sourceReceiptObserved)
   }
   function previewPlace (options) {
     try { const plan = placementPlan(options); return { ready: true, position: plan.target, clicked: plan.clicked, face: plan.face, slot: plan.slot, expectedBlock: plan.expectedBlock } } catch (error) { return { ready: false, errors: [error.message] } }

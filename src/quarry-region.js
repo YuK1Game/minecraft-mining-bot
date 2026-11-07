@@ -65,6 +65,8 @@ function buildRegions ({ target, yTop = null, yBottom, worldMinY = -64, worldMax
   }
   const margin = boundarySeal?.horizontalMargin ?? 1
   if (!Number.isSafeInteger(margin) || margin < 0 || margin > 4) throw new Error('horizontalMargin must be 0..4')
+  if (boundarySeal?.closeOpenings === true && (boundarySeal.enabled === false || margin !== 1 || boundarySeal.material !== 'dirt' || boundarySeal.sourceOnly !== true)) throw new Error('Closing quarry openings requires the one-cell boundary, dirt and source-only fluid sealing')
+  if (boundarySeal?.sourceOnly === true && boundarySeal.material !== 'dirt') throw new Error('Source-only sealing requires dirt')
   const sealColumns = new Set()
   const sealEnabled = boundarySeal?.enabled !== false && margin > 0
   if (sealEnabled) {
@@ -89,7 +91,7 @@ function buildRegions ({ target, yTop = null, yBottom, worldMinY = -64, worldMax
     worldMinY,
     worldMaxY,
     columns,
-    seal: { enabled: sealEnabled, ready: sealReady, columns: sealColumns, yMin: bottom, yMax: sealReady ? Math.min(yTop + 1, worldMaxY) : null },
+    seal: { enabled: sealEnabled, ready: sealReady, columns: sealColumns, yMin: bottom, yMax: sealReady ? Math.min(yTop + 1, worldMaxY) : null, closeOpenings: boundarySeal?.closeOpenings === true, sourceOnly: boundarySeal?.sourceOnly === true, material: boundarySeal?.material ?? null },
     infrastructure: infrastructureRegion.map(normalizeBox),
     protected: protectedRegion.map(normalizeBox),
     travel: travelRegion.map(normalizeBox)

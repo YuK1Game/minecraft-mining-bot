@@ -102,7 +102,7 @@ function setup () {
   sim.give('diamond_pickaxe'); sim.give('iron_shovel'); sim.give('bread', 5); sim.give('cobblestone', 8)
   return sim
 }
-const cfg = { jobId: 'c', target: { chunks: [{ x: 0, z: 0 }] }, yBottom: 61, worldMinY: 50, worldMaxY: 90, inventory: { storage: [{ position: { x: -4, y: 63, z: -4 }, stand: { x: -3, y: 63, z: -4 } }] } }
+const cfg = { jobId: 'c', exit: { mode: 'legacy_stair' }, target: { chunks: [{ x: 0, z: 0 }] }, yBottom: 61, worldMinY: 50, worldMaxY: 90, inventory: { storage: [{ position: { x: -4, y: 63, z: -4 }, stand: { x: -3, y: 63, z: -4 } }] } }
 const until = async (fn, ms = 20000) => { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return; await new Promise(r => setTimeout(r, 5)) } throw new Error('condition timeout') }
 
 test('T19/T32/T37/T39 combat suspends work, settles 3s, waits for 90% HP, then replans', async () => {

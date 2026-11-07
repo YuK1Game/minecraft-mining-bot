@@ -14,14 +14,15 @@ const later = '2026-10-31T03:00:00.000Z'
 const live = () => ({ phase: 'spawned', health: 19, playerName: 'HouchiChan', position: { x: -39.5, y: 71.62, z: 24.43 }, positionSource: 'client_prediction', inventory: { known: true, items: [{ name: 'minecraft:dirt', count: 12 }] } })
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return { resolve, promise } }
 
-function fixture ({ seed = null, request = async () => live(), mission = null, writeFailure = false } = {}) {
+function fixture ({ seed = null, request = async () => live(), mission = null, writeFailure = false, readAsset = async () => { throw new Error('Asset unavailable') } } = {}) {
   const reads = []; const writes = []; const requests = []
   let now = at
   const dashboard = createDashboard({ workspaceRoot: path.resolve('dashboard-test-workspace'), clock: () => now,
     requestStatus: options => { requests.push(options); return request(options) },
     readJsonFile: async (filename, maximum) => { reads.push({ filename, maximum }); if (filename.endsWith('dashboard-last.json') && seed) return seed; if (filename.endsWith('mission-status.json') && mission) return mission; throw new Error('No saved file') },
     writeSnapshot: async (filename, value) => { if (writeFailure) throw new Error('Disk unavailable'); writes.push({ filename, value: structuredClone(value) }) },
-    readHtml: async filename => { reads.push({ filename }); return Buffer.from('<!doctype html><title>Bot progress</title>') }
+    readHtml: async filename => { reads.push({ filename }); return Buffer.from('<!doctype html><title>Bot progress</title>') },
+    readAsset: async (filename, maximum) => { reads.push({ filename, maximum, asset: true }); return readAsset(filename, maximum) }
   })
   return { dashboard, reads, writes, requests, setTime: value => { now = value } }
 }
@@ -29,7 +30,7 @@ function fixture ({ seed = null, request = async () => live(), mission = null, w
 async function call (dashboard, { method = 'GET', url = '/api/status', host = '127.0.0.1:3001', origin, fetchSite } = {}) {
   const result = { resumed: false }
   const request = { method, url, headers: { host, ...(origin === undefined ? {} : { origin }), ...(fetchSite ? { 'sec-fetch-site': fetchSite } : {}) }, resume: () => { result.resumed = true } }
-  const response = { writeHead: (status, headers) => { result.status = status; result.headers = headers }, end: body => { result.body = body?.toString('utf8') ?? ''; result.json = result.body.startsWith('{') ? JSON.parse(result.body) : null } }
+  const response = { writeHead: (status, headers) => { result.status = status; result.headers = headers }, end: body => { result.bodyBytes = body ? Buffer.from(body) : Buffer.alloc(0); result.body = result.bodyBytes.toString('utf8'); result.json = result.body.startsWith('{') ? JSON.parse(result.body) : null } }
   await dashboard.handler(request, response)
   return result
 }
@@ -112,7 +113,7 @@ test('single-flight polling returns the same pending task and read-only HTTP nev
   assert.equal(f.dashboard.snapshot().online, true)
 })
 
-test('saved public cache is offline/stale and mission descriptions cannot replace real player/items', async t => {
+test('saved public cache is offline/stale and old mission files have no authority or read path', async t => {
   const seed = sanitizeStatus(live(), { observedAt: at })
   const f = fixture({ seed, mission: { version: 1, work: { title: '石の採取を準備中', state: 'preparing', next: '石を5個集める' }, milestones: [{ id: 'diamond', label: 'ダイヤ', status: 'done' }], health: 20, inventory: [{ name: 'minecraft:diamond', count: 100 }], auth: { token: 'hidden' } } })
   t.after(() => f.dashboard.stop())
@@ -122,10 +123,12 @@ test('saved public cache is offline/stale and mission descriptions cannot replac
   assert.equal(status.online, false)
   assert.equal(status.health, 19)
   assert.equal(status.position.y, 70)
-  assert.equal(status.work.title, '石の採取を準備中')
-  assert.equal(status.milestones.find(row => row.id === 'diamond').status, 'pending')
+  assert.notEqual(status.work.title, '石の採取を準備中')
+  assert.equal(status.goal, 'quarry')
+  assert.deepEqual(status.milestones, [])
+  assert.notEqual(status.work.state, 'complete')
   assert.ok(!JSON.stringify(status).includes('hidden'))
-  assert.ok(f.reads.some(row => row.filename.endsWith('mission-status.json') && row.maximum === 64 * 1024))
+  assert.ok(!f.reads.some(row => row.filename.endsWith('mission-status.json')))
 })
 
 test('HTTP accepts only the exact local host/origin and GET/HEAD for its two fixed routes', async t => {
@@ -145,12 +148,105 @@ test('HTTP accepts only the exact local host/origin and GET/HEAD for its two fix
   }
   assert.equal((await call(f.dashboard, { url: '/' })).headers['Content-Type'], 'text/html; charset=utf-8')
   assert.equal((await call(f.dashboard, { url: '/', method: 'HEAD' })).body, '')
+  const oldLogs = await call(f.dashboard, { url: '/logs' })
+  assert.equal(oldLogs.status, 302)
+  assert.equal(oldLogs.headers.Location, '/#logs')
+  assert.equal((await call(f.dashboard, { url: '/logs', method: 'HEAD' })).body, '')
+  assert.equal((await call(f.dashboard, { url: '/logs.html' })).status, 404)
   assert.equal((await call(f.dashboard, { url: '/.auth/private' })).status, 404)
   assert.equal((await call(f.dashboard, { url: 'http://evil.test/' })).status, 400)
   assert.equal((await call(f.dashboard, { url: '//evil.test/' })).status, 400)
   assert.equal((await call(f.dashboard, { url: '/' + 'a'.repeat(2048) })).status, 400)
   assert.equal(f.requests.length, 0)
   assert.ok(f.reads.every(row => row.filename.endsWith('dashboard/index.html') || row.filename.endsWith('dashboard\\index.html')))
+})
+
+test('Minecraft manifest and PNG assets provide correct bytes, MIME, HEAD and bounded cache policy', async t => {
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5WQAAAAASUVORK5CYII=', 'base64')
+  const manifest = Buffer.from(JSON.stringify({ items: { iron_pickaxe: 'textures/items/iron_pickaxe.png' } }))
+  const f = fixture({ readAsset: async filename => filename.endsWith('manifest.json') ? manifest : png })
+  t.after(() => f.dashboard.stop())
+  for (const url of ['/assets/minecraft/textures/items/iron_pickaxe.png?v=abc123', '/assets/minecraft/textures/blocks/shulker_top.png']) {
+    const get = await call(f.dashboard, { url })
+    assert.equal(get.status, 200)
+    assert.equal(get.headers['Content-Type'], 'image/png')
+    assert.equal(get.headers['Content-Length'], png.length)
+    assert.match(get.headers['Cache-Control'], /(?:^|[, ])max-age=86400(?:$|[, ])/)
+    assert.equal(get.headers['X-Content-Type-Options'], 'nosniff')
+    assert.deepEqual(get.bodyBytes, png)
+    const head = await call(f.dashboard, { url, method: 'HEAD' })
+    assert.equal(head.status, 200)
+    assert.equal(head.headers['Content-Type'], 'image/png')
+    assert.equal(head.headers['Content-Length'], png.length)
+    assert.equal(head.bodyBytes.length, 0)
+  }
+  const get = await call(f.dashboard, { url: '/assets/minecraft/manifest.json' })
+  assert.equal(get.status, 200)
+  assert.equal(get.headers['Content-Type'], 'application/json; charset=utf-8')
+  assert.equal(get.headers['Cache-Control'], 'no-store')
+  assert.deepEqual(get.bodyBytes, manifest)
+  const head = await call(f.dashboard, { url: '/assets/minecraft/manifest.json', method: 'HEAD' })
+  assert.equal(head.status, 200)
+  assert.equal(head.headers['Content-Length'], manifest.length)
+  assert.equal(head.bodyBytes.length, 0)
+  assert.equal(f.reads.length, 6)
+  for (const read of f.reads) {
+    assert.equal(read.asset, true)
+    assert.equal(read.maximum, read.filename.endsWith('manifest.json') ? 2 * 1024 * 1024 : 512 * 1024)
+    const relative = path.relative(path.resolve('dashboard-test-workspace', 'dashboard/assets/minecraft'), read.filename)
+    assert.ok(relative && !relative.startsWith('..') && !path.isAbsolute(relative), read.filename)
+  }
+  assert.equal(f.requests.length, 0)
+})
+
+test('Minecraft asset routes reject mutations, foreign origins and non-allowlisted paths before reading files', async t => {
+  const f = fixture({ readAsset: async () => assert.fail('Rejected asset requests must not read a file') })
+  t.after(() => f.dashboard.stop())
+  for (const url of ['/assets/minecraft/manifest.json', '/assets/minecraft/textures/items/iron_pickaxe.png']) {
+    const post = await call(f.dashboard, { url, method: 'POST' })
+    assert.equal(post.status, 405)
+    assert.equal(post.headers.Allow, 'GET, HEAD')
+    assert.equal(post.resumed, true)
+    assert.equal((await call(f.dashboard, { url, origin: 'https://evil.test' })).status, 403)
+    assert.equal((await call(f.dashboard, { url, fetchSite: 'cross-site' })).status, 403)
+  }
+  for (const url of [
+    '/assets/minecraft/textures/items/../../../../README.md',
+    '/assets/minecraft/textures/items/%2e%2e/%2e%2e/%2e%2e/README.md',
+    '/assets/minecraft/textures/items/%2e%2e%2f%2e%2e%2fREADME.md',
+    '/assets/minecraft/textures/items/..%5c..%5cREADME.md',
+    '/assets/minecraft/textures/items/%252e%252e%252fREADME.md',
+    '/assets/minecraft/textures/items/test.png%00.txt',
+    '/assets/minecraft/textures/items/pickaxe.svg',
+    '/assets/minecraft/textures/items/pickaxe.js',
+    '/assets/minecraft/textures/items/pickaxe.json',
+    '/assets/minecraft/textures/entity/player.png',
+    '/assets/minecraft/README.md',
+    '/assets/minecraft/manifest.json.bak',
+    '/assets/minecraft/.env',
+    '/README.md', '/src/runtime.js', '/.local/bot.log'
+  ]) {
+    const response = await call(f.dashboard, { url })
+    assert.ok(response.status === 400 || response.status === 404, url)
+  }
+  assert.equal(f.reads.length, 0)
+  assert.equal(f.requests.length, 0)
+})
+
+test('missing Minecraft assets return a safe 404 without exposing disk errors or affecting Bot state', async t => {
+  const f = fixture({ readAsset: async () => { throw new Error('private-disk-path-and-error') } })
+  t.after(() => f.dashboard.stop())
+  for (const url of ['/assets/minecraft/manifest.json', '/assets/minecraft/textures/items/missing.png']) {
+    const response = await call(f.dashboard, { url })
+    assert.equal(response.status, 404)
+    assert.doesNotMatch(response.body, /private-disk-path-and-error/)
+    const head = await call(f.dashboard, { url, method: 'HEAD' })
+    assert.equal(head.status, 404)
+    assert.equal(head.bodyBytes.length, 0)
+  }
+  assert.equal(f.reads.every(row => row.asset), true)
+  assert.equal(f.requests.length, 0)
+  assert.equal(f.writes.length, 0)
 })
 
 test('the fixed transport uses only local GET /status and aborts by its total timeout without following redirects', async t => {
@@ -185,7 +281,7 @@ test('the status transport refuses redirects, non-JSON, malformed and oversized 
       response.resume = () => {}
       receive(response)
       if (mode === 'redirect' || mode === 'html') return
-      response.emit('data', Buffer.from(mode === 'oversize' ? 'x'.repeat(1024 * 1024 + 1) : '{not json'))
+      response.emit('data', Buffer.from(mode === 'oversize' ? 'x'.repeat(2 * 1024 * 1024 + 1) : '{not json'))
       response.emit('end')
     })
     return request
