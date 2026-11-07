@@ -2,7 +2,7 @@
 
 const http = require('node:http')
 
-function createApi ({ snapshot, disconnect, blocks, mining, walking, crafting, interactions, lifecycle, movement, combat, agent, reload, action }) {
+function createApi ({ dashboardControl, snapshot, disconnect, blocks, mining, walking, crafting, interactions, lifecycle, movement, combat, agent, reload, action }) {
   return http.createServer(async (request, response) => {
     const send = (status, body) => {
       response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
@@ -14,11 +14,16 @@ function createApi ({ snapshot, disconnect, blocks, mining, walking, crafting, i
       return
     }
     const url = new URL(request.url, 'http://127.0.0.1')
-    if (request.method === 'GET' && url.pathname === '/status') {
+    if (request.method === 'GET' && url.pathname === '/dashboard/status' && dashboardControl) {
+      try { send(200, dashboardControl.snapshot()) } catch { send(503, { error: 'Botの初期化を待っています。' }) }
+    } else if (request.method === 'GET' && url.pathname === '/status') {
       send(200, snapshot())
     } else if (request.method === 'GET' && url.pathname === '/blocks' && blocks) {
-      try { send(200, blocks(Object.fromEntries(url.searchParams))) } catch (error) { send(400, { error: error.message }) }
-    } else if (request.method === 'POST' && ((['/mining/preview', '/mining/start', '/mining/stop'].includes(url.pathname) && mining) || (['/walk/preview', '/walk/start', '/walk/stop'].includes(url.pathname) && walking) || (['/craft/preview', '/craft/start', '/craft/open', '/craft/close'].includes(url.pathname) && crafting) || (['/equipment/select', '/blocks/place', '/blocks/use'].includes(url.pathname) && interactions) || (url.pathname === '/respawn' && lifecycle) || (['/move/preview', '/move/start', '/move/stop'].includes(url.pathname) && movement) || (['/combat/attack', '/combat/defend', '/combat/stop'].includes(url.pathname) && combat) || (['/agent/start', '/agent/stop', '/agent/tick'].includes(url.pathname) && agent) || (url.pathname === '/reload' && reload) || (url.pathname === '/action' && action))) {
+      try { send(200, blocks(Object.fromEntries(url.searchParams))) } catch (error) {
+        if (url.pathname === '/dashboard/action') send(error.status ?? 400, { error: error.message, code: error.code ?? null })
+        else send(400, { error: error.message })
+      }
+    } else if (request.method === 'POST' && ((url.pathname === '/dashboard/action' && dashboardControl) || (['/mining/preview', '/mining/start', '/mining/stop'].includes(url.pathname) && mining) || (['/walk/preview', '/walk/start', '/walk/stop'].includes(url.pathname) && walking) || (['/craft/preview', '/craft/start', '/craft/open', '/craft/close'].includes(url.pathname) && crafting) || (['/equipment/select', '/blocks/place', '/blocks/use'].includes(url.pathname) && interactions) || (url.pathname === '/respawn' && lifecycle) || (['/move/preview', '/move/start', '/move/stop'].includes(url.pathname) && movement) || (['/combat/attack', '/combat/defend', '/combat/stop'].includes(url.pathname) && combat) || (['/agent/start', '/agent/stop', '/agent/tick'].includes(url.pathname) && agent) || (url.pathname === '/reload' && reload) || (url.pathname === '/action' && action))) {
       if (request.headers['content-type']?.split(';')[0].trim() !== 'application/json') {
         send(415, { error: 'Content-Type: application/json を指定してください。' })
         return
@@ -30,7 +35,8 @@ function createApi ({ snapshot, disconnect, blocks, mining, walking, crafting, i
           if (body.length > 8192) throw new Error('リクエストが大きすぎます。')
         }
         const data = JSON.parse(body || '{}')
-        if (url.pathname === '/reload') send(200, await reload())
+        if (url.pathname === '/dashboard/action') send(200, await dashboardControl.execute(data))
+        else if (url.pathname === '/reload') send(200, await reload())
         else if (url.pathname === '/action') send(200, await action(data))
         else if (url.pathname === '/agent/start') send(202, await agent.start(data))
         else if (url.pathname === '/agent/stop') send(200, agent.stop('APIから停止しました。'))
@@ -55,7 +61,10 @@ function createApi ({ snapshot, disconnect, blocks, mining, walking, crafting, i
         else if (url.pathname === '/mining/preview') send(200, mining.preview(data.targets))
         else if (url.pathname === '/mining/start') send(202, mining.start(data.targets))
         else send(200, mining.stop('APIから停止しました。'))
-      } catch (error) { send(400, { error: error.message }) }
+      } catch (error) {
+        if (url.pathname === '/dashboard/action') send(error.status ?? 400, { error: error.message, code: error.code ?? null })
+        else send(400, { error: error.message })
+      }
     } else if (request.method === 'POST' && request.url === '/disconnect') {
       if (request.headers['content-type']?.split(';')[0].trim() !== 'application/json') {
         send(415, { error: 'Content-Type: application/json を指定してください。' })

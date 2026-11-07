@@ -27,7 +27,7 @@
 | **戦闘モード** | 下記参照 | `src/combat-coordinator.js` ほか |
 | **露天掘りモード** | 下記参照 | `src/quarry-*.js` |
 | ローカル API | `127.0.0.1:3000`。`/status`、`/agent/start|stop|tick`、移動・採掘・クラフト・戦闘、`POST /action`（group/method/args） | `src/api.js` |
-| ダッシュボード | `127.0.0.1:3001`。露天掘り・所持品・装備・シュルカー内容・耐久度・エンチャント・ライブログ（JST）を統合した表示専用ページ。旧 `/logs` はログ欄へ移動 | `scripts/dashboard.js`, `scripts/lib/dashboard-state.js`, `dashboard/index.html` |
+| ダッシュボード | `127.0.0.1:3001`。露天掘り・所持品・装備・シュルカー内容・耐久度・エンチャント・ライブログ（JST）を統合。接続・Realm選択・チャンク計画/開始/停止は限定操作APIを使用。旧 `/logs` はログ欄へ移動 | `scripts/dashboard.js`, `scripts/lib/dashboard-control.js`, `src/dashboard-control.js`, `src/dashboard-session.js`, `dashboard/index.html`, `dashboard/control.js` |
 
 ### 戦闘モード
 
@@ -143,3 +143,11 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 ## 2026-11-07 レビュー対応の検証
 
 `npm run check` は src/scripts/test とダッシュボード内JSを検査します。`npm run test:review` は今回の安全回帰と互換テスト、`npm run test:compare -- <base SHA>` は既存全件の失敗差分です。既存失敗を隠さず、全件成功と差分なしを区別してください。詳細と実Realmで未実施の確認項目は `docs/review-hardening-2026-11-07.md`。`STOPPING` 中や `PERSISTENCE_FAILED` を無理に解除しないでください。
+
+## 管理画面の操作機能
+
+- `npm run dashboard` のみで管理画面を起動し、明示的な一覧取得からIPC子Botを起動します。ページ表示・接続だけで採掘を開始してはいけません。管理起動は `shared.quarryRestoreDisabled` を設定します。
+- Host/Origin/一時トークンの検査、固定コマンドの許可リスト、プロフィール・チャンク範囲の検証を維持してください。汎用 `/action` のブラウザープロキシやシェルコマンド実行を追加しません。
+- 開始は2分有効の一度きりの計画確認に限定し、接続先・生存回・ジョブ・設定・コード世代の変更で失効させます。例外の自動承認はしません。
+- Microsoftの一時デバイスコード以外の認証情報を画面へ返しません。`.env` は変更しません。詳細・停止時のプロセス所有権・未実施検証は `docs/dashboard-controls.md`。
+- 変更時は `test/dashboard-control*.test.js` と `npm run test:review` を実行してください。`host.js`/`api.js` の更新はBot本体の再起動が必要です。

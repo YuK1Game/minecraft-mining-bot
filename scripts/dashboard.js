@@ -88,9 +88,10 @@ function requestLocalStatus ({ apiPort, timeoutMs, signal }) {
   })
 }
 
-function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPort = process.env.API_PORT ?? 3000, pollIntervalMs = 5000, pollTimeoutMs = 800, viewerWindowMs = 15000, requestStatus = requestLocalStatus, readJsonFile = readJson, writeSnapshot = writeAtomicJson, readHtml = filename => readBounded(filename, 512 * 1024), readAsset = readBounded, clock = () => new Date().toISOString() } = {}) {
+function createDashboard ({ controls = null, workspaceRoot = path.resolve(__dirname, '..'), apiPort = process.env.API_PORT ?? 3000, pollIntervalMs = 5000, pollTimeoutMs = 800, viewerWindowMs = 15000, requestStatus = requestLocalStatus, readJsonFile = readJson, writeSnapshot = writeAtomicJson, readHtml = filename => readBounded(filename, 512 * 1024), readAsset = readBounded, clock = () => new Date().toISOString() } = {}) {
   apiPort = apiPortNumber(apiPort)
   if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 1000 || !Number.isSafeInteger(pollTimeoutMs) || pollTimeoutMs < 1 || pollTimeoutMs > 800) throw new Error('Invalid dashboard polling bounds')
+  const controlToken = randomUUID()
   const cacheFile = path.resolve(workspaceRoot, '.local/dashboard-last.json')
   const htmlFile = path.resolve(workspaceRoot, 'dashboard/index.html')
   const textureRoot = path.resolve(workspaceRoot, 'dashboard/assets/minecraft')
@@ -156,11 +157,33 @@ function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPo
     }
     const canonical = `http://${HOST}:${PORT}`
     if (request.headers.host !== `${HOST}:${PORT}` || request.headers.origin != null && request.headers.origin !== canonical || request.headers['sec-fetch-site'] === 'cross-site') { request.resume?.(); send(403, { error: 'このPCのBot監視ページから利用してください。' }); return }
-    if (!['GET', 'HEAD'].includes(method)) { request.resume?.(); send(405, { error: 'Bot監視ページは読み取り専用です。' }, undefined, { Allow: 'GET, HEAD' }); return }
+    if (!['GET', 'HEAD', 'POST'].includes(method)) { request.resume?.(); send(405, { error: 'Bot監視ページは読み取り専用です。' }, undefined, { Allow: 'GET, HEAD' }); return }
     if (typeof request.url !== 'string' || request.url.length > 2048 || !request.url.startsWith('/') || request.url.startsWith('//')) { send(400, { error: 'Invalid request URL' }); return }
     let url
     try { url = new URL(request.url, canonical) } catch { send(400, { error: 'Invalid request URL' }); return }
-    if (url.pathname.startsWith('/assets/minecraft/')) {
+    if (url.pathname === '/api/control/session' && method === 'GET') {
+      send(200, { enabled: controls !== null, token: controlToken, profile: process.env.BOT_PROFILE || 'main' }); return
+    }
+    if (url.pathname.startsWith('/api/control/')) {
+      if (!controls) { send(503, { error: '管理操作は有効ではありません。' }); return }
+      if (request.headers['x-bot-control'] !== controlToken || method === 'POST' && request.headers.origin !== canonical) { request.resume?.(); send(403, { error: '画面を再読み込みしてから操作してください。' }); return }
+      if (method === 'GET' && url.pathname === '/api/control/state') { send(200, await controls.snapshot()); return }
+      const route = url.pathname.slice('/api/control/'.length)
+      if (method !== 'POST' || !['realms', 'connect', 'disconnect', 'quarry'].includes(route) || request.url !== url.pathname) { request.resume?.(); send(404, { error: 'Not found' }); return }
+      if (request.headers['content-type']?.split(';')[0].trim() !== 'application/json') { request.resume?.(); send(415, { error: 'application/json が必要です。' }); return }
+      try {
+        const chunks = []; let bytes = 0
+        for await (const chunk of request) { bytes += Buffer.byteLength(chunk); if (bytes > 4096) throw Object.assign(new Error('入力が大きすぎます。'), { status: 413 }); chunks.push(Buffer.from(chunk)) }
+        const result = await controls.execute(route, JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'))
+        send(200, result)
+        void pollOnce().catch(() => {})
+      } catch (error) { send(error.status ?? 400, { error: String(error.message).slice(0, 500), code: error.code ?? null }) }
+      return
+    }
+    if (method === 'POST') { request.resume?.(); send(405, { error: 'この経路は読み取り専用です。' }, undefined, { Allow: 'GET, HEAD' }); return }
+    if (['/control.js', '/control.css'].includes(url.pathname)) {
+      try { send(200, await readAsset(path.resolve(workspaceRoot, 'dashboard', url.pathname.slice(1)), 128 * 1024), url.pathname.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8') } catch { send(404, { error: 'Not found' }) }
+    } else if (url.pathname.startsWith('/assets/minecraft/')) {
       if (request.url.split('?')[0] !== url.pathname) { send(404, { error: 'Not found' }); return }
       const relative = url.pathname.slice('/assets/minecraft/'.length)
       const manifest = relative === 'manifest.json'
@@ -202,13 +225,18 @@ function createDashboard ({ workspaceRoot = path.resolve(__dirname, '..'), apiPo
     controller?.abort()
     await inFlight?.catch(() => {})
     for (const close of [...logClients]) close()
+    try { await controls?.stop() } catch (error) { console.error(String(error.message).slice(0, 300)) }
     if (server.listening) await new Promise(resolve => server.close(resolve))
   }
   return { server, handler, initialize, pollOnce, snapshot, start, stop }
 }
 
 if (require.main === module) {
-  const dashboard = createDashboard()
+  const { createDashboardManager } = require('./lib/dashboard-control')
+  const workspaceRoot = path.resolve(__dirname, '..')
+  const apiPort = apiPortNumber(process.env.API_PORT ?? 3000)
+  const controls = createDashboardManager({ workspaceRoot, apiPort, defaultProfile: process.env.BOT_PROFILE?.trim() || 'main' })
+  const dashboard = createDashboard({ workspaceRoot, apiPort, controls })
   dashboard.start().then(({ url }) => console.log(`Bot監視ページ: ${url}`)).catch(error => { console.error(error.message); process.exitCode = 1 })
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { dashboard.stop().then(() => { process.exitCode = 0 }).catch(() => { process.exitCode = 1 }) })
 }
