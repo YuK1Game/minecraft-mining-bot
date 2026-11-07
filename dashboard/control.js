@@ -2,10 +2,11 @@
 (() => {
   'use strict'
   const $ = id => document.getElementById('control-' + id)
-  const phases = { offline: '未接続', starting: 'Botを起動中', authenticating: '認証中', selecting_realm: 'ワールド選択待ち', connecting: '接続中', joined: '地形を読込中', spawned: 'ワールドに参加中', stopping: '切断処理中', disconnected: '未接続' }
-  let token = null, current = null, plan = null, busy = 0, polling = false, version = 0, viewEpoch = 0, lastPhase = null
+  const phases = { offline: '未接続', starting: '起動中', authenticating: '認証待ち', selecting_realm: '選択待ち', connecting: '接続中', joined: '読込中', spawned: '接続済み', stopping: '切断中', disconnected: '未接続' }
+  const jobs = { IDLE: '計画待ち', PREFLIGHT: '開始確認', SURVEY: '調査中', PLAN: '計画中', MOVE: '移動中', MINE: '採掘中', COLLECT: '回収中', RETURN: '搬入移動', DEPOSIT: '収納中', PORTABLE_STORAGE: '収納中', RESTOCK: '補給中', COMBAT: '戦闘中', SUSPEND_FOR_COMBAT: '戦闘へ切替', COMBAT_SETTLE: '安全確認', RECOVER_AFTER_COMBAT: '復帰確認', RECOVER: '回復中', RECONCILE: '照合中', HAZARD: '危険対処', FINAL_CHECK: '最終確認', EGRESS_PREPARE: '帰還準備', EGRESS: '地上へ帰還中', PAUSED: '一時停止', STOPPING: '停止確認中', FINISHED: 'ジョブ終了', DISCONNECTED: '未接続' }
+  let token = null, current = null, plan = null, busy = 0, polling = false, version = 0, viewEpoch = 0, lastPhase = null, gridOrigin = null, preset = 1
   const clean = value => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ')
-  function message (kind, text, error = false) { const el = $(kind + '-message'); el.textContent = text; el.classList.toggle('error', error) }
+  function message (kind, text, error = false) { const el = $(kind + '-message'); el.textContent = text; el.hidden = !text; el.classList.toggle('error', error) }
   async function request (route, body) {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), body === undefined ? 5000 : 35000)
     try {
@@ -19,25 +20,92 @@
       throw error
     } finally { clearTimeout(timer) }
   }
+  const MIN = -1875000, MAX = 1874999
+  const element = (tag, cls, text) => { const el = document.createElement(tag); if (cls) el.className = cls; if (text != null) el.textContent = text; return el }
+  function area () {
+    const value = id => { const input = $(id); return input.value.trim() && input.validity.valid && Number.isSafeInteger(Number(input.value)) ? Number(input.value) : null }
+    const x1 = value('x1'), z1 = value('z1'), x2 = $('x2').value.trim() ? value('x2') : x1, z2 = $('z2').value.trim() ? value('z2') : z1
+    if ([x1, z1, x2, z2].some(n => n === null || n < MIN || n > MAX)) return { valid: false, message: 'チャンク座標を入力' }
+    const width = Math.abs(x2 - x1) + 1, depth = Math.abs(z2 - z1) + 1, count = width * depth
+    return { x1, z1, x2, z2, width, depth, count, valid: count <= 4, message: count > 4 ? '最大4チャンク' : '' }
+  }
+  function renderArea () {
+    const a = area(), live = current?.live
+    $('area-count').textContent = a.count ?? '—'
+    $('area-size').textContent = a.count ? `${a.width * 16} × ${a.depth * 16} BLOCKS` : '範囲未設定'
+    $('range-message').textContent = a.count && !a.valid ? a.message : ''
+    $('range-message').hidden = !(a.count && !a.valid)
+    $('size-one').setAttribute('aria-pressed', String(a.valid && a.width === 1 && a.depth === 1))
+    $('size-four').setAttribute('aria-pressed', String(a.valid && a.width === 2 && a.depth === 2))
+    const centre = gridOrigin ?? { x: a.x1 ?? live?.chunk?.x ?? 0, z: a.z1 ?? live?.chunk?.z ?? 0 }
+    const left = Math.min(MAX - 4, Math.max(MIN, centre.x - 2)), top = Math.min(MAX - 4, Math.max(MIN, centre.z - 2))
+    const grid = $('grid'), signature = JSON.stringify([left, top, a, live?.chunk ?? null, busy])
+    grid.dataset.invalid = String(!!a.count && !a.valid)
+    $('grid-origin').textContent = `X ${left}…${left + 4} / Z ${top}…${top + 4}`
+    if (grid.dataset.signature === signature) return a
+    const focus = grid.contains(document.activeElement) ? document.activeElement.dataset.key : null
+    grid.dataset.signature = signature
+    const fragment = document.createDocumentFragment()
+    for (let z = top; z < top + 5; z++) for (let x = left; x < left + 5; x++) {
+      const selected = a.count && x >= Math.min(a.x1, a.x2) && x <= Math.max(a.x1, a.x2) && z >= Math.min(a.z1, a.z2) && z <= Math.max(a.z1, a.z2)
+      const here = live?.ready === true && live.chunk?.x === x && live.chunk?.z === z
+      const cell = element('button', 'chunk-cell' + (here ? ' bot' : ''), `${x}, ${z}`)
+      cell.type = 'button'; cell.dataset.x = x; cell.dataset.z = z; cell.dataset.key = `${x}:${z}`
+      cell.setAttribute('aria-label', `チャンク X ${x}, Z ${z}${here ? '・現在地' : ''}`)
+      cell.setAttribute('aria-pressed', String(!!selected)); cell.title = cell.getAttribute('aria-label'); cell.disabled = busy > 0
+      cell.tabIndex = focus ? cell.dataset.key === focus ? 0 : -1 : x === Math.min(MAX, Math.max(MIN, centre.x)) && z === Math.min(MAX, Math.max(MIN, centre.z)) ? 0 : -1
+      fragment.append(cell)
+    }
+    grid.replaceChildren(fragment)
+    if (!grid.querySelector('[tabindex="0"]')) grid.firstElementChild.tabIndex = 0
+    if (focus) [...grid.children].find(c => c.dataset.key === focus)?.focus({ preventScroll: true })
+    return a
+  }
+  function showPlan (result) {
+    const p = result.plan, host = $('plan-summary')
+    const fact = (label, value) => { const row = element('div', 'plan-fact'); row.append(element('span', '', label), element('b', '', clean(value))); host.append(row) }
+    host.replaceChildren()
+    fact('ワールド', result.state.realm?.name ?? '未確認')
+    fact('チャンク', (p.chunks ?? []).map(c => `(${c.x}, ${c.z})`).join(' / '))
+    fact('高さ', `Y ${p.yTop ?? '未確認'} → ${p.yBottom ?? '未確認'}`)
+    if (p.issues?.length) host.append(element('div', 'plan-issues', '停止理由: ' + p.issues.map(clean).join(' / ')))
+    if (p.warnings?.length) host.append(element('div', 'plan-issues', '注意: ' + p.warnings.map(clean).join(' / ')))
+    $('plan-title').textContent = p.ready ? '計画確認済み' : '開始不可'
+    $('plan-results').classList.toggle('blocked', !p.ready)
+    $('plan-results').querySelector('.plan-check').textContent = p.ready ? '✓' : '!'
+    $('plan-results').hidden = false
+  }
   function render () {
     const s = current, live = s?.live, q = live?.quarry, ready = live?.ready === true, connected = !!s?.managed || !!live, idle = !busy && !!token
-    $('phase').textContent = phases[s?.phase] ?? '状態を確認中'
+    $('size-one').disabled = busy > 0; $('size-four').disabled = busy > 0
+    const a = renderArea()
+    document.getElementById('control').dataset.online = String(ready)
+    if (!plan) $('plan-results').hidden = true
+    const running = ready && q && !['IDLE', 'PAUSED', 'STOPPING', 'FINISHED'].includes(q.state)
+    document.getElementById('control').dataset.running = String(!!running)
+    $('phase').textContent = phases[s?.phase] ?? '確認中'
+    $('phase').className = 'badge' + (ready ? ' live' : s?.phase === 'authenticating' ? ' warn' : '')
+    $('step-connect').className = ready ? 'done' : 'active'
+    $('step-area').className = ready && !running ? 'active' : ''
+    $('step-run').className = running ? 'active' : ''
     $('profile').disabled = connected || busy > 0
     $('realms').disabled = !idle || !!live?.realm || s?.phase === 'connecting' || s?.phase === 'stopping' || s?.incompatible === true
     const old = $('world').value, options = s?.realms ?? []
     const signature = JSON.stringify(options)
     if ($('world').dataset.signature !== signature) {
       $('world').dataset.signature = signature
-      const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = options.length ? 'ワールドを選択してください' : (live?.realm?.name || 'ワールド一覧を取得してください')
+      const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = options.length ? 'ワールドを選択' : (live?.realm?.name || '未取得')
       $('world').replaceChildren(placeholder)
       for (const realm of options) { const option = document.createElement('option'); option.value = realm.id; option.textContent = clean(realm.name) + (realm.available ? '' : '（閉鎖・期限切れ・参加不可）'); option.disabled = !realm.available; $('world').append(option) }
-      if (options.some(r => r.id === old && r.available)) $('world').value = old
+      const selected = live?.realm?.id ?? old
+      if (options.some(r => r.id === selected && (live?.realm?.id === selected || r.available))) $('world').value = selected
     }
+    if (live?.realm?.id && options.some(r => r.id === live.realm.id)) $('world').value = live.realm.id
     $('world').disabled = !idle || s?.phase !== 'selecting_realm'
     $('connect').disabled = !idle || s?.phase !== 'selecting_realm' || !$('world').value
     $('disconnect').disabled = !token || !connected || s?.phase === 'stopping'
     $('here').disabled = !idle || !ready || !live?.chunk
-    $('plan').disabled = !idle || !ready || !!q && !['IDLE', 'FINISHED'].includes(q.state)
+    $('plan').disabled = !idle || !ready || !a.valid || !!q && !['IDLE', 'FINISHED'].includes(q.state)
     $('start').disabled = !idle || !ready || !plan?.planToken || plan.expiresAt <= Date.now() || plan.state.session !== live?.session || plan.plan.jobId !== q?.jobId || q?.state !== 'IDLE'
     $('pause').disabled = !idle || !q || ['IDLE', 'FINISHED', 'PAUSED', 'STOPPING'].includes(q.state)
     $('resume').disabled = !idle || !ready || q?.state !== 'PAUSED'
@@ -45,10 +113,27 @@
     $('cancel').disabled = !idle || !q || q.state === 'FINISHED'
     const auth = s?.auth
     $('auth').hidden = !auth || auth.expiresAt <= Date.now()
-    if (auth) { $('auth-code').textContent = auth.code; $('auth-expiry').textContent = '有効期限 ' + new Date(auth.expiresAt).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo' }) + ' JST' }
-    $('live').textContent = live ? `接続先: ${clean(live.realm?.name || '選択待ち')} ／ ${clean(live.profile)} ／ ${clean(live.dimension || '未確認')}　${live.chunk ? `現在のチャンク (${live.chunk.x}, ${live.chunk.z})` : ''}　${q ? `ジョブ: ${q.jobId} ・ ${q.state}${q.pauseReason ? ' / ' + q.pauseReason : ''}` : 'ジョブ未設定'}${s.managed ? '' : ' （別ターミナルで起動中）'}` : '未接続。ワールド一覧を取得してから接続先を選択してください。'
+    if (auth) { $('auth-code').textContent = auth.code; $('auth-expiry').textContent = '期限 ' + new Date(auth.expiresAt).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo' }) + ' JST' }
+    const realm = live?.realm ?? options.find(r => r.id === $('world').value)
+    $('world-heading').textContent = realm?.name ? clean(realm.name) : 'ワールド未選択'
+    $('world-heading').title = realm?.name ? clean(realm.name) : ''
+    $('world-state').textContent = ready ? 'CONNECTED' : s?.phase === 'authenticating' ? 'AUTHENTICATION' : s?.phase === 'connecting' || s?.phase === 'joined' ? 'CONNECTING' : 'OFFLINE'
+    $('dimension').textContent = live?.dimension ? clean(live.dimension).toUpperCase() : 'REALMS'
+    $('live').textContent = q ? jobs[q.state] ?? clean(q.state) : 'ジョブ未設定'
+    $('live').title = q?.jobId ? clean(q.jobId) : ''
+    $('job-reason').textContent = q?.pauseReason ? clean(q.pauseReason) : ''
+    $('job-reason').hidden = !q?.pauseReason
+    if (plan?.planToken && (plan.state.session !== live?.session || plan.plan.jobId !== q?.jobId || q?.state !== 'IDLE')) {
+      plan = null; $('plan-results').hidden = true
+      message('action', '状態変更：計画を再確認', true)
+    }
+    if (plan?.planToken) {
+      const seconds = Math.max(0, Math.ceil((plan.expiresAt - Date.now()) / 1000))
+      $('plan-time').textContent = seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : '期限切れ'
+      if (!seconds) { $('plan-title').textContent = '計画を再確認'; $('plan-results').classList.add('blocked'); $('plan-results').querySelector('.plan-check').textContent = '!' }
+    } else $('plan-time').textContent = ''
     if (s?.message) message('connection', s.message, s.incompatible === true)
-    else if (s?.phase !== lastPhase && ready) message('connection', '接続済み。指定範囲の計画を作成できます。')
+    else if (s?.phase !== lastPhase) message('connection', '')
     lastPhase = s?.phase
   }
   async function poll () {
@@ -59,7 +144,7 @@
     finally { polling = false }
   }
   async function act (kind, route, body, success) {
-    busy++; viewEpoch++; render(); message(kind, '処理中…')
+    busy++; viewEpoch++; render(); message(kind, '')
     try { const result = await request(route, body); if (result.state) current = { ...current, live: result.state, phase: result.state.phase }; await success?.(result); }
     catch (error) { message(kind, error.message, true) }
     finally { busy--; viewEpoch++; render(); await poll() }
@@ -67,7 +152,7 @@
   function number (id, optional = false) {
     const el = $(id)
     if (optional && el.value.trim() === '') return null
-    if (!el.value.trim() || !el.checkValidity() || !Number.isSafeInteger(Number(el.value))) { el.focus(); throw new Error('整数の座標を入力してください。') }
+    if (!el.value.trim() || !el.checkValidity() || !Number.isSafeInteger(Number(el.value))) { el.setAttribute('aria-invalid', 'true'); el.focus(); throw new Error('整数の座標を入力してください。') }
     return Number(el.value)
   }
   function config () {
@@ -75,46 +160,68 @@
       chest: $('chest-enabled').checked ? { x: number('chest-x'), y: number('chest-y'), z: number('chest-z') } : null }
   }
   const fields = ['x1', 'z1', 'x2', 'z2', 'top', 'bottom', 'pickup', 'chest-enabled', 'chest-x', 'chest-y', 'chest-z']
-  function invalidate () { plan = null; version++; $('plan-results').hidden = true; $('chest-fields').hidden = !$('chest-enabled').checked; render() }
-  for (const field of fields) $(field).addEventListener('input', invalidate)
+  function invalidate (keepGrid = false) { plan = null; version++; if (!keepGrid) gridOrigin = null; $('plan-results').hidden = true; $('chest-fields').hidden = !$('chest-enabled').checked; message('action', ''); render() }
+  for (const field of fields) $(field).addEventListener('input', () => { $(field).removeAttribute('aria-invalid'); invalidate() })
+  function selectArea (x, z, size = preset, keepGrid = false) {
+    if (!Number.isSafeInteger(x) || !Number.isSafeInteger(z)) return
+    x = Math.min(MAX - size + 1, Math.max(MIN, x)); z = Math.min(MAX - size + 1, Math.max(MIN, z))
+    if (keepGrid && !gridOrigin) gridOrigin = { x: area().x1 ?? current?.live?.chunk?.x ?? 0, z: area().z1 ?? current?.live?.chunk?.z ?? 0 }
+    $('x1').value = x; $('z1').value = z; $('x2').value = size > 1 ? x + size - 1 : ''; $('z2').value = size > 1 ? z + size - 1 : ''
+    invalidate(keepGrid)
+  }
+  $('grid').addEventListener('click', event => {
+    const cell = event.target.closest('button[data-x]')
+    if (!cell || cell.disabled) return
+    selectArea(Number(cell.dataset.x), Number(cell.dataset.z), preset, true)
+  })
+  $('grid').addEventListener('keydown', event => {
+    const delta = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -5, ArrowDown: 5 }[event.key]
+    if (!delta) return
+    const cells = [...$('grid').children], index = cells.indexOf(event.target), next = index + delta
+    if (index < 0) return
+    event.preventDefault()
+    if (next < 0 || next >= cells.length || Math.abs(delta) === 1 && Math.floor(index / 5) !== Math.floor(next / 5)) return
+    cells.forEach(c => { c.tabIndex = -1 }); cells[next].tabIndex = 0; cells[next].focus()
+  })
+  for (const [id, size] of [['size-one', 1], ['size-four', 2]]) $(id).addEventListener('click', () => {
+    preset = size
+    selectArea(area().x1 ?? current?.live?.chunk?.x ?? 0, area().z1 ?? current?.live?.chunk?.z ?? 0, size)
+  })
   $('world').addEventListener('change', render)
-  $('realms').addEventListener('click', () => act('connection', 'realms', { profile: $('profile').value.trim() }, result => { current = result; message('connection', '認証・ワールド一覧の取得を開始しました。') }))
-  $('connect').addEventListener('click', () => act('connection', 'connect', { processId: current.processId, realmId: $('world').value }, result => { current = result; plan = null; message('connection', '接続を開始しました。参加位置と所持品を確認するまで開始ボタンは無効です。') }))
+  $('realms').addEventListener('click', () => act('connection', 'realms', { profile: $('profile').value.trim() }, result => { current = result; message('connection', '') }))
+  $('connect').addEventListener('click', () => act('connection', 'connect', { processId: current.processId, realmId: $('world').value }, result => { current = result; plan = null; message('connection', '') }))
   $('disconnect').addEventListener('click', () => {
     if (!confirm('Botを切断します。採掘中なら停止と保存を行います。よろしいですか？')) return
     const live = current?.live
-    act('connection', 'disconnect', { processId: current?.processId, session: live?.session, jobId: live?.quarry?.jobId ?? null }, () => { current = null; plan = null; message('connection', '切断処理を受け付けました。') })
+    act('connection', 'disconnect', { processId: current?.processId, session: live?.session, jobId: live?.quarry?.jobId ?? null }, () => { current = null; plan = null; message('connection', '') })
   })
-  $('here').addEventListener('click', () => { $('x1').value = current.live.chunk.x; $('z1').value = current.live.chunk.z; $('x2').value = ''; $('z2').value = ''; invalidate() })
+  $('here').addEventListener('click', () => { selectArea(current.live.chunk.x, current.live.chunk.z) })
   $('plan').addEventListener('click', () => {
     let value
     try { value = config() } catch (error) { message('action', error.message, true); return }
     const revision = version; plan = null
     act('action', 'quarry', { command: 'plan', session: current.live.session, config: value }, result => {
       if (revision !== version) { message('action', '入力が変わりました。もう一度計画を確認してください。'); return }
-      plan = result; const p = result.plan
-      $('plan-title').textContent = p.ready ? '計画の作成が完了しました' : '開始できません：以下を確認してください'
-      $('plan-summary').textContent = `ワールド: ${clean(result.state.realm?.name)}\nチャンク: ${(p.chunks ?? []).map(c => `(${c.x}, ${c.z})`).join(' / ')}\n採掘範囲: Y=${p.yTop ?? '未確認'} 〜 ${p.yBottom}\n` + (p.issues.length ? '停止理由: ' + p.issues.join(' / ') + '\n' : '') + (p.warnings.length ? '注意: ' + p.warnings.join(' / ') : '')
-      $('plan-results').classList.toggle('blocked', !p.ready)
-      $('plan-results').hidden = false
-      message('action', p.ready ? '範囲を確認して「露天掘りを開始」を押してください。計画は2分で失効します。' : '安全条件が未確認のため開始できません。', !p.ready)
+      plan = result; showPlan(result); message('action', '')
     })
   })
   $('start').addEventListener('click', () => {
     if (!plan) return
     const p = plan
     if (!confirm(`${clean(p.state.realm?.name)} の ${(p.plan.chunks ?? []).map(c => `(${c.x}, ${c.z})`).join(' / ')} を Y=${p.plan.yTop}〜${p.plan.yBottom} まで露天掘りします。開始しますか？`)) return
-    plan = null
-    act('action', 'quarry', { command: 'start', session: p.state.session, planToken: p.planToken }, () => message('action', '開始指示を受け付けました。実際の進捗と停止理由は露天掘り欄で確認してください。'))
+    plan = null; $('plan-results').hidden = true
+    act('action', 'quarry', { command: 'start', session: p.state.session, planToken: p.planToken }, () => message('action', ''))
   })
   for (const [button, command, label] of [['pause', 'pause', '一時停止'], ['resume', 'resume', '再開'], ['emergency', 'emergencyStop', '緊急停止'], ['cancel', 'cancel', 'キャンセル']]) {
     $(button).addEventListener('click', () => {
       if (['resume', 'cancel'].includes(button) && !confirm(`現在のジョブを${label}しますか？`)) return
-      plan = null
-      act('action', 'quarry', { command, session: current?.live?.session, jobId: current?.live?.quarry?.jobId ?? null }, () => message('action', `${label}の結果を受信しました。現在の状態を確認してください。`))
+      plan = null; $('plan-results').hidden = true
+      act('action', 'quarry', { command, session: current?.live?.session, jobId: current?.live?.quarry?.jobId ?? null }, () => message('action', ''))
     })
   }
   request('session').then(data => { if (!data.enabled) throw new Error('管理操作は無効です。管理画面サーバーを更新してください。'); token = data.token; $('profile').value = data.profile; render(); return poll() }).catch(error => message('connection', error.message, true))
+  render()
   setInterval(poll, 2000)
+  setInterval(() => { if (plan?.planToken && !document.hidden) render() }, 1000)
   document.addEventListener('visibilitychange', () => { if (!document.hidden) void poll() })
 })()
