@@ -342,7 +342,9 @@ const liveLog = require('./live-log').createLiveLog({ file: path.resolve(__dirna
 async function main () {
   const args = process.argv.slice(2)
   if (args.includes('--help')) { console.log('npm start: 接続してコード更新を待つ / npm run auto: 自律作業 / npm run realms: Realm一覧'); return }
-  if (args.some(arg => !['--list', '--auto'].includes(arg))) throw new Error('引数は --list / --auto / --help を指定してください。')
+  if (args.some(arg => !['--list', '--auto', '--dashboard'].includes(arg))) throw new Error('引数は --list / --auto / --help を指定してください。')
+  const managed = args.includes('--dashboard')
+  if (managed && (typeof process.send !== 'function' || args.length !== 1)) throw new Error('--dashboard は管理画面からのみ起動できます。')
   const config = loadConfig()
   const bedrock = require('bedrock-protocol')
   const { Authflow, Titles } = require('prismarine-auth')
@@ -370,6 +372,8 @@ async function main () {
     gcObserver.observe({ entryTypes: ['gc'] })
   }
   let client = null; let api = null; let terminal = null; let reloader = null; let lifecycle = null; let chunkTimer = null
+  let dashboardSession = null
+  if (managed) shared.quarryRestoreDisabled = true // Connecting from the UI must never restart old digging.
   let stopping = false; let nextOdd = -1; let nextEven = -2; let lastInputTick = -1n; let loginSwim = null
   const current = () => reloader?.current
   // Millisecond wall-clock prefix (JST, UTC+9) so combat/escape timelines can be rebuilt.
@@ -477,6 +481,7 @@ async function main () {
   function stop (code = 0) {
     if (stopping) return
     const cleanup = current()?.dispose('接続を終了します。'); stopping = true
+    dashboardSession?.dispose()
     loginSwim?.stop(); packetEvents.dispose(); gcObserver?.disconnect()
     clearInterval(chunkTimer); reloader?.stop(); lifecycle?.stop('接続を終了します。')
     state.phase = 'disconnected'; terminal?.close(); client?.close(); api?.close(); api?.closeIdleConnections()
@@ -496,8 +501,12 @@ async function main () {
   const watched = ['runtime', 'input', 'mining', 'walking', 'physics', 'navigation', 'movement', 'crafting', 'interactions', 'combat', 'water-counterattack', 'planner', 'autonomy', 'runner', 'immediate-diamond'].map(name => path.join(__dirname, `${name}.js`))
   try {
     await fs.mkdir(config.authDir, { recursive: true })
-    const onMsaCode = data => { state.phase = 'authenticating'; console.log(`Microsoft認証: ${data.verification_uri ?? 'https://www.microsoft.com/link'}\nコード: ${data.user_code}`) }
+    const onMsaCode = data => { state.phase = 'authenticating'; if (managed) { dashboardSession?.auth(data); return } console.log(`Microsoft認証: ${data.verification_uri ?? 'https://www.microsoft.com/link'}\nコード: ${data.user_code}`) }
     const authflow = new Authflow(config.profile, config.authDir, { flow: 'live', authTitle: Titles.MinecraftNintendoSwitch, deviceType: 'Nintendo' }, onMsaCode)
+    if (managed) dashboardSession = require('./dashboard-session').createDashboardSession({
+      onStop: async () => { try { await current()?.operations.quarry?.pause() } finally { stop() } },
+      getRealms: () => RealmAPI.from(authflow, 'bedrock', { minecraftVersion: version }).getRealms()
+    })
     log(`ログイン用プロフィール: ${config.profile}`)
     if (args.includes('--list')) { printRealms(await RealmAPI.from(authflow, 'bedrock', { minecraftVersion: version }).getRealms()); stop(); return }
     lifecycle = createLifecycle({ client: connection, getState: rawSnapshot, version,
@@ -527,7 +536,11 @@ async function main () {
       }
       return result
     }
-    api = createApi({ snapshot: fullSnapshot, disconnect: () => stop(), lifecycle: { ...lifecycle, respawn: options => deathRespawn.request(options) },
+    const dashboardControl = require('./dashboard-control').createDashboardControl({
+      getState: () => { const observed = rawSnapshot(); return { ...observed, lifecycle: lifecycle.stats(), loadingScreenEnded: shared.loadingScreenEnded, inventory: shared.inventoryUncertain ? { ...observed.inventory, known: false, uncertain: true } : observed.inventory } },
+      getQuarry: () => current()?.operations.quarry, getGeneration: () => reloader.snapshot().generation, disconnect: () => stop()
+    })
+    api = createApi({ dashboardControl, snapshot: fullSnapshot, disconnect: () => stop(), lifecycle: { ...lifecycle, respawn: options => deathRespawn.request(options) },
       mining: invoke('mining'), walking: invoke('walking'), movement: invoke('movement'), crafting: invoke('crafting'), interactions: invoke('interactions'), combat: invoke('combat'), agent: invoke('agent'), reload: () => reloader.reload({ reason: 'api' }),
       action: async ({ group, method, args = [] }) => {
         const operations = current().operations
@@ -570,7 +583,7 @@ async function main () {
       raknetBackend: 'jsp-raknet', ...(config.version ? { version: config.version } : {}), conLog: message => log(message),
       realms: { pickRealm: async realms => {
         state.phase = 'selecting_realm'
-        const realm = await chooseRealm(realms, { realmId: config.realmId, ask: terminal ? prompt => terminal.question(prompt) : undefined })
+        const realm = managed ? await dashboardSession.selectRealm(realms) : await chooseRealm(realms, { realmId: config.realmId, ask: terminal ? prompt => terminal.question(prompt) : undefined })
         state.realm = { id: String(realm.id), name: realm.name }; state.phase = 'connecting'; return realm
       } }
     })
@@ -614,9 +627,9 @@ async function main () {
       log('ワールドに参加しました。接続を保ったまま行動コードを更新できます。'); requestChunks(); chunkTimer = setInterval(requestChunks, 2000)
     })
     client.on('kick', packet => { if (!stopping) { log(`接続終了: ${packet.message}`); stop(1) } })
-    client.on('error', error => { if (!stopping) { console.error(errorText(error)); stop(error.code === 'CANCELLED' ? 0 : 1) } })
+    client.on('error', error => { if (!stopping) { dashboardSession?.failed(); console.error(errorText(error)); stop(error.code === 'CANCELLED' ? 0 : 1) } })
     client.on('close', () => { if (!stopping) { log('サーバーとの接続が閉じられました。'); stop(1) } })
-  } catch (error) { if (!stopping) { console.error(errorText(error)); stop(error.code === 'CANCELLED' ? 0 : 1) } }
+  } catch (error) { if (!stopping) { dashboardSession?.failed(); console.error(errorText(error)); stop(error.code === 'CANCELLED' ? 0 : 1) } }
 }
 
 module.exports = { main, errorText, createHostPacketEvents, createHostPacketReceiver, startupFuseDanger, createStartupFuseGuard, resumeRuntimeSafely, formatOnlineEmergency, createOnlineEmergencyHandler, createDeathRespawnReflex, requestStartupTerrain, respawnTerrainKnown, createRespawnTerrainHandoff }

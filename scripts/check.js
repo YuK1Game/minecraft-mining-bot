@@ -10,7 +10,7 @@ function collect (directory) {
     return entry.isDirectory() ? collect(filename) : /\.(?:js|cjs|mjs)$/.test(entry.name) ? [filename] : []
   })
 }
-const files = ['src', 'scripts', 'test'].flatMap(directory => collect(path.join(root, directory)))
+const files = ['src', 'scripts', 'test', 'dashboard'].flatMap(directory => collect(path.join(root, directory)))
 for (const filename of files) {
   const result = spawnSync(process.execPath, ['--check', filename], { stdio: 'inherit' })
   if (result.error) throw result.error

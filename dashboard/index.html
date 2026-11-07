@@ -68,6 +68,8 @@ h1{font-size:21px;letter-spacing:0}h2{font-size:14px}.intro{padding:14px 0 12px;
 @media(max-width:760px){.topbar-inner{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;padding:9px 12px}.brand h1{font-size:16px}.top-links{margin:0}.header-actions{grid-column:1/-1;justify-content:space-between;gap:12px}.header-actions .small{font-size:11px}.shell{padding-top:10px}.status-strip{margin-bottom:10px}.work-sidebar{display:grid;gap:10px}.work-sidebar .quarry{margin-bottom:0}.work-sidebar .detail-panel{height:auto}.workspace-grid{height:auto;margin-bottom:10px}}
 .quarry-egress{margin:0;padding:5px 10px;border-top:1px solid var(--line);font-size:11px}.quarry-egress summary{cursor:pointer;line-height:1.6}.quarry-egress summary strong{margin-right:4px}.quarry-egress summary span{margin-right:5px}.egress-data p{margin:4px 0;line-height:1.45;overflow-wrap:anywhere}#egress-milestones{color:var(--muted)}.work-sidebar>.quarry:has(.quarry-egress[open]){max-height:280px}
 </style>
+<link rel="stylesheet" href="/control.css">
+<script src="/control.js" defer></script>
 </head>
 <body>
 <header class="topbar"><div class="topbar-inner"><a class="brand" href="#top" aria-label="露天掘りモニターの先頭"><span class="brand-icon" aria-hidden="true">⛏</span><h1>露天掘りモニター</h1></a><nav class="top-links" aria-label="ページ内"><a href="#inventory">所持品</a><a href="#quarry">露天掘り</a><a href="#logs">ログ</a><span class="badge" id="connection-badge">確認中</span></nav><div class="header-actions"><button id="refresh" type="button">↻ 更新</button><p class="small muted"><time id="observed-at" class="mono">—</time> JST</p></div><span class="sr-only" id="player-name">Bot</span><span class="sr-only" id="realm-name"></span></div></header>
@@ -78,6 +80,43 @@ h1{font-size:21px;letter-spacing:0}h2{font-size:14px}.intro{padding:14px 0 12px;
 <section class="status-card status-vitals" aria-label="体力と満腹度"><div class="vital-row health"><span class="vital-row-label">体力</span><div class="meter" id="health-meter" role="meter" aria-label="体力" aria-valuemin="0" aria-valuemax="20"><span id="health-fill"></span></div><span class="vital-row-value mono"><b id="health-value">—</b><span>/ 20</span></span></div><div class="vital-row hunger"><span class="vital-row-label">満腹度</span><div class="meter" id="hunger-meter" role="meter" aria-label="満腹度" aria-valuemin="0" aria-valuemax="20"><span id="hunger-fill"></span></div><span class="vital-row-value mono"><b id="hunger-value">—</b><span>/ 20</span></span></div></section>
 <section class="status-card status-position" aria-label="足元の座標"><div class="coordinate-header"><span>座標</span><span class="coordinate-source" id="position-note">未確認</span></div><div class="coordinate-row"><div class="coordinate-values mono"><span><span class="axis">X</span><b id="position-x">—</b></span><span><span class="axis">Y</span><b id="position-y">—</b></span><span><span class="axis">Z</span><b id="position-z">—</b></span></div><button id="copy-position" type="button" class="compact-button" aria-label="足元の座標をコピー" disabled>コピー</button></div></section>
 </div>
+
+<details class="panel control-panel section" id="control" aria-labelledby="control-heading" open>
+  <summary class="panel-head"><div><p class="panel-kicker">CONTROL ROOM</p><h2 id="control-heading">接続と露天掘り</h2></div><span class="badge" id="control-phase">状態を確認中</span></summary>
+  <div class="control-layout">
+    <div class="control-column">
+      <h3><span class="control-step">01</span>ワールドに接続</h3>
+      <div class="control-fields">
+        <label class="span-all">Botプロフィール<input id="control-profile" value="main" maxlength="64" autocomplete="off" spellcheck="false" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,63}" aria-describedby="control-profile-help"></label>
+        <label class="span-all">ワールド（参加済みのRealm）<select id="control-world" disabled><option value="">ワールド一覧を取得してください</option></select></label>
+      </div>
+      <p class="control-hint" id="control-profile-help">既存の認証を使う場合は、いつものプロフィールを指定。同じアカウントのゲーム画面はRealmから退出してください。</p>
+      <div class="control-actions"><button type="button" id="control-realms" disabled>ワールド一覧を取得</button><button type="button" id="control-connect" class="primary" disabled>接続</button><button type="button" id="control-disconnect" disabled>切断</button></div>
+      <div class="control-auth" id="control-auth" hidden><strong>Microsoftの認証が必要です</strong><p class="control-hint">Bot用アカウントで認証ページを開き、次のコードを入力してください。</p><code id="control-auth-code"></code><a id="control-auth-link" href="https://www.microsoft.com/link" target="_blank" rel="noopener noreferrer">Microsoftの認証ページを開く ↗</a><p class="control-hint" id="control-auth-expiry"></p></div>
+      <p class="control-message" id="control-connection-message" role="status" aria-live="polite"></p>
+    </div>
+    <div class="control-column">
+      <h3><span class="control-step">02</span>露天掘りの範囲を指定</h3>
+      <div class="control-fields four" id="control-quarry-inputs">
+        <label>開始チャンク X<input id="control-x1" type="number" step="1" min="-1875000" max="1874999" placeholder="例: -4" required></label>
+        <label>開始チャンク Z<input id="control-z1" type="number" step="1" min="-1875000" max="1874999" placeholder="例: 2" required></label>
+        <label>終了チャンク X（任意）<input id="control-x2" type="number" step="1" min="-1875000" max="1874999" placeholder="同じチャンク"></label>
+        <label>終了チャンク Z（任意）<input id="control-z2" type="number" step="1" min="-1875000" max="1874999" placeholder="同じチャンク"></label>
+        <label>上限 Y（任意）<input id="control-top" type="number" step="1" min="-64" max="319" placeholder="自動判定"></label>
+        <label>下限 Y（任意）<input id="control-bottom" type="number" step="1" min="-64" max="319" placeholder="最下層まで"></label>
+        <label class="span-all">回収・収納方針<select id="control-pickup"><option value="passive">掘り抜き優先：自然取得のみ・満杯で収納</option><option value="active">回収優先：ドロップ回収・空き容量を確保</option></select></label>
+      </div>
+      <label class="control-checkbox"><input type="checkbox" id="control-chest-enabled">固定チェストを収納先に指定（未指定は手持ちの箱を使用）</label>
+      <div class="control-fields" id="control-chest-fields" hidden><label>チェスト X<input id="control-chest-x" type="number" step="1"></label><label>チェスト Y<input id="control-chest-y" type="number" step="1" min="-64" max="319"></label><label>チェスト Z<input id="control-chest-z" type="number" step="1"></label></div>
+      <p class="control-hint">入力はブロック座標ではなくチャンク座標です。1チャンクは16×16。最大4チャンク・オーバーワールド限定。接続だけでは採掘を始めません。</p>
+      <div class="control-actions"><button type="button" id="control-here" disabled>現在のチャンクを入力</button><button type="button" id="control-plan" disabled>計画を確認</button><button type="button" id="control-start" class="primary" disabled>露天掘りを開始</button></div>
+      <div class="control-preview" id="control-plan-results" hidden><strong id="control-plan-title">計画の確認</strong><pre id="control-plan-summary"></pre><p class="control-hint">開始前に接続先・範囲・高さを確認してください。保護・液体・装備・帰還経路の安全確認はBot本体が行います。</p></div>
+      <p class="control-message" id="control-action-message" role="status" aria-live="polite"></p>
+      <div class="control-actions control-checks"><button type="button" id="control-pause" disabled>一時停止</button><button type="button" id="control-resume" disabled>再開</button><button type="button" id="control-emergency" class="danger" disabled>緊急停止</button><button type="button" id="control-cancel" disabled>ジョブをキャンセル</button></div>
+    </div>
+  </div>
+  <div class="control-live" id="control-live">操作は新しく受信した状態で判定します。過去のインベントリ表示からは実行しません。</div>
+</details>
 
 <div class="inventory-layout workspace-grid">
 <section class="panel inventory-panel section" id="inventory" aria-labelledby="inventory-heading"><div class="panel-head"><div><p class="panel-kicker">INVENTORY</p><h2 id="inventory-heading">所持品と装備</h2></div><span class="inventory-summary" id="inventory-summary">サーバー受信待ち</span></div><div class="inventory-body"><p class="group-label"><span>装備</span><span id="equipment-note">未確認</span></p><div class="equipment-row" id="equipment-slots"></div><p class="group-label"><span>バックパック</span><span class="small"></span></p><div class="slot-grid" id="backpack-slots" role="group" aria-label="バックパックの27スロット"></div><div class="hotbar"><p class="group-label"><span>ホットバー</span><span class="held-marker" id="held-note">手持ち —</span></p><div class="slot-grid" id="hotbar-slots" role="group" aria-label="ホットバーの9スロット"></div></div><p class="small muted" id="inventory-unknown" hidden>所持品が未確認です。未受信の枠は「?」で表示しています。</p></div><div class="inventory-help"><span style="color:var(--mint)">▰</span> 耐久度 <span style="color:var(--purple);margin-left:12px">✦</span> エンチャント <span class="held-marker" style="margin-left:12px">━</span> 選択中の手持ち</div></section>
@@ -90,7 +129,7 @@ h1{font-size:21px;letter-spacing:0}h2{font-size:14px}.intro{padding:14px 0 12px;
 
 </div>
 <section class="panel logs-panel section" id="logs" aria-labelledby="logs-heading"><div class="panel-head"><div><p class="panel-kicker">LIVE ACTIVITY</p><h2 id="logs-heading">Botのログ</h2></div><div class="log-head-right"><span><span class="log-dot" id="log-dot"></span><span id="log-status">接続中…</span></span><span class="chip">JST</span></div></div><div class="logs-toolbar"><div class="filter-group" aria-label="ログの種類"><button type="button" data-log-filter="all" aria-pressed="true">すべて</button><button type="button" data-log-filter="quarry" aria-pressed="false">露天掘り</button><button type="button" data-log-filter="combat" aria-pressed="false">戦闘</button><button type="button" data-log-filter="error" aria-pressed="false">エラー</button></div><input id="log-search" type="search" placeholder="ログを文字で絞り込み" aria-label="ログを文字で絞り込み" autocomplete="off"><label class="follow-control"><input id="follow-log" type="checkbox" checked>自動スクロール</label></div><div id="log-view" class="log-view" role="region" aria-label="Botのライブログ" tabindex="0"><p id="log-placeholder" class="muted">ログの受信を待っています…</p></div><div class="logs-footer"><span id="log-count">表示 0 行 / 保持 0 行</span><span>直近300行 · 最大1,500行</span></div></section>
-<footer class="page-footer"><span>受信したサーバー情報を表示 · 操作はBotのターミナルから</span><span id="refresh-note">状態は自動更新 · 時刻はすべてJST</span></footer><p class="sr-only" id="announcement" role="status" aria-live="polite"></p>
+<footer class="page-footer"><span>受信したサーバー情報を表示 · 接続と採掘は画面上部から操作</span><span id="refresh-note">状態は自動更新 · 時刻はすべてJST</span></footer><p class="sr-only" id="announcement" role="status" aria-live="polite"></p>
 </main>
 <dialog id="container-dialog" class="container-dialog" aria-labelledby="container-dialog-title" aria-describedby="container-dialog-status"><div class="container-dialog-head"><div class="container-dialog-heading"><span id="container-dialog-icon" aria-hidden="true"></span><div><h2 id="container-dialog-title">シュルカーボックス</h2><p id="container-dialog-count" class="small muted">—</p></div></div><button id="container-dialog-close" class="dialog-close" type="button" aria-label="中身のポップアップを閉じる" autofocus>×</button></div><div class="container-modal-body"><div><p id="container-dialog-status" class="modal-status">未確認</p><div id="container-dialog-grid" class="slot-grid modal-grid" role="group" aria-label="収納の中身"></div></div><aside class="modal-details" aria-label="収納内アイテムの詳細"><p class="modal-detail-heading"><span>アイテムの詳細</span><span id="modal-detail-slot" class="chip">未選択</span></p><div id="modal-item-detail"></div></aside></div></dialog>
 <script>
