@@ -1,5 +1,10 @@
 'use strict'
 
+const { createCombatExposure } = require('./combat-exposure')
+const { createQuarryStore } = require('./quarry-store')
+const { assertJobWorld } = require('./quarry-job-identity')
+const { RESUMABLE: QUARRY_AUTO_RESUMABLE, recoverable: recoverableQuarry, selectRecoveryCandidate, retryableRecoveryError } = require('./quarry-recovery')
+
 const { createActorReader } = require('./runtime-observation-views')
 const { profileCpu, measureSnapshots } = require('./runtime-diagnostics')
 const { createSightStanceSearch } = require('./sight-stance-search')
@@ -5228,6 +5233,7 @@ function createRuntime (host) {
       plan: config => { if (!quarryJob?.holdsWork()) requireIdle(); return ensureQuarryJob().plan(config ?? {}) },
       start: () => { requireIdle(); return ensureQuarryJob().start() },
       resume: () => { requireIdle(); return ensureQuarryJob().resume() },
+      retryPersistence: () => ensureQuarryJob().retryPersistence(),
       configureExit: options => ensureQuarryJob().configureExit(options ?? {}),
       configureTools: options => ensureQuarryJob().configureTools(options ?? {}),
       configureStorage: options => ensureQuarryJob().configureStorage(options ?? {}),
@@ -5248,9 +5254,9 @@ function createRuntime (host) {
       reconcileRejectedStorage: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileRejectedStorage() },
       reconcileObservedStoragePlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileObservedStoragePlacement() },
       acceptExceptions: () => ensureQuarryJob().acceptExceptions(),
-      pause: () => quarryJob ? quarryJob.pause('MANUAL_PAUSE') : quarrySnapshot(),
-      emergencyStop: () => quarryJob ? quarryJob.emergencyStop() : quarrySnapshot(),
-      cancel: () => quarryJob ? quarryJob.cancel() : quarrySnapshot(),
+      pause: () => { cancelQuarryRestore(); return quarryJob ? quarryJob.pause('MANUAL_PAUSE') : quarrySnapshot() },
+      emergencyStop: () => { cancelQuarryRestore(); return quarryJob ? quarryJob.emergencyStop() : quarrySnapshot() },
+      cancel: () => { cancelQuarryRestore(); return quarryJob ? quarryJob.cancel() : quarrySnapshot() },
       load: jobId => loadQuarryFile(jobId),
       status: () => quarrySnapshot(),
       document: () => quarryJob?.document() ?? structuredClone(host.shared.quarryDocument ?? null)
@@ -5339,6 +5345,7 @@ function createRuntime (host) {
       inventoryEvents: () => structuredClone(host.shared.inventoryEvents ?? []),
       permissions: () => ({ permissionLevel: host.meta.startGame?.permission_level, playerGameMode: host.meta.startGame?.player_gamemode, worldGameMode: host.meta.startGame?.world_gamemode, serverAuthoritativeInventory: host.meta.startGame?.server_authoritative_inventory, serverAuthoritativeBlockBreaking: host.meta.startGame?.server_authoritative_block_breaking, playerName: raw().playerName, runtimeEntityId: raw().runtimeEntityId }),
       threatReachability: () => threatReachability.snapshot(),
+      combatSearchBudget: () => combatExposure.snapshot(),
       combatCandidates: () => userBehaviors?.explainCombat?.() ?? null,
       // Read-only: each condition of the user-behavior combat canAct gate.
       combatGate: () => {
@@ -6062,37 +6069,10 @@ function createRuntime (host) {
       return result
     }, error => { host.log(`待機保護の退避終了: ${Date.now() - started}ms error=${error?.code ?? error?.message ?? error}`); try { if (!/CANCELLED/.test(String(error?.code ?? error?.message ?? ''))) noteEscapeOutcome(/deadline|stalled/.test(String(error?.message ?? ''))) } catch {} throw error })
   }
-  function combatSightEvidence (from, to) {
-    if (!from || !to || !['x', 'y', 'z'].every(k => Number.isFinite(from[k]) && Number.isFinite(to[k]))) return null
-    const steps = Math.ceil(Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z) / 0.25)
-    let unknown = false
-    for (let i = 1; i < steps; i++) {
-      const f = i / steps, b = host.world.getBlock(Math.floor(from.x + (to.x - from.x) * f), Math.floor(from.y + (to.y - from.y) * f), Math.floor(from.z + (to.z - from.z) * f))
-      if (b?.known !== true) { unknown = true; continue }
-      if (b.extra?.length || !(/^minecraft:(?:air|cave_air|void_air)$/.test(b.name) || b.boundingBox === 'empty' && !/water|lava|bubble|powder_snow|cobweb|portal/.test(String(b.name)))) return false
-    }
-    return unknown ? null : true
-  }
-  function bowSightClearAt (from, to) { return combatSightEvidence(from, to) === true }
-  const enemyAttackRoutes = new Map()
-  function combatAttackExposure (target, state) {
-    let sight = null, routeToBot = null, motion = null
-    try { sight = combatSightEvidence(state.position, { ...target.position, y: target.position.y + 0.9 }); motion = host.entities.motion?.(target.runtimeId) ?? null } catch {}
-    let result = evaluateCombatThreat({ target, state, sight, motion })
-    if (result.accessKind === 'enemy_walk_route' && Number.isFinite(result.distance) && result.distance <= result.recognitionRadius) {
-      const feet = state.position && { x: state.position.x, y: state.position.y - 1.62, z: state.position.z }
-      const key = JSON.stringify([userScope(state), String(target.runtimeId), String(target.uniqueId), host.world.revision?.(), ...['x', 'y', 'z'].map(k => Math.floor(feet?.[k])), ...['x', 'y', 'z'].map(k => Math.floor(target.position?.[k]))])
-      const cached = enemyAttackRoutes.get(key), now = Date.now()
-      if (cached && now - cached.at >= 0 && now - cached.at < 750) routeToBot = cached.value
-      else {
-        try { routeToBot = threatReachability.seekCells(host.world, target.position, feet, { radius: result.recognitionRadius, maxNodes: 5000, maxMs: 5 }) } catch {}
-        enemyAttackRoutes.set(key, { at: now, value: routeToBot })
-        while (enemyAttackRoutes.size > 128) enemyAttackRoutes.delete(enemyAttackRoutes.keys().next().value)
-      }
-      result = evaluateCombatThreat({ target, state, routeToBot, sight, motion })
-    }
-    return result
-  }
+  const combatExposure = createCombatExposure({ world: host.world, entities: host.entities, scopeOf: userScope })
+  function combatSightEvidence (from, to) { return combatExposure.sight(from, to) }
+  const bowSightClearAt = (from, to) => combatSightEvidence(from, to) === true
+  function combatAttackExposure (target, state) { return combatExposure.evaluate(target, state) }
   function nearestHostileText () {
     try {
       const s = raw(), p = s.position
@@ -6272,18 +6252,19 @@ function createRuntime (host) {
   }
 
   function quarryDir () { return require('node:path').resolve(__dirname, '..', '.local', 'quarry') }
-  const quarryStorage = Object.freeze({
-    async save (jobId, doc) {
-      const QUARRY_DIR = quarryDir()
-      const fs = require('node:fs/promises'), path = require('node:path')
-      const safe = String(jobId).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 80) || 'job'
-      await fs.mkdir(QUARRY_DIR, { recursive: true })
-      const file = path.join(QUARRY_DIR, `${safe}.json`), tmp = `${file}.${process.pid}.tmp`
-      await fs.writeFile(tmp, JSON.stringify(doc, null, 1))
-      await fs.rename(tmp, file)
-      host.shared.quarryDocument = doc
+  const quarryStorage = createQuarryStore({
+    directory: quarryDir(),
+    onSaved: doc => {
+      if (!disposed && quarryJob?.document()?.instanceId === doc.instanceId) host.shared.quarryDocument = doc
     }
   })
+  let quarryLoadSequence = 0
+  let quarryRestoreTask = null
+  function cancelQuarryRestore () {
+    quarryLoadSequence++
+    host.shared.quarryRestoreDisabled = true
+    host.shared.quarryRestoreTried = true
+  }
   function quarryEvidence (target, state) {
     const exposure = combatAttackExposure(target, state)
     return { route: exposure.evidence.routeToBot, sight: exposure.evidence.sight, intercept: exposure.intercept, unknown: exposure.unknown }
@@ -6690,44 +6671,56 @@ function createRuntime (host) {
     try { return quarryJob ? quarryJob.status() : host.shared.quarryDocument ? { state: host.shared.quarryDocument.state, jobId: host.shared.quarryDocument.config?.jobId ?? null, pauseReason: host.shared.quarryDocument.pauseReason ?? null, loaded: false } : null } catch (error) { return { error: String(error.message).slice(0, 200) } }
   }
   async function loadQuarryFile (jobId) {
-    const fs = require('node:fs/promises'), path = require('node:path')
-    const safe = String(jobId).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 80)
-    const doc = JSON.parse(await fs.readFile(path.join(quarryDir(), `${safe}.json`), 'utf8'))
-    host.shared.quarryDocument = doc
-    return ensureQuarryJob().load(doc)
+    const ticket = ++quarryLoadSequence, generation = quarryPorts
+    const owner = ensureQuarryJob(), before = owner.document()?.instanceId ?? null
+    const doc = await quarryStorage.load(jobId)
+    if (disposed || disposing || ticket !== quarryLoadSequence || generation !== quarryPorts || owner.document()?.instanceId !== before && !(before === null && owner.document() === null)) throw Object.assign(new Error('Quarry recovery context changed'), { code: 'RECOVERY_CONTEXT_CHANGED' })
+    assertJobWorld(doc, quarryState())
+    const status = owner.load(doc)
+    host.shared.quarryDocument = owner.document()
+    return status
   }
 
-  // After a bot restart no quarry job is loaded, so an interrupted job would
-  // sit idle. Once per process: load the most recently saved job that was
-  // neither finished nor paused on purpose, and resume it when its pause is a
-  // recoverable one (restart, disconnect, a failed action, unreachable storage,
-  // stalled recovery). Hazards, exceptions, deaths and manual pauses stay paused.
-  const QUARRY_AUTO_RESUMABLE = /^(PROCESS_RESTARTED|DISCONNECTED|ACTION_FAILED|STORAGE_UNREACHABLE|RECOVERY_NOT_PROGRESSING|HEALTH_NOT_RECOVERING)/
   async function restoreQuarryJob () {
-    const fs = require('node:fs/promises'), path = require('node:path')
-    // After a restart the job controller exists but holds no job (state IDLE).
-    if (ensureQuarryJob().status()?.jobId) return { skipped: 'job_loaded' }
-    let names = []
-    try { names = (await fs.readdir(quarryDir())).filter(n => /^quarry_[A-Za-z0-9_-]+.json$/.test(n)) } catch { return { skipped: 'no_dir' } }
-    const docs = []
-    for (const n of names) { try { const d = JSON.parse(await fs.readFile(path.join(quarryDir(), n), 'utf8')); docs.push(d) } catch {} }
-    const candidate = docs.filter(d => d?.config?.jobId && d.state !== 'FINISHED' && d.result?.type !== 'FINISHED' && d.result?.type !== 'CANCELLED' && (d.userRunIntent === 'running' || d.pauseReason === 'PROCESS_RESTARTED') && (d.state !== 'PAUSED' || QUARRY_AUTO_RESUMABLE.test(d.pauseReason ?? '')) && Date.now() - Date.parse(d.savedAt ?? 0) < 24 * 3600e3).sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))[0]
+    const job = ensureQuarryJob(), current = job.document()
+    if (current) {
+      if (!recoverableQuarry(current) || !QUARRY_AUTO_RESUMABLE.test(current.pauseReason ?? '')) return { skipped: 'job_loaded' }
+      assertJobWorld(current, quarryState())
+      job.resume()
+      return { loaded: current.config.jobId, resumed: true }
+    }
+    const ticket = quarryLoadSequence, generation = quarryPorts
+    const docs = await quarryStorage.list()
+    if (disposed || disposing || host.shared.quarryRestoreDisabled || ticket !== quarryLoadSequence || generation !== quarryPorts || job.document()) throw Object.assign(new Error('Quarry recovery context changed'), { code: 'RECOVERY_CONTEXT_CHANGED' })
+    const candidate = selectRecoveryCandidate(docs, quarryState())
     if (!candidate) return { skipped: 'none' }
     const status = await loadQuarryFile(candidate.config.jobId)
     const reason = status?.pauseReason ?? ''
-    host.log(`露天掘り: 再起動後にジョブを読み込みました: ${candidate.config.jobId} (${reason || status?.state})`)
+    host.log(`露天掘り: 同じワールドのジョブを復元しました: ${candidate.config.jobId} (${reason || status?.state})`)
     if (!QUARRY_AUTO_RESUMABLE.test(reason)) return { loaded: candidate.config.jobId, resumed: false, reason }
     ensureQuarryJob().resume()
-    host.log(`露天掘り: 自動で再開しました: ${candidate.config.jobId}`)
     return { loaded: candidate.config.jobId, resumed: true, reason }
   }
 
   function maybeRestoreQuarryJob () {
-    if (disposed || disposing || host.shared.quarryRestoreTried || !quarryPorts) return
+    if (disposed || disposing || host.shared.quarryRestoreDisabled || host.shared.quarryRestoreTried || quarryRestoreTask || !quarryPorts || Date.now() < (host.shared.quarryRestoreNextAt ?? 0)) return
     const state = raw()
     if (state.phase !== 'spawned' || !host.shared.loadingScreenEnded || state.spawnPending || state.inventory?.known !== true || host.shared.inventoryUncertain) return
-    host.shared.quarryRestoreTried = true
-    void restoreQuarryJob().then(r => { host.shared.quarryRestore = r; host.log(`露天掘り: 再起動後の確認: ${JSON.stringify(r)}`) }).catch(error => { host.shared.quarryRestore = { error: String(error.message).slice(0, 200) }; host.log(`露天掘り: 再起動後の読み込みに失敗: ${String(error.message).slice(0, 160)}`) })
+    const attempt = host.shared.quarryRestoreAttempts = (host.shared.quarryRestoreAttempts ?? 0) + 1
+    const task = restoreQuarryJob().then(result => {
+      if (disposed || disposing) return
+      host.shared.quarryRestoreTried = true
+      host.shared.quarryRestore = { ...result, attempts: attempt }
+      host.log(`露天掘り: 再起動後の確認: ${JSON.stringify(result)}`)
+    }).catch(error => {
+      if (disposed || disposing) return
+      const retry = !host.shared.quarryRestoreDisabled && retryableRecoveryError(error) && attempt < 3
+      host.shared.quarryRestoreTried = !retry
+      host.shared.quarryRestoreNextAt = retry ? Date.now() + 15000 * attempt : null
+      host.shared.quarryRestore = { error: String(error.message).slice(0, 200), code: error.code ?? null, attempts: attempt, retryScheduled: retry }
+      host.log(`露天掘り: 復元失敗 (${retry ? '再試行予定' : '自動再試行なし'}): ${String(error.message).slice(0, 160)}`)
+    }).finally(() => { if (quarryRestoreTask === task) quarryRestoreTask = null })
+    quarryRestoreTask = task
   }
   // resumeRequested is not reached while autonomy is running (as it is right
   // after a restart), so the restore also runs from its own timer.
@@ -6787,6 +6780,7 @@ function createRuntime (host) {
       clearInterval(idleTimer)
       idleTimer = null
       clearInterval(userBehaviorTimer); userBehaviorTimer = null
+      clearInterval(quarryRestoreTimer); quarryLoadSequence++
       publishWalker()
       autonomy.stop(reason ?? '行動コードを更新します。')
       const cleanup = stopActions(reason ?? '行動コードを更新します。')

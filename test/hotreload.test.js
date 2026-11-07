@@ -9,7 +9,8 @@ const { setTimeout: delay } = require('node:timers/promises')
 const { createHotReloader } = require('../src/hotreload')
 
 function workspace (t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'minecraftbot-hotreload-'))
+  // Match the canonical paths used by the reloader (Windows may return an 8.3 TEMP alias).
+  const directory = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'minecraftbot-hotreload-')))
   const created = new Set()
   const managers = []
   const context = { client: { identity: 'stable-client', connected: true }, events: [] }

@@ -185,7 +185,7 @@ Invoke-RestMethod -Method Post -ContentType 'application/json' -Body $body "$bas
 
 ### 下端から地上へ戻る
 
-下端の採掘、最終回収、収納を終えたあと、Botは掘削範囲に隣接するチャンクの端で、安全に地上へ登れる列を1本選びます。新規ジョブでは `exit.side` の既定値 `auto` を使い、東・西・北・南の順に優先して各側最大16本の候補を調べます。たとえば東側の候補がすべて砂利・溶岩・保護領域にかかる場合は、西側以降から探します。`east`・`west`・`north`・`south` を指定すると、その側だけを調べます。
+Botは採掘前に、掘削範囲に隣接するチャンクの端から安全な脱出列を1本予備選定し、土と道具耐久を確保します。各層の開始時に再検査し、下端の採掘・最終回収・収納後も同じ列を再確認してから脱出します。予備選定は実際の採掘・着地の証拠ではありません。新規ジョブでは `exit.side` の既定値 `auto` を使い、東・西・北・南の順に優先して各側最大16本の候補を調べます。たとえば東側の候補がすべて砂利・溶岩・保護領域にかかる場合は、西側以降から探します。`east`・`west`・`north`・`south` を指定すると、その側だけを調べます。
 
 候補の比較には受信した地形を使います。最終確認や脱出列の選定に必要な地形が未受信なら、`subchunk_request` で読み込みを最大2回要求し、届いたブロック情報で再評価します。要求を送っただけでは地形を既知にしません。入口・頭上・地上の着地点を確認できた列だけを採用し、その1列の頭上を通常採掘で開けながら、足元に土を積んで1段ずつ登ります。安全な列を確認できない場合や途中で危険を検知した場合は一時停止し、理由を `/quarry status` に表示します。
 
@@ -273,3 +273,9 @@ Invoke-RestMethod -Method Post -ContentType 'application/json' -Body $body "$bas
 - 再接続が上限に達した場合は、終了理由とネットワーク・設定を確認してから起動し直します。
 
 通信基盤は [bedrock-protocol](https://github.com/PrismarineJS/bedrock-protocol)、通信仕様は [Mojang の公式資料](https://github.com/Mojang/bedrock-protocol-docs)、物理予測は [Bedrock 対応 draft](https://github.com/PrismarineJS/prismarine-physics/pull/152) を参照しています。
+
+## 2026-11-07 レビュー対応
+
+所属Realmの固定、停止と再開の排他、保存失敗の可視化、採掘前の脱出確認、ログ処理の上限制御とCIを追加しています。`STOPPING` または保存失敗中は再開できません。Bot本体とダッシュボードの再起動が必要です。移行・保存再試行・検証範囲は [レビュー対応記録](docs/review-hardening-2026-11-07.md) を参照してください。
+
+`npm run test:review` は安全性回帰と関係する既存テスト、`npm run test:compare -- <base SHA>` は既存全件を基準版と比較します。既存失敗を含む比較の成功と、全テスト成功は別の結果です。

@@ -139,3 +139,7 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 - **ユーザーとのやり取りは日本語**で、時刻は **JST（UTC+9）** で書く。
 - ローカル作業フォルダ（Windows の `G:\Projects\MinecraftBot`）は Git 管理されており、`main` ブランチが GitHub（`YuK1Game/minecraft-mining-bot`）の `origin/main` を追跡している。作業前に `git status` とリモートとの差分を確認する。
 - 参考実装や通信仕様は `docs/bedrock-bot-references.md`、`docs/bedrock-references.md` を参照。
+
+## 2026-11-07 レビュー対応の検証
+
+`npm run check` は src/scripts/test とダッシュボード内JSを検査します。`npm run test:review` は今回の安全回帰と互換テスト、`npm run test:compare -- <base SHA>` は既存全件の失敗差分です。既存失敗を隠さず、全件成功と差分なしを区別してください。詳細と実Realmで未実施の確認項目は `docs/review-hardening-2026-11-07.md`。`STOPPING` 中や `PERSISTENCE_FAILED` を無理に解除しないでください。

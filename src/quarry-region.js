@@ -112,6 +112,8 @@ function permits (regions, kind, p) {
   if (![p?.x, p?.y, p?.z].every(safeInt)) return { allowed: false, reason: 'INVALID_POSITION' }
   if (p.y < regions.worldMinY || p.y > regions.worldMaxY) return { allowed: false, reason: 'OUTSIDE_WORLD_HEIGHT' }
   if (inProtected(regions, p)) return { allowed: false, reason: 'PROTECTED' }
+  const exit = regions.exitReservation
+  if (exit && ['break', 'place', 'seal'].includes(kind) && (p.x === exit.column.x && p.z === exit.column.z && p.y >= exit.startFeet.y - 1 && p.y <= exit.clearTopY || p.x === exit.landing.x && p.z === exit.landing.z && p.y >= exit.landing.y - 1 && p.y <= exit.landing.y + 1)) return { allowed: false, reason: 'EXIT_RESERVED' }
   const work = inExcavation(regions, p) || inInfrastructure(regions, p)
   if (kind === 'break' || kind === 'place') return work ? { allowed: true } : { allowed: false, reason: inSeal(regions, p) ? 'SEAL_ONLY' : 'OUTSIDE_PERMITTED_REGION' }
   if (kind === 'seal') return work || inSeal(regions, p) ? { allowed: true } : { allowed: false, reason: regions.seal.enabled && !regions.seal.ready ? 'SEAL_REGION_NOT_FIXED' : 'OUTSIDE_SEAL_REGION' }

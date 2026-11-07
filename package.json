@@ -13,7 +13,10 @@
     "realms": "node --env-file-if-exists=.env src/main.js --list",
     "test": "node --test",
     "check": "node scripts/check.js",
-    "dashboard": "node --env-file-if-exists=.env scripts/dashboard.js"
+    "dashboard": "node --env-file-if-exists=.env scripts/dashboard.js",
+    "test:review": "node scripts/review-tests.js",
+    "benchmark:combat": "node scripts/benchmark-combat-search.js",
+    "test:compare": "node scripts/compare-tests.js"
   },
   "dependencies": {
     "bedrock-protocol": "3.61.0",

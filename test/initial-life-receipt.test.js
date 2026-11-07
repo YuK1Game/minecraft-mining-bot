@@ -7,13 +7,16 @@ const path = require('node:path')
 // The initial-life receipt gates food (foodKnownLife) and post-reload hunger
 // restoration. It must be prepared as soon as a spawned first life lacks one.
 const source = fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? path.join(__dirname, '../src/runtime.js'), 'utf8')
-const start = source.indexOf('  function ensureInitialLifeReceipt () {'), end = source.indexOf('  function resumeRequested () {', start)
+const start = source.indexOf('  function ensureInitialLifeReceipt () {')
+const functionEnd = source.indexOf('\n  }', start) + 4
+const end = source.indexOf('  function resumeRequested () {', start)
+assert.ok(start >= 0 && functionEnd > start && end > functionEnd, 'receipt and resume functions must exist')
 
 function harness ({ shared = {}, state = {}, verified = false, prepare = () => Promise.resolve() } = {}) {
   const calls = []
   const host = { shared: { loadingScreenEnded: true, deathRespawn: null, ...shared } }
   const raw = () => ({ phase: 'spawned', dead: false, spawnPending: false, ...state })
-  const ensure = Function('host', 'raw', 'verifiedInitialLifeReceipt', 'prepareInventoryLifeReceipt', source.slice(start, end) + ';return ensureInitialLifeReceipt')(host, raw, () => verified, () => { calls.push('prepare'); return prepare() })
+  const ensure = Function('host', 'raw', 'verifiedInitialLifeReceipt', 'prepareInventoryLifeReceipt', source.slice(start, functionEnd) + ';return ensureInitialLifeReceipt')(host, raw, () => verified, () => { calls.push('prepare'); return prepare() })
   return { ensure, calls }
 }
 
