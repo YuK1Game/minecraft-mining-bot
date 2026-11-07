@@ -1,0 +1,36 @@
+diff --git a/scripts/review-tests.js b/scripts/review-tests.js
+index c6dd5a2..08e5cf4 100644
+--- a/scripts/review-tests.js
++++ b/scripts/review-tests.js
+@@ -5,7 +5,7 @@ const { spawnSync } = require('node:child_process')
+ const root = path.resolve(__dirname, '..')
+ const files = fs.readdirSync(path.join(root, 'test')).filter(name => /^review-.*\.test\.js$/.test(name)).sort().map(name => path.join('test', name))
+ if (!files.length) throw new Error('No review regression tests found')
+-const compatibility = ['combat-coordinator.test.js', 'quarry-job.test.js', 'quarry-carried-storage.test.js', 'quarry-observed-placement-job.test.js', 'quarry-source-rejection.test.js', 'quarry-storage-reachability.test.js', 'quarry-pillar-exit.test.js', 'quarry-egress-runtime.test.js', 'dashboard-state.test.js', 'dashboard-depot-state.test.js', 'dashboard.test.js', 'host-packets.test.js', 'keep-alive.test.js', 'hotreload.test.js', 'hotreload-content-filter.test.js'].map(name => path.join('test', name))
++const compatibility = ['initial-life-receipt.test.js', 'combat-coordinator.test.js', 'quarry-job.test.js', 'quarry-carried-storage.test.js', 'quarry-observed-placement-job.test.js', 'quarry-source-rejection.test.js', 'quarry-storage-reachability.test.js', 'quarry-pillar-exit.test.js', 'quarry-egress-runtime.test.js', 'dashboard-state.test.js', 'dashboard-depot-state.test.js', 'dashboard.test.js', 'host-packets.test.js', 'keep-alive.test.js', 'hotreload.test.js', 'hotreload-content-filter.test.js'].map(name => path.join('test', name))
+ const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', '--test-concurrency=2', '--test-timeout=60000', ...files, ...compatibility], { cwd: root, stdio: 'inherit' })
+ if (result.error) throw result.error
+ process.exitCode = result.status ?? 1
+diff --git a/test/initial-life-receipt.test.js b/test/initial-life-receipt.test.js
+index 45beace..21b71b2 100644
+--- a/test/initial-life-receipt.test.js
++++ b/test/initial-life-receipt.test.js
+@@ -7,13 +7,16 @@ const path = require('node:path')
+ // The initial-life receipt gates food (foodKnownLife) and post-reload hunger
+ // restoration. It must be prepared as soon as a spawned first life lacks one.
+ const source = fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? path.join(__dirname, '../src/runtime.js'), 'utf8')
+-const start = source.indexOf('  function ensureInitialLifeReceipt () {'), end = source.indexOf('  function resumeRequested () {', start)
++const start = source.indexOf('  function ensureInitialLifeReceipt () {')
++const functionEnd = source.indexOf('\n  }', start) + 4
++const end = source.indexOf('  function resumeRequested () {', start)
++assert.ok(start >= 0 && functionEnd > start && end > functionEnd, 'receipt and resume functions must exist')
+ 
+ function harness ({ shared = {}, state = {}, verified = false, prepare = () => Promise.resolve() } = {}) {
+   const calls = []
+   const host = { shared: { loadingScreenEnded: true, deathRespawn: null, ...shared } }
+   const raw = () => ({ phase: 'spawned', dead: false, spawnPending: false, ...state })
+-  const ensure = Function('host', 'raw', 'verifiedInitialLifeReceipt', 'prepareInventoryLifeReceipt', source.slice(start, end) + ';return ensureInitialLifeReceipt')(host, raw, () => verified, () => { calls.push('prepare'); return prepare() })
++  const ensure = Function('host', 'raw', 'verifiedInitialLifeReceipt', 'prepareInventoryLifeReceipt', source.slice(start, functionEnd) + ';return ensureInitialLifeReceipt')(host, raw, () => verified, () => { calls.push('prepare'); return prepare() })
+   return { ensure, calls }
+ }
+ 

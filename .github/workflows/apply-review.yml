@@ -1,0 +1,54 @@
+name: Apply verified review patch
+on:
+  push:
+    branches: [fix/review-hardening-20261107]
+    paths: [.github/workflows/apply-review.yml, '.review/**']
+permissions:
+  contents: write
+concurrency:
+  group: apply-review-hardening
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify unchanged source and patch integrity
+        shell: bash
+        run: |
+          test "$GITHUB_REF" = refs/heads/fix/review-hardening-20261107
+          git diff --exit-code acda1556e72ec4df0f85417099e4f715844b3dc1 HEAD -- src scripts test docs README.md AGENTS.md package.json package-lock.json .gitignore
+          cat .review/patch.part0 .review/patch.part1 .review/patch.part2 .review/patch.part3 > /tmp/review.patch.xz
+          echo 'b6e5e85ab55ab81083f180ffbf81bffe4d6cae4fd7c9d6ea857191069f42a2eb  /tmp/review.patch.xz' | sha256sum --check
+          xz -dc /tmp/review.patch.xz > /tmp/review.patch
+          echo 'a5f2ab07f6134e5791b338fba18245497b4a5e009c5f291e881966795f58ed49  /tmp/review.patch' | sha256sum --check
+          git apply --check --index --unidiff-zero /tmp/review.patch
+          git apply --index --unidiff-zero /tmp/review.patch
+          git apply --check --index .review/followup.patch
+          git apply --index .review/followup.patch
+          git diff --cached --check
+      - run: npm ci --ignore-scripts
+      - name: Syntax and focused regression validation
+        shell: bash
+        run: |
+          npm run check
+          npm run test:review > /tmp/review-validation.tap 2>&1
+      - name: Commit verified source to review branch only
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: harden quarry lifecycle, world isolation, durable storage, exit and monitoring'
+          git push origin HEAD:refs/heads/fix/review-hardening-20261107
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: applied-review-validation
+          path: /tmp/review-validation.tap
+          retention-days: 7
