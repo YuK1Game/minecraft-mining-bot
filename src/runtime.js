@@ -6813,7 +6813,8 @@ function createRuntime (host) {
     canReload: () => !resetHeld() && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && mining.snapshot().phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !food.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(furnace.snapshot().busy || chest.snapshot().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging,
     dispose: async reason => {
       if (disposed) return
-      loadoutReset?.cancel(); await loadoutReset?.drain()
+      loadoutReset?.cancel()
+      const resetDrain = loadoutReset?.drain()
       if (quarryJob?.holdsWork()) { try { await quarryJob.pause('PROCESS_RESTARTED'); host.shared.quarryAutoResume = true } catch {} }
       try { const doc = quarryJob?.document(); if (doc) host.shared.quarryDocument = doc } catch {}
       const memoryFlush = missionJournal.close()
@@ -6827,7 +6828,8 @@ function createRuntime (host) {
       publishWalker()
       autonomy.stop(reason ?? '行動コードを更新します。')
       const cleanup = stopActions(reason ?? '行動コードを更新します。')
-      await Promise.allSettled([manualShulkerTask])
+      // Stop ordinary inputs synchronously above, then wait for owned reset cleanup.
+      await Promise.allSettled([manualShulkerTask, resetDrain])
       inputStream?.stop()
       inputOwner = 'none'
       await cleanup
