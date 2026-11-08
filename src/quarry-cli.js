@@ -1,12 +1,12 @@
 'use strict'
 
 // Terminal syntax for quarry mode:
-//   /quarry plan here [bottom=Y] [top=Y] [chest=x,y,z] [combat=off]
+//   /quarry plan here [bottom=Y] [top=Y] [combat=off]
 //   /quarry plan <chunkX> <chunkZ> [<chunkX2> <chunkZ2>] [options]
 //   /quarry plan {json}
 //   /quarry start | pause | stop | resume | cancel | accept | status | load <jobId>
 
-const USAGE = '/quarry plan here|<cx> <cz> [<cx2> <cz2>] [bottom=Y] [top=Y] [chest=x,y,z] [combat=off] → /quarry start。ほか pause / stop(緊急停止) / resume / cancel / accept(例外を受け入れて完了) / status / load <jobId>'
+const USAGE = '/quarry plan here|<cx> <cz> [<cx2> <cz2>] [bottom=Y] [top=Y] [combat=off] → /quarry start。ほか pause / stop(緊急停止) / resume / cancel / accept(例外を受け入れて完了) / status / load <jobId>'
 
 function parseQuarryCommand (line, { position = null } = {}) {
   const rest = line.trim().replace(/^\/quarry\b/, '').trim()
@@ -32,11 +32,8 @@ function parseQuarryCommand (line, { position = null } = {}) {
   const int = (k, v) => { const x = Number(v); if (!Number.isSafeInteger(x)) throw new Error(`${k} は整数で指定してください。`); return x }
   if (options.bottom != null) config.yBottom = int('bottom', options.bottom)
   if (options.top != null) config.yTop = int('top', options.top)
-  if (options.chest != null) {
-    const p = options.chest.split(',').map(v => int('chest', v))
-    if (p.length !== 3) throw new Error('chest=x,y,z の形で指定してください。')
-    config.inventory = { storage: [{ position: { x: p[0], y: p[1], z: p[2] } }] }
-  } else config.inventory = { carryOnly: true }
+  if (options.chest != null) throw new Error('収納先はシュルカー専用です。chest= は使用できません。')
+  config.inventory = { pickupMode: 'passive', depositWhen: 'full' }
   if (options.combat === 'off') config.quarryCombat = { enabled: false }
   if (options.id) config.jobId = options.id
   return { method: 'plan', args: [config] }

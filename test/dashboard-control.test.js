@@ -94,10 +94,11 @@ test('dashboard-control: disconnect waits for pause; failed save does not preten
   await new Promise(setImmediate)
   assert.ok(!f.calls.some(c => c[0] === 'disconnect'))
 })
-test('dashboard-control: input bounds, optional heights/chest, four inclusive chunks and storage policy', () => {
+test('dashboard-control: input bounds, optional heights, four inclusive chunks and shulker-only storage', () => {
   const s = state()
-  const c = quarryConfig({ x1: -1, z1: -1, x2: 0, z2: 0, bottom: -60, chest: { x: -3, y: 64, z: 3 } }, s)
-  assert.equal(c.inventory.depositWhen, 'full'); assert.equal(c.inventory.storage.length, 1)
+  const c = quarryConfig({ x1: -1, z1: -1, x2: 0, z2: 0, bottom: -60 }, s)
+  assert.equal(c.inventory.depositWhen, 'full'); assert.equal(c.inventory.storage.length, 0)
+  assert.throws(() => quarryConfig({ x1: 0, z1: 0, chest: { x: -3, y: 64, z: 3 } }, s), { code: 'SHULKER_ONLY_STORAGE' })
   assert.equal(c.quarryCombat.enabled, true); assert.equal(c.yTop, 'auto')
   for (const extra of [{ x2: 4 }, { x1: 0.2 }, { z1: '0' }, { x1: 1875000 }, { bottom: -65 }, { top: 1, bottom: 2 }, { permissions: {} }, { pickupMode: 'none' }, { chest: { x: 1, y: 2, z: 3, command: 'fill' } }]) {
     assert.throws(() => quarryConfig({ x1: 0, z1: 0, ...extra }, s))

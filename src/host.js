@@ -521,6 +521,12 @@ async function main () {
     })
     await reloader.loadInitial(); reloader.watch()
     const invoke = group => new Proxy({}, { get: (_, method) => (...params) => {
+      // Dedicated legacy endpoints must obey the same reset lease as /action.
+      const resetting = current()?.operations.loadout
+      if (resetting?.status().busy) {
+        if (method === 'stop') resetting.cancel()
+        else throw new Error('初期アイテムのリセット中です。完了または中断を待ってください。')
+      }
       const handler = current()?.operations[group]?.[method]
       if (typeof handler !== 'function') throw new Error('この行動は現在のコードで利用できません。')
       return handler(...params)
@@ -538,12 +544,13 @@ async function main () {
     }
     const dashboardControl = require('./dashboard-control').createDashboardControl({
       getState: () => { const observed = rawSnapshot(); return { ...observed, lifecycle: lifecycle.stats(), loadingScreenEnded: shared.loadingScreenEnded, inventory: shared.inventoryUncertain ? { ...observed.inventory, known: false, uncertain: true } : observed.inventory } },
-      getQuarry: () => current()?.operations.quarry, getGeneration: () => reloader.snapshot().generation, disconnect: () => stop()
+      getQuarry: () => current()?.operations.quarry, getReset: () => current()?.operations.loadout, getGeneration: () => reloader.snapshot().generation, disconnect: () => stop()
     })
     api = createApi({ dashboardControl, snapshot: fullSnapshot, disconnect: () => stop(), lifecycle: { ...lifecycle, respawn: options => deathRespawn.request(options) },
       mining: invoke('mining'), walking: invoke('walking'), movement: invoke('movement'), crafting: invoke('crafting'), interactions: invoke('interactions'), combat: invoke('combat'), agent: invoke('agent'), reload: () => reloader.reload({ reason: 'api' }),
       action: async ({ group, method, args = [] }) => {
         const operations = current().operations
+        if (operations.loadout?.status().busy && group !== 'loadout') throw new Error('初期アイテムのリセット中です。中断は loadout.cancel を使用してください。')
         if (!Object.hasOwn(operations, group) || !Object.hasOwn(operations[group], method) || !Array.isArray(args) || args.length > 4) throw new Error('登録済みの行動と引数を指定してください。')
         return operations[group][method](...args)
       },

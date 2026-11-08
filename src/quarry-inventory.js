@@ -24,12 +24,13 @@ function carriedContainerKey (item) {
   return Number.isSafeInteger(stack) && stack > 0 ? `${nameOf(item)}:stack:${stack}` : `${nameOf(item)}:slot:${item?.slot}`
 }
 
-function selectCarriedStorage (items, { excludedShulkerKeys = [] } = {}) {
+function selectCarriedStorage (items, { excludedShulkerKeys = [], shulkerOnly = false } = {}) {
   const available = [...(items ?? [])].filter(item => Number.isInteger(item?.slot) && item.slot >= 0 && item.slot < SLOTS && Number.isSafeInteger(item.count) && item.count > 0).sort((a, b) => a.slot - b.slot)
   const excluded = new Set(excludedShulkerKeys)
   const source = (item, count) => ({ slot: item.slot, name: item.name, count, ...(Number.isSafeInteger(item.stackId ?? item.stack_id) ? { stackId: item.stackId ?? item.stack_id } : {}) })
-  const box = available.find(item => isShulkerBox(item.name) && item.count === 1 && !excluded.has(carriedContainerKey(item)))
+  const box = available.find(item => isShulkerBox(item.name) && item.count === 1 && !excluded.has(carriedContainerKey(item)) && !(shulkerOnly && require('./loadout-manifest').SUPPLY_NAMES.includes(item.name)))
   if (box) return { kind: 'shulker', key: carriedContainerKey(box), sources: [source(box, 1)] }
+  if (shulkerOnly) return null
   const chests = available.filter(item => nameOf(item) === 'chest')
   const count = Math.min(2, chests.reduce((sum, item) => sum + item.count, 0))
   if (!count) return null
