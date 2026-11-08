@@ -138,6 +138,11 @@ function createDashboardManager ({ workspaceRoot, apiPort, defaultProfile = 'mai
       }
       return requestBot({ apiPort, payload: { command: 'disconnect', session: input.session, jobId: input.jobId }, timeoutMs: 30000 })
     }
+    if (route === 'loadout') {
+      inputKeys(input, ['command', 'session', 'resetToken', 'confirm'])
+      if (!['resetPreview', 'resetStart', 'resetCancel'].includes(input.command)) throw failure('INVALID_COMMAND', 'この操作は公開されていません。', 400)
+      return requestBot({ apiPort, payload: input, timeoutMs: 30000 })
+    }
     if (route === 'quarry') {
       inputKeys(input, ['command', 'session', 'config', 'planToken', 'jobId'])
       if (!['plan', 'start', 'pause', 'resume', 'emergencyStop', 'cancel'].includes(input.command)) throw failure('INVALID_COMMAND', 'この操作は公開されていません。', 400)

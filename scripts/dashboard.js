@@ -169,7 +169,7 @@ function createDashboard ({ controls = null, workspaceRoot = path.resolve(__dirn
       if (request.headers['x-bot-control'] !== controlToken || method === 'POST' && request.headers.origin !== canonical) { request.resume?.(); send(403, { error: '画面を再読み込みしてから操作してください。' }); return }
       if (method === 'GET' && url.pathname === '/api/control/state') { send(200, await controls.snapshot()); return }
       const route = url.pathname.slice('/api/control/'.length)
-      if (method !== 'POST' || !['realms', 'connect', 'disconnect', 'quarry'].includes(route) || request.url !== url.pathname) { request.resume?.(); send(404, { error: 'Not found' }); return }
+      if (method !== 'POST' || !['realms', 'connect', 'disconnect', 'quarry', 'loadout'].includes(route) || request.url !== url.pathname) { request.resume?.(); send(404, { error: 'Not found' }); return }
       if (request.headers['content-type']?.split(';')[0].trim() !== 'application/json') { request.resume?.(); send(415, { error: 'application/json が必要です。' }); return }
       try {
         const chunks = []; let bytes = 0

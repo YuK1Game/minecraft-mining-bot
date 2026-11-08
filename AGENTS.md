@@ -55,11 +55,11 @@
 
 - 現在のユーザー方針は**掘り抜き優先**。`quarry.configureStorage({pickupMode:"passive",depositWhen:"full"})` を明示設定したジョブは、普通のドロップを拾いに行かず自然取得だけにし、持ち物の全36枠が埋まった時だけ収納する。拾い残しは記録し、採掘完了の妨げにしない。満杯でない終了時の資材は手持ちに残す。自分のシュルカー・補給箱の回収と内容照合は従来どおり必須。未指定の旧ジョブは従来の回収方針を保つ。
 
-指定チャンクを上の層から1層ずつ掘り下げ、指定チェストへ搬入します。ターミナルの `/quarry` か、`POST /action` の `group: "quarry"` で操作します。
+指定チャンクを上の層から1層ずつ掘り下げ、手持ちの収納用シュルカーへ格納します。ターミナルの `/quarry` か、`POST /action` の `group: "quarry"` で操作します。
 
 ```
-/quarry plan here chest=10,64,-3     # 現在のチャンクを計画（ワールドは変更しない）
-/quarry plan <cx> <cz> [<cx2> <cz2>] [bottom=Y] [top=Y] [chest=x,y,z] [combat=off]
+/quarry plan here                   # 収納用シュルカーで計画（ワールドは変更しない）
+/quarry plan <cx> <cz> [<cx2> <cz2>] [bottom=Y] [top=Y] [combat=off]
 /quarry start | pause | resume | stop | cancel | accept | status | load <jobId>
 ```
 
@@ -151,3 +151,12 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 - 開始は2分有効の一度きりの計画確認に限定し、接続先・生存回・ジョブ・設定・コード世代の変更で失効させます。例外の自動承認はしません。
 - Microsoftの一時デバイスコード以外の認証情報を画面へ返しません。`.env` は変更しません。詳細・停止時のプロセス所有権・未実施検証は `docs/dashboard-controls.md`。
 - 変更時は `test/dashboard-control*.test.js` と `npm run test:review` を実行してください。`host.js`/`api.js` の更新はBot本体の再起動が必要です。
+
+## シュルカー専用・初期セットリセット
+
+- 本番Runtimeは `storageMode: 'shulker'` と portable storage の `shulkerOnly: true` を固定。旧チェスト記録は削除せず `LEGACY_CHEST_STORAGE` で停止。画面・CLI・汎用APIからチェスト代替を許可しない。
+- 青・空色・黄・茶の補給4色は収納候補から除外。供給箱の受信識別子による除外も維持。
+- `src/loadout-manifest.js` の標準v1は、未確定だった数量・エンチャントの新規標準。過去の実在庫を復元したと主張しない。
+- リセットは管理者の明示操作だけ。`@s` 固定コマンド境界、120秒一度限りの確認、同じ接続・次元・生存回・所持品・ジョブ・コード世代の条件を維持。実行中は他操作／自動復旧と排他。通常採掘から呼ばない。
+- `/clear`、配布、一時箱の設置は今回の初期化に限る。`.local/loadout-reset/` の記録と受信結果を確認し、途中失敗は完了扱いしない。未確認箱を自動削除しない。
+- 追加回帰は `test/loadout-*.test.js`、実Realm接続／初期化はテストで行わない。仕様・移行は `docs/loadout-reset.md`。Bot本体と管理画面の再起動が必要。

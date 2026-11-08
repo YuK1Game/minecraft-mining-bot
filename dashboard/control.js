@@ -4,7 +4,7 @@
   const $ = id => document.getElementById('control-' + id)
   const phases = { offline: '未接続', starting: '起動中', authenticating: '認証待ち', selecting_realm: '選択待ち', connecting: '接続中', joined: '読込中', spawned: '接続済み', stopping: '切断中', disconnected: '未接続' }
   const jobs = { IDLE: '計画待ち', PREFLIGHT: '開始確認', SURVEY: '調査中', PLAN: '計画中', MOVE: '移動中', MINE: '採掘中', COLLECT: '回収中', RETURN: '搬入移動', DEPOSIT: '収納中', PORTABLE_STORAGE: '収納中', RESTOCK: '補給中', COMBAT: '戦闘中', SUSPEND_FOR_COMBAT: '戦闘へ切替', COMBAT_SETTLE: '安全確認', RECOVER_AFTER_COMBAT: '復帰確認', RECOVER: '回復中', RECONCILE: '照合中', HAZARD: '危険対処', FINAL_CHECK: '最終確認', EGRESS_PREPARE: '帰還準備', EGRESS: '地上へ帰還中', PAUSED: '一時停止', STOPPING: '停止確認中', FINISHED: 'ジョブ終了', DISCONNECTED: '未接続' }
-  let token = null, current = null, plan = null, busy = 0, polling = false, version = 0, viewEpoch = 0, lastPhase = null, gridOrigin = null, preset = 1
+  let token = null, current = null, plan = null, busy = 0, polling = false, version = 0, viewEpoch = 0, lastPhase = null, gridOrigin = null, preset = 1, resetPreview = null
   const clean = value => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ')
   function message (kind, text, error = false) { const el = $(kind + '-message'); el.textContent = text; el.hidden = !text; el.classList.toggle('error', error) }
   async function request (route, body) {
@@ -68,7 +68,7 @@
     fact('ワールド', result.state.realm?.name ?? '未確認')
     fact('チャンク', (p.chunks ?? []).map(c => `(${c.x}, ${c.z})`).join(' / '))
     fact('高さ', `Y ${p.yTop ?? '未確認'} → ${p.yBottom ?? '未確認'}`)
-    if (p.issues?.length) host.append(element('div', 'plan-issues', '停止理由: ' + p.issues.map(clean).join(' / ')))
+    if (p.issues?.length) host.append(element('div', 'plan-issues', '停止理由: ' + p.issues.map(x => x === 'NO_CARGO_SHULKER' ? '収納用シュルカーなし' : x === 'SHULKER_ONLY_STORAGE' ? 'チェスト登録は使用不可' : clean(x)).join(' / ')))
     if (p.warnings?.length) host.append(element('div', 'plan-issues', '注意: ' + p.warnings.map(clean).join(' / ')))
     $('plan-title').textContent = p.ready ? '計画確認済み' : '開始不可'
     $('plan-results').classList.toggle('blocked', !p.ready)
@@ -76,7 +76,7 @@
     $('plan-results').hidden = false
   }
   function render () {
-    const s = current, live = s?.live, q = live?.quarry, ready = live?.ready === true, connected = !!s?.managed || !!live, idle = !busy && !!token
+    const s = current, live = s?.live, q = live?.quarry, ready = live?.ready === true, connected = !!s?.managed || !!live, idle = !busy && !!token && live?.loadout?.busy !== true
     $('size-one').disabled = busy > 0; $('size-four').disabled = busy > 0
     const a = renderArea()
     document.getElementById('control').dataset.online = String(ready)
@@ -135,6 +135,7 @@
     if (s?.message) message('connection', s.message, s.incompatible === true)
     else if (s?.phase !== lastPhase) message('connection', '')
     lastPhase = s?.phase
+    renderReset()
   }
   async function poll () {
     if (!token || polling || document.hidden) return
@@ -156,11 +157,10 @@
     return Number(el.value)
   }
   function config () {
-    return { x1: number('x1'), z1: number('z1'), x2: number('x2', true), z2: number('z2', true), top: number('top', true), bottom: number('bottom', true), pickupMode: $('pickup').value,
-      chest: $('chest-enabled').checked ? { x: number('chest-x'), y: number('chest-y'), z: number('chest-z') } : null }
+    return { x1: number('x1'), z1: number('z1'), x2: number('x2', true), z2: number('z2', true), top: number('top', true), bottom: number('bottom', true), pickupMode: $('pickup').value }
   }
-  const fields = ['x1', 'z1', 'x2', 'z2', 'top', 'bottom', 'pickup', 'chest-enabled', 'chest-x', 'chest-y', 'chest-z']
-  function invalidate (keepGrid = false) { plan = null; version++; if (!keepGrid) gridOrigin = null; $('plan-results').hidden = true; $('chest-fields').hidden = !$('chest-enabled').checked; message('action', ''); render() }
+  const fields = ['x1', 'z1', 'x2', 'z2', 'top', 'bottom', 'pickup']
+  function invalidate (keepGrid = false) { plan = null; version++; if (!keepGrid) gridOrigin = null; $('plan-results').hidden = true; message('action', ''); render() }
   for (const field of fields) $(field).addEventListener('input', () => { $(field).removeAttribute('aria-invalid'); invalidate() })
   function selectArea (x, z, size = preset, keepGrid = false) {
     if (!Number.isSafeInteger(x) || !Number.isSafeInteger(z)) return
@@ -219,9 +219,56 @@
       act('action', 'quarry', { command, session: current?.live?.session, jobId: current?.live?.quarry?.jobId ?? null }, () => message('action', ''))
     })
   }
+
+  const itemNames = { diamond_helmet: 'ダイヤのヘルメット', diamond_chestplate: 'ダイヤのチェストプレート', diamond_leggings: 'ダイヤのレギンス', diamond_boots: 'ダイヤのブーツ', diamond_sword: 'ダイヤの剣', diamond_pickaxe: 'ダイヤのツルハシ', diamond_shovel: 'ダイヤのシャベル', bow: '無限の弓' }
+  const enchantNames = { protection: 'ダメージ軽減', unbreaking: '耐久力', mending: '修繕', thorns: '棘の鎧', respiration: '水中呼吸', aqua_affinity: '水中採掘', swift_sneak: 'スニーク速度', feather_falling: '落下耐性', depth_strider: '水中歩行', soul_speed: 'ソウルスピード', efficiency: '効率', fortune: '幸運', silk_touch: 'シルクタッチ', sharpness: '鋭さ', looting: 'ドロップ増加', fire_aspect: '火属性', knockback: 'ノックバック', power: 'パワー', infinity: '無限', flame: 'フレイム', punch: 'パンチ' }
+  function closeReset () { resetPreview = null; $('reset-dialog').close() }
+  function renderReset () {
+    const live = current?.live, r = live?.loadout
+    const idleJob = !live?.quarry || ['IDLE', 'PAUSED', 'FINISHED'].includes(live.quarry.state)
+    $('reset').disabled = !!busy || !token || !live?.ready || !r || r.busy || !idleJob
+    $('reset').textContent = r?.busy ? '↻ リセット中' : '↻ 初期セット'
+    $('reset-confirm').disabled = !!busy || !resetPreview || resetPreview.expiresAt <= Date.now() || resetPreview.session !== live?.session
+    if (resetPreview && (resetPreview.session !== live?.session || resetPreview.expiresAt <= Date.now())) { closeReset(); message('reset', '確認が失効しました。初期セットを確認し直してください。', true) }
+    $('reset-progress').hidden = !r || r.phase === 'idle'
+    $('reset-progress').classList.toggle('failed', r?.phase === 'failed')
+    $('reset-progress').classList.toggle('running', r?.busy === true)
+    $('reset-stop').hidden = r?.busy !== true
+    $('reset-icon').textContent = r?.busy ? '↻' : r?.serverConfirmed ? '✓' : '!'
+    $('reset-state').textContent = r?.busy ? r.step || '開始確認中' : r?.serverConfirmed ? '初期セット確認済み' : r?.phase === 'failed' ? 'リセット未完了' : ''
+    $('reset-detail').textContent = r?.error ? clean(r.error.message) + (r.stage ? ` / 一時箱 ${r.stage.x}, ${r.stage.y}, ${r.stage.z}` : '') : r?.supplyProgress ? `${r.supplyProgress.role}  ${r.supplyProgress.filled} / 27  ·  補給箱 ${r.suppliesCompleted} / 4` : r?.busy ? `${r.steps ?? 0} 操作確認済み` : ''
+  }
+  $('reset').addEventListener('click', () => {
+    resetPreview = null
+    act('reset', 'loadout', { command: 'resetPreview', session: current?.live?.session }, result => {
+      const p = result.resetPreview
+      resetPreview = { ...p, session: result.state.session }
+      $('reset-world').textContent = clean(p.target.realm)
+      $('reset-player').textContent = clean(p.target.player)
+      $('reset-stage').textContent = `X ${p.stage.x} / Y ${p.stage.y} / Z ${p.stage.z}`
+      const rows = [...p.manifest.armor, ...p.manifest.tools].map(item => {
+        const row = element('div', 'loadout-equipment-row')
+        row.append(element('b', '', itemNames[item.name.replace('minecraft:', '')] || item.name), element('span', '', Object.entries(item.enchants).map(([n, l]) => `${enchantNames[n] || n} ${l}`).join(' / ')))
+        return row
+      })
+      $('reset-equipment').replaceChildren(...rows)
+      $('reset-dialog').showModal()
+    })
+  })
+  for (const id of ['reset-close', 'reset-back']) $(id).addEventListener('click', closeReset)
+  $('reset-dialog').addEventListener('cancel', () => { resetPreview = null })
+  $('reset-dialog').addEventListener('close', () => { resetPreview = null })
+  $('reset-confirm').addEventListener('click', () => {
+    const p = resetPreview
+    if (!p || busy || p.expiresAt <= Date.now() || p.session !== current?.live?.session) return
+    closeReset(); plan = null; $('plan-results').hidden = true
+    act('reset', 'loadout', { command: 'resetStart', session: p.session, resetToken: p.token, confirm: 'REPLACE_INITIAL_INVENTORY' }, () => message('reset', ''))
+  })
+  $('reset-stop').addEventListener('click', () => act('reset', 'loadout', { command: 'resetCancel', session: current?.live?.session }, () => message('reset', '中断を要求しました。途中結果を確認してください。')))
+
   request('session').then(data => { if (!data.enabled) throw new Error('管理操作は無効です。管理画面サーバーを更新してください。'); token = data.token; $('profile').value = data.profile; render(); return poll() }).catch(error => message('connection', error.message, true))
   render()
   setInterval(poll, 2000)
-  setInterval(() => { if (plan?.planToken && !document.hidden) render() }, 1000)
+  setInterval(() => { if ((plan?.planToken || resetPreview) && !document.hidden) render() }, 1000)
   document.addEventListener('visibilitychange', () => { if (!document.hidden) void poll() })
 })()
