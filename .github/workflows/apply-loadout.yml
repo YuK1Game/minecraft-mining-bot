@@ -1,4 +1,4 @@
-name: Validate and apply shulker loadout reset
+name: Validate loadout lifecycle follow-up
 on:
   push:
     branches: [feat/shulker-loadout-reset-20261108]
@@ -19,34 +19,32 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Verify source and apply validated patch
+      - name: Apply bounded lifecycle and fixture follow-up
         shell: bash
         run: |
           test "$GITHUB_REF" = refs/heads/feat/shulker-loadout-reset-20261108
-          git diff --exit-code f1f776e25b57773ec8f1a4245961be16e5ea2c92 HEAD -- src scripts dashboard test docs README.md AGENTS.md package.json package-lock.json .gitignore
-          cat .review/loadout.part0 .review/loadout.part1 .review/loadout.part2 .review/loadout.part3 .review/loadout.part4 > /tmp/loadout.patch.xz
-          echo '9cfae590dd079f9d623b5e1d2c231a687f902578848ea04e1669689bfc9b5343  /tmp/loadout.patch.xz' | sha256sum --check
-          xz -dc /tmp/loadout.patch.xz > /tmp/loadout.patch
-          echo 'd82a3626688602f7bd65b1a7fca365f345d7df2f76cab0e2a3b2911b272707b8  /tmp/loadout.patch' | sha256sum --check
-          git apply --check --index --unidiff-zero /tmp/loadout.patch
-          git apply --index --unidiff-zero /tmp/loadout.patch
+          git diff --exit-code e5c8b2637eb4a08553f268f0382358e3009e8bca HEAD -- src scripts dashboard test docs README.md AGENTS.md package.json package-lock.json .gitignore
+          git apply --check --index .review/loadout.followup.patch
+          git apply --index .review/loadout.followup.patch
+          git rm -- .review/loadout.followup.patch .github/workflows/apply-loadout.yml
           git diff --cached --check
       - run: npm ci --ignore-scripts
-      - name: Syntax and related regressions without Realm credentials
+      - name: Syntax, safety and synchronous-stop regressions
         shell: bash
         run: |
           npm run check
           npm run test:review > /tmp/loadout-tests.tap 2>&1
-      - name: Commit verified feature to isolated branch only
+          node --test --test-reporter=tap --test-name-pattern='runtime dispose drains an in-flight engagement|dispose stops active mining input' test/combat.test.js test/runtime.test.js > /tmp/loadout-dispose-tests.tap 2>&1
+      - name: Commit verified source and remove staging workflow
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'feat: enforce shulker storage and add confirmed initial-loadout reset'
+          git commit -m 'fix: preserve synchronous shutdown and isolate legacy combat regression fixture'
           git push origin HEAD:refs/heads/feat/shulker-loadout-reset-20261108
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: loadout-validation
-          path: /tmp/loadout-tests.tap
+          name: loadout-final-validation
+          path: /tmp/loadout*-tests.tap
           retention-days: 7

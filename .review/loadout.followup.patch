@@ -1,0 +1,73 @@
+diff --git a/docs/loadout-reset.md b/docs/loadout-reset.md
+index 3a658c3..405ad2e 100644
+--- a/docs/loadout-reset.md
++++ b/docs/loadout-reset.md
+@@ -3,5 +3,5 @@
+ ## 操作
+ 
+-Botを接続し、採掘・収納・回収を安全に停止してから、所持品パネルの **初期セット** を押します。ワールド・Bot名・セット内容・一時箱の座標を確認し、確認ダイアログの **初期セットに置き換える** を押してください。閉じる／戻る／Escapeでは実行しません。
++Botを接続し、採掘・収納・回収を安全に停止してから、所持品パネルの **初期セット** を押します。ワールド・Bot名・セット内容・一時箱の座標を確認し、確認ダイアログの **所持品をリセット** を押してください。閉じる／戻る／Escapeでは実行しません。
+ 
+ CLI（Windows cmdを含む）:
+diff --git a/scripts/review-tests.js b/scripts/review-tests.js
+index 56b63bb..48ca47a 100644
+--- a/scripts/review-tests.js
++++ b/scripts/review-tests.js
+@@ -6,5 +6,5 @@ const root = path.resolve(__dirname, '..')
+ const files = fs.readdirSync(path.join(root, 'test')).filter(name => /^(?:review-|dashboard-control|loadout-).*\.test\.js$/.test(name)).sort().map(name => path.join('test', name))
+ if (!files.length) throw new Error('No review regression tests found')
+-const compatibility = ['runtime-combat-priority.test.js', 'initial-life-receipt.test.js', 'combat-coordinator.test.js', 'quarry-job.test.js', 'quarry-carried-storage.test.js', 'quarry-observed-placement-job.test.js', 'quarry-source-rejection.test.js', 'quarry-storage-reachability.test.js', 'quarry-pillar-exit.test.js', 'quarry-egress-runtime.test.js', 'dashboard-state.test.js', 'dashboard-depot-state.test.js', 'dashboard.test.js', 'host-packets.test.js', 'keep-alive.test.js', 'hotreload.test.js', 'hotreload-content-filter.test.js'].map(name => path.join('test', name))
++const compatibility = ['runtime-combat-priority.test.js', 'initial-life-receipt.test.js', 'combat-coordinator.test.js', 'quarry-job.test.js', 'quarry-runtime-adapter.test.js', 'idle-safety-armed-continuation.test.js', 'quarry-carried-storage.test.js', 'quarry-observed-placement-job.test.js', 'quarry-source-rejection.test.js', 'quarry-storage-reachability.test.js', 'quarry-pillar-exit.test.js', 'quarry-egress-runtime.test.js', 'dashboard-state.test.js', 'dashboard-depot-state.test.js', 'dashboard.test.js', 'host-packets.test.js', 'keep-alive.test.js', 'hotreload.test.js', 'hotreload-content-filter.test.js'].map(name => path.join('test', name))
+ const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', '--test-concurrency=2', '--test-timeout=60000', ...files, ...compatibility], { cwd: root, stdio: 'inherit' })
+ if (result.error) throw result.error
+diff --git a/src/runtime.js b/src/runtime.js
+index 4244060..9320d1b 100644
+--- a/src/runtime.js
++++ b/src/runtime.js
+@@ -6814,5 +6814,6 @@ function createRuntime (host) {
+     dispose: async reason => {
+       if (disposed) return
+-      loadoutReset?.cancel(); await loadoutReset?.drain()
++      loadoutReset?.cancel()
++      const resetDrain = loadoutReset?.drain()
+       if (quarryJob?.holdsWork()) { try { await quarryJob.pause('PROCESS_RESTARTED'); host.shared.quarryAutoResume = true } catch {} }
+       try { const doc = quarryJob?.document(); if (doc) host.shared.quarryDocument = doc } catch {}
+@@ -6828,5 +6829,6 @@ function createRuntime (host) {
+       autonomy.stop(reason ?? '行動コードを更新します。')
+       const cleanup = stopActions(reason ?? '行動コードを更新します。')
+-      await Promise.allSettled([manualShulkerTask])
++      // Stop ordinary inputs synchronously above, then wait for owned reset cleanup.
++      await Promise.allSettled([manualShulkerTask, resetDrain])
+       inputStream?.stop()
+       inputOwner = 'none'
+diff --git a/test/idle-safety-armed-continuation.test.js b/test/idle-safety-armed-continuation.test.js
+index 85fcab7..cda2e14 100644
+--- a/test/idle-safety-armed-continuation.test.js
++++ b/test/idle-safety-armed-continuation.test.js
+@@ -2,5 +2,8 @@
+ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module'),{setTimeout:delay}=require('node:timers/promises')
+ const root=path.resolve(__dirname,'..'),file=path.join(root,'test/runtime-legacy-engagement-input.test.js'),m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));const ordinary=m.require.bind(m);m.require=id=>id==='node:fs'?{...fs,readFileSync:(p,...args)=>{let s=fs.readFileSync(p,...args);if(String(p).endsWith('combat.test.js')&&typeof s==='string')s=s.replace('  const runtime = createRuntime(host)',"  Object.assign(f.state,{profile:'bot',realm:{id:'42'},connectionId:'CONTROLLED',startedAt:'2026-11-01T18:00:00Z',positionSource:'move_player',positionUpdatedAt:Date.now(),lifecycle:{phase:'alive',deathId:0},heldItem:{slot:0,name:'minecraft:stone_sword',count:1}});\n  const runtime = createRuntime(host)");return s}}:ordinary(id);m._compile(fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]+'\nmodule.exports={fixture};',file)
+-const fixture=(t)=>{t.mock.method(globalThis,'fetch',()=>{throw Error('Offline audit may not contact any API')});const f=m.exports.fixture(t);Object.assign(f.state,{profile:'bot',realm:{id:'42'},connectionId:'CONTROLLED',startedAt:'2026-11-01T18:00:00Z',positionSource:'move_player',positionUpdatedAt:Date.now(),lifecycle:{phase:'alive',deathId:0},heldItem:{slot:0,name:'minecraft:stone_sword',count:1}});return f}
++// This suite observes Legacy IdleSafety only. Disable the independent modern
++// combat coordinator so it cannot legitimately attack a replacement UID after
++// the bound Legacy engagement stops and be counted as an old-owner send.
++const fixture=(t)=>{t.mock.method(globalThis,'fetch',()=>{throw Error('Offline audit may not contact any API')});const f=m.exports.fixture(t);void f.runtime.operations.userBehaviors.stop('controlled legacy-only fixture');Object.assign(f.state,{profile:'bot',realm:{id:'42'},connectionId:'CONTROLLED',startedAt:'2026-11-01T18:00:00Z',positionSource:'move_player',positionUpdatedAt:Date.now(),lifecycle:{phase:'alive',deathId:0},heldItem:{slot:0,name:'minecraft:stone_sword',count:1}});return f}
+ const hits=f=>f.packets.filter(p=>p.name==='inventory_transaction')
+ async function until(predicate,limit=3000){const end=performance.now()+limit;while(performance.now()<end){if(predicate())return;await delay(5)}throw Error('Controlled predicate timeout')}
+diff --git a/test/quarry-runtime-adapter.test.js b/test/quarry-runtime-adapter.test.js
+index 975021a..a8cb898 100644
+--- a/test/quarry-runtime-adapter.test.js
++++ b/test/quarry-runtime-adapter.test.js
+@@ -68,9 +68,10 @@ test('runtime adapter reports a full chest instead of failing the deposit', asyn
+ 
+ test('quarry terminal syntax', () => {
+-  assert.deepEqual(parseQuarryCommand('/quarry plan here bottom=40 chest=1,64,2', { position: { x: -3.2, y: 70, z: 33 } }).args[0], { target: { chunks: [{ x: -1, z: 2 }] }, yBottom: 40, inventory: { storage: [{ position: { x: 1, y: 64, z: 2 } }] } })
+-  assert.deepEqual(parseQuarryCommand('/quarry plan 0 0 1 1 combat=off').args[0], { target: { rect: { x1: 0, z1: 0, x2: 1, z2: 1 } }, inventory: { carryOnly: true }, quarryCombat: { enabled: false } })
++  assert.deepEqual(parseQuarryCommand('/quarry plan here bottom=40', { position: { x: -3.2, y: 70, z: 33 } }).args[0], { target: { chunks: [{ x: -1, z: 2 }] }, yBottom: 40, inventory: { pickupMode: 'passive', depositWhen: 'full' } })
++  assert.deepEqual(parseQuarryCommand('/quarry plan 0 0 1 1 combat=off').args[0], { target: { rect: { x1: 0, z1: 0, x2: 1, z2: 1 } }, inventory: { pickupMode: 'passive', depositWhen: 'full' }, quarryCombat: { enabled: false } })
+   assert.equal(parseQuarryCommand('/quarry stop').method, 'emergencyStop')
+   assert.equal(parseQuarryCommand('/quarry').method, 'status')
+   assert.throws(() => parseQuarryCommand('/quarry plan 1'))
++  assert.throws(() => parseQuarryCommand('/quarry plan 0 0 chest=1,64,2'), /シュルカー専用/)
+ })
+ 
