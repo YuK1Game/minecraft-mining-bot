@@ -61,6 +61,7 @@
     if (focus) [...grid.children].find(c => c.dataset.key === focus)?.focus({ preventScroll: true })
     return a
   }
+  const diagnosticLabels = { NO_CARGO_SHULKER: '収納用シュルカーなし', SHULKER_ONLY_STORAGE: 'シュルカー専用', Y_TOP_PROVISIONAL: '上限Y 未確定', Y_TOP_UNKNOWN: '上限Y 未受信', NO_PICKAXE: 'ツルハシなし', NO_FOOD: '食料なし', NO_SEAL_MATERIAL: '土・止水材なし', LARGE_FLUID_IN_TARGET: '水・溶岩あり', PROTECTED_BLOCKS_IN_TARGET: '保護ブロックあり', INVENTORY_UNKNOWN: '所持品 未受信', NOT_SURVIVAL: 'サバイバルで接続', NOT_SPAWNED: '参加位置 未確定', WRONG_DIMENSION: '次元が不一致', WORLD_IDENTITY_UNKNOWN: 'ワールド 未確認' }
   function showPlan (result) {
     const p = result.plan, host = $('plan-summary')
     const fact = (label, value) => { const row = element('div', 'plan-fact'); row.append(element('span', '', label), element('b', '', clean(value))); host.append(row) }
@@ -68,8 +69,12 @@
     fact('ワールド', result.state.realm?.name ?? '未確認')
     fact('チャンク', (p.chunks ?? []).map(c => `(${c.x}, ${c.z})`).join(' / '))
     fact('高さ', `Y ${p.yTop ?? '未確認'} → ${p.yBottom ?? '未確認'}`)
-    if (p.issues?.length) host.append(element('div', 'plan-issues', '停止理由: ' + p.issues.map(x => x === 'NO_CARGO_SHULKER' ? '収納用シュルカーなし' : x === 'SHULKER_ONLY_STORAGE' ? 'チェスト登録は使用不可' : clean(x)).join(' / ')))
-    if (p.warnings?.length) host.append(element('div', 'plan-issues', '注意: ' + p.warnings.map(clean).join(' / ')))
+    for (const [codes, kind, label] of [[p.issues, 'blocked', '停止理由'], [p.warnings, 'warning', '注意']]) {
+      if (!codes?.length) continue
+      const group = element('div', 'plan-diagnostics ' + kind); group.setAttribute('role', 'group'); group.setAttribute('aria-label', label)
+      for (const code of codes) { const chip = element('span', 'plan-diagnostic', (kind === 'blocked' ? '× ' : '△ ') + (diagnosticLabels[code] || clean(code))); chip.title = clean(code); group.append(chip) }
+      host.append(group)
+    }
     $('plan-title').textContent = p.ready ? '計画確認済み' : '開始不可'
     $('plan-results').classList.toggle('blocked', !p.ready)
     $('plan-results').querySelector('.plan-check').textContent = p.ready ? '✓' : '!'
@@ -222,6 +227,37 @@
 
   const itemNames = { diamond_helmet: 'ダイヤのヘルメット', diamond_chestplate: 'ダイヤのチェストプレート', diamond_leggings: 'ダイヤのレギンス', diamond_boots: 'ダイヤのブーツ', diamond_sword: 'ダイヤの剣', diamond_pickaxe: 'ダイヤのツルハシ', diamond_shovel: 'ダイヤのシャベル', bow: '無限の弓' }
   const enchantNames = { protection: 'ダメージ軽減', unbreaking: '耐久力', mending: '修繕', thorns: '棘の鎧', respiration: '水中呼吸', aqua_affinity: '水中採掘', swift_sneak: 'スニーク速度', feather_falling: '落下耐性', depth_strider: '水中歩行', soul_speed: 'ソウルスピード', efficiency: '効率', fortune: '幸運', silk_touch: 'シルクタッチ', sharpness: '鋭さ', looting: 'ドロップ増加', fire_aspect: '火属性', knockback: 'ノックバック', power: 'パワー', infinity: '無限', flame: 'フレイム', punch: 'パンチ' }
+  const kitTextures = Object.fromEntries(['diamond_helmet', 'diamond_chestplate', 'diamond_leggings', 'diamond_boots', 'diamond_sword', 'diamond_pickaxe', 'diamond_shovel', 'bread', 'arrow'].map(n => [n, 'items/' + n]))
+  Object.assign(kitTextures, { bow: 'items/bow_standby', dirt: 'blocks/dirt', ...Object.fromEntries(['purple', 'blue', 'light_blue', 'yellow', 'brown'].map(c => [c + '_shulker_box', 'blocks/shulker_top_' + c])) })
+  function kitIcon (name) {
+    const key = String(name ?? '').replace(/^minecraft:/, ''), src = kitTextures[key]
+    const host = element('span', 'loadout-item-icon', src ? '' : '?'); host.setAttribute('aria-hidden', 'true')
+    if (src) { const image = document.createElement('img'); image.alt = ''; image.draggable = false; image.src = '/assets/minecraft/textures/' + src + '.png'; image.addEventListener('error', () => { host.textContent = '?' }, { once: true }); host.append(image) }
+    return host
+  }
+  function showLoadoutKit (m) {
+    const short = { diamond_helmet: 'ヘルメット', diamond_chestplate: 'チェスト', diamond_leggings: 'レギンス', diamond_boots: 'ブーツ', diamond_sword: '剣', diamond_pickaxe: 'ツルハシ', diamond_shovel: 'シャベル', bow: '無限の弓' }
+    $('reset-gear').replaceChildren(...[...m.armor, ...m.tools].map(item => {
+      const key = item.name.replace('minecraft:', ''), name = itemNames[key] || clean(item.name)
+      const tile = element('div', 'loadout-gear-tile'); tile.tabIndex = 0; tile.title = name + ' / ' + Object.entries(item.enchants).map(([n, l]) => `${enchantNames[n] || n} ${l}`).join(' / ')
+      tile.setAttribute('aria-label', tile.title); tile.append(kitIcon(item.name), element('span', '', short[key] || name)); return tile
+    }))
+    const cargoCount = Number.isSafeInteger(m.cargoBoxes) && m.cargoBoxes >= 0 && m.cargoBoxes <= 36 ? m.cargoBoxes : 0
+    $('reset-cargo-count').textContent = cargoCount
+    $('reset-cargo-grid').replaceChildren(...Array.from({ length: cargoCount }, () => kitIcon('purple_shulker_box')))
+    $('reset-cargo-grid').setAttribute('aria-label', `空の収納用シュルカー ${cargoCount}箱`)
+    $('reset-supply-count').textContent = m.supplies.length
+    const roles = { pickaxe: 'ツルハシ', shovel: 'シャベル', food: 'パン', dirt: '土' }
+    $('reset-supply-grid').replaceChildren(...m.supplies.map(box => {
+      const card = element('div', 'loadout-supply-card'); card.dataset.role = ['pickaxe', 'shovel', 'food', 'dirt'].includes(box.role) ? box.role : ''
+      const icons = element('div', 'loadout-supply-icons'); icons.append(kitIcon(box.name), kitIcon(box.item.name))
+      const caption = element('div', 'loadout-supply-caption'); caption.append(element('span', '', roles[box.role] || clean(box.role)), element('b', '', Number(box.total).toLocaleString('ja-JP')))
+      card.append(icons, caption); return card
+    }))
+    $('reset-hand').replaceChildren(...[['bread', 'パン', m.hand.bread], ['dirt', '土', m.hand.dirt], ['arrow', '矢', m.hand.arrows]].map(([name, label, count]) => {
+      const card = element('div', 'loadout-hand-item'); card.append(kitIcon(name), element('span', '', label), element('b', '', Number(count).toLocaleString('ja-JP'))); return card
+    }))
+  }
   function closeReset () { resetPreview = null; $('reset-dialog').close() }
   function renderReset () {
     const live = current?.live, r = live?.loadout
@@ -236,7 +272,7 @@
     $('reset-stop').hidden = r?.busy !== true
     $('reset-icon').textContent = r?.busy ? '↻' : r?.serverConfirmed ? '✓' : '!'
     $('reset-state').textContent = r?.busy ? r.step || '開始確認中' : r?.serverConfirmed ? '初期セット確認済み' : r?.phase === 'failed' ? 'リセット未完了' : ''
-    $('reset-detail').textContent = r?.error ? clean(r.error.message) + (r.stage ? ` / 一時箱 ${r.stage.x}, ${r.stage.y}, ${r.stage.z}` : '') : r?.supplyProgress ? `${r.supplyProgress.role}  ${r.supplyProgress.filled} / 27  ·  補給箱 ${r.suppliesCompleted} / 4` : r?.busy ? `${r.steps ?? 0} 操作確認済み` : ''
+    $('reset-detail').textContent = r?.error ? clean(r.error.message) + (r.stage ? ` / 一時箱 ${r.stage.x}, ${r.stage.y}, ${r.stage.z}` : '') : r?.supplyProgress ? `${r.supplyProgress.role}  ${r.supplyProgress.filled} / 27  ·  補給箱 ${r.suppliesCompleted} / 4` : ''
   }
   $('reset').addEventListener('click', () => {
     resetPreview = null
@@ -245,6 +281,7 @@
       resetPreview = { ...p, session: result.state.session }
       $('reset-world').textContent = clean(p.target.realm)
       $('reset-player').textContent = clean(p.target.player)
+      showLoadoutKit(p.manifest)
       $('reset-stage').textContent = `X ${p.stage.x} / Y ${p.stage.y} / Z ${p.stage.z}`
       const rows = [...p.manifest.armor, ...p.manifest.tools].map(item => {
         const row = element('div', 'loadout-equipment-row')

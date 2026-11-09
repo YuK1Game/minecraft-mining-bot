@@ -26,15 +26,9 @@ function createRuntimeLoadoutReset ({ host, getState, inspection, crafting, armo
     return view
   }
   function resetState () {
-    const s = getState(), p = s.position, actors = host.entities.snapshot({ kind: 'all' })
-    const unknown = host.entities.stats?.().unknownPositions
-    const near = !Array.isArray(actors) || !p || actors.some(e => {
-      if (e.alive === false || String(e.runtimeId) === String(s.runtimeEntityId)) return false
-      if (!e.hostile && !['player', 'minecraft:player'].includes(e.kind) && e.entityType !== 'minecraft:player') return false
-      if (!e.position || e.positionKnown === false) return true
-      return Math.hypot(e.position.x - p.x, e.position.y - (p.y - 1.62), e.position.z - p.z) < (e.hostile ? 24 : 4)
-    })
-    return { ...s, loadingScreenEnded: host.shared.loadingScreenEnded === true, resetThreats: unknown == null || unknown > 0 || near }
+    // Explicit operator debugging: actor proximity/unknown actor positions are
+    // not admission criteria. Do not alter the ordinary combat threat model.
+    return { ...getState(), loadingScreenEnded: host.shared.loadingScreenEnded === true }
   }
   const commands = createLoadoutCommand({ client: host.client, getState: resetState })
   const adapter = {
