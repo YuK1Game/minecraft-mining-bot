@@ -612,7 +612,11 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       // above the same cave). A wide area that only lacks safe stances (e.g. an
       // all-gravel floor) is not cut off and keeps the ordinary deferral.
       const cutOff = reach.size <= SMALL_REACH || (unreachable.length >= WRITE_OFF_LAYER_CELLS && reach.size < unreachable.length)
-      if (unreachable.length && unreachable.length === layer.pending.length && cutOff) return { action: 'pause', reason: 'DESCENT_REQUIRED', details: { y, reach: reach.size, pending: layer.pending.length, feet: { ...feet } } }
+      // Only layers below the feet can cut the bot off; an unreachable layer at
+      // or above the head (a tree canopy over the start, live 2026-11-10) is
+      // ordinary leftover work and keeps the plain deferral.
+      const belowFeet = y < feet.y
+      if (unreachable.length && unreachable.length === layer.pending.length && cutOff && belowFeet) return { action: 'pause', reason: 'DESCENT_REQUIRED', details: { y, reach: reach.size, pending: layer.pending.length, feet: { ...feet } } }
       for (const t of unreachable) defer(t.position, 'UNREACHABLE')
       if (unreachable.length) return { action: 'deferred', reason: 'UNREACHABLE', count: unreachable.length, y }
     }
