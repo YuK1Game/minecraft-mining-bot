@@ -607,9 +607,12 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       // A whole layer out of reach from a tiny walkable area is not "done":
       // the bot is cut off (e.g. above a cave). Stop instead of deferring every
       // lower layer and declaring the job complete.
-      // Also when a large whole layer is out of reach even from a wider area
-      // (live 2026-11-10: an island of protected ore above the same cave).
-      if (unreachable.length && unreachable.length === layer.pending.length && (reach.size <= SMALL_REACH || unreachable.length >= WRITE_OFF_LAYER_CELLS)) return { action: 'pause', reason: 'DESCENT_REQUIRED', details: { y, reach: reach.size, pending: layer.pending.length, feet: { ...feet } } }
+      // Also when a large whole layer is out of reach from a walkable area
+      // smaller than that layer (live 2026-11-10: an island of protected ore
+      // above the same cave). A wide area that only lacks safe stances (e.g. an
+      // all-gravel floor) is not cut off and keeps the ordinary deferral.
+      const cutOff = reach.size <= SMALL_REACH || (unreachable.length >= WRITE_OFF_LAYER_CELLS && reach.size < unreachable.length)
+      if (unreachable.length && unreachable.length === layer.pending.length && cutOff) return { action: 'pause', reason: 'DESCENT_REQUIRED', details: { y, reach: reach.size, pending: layer.pending.length, feet: { ...feet } } }
       for (const t of unreachable) defer(t.position, 'UNREACHABLE')
       if (unreachable.length) return { action: 'deferred', reason: 'UNREACHABLE', count: unreachable.length, y }
     }
