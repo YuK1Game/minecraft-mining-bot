@@ -8,9 +8,9 @@ const { keepPlan, maxStack, carriedContainerKey, freeSlots } = require('./quarry
 const { isShulkerBox, isShulkerBlock, sameWindowId, canonicalWindowId, storageContainerType, storageWindowMatches } = require('./container-types')
 const { readShulkerContents, readContainerContents, compareShulkerContents, diagnoseShulkerContents } = require('./shulker-contents')
 const { canSeePlacementFloor } = require('./interaction-sight')
+const { plainAir, clearableSitePlant, passableSiteBody, describeBlock, supportIssue } = require('./storage-site-terrain')
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
-const GROUND = /^(?:minecraft:)?(?:dirt|grass_block|coarse_dirt|rooted_dirt|stone|cobblestone|deepslate|cobbled_deepslate|andesite|diorite|granite|tuff|calcite|[a-z_]+_planks)$/
 const HAZARD = /water|lava|fire|magma|cactus|campfire|sand$|gravel$|powder|anvil$|scaffolding|dripstone/
 const DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1]]
 const copy = value => structuredClone(value)
@@ -45,8 +45,8 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
   if ((getPath !== null || travel !== null) && (typeof getPath !== 'function' || typeof travel !== 'function')) throw new Error('Portable path and travel guards must be supplied together')
   let active = null
   const read = p => getBlock(p.x, p.y, p.z)
-  const air = p => { const b = read(p); return b?.known === true && AIR.has(b.name) && !b.extra?.length }
-  const support = p => { const b = read({ ...p, y: p.y - 1 }); return b?.known === true && b.boundingBox === 'block' && GROUND.test(b.name) && !HAZARD.test(b.name) && !b.extra?.length }
+  const air = p => plainAir(read(p))
+  const support = p => supportIssue(read, p) === null
   const craftState = () => typeof crafting.inventorySnapshot === 'function' ? crafting.inventorySnapshot() : crafting.snapshot()
   function observe (cp = null) {
     const state = getState(), scope = scopeOf(state), observed = craftState()
@@ -210,57 +210,83 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     const bottom = actor.kind === 'player' || actor.self ? actor.position.y - 1.62 : actor.position.y
     return Math.abs(actor.position.x - (p.x + 0.5)) < 0.81 && Math.abs(actor.position.z - (p.z + 0.5)) < 0.81 && bottom < p.y + 2 && bottom + 1.8 > p.y
   }
-  function clearCell (p, state, allowed, ownPositions = []) {
-    if (!point(p) || allowed(p) !== true || !air(p) || !air({ ...p, y: p.y + 1 }) || !support(p) || overlaps(p, { self: true, position: state.position })) return false
+  function cellIssue (p, state, allowed, ownPositions = [], preparation = null) {
+    if (!point(p) || allowed(p) !== true) return { cause: 'PLACEMENT_NOT_PERMITTED', position: p, part: 'box' }
+    for (const position of [p, { ...p, y: p.y + 1 }]) {
+      const block = read(position)
+      if (!plainAir(block) && !preparation?.(block, position)) return { cause: block?.known !== true ? 'BOX_TERRAIN_UNKNOWN' : 'BOX_SPACE_OCCUPIED', position, part: 'box', ...describeBlock(block) }
+    }
+    const floor = supportIssue(read, p)
+    if (floor) return floor
+    if (overlaps(p, { self: true, position: state.position })) return { cause: 'SELF_OCCUPIES_BOX', position: p, part: 'box' }
     const actors = getEntities()
-    if (!Array.isArray(actors)) return false
-    if (actors.some(actor => ['mob', 'player'].includes(actor.kind) && actor.alive !== false && String(actor.runtimeId) !== String(state.runtimeEntityId) && (actor.positionKnown === false || overlaps(p, actor)))) return false
+    if (!Array.isArray(actors)) return { cause: 'ENTITIES_UNOBSERVED', position: p, part: 'box' }
+    if (actors.some(actor => ['mob', 'player'].includes(actor.kind) && actor.alive !== false && String(actor.runtimeId) !== String(state.runtimeEntityId) && (actor.positionKnown === false || overlaps(p, actor)))) return { cause: 'ENTITY_OCCUPIES_OR_UNOBSERVED', position: p, part: 'box' }
     for (const [dx, dz] of DIRECTIONS) {
       const neighbour = { x: p.x + dx, y: p.y, z: p.z + dz }, block = read(neighbour)
-      if (block?.known !== true || block.extra?.length || HAZARD.test(block.name ?? '') || /(?:trapped_)?chest$/.test(block.name ?? '') && !ownPositions.some(other => samePoint(other, neighbour))) return false
+      if (block?.known !== true || block.extra?.length || HAZARD.test(block.name ?? '') || /(?:trapped_)?chest$/.test(block.name ?? '') && !ownPositions.some(other => samePoint(other, neighbour))) return { cause: block?.known !== true ? 'BOX_NEIGHBOUR_UNKNOWN' : 'BOX_NEIGHBOUR_UNSAFE', position: neighbour, part: 'neighbour', ...describeBlock(block) }
     }
-    return true
+    return null
   }
+  const clearCell = (p, state, allowed, ownPositions = []) => cellIssue(p, state, allowed, ownPositions) === null
   function heading (eye, p) {
     const dx = p.x + 0.5 - eye.x, dz = p.z + 0.5 - eye.z
     if (Math.abs(Math.abs(dx) - Math.abs(dz)) < 0.2) return null
     return Math.abs(dx) > Math.abs(dz) ? `x:${Math.sign(dx)}` : `z:${Math.sign(dz)}`
   }
-  function planSite (state, kind, allowed, rejectedPositions = [], exactStand = null) {
-    const rejected = new Set(rejectedPositions.map(key))
-    const y = Math.round(state.position.y - 1.62), origin = { x: Math.floor(state.position.x), y, z: Math.floor(state.position.z) }
-    // exactStand is a read-only proposal, never a fabricated current position.
-    // Quarry routing proves its path separately; actual placement rechecks it.
+  function planSite (state, kind, allowed, rejectedPositions = [], exactStand = null, canClear = null) {
+    const rejected = new Set(rejectedPositions.map(key)), failures = [], counts = {}
+    const reject = detail => { counts[detail.cause] = (counts[detail.cause] ?? 0) + 1; if (failures.length < 8) failures.push(copy(detail)) }
+    const y = Math.floor(state.position.y - 1.62 + 1e-3), origin = { x: Math.floor(state.position.x), y, z: Math.floor(state.position.z) }
+    // exactStand is a read-only proposal; route and arrival are checked separately.
     const stands = exactStand ? [copy(exactStand)] : []
     if (!exactStand) for (const dy of [0, 1, -1, 2, -2]) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) if (Math.hypot(dx, dz) <= 3) stands.push({ x: origin.x + dx, y: y + dy, z: origin.z + dz })
     stands.sort((a, b) => Math.hypot(a.x - origin.x, a.y - origin.y, a.z - origin.z) - Math.hypot(b.x - origin.x, b.y - origin.y, b.z - origin.z))
     nextStand: for (const stand of stands) {
-      if (!air(stand) || !air({ ...stand, y: stand.y + 1 }) || !support(stand) || allowed(stand) !== true) continue
+      if (allowed(stand) !== true) { reject({ cause: 'STAND_NOT_PERMITTED', position: stand, part: 'stand' }); continue }
+      const blockedBody = [stand, { ...stand, y: stand.y + 1 }].find(p => !passableSiteBody(read(p)))
+      if (blockedBody) { const b = read(blockedBody); reject({ cause: b?.known !== true ? 'STAND_TERRAIN_UNKNOWN' : 'STAND_BODY_BLOCKED', position: blockedBody, part: 'stand', ...describeBlock(b) }); continue }
+      const floor = supportIssue(read, stand)
+      if (floor) { reject(floor); continue }
       const eye = samePoint(stand, origin) ? state.position : { x: stand.x + 0.5, y: stand.y + 1.62, z: stand.z + 0.5 }
-      for (const [dx, dz] of DIRECTIONS) for (const side of [1, -1]) {
-        const first = { x: stand.x + dx * 2, y: stand.y, z: stand.z + dz * 2 }
+      // Retain the preferred two-cell gap, but a one-cell gap is also within
+      // reach and outside the player's hitbox on small/uneven work platforms.
+      for (const distance of kind === 'shulker' ? [2, 1] : [2]) for (const [dx, dz] of DIRECTIONS) for (const side of kind === 'double_chest' ? [1, -1] : [1]) {
+        const first = { x: stand.x + dx * distance, y: stand.y, z: stand.z + dz * distance }
         const positions = kind === 'double_chest' ? [first, { x: first.x - dz * side, y: stand.y, z: first.z + dx * side }] : [first]
-        if (!positions.every(p => !rejected.has(key(p)) && clearCell(p, state, allowed)) || positions.some(p => Math.hypot(p.x + 0.5 - eye.x, p.y - eye.y, p.z + 0.5 - eye.z) > 4.5)) continue
-        if (!positions.every(p => canSeePlacementFloor(read, eye, p))) continue
+        const pending = new Map()
+        const prepare = canClear ? (block, p) => {
+          // Do not remove the block containing our feet: the normal mining
+          // controller correctly forbids own-footing operations.
+          if (samePoint(p, stand) || !clearableSitePlant(block) || canClear(p) !== true || pending.size >= 4 && !pending.has(key(p))) return false
+          pending.set(key(p), { ...p, expectedName: block.name, expectedRuntimeId: block.runtimeId ?? null })
+          return true
+        } : null
+        if (positions.some(p => rejected.has(key(p)))) { reject({ cause: 'PREVIOUSLY_REJECTED_SITE', position: first }); continue }
+        const issue = positions.map(p => cellIssue(p, state, allowed, [], prepare)).find(Boolean)
+        if (issue) { reject(issue); continue }
+        if (positions.some(p => Math.hypot(p.x + 0.5 - eye.x, p.y - eye.y, p.z + 0.5 - eye.z) > 4.5)) { reject({ cause: 'BOX_OUT_OF_REACH', position: first }); continue }
+        if (!positions.every(p => canSeePlacementFloor(read, eye, p, { plannedClearance: prepare }))) { reject({ cause: 'PLACEMENT_SIGHT_BLOCKED', position: first }); continue }
         if (positions.length === 2 && (!heading(eye, first) || heading(eye, first) !== heading(eye, positions[1]))) continue
         if (previewMove && !exactStand) {
-          try { if (previewMove(copy(stand))?.ready !== true) continue nextStand } catch { continue nextStand }
+          try { if (previewMove(copy(stand))?.ready !== true) { reject({ cause: 'NATIVE_ROUTE_UNAVAILABLE', position: stand }); continue nextStand } } catch { reject({ cause: 'NATIVE_ROUTE_UNAVAILABLE', position: stand }); continue nextStand }
         }
-        return { stand, positions }
+        return { stand, positions, ...(pending.size ? { preparation: [...pending.values()].sort((a, b) => Math.hypot(a.x + 0.5 - eye.x, a.y + 0.5 - eye.y, a.z + 0.5 - eye.z) - Math.hypot(b.x + 0.5 - eye.x, b.y + 0.5 - eye.y, b.z + 0.5 - eye.z)), requiresPreparation: true } : {}) }
       }
     }
-    throw failure('STORAGE_SITE_UNOBSERVED', 'No nearby known storage footprint and standing cell')
+    const first = failures.find(d => /UNKNOWN|UNOBSERVED/.test(d.cause)) ?? failures[0]
+    throw Object.assign(failure('STORAGE_SITE_UNOBSERVED', 'No nearby known storage footprint and standing cell'), { details: { cause: first?.cause ?? 'NO_SITE', position: first?.position ?? null, ...(first?.block ? { block: first.block } : {}), counts, failures } })
   }
 
-  function previewSupplySite (stand, { canPlace } = {}) {
+  function previewSupplySite (stand, { canPlace, canClear = null } = {}) {
     try {
       if (active) throw failure('STORAGE_BUSY')
-      if (!point(stand) || typeof canPlace !== 'function') throw failure('STORAGE_SITE_INVALID')
+      if (!point(stand) || typeof canPlace !== 'function' || canClear !== null && typeof canClear !== 'function') throw failure('STORAGE_SITE_INVALID')
       const state = getState()
       scopeOf(state)
       if (state.phase !== 'spawned' || state.dead || state.isDead || state.lifecycle?.dead || state.spawnPending || !(state.health > 0) || !finite(state.position)) throw failure('STORAGE_NOT_ALIVE')
-      return { ready: true, predictionOnly: true, serverConfirmed: false, ...planSite(state, 'shulker', canPlace, [], stand) }
-    } catch (error) { return { ready: false, reason: error.code ?? String(error.message), serverConfirmed: false } }
+      return { ready: true, predictionOnly: true, serverConfirmed: false, ...planSite(state, 'shulker', canPlace, [], stand, canClear) }
+    } catch (error) { return { ready: false, reason: error.code ?? String(error.message), ...(error.details ? { details: copy(error.details) } : {}), serverConfirmed: false } }
   }
 
   async function storeCarried (request, { signal, onCheckpoint, canPlace = () => true, capacityWork = null } = {}) {

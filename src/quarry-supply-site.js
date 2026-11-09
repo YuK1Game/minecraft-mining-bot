@@ -18,11 +18,19 @@ function supplyPlacementAllowed (regions, p) {
 
 async function planSupplyApproach ({ origin, regions, planner, canPlace, previewSite, previewRoute = null, guard = () => {} }) {
   guard()
+  const failures = [], counts = {}
+  const reject = result => {
+    const detail = result?.details ?? { cause: result?.reason ?? 'SITE_PREVIEW_UNCONFIRMED' }
+    const cause = detail.cause ?? result?.reason ?? 'SITE_PREVIEW_UNCONFIRMED'
+    counts[cause] = (counts[cause] ?? 0) + 1
+    if (failures.length < 8) failures.push({ cause, ...(detail.position ? { position: detail.position } : {}), ...(detail.block ? { block: detail.block } : {}) })
+  }
   const workStand = p => supplyPlacementAllowed(regions, p) && planner.standable(p)
   const check = p => {
     if (!workStand(p)) return null
     const result = previewSite(p)
-    return result?.ready === true && same(result.stand, p) && Array.isArray(result.positions) && result.positions.length === 1 && result.positions.every(canPlace) ? result : null
+    if (result?.ready === true && same(result.stand, p) && Array.isArray(result.positions) && result.positions.length === 1 && result.positions.every(canPlace)) return result
+    reject(result); return null
   }
   // Already at a valid site: do not walk to the edge or back to the surface.
   const current = check(origin)
@@ -50,7 +58,8 @@ async function planSupplyApproach ({ origin, regions, planner, canPlace, preview
     }
     return { ready: true, site, path, serverConfirmed: false }
   }
-  return { ready: false, reason: !candidates.length ? 'SUPPLY_APPROACH_UNREACHABLE' : candidates.length > 1024 ? 'SUPPLY_SITE_SEARCH_LIMIT' : 'STORAGE_SITE_UNOBSERVED', details: { origin, candidates: candidates.length, examined, ...(cause ? { cause } : {}) } }
+  const first = failures.find(f => /UNKNOWN|UNOBSERVED/.test(f.cause)) ?? failures[0]
+  return { ready: false, reason: !candidates.length ? 'SUPPLY_APPROACH_UNREACHABLE' : candidates.length > 1024 ? 'SUPPLY_SITE_SEARCH_LIMIT' : 'STORAGE_SITE_UNOBSERVED', details: { cause: cause ?? first?.cause ?? 'NO_REACHABLE_WORKSITE', position: first?.position ?? origin, ...(first?.block ? { block: first.block } : {}), origin, candidates: candidates.length, examined, counts, failures } }
 }
 
 module.exports = { supplyPlacementAllowed, planSupplyApproach }

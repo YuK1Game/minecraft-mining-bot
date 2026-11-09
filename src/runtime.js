@@ -1,5 +1,7 @@
 'use strict'
 
+const { diagnoseStrikeBody } = require('./combat-body-diagnostic')
+
 const { createCombatExposure } = require('./combat-exposure')
 const { createQuarryStore } = require('./quarry-store')
 const { assertJobWorld } = require('./quarry-job-identity')
@@ -2437,24 +2439,15 @@ function createRuntime (host) {
       if (!ownHut && !ownEscape && !ownActor('combat') && generationInput.stats().running) return false
       return true
     }
-    function verifyStrikeBody (observed, { signal } = {}) {
+    function strikeBodyDiagnostic (observed, { signal } = {}) {
       requireGeneration()
-      if (signal?.aborted) return false
-      const state = working(); const p = state.position
-      if (!p || !observed?.position || !sameRouteScope(routeScope(state), routeScope(observed)) || Math.hypot(p.x - observed.position.x, p.y - observed.position.y, p.z - observed.position.z) > 0.05) return false
-      const physical = state.predicted?.physicsState ?? state.physicsState
-      if (physical?.isInWater || physical?.isInLava) return false
-      const foot = p.y - 1.62, minX = p.x - 0.3, maxX = p.x + 0.3, minZ = p.z - 0.3, maxZ = p.z + 0.3
-      const hazard = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush)/
-      try {
-        // Match the physics model's float32 contact skin without changing
-        // the received pose: micron-scale edge contact is not penetration.
-        for (let x = Math.floor(minX + 1e-4); x <= Math.floor(maxX - 1e-4); x++) for (let z = Math.floor(minZ + 1e-4); z <= Math.floor(maxZ - 1e-4); z++) for (let y = Math.floor(foot + 1e-7); y <= Math.floor(foot + 1.8 - 1e-7); y++) {
-          const block = generationPhysics.blockAt({ x, y, z })
-          if (hazard.test(block.name) || block.shapes.some(box => maxX > x + box[0] + 1e-4 && minX < x + box[3] - 1e-4 && foot + 1.8 > y + box[1] + 1e-7 && foot < y + box[4] - 1e-4 && maxZ > z + box[2] + 1e-4 && minZ < z + box[5] - 1e-4)) return false
-        }
-        return true
-      } catch { return false }
+      const state = working()
+      return diagnoseStrikeBody({ state, observed, signal,
+        scopeMatches: !!observed?.position && sameRouteScope(routeScope(state), routeScope(observed)),
+        blockAt: position => generationPhysics.blockAt(position) })
+    }
+    function verifyStrikeBody (observed, context = {}) {
+      return strikeBodyDiagnostic(observed, context).ready
     }
     // Stationary combat can continue on a partially supported edge, but only
     // when the received collision shapes prove contact and every floor cell
@@ -4288,7 +4281,9 @@ function createRuntime (host) {
               const current = working(); const physical = current.predicted?.physicsState ?? current.physicsState
               const grounded = typeof physical?.onGround === 'boolean' ? String(physical.onGround) : 'unknown'
               const sword = current.inventory?.known === true && /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/.test(current.heldItem?.name ?? '')
-              host.log(`待機保護の体勢: grounded=${grounded} bodyClear=${verifyStrikeBody(current)} meleeSupport=${verifyMeleeBody(current)} swordHeld=${sword} inventoryKnown=${current.inventory?.known === true} defenses=${Number.isSafeInteger(protection.defenses) ? protection.defenses : 0}`)
+              const body = strikeBodyDiagnostic(current)
+              host.log(`待機保護の体勢: grounded=${grounded} bodyClear=${body.ready} meleeSupport=${verifyMeleeBody(current)} swordHeld=${sword} inventoryKnown=${current.inventory?.known === true} defenses=${Number.isSafeInteger(protection.defenses) ? protection.defenses : 0}`)
+              if (!body.ready) host.log(`待機保護の体勢詳細: ${JSON.stringify(body)}`)
             } catch { /* Diagnostics cannot interrupt online protection. */ }
             if (escape?.rejection) host.log(`待機保護の経路: reason=${escape.rejection.reason} detail=${escape.rejection.detail ?? 'none'} preview=${escape.rejection.previewCode ?? 'none'} actor=${escape.rejection.actorName ?? 'unknown'} distance=${Number.isFinite(escape.rejection.minDistance) ? escape.rejection.minDistance.toFixed(2) : 'unknown'} required=${Number.isFinite(escape.rejection.required) ? escape.rejection.required.toFixed(2) : 'unknown'}`)
             // Keep a bounded, non-packet summary for diagnosing a protection

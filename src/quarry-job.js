@@ -18,6 +18,7 @@ const { normalizeExit, dirtCount, planQuarryExit } = require('./quarry-exit-plan
 const { supplyNeeds, supplyScope, storageSupplyExclusions } = require('./quarry-supplies')
 const { UNSENT_PLACE_REASON } = require('./quarry-portable-storage')
 const { supplyPlacementAllowed, planSupplyApproach } = require('./quarry-supply-site')
+const { clearableSitePlant, plainAir } = require('./storage-site-terrain')
 const { createQuarryCapacityBatch, fullDropBudget, chooseCapacityPrefix } = require('./quarry-capacity-batch')
 
 const copy = value => value === undefined ? undefined : structuredClone(value)
@@ -1469,12 +1470,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return Array.isArray(bindings) && bindings.length === 4 && ['pickaxe', 'shovel', 'food', 'dirt'].every(role => bindings.filter(b => b?.role === role && typeof b.key === 'string' && typeof b.itemName === 'string').length === 1) && new Set(bindings.map(b => b.key)).size === 4
   }
   const supplyCanPlace = p => supplyPlacementAllowed(regions, p)
+  const supplyCanClear = p => permits(regions, 'break', p).allowed && clearableSitePlant(planningBlocks(job.config)(p.x, p.y, p.z))
   async function approachSupplySite (myEpoch, active) {
     // An existing child owns a physical location and possibly an uncertain
     // placement/transfer. Its normal recovery must run before any relocation.
     if (active.checkpoint?.child) return true
     const blocked = async (reason, details = {}) => {
       job.lastSupplyResult = { operationId: active.operationId, status: 'blocked', reason, serverConfirmed: false, withdrawn: copy(active.checkpoint?.withdrawn ?? []), returned: copy(active.checkpoint?.returned ?? []) }
+      note('supply_site_blocked', { reason, cause: details.cause ?? null, position: details.position ?? null, block: details.block ?? null, counts: details.counts ?? null })
       await finish('PAUSED', 'SUPPLY_RESTOCK_BLOCKED', { pauseDetails: { reason, ...copy(details), operationId: active.operationId } })
       return false
     }
@@ -1484,11 +1487,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (typeof adapter.previewSupplySite !== 'function') return blocked('SUPPLY_APPROACH_UNSUPPORTED')
     const origin = feetCell(guard(myEpoch))
     const selected = await planSupplyApproach({ origin, regions, planner, canPlace: supplyCanPlace,
-      previewSite: stand => adapter.previewSupplySite(stand, { canPlace: supplyCanPlace }),
+      previewSite: stand => adapter.previewSupplySite(stand, { canPlace: supplyCanPlace, canClear: supplyCanClear }),
       previewRoute: typeof adapter.previewStorage === 'function' ? (site, path) => call(myEpoch, 'preview_supply_route', signal => adapter.previewStorage({ stand: site.stand, position: site.positions[0] }, { signal, path, travel: p => permits(regions, 'travel', p).allowed })) : null,
       guard: () => { const current = guard(myEpoch); if (!samePoint(feetCell(current), origin)) throw new QuarryInterrupt('SUPPLY_APPROACH_ORIGIN_CHANGED') } })
     guard(myEpoch)
-    if (!selected.ready) return blocked(selected.reason, { origin, ...selected.details })
+    if (!selected.ready) return blocked(selected.reason, { ...selected.details, origin })
     active.approach = { phase: 'planned', origin, stand: copy(selected.site.stand), positions: copy(selected.site.positions), pathLength: selected.path.length, predictionOnly: true }
     await save('supply_approach_intent')
     if (!samePoint(origin, selected.site.stand)) {
@@ -1502,6 +1505,36 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     const arrived = feetCell(guard(myEpoch))
     if (!samePoint(arrived, selected.site.stand)) return blocked('SUPPLY_APPROACH_ARRIVAL_UNCONFIRMED', { target: selected.site.stand, position: arrived })
+    // Prepare only the explicitly proposed, dry, non-colliding plants. This
+    // does not authorize excavation outside the quarry or mark cells as air.
+    const preparation = selected.site.preparation ?? []
+    if (!Array.isArray(preparation) || preparation.length > 4) return blocked('SUPPLY_SITE_PREPARATION_INVALID')
+    for (const target of preparation) {
+      const current = guard(myEpoch), block = adapter.getBlock(target.x, target.y, target.z)
+      if (!samePoint(feetCell(current), arrived)) return blocked('SUPPLY_SITE_CHANGED', { position: target, cause: 'PREPARATION_ORIGIN_CHANGED' })
+      if (plainAir(block)) continue
+      if (samePoint(target, arrived) || !supplyCanClear(target) || !clearableSitePlant(block) || block.name !== target.expectedName || (target.expectedRuntimeId != null && block.runtimeId !== target.expectedRuntimeId)) return blocked('SUPPLY_SITE_CHANGED', { position: target, cause: 'PREPARATION_BLOCK_CHANGED', block: block?.name ?? null })
+      const rule = blockRule(block.name), drops = (rule.drops ?? []).map(name => ({ name: `minecraft:${name}`, count: rule.maxDrop ?? 1 }))
+      if (!canAccept(items(current), drops, { minFreeSlots: 1 })) return blocked('SUPPLY_SITE_PREPARATION_CAPACITY', { position: target })
+      await equipTool(myEpoch, { kind: 'hand' })
+      const action = recordAction({ type: 'supply_site_clear', position: target, expectedName: target.expectedName })
+      await save('supply_site_clear_intent')
+      guard(myEpoch)
+      if (!supplyCanClear(target) || !samePoint(feetCell(adapter.getState()), arrived)) return blocked('SUPPLY_SITE_CHANGED', { position: target })
+      note('supply_site_prepare', { position: target, block: target.expectedName })
+      try { await call(myEpoch, 'supply_site_clear', signal => adapter.mine([{ ...target, accessPreparation: 'quarry', requiredTool: null }], { signal })) } catch (error) {
+        if (error instanceof QuarryInterrupt) throw error
+        guard(myEpoch)
+        action.status = 'unconfirmed'
+        return blocked('SUPPLY_SITE_PREPARATION_FAILED', { position: target, error: String(error.message ?? error).slice(0, 120) })
+      }
+      guard(myEpoch)
+      if (!plainAir(adapter.getBlock(target.x, target.y, target.z))) return blocked('SUPPLY_SITE_PREPARATION_UNCONFIRMED', { position: target })
+      action.status = 'confirmed'; action.confirmedBy = 'received_air'
+      observeInventory('SUPPLY_SITE_PREPARE')
+      await save('supply_site_cleared')
+    }
+    if (!samePoint(feetCell(guard(myEpoch)), arrived)) return blocked('SUPPLY_SITE_CHANGED', { position: arrived, cause: 'PREPARATION_ORIGIN_CHANGED' })
     const refreshed = adapter.previewSupplySite(arrived, { canPlace: supplyCanPlace })
     if (refreshed?.ready !== true || !samePoint(refreshed.stand, arrived) || !refreshed.positions?.length || !refreshed.positions.every(supplyCanPlace)) return blocked('SUPPLY_SITE_CHANGED', { position: arrived, cause: refreshed?.reason ?? 'UNCONFIRMED' })
     // This is a walking/terrain observation, not a successful box transfer.
