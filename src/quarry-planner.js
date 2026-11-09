@@ -172,6 +172,21 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
     }
     return seen.size
   }
+  // True only when received fluid cells connect start to a cell outside the
+  // target columns (an outside body leaking into the edge). Unknown blocks are
+  // never crossed, so an unproven connection keeps the normal pause.
+  function connectsOutside (start, limit = 4096) {
+    const seen = new Set([key(start.x, start.y, start.z)]); const queue = [start]
+    for (let head = 0; head < queue.length && seen.size <= limit; head++) {
+      const p = queue[head]
+      if (!regions.columns.has(`${p.x},${p.z}`)) return true
+      for (const f of FACES) { const n = add(p, f); const k = key(n.x, n.y, n.z); if (seen.has(k)) continue; const b = read(n); if (known(b) && fluid(b)) { seen.add(k); queue.push(n) } }
+    }
+    return false
+  }
+  const heldFluid = p => { const d = deferred.get(key(p.x, p.y, p.z)); return d?.reason === 'LARGE_FLUID_WALL' && fluid(read(p)) }
+  // A stand whose body touches held outside water is never used for walking or mining.
+  const touchesHeldFluid = p => [p, add(p, { x: 0, y: 1, z: 0 })].some(c => FACES.some(f => heldFluid(add(c, f))))
   function singleLavaSource (start) {
     const seen = new Set([key(start.x, start.y, start.z)]); const cells = [start]; const sources = []
     let highest = -Infinity
@@ -331,7 +346,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
   // ---- walking graph (conservative mirror of normal movement) ------------
   const travelOk = p => permits(regions, 'travel', p).allowed && permits(regions, 'travel', add(p, { x: 0, y: 1, z: 0 })).allowed
   function standable (p) {
-    return passable(read(p)) && passable(read(add(p, { x: 0, y: 1, z: 0 }))) && solidFloor(read(add(p, { x: 0, y: -1, z: 0 })))
+    return passable(read(p)) && passable(read(add(p, { x: 0, y: 1, z: 0 }))) && solidFloor(read(add(p, { x: 0, y: -1, z: 0 }))) && !touchesHeldFluid(p)
   }
   // A placement can trigger neighbouring gravity blocks. Walking on a
   // received gravel floor remains legal, but it is never a sealing stance.
@@ -456,7 +471,17 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
   // Planning is chunked: the event loop is released every ~12ms so live
   // input streams (movement, idle input, combat ticks) never miss a tick.
   const yieldNow = () => new Promise(resolve => setImmediate(resolve))
-  async function next ({ feet, yTop, tools, policy = {}, inventoryItems = [], maxBatch = cfg.maxBlocksPerBatch, avoid = null, selectedSlot = null }) {
+  async function next (input) {
+    // Holding outside-connected fluid changes which stands are usable, so the
+    // reachable set is rebuilt once after any new hold (bounded to 3 passes).
+    for (let pass = 0; ; pass++) {
+      const before = holdsAdded
+      const result = await nextOnce(input)
+      if (holdsAdded === before || pass >= 2) return result
+    }
+  }
+  let holdsAdded = 0
+  async function nextOnce ({ feet, yTop, tools, policy = {}, inventoryItems = [], maxBatch = cfg.maxBlocksPerBatch, avoid = null, selectedSlot = null }) {
     let slice = performance.now()
     const breathe = async () => { if (performance.now() - slice > 12) { await yieldNow(); slice = performance.now() } }
     avoidStances = avoid instanceof Set ? avoid : new Set()
@@ -472,8 +497,12 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       const opening = await boundaryOpening(y, reach, inventoryItems, tools, policy, yTop, breathe, feet)
       if (opening) return opening
       // Fluids inside the layer: plug small ones, pause on large ones.
+      let held = 0
       for (const f of layer.fluid) {
         const plan = sealPlan({ position: f.position, name: f.name, lava: /lava/.test(nameOf(f.name)) })
+        // Outside water leaking into the edge: the fluid cell is held (never
+        // sealed or broken) and its inner neighbours become the wall below.
+        if (!plan.ok && plan.reason === 'LARGE_FLUID_AREA' && connectsOutside(f.position)) { defer(f.position, 'LARGE_FLUID_WALL', { size: plan.size, intrusion: true }); held++; holdsAdded++; continue }
         if (!plan.ok) return { action: 'pause', reason: plan.reason, details: { position: f.position, size: plan.size } }
         const placement = fluidAction(plan, reach, inventoryItems, tools, policy, yTop)
         if (placement.action) return placement
@@ -535,8 +564,8 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
             // A large water body outside the target columns cannot be sealed
             // here; the target cell itself is the wall that holds it back, so it
             // is left in place (never broken) and the rest of the layer goes on.
-            if (!plan.ok && plan.reason === 'LARGE_FLUID_AREA' && !regions.columns.has(`${h.position.x},${h.position.z}`)) {
-              defer(target.position, 'LARGE_FLUID_WALL', { fluid: h.position, size: plan.size }); wall = true; break
+            if (!plan.ok && plan.reason === 'LARGE_FLUID_AREA' && (!regions.columns.has(`${h.position.x},${h.position.z}`) || connectsOutside(h.position))) {
+              defer(target.position, 'LARGE_FLUID_WALL', { fluid: h.position, size: plan.size }); holdsAdded++; wall = true; break
             }
             if (!plan.ok) return { action: 'pause', reason: plan.reason, details: { target: target.position, fluid: h.position, size: plan.size } }
             const placement = fluidAction(plan, reach, inventoryItems, tools, policy, yTop)
