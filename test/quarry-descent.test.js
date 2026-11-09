@@ -83,3 +83,22 @@ test('plan refuses a target with a large cave below the surface unless allowCave
   assert.ok(!allowed.issues.includes('CAVE_VOLUME_HIGH'))
   assert.ok(allowed.warnings.some(w => w.code === 'CAVE_VOLUME_HIGH' && w.overridden))
 })
+
+test('an unreachable tree canopy above the bot is deferred, not a descent stop', async () => {
+  // Leaves high above the stand on the top layer; the ground layer below is ordinary rock.
+  const { createQuarryPlanner } = require('../src/quarry-planner')
+  const { buildRegions } = require('../src/quarry-region')
+  const k = (x, y, z) => `${x},${y},${z}`
+  const leaves = new Set(); for (let x = 0; x <= 15; x++) for (let z = 0; z <= 15; z++) leaves.add(k(x, 70, z))
+  const read = (x, y, z) => {
+    if (leaves.has(k(x, y, z))) return { known: true, position: { x, y, z }, name: 'minecraft:oak_leaves', boundingBox: 'block', runtimeId: 5, properties: {}, extra: [], diggable: true }
+    // A small 3x3 rock platform (9 stands) under a full-chunk canopy, cave below.
+    const rock = y <= 40 || (y <= 61 && y >= 58 && x >= 4 && x <= 6 && z >= 4 && z <= 6)
+    return { known: true, position: { x, y, z }, name: rock ? 'minecraft:stone' : 'minecraft:air', boundingBox: rock ? 'block' : 'empty', runtimeId: rock ? 2 : 0, properties: {}, extra: [], diggable: true }
+  }
+  const regions = buildRegions({ target: { chunks: [{ x: 0, z: 0 }] }, yTop: 70, yBottom: 55, worldMinY: 30, worldMaxY: 80, travelRegion: [{ xMin: -3, xMax: 18, yMin: 30, yMax: 80, zMin: -3, zMax: 18 }] })
+  const planner = createQuarryPlanner({ regions, getBlock: read, records: { deferred: {} }, exit: { mode: 'adjacent_pillar' } })
+  const tools = [{ slot: 0, name: 'minecraft:diamond_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 1000, maxDurability: 1561 }]
+  const decision = await planner.next({ feet: { x: 5, y: 62, z: 5 }, yTop: 70, tools, inventoryItems: tools })
+  assert.notEqual(decision.reason, 'DESCENT_REQUIRED', JSON.stringify(decision).slice(0, 200))
+})
