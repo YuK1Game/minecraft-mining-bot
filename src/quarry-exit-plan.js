@@ -110,16 +110,29 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
     // yTop is the maximum inside the quarry. A neighbouring surface can be
     // lower. Descend through received sky to its first block; a roof, canopy
     // or missing section cannot be skipped to select a cave beneath it.
-    const minFloorY = Math.max(startFeet.y, yTop - 16)
+    // The highest excavation cell (often a hill or tree) does not bound the
+    // adjacent ground from below. Inspect received sky down to the exit entry,
+    // not just yTop - 16. Stop at the FIRST obstacle: never skip an unknown
+    // section, canopy, fluid or roof to mistake a cave floor for the surface.
+    const minFloorY = startFeet.y
     const maxFeetY = Math.min(regions.worldMaxY - 3, yTop + 16)
+    let landingFailure = { cause: 'NO_SURFACE_ABOVE_ENTRY', position: { x, y: minFloorY, z }, part: 'landing_floor' }
     for (let y = regions.worldMaxY; y >= minFloorY; y--) {
-      const b = read({ x, y, z })
-      if (b?.known !== true || b.extra?.length || b.protected || b.protectionSource || protectedAt({ x, y, z })) break
+      const position = { x, y, z }, b = read(position)
+      const blocked = b?.known !== true || typeof b.name !== 'string' ? 'UNKNOWN'
+        : b.protected || b.protectionSource || protectedAt(position) ? 'PROTECTED'
+          : b.extra?.length ? 'FLUID_OR_EXTRA_LAYER' : null
+      if (blocked) {
+        landingFailure = { cause: blocked, position, part: 'landing_column', ...(b?.reason ? { observation: b.reason } : {}) }
+        break
+      }
       if (AIR.has(nameOf(b))) continue
-      if (y + 1 <= maxFeetY && floor({ x, y, z }) && !['magma', 'soul_sand', 'mud', 'farmland', 'grass_path', 'dirt_path'].includes(nameOf(b))) landing = { x, y: y + 1, z }
+      if (y + 1 > maxFeetY) landingFailure = { cause: 'LANDING_TOO_HIGH', position, part: 'landing_floor', maxFeetY }
+      else if (!floor(position) || ['magma', 'soul_sand', 'mud', 'farmland', 'grass_path', 'dirt_path'].includes(nameOf(b))) landingFailure = { cause: unsafe(position) ?? 'UNSAFE_LANDING_FLOOR', position, part: 'landing_floor', block: b.name }
+      else landing = { x, y: y + 1, z }
       break
     }
-    if (!landing) { attempts.push({ side, column, reason: 'LANDING_UNAVAILABLE' }); continue }
+    if (!landing) { attempts.push({ side, column, reason: 'LANDING_UNAVAILABLE', ...landingFailure }); continue }
     const clearTopY = landing.y + 2
     const shaftCells = []; let failure = null
     for (let y = startFeet.y; y <= clearTopY && !failure; y++) {
@@ -144,7 +157,12 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
     const requiredDirt = landing.y - startFeet.y
     plans.push({ version: 1, side, column, entry, startFeet, landing, targetFeetY: landing.y, clearTopY, requiredDirt, reserveDirt: options.reserveDirt, totalDirt: requiredDirt + options.reserveDirt, allowedColumn: { ...column, yMin: startFeet.y, yMax: clearTopY }, shaftCells })
   }
-  if (!plans.length) return { ok: false, reason: 'EXIT_COLUMN_UNAVAILABLE', details: { attempts } }
+  if (!plans.length) {
+    // Put a concrete cause/coordinate before the potentially long candidate
+    // list so the job's bounded state log does not truncate the useful part.
+    const first = attempts.find(a => a.cause === 'UNKNOWN' || a.reason === 'UNKNOWN') ?? attempts[0]
+    return { ok: false, reason: 'EXIT_COLUMN_UNAVAILABLE', details: { cause: first?.cause ?? first?.reason ?? 'NO_CANDIDATES', position: first?.position ?? null, attempts } }
+  }
   plans.sort((a, b) => sides.indexOf(a.side) - sides.indexOf(b.side) || a.totalDirt - b.totalDirt || a.shaftCells.length - b.shaftCells.length || a.column.z - b.column.z || a.column.x - b.column.x)
   let blocked = null
   for (const plan of plans) {
