@@ -161,7 +161,10 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
     // Put a concrete cause/coordinate before the potentially long candidate
     // list so the job's bounded state log does not truncate the useful part.
     const first = attempts.find(a => a.cause === 'UNKNOWN' || a.reason === 'UNKNOWN') ?? attempts[0]
-    return { ok: false, reason: 'EXIT_COLUMN_UNAVAILABLE', details: { cause: first?.cause ?? first?.reason ?? 'NO_CANDIDATES', position: first?.position ?? null, attempts } }
+    const counts = {}
+    for (const attempt of attempts) { const cause = attempt.cause ?? attempt.reason; counts[cause] = (counts[cause] ?? 0) + 1 }
+    const block = first?.position ? read(first.position) : null
+    return { ok: false, reason: 'EXIT_COLUMN_UNAVAILABLE', details: { cause: first?.cause ?? first?.reason ?? 'NO_CANDIDATES', position: first?.position ?? null, block: block?.known === true ? block.name : null, ...(block?.extra?.length ? { extra: block.extra.slice(0, 3).map(b => b?.name ?? 'unknown') } : {}), counts, attempts } }
   }
   plans.sort((a, b) => sides.indexOf(a.side) - sides.indexOf(b.side) || a.totalDirt - b.totalDirt || a.shaftCells.length - b.shaftCells.length || a.column.z - b.column.z || a.column.x - b.column.x)
   let blocked = null

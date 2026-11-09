@@ -1,5 +1,7 @@
 'use strict'
 
+const { diagnoseStrikeBody } = require('./combat-body-diagnostic')
+
 const { createCombatExposure } = require('./combat-exposure')
 const { createQuarryStore } = require('./quarry-store')
 const { assertJobWorld } = require('./quarry-job-identity')
@@ -2456,6 +2458,13 @@ function createRuntime (host) {
         return true
       } catch { return false }
     }
+    function strikeBodyDiagnostic (observed, { signal } = {}) {
+      requireGeneration()
+      const state = working()
+      return diagnoseStrikeBody({ state, observed, signal,
+        scopeMatches: !!observed?.position && sameRouteScope(routeScope(state), routeScope(observed)),
+        blockAt: position => generationPhysics.blockAt(position) })
+    }
     // Stationary combat can continue on a partially supported edge, but only
     // when the received collision shapes prove contact and every floor cell
     // beneath the footprint is known and harmless. Walking keeps its stricter
@@ -4288,7 +4297,9 @@ function createRuntime (host) {
               const current = working(); const physical = current.predicted?.physicsState ?? current.physicsState
               const grounded = typeof physical?.onGround === 'boolean' ? String(physical.onGround) : 'unknown'
               const sword = current.inventory?.known === true && /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/.test(current.heldItem?.name ?? '')
-              host.log(`待機保護の体勢: grounded=${grounded} bodyClear=${verifyStrikeBody(current)} meleeSupport=${verifyMeleeBody(current)} swordHeld=${sword} inventoryKnown=${current.inventory?.known === true} defenses=${Number.isSafeInteger(protection.defenses) ? protection.defenses : 0}`)
+              const bodyClear = verifyStrikeBody(current)
+              host.log(`待機保護の体勢: grounded=${grounded} bodyClear=${bodyClear} meleeSupport=${verifyMeleeBody(current)} swordHeld=${sword} inventoryKnown=${current.inventory?.known === true} defenses=${Number.isSafeInteger(protection.defenses) ? protection.defenses : 0}`)
+              if (!bodyClear) host.log(`待機保護の体勢詳細: ${JSON.stringify(strikeBodyDiagnostic(current))}`)
             } catch { /* Diagnostics cannot interrupt online protection. */ }
             if (escape?.rejection) host.log(`待機保護の経路: reason=${escape.rejection.reason} detail=${escape.rejection.detail ?? 'none'} preview=${escape.rejection.previewCode ?? 'none'} actor=${escape.rejection.actorName ?? 'unknown'} distance=${Number.isFinite(escape.rejection.minDistance) ? escape.rejection.minDistance.toFixed(2) : 'unknown'} required=${Number.isFinite(escape.rejection.required) ? escape.rejection.required.toFixed(2) : 'unknown'}`)
             // Keep a bounded, non-packet summary for diagnosing a protection
