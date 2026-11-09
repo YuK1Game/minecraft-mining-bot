@@ -2439,15 +2439,15 @@ function createRuntime (host) {
       if (!ownHut && !ownEscape && !ownActor('combat') && generationInput.stats().running) return false
       return true
     }
+    function verifyStrikeBody (observed, context = {}) {
+      return strikeBodyDiagnostic(observed, context).ready
+    }
     function strikeBodyDiagnostic (observed, { signal } = {}) {
       requireGeneration()
       const state = working()
       return diagnoseStrikeBody({ state, observed, signal,
         scopeMatches: !!observed?.position && sameRouteScope(routeScope(state), routeScope(observed)),
         blockAt: position => generationPhysics.blockAt(position) })
-    }
-    function verifyStrikeBody (observed, context = {}) {
-      return strikeBodyDiagnostic(observed, context).ready
     }
     // Stationary combat can continue on a partially supported edge, but only
     // when the received collision shapes prove contact and every floor cell
