@@ -267,3 +267,13 @@ test('a checkpoint after received air can finish from a later observed NBT updat
   assert.equal(result.status, 'completed', JSON.stringify(result)); assert.equal(result.recovered, true)
   assert.equal(f.events.filter(e => e.type === 'mine').length, 1)
 })
+
+test('a short-grass stand accepted by site planning is also accepted when the placed shulker is recovered', async () => {
+  const f = fixture('shulker')
+  const feet = { x: Math.floor(f.state.position.x), y: Math.floor(f.state.position.y - 1.62 + 1e-3), z: Math.floor(f.state.position.z) }
+  f.blocks.set(key(feet), { known: true, name: 'minecraft:short_grass', runtimeId: 900, boundingBox: 'empty', extra: [] })
+  const result = await f.run()
+  assert.equal(result.status, 'completed', JSON.stringify(result)); assert.equal(result.recovered, true)
+  assert.equal(f.getBlock(feet.x, feet.y, feet.z).name, 'minecraft:short_grass', 'the plant under the feet is never mined')
+  assert.equal(f.events.filter(e => e.type === 'mine').length, 1)
+})
