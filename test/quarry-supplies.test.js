@@ -260,6 +260,11 @@ test('a pickaxe whose uses are all reserved for the exit is kept and one more is
   assert.deepEqual(needs.returns, [], 'the reserved pickaxe is not returned')
   const after = supplyNeeds([...items, { slot: 5, name: 'minecraft:diamond_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 1561, maxDurability: 1561 }], { miningExhausted: ['pickaxe'] })
   assert.equal(after.missing.pickaxe, 0)
+  // Two worn pickaxes, both reserved for the exit: the job asks for a third, and only one.
+  const two = [...items, { slot: 5, name: 'minecraft:diamond_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 28, maxDurability: 1561 }]
+  assert.equal(supplyNeeds(two, { miningExhausted: { pickaxe: 3 } }).missing.pickaxe, 1)
+  assert.equal(supplyNeeds([...two, { slot: 6, name: 'minecraft:diamond_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 1561, maxDurability: 1561 }], { miningExhausted: { pickaxe: 3 } }).missing.pickaxe, 0, 'satisfied after one withdrawal')
+  assert.equal(supplyNeeds(two, { miningExhausted: { pickaxe: 9 } }).desired.pickaxe, 3, 'bounded at three')
 })
 
 test('a partly used box in its supply colour still binds; an uncoloured partial box never does', () => {
