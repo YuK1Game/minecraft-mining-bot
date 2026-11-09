@@ -6641,6 +6641,7 @@ function createRuntime (host) {
       storeCarried: (request, options) => getPortable().storeCarried(request, options),
       discoverSupplies: () => getSupplies().discoverBindings(),
       restockSupplies: (request, options) => getSupplies().run(request, options),
+      previewSupplySite: (stand, options) => getPortable().previewSupplySite(stand, options),
       reconcileSupplyPlacement: (request, options) => getSupplies().reconcileUnsentPlacement(request, options),
       reconcileCarriedPlacement: (request, options) => getPortable().reconcileUnsentPlacement(request, options),
       reconcileObservedPlacement: (request, options) => {

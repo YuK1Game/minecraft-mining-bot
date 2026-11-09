@@ -15,8 +15,9 @@ const { keepPlan, canAccept, totals, diff, createLedger, freeSlots, isFood, sele
 const { createQuarryCombatBridge } = require('./quarry-combat-bridge')
 const { miningUsesAfterExitReserve } = require('./quarry-exit-reserve')
 const { normalizeExit, dirtCount, planQuarryExit } = require('./quarry-exit-plan')
-const { supplyNeeds, storageSupplyExclusions } = require('./quarry-supplies')
+const { supplyNeeds, supplyScope, storageSupplyExclusions } = require('./quarry-supplies')
 const { UNSENT_PLACE_REASON } = require('./quarry-portable-storage')
+const { supplyPlacementAllowed, planSupplyApproach } = require('./quarry-supply-site')
 const { createQuarryCapacityBatch, fullDropBudget, chooseCapacityPrefix } = require('./quarry-capacity-batch')
 
 const copy = value => value === undefined ? undefined : structuredClone(value)
@@ -386,6 +387,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // it can never use the ordinary ACTION_FAILED retry or return underground.
     if (job.egress?.operationId && !job.surfaceReturnedAt) return finish('PAUSED', /^EXIT_/.test(code) ? code : 'EXIT_UNCONFIRMED', { pauseDetails: { error: String(error.message ?? code).slice(0, 300), operationId: job.egress.operationId } })
     if (['WORLD_MISMATCH', 'WORLD_IDENTITY_UNKNOWN', 'PERSISTENCE_FAILED', 'STORAGE_UNREACHABLE', 'NO_STORAGE'].includes(code)) return finish('PAUSED', code)
+    if (code === 'SUPPLY_APPROACH_ORIGIN_CHANGED') return finish('PAUSED', 'SUPPLY_RESTOCK_BLOCKED', { pauseDetails: { reason: code } })
     if (['SEAL_UNSAFE_STANCE', 'SEAL_MATERIAL_MISSING', 'SEAL_CONTEXT_CHANGED', 'FLUID_SOURCE_CHANGED', 'BOUNDARY_CONTEXT_CHANGED'].includes(code)) return finish('PAUSED', code, { pauseDetails: copy(error.details ?? null) })
     if (/^DROP_/.test(code)) return finish('PAUSED', code, { pauseDetails: copy(error.details ?? { reason: code }) })
     if (['HAZARD', 'LOW_HEALTH'].includes(code)) return
@@ -1466,6 +1468,48 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   function validSupplyBindings (bindings) {
     return Array.isArray(bindings) && bindings.length === 4 && ['pickaxe', 'shovel', 'food', 'dirt'].every(role => bindings.filter(b => b?.role === role && typeof b.key === 'string' && typeof b.itemName === 'string').length === 1) && new Set(bindings.map(b => b.key)).size === 4
   }
+  const supplyCanPlace = p => supplyPlacementAllowed(regions, p)
+  async function approachSupplySite (myEpoch, active) {
+    // An existing child owns a physical location and possibly an uncertain
+    // placement/transfer. Its normal recovery must run before any relocation.
+    if (active.checkpoint?.child) return true
+    const blocked = async (reason, details = {}) => {
+      job.lastSupplyResult = { operationId: active.operationId, status: 'blocked', reason, serverConfirmed: false, withdrawn: copy(active.checkpoint?.withdrawn ?? []), returned: copy(active.checkpoint?.returned ?? []) }
+      await finish('PAUSED', 'SUPPLY_RESTOCK_BLOCKED', { pauseDetails: { reason, ...copy(details), operationId: active.operationId } })
+      return false
+    }
+    const state = guard(myEpoch)
+    if (!items(state)) return blocked('SUPPLY_INVENTORY_UNKNOWN')
+    if (active.checkpoint && !isDeepStrictEqual(active.checkpoint.scope, supplyScope(state))) return blocked('SUPPLY_SCOPE_CHANGED')
+    if (typeof adapter.previewSupplySite !== 'function') return blocked('SUPPLY_APPROACH_UNSUPPORTED')
+    const origin = feetCell(guard(myEpoch))
+    const selected = await planSupplyApproach({ origin, regions, planner, canPlace: supplyCanPlace,
+      previewSite: stand => adapter.previewSupplySite(stand, { canPlace: supplyCanPlace }),
+      previewRoute: typeof adapter.previewStorage === 'function' ? (site, path) => call(myEpoch, 'preview_supply_route', signal => adapter.previewStorage({ stand: site.stand, position: site.positions[0] }, { signal, path, travel: p => permits(regions, 'travel', p).allowed })) : null,
+      guard: () => { const current = guard(myEpoch); if (!samePoint(feetCell(current), origin)) throw new QuarryInterrupt('SUPPLY_APPROACH_ORIGIN_CHANGED') } })
+    guard(myEpoch)
+    if (!selected.ready) return blocked(selected.reason, { origin, ...selected.details })
+    active.approach = { phase: 'planned', origin, stand: copy(selected.site.stand), positions: copy(selected.site.positions), pathLength: selected.path.length, predictionOnly: true }
+    await save('supply_approach_intent')
+    if (!samePoint(origin, selected.site.stand)) {
+      note('supply_approach', { from: origin, to: selected.site.stand, steps: selected.path.length - 1 })
+      active.approach.phase = 'moving'
+      try { await moveToStance(myEpoch, selected.site.stand) } catch (error) {
+        if (error instanceof QuarryInterrupt) throw error
+        guard(myEpoch)
+        return blocked('SUPPLY_APPROACH_MOVE_FAILED', { target: selected.site.stand, error: String(error.message ?? error).slice(0, 120) })
+      }
+    }
+    const arrived = feetCell(guard(myEpoch))
+    if (!samePoint(arrived, selected.site.stand)) return blocked('SUPPLY_APPROACH_ARRIVAL_UNCONFIRMED', { target: selected.site.stand, position: arrived })
+    const refreshed = adapter.previewSupplySite(arrived, { canPlace: supplyCanPlace })
+    if (refreshed?.ready !== true || !samePoint(refreshed.stand, arrived) || !refreshed.positions?.length || !refreshed.positions.every(supplyCanPlace)) return blocked('SUPPLY_SITE_CHANGED', { position: arrived, cause: refreshed?.reason ?? 'UNCONFIRMED' })
+    // This is a walking/terrain observation, not a successful box transfer.
+    active.approach = { ...active.approach, phase: 'arrived', positions: copy(refreshed.positions) }
+    note('supply_arrived', { stand: arrived, box: refreshed.positions[0] })
+    await save('supply_approach_arrived')
+    return true
+  }
   async function restock (myEpoch, resumeTo = 'SURVEY', force = false) {
     const bindings = job.config.inventory.supplyBoxes
     if (!bindings?.length && !job.supplyRestock) return false
@@ -1478,8 +1522,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job.supplyRestock && !(shortage || force && need.returns.length)) return false
     if (!job.supplyRestock) { job.supplySequence = (job.supplySequence ?? 0) + 1; job.supplyRestock = { operationId: `${job.config.jobId}:supplies:${job.supplySequence}`, checkpoint: null, resumeTo } }
     const owner = job, active = job.supplyRestock
+    if (!(await approachSupplySite(myEpoch, active))) return true
+    guard(myEpoch)
     setState('RESTOCK'); await save('supply_intent')
-    const response = await call(myEpoch, 'restock_supplies', signal => adapter.restockSupplies({ jobId: job.config.jobId, operationId: active.operationId, bindings: copy(bindings), policy: copy(policy), checkpoint: copy(active.checkpoint), canPlace: p => permits(regions, 'place', p).allowed }, { signal, onCheckpoint: async checkpoint => {
+    const response = await call(myEpoch, 'restock_supplies', signal => adapter.restockSupplies({ jobId: job.config.jobId, operationId: active.operationId, bindings: copy(bindings), policy: copy(policy), checkpoint: copy(active.checkpoint), canPlace: supplyCanPlace }, { signal, onCheckpoint: async checkpoint => {
       if (job !== owner || job.supplyRestock !== active || checkpoint?.jobId !== owner.config.jobId || checkpoint?.operationId !== active.operationId) throw new Error('Supply checkpoint belongs to another operation')
       active.checkpoint = copy(checkpoint); await save('supply_checkpoint')
     } }))
@@ -2282,7 +2328,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const lock = new Promise(resolve => { release = resolve })
     worker = lock; reconcilingSupplyPlacement = true
     try {
-    const response = await adapter.reconcileSupplyPlacement({ jobId: job.config.jobId, operationId: active.operationId, checkpoint: copy(active.checkpoint), reason: UNSENT_PLACE_REASON, canPlace: p => permits(regions, 'place', p).allowed }, { onCheckpoint: async checkpoint => {
+    const response = await adapter.reconcileSupplyPlacement({ jobId: job.config.jobId, operationId: active.operationId, checkpoint: copy(active.checkpoint), reason: UNSENT_PLACE_REASON, canPlace: supplyCanPlace }, { onCheckpoint: async checkpoint => {
       if (job !== owner || job.supplyRestock !== active || checkpoint?.jobId !== owner.config.jobId || checkpoint?.operationId !== active.operationId) throw new Error('Supply reconciliation belongs to another operation')
       active.checkpoint = copy(checkpoint)
       try { await save('supply_placement_not_sent') } catch (error) { active.checkpoint = before; throw error }

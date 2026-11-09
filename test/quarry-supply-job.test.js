@@ -3,6 +3,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createQuarryJob } = require('../src/quarry-job')
+const { supplySitePreview } = require('./helpers/supply-site-preview')
+const { supplyScope } = require('../src/quarry-supplies')
 const { carriedContainerKey } = require('../src/quarry-inventory')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
@@ -17,10 +19,11 @@ function fixture () {
   let bindings = roles.map((role, i) => ({ role, itemName: `minecraft:${foods[i]}`, key: carriedContainerKey(sim.state.inventory.items[i]), boxName: sim.state.inventory.items[i].name, stackId: 100 + i }))
   const docs = [], requests = []
   let behavior = 'success'
+  sim.adapter.previewSupplySite = supplySitePreview(sim.adapter)
   sim.adapter.discoverSupplies = () => ({ ok: true, bindings: structuredClone(bindings) })
   sim.adapter.restockSupplies = async (request, { onCheckpoint }) => {
     requests.push(request)
-    await onCheckpoint({ version: 1, jobId: request.jobId, operationId: request.operationId, phase: 'controlled', marker: request.checkpoint?.marker ?? 'same-operation' })
+    await onCheckpoint({ version: 1, jobId: request.jobId, operationId: request.operationId, phase: 'controlled', scope: supplyScope(sim.state), marker: request.checkpoint?.marker ?? 'same-operation' })
     if (behavior === 'blocked') return { status: 'blocked', serverConfirmed: false, reason: 'SUPPLY_FRESH_INVENTORY_REQUIRED' }
     const dirt = sim.state.inventory.items.filter(i => i.name === 'minecraft:dirt').reduce((sum, item) => sum + item.count, 0), need = 224 - dirt
     if (need > 0) sim.give('dirt', need)
