@@ -15,7 +15,8 @@ function fixture ({ floor = 'stone', below = 'stone' } = {}) {
   put(source, 'lava', 0)
   put({ x: 2, y: 60, z: 0 }, 'stone')
   const getBlock = (x, y, z) => structuredClone(blocks.get(`${x},${y},${z}`) ?? { known: true, name: 'minecraft:air', runtimeId: 0, boundingBox: 'empty', properties: {}, extra: [] })
-  const config = { jobId: 'seal-stance', target: { chunks: [{ x: 0, z: 0 }] }, yTop: 60, yBottom: 55, worldMinY: 50, worldMaxY: 80, boundarySeal: { sourceOnly: true, material: 'dirt' }, inventory: { carryOnly: true, minFreeSlots: 0 }, permissions: { travelRegion: [{ xMin: 0, xMax: 15, yMin: 50, yMax: 65, zMin: 0, zMax: 15 }] } }
+  // The synthetic world is air outside the few placed blocks, which the plan-time cave check would refuse.
+  const config = { jobId: 'seal-stance', target: { chunks: [{ x: 0, z: 0 }] }, yTop: 60, yBottom: 55, worldMinY: 50, worldMaxY: 80, allowCaves: true, boundarySeal: { sourceOnly: true, material: 'dirt' }, inventory: { carryOnly: true, minFreeSlots: 0 }, permissions: { travelRegion: [{ xMin: 0, xMax: 15, yMin: 50, yMax: 65, zMin: 0, zMax: 15 }] } }
   const regions = buildRegions({ ...config, travelRegion: config.permissions.travelRegion })
   const inventory = [64, 64, 64, 32].map((count, slot) => ({ slot, name: 'minecraft:dirt', count, stackId: 10 + slot }))
   const planner = createQuarryPlanner({ regions, getBlock, exit: { mode: 'adjacent_pillar', reservedDirt: 192 } })
