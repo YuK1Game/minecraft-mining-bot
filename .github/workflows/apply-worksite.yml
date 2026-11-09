@@ -1,0 +1,52 @@
+name: Validate worksite terrain and diagnostics
+on:
+  push:
+    branches: [fix/quarry-worksite-diagnostics-20261109]
+    paths: [.github/workflows/apply-worksite.yml, .review/worksite.patch.xz]
+permissions:
+  contents: write
+concurrency:
+  group: apply-worksite-terrain
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify unchanged source and exact patch
+        shell: bash
+        run: |
+          test "$GITHUB_REF" = refs/heads/fix/quarry-worksite-diagnostics-20261109
+          git diff --exit-code f4bc10dd0f790f2819474bce9bb552e12f350a00 HEAD -- src scripts dashboard test docs README.md AGENTS.md package.json package-lock.json .gitignore
+          echo 'a75cba463ae17a9836c54607964f737e332feadbbe4a17407f5dc7de742e87ec  .review/worksite.patch.xz' | sha256sum --check
+          xz -dc .review/worksite.patch.xz > /tmp/worksite.patch
+          echo 'bae64ccc9564160bf970ddc7ce29a7ecca483282da2b54df914b0b4f72a7d885  /tmp/worksite.patch' | sha256sum --check
+          git apply --check --index --unidiff-zero /tmp/worksite.patch
+          git apply --index --unidiff-zero /tmp/worksite.patch
+          git rm -- .review/worksite.patch.xz .github/workflows/apply-worksite.yml
+          git diff --cached --check
+      - run: npm ci --ignore-scripts
+      - name: Syntax and safety regressions without Realm credentials
+        shell: bash
+        run: |
+          npm run check
+          npm run test:review > /tmp/worksite-tests.tap 2>&1
+      - name: Commit verified fix to feature branch only
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: prepare observed quarry supply terrain and expose precise stop causes'
+          git push origin HEAD:refs/heads/fix/quarry-worksite-diagnostics-20261109
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: worksite-terrain-validation
+          path: /tmp/worksite-tests.tap
+          retention-days: 7
