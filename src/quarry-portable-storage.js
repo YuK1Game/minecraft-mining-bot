@@ -46,6 +46,10 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
   let active = null
   const read = p => getBlock(p.x, p.y, p.z)
   const air = p => plainAir(read(p))
+  // The stand body uses the same rule as site planning (air or an observed,
+  // unprotected plant without extra layers, e.g. short grass), so a stand that
+  // planning accepted is not refused later when the placed box is recovered.
+  const standBody = p => passableSiteBody(read(p))
   const support = p => supportIssue(read, p) === null
   const craftState = () => typeof crafting.inventorySnapshot === 'function' ? crafting.inventorySnapshot() : crafting.snapshot()
   function observe (cp = null) {
@@ -754,7 +758,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         if (!placedCurrent(cp, owned)) throw failure('STORAGE_OWNED_BLOCK_CHANGED')
         const current = guard()
         if (freeSlots(current.items) < 1) throw failure('STORAGE_RECOVERY_SLOT_REQUIRED')
-        if (!air(cp.stand) || !air({ ...cp.stand, y: cp.stand.y + 1 }) || !support(cp.stand) || canPlace(cp.stand) !== true) throw failure('STORAGE_STAND_UNCONFIRMED')
+        if (!standBody(cp.stand) || !standBody({ ...cp.stand, y: cp.stand.y + 1 }) || !support(cp.stand) || canPlace(cp.stand) !== true) throw failure('STORAGE_STAND_UNCONFIRMED')
         if (Math.hypot(current.state.position.x - cp.stand.x - 0.5, current.state.position.y - 1.62 - cp.stand.y, current.state.position.z - cp.stand.z - 0.5) > 0.7) await moveToCell(cp.stand)
         close()
         requirePickupRoom('before_break')
@@ -997,7 +1001,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       let expectedRuntimeId = null
       const inspect = () => {
         const current = guard(), boxes = current.items.filter(item => isShulkerBox(item.name)), block = read(intent.position)
-        if (!nearStand(current.state.position) || !air(cp.stand) || !air({ ...cp.stand, y: cp.stand.y + 1 }) || !support(cp.stand)) throw failure('STORAGE_STAND_UNCONFIRMED')
+        if (!nearStand(current.state.position) || !standBody(cp.stand) || !standBody({ ...cp.stand, y: cp.stand.y + 1 }) || !support(cp.stand)) throw failure('STORAGE_STAND_UNCONFIRMED')
         if (current.items.some(item => item.stackId === source.stack_id) || boxes.length !== retained.length || new Set(boxes.map(box => box.stackId)).size !== boxes.length || !retained.every(before => boxes.some(after => after.name === before.name && after.count === before.count && after.stackId === before.stackId && identityHash(after.raw) === before.identityHash))) throw failure('STORAGE_PLACEMENT_HISTORY_ASSETS_CHANGED')
         if (block?.known !== true || block.name !== intent.name || !Number.isSafeInteger(block.runtimeId) || block.runtimeId < 0 || block.runtimeId > 4294967295 || block.extra?.length || expectedRuntimeId != null && block.runtimeId !== expectedRuntimeId) throw failure('STORAGE_PLACEMENT_HISTORY_BLOCK_CHANGED')
         expectedRuntimeId ??= block.runtimeId

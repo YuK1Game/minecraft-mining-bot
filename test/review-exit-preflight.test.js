@@ -33,7 +33,19 @@ test('review: unsafe or unobserved exit pauses before the first excavation', asy
     const read = sim.adapter.getBlock
     sim.adapter.getBlock = (x, y, z) => (x === -1 || x === 16 || z === -1 || z === 16) && y === 60 ? kind === 'unknown' ? { known: false } : { known: true, name: 'minecraft:lava', boundingBox: 'empty', extra: [] } : read(x, y, z)
     const job = createQuarryJob({ adapter: sim.adapter, pollMs: 5 })
-    assert.equal(job.plan(config).ready, true)
+    const planned = job.plan(config)
+    if (kind === 'lava') {
+      // Known unsafe exits are now refused while planning, before any start.
+      assert.equal(planned.ready, false)
+      assert.ok(planned.issues.includes('PLAN_EXIT_UNAVAILABLE'), JSON.stringify(planned.issues))
+      assert.equal(planned.exitPreflight.reason, 'EXIT_COLUMN_UNAVAILABLE')
+      assert.equal(planned.exitPreflight.predictionOnly, true)
+      assert.equal(sim.stats.mined, 0)
+      continue
+    }
+    // Unobserved exits only warn at plan time; the start-time preflight still pauses.
+    assert.equal(planned.ready, true)
+    assert.ok(planned.warnings.some(w => w.code === 'EXIT_PREFLIGHT_PROVISIONAL'), JSON.stringify(planned.warnings))
     job.start()
     const end = Date.now() + 5000
     while (job.status().state !== 'PAUSED' && Date.now() < end) await delay(5)
@@ -50,4 +62,20 @@ test('review: exit tool budget survives slot changes and prevents spending the l
   assert.equal(miningUsesAfterExitReserve(tool, inventory, plan), 3)
   inventory[0].durabilityRemaining = 11
   assert.equal(miningUsesAfterExitReserve(tool, inventory, plan), 0)
+})
+
+test('review: a deep target whose exits are blocked only near the bottom is refused with a shallower suggested bottom', () => {
+  const sim = createSim({ loaded: { xMin: -6, xMax: 24, yMin: 30, yMax: 80, zMin: -6, zMax: 24 } })
+  flatTerrain(sim, { x1: -6, x2: 24, z1: -6, z2: 24, bedrock: 30, stoneTop: 61, top: 62 })
+  sim.setFeet({ x: -1, y: 63, z: 0 }); sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('dirt', 192); sim.give('bread', 20)
+  sim.adapter.egress = async () => { throw new Error('must not run') }
+  const read = sim.adapter.getBlock
+  // Lava in every adjacent exit column at Y=33 only.
+  sim.adapter.getBlock = (x, y, z) => (x === -1 || x === 16 || z === -1 || z === 16) && y === 33 ? { known: true, name: 'minecraft:lava', boundingBox: 'empty', extra: [] } : read(x, y, z)
+  const job = createQuarryJob({ adapter: sim.adapter, pollMs: 5 })
+  const planned = job.plan({ jobId: 'exit-plan-deep', target: { chunks: [{ x: 0, z: 0 }] }, yTop: 62, yBottom: 31, worldMinY: 30, worldMaxY: 80, inventory: { carryOnly: true } })
+  assert.equal(planned.ready, false)
+  assert.ok(planned.issues.includes('PLAN_EXIT_UNAVAILABLE'))
+  assert.equal(planned.exitPreflight.suggestedBottom, 39)
+  assert.equal(sim.stats.mined, 0); assert.equal(sim.stats.placements, 0)
 })
