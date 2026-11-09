@@ -1020,14 +1020,26 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // from the server and re-plan (equipTool then really re-sends the slot).
     if (failure?.code === 'SLOW_BREAK') {
       rec.status = confirmed ? 'partial' : 'failed'; rec.error = String(failure.message)
-      job.slowBreaks = (job.slowBreaks ?? 0) + 1
+      // Count distinct slow cells: one cell that stays slow after a resync is a
+      // problem of that cell or stance (it waits for the next reconcile like a
+      // refused cell); slow breaks on 3 different cells mean the held tool.
+      const t = failure.target, k = t ? `${t.x},${t.y},${t.z}` : null
+      job.slowCells ??= []
+      if (k && job.slowCells.includes(k)) {
+        planner.defer(t, 'MINING_FAILED', { error: rec.error.slice(0, 160), slowBreak: true })
+        if (decision.stance) badStances.set(`${decision.stance.x},${decision.stance.y},${decision.stance.z}`, 2)
+        note('slow_cell_deferred', { cell: t, stance: decision.stance ?? null })
+        return
+      }
+      if (k) job.slowCells.push(k)
+      job.slowBreaks = job.slowCells.length || (job.slowBreaks ?? 0) + 1
       note('slow_break', { message: failure.message, held: adapter.getState()?.heldItem?.name ?? null, selectedSlot: adapter.getState()?.selectedSlot ?? null, count: job.slowBreaks })
-      if (job.slowBreaks >= 3) return finish('PAUSED', 'SLOW_BREAK_PERSISTS', { pauseDetails: { lastError: rec.error, held: adapter.getState()?.heldItem?.name ?? null } })
+      if (job.slowBreaks >= 3) return finish('PAUSED', 'SLOW_BREAK_PERSISTS', { pauseDetails: { lastError: rec.error, held: adapter.getState()?.heldItem?.name ?? null, cells: copy(job.slowCells) } })
       try { await call(myEpoch, 'resync', signal => adapter.resyncInventory?.({ signal })) } catch (error) { if (error instanceof QuarryInterrupt) throw error; note('resync_failed', { error: String(error.message ?? error).slice(0, 200) }) }
       lastInventory = totals(items(adapter.getState()) ?? [])
       return
     }
-    if (confirmed) { job.slowBreaks = 0; job.routeSkips = 0; job.autoResumes = 0 }
+    if (confirmed) { job.slowBreaks = 0; job.slowCells = []; job.routeSkips = 0; job.autoResumes = 0 }
     if (failure && !confirmed) {
       rec.status = 'failed'; rec.error = String(failure.message ?? failure)
       // A preview refused for the stance (pose not settled, face not visible

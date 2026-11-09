@@ -164,7 +164,7 @@ function createQuarryRuntimeAdapter (ports) {
   const slowLimitMs = (block, t) => Math.max(slowBreakMinMs, 3 * expectedBreakMs(block, t) + 300)
   function slowBreak (t, elapsed, limit) {
     try { mining.stop?.('quarry_slow_break') } catch {}
-    return Object.assign(new Error(`quarry mine: block ${t.x},${t.y},${t.z} took ${elapsed}ms (limit ${limit}ms) with ${getState()?.heldItem?.name ?? 'nothing'} in hand`), { code: 'SLOW_BREAK', elapsedMs: elapsed, limitMs: limit })
+    return Object.assign(new Error(`quarry mine: block ${t.x},${t.y},${t.z} took ${elapsed}ms (limit ${limit}ms) with ${getState()?.heldItem?.name ?? 'nothing'} in hand`), { code: 'SLOW_BREAK', elapsedMs: elapsed, limitMs: limit, target: { x: t.x, y: t.y, z: t.z } })
   }
 
   const toTarget = t => ({ x: t.x, y: t.y, z: t.z, accessPreparation: t.accessPreparation ?? 'quarry', expectedName: t.expectedName, expectedRuntimeId: t.expectedRuntimeId ?? null, requiredTool: t.requiredTool ?? null, ...(t.expectedProperties != null ? { expectedProperties: structuredClone(t.expectedProperties) } : {}), ...(t.fluidSource ? { fluidSource: structuredClone(t.fluidSource) } : {}) })
