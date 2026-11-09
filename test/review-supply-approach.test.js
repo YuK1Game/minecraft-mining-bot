@@ -260,3 +260,27 @@ test('review: a changed origin while computing a route invalidates it before dis
   assert.equal(f.events.length, 0)
   assert.equal(f.job.status().pauseDetails.reason, 'SUPPLY_APPROACH_ORIGIN_CHANGED')
 })
+
+test('review: a restock started outside the chunk whose outside search finds no site walks inside first and searches again', async () => {
+  const f = fixture()
+  const real = f.sim.adapter.previewSupplySite
+  // Live 2026-11-09: from outside only the edge cells were candidates and all were rejected.
+  f.sim.adapter.previewSupplySite = (stand, opts) => inside(feet(f.sim.state)) ? real(stand, opts) : { ready: false, reason: 'STORAGE_SITE_UNOBSERVED' }
+  await run(f)
+  assert.ok(f.logs.some(l => l.includes('supply_entered')), 'entered the chunk before the second search')
+  assert.equal(f.requests.length, 1, JSON.stringify(f.job.status().pauseDetails))
+  assert.ok(inside(f.events.find(e => e.kind === 'restock').at), 'supplies opened only inside the chunk')
+  assert.equal(f.job.document().supplyReceipts.length, 1)
+})
+
+test('review: when walking into the chunk fails the restock stops with SUPPLY_ENTRY_UNREACHABLE', async () => {
+  const f = fixture({ move: () => { throw new Error('walk refused') } })
+  f.sim.adapter.previewSupplySite = () => ({ ready: false, reason: 'STORAGE_SITE_UNOBSERVED' })
+  await run(f)
+  const s = f.job.status()
+  assert.equal(s.pauseReason, 'SUPPLY_RESTOCK_BLOCKED')
+  assert.equal(s.pauseDetails.reason, 'SUPPLY_ENTRY_UNREACHABLE', JSON.stringify(s.pauseDetails))
+  assert.equal(s.pauseDetails.cause, 'ENTRY_MOVE_FAILED', JSON.stringify(s.pauseDetails))
+  assert.ok(f.events.filter(e => e.kind === 'move').length <= 4, 'entry attempts are bounded')
+  assert.equal(f.requests.length, 0, 'supplies were never opened')
+})
