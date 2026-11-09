@@ -529,13 +529,21 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
         const hazards = fluidNeighbours(target.position)
         if (hazards.some(h => h.unknown)) continue
         if (hazards.length) {
+          let wall = false
           for (const h of hazards) {
             const plan = sealPlan(h)
+            // A large water body outside the target columns cannot be sealed
+            // here; the target cell itself is the wall that holds it back, so it
+            // is left in place (never broken) and the rest of the layer goes on.
+            if (!plan.ok && plan.reason === 'LARGE_FLUID_AREA' && !regions.columns.has(`${h.position.x},${h.position.z}`)) {
+              defer(target.position, 'LARGE_FLUID_WALL', { fluid: h.position, size: plan.size }); wall = true; break
+            }
             if (!plan.ok) return { action: 'pause', reason: plan.reason, details: { target: target.position, fluid: h.position, size: plan.size } }
             const placement = fluidAction(plan, reach, inventoryItems, tools, policy, yTop)
             if (placement.action) return placement
             return { action: 'pause', reason: placement.reason, details: { target: target.position, fluid: h.position } }
           }
+          if (wall) continue
         }
         const action = mineAction(target, reach, tools, policy, ordered, maxBatch, stableFloor)
         if (action) {
