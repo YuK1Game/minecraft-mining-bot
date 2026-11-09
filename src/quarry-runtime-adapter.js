@@ -12,7 +12,7 @@ const FEET = 1.62
 function createQuarryRuntimeAdapter (ports) {
   const {
     getState, getBlock, entities, mining, getMining, movement, getMovement, equip, placeQuarry, eat, resyncInventory = null, craftTorches = null, placeTorch = null, prepareMining = null,
-    chest, addChest = null, storeCarried = null, restockSupplies = null, discoverSupplies = null, reconcileSupplyPlacement = null, reconcileCarriedPlacement = null, reconcileRejectedDeposit = null, reconcileObservedPlacement = null, egress = null, requestTerrain = null, previewStorageRoute = null, stopAll, combatActive, userControlInterruption = null, threatEvidence = null, recentDamageAt = null, harmfulEffect = null, worldRevision = null,
+    chest, addChest = null, storeCarried = null, restockSupplies = null, previewSupplySite = null, discoverSupplies = null, reconcileSupplyPlacement = null, reconcileCarriedPlacement = null, reconcileRejectedDeposit = null, reconcileObservedPlacement = null, egress = null, requestTerrain = null, previewStorageRoute = null, stopAll, combatActive, userControlInterruption = null, threatEvidence = null, recentDamageAt = null, harmfulEffect = null, worldRevision = null,
     sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now,
     segmentCells = 6, segmentTimeoutMs = 20000, mineTimeoutMs = 15000, previewSettleMs = 3000, shortStopMs = 1500, pollMs = 25, slowBreakMinMs = 1500, log = () => {}
   } = ports
@@ -292,6 +292,7 @@ function createQuarryRuntimeAdapter (ports) {
     deposit,
     ...(typeof storeCarried === 'function' ? { storeCarried: (request, options) => storeCarried(request, options) } : {}),
     ...(typeof restockSupplies === 'function' ? { restockSupplies: (request, options) => restockSupplies(request, options) } : {}),
+    ...(typeof previewSupplySite === 'function' ? { previewSupplySite: (stand, options) => previewSupplySite(stand, options) } : {}),
     ...(typeof discoverSupplies === 'function' ? { discoverSupplies: () => discoverSupplies() } : {}),
     ...(typeof reconcileSupplyPlacement === 'function' ? { reconcileSupplyPlacement: (request, options) => reconcileSupplyPlacement(request, options) } : {}),
     ...(typeof reconcileCarriedPlacement === 'function' ? { reconcileCarriedPlacement: (request, options) => reconcileCarriedPlacement(request, options) } : {}),

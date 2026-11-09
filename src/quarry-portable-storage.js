@@ -226,11 +226,13 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     if (Math.abs(Math.abs(dx) - Math.abs(dz)) < 0.2) return null
     return Math.abs(dx) > Math.abs(dz) ? `x:${Math.sign(dx)}` : `z:${Math.sign(dz)}`
   }
-  function planSite (state, kind, allowed, rejectedPositions = []) {
+  function planSite (state, kind, allowed, rejectedPositions = [], exactStand = null) {
     const rejected = new Set(rejectedPositions.map(key))
     const y = Math.round(state.position.y - 1.62), origin = { x: Math.floor(state.position.x), y, z: Math.floor(state.position.z) }
-    const stands = []
-    for (const dy of [0, 1, -1, 2, -2]) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) if (Math.hypot(dx, dz) <= 3) stands.push({ x: origin.x + dx, y: y + dy, z: origin.z + dz })
+    // exactStand is a read-only proposal, never a fabricated current position.
+    // Quarry routing proves its path separately; actual placement rechecks it.
+    const stands = exactStand ? [copy(exactStand)] : []
+    if (!exactStand) for (const dy of [0, 1, -1, 2, -2]) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) if (Math.hypot(dx, dz) <= 3) stands.push({ x: origin.x + dx, y: y + dy, z: origin.z + dz })
     stands.sort((a, b) => Math.hypot(a.x - origin.x, a.y - origin.y, a.z - origin.z) - Math.hypot(b.x - origin.x, b.y - origin.y, b.z - origin.z))
     nextStand: for (const stand of stands) {
       if (!air(stand) || !air({ ...stand, y: stand.y + 1 }) || !support(stand) || allowed(stand) !== true) continue
@@ -241,13 +243,24 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         if (!positions.every(p => !rejected.has(key(p)) && clearCell(p, state, allowed)) || positions.some(p => Math.hypot(p.x + 0.5 - eye.x, p.y - eye.y, p.z + 0.5 - eye.z) > 4.5)) continue
         if (!positions.every(p => canSeePlacementFloor(read, eye, p))) continue
         if (positions.length === 2 && (!heading(eye, first) || heading(eye, first) !== heading(eye, positions[1]))) continue
-        if (previewMove) {
+        if (previewMove && !exactStand) {
           try { if (previewMove(copy(stand))?.ready !== true) continue nextStand } catch { continue nextStand }
         }
         return { stand, positions }
       }
     }
     throw failure('STORAGE_SITE_UNOBSERVED', 'No nearby known storage footprint and standing cell')
+  }
+
+  function previewSupplySite (stand, { canPlace } = {}) {
+    try {
+      if (active) throw failure('STORAGE_BUSY')
+      if (!point(stand) || typeof canPlace !== 'function') throw failure('STORAGE_SITE_INVALID')
+      const state = getState()
+      scopeOf(state)
+      if (state.phase !== 'spawned' || state.dead || state.isDead || state.lifecycle?.dead || state.spawnPending || !(state.health > 0) || !finite(state.position)) throw failure('STORAGE_NOT_ALIVE')
+      return { ready: true, predictionOnly: true, serverConfirmed: false, ...planSite(state, 'shulker', canPlace, [], stand) }
+    } catch (error) { return { ready: false, reason: error.code ?? String(error.message), serverConfirmed: false } }
   }
 
   async function storeCarried (request, { signal, onCheckpoint, canPlace = () => true, capacityWork = null } = {}) {
@@ -1089,7 +1102,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     } catch (error) { return blocked(error.code ?? String(error.message ?? error)) }
     finally { if (active === run) active = null }
   }
-  return { storeCarried, ownsShulker, reconcileUnsentPlacement, reconcileRejectedDeposit, reconcileObservedPlacement, snapshot: () => ({ busy: active !== null, operationId: active?.checkpoint?.operationId ?? null, stage: active?.checkpoint?.stage ?? null }) }
+  return { storeCarried, previewSupplySite, ownsShulker, reconcileUnsentPlacement, reconcileRejectedDeposit, reconcileObservedPlacement, snapshot: () => ({ busy: active !== null, operationId: active?.checkpoint?.operationId ?? null, stage: active?.checkpoint?.stage ?? null }) }
 }
 
 module.exports = { createQuarryPortableStorage, UNSENT_PLACE_REASON }
