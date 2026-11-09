@@ -18,6 +18,7 @@ const REACH = 4.5
 const STAIR_LOOKUP = 8 // blocks above yTop searched for the real ground at the stair corner
 const STANCE_CANDIDATES = 6 // stances compared when looking for a fuller batch
 const SMALL_REACH = 4 // walkable cells at or below which a whole unreachable layer means the bot is cut off
+const WRITE_OFF_LAYER_CELLS = 16 // a whole layer this large is never written off as UNREACHABLE; the job pauses instead
 const STANCE_EXTRA_TRAVEL = 4 // extra walking (path steps) accepted for a fuller batch
 const TARGET_CANDIDATES = 4 // compare a bounded number of workable targets in this layer
 const UNSAFE_FLOOR = /(?:magma|campfire|powder_snow|cactus|sweet_berry|wither_rose|pointed_dripstone|scaffolding|leaves|_carpet$|snow_layer|lava|water|fire)/
@@ -606,7 +607,9 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       // A whole layer out of reach from a tiny walkable area is not "done":
       // the bot is cut off (e.g. above a cave). Stop instead of deferring every
       // lower layer and declaring the job complete.
-      if (unreachable.length && unreachable.length === layer.pending.length && reach.size <= SMALL_REACH) return { action: 'pause', reason: 'DESCENT_REQUIRED', details: { y, reach: reach.size, pending: layer.pending.length, feet: { ...feet } } }
+      // Also when a large whole layer is out of reach even from a wider area
+      // (live 2026-11-10: an island of protected ore above the same cave).
+      if (unreachable.length && unreachable.length === layer.pending.length && (reach.size <= SMALL_REACH || unreachable.length >= WRITE_OFF_LAYER_CELLS)) return { action: 'pause', reason: 'DESCENT_REQUIRED', details: { y, reach: reach.size, pending: layer.pending.length, feet: { ...feet } } }
       for (const t of unreachable) defer(t.position, 'UNREACHABLE')
       if (unreachable.length) return { action: 'deferred', reason: 'UNREACHABLE', count: unreachable.length, y }
     }
