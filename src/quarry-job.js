@@ -1471,6 +1471,25 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
   const supplyCanPlace = p => supplyPlacementAllowed(regions, p)
   const supplyCanClear = p => permits(regions, 'break', p).allowed && clearableSitePlant(planningBlocks(job.config)(p.x, p.y, p.z))
+  // Nearest reachable stand inside the quarry columns (higher first: the
+  // surface), walked to with the ordinary verified movement. Bounded.
+  async function enterQuarryForSupply (myEpoch, from) {
+    const reach = await planner.reachableFromAsync(from)
+    guard(myEpoch)
+    const stands = [...reach].map(([k, distance]) => { const [x, y, z] = k.split(',').map(Number); return { stand: { x, y, z }, distance } })
+      .filter(c => regions.columns.has(c.stand.x + ',' + c.stand.z) && planner.standable(c.stand) && permits(regions, 'travel', c.stand).allowed)
+      .sort((a, b) => a.distance - b.distance || b.stand.y - a.stand.y || a.stand.x - b.stand.x || a.stand.z - b.stand.z)
+    if (!stands.length) return { ok: false, details: { cause: 'NO_REACHABLE_STAND_INSIDE', reachable: reach.size } }
+    const tried = []
+    for (const { stand } of stands.slice(0, 4)) {
+      try { await moveToStance(myEpoch, stand); return { ok: true, stand } } catch (error) {
+        if (error instanceof QuarryInterrupt) throw error
+        tried.push({ stand, error: String(error.message ?? error).slice(0, 100) })
+      }
+    }
+    return { ok: false, details: { cause: 'ENTRY_MOVE_FAILED', candidates: stands.length, tried } }
+  }
+
   async function approachSupplySite (myEpoch, active) {
     // An existing child owns a physical location and possibly an uncertain
     // placement/transfer. Its normal recovery must run before any relocation.
@@ -1485,12 +1504,25 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!items(state)) return blocked('SUPPLY_INVENTORY_UNKNOWN')
     if (active.checkpoint && !isDeepStrictEqual(active.checkpoint.scope, supplyScope(state))) return blocked('SUPPLY_SCOPE_CHANGED')
     if (typeof adapter.previewSupplySite !== 'function') return blocked('SUPPLY_APPROACH_UNSUPPORTED')
-    const origin = feetCell(guard(myEpoch))
-    const selected = await planSupplyApproach({ origin, regions, planner, canPlace: supplyCanPlace,
+    const approachFrom = from => planSupplyApproach({ origin: from, regions, planner, canPlace: supplyCanPlace,
       previewSite: stand => adapter.previewSupplySite(stand, { canPlace: supplyCanPlace, canClear: supplyCanClear }),
       previewRoute: typeof adapter.previewStorage === 'function' ? (site, path) => call(myEpoch, 'preview_supply_route', signal => adapter.previewStorage({ stand: site.stand, position: site.positions[0] }, { signal, path, travel: p => permits(regions, 'travel', p).allowed })) : null,
-      guard: () => { const current = guard(myEpoch); if (!samePoint(feetCell(current), origin)) throw new QuarryInterrupt('SUPPLY_APPROACH_ORIGIN_CHANGED') } })
+      guard: () => { const current = guard(myEpoch); if (!samePoint(feetCell(current), from)) throw new QuarryInterrupt('SUPPLY_APPROACH_ORIGIN_CHANGED') } })
     guard(myEpoch)
+    let origin = feetCell(guard(myEpoch))
+    let selected = await approachFrom(origin)
+    guard(myEpoch)
+    // Started outside the quarry columns: from out there only the chunk's edge
+    // cells are reachable (live 2026-11-09: 26 wall cells, all rejected). Walk
+    // to the nearest reachable stand inside the columns and search from there.
+    // Placement rules are unchanged: boxes still go only inside the chunk.
+    if (!selected.ready && selected.reason === 'STORAGE_SITE_UNOBSERVED' && !regions.columns.has(origin.x + ',' + origin.z)) {
+      const entered = await enterQuarryForSupply(myEpoch, origin)
+      if (!entered.ok) return blocked('SUPPLY_ENTRY_UNREACHABLE', { origin, firstReason: selected.reason, ...entered.details })
+      note('supply_entered', { from: origin, to: entered.stand })
+      origin = feetCell(guard(myEpoch))
+      selected = await approachFrom(origin)
+    }
     if (!selected.ready) return blocked(selected.reason, { ...selected.details, origin })
     active.approach = { phase: 'planned', origin, stand: copy(selected.site.stand), positions: copy(selected.site.positions), pathLength: selected.path.length, predictionOnly: true }
     await save('supply_approach_intent')
