@@ -315,3 +315,15 @@ test('a planned deposit whose surplus disappeared is closed at zero and the box 
   assert.equal(f.events.filter(e => e.type === 'deposit').length, 0)
   assert.equal(f.bag.find(r => r.network_id === 3).count, 8, 'the kept dirt never moves')
 })
+
+test('drops without a known numeric network id, or without room in an existing stack, need their own slot', async () => {
+  // An unknown id, and stone whose existing stacks are all full.
+  for (const bad of [{ networkId: undefined }, { networkId: 4, name: 'minecraft:stone' }]) {
+    const drops = [{ kind: 'item', alive: true, dimension: 'overworld', positionKnown: true, position: { x: 1.5, y: 65, z: 0.5 }, count: 1, runtimeId: '700', uniqueId: '-700', networkId: 3, name: 'minecraft:dirt', ...bad }]
+    const f = fixture('shulker', { entities: () => copy(drops) })
+    for (let slot = 1; slot < 36; slot++) if (slot !== 14) f.bag[slot] = item(4, 64, 1000 + slot)
+    const result = await f.run()
+    assert.equal(result.status, 'blocked', JSON.stringify(bad)); assert.equal(result.reason, 'STORAGE_PICKUP_CAPACITY_REQUIRED')
+    assert.equal(f.events.some(e => e.type === 'mine'), false)
+  }
+})
