@@ -156,17 +156,19 @@ h1{font-size:21px;letter-spacing:0}h2{font-size:14px}.intro{padding:14px 0 12px;
 <dialog id="container-dialog" class="container-dialog" aria-labelledby="container-dialog-title" aria-describedby="container-dialog-status"><div class="container-dialog-head"><div class="container-dialog-heading"><span id="container-dialog-icon" aria-hidden="true"></span><div><h2 id="container-dialog-title">シュルカーボックス</h2><p id="container-dialog-count" class="small muted">—</p></div></div><button id="container-dialog-close" class="dialog-close" type="button" aria-label="中身のポップアップを閉じる" autofocus>×</button></div><div class="container-modal-body"><div><p id="container-dialog-status" class="modal-status">未確認</p><div id="container-dialog-grid" class="slot-grid modal-grid" role="group" aria-label="収納の中身"></div></div><aside class="modal-details" aria-label="収納内アイテムの詳細"><p class="modal-detail-heading"><span>アイテムの詳細</span><span id="modal-detail-slot" class="chip">未選択</span></p><div id="modal-item-detail"></div></aside></div></dialog>
 
 <dialog id="control-reset-dialog" class="loadout-dialog" aria-labelledby="control-reset-heading" aria-describedby="control-reset-warning">
-  <header class="loadout-dialog-header"><div><span class="loadout-version">INITIAL SET / V1</span><h2 id="control-reset-heading">初期セットに戻す</h2></div><button type="button" id="control-reset-close" class="dialog-close" aria-label="閉じる">×</button></header>
+  <header class="loadout-dialog-header"><div class="loadout-heading"><span class="loadout-reset-mark" aria-hidden="true">↻</span><h2 id="control-reset-heading">初期セット</h2><span class="loadout-debug">DEBUG</span></div><button type="button" id="control-reset-close" class="dialog-close" aria-label="閉じる">×</button></header>
   <div class="loadout-dialog-body">
-    <div class="loadout-target"><span class="world-cube small-cube" aria-hidden="true"><i></i><i></i><i></i></span><div><strong id="control-reset-world"></strong><span id="control-reset-player"></span></div></div>
-    <div class="loadout-boxes"><div><span class="loadout-box-icon cargo" aria-hidden="true">▣</span><strong>20</strong><span>空シュルカー</span></div><div><span class="loadout-box-icon supply" aria-hidden="true">▣</span><strong>4</strong><span>補給シュルカー</span></div></div>
-    <div class="loadout-supply-chips"><span class="pickaxe">⛏ ×27</span><span class="shovel">シャベル ×27</span><span class="food">パン ×1,728</span><span class="dirt">土 ×1,728</span></div>
-    <div class="loadout-hand"><span>手持ち</span><b>パン 64</b><b>土 192</b><b>矢 64</b></div>
-    <details class="loadout-equipment"><summary>ダイヤ装備・道具・無限の弓 <span>エンチャントを確認</span></summary><div id="control-reset-equipment"></div></details>
-    <p class="loadout-warning" id="control-reset-warning"><strong>現在の所持品・装備・所持シュルカーの中身を置き換えます。</strong>元に戻せません。現在のジョブは終了し、採掘は自動再開しません。</p>
-    <div class="loadout-staging"><span>一時箱</span><code id="control-reset-stage"></code></div>
+    <div class="loadout-target"><span class="world-cube small-cube" aria-hidden="true"><i></i><i></i><i></i></span><strong id="control-reset-world"></strong><span class="loadout-player" id="control-reset-player"></span></div>
+    <section class="loadout-gear-section" aria-labelledby="loadout-gear-title"><h3 id="loadout-gear-title">装備・道具 <span aria-hidden="true">✦</span></h3><div id="control-reset-gear" class="loadout-gear-grid" role="group" aria-label="初期装備と道具"></div></section>
+    <div class="loadout-storage-grid">
+      <section class="loadout-cargo-panel" aria-labelledby="loadout-cargo-title"><div class="loadout-section-heading"><h3 id="loadout-cargo-title">収納用</h3><strong><b id="control-reset-cargo-count">—</b><small>箱</small></strong></div><div id="control-reset-cargo-grid" class="loadout-cargo-grid" aria-label="空の収納用シュルカー"></div></section>
+      <section class="loadout-supply-panel" aria-labelledby="loadout-supply-title"><div class="loadout-section-heading"><h3 id="loadout-supply-title">補給用</h3><strong><b id="control-reset-supply-count">—</b><small>箱</small></strong></div><div id="control-reset-supply-grid" class="loadout-supply-grid"></div></section>
+    </div>
+    <section class="loadout-hand-section" aria-labelledby="loadout-hand-title"><h3 id="loadout-hand-title">手持ち</h3><div id="control-reset-hand" class="loadout-hand-grid"></div></section>
+    <details class="loadout-equipment"><summary>エンチャント・詳細</summary><div id="control-reset-equipment"></div><div class="loadout-staging"><span>一時箱</span><code id="control-reset-stage"></code></div></details>
+    <p class="loadout-warning" id="control-reset-warning"><span aria-hidden="true">!</span><strong>所持品・装備・箱の中身を上書きします。元に戻せません。</strong></p>
   </div>
-  <footer class="loadout-dialog-footer"><button id="control-reset-back" type="button" autofocus>キャンセル</button><button id="control-reset-confirm" type="button" class="danger">所持品をリセット</button></footer>
+  <footer class="loadout-dialog-footer"><button id="control-reset-back" type="button" autofocus>キャンセル</button><button id="control-reset-confirm" type="button" class="danger">リセットする <span aria-hidden="true">↻</span></button></footer>
 </dialog>
 <script>
 (() => {

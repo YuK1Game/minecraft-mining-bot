@@ -49,7 +49,9 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
     const s = adapter.getState(), scope = observedScope(s)
     if (!scope || s.loadingScreenEnded !== true || s.dimension !== 'overworld' || !['survival', 0].includes(s.gameMode) || !s.position || !['x', 'y', 'z'].every(k => Number.isFinite(s.position[k]))) throw fail('RESET_NOT_READY', '生存・地形・所持品を受信したオーバーワールドで実行してください。')
     if (s.inventory?.uncertain || !knownInventory(adapter.getView())) throw fail('RESET_INVENTORY_UNKNOWN', '所持品・防具・オフハンドの受信を待っています。')
-    if (s.resetThreats !== false || s.onFire === true) throw fail('RESET_DANGER', '近くに敵・他プレイヤー、または未確認の敵情報があります。安全な場所で実行してください。')
+    // Debug reset is permitted around players, hostiles and unknown actors.
+    // Nonfatal damage/fire is not a cancellation; actual life/scope and inventory
+    // receipts still determine whether the operation can continue.
     const feet = { x: Math.floor(s.position.x), y: Math.floor(s.position.y - 1.62 + 0.001), z: Math.floor(s.position.z) }
     if (!point(feet) || !floor(adapter.getBlock(feet.x, feet.y - 1, feet.z)) || !air(adapter.getBlock(feet.x, feet.y, feet.z)) || !air(adapter.getBlock(feet.x, feet.y + 1, feet.z))) throw fail('RESET_UNSAFE_STANCE', '乾いた足場の上で静止してください。')
     return { s, scope, feet }
@@ -78,7 +80,7 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
   function guard () {
     abort?.signal.throwIfAborted()
     const { s, scope, feet } = scene()
-    if (!active || scope !== active.scope || !samePoint(feet, active.feet) || s.health < active.health || (adapter.generation?.() ?? 0) !== active.generation) throw fail('RESET_CONTEXT_CHANGED', '接続・位置・体力・コード世代が変わったため停止しました。')
+    if (!active || scope !== active.scope || !samePoint(feet, active.feet) || (adapter.generation?.() ?? 0) !== active.generation) throw fail('RESET_CONTEXT_CHANGED', '接続・位置・コード世代が変わったため停止しました。')
     if (now() - active.beganAt > 600000) throw fail('RESET_DURATION_LIMIT', 'リセットの実行期限を超えました。途中結果を確認してください。')
     return s
   }
@@ -117,7 +119,9 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
   async function run (acquisition) {
     try {
       await acquisition
-      guard(); await checkpoint('事前確認')
+      guard()
+      if (inventoryFingerprint(adapter.getView()) !== active.confirmedFingerprint) throw fail('RESET_PREVIEW_STALE', '操作の終了中に所持品が変わりました。初期セットを確認し直してください。')
+      await checkpoint('事前確認')
       // Read-only privilege probe first. A denial cannot erase inventory.
       await command('/testfor @s', '権限確認')
       await adapter.cancelJob(); guard()
@@ -165,8 +169,8 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
         await adapter.close(); guard()
         await command(`/loot replace entity @s slot.inventory ${box.slot - 9} 1 mine ${at(p)} minecraft:diamond_pickaxe`, '補給箱を受け取る')
         await waitFor(() => matches(adapter.getView().slots[box.slot], box), '補給箱27枠の内容')
-        // Re-open before deleting our temporary source. Changed contents or a
-        // nearby player leave it in place for explicit recovery, never blind air.
+        // Re-open before deleting our temporary source. A changed template is
+        // left in place for explicit recovery, never removed blindly.
         contents = await openStage(box.name)
         if (!contents.slots.every((s, i) => matches(s, box.contents[i]))) throw fail('RESET_STAGE_CONTENTS_CHANGED')
         // Empty the template before removal so container destruction cannot
@@ -230,9 +234,9 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
     if (task) throw fail('RESET_BUSY')
     if (confirm !== 'REPLACE_INITIAL_INVENTORY' || !p || token !== p.token || p.expiresAt <= now()) throw fail('RESET_CONFIRMATION_REQUIRED', 'リセット内容を確認し直してください。')
     adapter.assertIdle(); const { s, scope, feet } = scene()
-    if (scope !== p.scope || !samePoint(feet, p.feet) || s.health !== p.health || (adapter.generation?.() ?? 0) !== p.generation || (adapter.jobIdentity?.() ?? null) !== p.job || inventoryFingerprint(adapter.getView()) !== p.fingerprint || !air(adapter.getBlock(p.stage.x, p.stage.y, p.stage.z))) throw fail('RESET_PREVIEW_STALE', '確認後に所持品・位置・接続・ジョブが変わりました。確認し直してください。')
+    if (scope !== p.scope || !samePoint(feet, p.feet) || (adapter.generation?.() ?? 0) !== p.generation || (adapter.jobIdentity?.() ?? null) !== p.job || inventoryFingerprint(adapter.getView()) !== p.fingerprint || !air(adapter.getBlock(p.stage.x, p.stage.y, p.stage.z))) throw fail('RESET_PREVIEW_STALE', '確認後に所持品・位置・接続・ジョブが変わりました。確認し直してください。')
     abort = new AbortController(); lastError = null; result = null
-    active = { operationId: uuid(), version: 1, manifestVersion: m.version, phase: 'preparing', scope, generation: p.generation, feet, stage: p.stage, health: s.health,
+    active = { operationId: uuid(), version: 1, manifestVersion: m.version, phase: 'preparing', scope, confirmedFingerprint: p.fingerprint, generation: p.generation, feet, stage: p.stage, health: s.health,
       world: digest([s.profile, String(s.realm.id), s.dimension]), beganAt: now(), steps: 0, suppliesCompleted: 0, pending: null, serverConfirmed: false, inventoryBefore: adapter.getView() }
     // start() holds task synchronously; API callers never wait for hundreds of
     // commands, and an HTTP timeout cannot trigger an automatic second clear.

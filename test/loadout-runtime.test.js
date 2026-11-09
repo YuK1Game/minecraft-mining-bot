@@ -73,11 +73,30 @@ test('loadout-runtime: real adapter privilege denial persists scoped failure wit
   assert.equal(data.world, crypto.createHash('sha256').update(JSON.stringify(['bot', '42', 'overworld'])).digest('hex'))
   assert.equal(data.error.code, 'RESET_COMMAND_REJECTED')
 })
-test('loadout-runtime: missing authority, unknown actors, nearby player and active container refuse before a command', async t => {
+test('loadout-runtime: missing authority and active container refuse before a command; actor proximity does not', async t => {
   const f = await bridge(t)
   f.setAuthority(false); await assert.rejects(f.reset.prepare(), { code: 'RESET_AUTHORITY_UNKNOWN' }); f.setAuthority(true)
-  f.unknown(1); await assert.rejects(f.reset.prepare(), { code: 'RESET_DANGER' }); f.unknown(0)
-  f.actors([{ kind: 'player', runtimeId: '8', position: { x: 1, y: 64, z: 0 } }]); await assert.rejects(f.reset.prepare(), { code: 'RESET_DANGER' }); f.actors([])
+  f.unknown(1); await f.reset.prepare(); f.unknown(0)
+  f.actors([{ kind: 'player', runtimeId: '8', position: { x: 1, y: 64, z: 0 } }]); await f.reset.prepare(); f.actors([])
   f.setOpen({ id: 1 }); await assert.rejects(f.reset.prepare(), { code: 'RESET_JOB_PENDING' }); f.setOpen(null)
   await f.reset.prepare(); assert.equal(f.sent.length, 0)
+})
+
+for (const kind of ['player', 'hostile', 'unknown']) test(`loadout-runtime: ${kind} does not block the actual adapter's command path`, async t => {
+  const f = await bridge(t)
+  f.actors([{ kind: kind === 'player' ? 'player' : 'mob', hostile: kind !== 'player', runtimeId: '8', position: kind === 'unknown' ? null : { x: .5, y: 64, z: .5 } }])
+  f.unknown(kind === 'unknown' ? 1 : 0)
+  const p = await f.reset.prepare()
+  f.reset.start({ token: p.token, confirm: 'REPLACE_INITIAL_INVENTORY' }); await f.reset.drain()
+  // The mock server denies operator permission. Reaching the read-only probe
+  // proves actors were not an admission gate; denial still never clears items.
+  assert.deepEqual(f.sent.map(p => p.packet.command), ['/testfor @s'])
+  assert.equal(f.reset.status().error.code, 'RESET_COMMAND_REJECTED')
+})
+test('loadout-runtime: actor cache is not required by debug reset', async t => {
+  const f = await bridge(t)
+  f.host.entities.snapshot = () => { throw Error('actor cache is not a reset dependency') }
+  f.host.entities.stats = () => { throw Error('actor statistics are not a reset dependency') }
+  await f.reset.prepare()
+  assert.equal(f.sent.length, 0)
 })

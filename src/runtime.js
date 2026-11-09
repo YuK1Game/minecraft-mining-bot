@@ -955,20 +955,22 @@ function createRuntime (host) {
     idleSafety.start({ enableEpoch: host.shared.safetyEnableEpoch, ...(host.shared.safetyRecoveryDeadline ? { recoveryDeadline: host.shared.safetyRecoveryDeadline } : {}) })
     return safetySnapshot()
   }
-  function requireIdle ({ inventoryRequired = true, armorOwner = null } = {}) {
-    if (resetHeld()) throw Object.assign(new Error('初期アイテムのリセット処理中です。'), { code: 'RESET_BUSY' })
+  function requireIdle ({ inventoryRequired = true, armorOwner = null, loadoutHandoff = false, loadoutOwner = null } = {}) {
+    const behavior = userBehaviorSnapshot()
+    const combatHandoff = loadoutHandoff && (userBehaviorLease?.kind === 'combat' || behavior.claim?.kind === 'combat' || combat?.snapshot().busy || combat?.snapshot().defending || combat?.snapshot().engaging)
+    if (resetHeld() && (loadoutOwner === null || loadoutOwner !== loadoutLease)) throw Object.assign(new Error('初期アイテムのリセット処理中です。'), { code: 'RESET_BUSY' })
     if (!ownedCall && manualShulkerTask) throw new Error('指定したシュルカーボックスの回収完了を待ってください。')
     if (manualArmorOwner && manualArmorOwner !== armorOwner) throw new Error('手動の防具装備が完了するまで待ってください。')
     if (disposed || disposing) throw new Error('行動コードを更新しました。新しい状態からやり直してください。')
     if (host.shared.respawnTerrain?.pending) throw new Error('リスポーン先の地形と前の操作の終了を確認しています。')
     if (working().spawnPending) throw new Error('参加位置をサーバーで確認するまで行動を待機します。')
     if (inventoryRequired && host.shared.inventoryUncertain) throw new Error('操作後の持ち物が未確定です。新しいサーバー情報を待っています。')
-    if (!ownedCall && userBehaviorOwns()) throw new Error('利用者指定の戦闘・睡眠・片付け動作が操作を使用中です。')
+    if (!ownedCall && userBehaviorOwns() && !(combatHandoff && !userBehaviorSleeping && !userBehaviorWakePending && !behavior.sleeping)) throw new Error('利用者指定の戦闘・睡眠・片付け動作が操作を使用中です。')
     if (!ownedCall && pendingStops.size) throw new Error('前の操作の終了処理を待ってください。')
     if (!ownedCall && quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
     if (!ownedCall && quarryPillar?.snapshot().busy) throw new Error('土柱の設置と着地の確認を待ってください。')
-    if (!ownedCall && (idleSafety?.snapshot().busy || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy)) throw new Error('前の操作が終わるまで待ってください。')
-    if (motionActive() || input?.stats().running || food.snapshot().busy || (furnace.snapshot().busy || chest.snapshot().busy) || inventory.snapshot().busy || craftStatus().pendingRequestId != null || interactions.snapshot().pendingOperation || combat?.snapshot().busy || combat?.snapshot().defending || combat?.snapshot().engaging) throw new Error('前の操作が完了するまで待ってください。')
+    if (!ownedCall && (idleSafety?.snapshot().busy && !combatHandoff || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy)) throw new Error('前の操作が終わるまで待ってください。')
+    if (!combatHandoff && (motionActive() || input?.stats().running || combat?.snapshot().busy || combat?.snapshot().defending || combat?.snapshot().engaging) || food.snapshot().busy || (furnace.snapshot().busy || chest.snapshot().busy) || inventory.snapshot().busy || craftStatus().pendingRequestId != null || interactions.snapshot().pendingOperation) throw new Error('前の操作が完了するまで待ってください。')
     if (!ownedCall) host.shared.safetyManualActionAt = Date.now()
   }
   function inventoryLifeBaseKey (state) { return JSON.stringify([state.profile ?? host.meta.profile ?? null, state.realm?.id == null ? null : String(state.realm.id), state.connectionId ?? null, state.startedAt ?? null, String(state.runtimeEntityId ?? ''), state.dimension ?? null]) }
@@ -5089,7 +5091,13 @@ function createRuntime (host) {
     }
   }
   function stopActions (reason) {
-    if (resetHeld()) loadoutReset?.cancel()
+    if (resetHeld()) {
+      const s = raw()
+      // The explicit debug reset owns all inputs. A nonfatal hit must not
+      // cancel its acknowledged inventory transfers or re-arm combat.
+      if (!disposed && !disposing && reason === 'ダメージを検知しました。' && s.phase === 'spawned' && s.health > 0 && !s.dead && !s.isDead && !s.spawnPending && !s.lifecycle?.dead) return Promise.resolve([])
+      loadoutReset?.cancel()
+    }
     return stopActionsAfterRaw(reason)
   }
   function stopActionsAfterRaw (reason, confirmedRespawn = null) {
@@ -6783,17 +6791,19 @@ function createRuntime (host) {
       generation: () => host.shared.loadoutGeneration ?? 0,
       getJob: () => ensureQuarryJob(),
       assertIdle: () => {
-        requireIdle()
-        if (physicalWorkBusy() || armorTask || manualArmorOwner || manualShulkerTask || quarryRestoreTask || autonomy.snapshot().running || depotMission?.isBusy() || host.shared.inventoryUncertain || host.shared.rangedShotUncertain || !host.shared.loadingScreenEnded) throw Object.assign(new Error('作業・戦闘・持ち物操作を停止し、結果を確認してから実行してください。'), { code: 'RESET_NOT_IDLE' })
+        requireIdle({ loadoutHandoff: true })
+        if (mining.snapshot().phase === 'mining' || mining.snapshot().activeTarget || depotBuilder?.snapshot().busy || depotStorage?.snapshot().busy || armorTask || manualArmorOwner || manualShulkerTask || quarryRestoreTask || autonomy.snapshot().running || depotMission?.isBusy() || host.shared.inventoryUncertain || host.shared.rangedShotUncertain || !host.shared.loadingScreenEnded) throw Object.assign(new Error('採掘・収納・持ち物操作の終了を確認してください。'), { code: 'RESET_NOT_IDLE' })
       },
       acquire: operationId => {
         if (resetHeld()) throw Object.assign(new Error('リセット処理中です。'), { code: 'RESET_BUSY' })
-        requireIdle()
+        requireIdle({ loadoutHandoff: true })
         loadoutLease = operationId
         host.shared.autoWanted = false; host.shared.quarryAutoResume = false; host.shared.quarryRestoreDisabled = true
         autonomy.stop('初期アイテムリセット')
         stopIdleStream()
-        return Promise.resolve(idleSafety?.stop('loadout_reset')).then(() => idleSafety?.drain())
+        // Fence new combat immediately, then cancel/drain the old owner before
+        // the first command. Use the private stop path to preserve this lease.
+        return Promise.resolve().then(() => stopActionsAfterRaw('loadout_reset')).then(() => { requireIdle({ loadoutOwner: operationId }) })
       },
       release: operationId => { if (loadoutLease === operationId) { loadoutLease = null; resumeSafety() } },
       cancelTransfers: async operationId => {
