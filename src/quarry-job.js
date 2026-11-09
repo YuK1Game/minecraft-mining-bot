@@ -39,6 +39,7 @@ const PLANNED_EXCLUSIONS = new Set(['UNBREAKABLE'])
 const TOOL_WAIT = new Set(['WAITING_FOR_TOOL', 'TOOL_DURABILITY_RESERVE', 'TOOL_DURABILITY_UNKNOWN', 'TOOL_NOT_IN_HOTBAR'])
 // SUPPORTS_PROTECTED is re-evaluated too: since 2026-11-10 only falling or
 // owned protected blocks keep their support, so older holds under ores are released.
+const REOPEN_UNREACHABLE = 64 // UNREACHABLE cells below the work layer that mark a completion as a misjudgment
 const TRANSIENT_DEFER = ['UNREACHABLE', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK', 'SUPPORTS_PROTECTED']
 
 class QuarryInterrupt extends Error { constructor (code, message) { super(message ?? code); this.code = code } }
@@ -579,6 +580,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // and transient deferrals are only retried from the current layer down.
     if (!items(s)) { await sleep(500); return }
     if (job.surfaceReturnedAt) { setState('FINAL_CHECK'); return }
+    // A completion reached only by writing off the lower layers as UNREACHABLE
+    // (live 2026-11-10: bot cut off on a pillar above a cave) is reopened while
+    // the egress has not started; those cells are retried from the current layer.
+    if (job.miningCompletedAt && !job.surfaceReturnedAt && (!job.egress || job.egress.phase === 'blocked' && !job.egress.checkpoint)) {
+      const writtenOff = planner.deferredList().filter(d => d.reason === 'UNREACHABLE' && Number(String(d.position).split(',')[1]) < job.cursorY).length
+      if (writtenOff >= REOPEN_UNREACHABLE) {
+        note('false_completion_reopened', { writtenOff, cursorY: job.cursorY, completedAt: job.miningCompletedAt })
+        job.miningCompletedAt = null; job.egress = null; job.finalSweepDone = false; job.finalCounts = null
+      }
+    }
     if (job.miningCompletedAt && job.config.exit?.mode === 'adjacent_pillar') { setState('EGRESS'); return }
     if (!(await prepareExit(myEpoch))) return
     const floorY = workFloorY()

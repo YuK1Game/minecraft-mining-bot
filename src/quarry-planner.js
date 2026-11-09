@@ -17,6 +17,7 @@ const EYE = 1.62
 const REACH = 4.5
 const STAIR_LOOKUP = 8 // blocks above yTop searched for the real ground at the stair corner
 const STANCE_CANDIDATES = 6 // stances compared when looking for a fuller batch
+const SMALL_REACH = 4 // walkable cells at or below which a whole unreachable layer means the bot is cut off
 const STANCE_EXTRA_TRAVEL = 4 // extra walking (path steps) accepted for a fuller batch
 const TARGET_CANDIDATES = 4 // compare a bounded number of workable targets in this layer
 const UNSAFE_FLOOR = /(?:magma|campfire|powder_snow|cactus|sweet_berry|wither_rose|pointed_dripstone|scaffolding|leaves|_carpet$|snow_layer|lava|water|fire)/
@@ -36,7 +37,10 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
   let stair = records.stair ?? null
   let recordRevision = 0
 
-  const read = p => getBlock(p.x, p.y, p.z)
+  // overlay: cells a candidate batch would clear, used only while checking it.
+  const overlay = new Map()
+  const OVERLAY_AIR = { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+  const read = p => overlay.get(key(p.x, p.y, p.z)) ?? getBlock(p.x, p.y, p.z)
   // Cells the bot's own structures claim (depot, tunnel floors, portable camp)
   // arrive flagged as protected and are never broken.
   const ruleOf = b => b?.protected === true || b?.protectionSource ? { kind: 'protected', reason: `OWNED_${String(b.protectionSource ?? 'STRUCTURE').toUpperCase()}` } : blockRule(b.name)
@@ -599,6 +603,10 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       // Nothing reachable in this layer: defer the remaining cells with reason
       // so the same cells are not retried forever (§5.3).
       const unreachable = layer.pending.filter(t => !deferred.has(key(t.position.x, t.position.y, t.position.z)))
+      // A whole layer out of reach from a tiny walkable area is not "done":
+      // the bot is cut off (e.g. above a cave). Stop instead of deferring every
+      // lower layer and declaring the job complete.
+      if (unreachable.length && unreachable.length === layer.pending.length && reach.size <= SMALL_REACH) return { action: 'pause', reason: 'DESCENT_REQUIRED', details: { y, reach: reach.size, pending: layer.pending.length, feet: { ...feet } } }
       for (const t of unreachable) defer(t.position, 'UNREACHABLE')
       if (unreachable.length) return { action: 'deferred', reason: 'UNREACHABLE', count: unreachable.length, y }
     }
@@ -624,7 +632,25 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       if (!best || (compareTravel ? cost < best.cost : batch.length > best.batch.length)) best = { chosen, batch, cost }
       if (batch.length >= limit && (!compareTravel || chosen.distance === nearest)) break
     }
-    return { action: 'mine', stance: best.chosen.stance, travel: best.chosen.distance, tool: target.tool ?? { kind: 'hand' }, targets: best.batch }
+    // Never clear the last floor that links the stance to the rest of the
+    // walkable area (live 2026-11-10: the bot dug away every floor cell
+    // around itself and was left on a 1-block pillar above a 40-deep cave).
+    const batch = keepConnected(best.chosen.stance, best.batch, reach)
+    if (!batch.length) return null
+    return { action: 'mine', stance: best.chosen.stance, travel: best.chosen.distance, tool: target.tool ?? { kind: 'hand' }, targets: batch }
+  }
+  function reachSizeWithout (stance, cells) {
+    for (const c of cells) overlay.set(key(c.position.x, c.position.y, c.position.z), OVERLAY_AIR)
+    try { return reachableFrom(stance).size } finally { overlay.clear() }
+  }
+  function keepConnected (stance, batch, reach) {
+    if (reach.size <= 1) return batch
+    const before = Math.min(reach.size, 2)
+    if (reachSizeWithout(stance, batch) >= before) return batch
+    // Drop cells one by one until the stance keeps at least one walkable neighbour.
+    const kept = []
+    for (const c of batch) if (reachSizeWithout(stance, [...kept, c]) >= before) kept.push(c)
+    return kept
   }
 
   function fluidAction (plan, reach, inventoryItems, tools, policy, workY) {
