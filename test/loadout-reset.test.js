@@ -6,10 +6,11 @@ const { matches, inventoryFingerprint } = require('../src/loadout-reset')
 const { randomUUID } = require('node:crypto')
 const confirm = (reset, p) => reset.start({ token: p.token, confirm: 'REPLACE_INITIAL_INVENTORY' })
 
-test('loadout: standard v1 has 20 cargo + 4 full supply boxes, compatible enchants and exactly 36 slots', () => {
+test('loadout: standard v2 has 8 cargo + 4 full supply boxes, compatible enchants and exactly 36 slots', () => {
   const m = manifest(), used = [...Array(9).keys(), ...m.cargo.map(x => x.slot), ...m.supplies.map(x => x.slot), ...m.emptySlots]
   assert.equal(new Set(used).size, 36); assert.equal(used.length, 36)
-  assert.equal(m.cargo.length, 20); assert.equal(m.supplies.length, 4)
+  assert.equal(m.cargo.length, 8); assert.equal(m.supplies.length, 4)
+  assert.deepEqual(m.cargo.map(x => x.slot), [9, 10, 11, 12, 13, 14, 15, 16]); assert.equal(m.version, 'quarry-standard-v2')
   assert.ok(m.supplies.every(s => s.contents.length === 27))
   assert.deepEqual(m.supplies.map(s => s.contents.reduce((n, i) => n + i.count, 0)), [27, 27, 1728, 1728])
   assert.equal(m.hotbar[3].enchants.infinity, 1); assert.ok(!m.hotbar[3].enchants.mending)
@@ -26,7 +27,7 @@ test('loadout: standard v1 has 20 cargo + 4 full supply boxes, compatible enchan
 })
 test('loadout: preview is read-only and unknown contents never become proof of success', async () => {
   const f = fixture(), p = await f.reset.prepare()
-  assert.equal(p.manifest.cargoBoxes, 20); assert.equal(p.target.player, 'ResetBot')
+  assert.equal(p.manifest.cargoBoxes, 8); assert.equal(p.target.player, 'ResetBot')
   assert.equal(f.commandsSent.length, 0); assert.equal(f.saves.length, 0); assert.equal(f.calls.length, 0)
   const wanted = manifest().cargo[0]
   assert.equal(matches({ known: true, name: wanted.name, count: 1, metadata: 0, empty: false, enchantmentsKnown: true, enchantments: [], container: { known: false } }, wanted), false)
