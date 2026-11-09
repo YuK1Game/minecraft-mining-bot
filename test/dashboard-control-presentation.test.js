@@ -57,9 +57,10 @@ test('dashboard-control-ui: presentation keeps explicit actions, field labels an
   assert.match(section, /aria-label="開始チャンク Z"/)
   assert.match(section, /id="control-job-reason"[^>]*role="status"/)
   assert.doesNotMatch(section, /control-hint|既存の認証を使う場合|入力はブロック座標ではなく|安全確認はBot本体/)
-  assert.match(script, /p\.issues\.map\(/)
-  assert.match(script, /NO_CARGO_SHULKER.*clean\(x\)/)
-  assert.match(script, /p\.warnings\.map\(clean\)/)
+  assert.match(script, /p\.issues, 'blocked', '停止理由'/)
+  assert.match(script, /NO_CARGO_SHULKER: '収納用シュルカーなし'/)
+  assert.match(script, /p\.warnings, 'warning', '注意'/)
+  assert.match(script, /diagnosticLabels\[code\] \|\| clean\(code\)/)
   assert.match(script, /ArrowLeft: -1, ArrowRight: 1, ArrowUp: -5, ArrowDown: 5/)
 })
 test('dashboard-control-ui: plan expiry and changing the live session keep the start gate closed', () => {

@@ -48,14 +48,13 @@ test('loadout: complete offline reset requires received slot contents, every enc
   assert.equal(f.blocks.size, 0); assert.ok(!JSON.stringify(f.reset.status()).includes('inventoryBefore'))
   assert.deepEqual(f.calls.filter(x => /start|resume/i.test(x)), [])
 })
-for (const variant of ['confirmation', 'expiry', 'realm', 'life', 'position', 'inventory', 'health', 'generation', 'job', 'stage']) test(`loadout: ${variant} invalidates preview before destructive work`, async () => {
+for (const variant of ['confirmation', 'expiry', 'realm', 'life', 'position', 'inventory', 'generation', 'job', 'stage']) test(`loadout: ${variant} invalidates preview before destructive work`, async () => {
   const f = fixture(), p = await f.reset.prepare()
   if (variant === 'expiry') f.time(120001)
   if (variant === 'realm') f.state.realm.id = '43'
   if (variant === 'life') f.state.lifecycle.deathId++
   if (variant === 'position') f.state.position.x++
   if (variant === 'inventory') f.view.slots[0].count++
-  if (variant === 'health') f.state.health--
   if (variant === 'generation') f.generation()
   if (variant === 'job') f.job('other')
   if (variant === 'stage') f.blocks.set(`${p.stage.x},${p.stage.y},${p.stage.z}`, { known: true, name: 'minecraft:chest', boundingBox: 'block', extra: [] })
@@ -63,9 +62,8 @@ for (const variant of ['confirmation', 'expiry', 'realm', 'life', 'position', 'i
   assert.equal(f.commandsSent.length, 0); assert.equal(f.calls.length, 0)
   assert.throws(() => confirm(f.reset, p), { code: 'RESET_CONFIRMATION_REQUIRED' })
 })
-for (const variant of ['danger', 'unknownInventory', 'unknownArmor', 'unknownOffhand', 'wet', 'notIdle']) test(`loadout: unsafe ${variant} cannot prepare a reset`, async () => {
+for (const variant of ['unknownInventory', 'unknownArmor', 'unknownOffhand', 'wet', 'notIdle']) test(`loadout: unsafe ${variant} cannot prepare a reset`, async () => {
   const f = fixture({ busy: variant === 'notIdle' })
-  if (variant === 'danger') f.state.resetThreats = true
   if (variant === 'unknownInventory') f.view.known = false
   if (variant === 'unknownArmor') f.view.armor.known = false
   if (variant === 'unknownOffhand') f.view.offhand.known = false
@@ -98,10 +96,9 @@ test('loadout: full contents are required; a successful loot response alone neve
   assert.equal(f.commandsSent.filter(c => c.startsWith('/execute')).length, 0)
   assert.equal(f.commandsSent.filter(c => /slot.container \d+ minecraft:air/.test(c)).length, 0)
 })
-for (const variant of ['damage', 'otherPlayer', 'scope', 'generation']) test(`loadout: ${variant} during the reset stops further mutation`, async () => {
+for (const variant of ['death', 'scope', 'generation']) test(`loadout: ${variant} during the reset stops further mutation`, async () => {
   const f = fixture({ hooks: { afterSend: (text, n) => { if (n === 4) {
-    if (variant === 'damage') f.state.health--
-    if (variant === 'otherPlayer') f.state.resetThreats = true
+    if (variant === 'death') { f.state.health = 0; f.state.dead = true }
     if (variant === 'scope') f.state.connectionId = 'two'
     if (variant === 'generation') f.generation()
   } } } })
@@ -127,4 +124,25 @@ test('loadout: observation timestamps alone do not change confirmation identity'
   f.view.observedAt = Date.now(); f.view.armor.observedAt = Date.now()
   assert.equal(inventoryFingerprint(f.view), a)
   f.view.slots[0] = empty(0); assert.notEqual(inventoryFingerprint(f.view), a)
+})
+
+for (const variant of ['players', 'hostiles', 'unknownActors', 'fire', 'damage']) test(`loadout: debug reset completes with ${variant} before and during confirmation`, async () => {
+  const f = fixture({ hooks: { afterSend: (_text, n) => { if (n === 5) { f.state.resetThreats = true; f.state.onFire = true; f.state.health = 17 } } } })
+  f.state.resetThreats = variant === 'unknownActors' ? undefined : true
+  f.state.onFire = variant === 'fire'
+  const p = await f.reset.prepare()
+  f.state.health = 19
+  confirm(f.reset, p); await f.reset.drain()
+  assert.equal(f.reset.status().phase, 'completed', JSON.stringify(f.reset.status()))
+  assert.equal(f.reset.status().serverConfirmed, true)
+  assert.equal(f.commandsSent.filter(c => c === '/clear @s').length, 1)
+  assert.equal(f.lease(), null)
+})
+test('loadout: inventory changes while combat drains require a new confirmation before clearing', async () => {
+  const f = fixture(); const p = await f.reset.prepare()
+  confirm(f.reset, p); f.view.slots[0].count++
+  await f.reset.drain()
+  assert.equal(f.commandsSent.length, 0)
+  assert.equal(f.reset.status().error.code, 'RESET_PREVIEW_STALE')
+  assert.equal(f.reset.status().serverConfirmed, false)
 })
