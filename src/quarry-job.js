@@ -634,7 +634,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     keepEarlierLayers(floorY)
     job.cursorY = floorY
     if (Number.isSafeInteger(job.lastMineY) && job.lastMineY > floorY) job.lastMineY = floorY
-    job.retry = 0
+    job.retry = 0; job.miningExhaustedTried = false // a resume may try the exhausted-tool restock again
     combatBridge.activate({ jobId: job.config.jobId, epoch, travel: p => permits(regions, 'travel', p).allowed })
     setState('SURVEY')
   }
@@ -1008,7 +1008,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       // Every remaining use of this tool is kept for the exit: fetch one more of
       // the same kind from its supply box (once), then mine with the fresh one.
       if (job.config.inventory.supplyBoxes?.length && ['pickaxe', 'shovel'].includes(tool.kind) && !job.miningExhaustedTried) {
-        job.miningExhausted = [tool.kind]; job.miningExhaustedTried = true
+        const carried = supplyNeeds(items(guard(myEpoch)) ?? [], { ...job.config.inventory, tools: job.config.tools }).available[tool.kind] ?? 1
+        job.miningExhausted = { [tool.kind]: Math.min(3, carried + 1) }; job.miningExhaustedTried = true
         if (await restock(myEpoch, 'SURVEY', true)) return
       }
       job.miningExhausted = null
