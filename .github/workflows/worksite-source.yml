@@ -1,0 +1,21 @@
+name: Export isolated worksite source
+on:
+  push:
+    branches: [fix/quarry-worksite-diagnostics-20261109]
+    paths: [.github/workflows/worksite-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: git archive --format=tar.gz -o worksite-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: worksite-source
+          path: worksite-source.tar.gz
+          retention-days: 1
