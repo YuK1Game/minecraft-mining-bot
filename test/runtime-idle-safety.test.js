@@ -451,3 +451,25 @@ test('the explicit hut reconciliation API respects inventory, actor and generati
   assert.throws(() => f.runtime.operations.hut.reconcileEmptyPlacement(), /行動コードを更新/)
   assert.equal(f.huts[0].reconciliations, 1)
 })
+
+test('an online emergency record is marked resolved (display only) once protection is back to plain observation', async t => {
+  const f = fixture(t)
+  f.host.onEmergency = () => undefined
+  f.runtime.operations.safety.start()
+  f.safeties[0].options.onEmergencyStop({ enableEpoch: 1, reason: 'Work pause needs clearance from observed pursuers', health: 20 })
+  await immediate()
+  assert.equal(f.shared.safetyEmergency.status, 'remaining_online')
+  const progress = f.safeties[0].options.onProgress
+  for (const busy of [{ phase: 'work_clearance_pending' }, { phase: 'observing', busy: true }, { phase: 'observing', workClearancePending: true }, { phase: 'observing', active: { kind: 'escape' } }]) {
+    progress({ busy: false, active: null, workClearancePending: false, ...busy })
+    assert.equal(f.shared.safetyEmergency.status, 'remaining_online', JSON.stringify(busy))
+  }
+  progress({ phase: 'observing', busy: false, active: null, workClearancePending: false })
+  assert.equal(f.shared.safetyEmergency.status, 'resolved')
+  assert.equal(f.shared.safetyEmergency.reason, 'Work pause needs clearance from observed pursuers', 'the original reason is kept')
+  assert.ok(f.shared.safetyEmergency.resolvedAt)
+  assert.equal(f.logs.filter(line => line.includes('解決済み')).length, 1)
+  progress({ phase: 'observing', busy: false, active: null, workClearancePending: false })
+  assert.equal(f.logs.filter(line => line.includes('解決済み')).length, 1, 'logged once')
+  await f.runtime.operations.safety.stop()
+})

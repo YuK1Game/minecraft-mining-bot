@@ -228,6 +228,22 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const top = Math.min(regs.worldMaxY, Math.max(...ys, (regs.yTop ?? regs.worldMaxY - 4) + 4))
     return [{ xMin: Math.min(...xs), xMax: Math.max(...xs), yMin: Math.max(regs.worldMinY, Math.min(...lows)), yMax: top, zMin: Math.min(...zs), zMax: Math.max(...zs) }]
   }
+  function planExitPreview (config, regs, yTop, state, inv) {
+    const read = planningBlocks(config); let unknown = false
+    const result = planQuarryExit({ regions: regs, yTop, feet: feetCell(state), getBlock: (x, y, z) => { const b = read(x, y, z); if (b?.known !== true) unknown = true; return b }, inventory: inv, policy: { ...config.tools, ...config.collection }, exit: config.exit, preflight: true })
+    const d = result.details ?? {}
+    return { ready: result.ok === true, reason: result.ok ? null : result.reason ?? 'EXIT_PREFLIGHT_FAILED', unknown: !result.ok && unknown, predictionOnly: true, side: result.plan?.side ?? null, column: copy(result.plan?.column ?? null), counts: copy(d.counts ?? null), cause: d.cause ?? null }
+  }
+  // Deepest bottom (8-block steps, at most 24 tries) whose exit plan succeeds on received terrain.
+  function suggestExitBottom (config, yTop, state, inv, fromY) {
+    for (let y = fromY + 8, tries = 0; y <= yTop - 8 && tries < 24; y += 8, tries++) {
+      const trial = { ...config, yBottom: y }
+      const r = planExitPreview(trial, makeRegions(trial, yTop, state), yTop, state, inv)
+      if (r.ready) return y
+    }
+    return null
+  }
+
   function makeRegions (config, yTop, state) {
     const base = { target: config.target, yTop, yBottom: config.yBottom, worldMinY: config.worldMinY, worldMaxY: config.worldMaxY, boundarySeal: config.boundarySeal, infrastructureRegion: config.permissions.infrastructureRegion, protectedRegion: config.permissions.protectedRegion }
     const first = buildRegions({ ...base, travelRegion: [] })
@@ -302,8 +318,22 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       // target; they are never broken, but the user should know before start.
       if (survey.protected.length >= 16) warnings.push({ code: 'PROTECTED_BLOCKS_IN_TARGET', cells: survey.protected.length, note: 'Possibly a player structure; these blocks are left in place', names: [...new Set(survey.protected.map(p => p.name))].slice(0, 8) })
     }
+    // Exit check at plan time (prediction only, no world change): the same
+    // planner the job runs before excavation. A target whose received terrain
+    // leaves no exit column is refused here instead of after start; unknown
+    // terrain only warns. A shallower bottom that would work is suggested.
+    let exitPreflight = null
+    if (yTop !== null && inv && state?.position && config.exit?.mode === 'adjacent_pillar' && typeof adapter.egress === 'function') {
+      exitPreflight = planExitPreview(config, regs, yTop, state, inv)
+      if (!exitPreflight.ready) {
+        if (exitPreflight.reason === 'EXIT_COLUMN_UNAVAILABLE' && !exitPreflight.unknown) {
+          issues.push('PLAN_EXIT_UNAVAILABLE')
+          exitPreflight.suggestedBottom = suggestExitBottom(config, yTop, state, inv, regs.yBottom)
+        } else warnings.push({ code: exitPreflight.unknown ? 'EXIT_PREFLIGHT_PROVISIONAL' : 'EXIT_PREFLIGHT_' + String(exitPreflight.reason ?? 'FAILED').replace(/^EXIT_/, ''), reason: exitPreflight.reason })
+      }
+    }
     const sealCells = regs.seal.ready ? regs.seal.columns.size * (regs.seal.yMax - regs.seal.yMin + 1) : 0
-    const summary = { ready: issues.length === 0, issues, warnings, jobId: config.jobId, chunks: regs.chunks, yTop, yTopProvisional: unknownAbove > 0, yBottom: regs.yBottom, columns: regs.columns.size, counts, survey, stair, boundarySeal: { enabled: regs.seal.enabled, ready: regs.seal.ready, columns: regs.seal.columns.size, yMin: regs.seal.yMin, yMax: regs.seal.yMax, cells: sealCells, placementOnly: true }, travelRegion: regs.travel, storage: storageList }
+    const summary = { ready: issues.length === 0, issues, warnings, jobId: config.jobId, chunks: regs.chunks, yTop, yTopProvisional: unknownAbove > 0, yBottom: regs.yBottom, columns: regs.columns.size, counts, survey, stair, exitPreflight, boundarySeal: { enabled: regs.seal.enabled, ready: regs.seal.ready, columns: regs.seal.columns.size, yMin: regs.seal.yMin, yMax: regs.seal.yMax, cells: sealCells, placementOnly: true }, travelRegion: regs.travel, storage: storageList }
     job = { config, instanceId: randomUUID(), world: worldIdentity(state), actionSequence: 0, state: 'IDLE', planned: summary, yTop, cursorY: yTop, deepestY: yTop, records: { stair }, ledger: {}, userRunIntent: 'idle', result: null, pauseReason: null, interruption: null, checkpoint: null, actions: [], deaths: [], startedAt: null, scope: null, life: null }
     regions = regs; planner = pl; ledger = createLedger()
     return copy(summary)

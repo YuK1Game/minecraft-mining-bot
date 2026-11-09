@@ -4206,7 +4206,21 @@ function createRuntime (host) {
         if (owns('escape')) { if (emergencyMiningOp === context.operationId) ownedMining.stop(context.reason); if (emergencyDropOp === context.operationId) routeMovement.stop(context.reason); if (emergencyWaterCounterOp === context.operationId) { generationCombat.cancel(context.reason); cleanup.push(generationCombat.drain()) }; cleanup.push(generationGuardRoute.stop(context.reason)) }
         await Promise.allSettled(cleanup)
       },
-      onProgress: data => { if (safetyCurrent()) host.noteProgress({ type: 'idle_safety', ...data }) },
+      onProgress: data => {
+        if (!safetyCurrent()) return
+        host.noteProgress({ type: 'idle_safety', ...data })
+        // Display only: once protection is back to plain observation (no
+        // threat, pursuer, unknown or owned action), an earlier online
+        // emergency record is marked resolved. Nothing is unlocked by this:
+        // gates only look at scheduled/in_flight, which are left untouched.
+        if (data?.phase !== 'observing' || data.busy || data.active || data.workClearancePending || data.cleanupUnconfirmed) return
+        const at = new Date().toISOString(); let resolved = false
+        const receipt = host.shared.safetyEmergency
+        if (receipt?.status === 'remaining_online' && receipt.scope === safetyOriginScope) { receipt.status = 'resolved'; receipt.resolvedAt = at; resolved = true }
+        const online = host.shared.onlineEmergency
+        if (online?.status === 'remaining_online' && online.reasonCode === 'LOCAL_DANGER' && !online.resumeError && online.connectionId === raw().connectionId) { online.status = 'resolved'; online.resolvedAt = at; resolved = true }
+        if (resolved) host.log('待機保護: 危険が解消したため非常停止の記録を解決済みにしました（表示のみ）')
+      },
       onEmergencyStop: details => {
         if (!safetyCurrent() || !host.shared.safetyWanted || String(details.enableEpoch) !== String(host.shared.safetyEnableEpoch)) return
         const previous = host.shared.safetyEmergency
