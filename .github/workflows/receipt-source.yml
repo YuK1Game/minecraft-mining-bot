@@ -1,0 +1,21 @@
+name: Export reset receipt source
+on:
+  push:
+    branches: [fix/loadout-inventory-receipt-20261109]
+    paths: [.github/workflows/receipt-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: git archive --format=tar.gz -o receipt-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: receipt-source
+          path: receipt-source.tar.gz
+          retention-days: 1
