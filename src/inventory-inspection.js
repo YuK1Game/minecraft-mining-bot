@@ -130,6 +130,11 @@ function createInventoryInspection ({ crafting, armorStore = {}, getChest = () =
         if (name === 'inventory_content') store.mainInvalidated = !(Array.isArray(packet.input) && packet.input.length === 36 && complete)
         else if (complete) store.mainInvalidated = false
       } else if (armorWindow(packet.window_id)) {
+        // A rejected armor transaction can separately invalidate the controller.
+        // Do not use earlier coverage to revive its other three cached slots.
+        if (name === 'inventory_slot' && armorStore.known !== true && store.armorInvalidated !== true) {
+          armorReceived.clear(); store.armorInvalidated = true; store.armorInvalidationSource = 'controller'
+        }
         store.armorObservedAt = clock()
         const complete = receiveSlots(armorReceived, 4, name, packet)
         if (name === 'inventory_content') {
