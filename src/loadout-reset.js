@@ -48,7 +48,10 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
   function scene () {
     const s = adapter.getState(), scope = observedScope(s)
     if (!scope || s.loadingScreenEnded !== true || s.dimension !== 'overworld' || !['survival', 0].includes(s.gameMode) || !s.position || !['x', 'y', 'z'].every(k => Number.isFinite(s.position[k]))) throw fail('RESET_NOT_READY', '生存・地形・所持品を受信したオーバーワールドで実行してください。')
-    if (s.inventory?.uncertain || !knownInventory(adapter.getView())) throw fail('RESET_INVENTORY_UNKNOWN', '所持品・防具・オフハンドの受信を待っています。')
+    // This explicitly confirmed debug operation replaces the old inventory.
+    // Missing initial equipment snapshots must not prevent its own receipt
+    // bootstrap. Unresolved ordinary transfers are still a different condition.
+    if (s.inventory?.uncertain || adapter.getView()?.uncertain) throw fail('RESET_INVENTORY_UNCERTAIN', '送信済みの持ち物操作が未確定です。')
     // Debug reset is permitted around players, hostiles and unknown actors.
     // Nonfatal damage/fire is not a cancellation; actual life/scope and inventory
     // receipts still determine whether the operation can continue.
@@ -75,7 +78,7 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
     if (after.scope !== scope || !samePoint(after.feet, feet)) throw fail('RESET_SCOPE_CHANGED')
     const view = adapter.getView(), stage = staging(feet)
     preview = { token: uuid(), expiresAt: now() + 120000, scope, feet, stage, health: after.s.health, fingerprint: inventoryFingerprint(view), generation: adapter.generation?.() ?? 0, job: adapter.jobIdentity?.() ?? null }
-    return { token: preview.token, expiresAt: preview.expiresAt, target: { player: s.playerName ?? s.profile, realm: s.realm.name, realmId: String(s.realm.id), dimension: s.dimension }, stage: copy(stage), manifest: summary(), replaces: { main: view.slots.filter(s => !s.empty).length, armor: view.armor.slots.filter(s => !s.empty).length, shulkers: view.slots.filter(s => s.container).length } }
+    return { token: preview.token, expiresAt: preview.expiresAt, target: { player: s.playerName ?? s.profile, realm: s.realm.name, realmId: String(s.realm.id), dimension: s.dimension }, stage: copy(stage), manifest: summary(), replaces: { main: view.known ? view.slots.filter(s => !s.empty).length : null, armor: view.armor?.known ? view.armor.slots.filter(s => !s.empty).length : null, shulkers: view.known ? view.slots.filter(s => s.container).length : null } }
   }
   function guard () {
     abort?.signal.throwIfAborted()
@@ -99,6 +102,35 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
     guard()
     if (receipt?.serverConfirmed !== true || receipt.scope !== active.scope) throw fail('RESET_COMMAND_UNCONFIRMED')
     active.steps++; await checkpoint(label, { pending: null, lastCommand: { requestId: receipt.requestId, receivedAt: receipt.receivedAt } })
+  }
+  async function initializeReceipts () {
+    const view = adapter.getView()
+    if (knownInventory(view)) return
+    await checkpoint('所持品を同期')
+    // Only AFTER explicit confirmation and a successful operator probe, write
+    // temporary known stacks into unobserved slots. A non-empty write forces a
+    // real slot change even when clearing an already-empty slot sends nothing.
+    // These stacks are removed by the ordinary reset below; no unknown value is
+    // declared empty and no command acknowledgment substitutes for a slot packet.
+    for (let slot = 0; slot < 36; slot++) {
+      if (view.known === true && view.slots?.[slot]?.known === true) continue
+      const where = slot < 9 ? `hotbar ${slot}` : `inventory ${slot - 9}`
+      await command(`/replaceitem entity @s slot.${where} minecraft:bread 1`, '所持品を同期')
+    }
+    for (const [slot, piece] of ['head', 'chest', 'legs', 'feet'].entries()) {
+      if (view.armor?.known === true && view.armor.slots?.[slot]?.known === true) continue
+      await command(`/replaceitem entity @s slot.armor.${piece} 0 ${m.armor[slot].name} 1`, '防具を同期')
+    }
+    if (view.offhand?.known !== true || view.offhand.slots?.[0]?.known !== true) {
+      await command('/replaceitem entity @s slot.weapon.offhand 0 minecraft:arrow 1', 'オフハンドを同期')
+    }
+    const until = now() + observationTimeoutMs
+    do { guard(); if (knownInventory(adapter.getView())) return; await sleep(40) } while (now() < until)
+    const after = adapter.getView(), missing = []
+    if (after?.known !== true || after.slots?.length !== 36 || !after.slots.every(s => s?.known)) missing.push('所持品')
+    if (after?.armor?.known !== true || after.armor.slots?.length !== 4 || !after.armor.slots.every(s => s?.known)) missing.push('防具')
+    if (after?.offhand?.known !== true || !after.offhand.slots?.[0]?.known) missing.push('オフハンド')
+    throw fail('RESET_OBSERVATION_UNCONFIRMED', `受信確認がタイムアウトしました: ${missing.join('・')}`)
   }
   async function heldItem (item) {
     await command(`/replaceitem entity @s slot.hotbar 0 ${item.name} ${item.count}`, '道具を準備')
@@ -126,6 +158,7 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
       await command('/testfor @s', '権限確認')
       await adapter.cancelJob(); guard()
       await checkpoint('初期化', { phase: 'running' })
+      await initializeReceipts()
       if (adapter.getView().slots.some(s => !s.empty)) {
         await command('/clear @s', '所持品を初期化')
         await waitFor(() => adapter.getView().slots.every(s => s.empty), '空の所持品')

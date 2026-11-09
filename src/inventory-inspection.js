@@ -30,6 +30,21 @@ const unknownSlot = slot => ({ slot, known: false, empty: false, name: null, cou
 function createInventoryInspection ({ crafting, armorStore = {}, getChest = () => null, getState = () => ({}), store = {}, version = '1.26.60', registry, clock = () => new Date().toISOString() }) {
   const data = registry ?? require('prismarine-registry')(`bedrock_${version}`)
   const offhand = store.offhand instanceof Map ? store.offhand : (store.offhand = new Map())
+  // A server can refresh equipment one slot at a time rather than resend the
+  // full window. Count only actual valid observations in this lifecycle.
+  const mainReceived = store.mainReceived instanceof Set ? store.mainReceived : (store.mainReceived = new Set())
+  const armorReceived = store.armorReceived instanceof Set ? store.armorReceived : (store.armorReceived = new Set())
+  function receiveSlots (set, size, name, packet) {
+    if (name === 'inventory_content') {
+      set.clear()
+      if (!Array.isArray(packet.input) || packet.input.length < size || size === 36 && packet.input.length !== 36) return false
+      for (let slot = 0; slot < size; slot++) if (validRaw(packet.input[slot])) set.add(slot)
+    } else if (Number.isInteger(packet.slot) && packet.slot >= 0 && packet.slot < size) {
+      if (validRaw(packet.item)) set.add(packet.slot)
+      else set.delete(packet.slot)
+    }
+    return set.size === size
+  }
   const resolveName = id => crafting.itemNameOf?.(id) ?? null
   // Bedrock also sends a fifth armor/body slot. The previous inspector rejected
   // that full packet by its length, while Armor retained its received slots.
@@ -103,6 +118,7 @@ function createInventoryInspection ({ crafting, armorStore = {}, getChest = () =
   function applyPacket (name, packet, { replaying = false } = {}) {
     if (replaying) return
     if (name === 'start_game' || name === 'change_dimension' || name === 'death_info' || name === 'respawn' && (packet.runtime_entity_id == null || String(packet.runtime_entity_id) === String(getState().runtimeEntityId))) {
+      mainReceived.clear(); armorReceived.clear()
       offhand.clear(); store.offhandKnown = false; store.offhandObservedAt = null
       store.mainInvalidated = true; store.armorInvalidated = true; store.armorObservedAt = null; store.observedAt = null; store.containerObservedAt = null
       store.armorInvalidationSource = 'lifecycle'
@@ -110,12 +126,25 @@ function createInventoryInspection ({ crafting, armorStore = {}, getChest = () =
     if (name === 'inventory_content' || name === 'inventory_slot') {
       if (mainWindow(packet.window_id)) {
         store.observedAt = clock()
-        if (name === 'inventory_content') store.mainInvalidated = !(Array.isArray(packet.input) && packet.input.length === 36 && Array.from({ length: 36 }, (_, slot) => validRaw(packet.input[slot])).every(Boolean))
+        const complete = receiveSlots(mainReceived, 36, name, packet)
+        if (name === 'inventory_content') store.mainInvalidated = !(Array.isArray(packet.input) && packet.input.length === 36 && complete)
+        else if (complete) store.mainInvalidated = false
       } else if (armorWindow(packet.window_id)) {
+        // A rejected armor transaction can separately invalidate the controller.
+        // Do not use earlier coverage to revive its other three cached slots.
+        if (name === 'inventory_slot' && armorStore.known !== true && store.armorInvalidated !== true) {
+          armorReceived.clear(); store.armorInvalidated = true; store.armorInvalidationSource = 'controller'
+        }
         store.armorObservedAt = clock()
+        const complete = receiveSlots(armorReceived, 4, name, packet)
         if (name === 'inventory_content') {
-          store.armorInvalidated = !(Array.isArray(packet.input) && packet.input.length >= 4 && Array.from({ length: 4 }, (_, slot) => validRaw(packet.input[slot])).every(Boolean))
+          store.armorInvalidated = !(Array.isArray(packet.input) && packet.input.length >= 4 && complete)
           store.armorInvalidationSource = store.armorInvalidated ? 'incomplete_window' : null
+        } else if (complete) {
+          // Armor applies the same raw packet after this observer; all four
+          // pieces now have current-life evidence, not pre-respawn leftovers.
+          store.armorInvalidated = false; store.armorInvalidationSource = null
+          armorStore.known = true
         }
       }
       else if (offhandWindow(packet.window_id)) {

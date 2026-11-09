@@ -185,3 +185,50 @@ test('Bedrock five-slot armor windows confirm the four player pieces without exp
   f.inspection.applyPacket('inventory_content', { window_id: 'armor', input: [item(47), air(), air()] })
   assert.equal(f.inspection.snapshot().armor.known, false)
 })
+
+for (const part of ['armor', 'inventory']) test(`inspection restores ${part} only after every current-life slot was actually received`, () => {
+  const f = fixture({ armorStore: { known: false, worn: new Map() } })
+  f.inspection.applyPacket('start_game', {})
+  const count = part === 'armor' ? 4 : 36
+  const view = () => part === 'armor' ? f.inspection.snapshot().armor : f.inspection.snapshot()
+  for (let i = 0; i < count; i++) {
+    // Match runtime order: inspector sees the actual packet; controller stores it.
+    f.inspection.applyPacket('inventory_slot', { window_id: part, slot: i, item: air() })
+    if (part === 'armor') f.armorStore.worn.set(i, air())
+    else f.main[i] = air()
+    assert.equal(view().known, i === count - 1, `only ${i + 1}/${count} slots received`)
+  }
+  assert.ok(view().slots.every(s => s.known && s.empty))
+})
+
+test('inspection never combines armor receipts across death, foreign windows or replayed packets', () => {
+  const f = fixture({ armorStore: { known: true, worn: new Map(Array.from({ length: 4 }, (_, i) => [i, air()])) } })
+  f.inspection.applyPacket('death_info', {})
+  for (let slot = 0; slot < 3; slot++) f.inspection.applyPacket('inventory_slot', { window_id: 120, slot, item: air() })
+  f.inspection.applyPacket('respawn', { runtime_entity_id: '123' })
+  f.inspection.applyPacket('inventory_slot', { window_id: 120, slot: 3, item: air() })
+  assert.equal(f.inspection.snapshot().armor.known, false)
+  for (let slot = 0; slot < 3; slot++) {
+    f.inspection.applyPacket('inventory_slot', { window_id: 120, slot, item: air() }, { replaying: true })
+    f.inspection.applyPacket('inventory_slot', { window_id: 'inventory', slot, item: air() })
+  }
+  assert.equal(f.inspection.snapshot().armor.known, false)
+  const reloaded = createInventoryInspection({ crafting: f.crafting, store: f.store, armorStore: f.armorStore, registry, getState: () => f.state })
+  for (let slot = 0; slot < 3; slot++) reloaded.applyPacket('inventory_slot', { window_id: 120, slot, item: air() })
+  assert.equal(reloaded.snapshot().armor.known, true, 'fresh in-scope coverage survives a behavior hot reload')
+})
+
+test('inspection malformed full windows and invalid slot deltas never establish complete armor coverage', () => {
+  const f = fixture({ armorStore: { known: true, worn: new Map(Array.from({ length: 4 }, (_, i) => [i, air()])) } })
+  f.inspection.applyPacket('change_dimension', {})
+  f.inspection.applyPacket('inventory_content', { window_id: 'armor', input: { 0: air(), 1: air(), 2: air(), 3: air() } })
+  f.inspection.applyPacket('inventory_slot', { window_id: 'armor', slot: 3, item: air() })
+  assert.equal(f.inspection.snapshot().armor.known, false)
+  for (let slot = 0; slot < 3; slot++) f.inspection.applyPacket('inventory_slot', { window_id: 'armor', slot, item: air() })
+  assert.equal(f.inspection.snapshot().armor.known, true)
+  f.inspection.applyPacket('death_info', {})
+  for (let slot = 0; slot < 4; slot++) f.inspection.applyPacket('inventory_slot', { window_id: 'armor', slot, item: slot === 2 ? { network_id: 0 } : air() })
+  assert.equal(f.inspection.snapshot().armor.known, false, 'malformed raw data is not an empty slot')
+  f.inspection.applyPacket('inventory_slot', { window_id: 'armor', slot: 2, item: air() })
+  assert.equal(f.inspection.snapshot().armor.known, true)
+})
