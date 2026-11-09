@@ -40,3 +40,14 @@ test('a batch never strands its stance on a pillar above the cave', async () => 
   const neighbours = [st.x - 1, st.x + 1].filter(x => x >= 0 && x <= 2 && !removed.has(x))
   assert.ok(neighbours.length >= 1, 'the stance is not left alone on a pillar: ' + JSON.stringify({ stance: st, targets: decision.targets.map(c => c.position) }))
 })
+
+test('reopenWorkLayer is refused unless paused and needs a box at or above the new layer', async () => {
+  const { createQuarryJob } = require('../src/quarry-job')
+  const { createSim, flatTerrain } = require('./helpers/quarry-sim')
+  const sim = createSim({ loaded: { xMin: -4, xMax: 20, yMin: 50, yMax: 70, zMin: -4, zMax: 20 } })
+  flatTerrain(sim, { x1: -4, x2: 20, z1: -4, z2: 20, bedrock: 50, stoneTop: 61, top: 62 })
+  sim.setFeet({ x: -1, y: 63, z: 0 }); sim.give('diamond_pickaxe'); sim.give('dirt', 192)
+  const job = createQuarryJob({ adapter: sim.adapter, storage: { save: async () => {} }, pollMs: 5 })
+  job.plan({ jobId: 'reopen', target: { chunks: [{ x: 0, z: 0 }] }, yTop: 62, yBottom: 55, worldMinY: 50, worldMaxY: 70, inventory: { carryOnly: true } })
+  await assert.rejects(() => job.reopenWorkLayer({ y: 61, box: { xMin: 0, xMax: 3, yMin: 61, yMax: 61, zMin: 0, zMax: 3 } }), /paused/)
+})
