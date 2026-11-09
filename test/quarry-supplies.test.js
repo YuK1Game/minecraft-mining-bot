@@ -261,3 +261,18 @@ test('a pickaxe whose uses are all reserved for the exit is kept and one more is
   const after = supplyNeeds([...items, { slot: 5, name: 'minecraft:diamond_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 1561, maxDurability: 1561 }], { miningExhausted: ['pickaxe'] })
   assert.equal(after.missing.pickaxe, 0)
 })
+
+test('a partly used box in its supply colour still binds; an uncoloured partial box never does', () => {
+  const colours = { diamond_pickaxe: 'blue', diamond_shovel: 'light_blue', bread: 'yellow', dirt: 'brown' }
+  const partial = (b, keep) => { b.raw.extra.nbt.nbt.value.Items.value.value.splice(keep); return b }
+  const make = () => [...Array.from({ length: 8 }, (_, slot) => box(slot)), ...Object.entries(colours).map(([name, colour], i) => ({ ...box(20 + i, name), name: `minecraft:${colour}_shulker_box` }))]
+  const items = make()
+  partial(items[8], 26) // one pickaxe taken from the blue box
+  partial(items[11], 3) // most dirt taken from the brown box
+  const result = discoverSupplyBindings(items, { resolveName: id => names.get(id) })
+  assert.equal(result.ok, true, JSON.stringify(result.reason))
+  assert.deepEqual(result.bindings.map(b => b.role), ['pickaxe', 'shovel', 'food', 'dirt'])
+  // The same partial dirt box without the supply colour is not a supply.
+  const other = make(); other[11] = partial({ ...box(23, 'dirt') }, 3)
+  assert.equal(discoverSupplyBindings(other, { resolveName: id => names.get(id) }).ok, false)
+})
