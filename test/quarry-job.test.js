@@ -265,9 +265,9 @@ test('T14 containers and spawners are left with a reason', async () => {
   j.start()
   const s = await runUntilStopped(j)
   assert.equal(sim.world.name(10, 62, 10), 'chest'); assert.equal(sim.world.name(3, 61, 12), 'mob_spawner')
-  assert.equal(sim.world.name(10, 61, 10), 'stone', 'support under a protected block stays')
+  assert.equal(sim.world.name(10, 61, 10), 'air', 'a chest does not fall, so the stone under it is mined (2026-11-10)')
   const reasons = Object.fromEntries(s.result.pauseDetails.exceptions.filter(e => e.position).map(e => [e.position, e.reason]))
-  assert.equal(reasons['10,62,10'], 'CONTAINER_OR_FACILITY'); assert.equal(reasons['3,61,12'], 'SPAWNER_OR_TRIAL'); assert.equal(reasons['10,61,10'], 'SUPPORTS_PROTECTED')
+  assert.equal(reasons['10,62,10'], 'CONTAINER_OR_FACILITY'); assert.equal(reasons['3,61,12'], 'SPAWNER_OR_TRIAL'); assert.equal(reasons['10,61,10'], undefined)
 })
 
 test('live case: no pickaxe digs the soft layers, then waits for a tool instead of finishing', async () => {

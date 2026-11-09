@@ -37,7 +37,9 @@ const RESULT = new Set(['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS', 'PAUSED', 'CAN
 // Deferrals that are planned exclusions, not exceptions (§16.3).
 const PLANNED_EXCLUSIONS = new Set(['UNBREAKABLE'])
 const TOOL_WAIT = new Set(['WAITING_FOR_TOOL', 'TOOL_DURABILITY_RESERVE', 'TOOL_DURABILITY_UNKNOWN', 'TOOL_NOT_IN_HOTBAR'])
-const TRANSIENT_DEFER = ['UNREACHABLE', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK']
+// SUPPORTS_PROTECTED is re-evaluated too: since 2026-11-10 only falling or
+// owned protected blocks keep their support, so older holds under ores are released.
+const TRANSIENT_DEFER = ['UNREACHABLE', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK', 'SUPPORTS_PROTECTED']
 
 class QuarryInterrupt extends Error { constructor (code, message) { super(message ?? code); this.code = code } }
 

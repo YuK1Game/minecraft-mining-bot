@@ -40,9 +40,19 @@ test('a large water body inside the target still pauses the job', async () => {
   assert.equal(decision.reason, 'LARGE_FLUID_AREA')
 })
 
-test('in-chunk water connected to the outside body is held with its inner neighbours, and no stand touches it', async () => {
+test('leaked water cells inside the chunk are plugged with an ordinary placement first', async () => {
   const f = fixture({ intrusion: true })
   const decision = await f.planner.next({ feet: { x: 12, y: 62, z: 2 }, yTop: 61, tools: f.tools, inventoryItems: f.tools })
+  assert.equal(decision.action, 'seal', JSON.stringify(decision).slice(0, 300))
+  assert.equal(decision.purpose, 'plug')
+  assert.equal(decision.position.x, 15); assert.equal(decision.position.y, 61); assert.ok(decision.position.z >= 0 && decision.position.z <= 5)
+  assert.equal(Object.values(f.planner.exportRecords().deferred).some(v => v.intrusion), false, 'nothing is held while a plug is possible')
+})
+
+test('without a placeable block the leaked water is held with its inner neighbours, and no stand touches it', async () => {
+  const f = fixture({ intrusion: true })
+  const pickOnly = f.tools.filter(t => /pickaxe/.test(t.name))
+  const decision = await f.planner.next({ feet: { x: 12, y: 62, z: 2 }, yTop: 61, tools: pickOnly, inventoryItems: pickOnly })
   assert.equal(decision.action, 'mine', JSON.stringify(decision).slice(0, 400))
   const deferred = f.planner.exportRecords().deferred
   const held = Object.entries(deferred).filter(([, v]) => v.reason === 'LARGE_FLUID_WALL').map(([key]) => key)
@@ -63,4 +73,19 @@ test('in-chunk water linked outward only through unobserved blocks is not held; 
   // Unproven link: the 6 cells are a small known pool, so the existing plug rule applies (never a hold).
   assert.ok(['seal', 'pause'].includes(decision.action), JSON.stringify(decision).slice(0, 300))
   assert.equal(Object.values(f.planner.exportRecords().deferred).some(v => v.reason === 'LARGE_FLUID_WALL'), false)
+})
+
+test('stone under an ore is mined normally (only non-ore protected blocks keep their support)', async () => {
+  const blocks = new Map(); const k = (x, y, z) => `${x},${y},${z}`
+  blocks.set(k(5, 61, 5), { known: true, position: { x: 5, y: 61, z: 5 }, name: 'minecraft:iron_ore', boundingBox: 'block', runtimeId: 7, properties: {}, extra: [] })
+  blocks.set(k(5, 60, 5), { known: true, position: { x: 5, y: 60, z: 5 }, name: 'minecraft:stone', boundingBox: 'block', runtimeId: 2, properties: {}, extra: [], diggable: true })
+  // Layers 61 and 60 are dug out except the ore and the stone under it; 59 and below are stone.
+  const read = (x, y, z) => blocks.get(k(x, y, z)) ?? { known: true, position: { x, y, z }, name: y <= 59 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y <= 59 ? 'block' : 'empty', runtimeId: y <= 59 ? 2 : 0, properties: {}, extra: [], diggable: true }
+  const regions = buildRegions({ target: { chunks: [{ x: 0, z: 0 }] }, yTop: 61, yBottom: 55, worldMinY: 50, worldMaxY: 80, travelRegion: [{ xMin: -3, xMax: 15, yMin: 50, yMax: 80, zMin: -3, zMax: 20 }] })
+  const planner = createQuarryPlanner({ regions, getBlock: read, records: { deferred: {} }, exit: { mode: 'adjacent_pillar' } })
+  const tools = [{ slot: 0, name: 'minecraft:diamond_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 1000, maxDurability: 1561 }]
+  const decision = await planner.next({ feet: { x: 4, y: 60, z: 5 }, yTop: 61, tools, inventoryItems: tools })
+  assert.equal(decision.action, 'mine', JSON.stringify(decision).slice(0, 300))
+  assert.ok(decision.targets.some(t => t.position.x === 5 && t.position.y === 60 && t.position.z === 5), JSON.stringify(decision.targets.map(t => t.position)))
+  assert.equal(planner.exportRecords().deferred['5,60,5'], undefined)
 })
