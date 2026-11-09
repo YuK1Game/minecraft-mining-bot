@@ -39,6 +39,7 @@ const PLANNED_EXCLUSIONS = new Set(['UNBREAKABLE'])
 const TOOL_WAIT = new Set(['WAITING_FOR_TOOL', 'TOOL_DURABILITY_RESERVE', 'TOOL_DURABILITY_UNKNOWN', 'TOOL_NOT_IN_HOTBAR'])
 // SUPPORTS_PROTECTED is re-evaluated too: since 2026-11-10 only falling or
 // owned protected blocks keep their support, so older holds under ores are released.
+const CAVE_RATIO = 0.2, CAVE_RUN = 24, CAVE_UNKNOWN_RATIO = 0.1 // plan-time cave limits
 const REOPEN_UNREACHABLE = 64 // UNREACHABLE cells below the work layer that mark a completion as a misjudgment
 const TRANSIENT_DEFER = ['UNREACHABLE', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK', 'SUPPORTS_PROTECTED']
 
@@ -57,6 +58,7 @@ function defaults (config = {}) {
     worldMinY: c.worldMinY ?? -64,
     worldMaxY: c.worldMaxY ?? 319,
     allowExceptions: c.allowExceptions === true,
+    allowCaves: c.allowCaves === true,
     exit,
     permissions: { infrastructureRegion: [], protectedRegion: [], travelRegion: null, ...(c.permissions ?? {}) },
     boundarySeal: { enabled: true, horizontalMargin: 1, ...(c.boundarySeal ?? {}) },
@@ -231,6 +233,27 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const top = Math.min(regs.worldMaxY, Math.max(...ys, (regs.yTop ?? regs.worldMaxY - 4) + 4))
     return [{ xMin: Math.min(...xs), xMax: Math.max(...xs), yMin: Math.max(regs.worldMinY, Math.min(...lows)), yMax: top, zMin: Math.min(...zs), zMax: Math.max(...zs) }]
   }
+  // Air below the surface inside the target columns. The surface of a column
+  // is its highest non-air block at or under yTop; air under it is cave.
+  function surveyCaves (regs, yTop, read) {
+    let air = 0, known = 0, unknown = 0, longestRun = 0
+    for (const col of regs.columns) {
+      const [x, z] = col.split(',').map(Number)
+      let surface = null, run = 0
+      for (let y = yTop; y >= regs.yBottom; y--) {
+        const b = read(x, y, z)
+        if (b?.known !== true) { unknown++; run = 0; continue }
+        const isAir = AIR.has(nameOf(b))
+        if (surface === null) { if (!isAir) surface = y; continue }
+        known++
+        if (isAir) { air++; run++; longestRun = Math.max(longestRun, run) } else run = 0
+      }
+    }
+    const ratio = known ? Math.round(air / known * 1000) / 1000 : 0
+    const unknownRatio = known + unknown ? Math.round(unknown / (known + unknown) * 1000) / 1000 : 0
+    return { air, known, unknown, ratio, unknownRatio, longestRun, high: ratio > CAVE_RATIO || longestRun >= CAVE_RUN }
+  }
+
   function planExitPreview (config, regs, yTop, state, inv) {
     const read = planningBlocks(config); let unknown = false
     const result = planQuarryExit({ regions: regs, yTop, feet: feetCell(state), getBlock: (x, y, z) => { const b = read(x, y, z); if (b?.known !== true) unknown = true; return b }, inventory: inv, policy: { ...config.tools, ...config.collection }, exit: config.exit, preflight: true })
@@ -335,8 +358,20 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         } else warnings.push({ code: exitPreflight.unknown ? 'EXIT_PREFLIGHT_PROVISIONAL' : 'EXIT_PREFLIGHT_' + String(exitPreflight.reason ?? 'FAILED').replace(/^EXIT_/, ''), reason: exitPreflight.reason })
       }
     }
+    // Cave check at plan time (received blocks only): open air below the
+    // surface inside the box is a cave the layer-by-layer digging cannot cross
+    // (live 2026-11-10: chunk (-2,0) was a 40-deep cave from Y21). A large cave
+    // refuses the plan unless allowCaves is set; unknown cells only warn.
+    let caveSurvey = null
+    if (yTop !== null) {
+      caveSurvey = surveyCaves(regs, yTop, planningBlocks(config))
+      if (caveSurvey.high) {
+        if (config.allowCaves) warnings.push({ code: 'CAVE_VOLUME_HIGH', ratio: caveSurvey.ratio, longestRun: caveSurvey.longestRun, overridden: true })
+        else issues.push('CAVE_VOLUME_HIGH')
+      } else if (caveSurvey.unknownRatio > CAVE_UNKNOWN_RATIO) warnings.push({ code: 'CAVE_VOLUME_PROVISIONAL', unknownRatio: caveSurvey.unknownRatio })
+    }
     const sealCells = regs.seal.ready ? regs.seal.columns.size * (regs.seal.yMax - regs.seal.yMin + 1) : 0
-    const summary = { ready: issues.length === 0, issues, warnings, jobId: config.jobId, chunks: regs.chunks, yTop, yTopProvisional: unknownAbove > 0, yBottom: regs.yBottom, columns: regs.columns.size, counts, survey, stair, exitPreflight, boundarySeal: { enabled: regs.seal.enabled, ready: regs.seal.ready, columns: regs.seal.columns.size, yMin: regs.seal.yMin, yMax: regs.seal.yMax, cells: sealCells, placementOnly: true }, travelRegion: regs.travel, storage: storageList }
+    const summary = { ready: issues.length === 0, issues, warnings, jobId: config.jobId, chunks: regs.chunks, yTop, yTopProvisional: unknownAbove > 0, yBottom: regs.yBottom, columns: regs.columns.size, counts, survey, stair, exitPreflight, caveSurvey, boundarySeal: { enabled: regs.seal.enabled, ready: regs.seal.ready, columns: regs.seal.columns.size, yMin: regs.seal.yMin, yMax: regs.seal.yMax, cells: sealCells, placementOnly: true }, travelRegion: regs.travel, storage: storageList }
     job = { config, instanceId: randomUUID(), world: worldIdentity(state), actionSequence: 0, state: 'IDLE', planned: summary, yTop, cursorY: yTop, deepestY: yTop, records: { stair }, ledger: {}, userRunIntent: 'idle', result: null, pauseReason: null, interruption: null, checkpoint: null, actions: [], deaths: [], startedAt: null, scope: null, life: null }
     regions = regs; planner = pl; ledger = createLedger()
     return copy(summary)
@@ -2653,6 +2688,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   function emergencyStop () { return stopJob('stopped', 'EMERGENCY_STOP') }
   function cancel () { return stopJob('cancelled', 'MANUAL_CANCEL', 'CANCELLED') }
 
+  // Operator record of a debug action taken outside the job (e.g. a /tp
+  // rescue). It changes nothing but the job log. Paused jobs only.
+  async function recordDebugAction ({ kind, details = {} } = {}) {
+    if (!job || job.state !== 'PAUSED' || worker) throw new Error('Recording a debug action requires a fully paused quarry')
+    if (typeof kind !== 'string' || !/^[a-z_]{3,40}$/.test(kind)) throw new Error('kind must be a short snake_case label')
+    note('debug_action', { kind, details: copy(details) })
+    await save('debug_action')
+    return { recorded: true, kind }
+  }
+
   // Operator-only exception to "never go back to earlier layers": move the
   // work layer up to y and reopen EARLIER_LAYER_LEFTOVER cells only inside the
   // given box (the way down from a rescue stand). Paused jobs only.
@@ -2778,7 +2823,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, reopenWorkLayer, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
+  return { plan, start, pause, emergencyStop, resume, cancel, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults }
