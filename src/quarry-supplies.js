@@ -48,9 +48,12 @@ function storageSupplyExclusions (bindings) {
   return [...new Set((bindings ?? []).filter(binding => ROLES.includes(binding.role) && typeof binding.key === 'string').map(binding => binding.key))]
 }
 
-function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true } = {}) {
+function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true, miningExhausted = [] } = {}) {
   const main = (items ?? []).filter(item => Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && item.count > 0)
   const desired = { pickaxe: 1, shovel: 1, food: foodEnabled ? keepFood : 0, dirt: keepExitDirt + keepSealBlocks }
+  // A tool whose remaining uses are all reserved for the exit still counts as
+  // carried (it is kept for the exit), so one more of that kind is wanted.
+  for (const kind of Array.isArray(miningExhausted) ? miningExhausted : []) if (kind === 'pickaxe' || kind === 'shovel') desired[kind] = 2
   const available = { pickaxe: 0, shovel: 0, food: 0, dirt: 0 }, returns = []
   for (const item of main) {
     const kind = toolOf(item)?.kind

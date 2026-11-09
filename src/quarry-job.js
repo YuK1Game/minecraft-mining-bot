@@ -958,7 +958,17 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     const exitUses = miningUsesAfterExitReserve(tool, beforeDispatch, job.exitReservation?.plan, job.config.tools)
     if (exitUses < plannedTargets.length) plannedTargets = plannedTargets.slice(0, exitUses)
-    if (!plannedTargets.length) return finish('PAUSED', 'EXIT_TOOL_RESERVE', { pauseDetails: { tool: tool.name, reservedUses: job.exitReservation?.plan?.toolUses ?? [] } })
+    if (!plannedTargets.length) {
+      // Every remaining use of this tool is kept for the exit: fetch one more of
+      // the same kind from its supply box (once), then mine with the fresh one.
+      if (job.config.inventory.supplyBoxes?.length && ['pickaxe', 'shovel'].includes(tool.kind) && !job.miningExhaustedTried) {
+        job.miningExhausted = [tool.kind]; job.miningExhaustedTried = true
+        if (await restock(myEpoch, 'SURVEY', true)) return
+      }
+      job.miningExhausted = null
+      return finish('PAUSED', 'EXIT_TOOL_RESERVE', { pauseDetails: { tool: tool.name, reservedUses: job.exitReservation?.plan?.toolUses ?? [] } })
+    }
+    job.miningExhausted = null; job.miningExhaustedTried = false
     if (prepared) job.miningEquipmentPending = false
     // Re-plan from the actual stance; the world may have changed while moving.
     setState('MINE')
@@ -1612,7 +1622,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!bindings?.length && !job.supplyRestock) return false
     if (job.portableStorage) return false
     if (!validSupplyBindings(bindings) || typeof adapter.restockSupplies !== 'function') { await finish('PAUSED', 'SUPPLY_UNSUPPORTED'); return true }
-    const inventory = items(guard(myEpoch)), policy = { ...job.config.inventory, tools: job.config.tools }
+    const inventory = items(guard(myEpoch)), policy = { ...job.config.inventory, tools: job.config.tools, ...(job.miningExhausted ? { miningExhausted: copy(job.miningExhausted) } : {}) }
     if (!inventory && !job.supplyRestock) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
     const need = supplyNeeds(inventory ?? [], policy)
     const shortage = Object.values(need.required).some(Boolean)

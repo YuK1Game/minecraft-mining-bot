@@ -250,3 +250,14 @@ test('outer recovery without the actual box is rejected and failed binding persi
   assert.equal(f.mutations(), 1)
   assert.equal(result.withdrawn.length, 1)
 })
+
+test('a pickaxe whose uses are all reserved for the exit is kept and one more is wanted', () => {
+  const items = [{ slot: 3, name: 'minecraft:diamond_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 74, maxDurability: 1561 }, { slot: 4, name: 'minecraft:diamond_shovel', count: 1, durabilityKnown: true, durabilityRemaining: 1400, maxDurability: 1561 }]
+  assert.equal(supplyNeeds(items).missing.pickaxe, 0)
+  const needs = supplyNeeds(items, { miningExhausted: ['pickaxe'] })
+  assert.equal(needs.missing.pickaxe, 1); assert.equal(needs.required.pickaxe, true)
+  assert.equal(needs.missing.shovel, 0)
+  assert.deepEqual(needs.returns, [], 'the reserved pickaxe is not returned')
+  const after = supplyNeeds([...items, { slot: 5, name: 'minecraft:diamond_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 1561, maxDurability: 1561 }], { miningExhausted: ['pickaxe'] })
+  assert.equal(after.missing.pickaxe, 0)
+})
