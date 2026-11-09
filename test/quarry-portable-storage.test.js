@@ -11,7 +11,7 @@ const extra = () => ({ has_nbt: 'false', can_place_on: [], can_destroy: [] })
 const airItem = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: extra() })
 const item = (id, count, stack) => ({ ...airItem(), network_id: id, count, has_stack_id: true, stack_id: stack })
 const key = p => `${p.x},${p.y},${p.z}`
-const names = new Map([[1, 'minecraft:chest'], [2, 'minecraft:undyed_shulker_box'], [3, 'minecraft:dirt'], [4, 'minecraft:stone']])
+const names = new Map([[1, 'minecraft:chest'], [2, 'minecraft:undyed_shulker_box'], [3, 'minecraft:dirt'], [4, 'minecraft:stone'], [5, 'minecraft:grass_block']])
 
 function carriedBox (slots, stackId, { wrongContents = false, missingNBT = false } = {}) {
   const raw = item(2, 1, stackId)
@@ -88,7 +88,7 @@ function fixture (kind = 'shulker', options = {}) {
       return copy(mining)
     },
     getMining: () => copy(mining), stopMining: () => { events.push({ type: 'stopMining' }); mining = { phase: 'stopped' } },
-    getEntities: () => [], cancelAction: kind => events.push({ type: 'cancel', kind }), now: () => time, sleep: async ms => { time += ms }
+    getEntities: () => options.entities?.() ?? [], cancelAction: kind => events.push({ type: 'cancel', kind }), now: () => time, sleep: async ms => { time += ms }
   }
   controller = createQuarryPortableStorage(dependencies)
   const request = { jobId: 'job', operationId: 'job:storage:1', selection: selectCarriedStorage(items()), deposits: [{ slot: 0, name: 'minecraft:dirt', count: 8 }], inventoryPolicy: { keepSealBlocks: 0 } }
@@ -276,4 +276,30 @@ test('a short-grass stand accepted by site planning is also accepted when the pl
   assert.equal(result.status, 'completed', JSON.stringify(result)); assert.equal(result.recovered, true)
   assert.equal(f.getBlock(feet.x, feet.y, feet.z).name, 'minecraft:short_grass', 'the plant under the feet is never mined')
   assert.equal(f.events.filter(e => e.type === 'mine').length, 1)
+})
+
+test('nearby loose drops that merge into existing plain stacks do not block recovering the box; new kinds still need a slot', async () => {
+  for (const kind of ['dirt', 'grass']) {
+    const drops = [0, 1, 2].map(i => ({ kind: 'item', alive: true, dimension: 'overworld', positionKnown: true, position: { x: 1.5, y: 65, z: 0.5 + i * 0.2 }, count: 1, runtimeId: String(500 + i), uniqueId: String(-500 - i), networkId: kind === 'dirt' ? 3 : 5, name: kind === 'dirt' ? 'minecraft:dirt' : 'minecraft:grass_block' }))
+    const f = fixture('shulker', { entities: () => copy(drops) })
+    for (let slot = 1; slot < 36; slot++) if (slot !== 14) f.bag[slot] = item(4, 64, 1000 + slot) // a full inventory: only the box slot frees up
+    const result = await f.run()
+    if (kind === 'dirt') {
+      assert.equal(result.status, 'completed', JSON.stringify(result.details ?? result.reason)); assert.equal(result.recovered, true)
+    } else {
+      assert.equal(result.status, 'blocked'); assert.equal(result.reason, 'STORAGE_PICKUP_CAPACITY_REQUIRED')
+      assert.equal(f.events.some(e => e.type === 'mine'), false, 'the box is not broken without room')
+    }
+  }
+})
+
+test('a storage stand with fewer loose drops in pickup reach is preferred over the nearest one', async () => {
+  const drops = [0, 1, 2].map(i => ({ kind: 'item', alive: true, dimension: 'overworld', positionKnown: true, position: { x: -2.5, y: 65, z: 0.5 + i * 0.3 }, count: 1, runtimeId: String(600 + i), uniqueId: String(-600 - i), networkId: 5, name: 'minecraft:grass_block' }))
+  const plain = await fixture('shulker').run()
+  assert.equal(plain.status, 'completed'); assert.deepEqual(plain.checkpoint.stand, { x: 0, y: 65, z: 0 }, 'without drops the current footing is kept')
+  const f = fixture('shulker', { entities: () => copy(drops) }), result = await f.run()
+  assert.equal(result.status, 'completed', JSON.stringify(result.reason))
+  const s = result.checkpoint.stand
+  assert.ok(Math.hypot(-2.5 - s.x - 0.5, 0.8 - s.z - 0.5) > 3.5, JSON.stringify(s))
+  assert.ok(f.events.some(e => e.type === 'move'))
 })

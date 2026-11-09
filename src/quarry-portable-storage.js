@@ -238,6 +238,9 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     if (Math.abs(Math.abs(dx) - Math.abs(dz)) < 0.2) return null
     return Math.abs(dx) > Math.abs(dz) ? `x:${Math.sign(dx)}` : `z:${Math.sign(dz)}`
   }
+  // Loose drops within a stand's pickup reach. Used only to prefer stands
+  // with fewer drops (each one can take the slot the box needs); never a permission.
+  const looseDropsNear = (stand, actors) => Array.isArray(actors) ? actors.filter(a => a.kind === 'item' && a.alive !== false && finite(a.position) && Math.hypot(a.position.x - stand.x - 0.5, a.position.z - stand.z - 0.5) <= 3.5 && Math.abs(a.position.y - stand.y) <= 3.5).length : 0
   function planSite (state, kind, allowed, rejectedPositions = [], exactStand = null, canClear = null) {
     const rejected = new Set(rejectedPositions.map(key)), failures = [], counts = {}
     const reject = detail => { counts[detail.cause] = (counts[detail.cause] ?? 0) + 1; if (failures.length < 8) failures.push(copy(detail)) }
@@ -245,7 +248,9 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     // exactStand is a read-only proposal; route and arrival are checked separately.
     const stands = exactStand ? [copy(exactStand)] : []
     if (!exactStand) for (const dy of [0, 1, -1, 2, -2]) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) if (Math.hypot(dx, dz) <= 3) stands.push({ x: origin.x + dx, y: y + dy, z: origin.z + dz })
-    stands.sort((a, b) => Math.hypot(a.x - origin.x, a.y - origin.y, a.z - origin.z) - Math.hypot(b.x - origin.x, b.y - origin.y, b.z - origin.z))
+    const nearbyActors = kind === 'shulker' ? getEntities() : null, drops = new Map()
+    const dropCount = p => { const k = key(p); if (!drops.has(k)) drops.set(k, looseDropsNear(p, nearbyActors)); return drops.get(k) }
+    stands.sort((a, b) => dropCount(a) - dropCount(b) || Math.hypot(a.x - origin.x, a.y - origin.y, a.z - origin.z) - Math.hypot(b.x - origin.x, b.y - origin.y, b.z - origin.z))
     nextStand: for (const stand of stands) {
       if (allowed(stand) !== true) { reject({ cause: 'STAND_NOT_PERMITTED', position: stand, part: 'stand' }); continue }
       const blockedBody = [stand, { ...stand, y: stand.y + 1 }].find(p => !passableSiteBody(read(p)))
@@ -331,6 +336,26 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       const t = length ? Math.max(0, Math.min(1, ((position.x - a.x) * dx + (position.z - a.z) * dz) / length)) : 0
       return Math.hypot(position.x - a.x - t * dx, position.z - a.z - t * dz) <= margin && position.y >= Math.min(cp.stand.y, cp.positions[0].y) - vertical && position.y <= Math.max(cp.stand.y, cp.positions[0].y) + vertical
     }
+    // Free slots that nearby loose drops can take. Plain 64-stack drops of one
+    // item merge with each other and into existing plain stacks of the same
+    // network id (metadata 0, no NBT or can_place_on/can_destroy); anything
+    // else is still counted as one new slot per drop stack.
+    const dropSlotsNeeded = (items, drops) => {
+      const groups = new Map(); let slots = 0
+      for (const drop of drops) {
+        if (maxStack(drop.name) === 64 && Number.isSafeInteger(drop.networkId)) { const g = groups.get(drop.networkId) ?? { name: drop.name, count: 0 }; g.count += drop.count; groups.set(drop.networkId, g); drop.merge = true }
+        else { drop.slots = Math.max(1, Math.ceil(drop.count / maxStack(drop.name))); slots += drop.slots }
+      }
+      for (const [networkId, g] of groups) {
+        let room = 0
+        for (const item of items) {
+          const r = crafting.rawItem(item.slot)
+          if (r?.network_id === networkId && (r.metadata ?? 0) === 0 && plainStack(r, g.name)) room += 64 - r.count
+        }
+        slots += Math.ceil(Math.max(0, g.count - room) / 64)
+      }
+      return slots
+    }
     const requirePickupRoom = (phase, ownDrop = null) => {
       const current = guard(), actors = getEntities(), drops = []
       let required = 1 // The owned box is never assumed to merge into a stack.
@@ -345,10 +370,9 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         if (!name || !/^minecraft:[a-z0-9_]+$/.test(name) || !Number.isSafeInteger(actor.count) || actor.count < 1 || actor.count > 127 || actor.runtimeId == null || seen.has(String(actor.runtimeId))) fail('STORAGE_PICKUP_CAPACITY_UNCONFIRMED')
         seen.add(String(actor.runtimeId))
         if (ownDrop && String(actor.runtimeId) === String(ownDrop.runtimeId) && String(actor.uniqueId) === String(ownDrop.uniqueId)) continue
-        const slots = Math.max(1, Math.ceil(actor.count / maxStack(name)))
-        required += slots
-        drops.push({ runtimeId: String(actor.runtimeId), name, count: actor.count, slots })
+        drops.push({ runtimeId: String(actor.runtimeId), networkId: actor.networkId, name, count: actor.count })
       }
+      required += dropSlotsNeeded(current.items, drops)
       if (freeSlots(current.items) < required) fail('STORAGE_PICKUP_CAPACITY_REQUIRED')
       return current
     }
