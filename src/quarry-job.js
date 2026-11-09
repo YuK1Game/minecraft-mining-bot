@@ -2652,6 +2652,25 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   function pause (reason = 'MANUAL_PAUSE') { return stopJob('paused', reason) }
   function emergencyStop () { return stopJob('stopped', 'EMERGENCY_STOP') }
   function cancel () { return stopJob('cancelled', 'MANUAL_CANCEL', 'CANCELLED') }
+
+  // Operator-only exception to "never go back to earlier layers": move the
+  // work layer up to y and reopen EARLIER_LAYER_LEFTOVER cells only inside the
+  // given box (the way down from a rescue stand). Paused jobs only.
+  async function reopenWorkLayer ({ y, box, why = null } = {}) {
+    if (!job || job.state !== 'PAUSED' || worker) throw new Error('Reopening a layer requires a fully paused quarry')
+    const n = v => Number.isSafeInteger(v)
+    if (!n(y) || y > job.yTop || y < regions.yBottom || !box || !['xMin', 'xMax', 'yMin', 'yMax', 'zMin', 'zMax'].every(k => n(box[k])) || box.xMin > box.xMax || box.zMin > box.zMax || box.yMin > box.yMax || box.yMin < y) throw new Error('reopenWorkLayer needs { y, box: {xMin,xMax,yMin,yMax,zMin,zMax} } with box.yMin >= y')
+    const inBox = ([x, py, z]) => x >= box.xMin && x <= box.xMax && py >= box.yMin && py <= box.yMax && z >= box.zMin && z <= box.zMax
+    const before = { deepestY: job.deepestY ?? null, cursorY: job.cursorY ?? null }
+    const countBefore = planner.deferredList().length
+    planner.clearDeferred(['EARLIER_LAYER_LEFTOVER'], k => !inBox(k.split(',').map(Number)))
+    const reopened = countBefore - planner.deferredList().length
+    job.deepestY = y; job.cursorY = y
+    if (Number.isSafeInteger(job.lastMineY) && job.lastMineY < y) job.lastMineY = y
+    note('work_layer_reopened', { y, box: copy(box), reopened, before, why })
+    await save('work_layer_reopened')
+    return { y, reopened, before }
+  }
   function acceptExceptions () {
     if (!job || job.state !== 'PAUSED' || job.pauseReason !== 'UNRESOLVED_EXCEPTIONS') throw new Error('No exceptions are waiting for acceptance')
     job.acceptedExceptions = true
@@ -2759,7 +2778,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
+  return { plan, start, pause, emergencyStop, resume, cancel, reopenWorkLayer, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults }

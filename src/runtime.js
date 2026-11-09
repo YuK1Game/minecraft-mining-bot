@@ -5296,6 +5296,7 @@ function createRuntime (host) {
       reconcileRejectedStorage: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileRejectedStorage() },
       reconcileObservedStoragePlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileObservedStoragePlacement() },
       acceptExceptions: () => ensureQuarryJob().acceptExceptions(),
+      reopenWorkLayer: options => ensureQuarryJob().reopenWorkLayer(options ?? {}),
       pause: () => { cancelQuarryRestore(); return quarryJob ? quarryJob.pause('MANUAL_PAUSE') : quarrySnapshot() },
       emergencyStop: () => { cancelQuarryRestore(); return quarryJob ? quarryJob.emergencyStop() : quarrySnapshot() },
       cancel: () => { cancelQuarryRestore(); return quarryJob ? quarryJob.cancel() : quarrySnapshot() },
