@@ -336,23 +336,23 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       const t = length ? Math.max(0, Math.min(1, ((position.x - a.x) * dx + (position.z - a.z) * dz) / length)) : 0
       return Math.hypot(position.x - a.x - t * dx, position.z - a.z - t * dz) <= margin && position.y >= Math.min(cp.stand.y, cp.positions[0].y) - vertical && position.y <= Math.max(cp.stand.y, cp.positions[0].y) + vertical
     }
-    // Free slots that nearby loose drops can take. Plain 64-stack drops of one
-    // item merge with each other and into existing plain stacks of the same
-    // network id (metadata 0, no NBT or can_place_on/can_destroy); anything
-    // else is still counted as one new slot per drop stack.
+    // Free slots that nearby loose drops can take. A plain 64-stack drop with a
+    // known numeric network id only avoids a new slot when it fits entirely in
+    // the remaining room of existing plain stacks (same received name and
+    // network id, metadata 0, no NBT or can_place_on/can_destroy). Drops are
+    // never assumed to merge with each other; anything else costs its own slots.
     const dropSlotsNeeded = (items, drops) => {
-      const groups = new Map(); let slots = 0
-      for (const drop of drops) {
-        if (maxStack(drop.name) === 64 && Number.isSafeInteger(drop.networkId)) { const g = groups.get(drop.networkId) ?? { name: drop.name, count: 0 }; g.count += drop.count; groups.set(drop.networkId, g); drop.merge = true }
-        else { drop.slots = Math.max(1, Math.ceil(drop.count / maxStack(drop.name))); slots += drop.slots }
+      const room = new Map(); let slots = 0
+      for (const item of items) {
+        const r = crafting.rawItem(item.slot)
+        if (!Number.isSafeInteger(r?.network_id) || (r.metadata ?? 0) !== 0 || !plainStack(r, item.name) || fullName(crafting.itemNameOf?.(r.network_id) ?? item.name) !== item.name) continue
+        const k = r.network_id + '|' + item.name
+        room.set(k, (room.get(k) ?? 0) + 64 - r.count)
       }
-      for (const [networkId, g] of groups) {
-        let room = 0
-        for (const item of items) {
-          const r = crafting.rawItem(item.slot)
-          if (r?.network_id === networkId && (r.metadata ?? 0) === 0 && plainStack(r, g.name)) room += 64 - r.count
-        }
-        slots += Math.ceil(Math.max(0, g.count - room) / 64)
+      for (const drop of drops) {
+        const k = drop.networkId + '|' + drop.name, left = room.get(k) ?? 0
+        if (Number.isSafeInteger(drop.networkId) && maxStack(drop.name) === 64 && left >= drop.count) { room.set(k, left - drop.count); drop.merge = true; continue }
+        drop.slots = Math.max(1, Math.ceil(drop.count / maxStack(drop.name))); slots += drop.slots
       }
       return slots
     }
@@ -707,7 +707,10 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
             // stack): close this entry at what was really transferred instead of
             // retrying the same stale plan forever. Nothing moves; markers and
             // recovery-space entries keep their strict failure.
-            if (!item && !entry.capacityMarker && !entry.recoverySpace && cp.intent == null) { entry.count = entry.transferred; entry.surplusGone = true; await save(); break }
+            if (!item && !entry.capacityMarker && !entry.recoverySpace && cp.intent == null && maxStack(entry.name) === 64) {
+              const same = current.items.filter(other => other.name === entry.name && matches(other.raw, entry.identity))
+              if (same.length && same.every(other => plainStack(other.raw, entry.name) && (other.raw.metadata ?? 0) === 0 && other.durabilityApplicable !== true && !(other.enchantments?.length) && other.count <= (kept.get(other.slot) ?? 0))) { entry.count = entry.transferred; entry.surplusGone = true; await save(); break }
+            }
             if (!item) throw failure('STORAGE_SURPLUS_CHANGED')
             if (entry.recoverySpace && ((kept.get(item.slot) ?? 0) !== 0 || item.count !== entry.count - entry.transferred)) throw failure('STORAGE_SURPLUS_CHANGED')
             const known = chest.snapshot()
