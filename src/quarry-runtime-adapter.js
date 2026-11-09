@@ -194,10 +194,13 @@ function createQuarryRuntimeAdapter (ports) {
     const preview = await previewMining(open.map(toTarget), signal, 100, previewDeadline)
     if (!preview?.ready) return false
     await mining.start(open.map(toTarget))
-    let current = null; let since = now()
+    let current = null; let since = now(); const cleared = new Set()
     await waitFor(signal, 'quarry mine', mineTimeoutMs * open.length, () => {
       const m = getMining()
       if (['failed', 'stopped'].includes(m?.phase)) throw new Error(m.reason ?? 'mining stopped')
+      // A cell seen as air that fills again (gravel/sand falling from above) was
+      // really broken: its slow-break clock restarts instead of accumulating.
+      for (const t of open) { const k = `${t.x},${t.y},${t.z}`; if (isAir(t)) cleared.add(k); else if (cleared.delete(k) && t === current) since = now() }
       const next = open.find(t => !isAir(t))
       if (next !== current) { current = next; since = now() }
       if (next) { const limit = slowLimitMs(getBlock(next.x, next.y, next.z), next); if (now() - since > limit) throw slowBreak(next, now() - since, limit) }
@@ -219,8 +222,9 @@ function createQuarryRuntimeAdapter (ports) {
       const preview = await previewMining([target], signal, 150, previewDeadline)
       if (!preview?.ready) throw new Error(`quarry mining preview refused: ${preview?.errors?.join(' / ') ?? 'not ready'}`)
       await mining.start([target])
-      const since = now(); const limit = slowLimitMs(getBlock(t.x, t.y, t.z), t)
+      let since = now(), sawAir = false; const limit = slowLimitMs(getBlock(t.x, t.y, t.z), t)
       await waitFor(signal, 'quarry mine', mineTimeoutMs, () => {
+        if (isAir(t)) sawAir = true; else if (sawAir) { sawAir = false; since = now() } // refilled by a falling block
         if (now() - since > limit && !isAir(t)) throw slowBreak(t, now() - since, limit)
         const m = getMining()
         if (['failed', 'stopped'].includes(m?.phase)) throw new Error(m.reason ?? 'mining stopped')
