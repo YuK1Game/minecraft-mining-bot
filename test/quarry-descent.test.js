@@ -62,3 +62,24 @@ test('a large whole layer out of reach from a wider island is not written off ei
   assert.ok(decision.action === 'pause' ? decision.reason === 'DESCENT_REQUIRED' : decision.action === 'mine', JSON.stringify(decision).slice(0, 300))
   assert.ok(written < 16, 'no large layer is written off: ' + written)
 })
+
+test('plan refuses a target with a large cave below the surface unless allowCaves is set', () => {
+  const { createQuarryJob } = require('../src/quarry-job')
+  const { createSim, flatTerrain } = require('./helpers/quarry-sim')
+  const make = (cave) => {
+    const sim = createSim({ loaded: { xMin: -4, xMax: 20, yMin: 50, yMax: 80, zMin: -4, zMax: 20 } })
+    flatTerrain(sim, { x1: -4, x2: 20, z1: -4, z2: 20, bedrock: 50, stoneTop: 69, top: 70 })
+    if (cave) for (let x = 2; x <= 13; x++) for (let z = 2; z <= 13; z++) for (let y = 52; y <= 66; y++) sim.world.set(x, y, z, 'air')
+    sim.setFeet({ x: -1, y: 71, z: 0 }); sim.give('diamond_pickaxe'); sim.give('dirt', 192); sim.give('purple_shulker_box', 2)
+    return createQuarryJob({ adapter: sim.adapter, storage: { save: async () => {} }, pollMs: 5 })
+  }
+  const base = { target: { chunks: [{ x: 0, z: 0 }] }, yTop: 'auto', yBottom: 51, worldMinY: 50, worldMaxY: 80, inventory: { carryOnly: true } }
+  const solid = make(false).plan({ ...base, jobId: 'cave-solid' })
+  assert.ok(!solid.issues.includes('CAVE_VOLUME_HIGH'), JSON.stringify(solid.caveSurvey))
+  const refused = make(true).plan({ ...base, jobId: 'cave-big' })
+  assert.ok(refused.issues.includes('CAVE_VOLUME_HIGH'), JSON.stringify(refused.caveSurvey))
+  assert.ok(refused.caveSurvey.ratio > 0.2 && refused.caveSurvey.longestRun >= 15)
+  const allowed = make(true).plan({ ...base, jobId: 'cave-allowed', allowCaves: true })
+  assert.ok(!allowed.issues.includes('CAVE_VOLUME_HIGH'))
+  assert.ok(allowed.warnings.some(w => w.code === 'CAVE_VOLUME_HIGH' && w.overridden))
+})
