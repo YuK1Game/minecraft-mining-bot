@@ -21,7 +21,7 @@ function fixture (options = {}) {
   view.armor.slots[0] = item('minecraft:iron_helmet')
   view.offhand.slots[0] = item('minecraft:shield')
   const blocks = new Map(), key = p => `${p.x},${p.y},${p.z}`, commandsSent = [], saves = [], calls = []
-  let time = 10000, generation = 1, job = 'test:PAUSED', selected = 0, lease = null, open = null, stored = options.prior ?? null
+  let time = 10000, generation = 1, job = 'test:PAUSED', selected = options.serverSlot ?? 0, lease = null, open = null, stored = options.prior ?? null
   const hooks = { beforeSend: null, afterSend: null, save: null, ...options.hooks }
   const blockAt = (x, y, z) => blocks.get(key({ x, y, z })) ?? { known: true, name: y < 64 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y < 64 ? 'block' : 'empty', extra: [] }
   function setItem (slots, slot, name, count) { slots[slot] = name === 'minecraft:air' ? empty(slot) : item(name, count, {}, slot) }
@@ -38,7 +38,13 @@ function fixture (options = {}) {
         else if (where === 'slot.inventory') setItem(view.slots, slot + 9, name, count)
         else if (where === 'slot.weapon.offhand') setItem(view.offhand.slots, slot, name, count)
         else setItem(view.armor.slots, ['head', 'chest', 'legs', 'feet'].indexOf(where.replace('slot.armor.', '')), name, count)
-      } else if (text.startsWith('/enchant')) view.slots[selected].enchantments.push({ name: args[2], level: Number(args[3]) })
+      } else if (text.startsWith('/testfor @s[hasitem=')) {
+        const name = /item=(minecraft:[a-z_]+)/.exec(text)[1]
+        if (view.slots[selected]?.empty || view.slots[selected]?.name !== name || view.slots[selected]?.count !== 1) throw Object.assign(Error('commands.testfor.failure'), { code: 'RESET_COMMAND_REJECTED', messageId: 'commands.testfor.failure', serverRejected: true })
+      } else if (text.startsWith('/enchant')) {
+        if (view.slots[selected]?.empty) throw Object.assign(Error('commands.enchant.noItem'), { code: 'RESET_COMMAND_REJECTED', messageId: 'commands.enchant.noItem' })
+        view.slots[selected].enchantments.push({ name: args[2], level: Number(args[3]) })
+      }
       else if (text.startsWith('/setblock')) {
         const p = { x: Number(args[1]), y: Number(args[2]), z: Number(args[3]) }
         assert.equal(blockAt(p.x, p.y, p.z).name, 'minecraft:air', 'never overwrite staging terrain')
@@ -94,6 +100,6 @@ function fixture (options = {}) {
   }
   const reset = createLoadoutReset({ adapter, commands, now: () => time, sleep: async ms => { time += ms }, observationTimeoutMs: 100 })
   const start = async () => { const p = await reset.prepare(); return reset.start({ token: p.token, confirm: 'REPLACE_INITIAL_INVENTORY' }) }
-  return { reset, start, adapter, commands, state, view, blocks, saves, calls, hooks, commandsSent, time: n => { time += n }, generation: () => { generation++ }, job: v => { job = v }, lease: () => lease }
+  return { reset, start, adapter, commands, state, view, blocks, saves, calls, hooks, commandsSent, selected: () => selected, setSelected: i => { selected = i }, time: n => { time += n }, generation: () => { generation++ }, job: v => { job = v }, lease: () => lease }
 }
 module.exports = { fixture, item, empty }

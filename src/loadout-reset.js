@@ -132,10 +132,32 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
     if (after?.offhand?.known !== true || !after.offhand.slots?.[0]?.known) missing.push('オフハンド')
     throw fail('RESET_OBSERVATION_UNCONFIRMED', `受信確認がタイムアウトしました: ${missing.join('・')}`)
   }
+  async function selectConfirmedHand (slot, item) {
+    const probe = `/testfor @s[hasitem={item=${item.name},location=slot.weapon.mainhand,quantity=1}]`
+    for (let attempt = 0; attempt < 3; attempt++) {
+      guard()
+      const observed = adapter.getView().slots[slot]
+      if (!observed?.known || observed.empty || observed.name !== item.name || observed.count !== 1) throw fail('RESET_HAND_CHANGED', '手持ちにする道具が変わりました。')
+      await checkpoint('道具を選択', { pending: { type: 'selection', slot, name: item.name } })
+      await adapter.select(slot, { signal: abort.signal }); guard()
+      try {
+        // Own mob_equipment is not necessarily echoed. Query the actual server
+        // main hand instead of treating our cached selection/send as a receipt.
+        await command(probe, '手持ちを確認')
+        return
+      } catch (error) {
+        // Only an explicit negative answer to this read-only probe may retry.
+        // No timeout, permission failure, mutation or enchant is auto-repeated.
+        if (error.code !== 'RESET_COMMAND_REJECTED' || error.serverRejected !== true || !['commands.generic.noTargetMatch', 'commands.testfor.failure'].includes(error.messageId)) throw error
+        if (attempt === 2) throw fail('RESET_HAND_UNCONFIRMED', 'サーバー側の手持ちを確認できません。道具の選択で停止しました。')
+        await sleep(100)
+      }
+    }
+  }
   async function heldItem (item) {
     await command(`/replaceitem entity @s slot.hotbar 0 ${item.name} ${item.count}`, '道具を準備')
     await waitFor(() => adapter.getView().slots[0]?.name === item.name && adapter.getView().slots[0]?.count === item.count, '手持ち道具')
-    await adapter.select(0); guard()
+    await selectConfirmedHand(0, item)
     for (const [name, level] of Object.entries(item.enchants)) await command(`/enchant @s ${name} ${level}`, 'エンチャント')
     await waitFor(() => matches(adapter.getView().slots[0], item), 'エンチャント付きアイテム')
   }
@@ -234,12 +256,12 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
         await command(`/replaceitem entity @s slot.hotbar ${slot} ${item.name} ${item.count}`, 'ホットバーを準備')
         await waitFor(() => adapter.getView().slots[slot]?.name === item.name && adapter.getView().slots[slot]?.count === item.count, 'ホットバー')
         if (Object.keys(item.enchants).length) {
-          await adapter.select(slot); guard()
+          await selectConfirmedHand(slot, item)
           for (const [name, level] of Object.entries(item.enchants)) await command(`/enchant @s ${name} ${level}`, 'エンチャント')
         }
         await waitFor(() => matches(adapter.getView().slots[slot], item), 'ホットバーの初期装備')
       }
-      await adapter.select(1); guard()
+      await selectConfirmedHand(1, m.hotbar[1]); guard()
       const view = adapter.getView()
       if (!knownInventory(view) || !m.hotbar.every((item, i) => matches(view.slots[i], item)) || !m.armor.every((item, i) => matches(view.armor.slots[i], item)) || !m.supplies.every(item => matches(view.slots[item.slot], item)) || !m.cargo.every(item => matches(view.slots[item.slot], item, { freshEmpty: true })) || !m.emptySlots.every(i => matches(view.slots[i], null)) || !matches(view.offhand.slots[0], null) || !air(adapter.getBlock(active.stage.x, active.stage.y, active.stage.z))) throw fail('RESET_FINAL_MISMATCH', '初期セットの最終照合が一致しません。途中結果を確認してください。')
       // Save the successful inventory evidence before exposing completion.

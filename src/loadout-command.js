@@ -8,8 +8,9 @@ const BOUNDARY = new Set(['start_game', 'change_dimension', 'respawn', 'disconne
 // self-targeted reset primitives are accepted, with no names/selectors from UI.
 const ITEM = '(?:air|diamond_(?:sword|pickaxe|shovel|helmet|chestplate|leggings|boots)|bow|bread|dirt|arrow|(?:purple|blue|light_blue|yellow|brown)_shulker_box)'
 const ENCHANT = '(?:protection|unbreaking|mending|thorns|respiration|aqua_affinity|swift_sneak|feather_falling|depth_strider|soul_speed|efficiency|fortune|silk_touch|sharpness|looting|fire_aspect|knockback|power|infinity|flame|punch)'
+const HAND_PROBE = /^\/testfor @s\[hasitem=\{item=minecraft:(?:diamond_(?:sword|pickaxe|shovel|helmet|chestplate|leggings|boots)|bow),location=slot\.weapon\.mainhand,quantity=1\}\]$/
 const POS = '-?\\d{1,8} -?\\d{1,3} -?\\d{1,8}'
-const ALLOWED = [ /^\/testfor @s$/, /^\/clear @s$/,
+const ALLOWED = [ /^\/testfor @s$/, HAND_PROBE, /^\/clear @s$/,
   new RegExp(`^/replaceitem entity @s slot\\.(?:hotbar|inventory|weapon\\.offhand|armor\\.(?:head|chest|legs|feet)) \\d{1,2} minecraft:${ITEM}(?: (?:[1-9]|[1-5][0-9]|6[0-4]))?$`),
   new RegExp(`^/enchant @s ${ENCHANT} [1-5]$`),
   new RegExp(`^/setblock ${POS} minecraft:(?:purple|blue|light_blue|yellow|brown)_shulker_box keep$`),
@@ -57,7 +58,10 @@ function createLoadoutCommand ({ client, getState, timeoutMs = 5000, now = Date.
     if (name !== 'command_output' || uuidOf(packet.origin?.uuid) !== r.id) return false
     if (now() - r.sentAt > timeoutMs || now() < r.sentAt || packet.origin.type !== 'player' || !Number.isInteger(packet.success_count) || !Array.isArray(packet.output)) { settle(r, fail('RESET_COMMAND_OUTPUT_INVALID')); return true }
     const success = packet.success_count > 0 && packet.output.length > 0 && packet.output.every(o => o?.success === true && typeof o.message_id === 'string' && o.message_id.length > 0 && Array.isArray(o.parameters) && o.parameters.every(p => typeof p === 'string'))
-    if (!success) settle(r, fail('RESET_COMMAND_REJECTED', 'コマンドが拒否されました: ' + String(packet.output[0]?.message_id ?? 'unknown').slice(0, 140)))
+    const messageId = String(packet.output[0]?.message_id ?? 'unknown').replace(/^%/, '').slice(0, 140)
+    const explicitRejection = packet.success_count === 0 && packet.output.length === 1 && packet.output[0]?.success === false && typeof packet.output[0].message_id === 'string' && Array.isArray(packet.output[0].parameters) && packet.output[0].parameters.every(p => typeof p === 'string')
+    if (!success) settle(r, Object.assign(fail('RESET_COMMAND_REJECTED', 'コマンドが拒否されました: ' + messageId), { messageId, serverRejected: explicitRejection }))
+    else if (HAND_PROBE.test(r.command) && (packet.success_count !== 1 || packet.output.length !== 1 || messageId !== 'commands.testfor.success' || packet.output[0].parameters.length !== 1 || !packet.output[0].parameters[0] || getState().playerName && packet.output[0].parameters[0] !== getState().playerName)) settle(r, fail('RESET_HAND_OUTPUT_INVALID', '手持ち確認の応答が一致しません。'))
     else settle(r, null, { serverConfirmed: true, requestId: r.id, scope: r.scope, receivedAt: now() })
     return true
   }

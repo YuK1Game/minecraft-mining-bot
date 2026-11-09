@@ -53,7 +53,7 @@ function createRuntimeLoadoutReset ({ host, getState, inspection, crafting, armo
     },
     save: async value => { await fs.mkdir(journalDirectory, { recursive: true }); return writeDurableJson(file(value.world), value) },
     load: async () => { try { return await readJsonBounded(file()) } catch (error) { if (error.code === 'ENOENT') return null; throw error } },
-    select: slot => inventory.equipForCombat(slot),
+    select: (slot, options) => inventory.selectHotbarForReset(slot, options),
     equipArmor: () => armor.equipBest({ maxMoves: 1 }),
     open: async p => { crafting.closeContainer(); return chest.open(p, undefined, { expectedSlots: 27 }) },
     close: async () => { crafting.closeContainer() },

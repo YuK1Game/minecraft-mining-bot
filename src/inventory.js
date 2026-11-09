@@ -223,6 +223,18 @@ function createInventory ({ client, getState, crafting, allocateRequestId, onInv
     } finally { signal?.removeEventListener('abort', onAbort) }
   }
 
+  // Reset commands operate on the SERVER's selected item. Unlike the combat
+  // fast path, a matching local slot must never elide this selection packet.
+  // This only sends a selection; the reset must obtain its own server hand proof.
+  function selectHotbarForReset (slot, { signal } = {}) {
+    signal?.throwIfAborted()
+    if (operation) throw new Error('前の持ち替え操作を待っています。')
+    if (!Number.isInteger(slot) || slot < 0 || slot > 8 || typeof commitSelection !== 'function') throw new Error('初期セットのホットバー選択を確認できません。')
+    const state = session(false, true), item = observedItem(slot)
+    if (empty(item)) throw new Error('初期セットの道具がまだ届いていません。')
+    return sendSelection(slot, item, state)
+  }
+
   function applyPacket (name, packet, { replaying = false } = {}) {
     if (!replaying && ['player_hotbar', 'mob_equipment', 'start_game', 'change_dimension', 'disconnect'].includes(name)) {
       const state = getState()
@@ -263,7 +275,7 @@ function createInventory ({ client, getState, crafting, allocateRequestId, onInv
     }
     if (name === 'inventory_content' && inventoryWindow(packet.window_id) || name === 'inventory_slot' && inventoryWindow(packet.window_id) || name === 'item_stack_response') checkObserved()
   }
-  return { equip: sourceSlot => equip(sourceSlot), equipForMining, equipForCombat: sourceSlot => equip(sourceSlot, false, false, true), equipForFood: (sourceSlot, options = {}) => { if (!options || typeof options.allowEmergencyRotten !== 'boolean' && options.allowEmergencyRotten !== undefined) throw new Error('非常用食料の指定が不正です。'); return equip(sourceSlot, true, options.allowEmergencyRotten === true) }, applyPacket, cancel, snapshot: () => ({ busy: operation !== null, pendingRequestId: operation?.id ?? null, phase: operation ? operation.id === null ? 'opening_inventory' : 'requested' : lastResult?.phase ?? 'idle', lastResult: copy(lastResult) }) }
+  return { equip: sourceSlot => equip(sourceSlot), equipForMining, selectHotbarForReset, equipForCombat: sourceSlot => equip(sourceSlot, false, false, true), equipForFood: (sourceSlot, options = {}) => { if (!options || typeof options.allowEmergencyRotten !== 'boolean' && options.allowEmergencyRotten !== undefined) throw new Error('非常用食料の指定が不正です。'); return equip(sourceSlot, true, options.allowEmergencyRotten === true) }, applyPacket, cancel, snapshot: () => ({ busy: operation !== null, pendingRequestId: operation?.id ?? null, phase: operation ? operation.id === null ? 'opening_inventory' : 'requested' : lastResult?.phase ?? 'idle', lastResult: copy(lastResult) }) }
 }
 
 module.exports = { createInventory }
