@@ -34,7 +34,7 @@ const scopeOf = state => {
 
 const UNSENT_PLACE_REASON = '操作対象への視線が遮られているか、未取得です。'
 
-function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, interactions, equip, moveTo, getPath = null, travel = null, previewMove = null, refreshInventory = null, workWithContainer = null, getObservationFreshness = null, onRecoveryDiagnostic = null, mine, getMining, stopMining, getEntities, captureActionOwner = null, runActionOwned = null, cancelAction = () => {}, now = Date.now, sleep = ms => delay(ms) }) {
+function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, interactions, equip, moveTo, getPath = null, travel = null, previewMove = null, refreshInventory = null, workWithContainer = null, getObservationFreshness = null, onRecoveryDiagnostic = null, mine, getMining, stopMining, getEntities, captureActionOwner = null, runActionOwned = null, shulkerOnly = false, cancelAction = () => {}, now = Date.now, sleep = ms => delay(ms) }) {
   if ([getState, getBlock, equip, moveTo, mine, getMining, stopMining, getEntities, cancelAction, now, sleep].some(fn => typeof fn !== 'function') || typeof crafting?.rawItem !== 'function' || typeof crafting?.closeContainer !== 'function' || typeof chest?.open !== 'function' || typeof chest?.depositItem !== 'function' || typeof chest?.rawItem !== 'function' || typeof interactions?.placeBlock !== 'function') throw new Error('Portable storage requires observed inventory, containers and owned normal actions')
   if (previewMove !== null && typeof previewMove !== 'function') throw new Error('Portable storage movement preview must be a function')
   if (refreshInventory !== null && typeof refreshInventory !== 'function') throw new Error('Portable storage refresh must request a new received main inventory')
@@ -375,6 +375,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       const capacityBatch = request?.purpose === 'capacity_batch'
       if (supplyWork && (selection?.kind !== 'shulker' || typeof workWithContainer !== 'function')) throw failure('STORAGE_SUPPLY_UNSUPPORTED')
       if (capacityBatch && (selection?.kind !== 'shulker' || typeof capacityWork !== 'function' || typeof refreshInventory !== 'function')) throw failure('STORAGE_CAPACITY_UNSUPPORTED')
+      if (shulkerOnly && selection?.kind !== 'shulker') throw failure('SHULKER_ONLY_STORAGE')
       if (!request?.jobId || typeof request.operationId !== 'string' || !request.operationId.length || request.operationId.length > 200 || !['shulker', 'double_chest', 'single_chest'].includes(selection?.kind) || !Array.isArray(selection.sources)) throw failure('STORAGE_REQUEST_INVALID')
       cp = request.checkpoint ? copy(request.checkpoint) : null
       if (cp) {

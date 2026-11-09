@@ -60,3 +60,13 @@ test('dashboard-control-http: loopback transport and host command endpoint work 
   })
   assert.equal(forbidden, 403); assert.equal(received.length, 1)
 })
+
+test('dashboard-control-http: reset writes use the same strict JSON, token, Host and Origin boundary as quarry writes', async t => {
+  const f = fixture(t), token = (await f.call()).value.token
+  const valid = { method: 'POST', url: '/api/control/loadout', token, origin: 'http://127.0.0.1:3001', body: JSON.stringify({ command: 'resetPreview', session: 's' }) }
+  for (const extra of [{ token: null }, { origin: null }, { origin: 'https://evil.invalid' }, { host: 'evil.invalid:3001' }]) assert.equal((await f.call({ ...valid, ...extra })).status, 403)
+  assert.equal((await f.call({ ...valid, method: 'GET' })).status, 404)
+  assert.equal(f.calls.length, 0)
+  assert.equal((await f.call(valid)).status, 200)
+  assert.deepEqual(f.calls, [['loadout', { command: 'resetPreview', session: 's' }]])
+})

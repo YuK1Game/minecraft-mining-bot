@@ -67,11 +67,12 @@ test('runtime adapter reports a full chest instead of failing the deposit', asyn
 })
 
 test('quarry terminal syntax', () => {
-  assert.deepEqual(parseQuarryCommand('/quarry plan here bottom=40 chest=1,64,2', { position: { x: -3.2, y: 70, z: 33 } }).args[0], { target: { chunks: [{ x: -1, z: 2 }] }, yBottom: 40, inventory: { storage: [{ position: { x: 1, y: 64, z: 2 } }] } })
-  assert.deepEqual(parseQuarryCommand('/quarry plan 0 0 1 1 combat=off').args[0], { target: { rect: { x1: 0, z1: 0, x2: 1, z2: 1 } }, inventory: { carryOnly: true }, quarryCombat: { enabled: false } })
+  assert.deepEqual(parseQuarryCommand('/quarry plan here bottom=40', { position: { x: -3.2, y: 70, z: 33 } }).args[0], { target: { chunks: [{ x: -1, z: 2 }] }, yBottom: 40, inventory: { pickupMode: 'passive', depositWhen: 'full' } })
+  assert.deepEqual(parseQuarryCommand('/quarry plan 0 0 1 1 combat=off').args[0], { target: { rect: { x1: 0, z1: 0, x2: 1, z2: 1 } }, inventory: { pickupMode: 'passive', depositWhen: 'full' }, quarryCombat: { enabled: false } })
   assert.equal(parseQuarryCommand('/quarry stop').method, 'emergencyStop')
   assert.equal(parseQuarryCommand('/quarry').method, 'status')
   assert.throws(() => parseQuarryCommand('/quarry plan 1'))
+  assert.throws(() => parseQuarryCommand('/quarry plan 0 0 chest=1,64,2'), /シュルカー専用/)
 })
 
 test('runtime adapter re-plans a move that ends short instead of waiting out the timeout', async () => {

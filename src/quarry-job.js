@@ -65,7 +65,14 @@ function defaults (config = {}) {
   }
 }
 
-function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, bridge = null, pollMs = 50, autoResumeMs = 30000, stopTimeoutMs = 5000 } = {}) {
+function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, bridge = null, pollMs = 50, autoResumeMs = 30000, stopTimeoutMs = 5000, storageMode = 'legacy' } = {}) {
+  // The production Runtime pins this to shulker. Legacy primitives remain for
+  // read/recovery tests, never as a browser/CLI-selectable policy.
+  const shulkerOnly = storageMode === 'shulker'
+  const cargoSelection = (inventory, options = {}) => selectCarriedStorage(inventory, { ...options, shulkerOnly })
+  function assertStoragePolicy () {
+    if (shulkerOnly && job && (job.config.inventory.storage?.length || job.portableStorage && job.portableStorage.selection?.kind !== 'shulker')) throw new QuarryInterrupt('LEGACY_CHEST_STORAGE', '旧チェストジョブは再開できません。未回収容器を確認してキャンセルし、シュルカーで再計画してください。')
+  }
   const required = ['getState', 'getBlock', 'entities', 'mine', 'moveTo', 'equip', 'stopAll', 'combatActive']
   if (!adapter || required.some(k => typeof adapter[k] !== 'function')) throw new Error(`Quarry adapter needs ${required.join(', ')}`)
   if (!Number.isFinite(stopTimeoutMs) || stopTimeoutMs < 1 || stopTimeoutMs > 60000) throw new Error('Invalid quarry stop timeout')
@@ -238,6 +245,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (config.inventory.pickupMode !== undefined && !['active', 'passive'].includes(config.inventory.pickupMode)) issues.push('INVALID_PICKUP_MODE')
     if (config.inventory.depositWhen !== undefined && !['capacity', 'full'].includes(config.inventory.depositWhen)) issues.push('INVALID_DEPOSIT_POLICY')
     if (!validStoragePair(config.inventory)) issues.push('UNSUPPORTED_STORAGE_POLICY')
+    if (shulkerOnly && config.inventory.storage?.length) issues.push('SHULKER_ONLY_STORAGE')
+    if (shulkerOnly && !config.inventory.supplyBoxes?.length) {
+      const discovered = adapter.discoverSupplies?.()
+      if (discovered?.ok) { config.inventory.supplyBoxes = copy(discovered.bindings); config.inventory.autoSupplies = true }
+    }
     if (config.inventory.autoSupplies && !config.inventory.supplyBoxes?.length) {
       const discovered = adapter.discoverSupplies?.()
       if (discovered?.ok) config.inventory.supplyBoxes = copy(discovered.bindings)
@@ -258,7 +270,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const inv = items(state)
     if (!inv) issues.push('INVENTORY_UNKNOWN')
     const storageList = config.inventory.storage ?? []
-    if (!storageList.length && config.inventory.carryOnly !== true && !(typeof adapter.storeCarried === 'function' && selectCarriedStorage(inv))) issues.push('NO_STORAGE_REGISTERED')
+    if ((shulkerOnly || !storageList.length && config.inventory.carryOnly !== true) && !(typeof adapter.storeCarried === 'function' && cargoSelection(inv, { excludedShulkerKeys: storageSupplyExclusions(config.inventory.supplyBoxes) }))) issues.push(shulkerOnly ? 'NO_CARGO_SHULKER' : 'NO_STORAGE_REGISTERED')
     for (const s of storageList) {
       const b = s?.position ? adapter.getBlock(s.position.x, s.position.y, s.position.z) : null
       if (!b?.known || !/chest|barrel/.test(nameOf(b))) issues.push(`STORAGE_NOT_OBSERVED:${JSON.stringify(s?.position ?? null)}`)
@@ -298,6 +310,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // ---- adapter helpers ---------------------------------------------------
   function guard (myEpoch, { combat = true } = {}) {
     if (myEpoch !== epoch) throw new QuarryInterrupt('EPOCH_CHANGED')
+    assertStoragePolicy()
     if (job.userRunIntent !== 'running') throw new QuarryInterrupt('STOP_REQUESTED')
     if (abort?.signal.aborted) throw new QuarryInterrupt(abort.signal.reason?.code ?? 'ABORTED')
     const s = adapter.getState()
@@ -1281,6 +1294,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // is skipped until the job is resumed (the user may have emptied it).
   const posKey = p => `${p.x},${p.y},${p.z}`
   function currentStorage () {
+    if (shulkerOnly) return null
     const full = new Set(job.fullStorage ?? [])
     return (job.config.inventory.storage ?? []).find(st => st?.position && !full.has(posKey(st.position))) ?? null
   }
@@ -1326,6 +1340,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // All registered chests are full: put down one more beside the last one
   // (a carried chest, or one crafted from carried wood; never by command).
   async function expandStorage (myEpoch) {
+    if (shulkerOnly) return { ok: false, reason: 'SHULKER_ONLY_STORAGE' }
     const list = job.config.inventory.storage ?? []
     const maxChests = job.config.inventory.maxChests ?? 16
     if (list.length >= maxChests) return { ok: false, reason: 'MAX_CHESTS', maxChests }
@@ -1481,7 +1496,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return true
   }
   function hasStorageOption () {
-    return !!job.portableStorage || !!job.config.inventory.storage?.length || typeof adapter.storeCarried === 'function' && !!selectCarriedStorage(items(adapter.getState()), { excludedShulkerKeys: storageSupplyExclusions(job.config.inventory.supplyBoxes) })
+    return !!job.portableStorage || !shulkerOnly && !!job.config.inventory.storage?.length || typeof adapter.storeCarried === 'function' && !!cargoSelection(items(adapter.getState()), { excludedShulkerKeys: storageSupplyExclusions(job.config.inventory.supplyBoxes) })
   }
 
   const storagePoint = p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]) && Math.abs(p[k]) <= 30000000)
@@ -1591,8 +1606,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (job.portableStorage) { await finish('PAUSED', 'CARRIED_STORAGE_UNAVAILABLE'); return true }
       return false
     }
-    const selection = job.portableStorage?.selection ?? selectCarriedStorage(inv, { excludedShulkerKeys: [...(job.exhaustedShulkerKeys ?? []), ...storageSupplyExclusions(job.config.inventory.supplyBoxes)] })
+    const selection = job.portableStorage?.selection ?? cargoSelection(inv, { excludedShulkerKeys: [...(job.exhaustedShulkerKeys ?? []), ...storageSupplyExclusions(job.config.inventory.supplyBoxes)] })
     if (!selection) return false
+    if (shulkerOnly && selection.kind !== 'shulker') throw new QuarryInterrupt('LEGACY_CHEST_STORAGE')
     if (capacity && selection.kind !== 'shulker') return false
     const markerDirt = capacity && job.config.exit?.mode === 'adjacent_pillar'
     if (!job.portableStorage && markerDirt && dirtCount(inv) <= Math.max(192, job.config.inventory.keepExitDirt ?? 192)) { await finish('PAUSED', 'CAPACITY_MARKER_MATERIAL_MISSING'); return true }
@@ -1761,7 +1777,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
     }
     if (await storeCarried(myEpoch, why)) return
-    if (!job.config.inventory.storage?.length) {
+    if (shulkerOnly || !job.config.inventory.storage?.length) {
       const inventory = items(guard(myEpoch)), free = inventory ? freeSlots(inventory) : null
       return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: inventory && !keepPlan(inventory, inventoryPolicy()).deposits.length ? 'NO_DEPOSITABLE_ITEMS' : 'NO_CARRIED_STORAGE', freeSlots: free, minFreeSlots: job.config.inventory.minFreeSlots } })
     }
@@ -2353,6 +2369,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   function start () {
+    assertStoragePolicy()
     if (reconcilingSupplyPlacement || reconcilingCarriedPlacement) throw new Error('Placement reconciliation is still running')
     requireDrained()
     if (job) assertJobWorld(job, adapter.getState())
@@ -2370,6 +2387,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return status()
   }
   function resume () {
+    assertStoragePolicy()
     if (reconcilingSupplyPlacement || reconcilingCarriedPlacement) throw new Error('Placement reconciliation is still running')
     requireDrained()
     if (job) assertJobWorld(job, adapter.getState())
@@ -2485,6 +2503,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     regions = makeRegions(job.config, job.yTop, adapter.getState())
     planner = createQuarryPlanner({ regions, getBlock: planningBlocks(job.config), config: job.config.strategy, records: job.records ?? {}, exit: job.config.exit })
     ledger = createLedger(job.ledger ?? {})
+    if (shulkerOnly && (job.config.inventory.storage?.length || job.portableStorage && job.portableStorage.selection?.kind !== 'shulker')) { job.state = 'PAUSED'; job.pauseReason = 'LEGACY_CHEST_STORAGE'; job.userRunIntent = 'paused' }
     if (ACTIVE.has(job.state)) {
       job.state = 'PAUSED'
       job.pauseReason = job.requestedStop?.reason ?? (job.userRunIntent === 'running' ? 'PROCESS_RESTARTED' : job.userRunIntent === 'stopped' ? 'EMERGENCY_STOP' : job.userRunIntent === 'cancelled' ? 'MANUAL_CANCEL' : 'MANUAL_PAUSE')

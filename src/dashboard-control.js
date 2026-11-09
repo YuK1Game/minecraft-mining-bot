@@ -15,6 +15,7 @@ function integer (value, name, min, max) {
 }
 function quarryConfig (input, state) {
   object(input, ['x1', 'z1', 'x2', 'z2', 'top', 'bottom', 'chest', 'pickupMode'])
+  if (input.chest != null) throw error('SHULKER_ONLY_STORAGE', '収納先はシュルカーボックス専用です。', 400)
   if (state.dimension !== 'overworld') throw error('WRONG_DIMENSION', '画面からの新規露天掘りはオーバーワールドに限定しています。')
   const x1 = integer(input.x1, '開始チャンクX', -1875000, 1874999), z1 = integer(input.z1, '開始チャンクZ', -1875000, 1874999)
   const x2 = integer(input.x2 ?? x1, '終了チャンクX', -1875000, 1874999), z2 = integer(input.z2 ?? z1, '終了チャンクZ', -1875000, 1874999)
@@ -25,10 +26,6 @@ function quarryConfig (input, state) {
   const mode = input.pickupMode ?? 'passive'
   if (!['active', 'passive'].includes(mode)) throw error('INVALID_INPUT', '回収方針が不正です。', 400)
   const storage = []
-  if (input.chest != null) {
-    object(input.chest, ['x', 'y', 'z'])
-    storage.push({ position: { x: integer(input.chest.x, 'チェストX', -30000000, 29999999), y: integer(input.chest.y, 'チェストY', -64, 319), z: integer(input.chest.z, 'チェストZ', -30000000, 29999999) } })
-  }
   return { target: { rect: { x1, z1, x2, z2 } }, dimension: 'overworld', yTop, yBottom,
     inventory: { pickupMode: mode, depositWhen: mode === 'passive' ? 'full' : 'capacity', storage }, quarryCombat: { enabled: true } }
 }
@@ -36,7 +33,7 @@ function scope (state) {
   if (!state?.connectionId || !state.profile || state.realm?.id == null || !state.dimension) return null
   return digest([state.profile, String(state.realm.id), state.dimension, state.connectionId, state.startedAt, state.lifecycle?.deathId ?? 0])
 }
-function createDashboardControl ({ getState, getQuarry, getGeneration = () => 0, disconnect, now = Date.now, uuid = randomUUID }) {
+function createDashboardControl ({ getState, getQuarry, getReset = () => null, getGeneration = () => 0, disconnect, now = Date.now, uuid = randomUUID }) {
   let receipt = null, busy = 0
   const invalidate = () => { receipt = null }
   function snapshot () {
@@ -45,17 +42,27 @@ function createDashboardControl ({ getState, getQuarry, getGeneration = () => 0,
     return { protocol: 1, phase: text(s?.phase), ready: s?.phase === 'spawned' && s.loadingScreenEnded === true && !s.dead && !s.isDead && !s.lifecycle?.dead && !s.spawnPending && s.health > 0 && s.inventory?.known === true && !s.inventory.uncertain,
       session: scope(s), profile: text(s?.profile), realm: s?.realm ? { id: String(s.realm.id), name: text(s.realm.name) } : null, dimension: text(s?.dimension), position,
       chunk: position ? { x: Math.floor(position.x / 16), z: Math.floor(position.z / 16) } : null,
-      busy: busy > 0, quarry: q?.jobId ? { jobId: text(q.jobId), state: text(q.state), userRunIntent: text(q.userRunIntent), pauseReason: text(q.pauseReason), persistence: q.persistence ?? null, currentY: q.currentY ?? null } : null }
+      busy: busy > 0, loadout: getReset()?.status() ?? { busy: false, phase: 'idle' }, quarry: q?.jobId ? { jobId: text(q.jobId), state: text(q.state), userRunIntent: text(q.userRunIntent), pauseReason: text(q.pauseReason), persistence: q.persistence ?? null, currentY: q.currentY ?? null } : null }
   }
   function checkSession (input) {
     const current = scope(getState())
     if (!current || input.session !== current) throw error('STALE_SESSION', '接続先または生存状態が変わりました。状態を更新して操作してください。')
   }
   async function execute (input) {
-    object(input, ['command', 'session', 'config', 'planToken', 'jobId'])
-    if (!['plan', 'start', 'pause', 'resume', 'emergencyStop', 'cancel', 'disconnect'].includes(input.command)) throw error('INVALID_COMMAND', 'この操作は管理画面に公開されていません。', 400)
+    object(input, ['command', 'session', 'config', 'planToken', 'jobId', 'resetToken', 'confirm'])
+    if (!['plan', 'start', 'pause', 'resume', 'emergencyStop', 'cancel', 'disconnect', 'resetPreview', 'resetStart', 'resetCancel'].includes(input.command)) throw error('INVALID_COMMAND', 'この操作は管理画面に公開されていません。', 400)
     checkSession(input)
+    const reset = getReset()
+    if (['resetPreview', 'resetStart', 'resetCancel'].includes(input.command)) {
+      invalidate()
+      if (!reset) throw error('RESET_UNAVAILABLE', 'Bot本体を更新・再起動してください。')
+      if (input.command === 'resetPreview') return { resetPreview: await reset.preview(), state: snapshot() }
+      if (input.command === 'resetCancel') return { reset: reset.cancel(), state: snapshot() }
+      return { reset: reset.start({ token: input.resetToken, confirm: input.confirm }), state: snapshot() }
+    }
     const stopping = ['pause', 'emergencyStop', 'cancel', 'disconnect'].includes(input.command)
+    if (reset?.status().busy && !stopping) throw error('RESET_BUSY', '初期アイテムのリセット処理中です。')
+    if (stopping && reset?.status().busy) reset.cancel()
     if (busy && !stopping) throw error('CONTROL_BUSY', '前の操作の終了を待っています。')
     const q = getQuarry()
     if (!q) throw error('NOT_READY', 'Botの初期化を待っています。')
