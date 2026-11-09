@@ -7,7 +7,7 @@ const { randomUUID } = require('node:crypto')
 const confirm = (reset, p) => reset.start({ token: p.token, confirm: 'REPLACE_INITIAL_INVENTORY' })
 
 test('loadout: standard v2 has 8 cargo + 4 full supply boxes, compatible enchants and exactly 36 slots', () => {
-  const m = manifest(), used = [...Array(9).keys(), ...m.cargo.map(x => x.slot), ...m.supplies.map(x => x.slot), ...m.emptySlots]
+  const m = manifest(), used = [...Array(9).keys(), ...m.cargo.map(x => x.slot), ...m.main.map(x => x.slot), ...m.supplies.map(x => x.slot), ...m.emptySlots]
   assert.equal(new Set(used).size, 36); assert.equal(used.length, 36)
   assert.equal(m.cargo.length, 8); assert.equal(m.supplies.length, 4)
   assert.deepEqual(m.cargo.map(x => x.slot), [9, 10, 11, 12, 13, 14, 15, 16]); assert.equal(m.version, 'quarry-standard-v2')
@@ -15,7 +15,8 @@ test('loadout: standard v2 has 8 cargo + 4 full supply boxes, compatible enchant
   assert.deepEqual(m.supplies.map(s => s.contents.reduce((n, i) => n + i.count, 0)), [27, 27, 1728, 1728])
   assert.equal(m.hotbar[3].enchants.infinity, 1); assert.ok(!m.hotbar[3].enchants.mending)
   assert.ok(!(m.hotbar[1].enchants.silk_touch && m.hotbar[1].enchants.fortune))
-  assert.deepEqual(summary().hand, { bread: 64, dirt: 192, arrows: 64 })
+  assert.deepEqual(summary().hand, { bread: 64, dirt: 224, arrows: 64 })
+  assert.deepEqual(m.main, [{ slot: 17, name: 'minecraft:dirt', count: 32, enchants: {} }])
   const data = require('minecraft-data')('bedrock_1.26.60')
   for (const spec of [...m.hotbar, ...m.armor, ...m.supplies.flatMap(b => b.contents)]) {
     assert.ok(data.itemsByName[spec.name.replace('minecraft:', '')], spec.name)

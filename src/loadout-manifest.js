@@ -23,12 +23,15 @@ function manifest () {
     slot: 29 + i, role, name: SUPPLY_COLORS[role], count: 1, contents: Array.from({ length: 27 }, () => structuredClone(item))
   }))
   const cargo = Array.from({ length: CARGO_COUNT }, (_, i) => ({ slot: 9 + i, name: CARGO_NAME, count: 1, enchants: {}, contents: [] }))
-  const emptySlots = [...Array.from({ length: 29 - 9 - CARGO_COUNT }, (_, i) => 9 + CARGO_COUNT + i), 33, 34, 35]
-  return { version: VERSION, hotbar, armor, offhand: null, cargo, supplies, emptySlots }
+  // Quarry supplies want exit dirt 192 + seal dirt 32 = 224 in hand; carrying
+  // the extra 32 avoids opening the dirt supply box right at job start.
+  const main = [{ slot: 9 + CARGO_COUNT, ...spec('dirt', 32) }]
+  const emptySlots = Array.from({ length: 29 - 10 - CARGO_COUNT }, (_, i) => 10 + CARGO_COUNT + i).concat([33, 34, 35])
+  return { version: VERSION, hotbar, armor, offhand: null, cargo, main, supplies, emptySlots }
 }
 function summary () {
   const m = manifest()
-  return { version: m.version, cargoBoxes: CARGO_COUNT, supplyBoxes: 4, hand: { bread: 64, dirt: 192, arrows: 64 }, armor: m.armor,
+  return { version: m.version, cargoBoxes: CARGO_COUNT, supplyBoxes: 4, hand: { bread: 64, dirt: 224, arrows: 64 }, armor: m.armor,
     tools: m.hotbar.slice(0, 4), supplies: m.supplies.map(s => ({ role: s.role, name: s.name, item: s.contents[0], slots: 27, total: s.contents[0].count * 27 })) }
 }
 module.exports = { VERSION, CARGO_NAME, SUPPLY_COLORS, SUPPLY_NAMES, manifest, summary }
