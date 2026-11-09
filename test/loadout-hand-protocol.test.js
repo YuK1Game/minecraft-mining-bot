@@ -54,7 +54,7 @@ test('loadout-hand: real adapter and encoded packets recover a stale cached hand
   assert.equal(reset.status().serverConfirmed, true, JSON.stringify(reset.status()))
   assert.equal(selections, 63)
   assert.equal(f.blocks.size, 0)
-  assert.equal(f.view.slots.filter(x => x.container).length, 24)
+  assert.equal(f.view.slots.filter(x => x.container).length, 12) // 8 cargo (v2) + 4 supply
   assert.equal(f.selected(), 1)
   assert.equal(f.lease(), null)
   // Every tool selection is followed by a scoped server hand query, before

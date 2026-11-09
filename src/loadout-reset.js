@@ -251,6 +251,10 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
         await command(`/replaceitem entity @s slot.inventory ${box.slot - 9} ${box.name} 1`, '空シュルカーを準備')
         await waitFor(() => matches(adapter.getView().slots[box.slot], box, { freshEmpty: true }), '空シュルカー')
       }
+      for (const item of m.main ?? []) {
+        await command(`/replaceitem entity @s slot.inventory ${item.slot - 9} ${item.name} ${item.count}`, '所持品を準備')
+        await waitFor(() => matches(adapter.getView().slots[item.slot], item), '所持品')
+      }
       for (let slot = 0; slot < m.hotbar.length; slot++) {
         const item = m.hotbar[slot]
         await command(`/replaceitem entity @s slot.hotbar ${slot} ${item.name} ${item.count}`, 'ホットバーを準備')
@@ -263,7 +267,7 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
       }
       await selectConfirmedHand(1, m.hotbar[1]); guard()
       const view = adapter.getView()
-      if (!knownInventory(view) || !m.hotbar.every((item, i) => matches(view.slots[i], item)) || !m.armor.every((item, i) => matches(view.armor.slots[i], item)) || !m.supplies.every(item => matches(view.slots[item.slot], item)) || !m.cargo.every(item => matches(view.slots[item.slot], item, { freshEmpty: true })) || !m.emptySlots.every(i => matches(view.slots[i], null)) || !matches(view.offhand.slots[0], null) || !air(adapter.getBlock(active.stage.x, active.stage.y, active.stage.z))) throw fail('RESET_FINAL_MISMATCH', '初期セットの最終照合が一致しません。途中結果を確認してください。')
+      if (!knownInventory(view) || !m.hotbar.every((item, i) => matches(view.slots[i], item)) || !m.armor.every((item, i) => matches(view.armor.slots[i], item)) || !m.supplies.every(item => matches(view.slots[item.slot], item)) || !m.cargo.every(item => matches(view.slots[item.slot], item, { freshEmpty: true })) || !(m.main ?? []).every(item => matches(view.slots[item.slot], item)) || !m.emptySlots.every(i => matches(view.slots[i], null)) || !matches(view.offhand.slots[0], null) || !air(adapter.getBlock(active.stage.x, active.stage.y, active.stage.z))) throw fail('RESET_FINAL_MISMATCH', '初期セットの最終照合が一致しません。途中結果を確認してください。')
       // Save the successful inventory evidence before exposing completion.
       await checkpoint('最終保存', { phase: 'verified', completedAt: now(), verifiedInventory: view, serverConfirmed: false, pending: null })
       guard()
