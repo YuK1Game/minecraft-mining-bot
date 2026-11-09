@@ -62,11 +62,9 @@ for (const variant of ['confirmation', 'expiry', 'realm', 'life', 'position', 'i
   assert.equal(f.commandsSent.length, 0); assert.equal(f.calls.length, 0)
   assert.throws(() => confirm(f.reset, p), { code: 'RESET_CONFIRMATION_REQUIRED' })
 })
-for (const variant of ['unknownInventory', 'unknownArmor', 'unknownOffhand', 'wet', 'notIdle']) test(`loadout: unsafe ${variant} cannot prepare a reset`, async () => {
+for (const variant of ['uncertainInventory', 'wet', 'notIdle']) test(`loadout: unsafe ${variant} cannot prepare a reset`, async () => {
   const f = fixture({ busy: variant === 'notIdle' })
-  if (variant === 'unknownInventory') f.view.known = false
-  if (variant === 'unknownArmor') f.view.armor.known = false
-  if (variant === 'unknownOffhand') f.view.offhand.known = false
+  if (variant === 'uncertainInventory') f.view.uncertain = true
   if (variant === 'wet') f.blocks.set('0,64,0', { known: true, name: 'minecraft:water', boundingBox: 'empty' })
   await assert.rejects(f.reset.prepare()); assert.equal(f.commandsSent.length, 0)
 })

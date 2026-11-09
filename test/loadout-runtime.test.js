@@ -100,3 +100,64 @@ test('loadout-runtime: actor cache is not required by debug reset', async t => {
   await f.reset.prepare()
   assert.equal(f.sent.length, 0)
 })
+
+test('loadout-runtime: decoded Bedrock slot updates recover unobserved armor/offhand before normal reset work', async t => {
+  const f = await bridge(t)
+  const { createArmor } = require('../src/armor')
+  const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
+  const serializer = createSerializer('1.26.60'), deserializer = createDeserializer('1.26.60')
+  const armor = createArmor({ client: f.host.client, crafting: f.crafting, getState: () => f.state, store: f.armorStore })
+  const received = []
+  function receive (name, params) {
+    const packet = deserializer.parsePacketBuffer(serializer.createPacketBuffer({ name, params })).data
+    received.push(packet)
+    // Runtime's order: inspection -> crafting -> armor -> command receiver.
+    f.inspection.applyPacket(packet.name, packet.params)
+    if (packet.name === 'inventory_content' && packet.params.window_id === 'inventory') f.main.splice(0, 36, ...packet.params.input)
+    if (packet.name === 'inventory_slot' && packet.params.window_id === 'inventory') f.main[packet.params.slot] = packet.params.item
+    armor.applyPacket(packet.name, packet.params)
+    f.reset.applyPacket(packet.name, packet.params)
+  }
+  f.inspection.applyPacket('start_game', {})
+  armor.applyPacket('start_game', {})
+  receive('inventory_content', { window_id: 'inventory', input: f.main, container: { container_id: 'inventory', dynamic_container_id: null }, storage_item: empty() })
+  const before = f.inspection.snapshot()
+  assert.equal(before.known, true)
+  assert.equal(before.armor.known, false)
+  assert.equal(before.offhand.known, false)
+  let stack = 900, beforeTemplate = null
+  f.host.client.queue = (name, packet) => {
+    assert.equal(name, 'command_request')
+    f.sent.push({ name, packet })
+    queueMicrotask(() => {
+      const args = packet.command.split(' '), denied = packet.command.startsWith('/setblock')
+      if (denied) beforeTemplate = f.inspection.snapshot()
+      else if (packet.command === '/clear @s') {
+        receive('inventory_content', { window_id: 'inventory', input: Array.from({ length: 36 }, empty), container: { container_id: 'inventory', dynamic_container_id: null }, storage_item: empty() })
+      } else if (packet.command.startsWith('/replaceitem entity')) {
+        const where = args[3]
+        const window = where.startsWith('slot.armor.') ? 'armor' : where === 'slot.weapon.offhand' ? 'offhand' : 'inventory'
+        const slot = window === 'armor' ? ['head', 'chest', 'legs', 'feet'].indexOf(where.split('.').at(-1)) : Number(args[4]) + (where === 'slot.inventory' ? 9 : 0)
+        const item = args[5] === 'minecraft:air' ? empty() : raw({ name: args[5], count: Number(args[6]) }, stack++)
+        receive('inventory_slot', { window_id: window, slot, item, container: { container_id: window, dynamic_container_id: null }, storage_item: empty() })
+      } else assert.equal(packet.command, '/testfor @s')
+      f.reset.applyPacket('command_output', { origin: packet.origin, output_type: 'all', success_count: denied ? 0 : 1,
+        output: [{ success: !denied, message_id: denied ? 'fixture.stop.before.template' : 'commands.generic.success', parameters: [] }], has_data: false })
+    })
+  }
+  const p = await f.reset.prepare()
+  assert.equal(f.sent.length, 0)
+  assert.equal(p.replaces.armor, null, 'unobserved equipment is not reported as zero worn pieces')
+  assert.equal(f.inspection.snapshot().offhand.known, false)
+  f.reset.start({ token: p.token, confirm: 'REPLACE_INITIAL_INVENTORY' }); await f.reset.drain()
+  assert.equal(f.reset.status().error.code, 'RESET_COMMAND_REJECTED', JSON.stringify(f.reset.status()))
+  assert.match(f.reset.status().error.message, /fixture.stop.before.template/)
+  assert.equal(knownInventory(beforeTemplate), true)
+  assert.ok(beforeTemplate.armor.slots.every(s => s.known && s.empty))
+  assert.equal(beforeTemplate.offhand.slots[0].empty, true)
+  assert.equal(received.filter(p => p.name === 'inventory_slot' && p.params.window_id === 'armor').length, 8)
+  assert.equal(received.filter(p => p.name === 'inventory_slot' && p.params.window_id === 'offhand').length, 2)
+  assert.equal(f.sent[0].packet.command, '/testfor @s')
+  assert.equal(f.reset.status().serverConfirmed, false, 'the deliberate later rejection is never reported as a complete kit')
+  assert.equal(f.held(), null)
+})

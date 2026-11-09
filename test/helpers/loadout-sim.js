@@ -55,6 +55,12 @@ function fixture (options = {}) {
         assert.equal(b?.name, args[6]); assert.ok(b.contents.every(s => s.empty), 'never destroy a filled template')
         blocks.delete(key(p))
       } else assert.equal(text, '/testfor @s')
+      if (text.startsWith('/replaceitem entity')) {
+        const where = args[3]
+        if (where === 'slot.hotbar' || where === 'slot.inventory') view.known = view.slots.every(s => s?.known)
+        else if (where === 'slot.weapon.offhand') view.offhand.known = view.offhand.slots.every(s => s?.known)
+        else view.armor.known = view.armor.slots.every(s => s?.known)
+      }
       if (hooks.afterSend) await hooks.afterSend(text, commandsSent.length)
       return { serverConfirmed: true, scope, requestId: 'receipt-' + commandsSent.length, receivedAt: time }
     }, cancel () { calls.push('commandCancel') }, applyPacket () {}
