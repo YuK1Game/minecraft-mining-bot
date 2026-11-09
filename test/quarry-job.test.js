@@ -265,9 +265,9 @@ test('T14 containers and spawners are left with a reason', async () => {
   j.start()
   const s = await runUntilStopped(j)
   assert.equal(sim.world.name(10, 62, 10), 'chest'); assert.equal(sim.world.name(3, 61, 12), 'mob_spawner')
-  assert.equal(sim.world.name(10, 61, 10), 'stone', 'support under a protected block stays')
+  assert.equal(sim.world.name(10, 61, 10), 'air', 'a chest does not fall, so the stone under it is mined (2026-11-10)')
   const reasons = Object.fromEntries(s.result.pauseDetails.exceptions.filter(e => e.position).map(e => [e.position, e.reason]))
-  assert.equal(reasons['10,62,10'], 'CONTAINER_OR_FACILITY'); assert.equal(reasons['3,61,12'], 'SPAWNER_OR_TRIAL'); assert.equal(reasons['10,61,10'], 'SUPPORTS_PROTECTED')
+  assert.equal(reasons['10,62,10'], 'CONTAINER_OR_FACILITY'); assert.equal(reasons['3,61,12'], 'SPAWNER_OR_TRIAL'); assert.equal(reasons['10,61,10'], undefined)
 })
 
 test('live case: no pickaxe digs the soft layers, then waits for a tool instead of finishing', async () => {
@@ -564,4 +564,25 @@ test('live case 2026-11-05: after a deposit the chest area is lit with crafted t
   assert.equal(crafts, 1)
   assert.ok(placed.length >= 2, `torches placed: ${placed.length}`)
   assert.ok(placed.every(p => !(p.x >= 0 && p.x <= 15 && p.z >= 0 && p.z <= 15)), 'never inside the quarry columns')
+})
+
+test('live case 2026-11-10: one cell that stays slow after a resync is deferred instead of pausing the job', async () => {
+  const sim = setup({ stoneTop: 61, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 8)
+  const mine = sim.adapter.mine
+  let slow = 0
+  sim.adapter.mine = async (targets, options) => {
+    const bad = targets.find(t => t.x === 5 && t.y === 62 && t.z === 5)
+    if (bad) { slow++; throw Object.assign(new Error('quarry mine: block 5,62,5 took 1520ms (limit 1500ms)'), { code: 'SLOW_BREAK', target: { x: 5, y: 62, z: 5 } }) }
+    return mine(targets, options)
+  }
+  sim.adapter.resyncInventory = async () => ({ ok: true })
+  const { j } = job(sim)
+  j.plan(baseConfig({ yBottom: 62 }))
+  j.start()
+  const s = await runUntilStopped(j)
+  assert.notEqual(s.pauseReason, 'SLOW_BREAK_PERSISTS', JSON.stringify(s.pauseDetails ?? s.result).slice(0, 300))
+  assert.ok(slow >= 2, 'the slow cell was retried once after the resync')
+  assert.notEqual(sim.world.name(5, 62, 5), 'air', 'the slow cell itself is left')
+  assert.equal(sim.world.name(6, 62, 6), 'air', 'the rest of the layer is mined')
 })

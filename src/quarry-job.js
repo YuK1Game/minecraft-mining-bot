@@ -37,7 +37,9 @@ const RESULT = new Set(['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS', 'PAUSED', 'CAN
 // Deferrals that are planned exclusions, not exceptions (§16.3).
 const PLANNED_EXCLUSIONS = new Set(['UNBREAKABLE'])
 const TOOL_WAIT = new Set(['WAITING_FOR_TOOL', 'TOOL_DURABILITY_RESERVE', 'TOOL_DURABILITY_UNKNOWN', 'TOOL_NOT_IN_HOTBAR'])
-const TRANSIENT_DEFER = ['UNREACHABLE', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK']
+// SUPPORTS_PROTECTED is re-evaluated too: since 2026-11-10 only falling or
+// owned protected blocks keep their support, so older holds under ores are released.
+const TRANSIENT_DEFER = ['UNREACHABLE', 'MINING_FAILED', 'SUPPORTS_DEFERRED_FALLING_BLOCK', 'SUPPORTS_PROTECTED']
 
 class QuarryInterrupt extends Error { constructor (code, message) { super(message ?? code); this.code = code } }
 
@@ -956,7 +958,17 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     const exitUses = miningUsesAfterExitReserve(tool, beforeDispatch, job.exitReservation?.plan, job.config.tools)
     if (exitUses < plannedTargets.length) plannedTargets = plannedTargets.slice(0, exitUses)
-    if (!plannedTargets.length) return finish('PAUSED', 'EXIT_TOOL_RESERVE', { pauseDetails: { tool: tool.name, reservedUses: job.exitReservation?.plan?.toolUses ?? [] } })
+    if (!plannedTargets.length) {
+      // Every remaining use of this tool is kept for the exit: fetch one more of
+      // the same kind from its supply box (once), then mine with the fresh one.
+      if (job.config.inventory.supplyBoxes?.length && ['pickaxe', 'shovel'].includes(tool.kind) && !job.miningExhaustedTried) {
+        job.miningExhausted = [tool.kind]; job.miningExhaustedTried = true
+        if (await restock(myEpoch, 'SURVEY', true)) return
+      }
+      job.miningExhausted = null
+      return finish('PAUSED', 'EXIT_TOOL_RESERVE', { pauseDetails: { tool: tool.name, reservedUses: job.exitReservation?.plan?.toolUses ?? [] } })
+    }
+    job.miningExhausted = null; job.miningExhaustedTried = false
     if (prepared) job.miningEquipmentPending = false
     // Re-plan from the actual stance; the world may have changed while moving.
     setState('MINE')
@@ -1008,14 +1020,26 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // from the server and re-plan (equipTool then really re-sends the slot).
     if (failure?.code === 'SLOW_BREAK') {
       rec.status = confirmed ? 'partial' : 'failed'; rec.error = String(failure.message)
-      job.slowBreaks = (job.slowBreaks ?? 0) + 1
+      // Count distinct slow cells: one cell that stays slow after a resync is a
+      // problem of that cell or stance (it waits for the next reconcile like a
+      // refused cell); slow breaks on 3 different cells mean the held tool.
+      const t = failure.target, k = t ? `${t.x},${t.y},${t.z}` : null
+      job.slowCells ??= []
+      if (k && job.slowCells.includes(k)) {
+        planner.defer(t, 'MINING_FAILED', { error: rec.error.slice(0, 160), slowBreak: true })
+        if (decision.stance) badStances.set(`${decision.stance.x},${decision.stance.y},${decision.stance.z}`, 2)
+        note('slow_cell_deferred', { cell: t, stance: decision.stance ?? null })
+        return
+      }
+      if (k) job.slowCells.push(k)
+      job.slowBreaks = job.slowCells.length || (job.slowBreaks ?? 0) + 1
       note('slow_break', { message: failure.message, held: adapter.getState()?.heldItem?.name ?? null, selectedSlot: adapter.getState()?.selectedSlot ?? null, count: job.slowBreaks })
-      if (job.slowBreaks >= 3) return finish('PAUSED', 'SLOW_BREAK_PERSISTS', { pauseDetails: { lastError: rec.error, held: adapter.getState()?.heldItem?.name ?? null } })
+      if (job.slowBreaks >= 3) return finish('PAUSED', 'SLOW_BREAK_PERSISTS', { pauseDetails: { lastError: rec.error, held: adapter.getState()?.heldItem?.name ?? null, cells: copy(job.slowCells) } })
       try { await call(myEpoch, 'resync', signal => adapter.resyncInventory?.({ signal })) } catch (error) { if (error instanceof QuarryInterrupt) throw error; note('resync_failed', { error: String(error.message ?? error).slice(0, 200) }) }
       lastInventory = totals(items(adapter.getState()) ?? [])
       return
     }
-    if (confirmed) { job.slowBreaks = 0; job.routeSkips = 0; job.autoResumes = 0 }
+    if (confirmed) { job.slowBreaks = 0; job.slowCells = []; job.routeSkips = 0; job.autoResumes = 0 }
     if (failure && !confirmed) {
       rec.status = 'failed'; rec.error = String(failure.message ?? failure)
       // A preview refused for the stance (pose not settled, face not visible
@@ -1610,7 +1634,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!bindings?.length && !job.supplyRestock) return false
     if (job.portableStorage) return false
     if (!validSupplyBindings(bindings) || typeof adapter.restockSupplies !== 'function') { await finish('PAUSED', 'SUPPLY_UNSUPPORTED'); return true }
-    const inventory = items(guard(myEpoch)), policy = { ...job.config.inventory, tools: job.config.tools }
+    const inventory = items(guard(myEpoch)), policy = { ...job.config.inventory, tools: job.config.tools, ...(job.miningExhausted ? { miningExhausted: copy(job.miningExhausted) } : {}) }
     if (!inventory && !job.supplyRestock) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
     const need = supplyNeeds(inventory ?? [], policy)
     const shortage = Object.values(need.required).some(Boolean)

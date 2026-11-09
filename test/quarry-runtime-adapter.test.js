@@ -188,3 +188,23 @@ test('live case 2026-11-04: a block that breaks far slower than the held tool al
   assert.ok(Date.now() - started < 2000, 'stopped long before the 15s block timeout')
   assert.equal(stopped, true, 'the mining input is stopped')
 })
+
+test('live case 2026-11-10: gravel that refills from above restarts the slow-break clock instead of pausing the job', async () => {
+  const { ports } = fakePorts()
+  const blocks = new Map([['1,0,0', 'minecraft:gravel']]); let phase = 'idle'
+  ports.getBlock = (x, y, z) => ({ known: true, name: blocks.get(`${x},${y},${z}`) ?? 'minecraft:air' })
+  ports.mining = {
+    preview: () => ({ ready: true }), stop: () => {},
+    start: () => {
+      phase = 'mining'
+      const at = (ms, fn) => setTimeout(fn, ms)
+      at(100, () => blocks.delete('1,0,0')); at(150, () => blocks.set('1,0,0', 'minecraft:gravel')) // broken, then refilled
+      at(250, () => blocks.delete('1,0,0')); at(300, () => blocks.set('1,0,0', 'minecraft:gravel'))
+      at(400, () => { blocks.delete('1,0,0'); phase = 'completed' })
+    }
+  }
+  ports.getMining = () => ({ phase })
+  const a = createQuarryRuntimeAdapter({ ...ports, slowBreakMinMs: 100 })
+  const result = await a.mine([{ x: 1, y: 0, z: 0, expectedName: 'minecraft:gravel' }])
+  assert.equal(result.phase, 'completed')
+})

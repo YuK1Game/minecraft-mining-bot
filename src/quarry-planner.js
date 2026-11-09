@@ -151,7 +151,10 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
     const above = read(add(p, { x: 0, y: 1, z: 0 }))
     if (!known(above)) return 'UNKNOWN_ABOVE'
     const rule = ruleOf(above)
-    if (rule.kind === 'protected') return 'SUPPORTS_PROTECTED'
+    // Protected blocks that do not fall (ores, containers, spawners) need no
+    // support, so the stone under them is mined normally. Support stays for
+    // protected falling blocks and for the bot's own placed structures.
+    if (rule.kind === 'protected' && (isGravityName(above.name) || above.protected === true || above.protectionSource)) return 'SUPPORTS_PROTECTED'
     const k = key(p.x, p.y + 1, p.z)
     if (deferred.has(k) && isGravityName(above.name)) return 'SUPPORTS_DEFERRED_FALLING_BLOCK'
     if (seals.has(k)) return 'SUPPORTS_SEAL'
@@ -502,7 +505,17 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
         const plan = sealPlan({ position: f.position, name: f.name, lava: /lava/.test(nameOf(f.name)) })
         // Outside water leaking into the edge: the fluid cell is held (never
         // sealed or broken) and its inner neighbours become the wall below.
-        if (!plan.ok && plan.reason === 'LARGE_FLUID_AREA' && connectsOutside(f.position)) { defer(f.position, 'LARGE_FLUID_WALL', { size: plan.size, intrusion: true }); held++; holdsAdded++; continue }
+        if (!plan.ok && plan.reason === 'LARGE_FLUID_AREA' && connectsOutside(f.position)) {
+          // First try to fill the leaked cell itself with a block (ordinary
+          // placement on a visible neighbouring face, through the water). The
+          // cell is inside the target columns, so the outside body stays behind
+          // a new edge block. Lava is never plugged this way.
+          if (!/lava/.test(nameOf(f.name)) && permits(regions, 'place', f.position).allowed) {
+            const placement = fluidAction({ ok: true, position: f.position, purpose: 'plug', lava: false, size: plan.size, intrusionPlug: true }, reach, inventoryItems, tools, policy, yTop)
+            if (placement.action) return placement
+          }
+          defer(f.position, 'LARGE_FLUID_WALL', { size: plan.size, intrusion: true }); held++; holdsAdded++; continue
+        }
         if (!plan.ok) return { action: 'pause', reason: plan.reason, details: { position: f.position, size: plan.size } }
         const placement = fluidAction(plan, reach, inventoryItems, tools, policy, yTop)
         if (placement.action) return placement
