@@ -38,9 +38,13 @@ function permitsExitAction (plan, kind, p) {
 function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, inventory = [], policy = {}, minFreeSlots = 6, exit = {}, reachable = null, preflight = false, reservation = null } = {}) {
   if (!regions?.chunks?.length || !point(feet) || typeof getBlock !== 'function' || !Number.isSafeInteger(yTop)) return { ok: false, reason: 'EXIT_COLUMN_UNAVAILABLE', details: { reason: 'INVALID_EXIT_CONTEXT' } }
   const options = normalizeExit(exit)
-  const read = p => getBlock(p.x, p.y, p.z)
+  // Outside the world is not missing terrain that can be requested. In
+  // particular, yBottom=-64 must never require an observed floor at Y=-65.
+  const inWorld = p => p.y >= regions.worldMinY && p.y <= regions.worldMaxY
+  const read = p => inWorld(p) ? getBlock(p.x, p.y, p.z) : { known: false, reason: 'OUTSIDE_WORLD_HEIGHT' }
   const protectedAt = p => regions.protected.some(b => p.x >= b.xMin && p.x <= b.xMax && p.y >= b.yMin && p.y <= b.yMax && p.z >= b.zMin && p.z <= b.zMax)
   const unsafe = p => {
+    if (!inWorld(p)) return 'OUTSIDE_WORLD_HEIGHT'
     const b = read(p)
     if (b?.known !== true || typeof b.name !== 'string') return 'UNKNOWN'
     const rule = blockRule(b.name)
@@ -54,7 +58,33 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
   // Preflight may plan to clear an observed, diggable entry inside the quarry.
   // It never changes that cell to observed air or grants execution permission.
   const entryClearable = p => empty(p) || preflight && regions.columns.has(`${p.x},${p.z}`) && p.y >= regions.yBottom && p.y <= yTop && !unsafe(p) && blockRule(read(p).name).kind === 'dig'
-  const floor = p => { const b = read(p); const r = blockRule(b?.name); if (b?.known && nameOf(b) === 'bedrock' && !protectedAt(p) && !b.protected && !b.protectionSource && !b.extra?.length) return b.boundingBox === 'block'; return !unsafe(p) && b.boundingBox === 'block' && r.kind === 'dig' && !r.leaves && !r.plant && !/_log$|_wood$|_stem$/.test(nameOf(b)) }
+  const bedrock = p => { const b = read(p); return b?.known === true && nameOf(b) === 'bedrock' && b.boundingBox === 'block' && !protectedAt(p) && !b.protected && !b.protectionSource && !b.extra?.length }
+  const floor = p => { const b = read(p); const r = blockRule(b?.name); return bedrock(p) || !unsafe(p) && b.boundingBox === 'block' && r.kind === 'dig' && !r.leaves && !r.plant && !/_log$|_wood$|_stem$/.test(nameOf(b)) }
+  function entrance (column, normal) {
+    const inside = { x: column.x - normal.x, z: column.z - normal.z }
+    let feetY = regions.yBottom
+    // yBottom bounds blocks to inspect, not a promise that the player can stand
+    // there. Bedrock is retained by excavation, so its highest observed block
+    // in this entry column remains a floor after the quarry is cut. Do not
+    // substitute a fixed -59 value or lift the job's requested lower bound.
+    for (let y = regions.yBottom; y <= yTop; y++) {
+      const p = { ...inside, y }, b = read(p)
+      if (b?.known !== true) return { cause: 'UNKNOWN', position: p, part: 'entry_column' }
+      if (nameOf(b) === 'bedrock') feetY = y + 1
+    }
+    const entry = { ...inside, y: feetY }, startFeet = { ...column, y: feetY }
+    const checks = [
+      ['entry_feet', entry, entryClearable],
+      ['entry_head', { ...entry, y: feetY + 1 }, entryClearable],
+      ['entry_floor', { ...entry, y: feetY - 1 }, floor],
+      ['shaft_floor', { ...startFeet, y: feetY - 1 }, floor]
+    ]
+    for (const [part, position, accepts] of checks) {
+      if (!accepts(position)) return { cause: unsafe(position) ?? (part.endsWith('floor') ? 'NO_SOLID_FLOOR' : 'NOT_CLEAR'), position, part, entryY: feetY }
+    }
+    if (reachable && !reachable.has(key(entry))) return { cause: 'UNREACHABLE', position: entry, part: 'entry_path', entryY: feetY }
+    return { entry, startFeet }
+  }
   const candidates = []
   const sides = options.side === 'auto' ? ['east', 'west', 'north', 'south'] : [options.side]
   for (const side of sides) {
@@ -72,9 +102,9 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
   for (const { side, column } of candidates) {
     if (reservation && (column.x !== reservation.column?.x || column.z !== reservation.column?.z || side !== reservation.side)) continue
     const normal = SIDE_NORMALS[side]
-    const startFeet = { ...column, y: regions.yBottom }
-    const entry = { x: column.x - normal.x, y: startFeet.y, z: column.z - normal.z }
-    if (!entryClearable(entry) || !entryClearable({ ...entry, y: entry.y + 1 }) || !floor({ ...entry, y: entry.y - 1 }) || !floor({ ...startFeet, y: startFeet.y - 1 }) || reachable && !reachable.has(key(entry))) { attempts.push({ side, column, reason: 'ENTRY_UNAVAILABLE' }); continue }
+    const access = entrance(column, normal)
+    if (!access.entry) { attempts.push({ side, column, reason: 'ENTRY_UNAVAILABLE', ...access }); continue }
+    const { entry, startFeet } = access
     let landing = null
     const x = column.x + normal.x, z = column.z + normal.z
     // yTop is the maximum inside the quarry. A neighbouring surface can be
@@ -97,6 +127,9 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
       for (const o of offsets) {
         const q = { x: position.x + o.x, y: y + o.y, z: position.z + o.z }
         if (q.y < startFeet.y && floor(q)) continue
+        // A received bedrock side wall is inert. It is never part of the shaft
+        // dig targets; explicit protection and fluid layers still disqualify it.
+        if ((o.x !== 0 || o.z !== 0) && bedrock(q)) continue
         const reason = unsafe(q)
         if (reason) { failure = { side, column, position: q, reason }; break }
       }
