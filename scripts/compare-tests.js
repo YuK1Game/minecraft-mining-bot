@@ -42,6 +42,10 @@ async function main () {
     if (baseline.failures.length) console.warn(`Known baseline failures: ${baseline.failures.length}. A green regression comparison is NOT a fully passing legacy suite.`)
     if (comparison.introduced.length) process.exitCode = 1
   } finally {
+    // Unlink the node_modules junction first: on Windows a recursive removal
+    // of the temporary worktree followed it and emptied the real node_modules
+    // (2026-11-09). Only the link is removed, never its target.
+    await fs.unlink(path.join(worktree, 'node_modules')).catch(() => {})
     if (attached) execFileSync('git', ['worktree', 'remove', '--force', worktree], { cwd: root, stdio: 'inherit' })
     await fs.rm(temporary, { recursive: true, force: true })
   }
