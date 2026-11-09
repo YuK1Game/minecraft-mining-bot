@@ -38,12 +38,14 @@ function discoverSupplyBindings (items, { resolveName } = {}) {
     const entries = contents.slots.filter(Boolean)
     if (!entries.length) continue
     const name = entries[0].name, role = roleOf(name), limit = limitOf(name)
-    if (!role || !Number.isInteger(limit) || !entries.every(entry => entry.name === name && entry.count === limit)) continue
+    if (!role || !Number.isInteger(limit)) continue
     // A box in its role's supply colour stays a supply after some of it was
-    // used (live 2026-11-10: blue gave one pickaxe, brown some dirt, and a new
-    // job could no longer bind them). Any other box must still be a full
-    // 27-stack box so that cargo is never mistaken for supplies.
-    if (entries.length !== 27 && item.name !== SUPPLY_COLORS[role]) continue
+    // used (live 2026-11-10: blue gave one pickaxe, brown 32 dirt, and a new
+    // job could no longer bind them): any stacks of that one item. Any other
+    // box must still be 27 full stacks so that cargo is never taken for supplies.
+    const coloured = item.name === SUPPLY_COLORS[role]
+    if (!entries.every(entry => entry.name === name && (coloured ? entry.count >= 1 && entry.count <= limit : entry.count === limit))) continue
+    if (entries.length !== 27 && !coloured) continue
     found[role].push({ role, itemName: name, key: carriedContainerKey(item), boxName: item.name, stackId: item.stackId ?? item.raw?.stack_id })
   }
   if (ROLES.some(role => found[role].length !== 1)) return { ok: false, reason: ROLES.some(role => found[role].length > 1) ? 'SUPPLY_BOXES_AMBIGUOUS' : 'SUPPLY_BOXES_UNCONFIRMED', candidates: found, unknown }

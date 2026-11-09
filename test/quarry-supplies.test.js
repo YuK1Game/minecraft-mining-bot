@@ -269,6 +269,7 @@ test('a partly used box in its supply colour still binds; an uncoloured partial 
   const items = make()
   partial(items[8], 26) // one pickaxe taken from the blue box
   partial(items[11], 3) // most dirt taken from the brown box
+  items[11].raw.extra.nbt.nbt.value.Items.value.value[2].Count = tag('byte', 32) // and one stack only half full
   const result = discoverSupplyBindings(items, { resolveName: id => names.get(id) })
   assert.equal(result.ok, true, JSON.stringify(result.reason))
   assert.deepEqual(result.bindings.map(b => b.role), ['pickaxe', 'shovel', 'food', 'dirt'])
