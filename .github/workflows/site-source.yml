@@ -1,0 +1,21 @@
+name: Export isolated site observation source
+on:
+  push:
+    branches: [fix/quarry-site-observations-20261109]
+    paths: [.github/workflows/site-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: git archive --format=tar.gz -o site-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-source
+          path: site-source.tar.gz
+          retention-days: 1
