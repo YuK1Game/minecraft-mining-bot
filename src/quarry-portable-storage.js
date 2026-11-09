@@ -703,6 +703,11 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
             const markerRoom = current.items.filter(item => item.name === 'minecraft:dirt').reduce((n, item) => n + item.count, 0) - reserve
             if (entry.capacityMarker && (!cp.markerEnabled || entry.name !== 'minecraft:dirt' || entry.count !== 1 || !Number.isSafeInteger(reserve) || markerRoom < 1)) throw failure('CAPACITY_MARKER_MATERIAL_MISSING')
             const item = current.items.find(item => item.name === entry.name && matches(item.raw, entry.identity) && (entry.capacityMarker ? item.count > 0 : item.count > (kept.get(item.slot) ?? 0)))
+            // The surplus is gone (e.g. the keep rules now hold every remaining
+            // stack): close this entry at what was really transferred instead of
+            // retrying the same stale plan forever. Nothing moves; markers and
+            // recovery-space entries keep their strict failure.
+            if (!item && !entry.capacityMarker && !entry.recoverySpace && cp.intent == null) { entry.count = entry.transferred; entry.surplusGone = true; await save(); break }
             if (!item) throw failure('STORAGE_SURPLUS_CHANGED')
             if (entry.recoverySpace && ((kept.get(item.slot) ?? 0) !== 0 || item.count !== entry.count - entry.transferred)) throw failure('STORAGE_SURPLUS_CHANGED')
             const known = chest.snapshot()

@@ -303,3 +303,15 @@ test('a storage stand with fewer loose drops in pickup reach is preferred over t
   assert.ok(Math.hypot(-2.5 - s.x - 0.5, 0.8 - s.z - 0.5) > 3.5, JSON.stringify(s))
   assert.ok(f.events.some(e => e.type === 'move'))
 })
+
+test('a planned deposit whose surplus disappeared is closed at zero and the box is still recovered', async () => {
+  const f = fixture('shulker')
+  const input = { ...f.request, inventoryPolicy: { keepSealBlocks: 0, keepExitDirt: 8 } }
+  let changed = false
+  const result = await f.run({ onCheckpoint: async cp => { if (!changed && cp.plan?.length && cp.opened && !cp.deposited.length) { changed = true; const d = f.bag.findIndex(r => r.network_id === 3); f.bag[d] = { ...f.bag[d], count: 8, stack_id: 9999 } } } }, input)
+  assert.equal(changed, true)
+  assert.equal(result.status, 'completed', JSON.stringify(result.reason)); assert.equal(result.recovered, true)
+  assert.deepEqual(result.deposited, [])
+  assert.equal(f.events.filter(e => e.type === 'deposit').length, 0)
+  assert.equal(f.bag.find(r => r.network_id === 3).count, 8, 'the kept dirt never moves')
+})
