@@ -81,6 +81,27 @@ function createQuarryEgressRuntime ({ getState, getBlock, moveTo, mineTargets, p
     }
     busy = true
     try {
+      // Reconnect during the ascent (live 2026-11-10 13:16): the same account,
+      // realm, dimension and life on a new connection may continue only after
+      // the server confirms the bot on the column at the checkpoint's height
+      // (one higher when the pending step's dirt is already received).
+      if (restoring && request.reconnect === true && confirmPosition && typeof checkpoint.scope === 'string' && ['entry', 'ascent'].includes(checkpoint.phase)) {
+        const s = getState(), current = scope(s)
+        let old = null; try { old = JSON.parse(checkpoint.scope) } catch {}
+        const next = JSON.parse(current)
+        const sameIdentity = Array.isArray(old) && old[0] === next[0] && old[1] === next[1] && old[4] === next[4] && old[6] === next[6] && checkpoint.life === s.lifecycle?.deathId
+        if (current !== checkpoint.scope && sameIdentity && checkpoint.phase === 'ascent') {
+          const p = checkpoint.pendingStep?.target
+          const placed = p && p.x === plan.column.x && p.z === plan.column.z && p.y === checkpoint.confirmedFeetY && getBlock(p.x, p.y, p.z)?.known === true && getBlock(p.x, p.y, p.z)?.name === 'minecraft:dirt'
+          const centre = { x: plan.column.x + 0.5, y: checkpoint.confirmedFeetY + (placed ? 1 : 0), z: plan.column.z + 0.5 }
+          const started = now(), receipt = await confirmPosition(copy(centre), { signal, operationId })
+          if (!validPositionVolume(receipt, centre, started, now(), current)) return blocked('EGRESS_SCOPE_CHANGED')
+          positionRequests.add(receipt.requestId)
+          checkpoint.rebound = { from: checkpoint.scope, to: current, evidence: copy(receipt) }
+          checkpoint.scope = current; checkpoint.positionEvidence = copy(receipt)
+          await save()
+        }
+      }
       const initial = check()
       if (checkpoint.phase === 'completed') {
         await verifyPosition({ x: plan.landing.x + 0.5, y: plan.landing.y, z: plan.landing.z + 0.5 }, 'EGRESS_LANDING_CHANGED')
@@ -91,9 +112,26 @@ function createQuarryEgressRuntime ({ getState, getBlock, moveTo, mineTargets, p
         const pending = checkpoint.pendingStep, p = pending.target
         if (pending.phase === 'not_sent') { checkpoint.pendingStep = null; await save() }
         else {
+          // A placement sent but never acknowledged (live 2026-11-10 13:12) is
+          // accepted only on full received evidence: the target is now dirt,
+          // exactly one dirt was spent since the step began, and the server
+          // confirms the feet one block higher (checked just below).
+          const unacked = pending.phase === 'placement_pending' && p && p.x === plan.column.x && p.z === plan.column.z && p.y === checkpoint.confirmedFeetY &&
+            getBlock(p.x, p.y, p.z)?.known === true && getBlock(p.x, p.y, p.z)?.name === 'minecraft:dirt' && Number.isSafeInteger(pending.beforeDirt) && dirtTotal(check()) === pending.beforeDirt - 1
+          if (unacked) { pending.phase = 'completed'; pending.serverConfirmed = true; pending.reconciledBy = 'received_dirt_block_one_dirt_spent_and_server_position' }
+          // The opposite evidence: the target is still received air, no dirt was
+          // spent, and the server confirms the feet at the old height. The step
+          // never happened, so it is cleared and sent again as a new step.
+          const neverPlaced = !unacked && pending.phase === 'placement_pending' && p && p.x === plan.column.x && p.z === plan.column.z && p.y === checkpoint.confirmedFeetY &&
+            air(getBlock(p.x, p.y, p.z)) && Number.isSafeInteger(pending.beforeDirt) && dirtTotal(check()) === pending.beforeDirt
+          if (neverPlaced) {
+            await verifyPosition({ x: p.x + 0.5, y: p.y, z: p.z + 0.5 }, 'ASCENT_UNCERTAIN_STEP')
+            checkpoint.pendingStep = null; await save()
+          } else {
           if (pending.phase !== 'completed' || pending.serverConfirmed !== true || !p || p.x !== plan.column.x || p.z !== plan.column.z || p.y !== checkpoint.confirmedFeetY || getBlock(p.x, p.y, p.z)?.known !== true || getBlock(p.x, p.y, p.z)?.name !== 'minecraft:dirt') return blocked('ASCENT_UNCERTAIN_STEP')
           await verifyPosition({ x: p.x + 0.5, y: p.y + 1, z: p.z + 0.5 }, 'ASCENT_UNCERTAIN_STEP')
           checkpoint.steps.push(copy(pending)); checkpoint.confirmedFeetY++; checkpoint.pendingStep = null; await save()
+          }
         }
       }
       if (dirtTotal(initial) < plan.targetFeetY - checkpoint.confirmedFeetY + (plan.reserveDirt ?? 8)) return blocked('EXIT_DIRT_REQUIRED')

@@ -29,7 +29,7 @@ function fixture ({ dirt = 10, mineConfirmed = true, poseConfirmed = true, stepF
       Object.assign(cp, { phase: 'completed', serverConfirmed: true }); await onCheckpoint(cp)
       return { status: 'completed', serverConfirmed: true, checkpoint: cp }
     } })
-  const run = checkpoint => runtime.run({ jobId: 'job', operationId: 'exit', plan, checkpoint }, { onCheckpoint: cp => checkpoints.push(cp) })
+  const run = (checkpoint, extra = {}) => runtime.run({ jobId: 'job', operationId: 'exit', plan, checkpoint, ...extra }, { onCheckpoint: cp => checkpoints.push(cp) })
   return { run, state, plan, blocks, moves, mines, steps, checkpoints, get oracleCalls () { return oracleCalls } }
 }
 
@@ -168,4 +168,60 @@ test('scope changes during a runner oracle response are rejected before mining o
   assert.equal(result.reason, 'EGRESS_SCOPE_CHANGED')
   assert.equal(f.moves.length, 0)
   assert.equal(f.mines.length, 0)
+})
+
+test('live case 2026-11-10: an unacknowledged placement is accepted only with the dirt block, one dirt spent and the server pose', async () => {
+  for (const variant of ['ok', 'no_spend', 'no_block']) {
+    const f = fixture({ oracle: true })
+    // A first run that sends the step but never gets the acknowledgement.
+    const first = await f.run()
+    const done = f.checkpoints.find(cp => cp.pendingStep?.phase === 'completed' && cp.confirmedFeetY === 65)
+    const pending = { ...structuredClone(done), pendingStep: { ...structuredClone(done.pendingStep), phase: 'placement_pending', serverConfirmed: false, beforeDirt: 10 } }
+    f.state.inventory.items[0].count = variant === 'no_spend' ? 10 : 9
+    f.blocks.set('1,65,0', variant === 'no_block' ? 'minecraft:air' : 'minecraft:dirt')
+    f.state.rawServerPosition = { x: 1.5, y: 66.62, z: 0.5 }
+    const resumed = await f.run(pending)
+    if (variant === 'ok') assert.notEqual(resumed.reason, 'ASCENT_UNCERTAIN_STEP', JSON.stringify(resumed.reason))
+    else assert.equal(resumed.reason, 'ASCENT_UNCERTAIN_STEP')
+    assert.ok(first)
+  }
+})
+
+test('live case 2026-11-10: after a reconnect the ascent continues only with a server-confirmed pose on the column', async () => {
+  for (const confirmed of [true, false]) {
+    let refuse = false
+    const f = fixture({ oracle: ({ receipt }) => refuse ? { serverConfirmed: false, reason: 'POSITION_NOT_FOUND' } : receipt })
+    await f.run()
+    const mid = structuredClone(f.checkpoints.find(cp => cp.phase === 'ascent' && cp.confirmedFeetY === 66 && !cp.pendingStep))
+    assert.ok(mid, 'a mid-ascent checkpoint exists')
+    f.blocks.set('1,66,0', 'minecraft:air'); f.state.inventory.items[0].count = 9
+    f.state.connectionId = 'socket-2'; f.state.startedAt = 'session-2' // same account, realm, dimension and life
+    f.state.position = { x: 1.5, y: 67.62, z: 0.5 }
+    assert.equal((await f.run(structuredClone(mid))).reason, 'EGRESS_SCOPE_CHANGED', 'never without the reconnect request')
+    refuse = !confirmed
+    const resumed = await f.run(structuredClone(mid), { reconnect: true })
+    if (confirmed) assert.notEqual(resumed.reason, 'EGRESS_SCOPE_CHANGED', JSON.stringify(resumed.reason))
+    else assert.equal(resumed.reason, 'EGRESS_SCOPE_CHANGED')
+  }
+})
+
+test('a reconnect never rebinds a checkpoint from another life', async () => {
+  const f = fixture({ oracle: true })
+  await f.run()
+  const mid = structuredClone(f.checkpoints.find(cp => cp.phase === 'ascent' && cp.confirmedFeetY === 66 && !cp.pendingStep))
+  f.state.connectionId = 'socket-2'; f.state.lifecycle.deathId++
+  assert.equal((await f.run(mid, { reconnect: true })).reason, 'EGRESS_SCOPE_CHANGED')
+})
+
+test('a placement that never happened (air, no dirt spent, pose unchanged) is cleared and sent again', async () => {
+  const f = fixture({ oracle: true })
+  await f.run()
+  const done = f.checkpoints.find(cp => cp.pendingStep?.phase === 'completed' && cp.confirmedFeetY === 65)
+  const pending = { ...structuredClone(done), pendingStep: { ...structuredClone(done.pendingStep), phase: 'placement_pending', serverConfirmed: false, beforeDirt: 10 } }
+  f.blocks.set('1,65,0', 'minecraft:air'); f.blocks.set('1,66,0', 'minecraft:air'); f.state.inventory.items[0].count = 10
+  f.state.position = { x: 1.5, y: 66.62, z: 0.5 }
+  const steps = f.steps.length
+  const resumed = await f.run(pending)
+  assert.notEqual(resumed.reason, 'ASCENT_UNCERTAIN_STEP', JSON.stringify(resumed.reason))
+  assert.ok(f.steps.length > steps, 'the step is sent again')
 })

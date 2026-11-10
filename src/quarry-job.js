@@ -2277,6 +2277,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       await save('egress_intent')
     }
     const owner = job; const active = job.egress
+    // A new connection with the same life may continue the egress; the egress
+    // runtime rebinds only with a server-confirmed pose on the column.
+    let reconnect = false
+    if (active.scope !== scopeOf(s) && active.life === lifeOf(s) && active.checkpoint) { reconnect = true; active.scope = scopeOf(s); note('egress_reconnect', { operationId: active.operationId }) }
     if (active.scope !== scopeOf(s) || active.life !== lifeOf(s)) return finish('PAUSED', 'EXIT_SCOPE_CHANGED', { pauseDetails: { operationId: active.operationId } })
     // The native mover is bounded to 12m. Supply the ordinary walking graph's
     // path so the adapter can split a far pit entrance into its existing short
@@ -2294,7 +2298,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     active.phase = 'running'; active.reason = null
     const rec = recordAction({ type: 'egress', operationId: active.operationId, column: active.plan.column })
-    const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint), ...(job.storageExhausted && passivePickup() ? { allowFullInventory: true } : {}) }, { signal, onCheckpoint }))
+    const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint), ...(reconnect ? { reconnect: true } : {}), ...(job.storageExhausted && passivePickup() ? { allowFullInventory: true } : {}) }, { signal, onCheckpoint }))
     guard(myEpoch)
     if (result?.checkpoint) await onCheckpoint(result.checkpoint)
     rec.result = copy(result ?? null)
