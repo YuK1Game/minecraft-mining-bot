@@ -28,6 +28,7 @@ const SETTLE_MAX_WAIT_MS = 45000 // longest post-combat settle wait for threats 
 // Tools of one kind carried while all are reserved for the exit (live 2026-11-10:
 // three pickaxes at 19 uses each were all reserved, so a 4th is needed; worn
 // ones are used down later and returned once unusable).
+const TERRAIN_BUDGET_RENEW_MS = 600000 // a terrain request budget older than this is renewed on resume
 const EXHAUSTED_TOOL_CAP = 4
 const CAPACITY_RETRIES = 8 // automatic retries of a storage box recovery blocked only by loose drops (~10 min)
 const AUTO_RESUME_WINDOW_MS = 600000 // the ACTION_FAILED auto-resume budget resets after this quiet time
@@ -609,6 +610,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   async function reconcile (myEpoch) {
     const s = guard(myEpoch)
+    // The same-scope request budget is kept across a resume, but one spent long
+    // ago (e.g. at the job start) is renewed: subchunks far above are dropped
+    // as the bot digs down and must be requested again.
+    const obs = job.terrainObservation
+    if (obs && obs.requests && !obs.waiting && Number.isFinite(obs.requestedAt) && now() - obs.requestedAt > TERRAIN_BUDGET_RENEW_MS) { obs.requests = 0; obs.phase = 'idle' }
     if (job.supplyRestock) { job.supplyRestock.resumeTo = 'RECONCILE'; return restock(myEpoch, 'RECONCILE', true) }
     // Re-observe instead of trusting saved cells (§15.3): unreachable and
     // tool deferrals are retried; protected/unbreakable stay.
@@ -1091,7 +1097,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       lastInventory = totals(items(adapter.getState()) ?? [])
       return
     }
-    if (confirmed) { job.slowBreaks = 0; job.slowCells = []; job.routeSkips = 0; job.autoResumes = 0; job.capacityRetries = 0 }
+    // Confirmed progress also renews the terrain request budget: received
+    // subchunks far above are dropped as the bot digs down, so the exit column
+    // may need a fresh request later (live 2026-11-10 11:35: budget spent at start).
+    if (confirmed) { job.slowBreaks = 0; job.slowCells = []; job.routeSkips = 0; job.autoResumes = 0; job.capacityRetries = 0; if (job.terrainObservation?.phase === 'exhausted') { job.terrainObservation.requests = 0; job.terrainObservation.phase = 'idle' } }
     if (failure && !confirmed) {
       rec.status = 'failed'; rec.error = String(failure.message ?? failure)
       // A preview refused for the stance (pose not settled, face not visible

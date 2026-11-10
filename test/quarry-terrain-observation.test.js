@@ -26,7 +26,7 @@ function fixture ({ missingTarget = false, missingExit = false, receive = null, 
     }
   } })
   assert.equal(job.plan(config).ready, true)
-  return { sim, job, config, requests, docs, exitCalls: () => exitCalls }
+  return { sim, job, config, requests, docs, exitCalls: () => exitCalls, advance: ms => { clock += ms } }
 }
 
 async function until (predicate) {
@@ -141,6 +141,20 @@ test('a stopped observation dispatch is interrupted without retrying while pause
     await f.job.pause()
     assert.equal(f.job.status().pauseReason, 'MANUAL_PAUSE')
     assert.equal(f.requests.length, 1)
+    assert.equal(f.exitCalls(), 0)
+  } finally { await f.job.pause() }
+})
+
+test('an exit request budget spent long ago is renewed on resume (live 2026-11-10 11:35)', async () => {
+  const f = fixture({ missingExit: true })
+  f.job.start()
+  try {
+    await until(() => f.job.status().state === 'PAUSED')
+    assert.equal(f.requests.length, 2)
+    f.advance(11 * 60000)
+    f.job.resume()
+    await until(() => f.requests.length === 4 && f.job.status().state === 'PAUSED')
+    assert.equal(f.job.status().pauseReason, 'EXIT_COLUMN_UNAVAILABLE')
     assert.equal(f.exitCalls(), 0)
   } finally { await f.job.pause() }
 })
