@@ -171,17 +171,17 @@ test('scope changes during a runner oracle response are rejected before mining o
 })
 
 test('live case 2026-11-10: an unacknowledged placement is accepted only with the dirt block, one dirt spent and the server pose', async () => {
-  for (const variant of ['ok', 'no_spend', 'no_block']) {
+  for (const variant of ['ok', 'spend_before_intent', 'two_spent', 'no_block']) {
     const f = fixture({ oracle: true })
     // A first run that sends the step but never gets the acknowledgement.
     const first = await f.run()
     const done = f.checkpoints.find(cp => cp.pendingStep?.phase === 'completed' && cp.confirmedFeetY === 65)
     const pending = { ...structuredClone(done), pendingStep: { ...structuredClone(done.pendingStep), phase: 'placement_pending', serverConfirmed: false, beforeDirt: 10 } }
-    f.state.inventory.items[0].count = variant === 'no_spend' ? 10 : 9
+    f.state.inventory.items[0].count = variant === 'spend_before_intent' ? 10 : variant === 'two_spent' ? 8 : 9
     f.blocks.set('1,65,0', variant === 'no_block' ? 'minecraft:air' : 'minecraft:dirt')
     f.state.rawServerPosition = { x: 1.5, y: 66.62, z: 0.5 }
     const resumed = await f.run(pending)
-    if (variant === 'ok') assert.notEqual(resumed.reason, 'ASCENT_UNCERTAIN_STEP', JSON.stringify(resumed.reason))
+    if (variant === 'ok' || variant === 'spend_before_intent') assert.notEqual(resumed.reason, 'ASCENT_UNCERTAIN_STEP', JSON.stringify(resumed.reason))
     else assert.equal(resumed.reason, 'ASCENT_UNCERTAIN_STEP')
     assert.ok(first)
   }
