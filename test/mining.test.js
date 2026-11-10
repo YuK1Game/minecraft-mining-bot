@@ -396,3 +396,19 @@ test('an exit shaft ore is mined only when flagged as such on a quarry target', 
   assert.throws(() => f.mining.preview([quarry]), /diggable/, 'ores stay protected in normal quarry mining')
   assert.doesNotThrow(() => f.mining.preview([{ ...quarry, exitShaftOre: true }]))
 })
+
+test('pillar descent mines only received dirt under the feet with a solid block right below it', () => {
+  const f = fixture()
+  const set = f.set; f.set = (p, name, runtimeId = 1) => { set(p, name, runtimeId); f.blocks.get(f.id(p)).boundingBox = /air|water/.test(name) ? 'empty' : 'block' }
+  // Bot feet at y=65 standing on dirt (0,64,0) with stone at (0,63,0).
+  f.set({ x: 0, y: 64, z: 0 }, 'dirt', 7); f.set({ x: 0, y: 63, z: 0 }, 'stone')
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { f.set({ x: dx, y: 64, z: dz }, 'stone'); f.set({ x: dx, y: 65, z: dz }, 'air', 0) }
+  const below = { x: 0, y: 64, z: 0 }
+  assert.equal(f.mining.preview([below]).ready, false, 'own footing stays refused')
+  assert.equal(f.mining.preview([{ ...below, accessPreparation: 'pillar_descent', expectedName: 'minecraft:dirt', expectedRuntimeId: 7 }]).ready, true)
+  f.set({ x: 0, y: 63, z: 0 }, 'air', 0)
+  assert.equal(f.mining.preview([{ ...below, accessPreparation: 'pillar_descent', expectedName: 'minecraft:dirt' }]).ready, false, 'never a drop of more than one block')
+  f.set({ x: 0, y: 63, z: 0 }, 'stone'); f.set({ x: 1, y: 64, z: 0 }, 'water')
+  assert.equal(f.mining.preview([{ ...below, accessPreparation: 'pillar_descent', expectedName: 'minecraft:dirt' }]).ready, false, 'dry surroundings only')
+  assert.throws(() => f.mining.preview([{ ...below, accessPreparation: 'pillar_descent', expectedName: 'minecraft:stone' }]), /dirt/)
+})
