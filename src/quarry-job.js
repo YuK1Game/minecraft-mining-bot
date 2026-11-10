@@ -31,6 +31,14 @@ const POSE_MOVE_LIMIT = 3, POSE_CONFIRM_RADIUS = 1.5 // pose check after a pause
 // ones are used down later and returned once unusable).
 const TERRAIN_BUDGET_RENEW_MS = 600000 // a terrain request budget older than this is renewed on resume
 const EGRESS_NOOP_COMBAT_MS = 3000, EGRESS_NOOP_COMBAT_RETRIES = 6 // no-action combat during the climb (consecutive, reset by progress)
+// Momentary refusals during the climb (live 2026-11-11 0:37-0:55: the
+// inventory briefly unconfirmed after a placement, the self-position query not
+// yet settled, a step left pending). The egress itself reconciles the pending
+// step from received evidence; the job only waits and calls it again, a few
+// times in a row, reset by a confirmed step. Damage, terrain, dirt or scope
+// problems still pause.
+const EGRESS_TRANSIENT = new Set(['ASCENT_INVENTORY_UNKNOWN', 'EGRESS_POSITION_UNCONFIRMED', 'ASCENT_HEADSPACE_CHANGED', 'ASCENT_UNCERTAIN_STEP', 'ASCENT_PLACEMENT_UNCONFIRMED', 'ASCENT_JUMP_TIMEOUT', 'ASCENT_SERVER_CORRECTION'])
+const EGRESS_TRANSIENT_RETRIES = 4, EGRESS_TRANSIENT_WAIT_MS = 2000
 const DEFAULT_BOTTOM_Y = -59 // quarry bottom when none is given
 const EXHAUSTED_TOOL_CAP = 4
 const CAPACITY_RETRIES = 8 // automatic retries of a storage box recovery blocked only by loose drops (~10 min)
@@ -2444,6 +2452,21 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
           rec.status = 'interrupted'; active.phase = 'planned'; active.reason = null
           note('egress_noop_combat_continue', { count: job.egressNoopCombat, feetY: active.checkpoint?.confirmedFeetY ?? null })
           await save('egress_noop_combat')
+          setState('EGRESS')
+          return
+        }
+      }
+      if (EGRESS_TRANSIENT.has(reason)) {
+        if (active.checkpoint?.confirmedFeetY !== feetBefore) job.egressTransient = 0
+        const after = guard(myEpoch)
+        if (Number(after.health) >= hpBefore && !adapter.combatActive() && (job.egressTransient ?? 0) < EGRESS_TRANSIENT_RETRIES) {
+          job.egressTransient = (job.egressTransient ?? 0) + 1
+          rec.status = 'interrupted'; active.phase = 'planned'; active.reason = null
+          note('egress_transient_retry', { reason, count: job.egressTransient, feetY: active.checkpoint?.confirmedFeetY ?? null })
+          await save('egress_transient_retry')
+          if (reason === 'ASCENT_INVENTORY_UNKNOWN' && typeof adapter.resyncInventory === 'function') { try { await adapter.resyncInventory() } catch {} ; guard(myEpoch) }
+          const until = now() + EGRESS_TRANSIENT_WAIT_MS
+          while (now() < until) { await sleep(100); guard(myEpoch) }
           setState('EGRESS')
           return
         }
