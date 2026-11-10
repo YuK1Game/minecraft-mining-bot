@@ -46,8 +46,8 @@ function targetList (targets) {
       // Descending the bot's own dirt pillar one block at a time (2026-11-10):
       // only a received dirt block directly under the feet, with a received
       // solid block right below it, so every drop is exactly one block.
-      if (position.expectedName !== 'minecraft:dirt') throw new Error('Pillar descent mines only the dirt under the feet')
-      Object.assign(target, { accessPreparation: 'pillar_descent', expectedName: 'minecraft:dirt', expectedRuntimeId: position.expectedRuntimeId ?? null })
+      if (!['minecraft:dirt', 'minecraft:grass_block'].includes(position.expectedName)) throw new Error('Pillar descent mines only the dirt under the feet')
+      Object.assign(target, { accessPreparation: 'pillar_descent', expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId ?? null })
     } else if (position.accessPreparation === 'quarry' || position.accessPreparation === 'quarry_fluid_roof') {
       // Quarry targets: the quarry planner already chose the block, the tool
       // and checked falling/fluid dependencies; mining re-checks them live.
@@ -176,7 +176,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
       const below = world.getBlock(target.x, target.y - 1, target.z), here = world.getBlock(target.x, target.y, target.z)
       const dry = p => { const b = world.getBlock(p.x, p.y, p.z); return b?.known === true && !/water|lava/.test(blockName(b)) && !b.extra?.length }
       if (target.x !== feet.x || target.z !== feet.z || target.y !== feet.y - 1) throw new Error('Pillar descent mines only the block directly under the feet')
-      if (here?.known !== true || here.name !== 'minecraft:dirt' || target.expectedRuntimeId != null && here.runtimeId !== target.expectedRuntimeId) throw new Error('Pillar descent needs received dirt under the feet')
+      if (here?.known !== true || here.name !== target.expectedName || target.expectedRuntimeId != null && here.runtimeId !== target.expectedRuntimeId) throw new Error('Pillar descent needs received dirt under the feet')
       if (below?.known !== true || below.boundingBox !== 'block' || AIR.has(blockName(below)) || HAZARDS.test(blockName(below))) throw new Error('Pillar descent needs a received solid block right below the dirt')
       if (![{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }].every(d => dry({ x: target.x + d.x, y: target.y, z: target.z + d.z }) && dry({ x: target.x + d.x, y: feet.y, z: target.z + d.z }))) throw new Error('Pillar descent needs received dry surroundings')
     } else if (target.x === feet.x && target.z === feet.z && target.y <= feet.y) throw new Error('自分の足元は掘れません。')
