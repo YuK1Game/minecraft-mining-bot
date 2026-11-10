@@ -142,7 +142,16 @@ function createQuarryEgressRuntime ({ getState, getBlock, moveTo, mineTargets, p
       } else if (!(checkpoint.phase === 'landing' && (usableServerPose(check(), { x: plan.landing.x + 0.5, y: plan.landing.y, z: plan.landing.z + 0.5 }, now(), !!confirmPosition) || confirmPosition && workingNear(check(), { x: plan.landing.x + 0.5, y: plan.landing.y, z: plan.landing.z + 0.5 })))) {
         const centre = { x: plan.column.x + 0.5, y: checkpoint.confirmedFeetY, z: plan.column.z + 0.5 }
         await verifyPosition(centre, 'EGRESS_RESUME_POSITION_CHANGED')
-        for (const step of checkpoint.steps) if (step.serverConfirmed !== true || getBlock(step.target.x, step.target.y, step.target.z)?.name !== 'minecraft:dirt' || getBlock(step.target.x, step.target.y, step.target.z)?.known !== true) return blocked('EGRESS_PILLAR_CHANGED')
+        // Every step was confirmed when it was made. On resume, the block that
+        // carries the bot (the latest step, under the confirmed feet) must still
+        // be received dirt; a block lower in the finished part of the pillar
+        // does not carry the climb (live 2026-11-11 1:00: Y-56 became air while
+        // the bot stood at Y-24) and is only recorded.
+        if (checkpoint.steps.some(step => step.serverConfirmed !== true)) return blocked('EGRESS_PILLAR_CHANGED')
+        const support = checkpoint.steps.length ? checkpoint.steps[checkpoint.steps.length - 1].target : null
+        if (support && (support.y !== checkpoint.confirmedFeetY - 1 || getBlock(support.x, support.y, support.z)?.known !== true || getBlock(support.x, support.y, support.z)?.name !== 'minecraft:dirt')) return blocked('EGRESS_PILLAR_CHANGED')
+        const missing = checkpoint.steps.filter(step => step !== checkpoint.steps[checkpoint.steps.length - 1] && !(getBlock(step.target.x, step.target.y, step.target.z)?.known === true && getBlock(step.target.x, step.target.y, step.target.z)?.name === 'minecraft:dirt')).map(step => step.target.y)
+        if (missing.length) { checkpoint.pillarGaps = missing; await save() }
       }
       while (checkpoint.confirmedFeetY < plan.targetFeetY) {
         const s = check(), feetY = checkpoint.confirmedFeetY
