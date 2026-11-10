@@ -67,6 +67,8 @@ function storageSupplyExclusions (bindings) {
 }
 
 const WORN_TOOL_USES = 100 // a tool below this is returned when its kind is exhausted for mining
+const FRESH_TOOL_USES = 500 // with a full bag, one carried tool of an exhausted kind with this many uses is enough
+const usesOf = item => item?.durabilityKnown === true && Number.isFinite(item.durabilityRemaining) ? item.durabilityRemaining : null
 function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true, miningExhausted = null } = {}) {
   const main = (items ?? []).filter(item => Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && item.count > 0)
   const desired = { pickaxe: 1, shovel: 1, food: foodEnabled ? keepFood : 0, dirt: keepExitDirt + keepSealBlocks }
@@ -74,10 +76,21 @@ function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks
   // carried (it is kept for the exit), so one more of that kind is wanted.
   const available = { pickaxe: 0, shovel: 0, food: 0, dirt: 0 }, returns = []
   const exhaustedKinds = new Set(Array.isArray(miningExhausted) ? miningExhausted : Object.keys(miningExhausted && typeof miningExhausted === 'object' ? miningExhausted : {}))
+  // With fewer than two free slots (the bag fills itself by natural pickup
+  // once every cargo box is full, live 2026-11-10 22:01), an exhausted tool is
+  // replaced in place: a fresher one is taken into the last slot and every
+  // carried one of that kind except the most durable goes back.
+  const tight = freeSlots(main) < 2
+  const best = {}
+  for (const item of main) {
+    const kind = toolOf(item)?.kind
+    if ((kind === 'pickaxe' || kind === 'shovel') && item.count === 1 && usesOf(item) != null && (!best[kind] || usesOf(item) > usesOf(best[kind]) || usesOf(item) === usesOf(best[kind]) && item.slot < best[kind].slot)) best[kind] = item
+  }
   for (const item of main) {
     const kind = toolOf(item)?.kind
     if (kind === 'pickaxe' || kind === 'shovel') {
       if (item.count !== 1) continue
+      if (exhaustedKinds.has(kind) && tight && best[kind] && item !== best[kind]) { returns.push({ role: kind, slot: item.slot, name: item.name, count: item.count }); continue }
       const state = toolState(item, tools)
       // When every use of a kind is held for the exit, worn tools of that kind
       // go back to their supply box (freeing slots) instead of piling up
@@ -95,6 +108,7 @@ function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks
   // A plain list (legacy) means one more than the single carried tool.
   const wanted = Array.isArray(miningExhausted) ? Object.fromEntries(miningExhausted.map(k => [k, 2])) : (miningExhausted && typeof miningExhausted === 'object' ? miningExhausted : {})
   for (const [kind, n] of Object.entries(wanted)) if ((kind === 'pickaxe' || kind === 'shovel') && Number.isSafeInteger(n)) desired[kind] = Math.max(desired[kind], Math.min(4, n))
+  for (const kind of exhaustedKinds) if (tight && (kind === 'pickaxe' || kind === 'shovel') && usesOf(best[kind]) >= FRESH_TOOL_USES) desired[kind] = Math.max(1, Math.min(desired[kind], available[kind]))
   const missing = Object.fromEntries(ROLES.map(role => [role, Math.max(0, desired[role] - available[role])]))
   const required = { pickaxe: missing.pickaxe > 0, shovel: missing.shovel > 0, food: desired.food > 0 && available.food === 0, dirt: missing.dirt > 0 && available.dirt <= keepExitDirt }
   return { desired, available, missing, required, returns, freeSlots: freeSlots(main), exitDirt: { required: keepExitDirt, available: Math.min(keepExitDirt, available.dirt) }, sealDirt: { required: keepSealBlocks, available: Math.max(0, available.dirt - keepExitDirt) } }
@@ -254,9 +268,9 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
           const candidates = window.raw.map((raw, slot) => ({ raw, slot })).filter(({ raw }) => !empty(raw) && crafting.itemNameOf(raw.network_id) === cp.itemName)
           // Tools: take the most durable usable one, not the first (the box
           // also holds the worn tools returned to it).
-          const usesOf = ({ raw, slot }) => { const d = readDurability({ slot, name: cp.itemName, count: raw.count, stackId: raw.stack_id }, raw); return toolState(d, supply.policy?.tools)?.usable ? (d.durabilityRemaining ?? 0) : -1 }
+          const usesOfRaw = ({ raw, slot }) => { const d = readDurability({ slot, name: cp.itemName, count: raw.count, stackId: raw.stack_id }, raw); return toolState(d, supply.policy?.tools)?.usable ? (d.durabilityRemaining ?? 0) : -1 }
           const source = ['pickaxe', 'shovel'].includes(cp.role)
-            ? candidates.map(c => ({ c, uses: usesOf(c) })).filter(x => x.uses >= 0).sort((a, b) => b.uses - a.uses || a.c.slot - b.c.slot)[0]?.c
+            ? candidates.map(c => ({ c, uses: usesOfRaw(c) })).filter(x => x.uses >= 0).sort((a, b) => b.uses - a.uses || a.c.slot - b.c.slot)[0]?.c
             : candidates[0]
           if (!source) throw fail('SUPPLY_EXHAUSTED')
           const limit = limitOf(cp.itemName)
@@ -264,7 +278,10 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
           const merge = items.find(compatible)
           const playerSlot = merge?.slot ?? Array.from({ length: 36 }, (_, slot) => slot).find(slot => empty(crafting.rawItem(slot)))
           if (playerSlot == null) throw fail('SUPPLY_CAPACITY_REQUIRED')
-          if (!merge && freeSlots(items) <= 1 && !(worn.length && source.raw.count === 1 && ['pickaxe', 'shovel'].includes(cp.role))) throw fail('SUPPLY_RECOVERY_SLOT_REQUIRED')
+          const exhausted = supply.policy?.miningExhausted && typeof supply.policy.miningExhausted === 'object' && Object.keys(supply.policy.miningExhausted).includes(cp.role)
+          const carriedUses = Math.max(-1, ...items.filter(item => item.name === cp.itemName && item.count === 1).map(item => usesOf(item) ?? -1))
+          const replaces = exhausted && carriedUses >= 0 && source.raw.count === 1 && usesOfRaw(source) > carriedUses
+          if (!merge && freeSlots(items) <= 1 && !((worn.length || replaces) && source.raw.count === 1 && ['pickaxe', 'shovel'].includes(cp.role))) throw fail('SUPPLY_RECOVERY_SLOT_REQUIRED')
           const count = Math.min(missing, source.raw.count, limit - (merge?.count ?? 0))
           if (!(count > 0)) throw fail('SUPPLY_CAPACITY_REQUIRED')
           action = { direction: 'withdraw', playerSlot, chestSlot: source.slot, count, name: cp.itemName }

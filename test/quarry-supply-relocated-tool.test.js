@@ -171,3 +171,32 @@ test('the most durable usable tool is taken, not a worn one returned earlier', a
   const take = f.logs.find(row => row.direction === 'withdraw')
   assert.equal(take.chestSlot, 2)
 })
+
+test('with one free slot, an exhausted pickaxe is replaced in place by a fresher one from a full box', async () => {
+  const f = transferFixture({ role: 'pickaxe', policy: { miningExhausted: { pickaxe: 2 } } })
+  const name = 'minecraft:diamond_pickaxe'
+  for (let i = 0; i < 27; i++) f.slots[i] = raw(name, 1, 100 + i, 0)
+  for (let i = 0; i < 36; i++) f.main[i] = raw('minecraft:cobblestone', 64, 300 + i)
+  f.main[15] = raw(name, 1, 80, 1561 - 125)
+  f.main[20] = air()
+  const result = await f.run()
+  assert.equal(result.status, 'completed', result.reason)
+  assert.deepEqual(f.logs.filter(row => row.direction).map(row => row.direction), ['withdraw', 'return'])
+  const picks = f.main.filter(item => item.network_id === f.main.find(i => i.count === 1 && i.network_id)?.network_id && item.count === 1)
+  assert.equal(picks.length, 1, 'one pickaxe carried')
+  assert.equal(picks[0].extra.nbt.nbt.value.Damage.value, 0, 'the fresh one')
+  assert.equal(f.main.filter(item => !item.count).length, 1, 'the free slot is kept for the box')
+})
+
+test('with one free slot and nothing fresher in the box, the slot is not spent', async () => {
+  const f = transferFixture({ role: 'pickaxe', policy: { miningExhausted: { pickaxe: 2 } } })
+  const name = 'minecraft:diamond_pickaxe'
+  for (let i = 0; i < 27; i++) f.slots[i] = raw(name, 1, 100 + i, 1561 - 100)
+  for (let i = 0; i < 36; i++) f.main[i] = raw('minecraft:cobblestone', 64, 300 + i)
+  f.main[15] = raw(name, 1, 80, 1561 - 125)
+  f.main[20] = air()
+  const result = await f.run()
+  assert.equal(result.status, 'blocked')
+  assert.equal(result.reason, 'SUPPLY_RECOVERY_SLOT_REQUIRED')
+  assert.equal(f.logs.filter(row => row.direction).length, 0)
+})
