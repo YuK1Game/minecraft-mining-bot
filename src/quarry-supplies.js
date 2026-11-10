@@ -170,6 +170,13 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
     const actualTools = actualMain.map((raw, slot) => ({ raw, slot })).filter(({ raw }) => raw.network_id === source.network_id)
     if (priorTools.some(raw => !actualTools.some(item => isDeepStrictEqual(item.raw, raw)))) return null
     if (actualTools.length === priorTools.length && isDeepStrictEqual(actualMain[intent.playerSlot], playerBefore) && window.raw.every((raw, slot) => isDeepStrictEqual(raw, beforeContainer[slot]))) return { outcome: 'unchanged' }
+    // The box is exactly as before and no tool was added, but the target slot
+    // was filled by something else meanwhile (natural pickup, live 2026-11-10
+    // 21:05): the take did not happen; it is retried into another empty slot.
+    if (actualTools.length === priorTools.length && !empty(actualMain[intent.playerSlot]) && actualMain[intent.playerSlot].network_id !== source.network_id && window.raw.every((raw, slot) => isDeepStrictEqual(raw, beforeContainer[slot]))) {
+      const free = actualMain.findIndex(empty)
+      return free >= 0 ? { outcome: 'unchanged', retrySlot: free } : null
+    }
     if (actualTools.length !== priorTools.length + 1 || window.raw.some((raw, slot) => slot === intent.chestSlot ? !empty(raw) : !isDeepStrictEqual(raw, beforeContainer[slot]))) return null
     const oldIds = new Set(beforeMain.filter(raw => !empty(raw)).map(raw => raw.stack_id))
     const candidates = actualTools.filter(({ raw }) => !oldIds.has(raw.stack_id) && raw.count === 1 && isDeepStrictEqual(identity(raw), identity(source)))
@@ -218,7 +225,7 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
         if (before && (intent.wireAttempts ?? 1) >= 2) throw fail('SUPPLY_TRANSFER_NOT_PROGRESSING')
         const prior = copy(cp)
         if (applied) cp[intent.direction === 'withdraw' ? 'withdrawn' : 'returned'].push({ name: intent.name, count: intent.count, role: cp.role, confirmedBy: relocated ? 'fresh_main_and_reopened_container_unique_relocated_tool' : 'fresh_main_and_reopened_container_exact_slots' })
-        cp.retryTransfer = before ? { direction: intent.direction, playerSlot: intent.playerSlot, chestSlot: intent.chestSlot, count: intent.count, name: intent.name, wireAttempts: (intent.wireAttempts ?? 1) + 1, automaticReadCount: intent.automaticReadCount ?? 0 } : null
+        cp.retryTransfer = before ? { direction: intent.direction, playerSlot: tracked?.retrySlot ?? intent.playerSlot, chestSlot: intent.chestSlot, count: intent.count, name: intent.name, wireAttempts: (intent.wireAttempts ?? 1) + 1, automaticReadCount: intent.automaticReadCount ?? 0 } : null
         cp.reconciliation = { at: now(), outcome: before ? 'unchanged' : 'applied', playerSlot: intent.playerSlot, ...(relocated ? { observedPlayerSlot: relocated.slot, observedPlayerStackId: relocated.raw.stack_id, sourceStackId: source.stack_id, confirmedBy: 'fresh_main_and_reopened_container_unique_relocated_tool' } : {}), chestSlot: intent.chestSlot, count: intent.count, playerBefore: a.count, playerAfter: player.count, chestBefore: b.count, chestAfter: container.count, windowEpoch: window.window.epoch }
         cp.intent = null
         try { await save() } catch (error) { cp = prior; throw error }
