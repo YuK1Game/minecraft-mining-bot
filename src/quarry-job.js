@@ -686,6 +686,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     job.cursorY = floorY
     if (Number.isSafeInteger(job.lastMineY) && job.lastMineY > floorY) job.lastMineY = floorY
     job.retry = 0; job.miningExhaustedTried = false // a resume may try the exhausted-tool restock again
+    if (job.supplyRestock) job.supplyRestock.roomAttempts = 0
     combatBridge.activate({ jobId: job.config.jobId, epoch, travel: p => permits(regions, 'travel', p).allowed })
     setState('SURVEY')
   }
@@ -2246,6 +2247,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!pick) { note('supply_room_unavailable', {}); return false }
     const material = nameOf(pick.name)
     let slot = pick.slot
+    // A supply box left open by the blocked restock is closed first: the
+    // normal inventory refuses a hotbar move while a container is open.
+    adapter.closeContainer?.()
     if (slot > 8) {
       await call(myEpoch, 'equip_seal', signal => adapter.equip(slot, { signal }))
       inventory = items(guard(myEpoch))
