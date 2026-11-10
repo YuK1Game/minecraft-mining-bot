@@ -35,7 +35,7 @@ function permitsExitAction (plan, kind, p) {
   return false
 }
 
-function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, inventory = [], policy = {}, minFreeSlots = 6, exit = {}, reachable = null, preflight = false, reservation = null } = {}) {
+function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, inventory = [], policy = {}, minFreeSlots = 6, exit = {}, reachable = null, preflight = false, reservation = null, allowFullBag = false } = {}) {
   if (!regions?.chunks?.length || !point(feet) || typeof getBlock !== 'function' || !Number.isSafeInteger(yTop)) return { ok: false, reason: 'EXIT_COLUMN_UNAVAILABLE', details: { reason: 'INVALID_EXIT_CONTEXT' } }
   const options = normalizeExit(exit)
   // Outside the world is not missing terrain that can be requested. In
@@ -190,7 +190,9 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
     let reason = null; let details = null
     if (missingTool) { reason = 'EXIT_TOOL_MISSING'; details = missingTool }
     else if (dirtCount(inventory) < plan.totalDirt) { reason = 'EXIT_MATERIAL_MISSING'; details = { dirtAvailable: dirtCount(inventory), requiredDirt: plan.requiredDirt, reserveDirt: plan.reserveDirt, totalDirt: plan.totalDirt } }
-    else if (!preflight && !canAccept(inventory, plan.drops, { minFreeSlots })) { reason = 'EXIT_INVENTORY_CAPACITY'; details = { drops: plan.drops, minFreeSlots } }
+    // allowFullBag: storage exhausted under the passive dig-through policy; the
+    // shaft drops are left behind instead of blocking the way out.
+    else if (!preflight && !allowFullBag && !canAccept(inventory, plan.drops, { minFreeSlots })) { reason = 'EXIT_INVENTORY_CAPACITY'; details = { drops: plan.drops, minFreeSlots } }
     if (!reason) return { ok: true, plan, preflight, serverConfirmed: false }
     blocked ??= { ok: false, reason, details, plan }
   }
