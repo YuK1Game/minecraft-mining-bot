@@ -127,3 +127,47 @@ test('persistence failure after relocated proof retains the pending intent and c
   assert.equal(result.returned.length, 1)
   assert.equal(f.logs.filter(row => row.direction === 'withdraw').length, 1)
 })
+
+test('a taken tool repaired by Mending before the reread is still recognised as the take', async () => {
+  const f = transferFixture({ role: 'pickaxe' })
+  const name = 'minecraft:diamond_pickaxe'
+  for (let i = 0; i < 26; i++) f.slots[i] = raw(name, 1, 100 + i, 1542)
+  f.slots[26] = raw(name, 1, 126, 1542)
+  f.setMode('applied')
+  const blocked = await f.run()
+  assert.equal(blocked.status, 'blocked')
+  const cp = structuredClone(blocked.checkpoint), slot = cp.intent.playerSlot
+  // Experience picked up meanwhile repaired it (live: Damage 1542 -> 1540)
+  // and combat moved it to another slot.
+  const taken = structuredClone(f.main[slot]); taken.extra.nbt.nbt.value.Damage.value = 1540
+  f.main[20] = taken; f.main[slot] = air()
+  f.setMode(null)
+  const result = await f.run(cp)
+  assert.equal(result.checkpoint.reconciliation?.outcome, 'applied', result.reason)
+  assert.equal(result.withdrawn[0]?.confirmedBy, 'fresh_main_and_reopened_container_unique_relocated_tool')
+})
+
+test('a tool whose damage went up after the take stays ambiguous', async () => {
+  const f = transferFixture({ role: 'pickaxe' })
+  const name = 'minecraft:diamond_pickaxe'
+  for (let i = 0; i < 27; i++) f.slots[i] = raw(name, 1, 100 + i, 1500)
+  f.setMode('applied')
+  const blocked = await f.run()
+  const cp = structuredClone(blocked.checkpoint), slot = cp.intent.playerSlot
+  const taken = structuredClone(f.main[slot]); taken.extra.nbt.nbt.value.Damage.value = 1501
+  f.main[20] = taken; f.main[slot] = air()
+  f.setMode(null)
+  const result = await f.run(cp)
+  assert.equal(result.status, 'blocked')
+  assert.equal(result.reason, 'SUPPLY_TRANSFER_AMBIGUOUS')
+})
+
+test('the most durable usable tool is taken, not a worn one returned earlier', async () => {
+  const f = transferFixture({ role: 'pickaxe' })
+  const name = 'minecraft:diamond_pickaxe'
+  f.slots[0] = raw(name, 1, 100, 1542); f.slots[1] = raw(name, 1, 101, 1540); f.slots[2] = raw(name, 1, 102, 0)
+  const result = await f.run()
+  assert.equal(result.status, 'completed', result.reason)
+  const take = f.logs.find(row => row.direction === 'withdraw')
+  assert.equal(take.chestSlot, 2)
+})
