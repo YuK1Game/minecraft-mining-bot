@@ -43,9 +43,15 @@ test('a confirmed lower surface is a landing and dirt uses the local height', ()
 test('a cave roof, unknown sky, unsafe floor or hazardous shaft disqualifies the lower landing', () => {
   for (const [x, y, name] of [
     [-31, 129, 'stone'], [-31, 296, 'unknown'], [-31, 93, 'water'], [-31, 93, 'gravel'], [-31, 93, 'magma'],
-    [-31, 93, 'diamond_ore'], [-32, 30, 'lava'], [-32, -33, 'gravel'], [-32, 10, 'diamond_ore']
+    [-31, 93, 'diamond_ore'], [-32, 30, 'lava'], [-32, -33, 'gravel'], [-32, 10, 'ancient_debris']
   ]) {
     const result = hillside((ax, ay, az) => ax === x && ay === y && az === -199 ? name : undefined)
     assert.equal(result.reason, 'EXIT_COLUMN_UNAVAILABLE', [x, y, name].join(','))
   }
+})
+
+test('a listed ore inside the exit shaft is mined instead of disqualifying the column', () => {
+  const result = hillside((ax, ay, az) => ax === -32 && ay === 10 && az === -199 ? 'diamond_ore' : undefined)
+  assert.equal(result.ok, true, JSON.stringify(result.details ?? {}))
+  assert.ok(result.plan.shaftCells.some(c => c.name === 'minecraft:diamond_ore' && c.position.y === 10))
 })
