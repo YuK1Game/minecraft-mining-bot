@@ -47,8 +47,18 @@ test('reconciliation of saved tool or route deferrals reclassifies ores without 
   }
 })
 
-test('shaft selection rejects known and unknown ores instead of mining them or pretending a safe exit exists', () => {
-  for (const name of ['iron_ore', 'deepslate_gold_ore', 'ancient_debris', 'unrecognized_ore']) {
+test('shaft selection mines listed ores in the exit column with a pickaxe (2026-11-10 Y-59 request)', () => {
+  for (const name of ['iron_ore', 'deepslate_gold_ore']) {
+    const { sim, args } = exitFixture()
+    for (let z = 0; z < 16; z++) sim.world.set(16, 61, z, name)
+    const result = planQuarryExit(args())
+    assert.equal(result.ok, true, name)
+    assert.ok(result.plan.shaftCells.some(c => c.name === 'minecraft:' + name), JSON.stringify(result.plan.shaftCells))
+  }
+})
+
+test('shaft selection still rejects unlisted and unknown ores instead of mining them or pretending a safe exit exists', () => {
+  for (const name of ['ancient_debris', 'unrecognized_ore']) {
     const { sim, args } = exitFixture()
     for (let z = 0; z < 16; z++) sim.world.set(16, 61, z, name)
     const result = planQuarryExit(args())
