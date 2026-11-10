@@ -6775,6 +6775,32 @@ function createRuntime (host) {
   // after a restart), so the restore also runs from its own timer.
   const quarryRestoreTimer = setInterval(() => { if (disposed || disposing) { clearInterval(quarryRestoreTimer); return } try { maybeRestoreQuarryJob() } catch {} }, 15000)
   quarryRestoreTimer.unref?.()
+  // Keep the quarry's terrain: its chunks and the exit column are never evicted
+  // from the world cache, and eviction starts far from them and from the bot.
+  let worldRetentionJob = { at: 0, pinned: [] }
+  function quarryRetentionChunks () {
+    const doc = quarryJob?.document?.()
+    if (!doc || ['FINISHED', 'CANCELLED'].includes(doc.state)) return []
+    const target = doc.config?.target ?? {}
+    const chunks = Array.isArray(target.chunks) ? target.chunks.map(c => ({ x: c.x, z: c.z })) : []
+    const r = target.rect
+    if (r && [r.x1, r.x2, r.z1, r.z2].every(Number.isSafeInteger) && (Math.abs(r.x2 - r.x1) + 1) * (Math.abs(r.z2 - r.z1) + 1) <= 64) {
+      for (let x = Math.min(r.x1, r.x2); x <= Math.max(r.x1, r.x2); x++) for (let z = Math.min(r.z1, r.z2); z <= Math.max(r.z1, r.z2); z++) chunks.push({ x, z })
+    }
+    const column = doc.exitReservation?.plan?.column
+    if (column && Number.isFinite(column.x) && Number.isFinite(column.z)) chunks.push({ x: Math.floor(column.x / 16), z: Math.floor(column.z / 16) })
+    return chunks
+  }
+  function updateWorldRetention () {
+    if (typeof host.world?.setRetention !== 'function') return
+    if (Date.now() - worldRetentionJob.at > 60000) worldRetentionJob = { at: Date.now(), pinned: quarryRetentionChunks() }
+    const points = [...worldRetentionJob.pinned]
+    const position = quarryState()?.position
+    if (position && Number.isFinite(position.x) && Number.isFinite(position.z)) points.push({ x: Math.floor(position.x / 16), z: Math.floor(position.z / 16) })
+    host.world.setRetention({ pinned: worldRetentionJob.pinned, points })
+  }
+  const worldRetentionTimer = setInterval(() => { if (disposed || disposing) { clearInterval(worldRetentionTimer); return } try { updateWorldRetention() } catch {} }, 5000)
+  worldRetentionTimer.unref?.()
 
   function resumeRequested () {
     if (disposed || disposing || resetHeld()) return
@@ -6863,7 +6889,7 @@ function createRuntime (host) {
       clearInterval(idleTimer)
       idleTimer = null
       clearInterval(userBehaviorTimer); userBehaviorTimer = null
-      clearInterval(quarryRestoreTimer); quarryLoadSequence++
+      clearInterval(quarryRestoreTimer); clearInterval(worldRetentionTimer); quarryLoadSequence++
       publishWalker()
       autonomy.stop(reason ?? '行動コードを更新します。')
       const cleanup = stopActions(reason ?? '行動コードを更新します。')
