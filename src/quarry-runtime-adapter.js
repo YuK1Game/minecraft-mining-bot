@@ -167,7 +167,7 @@ function createQuarryRuntimeAdapter (ports) {
     return Object.assign(new Error(`quarry mine: block ${t.x},${t.y},${t.z} took ${elapsed}ms (limit ${limit}ms) with ${getState()?.heldItem?.name ?? 'nothing'} in hand`), { code: 'SLOW_BREAK', elapsedMs: elapsed, limitMs: limit, target: { x: t.x, y: t.y, z: t.z } })
   }
 
-  const toTarget = t => ({ x: t.x, y: t.y, z: t.z, accessPreparation: t.accessPreparation ?? 'quarry', ...(t.allowFullInventory === true ? { allowFullInventory: true } : {}), expectedName: t.expectedName, expectedRuntimeId: t.expectedRuntimeId ?? null, requiredTool: t.requiredTool ?? null, ...(t.expectedProperties != null ? { expectedProperties: structuredClone(t.expectedProperties) } : {}), ...(t.fluidSource ? { fluidSource: structuredClone(t.fluidSource) } : {}) })
+  const toTarget = t => ({ x: t.x, y: t.y, z: t.z, accessPreparation: t.accessPreparation ?? 'quarry', ...(t.allowFullInventory === true ? { allowFullInventory: true } : {}), ...(t.exitShaftOre === true ? { exitShaftOre: true } : {}), expectedName: t.expectedName, expectedRuntimeId: t.expectedRuntimeId ?? null, requiredTool: t.requiredTool ?? null, ...(t.expectedProperties != null ? { expectedProperties: structuredClone(t.expectedProperties) } : {}), ...(t.fluidSource ? { fluidSource: structuredClone(t.fluidSource) } : {}) })
   const isAir = t => { const b = getBlock(t.x, t.y, t.z); return b?.known && AIR.has(nameOf(b)) }
 
   // Only an unsettled arrival can improve merely by waiting. A changed block,

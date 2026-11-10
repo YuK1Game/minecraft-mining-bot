@@ -7,6 +7,15 @@ const { AIR, nameOf, blockRule, selectTool } = require('./quarry-rules')
 const { canAccept } = require('./quarry-inventory')
 
 const key = p => `${p.x},${p.y},${p.z}`
+// Exit-only ore rule (2026-11-10): the climb-out column may mine through ore
+// with an ordinary pickaxe; ores stay protected everywhere else.
+const ORE_TIERS = [[/^(deepslate_)?coal_ore$|^nether_quartz_ore$|^nether_gold_ore$/, 1], [/^(deepslate_)?(iron|copper|lapis)_ore$/, 2], [/^(deepslate_)?(gold|redstone|diamond|emerald)_ore$/, 3]]
+function exitDigRule (name) {
+  const rule = blockRule(name)
+  if (rule.kind === 'dig' || rule.reason !== 'PROTECTED_ORE') return rule
+  const tier = ORE_TIERS.find(([re]) => re.test(nameOf(name)))?.[1]
+  return tier ? { kind: 'dig', tool: 'pickaxe', needs: 'pickaxe', tier, drops: [nameOf(name)], maxDrop: 1, silkKeeps: true, gravity: false, exitOre: true } : rule
+}
 const offsets = [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }]
 const point = p => p && ['x', 'y', 'z'].every(a => Number.isSafeInteger(p[a]))
 const SIDE_NORMALS = { east: { x: 1, z: 0 }, west: { x: -1, z: 0 }, north: { x: 0, z: -1 }, south: { x: 0, z: 1 } }
@@ -21,7 +30,12 @@ function normalizeExit (value = {}, { legacy = false } = {}) {
   const reservedDirt = value.reservedDirt ?? 192
   if (!Number.isSafeInteger(reservedDirt) || reservedDirt < 0 || reservedDirt > 512) throw new Error('Invalid exit dirt reservation')
   if (value.reserveDirt != null && value.reserveDirt !== 8) throw new Error('The exit dirt reserve is eight blocks')
-  return { mode, side, reserveDirt: 8, reservedDirt, ...(Number.isSafeInteger(value.migrationFloorY) ? { migrationFloorY: value.migrationFloorY } : {}) }
+  // landingRise: how far above the job's top the exit may land (default 16).
+  // A job continuing under an already open pit (live 2026-11-10: Y7..-59 under
+  // a pit dug from Y78) lands on the surface far above its own top.
+  const landingRise = value.landingRise ?? 16
+  if (!Number.isSafeInteger(landingRise) || landingRise < 16 || landingRise > 160) throw new Error('Invalid exit landing rise')
+  return { mode, side, reserveDirt: 8, reservedDirt, ...(landingRise !== 16 ? { landingRise } : {}), ...(Number.isSafeInteger(value.migrationFloorY) ? { migrationFloorY: value.migrationFloorY } : {}) }
 }
 
 const dirtCount = items => (items ?? []).filter(i => nameOf(i) === 'dirt' && i.count > 0 && i.slot >= 0 && i.slot < 36).reduce((n, i) => n + i.count, 0)
@@ -115,7 +129,7 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
     // not just yTop - 16. Stop at the FIRST obstacle: never skip an unknown
     // section, canopy, fluid or roof to mistake a cave floor for the surface.
     const minFloorY = startFeet.y
-    const maxFeetY = Math.min(regions.worldMaxY - 3, yTop + 16)
+    const maxFeetY = Math.min(regions.worldMaxY - 3, yTop + (options.landingRise ?? 16))
     let landingFailure = { cause: 'NO_SURFACE_ABOVE_ENTRY', position: { x, y: minFloorY, z }, part: 'landing_floor' }
     for (let y = regions.worldMaxY; y >= minFloorY; y--) {
       const position = { x, y, z }, b = read(position)
@@ -144,11 +158,15 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
         // dig targets; explicit protection and fluid layers still disqualify it.
         if ((o.x !== 0 || o.z !== 0) && bedrock(q)) continue
         const reason = unsafe(q)
+        // An ore in the column is dug as part of the shaft; an ore in a side
+        // wall stays in place. Falling blocks still disqualify the column.
+        const plain = (() => { const w = read(q); return w?.known === true && !protectedAt(q) && !w.protected && !w.protectionSource && !w.extra?.length ? w : null })()
+        if (reason === 'PROTECTED' && plain && exitDigRule(plain.name).exitOre) continue
         if (reason) { failure = { side, column, position: q, reason }; break }
       }
       const b = read(position)
       if (!failure && !AIR.has(nameOf(b))) {
-        const rule = blockRule(b.name)
+        const rule = exitDigRule(b.name)
         if (rule.kind !== 'dig' || rule.leaves || rule.plant || /_log$|_wood$|_stem$/.test(nameOf(b))) { failure = { side, column, position, reason: 'UNSAFE_SHAFT_BLOCK' }; break }
         shaftCells.push({ position, name: b.name, expectedRuntimeId: b.runtimeId ?? null })
       }
@@ -171,7 +189,7 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
   for (const plan of plans) {
     const tools = structuredClone(inventory); const toolUses = new Map(); const drops = new Map(); let missingTool = null
     for (const cell of plan.shaftCells) {
-      const rule = blockRule(cell.name); const selected = selectTool(rule, tools, policy)
+      const rule = exitDigRule(cell.name); const selected = selectTool(rule, tools, policy)
       if (!selected.ok) { missingTool = { position: cell.position, ...selected }; break }
       cell.requiredTool = selected.kind === 'hand' ? null : selected
       if (selected.kind !== 'hand') {
@@ -199,4 +217,4 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
   return blocked
 }
 
-module.exports = { normalizeExit, dirtCount, permitsExitAction, planQuarryExit }
+module.exports = { normalizeExit, dirtCount, permitsExitAction, planQuarryExit, exitDigRule }

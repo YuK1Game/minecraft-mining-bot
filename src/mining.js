@@ -42,13 +42,19 @@ function targetList (targets) {
     } else if (position.accessPreparation === 'owned_shulker') {
       if (typeof position.expectedName !== 'string' || !position.expectedName.startsWith('minecraft:') || !isShulkerBlock(position.expectedName) || typeof position.ownershipKey !== 'string' || !position.ownershipKey.length || position.ownershipKey.length > 200 || position.expectedRuntimeId != null && (!Number.isSafeInteger(position.expectedRuntimeId) || position.expectedRuntimeId < 0 || position.expectedRuntimeId > 4294967295)) throw new Error('Owned-shulker mining requires an actual block name, ownership key and optional received runtime ID')
       Object.assign(target, { accessPreparation: 'owned_shulker', expectedName: position.expectedName, ownershipKey: position.ownershipKey, expectedRuntimeId: position.expectedRuntimeId ?? null })
+    } else if (position.accessPreparation === 'pillar_descent') {
+      // Descending the bot's own dirt pillar one block at a time (2026-11-10):
+      // only a received dirt block directly under the feet, with a received
+      // solid block right below it, so every drop is exactly one block.
+      if (!['minecraft:dirt', 'minecraft:grass_block'].includes(position.expectedName)) throw new Error('Pillar descent mines only the dirt under the feet')
+      Object.assign(target, { accessPreparation: 'pillar_descent', expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId ?? null })
     } else if (position.accessPreparation === 'quarry' || position.accessPreparation === 'quarry_fluid_roof') {
       // Quarry targets: the quarry planner already chose the block, the tool
       // and checked falling/fluid dependencies; mining re-checks them live.
       const rt = position.requiredTool
       if (rt?.reserve != null && (!Number.isSafeInteger(rt.reserve) || rt.reserve < 1)) throw new Error('Quarry tool reserve must leave at least one received durability use')
-      if (typeof position.expectedName !== 'string' || !/^minecraft:[a-z0-9_]+$/.test(position.expectedName) || quarryRule(position.expectedName).kind !== 'dig' || position.expectedRuntimeId != null && !Number.isSafeInteger(position.expectedRuntimeId) || rt != null && (!['pickaxe', 'shovel', 'axe', 'hoe', 'shears'].includes(rt.kind) || !Number.isSafeInteger(rt.tier) || rt.tier < 0 || rt.tier > 4)) throw new Error('Quarry mining needs an expected diggable block and a valid tool requirement')
-      Object.assign(target, { accessPreparation: position.accessPreparation, expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId ?? null, requiredTool: rt ? { kind: rt.kind, tier: rt.tier, ...(rt.reserve != null ? { reserve: rt.reserve } : {}) } : null, ...(position.allowFullInventory === true ? { allowFullInventory: true } : {}) })
+      if (typeof position.expectedName !== 'string' || !/^minecraft:[a-z0-9_]+$/.test(position.expectedName) || !(quarryRule(position.expectedName).kind === 'dig' || position.exitShaftOre === true && position.accessPreparation === 'quarry' && quarryRule(position.expectedName).reason === 'PROTECTED_ORE') || position.expectedRuntimeId != null && !Number.isSafeInteger(position.expectedRuntimeId) || rt != null && (!['pickaxe', 'shovel', 'axe', 'hoe', 'shears'].includes(rt.kind) || !Number.isSafeInteger(rt.tier) || rt.tier < 0 || rt.tier > 4)) throw new Error('Quarry mining needs an expected diggable block and a valid tool requirement')
+      Object.assign(target, { accessPreparation: position.accessPreparation, expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId ?? null, requiredTool: rt ? { kind: rt.kind, tier: rt.tier, ...(rt.reserve != null ? { reserve: rt.reserve } : {}) } : null, ...(position.allowFullInventory === true ? { allowFullInventory: true } : {}), ...(position.exitShaftOre === true && position.accessPreparation === 'quarry' ? { exitShaftOre: true } : {}) })
       if (position.expectedName === 'minecraft:leaf_litter') {
         const props = position.expectedProperties
         if (!Number.isInteger(position.expectedRuntimeId) || position.expectedRuntimeId < 0 || position.expectedRuntimeId > 4294967295 || rt != null || !props || Array.isArray(props) || Object.keys(props).length !== 2 || !Number.isInteger(props.growth) || props.growth < 0 || props.growth > 3 || !['north', 'south', 'east', 'west'].includes(props['minecraft:cardinal_direction'])) throw new Error('Leaf-litter quarry mining requires exact received growth0..3 properties, runtime and non-tool hand')
@@ -157,7 +163,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     if (!state.inventory.known) throw new Error('持ち物の一覧をまだ取得できていません。')
     // A quarry with every storage box full (passive, dig-through policy) mines
     // with a full bag and leaves the drops; only plain quarry targets may.
-    const fullAllowed = target.allowFullInventory === true && target.accessPreparation === 'quarry'
+    const fullAllowed = target.allowFullInventory === true && target.accessPreparation === 'quarry' || target.accessPreparation === 'pillar_descent'
     if (!fullAllowed && state.inventory.items.filter(item => item.slot < 36).length >= 36) throw new Error('持ち物が満杯です。')
     const feet = { x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62 + 0.001), z: Math.floor(state.position.z) }
     const feetY = state.position.y - 1.62
@@ -165,7 +171,15 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     if (Math.abs(feetY - Math.round(feetY)) > 0.05 || !support.known || AIR.has(blockName(support)) || HAZARDS.test(blockName(support))) {
       throw new Error('通常の地面に静止していることを確認できません。')
     }
-    if (target.x === feet.x && target.z === feet.z && target.y <= feet.y) throw new Error('自分の足元は掘れません。')
+    const descent = target.accessPreparation === 'pillar_descent'
+    if (descent) {
+      const below = world.getBlock(target.x, target.y - 1, target.z), here = world.getBlock(target.x, target.y, target.z)
+      const dry = p => { const b = world.getBlock(p.x, p.y, p.z); return b?.known === true && !/water|lava/.test(blockName(b)) && !b.extra?.length }
+      if (target.x !== feet.x || target.z !== feet.z || target.y !== feet.y - 1) throw new Error('Pillar descent mines only the block directly under the feet')
+      if (here?.known !== true || here.name !== target.expectedName || target.expectedRuntimeId != null && here.runtimeId !== target.expectedRuntimeId) throw new Error('Pillar descent needs received dirt under the feet')
+      if (below?.known !== true || below.boundingBox !== 'block' || AIR.has(blockName(below)) || HAZARDS.test(blockName(below))) throw new Error('Pillar descent needs a received solid block right below the dirt')
+      if (![{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }].every(d => dry({ x: target.x + d.x, y: target.y, z: target.z + d.z }) && dry({ x: target.x + d.x, y: feet.y, z: target.z + d.z }))) throw new Error('Pillar descent needs received dry surroundings')
+    } else if (target.x === feet.x && target.z === feet.z && target.y <= feet.y) throw new Error('自分の足元は掘れません。')
     const block = world.getBlock(target.x, target.y, target.z)
     if (!block.known) throw new Error('対象ブロックをまだ読み取れていません。')
     const name = blockName(block)

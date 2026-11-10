@@ -31,6 +31,7 @@ const POSE_MOVE_LIMIT = 3, POSE_CONFIRM_RADIUS = 1.5 // pose check after a pause
 // ones are used down later and returned once unusable).
 const TERRAIN_BUDGET_RENEW_MS = 600000 // a terrain request budget older than this is renewed on resume
 const EGRESS_NOOP_COMBAT_MS = 3000, EGRESS_NOOP_COMBAT_RETRIES = 6 // no-action combat during the climb (consecutive, reset by progress)
+const DEFAULT_BOTTOM_Y = -59 // quarry bottom when none is given
 const EXHAUSTED_TOOL_CAP = 4
 const CAPACITY_RETRIES = 8 // automatic retries of a storage box recovery blocked only by loose drops (~10 min)
 const AUTO_RESUME_WINDOW_MS = 600000 // the ACTION_FAILED auto-resume budget resets after this quiet time
@@ -62,7 +63,9 @@ function defaults (config = {}) {
     dimension: c.dimension ?? 'overworld',
     target: c.target,
     yTop: c.yTop ?? 'auto',
-    yBottom: c.yBottom ?? 'world_min',
+    // Default bottom (2026-11-10, user request): Y-59, just above the overworld
+    // bedrock band; 'world_min' stays available as an explicit choice.
+    yBottom: c.yBottom ?? DEFAULT_BOTTOM_Y,
     worldMinY: c.worldMinY ?? -64,
     worldMaxY: c.worldMaxY ?? 319,
     allowExceptions: c.allowExceptions === true,
@@ -1045,7 +1048,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       // Every remaining use of this tool is kept for the exit: fetch one more of
       // the same kind from its supply box (once), then mine with the fresh one.
       if (job.config.inventory.supplyBoxes?.length && ['pickaxe', 'shovel'].includes(tool.kind) && !job.miningExhaustedTried) {
-        const carried = supplyNeeds(items(guard(myEpoch)) ?? [], { ...job.config.inventory, tools: job.config.tools }).available[tool.kind] ?? 1
+        // Worn tools of this kind are returned in the same restock; count only the others.
+        const carried = supplyNeeds(items(guard(myEpoch)) ?? [], { ...job.config.inventory, tools: job.config.tools, miningExhausted: { [tool.kind]: 0 } }).available[tool.kind] ?? 0
         job.miningExhausted = { [tool.kind]: Math.min(EXHAUSTED_TOOL_CAP, carried + 1) }; job.miningExhaustedTried = true
         if (await restock(myEpoch, 'SURVEY', true)) return
       }

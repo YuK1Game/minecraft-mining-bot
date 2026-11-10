@@ -634,3 +634,9 @@ test('live case 2026-11-10: passive full-only mining keeps digging once no stora
   assert.ok(j.document().storageExhausted, 'the exhausted storage is recorded')
   await j.pause(); await j.drain()
 })
+
+test('a plan without a bottom uses Y-59 by default (user request 2026-11-10)', () => {
+  const { defaults } = require('../src/quarry-job')
+  assert.equal(defaults({ jobId: 'd', target: { chunks: [{ x: 0, z: 0 }] } }).yBottom, -59)
+  assert.equal(defaults({ jobId: 'd', target: { chunks: [{ x: 0, z: 0 }] }, yBottom: 'world_min' }).yBottom, 'world_min', 'an explicit choice is kept')
+})
