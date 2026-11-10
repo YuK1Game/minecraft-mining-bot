@@ -119,9 +119,19 @@ function createQuarryEgressRuntime ({ getState, getBlock, moveTo, mineTargets, p
           const unacked = pending.phase === 'placement_pending' && p && p.x === plan.column.x && p.z === plan.column.z && p.y === checkpoint.confirmedFeetY &&
             getBlock(p.x, p.y, p.z)?.known === true && getBlock(p.x, p.y, p.z)?.name === 'minecraft:dirt' && Number.isSafeInteger(pending.beforeDirt) && dirtTotal(check()) === pending.beforeDirt - 1
           if (unacked) { pending.phase = 'completed'; pending.serverConfirmed = true; pending.reconciledBy = 'received_dirt_block_one_dirt_spent_and_server_position' }
+          // The opposite evidence: the target is still received air, no dirt was
+          // spent, and the server confirms the feet at the old height. The step
+          // never happened, so it is cleared and sent again as a new step.
+          const neverPlaced = !unacked && pending.phase === 'placement_pending' && p && p.x === plan.column.x && p.z === plan.column.z && p.y === checkpoint.confirmedFeetY &&
+            air(getBlock(p.x, p.y, p.z)) && Number.isSafeInteger(pending.beforeDirt) && dirtTotal(check()) === pending.beforeDirt
+          if (neverPlaced) {
+            await verifyPosition({ x: p.x + 0.5, y: p.y, z: p.z + 0.5 }, 'ASCENT_UNCERTAIN_STEP')
+            checkpoint.pendingStep = null; await save()
+          } else {
           if (pending.phase !== 'completed' || pending.serverConfirmed !== true || !p || p.x !== plan.column.x || p.z !== plan.column.z || p.y !== checkpoint.confirmedFeetY || getBlock(p.x, p.y, p.z)?.known !== true || getBlock(p.x, p.y, p.z)?.name !== 'minecraft:dirt') return blocked('ASCENT_UNCERTAIN_STEP')
           await verifyPosition({ x: p.x + 0.5, y: p.y + 1, z: p.z + 0.5 }, 'ASCENT_UNCERTAIN_STEP')
           checkpoint.steps.push(copy(pending)); checkpoint.confirmedFeetY++; checkpoint.pendingStep = null; await save()
+          }
         }
       }
       if (dirtTotal(initial) < plan.targetFeetY - checkpoint.confirmedFeetY + (plan.reserveDirt ?? 8)) return blocked('EXIT_DIRT_REQUIRED')
