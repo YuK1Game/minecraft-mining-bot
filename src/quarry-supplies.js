@@ -78,7 +78,7 @@ function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks
   // starts the restock so a re-check during the restock never asks for more.
   // A plain list (legacy) means one more than the single carried tool.
   const wanted = Array.isArray(miningExhausted) ? Object.fromEntries(miningExhausted.map(k => [k, 2])) : (miningExhausted && typeof miningExhausted === 'object' ? miningExhausted : {})
-  for (const [kind, n] of Object.entries(wanted)) if ((kind === 'pickaxe' || kind === 'shovel') && Number.isSafeInteger(n)) desired[kind] = Math.max(desired[kind], Math.min(3, n))
+  for (const [kind, n] of Object.entries(wanted)) if ((kind === 'pickaxe' || kind === 'shovel') && Number.isSafeInteger(n)) desired[kind] = Math.max(desired[kind], Math.min(4, n))
   const missing = Object.fromEntries(ROLES.map(role => [role, Math.max(0, desired[role] - available[role])]))
   const required = { pickaxe: missing.pickaxe > 0, shovel: missing.shovel > 0, food: desired.food > 0 && available.food === 0, dirt: missing.dirt > 0 && available.dirt <= keepExitDirt }
   return { desired, available, missing, required, returns, freeSlots: freeSlots(main), exitDirt: { required: keepExitDirt, available: Math.min(keepExitDirt, available.dirt) }, sealDirt: { required: keepSealBlocks, available: Math.max(0, available.dirt - keepExitDirt) } }

@@ -26,6 +26,10 @@ const samePoint = (a, b) => ['x', 'y', 'z'].every(axis => Number.isSafeInteger(a
 const FEET = 1.62
 const SETTLE_MAX_WAIT_MS = 45000 // longest post-combat settle wait for threats that do not come
 const POSE_MOVE_LIMIT = 3, POSE_CONFIRM_RADIUS = 1.5 // pose check after a pause (blocks)
+// Tools of one kind carried while all are reserved for the exit (live 2026-11-10:
+// three pickaxes at 19 uses each were all reserved, so a 4th is needed; worn
+// ones are used down later and returned once unusable).
+const EXHAUSTED_TOOL_CAP = 4
 const CAPACITY_RETRIES = 8 // automatic retries of a storage box recovery blocked only by loose drops (~10 min)
 const AUTO_RESUME_WINDOW_MS = 600000 // the ACTION_FAILED auto-resume budget resets after this quiet time
 const STORAGE_AREA_RADIUS = 24 // m around the chests checked before leaving the pit
@@ -1035,7 +1039,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       // the same kind from its supply box (once), then mine with the fresh one.
       if (job.config.inventory.supplyBoxes?.length && ['pickaxe', 'shovel'].includes(tool.kind) && !job.miningExhaustedTried) {
         const carried = supplyNeeds(items(guard(myEpoch)) ?? [], { ...job.config.inventory, tools: job.config.tools }).available[tool.kind] ?? 1
-        job.miningExhausted = { [tool.kind]: Math.min(3, carried + 1) }; job.miningExhaustedTried = true
+        job.miningExhausted = { [tool.kind]: Math.min(EXHAUSTED_TOOL_CAP, carried + 1) }; job.miningExhaustedTried = true
         if (await restock(myEpoch, 'SURVEY', true)) return
       }
       job.miningExhausted = null
