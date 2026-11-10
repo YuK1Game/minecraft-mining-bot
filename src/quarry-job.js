@@ -25,6 +25,7 @@ const copy = value => value === undefined ? undefined : structuredClone(value)
 const samePoint = (a, b) => ['x', 'y', 'z'].every(axis => Number.isSafeInteger(a?.[axis]) && a[axis] === b?.[axis])
 const FEET = 1.62
 const SETTLE_MAX_WAIT_MS = 45000 // longest post-combat settle wait for threats that do not come
+const CAPACITY_RETRIES = 8 // automatic retries of a storage box recovery blocked only by loose drops (~10 min)
 const AUTO_RESUME_WINDOW_MS = 600000 // the ACTION_FAILED auto-resume budget resets after this quiet time
 const STORAGE_AREA_RADIUS = 24 // m around the chests checked before leaving the pit
 const STORAGE_WAIT_MS = 20000 // longest wait for the chest area to clear (a long idle wait looks like a stall)
@@ -72,7 +73,7 @@ function defaults (config = {}) {
   }
 }
 
-function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, bridge = null, pollMs = 50, autoResumeMs = 30000, stopTimeoutMs = 5000, storageMode = 'legacy' } = {}) {
+function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, bridge = null, pollMs = 50, autoResumeMs = 30000, capacityRetryMs = 75000, stopTimeoutMs = 5000, storageMode = 'legacy' } = {}) {
   // The production Runtime pins this to shulker. Legacy primitives remain for
   // read/recovery tests, never as a browser/CLI-selectable policy.
   const shulkerOnly = storageMode === 'shulker'
@@ -1086,7 +1087,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       lastInventory = totals(items(adapter.getState()) ?? [])
       return
     }
-    if (confirmed) { job.slowBreaks = 0; job.slowCells = []; job.routeSkips = 0; job.autoResumes = 0 }
+    if (confirmed) { job.slowBreaks = 0; job.slowCells = []; job.routeSkips = 0; job.autoResumes = 0; job.capacityRetries = 0 }
     if (failure && !confirmed) {
       rec.status = 'failed'; rec.error = String(failure.message ?? failure)
       // A preview refused for the stance (pose not settled, face not visible
@@ -2311,6 +2312,23 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         try { resume() } catch (error) { note('auto_resume_failed', { error: String(error.message ?? error) }) }
       }
       autoResumeTimer = setTimeout(retry, autoResumeMs); autoResumeTimer.unref?.()
+    }
+    // Loose drops around a placed storage box (passive pickup leaves them) can
+    // block its safe recovery. They despawn within minutes and nothing moves
+    // while waiting, so this pause retries itself (bounded) instead of
+    // stalling for hours (live 2026-11-10 05:38: 2h until a manual resume).
+    const capacityWait = paused && reason === 'CARRIED_STORAGE_BLOCKED' && extra.pauseDetails?.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED'
+    if (job.persistence?.status !== 'failed' && capacityWait && (job.capacityRetries ?? 0) < CAPACITY_RETRIES && job.userRunIntent === 'running') {
+      const owner = job, expectedEpoch = epoch
+      const retry = () => {
+        autoResumeTimer = null
+        if (job !== owner || epoch !== expectedEpoch || job.state !== 'PAUSED' || job.pauseReason !== reason || job.userRunIntent !== 'running') return
+        if (worker || stopTask || pendingActions.size || savesInFlight) { autoResumeTimer = setTimeout(retry, 100); autoResumeTimer.unref?.(); return }
+        job.capacityRetries = (job.capacityRetries ?? 0) + 1
+        note('capacity_wait_resume', { count: job.capacityRetries, required: extra.pauseDetails?.details?.requiredFreeSlots ?? null, free: extra.pauseDetails?.details?.freeSlots ?? null })
+        try { resume() } catch (error) { note('auto_resume_failed', { error: String(error.message ?? error) }) }
+      }
+      autoResumeTimer = setTimeout(retry, capacityRetryMs); autoResumeTimer.unref?.()
     }
     try { adapter.onFinished?.(status()) } catch {}
   }
