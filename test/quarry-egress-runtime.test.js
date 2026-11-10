@@ -29,7 +29,7 @@ function fixture ({ dirt = 10, mineConfirmed = true, poseConfirmed = true, stepF
       Object.assign(cp, { phase: 'completed', serverConfirmed: true }); await onCheckpoint(cp)
       return { status: 'completed', serverConfirmed: true, checkpoint: cp }
     } })
-  const run = checkpoint => runtime.run({ jobId: 'job', operationId: 'exit', plan, checkpoint }, { onCheckpoint: cp => checkpoints.push(cp) })
+  const run = (checkpoint, extra = {}) => runtime.run({ jobId: 'job', operationId: 'exit', plan, checkpoint, ...extra }, { onCheckpoint: cp => checkpoints.push(cp) })
   return { run, state, plan, blocks, moves, mines, steps, checkpoints, get oracleCalls () { return oracleCalls } }
 }
 
@@ -185,4 +185,30 @@ test('live case 2026-11-10: an unacknowledged placement is accepted only with th
     else assert.equal(resumed.reason, 'ASCENT_UNCERTAIN_STEP')
     assert.ok(first)
   }
+})
+
+test('live case 2026-11-10: after a reconnect the ascent continues only with a server-confirmed pose on the column', async () => {
+  for (const confirmed of [true, false]) {
+    let refuse = false
+    const f = fixture({ oracle: ({ receipt }) => refuse ? { serverConfirmed: false, reason: 'POSITION_NOT_FOUND' } : receipt })
+    await f.run()
+    const mid = structuredClone(f.checkpoints.find(cp => cp.phase === 'ascent' && cp.confirmedFeetY === 66 && !cp.pendingStep))
+    assert.ok(mid, 'a mid-ascent checkpoint exists')
+    f.blocks.set('1,66,0', 'minecraft:air'); f.state.inventory.items[0].count = 9
+    f.state.connectionId = 'socket-2'; f.state.startedAt = 'session-2' // same account, realm, dimension and life
+    f.state.position = { x: 1.5, y: 67.62, z: 0.5 }
+    assert.equal((await f.run(structuredClone(mid))).reason, 'EGRESS_SCOPE_CHANGED', 'never without the reconnect request')
+    refuse = !confirmed
+    const resumed = await f.run(structuredClone(mid), { reconnect: true })
+    if (confirmed) assert.notEqual(resumed.reason, 'EGRESS_SCOPE_CHANGED', JSON.stringify(resumed.reason))
+    else assert.equal(resumed.reason, 'EGRESS_SCOPE_CHANGED')
+  }
+})
+
+test('a reconnect never rebinds a checkpoint from another life', async () => {
+  const f = fixture({ oracle: true })
+  await f.run()
+  const mid = structuredClone(f.checkpoints.find(cp => cp.phase === 'ascent' && cp.confirmedFeetY === 66 && !cp.pendingStep))
+  f.state.connectionId = 'socket-2'; f.state.lifecycle.deathId++
+  assert.equal((await f.run(mid, { reconnect: true })).reason, 'EGRESS_SCOPE_CHANGED')
 })
