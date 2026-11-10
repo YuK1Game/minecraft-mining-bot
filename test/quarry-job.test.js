@@ -586,3 +586,19 @@ test('live case 2026-11-10: one cell that stays slow after a resync is deferred 
   assert.notEqual(sim.world.name(5, 62, 5), 'air', 'the slow cell itself is left')
   assert.equal(sim.world.name(6, 62, 6), 'air', 'the rest of the layer is mined')
 })
+
+test('live case 2026-11-10: passive full-only mining keeps digging once no storage box is left', async () => {
+  const sim = setup({ stoneTop: 61, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 8)
+  for (let i = 0; i < 40 && sim.state.inventory.items.length < 36; i++) sim.give(i % 2 ? 'granite' : 'andesite', 64) // a full bag of mined material
+  const { j } = job(sim)
+  const planned = j.plan({ jobId: 'full-bag', exit: { mode: 'legacy_stair' }, target: { chunks: [{ x: 0, z: 0 }] }, yBottom: 62, worldMinY: 50, worldMaxY: 90, inventory: { carryOnly: true, pickupMode: 'passive', depositWhen: 'full', keepSealBlocks: 0 } })
+  assert.equal(planned.ready, true, JSON.stringify(planned.issues))
+  j.start()
+  const until = Date.now() + 20000
+  while (!(j.status().ledger?.minedBlocks >= 3) && !['PAUSED', 'FINISHED'].includes(j.status().state) && Date.now() < until) await new Promise(r => setTimeout(r, 5))
+  assert.notEqual(j.status().pauseReason, 'WAITING_FOR_STORAGE', JSON.stringify(j.status().pauseDetails))
+  assert.ok(j.status().ledger.minedBlocks >= 3, 'mining continued with a full bag')
+  assert.ok(j.document().storageExhausted, 'the exhausted storage is recorded')
+  await j.pause(); await j.drain()
+})

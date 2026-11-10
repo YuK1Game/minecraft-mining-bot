@@ -28,6 +28,7 @@ const SETTLE_MAX_WAIT_MS = 45000 // longest post-combat settle wait for threats 
 // Tools of one kind carried while all are reserved for the exit (live 2026-11-10:
 // three pickaxes at 19 uses each were all reserved, so a 4th is needed; worn
 // ones are used down later and returned once unusable).
+const TERRAIN_BUDGET_RENEW_MS = 600000 // a terrain request budget older than this is renewed on resume
 const EXHAUSTED_TOOL_CAP = 4
 const CAPACITY_RETRIES = 8 // automatic retries of a storage box recovery blocked only by loose drops (~10 min)
 const AUTO_RESUME_WINDOW_MS = 600000 // the ACTION_FAILED auto-resume budget resets after this quiet time
@@ -609,6 +610,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   async function reconcile (myEpoch) {
     const s = guard(myEpoch)
+    // The same-scope request budget is kept across a resume, but one spent long
+    // ago (e.g. at the job start) is renewed: subchunks far above are dropped
+    // as the bot digs down and must be requested again.
+    const obs = job.terrainObservation
+    if (obs && obs.requests && !obs.waiting && Number.isFinite(obs.requestedAt) && now() - obs.requestedAt > TERRAIN_BUDGET_RENEW_MS) { obs.requests = 0; obs.phase = 'idle' }
     if (job.supplyRestock) { job.supplyRestock.resumeTo = 'RECONCILE'; return restock(myEpoch, 'RECONCILE', true) }
     // Re-observe instead of trusting saved cells (§15.3): unreachable and
     // tool deferrals are retried; protected/unbreakable stay.
@@ -775,10 +781,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     observeInventory(job.state)
     // Finish existing container operations first, but a newly full bag must be
     // emptied before starting another supply box that needs recovery space.
-    if (fullOnlyStorage() && freeSlots(inv) === 0 && keepPlan(inv, inventoryPolicy()).deposits.length) { await collect(myEpoch, 'capacity'); job.depositReason = 'full'; setState('RETURN'); return }
+    if (fullOnlyStorage() && !job.storageExhausted && freeSlots(inv) === 0 && keepPlan(inv, inventoryPolicy()).deposits.length) { await collect(myEpoch, 'capacity'); job.depositReason = 'full'; setState('RETURN'); return }
     if (await restock(myEpoch, 'SURVEY')) return
     // Capacity: collect then return before the bag is full (§10.3, §11.1).
-    if (fullOnlyStorage() ? freeSlots(inv) === 0 : freeSlots(inv) < job.config.inventory.minFreeSlots) { await collect(myEpoch, 'capacity'); job.depositReason = fullOnlyStorage() ? 'full' : 'capacity'; setState('RETURN'); return }
+    if (fullOnlyStorage() ? freeSlots(inv) === 0 && !job.storageExhausted : freeSlots(inv) < job.config.inventory.minFreeSlots) { await collect(myEpoch, 'capacity'); job.depositReason = fullOnlyStorage() ? 'full' : 'capacity'; setState('RETURN'); return }
     // Oldest drop deadline / pending count (§10.1). Collection is not tied to
     // each 8-block batch: drops are gathered when the oldest reaches
     // collectAfterSeconds (inside the spec's collectWithinSeconds), when many
@@ -998,7 +1004,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     guard(myEpoch)
     const beforeDispatch = items(guard(myEpoch))
     if (!beforeDispatch) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
-    if (!capacityActionId && passivePickup() && freeSlots(beforeDispatch) === 0) { job.depositReason = 'full'; setState('RETURN'); return }
+    if (!capacityActionId && passivePickup() && !job.storageExhausted && freeSlots(beforeDispatch) === 0) { job.depositReason = 'full'; setState('RETURN'); return }
     for (const target of plannedTargets.filter(t => nameOf(t.name) === 'leaf_litter')) {
       const p = target.position, b = adapter.getBlock(p.x, p.y, p.z)
       if (b?.known !== true || b.name !== target.name || b.runtimeId !== target.runtimeId || !isDeepStrictEqual(b.properties, target.properties)) {
@@ -1044,8 +1050,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const dispatched = await call(myEpoch, 'mine', signal => {
         const inventory = items(guard(myEpoch))
         if (!inventory) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
-        if (!capacityActionId && passivePickup() && freeSlots(inventory) === 0) return { notStarted: 'INVENTORY_FULL' }
-        return adapter.mine(targets, { signal })
+        if (!capacityActionId && passivePickup() && !job.storageExhausted && freeSlots(inventory) === 0) return { notStarted: 'INVENTORY_FULL' }
+        return adapter.mine(job.storageExhausted ? targets.map(t => ({ ...t, allowFullInventory: true })) : targets, { signal })
       })
       guard(myEpoch)
       if (dispatched?.notStarted === 'INVENTORY_FULL') { rec.status = 'not_started'; rec.reason = 'INVENTORY_FULL'; job.depositReason = 'full'; setState('RETURN'); return }
@@ -1091,7 +1097,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       lastInventory = totals(items(adapter.getState()) ?? [])
       return
     }
-    if (confirmed) { job.slowBreaks = 0; job.slowCells = []; job.routeSkips = 0; job.autoResumes = 0; job.capacityRetries = 0 }
+    // Confirmed progress also renews the terrain request budget: received
+    // subchunks far above are dropped as the bot digs down, so the exit column
+    // may need a fresh request later (live 2026-11-10 11:35: budget spent at start).
+    if (confirmed) { job.slowBreaks = 0; job.slowCells = []; job.routeSkips = 0; job.autoResumes = 0; job.capacityRetries = 0; if (job.terrainObservation?.phase === 'exhausted') { job.terrainObservation.requests = 0; job.terrainObservation.phase = 'idle' } }
     if (failure && !confirmed) {
       rec.status = 'failed'; rec.error = String(failure.message ?? failure)
       // A preview refused for the stance (pose not settled, face not visible
@@ -1996,6 +2005,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (await storeCarried(myEpoch, why)) return
     if (shulkerOnly || !job.config.inventory.storage?.length) {
       const inventory = items(guard(myEpoch)), free = inventory ? freeSlots(inventory) : null
+      // Passive pickup + full-only storage: once every carried storage box is
+      // full, the user's "dig through first" policy keeps mining; new drops are
+      // simply not picked up (natural pickup fails on a full bag) and are
+      // recorded, instead of pausing the job (live 2026-11-10 12:16).
+      const noBox = inventory && keepPlan(inventory, inventoryPolicy()).deposits.length && !cargoSelection(inventory, { excludedShulkerKeys: [...(job.exhaustedShulkerKeys ?? []), ...storageSupplyExclusions(job.config.inventory.supplyBoxes)] })
+      if (passivePickup() && fullOnlyStorage() && noBox) {
+        if (!job.storageExhausted) { job.storageExhausted = { at: new Date(now()).toISOString(), freeSlots: free }; note('storage_exhausted', { freeSlots: free }); await save('storage_exhausted') }
+        if (why === 'final') { recordFinalStorageSkip(inventory); setState('FINAL_CHECK') } else setState('SURVEY')
+        return
+      }
       return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: inventory && !keepPlan(inventory, inventoryPolicy()).deposits.length ? 'NO_DEPOSITABLE_ITEMS' : 'NO_CARRIED_STORAGE', freeSlots: free, minFreeSlots: job.config.inventory.minFreeSlots } })
     }
     let st = currentStorage()
@@ -2161,7 +2180,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const inventory = items(adapter.getState())
       if (!inventory) return finish('PAUSED', 'INVENTORY_UNKNOWN')
       if (!keepPlan(inventory, inventoryPolicy()).deposits.length) { job.finalDeposited = true; delete job.finalStorageSkipped }
-      else if (fullOnlyStorage() && freeSlots(inventory) > 0) recordFinalStorageSkip(inventory)
+      else if (fullOnlyStorage() && (freeSlots(inventory) > 0 || job.storageExhausted)) recordFinalStorageSkip(inventory)
       else if (hasStorageOption()) { await collect(myEpoch, 'final'); job.depositReason = 'final'; await returnAndDeposit(myEpoch, 'final'); return }
       else return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: 'final deposits remain' } })
     }
