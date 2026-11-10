@@ -17,6 +17,16 @@ const unpack = value => deserialize(Buffer.from(value, 'base64'))
 const empty = raw => raw?.network_id === 0 && raw.count === 0
 const valid = raw => raw && Number.isInteger(raw.network_id) && Number.isInteger(raw.count) && raw.count >= 0 && (raw.network_id === 0 ? raw.count === 0 && (raw.has_stack_id !== true || raw.stack_id === 0) : raw.count > 0 && raw.has_stack_id === true && Number.isInteger(raw.stack_id) && raw.stack_id > 0 && raw.stack_id <= 2147483647)
 const identity = raw => ({ network_id: raw.network_id, metadata: raw.metadata, block_runtime_id: raw.block_runtime_id, extra: raw.extra })
+// Mending repairs a carried tool from picked-up experience (live 2026-11-10:
+// Damage 1542 -> 1540 between the take and the reread). The identity without
+// Damage must match, and the damage may only have gone down.
+const damageOf = raw => raw?.extra?.nbt?.nbt?.value?.Damage?.value
+const sameToolRepaired = (actual, source) => {
+  const a = damageOf(actual), b = damageOf(source)
+  if (!Number.isInteger(a) || !Number.isInteger(b) || a > b) return false
+  const strip = raw => { const id = structuredClone(identity(raw)); delete id.extra.nbt.nbt.value.Damage; return id }
+  try { return isDeepStrictEqual(strip(actual), strip(source)) } catch { return false }
+}
 const fail = (code, message = code) => Object.assign(new Error(message), { code })
 const limitOf = name => require('minecraft-data')('bedrock_1.26.60').itemsByName[name.replace(/^minecraft:/, '')]?.stackSize
 const roleOf = name => toolOf(name)?.kind === 'pickaxe' ? 'pickaxe' : toolOf(name)?.kind === 'shovel' ? 'shovel' : name === 'minecraft:bread' ? 'food' : name === 'minecraft:dirt' ? 'dirt' : null
@@ -170,9 +180,16 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
     const actualTools = actualMain.map((raw, slot) => ({ raw, slot })).filter(({ raw }) => raw.network_id === source.network_id)
     if (priorTools.some(raw => !actualTools.some(item => isDeepStrictEqual(item.raw, raw)))) return null
     if (actualTools.length === priorTools.length && isDeepStrictEqual(actualMain[intent.playerSlot], playerBefore) && window.raw.every((raw, slot) => isDeepStrictEqual(raw, beforeContainer[slot]))) return { outcome: 'unchanged' }
+    // The box is exactly as before and no tool was added, but the target slot
+    // was filled by something else meanwhile (natural pickup, live 2026-11-10
+    // 21:05): the take did not happen; it is retried into another empty slot.
+    if (actualTools.length === priorTools.length && !empty(actualMain[intent.playerSlot]) && actualMain[intent.playerSlot].network_id !== source.network_id && window.raw.every((raw, slot) => isDeepStrictEqual(raw, beforeContainer[slot]))) {
+      const free = actualMain.findIndex(empty)
+      return free >= 0 ? { outcome: 'unchanged', retrySlot: free } : null
+    }
     if (actualTools.length !== priorTools.length + 1 || window.raw.some((raw, slot) => slot === intent.chestSlot ? !empty(raw) : !isDeepStrictEqual(raw, beforeContainer[slot]))) return null
     const oldIds = new Set(beforeMain.filter(raw => !empty(raw)).map(raw => raw.stack_id))
-    const candidates = actualTools.filter(({ raw }) => !oldIds.has(raw.stack_id) && raw.count === 1 && isDeepStrictEqual(identity(raw), identity(source)))
+    const candidates = actualTools.filter(({ raw }) => !oldIds.has(raw.stack_id) && raw.count === 1 && (isDeepStrictEqual(identity(raw), identity(source)) || sameToolRepaired(raw, source)))
     return candidates.length === 1 ? { outcome: 'applied', ...candidates[0] } : null
   }
 
@@ -218,7 +235,7 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
         if (before && (intent.wireAttempts ?? 1) >= 2) throw fail('SUPPLY_TRANSFER_NOT_PROGRESSING')
         const prior = copy(cp)
         if (applied) cp[intent.direction === 'withdraw' ? 'withdrawn' : 'returned'].push({ name: intent.name, count: intent.count, role: cp.role, confirmedBy: relocated ? 'fresh_main_and_reopened_container_unique_relocated_tool' : 'fresh_main_and_reopened_container_exact_slots' })
-        cp.retryTransfer = before ? { direction: intent.direction, playerSlot: intent.playerSlot, chestSlot: intent.chestSlot, count: intent.count, name: intent.name, wireAttempts: (intent.wireAttempts ?? 1) + 1, automaticReadCount: intent.automaticReadCount ?? 0 } : null
+        cp.retryTransfer = before ? { direction: intent.direction, playerSlot: tracked?.retrySlot ?? intent.playerSlot, chestSlot: intent.chestSlot, count: intent.count, name: intent.name, wireAttempts: (intent.wireAttempts ?? 1) + 1, automaticReadCount: intent.automaticReadCount ?? 0 } : null
         cp.reconciliation = { at: now(), outcome: before ? 'unchanged' : 'applied', playerSlot: intent.playerSlot, ...(relocated ? { observedPlayerSlot: relocated.slot, observedPlayerStackId: relocated.raw.stack_id, sourceStackId: source.stack_id, confirmedBy: 'fresh_main_and_reopened_container_unique_relocated_tool' } : {}), chestSlot: intent.chestSlot, count: intent.count, playerBefore: a.count, playerAfter: player.count, chestBefore: b.count, chestAfter: container.count, windowEpoch: window.window.epoch }
         cp.intent = null
         try { await save() } catch (error) { cp = prior; throw error }
@@ -235,7 +252,12 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
         if (worn.length && returnSlot >= 0) action = { direction: 'return', playerSlot: worn[0].slot, chestSlot: returnSlot, count: 1, name: cp.itemName }
         else if (missing > 0) {
           const candidates = window.raw.map((raw, slot) => ({ raw, slot })).filter(({ raw }) => !empty(raw) && crafting.itemNameOf(raw.network_id) === cp.itemName)
-          const source = candidates.find(({ raw, slot }) => !['pickaxe', 'shovel'].includes(cp.role) || toolState(readDurability({ slot, name: cp.itemName, count: raw.count, stackId: raw.stack_id }, raw), supply.policy?.tools)?.usable)
+          // Tools: take the most durable usable one, not the first (the box
+          // also holds the worn tools returned to it).
+          const usesOf = ({ raw, slot }) => { const d = readDurability({ slot, name: cp.itemName, count: raw.count, stackId: raw.stack_id }, raw); return toolState(d, supply.policy?.tools)?.usable ? (d.durabilityRemaining ?? 0) : -1 }
+          const source = ['pickaxe', 'shovel'].includes(cp.role)
+            ? candidates.map(c => ({ c, uses: usesOf(c) })).filter(x => x.uses >= 0).sort((a, b) => b.uses - a.uses || a.c.slot - b.c.slot)[0]?.c
+            : candidates[0]
           if (!source) throw fail('SUPPLY_EXHAUSTED')
           const limit = limitOf(cp.itemName)
           const compatible = item => isDeepStrictEqual(identity(item.raw), identity(source.raw)) && item.count < limit
