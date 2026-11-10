@@ -21,7 +21,7 @@ function quarryConfig (input, state) {
   const x2 = integer(input.x2 ?? x1, '終了チャンクX', -1875000, 1874999), z2 = integer(input.z2 ?? z1, '終了チャンクZ', -1875000, 1874999)
   if ((Math.abs(x2 - x1) + 1) * (Math.abs(z2 - z1) + 1) > 4) throw error('RANGE_TOO_LARGE', '画面から一度に指定できる範囲は最大4チャンクです。', 400)
   const yTop = input.top == null ? 'auto' : integer(input.top, '採掘上限Y', -64, 319)
-  const yBottom = input.bottom == null ? 'world_min' : integer(input.bottom, '採掘下限Y', -64, 319)
+  const yBottom = input.bottom == null ? -59 : integer(input.bottom, '採掘下限Y', -64, 319) // default -59 (user request 2026-11-10)
   if (typeof yTop === 'number' && typeof yBottom === 'number' && yTop < yBottom) throw error('INVALID_INPUT', '採掘上限は下限以上にしてください。', 400)
   const mode = input.pickupMode ?? 'passive'
   if (!['active', 'passive'].includes(mode)) throw error('INVALID_INPUT', '回収方針が不正です。', 400)

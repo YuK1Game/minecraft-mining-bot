@@ -31,6 +31,7 @@ const POSE_MOVE_LIMIT = 3, POSE_CONFIRM_RADIUS = 1.5 // pose check after a pause
 // ones are used down later and returned once unusable).
 const TERRAIN_BUDGET_RENEW_MS = 600000 // a terrain request budget older than this is renewed on resume
 const EGRESS_NOOP_COMBAT_MS = 3000, EGRESS_NOOP_COMBAT_RETRIES = 6 // no-action combat during the climb (consecutive, reset by progress)
+const DEFAULT_BOTTOM_Y = -59 // quarry bottom when none is given
 const EXHAUSTED_TOOL_CAP = 4
 const CAPACITY_RETRIES = 8 // automatic retries of a storage box recovery blocked only by loose drops (~10 min)
 const AUTO_RESUME_WINDOW_MS = 600000 // the ACTION_FAILED auto-resume budget resets after this quiet time
@@ -62,7 +63,9 @@ function defaults (config = {}) {
     dimension: c.dimension ?? 'overworld',
     target: c.target,
     yTop: c.yTop ?? 'auto',
-    yBottom: c.yBottom ?? 'world_min',
+    // Default bottom (2026-11-10, user request): Y-59, just above the overworld
+    // bedrock band; 'world_min' stays available as an explicit choice.
+    yBottom: c.yBottom ?? DEFAULT_BOTTOM_Y,
     worldMinY: c.worldMinY ?? -64,
     worldMaxY: c.worldMaxY ?? 319,
     allowExceptions: c.allowExceptions === true,

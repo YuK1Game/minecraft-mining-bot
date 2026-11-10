@@ -6351,7 +6351,7 @@ function createRuntime (host) {
           const block = read(p.x, p.y, p.z)
           if (block?.known && ['air', 'cave_air', 'void_air'].includes(quarryNameOf(block))) continue
           if (block?.known !== true || block.protected || block.protectionSource || block.name !== target.name || block.extra?.length) throw new Error('EGRESS_TARGET_CHANGED')
-          const state = quarryState(), rule = quarryBlockRule(block.name)
+          const state = quarryState(), rule = require('./quarry-exit-plan').exitDigRule(block.name)
           const tool = quarrySelectTool(rule, state.inventory?.items, policy)
           if (!tool.ok) throw new Error('EXIT_TOOL_MISSING')
           if (tool.kind !== 'hand') await adapter.prepareMining(tool, { signal })
@@ -6361,7 +6361,7 @@ function createRuntime (host) {
             await own(slot => { requireIdle(); return inventory.equip(slot) })(hand.slot)
           }
           signal.throwIfAborted()
-          await adapter.mine([{ ...p, expectedName: block.name, expectedRuntimeId: block.runtimeId ?? target.expectedRuntimeId ?? null, requiredTool: tool.kind === 'hand' ? null : tool, ...(request.allowFullInventory === true ? { allowFullInventory: true } : {}) }], { signal })
+          await adapter.mine([{ ...p, expectedName: block.name, expectedRuntimeId: block.runtimeId ?? target.expectedRuntimeId ?? null, requiredTool: tool.kind === 'hand' ? null : tool, ...(request.allowFullInventory === true ? { allowFullInventory: true } : {}), ...(rule.exitOre ? { exitShaftOre: true } : {}) }], { signal })
         }
         return { phase: 'completed' }
       },

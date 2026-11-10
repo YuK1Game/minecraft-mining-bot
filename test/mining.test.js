@@ -388,3 +388,11 @@ test('a full bag refuses mining unless a plain quarry target allows it (storage 
   assert.equal(f.mining.preview([{ ...quarry, allowFullInventory: true }]).ready, true)
   assert.equal(f.mining.preview([{ ...f.target, allowFullInventory: true }]).ready, false, 'only quarry targets may mine with a full bag')
 })
+
+test('an exit shaft ore is mined only when flagged as such on a quarry target', () => {
+  const f = fixture()
+  f.set(f.target, 'iron_ore')
+  const quarry = { ...f.target, accessPreparation: 'quarry', expectedName: 'minecraft:iron_ore', expectedRuntimeId: 1, requiredTool: null }
+  assert.throws(() => f.mining.preview([quarry]), /diggable/, 'ores stay protected in normal quarry mining')
+  assert.doesNotThrow(() => f.mining.preview([{ ...quarry, exitShaftOre: true }]))
+})

@@ -63,7 +63,7 @@ test('review: execution still requires actual air and a reachable elevated entra
   assert.equal(planQuarryExit({ ...cut.args, reachable: new Set(), reservation: reserved.plan }).ok, false)
 })
 
-for (const obstacle of ['unknown', 'lava', 'gravel', 'chest', 'diamond_ore', 'bedrock']) test(`review: bedrock-aware exit does not bypass ${obstacle} in its shaft`, () => {
+for (const obstacle of ['unknown', 'lava', 'gravel', 'chest', 'bedrock']) test(`review: bedrock-aware exit does not bypass ${obstacle} in its shaft`, () => {
   const f = fixture({ patch: (x, y, z) => x === -16 && y === -50 ? obstacle === 'unknown' ? { known: false } : obstacle : null })
   const r = planQuarryExit(f.args)
   assert.equal(r.ok, false)
@@ -151,4 +151,17 @@ test('review: void below the quarry is not treated as a bedrock floor', () => {
   assert.equal(r.ok, false)
   assert.ok(r.details.attempts.every(a => a.cause === 'OUTSIDE_WORLD_HEIGHT'))
   assert.ok(f.calls.every(p => p.y >= -64))
+})
+
+test('review (2026-11-10): an ore in the exit shaft is dug with a pickaxe instead of losing the column', () => {
+  const f = fixture({ patch: (x, y, z) => x === -16 && y === -50 ? 'diamond_ore' : null })
+  const r = planQuarryExit(f.args)
+  assert.equal(r.ok, true, JSON.stringify(r.reason))
+  const ore = r.plan.shaftCells.find(c => /diamond_ore/.test(c.name))
+  if (ore) assert.equal(ore.requiredTool?.kind, 'pickaxe')
+  const { exitDigRule } = require('../src/quarry-exit-plan')
+  assert.equal(exitDigRule('minecraft:diamond_ore').kind, 'dig')
+  assert.equal(exitDigRule('minecraft:deepslate_iron_ore').tier, 2)
+  assert.equal(exitDigRule('minecraft:ancient_debris').kind, 'protected', 'only listed ores are dug')
+  assert.equal(exitDigRule('minecraft:chest').kind, 'protected')
 })
