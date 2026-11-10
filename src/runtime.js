@@ -6605,6 +6605,7 @@ function createRuntime (host) {
       getState: quarryState,
       getBlock: quarryBlockReader(),
       requestTerrain: (request, options) => requestQuarryTerrain(request, options),
+      confirmPosition: (feet, options) => confirmQuarryPosition(feet, options),
       worldRevision: () => host.world.revision?.() ?? null,
       entities: () => host.entities.snapshot({ kind: 'all' }),
       mining: ports.mining, getMining: ports.getMining, movement: ports.movement, getMovement: ports.getMovement,
