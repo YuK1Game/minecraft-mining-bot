@@ -113,11 +113,12 @@ function createQuarryEgressRuntime ({ getState, getBlock, moveTo, mineTargets, p
         if (pending.phase === 'not_sent') { checkpoint.pendingStep = null; await save() }
         else {
           // A placement sent but never acknowledged (live 2026-11-10 13:12) is
-          // accepted only on full received evidence: the target is now dirt,
-          // exactly one dirt was spent since the step began, and the server
+          // accepted only on full received evidence: the target is now dirt, at
+          // most one dirt was spent since the step began (the spend may already
+          // be in the count taken at the intent, live 19:50), and the server
           // confirms the feet one block higher (checked just below).
           const unacked = pending.phase === 'placement_pending' && p && p.x === plan.column.x && p.z === plan.column.z && p.y === checkpoint.confirmedFeetY &&
-            getBlock(p.x, p.y, p.z)?.known === true && getBlock(p.x, p.y, p.z)?.name === 'minecraft:dirt' && Number.isSafeInteger(pending.beforeDirt) && dirtTotal(check()) === pending.beforeDirt - 1
+            getBlock(p.x, p.y, p.z)?.known === true && getBlock(p.x, p.y, p.z)?.name === 'minecraft:dirt' && Number.isSafeInteger(pending.beforeDirt) && [pending.beforeDirt - 1, pending.beforeDirt].includes(dirtTotal(check()))
           if (unacked) { pending.phase = 'completed'; pending.serverConfirmed = true; pending.reconciledBy = 'received_dirt_block_one_dirt_spent_and_server_position' }
           // The opposite evidence: the target is still received air, no dirt was
           // spent, and the server confirms the feet at the old height. The step
