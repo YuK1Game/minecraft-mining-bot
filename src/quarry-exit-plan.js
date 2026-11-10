@@ -30,7 +30,12 @@ function normalizeExit (value = {}, { legacy = false } = {}) {
   const reservedDirt = value.reservedDirt ?? 192
   if (!Number.isSafeInteger(reservedDirt) || reservedDirt < 0 || reservedDirt > 512) throw new Error('Invalid exit dirt reservation')
   if (value.reserveDirt != null && value.reserveDirt !== 8) throw new Error('The exit dirt reserve is eight blocks')
-  return { mode, side, reserveDirt: 8, reservedDirt, ...(Number.isSafeInteger(value.migrationFloorY) ? { migrationFloorY: value.migrationFloorY } : {}) }
+  // landingRise: how far above the job's top the exit may land (default 16).
+  // A job continuing under an already open pit (live 2026-11-10: Y7..-59 under
+  // a pit dug from Y78) lands on the surface far above its own top.
+  const landingRise = value.landingRise ?? 16
+  if (!Number.isSafeInteger(landingRise) || landingRise < 16 || landingRise > 160) throw new Error('Invalid exit landing rise')
+  return { mode, side, reserveDirt: 8, reservedDirt, ...(landingRise !== 16 ? { landingRise } : {}), ...(Number.isSafeInteger(value.migrationFloorY) ? { migrationFloorY: value.migrationFloorY } : {}) }
 }
 
 const dirtCount = items => (items ?? []).filter(i => nameOf(i) === 'dirt' && i.count > 0 && i.slot >= 0 && i.slot < 36).reduce((n, i) => n + i.count, 0)
@@ -124,7 +129,7 @@ function planQuarryExit ({ regions, yTop = regions?.yTop, feet, getBlock, invent
     // not just yTop - 16. Stop at the FIRST obstacle: never skip an unknown
     // section, canopy, fluid or roof to mistake a cave floor for the surface.
     const minFloorY = startFeet.y
-    const maxFeetY = Math.min(regions.worldMaxY - 3, yTop + 16)
+    const maxFeetY = Math.min(regions.worldMaxY - 3, yTop + (options.landingRise ?? 16))
     let landingFailure = { cause: 'NO_SURFACE_ABOVE_ENTRY', position: { x, y: minFloorY, z }, part: 'landing_floor' }
     for (let y = regions.worldMaxY; y >= minFloorY; y--) {
       const position = { x, y, z }, b = read(position)

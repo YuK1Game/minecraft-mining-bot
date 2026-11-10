@@ -142,3 +142,12 @@ for (const action of ['start', 'resume']) test(`review: ${action} of Y85 to -64 
     assert.equal(sim.stats.mined, 0, 'assert before allowing any excavation')
   } finally { const stop = job.pause(); release(); await stop }
 })
+test('review (2026-11-10): a job continuing under an open pit may land on the surface with a larger landing rise', () => {
+  const f = hillside({ patch: (x, y) => x === -15 && y === 130 ? 'stone' : null })
+  assert.ok(planQuarryExit(f.args).details.attempts.every(a => a.cause === 'LANDING_TOO_HIGH'), 'the default rise still refuses')
+  const r = planQuarryExit({ ...f.args, exit: { ...(f.args.exit ?? {}), landingRise: 160 } })
+  assert.ok(!(r.details?.attempts ?? []).some(a => a.cause === 'LANDING_TOO_HIGH'), JSON.stringify(r.details).slice(0, 200))
+  const { normalizeExit } = require('../src/quarry-exit-plan')
+  assert.throws(() => normalizeExit({ landingRise: 10 }), /landing rise/)
+  assert.equal(normalizeExit({}).landingRise, undefined)
+})
