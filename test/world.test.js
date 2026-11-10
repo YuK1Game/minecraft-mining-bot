@@ -248,3 +248,31 @@ test('custom sequential block palettes cannot misidentify shifted vanilla IDs', 
   assert.equal(world.getBlock(0, 64, 0).reason, 'custom_sequential_palette_unsupported')
   assert.equal(world.buildSubchunkRequest({ x: 0, y: 64, z: 0 }), null)
 })
+
+test('the section cache evicts far from the retention points first and never evicts pinned quarry columns', () => {
+  const world = createWorld({ registry: fakeRegistry(), maxSections: 20 })
+  world.applyPacket('start_game', { dimension: 'overworld' })
+  const put = (x, y, z) => world.applyPacket('subchunk', { dimension: 0, cache_enabled: false, origin: { x, y, z }, entries: [{ dx: 0, dy: 0, dz: 0, result: 'success', payload: uniform(y, 1) }] })
+  world.setRetention({ pinned: [{ x: 0, z: 0 }], points: [{ x: 0, z: 0 }] })
+  // The pinned quarry column arrives first (oldest), then far and near terrain.
+  for (let y = -4; y < 4; y++) put(0, y, 0)
+  for (let i = 0; i < 6; i++) put(1, i - 4, 1)
+  for (let i = 0; i < 30; i++) put(20 + i, 0, 0)
+  assert.ok(world.stats().cachedSections <= 20)
+  for (let y = -4; y < 4; y++) assert.equal(world.getBlock(0, y * 16, 0).known, true, `pinned section y=${y} kept`)
+  for (let i = 0; i < 6; i++) assert.equal(world.getBlock(16, (i - 4) * 16, 16).known, true, 'near sections outlive far ones')
+  const far = Array.from({ length: 30 }, (_, i) => world.getBlock((20 + i) * 16, 0, 0).known).filter(Boolean).length
+  assert.ok(far <= 6, 'only far sections were evicted')
+  assert.equal(world.stats().maxSections, 20)
+})
+
+test('without retention the cache still holds its bound in arrival order, and the default bound is 4096', () => {
+  const world = createWorld({ registry: fakeRegistry(), maxSections: 4 })
+  world.applyPacket('start_game', { dimension: 'overworld' })
+  const put = x => world.applyPacket('subchunk', { dimension: 0, cache_enabled: false, origin: { x, y: 0, z: 0 }, entries: [{ dx: 0, dy: 0, dz: 0, result: 'success', payload: uniform(0, 1) }] })
+  for (let x = 0; x < 6; x++) put(x)
+  assert.ok(world.stats().cachedSections <= 4)
+  assert.equal(world.getBlock(0, 0, 0).known, false)
+  assert.equal(world.getBlock(5 * 16, 0, 0).known, true)
+  assert.equal(ready().stats().maxSections, 4096)
+})

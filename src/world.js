@@ -62,7 +62,11 @@ function dimensionName (dimension) {
   return ['overworld', 'nether', 'end'][dimension] ?? dimension
 }
 
-function createWorld ({ version = '1.26.60', registry, maxSections = 512 } = {}) {
+// The cache bound is this bot's own memory guard, not a protocol limit. 512
+// sections were evicted in arrival order during a quarry (live 2026-11-10
+// 23:16), dropping the layers about to be dug. A section is a few KB.
+const DEFAULT_MAX_SECTIONS = 4096
+function createWorld ({ version = '1.26.60', registry, maxSections = DEFAULT_MAX_SECTIONS } = {}) {
   if (!registry) registry = require('prismarine-registry')(`bedrock_${version}`)
   let revision = 0
   // Only packets that change received terrain bump it; derived caches (terrain
@@ -81,12 +85,41 @@ function createWorld ({ version = '1.26.60', registry, maxSections = 512 } = {})
   let lastError = null
   let airRuntimeId = null
   const key = (x, y, z) => `${x},${y},${z}`
+  // Retention focus: chunk columns that are never evicted (the quarry chunks,
+  // the exit column) and chunk points the eviction measures distance from.
+  let retain = { pinned: new Set(), points: [] }
+  function setRetention ({ pinned = [], points = [] } = {}) {
+    const chunk = c => c && Number.isSafeInteger(c.x) && Number.isSafeInteger(c.z)
+    retain = { pinned: new Set(pinned.filter(chunk).map(c => `${c.x},${c.z}`)), points: points.filter(chunk).map(c => ({ x: c.x, z: c.z })) }
+    return { pinned: retain.pinned.size, points: retain.points.length }
+  }
+  function evict () {
+    if (sections.size <= maxSections) return
+    // Free a little more than needed so the scan is not repeated per packet.
+    const target = Math.max(0, Math.floor(maxSections * 0.95))
+    const columnOf = id => { const [x, , z] = id.split(','); return `${x},${z}` }
+    const distance = id => {
+      if (!retain.points.length) return 0
+      const [x, , z] = id.split(',').map(Number)
+      let best = Infinity
+      for (const p of retain.points) best = Math.min(best, Math.max(Math.abs(p.x - x), Math.abs(p.z - z)))
+      return best
+    }
+    // Map order is arrival order: among equal distances the oldest goes first.
+    const candidates = []
+    let order = 0
+    for (const id of sections.keys()) { if (!retain.pinned.has(columnOf(id))) candidates.push({ id, d: distance(id), order: order++ }) }
+    candidates.sort((a, b) => b.d - a.d || a.order - b.order)
+    for (const c of candidates) { if (sections.size <= target) break; sections.delete(c.id) }
+    // Only pinned sections remain: the bound still holds, oldest first.
+    while (sections.size > maxSections) sections.delete(sections.keys().next().value)
+  }
   function remember (x, y, z, section) {
     const id = key(x, y, z)
     sections.delete(id)
     sections.set(id, { ...section, updates: section.updates ?? new Map() })
     if (section.complete) surveyHistory.delete(id)
-    while (sections.size > maxSections) sections.delete(sections.keys().next().value)
+    evict()
   }
   function subchunkResult (id, success) {
     if (success) { counters.subchunkSuccesses++; return }
@@ -352,8 +385,8 @@ function createWorld ({ version = '1.26.60', registry, maxSections = 512 } = {})
     return requests.length ? [{ dimension: dimensionId, origin, requests }] : []
   }
   return {
-    applyPacket, getBlock, getArea, buildSubchunkRequest, buildSurfaceSurveyRequests, revision: () => revision,
-    stats: () => ({ version, dimension, initialized, mappingIssue, loadedSections: [...sections.values()].filter(section => section.complete).length, cachedSections: sections.size, announcedColumns: columns.size, ...counters, lastError })
+    applyPacket, getBlock, getArea, buildSubchunkRequest, buildSurfaceSurveyRequests, setRetention, revision: () => revision,
+    stats: () => ({ version, dimension, initialized, mappingIssue, loadedSections: [...sections.values()].filter(section => section.complete).length, cachedSections: sections.size, maxSections, retainedColumns: retain.pinned.size, announcedColumns: columns.size, ...counters, lastError })
   }
 }
 
