@@ -91,6 +91,13 @@ function createQuarryEgressRuntime ({ getState, getBlock, moveTo, mineTargets, p
         const pending = checkpoint.pendingStep, p = pending.target
         if (pending.phase === 'not_sent') { checkpoint.pendingStep = null; await save() }
         else {
+          // A placement sent but never acknowledged (live 2026-11-10 13:12) is
+          // accepted only on full received evidence: the target is now dirt,
+          // exactly one dirt was spent since the step began, and the server
+          // confirms the feet one block higher (checked just below).
+          const unacked = pending.phase === 'placement_pending' && p && p.x === plan.column.x && p.z === plan.column.z && p.y === checkpoint.confirmedFeetY &&
+            getBlock(p.x, p.y, p.z)?.known === true && getBlock(p.x, p.y, p.z)?.name === 'minecraft:dirt' && Number.isSafeInteger(pending.beforeDirt) && dirtTotal(check()) === pending.beforeDirt - 1
+          if (unacked) { pending.phase = 'completed'; pending.serverConfirmed = true; pending.reconciledBy = 'received_dirt_block_one_dirt_spent_and_server_position' }
           if (pending.phase !== 'completed' || pending.serverConfirmed !== true || !p || p.x !== plan.column.x || p.z !== plan.column.z || p.y !== checkpoint.confirmedFeetY || getBlock(p.x, p.y, p.z)?.known !== true || getBlock(p.x, p.y, p.z)?.name !== 'minecraft:dirt') return blocked('ASCENT_UNCERTAIN_STEP')
           await verifyPosition({ x: p.x + 0.5, y: p.y + 1, z: p.z + 0.5 }, 'ASCENT_UNCERTAIN_STEP')
           checkpoint.steps.push(copy(pending)); checkpoint.confirmedFeetY++; checkpoint.pendingStep = null; await save()
