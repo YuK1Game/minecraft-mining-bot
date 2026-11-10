@@ -1,7 +1,7 @@
 'use strict'
 
 const { serverPose, usableServerPose, validPositionVolume, workingFeet } = require('./quarry-pillar')
-const { blockRule } = require('./quarry-rules')
+const { exitDigRule } = require('./quarry-exit-plan')
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const HAZARD = /water|lava|fire|magma|cactus|campfire|powder_snow|cobweb|pointed_dripstone|sand$|gravel$/
 const copy = value => structuredClone(value)
@@ -70,7 +70,9 @@ function createQuarryEgressRuntime ({ getState, getBlock, moveTo, mineTargets, p
         if (air(block)) continue
         const intent = planned.get(key(p))
         if (block?.known !== true) throw new Error('EGRESS_TERRAIN_UNKNOWN')
-        if (!intent || block.protected || blockRule(block.name).kind !== 'dig' || block.diggable === false || block.extra?.length || HAZARD.test(block.name) || block.name !== intent.name || intent.expectedRuntimeId != null && block.runtimeId !== intent.expectedRuntimeId) throw new Error('EGRESS_SHAFT_CHANGED')
+        // Ores planned into the shaft are dug like the plan allows (live
+        // 2026-11-11 1:22: copper ore at Y36 was refused as protected).
+        if (!intent || block.protected || exitDigRule(block.name).kind !== 'dig' || block.diggable === false || block.extra?.length || HAZARD.test(block.name) || block.name !== intent.name || intent.expectedRuntimeId != null && block.runtimeId !== intent.expectedRuntimeId) throw new Error('EGRESS_SHAFT_CHANGED')
         targets.push(copy(intent))
       }
       if (targets.length) {
