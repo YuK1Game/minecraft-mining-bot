@@ -25,6 +25,7 @@ const logBinding = (state, target) => ({
   scope: { connectionId: String(state.connectionId).slice(0, 120), startedAt: String(state.startedAt).slice(0, 80), dimension: state.dimension, selfRuntimeId: id(state.runtimeEntityId) },
   life: state.lifecycle?.deathId ?? state.deathId ?? null
 })
+const EMERGENCY_REACH = 3.5 // cornered creeper, no approach path: swing from where the bot stands
 function bodyAim (target) { return { ...target.position, y: target.position.y + (['minecraft:spider', 'minecraft:cave_spider', 'minecraft:silverfish', 'minecraft:endermite', 'minecraft:slime', 'minecraft:magma_cube', 'minecraft:vex', 'minecraft:phantom'].includes(target.entityType) ? 0.2 : 0.9) } }
 function descendingCriticalFrame (movement, criticalHopId, { wallNow = Date.now(), workingPosition } = {}) {
   const m = movement; const p = m?.physicsState
@@ -113,7 +114,11 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
       if (Math.hypot(center.x - p.x, center.z - p.z) <= 0.7 && Math.abs(center.y - p.y) <= 1.5) throw failure('A friendly actor intersects the melee aim', 'FRIENDLY_IN_PATH')
     }
   }
-  function plan (runtimeId, expected = null, { allowHopHeight = false, hopTracking = false } = {}) {
+  // reachLimit: a per-call working reach (never below the normal reach, at most
+  // EMERGENCY_REACH) for a cornered creeper that has no approach path.
+  const limitOf = value => Number.isFinite(value) ? Math.min(EMERGENCY_REACH, Math.max(reach, value)) : null
+  function plan (runtimeId, expected = null, { allowHopHeight = false, hopTracking = false, reachLimit = null } = {}) {
+    const limit = limitOf(reachLimit) ?? run?.reachLimit ?? reach
     const s = session(); const targetId = id(runtimeId); const all = entities.snapshot({ kind: 'all' })
     const target = targetId === null ? null : all.find(e => id(e.runtimeId) === targetId)
     if (!target || target.kind !== 'mob' || target.hostile !== true || !HOSTILES.has(target.entityType) || target.alive !== true || target.positionKnown !== true || !finite(target.position) || target.dimension !== s.state.dimension || id(target.uniqueId, true) === null || id(target.runtimeId) === id(s.state.runtimeEntityId) || target.positionSource === 'client_prediction') throw failure('Only a known living hostile NPC may be attacked', 'INVALID_TARGET')
@@ -121,16 +126,16 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
     const aimPoint = bodyAim(target); const workingDistance = distance(s.state.position, aimPoint); const rawDistance = distance(s.rawPosition, aimPoint)
     const tracking = hopTracking && run && expected && (run.hopId != null || run.hopStarting === true) && id(expected.runtimeId) === id(run.target.runtimeId) && id(expected.uniqueId, true) === id(run.target.uniqueId, true)
     const diagnostics = { distance: workingDistance, rawDistance, currentPose: copy(s.pose), rawAnchor: { position: copy(s.rawPosition), updatedAt: s.raw.rawServerPositionUpdatedAt ?? s.raw.positionUpdatedAt ?? null, source: s.raw.positionSource ?? null, usedForCurrentGeometry: false } }
-    if (!tracking && !allowHopHeight && workingDistance > reach) throw Object.assign(failure('Target is outside current working melee reach', 'OUT_OF_REACH'), { diagnostics })
+    if (!tracking && !allowHopHeight && workingDistance > limit) throw Object.assign(failure('Target is outside current working melee reach', 'OUT_OF_REACH'), { diagnostics })
     sight(s.state.position, aimPoint); actorGuards(s, target, aimPoint, all)
     const block = world.getBlock(Math.floor(target.position.x), Math.floor(target.position.y), Math.floor(target.position.z))
     const targetWet = getTargetWet ? getTargetWet(target, s.state) === true : block?.known === true && WATER.has(block.name)
     const weapon = selectMeleeWeapon({ items: s.inventory.inventory ?? [], rawItem: crafting.rawItem, selectedSlot: s.selected, target, targetWet, getItemComponents })
     if (!weapon.ready) throw failure('No proven weapon or real empty hotbar hand is available', 'WEAPON_UNKNOWN')
-    return { ...s, target: copy(target), aimPoint, workingDistance, rawDistance, inReach: workingDistance <= reach, hopAimTrackable: !tracking || workingDistance <= 16, diagnostics, weapon }
+    return { ...s, target: copy(target), aimPoint, workingDistance, rawDistance, inReach: workingDistance <= limit, hopAimTrackable: !tracking || workingDistance <= 16, diagnostics, weapon }
   }
-  function preview (runtimeId, { critical = true } = {}) {
-    try { if (run || isBusy({ criticalHopId: null })) throw failure('Another action owns melee input', 'BUSY'); const p = plan(runtimeId); const hop = critical === false ? { ready: false, reason: 'Critical hop disabled' } : previewHop ? previewHop({ aimPoint: p.aimPoint }) : { ready: false, reason: 'Native hop unavailable' }; return { ready: true, targetRuntimeId: p.target.runtimeId, targetUniqueId: p.target.uniqueId, ...copy(p.diagnostics), reach, weapon: p.weapon, criticalHop: copy(hop), cooldownRemainingMs: Math.max(0, cooldownMs - (clock() - lastAttack)) } } catch (error) { return { ready: false, code: error.code ?? 'UNSAFE', outcome: error.code === 'OUT_OF_REACH' ? 'out_of_reach' : 'unsafe', ...copy(error.diagnostics ?? {}), errors: [error.message] } }
+  function preview (runtimeId, { critical = true, reachLimit = null } = {}) {
+    try { if (run || isBusy({ criticalHopId: null })) throw failure('Another action owns melee input', 'BUSY'); const p = plan(runtimeId, null, { reachLimit }); const hop = critical === false ? { ready: false, reason: 'Critical hop disabled' } : previewHop ? previewHop({ aimPoint: p.aimPoint }) : { ready: false, reason: 'Native hop unavailable' }; return { ready: true, targetRuntimeId: p.target.runtimeId, targetUniqueId: p.target.uniqueId, ...copy(p.diagnostics), reach, weapon: p.weapon, criticalHop: copy(hop), cooldownRemainingMs: Math.max(0, cooldownMs - (clock() - lastAttack)) } } catch (error) { return { ready: false, code: error.code ?? 'UNSAFE', outcome: error.code === 'OUT_OF_REACH' ? 'out_of_reach' : 'unsafe', ...copy(error.diagnostics ?? {}), errors: [error.message] } }
   }
   function assertRun (r) {
     if (run !== r || r.cancelReason) throw failure(r.cancelReason ?? 'Melee cancelled', r.code ?? 'CANCELLED')
@@ -324,16 +329,16 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
     }
   }
   function stoppedOutOfReach (error) { return { phase: 'stopped', code: error.code, outcome: 'out_of_reach', reason: error.message, targetDead: false, serverConfirmed: false, hitsRequested: 0, attempts: [], botCausedDamage: null, botCausedDeath: null, attribution: 'unconfirmed' } }
-  function engage (runtimeId, { signal, durationMs = 120000, maxHits = 128, critical: useCritical = true, poseSettled = false } = {}) {
+  function engage (runtimeId, { signal, durationMs = 120000, maxHits = 128, critical: useCritical = true, poseSettled = false, reachLimit = null } = {}) {
     if (run || isBusy({ criticalHopId: null })) return Promise.reject(failure('Another melee engagement is active', 'BUSY'))
     if (!Number.isInteger(durationMs) || durationMs < 100 || durationMs > 120000 || !Number.isInteger(maxHits) || maxHits < 1 || maxHits > 256 || typeof useCritical !== 'boolean' || signal && (typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function')) return Promise.reject(failure('Invalid melee engagement bounds', 'INVALID_OPTIONS'))
     if (signal?.aborted) return Promise.reject(failure('Melee cancelled', 'CANCELLED'))
     let initial
-    try { initial = plan(runtimeId) } catch (error) {
-      if (error.code === 'POSE_UNTRUSTED' && !poseSettled) return settlePose(signal).then(() => engage(runtimeId, { signal, durationMs, maxHits, critical: useCritical, poseSettled: true }))
+    try { initial = plan(runtimeId, null, { reachLimit }) } catch (error) {
+      if (error.code === 'POSE_UNTRUSTED' && !poseSettled) return settlePose(signal).then(() => engage(runtimeId, { signal, durationMs, maxHits, critical: useCritical, poseSettled: true, reachLimit }))
       return error.code === 'OUT_OF_REACH' ? Promise.resolve(stoppedOutOfReach(error)) : Promise.reject(error)
     }
-    const r = run = { target: initial.target, scope: initial.scope, deadline: clock() + durationMs, maxHits, controller: new AbortController(), input: null, hopId: null, hopStarting: false, equipping: false, phase: 'starting', hitsRequested: 0, attempts: [], terminal: null, cancelReason: null, code: null, lastHopReason: null }
+    const r = run = { reachLimit: limitOf(reachLimit), target: initial.target, scope: initial.scope, deadline: clock() + durationMs, maxHits, controller: new AbortController(), input: null, hopId: null, hopStarting: false, equipping: false, phase: 'starting', hitsRequested: 0, attempts: [], terminal: null, cancelReason: null, code: null, lastHopReason: null }
     const onAbort = () => cancel('Melee cancelled by signal', 'CANCELLED'); signal?.addEventListener('abort', onAbort, { once: true })
     const timeout = setTimeout(() => cancel('Melee duration limit reached', 'DURATION_LIMIT'), durationMs)
     task = (async () => {

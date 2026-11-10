@@ -37,6 +37,7 @@ const RETREAT_PRESSURE_DEFENSE_RANGE = 12
 const RETREAT_PRESSURE_WINDOW_MS = 5000
 // Melee reach measured to the body centre (Bedrock allows 3 to the hitbox).
 const MELEE_SELECT_REACH = 3.0
+const EMERGENCY_STRIKE_REACH = 3.5 // cornered creeper, no path: in-place swing reach
 const profiles = require('./combat-profiles')
 function stop (code, reason, extra = {}) { return { phase: 'stopped', code, reason, targetDead: false, targetRemoved: false, serverConfirmed: false, botCausedDamage: null, botCausedDeath: null, attribution: 'unconfirmed', ...extra } }
 
@@ -337,8 +338,8 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     if (result.targetRemoved === true && result.code === 'TARGET_REMOVED') return stop('TARGET_REMOVED', 'Controller observed bound target removal; death unconfirmed', { targetRemoved: true, confirmedBy: result.confirmedBy ?? 'bound_controller_server_removal' })
     return null
   }
-  function safePreview (controller, target) {
-    try { const p = controller === melee ? controller.preview(target.runtimeId, { critical: false }) : controller.preview(target.runtimeId); return p && typeof p === 'object' ? p : { ready: false, code: 'INVALID_PREVIEW' } } catch (error) { return { ready: false, code: 'PREVIEW_ERROR', errors: [String(error.message ?? error)] } }
+  function safePreview (controller, target, meleeOptions = {}) {
+    try { const p = controller === melee ? controller.preview(target.runtimeId, { critical: false, ...meleeOptions }) : controller.preview(target.runtimeId); return p && typeof p === 'object' ? p : { ready: false, code: 'INVALID_PREVIEW' } } catch (error) { return { ready: false, code: 'PREVIEW_ERROR', errors: [String(error.message ?? error)] } }
   }
   function safeSurvey (controller, target) {
     try { const method = typeof controller.survey === 'function' ? controller.survey : controller.preview; const p = method.call(controller, target.runtimeId); return p && typeof p === 'object' ? p : { ready: false, code: 'INVALID_PREVIEW' } } catch (error) { return { ready: false, code: 'PREVIEW_ERROR', errors: [String(error.message ?? error)] } }
@@ -489,8 +490,16 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     while (true) {
       const g = guard(lease); if (g.outcome) return { outcome: await withCreeperRetreat(lease, g.outcome) }
       if (controllerCleanup().pending) return { hold: true }
-      const controller = g.mode === 'melee' ? melee : g.mode === 'ranged' ? ranged : null
-      const p = controller ? safePreview(controller, g.actor) : g.distance < 4 ? safePreview(melee, g.actor) : { ready: false, code: 'OUT_OF_REACH' }
+      // Cornered by a creeper with no retreat or approach path (live 2026-11-10
+      // 06:27: it fused at 3.1m and exploded while every approach preview said
+      // OUT_OF_REACH): swing from where the bot stands once it is within
+      // 3.5m, without stepping. Every other decision is unchanged.
+      const emergencyReach = lease.target.entityType === 'minecraft:creeper' && cornered(lease.target, lease.scope) && g.distance <= EMERGENCY_STRIKE_REACH ? { reachLimit: EMERGENCY_STRIKE_REACH } : null
+      const emergencyPreview = emergencyReach ? safePreview(melee, g.actor, emergencyReach) : null
+      const useEmergency = emergencyPreview?.ready === true && g.mode !== 'ranged'
+      const controller = useEmergency ? melee : g.mode === 'melee' ? melee : g.mode === 'ranged' ? ranged : null
+      const p = useEmergency ? emergencyPreview : controller ? safePreview(controller, g.actor) : g.distance < 4 ? safePreview(melee, g.actor) : { ready: false, code: 'OUT_OF_REACH' }
+      if (useEmergency) combatLog(lease, `クリーパー至近の打撃: distance=${g.distance.toFixed(1)}m cornered=true reach=${EMERGENCY_STRIKE_REACH}`)
       // Right after acquisition the modeled pose can still be a tick stale from
       // the previous owner; give the fresh neutral stream a moment before
       // treating a near target as needing an approach.
@@ -520,7 +529,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       const risky = !lowHp && closeHostiles(g.state) >= 2
       const kite = risky && g.mode === 'melee' && retreat && profiles.profileOf(lease.target.entityType)?.routine === 'melee_kite'
       const sliceHits = hitLimit ?? (kite ? 1 : null)
-      const result = await watched(lease, `engaging_${g.mode}`, signal => controller.engage(lease.target.runtimeId, { signal, durationMs: Math.min(controllerSliceMs, remaining), ...(sliceHits != null ? { maxHits: sliceHits } : {}), ...(g.mode === 'melee' ? { critical: false } : {}) /* spam plain hits (Bedrock has no attack cooldown); a jump crit made every hit wait ~1s for its descent */ }), controller)
+      const result = await watched(lease, `engaging_${g.mode}`, signal => controller.engage(lease.target.runtimeId, { signal, durationMs: Math.min(controllerSliceMs, remaining), ...(sliceHits != null ? { maxHits: sliceHits } : {}), ...(g.mode === 'melee' || useEmergency ? { critical: false } : {}), ...(useEmergency ? emergencyReach : {}) /* spam plain hits (Bedrock has no attack cooldown); a jump crit made every hit wait ~1s for its descent */ }), controller)
       if (g.mode === 'melee') lease.meleeHits = (lease.meleeHits ?? 0) + Number(result.value?.hitsRequested ?? 0)
       if (Number(result.value?.hitsRequested ?? 0) > 0) { lease.closeHolds = 0; lease.closeHolding = false }
       combatLog(lease, `戦闘スライス: mode=${g.mode} distance=${g.distance.toFixed(1)}m code=${result.value?.code ?? (result.outcome?.code ?? (result.error ? 'error' : '?'))} hits=${result.value?.hitsRequested ?? 0} shots=${result.value?.shotsConfirmed ?? 0}/${result.value?.shotsRequested ?? 0}${result.error ? ' error=' + String(result.error.message ?? result.error).slice(0, 80) : ''}`)
