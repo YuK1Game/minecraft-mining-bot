@@ -246,3 +246,13 @@ test('live case 2026-11-11: a gap low in the finished pillar is recorded on resu
     }
   }
 })
+
+test('live case 2026-11-11: an ore planned into the exit shaft is mined during the climb, not refused as protected', async () => {
+  const f = fixture()
+  f.blocks.set('1,67,0', 'minecraft:copper_ore')
+  const cell = f.plan.shaftCells.find(c => c.position.y === 67)
+  cell.name = 'minecraft:copper_ore'; cell.expectedRuntimeId = 0
+  const result = await f.run()
+  assert.notEqual(result.reason, 'EGRESS_SHAFT_CHANGED', JSON.stringify(result))
+  assert.ok(f.mines.flat().some(t => t.position.y === 67 && t.name === 'minecraft:copper_ore'), 'the ore cell was mined')
+})
