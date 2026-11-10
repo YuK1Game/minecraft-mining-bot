@@ -378,3 +378,13 @@ test('timeout and player movement abort instead of continuing or reporting succe
   await setTimeout(140)
   assert.equal(other.mining.snapshot().phase, 'failed')
 })
+
+test('a full bag refuses mining unless a plain quarry target allows it (storage exhausted, passive)', () => {
+  const f = fixture()
+  f.state.inventory.items = Array.from({ length: 36 }, (_, slot) => ({ slot, name: 'minecraft:cobblestone', count: 64 }))
+  const quarry = { ...f.target, accessPreparation: 'quarry', expectedName: 'minecraft:dirt', expectedRuntimeId: 1, requiredTool: null }
+  assert.equal(f.mining.preview([f.target]).ready, false)
+  assert.equal(f.mining.preview([quarry]).ready, false, 'a quarry target still needs room by default')
+  assert.equal(f.mining.preview([{ ...quarry, allowFullInventory: true }]).ready, true)
+  assert.equal(f.mining.preview([{ ...f.target, allowFullInventory: true }]).ready, false, 'only quarry targets may mine with a full bag')
+})
