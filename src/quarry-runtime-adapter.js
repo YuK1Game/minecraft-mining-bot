@@ -284,6 +284,8 @@ function createQuarryRuntimeAdapter (ports) {
     goToStorage: (st, options) => walk(st.stand, options),
     previewStorage,
     equip: slot => equip(slot),
+    // Closes an open storage window so the normal inventory can be used.
+    closeContainer: () => { try { chest?.close?.() } catch {} },
     ...(typeof prepareMining === 'function' ? { prepareMining: (tool, options) => prepareMining(tool, options) } : {}),
     place,
     eat: () => eat(),
