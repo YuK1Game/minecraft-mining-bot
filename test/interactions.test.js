@@ -635,3 +635,11 @@ test('a previously placed empty-box torch can lie along the placement ray but is
   setTorch(f, f.target)
   assert.equal(f.interactions.previewPlace({ position: { ...f.target, y: 66 }, slot: 0 }).ready, false)
 })
+
+test('a block can be placed on received bedrock, the floor of a quarry dug to the bottom', () => {
+  const f = fixture()
+  f.setBlock({ x: 1, y: 64, z: 0 }, 'bedrock')
+  assert.equal(f.interactions.previewPlace({ position: f.target, slot: 0 }).ready, true)
+  f.blocks.set('1,64,0', { known: false })
+  assert.equal(f.interactions.previewPlace({ position: f.target, slot: 0 }).ready, false, 'unknown support stays refused')
+})
