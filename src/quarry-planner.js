@@ -711,7 +711,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
   function placementFor (plan, reach, inventoryItems) {
     const exitDirt = exit?.mode === 'adjacent_pillar' ? exit.reservedDirt ?? 192 : 0
     const dirtTotal = (inventoryItems ?? []).filter(i => nameOf(i) === 'dirt' && i.slot >= 0 && i.slot < 36).reduce((n, i) => n + i.count, 0)
-    const eligible = (inventoryItems ?? []).filter(i => SEAL_MATERIALS.includes(nameOf(i)) && (!plan.materialRequired || nameOf(i) === plan.materialRequired) && i.count > 0 && i.slot >= 0 && i.slot < 36 && (nameOf(i) !== 'dirt' || dirtTotal > exitDirt)).sort((a, b) => b.count - a.count)
+    const eligible = (inventoryItems ?? []).filter(i => SEAL_MATERIALS.includes(nameOf(i)) && (!plan.materialRequired || nameOf(i) === plan.materialRequired) && (plan.slot == null || i.slot === plan.slot) && i.count > 0 && i.slot >= 0 && i.slot < 36 && (nameOf(i) !== 'dirt' || dirtTotal > exitDirt)).sort((a, b) => b.count - a.count)
     const material = eligible.find(i => i.slot <= 8)
     if (!material && plan.materialRequired && eligible.length) return { action: 'equip_seal', slot: eligible[0].slot, material: eligible[0].name }
     if (!material) return { reason: 'SEAL_MATERIAL_MISSING' }

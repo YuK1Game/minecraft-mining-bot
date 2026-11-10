@@ -25,6 +25,7 @@ function fixture () {
     requests.push(request)
     await onCheckpoint({ version: 1, jobId: request.jobId, operationId: request.operationId, phase: 'controlled', scope: supplyScope(sim.state), marker: request.checkpoint?.marker ?? 'same-operation' })
     if (behavior === 'blocked') return { status: 'blocked', serverConfirmed: false, reason: 'SUPPLY_FRESH_INVENTORY_REQUIRED' }
+    if (behavior === 'room') { behavior = 'success'; return { status: 'blocked', serverConfirmed: false, reason: 'SUPPLY_CAPACITY_REQUIRED' } }
     const dirt = sim.state.inventory.items.filter(i => i.name === 'minecraft:dirt').reduce((sum, item) => sum + item.count, 0), need = 224 - dirt
     if (need > 0) sim.give('dirt', need)
     const box = sim.state.inventory.items.find(item => carriedContainerKey(item) === bindings.find(b => b.role === 'dirt').key)
@@ -108,4 +109,23 @@ test('ordinary cargo storage excludes all four supplies even when they occupy th
   assert.equal(selected.sources[0].name, 'minecraft:undyed_shulker_box')
   assert.ok(!f.bindings().some(binding => binding.key === selected.key))
   assert.equal(f.sim.state.inventory.items.filter(i => ['minecraft:blue_shulker_box', 'minecraft:red_shulker_box', 'minecraft:green_shulker_box', 'minecraft:brown_shulker_box'].includes(i.name)).length, 4)
+})
+
+test('a restock blocked for a free slot puts a small stack of mined blocks back into dug cells and retries', async () => {
+  const f = fixture()
+  f.sim.give('cobblestone', 2)
+  f.config.yTop = 63 // the stand's layer is inside the excavated range
+  assert.equal(f.job.plan(f.config).ready, true)
+  await f.job.configureSupplies()
+  f.setBehavior('room')
+  const first = await f.job.restockSuppliesNow()
+  assert.notEqual(first.pauseReason, 'SUPPLY_RESTOCK_BLOCKED', 'room was made instead of pausing as blocked')
+  // The running job re-enters RESTOCK by itself; the manual entry is called again here.
+  const result = await f.job.restockSuppliesNow()
+  assert.equal(result.supplyResult.status, 'completed', JSON.stringify(result.supplyResult))
+  assert.equal(f.requests.length, 2, 'the same restock was retried once')
+  assert.equal(f.sim.state.inventory.items.filter(i => i.name === 'minecraft:cobblestone').length, 0, 'the stack was placed')
+  const placed = f.job.document().actions.filter(a => a.purpose === 'supply_room' && a.status === 'confirmed')
+  assert.equal(placed.length, 2)
+  assert.equal(result.ledger.placedTemporary, 2)
 })

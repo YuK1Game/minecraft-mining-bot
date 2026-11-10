@@ -10,7 +10,7 @@ const { validateJobId, newJobId, worldIdentity, assertJobWorld, documentInstance
 
 const { buildRegions, permits, chunkBounds } = require('./quarry-region')
 const { createQuarryPlanner } = require('./quarry-planner')
-const { blockRule, nameOf, selectTool, toolState, AIR } = require('./quarry-rules')
+const { blockRule, nameOf, selectTool, toolState, AIR, SEAL_MATERIALS } = require('./quarry-rules')
 const { keepPlan, canAccept, totals, diff, createLedger, freeSlots, isFood, selectCarriedStorage, isShulkerBox, carriedContainerKey } = require('./quarry-inventory')
 const { createQuarryCombatBridge } = require('./quarry-combat-bridge')
 const { miningUsesAfterExitReserve } = require('./quarry-exit-reserve')
@@ -40,6 +40,17 @@ const STORAGE_WAIT_MS = 20000 // longest wait for the chest area to clear (a lon
 const SETTLE_EAT_CLEARANCE = 8 // m: no eating in the settle wait with a hostile this close
 const TERRAIN_OBSERVATION_WAIT_MS = 2000
 const TERRAIN_OBSERVATION_MAX_REQUESTS = 2
+// A layer whose terrain is not received is requested again, with growing waits,
+// before the job pauses (live 2026-11-10 23:16: the world cache holds 512
+// sections and had evicted the next layer's, so Y-33 was unknown on arrival).
+const TERRAIN_LAYER_WAITS_MS = [2000, 4000, 8000, 8000, 8000, 8000]
+const TERRAIN_PREFETCH_INTERVAL_MS = 15000
+// With a full bag a placed supply box can lose its slot to natural pickup; a
+// small stack of placeable mined blocks is put back into dug cells of the
+// current layer (re-mined later) to free one slot (live 2026-11-10 22:01, 23:27).
+const SUPPLY_ROOM_REASONS = new Set(['SUPPLY_CAPACITY_REQUIRED', 'SUPPLY_RECOVERY_SLOT_REQUIRED'])
+const SUPPLY_ROOM_MAX_BLOCKS = 8
+const SUPPLY_ROOM_MAX_ATTEMPTS = 2
 const PICKUP_XZ = 1.3 // half player width 0.3 + 1 block reach for item pickup
 const ACTIVE = new Set(['PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT', 'RETURN', 'DEPOSIT', 'PORTABLE_STORAGE', 'RESTOCK', 'HAZARD', 'RECOVER', 'SUSPEND_FOR_COMBAT', 'COMBAT', 'COMBAT_SETTLE', 'RECOVER_AFTER_COMBAT', 'RECONCILE', 'FINAL_CHECK', 'EGRESS', 'DISCONNECTED'])
 const RESULT = new Set(['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS', 'PAUSED', 'CANCELLED', 'FAILED'])
@@ -872,6 +883,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (unstartedTop && decision.reason === 'UNREACHABLE') return finish('PAUSED', 'INITIAL_LAYER_UNREACHABLE', { pauseDetails: { y: decision.y, count: decision.count, feet: planningFeet } })
       return
     }
+    if (decision.action === 'pause' && decision.reason === 'UNOBSERVED_CELLS' && await retryLayerTerrain(myEpoch, decision.details?.y)) return
+    if (decision.action !== 'pause' || decision.reason !== 'UNOBSERVED_CELLS') job.layerTerrain = null
+    if (decision.action === 'mine' && Number.isFinite(nextY)) prefetchTerrain(nextY)
     if (decision.action === 'pause') {
       if (decision.reason === 'BOUNDARY_UNOBSERVED' && await requestTerrainObservation(myEpoch, 'boundary', decision.details?.position)) return
       await collect(myEpoch, 'before_pause'); return finish('PAUSED', decision.reason, { pauseDetails: decision.details ?? null })
@@ -1741,6 +1755,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     } }))
     guard(myEpoch)
     job.lastSupplyResult = { operationId: active.operationId, status: response?.status ?? 'blocked', reason: response?.reason ?? null, serverConfirmed: response?.serverConfirmed === true, withdrawn: copy(response?.withdrawn ?? []), returned: copy(response?.returned ?? []) }
+    if (response?.status !== 'completed' && SUPPLY_ROOM_REASONS.has(response?.reason) && await makeSupplyRoom(myEpoch, active)) { setState('RESTOCK'); await save('supply_room_retry'); return true }
     if (response?.status !== 'completed' || response.serverConfirmed !== true || !validSupplyBindings(response.bindings)) { await finish('PAUSED', 'SUPPLY_RESTOCK_BLOCKED', { pauseDetails: { reason: response?.reason ?? 'UNCONFIRMED', operationId: active.operationId } }); return true }
     job.config.inventory.supplyBoxes = copy(response.bindings)
     job.supplyReceipts ??= []
@@ -2181,6 +2196,105 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     await save('terrain_requested')
     await wait()
     return true
+  }
+
+  function layerUnknown (y) {
+    let n = 0
+    for (const column of regions.columns) { const [x, z] = column.split(',').map(Number); if (adapter.getBlock(x, y, z)?.known !== true) n++ }
+    return n
+  }
+  // Unknown is never treated as safe: the layer is requested again a bounded
+  // number of times, and work continues only once the cells actually arrive.
+  async function retryLayerTerrain (myEpoch, y) {
+    if (typeof adapter.requestTerrain !== 'function' || !Number.isSafeInteger(y)) return false
+    const state = guard(myEpoch), scope = scopeOf(state), life = lifeOf(state)
+    let t = job.layerTerrain
+    if (!t || t.y !== y || t.scope !== scope || t.life !== life) t = job.layerTerrain = { y, scope, life, requests: 0 }
+    if (t.requests >= TERRAIN_LAYER_WAITS_MS.length) { note('terrain_layer_unobserved', { y, requests: t.requests, unknown: layerUnknown(y) }); return false }
+    const waitMs = TERRAIN_LAYER_WAITS_MS[t.requests]
+    t.requests++; t.requestedAt = now()
+    note('terrain_layer_requested', { y, attempt: t.requests, unknown: layerUnknown(y) })
+    await save('terrain_layer_request')
+    try { await call(myEpoch, 'request_terrain', signal => adapter.requestTerrain({ config: copy(job.config), yTop: job.yTop, yBottom: regions.yBottom }, { signal })) } catch (error) {
+      if (error instanceof QuarryInterrupt) throw error
+      t.lastError = String(error.message ?? error).slice(0, 200)
+    }
+    const until = now() + waitMs
+    while (now() < until) { await sleep(Math.min(250, Math.max(0, until - now()))); guard(myEpoch); if (layerUnknown(y) === 0) break }
+    return true
+  }
+  // Ask early for the next layers while the current one is dug; it only sends
+  // requests and never marks anything received.
+  function prefetchTerrain (y) {
+    if (typeof adapter.requestTerrain !== 'function' || !Number.isSafeInteger(y)) return
+    if (job.terrainPrefetchAt && now() - job.terrainPrefetchAt < TERRAIN_PREFETCH_INTERVAL_MS) return
+    const ahead = [y - 1, y - 2].filter(v => v >= regions.yBottom)
+    if (!ahead.some(v => layerUnknown(v) > 0)) return
+    job.terrainPrefetchAt = now()
+    note('terrain_prefetch', { y: ahead[0] })
+    Promise.resolve().then(() => adapter.requestTerrain({ config: copy(job.config), yTop: job.yTop, yBottom: regions.yBottom })).catch(() => {})
+  }
+
+  async function makeSupplyRoom (myEpoch, active) {
+    active.roomAttempts = (active.roomAttempts ?? 0) + 1
+    if (active.roomAttempts > SUPPLY_ROOM_MAX_ATTEMPTS || typeof adapter.place !== 'function' || typeof adapter.equip !== 'function') return false
+    let inventory = items(guard(myEpoch))
+    if (!inventory) return false
+    const keepDirt = (job.config.inventory?.keepExitDirt ?? 192) + (job.config.inventory?.keepSealBlocks ?? 32)
+    const dirtTotal = inventory.filter(i => nameOf(i.name) === 'dirt' && i.slot >= 0 && i.slot < 36).reduce((n, i) => n + i.count, 0)
+    const pick = inventory.filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot < 36 && i.count > 0 && i.count <= SUPPLY_ROOM_MAX_BLOCKS && SEAL_MATERIALS.includes(nameOf(i.name)) && (nameOf(i.name) !== 'dirt' || dirtTotal - i.count >= keepDirt)).sort((a, b) => a.count - b.count || a.slot - b.slot)[0]
+    if (!pick) { note('supply_room_unavailable', {}); return false }
+    const material = nameOf(pick.name)
+    let slot = pick.slot
+    if (slot > 8) {
+      await call(myEpoch, 'equip_seal', signal => adapter.equip(slot, { signal }))
+      inventory = items(guard(myEpoch))
+      const moved = inventory?.find(i => i.slot >= 0 && i.slot <= 8 && nameOf(i.name) === material && i.count === pick.count && (pick.stackId == null || i.stackId === pick.stackId))
+      if (!moved) return false
+      slot = moved.slot
+    }
+    const feet = feetCell(guard(myEpoch))
+    let placed = 0
+    for (let n = 0; n < pick.count; n++) {
+      inventory = items(guard(myEpoch))
+      const current = inventory?.find(i => i.slot === slot)
+      if (!current || nameOf(current.name) !== material || current.count < 1) break
+      const cells = []
+      for (const column of regions.columns) {
+        const [x, z] = column.split(',').map(Number)
+        if ((x === feet.x && z === feet.z) || Math.hypot(x - feet.x, z - feet.z) > 4.5) continue
+        const b = adapter.getBlock(x, feet.y, z), below = adapter.getBlock(x, feet.y - 1, z)
+        if (b?.known !== true || !AIR.has(nameOf(b)) || b.extra?.length || below?.known !== true || below.boundingBox !== 'block') continue
+        cells.push({ x, y: feet.y, z })
+      }
+      cells.sort((a, b) => Math.hypot(a.x - feet.x, a.z - feet.z) - Math.hypot(b.x - feet.x, b.z - feet.z))
+      let decision = null
+      for (const p of cells.slice(0, 24)) {
+        const d = await planner.previewSealPlacement({ position: p, purpose: 'temporary', materialRequired: material, slot }, feet, inventory)
+        guard(myEpoch)
+        if (d?.action && d.stance && d.stance.x === feet.x && d.stance.y === feet.y && d.stance.z === feet.z) { decision = d; break }
+      }
+      if (!decision) break
+      const rec = recordAction({ type: 'place', purpose: 'supply_room', position: decision.position, material: decision.material })
+      await save('supply_room_intent')
+      try {
+        await call(myEpoch, 'place', signal => adapter.place({ position: decision.position, slot: decision.slot, clicked: decision.clicked, face: decision.face, point: decision.point, expectedBlock: 'minecraft:' + material }, { signal }))
+      } catch (error) {
+        if (error instanceof QuarryInterrupt) throw error
+        rec.status = 'failed'; rec.error = String(error.message ?? error).slice(0, 200); break
+      }
+      const b = adapter.getBlock(decision.position.x, decision.position.y, decision.position.z)
+      const after = items(guard(myEpoch))?.find(i => i.slot === slot)
+      const left = after && nameOf(after.name) === material ? after.count : 0
+      if (!(b?.known === true && nameOf(b) === material) || left !== current.count - 1) { rec.status = 'unconfirmed'; break }
+      rec.status = 'confirmed'; rec.confirmedBy = 'server_block_and_inventory'
+      planner.recordPlacement(decision.position, 'temporary', decision.material)
+      countsRevision++; ledger.add('placedTemporary', decision.material); placed++
+    }
+    const freed = !(items(guard(myEpoch)) ?? []).some(i => i.slot === slot && i.count > 0)
+    note('supply_room', { material, placed, freed })
+    await save('supply_room')
+    return freed
   }
 
   function terrainObserved (purpose) {

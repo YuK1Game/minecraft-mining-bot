@@ -185,3 +185,31 @@ test('live case 2026-11-10: a combat claim that did nothing does not stop the cl
     } finally { await f.job.pause() }
   }
 })
+
+function layerFixture (receive) {
+  const f = fixture({ receive })
+  f.sim.unknown.add('2,60,2')
+  return f
+}
+
+test('an unreceived cell met while digging a layer is requested again before the job pauses, and work continues once it arrives', async () => {
+  const f = layerFixture(({ requests, clearTarget }) => { if (requests.length >= 2) clearTarget(); return { sent: true } })
+  f.job.start()
+  try {
+    await until(() => ['PAUSED', 'FINISHED'].includes(f.job.status().state))
+    assert.equal(f.job.status().state, 'FINISHED', f.job.status().pauseReason)
+    assert.ok(f.requests.length >= 2, 'the layer was requested again')
+  } finally { await f.job.pause() }
+})
+
+test('a layer that never arrives still pauses as UNOBSERVED_CELLS after the bounded requests, never treated as air', async () => {
+  const f = layerFixture(null)
+  f.job.start()
+  try {
+    await until(() => f.job.status().state === 'PAUSED')
+    assert.equal(f.job.status().pauseReason, 'UNOBSERVED_CELLS')
+    assert.equal(f.requests.length, 6)
+    assert.ok(f.requests[5].at - f.requests[0].at >= 2000 + 4000 + 8000 * 3, 'growing waits')
+    assert.equal(f.sim.adapter.getBlock(2, 60, 2).known, false)
+  } finally { await f.job.pause() }
+})
