@@ -1051,7 +1051,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         const inventory = items(guard(myEpoch))
         if (!inventory) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
         if (!capacityActionId && passivePickup() && !job.storageExhausted && freeSlots(inventory) === 0) return { notStarted: 'INVENTORY_FULL' }
-        return adapter.mine(targets, { signal })
+        return adapter.mine(job.storageExhausted ? targets.map(t => ({ ...t, allowFullInventory: true })) : targets, { signal })
       })
       guard(myEpoch)
       if (dispatched?.notStarted === 'INVENTORY_FULL') { rec.status = 'not_started'; rec.reason = 'INVENTORY_FULL'; job.depositReason = 'full'; setState('RETURN'); return }

@@ -48,7 +48,7 @@ function targetList (targets) {
       const rt = position.requiredTool
       if (rt?.reserve != null && (!Number.isSafeInteger(rt.reserve) || rt.reserve < 1)) throw new Error('Quarry tool reserve must leave at least one received durability use')
       if (typeof position.expectedName !== 'string' || !/^minecraft:[a-z0-9_]+$/.test(position.expectedName) || quarryRule(position.expectedName).kind !== 'dig' || position.expectedRuntimeId != null && !Number.isSafeInteger(position.expectedRuntimeId) || rt != null && (!['pickaxe', 'shovel', 'axe', 'hoe', 'shears'].includes(rt.kind) || !Number.isSafeInteger(rt.tier) || rt.tier < 0 || rt.tier > 4)) throw new Error('Quarry mining needs an expected diggable block and a valid tool requirement')
-      Object.assign(target, { accessPreparation: position.accessPreparation, expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId ?? null, requiredTool: rt ? { kind: rt.kind, tier: rt.tier, ...(rt.reserve != null ? { reserve: rt.reserve } : {}) } : null })
+      Object.assign(target, { accessPreparation: position.accessPreparation, expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId ?? null, requiredTool: rt ? { kind: rt.kind, tier: rt.tier, ...(rt.reserve != null ? { reserve: rt.reserve } : {}) } : null, ...(position.allowFullInventory === true ? { allowFullInventory: true } : {}) })
       if (position.expectedName === 'minecraft:leaf_litter') {
         const props = position.expectedProperties
         if (!Number.isInteger(position.expectedRuntimeId) || position.expectedRuntimeId < 0 || position.expectedRuntimeId > 4294967295 || rt != null || !props || Array.isArray(props) || Object.keys(props).length !== 2 || !Number.isInteger(props.growth) || props.growth < 0 || props.growth > 3 || !['north', 'south', 'east', 'west'].includes(props['minecraft:cardinal_direction'])) throw new Error('Leaf-litter quarry mining requires exact received growth0..3 properties, runtime and non-tool hand')
@@ -155,7 +155,10 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     const ownedBedAttempt = target.accessPreparation === 'owned_bed' && target.expectedName === 'minecraft:bed'
     if (state.dead || state.isDead || !Number.isFinite(state.health) || state.health <= (ownedBedAttempt ? 0 : resourceMinHealth(state))) throw new Error('体力を確認できないか、体力が少ないため停止します。')
     if (!state.inventory.known) throw new Error('持ち物の一覧をまだ取得できていません。')
-    if (state.inventory.items.filter(item => item.slot < 36).length >= 36) throw new Error('持ち物が満杯です。')
+    // A quarry with every storage box full (passive, dig-through policy) mines
+    // with a full bag and leaves the drops; only plain quarry targets may.
+    const fullAllowed = target.allowFullInventory === true && target.accessPreparation === 'quarry'
+    if (!fullAllowed && state.inventory.items.filter(item => item.slot < 36).length >= 36) throw new Error('持ち物が満杯です。')
     const feet = { x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62 + 0.001), z: Math.floor(state.position.z) }
     const feetY = state.position.y - 1.62
     const support = world.getBlock(feet.x, feet.y - 1, feet.z)
