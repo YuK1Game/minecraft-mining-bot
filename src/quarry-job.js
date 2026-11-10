@@ -2825,6 +2825,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job) throw new Error('No quarry job')
     if (ACTIVE.has(job.state)) return status()
     if (!['PAUSED', 'IDLE', 'DISCONNECTED'].includes(job.state)) throw new Error(`Cannot resume from ${job.state}`)
+    // A user resume may try freeing a slot for a blocked restock again.
+    if (job.supplyRestock) job.supplyRestock.roomAttempts = 0
     // The bot may have died or reconnected while the job was paused. Resume
     // binds to the current living session (the death is recorded once) and
     // reconciles from there instead of pausing again with DEATH.
