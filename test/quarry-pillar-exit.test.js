@@ -165,6 +165,9 @@ test('shaft resources are checked against real dirt, tool reserve and worst-case
   a.inventory = [a.inventory[0], { slot: 1, name: 'minecraft:dirt', count: 64 }, ...Array.from({ length: 28 }, (_, i) => ({ slot: i + 2, name: 'minecraft:bow', count: 1 }))]
   assert.equal(canAccept(a.inventory, [{ name: 'minecraft:cobblestone', count: 1 }]), true)
   assert.equal(planQuarryExit(a).reason, 'EXIT_INVENTORY_CAPACITY')
+  // Storage exhausted under the passive dig-through policy: the shaft drops are left behind.
+  const leave = planQuarryExit({ ...a, allowFullBag: true })
+  assert.equal(leave.ok, true, JSON.stringify(leave.reason))
 })
 
 function completeExit (sim, request) {

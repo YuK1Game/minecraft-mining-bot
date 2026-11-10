@@ -2242,7 +2242,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job.egress?.operationId) {
       const read = planningBlocks(job.config); let unknownExitTerrain = false
       const exitBlocks = (x, y, z) => { const b = read(x, y, z); if (b?.known !== true) unknownExitTerrain = true; return b }
-      const selected = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(s), getBlock: exitBlocks, inventory: items(s), policy: { ...job.config.tools, ...job.config.collection }, minFreeSlots: job.config.inventory.minFreeSlots, exit: job.config.exit, reservation: job.exitReservation?.plan ?? null, reachable: planner.reachableFrom(feetCell(s)) })
+      const selected = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(s), getBlock: exitBlocks, inventory: items(s), policy: { ...job.config.tools, ...job.config.collection }, minFreeSlots: job.config.inventory.minFreeSlots, allowFullBag: !!job.storageExhausted && passivePickup(), exit: job.config.exit, reservation: job.exitReservation?.plan ?? null, reachable: planner.reachableFrom(feetCell(s)) })
       job.egress = { phase: selected.ok ? 'planned' : 'blocked', reason: selected.reason ?? null, plan: copy(selected.plan ?? null), operationId: null, checkpoint: null, scope: scopeOf(s), life: lifeOf(s) }
       if (selected.plan) job.config.inventory.keepExitDirt = selected.plan.totalDirt
       if (!selected.ok && selected.reason === 'EXIT_COLUMN_UNAVAILABLE' && unknownExitTerrain && await requestTerrainObservation(myEpoch, 'egress')) { job.egress.phase = 'planned'; job.egress.reason = 'EXIT_TERRAIN_PENDING'; return }
@@ -2269,7 +2269,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     active.phase = 'running'; active.reason = null
     const rec = recordAction({ type: 'egress', operationId: active.operationId, column: active.plan.column })
-    const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint) }, { signal, onCheckpoint }))
+    const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint), ...(job.storageExhausted && passivePickup() ? { allowFullInventory: true } : {}) }, { signal, onCheckpoint }))
     guard(myEpoch)
     if (result?.checkpoint) await onCheckpoint(result.checkpoint)
     rec.result = copy(result ?? null)

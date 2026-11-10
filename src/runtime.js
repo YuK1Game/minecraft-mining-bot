@@ -6361,7 +6361,7 @@ function createRuntime (host) {
             await own(slot => { requireIdle(); return inventory.equip(slot) })(hand.slot)
           }
           signal.throwIfAborted()
-          await adapter.mine([{ ...p, expectedName: block.name, expectedRuntimeId: block.runtimeId ?? target.expectedRuntimeId ?? null, requiredTool: tool.kind === 'hand' ? null : tool }], { signal })
+          await adapter.mine([{ ...p, expectedName: block.name, expectedRuntimeId: block.runtimeId ?? target.expectedRuntimeId ?? null, requiredTool: tool.kind === 'hand' ? null : tool, ...(request.allowFullInventory === true ? { allowFullInventory: true } : {}) }], { signal })
         }
         return { phase: 'completed' }
       },
