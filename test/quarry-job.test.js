@@ -587,6 +587,38 @@ test('live case 2026-11-10: one cell that stays slow after a resync is deferred 
   assert.equal(sim.world.name(6, 62, 6), 'air', 'the rest of the layer is mined')
 })
 
+test('live case 2026-11-10: a pose that moved far while paused is confirmed with the server before resuming', async () => {
+  for (const confirmed of [false, true]) {
+    const sim = setup({ stoneTop: 61, top: 62 })
+    sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 8)
+    const probes = []
+    sim.adapter.confirmPosition = async (feet, options) => { probes.push({ feet, radius: options?.radius }); return confirmed ? { serverConfirmed: true } : { serverConfirmed: false, reason: 'POSITION_NOT_FOUND' } }
+    const { j } = job(sim)
+    j.plan(baseConfig({ yBottom: 62 }))
+    j.start()
+    while (!(j.status().ledger?.minedBlocks > 0)) await new Promise(r => setTimeout(r, 5))
+    await j.pause(); await j.drain()
+    sim.setFeet({ x: 8, y: 63, z: 8 }) // knocked far away while paused, still inside the chunk
+    j.resume()
+    const until = Date.now() + 10000
+    while (probes.length === 0 && Date.now() < until) await new Promise(r => setTimeout(r, 5))
+    assert.equal(probes.length >= 1, true, 'the server was asked')
+    assert.equal(probes[0].radius, 1.5)
+    if (!confirmed) {
+      const s = await runUntilStopped(j)
+      assert.equal(s.pauseReason, 'POSITION_UNCONFIRMED')
+      // A second resume asks again: the original reference is kept.
+      j.resume()
+      while (probes.length < 2 && Date.now() < until) await new Promise(r => setTimeout(r, 5))
+      assert.equal(probes.length >= 2, true)
+    } else {
+      while (!(j.status().ledger?.minedBlocks > 1) && Date.now() < until) await new Promise(r => setTimeout(r, 5))
+      assert.notEqual(j.status().pauseReason, 'POSITION_UNCONFIRMED')
+    }
+    await j.pause(); await j.drain()
+  }
+})
+
 test('live case 2026-11-10: passive full-only mining keeps digging once no storage box is left', async () => {
   const sim = setup({ stoneTop: 61, top: 62 })
   sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 8)

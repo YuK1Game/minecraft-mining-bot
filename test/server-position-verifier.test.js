@@ -171,3 +171,16 @@ test('non-centred, fractional-Y, injected or unavailable-state requests do not q
   assert.equal((await f.verifier.confirm(feet)).reason, 'POSITION_STATE_UNAVAILABLE')
   assert.equal(f.sent.length, 0)
 })
+
+test('a wider check accepts an off-centre pose with a bounded radius and still needs the matching server output', async () => {
+  const f = fixture(); const before = structuredClone(f.state)
+  const pending = f.verifier.confirm({ x: -28.8312, y: 36.004, z: 0.9631 }, { radius: 1.5, operationId: 'quarry:pose' })
+  assert.equal(f.sent.at(-1).packet.command, '/testfor @s[x=-28.83,y=36,z=0.96,r=1.5]')
+  f.advance(20)
+  assert.equal(f.verifier.applyPacket('command_output', f.output()), true)
+  const receipt = await pending
+  assert.equal(receipt.serverConfirmed, true); assert.equal(receipt.radius, 1.5)
+  assert.deepEqual(f.state, before, 'the received raw pose is never rewritten')
+  for (const radius of [0.05, 2, Number.NaN]) assert.equal((await f.verifier.confirm({ x: 1, y: 2, z: 3 }, { radius })).reason, 'POSITION_INVALID_REQUEST')
+  assert.equal((await f.verifier.confirm({ x: 1.3, y: 2, z: 3 })).reason, 'POSITION_INVALID_REQUEST', 'the exact check still needs a block centre')
+})

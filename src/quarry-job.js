@@ -25,6 +25,7 @@ const copy = value => value === undefined ? undefined : structuredClone(value)
 const samePoint = (a, b) => ['x', 'y', 'z'].every(axis => Number.isSafeInteger(a?.[axis]) && a[axis] === b?.[axis])
 const FEET = 1.62
 const SETTLE_MAX_WAIT_MS = 45000 // longest post-combat settle wait for threats that do not come
+const POSE_MOVE_LIMIT = 3, POSE_CONFIRM_RADIUS = 1.5 // pose check after a pause (blocks)
 // Tools of one kind carried while all are reserved for the exit (live 2026-11-10:
 // three pickaxes at 19 uses each were all reserved, so a 4th is needed; worn
 // ones are used down later and returned once unusable).
@@ -609,6 +610,29 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     setState('SURVEY')
   }
 
+  // After a pause the bot may have been moved (knockback, a fall, a debug
+  // teleport) without the server sending its position. When the pose moved
+  // more than a few blocks since the pause, ask the server (/testfor around the
+  // current pose) before acting; outside the target, walk back in first.
+  // The received raw position is never overwritten.
+  async function confirmPoseAfterPause (myEpoch) {
+    const before = job.pauseFeet; job.pauseFeet = null
+    const s = guard(myEpoch); if (!before || !s?.position) return true
+    const f = feetCell(s), moved = Math.hypot(f.x - before.x, f.y - before.y, f.z - before.z)
+    if (moved <= POSE_MOVE_LIMIT || typeof adapter.confirmPosition !== 'function') return true
+    const probe = { x: s.position.x, y: s.position.y - 1.62, z: s.position.z }
+    const receipt = await call(myEpoch, 'confirm_position', signal => adapter.confirmPosition(probe, { signal, radius: POSE_CONFIRM_RADIUS, operationId: `${job.config.jobId}:pose` }))
+    guard(myEpoch)
+    if (receipt?.serverConfirmed !== true) { job.pauseFeet = before; await finish('PAUSED', 'POSITION_UNCONFIRMED', { pauseDetails: { cause: receipt?.reason ?? 'NO_RECEIPT', moved: Math.round(moved * 10) / 10, before, probe } }); return false }
+    note('pose_confirmed', { moved: Math.round(moved * 10) / 10, before, feet: f })
+    if (!regions.columns.has(`${f.x},${f.z}`)) {
+      const entered = await enterQuarryForSupply(myEpoch, f)
+      if (!entered.ok) { job.pauseFeet = before; await finish('PAUSED', 'POSITION_UNCONFIRMED', { pauseDetails: { cause: 'OUTSIDE_TARGET_UNREACHABLE', feet: f, ...entered.details } }); return false }
+      note('pose_returned', { from: f, to: entered.stand })
+    }
+    return true
+  }
+
   async function reconcile (myEpoch) {
     const s = guard(myEpoch)
     // The same-scope request budget is kept across a resume, but one spent long
@@ -616,6 +640,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // as the bot digs down and must be requested again.
     const obs = job.terrainObservation
     if (obs && obs.requests && !obs.waiting && Number.isFinite(obs.requestedAt) && now() - obs.requestedAt > TERRAIN_BUDGET_RENEW_MS) { obs.requests = 0; obs.phase = 'idle' }
+    if (!(await confirmPoseAfterPause(myEpoch))) return
     if (job.supplyRestock) { job.supplyRestock.resumeTo = 'RECONCILE'; return restock(myEpoch, 'RECONCILE', true) }
     // Re-observe instead of trusting saved cells (§15.3): unreachable and
     // tool deferrals are retried; protected/unbreakable stay.
@@ -2338,6 +2363,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     job.result = { type: result, reason, at: new Date(now()).toISOString(), ...copy(extra) }
     job.pauseReason = paused ? reason : null
+    // The pose at the pause is the reference for the next resume; an
+    // unconfirmed-pose pause keeps the original reference so it is checked again.
+    if (paused && reason !== 'POSITION_UNCONFIRMED') { try { const ps = adapter.getState(); job.pauseFeet = ps?.position ? feetCell(ps) : null } catch { job.pauseFeet = null } }
     if (!paused) job.userRunIntent = 'finished'
     if (!paused) combatBridge.deactivate()
     setState(paused ? 'PAUSED' : 'FINISHED', { pauseDetails: extra.pauseDetails ?? null })

@@ -39,11 +39,16 @@ function createServerPositionVerifier ({ client, getState, now = Date.now, timeo
     lastResult = copy(result)
     request.resolve(copy(result))
   }
-  const fail = (request, reason, detail) => finish(request, { serverConfirmed: false, reason, feet: copy(request.feet), radius: RADIUS, requestId: request.id, ...(detail ? { detail: String(detail).slice(0, 200) } : {}) })
+  const fail = (request, reason, detail) => finish(request, { serverConfirmed: false, reason, feet: copy(request.feet), radius: request.radius ?? RADIUS, requestId: request.id, ...(detail ? { detail: String(detail).slice(0, 200) } : {}) })
 
-  function confirm (feet, { signal, operationId } = {}) {
+  // radius (optional, 0.12..1.5): a wider check around a rounded point, used to
+  // confirm roughly where the bot is (e.g. after knockback) without centring it.
+  function confirm (feet, { signal, operationId, radius = null } = {}) {
     if (signal?.aborted) return Promise.resolve({ serverConfirmed: false, reason: 'POSITION_CANCELLED' })
-    if (!feetValid(feet) || signal != null && (typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function') || operationId != null && (typeof operationId !== 'string' || operationId.length > 200 || /[\r\n\u0000]/.test(operationId))) return Promise.resolve({ serverConfirmed: false, reason: 'POSITION_INVALID_REQUEST' })
+    const wide = radius !== null
+    if (wide && !(Number.isFinite(radius) && radius >= RADIUS && radius <= 1.5)) return Promise.resolve({ serverConfirmed: false, reason: 'POSITION_INVALID_REQUEST' })
+    if (wide) feet = feet && ['x', 'y', 'z'].every(a => Number.isFinite(feet[a]) && Math.abs(feet[a]) <= 30000000) ? { x: Math.round(feet.x * 100) / 100, y: Math.round(feet.y * 100) / 100, z: Math.round(feet.z * 100) / 100 } : null
+    if (!(wide ? feet : feetValid(feet)) || signal != null && (typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function') || operationId != null && (typeof operationId !== 'string' || operationId.length > 200 || /[\r\n\u0000]/.test(operationId))) return Promise.resolve({ serverConfirmed: false, reason: 'POSITION_INVALID_REQUEST' })
     if (pending) return Promise.resolve({ serverConfirmed: false, reason: 'POSITION_VERIFIER_BUSY' })
     const state = read(), scope = observedScope(state), startedAt = stamp()
     if (!scope || startedAt == null) return Promise.resolve({ serverConfirmed: false, reason: 'POSITION_STATE_UNAVAILABLE' })
@@ -53,14 +58,14 @@ function createServerPositionVerifier ({ client, getState, now = Date.now, timeo
     used.add(id)
     const target = { x: feet.x, y: feet.y, z: feet.z }
     return new Promise(resolve => {
-      const request = pending = { id, operationId: operationId ?? null, feet: target, scope, runtimeEntityId: String(state.runtimeEntityId), playerName: typeof state.playerName === 'string' && state.playerName ? state.playerName : null, startedAt, deadline: startedAt + timeoutMs, signal, resolve, timer: null, abort: null }
+      const request = pending = { id, operationId: operationId ?? null, feet: target, ...(wide ? { radius } : {}), scope, runtimeEntityId: String(state.runtimeEntityId), playerName: typeof state.playerName === 'string' && state.playerName ? state.playerName : null, startedAt, deadline: startedAt + timeoutMs, signal, resolve, timer: null, abort: null }
       request.abort = () => fail(request, 'POSITION_CANCELLED', signal?.reason?.message)
       request.timer = setTimeout(() => fail(request, 'POSITION_TIMEOUT'), timeoutMs)
       signal?.addEventListener('abort', request.abort, { once: true })
       if (signal?.aborted) { request.abort(); return }
       try {
         client.queue('command_request', {
-          command: `/testfor @s[x=${target.x},y=${target.y},z=${target.z},r=0.12]`,
+          command: `/testfor @s[x=${target.x},y=${target.y},z=${target.z},r=${request.radius ?? RADIUS}]`,
           origin: { type: 'player', uuid: id, request_id: '', player_entity_id: 0n },
           internal: false, version: 'latest'
         })
@@ -83,7 +88,7 @@ function createServerPositionVerifier ({ client, getState, now = Date.now, timeo
     const output = schema ? packet.output[0] : null
     const parameters = output && Array.isArray(output.parameters) && output.parameters.length === 1 && output.parameters.every(p => typeof p === 'string' && p.length > 0)
     const success = schema && packet.success_count === 1 && output?.success === true && messageKey(output.message_id) === 'commands.testfor.success' && parameters && (!request.playerName || output.parameters[0] === request.playerName)
-    if (success) finish(request, { serverConfirmed: true, kind: 'server_position_volume', feet: copy(request.feet), radius: RADIUS, requestId: request.id, receivedAt, scope: request.scope })
+    if (success) finish(request, { serverConfirmed: true, kind: 'server_position_volume', feet: copy(request.feet), radius: request.radius ?? RADIUS, requestId: request.id, receivedAt, scope: request.scope })
     else {
       const notFound = schema && packet.success_count === 0 && output?.success === false && ['commands.generic.noTargetMatch', 'commands.testfor.failure'].includes(messageKey(output.message_id)) && Array.isArray(output.parameters) && output.parameters.every(p => typeof p === 'string')
       fail(request, notFound ? 'POSITION_NOT_FOUND' : packet.success_count === 0 ? 'POSITION_COMMAND_REJECTED' : 'POSITION_OUTPUT_UNCONFIRMED', output?.message_id)

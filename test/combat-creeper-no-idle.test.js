@@ -14,14 +14,14 @@ function fixture ({ type = 'creeper', range = 3.2, bow = false, approach = null,
   const distance = () => Math.hypot(state.position.x - actor.position.x, state.position.y - actor.position.y - 0.9, state.position.z - actor.position.z)
   const result = code => ({ code, targetRuntimeId: actor.runtimeId, targetUniqueId: actor.uniqueId, targetDead: false, serverConfirmed: false })
   const controller = name => ({
-    preview: () => {
-      const ready = name === 'melee' ? distance() <= 3 && (meleeReady ? meleeReady(context()) : true) : rangedPreview ? rangedPreview(context()) : rangedReady
+    preview: (_id, options = {}) => {
+      const ready = name === 'melee' ? distance() <= (options.reachLimit ?? 3) && (meleeReady ? meleeReady(context()) : true) : rangedPreview ? rangedPreview(context()) : rangedReady
       events.push({ event: `preview_${name}`, ready, at: time })
       return { ready, code: ready ? null : name === 'melee' ? 'OUT_OF_REACH' : 'RANGE' }
     },
     survey: () => ({ ready: rangedReady, code: rangedReady ? null : 'RANGE' }),
-    engage: () => {
-      events.push({ event: `engage_${name}`, at: time }); attacks.push({ name, at: time })
+    engage: (_id, options = {}) => {
+      events.push({ event: `engage_${name}`, at: time }); attacks.push({ name, at: time, reachLimit: options.reachLimit ?? null })
       if (name === 'ranged' && rangedPending) { activeRanged = true; return new Promise(resolve => { pendingResolve = resolve }) }
       return Promise.resolve({ ...result('TARGET_DEAD'), targetDead: true, serverConfirmed: true })
     },
@@ -44,7 +44,7 @@ async function corner (f) {
 }
 
 test('a cornered creeper with no reachable melee stance ends without the ordinary two-second close hold', async () => {
-  const f = fixture(); await corner(f)
+  const f = fixture({ range: 4.0 }); await corner(f)
   const before = f.events.length
   const result = await f.coordinator.tick()
   assert.equal(result.code, 'CREEPER_APPROACH_BLOCKED')
@@ -57,7 +57,7 @@ test('a cornered creeper with no reachable melee stance ends without the ordinar
 })
 
 test('an urgent creeper counterstep still awaiting its route is aborted within its short total budget', async () => {
-  const f = fixture({ approach: ({ options }) => new Promise(resolve => { options.signal.addEventListener('abort', () => resolve({ ready: false, reason: 'counterstep aborted' }), { once: true }) }) })
+  const f = fixture({ range: 3.8, approach: ({ options }) => new Promise(resolve => { options.signal.addEventListener('abort', () => resolve({ ready: false, reason: 'counterstep aborted' }), { once: true }) }) })
   await corner(f)
   const result = await f.coordinator.tick()
   assert.equal(result.code, 'CREEPER_APPROACH_BLOCKED')
@@ -83,7 +83,7 @@ test('cornered evidence cannot cross a new connection, life, dimension or sessio
 
 test('a failed creeper approach that ends inside the same real melee preview attacks without an extra poll', async () => {
   let fallbackReadyAt = null
-  const f = fixture({ approach: ({ actor }) => { actor.position.x = 2.2; throw new Error('route invalidated after a short step') }, meleeReady: ({ time }) => { fallbackReadyAt ??= time; return true } })
+  const f = fixture({ range: 3.8, approach: ({ actor }) => { actor.position.x = 2.2; throw new Error('route invalidated after a short step') }, meleeReady: ({ time }) => { fallbackReadyAt ??= time; return true } })
   await corner(f)
   const result = await f.coordinator.tick()
   assert.equal(result.code, 'TARGET_DEAD')
@@ -127,4 +127,20 @@ test('combat start, phases, interrupted shots and finish retain bounded bound-ta
     assert.ok(Number.isSafeInteger(context.claimId))
     assert.equal(Object.hasOwn(context, 'attackerRuntimeId'), false)
   }
+})
+
+test('live case 2026-11-10: a cornered creeper within 3.5m is struck in place without stepping', async () => {
+  const f = fixture({ range: 3.2 }); await corner(f)
+  const approachesBefore = f.approaches.length
+  await f.coordinator.tick()
+  assert.equal(f.attacks.filter(a => a.name === 'melee').length >= 1, true, 'swung from where it stands')
+  assert.equal(f.attacks.find(a => a.name === 'melee').reachLimit, 3.5)
+  assert.equal(f.approaches.length, approachesBefore, 'no step toward the creeper')
+  assert.ok(f.logs.some(line => line.includes('クリーパー至近の打撃')))
+})
+
+test('a creeper that is not cornered keeps the normal 3.0m melee reach', async () => {
+  const f = fixture({ range: 3.2 })
+  const first = await f.coordinator.tick()
+  assert.equal(f.attacks.some(a => a.reachLimit === 3.5), false, JSON.stringify(first))
 })
