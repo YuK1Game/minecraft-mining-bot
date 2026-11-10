@@ -1048,7 +1048,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       // Every remaining use of this tool is kept for the exit: fetch one more of
       // the same kind from its supply box (once), then mine with the fresh one.
       if (job.config.inventory.supplyBoxes?.length && ['pickaxe', 'shovel'].includes(tool.kind) && !job.miningExhaustedTried) {
-        const carried = supplyNeeds(items(guard(myEpoch)) ?? [], { ...job.config.inventory, tools: job.config.tools }).available[tool.kind] ?? 1
+        // Worn tools of this kind are returned in the same restock; count only the others.
+        const carried = supplyNeeds(items(guard(myEpoch)) ?? [], { ...job.config.inventory, tools: job.config.tools, miningExhausted: { [tool.kind]: 0 } }).available[tool.kind] ?? 0
         job.miningExhausted = { [tool.kind]: Math.min(EXHAUSTED_TOOL_CAP, carried + 1) }; job.miningExhaustedTried = true
         if (await restock(myEpoch, 'SURVEY', true)) return
       }

@@ -56,17 +56,23 @@ function storageSupplyExclusions (bindings) {
   return [...new Set((bindings ?? []).filter(binding => ROLES.includes(binding.role) && typeof binding.key === 'string').map(binding => binding.key))]
 }
 
+const WORN_TOOL_USES = 100 // a tool below this is returned when its kind is exhausted for mining
 function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true, miningExhausted = null } = {}) {
   const main = (items ?? []).filter(item => Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && item.count > 0)
   const desired = { pickaxe: 1, shovel: 1, food: foodEnabled ? keepFood : 0, dirt: keepExitDirt + keepSealBlocks }
   // A tool whose remaining uses are all reserved for the exit still counts as
   // carried (it is kept for the exit), so one more of that kind is wanted.
   const available = { pickaxe: 0, shovel: 0, food: 0, dirt: 0 }, returns = []
+  const exhaustedKinds = new Set(Array.isArray(miningExhausted) ? miningExhausted : Object.keys(miningExhausted && typeof miningExhausted === 'object' ? miningExhausted : {}))
   for (const item of main) {
     const kind = toolOf(item)?.kind
     if (kind === 'pickaxe' || kind === 'shovel') {
       if (item.count !== 1) continue
       const state = toolState(item, tools)
+      // When every use of a kind is held for the exit, worn tools of that kind
+      // go back to their supply box (freeing slots) instead of piling up
+      // (live 2026-11-10: four pickaxes, three at 19 uses, and a full bag).
+      if (exhaustedKinds.has(kind) && item.durabilityKnown === true && Number.isFinite(item.durabilityRemaining) && item.durabilityRemaining < WORN_TOOL_USES) { returns.push({ role: kind, slot: item.slot, name: item.name, count: item.count }); continue }
       if (state?.usable) available[kind]++
       else if (item.durabilityKnown === true && Number.isFinite(item.durabilityRemaining)) returns.push({ role: kind, slot: item.slot, name: item.name, count: item.count })
     }
