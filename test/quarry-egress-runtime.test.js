@@ -225,3 +225,24 @@ test('a placement that never happened (air, no dirt spent, pose unchanged) is cl
   assert.notEqual(resumed.reason, 'ASCENT_UNCERTAIN_STEP', JSON.stringify(resumed.reason))
   assert.ok(f.steps.length > steps, 'the step is sent again')
 })
+
+test('live case 2026-11-11: a gap low in the finished pillar is recorded on resume; the block carrying the bot must still be dirt', async () => {
+  for (const supportGone of [false, true]) {
+    const f = fixture({ dirt: 12, oracle: true })
+    f.plan.targetFeetY = 68; f.plan.clearTopY = 70; f.plan.landing = { x: 2, y: 68, z: 0 }
+    f.blocks.set('2,67,0', 'minecraft:stone')
+    await f.run()
+    const mid = structuredClone(f.checkpoints.find(cp => cp.phase === 'ascent' && cp.confirmedFeetY === 67 && !cp.pendingStep))
+    assert.ok(mid, 'a mid-ascent checkpoint with two steps exists')
+    f.state.inventory.items[0].count = 10
+    f.state.position = { x: 1.5, y: 68.62, z: 0.5 }; f.state.rawServerPosition = { ...f.state.position }; f.state.rawServerPositionUpdatedAt++
+    f.blocks.set('1,65,0', 'minecraft:air') // taken from low in the pillar
+    if (supportGone) f.blocks.set('1,66,0', 'minecraft:air')
+    const resumed = await f.run(structuredClone(mid))
+    if (supportGone) assert.equal(resumed.reason, 'EGRESS_PILLAR_CHANGED')
+    else {
+      assert.notEqual(resumed.reason, 'EGRESS_PILLAR_CHANGED', JSON.stringify(resumed))
+      assert.deepEqual(f.checkpoints.at(-1).pillarGaps ?? resumed.checkpoint.pillarGaps, [65])
+    }
+  }
+})

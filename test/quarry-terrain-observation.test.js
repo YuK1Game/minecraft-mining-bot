@@ -213,3 +213,28 @@ test('a layer that never arrives still pauses as UNOBSERVED_CELLS after the boun
     assert.equal(f.sim.adapter.getBlock(2, 60, 2).known, false)
   } finally { await f.job.pause() }
 })
+
+test('live case 2026-11-11: momentary climb refusals are retried a bounded number of times; a lasting one still pauses', async () => {
+  for (const lasting of [false, true]) {
+    const f = fixture()
+    let calls = 0
+    const complete = f.sim.adapter.egress
+    f.sim.adapter.egress = async (request, options) => {
+      calls++
+      if (lasting || calls <= 2) return { status: 'blocked', reason: calls % 2 ? 'ASCENT_INVENTORY_UNKNOWN' : 'EGRESS_POSITION_UNCONFIRMED', serverConfirmed: false, checkpoint: { jobId: request.jobId, operationId: request.operationId, phase: 'ascent', confirmedFeetY: 61 } }
+      return complete(request, options)
+    }
+    f.job.start()
+    try {
+      await until(() => ['PAUSED', 'FINISHED'].includes(f.job.status().state) && calls >= 1)
+      if (lasting) {
+        assert.equal(f.job.status().state, 'PAUSED')
+        assert.match(f.job.status().pauseReason, /ASCENT_INVENTORY_UNKNOWN|EGRESS_POSITION_UNCONFIRMED/)
+        assert.equal(calls, 5, 'four retries, then the pause')
+      } else {
+        assert.equal(f.job.status().state, 'FINISHED', JSON.stringify(f.job.status().pauseReason))
+        assert.equal(calls, 3)
+      }
+    } finally { await f.job.pause() }
+  }
+})

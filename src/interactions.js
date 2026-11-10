@@ -13,7 +13,9 @@ const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'
 const HAZARD = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|scaffolding)/
 const PLANKS = new Set(['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'poplar', 'bamboo', 'crimson', 'warped'].map(wood => `minecraft:${wood}_planks`))
 const PLACEABLE = new Set(['minecraft:crafting_table', 'minecraft:furnace', 'minecraft:chest', 'minecraft:cobblestone', 'minecraft:cobbled_deepslate', 'minecraft:dirt', 'minecraft:torch', ...PLANKS, ...SHULKER_BLOCKS])
-const GROUND = new Set(['dirt', 'grass_block', 'coarse_dirt', 'rooted_dirt', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite'].map(name => `minecraft:${name}`))
+// Bedrock is a full, unbreakable block: the floor of a quarry dug to Y-59 (live
+// 2026-11-11 0:39, the exit pillar's first dirt was refused on it).
+const GROUND = new Set(['dirt', 'grass_block', 'coarse_dirt', 'rooted_dirt', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', 'bedrock'].map(name => `minecraft:${name}`))
 const CONTAINERS = { chest: { blocks: ['minecraft:chest', ...SHULKER_BLOCKS], types: ['container', 0] }, shulker: { blocks: SHULKER_BLOCKS, types: ['container', 0] }, workbench: { blocks: ['minecraft:crafting_table'], types: ['workbench', 1] }, furnace: { blocks: ['minecraft:furnace', 'minecraft:lit_furnace'], types: ['furnace', 2] } }
 const FACE = [{ x: 0, y: -1, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: -1 }, { x: 0, y: 0, z: 1 }, { x: -1, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }]
 const OBSERVATION_PACKETS = new Set(['respawn', 'update_attributes', 'set_health', 'death_info', 'entity_event', 'correct_player_move_prediction', 'server_post_move', 'set_player_game_type', 'update_player_game_type', 'update_block', 'update_subchunk_blocks', 'inventory_content', 'inventory_slot', 'item_stack_response', 'container_open', 'container_close'])
