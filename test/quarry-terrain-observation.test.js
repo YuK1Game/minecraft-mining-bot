@@ -158,3 +158,30 @@ test('an exit request budget spent long ago is renewed on resume (live 2026-11-1
     assert.equal(f.exitCalls(), 0)
   } finally { await f.job.pause() }
 })
+
+test('live case 2026-11-10: a combat claim that did nothing does not stop the climb; a damaging one still does', async () => {
+  for (const damaged of [false, true]) {
+    const f = fixture()
+    let calls = 0
+    const complete = f.sim.adapter.egress
+    f.sim.adapter.egress = async (request, options) => {
+      calls++
+      if (calls === 1) {
+        if (damaged) f.sim.state.health -= 4
+        return { status: 'blocked', reason: 'ASCENT_COMBAT_INTERRUPTED', serverConfirmed: false, checkpoint: { jobId: request.jobId, operationId: request.operationId, phase: 'ascent', confirmedFeetY: 61 } }
+      }
+      return complete(request, options)
+    }
+    f.job.start()
+    try {
+      await until(() => ['PAUSED', 'FINISHED'].includes(f.job.status().state) && calls >= 1)
+      if (damaged) {
+        assert.equal(f.job.status().pauseReason, 'ASCENT_COMBAT_INTERRUPTED')
+        assert.equal(calls, 1)
+      } else {
+        assert.equal(f.job.status().state, 'FINISHED', JSON.stringify(f.job.status().pauseReason))
+        assert.equal(calls, 2, 'the climb continued after the no-op claim')
+      }
+    } finally { await f.job.pause() }
+  }
+})

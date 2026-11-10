@@ -29,6 +29,7 @@ const SETTLE_MAX_WAIT_MS = 45000 // longest post-combat settle wait for threats 
 // three pickaxes at 19 uses each were all reserved, so a 4th is needed; worn
 // ones are used down later and returned once unusable).
 const TERRAIN_BUDGET_RENEW_MS = 600000 // a terrain request budget older than this is renewed on resume
+const EGRESS_NOOP_COMBAT_MS = 3000, EGRESS_NOOP_COMBAT_RETRIES = 6 // no-action combat during the climb (consecutive, reset by progress)
 const EXHAUSTED_TOOL_CAP = 4
 const CAPACITY_RETRIES = 8 // automatic retries of a storage box recovery blocked only by loose drops (~10 min)
 const AUTO_RESUME_WINDOW_MS = 600000 // the ACTION_FAILED auto-resume budget resets after this quiet time
@@ -2272,6 +2273,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       await save('egress_checkpoint')
     }
     active.phase = 'running'; active.reason = null
+    const hpBefore = Number(guard(myEpoch).health), feetBefore = active.checkpoint?.confirmedFeetY ?? null
     const rec = recordAction({ type: 'egress', operationId: active.operationId, column: active.plan.column })
     const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint), ...(reconnect ? { reconnect: true } : {}), ...(job.storageExhausted && passivePickup() ? { allowFullInventory: true } : {}) }, { signal, onCheckpoint }))
     guard(myEpoch)
@@ -2279,6 +2281,26 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     rec.result = copy(result ?? null)
     if (result?.status !== 'completed' || result.serverConfirmed !== true || !active.checkpoint) {
       const reason = /^(EXIT_|EGRESS_|ASCENT_)/.test(result?.reason ?? '') ? result.reason : 'EXIT_UNCONFIRMED'
+      // A combat claim that could do nothing (no target action: bow out of
+      // range, no melee stance) ends within moments and leaves HP unchanged
+      // (live 2026-11-10 13:43: a skeleton on a ledge 17 blocks above). The
+      // climb continues instead of pausing, like work continues for bow
+      // targets without a sight line. Real fights (damage, a longer
+      // engagement such as an approach or a creeper) still pause the exit.
+      if (/COMBAT_INTERRUPTED$/.test(reason)) {
+        if (active.checkpoint?.confirmedFeetY !== feetBefore) job.egressNoopCombat = 0
+        const started = now()
+        while (adapter.combatActive() && now() - started < EGRESS_NOOP_COMBAT_MS) { await sleep(100); guard(myEpoch) }
+        const after = guard(myEpoch)
+        if (!adapter.combatActive() && now() - started < EGRESS_NOOP_COMBAT_MS && Number(after.health) >= hpBefore && (job.egressNoopCombat ?? 0) < EGRESS_NOOP_COMBAT_RETRIES) {
+          job.egressNoopCombat = (job.egressNoopCombat ?? 0) + 1
+          rec.status = 'interrupted'; active.phase = 'planned'; active.reason = null
+          note('egress_noop_combat_continue', { count: job.egressNoopCombat, feetY: active.checkpoint?.confirmedFeetY ?? null })
+          await save('egress_noop_combat')
+          setState('EGRESS')
+          return
+        }
+      }
       rec.status = 'blocked'; active.phase = 'blocked'; active.reason = reason
       return finish('PAUSED', reason, { pauseDetails: { operationId: active.operationId, reason: result?.reason ?? null } })
     }
