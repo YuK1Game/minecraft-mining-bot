@@ -69,8 +69,8 @@ test('shaft selection still rejects unlisted and unknown ores instead of mining 
   }
 })
 
-test('even a matching saved shaft intent cannot dispatch ore mining after the policy changes', async () => {
-  for (const name of ['minecraft:deepslate_gold_ore', 'minecraft:future_ore']) {
+test('even a matching saved shaft intent cannot dispatch mining of an ore the exit rule does not list', async () => {
+  for (const name of ['minecraft:future_ore', 'minecraft:ancient_debris']) {
     const f = runtimeFixture()
     f.blocks.set('1,65,0', name)
     Object.assign(f.plan.shaftCells[0], { name, expectedRuntimeId: 0 })
