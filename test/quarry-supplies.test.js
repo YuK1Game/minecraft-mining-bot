@@ -264,7 +264,7 @@ test('a pickaxe whose uses are all reserved for the exit is kept and one more is
   const two = [...items, { slot: 5, name: 'minecraft:diamond_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 28, maxDurability: 1561 }]
   assert.equal(supplyNeeds(two, { miningExhausted: { pickaxe: 3 } }).missing.pickaxe, 1)
   assert.equal(supplyNeeds([...two, { slot: 6, name: 'minecraft:diamond_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 1561, maxDurability: 1561 }], { miningExhausted: { pickaxe: 3 } }).missing.pickaxe, 0, 'satisfied after one withdrawal')
-  assert.equal(supplyNeeds(two, { miningExhausted: { pickaxe: 9 } }).desired.pickaxe, 3, 'bounded at three')
+  assert.equal(supplyNeeds(two, { miningExhausted: { pickaxe: 9 } }).desired.pickaxe, 4, 'bounded at four')
 })
 
 test('a partly used box in its supply colour still binds; an uncoloured partial box never does', () => {
