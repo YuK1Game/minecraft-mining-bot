@@ -5287,6 +5287,18 @@ function createRuntime (host) {
     } catch (error) { timing.outcome = 'failed'; timing.error = String(error.message ?? error).slice(0, 200); throw error } finally { timing.elapsedMs = performance.now() - started; timing.exitCursor = cursor() }
   }
 
+  function getRegisteredQuarryHomeSite () {
+    if (host.shared.quarryV22HomeChest) return structuredClone(host.shared.quarryV22HomeChest)
+    try {
+      const fs = require('node:fs'), path = require('node:path'), { createHash } = require('node:crypto')
+      const state = quarryState()
+      const key = createHash('sha256').update(JSON.stringify([state.profile, String(state.realm?.id), state.dimension])).digest('hex')
+      const record = JSON.parse(fs.readFileSync(path.join(__dirname,'..','.local','loadout-reset-v22',key+'.json'),'utf8'))
+      if (record?.phase !== 'completed' || record.world !== JSON.stringify([state.profile,String(state.realm?.id),state.dimension]) || !record.home?.position) return null
+      host.shared.quarryV22HomeChest = structuredClone(record.home)
+      return structuredClone(record.home)
+    } catch { return null }
+  }
   const operations = {
     loadout: { preview: () => ensureLoadoutReset().prepare(), start: input => ensureLoadoutReset().start(input), status: () => loadoutReset?.status() ?? { busy: false, phase: 'idle' }, cancel: () => loadoutReset?.cancel() ?? { busy: false, phase: 'idle' } },
     shulkerRecovery: {
@@ -5296,7 +5308,14 @@ function createRuntime (host) {
       cancel: reason => { manualShulkerAbort?.abort(new Error(reason ?? 'MANUAL_STOP')); manualShulkerRecovery?.cancel(reason ?? 'MANUAL_STOP'); return manualShulkerTask ?? Promise.resolve(manualShulkerRecovery?.snapshot() ?? { busy: false }) }
     },
     quarry: {
-      plan: config => { if (!quarryJob?.holdsWork()) requireIdle(); return ensureQuarryJob().plan(config ?? {}) },
+      plan: config => {
+        if (!quarryJob?.holdsWork()) requireIdle()
+        const input=structuredClone(config??{})
+        if (input.homeChest == null && (input.inventory?.depositWhen == null || input.inventory.depositWhen === 'four_layers')) {
+          input.homeChest = getRegisteredQuarryHomeSite()
+        }
+        return ensureQuarryJob().plan(input)
+      },
       start: () => { requireIdle(); return ensureQuarryJob().start() },
       resume: () => { requireIdle(); return ensureQuarryJob().resume() },
       retryPersistence: () => ensureQuarryJob().retryPersistence(),
@@ -6769,6 +6788,9 @@ function createRuntime (host) {
       if (quarryBehaviorRestore) { host.shared.userBehaviorsEnabled = quarryBehaviorRestore.userBehaviorsEnabled; quarryBehaviorRestore = null }
       try { host.log(`露天掘り: ${s?.result?.type ?? s?.state}${s?.pauseReason ? ` (${s.pauseReason})` : ''}`) } catch {}
     }
+    // Read the same durable reset record on demand. The dashboard may restart
+    // after the chest is built; a cached in-memory location is not enough.
+    adapter.registeredHomeChest = getRegisteredQuarryHomeSite
     quarryJob = createQuarryJob({ adapter, storageMode: 'shulker', storage: quarryStorage, log: message => { try { host.log(`露天掘り: ${message}`) } catch {} } })
     if (host.shared.quarryDocument) { try { quarryJob.load(host.shared.quarryDocument) } catch (error) { host.shared.quarryLoadError = String(error.message).slice(0, 200) } }
     return quarryJob
@@ -6899,7 +6921,7 @@ function createRuntime (host) {
   function ensureLoadoutReset () {
     if (loadoutReset) return loadoutReset
     const getState = () => ({ ...quarryState(), loadingScreenEnded: host.shared.loadingScreenEnded })
-    loadoutReset = require('./loadout-runtime-adapter').createRuntimeLoadoutReset({
+    loadoutReset = require('./loadout-runtime-adapter').createRuntimeV22ChestReset({
       host, getState, inspection: inventoryInspection, crafting, armor, inventory, chest,
       generation: () => host.shared.loadoutGeneration ?? 0,
       getJob: () => ensureQuarryJob(),
