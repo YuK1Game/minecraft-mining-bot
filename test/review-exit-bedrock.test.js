@@ -162,6 +162,6 @@ test('review (2026-11-10): an ore in the exit shaft is dug with a pickaxe instea
   const { exitDigRule } = require('../src/quarry-exit-plan')
   assert.equal(exitDigRule('minecraft:diamond_ore').kind, 'dig')
   assert.equal(exitDigRule('minecraft:deepslate_iron_ore').tier, 2)
-  assert.equal(exitDigRule('minecraft:ancient_debris').kind, 'protected', 'only listed ores are dug')
+  assert.equal(exitDigRule('minecraft:ancient_debris').kind, 'dig', 'registered ancient debris is harvestable')
   assert.equal(exitDigRule('minecraft:chest').kind, 'protected')
 })
