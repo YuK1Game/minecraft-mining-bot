@@ -16,7 +16,7 @@ function deferred () {
   return { promise, resolve, reject }
 }
 
-function fixture (t) {
+function fixture (t, { equipment = null } = {}) {
   const gate = deferred(), reached = deferred(), calls = []
   let adapter, surfacePorts, held = false, autoReady = false, armorCalls = 0, preemptions = 0
   const chest = { applyPacket () {}, cancel () {}, depositDiamond () {}, snapshot: () => ({ busy: false }), rawItem: () => null,
@@ -34,6 +34,7 @@ function fixture (t) {
     return { status: 'completed', serverConfirmed: true }
   }
   const f = scene(t, { runtimeOverrides: {
+    ...(equipment ? { './quarry-v22-equipment': { createQuarryV22Equipment: () => equipment } } : {}),
     './chest': { createChest: () => chest },
     './armor': { createArmor: () => ({ preview: () => autoReady, equipBest: async () => { armorCalls++; return [] }, preemptForCombat: () => { preemptions++ }, applyPacket () {}, snapshot: () => ({ busy: false }) }) },
     './quarry-v22-chest-work': { createQuarryV22ChestWork: ports => { surfacePorts = ports; return { withdrawAll: transfer('withdraw'), depositAll: transfer('deposit') } } },
@@ -97,6 +98,36 @@ test('v2.2 surface ownership never delays combat priority and rejects the preemp
   assert.equal(f.armorCalls(), 0)
   assert.equal(f.shared.quarrySurfaceStorageOwner, undefined)
   await f.facadeOptions.resumeControl({ ...context, token })
+})
+
+test('v2.2 equipment defers reload through settlement while combat may still acquire control', { timeout: 3000 }, async t => {
+  for (const outcome of ['completed', 'failed']) await t.test(outcome, async t => {
+    const gate = deferred()
+    let busy = false
+    const equipment = {
+      async transfer () { busy = true; try { return await gate.promise } finally { busy = false } },
+      status: () => ({ busy }), applyPacket () {}, cancel () {}
+    }
+    const f = fixture(t, { equipment })
+    assert.equal(f.runtime.canReload(), true)
+    const pending = equipment.transfer()
+    void pending.catch(() => {})
+    assert.equal(f.runtime.canReload(), false, 'equipment has its own request owner even when crafting and inventory controllers are idle')
+    if (outcome === 'completed') {
+      const context = { kind: 'combat', claimId: 'equipment-reload-preempt', scope: f.scope() }
+      const token = await f.facadeOptions.acquireControl(context)
+      assert.notEqual(token.acquired, false, 'the reload guard cannot hold combat admission')
+      assert.equal(f.preemptions(), 1)
+      await f.facadeOptions.resumeControl({ ...context, token })
+      assert.equal(f.runtime.canReload(), false, 'releasing combat does not release an unsettled equipment request')
+      gate.resolve({ serverConfirmed: true })
+      assert.equal((await pending).serverConfirmed, true)
+    } else {
+      gate.reject(new Error('equipment receipt unavailable'))
+      await assert.rejects(pending, /equipment receipt unavailable/)
+    }
+    assert.equal(f.runtime.canReload(), true, 'both success and failure release the equipment reload guard')
+  })
 })
 
 test('v2.2 surface cancellation, scope change and failure release only the completed operation token', async t => {

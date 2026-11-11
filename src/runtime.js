@@ -810,6 +810,7 @@ function createRuntime (host) {
   const chest = createChest({ client: host.client, getState: () => { const state = working(); return { ...state, profile: state.profile ?? host.meta.profile, lifecycle: { ...(state.lifecycle ?? {}), deathId: foodKnownLife() } } }, world: host.world, crafting, interactions, version: host.meta.version, allocateRequestId: () => host.allocate('craft'), onUncertain, onInventory: commitChestMainDelta })
   const quarryV22Equipment = createQuarryV22Equipment({
     client: host.client,
+    crafting,
     getState: () => ({ ...working(), lifecycle: { ...(working().lifecycle ?? {}), deathId: actualLifeId() } }),
     getView: () => inventoryInspection.snapshot(),
     getRawMain: slot => crafting.rawItem(slot),
@@ -6975,7 +6976,7 @@ function createRuntime (host) {
   }
   return {
     operations, snapshot: getSnapshot, applyPacket, onSpawn, onRespawn, stopActions, resumeRequested,
-    canReload: () => !resetHeld() && !host.shared.quarrySurfaceStorageOwner && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && mining.snapshot().phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !food.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(furnace.snapshot().busy || chest.snapshot().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging,
+    canReload: () => !resetHeld() && !host.shared.quarrySurfaceStorageOwner && !quarryV22Equipment.status().busy && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && mining.snapshot().phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !food.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(furnace.snapshot().busy || chest.snapshot().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging,
     dispose: async reason => {
       if (disposed) return
       loadoutReset?.cancel()
