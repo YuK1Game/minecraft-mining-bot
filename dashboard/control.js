@@ -299,7 +299,7 @@
     const p = resetPreview
     if (!p || busy || p.expiresAt <= Date.now() || p.session !== current?.live?.session) return
     closeReset(); plan = null; $('plan-results').hidden = true
-    act('reset', 'loadout', { command: 'resetStart', session: p.session, resetToken: p.token, confirm: 'REPLACE_SURFACE_CHEST' }, () => message('reset', ''))
+    act('reset', 'loadout', { command: 'resetStart', session: p.session, resetToken: p.token, confirm: p.homeChest?.position && p.homeChest?.other ? 'REPLACE_SURFACE_CHEST' : 'REPLACE_INITIAL_INVENTORY' }, () => message('reset', ''))
   })
   $('reset-stop').addEventListener('click', () => act('reset', 'loadout', { command: 'resetCancel', session: current?.live?.session }, () => message('reset', '中断を要求しました。途中結果を確認してください。')))
 

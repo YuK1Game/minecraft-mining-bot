@@ -114,8 +114,9 @@ function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks
   const wanted = Array.isArray(miningExhausted) ? Object.fromEntries(miningExhausted.map(k => [k, 2])) : (miningExhausted && typeof miningExhausted === 'object' ? miningExhausted : {})
   for (const [kind, n] of Object.entries(wanted)) if ((kind === 'pickaxe' || kind === 'shovel') && Number.isSafeInteger(n) && !(v22 && shovelExhausted && kind === 'shovel')) desired[kind] = Math.max(desired[kind], Math.min(4, n))
   for (const kind of exhaustedKinds) if (tight && (kind === 'pickaxe' || kind === 'shovel') && usesOf(best[kind]) >= FRESH_TOOL_USES) desired[kind] = Math.max(1, Math.min(desired[kind], available[kind]))
-  const missing = Object.fromEntries([...ROLES, ...V22_ROLES].map(role => [role, Math.max(0, desired[role] - available[role])]))
-  const required = { pickaxe: missing.pickaxe > 0, shovel: missing.shovel > 0, food: desired.food > 0 && available.food === 0, dirt: v22 ? missing.dirt > 0 : missing.dirt > 0 && available.dirt <= keepExitDirt, totem: missing.totem > 0 }
+  if (!v22) { delete desired.totem; delete available.totem }
+  const missing = Object.fromEntries((v22 ? V22_ROLES.concat(['food']) : ROLES).map(role => [role, Math.max(0, desired[role] - available[role])]))
+  const required = { pickaxe: missing.pickaxe > 0, shovel: missing.shovel > 0, food: desired.food > 0 && available.food === 0, dirt: v22 ? missing.dirt > 0 : missing.dirt > 0 && available.dirt <= keepExitDirt, ...(v22 ? { totem: missing.totem > 0 } : {}) }
   return { desired, available, missing, required, returns, freeSlots: freeSlots(main), exitDirt: { required: keepExitDirt, available: Math.min(keepExitDirt, available.dirt) }, sealDirt: { required: keepSealBlocks, available: Math.max(0, available.dirt - keepExitDirt) } }
 }
 

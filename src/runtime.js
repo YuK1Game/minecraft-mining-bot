@@ -6921,7 +6921,12 @@ function createRuntime (host) {
   function ensureLoadoutReset () {
     if (loadoutReset) return loadoutReset
     const getState = () => ({ ...quarryState(), loadingScreenEnded: host.shared.loadingScreenEnded })
-    loadoutReset = require('./loadout-runtime-adapter').createRuntimeV22ChestReset({
+    // The v2.2 surface large-chest reset is opt-in (host.shared.loadoutResetMode
+    // = 'v22-chest') until its command path and server replies are confirmed on
+    // the real Realm; the confirmed shulker reset stays the default.
+    const factories = require('./loadout-runtime-adapter')
+    const factory = host.shared.loadoutResetMode === 'v22-chest' ? factories.createRuntimeV22ChestReset : factories.createRuntimeLoadoutReset
+    loadoutReset = factory({
       host, getState, inspection: inventoryInspection, crafting, armor, inventory, chest,
       generation: () => host.shared.loadoutGeneration ?? 0,
       getJob: () => ensureQuarryJob(),

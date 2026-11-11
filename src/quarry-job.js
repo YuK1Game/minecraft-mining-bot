@@ -54,6 +54,10 @@ const STORAGE_WAIT_MS = 20000 // longest wait for the chest area to clear (a lon
 const SETTLE_EAT_CLEARANCE = 8 // m: no eating in the settle wait with a hostile this close
 const TERRAIN_OBSERVATION_WAIT_MS = 2000
 const TERRAIN_OBSERVATION_MAX_REQUESTS = 2
+// v2.2 four-layer storage becomes the default only once its runtime is
+// complete and verified on the real Realm; until then it is chosen explicitly
+// with inventory.depositWhen = 'four_layers'.
+const V22_DEFAULT = false
 // A layer whose terrain is not received is requested again, with growing waits,
 // before the job pauses (live 2026-11-10 23:16: the world cache holds 512
 // sections and had evicted the next layer's, so Y-33 was unknown on arrival).
@@ -349,7 +353,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const config = defaults(input)
     // Only new production shulker plans adopt v2.2 by default. Persisted
     // legacy jobs keep their explicit policy and require deliberate migration.
-    if (shulkerOnly && input.inventory?.pickupMode == null && input.inventory?.depositWhen == null) {
+    if (shulkerOnly && V22_DEFAULT && input.inventory?.pickupMode == null && input.inventory?.depositWhen == null) {
       config.inventory.pickupMode = 'active'
       config.inventory.depositWhen = 'four_layers'
       if (input.inventory?.minFreeSlots == null) config.inventory.minFreeSlots = 3
