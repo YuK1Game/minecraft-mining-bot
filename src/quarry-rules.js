@@ -118,6 +118,7 @@ function selectTool (rule, items, { orePolicy = 'maximize_yield', buildingBlockP
   const worn = states.filter(t => !t.usable && (!rule.needs || t.kind === rule.needs && t.tier >= rule.tier))
   const preferred = states.filter(t => fits(t) && (rule.needs ? true : t.kind === rule.tool) && !(reserved.has(nameOf(t.item)) && !rule.ore))
   if (rule.needs && !preferred.length) {
+    if (rule.needs === 'shovel' && durability.allowHandShovel === true) return { ok: true, kind: 'hand', slot: null, name: null, tier: 0, shovelFallback: true }
     const reason = worn.length ? (worn.some(t => t.reason === 'DURABILITY_UNKNOWN') ? 'TOOL_DURABILITY_UNKNOWN' : 'TOOL_DURABILITY_RESERVE') : 'WAITING_FOR_TOOL'
     return { ok: false, reason, needs: { kind: rule.needs, tier: rule.tier } }
   }
