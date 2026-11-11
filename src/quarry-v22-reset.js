@@ -57,7 +57,8 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
       return {...copy(registered),existing:true}
     }
     const chunk=chunkOf(feet.x,feet.z),bounds=chunkBounds(chunk), inside=p=>p.x>=bounds.xMin&&p.x<=bounds.xMax&&p.z>=bounds.zMin&&p.z<=bounds.zMax
-    const dirs=[[1,0],[-1,0],[0,1],[0,-1]]
+    // Default chest facing north combines most reliably along east/west.
+    const dirs=[[1,0],[-1,0]]
     for(const [dx,dz] of dirs) {
       const position={x:feet.x+dx,y:feet.y,z:feet.z+dz},other={x:feet.x+2*dx,y:feet.y,z:feet.z+2*dz}
       const stage={x:feet.x-dx,y:feet.y,z:feet.z-dz}
