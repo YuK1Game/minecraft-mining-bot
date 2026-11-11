@@ -1,0 +1,27 @@
+name: Quarry v2.2 focused tests
+on:
+  push:
+    branches:
+      - feat/quarry-v22-underground-cargo-20261111
+  pull_request:
+    paths:
+      - 'src/quarry-v22-*'
+      - 'src/quarry-four-layer.js'
+      - 'src/quarry-job.js'
+      - 'test/quarry-v22-*'
+      - 'test/quarry-four-layer.test.js'
+  workflow_dispatch:
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: node --test test/quarry-v22-*.test.js test/quarry-four-layer.test.js
