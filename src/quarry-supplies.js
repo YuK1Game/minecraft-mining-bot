@@ -56,7 +56,7 @@ function discoverSupplyBindings (items, { resolveName, layout = 'legacy' } = {})
     // used (live 2026-11-10: blue gave one pickaxe, brown 32 dirt, and a new
     // job could no longer bind them): any stacks of that one item. Any other
     // box must still be 27 full stacks so that cargo is never taken for supplies.
-    const coloured = item.name === SUPPLY_COLORS[role]
+    const coloured = item.name === SUPPLY_COLORS[role] || role === 'totem' && item.name === 'minecraft:yellow_shulker_box'
     if (!entries.every(entry => entry.name === name && (coloured ? entry.count >= 1 && entry.count <= limit : entry.count === limit))) continue
     if (entries.length !== 27 && !coloured) continue
     found[role].push({ role, itemName: name, key: carriedContainerKey(item), boxName: item.name, stackId: item.stackId ?? item.raw?.stack_id })
