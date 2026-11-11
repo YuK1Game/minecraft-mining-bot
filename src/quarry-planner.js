@@ -541,7 +541,9 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       // layers still to dig, the walkable area must keep a way down: a stance
       // already on this layer's floor, or a pending cell of this layer with a
       // solid floor under it next to a reachable stance (mine it, step down).
-      if (y > regions.yBottom && !exitAfter(feet, [], y, layer.pending).down) return { action: 'pause', reason: 'LAYER_ISOLATION_RISK', details: { y, reach: reach.size, pending: layer.pending.length, groundedCells: layer.pending.filter(t => grounded(t.position)).length, feet: { ...feet } } }
+      // Only for a real void under the layer, while the bot is not already cut off
+      // (that case keeps its DESCENT_REQUIRED stop below).
+      if (y > regions.yBottom && reach.size > SMALL_REACH && layer.pending.filter(t => !grounded(t.position)).length >= WRITE_OFF_LAYER_CELLS && !exitAfter(feet, [], y, layer.pending).down) return { action: 'pause', reason: 'LAYER_ISOLATION_RISK', details: { y, reach: reach.size, pending: layer.pending.length, groundedCells: layer.pending.filter(t => grounded(t.position)).length, feet: { ...feet } } }
       // Stair upkeep before the layer is opened.
       const step = stairStepAt(y)
       if (step) {
