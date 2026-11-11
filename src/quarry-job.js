@@ -353,6 +353,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (shulkerOnly && config.inventory.storage?.length) issues.push('SHULKER_ONLY_STORAGE')
     if (config.inventory.depositWhen === 'four_layers') {
       const chest = config.homeChest
+      if (chest?.chunk && Array.isArray(config.target?.chunks) && !config.target.chunks.some(c=>c.x===chest.chunk.x&&c.z===chest.chunk.z)) issues.push('LOADOUT_TARGET_CHUNK_MISMATCH')
       if (!chest || !['position', 'other', 'stand'].every(part=>chest[part] && ['x','y','z'].every(axis=>Number.isSafeInteger(chest[part][axis])))) issues.push('LOADOUT_CHEST_NOT_CONFIGURED')
       if (typeof adapter.loadoutWithdraw !== 'function' || typeof adapter.finalChestDeposit !== 'function' || typeof adapter.equipmentTransfer !== 'function') issues.push('V22_RUNTIME_UNAVAILABLE')
       if (chest?.position && chest?.other && chest?.stand) {
