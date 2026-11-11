@@ -148,8 +148,8 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
       cp.phase='armor'
       await saveCheckpoint(cp,onCheckpoint)
       const equipped=await equipArmor({maxMoves:4})
-      const view=current(cp.world,cp.life).view
-      if(view.armor?.known!==true || !['diamond_helmet','diamond_chestplate','diamond_leggings','diamond_boots'].every((piece,i)=>view.armor.slots[i]?.name==='minecraft:'+piece))throw fail('LOADOUT_ARMOR_UNCONFIRMED')
+      const equippedView=current(cp.world,cp.life).view
+      if(equippedView.armor?.known!==true || !['diamond_helmet','diamond_chestplate','diamond_leggings','diamond_boots'].every((piece,i)=>equippedView.armor.slots[i]?.name==='minecraft:'+piece))throw fail('LOADOUT_ARMOR_UNCONFIRMED')
       if(equipped?.some(x=>x.serverConfirmed!==true))throw fail('LOADOUT_ARMOR_UNCONFIRMED')
       cp.phase='completed';await saveCheckpoint(cp,onCheckpoint)
       return {status:'completed',serverConfirmed:true,checkpoint:copy(cp)}
