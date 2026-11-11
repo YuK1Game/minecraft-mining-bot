@@ -159,7 +159,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   const healthRatio = s => s.health / (Number.isFinite(s.maxHealth) && s.maxHealth > 0 ? s.maxHealth : 20)
   const foodOf = s => s.food ?? s.hunger ?? null
   const items = s => s?.inventory?.known === true && !s.inventory.uncertain && Array.isArray(s.inventory.items) ? s.inventory.items : null
-  const inventoryPolicy = () => ({ ...job.config.inventory, toolPolicy: job.config.tools })
+  const inventoryPolicy = () => ({ ...job.config.inventory, toolPolicy: job.config.tools, ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64 } : {}) })
   const passivePickup = () => job?.config.inventory.pickupMode === 'passive'
   const fullOnlyStorage = () => job?.config.inventory.depositWhen === 'full'
   const fourLayerStorage = () => job?.config.inventory.pickupMode === 'active' && job?.config.inventory.depositWhen === 'four_layers'
@@ -344,15 +344,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!validStoragePair(config.inventory)) issues.push('UNSUPPORTED_STORAGE_POLICY')
     if (shulkerOnly && config.inventory.storage?.length) issues.push('SHULKER_ONLY_STORAGE')
     if (shulkerOnly && !config.inventory.supplyBoxes?.length) {
-      const discovered = adapter.discoverSupplies?.()
+      const discovered = adapter.discoverSupplies?.(config.inventory.depositWhen === 'four_layers' ? 'v22' : 'legacy')
       if (discovered?.ok) { config.inventory.supplyBoxes = copy(discovered.bindings); config.inventory.autoSupplies = true }
     }
     if (config.inventory.autoSupplies && !config.inventory.supplyBoxes?.length) {
-      const discovered = adapter.discoverSupplies?.()
+      const discovered = adapter.discoverSupplies?.(config.inventory.depositWhen === 'four_layers' ? 'v22' : 'legacy')
       if (discovered?.ok) config.inventory.supplyBoxes = copy(discovered.bindings)
       else issues.push(discovered?.reason ?? 'SUPPLY_BOXES_UNCONFIRMED')
     }
-    if (config.inventory.supplyBoxes?.length && (!validSupplyBindings(config.inventory.supplyBoxes) || typeof adapter.restockSupplies !== 'function')) issues.push('SUPPLY_BINDINGS_INVALID')
+    if (config.inventory.supplyBoxes?.length && (!validSupplyBindings(config.inventory.supplyBoxes, config.inventory.depositWhen) || typeof adapter.restockSupplies !== 'function')) issues.push('SUPPLY_BINDINGS_INVALID')
     if (state?.phase !== 'spawned' || state.dead) issues.push('NOT_SPAWNED')
     if (state?.gameMode !== 'survival' && state?.gameMode !== 0) issues.push('NOT_SURVIVAL')
     if (state?.dimension && state.dimension !== config.dimension.replace(/^minecraft:/, '')) issues.push('WRONG_DIMENSION')
@@ -654,7 +654,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!Object.keys(ledger.export().startInventory).length) for (const [n, c] of lastInventory) ledger.add('startInventory', n, c)
     combatBridge.activate({ jobId: job.config.jobId, epoch, travel: p => permits(regions, 'travel', p).allowed })
     await save('start')
-    if (!(await prepareExit(myEpoch))) return
+    if (!fourLayerStorage() && !(await prepareExit(myEpoch))) return
+    if (fourLayerStorage()) { setState('SURVEY'); return }
     if (await restock(myEpoch, 'SURVEY', true)) return
     setState('SURVEY')
   }
@@ -712,7 +713,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
     }
     if (job.miningCompletedAt && job.config.exit?.mode === 'adjacent_pillar') { setState('EGRESS'); return }
-    if (!(await prepareExit(myEpoch))) return
+    if (!fourLayerStorage() && !(await prepareExit(myEpoch))) return
     const floorY = workFloorY()
     clearWorkDeferred([...TRANSIENT_DEFER, ...TOOL_WAIT])
     badStances.clear()
@@ -892,7 +893,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   // ---- normal work -------------------------------------------------------
   async function work (myEpoch) {
-    if (job.exitPreflight?.layer !== job.cursorY && !(await prepareExit(myEpoch))) return
+    if (!fourLayerStorage() && job.exitPreflight?.layer !== job.cursorY && !(await prepareExit(myEpoch))) return
     const s = guard(myEpoch)
     const hz = hazardNow(s)
     if (hz) return escapeHazard(myEpoch, hz)
@@ -1438,7 +1439,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const fail = reason => ({ reason, details: { stance, floor: { ...stance, y: stance.y - 1 }, position: p } })
       if (!planner.safeSealStance(stance)) return fail('SEAL_UNSAFE_STANCE')
       const inv = items(state), material = nameOf(decision.material), dirt = totals(inv ?? []).get('dirt') ?? 0
-      const reserve = Math.max(job.config.inventory.keepExitDirt ?? 0, decision.materialRequired === 'dirt' ? 192 : 0)
+      const reserve = fourLayerStorage() ? 0 : Math.max(job.config.inventory.keepExitDirt ?? 0, decision.materialRequired === 'dirt' ? 192 : 0)
       if (!inv || decision.materialRequired && material !== decision.materialRequired || material === 'dirt' && dirt <= reserve || !inv?.some(i => i.slot === decision.slot && nameOf(i) === material && i.count > 0)) return fail('SEAL_MATERIAL_MISSING')
       const b = adapter.getBlock(p.x, p.y, p.z)
       if (!permits(regions, 'seal', p).allowed || !b?.known || b.protected || b.protectionSource || b.extra?.length) return fail('SEAL_CONTEXT_CHANGED')
@@ -1732,8 +1733,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     note(busy(list) ? 'storage_area_wait_timeout' : 'storage_area_clear', { count: list.length })
   }
 
-  function validSupplyBindings (bindings) {
-    return Array.isArray(bindings) && bindings.length === 4 && ['pickaxe', 'shovel', 'food', 'dirt'].every(role => bindings.filter(b => b?.role === role && typeof b.key === 'string' && typeof b.itemName === 'string').length === 1) && new Set(bindings.map(b => b.key)).size === 4
+  function validSupplyBindings (bindings, mode = job?.config?.inventory?.depositWhen) {
+    const roles = mode === 'four_layers' ? ['pickaxe', 'shovel', 'dirt', 'totem'] : ['pickaxe', 'shovel', 'food', 'dirt']
+    return Array.isArray(bindings) && bindings.length === 4 && roles.every(role => bindings.filter(b => b?.role === role && typeof b.key === 'string' && typeof b.itemName === 'string').length === 1) && new Set(bindings.map(b => b.key)).size === 4
   }
   const supplyCanPlace = p => supplyPlacementAllowed(regions, p)
   const supplyCanClear = p => permits(regions, 'break', p).allowed && clearableSitePlant(planningBlocks(job.config)(p.x, p.y, p.z))
@@ -1846,7 +1848,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!bindings?.length && !job.supplyRestock) return false
     if (job.portableStorage) return false
     if (!validSupplyBindings(bindings) || typeof adapter.restockSupplies !== 'function') { await finish('PAUSED', 'SUPPLY_UNSUPPORTED'); return true }
-    const inventory = items(guard(myEpoch)), policy = { ...job.config.inventory, tools: job.config.tools, ...(job.miningExhausted ? { miningExhausted: copy(job.miningExhausted) } : {}) }
+    const inventory = items(guard(myEpoch)), equipmentView = adapter.equipmentView?.()
+    const policy = { ...job.config.inventory, tools: job.config.tools,
+      ...(job.miningExhausted ? { miningExhausted: copy(job.miningExhausted) } : {}),
+      ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64,
+        exitPreparing: job.egressPreparation === true, exitDirtTarget: job.egressPreparation === true ? 192 : 64,
+        totemNeeded: equipmentView?.offhand?.known === true && equipmentView.offhand.slots?.[0]?.empty === true,
+        shovelExhausted: job.shovelSupplyExhausted === true } : {})
+    }
     if (!inventory && !job.supplyRestock) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
     const need = supplyNeeds(inventory ?? [], policy)
     const shortage = Object.values(need.required).some(Boolean)
@@ -2516,7 +2525,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job.egress?.operationId) {
       const read = planningBlocks(job.config); let unknownExitTerrain = false
       const exitBlocks = (x, y, z) => { const b = read(x, y, z); if (b?.known !== true) unknownExitTerrain = true; return b }
-      const selected = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(s), getBlock: exitBlocks, inventory: items(s), policy: { ...job.config.tools, ...job.config.collection }, minFreeSlots: job.config.inventory.minFreeSlots, allowFullBag: !!job.storageExhausted && passivePickup(), exit: job.config.exit, reservation: job.exitReservation?.plan ?? null, reachable: planner.reachableFrom(feetCell(s)) })
+      const selected = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(s), getBlock: exitBlocks, inventory: items(s), policy: { ...job.config.tools, ...job.config.collection }, minFreeSlots: fourLayerStorage() ? 0 : job.config.inventory.minFreeSlots, allowFullBag: fourLayerStorage() || !!job.storageExhausted && passivePickup(), exit: job.config.exit, reservation: job.exitReservation?.plan ?? null, reachable: planner.reachableFrom(feetCell(s)) })
       job.egress = { phase: selected.ok ? 'planned' : 'blocked', reason: selected.reason ?? null, plan: copy(selected.plan ?? null), operationId: null, checkpoint: null, scope: scopeOf(s), life: lifeOf(s) }
       if (selected.plan) job.config.inventory.keepExitDirt = selected.plan.totalDirt
       if (!selected.ok && selected.reason === 'EXIT_COLUMN_UNAVAILABLE' && unknownExitTerrain && await requestTerrainObservation(myEpoch, 'egress')) { job.egress.phase = 'planned'; job.egress.reason = 'EXIT_TERRAIN_PENDING'; return }
@@ -2548,7 +2557,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     active.phase = 'running'; active.reason = null
     const hpBefore = Number(guard(myEpoch).health), feetBefore = active.checkpoint?.confirmedFeetY ?? null
     const rec = recordAction({ type: 'egress', operationId: active.operationId, column: active.plan.column })
-    const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint), ...(reconnect ? { reconnect: true } : {}), ...(job.storageExhausted && passivePickup() ? { allowFullInventory: true } : {}) }, { signal, onCheckpoint }))
+    const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint), ...(reconnect ? { reconnect: true } : {}), ...(fourLayerStorage() || job.storageExhausted && passivePickup() ? { allowFullInventory: true } : {}) }, { signal, onCheckpoint }))
     guard(myEpoch)
     if (result?.checkpoint) await onCheckpoint(result.checkpoint)
     rec.result = copy(result ?? null)
