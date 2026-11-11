@@ -13,14 +13,14 @@ async function main (args = process.argv.slice(2), { request = requestControl, s
   const state = await request({ apiPort })
   const response = await request({ apiPort, payload: { command: 'resetPreview', session: state.session }, timeoutMs: 30000 })
   const p = response.resetPreview
-  stdout.write(`\n${p.target.realm} / ${p.target.player}\n初期セット ${p.manifest.version}\n空シュルカー20箱 + 補給4箱（ツルハシ27・シャベル27・パン1728・土1728）\nエンチャント付きダイヤ装備・剣・道具・無限の弓\n手持ち: パン64 / 土192 / 矢64\n一時箱: ${p.stage.x}, ${p.stage.y}, ${p.stage.z}\n現在の所持品・装備・箱の中身を置き換えます。元に戻せません。ジョブは終了し、採掘は再開しません。\n`)
+  stdout.write(`\n${p.target.realm} / ${p.target.player}\n地上ラージチェスト初期セット ${p.manifest.version}\n空の収納用シュルカー22箱 + 補給4箱（ツルハシ27・シャベル27・土1728・トーテム27）\nダイヤ装備一式・ダイヤ剣・無限の弓・パン64・矢64\nチェスト: ${p.homeChest.position.x}, ${p.homeChest.position.y}, ${p.homeChest.position.z} と ${p.homeChest.other.x}, ${p.homeChest.other.y}, ${p.homeChest.other.z}\n一時箱: ${p.stage.x}, ${p.stage.y}, ${p.stage.z}\nBotの現在のインベントリ・防具・オフハンドは全て空である必要があります。\n地上ラージチェストの既存内容があれば初期セットに置き換えます。\n`)
   if (args.includes('--preview')) return { previewOnly: true }
   if (!ask && !stdin.isTTY) throw new Error('対話入力が必要です。非対話では --preview のみ利用できます。')
   const terminal = ask ? null : createInterface({ input: stdin, output: stdout })
   let answer
   try { answer = await (ask ?? (prompt => terminal.question(prompt)))('実行する場合だけ RESET と入力: ') } finally { terminal?.close() }
   if (answer !== 'RESET') { stdout.write('キャンセルしました。\n'); return { cancelled: true } }
-  const started = await request({ apiPort, payload: { command: 'resetStart', session: response.state.session, resetToken: p.token, confirm: 'REPLACE_INITIAL_INVENTORY' }, timeoutMs: 30000 })
+  const started = await request({ apiPort, payload: { command: 'resetStart', session: response.state.session, resetToken: p.token, confirm: 'REPLACE_SURFACE_CHEST' }, timeoutMs: 30000 })
   const id = started.reset.operationId; let last = ''
   for (let attempt = 0; attempt < 1250; attempt++) {
     const s = await request({ apiPort }), reset = s.loadout
