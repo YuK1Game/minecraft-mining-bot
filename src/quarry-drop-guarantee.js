@@ -1,6 +1,7 @@
 'use strict'
 
 const { blockRule, nameOf, toolOf } = require('./quarry-rules')
+const { oreDropRange } = require('./quarry-ore')
 const { maxStack, SLOTS } = require('./quarry-inventory')
 
 // Capacity needs an upper bound, collection a lower bound. These tables
@@ -35,6 +36,16 @@ function deriveDropGuarantee (target, tool) {
   if (block.needs && (type !== block.needs || !Number.isSafeInteger(tier) || tier < block.tier || tier > 4)) return fail('DROP_TOOL_NOT_CONFIRMED')
   const silk = type === 'hand' ? false : held?.silk
   if (silk != null && typeof silk !== 'boolean') return fail('DROP_TOOL_NOT_CONFIRMED')
+
+  if (block.ore === true) {
+    if (type !== 'pickaxe' || !Number.isInteger(tier) || tier < block.tier) return fail('DROP_TOOL_NOT_CONFIRMED')
+    const fortune = held?.fortune ?? 0
+    const drop = oreDropRange(name, { silk: silk === true, fortune })
+    if (!drop) return fail('DROP_TOOL_NOT_CONFIRMED')
+    const alternatives = []
+    for (let count = drop.min; count <= drop.max; count++) alternatives.push([item(drop.name, count)])
+    return rule('bedrock_ore_harvest', alternatives, [[item(drop.name, drop.max)]])
+  }
 
   if (name === 'leaf_litter') {
     if (type !== 'hand') return fail('DROP_TOOL_NOT_CONFIRMED')
