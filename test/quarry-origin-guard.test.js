@@ -16,7 +16,7 @@ function fixture ({ auto = false, isolated = false, headOutside = false, driftIn
   sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 10); sim.give('dirt', 224)
   if (isolated) {
     sim.world.fill(-12, 63, -1, 28, 66, -1, 'stone')
-    sim.world.set(3, 63, 3, 'diamond_ore')
+    sim.world.set(3, 63, 3, 'future_ore')
   }
   const travel = { xMin: -6, xMax: 20, yMin: 50, yMax: headOutside ? 63 : 70, zMin: isolated ? -8 : 0, zMax: 20 }
   const config = { jobId: 'origin-guard', target: { chunks: [{ x: 0, z: 0 }] }, yTop: 63, yBottom: 61, worldMinY: 50, worldMaxY: 80, permissions: { travelRegion: auto ? null : [travel] }, inventory: { carryOnly: true, minFreeSlots: 1 } }
@@ -76,7 +76,7 @@ test('an unstarted isolated valid origin records only its first unreachable laye
     assert.equal(records['3,63,3'].reason, 'PROTECTED_ORE')
     assert.ok(Object.keys(records).every(p => Number(p.split(',')[1]) === 63))
     assert.equal(f.sim.stats.mined, 0); assert.equal(f.sim.stats.moves, 0)
-    assert.equal(f.sim.world.name(3, 63, 3), 'diamond_ore')
+    assert.equal(f.sim.world.name(3, 63, 3), 'future_ore')
   } finally { await f.job.pause() }
 })
 
