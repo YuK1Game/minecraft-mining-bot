@@ -63,7 +63,10 @@ function createLoadoutReset ({ adapter, commands, now = Date.now, sleep = ms => 
     for (const [dx, dz] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) {
       const p = { x: feet.x + dx, y: feet.y, z: feet.z + dz }
       if (!point(p) || p.y < -63 || p.y > 317 || adapter.protectedAt?.(p)) continue
-      if (air(adapter.getBlock(p.x, p.y, p.z)) && air(adapter.getBlock(p.x, p.y + 1, p.z)) && floor(adapter.getBlock(p.x, p.y - 1, p.z)) && air(adapter.getBlock(feet.x + dx / 2, p.y + 1, feet.z + dz / 2))) return p
+      // Both cells between the bot and the box must be air: the box is opened
+      // along that line (live 2026-11-11 10:42: leaf litter at foot level
+      // blocked the sight line and the reset stopped with an empty box placed).
+      if (air(adapter.getBlock(p.x, p.y, p.z)) && air(adapter.getBlock(p.x, p.y + 1, p.z)) && floor(adapter.getBlock(p.x, p.y - 1, p.z)) && air(adapter.getBlock(feet.x + dx / 2, p.y, feet.z + dz / 2)) && air(adapter.getBlock(feet.x + dx / 2, p.y + 1, feet.z + dz / 2))) return p
     }
     throw fail('RESET_STAGING_UNAVAILABLE', '近くに初期セットを組み立てる空き1マスがありません。平らで開けた場所へ移動してください。')
   }
