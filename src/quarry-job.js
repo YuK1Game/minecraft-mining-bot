@@ -333,6 +333,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       config.inventory.depositWhen = 'four_layers'
       if (input.inventory?.minFreeSlots == null) config.inventory.minFreeSlots = 3
     }
+    if (shulkerOnly && config.inventory.depositWhen === 'four_layers') {
+      config.boundarySeal = { ...config.boundarySeal, enabled: true, horizontalMargin: 1, sourceOnly: true, material: 'dirt', closeOpenings: true }
+    }
     const state = adapter.getState()
     const issues = []; const warnings = []
     if (!worldIdentity(state)) issues.push('WORLD_IDENTITY_UNKNOWN')
@@ -358,6 +361,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     let yTop = Number.isSafeInteger(config.yTop) ? config.yTop : null
     let unknownAbove = 0
     if (yTop === null) { const s = p.surveyTop(); yTop = s.yTop; unknownAbove = s.unknownAbove }
+    if (config.inventory.depositWhen === 'four_layers') {
+      if (Number.isSafeInteger(yTop)) yTop = Math.min(yTop, 75)
+      if (Number.isSafeInteger(config.yTop) && config.yTop > 75) issues.push('Y_TOP_ABOVE_LIMIT')
+    }
     if (yTop === null) issues.push('Y_TOP_UNKNOWN')
     if (unknownAbove) warnings.push({ code: 'Y_TOP_PROVISIONAL', unknownCells: unknownAbove })
     if (yTop !== null) regs = makeRegions(config, yTop, state)
