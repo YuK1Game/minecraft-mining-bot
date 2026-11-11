@@ -6,17 +6,30 @@ const { permits } = require('./quarry-region')
 const point = p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]))
 const same = (a, b) => point(a) && point(b) && ['x', 'y', 'z'].every(k => a[k] === b[k])
 
-function supplyPlacementAllowed (regions, p) {
+function supplyPlacementAllowed (regions, p, initialStation = null) {
   if (!point(p) || !regions?.columns?.has(`${p.x},${p.z}`) || p.y < regions.yBottom || p.y > regions.worldMaxY - 1) return false
   if (!permits(regions, 'travel', p).allowed || !permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed) return false
   const allowed = permits(regions, 'place', p)
   if (allowed.allowed) return true
   // A box on the uncut surface sits one cell above yTop. Authorize only
   // temporary supply work there, not another layer of quarry excavation.
-  return allowed.reason === 'OUTSIDE_PERMITTED_REGION' && p.y === regions.yTop + 1 && permits(regions, 'place', { ...p, y: p.y - 1 }).allowed
+  if (allowed.reason !== 'OUTSIDE_PERMITTED_REGION') return false
+  if (p.y === regions.yTop + 1 && permits(regions, 'place', { ...p, y: p.y - 1 }).allowed) return true
+  // The receipt-backed initial kit has one registered surface station, which
+  // can be above the v2.2 work cap. This callback also guards the standing cell
+  // during placement/recovery; it never changes ordinary break/place rights.
+  const cells = [initialStation?.stand, initialStation?.stage]
+  return cells.every(c => {
+    if (!point(c) || !regions.columns.has(`${c.x},${c.z}`) || c.y < regions.yBottom || c.y >= regions.worldMaxY) return false
+    return [c, { ...c, y: c.y + 1 }].every(body => {
+      const placement = permits(regions, 'place', body)
+      return permits(regions, 'travel', body).allowed && (placement.allowed || placement.reason === 'OUTSIDE_PERMITTED_REGION')
+    })
+  }) &&
+    !same(cells[0], cells[1]) && cells[0].y === cells[1].y && cells.some(c => same(c, p))
 }
 
-async function planSupplyApproach ({ origin, regions, planner, canPlace, previewSite, previewRoute = null, guard = () => {} }) {
+async function planSupplyApproach ({ origin, regions, planner, canPlace, previewSite, initialStation = null, previewRoute = null, guard = () => {} }) {
   guard()
   const failures = [], counts = {}
   const reject = result => {
@@ -25,7 +38,7 @@ async function planSupplyApproach ({ origin, regions, planner, canPlace, preview
     counts[cause] = (counts[cause] ?? 0) + 1
     if (failures.length < 8) failures.push({ cause, ...(detail.position ? { position: detail.position } : {}), ...(detail.block ? { block: detail.block } : {}) })
   }
-  const workStand = p => supplyPlacementAllowed(regions, p) && planner.standable(p)
+  const workStand = p => supplyPlacementAllowed(regions, p, initialStation) && planner.standable(p)
   const check = p => {
     if (!workStand(p)) return null
     const result = previewSite(p)

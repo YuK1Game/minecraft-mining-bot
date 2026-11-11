@@ -260,6 +260,10 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       const floor = supportIssue(read, stand)
       if (floor) { reject(floor); continue }
       const eye = samePoint(stand, origin) ? state.position : { x: stand.x + 0.5, y: stand.y + 1.62, z: stand.z + 0.5 }
+      // This is a proposal to walk to stand before placing. Its self hitbox
+      // belongs at that proposed stand, not at the previous pickup position.
+      // Actual placement rechecks the live position after verified movement.
+      const proposedState = samePoint(stand, origin) ? state : { ...state, position: eye }
       // Retain the preferred two-cell gap, but a one-cell gap is also within
       // reach and outside the player's hitbox on small/uneven work platforms.
       for (const distance of kind === 'shulker' ? [2, 1] : [2]) for (const [dx, dz] of DIRECTIONS) for (const side of kind === 'double_chest' ? [1, -1] : [1]) {
@@ -274,7 +278,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
           return true
         } : null
         if (positions.some(p => rejected.has(key(p)))) { reject({ cause: 'PREVIOUSLY_REJECTED_SITE', position: first }); continue }
-        const issue = positions.map(p => cellIssue(p, state, allowed, [], prepare)).find(Boolean)
+        const issue = positions.map(p => cellIssue(p, proposedState, allowed, [], prepare)).find(Boolean)
         if (issue) { reject(issue); continue }
         if (positions.some(p => Math.hypot(p.x + 0.5 - eye.x, p.y - eye.y, p.z + 0.5 - eye.z) > 4.5)) { reject({ cause: 'BOX_OUT_OF_REACH', position: first }); continue }
         if (!positions.every(p => canSeePlacementFloor(read, eye, p, { plannedClearance: prepare }))) { reject({ cause: 'PLACEMENT_SIGHT_BLOCKED', position: first }); continue }

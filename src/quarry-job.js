@@ -1878,7 +1878,23 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const roles = mode === 'four_layers' ? ['pickaxe', 'shovel', 'dirt', 'totem'] : ['pickaxe', 'shovel', 'food', 'dirt']
     return Array.isArray(bindings) && bindings.length === 4 && roles.every(role => bindings.filter(b => b?.role === role && typeof b.key === 'string' && typeof b.itemName === 'string').length === 1) && new Set(bindings.map(b => b.key)).size === 4
   }
-  const supplyCanPlace = p => supplyPlacementAllowed(regions, p)
+  function initialSupplyStation () {
+    if (!fourLayerStorage() || job.loadoutReady !== true) return null
+    const progress = ledger.summary(), cp = job.loadout?.checkpoint, home = job.config.homeChest
+    if (progress.minedBlocks + progress.reminedTemporary !== 0 || cp?.version !== 1 || cp.direction !== 'withdraw' || cp.phase !== 'completed' || cp.index !== 34 || cp.intent != null || !samePoint(cp.position, home?.position) ||
+        cp.jobId !== job.config.jobId || cp.operationId !== job.loadout.operationId || !Array.isArray(cp.plan) || cp.plan.length !== 34 || !Array.isArray(cp.receipts) || cp.receipts.length !== 34 ||
+        !Array.isArray(cp.identities) || cp.identities.length !== 34 || cp.identities.some(value => typeof value !== 'string' || !value) ||
+        cp.receipts.some((receipt, i) => ['from', 'to', 'name', 'count'].some(key => receipt?.[key] !== cp.plan[i]?.[key]))) return null
+    try {
+      const state = adapter.getState(), world = assertJobWorld(job, state)
+      const key = JSON.stringify([world.profile, world.realmId, world.dimension])
+      if (cp.world !== key || cp.life !== JSON.stringify([key, lifeOf(state)])) return null
+      const registered = adapter.registeredHomeChest?.()
+      if (!registered || !['position', 'other', 'stand', 'stage'].every(part => samePoint(home?.[part], registered[part]))) return null
+      return { stand: copy(home.stand), stage: copy(home.stage) }
+    } catch { return null }
+  }
+  const supplyCanPlace = p => supplyPlacementAllowed(regions, p, initialSupplyStation())
   const supplyCanClear = p => permits(regions, 'break', p).allowed && clearableSitePlant(planningBlocks(job.config)(p.x, p.y, p.z))
   // Nearest reachable stand inside the quarry columns (higher first: the
   // surface), walked to with the ordinary verified movement. Bounded.
@@ -1913,7 +1929,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!items(state)) return blocked('SUPPLY_INVENTORY_UNKNOWN')
     if (active.checkpoint && !isDeepStrictEqual(active.checkpoint.scope, supplyScope(state))) return blocked('SUPPLY_SCOPE_CHANGED')
     if (typeof adapter.previewSupplySite !== 'function') return blocked('SUPPLY_APPROACH_UNSUPPORTED')
-    const approachFrom = from => planSupplyApproach({ origin: from, regions, planner, canPlace: supplyCanPlace,
+    const approachFrom = from => planSupplyApproach({ origin: from, regions, planner, canPlace: supplyCanPlace, initialStation: initialSupplyStation(),
       previewSite: stand => adapter.previewSupplySite(stand, { canPlace: supplyCanPlace, canClear: supplyCanClear }),
       previewRoute: typeof adapter.previewStorage === 'function' ? (site, path) => call(myEpoch, 'preview_supply_route', signal => adapter.previewStorage({ stand: site.stand, position: site.positions[0] }, { signal, path, travel: p => permits(regions, 'travel', p).allowed })) : null,
       guard: () => { const current = guard(myEpoch); if (!samePoint(feetCell(current), from)) throw new QuarryInterrupt('SUPPLY_APPROACH_ORIGIN_CHANGED') } })
