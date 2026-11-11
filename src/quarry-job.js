@@ -1884,7 +1884,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return true
   }
   function hasStorageOption () {
-    return !!job.portableStorage || !shulkerOnly && !!job.config.inventory.storage?.length || typeof adapter.storeCarried === 'function' && !!cargoSelection(items(adapter.getState()), { excludedShulkerKeys: storageSupplyExclusions(job.config.inventory.supplyBoxes) })
+    return !!job.portableStorage || !shulkerOnly && !!job.config.inventory.storage?.length || typeof adapter.storeCarried === 'function' && !!cargoSelection(items(adapter.getState()), { excludedShulkerKeys: [...(job.exhaustedShulkerKeys ?? []), ...storageSupplyExclusions(job.config.inventory.supplyBoxes)] })
   }
 
   const storagePoint = p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]) && Math.abs(p[k]) <= 30000000)
@@ -2177,7 +2177,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         if (why === 'final') { recordFinalStorageSkip(inventory); setState('FINAL_CHECK') } else setState('SURVEY')
         return
       }
-      return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: inventory && !keepPlan(inventory, inventoryPolicy()).deposits.length ? 'NO_DEPOSITABLE_ITEMS' : 'NO_CARRIED_STORAGE', freeSlots: free, minFreeSlots: job.config.inventory.minFreeSlots } })
+      return finish('PAUSED', fourLayerStorage() ? 'CARGO_CAPACITY_EXHAUSTED' : 'WAITING_FOR_STORAGE', { pauseDetails: { reason: inventory && !keepPlan(inventory, inventoryPolicy()).deposits.length ? 'NO_DEPOSITABLE_ITEMS' : 'NO_CARRIED_STORAGE', freeSlots: free, minFreeSlots: job.config.inventory.minFreeSlots } })
     }
     let st = currentStorage()
     if (!st) {
