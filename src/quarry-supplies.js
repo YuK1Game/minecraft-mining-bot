@@ -75,10 +75,10 @@ const usesOf = item => item?.durabilityKnown === true && Number.isFinite(item.du
 function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true, miningExhausted = null, depositWhen = 'capacity', totemNeeded = false, shovelExhausted = false, exitPreparing = false, exitDirtTarget = 192 } = {}) {
   const main = (items ?? []).filter(item => Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && item.count > 0)
   const v22 = depositWhen === 'four_layers'
-  const desired = { pickaxe: 1, shovel: v22 && shovelExhausted ? 0 : 1, food: v22 ? 0 : foodEnabled ? keepFood : 0, dirt: v22 ? exitPreparing ? exitDirtTarget : 64 : keepExitDirt + keepSealBlocks, totem: v22 && totemNeeded ? 1 : 0 }
+  const desired = { pickaxe: 1, shovel: v22 && shovelExhausted ? 0 : 1, food: v22 ? 0 : foodEnabled ? keepFood : 0, dirt: v22 ? exitPreparing ? exitDirtTarget : 64 : keepExitDirt + keepSealBlocks, ...(v22 ? { totem: totemNeeded ? 1 : 0 } : {}) }
   // A tool whose remaining uses are all reserved for the exit still counts as
   // carried (it is kept for the exit), so one more of that kind is wanted.
-  const available = { pickaxe: 0, shovel: 0, food: 0, dirt: 0, totem: 0 }, returns = []
+  const available = { pickaxe: 0, shovel: 0, food: 0, dirt: 0, ...(v22 ? { totem: 0 } : {}) }, returns = []
   const exhaustedKinds = new Set(Array.isArray(miningExhausted) ? miningExhausted : Object.keys(miningExhausted && typeof miningExhausted === 'object' ? miningExhausted : {}))
   // With fewer than two free slots (the bag fills itself by natural pickup
   // once every cargo box is full, live 2026-11-10 22:01), an exhausted tool is
@@ -105,7 +105,7 @@ function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks
     }
     if (foodNutrition(item.name) > 0) available.food += item.count
     if (item.name === 'minecraft:dirt') available.dirt += item.count
-    if (item.name === 'minecraft:totem_of_undying') available.totem += item.count
+    if (v22 && item.name === 'minecraft:totem_of_undying') available.totem += item.count
   }
   // Tools whose remaining uses are all kept for the exit still count as
   // carried; the job fixes the wanted total ({ pickaxe: n }, at most 3) when it
@@ -114,8 +114,8 @@ function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks
   const wanted = Array.isArray(miningExhausted) ? Object.fromEntries(miningExhausted.map(k => [k, 2])) : (miningExhausted && typeof miningExhausted === 'object' ? miningExhausted : {})
   for (const [kind, n] of Object.entries(wanted)) if ((kind === 'pickaxe' || kind === 'shovel') && Number.isSafeInteger(n) && !(v22 && shovelExhausted && kind === 'shovel')) desired[kind] = Math.max(desired[kind], Math.min(4, n))
   for (const kind of exhaustedKinds) if (tight && (kind === 'pickaxe' || kind === 'shovel') && usesOf(best[kind]) >= FRESH_TOOL_USES) desired[kind] = Math.max(1, Math.min(desired[kind], available[kind]))
-  const missing = Object.fromEntries([...ROLES, ...V22_ROLES].map(role => [role, Math.max(0, desired[role] - available[role])]))
-  const required = { pickaxe: missing.pickaxe > 0, shovel: missing.shovel > 0, food: desired.food > 0 && available.food === 0, dirt: v22 ? missing.dirt > 0 : missing.dirt > 0 && available.dirt <= keepExitDirt, totem: missing.totem > 0 }
+  const missing = Object.fromEntries((v22 ? [...new Set([...ROLES,...V22_ROLES])] : ROLES).map(role => [role, Math.max(0, desired[role] - available[role])]))
+  const required = { pickaxe: missing.pickaxe > 0, shovel: missing.shovel > 0, food: desired.food > 0 && available.food === 0, dirt: v22 ? missing.dirt > 0 : missing.dirt > 0 && available.dirt <= keepExitDirt, ...(v22 ? { totem: missing.totem > 0 } : {}) }
   return { desired, available, missing, required, returns, freeSlots: freeSlots(main), exitDirt: { required: keepExitDirt, available: Math.min(keepExitDirt, available.dirt) }, sealDirt: { required: keepSealBlocks, available: Math.max(0, available.dirt - keepExitDirt) } }
 }
 
