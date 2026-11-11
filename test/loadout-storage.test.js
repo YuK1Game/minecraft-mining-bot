@@ -10,7 +10,7 @@ function fixture (storageMode = 'shulker') {
   flatTerrain(sim, { x1: -8, x2: 23, z1: -8, z2: 23, bedrock: 60, stoneTop: 61, top: 62 })
   sim.setFeet({ x: -3, y: 63, z: 5 }); sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 64); sim.give('dirt', 256)
   sim.adapter.storeCarried = async () => { throw Error('test must never mutate storage') }
-  const job = createQuarryJob({ adapter: sim.adapter, storageMode }), config = { jobId: 'loadout-test', target: { chunks: [{ x: 0, z: 0 }] }, yTop: 62, yBottom: 62, worldMinY: 60, worldMaxY: 68, exit: { mode: 'legacy_stair' } }
+  const job = createQuarryJob({ adapter: sim.adapter, storageMode }), config = { jobId: 'loadout-test', target: { chunks: [{ x: 0, z: 0 }] }, yTop: 62, yBottom: 62, worldMinY: 60, worldMaxY: 68, exit: { mode: 'legacy_stair' }, inventory: { pickupMode: 'passive', depositWhen: 'full' } }
   return { sim, job, config }
 }
 test('loadout-storage: production selection excludes all four supply colors and never falls back to single/double chests', () => {
