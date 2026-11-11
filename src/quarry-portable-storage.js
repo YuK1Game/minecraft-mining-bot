@@ -34,6 +34,7 @@ const scopeOf = state => {
 
 const UNSENT_PLACE_REASON = '操作対象への視線が遮られているか、未取得です。'
 
+const SITE_RECHECKS = 5, SITE_RECHECK_MS = 1000
 function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, interactions, equip, moveTo, getPath = null, travel = null, previewMove = null, refreshInventory = null, workWithContainer = null, getObservationFreshness = null, onRecoveryDiagnostic = null, mine, getMining, stopMining, getEntities, captureActionOwner = null, runActionOwned = null, shulkerOnly = false, cancelAction = () => {}, now = Date.now, sleep = ms => delay(ms) }) {
   if ([getState, getBlock, equip, moveTo, mine, getMining, stopMining, getEntities, cancelAction, now, sleep].some(fn => typeof fn !== 'function') || typeof crafting?.rawItem !== 'function' || typeof crafting?.closeContainer !== 'function' || typeof chest?.open !== 'function' || typeof chest?.depositItem !== 'function' || typeof chest?.rawItem !== 'function' || typeof interactions?.placeBlock !== 'function') throw new Error('Portable storage requires observed inventory, containers and owned normal actions')
   if (previewMove !== null && typeof previewMove !== 'function') throw new Error('Portable storage movement preview must be a function')
@@ -535,7 +536,22 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         for (const position of cp.positions) {
           if (cp.placed.some(placed => samePoint(placed.position, position))) continue
           current = guard()
-          if (!clearCell(position, current.state, canPlace, cp.placed.map(p => p.position))) throw failure('STORAGE_SITE_CHANGED')
+          let siteIssue = cellIssue(position, current.state, canPlace, cp.placed.map(p => p.position))
+          // Nothing of this box is placed yet: a mob walking through the cell
+          // (live 2026-11-11 11:42, a cow in the pit) is waited out, checking
+          // the same cell once a second up to five times.
+          for (let wait = 0; siteIssue && !cp.placed.length && wait < SITE_RECHECKS; wait++) {
+            cp.siteWaits = [...(cp.siteWaits ?? []).slice(-9), { ...copy(siteIssue), at: now(), mobOverlap: /^ENTIT/.test(siteIssue.cause) }]
+            await sleep(SITE_RECHECK_MS); current = guard()
+            siteIssue = cellIssue(position, current.state, canPlace, cp.placed.map(p => p.position))
+          }
+          if (siteIssue) {
+            // Keep which check refused the placement (live 2026-11-11 11:42 it
+            // was not recorded), so the job can tell a passing cause apart.
+            cp.siteIssue = { ...copy(siteIssue), at: now() }
+            try { await save() } catch {}
+            throw failure('STORAGE_SITE_CHANGED')
+          }
           let item = cp.placementSourcePin ? pinnedSource(current) : current.items.find(item => cp.sourceIdentities.some(source => source.name === item.name && matches(item.raw, source.identity)))
           if (!item) throw failure('STORAGE_SOURCE_CHANGED')
           if (current.observed.openContainer) close()

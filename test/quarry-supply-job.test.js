@@ -25,6 +25,8 @@ function fixture () {
     requests.push(request)
     await onCheckpoint({ version: 1, jobId: request.jobId, operationId: request.operationId, phase: 'controlled', scope: supplyScope(sim.state), marker: request.checkpoint?.marker ?? 'same-operation' })
     if (behavior === 'blocked') return { status: 'blocked', serverConfirmed: false, reason: 'SUPPLY_FRESH_INVENTORY_REQUIRED' }
+    if (behavior === 'site') { behavior = 'success'; return { status: 'blocked', serverConfirmed: false, reason: 'STORAGE_SITE_CHANGED', checkpoint: { withdrawn: [], returned: [], child: { placed: [], siteIssue: { cause: 'ENTITY_OCCUPIES_OR_UNOBSERVED', part: 'box' } } } } }
+    if (behavior === 'placed-site') { return { status: 'blocked', serverConfirmed: false, reason: 'STORAGE_SITE_CHANGED', checkpoint: { withdrawn: [], returned: [], child: { placed: [{ position: { x: 0, y: 0, z: 0 } }] } } } }
     if (behavior === 'room') { behavior = 'success'; return { status: 'blocked', serverConfirmed: false, reason: 'SUPPLY_CAPACITY_REQUIRED' } }
     const dirt = sim.state.inventory.items.filter(i => i.name === 'minecraft:dirt').reduce((sum, item) => sum + item.count, 0), need = 224 - dirt
     if (need > 0) sim.give('dirt', need)
@@ -128,4 +130,25 @@ test('a restock blocked for a free slot puts a small stack of mined blocks back 
   const placed = f.job.document().actions.filter(a => a.purpose === 'supply_room' && a.status === 'confirmed')
   assert.equal(placed.length, 2)
   assert.equal(result.ledger.placedTemporary, 2)
+})
+
+test('live case 2026-11-11: a supply site refused before anything was placed starts over with a new site; after a placement it still pauses', async () => {
+  const f = fixture()
+  assert.equal(f.job.plan(f.config).ready, true)
+  await f.job.configureSupplies()
+  f.setBehavior('site')
+  const first = await f.job.restockSuppliesNow()
+  assert.notEqual(first.pauseReason, 'SUPPLY_RESTOCK_BLOCKED', 'the untouched site refusal was not a pause')
+  assert.equal(f.job.document().supplyRestock.checkpoint, null, 'started over from the beginning')
+  const result = await f.job.restockSuppliesNow()
+  assert.equal(result.supplyResult.status, 'completed', JSON.stringify(result.supplyResult))
+  assert.equal(f.requests.length, 2)
+
+  const g = fixture()
+  assert.equal(g.job.plan(g.config).ready, true)
+  await g.job.configureSupplies()
+  g.setBehavior('placed-site')
+  const blocked = await g.job.restockSuppliesNow()
+  assert.equal(blocked.pauseReason, 'SUPPLY_RESTOCK_BLOCKED')
+  assert.equal(g.requests.length, 1)
 })

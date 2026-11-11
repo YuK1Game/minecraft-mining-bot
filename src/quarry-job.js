@@ -64,6 +64,12 @@ const TERRAIN_PREFETCH_INTERVAL_MS = 15000
 const SUPPLY_ROOM_REASONS = new Set(['SUPPLY_CAPACITY_REQUIRED', 'SUPPLY_RECOVERY_SLOT_REQUIRED'])
 const SUPPLY_ROOM_MAX_BLOCKS = 8
 const SUPPLY_ROOM_MAX_ATTEMPTS = 2
+// A supply site refused just before the box is placed (live 2026-11-11 11:42:
+// STORAGE_SITE_CHANGED after a predicted-ready approach) leaves nothing placed
+// and nothing moved. Such a restock is started over with a newly chosen site,
+// a few times, instead of pausing the job.
+const SUPPLY_SITE_REASONS = new Set(['STORAGE_SITE_CHANGED', 'STORAGE_STAND_UNCONFIRMED', 'SUPPLY_SITE_CHANGED'])
+const SUPPLY_SITE_RETRIES = 3, SUPPLY_SITE_RETRY_WAIT_MS = 3000
 const PICKUP_XZ = 1.3 // half player width 0.3 + 1 block reach for item pickup
 const ACTIVE = new Set(['PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT', 'RETURN', 'DEPOSIT', 'PORTABLE_STORAGE', 'RESTOCK', 'HAZARD', 'RECOVER', 'SUSPEND_FOR_COMBAT', 'COMBAT', 'COMBAT_SETTLE', 'RECOVER_AFTER_COMBAT', 'RECONCILE', 'FINAL_CHECK', 'EGRESS', 'DISCONNECTED'])
 const RESULT = new Set(['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS', 'PAUSED', 'CANCELLED', 'FAILED'])
@@ -1771,6 +1777,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     guard(myEpoch)
     job.lastSupplyResult = { operationId: active.operationId, status: response?.status ?? 'blocked', reason: response?.reason ?? null, serverConfirmed: response?.serverConfirmed === true, withdrawn: copy(response?.withdrawn ?? []), returned: copy(response?.returned ?? []) }
     if (response?.status !== 'completed' && SUPPLY_ROOM_REASONS.has(response?.reason) && await makeSupplyRoom(myEpoch, active)) { setState('RESTOCK'); await save('supply_room_retry'); return true }
+    if (response?.status !== 'completed' && SUPPLY_SITE_REASONS.has(response?.reason) && supplyUntouched(response?.checkpoint) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
+      active.siteRetries = (active.siteRetries ?? 0) + 1
+      const issue = response.checkpoint?.child?.siteIssue ?? null
+      note('supply_site_retry', { reason: response.reason, attempt: active.siteRetries, issue: copy(issue), mobOverlap: /^ENTIT/.test(issue?.cause ?? ''), waits: (response.checkpoint?.child?.siteWaits ?? []).length, site: copy(active.approach ?? null) })
+      active.checkpoint = null; active.approach = null
+      await save('supply_site_retry')
+      const until = now() + SUPPLY_SITE_RETRY_WAIT_MS
+      while (now() < until) { await sleep(100); guard(myEpoch) }
+      setState('RESTOCK'); return true
+    }
     if (response?.status !== 'completed' || response.serverConfirmed !== true || !validSupplyBindings(response.bindings)) { await finish('PAUSED', 'SUPPLY_RESTOCK_BLOCKED', { pauseDetails: { reason: response?.reason ?? 'UNCONFIRMED', operationId: active.operationId } }); return true }
     job.config.inventory.supplyBoxes = copy(response.bindings)
     job.supplyReceipts ??= []
@@ -2248,6 +2264,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     job.terrainPrefetchAt = now()
     note('terrain_prefetch', { y: ahead[0] })
     Promise.resolve().then(() => adapter.requestTerrain({ config: copy(job.config), yTop: job.yTop, yBottom: regions.yBottom })).catch(() => {})
+  }
+
+  // Nothing placed, nothing withdrawn or returned, no transfer pending: the
+  // restock can start over from the beginning without any received evidence lost.
+  function supplyUntouched (cp) {
+    if (!cp) return true
+    if ((cp.withdrawn ?? []).length || (cp.returned ?? []).length) return false
+    const child = cp.child
+    if (!child) return true
+    return !(child.placed ?? []).length && !(child.deposited ?? []).length && !child.intent && !child.supplyCheckpoint?.intent && !(child.supplyCheckpoint?.withdrawn ?? []).length && !(child.supplyCheckpoint?.returned ?? []).length
   }
 
   async function makeSupplyRoom (myEpoch, active) {
