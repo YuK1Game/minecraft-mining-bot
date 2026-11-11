@@ -12,9 +12,14 @@ function fixture() {
  const world=new Map(),container=new Map(),bag=Array.from({length:36},empty),armor=Array.from({length:4},empty),offhand=[empty()]
  let window=null,steps=[],journal=[],released=0
  const block=(x,y,z)=>world.get([x,y,z].join(','))??{known:true,name:y<=64?'minecraft:stone':'minecraft:air',boundingBox:y<=64?'block':'empty',extra:[]}
- const current=()=> window?{known:true,position:window,slots:container.get(key(window)),slotCount:container.get(key(window)).length}:null
+ const otherChest = p => [[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dz])=>({x:p.x+dx,y:p.y,z:p.z+dz})).find(v=>block(v.x,v.y,v.z).name==='minecraft:chest')
+ const windowSlots = p => {
+   const first=container.get(key(p));if(block(p.x,p.y,p.z).name!=='minecraft:chest')return first
+   const next=otherChest(p);return next?[...first,...container.get(key(next))]:first
+ }
+ const current=()=>window?{known:true,position:window,slots:windowSlots(window),slotCount:windowSlots(window).length}:null
  const getView=()=>({known:true,slots:bag,armor:{known:true,slots:armor},offhand:{known:true,slots:offhand},openContainer:current()})
- const put=(p,name)=>{world.set(key(p),{known:true,name,boundingBox:'block',extra:[]});if(name.endsWith('chest'))container.set(key(p),Array.from({length:54},empty));if(name.endsWith('shulker_box'))container.set(key(p),Array.from({length:27},empty))}
+ const put=(p,name)=>{world.set(key(p),{known:true,name,boundingBox:'block',extra:[]});if(name.endsWith('chest'))container.set(key(p),Array.from({length:27},empty));if(name.endsWith('shulker_box'))container.set(key(p),Array.from({length:27},empty))}
  const parse=(args,at)=>({x:+args[at],y:+args[at+1],z:+args[at+2]})
  const commands={send:async c=>{
    steps.push(c)
@@ -42,11 +47,12 @@ function fixture() {
  },cancel:()=>{}}
  const adapter={getState:()=>state,getView,getBlock:block,assertIdle:()=>{},acquire:()=>{},release:()=>{released++},
  cancelJob:async()=>{},generation:()=>0,save:async x=>journal.push(structuredClone(x)),load:async()=>null,
- select:async()=>{},open:async(p,n)=>{assert.ok(container.has(key(p)));assert.equal(container.get(key(p)).length,n);window=p;return {serverConfirmed:true,slotCount:n}},
+ select:async()=>{},open:async(p,n)=>{assert.ok(container.has(key(p)));assert.equal(windowSlots(p).length,n);window=p;return {serverConfirmed:true,slotCount:n}},
  close:async()=>{window=null},container:current,
  deposit:async({sourceSlot,chestSlot,count,expectedName})=>{
    assert.ok(window);const src=bag[sourceSlot];assert.equal(src.name,expectedName)
-   container.get(key(window))[chestSlot]=structuredClone(src);bag[sourceSlot]=empty()
+   const target=chestSlot<27?window:otherChest(window)
+   container.get(key(target))[chestSlot%27]=structuredClone(src);bag[sourceSlot]=empty()
    return {serverConfirmed:true,inventoryConfirmed:true,containerConfirmed:true,count,playerSlot:sourceSlot,chestSlot,item:expectedName}
  },
  cancelTransfers:async()=>{}}
@@ -63,7 +69,7 @@ test('full v2 reset fills exact double chest without retaining any items in Bot 
  assert.equal(status.phase,'completed',JSON.stringify(status.error))
  assert.equal(status.serverConfirmed,true)
  assert.equal(f.bag.every(x=>x.empty),true)
- const slots=f.container.get(key(preview.homeChest.position))
+ const slots=[...f.container.get(key(preview.homeChest.position)),...f.container.get(key(preview.homeChest.other))]
  assert.equal(slots.length,54)
  assert.equal(slots.filter(x=>!x.empty).length,34)
  assert.equal(validateV22Loadout({known:true,slots}).ready,true)
