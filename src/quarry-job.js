@@ -1038,7 +1038,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     const planningInventory = items(planningState)
     if (!planningInventory) { await sleep(300); return }
-    const decision = await planner.next({ feet: planningFeet, yTop: job.cursorY, tools: planningInventory, policy: { ...job.config.tools, ...job.config.collection }, inventoryItems: planningInventory, maxBatch: st.maxBlocksPerBatch, selectedSlot: planningState.selectedSlot, avoid: new Set([...badStances].filter(([, n]) => n >= 2).map(([k]) => k)) })
+    const decision = await planner.next({ feet: planningFeet, yTop: job.cursorY, tools: planningInventory, policy: { ...job.config.tools, ...job.config.collection, allowHandShovel: fourLayerStorage() && job.shovelSupplyExhausted === true }, inventoryItems: planningInventory, maxBatch: st.maxBlocksPerBatch, selectedSlot: planningState.selectedSlot, avoid: new Set([...badStances].filter(([, n]) => n >= 2).map(([k]) => k)) })
     guard(myEpoch)
     job.lastDecision = { action: decision.action, reason: decision.reason ?? null, details: decision.details ?? null, y: decision.targets?.[0]?.position?.y ?? decision.y ?? null }
     // Leaving a layer: gather its drops first, while they are still close.
