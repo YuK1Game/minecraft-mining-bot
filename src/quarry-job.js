@@ -2012,6 +2012,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     if (fourLayerStorage() && response?.reason === 'SUPPLY_EXHAUSTED' && active.checkpoint?.bindings?.[active.checkpoint.index]?.role === 'shovel') {
       job.shovelSupplyExhausted = true
+      job.miningExhausted = null
+      job.miningExhaustedTried = false
       job.supplyRestock = null
       await save('shovel_supply_exhausted')
       setState('SURVEY')
