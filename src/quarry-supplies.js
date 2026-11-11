@@ -11,6 +11,8 @@ const { createDurabilityReader } = require('./durability')
 const { SUPPLY_COLORS } = require('./loadout-manifest')
 
 const ROLES = ['pickaxe', 'shovel', 'food', 'dirt']
+const V22_ROLES = ['pickaxe', 'shovel', 'dirt', 'totem']
+const rolesFor = policy => policy?.depositWhen === 'four_layers' || policy === 'v22' ? V22_ROLES : ROLES
 const copy = value => structuredClone(value)
 const pack = value => serialize(value).toString('base64')
 const unpack = value => deserialize(Buffer.from(value, 'base64'))
@@ -29,7 +31,7 @@ const sameToolRepaired = (actual, source) => {
 }
 const fail = (code, message = code) => Object.assign(new Error(message), { code })
 const limitOf = name => require('minecraft-data')('bedrock_1.26.60').itemsByName[name.replace(/^minecraft:/, '')]?.stackSize
-const roleOf = name => toolOf(name)?.kind === 'pickaxe' ? 'pickaxe' : toolOf(name)?.kind === 'shovel' ? 'shovel' : name === 'minecraft:bread' ? 'food' : name === 'minecraft:dirt' ? 'dirt' : null
+const roleOf = name => toolOf(name)?.kind === 'pickaxe' ? 'pickaxe' : toolOf(name)?.kind === 'shovel' ? 'shovel' : name === 'minecraft:bread' ? 'food' : name === 'minecraft:dirt' ? 'dirt' : name === 'minecraft:totem_of_undying' ? 'totem' : null
 
 function supplyScope (state, { allowUnknownInventory = false } = {}) {
   const life = state?.lifecycle?.deathId
@@ -39,8 +41,9 @@ function supplyScope (state, { allowUnknownInventory = false } = {}) {
 
 // Discovery is explicit and initial-only. A later cargo box full of mined dirt
 // must never silently become a supply box. Subsequent recovery updates bindings.
-function discoverSupplyBindings (items, { resolveName } = {}) {
-  const found = Object.fromEntries(ROLES.map(role => [role, []])), unknown = []
+function discoverSupplyBindings (items, { resolveName, layout = 'legacy' } = {}) {
+  const roles = rolesFor(layout)
+  const found = Object.fromEntries(roles.map(role => [role, []])), unknown = []
   for (const item of items ?? []) {
     if (!isShulkerBox(item.name) || item.count !== 1 || !Number.isInteger(item.slot) || item.slot < 0 || item.slot > 35) continue
     const contents = readShulkerContents(item.raw, { resolveName })
@@ -58,23 +61,24 @@ function discoverSupplyBindings (items, { resolveName } = {}) {
     if (entries.length !== 27 && !coloured) continue
     found[role].push({ role, itemName: name, key: carriedContainerKey(item), boxName: item.name, stackId: item.stackId ?? item.raw?.stack_id })
   }
-  if (ROLES.some(role => found[role].length !== 1)) return { ok: false, reason: ROLES.some(role => found[role].length > 1) ? 'SUPPLY_BOXES_AMBIGUOUS' : 'SUPPLY_BOXES_UNCONFIRMED', candidates: found, unknown }
-  return { ok: true, bindings: ROLES.map(role => found[role][0]), unknown }
+  if (roles.some(role => found[role].length !== 1)) return { ok: false, reason: roles.some(role => found[role].length > 1) ? 'SUPPLY_BOXES_AMBIGUOUS' : 'SUPPLY_BOXES_UNCONFIRMED', candidates: found, unknown }
+  return { ok: true, bindings: roles.map(role => found[role][0]), unknown }
 }
 
 function storageSupplyExclusions (bindings) {
-  return [...new Set((bindings ?? []).filter(binding => ROLES.includes(binding.role) && typeof binding.key === 'string').map(binding => binding.key))]
+  return [...new Set((bindings ?? []).filter(binding => [...ROLES, ...V22_ROLES].includes(binding.role) && typeof binding.key === 'string').map(binding => binding.key))]
 }
 
 const WORN_TOOL_USES = 100 // a tool below this is returned when its kind is exhausted for mining
 const FRESH_TOOL_USES = 500 // with a full bag, one carried tool of an exhausted kind with this many uses is enough
 const usesOf = item => item?.durabilityKnown === true && Number.isFinite(item.durabilityRemaining) ? item.durabilityRemaining : null
-function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true, miningExhausted = null } = {}) {
+function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true, miningExhausted = null, depositWhen = 'capacity', totemNeeded = false, shovelExhausted = false } = {}) {
   const main = (items ?? []).filter(item => Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && item.count > 0)
-  const desired = { pickaxe: 1, shovel: 1, food: foodEnabled ? keepFood : 0, dirt: keepExitDirt + keepSealBlocks }
+  const v22 = depositWhen === 'four_layers'
+  const desired = { pickaxe: 1, shovel: v22 && shovelExhausted ? 0 : 1, food: v22 ? 0 : foodEnabled ? keepFood : 0, dirt: v22 ? 64 : keepExitDirt + keepSealBlocks, totem: v22 && totemNeeded ? 1 : 0 }
   // A tool whose remaining uses are all reserved for the exit still counts as
   // carried (it is kept for the exit), so one more of that kind is wanted.
-  const available = { pickaxe: 0, shovel: 0, food: 0, dirt: 0 }, returns = []
+  const available = { pickaxe: 0, shovel: 0, food: 0, dirt: 0, totem: 0 }, returns = []
   const exhaustedKinds = new Set(Array.isArray(miningExhausted) ? miningExhausted : Object.keys(miningExhausted && typeof miningExhausted === 'object' ? miningExhausted : {}))
   // With fewer than two free slots (the bag fills itself by natural pickup
   // once every cargo box is full, live 2026-11-10 22:01), an exhausted tool is
@@ -101,6 +105,7 @@ function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks
     }
     if (foodNutrition(item.name) > 0) available.food += item.count
     if (item.name === 'minecraft:dirt') available.dirt += item.count
+    if (item.name === 'minecraft:totem_of_undying') available.totem += item.count
   }
   // Tools whose remaining uses are all kept for the exit still count as
   // carried; the job fixes the wanted total ({ pickaxe: n }, at most 3) when it
@@ -109,8 +114,8 @@ function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks
   const wanted = Array.isArray(miningExhausted) ? Object.fromEntries(miningExhausted.map(k => [k, 2])) : (miningExhausted && typeof miningExhausted === 'object' ? miningExhausted : {})
   for (const [kind, n] of Object.entries(wanted)) if ((kind === 'pickaxe' || kind === 'shovel') && Number.isSafeInteger(n)) desired[kind] = Math.max(desired[kind], Math.min(4, n))
   for (const kind of exhaustedKinds) if (tight && (kind === 'pickaxe' || kind === 'shovel') && usesOf(best[kind]) >= FRESH_TOOL_USES) desired[kind] = Math.max(1, Math.min(desired[kind], available[kind]))
-  const missing = Object.fromEntries(ROLES.map(role => [role, Math.max(0, desired[role] - available[role])]))
-  const required = { pickaxe: missing.pickaxe > 0, shovel: missing.shovel > 0, food: desired.food > 0 && available.food === 0, dirt: missing.dirt > 0 && available.dirt <= keepExitDirt }
+  const missing = Object.fromEntries([...ROLES, ...V22_ROLES].map(role => [role, Math.max(0, desired[role] - available[role])]))
+  const required = { pickaxe: missing.pickaxe > 0, shovel: missing.shovel > 0, food: desired.food > 0 && available.food === 0, dirt: v22 ? missing.dirt > 0 : missing.dirt > 0 && available.dirt <= keepExitDirt, totem: missing.totem > 0 }
   return { desired, available, missing, required, returns, freeSlots: freeSlots(main), exitDirt: { required: keepExitDirt, available: Math.min(keepExitDirt, available.dirt) }, sealDirt: { required: keepSealBlocks, available: Math.max(0, available.dirt - keepExitDirt) } }
 }
 
@@ -213,7 +218,7 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
     const result = (status, reason) => ({ status, ...(reason ? { reason } : {}), serverConfirmed: status === 'completed', withdrawn: copy(cp?.withdrawn ?? []), returned: copy(cp?.returned ?? []), checkpoint: copy(cp) })
     try {
       const initial = observe(null, signal), supply = request?.supply
-      if (!request?.jobId || !request.operationId || !ROLES.includes(supply?.binding?.role) || roleOf(supply.binding.itemName) !== supply.binding.role || !position || !['x', 'y', 'z'].every(k => Number.isSafeInteger(position[k]))) throw fail('SUPPLY_REQUEST_INVALID')
+      if (!request?.jobId || !request.operationId || !rolesFor(supply?.policy).includes(supply?.binding?.role) || roleOf(supply.binding.itemName) !== supply.binding.role || !position || !['x', 'y', 'z'].every(k => Number.isSafeInteger(position[k]))) throw fail('SUPPLY_REQUEST_INVALID')
       if (!cp) { cp = { version: 1, jobId: request.jobId, operationId: request.operationId, scope: initial.scope, position: copy(position), role: supply.binding.role, itemName: supply.binding.itemName, phase: 'transferring', intent: null, withdrawn: [], returned: [] }; await save() }
       if (cp.version !== 1 || cp.jobId !== request.jobId || cp.operationId !== request.operationId || cp.role !== supply.binding.role || cp.itemName !== supply.binding.itemName || !isDeepStrictEqual(cp.position, position) || !Array.isArray(cp.withdrawn) || !Array.isArray(cp.returned) || !['transferring', 'completed'].includes(cp.phase)) throw fail('SUPPLY_CHECKPOINT_INVALID')
       observe(cp.scope, signal)
@@ -360,11 +365,12 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
     try {
       if (cp?.child?.supplyCheckpoint?.intent && (getState().inventory?.known !== true || getState().inventory?.uncertain)) await refreshPending(cp.scope, signal)
       const initial = observe(null, signal)
-      if (!request?.jobId || !request.operationId || !Array.isArray(request.bindings) || request.bindings.length !== 4 || ROLES.some(role => request.bindings.filter(b => b.role === role && roleOf(b.itemName) === role).length !== 1)) throw fail('SUPPLY_BINDINGS_REQUIRED')
+      const roles = rolesFor(request?.policy)
+      if (!request?.jobId || !request.operationId || !Array.isArray(request.bindings) || request.bindings.length !== 4 || roles.some(role => request.bindings.filter(b => b.role === role && roleOf(b.itemName) === role).length !== 1)) throw fail('SUPPLY_BINDINGS_REQUIRED')
       if (!cp) { cp = { version: 1, jobId: request.jobId, operationId: request.operationId, scope: initial.scope, bindings: copy(request.bindings), policy: copy(request.policy ?? {}), boxCount: initial.items.filter(item => isShulkerBox(item.name)).reduce((n, item) => n + item.count, 0), index: 0, child: null, withdrawn: [], returned: [] }; await save() }
-      if (cp.version !== 1 || cp.jobId !== request.jobId || cp.operationId !== request.operationId || !Number.isInteger(cp.index) || cp.index < 0 || cp.index > ROLES.length || !Array.isArray(cp.bindings) || cp.bindings.length !== 4 || ROLES.some(role => cp.bindings.filter(b => b.role === role && roleOf(b.itemName) === role && typeof b.key === 'string').length !== 1) || new Set(cp.bindings.map(b => b.key)).size !== 4 || !Array.isArray(cp.withdrawn) || !Array.isArray(cp.returned)) throw fail('SUPPLY_CHECKPOINT_INVALID')
-      for (; cp.index < ROLES.length;) {
-        const current = observe(cp.scope, signal), binding = cp.bindings.find(b => b.role === ROLES[cp.index]), need = supplyNeeds(current.items, cp.policy)
+      if (cp.version !== 1 || cp.jobId !== request.jobId || cp.operationId !== request.operationId || !Number.isInteger(cp.index) || cp.index < 0 || cp.index > ROLES.length || !Array.isArray(cp.bindings) || cp.bindings.length !== 4 || roles.some(role => cp.bindings.filter(b => b.role === role && roleOf(b.itemName) === role && typeof b.key === 'string').length !== 1) || new Set(cp.bindings.map(b => b.key)).size !== 4 || !Array.isArray(cp.withdrawn) || !Array.isArray(cp.returned)) throw fail('SUPPLY_CHECKPOINT_INVALID')
+      for (; cp.index < roles.length;) {
+        const current = observe(cp.scope, signal), binding = cp.bindings.find(b => b.role === roles[cp.index]), need = supplyNeeds(current.items, cp.policy)
         if (!cp.child && !need.required[binding.role] && !need.returns.some(item => item.role === binding.role && item.name === binding.itemName)) { cp.index++; continue }
         const box = current.items.find(item => carriedContainerKey(item) === binding.key)
         if (!cp.child && (!box || !isShulkerBox(box.name))) throw fail('SUPPLY_BOX_MISSING')
@@ -382,7 +388,7 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
         try { await save() } catch (error) { cp = prior; throw error }
       }
       const remaining = supplyNeeds(observe(cp.scope, signal).items, cp.policy)
-      if (ROLES.some(role => remaining.required[role])) throw fail('SUPPLY_STILL_REQUIRED')
+      if (roles.some(role => remaining.required[role])) throw fail('SUPPLY_STILL_REQUIRED')
       cp.phase = 'completed'; await save(); observe(cp.scope, signal)
       return result('completed')
     } catch (error) { return result('blocked', error.code ?? String(error.message ?? error)) }
@@ -404,7 +410,7 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
     finally { busy = false }
   }
   const cancel = reason => { if (activeAbort) { activeAbort.abort(new Error(reason ?? 'Supply operation cancelled')); chest.cancel?.(reason) } }
-  return { run, workWithContainer, reconcileUnsentPlacement, cancel, needs: policy => supplyNeeds(observe().items, policy), discoverBindings: () => discoverSupplyBindings(observe().items, { resolveName: crafting.itemNameOf }), snapshot: () => ({ busy, operationId: activeOperation }) }
+  return { run, workWithContainer, reconcileUnsentPlacement, cancel, needs: policy => supplyNeeds(observe().items, policy), discoverBindings: layout => discoverSupplyBindings(observe().items, { resolveName: crafting.itemNameOf, layout: layout ?? 'legacy' }), snapshot: () => ({ busy, operationId: activeOperation }) }
 }
 
-module.exports = { discoverSupplyBindings, storageSupplyExclusions, supplyNeeds, supplyScope, createQuarrySupplies }
+module.exports = { discoverSupplyBindings, storageSupplyExclusions, supplyNeeds, supplyScope, createQuarrySupplies, V22_ROLES, rolesFor }
