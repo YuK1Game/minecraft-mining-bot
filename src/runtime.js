@@ -12,6 +12,7 @@ const { profileCpu, measureSnapshots } = require('./runtime-diagnostics')
 const { createSightStanceSearch } = require('./sight-stance-search')
 const { createQuarryPortableStorage } = require('./quarry-portable-storage')
 const { createQuarrySupplies } = require('./quarry-supplies')
+const { createQuarryV22Equipment } = require('./quarry-v22-equipment')
 const { historicalSourceRejection } = require('./rejected-source-history')
 const { historicalEmptyPlacement } = require('./placement-source-history')
 
@@ -806,6 +807,27 @@ function createRuntime (host) {
     host.shared.lastChestInventoryUpdate = { source: delta.source, requestId: delta.requestId, changedSlots: [delta.slot], fullRefresh: false, at: new Date().toISOString() }
   }
   const chest = createChest({ client: host.client, getState: () => { const state = working(); return { ...state, profile: state.profile ?? host.meta.profile, lifecycle: { ...(state.lifecycle ?? {}), deathId: foodKnownLife() } } }, world: host.world, crafting, interactions, version: host.meta.version, allocateRequestId: () => host.allocate('craft'), onUncertain, onInventory: commitChestMainDelta })
+  const quarryV22Equipment = createQuarryV22Equipment({
+    client: host.client,
+    getState: () => ({ ...working(), lifecycle: { ...(working().lifecycle ?? {}), deathId: actualLifeId() } }),
+    getView: () => inventoryInspection.snapshot(),
+    getRawMain: slot => crafting.rawItem(slot),
+    getRawEquipment: (kind, slot) => kind === 'armor' ? host.shared.armorStore?.worn?.get(slot) : kind === 'offhand' ? host.shared.inventoryInspectionStore?.offhand?.get(slot) : null,
+    allocateRequestId: () => host.allocate('craft'),
+    commitMain: (slot, item, requestId) => {
+      const delta = { window_id: 'inventory', slot, item, source: 'server_item_stack_response', requestId }
+      crafting.applyPacket('inventory_slot', delta)
+      host.commitInventory({ window_id: 'inventory',
+        input: Array.from({ length: 36 }, (_, i) => crafting.rawItem(i)),
+        changedSlots: [slot], fullRefresh: false, source: 'server_item_stack_response', requestId })
+    },
+    commitEquipment: (kind, slot, item, requestId) => {
+      const delta = { window_id: kind, slot, item, source: 'server_item_stack_response', requestId }
+      if (kind === 'armor') armor.applyPacket('inventory_slot', delta)
+      inventoryInspection.applyPacket('inventory_slot', delta)
+    },
+    onUncertain: onUncertain
+  })
   portableActionOwners.track(inventory, ['equip', 'equipForMining', 'equipForCombat', 'equipForFood'], { invalidate: ['cancel'], isActive: c => c.snapshot().busy === true })
   portableActionOwners.track(interactions, ['placeBlock', 'placeQuarryBlock', 'placeBed', 'placeCraftingTable', 'useBed', 'openShulker', 'openChest', 'openFurnace', 'openWorkbench', 'openCraftingTable'], { invalidate: ['cancel'], isActive: c => c.snapshot().pendingOperation != null })
   portableActionOwners.track(chest, ['open', 'depositItem', 'depositDiamond', 'withdrawItem'], { invalidate: ['cancel'], isActive: c => c.snapshot().busy === true })
@@ -5055,6 +5077,7 @@ function createRuntime (host) {
     furnace.applyPacket(name, packet)
     chest.applyPacket(name, packet, { replaying })
     inventory.applyPacket(name, packet, { replaying })
+    if (!replaying) quarryV22Equipment.applyPacket(name, packet)
     // A reload replays the cached start_game; that is not a new world for armor.
     if (!(replaying && ['start_game', 'change_dimension', 'respawn'].includes(name))) armor.applyPacket(name, packet)
     food.applyPacket(name, packet)
@@ -6675,6 +6698,8 @@ function createRuntime (host) {
       },
       placeQuarry: own(options => { requireIdle(); crafting.closeContainer(); return interactions.placeQuarryBlock(options) }),
       eat: own(() => operations.food.eat({})),
+      equipmentTransfer: value => quarryV22Equipment.transfer(value),
+      equipmentView: () => inventoryInspection.snapshot(),
       chest: { open: own(position => operations.chest.open(position)), depositItem: own(options => operations.chest.depositItem(options)), close: () => crafting.closeContainer() },
       addChest: own(options => { requireIdle(); crafting.closeContainer(); return quarryAddChest(options) }),
       egress: (request, options) => runQuarryEgress(adapter, live, own, request, options),
