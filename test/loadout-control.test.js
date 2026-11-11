@@ -4,7 +4,7 @@ const { createDashboardControl } = require('../src/dashboard-control')
 const { createDashboardManager } = require('../scripts/lib/dashboard-control')
 const { main } = require('../scripts/reset-loadout')
 const { fixture } = require('./helpers/loadout-sim')
-const { summary } = require('../src/loadout-manifest')
+const { summary } = require('../src/quarry-v22-reset')
 
 test('loadout-control: preview + explicit confirmation are required; one click returns running state without awaiting commands', async () => {
   const f = fixture(), q = { status: () => null }
@@ -14,7 +14,7 @@ test('loadout-control: preview + explicit confirmation are required; one click r
   assert.equal(f.commandsSent.length, 0)
   await assert.rejects(control.execute({ command: 'resetStart', session, resetToken: p.resetPreview.token }))
   const again = await control.execute({ command: 'resetPreview', session })
-  const s = await control.execute({ command: 'resetStart', session, resetToken: again.resetPreview.token, confirm: 'REPLACE_INITIAL_INVENTORY' })
+  const s = await control.execute({ command: 'resetStart', session, resetToken: again.resetPreview.token, confirm: 'REPLACE_SURFACE_CHEST' })
   assert.equal(s.reset.busy, true)
   await assert.rejects(control.execute({ command: 'plan', session, config: { x1: 0, z1: 0 } }), { code: 'RESET_BUSY' })
   await control.execute({ command: 'resetCancel', session }); await f.reset.drain()
@@ -40,7 +40,7 @@ function cli () {
   const opts = { stdin: { isTTY: false }, stdout: { write: s => output.push(s) }, request: async ({ payload }) => {
     requests.push(payload)
     if (!payload) return state
-    if (payload.command === 'resetPreview') return { state, resetPreview: { token: 'one-shot', target: { realm: 'Offline Realm', player: 'Bot' }, stage: { x: 2, y: 64, z: 0 }, manifest: summary() } }
+    if (payload.command === 'resetPreview') return { state, resetPreview: { token: 'one-shot', target: { realm: 'Offline Realm', player: 'Bot' }, stage: { x: 2, y: 64, z: 0 }, homeChest: { position: { x: 3, y: 64, z: 0 }, other: { x: 4, y: 64, z: 0 } }, manifest: summary() } }
     if (payload.command === 'resetStart') return { reset: state.loadout, state }
     throw Error('unexpected')
   } }
@@ -57,7 +57,7 @@ test('loadout-cli: preview and non-RESET answers are non-destructive; non-intera
 test('loadout-cli: exact RESET sends one token-bound command, reports verified completion and never resumes quarry', async () => {
   const f = cli(), result = await main([], { ...f.opts, ask: async () => 'RESET' })
   assert.equal(result.serverConfirmed, true)
-  assert.deepEqual(f.requests.filter(r => r?.command === 'resetStart'), [{ command: 'resetStart', session: 's', resetToken: 'one-shot', confirm: 'REPLACE_INITIAL_INVENTORY' }])
+  assert.deepEqual(f.requests.filter(r => r?.command === 'resetStart'), [{ command: 'resetStart', session: 's', resetToken: 'one-shot', confirm: 'REPLACE_SURFACE_CHEST' }])
   assert.ok(!f.requests.some(r => r?.command === 'resume' || r?.command === 'start'))
 })
 test('loadout-cli: failures/session changes are not successes and do not resend the destructive command', async () => {
