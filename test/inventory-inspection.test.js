@@ -22,6 +22,75 @@ function fixture ({ store = {}, armorStore = {} } = {}) {
   return { main, state, crafting, inspection, store, armorStore, setWindow: value => { window = value } }
 }
 
+test('actual equipment proof rejects ACK-reconstructed armor and a main-only refresh until a real descriptor arrives', () => {
+  const oldHelmet = item(47, 1, { Damage: tag('int', 23) }), newHelmet = item(47, 1, { Damage: tag('int', 0) })
+  const f = fixture({ armorStore: { known: true, worn: new Map([[0, oldHelmet], [1, air()], [2, air()], [3, air()]]) } })
+  f.inspection.applyPacket('inventory_content', { window_id: 'armor', input: [oldHelmet, air(), air(), air(), air()] })
+  assert.deepEqual(f.inspection.rawEquipment('armor', 0), oldHelmet)
+  f.inspection.applyPacket('item_stack_response', { responses: [{ status: 'ok', request_id: -3, containers: [{ slot_type: { container_id: 'armor' }, slots: [{ slot: 0, count: 1, item_stack_id: 999 }] }] }] })
+  // The legacy Armor controller may reconstruct this value for normal combat.
+  f.armorStore.worn.set(0, { ...newHelmet, stack_id: 999 })
+  assert.equal(f.inspection.snapshot().armor.known, true, 'the legacy view and normal armor mechanics remain available')
+  assert.equal(f.inspection.snapshot().armor.slots[0].durabilityUsed, 0)
+  assert.equal(f.inspection.rawEquipment('armor', 0), null)
+  assert.deepEqual(f.inspection.rawEquipment('armor', 1), air(), 'an ACK invalidates only the affected known slot')
+  f.inspection.applyPacket('inventory_content', { window_id: 'inventory', input: f.main })
+  assert.equal(f.inspection.rawEquipment('armor', 0), null, 'fresh main36 says nothing about worn NBT')
+  f.inspection.applyPacket('inventory_slot', { window_id: 'armor', slot: 0, item: newHelmet, source: 'server_item_stack_response' })
+  assert.equal(f.inspection.rawEquipment('armor', 0), null, 'the equipment ACK adapter cannot promote a synthetic slot delta')
+  f.inspection.applyPacket('inventory_slot', { window_id: 120, slot: 0, item: newHelmet })
+  assert.deepEqual(f.inspection.rawEquipment('armor', 0), newHelmet)
+  const copy = f.inspection.rawEquipment('armor', 0)
+  copy.extra.nbt.nbt.value.Damage.value = 42
+  assert.equal(f.inspection.rawEquipment('armor', 0).extra.nbt.nbt.value.Damage.value, 0, 'callers cannot mutate the evidence')
+})
+
+test('offhand proof also remains unknown after a count-only ACK and synthetic adapter commit', () => {
+  const f = fixture(), shield = item(50, 1, { Damage: tag('int', 7) })
+  f.inspection.applyPacket('inventory_content', { window_id: 'offhand', input: [shield] })
+  assert.deepEqual(f.inspection.rawEquipment('offhand', 0), shield)
+  f.inspection.applyPacket('item_stack_response', { responses: [{ status: 0, containers: [{ slot_type: { container_id: 'offhand' }, slots: [{ slot: 0, count: 0 }] }] }] })
+  f.inspection.applyPacket('inventory_slot', { window_id: 'offhand', slot: 0, item: air(), source: 'server_item_stack_response' })
+  assert.equal(f.inspection.snapshot().offhand.known, true, 'existing ACK-driven presentation is unchanged')
+  assert.equal(f.inspection.rawEquipment('offhand', 0), null)
+  f.inspection.applyPacket('inventory_content', { window_id: 'inventory', input: f.main })
+  assert.equal(f.inspection.rawEquipment('offhand', 0), null)
+  f.inspection.applyPacket('inventory_slot', { window_id: 119, slot: 0, item: air() })
+  assert.deepEqual(f.inspection.rawEquipment('offhand', 0), air())
+})
+
+test('equipment proof survives only same-scope reload, never legacy stores, replay, a changed life or connection', () => {
+  const f = fixture({ armorStore: { known: true, worn: new Map([[0, item(47)]]) }, store: { armorReceived: new Set([0, 1, 2, 3]), armorObservedAt: 'old-received-time' } })
+  f.state.connectionId = 'connection-1'; f.state.lifecycle = { deathId: 0 }
+  assert.equal(f.inspection.rawEquipment('armor', 0), null, 'old worn and UI coverage cannot establish raw proof')
+  f.inspection.applyPacket('inventory_slot', { window_id: 'armor', slot: 0, item: item(47) }, { replaying: true })
+  assert.equal(f.inspection.rawEquipment('armor', 0), null)
+  f.inspection.applyPacket('inventory_slot', { window_id: 'armor', slot: 0, item: item(47) })
+  const reload = createInventoryInspection({ crafting: f.crafting, armorStore: f.armorStore, store: f.store, registry, getState: () => f.state })
+  assert.deepEqual(reload.rawEquipment('armor', 0), item(47))
+  f.state.lifecycle.deathId++
+  assert.equal(reload.rawEquipment('armor', 0), null)
+  reload.applyPacket('inventory_slot', { window_id: 'armor', slot: 0, item: item(47) })
+  f.state.connectionId = 'connection-2'
+  assert.equal(reload.rawEquipment('armor', 0), null)
+  reload.applyPacket('inventory_content', { window_id: 'armor', input: [item(47), air(), air(), air()] })
+  reload.applyPacket('death_info', {})
+  assert.equal(reload.rawEquipment('armor', 0), null)
+})
+
+test('malformed equipment windows and numeric ACK container ids cannot retain a stale raw proof', () => {
+  const f = fixture()
+  f.inspection.applyPacket('inventory_content', { window_id: 'armor', input: [item(47), air(), air(), air()] })
+  f.inspection.applyPacket('item_stack_response', { responses: [{ status: 'ok', containers: [{ slot_type: { container_id: 6 }, slots: [{ slot: 0, count: 1 }] }] }] })
+  assert.equal(f.inspection.rawEquipment('armor', 0), null)
+  f.inspection.applyPacket('inventory_content', { window_id: 'armor', input: [item(47), air(), air(), air()] })
+  f.inspection.applyPacket('inventory_content', { window_id: 'armor', input: [item(47)] })
+  assert.equal(f.inspection.rawEquipment('armor', 0), null)
+  f.inspection.applyPacket('inventory_slot', { window_id: 'offhand', slot: 0, item: item(50) })
+  f.inspection.applyPacket('item_stack_response', { responses: [{ status: 'ok', containers: [{ slot_type: { container_id: 34 }, slots: [{ slot: 0, count: 0 }] }] }] })
+  assert.equal(f.inspection.rawEquipment('offhand', 0), null)
+})
+
 test('inspection uses received names and Damage rather than runtime item ids or metadata for wear', () => {
   const f = fixture()
   f.main[1] = { ...item(45, 1, { Damage: tag('int', 241), ench: tag('list', { type: 'compound', value: [{ id: tag('short', 17), lvl: tag('short', 3) }, { id: tag('short', 26), lvl: tag('short', 1) }] }), display: tag('compound', { Name: tag('string', '採掘道具'), Lore: tag('list', { type: 'string', value: ['大切な道具'] }) }) }), metadata: 1234 }

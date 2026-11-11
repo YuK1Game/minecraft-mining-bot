@@ -1123,7 +1123,7 @@ function createRuntime (host) {
     })
   }
   function maybeEquipArmor () {
-    if (resetHeld() || !(host.shared.autoWanted === true || quarryCombatArmed) || armorTask || Date.now() - (host.shared.armorCheckedAt ?? 0) < 3000) return
+    if (resetHeld() || host.shared.quarrySurfaceStorageOwner || !(host.shared.autoWanted === true || quarryCombatArmed) || armorTask || Date.now() - (host.shared.armorCheckedAt ?? 0) < 3000) return
     host.shared.armorCheckedAt = Date.now()
     try { if (!armor.preview() || !armorWorkFree() || nearestHostileDistance() < 8) return } catch { return }
     armorTask = armor.equipBest().catch(() => {}).finally(() => { armorTask = null })
@@ -6570,13 +6570,33 @@ function createRuntime (host) {
       snapshot: () => chest.snapshot(), rawItem: slot => chest.rawItem(slot), close: () => crafting.closeContainer()
     }
     let surfaceChestController = null
+    const verifySurfaceChestOwner = () => {
+      const owner = host.shared.quarrySurfaceStorageOwner
+      owner?.signal?.throwIfAborted()
+      if (owner && (disposed || disposing || owner.scope !== portableCancellationScope() || owner.revision !== quarryCancellationRevision)) throw Object.assign(new Error('SURFACE_STORAGE_INTERRUPTED'), { code: 'SURFACE_STORAGE_INTERRUPTED' })
+    }
+    async function runSurfaceChest (method, request, options = {}) {
+      options.signal?.throwIfAborted()
+      if (host.shared.quarrySurfaceStorageOwner) throw Object.assign(new Error('SURFACE_STORAGE_BUSY'), { code: 'SURFACE_STORAGE_BUSY' })
+      const owner = { scope: portableCancellationScope(), revision: quarryCancellationRevision, signal: options.signal }
+      host.shared.quarrySurfaceStorageOwner = owner
+      try {
+        verifySurfaceChestOwner()
+        const result = await surfaceChest()[method](request, options)
+        verifySurfaceChestOwner()
+        return result
+      } finally {
+        if (host.shared.quarrySurfaceStorageOwner === owner) delete host.shared.quarrySurfaceStorageOwner
+      }
+    }
     function surfaceChest () {
       if (surfaceChestController) return surfaceChestController
       return surfaceChestController = createQuarryV22ChestWork({
-        getState: quarryState,
+        getState: () => { verifySurfaceChestOwner(); return quarryState() },
         getView: () => inventoryInspection.snapshot(quarryState()),
         getRawMain: slot => crafting.rawItem(slot),
         getRawChest: slot => chest.rawItem(slot),
+        getRawEquipment: (kind, slot) => inventoryInspection.rawEquipment(kind, slot),
         open: (position, slot, options) => containerPorts.open(position, slot, options),
         close: () => crafting.closeContainer(),
         withdraw: params => containerPorts.withdrawItem(params),
@@ -6743,8 +6763,8 @@ function createRuntime (host) {
       egress: (request, options) => runQuarryEgress(adapter, live, own, request, options),
       storeCarried: (request, options) => getPortable().storeCarried(request, options),
       discoverSupplies: layout => getSupplies().discoverBindings(layout),
-      loadoutWithdraw: (request,options) => surfaceChest().withdrawAll(request,options),
-      finalChestDeposit: (request,options) => surfaceChest().depositAll(request,options),
+      loadoutWithdraw: (request,options) => runSurfaceChest('withdrawAll',request,options),
+      finalChestDeposit: (request,options) => runSurfaceChest('depositAll',request,options),
       restockSupplies: (request, options) => getSupplies().run(request, options),
       previewSupplySite: (stand, options) => getPortable().previewSupplySite(stand, options),
       reconcileSupplyPlacement: (request, options) => getSupplies().reconcileUnsentPlacement(request, options),
@@ -6955,7 +6975,7 @@ function createRuntime (host) {
   }
   return {
     operations, snapshot: getSnapshot, applyPacket, onSpawn, onRespawn, stopActions, resumeRequested,
-    canReload: () => !resetHeld() && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && mining.snapshot().phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !food.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(furnace.snapshot().busy || chest.snapshot().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging,
+    canReload: () => !resetHeld() && !host.shared.quarrySurfaceStorageOwner && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && mining.snapshot().phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !food.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(furnace.snapshot().busy || chest.snapshot().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging,
     dispose: async reason => {
       if (disposed) return
       loadoutReset?.cancel()
