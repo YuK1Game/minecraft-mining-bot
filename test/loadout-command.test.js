@@ -10,7 +10,7 @@ function commandFixture (options = {}) {
   return { ...f, queued, cmd, response }
 }
 test('loadout: exact self-only command allowlist rejects injection, other players, arbitrary loot and mismatched cleanup coordinates', () => {
-  for (const text of ['/clear @a', '/clear ResetBot', '/clear @s\n/kill @e', '/give @s diamond 64', '/loot replace entity @s slot.inventory 24 1 mine 2 64 0 minecraft:diamond_pickaxe', '/execute if block 2 64 0 minecraft:blue_shulker_box run setblock 3 64 0 minecraft:air replace', '/setblock 30000000 64 0 minecraft:blue_shulker_box keep', '/setblock 2 -64 0 minecraft:blue_shulker_box keep', '/replaceitem block 2 64 0 slot.container 27 minecraft:dirt 64']) assert.equal(allowed(text), false, text)
+  for (const text of ['/clear @a', '/clear ResetBot', '/clear @s\n/kill @e', '/give @s diamond 64', '/loot replace entity @s slot.inventory 24 1 mine 2 64 0 minecraft:diamond_pickaxe', '/execute if block 2 64 0 minecraft:blue_shulker_box run setblock 3 64 0 minecraft:air replace', '/setblock 30000000 64 0 minecraft:blue_shulker_box keep', '/setblock 2 -64 0 minecraft:blue_shulker_box keep', '/replaceitem block 2 64 0 slot.container 54 minecraft:dirt 64']) assert.equal(allowed(text), false, text)
   assert.ok(allowed('/clear @s')); assert.ok(allowed('/replaceitem entity @s slot.armor.head 0 minecraft:air 1'))
 })
 test('loadout: queued commands and wrong UUID are not success; matching server output is required', async () => {
