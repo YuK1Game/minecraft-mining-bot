@@ -59,3 +59,21 @@ test('inner water/lava source is dirt-plugged and the one-cell outside ring is s
    assert.equal(permits(regions,'place',{x:16,y:61,z:5}).allowed,false)
  }
 })
+
+test('1,024-cell internal lava pool can be inspected and plugged at its highest source',()=>{
+ const cells=new Map()
+ for(let y=60;y<=63;y++)for(let x=0;x<16;x++)for(let z=0;z<16;z++){
+   cells.set(x+','+y+','+z,{known:true,name:'minecraft:lava',runtimeId:101,
+     position:{x,y,z},boundingBox:'empty',properties:{liquid_depth:0},extra:[]})
+ }
+ const read=(x,y,z)=>cells.get(x+','+y+','+z)??{known:true,name:y<60?'minecraft:stone':'minecraft:air',
+   runtimeId:1,boundingBox:y<60?'block':'empty',properties:{},extra:[]}
+ const regions=buildRegions({target:{chunks:[{x:0,z:0}]},yTop:63,yBottom:59,
+   boundarySeal:{enabled:true,horizontalMargin:1,sourceOnly:true,material:'dirt'}})
+ const p=createQuarryPlanner({regions,getBlock:read})
+ const plan=p.sealPlan({position:{x:4,y:60,z:4}})
+ assert.equal(plan.ok,true,JSON.stringify(plan).slice(0,300))
+ assert.equal(plan.sourceSeal.size,1024)
+ assert.equal(plan.position.y,63)
+ assert.equal(plan.purpose,'plug')
+})
