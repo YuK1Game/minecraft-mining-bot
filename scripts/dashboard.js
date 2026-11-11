@@ -156,7 +156,10 @@ function createDashboard ({ controls = null, workspaceRoot = path.resolve(__dirn
       response.end(method === 'HEAD' ? undefined : data)
     }
     const canonical = `http://${HOST}:${PORT}`
-    if (request.headers.host !== `${HOST}:${PORT}` || request.headers.origin != null && request.headers.origin !== canonical || request.headers['sec-fetch-site'] === 'cross-site') { request.resume?.(); send(403, { error: 'このPCのBot監視ページから利用してください。' }); return }
+    // A top-level browser entry can be cross-site; only the exact landing
+    // document may enter that way. APIs, assets and writes keep the gate.
+    const documentEntry = method === 'GET' && request.url === '/' && request.headers['sec-fetch-mode'] === 'navigate' && request.headers['sec-fetch-dest'] === 'document'
+    if (request.headers.host !== `${HOST}:${PORT}` || request.headers.origin != null && request.headers.origin !== canonical || request.headers['sec-fetch-site'] === 'cross-site' && !documentEntry) { request.resume?.(); send(403, { error: 'このPCのBot監視ページから利用してください。' }); return }
     if (!['GET', 'HEAD', 'POST'].includes(method)) { request.resume?.(); send(405, { error: 'Bot監視ページは読み取り専用です。' }, undefined, { Allow: 'GET, HEAD' }); return }
     if (typeof request.url !== 'string' || request.url.length > 2048 || !request.url.startsWith('/') || request.url.startsWith('//')) { send(400, { error: 'Invalid request URL' }); return }
     let url

@@ -208,3 +208,85 @@ test('live case 2026-11-10: gravel that refills from above restarts the slow-bre
   const result = await a.mine([{ x: 1, y: 0, z: 0, expectedName: 'minecraft:gravel' }])
   assert.equal(result.phase, 'completed')
 })
+
+test('live case 2026-11-11: the live adapter exposes receipt-backed v2.2 startup, equipment and final storage ports', async () => {
+  const { ports } = fakePorts()
+  const calls = []
+  const signal = new AbortController().signal
+  const checkpoint = { phase: 'withdraw', index: 0 }
+  const request = { jobId: 'live-v22', operationId: 'startup', checkpoint }
+  const options = { signal, onCheckpoint: async () => {} }
+  const withdrawn = { status: 'completed', serverConfirmed: true, checkpoint }
+  const deposited = { status: 'completed', serverConfirmed: true, count: 34 }
+  const equipped = { serverConfirmed: true, from: 'main', to: 'offhand' }
+  const equipment = { offhand: { known: true, slots: [{ name: 'minecraft:totem_of_undying' }] } }
+  const loggedOut = { disconnected: true }
+  const failure = Object.assign(new Error('LOADOUT_TRANSFER_UNCONFIRMED'), { code: 'LOADOUT_TRANSFER_UNCONFIRMED' })
+  let rejectWithdrawal = false
+  const adapter = createQuarryRuntimeAdapter({
+    ...ports,
+    loadoutWithdraw: async (input, settings) => {
+      calls.push(['withdraw', input, settings])
+      if (rejectWithdrawal) throw failure
+      return withdrawn
+    },
+    finalChestDeposit: async (input, settings) => { calls.push(['deposit', input, settings]); return deposited },
+    equipmentTransfer: async input => { calls.push(['equipment', input]); return equipped },
+    equipmentView: () => { calls.push(['view']); return equipment },
+    logout: async () => { calls.push(['logout']); return loggedOut }
+  })
+
+  assert.equal(await adapter.loadoutWithdraw(request, options), withdrawn)
+  assert.equal(calls[0][1], request, 'checkpoint-bearing requests are not rewritten')
+  assert.equal(calls[0][2], options, 'abort signal and checkpoint persistence callback survive the adapter')
+  assert.equal(calls[0][2].signal, signal)
+  assert.equal(calls[0][2].onCheckpoint, options.onCheckpoint)
+
+  assert.equal(await adapter.finalChestDeposit(request, options), deposited)
+  assert.equal(calls[1][1], request)
+  assert.equal(calls[1][2], options)
+  const transfer = { from: 'main', fromSlot: 8, to: 'offhand', toSlot: 0, expectedName: 'minecraft:totem_of_undying', signal }
+  assert.equal(await adapter.equipmentTransfer(transfer), equipped)
+  assert.equal(calls[2][1], transfer)
+  assert.equal(calls[2][1].signal, signal)
+  assert.equal(adapter.equipmentView(), equipment)
+  assert.equal(await adapter.logout(), loggedOut)
+  assert.deepEqual(calls.map(call => call[0]), ['withdraw', 'deposit', 'equipment', 'view', 'logout'])
+
+  rejectWithdrawal = true
+  await assert.rejects(() => adapter.loadoutWithdraw(request, options), error => error === failure)
+  assert.equal(calls.filter(call => call[0] === 'withdraw').length, 2, 'an unconfirmed withdrawal is neither converted to success nor retried')
+})
+
+test('runtime adapter leaves unsupported v2.2 ports absent so planning can reject the unavailable runtime', () => {
+  const { ports } = fakePorts()
+  const names = ['loadoutWithdraw', 'finalChestDeposit', 'equipmentTransfer', 'equipmentView', 'logout']
+  for (const unsupported of [undefined, null, false, {}]) {
+    const adapter = createQuarryRuntimeAdapter({ ...ports, ...Object.fromEntries(names.map(name => [name, unsupported])) })
+    for (const name of names) {
+      assert.equal(Object.hasOwn(adapter, name), false, `${name} must not advertise a fabricated implementation`)
+    }
+  }
+})
+
+test('runtime adapter preserves the v2.2 supply layout and discovery results or errors', () => {
+  const { ports } = fakePorts()
+  const layouts = []
+  const received = { ok: true, bindings: [{ role: 'totem' }] }
+  const failure = Object.assign(new Error('SUPPLY_BOXES_UNCONFIRMED'), { code: 'SUPPLY_BOXES_UNCONFIRMED' })
+  let rejectDiscovery = false
+  const adapter = createQuarryRuntimeAdapter({
+    ...ports,
+    discoverSupplies: layout => {
+      layouts.push(layout)
+      if (rejectDiscovery) throw failure
+      return received
+    }
+  })
+  assert.equal(adapter.discoverSupplies('v22'), received)
+  assert.equal(adapter.discoverSupplies('legacy'), received)
+  assert.equal(adapter.discoverSupplies(), received)
+  assert.deepEqual(layouts, ['v22', 'legacy', undefined], 'the totem supply layout must not silently become legacy bread supplies')
+  rejectDiscovery = true
+  assert.throws(() => adapter.discoverSupplies('v22'), error => error === failure)
+})

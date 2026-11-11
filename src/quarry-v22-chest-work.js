@@ -27,9 +27,10 @@ const chestSlots = (view, at) => {
 }
 const worldKey = s => JSON.stringify([s?.profile, s?.realm?.id, s?.dimension])
 const lifeKey = s => JSON.stringify([worldKey(s), s?.lifecycle?.deathId])
+const connectionKey = s => JSON.stringify([s?.connectionId,s?.startedAt,String(s?.runtimeEntityId)])
 const itemName = raw => typeof raw?.name === 'string' ? raw.name : null
 const sameNbt = (a,b) => {
-  if (!valid(a) || !valid(b) || a.network_id !== b.network_id || a.count !== b.count || a.metadata !== b.metadata) return false
+  if (!valid(a) || !valid(b) || a.network_id !== b.network_id || a.count !== b.count || a.metadata !== b.metadata || a.block_runtime_id !== b.block_runtime_id) return false
   return isDeepStrictEqual(a.extra, b.extra)
 }
 const known = s => s?.known === true && s.empty !== true && typeof s.name === 'string' && Number.isInteger(s.count) && s.count > 0
@@ -67,12 +68,13 @@ function buildStartupPlan (slots) {
 }
 
 function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest, open, close,
-  withdraw, deposit, equipArmor, equipmentTransfer, resync = async()=>true, now=Date.now } = {}) {
-  if ([getState,getView,getRawMain,getRawChest,open,close,withdraw,deposit,equipArmor,equipmentTransfer,resync,now].some(fn=>typeof fn!=='function')) throw new TypeError('V22 chest work requires observed 54-slot and equipment ports')
+  withdraw, deposit, equipArmor, equipmentTransfer, resync = async()=>true, now=Date.now,
+  sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)) } = {}) {
+  if ([getState,getView,getRawMain,getRawChest,open,close,withdraw,deposit,equipArmor,equipmentTransfer,resync,now,sleep].some(fn=>typeof fn!=='function')) throw new TypeError('V22 chest work requires observed 54-slot and equipment ports')
   let busy=false
-  const current = (expectedWorld=null,expectedLife=null) => {
+  const current = (expectedWorld=null,expectedLife=null,{allowUncertain=false}={}) => {
     const s=getState(), view=getView()
-    if(s?.phase!=='spawned'||s.dead||s.isDead||s.lifecycle?.dead||!(s.health>0)||view?.known!==true||s.inventory?.known!==true||s.inventory?.uncertain) throw fail('LOADOUT_INVENTORY_UNKNOWN')
+    if(s?.phase!=='spawned'||s.dead||s.isDead||s.lifecycle?.dead||!(s.health>0)||!s.inventory||(!allowUncertain&&(view?.known!==true||s.inventory.known!==true||s.inventory.uncertain))) throw fail('LOADOUT_INVENTORY_UNKNOWN')
     if(expectedWorld!==null && worldKey(s)!==expectedWorld) throw fail('LOADOUT_WORLD_CHANGED')
     if(expectedLife!==null && lifeKey(s)!==expectedLife) throw fail('LOADOUT_LIFE_CHANGED')
     return {s,view}
@@ -93,13 +95,52 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
     if(typeof cb!=='function')throw fail('LOADOUT_PERSISTENCE_REQUIRED')
     await cb(copy(cp))
   }
+  async function reconcileWithdrawal(cp,op,request,signal) {
+    signal?.throwIfAborted()
+    const connection=connectionKey(current(cp.world,cp.life,{allowUncertain:true}).s)
+    const verify=(allowUncertain=false)=>{
+      const frame=current(cp.world,cp.life,{allowUncertain})
+      if(connectionKey(frame.s)!==connection)throw fail('LOADOUT_CONNECTION_CHANGED')
+      return frame
+    }
+    close()
+    let refreshed
+    try { refreshed=await resync({signal}) } catch(error) {
+      if(error.code!=='RESYNC_RATE_LIMIT')throw error
+      // The shared server refresh has a 20-second cooldown. Respect it with
+      // one bounded retry; keep checking the recorded life while waiting.
+      for(let waited=0;waited<20000;waited+=100) {
+        signal?.throwIfAborted()
+        verify(true)
+        await sleep(100)
+      }
+      signal?.throwIfAborted()
+      verify(true)
+      refreshed=await resync({signal})
+    }
+    if(refreshed!==true)throw fail('LOADOUT_RECONCILE_MAIN_UNCONFIRMED')
+    signal?.throwIfAborted()
+    verify()
+    await inStation(request)
+    verify()
+    const main=getRawMain(op.to),box=getRawChest(op.from),beforeBox=unpack(cp.intent.beforeBox)
+    if(!valid(main)||!valid(box)||!valid(beforeBox))throw fail('LOADOUT_RECONCILE_RECEIPT_UNKNOWN')
+    // ACK counts alone never supply item/NBT data. A fresh full main view and
+    // a newly opened chest must agree on the exact previously recorded stack.
+    const done=empty(box)&&main.count===op.count&&sameNbt(main,beforeBox)
+    const unchanged=empty(main)&&sameNbt(box,beforeBox)
+    if(!done&&!unchanged)throw fail('LOADOUT_TRANSFER_AMBIGUOUS')
+    return done
+  }
   async function withdrawAll (request,{onCheckpoint,signal}={}) {
     if(busy)throw fail('LOADOUT_BUSY')
     busy=true
     let cp=request?.checkpoint?copy(request.checkpoint):null
     try {
       signal?.throwIfAborted()
-      const {s,view}=current()
+      // A sent, journaled request may make the ordinary inventory uncertain.
+      // Only its read-only reconciliation may run until fresh receipts arrive.
+      const {s,view}=current(cp?.world??null,cp?.life??null,{allowUncertain:!!cp?.intent})
       if(!cp) {
         if(!mainItems(view).every(slot=>slot.empty)||!equipmentEmpty(view))throw fail('START_INVENTORY_NOT_EMPTY')
         const slots=await inStation(request)
@@ -113,30 +154,38 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
         await saveCheckpoint(cp,onCheckpoint)
       }
       if(cp.version!==1||cp.direction!=='withdraw'||cp.jobId!==request.jobId||cp.operationId!==request.operationId||pkey(cp.position)!==pkey(request.position)||!Array.isArray(cp.plan)||cp.plan.length!==34||!Number.isInteger(cp.index)||cp.index<0||cp.index>34)throw fail('LOADOUT_CHECKPOINT_INVALID')
-      current(cp.world,cp.life)
-      await inStation(request)
+      current(cp.world,cp.life,{allowUncertain:!!cp.intent})
+      if(!cp.intent)await inStation(request)
       for(;cp.index<cp.plan.length;) {
         signal?.throwIfAborted()
-        const op=cp.plan[cp.index],main=getRawMain(op.to),box=getRawChest(op.from)
-        if(!valid(main)||!valid(box))throw fail('LOADOUT_RECEIPT_UNKNOWN')
+        const op=cp.plan[cp.index]
         if(cp.intent) {
           if(cp.intent.index!==cp.index)throw fail('LOADOUT_CHECKPOINT_INVALID')
-          if(await resync({signal})!==true)throw fail('LOADOUT_RECONCILE_MAIN_UNCONFIRMED')
-          await inStation(request)
-          const currentMain=getRawMain(op.to), currentBox=getRawChest(op.from)
-          const beforeBox=unpack(cp.intent.beforeBox)
           // A crash between dispatch and checkpoint may only be resolved from
           // both received sides. Ambiguous changes remain paused.
-          const done=empty(currentBox)&&currentMain.count===op.count&&sameNbt(currentMain,beforeBox)
-          const unchanged=empty(currentMain)&&sameNbt(currentBox,beforeBox)
-          if(!done&&!unchanged)throw fail('LOADOUT_TRANSFER_AMBIGUOUS')
+          const done=await reconcileWithdrawal(cp,op,request,signal)
           if(done){cp.receipts.push({kind:'reconciled_withdraw',from:op.from,to:op.to,name:op.name,count:op.count});cp.index++;cp.intent=null;await saveCheckpoint(cp,onCheckpoint);continue}
           cp.intent=null;await saveCheckpoint(cp,onCheckpoint)
         }
+        // Reconciliation can replace cached descriptors and stack IDs.
+        const main=getRawMain(op.to),box=getRawChest(op.from)
+        if(!valid(main)||!valid(box))throw fail('LOADOUT_RECEIPT_UNKNOWN')
         if(!empty(main)||empty(box))throw fail('LOADOUT_SOURCE_CHANGED')
         cp.intent={index:cp.index,beforeMain:pack(main),beforeBox:pack(box)}
         await saveCheckpoint(cp,onCheckpoint)
-        const receipt=await withdraw({chestSlot:op.from,targetSlot:op.to,count:op.count,expectedName:op.name,signal})
+        let receipt
+        try {
+          receipt=await withdraw({chestSlot:op.from,targetSlot:op.to,count:op.count,expectedName:op.name,signal})
+        } catch(error) {
+          signal?.throwIfAborted()
+          // A timeout may follow a transfer that really applied. Refresh both
+          // sides once, never reissue this failed dispatch in the same call.
+          if(!await reconcileWithdrawal(cp,op,request,signal))throw error
+          cp.receipts.push({kind:'reconciled_withdraw',from:op.from,to:op.to,name:op.name,count:op.count})
+          cp.intent=null;cp.index++
+          await saveCheckpoint(cp,onCheckpoint)
+          continue
+        }
         checkReceipt(receipt,op)
         const afterMain=getRawMain(op.to),afterBox=getRawChest(op.from)
         if(!empty(afterBox)||afterMain.count!==op.count||!sameNbt(afterMain,box))throw fail('LOADOUT_TRANSFER_UNCONFIRMED')

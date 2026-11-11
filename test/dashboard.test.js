@@ -27,9 +27,9 @@ function fixture ({ seed = null, request = async () => live(), mission = null, w
   return { dashboard, reads, writes, requests, setTime: value => { now = value } }
 }
 
-async function call (dashboard, { method = 'GET', url = '/api/status', host = '127.0.0.1:3001', origin, fetchSite } = {}) {
+async function call (dashboard, { method = 'GET', url = '/api/status', host = '127.0.0.1:3001', origin, fetchSite, fetchMode, fetchDest } = {}) {
   const result = { resumed: false }
-  const request = { method, url, headers: { host, ...(origin === undefined ? {} : { origin }), ...(fetchSite ? { 'sec-fetch-site': fetchSite } : {}) }, resume: () => { result.resumed = true } }
+  const request = { method, url, headers: { host, ...(origin === undefined ? {} : { origin }), ...(fetchSite ? { 'sec-fetch-site': fetchSite } : {}), ...(fetchMode ? { 'sec-fetch-mode': fetchMode } : {}), ...(fetchDest ? { 'sec-fetch-dest': fetchDest } : {}) }, resume: () => { result.resumed = true } }
   const response = { writeHead: (status, headers) => { result.status = status; result.headers = headers }, end: body => { result.bodyBytes = body ? Buffer.from(body) : Buffer.alloc(0); result.body = result.bodyBytes.toString('utf8'); result.json = result.body.startsWith('{') ? JSON.parse(result.body) : null } }
   await dashboard.handler(request, response)
   return result
@@ -159,6 +159,40 @@ test('HTTP accepts only the exact local host/origin and GET/HEAD for its two fix
   assert.equal((await call(f.dashboard, { url: '/' + 'a'.repeat(2048) })).status, 400)
   assert.equal(f.requests.length, 0)
   assert.ok(f.reads.every(row => row.filename.endsWith('dashboard/index.html') || row.filename.endsWith('dashboard\\index.html')))
+})
+
+test('cross-site top-level entry permits only the exact local landing document and never calls the Bot', async t => {
+  const f = fixture()
+  t.after(() => f.dashboard.stop())
+  const entry = { url: '/', fetchSite: 'cross-site', fetchMode: 'navigate', fetchDest: 'document' }
+  for (const origin of [undefined, 'http://127.0.0.1:3001']) {
+    const result = await call(f.dashboard, { ...entry, origin })
+    assert.equal(result.status, 200)
+    assert.equal(result.headers['Content-Type'], 'text/html; charset=utf-8')
+    assert.equal(result.headers['Access-Control-Allow-Origin'], undefined)
+    assert.match(result.headers['Content-Security-Policy'], /frame-ancestors 'none'/)
+    assert.match(result.body, /^<!doctype html>/)
+  }
+  for (const extra of [
+    { host: 'evil.test:3001' }, { host: 'localhost:3001' }, { host: '127.0.0.1:3000' },
+    { origin: 'https://evil.test' }, { origin: 'null' },
+    { method: 'HEAD' }, { method: 'POST' }, { method: 'OPTIONS' },
+    { fetchMode: undefined }, { fetchMode: 'cors' }, { fetchMode: 'no-cors' },
+    { fetchDest: undefined }, { fetchDest: 'empty' }, { fetchDest: 'iframe' },
+    { url: '/?entry=1' }, { url: '/./' }, { url: '//127.0.0.1:3001/' },
+    { url: '/api/status' }, { url: '/api/control/session' }, { url: '/api/control/state' },
+    { url: '/api/control/realms' }, { url: '/api/logs/stream' },
+    { url: '/control.js' }, { url: '/control.css' },
+    { url: '/assets/minecraft/manifest.json' }, { url: '/assets/minecraft/textures/items/iron_pickaxe.png' },
+    { url: '/logs' }
+  ]) {
+    const result = await call(f.dashboard, { ...entry, ...extra })
+    assert.equal(result.status, 403, JSON.stringify(extra))
+    assert.equal(result.resumed, true)
+  }
+  assert.equal(f.requests.length, 0)
+  assert.equal(f.writes.length, 0)
+  assert.equal(f.reads.length, 2)
 })
 
 test('Minecraft manifest and PNG assets provide correct bytes, MIME, HEAD and bounded cache policy', async t => {

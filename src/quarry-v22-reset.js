@@ -235,8 +235,20 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
     if(!emptyBot(guard().view))throw fail('RESET_BOW_NEEDS_EMPTY_BOT')
     await command('/replaceitem entity @s slot.hotbar 0 minecraft:bow 1','無限の弓を準備')
     await waitFor(()=>guard().view.slots[0].name==='minecraft:bow','bow_in_hand')
-    await adapter.select(0)
-    await command('/testfor @s[hasitem={item=minecraft:bow,location=slot.weapon.mainhand,quantity=1}]','弓の主手を確認')
+    // The server does not always echo our own selection at once (live
+    // 2026-11-11 21:12: the main-hand probe answered noTargetMatch). As in the
+    // shulker reset, only an explicit negative answer to this read-only probe
+    // re-selects and asks again, at most three times.
+    for(let attempt=0;;attempt++){
+      if(guard().view.slots[0]?.name!=='minecraft:bow')throw fail('RESET_HAND_CHANGED')
+      await adapter.select(0)
+      try{await command('/testfor @s[hasitem={item=minecraft:bow,location=slot.weapon.mainhand,quantity=1}]','弓の主手を確認');break}
+      catch(error){
+        if(error.code!=='RESET_COMMAND_REJECTED'||error.serverRejected!==true||!['commands.generic.noTargetMatch','commands.testfor.failure'].includes(error.messageId))throw error
+        if(attempt===2)throw fail('RESET_HAND_UNCONFIRMED')
+        await sleep(150)
+      }
+    }
     await command('/enchant @s infinity 1','弓に無限を付与')
     await waitFor(()=>guard().view.slots[0]?.enchantmentsKnown===true &&
       guard().view.slots[0].enchantments.some(x=>x.name==='infinity'&&x.level>=1),'bow_infinity')
