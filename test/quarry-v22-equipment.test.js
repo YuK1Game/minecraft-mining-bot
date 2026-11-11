@@ -311,3 +311,24 @@ test('a delayed close for an unrelated old window does not invalidate the owned 
  await task
  assert.equal(f.offhand[0].stack_id,138);assert.deepEqual(f.ui.closes,[55])
 })
+
+test('missing UI capabilities and an unsupported fixture opener both fail closed', async () => {
+  const ports = {
+    client: { queue: () => { throw new Error('must not send') } },
+    getState: () => ({}), getView: () => ({}), getRawMain: () => null, getRawEquipment: () => null,
+    allocateRequestId: () => -3, commitMain: () => {}, commitEquipment: () => {}
+  }
+  const complete = { status: () => ({ openContainer: null }), openInventory: async () => ({}), closeContainer: () => {} }
+  for (const missing of ['status', 'openInventory', 'closeContainer']) {
+    const crafting = { ...complete }
+    delete crafting[missing]
+    assert.throws(() => createQuarryV22Equipment({ ...ports, crafting }), /observed inventory session/, missing)
+  }
+  const f = hotbarFixture({ alreadyOpen: false })
+  f.ui.openHook = async () => { throw new Error('Inventory UI is unsupported by the idle Runtime fixture') }
+  await assert.rejects(equipTotem(f), error => error.code === 'EQUIPMENT_OPEN_FAILED' && /unsupported by the idle Runtime fixture/.test(error.details?.message))
+  assert.equal(f.commands.length, 0)
+  assert.equal(f.commits.length, 0)
+  assert.equal(f.uncertain.length, 0)
+  assert.equal(f.equipment.status().busy, false)
+})
