@@ -118,28 +118,40 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
   async function stageSlots() {return openAt(active.home.stage,27)}
   function physicalSlot(index) {
     if(!Number.isSafeInteger(index)||index<0||index>=54)throw fail('RESET_CHEST_SLOT_INVALID')
+    // Combined addressing: either block of the pair takes the 54-slot index.
+    if(active.home.addressing==='combined'){if(!vec(active.home.position))throw fail('RESET_CHEST_HALVES_UNKNOWN');return {position:active.home.position,slot:index}}
     const p=index<27?active.home.firstHalf:active.home.secondHalf
     if(!vec(p))throw fail('RESET_CHEST_HALVES_UNKNOWN')
     return {position:p,slot:index%27}
   }
   async function calibrateHalves () {
     const first=active.home.position,second=active.home.other
-    // Bedrock's /replaceitem and /loot commands address each 27-slot half
-    // separately, even though the GUI displays a combined 54-slot window.
-    // Probe both physical halves before using a single command slot index.
+    // A server may address each 27-slot half separately, or the whole 54-slot
+    // pair from either block (live 2026-11-11 18:51: the Realm wrote slot 0
+    // from both blocks into the same combined slot, and slot 30 into 30).
+    // Probe and use only the addressing actually observed.
     await adapter.close()
     await command('/replaceitem block '+at(first)+' slot.container 0 minecraft:dirt 1','片側チェストを識別')
     await command('/replaceitem block '+at(second)+' slot.container 0 minecraft:bread 1','反対側チェストを識別')
-    const slots=await mainSlots()
-    const dirt=slots.flatMap((v,i)=>v?.name==='minecraft:dirt'&&v.count===1?[i]:[])
-    const bread=slots.flatMap((v,i)=>v?.name==='minecraft:bread'&&v.count===1?[i]:[])
-    if(dirt.length!==1||bread.length!==1||![0,27].includes(dirt[0])||![0,27].includes(bread[0])||dirt[0]===bread[0])throw fail('RESET_CHEST_HALF_MAPPING_UNKNOWN')
-    active.home.firstHalf=copy(dirt[0]===0?first:second)
-    active.home.secondHalf=copy(dirt[0]===0?second:first)
-    await mark('左右チェストを識別',{chestMappingConfirmed:true})
+    let slots=await mainSlots()
+    const one=(name,count)=>slots.flatMap((v,i)=>v?.name===name&&v.count===count?[i]:[])
+    const dirt=one('minecraft:dirt',1),bread=one('minecraft:bread',1),others=slots.filter((v,i)=>!v.empty&&!dirt.includes(i)&&!bread.includes(i))
+    if(dirt.length===1&&bread.length===1&&[0,27].includes(dirt[0])&&[0,27].includes(bread[0])&&dirt[0]!==bread[0]&&!others.length){
+      active.home.addressing='halves'
+      active.home.firstHalf=copy(dirt[0]===0?first:second)
+      active.home.secondHalf=copy(dirt[0]===0?second:first)
+    } else if(!dirt.length&&bread.length===1&&bread[0]===0&&!others.length){
+      // Both commands wrote the same slot: confirm that a second-half index
+      // from the first block lands at that same combined index.
+      await adapter.close()
+      await command('/replaceitem block '+at(first)+' slot.container 27 minecraft:dirt 2','結合番号を確認')
+      slots=await mainSlots()
+      if(one('minecraft:dirt',2).join()!=='27'||one('minecraft:bread',1).join()!=='0'||slots.filter(v=>!v.empty).length!==2)throw fail('RESET_CHEST_HALF_MAPPING_UNKNOWN')
+      active.home.addressing='combined'
+    } else throw fail('RESET_CHEST_HALF_MAPPING_UNKNOWN')
+    await mark('左右チェストを識別',{chestMappingConfirmed:true,addressing:active.home.addressing})
     await adapter.close()
-    await command('/replaceitem block '+at(first)+' slot.container 0 minecraft:air 1','識別用土を片付ける')
-    await command('/replaceitem block '+at(second)+' slot.container 0 minecraft:air 1','識別用パンを片付ける')
+    for(const n of [0,27])await command('/replaceitem block '+at(active.home.addressing==='combined'?first:physicalSlot(n).position)+' slot.container '+(active.home.addressing==='combined'?n:0)+' minecraft:air 1','識別用アイテムを片付ける')
     const cleared=await mainSlots()
     if(cleared.some(x=>!x.empty))throw fail('RESET_CHEST_CALIBRATION_UNCONFIRMED')
     await adapter.close()
@@ -155,7 +167,7 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
     }
     const slots=await mainSlots()
     if(home.existing) {
-      if(!vec(home.firstHalf)||!vec(home.secondHalf))throw fail('RESET_OLD_CHEST_MAPPING_UNKNOWN')
+      if(home.addressing!=='combined'&&(!vec(home.firstHalf)||!vec(home.secondHalf)))throw fail('RESET_OLD_CHEST_MAPPING_UNKNOWN')
       for(let i=0;i<54;i++) {
         if(slots[i].empty)continue
         const target=physicalSlot(i)
