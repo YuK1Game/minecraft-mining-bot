@@ -72,10 +72,10 @@ function storageSupplyExclusions (bindings) {
 const WORN_TOOL_USES = 100 // a tool below this is returned when its kind is exhausted for mining
 const FRESH_TOOL_USES = 500 // with a full bag, one carried tool of an exhausted kind with this many uses is enough
 const usesOf = item => item?.durabilityKnown === true && Number.isFinite(item.durabilityRemaining) ? item.durabilityRemaining : null
-function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true, miningExhausted = null, depositWhen = 'capacity', totemNeeded = false, shovelExhausted = false } = {}) {
+function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true, miningExhausted = null, depositWhen = 'capacity', totemNeeded = false, shovelExhausted = false, exitPreparing = false, exitDirtTarget = 192 } = {}) {
   const main = (items ?? []).filter(item => Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && item.count > 0)
   const v22 = depositWhen === 'four_layers'
-  const desired = { pickaxe: 1, shovel: v22 && shovelExhausted ? 0 : 1, food: v22 ? 0 : foodEnabled ? keepFood : 0, dirt: v22 ? 64 : keepExitDirt + keepSealBlocks, totem: v22 && totemNeeded ? 1 : 0 }
+  const desired = { pickaxe: 1, shovel: v22 && shovelExhausted ? 0 : 1, food: v22 ? 0 : foodEnabled ? keepFood : 0, dirt: v22 ? exitPreparing ? exitDirtTarget : 64 : keepExitDirt + keepSealBlocks, totem: v22 && totemNeeded ? 1 : 0 }
   // A tool whose remaining uses are all reserved for the exit still counts as
   // carried (it is kept for the exit), so one more of that kind is wanted.
   const available = { pickaxe: 0, shovel: 0, food: 0, dirt: 0, totem: 0 }, returns = []
