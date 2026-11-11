@@ -14,7 +14,11 @@ test('loadout-control: preview + explicit confirmation are required; one click r
   assert.equal(f.commandsSent.length, 0)
   await assert.rejects(control.execute({ command: 'resetStart', session, resetToken: p.resetPreview.token }))
   const again = await control.execute({ command: 'resetPreview', session })
-  const s = await control.execute({ command: 'resetStart', session, resetToken: again.resetPreview.token, confirm: 'REPLACE_SURFACE_CHEST' })
+  // A confirmation phrase for the other reset kind never starts this one.
+  await assert.rejects(control.execute({ command: 'resetStart', session, resetToken: again.resetPreview.token, confirm: 'REPLACE_SURFACE_CHEST' }))
+  assert.equal(f.commandsSent.length, 0)
+  const third = await control.execute({ command: 'resetPreview', session })
+  const s = await control.execute({ command: 'resetStart', session, resetToken: third.resetPreview.token, confirm: 'REPLACE_INITIAL_INVENTORY' })
   assert.equal(s.reset.busy, true)
   await assert.rejects(control.execute({ command: 'plan', session, config: { x1: 0, z1: 0 } }), { code: 'RESET_BUSY' })
   await control.execute({ command: 'resetCancel', session }); await f.reset.drain()
