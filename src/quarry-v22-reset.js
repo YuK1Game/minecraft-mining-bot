@@ -38,7 +38,7 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
   observationTimeoutMs = 8000, uuid = randomUUID } = {}) {
   const required=['getState','getView','getBlock','assertIdle','acquire','release','cancelJob','save','load','select','open','close','deposit','container','cancelTransfers']
   if(required.some(k=>typeof adapter?.[k]!=='function')||typeof commands?.send!=='function')throw TypeError('V22 reset requires receipt-backed server ports')
-  let preview=null,active=null,task=null,result=null,lastError=null
+  let preview=null,active=null,task=null,result=null,lastError=null,abort=null,acquisition=null
   function scene () {
     const s=adapter.getState(), scope=observedScope(s)
     if(!scope||s.phase!=='spawned'||s.dead||s.isDead||!(s.health>0)||s.dimension!=='overworld'||!['survival',0].includes(s.gameMode)||!s.position)throw fail('RESET_NOT_READY')
@@ -83,7 +83,7 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
       stage:copy(home.stage),homeChest:copy(home),manifest:summary(),replaces:{surfaceChest:home.existing,inventory:false}}
   }
   function guard () {
-    active?.abort?.signal.throwIfAborted()
+    abort?.signal.throwIfAborted()
     const frame=scene()
     if(!active||frame.scope!==active.scope||worldOf(frame.s)!==active.world||!same(frame.feet,active.feet)||(adapter.generation?.()??0)!==active.generation)throw fail('RESET_CONTEXT_CHANGED')
     return frame
@@ -100,7 +100,7 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
   async function command(cmd,label) {
     await mark(label,{pending:{type:'command',label,cmd}})
     guard()
-    const out=await commands.send(cmd,{signal:active.abort.signal})
+    const out=await commands.send(cmd,{signal:abort?.signal})
     guard()
     if(out?.serverConfirmed!==true||out.scope!==active.scope)throw fail('RESET_COMMAND_UNCONFIRMED',{label})
     active.steps++;await mark(label,{pending:null})
@@ -204,7 +204,7 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
   }
   async function execute() {
     try {
-      await active.acquisition
+      await acquisition
       guard()
       const view=adapter.getView()
       if(!emptyBot(view)||stamp({slots:view.slots,armor:view.armor,offhand:view.offhand})!==active.fingerprint)throw fail('RESET_PREVIEW_STALE')
@@ -253,10 +253,10 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
       (adapter.generation?.()??0)!==prepared.generation||!emptyBot(snapshot.view))throw fail('RESET_PREVIEW_STALE')
     active={operationId:uuid(),phase:'preparing',scope:prepared.scope,world:prepared.world,home:prepared.home,feet:prepared.feet,
       fingerprint:prepared.fingerprint,generation:prepared.generation,steps:0,suppliesCompleted:0,supplyProgress:null,pending:null,serverConfirmed:false,
-      startedAt:now(),abort:new AbortController()}
+      startedAt:now()}
     let acquired
     try{acquired=adapter.acquire(active.operationId)}catch(error){active=null;throw error}
-    active.acquisition=Promise.resolve(acquired)
+    abort=new AbortController();acquisition=Promise.resolve(acquired)
     const promise=Promise.resolve().then(execute)
     task=promise.finally(()=>{if(task===tracked)task=null})
     const tracked=task
@@ -264,7 +264,7 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
   }
   function cancel () {
     preview=null
-    active?.abort.abort(fail('RESET_CANCELLED'))
+    abort?.abort(fail('RESET_CANCELLED'))
     commands.cancel?.()
     return status()
   }
