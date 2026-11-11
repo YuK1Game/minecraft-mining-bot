@@ -561,6 +561,14 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
         if (layer.unknown) return { action: 'pause', reason: 'UNOBSERVED_CELLS', details: { y, unknown: layer.unknown } }
         continue
       }
+      // Isolation check before the layer is opened (live 2026-11-11 13:08: a
+      // layer dug over a cave left the bot on an island of kept ore). With lower
+      // layers still to dig, the walkable area must keep a way down: a stance
+      // already on this layer's floor, or a pending cell of this layer with a
+      // solid floor under it next to a reachable stance (mine it, step down).
+      // Only for a real void under the layer, while the bot is not already cut off
+      // (that case keeps its DESCENT_REQUIRED stop below).
+      if (y > regions.yBottom && reach.size > SMALL_REACH && layer.pending.filter(t => !grounded(t.position)).length >= WRITE_OFF_LAYER_CELLS && !exitAfter(feet, [], y, layer.pending).down) return { action: 'pause', reason: 'LAYER_ISOLATION_RISK', details: { y, reach: reach.size, pending: layer.pending.length, groundedCells: layer.pending.filter(t => grounded(t.position)).length, feet: { ...feet } } }
       // Stair upkeep before the layer is opened.
       const step = stairStepAt(y)
       if (step) {
@@ -670,9 +678,56 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
     // Never clear the last floor that links the stance to the rest of the
     // walkable area (live 2026-11-10: the bot dug away every floor cell
     // around itself and was left on a 1-block pillar above a 40-deep cave).
-    const batch = keepConnected(best.chosen.stance, best.batch, reach)
+    const linked = keepConnected(best.chosen.stance, best.batch, reach)
+    // Keep a way down and every still-coverable cell of the layer reachable
+    // after this batch; cells that would cut them off wait for later.
+    const batch = keepExit(best.chosen.stance, linked, layerPending, target.position.y)
     if (!batch.length) return null
     return { action: 'mine', stance: best.chosen.stance, travel: best.chosen.distance, tool: target.tool ?? { kind: 'hand' }, targets: batch }
+  }
+  // A cell of a layer whose floor (one below) is solid: once dug, the bot can
+  // step down into it and stand on the next level.
+  function grounded (p) { return solidFloor(read(add(p, { x: 0, y: -1, z: 0 }))) }
+  const eyeNear = (s, t) => Math.hypot(t.x + 0.5 - (s.x + 0.5), t.y + 0.5 - (s.y + EYE), t.z + 0.5 - (s.z + 0.5)) <= REACH + 0.5
+  // Walkable area from stance with cells treated as dug: whether a way down
+  // remains and which pending cells of the layer some stance can still reach.
+  function exitAfter (stance, cells, y, pending) {
+    for (const c of cells) overlay.set(key(c.position.x, c.position.y, c.position.z), OVERLAY_AIR)
+    try {
+      const reach = reachableFrom(stance)
+      const removed = new Set(cells.map(c => key(c.position.x, c.position.y, c.position.z)))
+      const rest = pending.filter(t => !removed.has(key(t.position.x, t.position.y, t.position.z)))
+      const restKeys = new Set(rest.map(t => key(t.position.x, t.position.y, t.position.z)))
+      const stances = [...reach.keys()].map(k => { const [x, sy, z] = k.split(',').map(Number); return { x, y: sy, z } })
+      let down = !(y > regions.yBottom)
+      for (const s of stances) {
+        if (down) break
+        if (s.y <= y) { down = true; break }
+        for (const h of HORIZONTAL) {
+          const n = { x: s.x + h.x, y: s.y - 1, z: s.z + h.z }
+          if (n.y === y && restKeys.has(key(n.x, n.y, n.z)) && grounded(n)) { down = true; break }
+        }
+      }
+      const covered = new Set()
+      for (const t of rest) if (stances.some(s => eyeNear(s, t.position))) covered.add(key(t.position.x, t.position.y, t.position.z))
+      return { down, covered, size: reach.size }
+    } finally { overlay.clear() }
+  }
+  function keepExit (stance, batch, pending, y) {
+    if (!batch.length) return batch
+    const before = exitAfter(stance, [], y, pending)
+    if (!before.down) return batch // no way down to protect from here; the pre-layer check decides
+    const ok = cells => {
+      const after = exitAfter(stance, cells, y, pending)
+      if (!after.down) return false
+      const removed = new Set(cells.map(c => key(c.position.x, c.position.y, c.position.z)))
+      for (const k of before.covered) if (!removed.has(k) && !after.covered.has(k)) return false
+      return true
+    }
+    if (ok(batch)) return batch
+    const kept = []
+    for (const c of batch) if (ok([...kept, c])) kept.push(c)
+    return kept
   }
   function reachSizeWithout (stance, cells) {
     for (const c of cells) overlay.set(key(c.position.x, c.position.y, c.position.z), OVERLAY_AIR)
@@ -820,7 +875,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
   function clearDeferred (reasons = null, keep = null) { const before = deferred.size; for (const [k, v] of deferred) if ((!reasons || reasons.includes(v.reason)) && !(keep && keep(k))) deferred.delete(k); if (deferred.size !== before) recordRevision++ }
   function exportRecords () { return { deferred: Object.fromEntries(deferred), temporary: Object.fromEntries(temporary), seals: Object.fromEntries(seals), stair } }
 
-  return { pathTo, surveyTop, planStair, stairStepAt, isStairCell, cellStatus, layerSummary, next, previewSealPlacement, reachableFrom, reachableFromAsync, standable, safeSealStance, fluidNeighbours, sealPlan, recordPlacement, counts, countsAsync, revision: () => recordRevision, defer, clearDeferred, exportRecords, deferredList: () => [...deferred].map(([k, v]) => ({ position: k, ...v })), sealList: () => [...seals].map(([k, v]) => ({ position: k, ...v })), temporaryList: () => [...temporary].map(([k, v]) => ({ position: k, ...v })) }
+  return { exitAfter, grounded, pathTo, surveyTop, planStair, stairStepAt, isStairCell, cellStatus, layerSummary, next, previewSealPlacement, reachableFrom, reachableFromAsync, standable, safeSealStance, fluidNeighbours, sealPlan, recordPlacement, counts, countsAsync, revision: () => recordRevision, defer, clearDeferred, exportRecords, deferredList: () => [...deferred].map(([k, v]) => ({ position: k, ...v })), sealList: () => [...seals].map(([k, v]) => ({ position: k, ...v })), temporaryList: () => [...temporary].map(([k, v]) => ({ position: k, ...v })) }
 }
 
 module.exports = { createQuarryPlanner }

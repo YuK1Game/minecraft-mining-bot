@@ -152,3 +152,20 @@ test('live case 2026-11-11: a supply site refused before anything was placed sta
   assert.equal(blocked.pauseReason, 'SUPPLY_RESTOCK_BLOCKED')
   assert.equal(g.requests.length, 1)
 })
+
+test('live case 2026-11-11: a stack larger than eight (ten diorite) is put back to free a slot; reserves stay intact', async () => {
+  const f = fixture()
+  f.sim.give('diorite', 10)
+  f.config.yTop = 63 // the stand's layer is inside the excavated range
+  assert.equal(f.job.plan(f.config).ready, true)
+  await f.job.configureSupplies()
+  const dirtBefore = f.sim.state.inventory.items.filter(i => i.name === 'minecraft:dirt').reduce((n, i) => n + i.count, 0)
+  f.setBehavior('room')
+  const first = await f.job.restockSuppliesNow()
+  assert.notEqual(first.pauseReason, 'SUPPLY_RESTOCK_BLOCKED')
+  assert.equal(f.sim.state.inventory.items.filter(i => i.name === 'minecraft:diorite').length, 0, 'the whole stack was placed')
+  const placed = f.job.document().actions.filter(a => a.purpose === 'supply_room' && a.status === 'confirmed')
+  assert.equal(placed.length, 10)
+  assert.ok(placed.every(a => a.confirmedBy === 'server_block_and_inventory'))
+  assert.equal(f.sim.state.inventory.items.filter(i => i.name === 'minecraft:dirt').reduce((n, i) => n + i.count, 0), dirtBefore, 'no dirt from the exit and seal reserve was used')
+})

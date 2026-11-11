@@ -59,11 +59,15 @@ const TERRAIN_OBSERVATION_MAX_REQUESTS = 2
 // sections and had evicted the next layer's, so Y-33 was unknown on arrival).
 const TERRAIN_LAYER_WAITS_MS = [2000, 4000, 8000, 8000, 8000, 8000]
 const TERRAIN_PREFETCH_INTERVAL_MS = 15000
+const TERRAIN_LOOKAHEAD_LAYERS = 8 // layers under the work layer received before it is planned
 // With a full bag a placed supply box can lose its slot to natural pickup; a
 // small stack of placeable mined blocks is put back into dug cells of the
 // current layer (re-mined later) to free one slot (live 2026-11-10 22:01, 23:27).
 const SUPPLY_ROOM_REASONS = new Set(['SUPPLY_CAPACITY_REQUIRED', 'SUPPLY_RECOVERY_SLOT_REQUIRED'])
-const SUPPLY_ROOM_MAX_BLOCKS = 8
+// Live 2026-11-11 13:27: the smallest placeable stack was 10 diorite, over the
+// old limit of 8, and the restock paused. Up to 24 blocks are now put back,
+// bounded by the dug cells of the layer that can actually take them.
+const SUPPLY_ROOM_MAX_BLOCKS = 24
 const SUPPLY_ROOM_MAX_ATTEMPTS = 2
 // A supply site refused just before the box is placed (live 2026-11-11 11:42:
 // STORAGE_SITE_CHANGED after a predicted-ready approach) leaves nothing placed
@@ -1054,6 +1058,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         return y <= job.cursorY && b?.known === true && b.name === d.name && blockRule(b.name).kind === 'dig' && !b.protected && !b.protectionSource && !canopyName(b.name)
       })
       if (initialUnreachable.length) return finish('PAUSED', 'INITIAL_LAYER_UNREACHABLE', { pauseDetails: { y: Math.max(...initialUnreachable.map(d => Number(d.position.split(',')[1]))), count: initialUnreachable.length, feet: planningFeet } })
+    }
+    // Receive the layers under the work layer before planning it, so a cave
+    // below is known before its roof is dug (never plan over unreceived cells).
+    for (let k = 1; k <= TERRAIN_LOOKAHEAD_LAYERS; k++) {
+      const ly = job.cursorY - k
+      if (ly < regions.yBottom) break
+      if (layerUnknown(ly) === 0) continue
+      if (await retryLayerTerrain(myEpoch, ly)) return
+      return finish('PAUSED', 'UNOBSERVED_CELLS', { pauseDetails: { y: ly, unknown: layerUnknown(ly), lookahead: true } })
     }
     const planningInventory = items(planningState)
     if (!planningInventory) { await sleep(300); return }
@@ -2529,26 +2542,45 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (!moved) return false
       slot = moved.slot
     }
-    const feet = feetCell(guard(myEpoch))
-    let placed = 0
+    const home = feetCell(guard(myEpoch))
+    // Only into dug cells of the excavated range, so the blocks are mined again.
+    if (home.y > job.yTop || home.y < regions.yBottom) return false
+    // Dug cells of this level that can take a block (received air over a
+    // received solid floor); a stack larger than these is not attempted.
+    const roomCells = () => {
+      const out = []
+      for (const column of regions.columns) {
+        const [x, z] = column.split(',').map(Number)
+        const b = adapter.getBlock(x, home.y, z), below = adapter.getBlock(x, home.y - 1, z)
+        if (b?.known === true && AIR.has(nameOf(b)) && !b.extra?.length && below?.known === true && below.boundingBox === 'block') out.push({ x, y: home.y, z })
+      }
+      return out
+    }
+    if (roomCells().length < pick.count + 2) { note('supply_room_unavailable', { reason: 'FEW_DUG_CELLS', count: pick.count }); return false }
+    let placed = 0, moved = false
     for (let n = 0; n < pick.count; n++) {
       inventory = items(guard(myEpoch))
       const current = inventory?.find(i => i.slot === slot)
       if (!current || nameOf(current.name) !== material || current.count < 1) break
-      const cells = []
-      for (const column of regions.columns) {
-        const [x, z] = column.split(',').map(Number)
-        if ((x === feet.x && z === feet.z) || Math.hypot(x - feet.x, z - feet.z) > 4.5) continue
-        const b = adapter.getBlock(x, feet.y, z), below = adapter.getBlock(x, feet.y - 1, z)
-        if (b?.known !== true || !AIR.has(nameOf(b)) || b.extra?.length || below?.known !== true || below.boundingBox !== 'block') continue
-        cells.push({ x, y: feet.y, z })
-      }
+      const feet = feetCell(guard(myEpoch))
+      const cells = roomCells().filter(c => !(c.x === feet.x && c.z === feet.z) && !(c.x === home.x && c.z === home.z))
       cells.sort((a, b) => Math.hypot(a.x - feet.x, a.z - feet.z) - Math.hypot(b.x - feet.x, b.z - feet.z))
-      let decision = null
-      for (const p of cells.slice(0, 24)) {
+      // Prefer a placement from where the bot stands; otherwise walk to another
+      // stance of this level that can place one (the box is reached again after).
+      let decision = null, fallback = null
+      for (const p of cells.slice(0, 32)) {
         const d = await planner.previewSealPlacement({ position: p, purpose: 'temporary', materialRequired: material, slot }, feet, inventory)
         guard(myEpoch)
-        if (d?.action && d.stance && d.stance.x === feet.x && d.stance.y === feet.y && d.stance.z === feet.z) { decision = d; break }
+        if (!d?.action || !d.stance) continue
+        if (d.stance.x === feet.x && d.stance.y === feet.y && d.stance.z === feet.z) { decision = d; break }
+        if (!fallback && d.stance.y === home.y && !(d.stance.x === home.x && d.stance.z === home.z)) fallback = d
+      }
+      if (!decision && fallback) {
+        try { await moveToStance(myEpoch, fallback.stance); moved = true } catch (error) { if (error instanceof QuarryInterrupt) throw error; break }
+        const at = feetCell(guard(myEpoch))
+        if (at.x !== fallback.stance.x || at.y !== fallback.stance.y || at.z !== fallback.stance.z) break
+        decision = await planner.previewSealPlacement({ position: fallback.position, purpose: 'temporary', materialRequired: material, slot }, at, items(guard(myEpoch)))
+        if (!decision?.action || !(decision.stance.x === at.x && decision.stance.y === at.y && decision.stance.z === at.z)) break
       }
       if (!decision) break
       const rec = recordAction({ type: 'place', purpose: 'supply_room', position: decision.position, material: decision.material })
@@ -2567,8 +2599,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       planner.recordPlacement(decision.position, 'temporary', decision.material)
       countsRevision++; ledger.add('placedTemporary', decision.material); placed++
     }
-    const freed = !(items(guard(myEpoch)) ?? []).some(i => i.slot === slot && i.count > 0)
-    note('supply_room', { material, placed, freed })
+    // Back to the supply stand the restock was using.
+    if (moved) { try { await moveToStance(myEpoch, home) } catch (error) { if (error instanceof QuarryInterrupt) throw error } }
+    const back = feetCell(guard(myEpoch))
+    const freed = !(items(guard(myEpoch)) ?? []).some(i => i.slot === slot && i.count > 0) && back.x === home.x && back.y === home.y && back.z === home.z
+    note('supply_room', { material, placed, freed, moved })
     await save('supply_room')
     return freed
   }
