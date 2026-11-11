@@ -6570,13 +6570,25 @@ function createRuntime (host) {
         refreshInventory: ({ signal }) => adapter.resyncInventory({ signal }),
         mine: async (target, { signal } = {}) => {
           signal?.throwIfAborted()
-          // Reclaim our box by hand; reserve tools are not spent on packing.
-          const state = quarryState()
-          const damaging = name => /_(sword|pickaxe|axe|shovel|hoe)$|^minecraft:(bow|crossbow|shears|trident|fishing_rod|flint_and_steel)$/.test(name ?? '')
-          if (damaging(state.heldItem?.name)) {
-            const held = state.inventory?.items?.find(item => item.count > 0 && !damaging(item.name) && item.durabilityKnown !== true)
-            if (!held) throw new Error('箱回収に使う非耐久アイテムがありません。')
-            await own(slot => operations.inventory.equip(slot))(held.slot)
+          // A cargo shulker's v2.2 break must preserve the selected pickaxe.
+          // Normal supply / legacy recovery without requiredTool retains the
+          // original non-damaging item behavior.
+          if (target.requiredTool?.kind === 'pickaxe') {
+            const hand = quarryState().heldItem
+            if (!hand?.name || !/_(?:pickaxe)$/.test(hand.name) ||
+                hand.durabilityKnown !== true ||
+                !Number.isFinite(hand.durabilityRemaining) ||
+                hand.durabilityRemaining <= target.requiredTool.reserve) {
+              throw Object.assign(new Error('SHULKER_PICKAXE_UNCONFIRMED'), { code: 'SHULKER_PICKAXE_UNCONFIRMED' })
+            }
+          } else {
+            const state = quarryState()
+            const damaging = name => /_(sword|pickaxe|axe|shovel|hoe)$|^minecraft:(bow|crossbow|shears|trident|fishing_rod|flint_and_steel)$/.test(name ?? '')
+            if (damaging(state.heldItem?.name)) {
+              const held = state.inventory?.items?.find(item => item.count > 0 && !damaging(item.name) && item.durabilityKnown !== true)
+              if (!held) throw new Error('箱回収に使う非耐久アイテムがありません。')
+              await own(slot => operations.inventory.equip(slot))(held.slot)
+            }
           }
           signal?.throwIfAborted()
           crafting.closeContainer()
