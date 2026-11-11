@@ -146,3 +146,11 @@ test('loadout: inventory changes while combat drains require a new confirmation 
   assert.equal(f.reset.status().error.code, 'RESET_PREVIEW_STALE')
   assert.equal(f.reset.status().serverConfirmed, false)
 })
+
+test('loadout: a staging cell is skipped when a non-air block lies between it and the bot at foot level', async () => {
+  const first = await fixture().reset.prepare()
+  const f = fixture()
+  f.blocks.set(`${first.stage.x - 1},${first.stage.y},${first.stage.z}`, { known: true, name: 'minecraft:leaf_litter', boundingBox: 'empty', extra: [] })
+  const p = await f.reset.prepare()
+  assert.notDeepEqual(p.stage, first.stage)
+})

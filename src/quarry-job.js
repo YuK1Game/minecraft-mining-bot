@@ -37,6 +37,11 @@ const EGRESS_NOOP_COMBAT_MS = 3000, EGRESS_NOOP_COMBAT_RETRIES = 6 // no-action 
 // step from received evidence; the job only waits and calls it again, a few
 // times in a row, reset by a confirmed step. Damage, terrain, dirt or scope
 // problems still pause.
+// Tree canopy at the top of a new job (live 2026-11-11 10:53: five oak
+// leaves at Y79 over a tree) cannot be reached from the ground before the
+// layers under it are dug. Such cells do not make the mining origin
+// unreachable; they stay deferred and decay once the trunk is mined.
+const canopyName = name => /(_leaves|^vine|^cave_vines.*|^azalea.*|^leaf_litter)$/.test(nameOf(name))
 const EGRESS_TRANSIENT = new Set(['ASCENT_INVENTORY_UNKNOWN', 'EGRESS_POSITION_UNCONFIRMED', 'ASCENT_POSITION_UNCONFIRMED', 'EGRESS_RESUME_POSITION_CHANGED', 'ASCENT_HEADSPACE_CHANGED', 'ASCENT_UNCERTAIN_STEP', 'ASCENT_PLACEMENT_UNCONFIRMED', 'ASCENT_JUMP_TIMEOUT', 'ASCENT_SERVER_CORRECTION'])
 const EGRESS_TRANSIENT_RETRIES = 4, EGRESS_TRANSIENT_WAIT_MS = 2000
 const DEFAULT_BOTTOM_Y = -59 // quarry bottom when none is given
@@ -865,7 +870,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const initialUnreachable = planner.deferredList().filter(d => {
         if (d.reason !== 'UNREACHABLE') return false
         const [x, y, z] = d.position.split(',').map(Number); const b = planningBlocks(job.config)(x, y, z)
-        return y <= job.cursorY && b?.known === true && b.name === d.name && blockRule(b.name).kind === 'dig' && !b.protected && !b.protectionSource
+        return y <= job.cursorY && b?.known === true && b.name === d.name && blockRule(b.name).kind === 'dig' && !b.protected && !b.protectionSource && !canopyName(b.name)
       })
       if (initialUnreachable.length) return finish('PAUSED', 'INITIAL_LAYER_UNREACHABLE', { pauseDetails: { y: Math.max(...initialUnreachable.map(d => Number(d.position.split(',')[1]))), count: initialUnreachable.length, feet: planningFeet } })
     }
@@ -889,7 +894,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (decision.action === 'finished') { await collect(myEpoch, 'final'); setState('FINAL_CHECK'); return }
     if (decision.action === 'deferred') {
       note('deferred', { reason: decision.reason, count: decision.count, y: decision.y })
-      if (unstartedTop && decision.reason === 'UNREACHABLE') return finish('PAUSED', 'INITIAL_LAYER_UNREACHABLE', { pauseDetails: { y: decision.y, count: decision.count, feet: planningFeet } })
+      const solidUnreachable = planner.deferredList().some(d => d.reason === 'UNREACHABLE' && Number(d.position.split(',')[1]) === decision.y && !canopyName(d.name))
+      if (unstartedTop && decision.reason === 'UNREACHABLE' && solidUnreachable) return finish('PAUSED', 'INITIAL_LAYER_UNREACHABLE', { pauseDetails: { y: decision.y, count: decision.count, feet: planningFeet } })
       return
     }
     if (decision.action === 'pause' && decision.reason === 'UNOBSERVED_CELLS' && await retryLayerTerrain(myEpoch, decision.details?.y)) return

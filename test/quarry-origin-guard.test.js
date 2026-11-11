@@ -106,3 +106,24 @@ test('an automatic travel region may safely rebind after escape and mine the act
     assert.equal(f.job.document().records.deferred[k(top)], undefined)
   } finally { await f.job.pause() }
 })
+
+test('live case 2026-11-11: unreachable canopy leaves at the top of a new job do not stop it; solid cells still do', async () => {
+  for (const name of ['oak_leaves', 'short_grass']) {
+    const f = fixture()
+    f.sim.world.set(top.x, top.y, top.z, name)
+    const document = f.job.document()
+    document.state = 'PAUSED'; document.userRunIntent = 'paused'
+    document.records.deferred[k(top)] = { reason: 'UNREACHABLE', name: `minecraft:${name}` }
+    f.job.load(document); f.job.start()
+    try {
+      if (name === 'short_grass') {
+        await until(() => f.job.status().state === 'PAUSED')
+        assert.equal(f.job.status().pauseReason, 'INITIAL_LAYER_UNREACHABLE')
+      } else {
+        await until(() => f.sim.stats.mined > 0 || f.job.status().state === 'PAUSED')
+        assert.notEqual(f.job.status().pauseReason, 'INITIAL_LAYER_UNREACHABLE', 'the leaves did not block the origin')
+        assert.ok(f.sim.stats.mined > 0, 'work began below the canopy')
+      }
+    } finally { await f.job.pause() }
+  }
+})
