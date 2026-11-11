@@ -734,7 +734,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
   // Finds a block in hand range to click so a seal/plug/stair block lands at
   // plan.position. Faces may be clicked through fluid but not through solids.
   function placementFor (plan, reach, inventoryItems) {
-    const exitDirt = exit?.mode === 'adjacent_pillar' ? exit.reservedDirt ?? 192 : 0
+    const exitDirt = cfg.dirtFromSupplyAtExit === true ? 0 : exit?.mode === 'adjacent_pillar' ? exit.reservedDirt ?? 192 : 0
     const dirtTotal = (inventoryItems ?? []).filter(i => nameOf(i) === 'dirt' && i.slot >= 0 && i.slot < 36).reduce((n, i) => n + i.count, 0)
     const eligible = (inventoryItems ?? []).filter(i => SEAL_MATERIALS.includes(nameOf(i)) && (!plan.materialRequired || nameOf(i) === plan.materialRequired) && (plan.slot == null || i.slot === plan.slot) && i.count > 0 && i.slot >= 0 && i.slot < 36 && (nameOf(i) !== 'dirt' || dirtTotal > exitDirt)).sort((a, b) => b.count - a.count)
     const material = eligible.find(i => i.slot <= 8)
