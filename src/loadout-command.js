@@ -16,12 +16,89 @@ const ALLOWED = [ /^\/testfor @s$/, HAND_PROBE, /^\/clear @s$/,
   new RegExp(`^/setblock ${POS} minecraft:(?:purple|blue|light_blue|yellow|brown)_shulker_box keep$`),
   new RegExp(`^/execute if block ${POS} minecraft:(?:purple|blue|light_blue|yellow|brown)_shulker_box run setblock ${POS} minecraft:air replace$`),
   new RegExp(`^/replaceitem block ${POS} slot\\.container (?:[0-9]|1[0-9]|2[0-6]) minecraft:(?:(?:bread|dirt) 64|air 1)$`),
-  new RegExp(`^/loot replace entity @s slot\\.inventory (?:2[0-3]) 1 mine ${POS} minecraft:diamond_pickaxe$`)
+  new RegExp(`^/loot replace entity @s slot\\.inventory (?:2[0-3]) 1 mine ${POS} minecraft:diamond_pickaxe'use strict'
+
+const { randomUUID } = require('node:crypto')
+const { observedScope, uuidOf } = require('./server-position-verifier')
+const fail = (code, message = code) => Object.assign(new Error(message), { code })
+const BOUNDARY = new Set(['start_game', 'change_dimension', 'respawn', 'disconnect', 'close', 'death_info'])
+// Intentionally not exported as a general operator console. Only these fixed
+// self-targeted reset primitives are accepted, with no names/selectors from UI.
+const ITEM = '(?:air|diamond_(?:sword|pickaxe|shovel|helmet|chestplate|leggings|boots)|bow|bread|dirt|arrow|(?:purple|blue|light_blue|yellow|brown)_shulker_box)'
+const ENCHANT = '(?:protection|unbreaking|mending|thorns|respiration|aqua_affinity|swift_sneak|feather_falling|depth_strider|soul_speed|efficiency|fortune|silk_touch|sharpness|looting|fire_aspect|knockback|power|infinity|flame|punch)'
+const HAND_PROBE = /^\/testfor @s\[hasitem=\{item=minecraft:(?:diamond_(?:sword|pickaxe|shovel|helmet|chestplate|leggings|boots)|bow),location=slot\.weapon\.mainhand,quantity=1\}\]$/
+const POS = '-?\\d{1,8} -?\\d{1,3} -?\\d{1,8}'
+const ALLOWED = [ /^\/testfor @s$/, HAND_PROBE, /^\/clear @s$/,
+  new RegExp(`^/replaceitem entity @s slot\\.(?:hotbar|inventory|weapon\\.offhand|armor\\.(?:head|chest|legs|feet)) \\d{1,2} minecraft:${ITEM}(?: (?:[1-9]|[1-5][0-9]|6[0-4]))?$`),
+  new RegExp(`^/enchant @s ${ENCHANT} [1-5]$`),
+  new RegExp(`^/setblock ${POS} minecraft:(?:purple|blue|light_blue|yellow|brown)_shulker_box keep$`),
+  new RegExp(`^/execute if block ${POS} minecraft:(?:purple|blue|light_blue|yellow|brown)_shulker_box run setblock ${POS} minecraft:air replace$`),
+  new RegExp(`^/replaceitem block ${POS} slot\\.container (?:[0-9]|1[0-9]|2[0-6]) minecraft:(?:(?:bread|dirt) 64|air 1)$`),
+),
+  // Bounded debug creation for the v2.2 ground station. The authorized
+  // runtime supplies exact positions; callers cannot inject arbitrary NBT.
+  new RegExp(`^/setblock ${POS} minecraft:chest keep'use strict'
+
+const { randomUUID } = require('node:crypto')
+const { observedScope, uuidOf } = require('./server-position-verifier')
+const fail = (code, message = code) => Object.assign(new Error(message), { code })
+const BOUNDARY = new Set(['start_game', 'change_dimension', 'respawn', 'disconnect', 'close', 'death_info'])
+// Intentionally not exported as a general operator console. Only these fixed
+// self-targeted reset primitives are accepted, with no names/selectors from UI.
+const ITEM = '(?:air|diamond_(?:sword|pickaxe|shovel|helmet|chestplate|leggings|boots)|bow|bread|dirt|arrow|(?:purple|blue|light_blue|yellow|brown)_shulker_box)'
+const ENCHANT = '(?:protection|unbreaking|mending|thorns|respiration|aqua_affinity|swift_sneak|feather_falling|depth_strider|soul_speed|efficiency|fortune|silk_touch|sharpness|looting|fire_aspect|knockback|power|infinity|flame|punch)'
+const HAND_PROBE = /^\/testfor @s\[hasitem=\{item=minecraft:(?:diamond_(?:sword|pickaxe|shovel|helmet|chestplate|leggings|boots)|bow),location=slot\.weapon\.mainhand,quantity=1\}\]$/
+const POS = '-?\\d{1,8} -?\\d{1,3} -?\\d{1,8}'
+const ALLOWED = [ /^\/testfor @s$/, HAND_PROBE, /^\/clear @s$/,
+  new RegExp(`^/replaceitem entity @s slot\\.(?:hotbar|inventory|weapon\\.offhand|armor\\.(?:head|chest|legs|feet)) \\d{1,2} minecraft:${ITEM}(?: (?:[1-9]|[1-5][0-9]|6[0-4]))?$`),
+  new RegExp(`^/enchant @s ${ENCHANT} [1-5]$`),
+  new RegExp(`^/setblock ${POS} minecraft:(?:purple|blue|light_blue|yellow|brown)_shulker_box keep$`),
+  new RegExp(`^/execute if block ${POS} minecraft:(?:purple|blue|light_blue|yellow|brown)_shulker_box run setblock ${POS} minecraft:air replace$`),
+  new RegExp(`^/replaceitem block ${POS} slot\\.container (?:[0-9]|1[0-9]|2[0-6]) minecraft:(?:(?:bread|dirt) 64|air 1)$`),
+),
+  new RegExp(`^/replaceitem block ${POS} slot\\.container (?:[0-9]|[1-4][0-9]|5[0-3]) minecraft:(?:air|purple_shulker_box|blue_shulker_box|light_blue_shulker_box|yellow_shulker_box|brown_shulker_box|diamond_pickaxe|diamond_shovel|diamond_sword|diamond_helmet|diamond_chestplate|diamond_leggings|diamond_boots|bow|bread|arrow|dirt|totem_of_undying) (?:[1-9]|[1-5][0-9]|6[0-4])'use strict'
+
+const { randomUUID } = require('node:crypto')
+const { observedScope, uuidOf } = require('./server-position-verifier')
+const fail = (code, message = code) => Object.assign(new Error(message), { code })
+const BOUNDARY = new Set(['start_game', 'change_dimension', 'respawn', 'disconnect', 'close', 'death_info'])
+// Intentionally not exported as a general operator console. Only these fixed
+// self-targeted reset primitives are accepted, with no names/selectors from UI.
+const ITEM = '(?:air|diamond_(?:sword|pickaxe|shovel|helmet|chestplate|leggings|boots)|bow|bread|dirt|arrow|(?:purple|blue|light_blue|yellow|brown)_shulker_box)'
+const ENCHANT = '(?:protection|unbreaking|mending|thorns|respiration|aqua_affinity|swift_sneak|feather_falling|depth_strider|soul_speed|efficiency|fortune|silk_touch|sharpness|looting|fire_aspect|knockback|power|infinity|flame|punch)'
+const HAND_PROBE = /^\/testfor @s\[hasitem=\{item=minecraft:(?:diamond_(?:sword|pickaxe|shovel|helmet|chestplate|leggings|boots)|bow),location=slot\.weapon\.mainhand,quantity=1\}\]$/
+const POS = '-?\\d{1,8} -?\\d{1,3} -?\\d{1,8}'
+const ALLOWED = [ /^\/testfor @s$/, HAND_PROBE, /^\/clear @s$/,
+  new RegExp(`^/replaceitem entity @s slot\\.(?:hotbar|inventory|weapon\\.offhand|armor\\.(?:head|chest|legs|feet)) \\d{1,2} minecraft:${ITEM}(?: (?:[1-9]|[1-5][0-9]|6[0-4]))?$`),
+  new RegExp(`^/enchant @s ${ENCHANT} [1-5]$`),
+  new RegExp(`^/setblock ${POS} minecraft:(?:purple|blue|light_blue|yellow|brown)_shulker_box keep$`),
+  new RegExp(`^/execute if block ${POS} minecraft:(?:purple|blue|light_blue|yellow|brown)_shulker_box run setblock ${POS} minecraft:air replace$`),
+  new RegExp(`^/replaceitem block ${POS} slot\\.container (?:[0-9]|1[0-9]|2[0-6]) minecraft:(?:(?:bread|dirt) 64|air 1)$`),
+),
+  new RegExp(`^/loot replace block ${POS} slot\\.container (?:[0-9]|[1-4][0-9]|5[0-3]) 1 mine ${POS} minecraft:diamond_pickaxe'use strict'
+
+const { randomUUID } = require('node:crypto')
+const { observedScope, uuidOf } = require('./server-position-verifier')
+const fail = (code, message = code) => Object.assign(new Error(message), { code })
+const BOUNDARY = new Set(['start_game', 'change_dimension', 'respawn', 'disconnect', 'close', 'death_info'])
+// Intentionally not exported as a general operator console. Only these fixed
+// self-targeted reset primitives are accepted, with no names/selectors from UI.
+const ITEM = '(?:air|diamond_(?:sword|pickaxe|shovel|helmet|chestplate|leggings|boots)|bow|bread|dirt|arrow|(?:purple|blue|light_blue|yellow|brown)_shulker_box)'
+const ENCHANT = '(?:protection|unbreaking|mending|thorns|respiration|aqua_affinity|swift_sneak|feather_falling|depth_strider|soul_speed|efficiency|fortune|silk_touch|sharpness|looting|fire_aspect|knockback|power|infinity|flame|punch)'
+const HAND_PROBE = /^\/testfor @s\[hasitem=\{item=minecraft:(?:diamond_(?:sword|pickaxe|shovel|helmet|chestplate|leggings|boots)|bow),location=slot\.weapon\.mainhand,quantity=1\}\]$/
+const POS = '-?\\d{1,8} -?\\d{1,3} -?\\d{1,8}'
+const ALLOWED = [ /^\/testfor @s$/, HAND_PROBE, /^\/clear @s$/,
+  new RegExp(`^/replaceitem entity @s slot\\.(?:hotbar|inventory|weapon\\.offhand|armor\\.(?:head|chest|legs|feet)) \\d{1,2} minecraft:${ITEM}(?: (?:[1-9]|[1-5][0-9]|6[0-4]))?$`),
+  new RegExp(`^/enchant @s ${ENCHANT} [1-5]$`),
+  new RegExp(`^/setblock ${POS} minecraft:(?:purple|blue|light_blue|yellow|brown)_shulker_box keep$`),
+  new RegExp(`^/execute if block ${POS} minecraft:(?:purple|blue|light_blue|yellow|brown)_shulker_box run setblock ${POS} minecraft:air replace$`),
+  new RegExp(`^/replaceitem block ${POS} slot\\.container (?:[0-9]|1[0-9]|2[0-6]) minecraft:(?:(?:bread|dirt) 64|air 1)$`),
+)
 ]
 function allowed (command) {
   if (typeof command !== 'string' || command.length > 300 || !ALLOWED.some(p => p.test(command))) return false
   const chunks = command.split(' ')
-  const coords = command.startsWith('/setblock ') ? [chunks.slice(1, 4)] : command.startsWith('/replaceitem block ') ? [chunks.slice(2, 5)] : command.startsWith('/loot ') ? [chunks.slice(8, 11)] : command.startsWith('/execute ') ? [chunks.slice(3, 6), chunks.slice(9, 12)] : []
+  const coords = command.startsWith('/setblock ') ? [chunks.slice(1, 4)] : command.startsWith('/replaceitem block ') ? [chunks.slice(2, 5)] : command.startsWith('/loot replace block ') ? [chunks.slice(3, 6), chunks.slice(10, 13)] : command.startsWith('/loot ') ? [chunks.slice(8, 11)] : command.startsWith('/execute ') ? [chunks.slice(3, 6), chunks.slice(9, 12)] : []
   if (coords.some(p => !p.every(n => /^-?\d+$/.test(n)) || !p.every((n, i) => Number.isSafeInteger(Number(n)) && (i === 1 ? Number(n) >= -63 && Number(n) <= 317 : Math.abs(Number(n)) < 30000000)))) return false
   if (coords.length === 2 && coords[0].join(' ') !== coords[1].join(' ')) return false
   return true
