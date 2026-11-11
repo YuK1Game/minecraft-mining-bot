@@ -1980,7 +1980,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const policy = { ...job.config.inventory, tools: job.config.tools,
       ...(job.miningExhausted ? { miningExhausted: copy(job.miningExhausted) } : {}),
       ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64,
-        exitPreparing: job.egressPreparation === true, exitDirtTarget: job.egressPreparation === true ? 192 : 64,
+        exitPreparing: job.egressPreparation === true, exitDirtTarget: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 64,
         totemNeeded: equipmentView?.offhand?.known === true && equipmentView.offhand.slots?.[0]?.empty === true,
         shovelExhausted: job.shovelSupplyExhausted === true } : {})
     }
