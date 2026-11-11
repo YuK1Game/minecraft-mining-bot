@@ -264,7 +264,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
         const n = add(p, f); const k = key(n.x, n.y, n.z); const b = read(n)
         if (!known(b)) return { ok: false, reason: 'SOURCE_BOUNDARY_UNKNOWN' }
         if (!fluid(b) || seen.has(k)) continue
-        if (seen.size >= 512) return { ok: false, reason: 'SOURCE_COMPONENT_LIMIT' }
+        if (seen.size >= 4096) return { ok: false, reason: 'SOURCE_COMPONENT_LIMIT' }
         seen.add(k); cells.push(n)
       }
     }
