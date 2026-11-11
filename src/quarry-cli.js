@@ -33,7 +33,7 @@ function parseQuarryCommand (line, { position = null } = {}) {
   if (options.bottom != null) config.yBottom = int('bottom', options.bottom)
   if (options.top != null) config.yTop = int('top', options.top)
   if (options.chest != null) throw new Error('収納先はシュルカー専用です。chest= は使用できません。')
-  config.inventory = { pickupMode: 'passive', depositWhen: 'full' }
+  config.inventory = { pickupMode: 'active', depositWhen: 'four_layers', minFreeSlots: 3 }
   if (options.combat === 'off') config.quarryCombat = { enabled: false }
   if (options.id) config.jobId = options.id
   return { method: 'plan', args: [config] }
