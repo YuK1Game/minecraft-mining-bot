@@ -5,6 +5,7 @@ const { isDeepStrictEqual } = require('node:util')
 const { createHash } = require('node:crypto')
 const { setTimeout: delay } = require('node:timers/promises')
 const { keepPlan, maxStack, carriedContainerKey, freeSlots } = require('./quarry-inventory')
+const { selectTool, toolState } = require('./quarry-rules')
 const { isShulkerBox, isShulkerBlock, sameWindowId, canonicalWindowId, storageContainerType, storageWindowMatches } = require('./container-types')
 const { readShulkerContents, readContainerContents, compareShulkerContents, diagnoseShulkerContents } = require('./shulker-contents')
 const { canSeePlacementFloor } = require('./interaction-sight')
@@ -818,7 +819,19 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
           guard(); if (owner) runActionOwned(owner, () => {})
           if (!isDeepStrictEqual(pickupEntityIds(), cp.pickupEntityBaseline.runtimeIds)) throw failure('STORAGE_PICKUP_ENTITY_BASELINE_CHANGED')
           requirePickupRoom('before_break_dispatch')
-          await mine({ ...copy(owned.position), accessPreparation: 'owned_shulker', ownershipKey: cp.operationId, expectedName: owned.name, expectedRuntimeId: owned.runtimeId }, { signal })
+          let requiredTool = null
+          if (request.inventoryPolicy?.depositWhen === 'four_layers') {
+            const policy = request.inventoryPolicy?.toolPolicy ?? {}
+            const pick = selectTool({ kind: 'dig', tool: 'pickaxe', needs: 'pickaxe', tier: 1, drops: [], maxDrop: 1 }, guard().items, policy)
+            if (!pick.ok || pick.kind !== 'pickaxe') throw failure('SHULKER_PICKAXE_UNAVAILABLE')
+            await perform('equip', () => equip(pick.slot, { signal }))
+            const held = guard().state.heldItem
+            const actual = toolState(held, policy)
+            if (held?.name !== pick.name || actual?.kind !== 'pickaxe' || actual.usable !== true) throw failure('SHULKER_PICKAXE_UNCONFIRMED')
+            requiredTool = { kind: 'pickaxe', tier: 1, reserve: actual.reserve }
+          }
+          requirePickupRoom('before_break_dispatch')
+          await mine({ ...copy(owned.position), accessPreparation: 'owned_shulker', ownershipKey: cp.operationId, expectedName: owned.name, expectedRuntimeId: owned.runtimeId, ...(requiredTool ? { requiredTool } : {}) }, { signal })
           await wait(() => {
             if (air(owned.position)) return true
             const progress = getMining()
