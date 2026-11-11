@@ -75,7 +75,7 @@ const PICKUP_XZ = 1.3 // half player width 0.3 + 1 block reach for item pickup
 const ACTIVE = new Set(['PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT', 'RETURN', 'DEPOSIT', 'PORTABLE_STORAGE', 'RESTOCK', 'HAZARD', 'RECOVER', 'SUSPEND_FOR_COMBAT', 'COMBAT', 'COMBAT_SETTLE', 'RECOVER_AFTER_COMBAT', 'RECONCILE', 'FINAL_CHECK', 'EGRESS', 'DISCONNECTED'])
 const RESULT = new Set(['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS', 'PAUSED', 'CANCELLED', 'FAILED'])
 // Deferrals that are planned exclusions, not exceptions (§16.3).
-const PLANNED_EXCLUSIONS = new Set(['UNBREAKABLE'])
+const PLANNED_EXCLUSIONS = new Set(['UNBREAKABLE', 'OWNED_HOME_STATION'])
 const TOOL_WAIT = new Set(['WAITING_FOR_TOOL', 'TOOL_DURABILITY_RESERVE', 'TOOL_DURABILITY_UNKNOWN', 'TOOL_NOT_IN_HOTBAR'])
 // SUPPORTS_PROTECTED is re-evaluated too: since 2026-11-10 only falling or
 // owned protected blocks keep their support, so older holds under ores are released.
@@ -250,9 +250,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return (x, y, z) => {
       const block = adapter.getBlock(x, y, z)
       if (block?.known !== true || block.protected || block.protectionSource) return block
-      const permanent = protectedBoxes.some(b => x >= b.xMin && x <= b.xMax && y >= b.yMin && y <= b.yMax && z >= b.zMin && z <= b.zMax)
+      const permanent = protectedBoxes.find(b => x >= b.xMin && x <= b.xMax && y >= b.yMin && y <= b.yMax && z >= b.zMin && z <= b.zMax)
       const temporary = job?.portableStorage?.checkpoint?.placed?.some(c => c.position?.x === x && c.position?.z === z && (c.position.y === y || c.position.y - 1 === y))
-      return permanent || temporary ? { ...block, protected: true, protectionSource: 'quarry_storage' } : block
+      return permanent || temporary ? { ...block, protected: true, protectionSource: permanent?.source === 'home_station' ? 'home_station' : 'quarry_storage' } : block
     }
   }
 
@@ -354,6 +354,18 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const chest = config.homeChest
       if (!chest || !['position', 'other', 'stand'].every(part=>chest[part] && ['x','y','z'].every(axis=>Number.isSafeInteger(chest[part][axis])))) issues.push('LOADOUT_CHEST_NOT_CONFIGURED')
       if (typeof adapter.loadoutWithdraw !== 'function' || typeof adapter.finalChestDeposit !== 'function' || typeof adapter.equipmentTransfer !== 'function') issues.push('V22_RUNTIME_UNAVAILABLE')
+      if (chest?.position && chest?.other && chest?.stand) {
+        // A fixed surface station survives excavation and retains its own
+        // interaction floor. Everything else in the chunk remains mineable.
+        config.permissions.protectedRegion ??= []
+        for (const p of [chest.position, chest.other, {...chest.position,y:chest.position.y-1},
+          {...chest.other,y:chest.other.y-1}, {...chest.stand,y:chest.stand.y-1}]) {
+          if (!p || !['x','y','z'].every(axis=>Number.isSafeInteger(p[axis])))continue
+          const exists=config.permissions.protectedRegion.some(box=>
+            box.source==='home_station' && box.xMin===p.x && box.yMin===p.y && box.zMin===p.z)
+          if(!exists)config.permissions.protectedRegion.push({xMin:p.x,xMax:p.x,yMin:p.y,yMax:p.y,zMin:p.z,zMax:p.z,source:'home_station'})
+        }
+      }
     }
     if (shulkerOnly && !config.inventory.supplyBoxes?.length && !(config.inventory.depositWhen === 'four_layers' && config.homeChest)) {
       const discovered = adapter.discoverSupplies?.(config.inventory.depositWhen === 'four_layers' ? 'v22' : 'legacy')
