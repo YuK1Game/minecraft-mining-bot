@@ -13,6 +13,7 @@ const { createSightStanceSearch } = require('./sight-stance-search')
 const { createQuarryPortableStorage } = require('./quarry-portable-storage')
 const { createQuarrySupplies } = require('./quarry-supplies')
 const { createQuarryV22Equipment } = require('./quarry-v22-equipment')
+const { createQuarryV22ChestWork } = require('./quarry-v22-chest-work')
 const { historicalSourceRejection } = require('./rejected-source-history')
 const { historicalEmptyPlacement } = require('./placement-source-history')
 
@@ -6549,6 +6550,23 @@ function createRuntime (host) {
       withdrawItem: own(settings => { requireIdle(); return chest.withdrawItem(settings) }),
       snapshot: () => chest.snapshot(), rawItem: slot => chest.rawItem(slot), close: () => crafting.closeContainer()
     }
+    let surfaceChestController = null
+    function surfaceChest () {
+      if (surfaceChestController) return surfaceChestController
+      return surfaceChestController = createQuarryV22ChestWork({
+        getState: quarryState,
+        getView: () => inventoryInspection.snapshot(quarryState()),
+        getRawMain: slot => crafting.rawItem(slot),
+        getRawChest: slot => chest.rawItem(slot),
+        open: (position, slot, options) => containerPorts.open(position, slot, options),
+        close: () => crafting.closeContainer(),
+        withdraw: params => containerPorts.withdrawItem(params),
+        deposit: params => containerPorts.depositItem(params),
+        equipArmor: opts => armor.equipBest(opts),
+        equipmentTransfer: params => quarryV22Equipment.transfer(params),
+        resync: opts => adapter.resyncInventory(opts)
+      })
+    }
     function getSupplies () {
       return quarrySupplies ??= createQuarrySupplies({
         getState: quarryState, crafting, chest: containerPorts, getPortable,
@@ -6704,7 +6722,9 @@ function createRuntime (host) {
       addChest: own(options => { requireIdle(); crafting.closeContainer(); return quarryAddChest(options) }),
       egress: (request, options) => runQuarryEgress(adapter, live, own, request, options),
       storeCarried: (request, options) => getPortable().storeCarried(request, options),
-      discoverSupplies: () => getSupplies().discoverBindings(),
+      discoverSupplies: layout => getSupplies().discoverBindings(layout),
+      loadoutWithdraw: (request,options) => surfaceChest().withdrawAll(request,options),
+      finalChestDeposit: (request,options) => surfaceChest().depositAll(request,options),
       restockSupplies: (request, options) => getSupplies().run(request, options),
       previewSupplySite: (stand, options) => getPortable().previewSupplySite(stand, options),
       reconcileSupplyPlacement: (request, options) => getSupplies().reconcileUnsentPlacement(request, options),
