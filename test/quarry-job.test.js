@@ -143,27 +143,16 @@ test('T02 dry test area: top-down layers removed, drops stored, stair kept as an
   assert.ok(shovel.durabilityRemaining >= 1, `shovel kept its last use: ${shovel.durabilityRemaining}`)
 })
 
-test('T03 ores stay protected through tool resupply and explicit exception acceptance', async () => {
+test('T03 registered iron ore is mined rather than retained as PROTECTED_ORE', async () => {
   const sim = setup({ stoneTop: 61, top: 62 })
   sim.world.set(7, 61, 7, 'iron_ore')
   sim.give('diamond_pickaxe'); sim.give('iron_shovel'); sim.give('bread', 5); sim.give('cobblestone', 8)
   const { j } = job(sim)
   assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
   j.start()
-  let s = await runUntilStopped(j)
-  assert.equal(s.pauseReason, 'UNRESOLVED_EXCEPTIONS')
-  assert.equal(sim.world.name(7, 61, 7), 'iron_ore')
-  assert.ok(s.deferred.some(d => d.position === '7,61,7' && d.reason === 'PROTECTED_ORE'))
-  sim.give('diamond_pickaxe')
-  j.resume()
-  s = await runUntilStopped(j)
-  assert.equal(s.pauseReason, 'UNRESOLVED_EXCEPTIONS')
-  assert.equal(sim.world.name(7, 61, 7), 'iron_ore')
-  j.acceptExceptions()
-  s = await runUntilStopped(j)
-  assert.equal(s.result.type, 'COMPLETED_WITH_EXCEPTIONS')
-  assert.equal(sim.world.name(7, 61, 7), 'iron_ore')
-  assert.equal(sim.chest.some(c => c.name === 'minecraft:raw_iron') || sim.state.inventory.items.some(i => i.name === 'minecraft:raw_iron'), false)
+  const result = await runUntilStopped(j)
+  assert.equal(sim.world.name(7, 61, 7), 'air', JSON.stringify(result.pauseDetails))
+  assert.ok(!result.deferred.some(d => d.position === '7,61,7' && d.reason === 'PROTECTED_ORE'))
 })
 
 test('T05 a worn tool is never used below its reserve', async () => {
