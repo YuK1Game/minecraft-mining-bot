@@ -717,6 +717,9 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
     if (!material) return { reason: 'SEAL_MATERIAL_MISSING' }
     const p = plan.position
     for (const [k, d] of reach) {
+      // A stance whose placement the server-side check refused is not offered
+      // again, even the current one (live 2026-11-11 11:59: flowing water).
+      if (avoidStances.has(k)) continue
       const [x, y, z] = k.split(',').map(Number); const s = { x, y, z }
       if (!safeSealStance(s)) continue
       if (plan.lava && FACES.some(f => fluid(read(add(s, f))) || fluid(read(add(add(s, { x: 0, y: 1, z: 0 }), f))))) continue

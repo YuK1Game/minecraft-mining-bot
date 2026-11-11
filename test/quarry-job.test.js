@@ -640,3 +640,25 @@ test('a plan without a bottom uses Y-59 by default (user request 2026-11-10)', (
   assert.equal(defaults({ jobId: 'd', target: { chunks: [{ x: 0, z: 0 }] } }).yBottom, -59)
   assert.equal(defaults({ jobId: 'd', target: { chunks: [{ x: 0, z: 0 }] }, yBottom: 'world_min' }).yBottom, 'world_min', 'an explicit choice is kept')
 })
+
+test('live case 2026-11-11: a seal placement refused from one stance is planned again from another', async () => {
+  const sim = setup({ stoneTop: 61, top: 62 })
+  sim.world.set(16, 61, 4, 'water')
+  sim.give('diamond_pickaxe'); sim.give('iron_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+  const place = sim.adapter.place.bind(sim.adapter), stances = []
+  let refused = 0
+  sim.adapter.place = async (request, options) => {
+    const s = sim.state.position
+    stances.push(`${Math.floor(s.x)},${Math.floor(s.z)}`)
+    if (refused < 1) { refused++; throw new Error('操作対象への視線が遮られているか、未取得です。') }
+    return place(request, options)
+  }
+  const { j } = job(sim)
+  j.plan(baseConfig({ yBottom: 61 }))
+  j.start()
+  const s = await runUntilStopped(j)
+  assert.notEqual(s.pauseReason, 'SEAL_PLACEMENT_FAILED', JSON.stringify(s.result))
+  assert.ok(['cobblestone', 'dirt'].includes(sim.world.name(16, 61, 4)), 'the inflow is sealed')
+  assert.ok(stances.length >= 2)
+  assert.notEqual(stances[0], stances[1], 'the refused stance was not reused')
+})

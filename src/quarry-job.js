@@ -1398,7 +1398,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (error instanceof QuarryInterrupt) throw error
       rec.status = 'failed'; rec.error = String(error.message ?? error)
       job.placeFailures = (job.placeFailures ?? 0) + 1
-      if (job.placeFailures >= 3) { job.placeFailures = 0; return finish('PAUSED', 'SEAL_PLACEMENT_FAILED', { pauseDetails: { position: decision.position, error: rec.error } }) }
+      if (job.placeFailures >= 5) { job.placeFailures = 0; return finish('PAUSED', 'SEAL_PLACEMENT_FAILED', { pauseDetails: { position: decision.position, error: rec.error } }) }
+      // Flowing fluid can change the face planned to be clicked (live
+      // 2026-11-11 11:59, three refusals from one stance within 0.1s). The
+      // refused stance is avoided and the placement planned again after the
+      // fluid has had a moment to settle.
+      if (decision.stance) badStances.set(`${decision.stance.x},${decision.stance.y},${decision.stance.z}`, 2)
+      note('seal_placement_retry', { position: decision.position, stance: decision.stance ?? null, attempt: job.placeFailures, error: rec.error.slice(0, 120) })
+      const until = now() + 1000
+      while (now() < until) { await sleep(100); guard(myEpoch) }
       return
     }
     const b = adapter.getBlock(decision.position.x, decision.position.y, decision.position.z)
