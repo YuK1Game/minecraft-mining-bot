@@ -77,7 +77,7 @@ test('in-chunk water linked outward only through unobserved blocks is not held; 
 
 test('stone under an ore is mined normally (only non-ore protected blocks keep their support)', async () => {
   const blocks = new Map(); const k = (x, y, z) => `${x},${y},${z}`
-  blocks.set(k(5, 61, 5), { known: true, position: { x: 5, y: 61, z: 5 }, name: 'minecraft:iron_ore', boundingBox: 'block', runtimeId: 7, properties: {}, extra: [] })
+  blocks.set(k(5, 61, 5), { known: true, position: { x: 5, y: 61, z: 5 }, name: 'minecraft:future_ore', boundingBox: 'block', runtimeId: 7, properties: {}, extra: [] })
   blocks.set(k(5, 60, 5), { known: true, position: { x: 5, y: 60, z: 5 }, name: 'minecraft:stone', boundingBox: 'block', runtimeId: 2, properties: {}, extra: [], diggable: true })
   // Layers 61 and 60 are dug out except the ore and the stone under it; 59 and below are stone.
   const read = (x, y, z) => blocks.get(k(x, y, z)) ?? { known: true, position: { x, y, z }, name: y <= 59 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y <= 59 ? 'block' : 'empty', runtimeId: y <= 59 ? 2 : 0, properties: {}, extra: [], diggable: true }
