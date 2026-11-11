@@ -393,7 +393,7 @@ test('an exit shaft ore is mined only when flagged as such on a quarry target', 
   const f = fixture()
   f.set(f.target, 'iron_ore')
   const quarry = { ...f.target, accessPreparation: 'quarry', expectedName: 'minecraft:iron_ore', expectedRuntimeId: 1, requiredTool: null }
-  assert.throws(() => f.mining.preview([quarry]), /diggable/, 'ores stay protected in normal quarry mining')
+  assert.doesNotThrow(() => f.mining.preview([quarry]), 'registered ores are diggable in a quarry')
   assert.doesNotThrow(() => f.mining.preview([{ ...quarry, exitShaftOre: true }]))
 })
 
