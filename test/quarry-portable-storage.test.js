@@ -327,3 +327,25 @@ test('drops without a known numeric network id, or without room in an existing s
     assert.equal(f.events.some(e => e.type === 'mine'), false)
   }
 })
+
+test('live case 2026-11-11: a cow on the box cell before placement is waited out; one that stays is recorded and refused', async () => {
+  for (const [stays, expected] of [[3, 'completed'], [20, 'blocked']]) {
+    let f = null, cowCalls = 0
+    f = fixture('shulker', { pickupOnMove: true, entities: () => {
+      const cp = f?.checkpoints.at(-1)
+      if (cp?.positions?.length && !(cp.placed ?? []).length && cowCalls < stays) {
+        cowCalls++
+        const p = cp.positions[0]
+        return [{ kind: 'mob', name: 'minecraft:cow', runtimeId: '99', alive: true, positionKnown: true, position: { x: p.x + 0.5, y: p.y, z: p.z + 0.5 } }]
+      }
+      return []
+    } })
+    const result = await f.run()
+    assert.equal(result.status, expected, JSON.stringify(result.reason))
+    if (expected === 'blocked') {
+      assert.equal(result.reason, 'STORAGE_SITE_CHANGED')
+      assert.match(result.checkpoint.siteIssue.cause, /^ENTIT/)
+      assert.equal(result.checkpoint.placed.length, 0, 'nothing was placed')
+    } else assert.ok(result.checkpoint.siteWaits.some(w => w.mobOverlap), 'the wait for the mob was recorded')
+  }
+})
