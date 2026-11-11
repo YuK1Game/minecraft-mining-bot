@@ -5,6 +5,7 @@
 // tables are this bot's design values for Bedrock 1.26.60 and are checked by
 // acceptance runs; an unlisted block is never broken automatically.
 
+const { oreRule } = require('./quarry-ore')
 const nameOf = value => String(value?.name ?? value ?? '').replace(/^minecraft:/, '')
 const AIR = new Set(['air', 'cave_air', 'void_air'])
 const FLUIDS = new Set(['water', 'flowing_water', 'lava', 'flowing_lava', 'bubble_column'])
@@ -58,6 +59,8 @@ function blockRule (blockName) {
   if (!name) return { kind: 'unknown', reason: 'UNKNOWN_BLOCK' }
   if (AIR.has(name)) return { kind: 'air' }
   if (FLUIDS.has(name)) return { kind: 'fluid', fluid: /lava/.test(name) ? 'lava' : 'water' }
+  const knownOre = oreRule(name)
+  if (knownOre) return knownOre
   for (const [pattern, reason] of PROTECTED) if (pattern.test(name)) return { kind: 'protected', reason }
   const gravity = GRAVITY.has(name) || isConcretePowder(name)
   if (STONE_LIKE.includes(name)) return { kind: 'dig', tool: 'pickaxe', needs: 'pickaxe', tier: 1, drops: [STONE_DROP[name] ?? name], maxDrop: 1, silkKeeps: name in STONE_DROP, gravity }
