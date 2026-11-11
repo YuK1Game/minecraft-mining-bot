@@ -33,6 +33,7 @@ function deriveDropGuarantee (target, tool) {
   const held = target.tool ?? tool
   const type = held?.kind ?? toolOf(held)?.kind
   const tier = held?.tier ?? toolOf(held)?.tier
+  if (name === 'snow' && type === 'hand') return rule('hand_snow_zero_drop', [[]])
   if (block.needs && (type !== block.needs || !Number.isSafeInteger(tier) || tier < block.tier || tier > 4)) return fail('DROP_TOOL_NOT_CONFIRMED')
   const silk = type === 'hand' ? false : held?.silk
   if (silk != null && typeof silk !== 'boolean') return fail('DROP_TOOL_NOT_CONFIRMED')
