@@ -6718,6 +6718,7 @@ function createRuntime (host) {
       eat: own(() => operations.food.eat({})),
       equipmentTransfer: value => quarryV22Equipment.transfer(value),
       equipmentView: () => inventoryInspection.snapshot(),
+      logout: () => { if (quarryJob?.status()?.state !== 'FINISHED' || quarryJob?.status()?.persistence?.status === 'failed') throw new Error('QUARRY_LOGOUT_NOT_READY'); host.disconnectOnCompletedQuarry() },
       chest: { open: own(position => operations.chest.open(position)), depositItem: own(options => operations.chest.depositItem(options)), close: () => crafting.closeContainer() },
       addChest: own(options => { requireIdle(); crafting.closeContainer(); return quarryAddChest(options) }),
       egress: (request, options) => runQuarryEgress(adapter, live, own, request, options),
