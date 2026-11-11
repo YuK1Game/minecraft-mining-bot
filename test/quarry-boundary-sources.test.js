@@ -48,7 +48,7 @@ test('unknown boundaries, mixed liquids, foreign/protected sources, missing dept
     [f => f.put({ x: -2, y: 1, z: 4 }, 'water', 0), 'SOURCE_OUTSIDE_OR_PROTECTED'],
     [f => { f.blocks.get('0,1,4').protected = true }, 'SOURCE_OUTSIDE_OR_PROTECTED'],
     [f => { f.blocks.get('0,1,4').properties = {} }, 'SOURCE_DEPTH_UNKNOWN'],
-    [f => { for (let x = 0; x < 24; x++) for (let z = 0; z < 24; z++) f.put({ x, y: 1, z }, 'flowing_water', 1) }, 'SOURCE_COMPONENT_LIMIT']
+    [f => { for (let x = 0; x < 66; x++) for (let z = 0; z < 66; z++) f.put({ x, y: 1, z }, 'flowing_water', 1) }, 'SOURCE_COMPONENT_LIMIT']
   ]) {
     const f = fixture(); f.put({ x: 0, y: 1, z: 4 }, 'water', 0); f.put({ x: -1, y: 1, z: 4 }, 'flowing_water', 1); change(f)
     const plan = f.planner().sealPlan({ position: { x: 0, y: 1, z: 4 } })

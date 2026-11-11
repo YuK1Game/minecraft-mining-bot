@@ -43,7 +43,7 @@ test('a confirmed lower surface is a landing and dirt uses the local height', ()
 test('a cave roof, unknown sky, unsafe floor or hazardous shaft disqualifies the lower landing', () => {
   for (const [x, y, name] of [
     [-31, 129, 'stone'], [-31, 296, 'unknown'], [-31, 93, 'water'], [-31, 93, 'gravel'], [-31, 93, 'magma'],
-    [-31, 93, 'diamond_ore'], [-32, 30, 'lava'], [-32, -33, 'gravel'], [-32, 10, 'ancient_debris']
+    [-31, 93, 'future_ore'], [-32, 30, 'lava'], [-32, -33, 'gravel'], [-32, 10, 'future_ore']
   ]) {
     const result = hillside((ax, ay, az) => ax === x && ay === y && az === -199 ? name : undefined)
     assert.equal(result.reason, 'EXIT_COLUMN_UNAVAILABLE', [x, y, name].join(','))
