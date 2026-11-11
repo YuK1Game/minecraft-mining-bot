@@ -47,6 +47,7 @@ const EGRESS_TRANSIENT_RETRIES = 4, EGRESS_TRANSIENT_WAIT_MS = 2000
 const DEFAULT_BOTTOM_Y = -59 // quarry bottom when none is given
 const EXHAUSTED_TOOL_CAP = 4
 const CAPACITY_RETRIES = 8 // automatic retries of a storage box recovery blocked only by loose drops (~10 min)
+const { needsFourLayerCollection } = require('./quarry-four-layer')
 const AUTO_RESUME_WINDOW_MS = 600000 // the ACTION_FAILED auto-resume budget resets after this quiet time
 const STORAGE_AREA_RADIUS = 24 // m around the chests checked before leaving the pit
 const STORAGE_WAIT_MS = 20000 // longest wait for the chest area to clear (a long idle wait looks like a stall)
@@ -161,11 +162,12 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   const inventoryPolicy = () => ({ ...job.config.inventory, toolPolicy: job.config.tools })
   const passivePickup = () => job?.config.inventory.pickupMode === 'passive'
   const fullOnlyStorage = () => job?.config.inventory.depositWhen === 'full'
+  const fourLayerStorage = () => job?.config.inventory.pickupMode === 'active' && job?.config.inventory.depositWhen === 'four_layers'
   const storageSettings = () => ({ pickupMode: job?.config.inventory.pickupMode ?? 'active', depositWhen: job?.config.inventory.depositWhen ?? 'capacity' })
   const validStoragePair = inventory => {
     const pickup = inventory?.pickupMode === undefined ? 'active' : inventory.pickupMode
     const deposit = inventory?.depositWhen === undefined ? 'capacity' : inventory.depositWhen
-    return pickup === 'active' && deposit === 'capacity' || pickup === 'passive' && deposit === 'full'
+    return pickup === 'active' && ['capacity', 'four_layers'].includes(deposit) || pickup === 'passive' && deposit === 'full'
   }
   const scopeOf = s => JSON.stringify([s?.profile ?? null, s?.realm?.id ?? s?.realmId ?? null, s?.dimension ?? null, s?.connectionId ?? null, s?.startedAt ?? null])
   const lifeOf = s => s?.lifecycle?.deathId ?? s?.deathId ?? 0
@@ -324,11 +326,18 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (job && ACTIVE.has(job.state)) throw new Error('A quarry job is running; pause or cancel it first')
     clearAutoResume()
     const config = defaults(input)
+    // Only new production shulker plans adopt v2.2 by default. Persisted
+    // legacy jobs keep their explicit policy and require deliberate migration.
+    if (shulkerOnly && input.inventory?.pickupMode == null && input.inventory?.depositWhen == null) {
+      config.inventory.pickupMode = 'active'
+      config.inventory.depositWhen = 'four_layers'
+      if (input.inventory?.minFreeSlots == null) config.inventory.minFreeSlots = 3
+    }
     const state = adapter.getState()
     const issues = []; const warnings = []
     if (!worldIdentity(state)) issues.push('WORLD_IDENTITY_UNKNOWN')
     if (config.inventory.pickupMode !== undefined && !['active', 'passive'].includes(config.inventory.pickupMode)) issues.push('INVALID_PICKUP_MODE')
-    if (config.inventory.depositWhen !== undefined && !['capacity', 'full'].includes(config.inventory.depositWhen)) issues.push('INVALID_DEPOSIT_POLICY')
+    if (config.inventory.depositWhen !== undefined && !['capacity', 'full', 'four_layers'].includes(config.inventory.depositWhen)) issues.push('INVALID_DEPOSIT_POLICY')
     if (!validStoragePair(config.inventory)) issues.push('UNSUPPORTED_STORAGE_POLICY')
     if (shulkerOnly && config.inventory.storage?.length) issues.push('SHULKER_ONLY_STORAGE')
     if (shulkerOnly && !config.inventory.supplyBoxes?.length) {
@@ -823,6 +832,57 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     await sleep(500)
   }
 
+  // Four layers are a durable collection barrier. Transfer checkpoints are
+  // reconciled by normal portable storage before this barrier can complete.
+  async function continueLayerCollection (myEpoch) {
+    const op = job.layerCollection
+    if (!op || !fourLayerStorage()) return false
+    guard(myEpoch)
+    if (op.phase === 'collect') {
+      observeDrops()
+      await collect(myEpoch, 'four_layers')
+      if (job.state === 'RETURN' || job.state === 'PAUSED') return true
+      const ground = adapter.entities().filter(e => e.kind === 'item' && e.position &&
+        regions.columns.has(Math.floor(e.position.x) + ',' + Math.floor(e.position.z)) &&
+        e.position.y <= job.yTop + 1 && e.position.y >= regions.yBottom - 2)
+      if (pendingDrops.length || ground.length) {
+        return finish('PAUSED', 'FOUR_LAYER_DROPS_UNRESOLVED', { pauseDetails: {
+          floorY: op.floorY, pending: pendingDrops.length, visible: ground.length,
+          examples: ground.slice(0, 8).map(e => ({ name: e.name, position: copy(e.position) }))
+        } })
+      }
+      op.phase = 'deposit'
+      await save('four_layer_pickup_completed')
+      return true
+    }
+    if (op.phase === 'deposit') {
+      const inventory = items(guard(myEpoch))
+      if (!inventory) return finish('PAUSED', 'INVENTORY_UNKNOWN')
+      const deposits = keepPlan(inventory, inventoryPolicy()).deposits
+      if (deposits.length) {
+        if (!hasStorageOption()) return finish('PAUSED', 'CARGO_CAPACITY_EXHAUSTED', { pauseDetails: { floorY: op.floorY, remainingStacks: deposits.length } })
+        job.depositReason = 'four_layers'
+        setState('RETURN')
+        return true
+      }
+      const finished = op.final === true
+      job.collectedThroughY = op.floorY
+      job.layerCollection = null
+      await save('four_layer_completed')
+      note('four_layer_completed', { floorY: op.floorY, final: finished })
+      setState(finished ? 'FINAL_CHECK' : 'SURVEY')
+      return true
+    }
+    return finish('PAUSED', 'FOUR_LAYER_CHECKPOINT_INVALID', { pauseDetails: { phase: op.phase } })
+  }
+
+  async function scheduleLayerCollection (floorY, final = false) {
+    if (job.layerCollection) return
+    job.layerCollection = { floorY, final, phase: 'collect', at: new Date(now()).toISOString() }
+    await save('four_layer_intent')
+    note('four_layer_intent', { floorY, final })
+  }
+
   // ---- normal work -------------------------------------------------------
   async function work (myEpoch) {
     if (job.exitPreflight?.layer !== job.cursorY && !(await prepareExit(myEpoch))) return
@@ -843,6 +903,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // emptied before starting another supply box that needs recovery space.
     if (fullOnlyStorage() && !job.storageExhausted && freeSlots(inv) === 0 && keepPlan(inv, inventoryPolicy()).deposits.length) { await collect(myEpoch, 'capacity'); job.depositReason = 'full'; setState('RETURN'); return }
     if (await restock(myEpoch, 'SURVEY')) return
+    if (await continueLayerCollection(myEpoch)) return
     // Capacity: collect then return before the bag is full (§10.3, §11.1).
     if (fullOnlyStorage() ? freeSlots(inv) === 0 && !job.storageExhausted : freeSlots(inv) < job.config.inventory.minFreeSlots) { await collect(myEpoch, 'capacity'); job.depositReason = fullOnlyStorage() ? 'full' : 'capacity'; setState('RETURN'); return }
     // Oldest drop deadline / pending count (§10.1). Collection is not tied to
@@ -895,9 +956,19 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const cleared = clearWorkDeferred(TRANSIENT_DEFER, ly)
       if (cleared) { badStances.clear(); note('layer_retry', { y: ly, cells: cleared }); return }
     }
+    if (fourLayerStorage() && Number.isSafeInteger(nextY)) {
+      const due = needsFourLayerCollection(job.yTop, nextY, job.collectedThroughY)
+      if (due != null) { await scheduleLayerCollection(due); return }
+    }
     if (!passivePickup() && Number.isFinite(nextY) && Number.isFinite(job.lastMineY) && nextY < job.lastMineY && open.length) { job.lastMineY = nextY; await collect(myEpoch, 'layer'); return }
     if (Number.isFinite(nextY)) job.lastMineY = nextY
-    if (decision.action === 'finished') { await collect(myEpoch, 'final'); setState('FINAL_CHECK'); return }
+    if (decision.action === 'finished') {
+      if (fourLayerStorage() && (job.collectedThroughY == null || job.collectedThroughY > regions.yBottom)) {
+        await scheduleLayerCollection(regions.yBottom, true)
+        return
+      }
+      await collect(myEpoch, 'final'); setState('FINAL_CHECK'); return
+    }
     if (decision.action === 'deferred') {
       note('deferred', { reason: decision.reason, count: decision.count, y: decision.y })
       const solidUnreachable = planner.deferredList().some(d => d.reason === 'UNREACHABLE' && Number(d.position.split(',')[1]) === decision.y && !canopyName(d.name))
@@ -2598,9 +2669,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // ---- operations (§4.1) -------------------------------------------------
   async function configureStorage (options = {}) {
     if (!job) throw new Error('No quarry job')
-    if (!options || typeof options !== 'object' || Array.isArray(options) || !Object.keys(options).length || Object.keys(options).some(key => !['pickupMode', 'depositWhen'].includes(key)) || Object.hasOwn(options, 'pickupMode') && !['active', 'passive'].includes(options.pickupMode) || Object.hasOwn(options, 'depositWhen') && !['capacity', 'full'].includes(options.depositWhen)) throw new Error('Storage configuration accepts pickupMode active/passive and depositWhen capacity/full only')
+    if (!options || typeof options !== 'object' || Array.isArray(options) || !Object.keys(options).length || Object.keys(options).some(key => !['pickupMode', 'depositWhen'].includes(key)) || Object.hasOwn(options, 'pickupMode') && !['active', 'passive'].includes(options.pickupMode) || Object.hasOwn(options, 'depositWhen') && !['capacity', 'full', 'four_layers'].includes(options.depositWhen)) throw new Error('Storage configuration accepts pickupMode active/passive and depositWhen capacity/full only')
     const next = { ...storageSettings(), ...(job.pendingStorageConfiguration ? { pickupMode: job.pendingStorageConfiguration.pickupMode, depositWhen: job.pendingStorageConfiguration.depositWhen } : {}), ...copy(options) }
-    if (!validStoragePair(next)) throw new Error('Only active/capacity or passive/full storage policies are supported')
+    if (!validStoragePair(next)) throw new Error('Only active/capacity, active/four_layers or passive/full storage policies are supported')
     const current = job.pendingStorageConfiguration ?? storageSettings()
     if (next.pickupMode === current.pickupMode && next.depositWhen === current.depositWhen) return status()
     const owner = job, prior = job.pendingStorageConfiguration
