@@ -43,8 +43,8 @@ test('loadout-storage: loading a legacy chest job preserves its document but nev
   assert.deepEqual(next.job.document().config.inventory.storage, saved.config.inventory.storage)
   assert.equal(next.sim.stats.mined, 0)
 })
-test('loadout-storage: CLI rejects fixed-chest registration and defaults to shulker full-only policy', () => {
+test('loadout-storage: CLI rejects fixed chest storage and defaults to four-layer cargo recovery', () => {
   assert.throws(() => parseQuarryCommand('/quarry plan -1 1 chest=1,64,1'), /シュルカー/)
   const p = parseQuarryCommand('/quarry plan -1 1')
-  assert.equal(p.args[0].inventory.pickupMode, 'passive'); assert.equal(p.args[0].inventory.depositWhen, 'full')
+  assert.equal(p.args[0].inventory.pickupMode, 'active'); assert.equal(p.args[0].inventory.depositWhen, 'four_layers')
 })
