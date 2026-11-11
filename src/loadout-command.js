@@ -26,7 +26,7 @@ function allowed (command) {
   const chunks = command.split(' ')
   const coords = command.startsWith('/setblock ') ? [chunks.slice(1, 4)] : command.startsWith('/replaceitem block ') ? [chunks.slice(2, 5)] : command.startsWith('/loot replace block ') ? [chunks.slice(3, 6), chunks.slice(10, 13)] : command.startsWith('/loot ') ? [chunks.slice(8, 11)] : command.startsWith('/execute ') ? [chunks.slice(3, 6), chunks.slice(9, 12)] : []
   if (coords.some(p => !p.every(n => /^-?\d+$/.test(n)) || !p.every((n, i) => Number.isSafeInteger(Number(n)) && (i === 1 ? Number(n) >= -63 && Number(n) <= 317 : Math.abs(Number(n)) < 30000000)))) return false
-  if (coords.length === 2 && coords[0].join(' ') !== coords[1].join(' ')) return false
+  if (coords.length === 2 && command.startsWith('/execute ') && coords[0].join(' ') !== coords[1].join(' ')) return false
   return true
 }
 function createLoadoutCommand ({ client, getState, timeoutMs = 5000, now = Date.now, uuid = randomUUID }) {
