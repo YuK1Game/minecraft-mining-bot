@@ -145,7 +145,7 @@ test('upper protection, ores and unbreakable reasons survive while fluids remain
     { x: 11, y: 62, z: 11, name: 'chest', reason: 'CONTAINER_OR_FACILITY', saved: true },
     { x: 13, y: 62, z: 13, name: 'chest', reason: 'CONTAINER_OR_FACILITY' },
     { x: 12, y: 62, z: 5, name: 'water', reason: 'EARLIER_LAYER_LEFTOVER' },
-    { x: 9, y: 62, z: 3, name: 'diamond_ore', reason: 'PROTECTED_ORE' }
+    { x: 9, y: 62, z: 3, name: 'future_ore', reason: 'PROTECTED_ORE' }
   ]
   for (const c of cells) {
     f.sim.world.set(c.x, c.y, c.z, c.name)
