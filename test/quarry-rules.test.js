@@ -7,8 +7,8 @@ const { canAccept, keepPlan } = require('../src/quarry-inventory')
 const tool = (slot, name, remaining, enchantments = []) => ({ slot, name: `minecraft:${name}`, count: 1, durabilityKnown: true, durabilityRemaining: remaining, enchantments })
 
 test('harvest rules: required tool and tier are separate from breakability', () => {
-  assert.deepEqual(blockRule('minecraft:iron_ore'), { kind: 'protected', reason: 'PROTECTED_ORE' })
-  assert.deepEqual(blockRule('minecraft:diamond_ore'), { kind: 'protected', reason: 'PROTECTED_ORE' })
+  assert.equal(blockRule('minecraft:iron_ore').ore, true)
+  assert.equal(blockRule('minecraft:diamond_ore').ore, true)
   assert.equal(blockRule('minecraft:obsidian').tier, 4)
   assert.equal(blockRule('minecraft:dirt').needs, null)
   assert.equal(blockRule('minecraft:gravel').gravity, true)
@@ -19,16 +19,16 @@ test('harvest rules: required tool and tier are separate from breakability', () 
   assert.equal(blockRule('minecraft:water').kind, 'fluid')
 })
 
-test('T03 protected ores are never tool work; ordinary hard stone still needs a harvesting tool', () => {
-  assert.equal(selectTool(blockRule('minecraft:iron_ore'), [tool(0, 'wooden_pickaxe', 50)]).reason, 'PROTECTED_ORE')
+test('T03 registered ores require a sufficient pickaxe tier; ordinary hard stone too', () => {
+  assert.equal(selectTool(blockRule('minecraft:iron_ore'), [tool(0, 'wooden_pickaxe', 50)]).reason, 'WAITING_FOR_TOOL')
   assert.equal(selectTool(blockRule('minecraft:obsidian'), [tool(0, 'wooden_pickaxe', 50)]).reason, 'WAITING_FOR_TOOL')
   assert.equal(selectTool(blockRule('minecraft:dirt'), [tool(0, 'wooden_pickaxe', 50)]).kind, 'hand')
 })
 
-test('T04 fortune and silk do not override ore protection; stone keeps its normal tool policy', () => {
+test('T04 fortune and silk ore policies select the expected pickaxe; stone keeps its normal policy', () => {
   const tools = [tool(0, 'iron_pickaxe', 200), tool(1, 'diamond_pickaxe', 1000, [{ name: 'silk_touch', level: 1 }]), tool(2, 'diamond_pickaxe', 1000, [{ name: 'fortune', level: 3 }])]
-  assert.equal(selectTool(blockRule('minecraft:diamond_ore'), tools).reason, 'PROTECTED_ORE')
-  assert.equal(selectTool(blockRule('minecraft:diamond_ore'), tools.slice(0, 2), { orePolicy: 'preserve_ore' }).reason, 'PROTECTED_ORE')
+  assert.equal(selectTool(blockRule('minecraft:diamond_ore'), tools).slot, 2)
+  assert.equal(selectTool(blockRule('minecraft:diamond_ore'), tools.slice(0, 2), { orePolicy: 'preserve_ore' }).slot, 1)
   assert.equal(selectTool(blockRule('minecraft:stone'), tools).slot, 0)
   assert.equal(selectTool(blockRule('minecraft:stone'), tools, { buildingBlockPolicy: 'preserve_blocks' }).slot, 1)
 })
