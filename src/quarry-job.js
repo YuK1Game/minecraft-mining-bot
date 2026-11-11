@@ -342,6 +342,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     if (shulkerOnly && config.inventory.depositWhen === 'four_layers') {
       config.boundarySeal = { ...config.boundarySeal, enabled: true, horizontalMargin: 1, sourceOnly: true, material: 'dirt', closeOpenings: false }
+      config.strategy.dirtFromSupplyAtExit = true
     }
     const state = adapter.getState()
     const issues = []; const warnings = []
