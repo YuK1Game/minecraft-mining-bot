@@ -659,6 +659,39 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   async function preflight (myEpoch) {
+    if (fourLayerStorage() && !job.loadoutReady) {
+      const home = job.config.homeChest, owner = job
+      if (!home?.position || !home.stand) return finish('PAUSED', 'LOADOUT_CHEST_NOT_CONFIGURED')
+      if (!job.loadout) {
+        job.loadout = { operationId: job.config.jobId + ':loadout:1', checkpoint: null }
+        await save('loadout_intent')
+      }
+      // Reach the surface work stand by ordinary movement. The work area
+      // includes the registered start/end station, but this does not authorize
+      // excavation outside the target chunk.
+      const from = feetCell(guard(myEpoch))
+      if (!samePoint(from, home.stand)) await moveToStance(myEpoch, home.stand)
+      const active = job.loadout
+      const response = await call(myEpoch, 'loadout_withdraw', signal => adapter.loadoutWithdraw({
+        jobId: job.config.jobId, operationId: active.operationId,
+        checkpoint: copy(active.checkpoint), position: copy(home.position)
+      }, { signal, onCheckpoint: async cp => {
+        if (job !== owner || job.loadout !== active || cp.operationId !== active.operationId) throw new Error('LOADOUT_STALE_CHECKPOINT')
+        active.checkpoint = copy(cp); await save('loadout_checkpoint')
+      }}), { drain: true })
+      guard(myEpoch)
+      if (response?.status !== 'completed' || response.serverConfirmed !== true) {
+        return finish('PAUSED', response?.reason ?? 'LOADOUT_WITHDRAW_BLOCKED', { pauseDetails: { details: response?.details ?? null, operationId: active.operationId } })
+      }
+      const discovered = adapter.discoverSupplies?.('v22')
+      if (!discovered?.ok || !validSupplyBindings(discovered.bindings, 'four_layers')) {
+        return finish('PAUSED', discovered?.reason ?? 'V22_SUPPLIES_UNKNOWN')
+      }
+      job.config.inventory.supplyBoxes = copy(discovered.bindings)
+      job.config.inventory.autoSupplies = true
+      job.loadoutReady = true
+      await save('loadout_received')
+    }
     const s = guard(myEpoch)
     if (!items(s)) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
     job.scope = scopeOf(s); job.life = lifeOf(s)
@@ -903,6 +936,35 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     note('four_layer_intent', { floorY, final })
   }
 
+  async function ensureTotem (myEpoch) {
+    if (!fourLayerStorage()) return false
+    const view = adapter.equipmentView?.()
+    if (view?.offhand?.known !== true || view.offhand.slots?.[0]?.known !== true) {
+      await finish('PAUSED', 'OFFHAND_OBSERVATION_UNKNOWN'); return true
+    }
+    const hand = view.offhand.slots[0]
+    if (!hand.empty) {
+      if (hand.name === 'minecraft:totem_of_undying') return false
+      await finish('PAUSED', 'OFFHAND_OCCUPIED'); return true
+    }
+    const inventory = items(guard(myEpoch))
+    if (!inventory) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
+    const totem = inventory.find(row => row.name === 'minecraft:totem_of_undying' && row.count === 1)
+    if (!totem) {
+      await finish('PAUSED', 'TOTEM_EXHAUSTED'); return true
+    }
+    const receipt = await call(myEpoch, 'equip_totem', signal => adapter.equipmentTransfer({
+      from:'main',fromSlot:totem.slot,to:'offhand',toSlot:0,
+      expectedName:'minecraft:totem_of_undying',signal
+    }))
+    if (receipt?.serverConfirmed !== true || adapter.equipmentView?.()?.offhand?.slots?.[0]?.name !== 'minecraft:totem_of_undying') {
+      await finish('PAUSED','TOTEM_EQUIP_UNCONFIRMED');return true
+    }
+    job.totemsEquipped = (job.totemsEquipped ?? 0) + 1
+    await save('totem_equipped')
+    return true
+  }
+
   // ---- normal work -------------------------------------------------------
   async function work (myEpoch) {
     if (!fourLayerStorage() && job.exitPreflight?.layer !== job.cursorY && !(await prepareExit(myEpoch))) return
@@ -923,6 +985,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // emptied before starting another supply box that needs recovery space.
     if (fullOnlyStorage() && !job.storageExhausted && freeSlots(inv) === 0 && keepPlan(inv, inventoryPolicy()).deposits.length) { await collect(myEpoch, 'capacity'); job.depositReason = 'full'; setState('RETURN'); return }
     if (await restock(myEpoch, 'SURVEY')) return
+    if (await ensureTotem(myEpoch)) return
     if (await continueLayerCollection(myEpoch)) return
     // Capacity: collect then return before the bag is full (§10.3, §11.1).
     if (fullOnlyStorage() ? freeSlots(inv) === 0 && !job.storageExhausted : freeSlots(inv) < job.config.inventory.minFreeSlots) { await collect(myEpoch, 'capacity'); job.depositReason = fullOnlyStorage() ? 'full' : 'capacity'; setState('RETURN'); return }
@@ -1893,6 +1956,13 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const until = now() + SUPPLY_SITE_RETRY_WAIT_MS
       while (now() < until) { await sleep(100); guard(myEpoch) }
       setState('RESTOCK'); return true
+    }
+    if (fourLayerStorage() && response?.reason === 'SUPPLY_EXHAUSTED' && active.checkpoint?.bindings?.[active.checkpoint.index]?.role === 'shovel') {
+      job.shovelSupplyExhausted = true
+      job.supplyRestock = null
+      await save('shovel_supply_exhausted')
+      setState('SURVEY')
+      return true
     }
     if (response?.status !== 'completed' || response.serverConfirmed !== true || !validSupplyBindings(response.bindings)) { await finish('PAUSED', 'SUPPLY_RESTOCK_BLOCKED', { pauseDetails: { reason: response?.reason ?? 'UNCONFIRMED', operationId: active.operationId } }); return true }
     job.config.inventory.supplyBoxes = copy(response.bindings)
