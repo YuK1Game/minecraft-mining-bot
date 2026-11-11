@@ -494,6 +494,7 @@ async function main () {
   const context = {
     client: connection, world, entities, cache, meta, shared, apiUrl: `http://127.0.0.1:${config.port}`,
     getState: workingSnapshot, getServerState: rawSnapshot, getServerFields: rawFields, commitInventory, commitSelection, setPrediction, allocate, log, onEmergency: onlineEmergency,
+    disconnectOnCompletedQuarry: () => stop(0),
     registerPacketEvents: packetEvents.registerPacketEvents,
     setEquipmentPrediction: slot => { shared.equipment = { slot, requestedAt: new Date().toISOString() } },
     setCapabilities: values => { Object.assign(state.capabilities, values) }, noteProgress: progress => { shared.lastProgress = progress }
