@@ -93,6 +93,7 @@ function defaults (config = {}) {
     jobId: validateJobId(c.jobId ?? newJobId()),
     dimension: c.dimension ?? 'overworld',
     target: c.target,
+    homeChest: c.homeChest ?? null,
     yTop: c.yTop ?? 'auto',
     // Default bottom (2026-11-10, user request): Y-59, just above the overworld
     // bedrock band; 'world_min' stays available as an explicit choice.
@@ -270,6 +271,12 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const xs = []; const zs = []; const ys = []; const lows = [regs.yBottom]
     for (const chunk of regs.chunks) { const b = chunkBounds(chunk); xs.push(b.xMin - 2, b.xMax + 2); zs.push(b.zMin - 2, b.zMax + 2) }
     for (const s of config.inventory.storage ?? []) if (s?.position) { xs.push(s.position.x - 3, s.position.x + 3); zs.push(s.position.z - 3, s.position.z + 3); ys.push(s.position.y + 4, s.position.y - 2); lows.push(s.position.y - 2) }
+    // The final chest is a bounded surface endpoint, not an intermediate
+    // quarry storage target. Its floor and interaction stand must stay routed.
+    for (const point of [config.homeChest?.position,config.homeChest?.other,config.homeChest?.stand]) if (point) {
+      xs.push(point.x - 2,point.x + 2);zs.push(point.z - 2,point.z + 2)
+      ys.push(point.y + 3,point.y - 2);lows.push(point.y - 2)
+    }
     // The bot's own place may lie below the job bottom (lower ground beside
     // the area), so the region reaches down to it as well.
     if (state?.position) { const f = feetCell(state); xs.push(f.x - 2, f.x + 2); zs.push(f.z - 2, f.z + 2); ys.push(f.y + 4, f.y - 2); lows.push(f.y - 2) }
@@ -343,11 +350,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (config.inventory.depositWhen !== undefined && !['capacity', 'full', 'four_layers'].includes(config.inventory.depositWhen)) issues.push('INVALID_DEPOSIT_POLICY')
     if (!validStoragePair(config.inventory)) issues.push('UNSUPPORTED_STORAGE_POLICY')
     if (shulkerOnly && config.inventory.storage?.length) issues.push('SHULKER_ONLY_STORAGE')
-    if (shulkerOnly && !config.inventory.supplyBoxes?.length) {
+    if (config.inventory.depositWhen === 'four_layers') {
+      const chest = config.homeChest
+      if (!chest || !['position', 'other', 'stand'].every(part=>chest[part] && ['x','y','z'].every(axis=>Number.isSafeInteger(chest[part][axis])))) issues.push('LOADOUT_CHEST_NOT_CONFIGURED')
+      if (typeof adapter.loadoutWithdraw !== 'function' || typeof adapter.finalChestDeposit !== 'function' || typeof adapter.equipmentTransfer !== 'function') issues.push('V22_RUNTIME_UNAVAILABLE')
+    }
+    if (shulkerOnly && !config.inventory.supplyBoxes?.length && !(config.inventory.depositWhen === 'four_layers' && config.homeChest)) {
       const discovered = adapter.discoverSupplies?.(config.inventory.depositWhen === 'four_layers' ? 'v22' : 'legacy')
       if (discovered?.ok) { config.inventory.supplyBoxes = copy(discovered.bindings); config.inventory.autoSupplies = true }
     }
-    if (config.inventory.autoSupplies && !config.inventory.supplyBoxes?.length) {
+    if (config.inventory.autoSupplies && !config.inventory.supplyBoxes?.length && !(config.inventory.depositWhen === 'four_layers' && config.homeChest)) {
       const discovered = adapter.discoverSupplies?.(config.inventory.depositWhen === 'four_layers' ? 'v22' : 'legacy')
       if (discovered?.ok) config.inventory.supplyBoxes = copy(discovered.bindings)
       else issues.push(discovered?.reason ?? 'SUPPLY_BOXES_UNCONFIRMED')
@@ -363,7 +375,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (yTop === null) { const s = p.surveyTop(); yTop = s.yTop; unknownAbove = s.unknownAbove }
     if (config.inventory.depositWhen === 'four_layers') {
       if (Number.isSafeInteger(yTop)) yTop = Math.min(yTop, 75)
-      if (Number.isSafeInteger(config.yTop) && config.yTop > 75) issues.push('Y_TOP_ABOVE_LIMIT')
+      // The upper bound is clamped; terrain above it is outside the quarry.
     }
     if (yTop === null) issues.push('Y_TOP_UNKNOWN')
     if (unknownAbove) warnings.push({ code: 'Y_TOP_PROVISIONAL', unknownCells: unknownAbove })
@@ -371,13 +383,13 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const inv = items(state)
     if (!inv) issues.push('INVENTORY_UNKNOWN')
     const storageList = config.inventory.storage ?? []
-    if ((shulkerOnly || !storageList.length && config.inventory.carryOnly !== true) && !(typeof adapter.storeCarried === 'function' && cargoSelection(inv, { excludedShulkerKeys: storageSupplyExclusions(config.inventory.supplyBoxes) }))) issues.push(shulkerOnly ? 'NO_CARGO_SHULKER' : 'NO_STORAGE_REGISTERED')
+    if ((shulkerOnly || !storageList.length && config.inventory.carryOnly !== true) && !(config.inventory.depositWhen === 'four_layers' && config.homeChest && !inv?.length || typeof adapter.storeCarried === 'function' && cargoSelection(inv, { excludedShulkerKeys: storageSupplyExclusions(config.inventory.supplyBoxes) }))) issues.push(shulkerOnly ? 'NO_CARGO_SHULKER' : 'NO_STORAGE_REGISTERED')
     for (const s of storageList) {
       const b = s?.position ? adapter.getBlock(s.position.x, s.position.y, s.position.z) : null
       if (!b?.known || !/chest|barrel/.test(nameOf(b))) issues.push(`STORAGE_NOT_OBSERVED:${JSON.stringify(s?.position ?? null)}`)
       else if (permits(regs, 'break', s.position).allowed) issues.push('STORAGE_INSIDE_EXCAVATION')
     }
-    if (inv) {
+    if (inv && !(config.inventory.depositWhen === 'four_layers' && config.homeChest && !inv.length)) {
       const picks = inv.filter(i => /_pickaxe$/.test(nameOf(i)))
       if (!picks.length) warnings.push({ code: 'NO_PICKAXE', note: 'Stone and ores will wait for a tool' })
       if (!inv.some(i => isFood(i.name))) warnings.push({ code: 'NO_FOOD' })
@@ -406,7 +418,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // leaves no exit column is refused here instead of after start; unknown
     // terrain only warns. A shallower bottom that would work is suggested.
     let exitPreflight = null
-    if (yTop !== null && inv && state?.position && config.exit?.mode === 'adjacent_pillar' && typeof adapter.egress === 'function') {
+    if (yTop !== null && inv && state?.position && config.exit?.mode === 'adjacent_pillar' && typeof adapter.egress === 'function' && config.inventory.depositWhen !== 'four_layers') {
       exitPreflight = planExitPreview(config, regs, yTop, state, inv)
       if (!exitPreflight.ready) {
         if (exitPreflight.reason === 'EXIT_COLUMN_UNAVAILABLE' && !exitPreflight.unknown) {
