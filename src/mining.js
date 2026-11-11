@@ -41,7 +41,9 @@ function targetList (targets) {
       Object.assign(target, { accessPreparation: 'owned_bed', expectedName: 'minecraft:bed', ownershipKey: position.ownershipKey })
     } else if (position.accessPreparation === 'owned_shulker') {
       if (typeof position.expectedName !== 'string' || !position.expectedName.startsWith('minecraft:') || !isShulkerBlock(position.expectedName) || typeof position.ownershipKey !== 'string' || !position.ownershipKey.length || position.ownershipKey.length > 200 || position.expectedRuntimeId != null && (!Number.isSafeInteger(position.expectedRuntimeId) || position.expectedRuntimeId < 0 || position.expectedRuntimeId > 4294967295)) throw new Error('Owned-shulker mining requires an actual block name, ownership key and optional received runtime ID')
-      Object.assign(target, { accessPreparation: 'owned_shulker', expectedName: position.expectedName, ownershipKey: position.ownershipKey, expectedRuntimeId: position.expectedRuntimeId ?? null })
+      const rt = position.requiredTool
+      if (rt != null && (rt.kind !== 'pickaxe' || !Number.isSafeInteger(rt.tier) || rt.tier < 1 || rt.tier > 4 || !Number.isSafeInteger(rt.reserve) || rt.reserve < 1)) throw new Error('Owned-shulker pickaxe requirement is invalid')
+      Object.assign(target, { accessPreparation: 'owned_shulker', expectedName: position.expectedName, ownershipKey: position.ownershipKey, expectedRuntimeId: position.expectedRuntimeId ?? null, ...(rt ? { requiredTool: { kind: 'pickaxe', tier: rt.tier, reserve: rt.reserve } } : {}) })
     } else if (position.accessPreparation === 'pillar_descent') {
       // Descending the bot's own dirt pillar one block at a time (2026-11-10):
       // only a received dirt block directly under the feet, with a received
@@ -190,6 +192,11 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     if (ownedShulker) {
       if (!isShulkerBlock(block.name) || block.name !== target.expectedName || target.expectedRuntimeId != null && block.runtimeId !== target.expectedRuntimeId) throw new Error('Owned shulker block changed from its placement receipt')
       requireOwnedShulker(target, state, block)
+      if (target.requiredTool) {
+        const held = quarryTool(state.heldItem?.name)
+        if (held?.kind !== 'pickaxe' || held.tier < target.requiredTool.tier) throw new Error('Owned-shulker retrieval requires a pickaxe')
+        if (state.heldItem?.durabilityKnown !== true || !Number.isFinite(state.heldItem?.durabilityRemaining) || state.heldItem.durabilityRemaining <= target.requiredTool.reserve) throw new Error('Owned-shulker pickaxe has no confirmed available durability')
+      }
     }
     const fluidRoof = target.accessPreparation === 'quarry_fluid_roof'
     const quarry = target.accessPreparation === 'quarry' || fluidRoof
