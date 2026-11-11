@@ -227,7 +227,7 @@
 
   const itemNames = { diamond_helmet: 'ダイヤのヘルメット', diamond_chestplate: 'ダイヤのチェストプレート', diamond_leggings: 'ダイヤのレギンス', diamond_boots: 'ダイヤのブーツ', diamond_sword: 'ダイヤの剣', diamond_pickaxe: 'ダイヤのツルハシ', diamond_shovel: 'ダイヤのシャベル', bow: '無限の弓' }
   const enchantNames = { protection: 'ダメージ軽減', unbreaking: '耐久力', mending: '修繕', thorns: '棘の鎧', respiration: '水中呼吸', aqua_affinity: '水中採掘', swift_sneak: 'スニーク速度', feather_falling: '落下耐性', depth_strider: '水中歩行', soul_speed: 'ソウルスピード', efficiency: '効率', fortune: '幸運', silk_touch: 'シルクタッチ', sharpness: '鋭さ', looting: 'ドロップ増加', fire_aspect: '火属性', knockback: 'ノックバック', power: 'パワー', infinity: '無限', flame: 'フレイム', punch: 'パンチ' }
-  const kitTextures = Object.fromEntries(['diamond_helmet', 'diamond_chestplate', 'diamond_leggings', 'diamond_boots', 'diamond_sword', 'diamond_pickaxe', 'diamond_shovel', 'bread', 'arrow'].map(n => [n, 'items/' + n]))
+  const kitTextures = Object.fromEntries(['diamond_helmet', 'diamond_chestplate', 'diamond_leggings', 'diamond_boots', 'diamond_sword', 'diamond_pickaxe', 'diamond_shovel', 'bread', 'arrow', 'totem_of_undying'].map(n => [n, 'items/' + n]))
   Object.assign(kitTextures, { bow: 'items/bow_standby', dirt: 'blocks/dirt', ...Object.fromEntries(['purple', 'blue', 'light_blue', 'yellow', 'brown'].map(c => [c + '_shulker_box', 'blocks/shulker_top_' + c])) })
   function kitIcon (name) {
     const key = String(name ?? '').replace(/^minecraft:/, ''), src = kitTextures[key]
@@ -247,9 +247,9 @@
     $('reset-cargo-grid').replaceChildren(...Array.from({ length: cargoCount }, () => kitIcon('purple_shulker_box')))
     $('reset-cargo-grid').setAttribute('aria-label', `空の収納用シュルカー ${cargoCount}箱`)
     $('reset-supply-count').textContent = m.supplies.length
-    const roles = { pickaxe: 'ツルハシ', shovel: 'シャベル', food: 'パン', dirt: '土' }
+    const roles = { pickaxe: 'ツルハシ', shovel: 'シャベル', food: 'パン', dirt: '土', totem: '不死のトーテム' }
     $('reset-supply-grid').replaceChildren(...m.supplies.map(box => {
-      const card = element('div', 'loadout-supply-card'); card.dataset.role = ['pickaxe', 'shovel', 'food', 'dirt'].includes(box.role) ? box.role : ''
+      const card = element('div', 'loadout-supply-card'); card.dataset.role = ['pickaxe', 'shovel', 'food', 'dirt', 'totem'].includes(box.role) ? box.role : ''
       const icons = element('div', 'loadout-supply-icons'); icons.append(kitIcon(box.name), kitIcon(box.item.name))
       const caption = element('div', 'loadout-supply-caption'); caption.append(element('span', '', roles[box.role] || clean(box.role)), element('b', '', Number(box.total).toLocaleString('ja-JP')))
       card.append(icons, caption); return card
@@ -299,7 +299,7 @@
     const p = resetPreview
     if (!p || busy || p.expiresAt <= Date.now() || p.session !== current?.live?.session) return
     closeReset(); plan = null; $('plan-results').hidden = true
-    act('reset', 'loadout', { command: 'resetStart', session: p.session, resetToken: p.token, confirm: 'REPLACE_INITIAL_INVENTORY' }, () => message('reset', ''))
+    act('reset', 'loadout', { command: 'resetStart', session: p.session, resetToken: p.token, confirm: 'REPLACE_SURFACE_CHEST' }, () => message('reset', ''))
   })
   $('reset-stop').addEventListener('click', () => act('reset', 'loadout', { command: 'resetCancel', session: current?.live?.session }, () => message('reset', '中断を要求しました。途中結果を確認してください。')))
 
