@@ -197,6 +197,20 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     job.passivePickup = { observedAt: new Date(now()).toISOString(), reason: why, pickupCompleted: ground.length ? false : null, remainingGroundDropCount: ground.length, remainingGroundDrops: ground.slice(0, 100), inventoryOnly: true }
   }
 
+  function recordUnverifiedDrop (drop, reason) {
+    if (!fourLayerStorage()) return
+    const id=String(drop.runtimeId), missing=job.unverifiedDrops ??= []
+    if (missing.some(entry=>entry.runtimeId===id)) return
+    const entry={runtimeId:id,name:drop.name??null,count:drop.count??null,position:copy(drop.position??null),reason,at:new Date(now()).toISOString()}
+    if(missing.length<200) missing.push(entry)
+    note('pickup_unverified',entry)
+  }
+  const pickedLedger = () => {
+    const d=ledger.export(),picked={}
+    for(const section of ['picked','loot'])for(const [n,count] of Object.entries(d[section]??{})) picked[n]=(picked[n]??0)+count
+    return picked
+  }
+
   function recordFinalStorageSkip (inventory) {
     job.finalStorageSkipped = { reason: 'POLICY_FULL_ONLY', observedAt: new Date(now()).toISOString(), freeSlots: freeSlots(inventory), carriedDeposits: copy(keepPlan(inventory, inventoryPolicy()).deposits) }
     note('final_storage_skipped', { reason: 'POLICY_FULL_ONLY', freeSlots: freeSlots(inventory), stacks: job.finalStorageSkipped.carriedDeposits.length })
@@ -912,6 +926,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const ground = adapter.entities().filter(e => e.kind === 'item' && e.position &&
         regions.columns.has(Math.floor(e.position.x) + ',' + Math.floor(e.position.z)) &&
         e.position.y <= job.yTop + 1 && e.position.y >= regions.yBottom - 2)
+      if (job.unverifiedDrops?.length) {
+        return finish('PAUSED','FOUR_LAYER_PICKUP_UNVERIFIED',{pauseDetails:{floorY:op.floorY,examples:job.unverifiedDrops.slice(0,20)}})
+      }
       if (pendingDrops.length || ground.length) {
         return finish('PAUSED', 'FOUR_LAYER_DROPS_UNRESOLVED', { pauseDetails: {
           floorY: op.floorY, pending: pendingDrops.length, visible: ground.length,
@@ -1398,6 +1415,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // Items lying in the travel region that are not tracked yet (late drop
   // entities, loot) start their collection clock when first seen.
   function observeDrops () {
+    const previous=job.dropPickupLedgerBaseline??null, current=pickedLedger()
     const live = new Set()
     for (const e of adapter.entities()) {
       if (e.kind !== 'item' || !e.position) continue
@@ -1405,6 +1423,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (pendingDrops.some(d => d.runtimeId === e.runtimeId)) continue
       if (!permits(regions, 'travel', { x: Math.floor(e.position.x), y: Math.floor(e.position.y + 0.01), z: Math.floor(e.position.z) }).allowed) continue
       pendingDrops.push({ runtimeId: e.runtimeId, name: e.name, count: e.count, position: copy(e.position), firstSeen: now(), mixed: true })
+    }
+    if (fourLayerStorage()) {
+      const delta = new Map(Object.keys(current).map(n=>[n,Math.max(0,(current[n]??0)-(previous?.[n]??0))]))
+      for(const drop of pendingDrops.filter(d=>!live.has(d.runtimeId))) {
+        const name=nameOf(drop.name),needed=Number.isInteger(drop.count)&&drop.count>0?drop.count:1
+        const available=delta.get(name)??0
+        if(previous && available>=needed) delta.set(name,available-needed)
+        else recordUnverifiedDrop(drop,'ENTITY_GONE_WITHOUT_NEW_INVENTORY')
+      }
+      job.dropPickupLedgerBaseline=current
     }
     pendingDrops = pendingDrops.filter(d => live.has(d.runtimeId))
     for (const [id, until] of stuckItems) if (until <= now() || !live.has(id)) stuckItems.delete(id)
@@ -1439,6 +1467,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     for (const e of ents.values()) if (!remaining.some(d => d.runtimeId === e.runtimeId) && permits(regions, 'travel', { x: Math.floor(e.position.x), y: Math.floor(e.position.y + 0.01), z: Math.floor(e.position.z) }).allowed) remaining.push({ runtimeId: e.runtimeId, name: e.name, count: e.count, position: copy(e.position), firstSeen: now(), mixed: true })
     // Stuck items (still on the ground after a visit) are skipped for a while,
     // except on the final sweep.
+    const observedOnPass=remaining.map(d=>({...d}))
     const skipped = []
     for (let k = remaining.length - 1; k >= 0; k--) if (why !== 'final' && (stuckItems.has(remaining[k].runtimeId) || remaining[k].reason === 'STUCK_REPEATED')) skipped.push(...remaining.splice(k, 1))
     const unreachable = skipped.map(d => ({ ...d, reason: d.reason === 'STUCK_REPEATED' ? d.reason : 'STUCK' }))
@@ -1506,6 +1535,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     const after = totals(items(guard(myEpoch)) ?? [])
     for (const x of diff(before, after)) if (x.delta > 0) note('collected', x)
+    if (fourLayerStorage()) {
+      const gains=new Map(diff(before,after).filter(d=>d.delta>0).map(d=>[d.name,d.delta]))
+      const left=new Set(adapter.entities().filter(e=>e.kind==='item').map(e=>String(e.runtimeId)))
+      for(const d of observedOnPass) {
+        if(left.has(String(d.runtimeId))) continue
+        const n=nameOf(d.name),needed=Number.isInteger(d.count)&&d.count>0?d.count:1,available=gains.get(n)??0
+        if(available>=needed)gains.set(n,available-needed)
+        else recordUnverifiedDrop(d,'COLLECT_ENTITY_GONE_WITHOUT_MATCHING_PICKUP')
+      }
+    }
     observeInventory('COLLECT')
     // Items still on the ground stay tracked: capacity misses are retried after
     // a deposit, unreachable ones are only written off at the end (§10.2).
