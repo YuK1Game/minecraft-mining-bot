@@ -115,6 +115,34 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
   }
   async function mainSlots () {return openAt(active.home.position,54)}
   async function stageSlots() {return openAt(active.home.stage,27)}
+  function physicalSlot(index) {
+    if(!Number.isSafeInteger(index)||index<0||index>=54)throw fail('RESET_CHEST_SLOT_INVALID')
+    const p=index<27?active.home.firstHalf:active.home.secondHalf
+    if(!vec(p))throw fail('RESET_CHEST_HALVES_UNKNOWN')
+    return {position:p,slot:index%27}
+  }
+  async function calibrateHalves () {
+    const first=active.home.position,second=active.home.other
+    // Bedrock's /replaceitem and /loot commands address each 27-slot half
+    // separately, even though the GUI displays a combined 54-slot window.
+    // Probe both physical halves before using a single command slot index.
+    await adapter.close()
+    await command('/replaceitem block '+at(first)+' slot.container 0 minecraft:dirt 1','片側チェストを識別')
+    await command('/replaceitem block '+at(second)+' slot.container 0 minecraft:bread 1','反対側チェストを識別')
+    const slots=await mainSlots()
+    const dirt=slots.flatMap((v,i)=>v?.name==='minecraft:dirt'&&v.count===1?[i]:[])
+    const bread=slots.flatMap((v,i)=>v?.name==='minecraft:bread'&&v.count===1?[i]:[])
+    if(dirt.length!==1||bread.length!==1||![0,27].includes(dirt[0])||![0,27].includes(bread[0])||dirt[0]===bread[0])throw fail('RESET_CHEST_HALF_MAPPING_UNKNOWN')
+    active.home.firstHalf=copy(dirt[0]===0?first:second)
+    active.home.secondHalf=copy(dirt[0]===0?second:first)
+    await mark('左右チェストを識別',{chestMappingConfirmed:true})
+    await adapter.close()
+    await command('/replaceitem block '+at(first)+' slot.container 0 minecraft:air 1','識別用土を片付ける')
+    await command('/replaceitem block '+at(second)+' slot.container 0 minecraft:air 1','識別用パンを片付ける')
+    const cleared=await mainSlots()
+    if(cleared.some(x=>!x.empty))throw fail('RESET_CHEST_CALIBRATION_UNCONFIRMED')
+    await adapter.close()
+  }
   async function existingChest() {
     const {home}=active
     if(!home.existing) {
@@ -126,19 +154,23 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
     }
     const slots=await mainSlots()
     if(home.existing) {
+      if(!vec(home.firstHalf)||!vec(home.secondHalf))throw fail('RESET_OLD_CHEST_MAPPING_UNKNOWN')
       for(let i=0;i<54;i++) {
         if(slots[i].empty)continue
+        const target=physicalSlot(i)
         await adapter.close()
-        await command('/replaceitem block '+at(home.position)+' slot.container '+i+' minecraft:air 1','地上チェストを初期化')
+        await command('/replaceitem block '+at(target.position)+' slot.container '+target.slot+' minecraft:air 1','地上チェストを初期化')
       }
-      const empty=await mainSlots()
-      if(empty.some(x=>!x.empty))throw fail('RESET_CHEST_CLEAR_UNCONFIRMED')
+      const cleared=await mainSlots()
+      if(cleared.some(x=>!x.empty))throw fail('RESET_CHEST_CLEAR_UNCONFIRMED')
     } else if(slots.some(x=>!x.empty))throw fail('RESET_CHEST_NOT_EMPTY')
     await adapter.close()
+    await calibrateHalves()
   }
   async function put(i,name,count) {
     guard();await adapter.close()
-    await command('/replaceitem block '+at(active.home.position)+' slot.container '+i+' '+name+' '+count,'初期アイテムを格納')
+    const target=physicalSlot(i)
+    await command('/replaceitem block '+at(target.position)+' slot.container '+target.slot+' '+name+' '+count,'初期アイテムを格納')
     const slots=await mainSlots()
     if(slots[i].name!==name||slots[i].count!==count)throw fail('RESET_CHEST_ITEM_UNCONFIRMED',{slot:i,name})
     await adapter.close()
@@ -163,7 +195,8 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
     await adapter.close()
     const end=role==='cargo'?CARGO:i+1
     for(let n=i;n<end;n++) {
-      await command('/loot replace block '+at(home.position)+' slot.container '+n+' 1 mine '+at(home.stage)+' minecraft:diamond_pickaxe','シュルカーを地上チェストへ格納')
+      const target=physicalSlot(n)
+      await command('/loot replace block '+at(target.position)+' slot.container '+target.slot+' 1 mine '+at(home.stage)+' minecraft:diamond_pickaxe','シュルカーを地上チェストへ格納')
       const box=(await mainSlots())[n]
       if(box.name!==def.box||box.count!==1)throw fail('RESET_BOX_TRANSFER_UNCONFIRMED',{role,slot:n})
       if(box.container?.known!==true||box.container.slots?.length!==27||role==='cargo'&&box.container.slots.some(x=>x&&!x.empty)) {
