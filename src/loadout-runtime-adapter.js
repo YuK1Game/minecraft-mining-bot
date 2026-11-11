@@ -63,4 +63,61 @@ function createRuntimeLoadoutReset ({ host, getState, inspection, crafting, armo
   }
   return createLoadoutReset({ adapter, commands })
 }
-module.exports = { createRuntimeLoadoutReset }
+
+function createRuntimeV22ChestReset ({
+  host, getState, inspection, crafting, armor, inventory, chest,
+  assertIdle, acquire, release, getJob, generation, cancelTransfers,
+  journalDirectory = path.resolve(__dirname, '..', '.local', 'loadout-reset-v22')
+}) {
+  const { createQuarryV22Reset } = require('./quarry-v22-reset')
+  const worldKey = () => {
+    const state = getState()
+    return createHash('sha256').update(JSON.stringify([state.profile, String(state.realm?.id), state.dimension])).digest('hex')
+  }
+  const filename = () => path.join(journalDirectory, worldKey() + '.json')
+  const command = createLoadoutCommand({ client: host.client, getState })
+  const adapter = {
+    getState,
+    getView: () => inspection.snapshot(getState()),
+    getBlock: (x,y,z) => host.world.getBlock(x,y,z),
+    generation,
+    assertIdle: () => {
+      assertIdle()
+      const current = crafting.snapshot(), job = getJob(), d = job?.document(), state = job?.status()
+      if (current.authority !== true || current.inventoryKnown !== true || current.pendingRequestId != null ||
+        (state?.state && !['IDLE','PAUSED','FINISHED'].includes(state.state)) ||
+        job?.holdsWork?.() || state?.persistence?.status === 'failed' ||
+        d?.portableStorage || d?.supplyRestock ||
+        d?.egress?.operationId && !d?.surfaceReturnedAt ||
+        current.openContainer) throw failure('RESET_JOB_PENDING')
+    },
+    acquire, release,
+    cancelJob: async () => {
+      const job = getJob()
+      if(job?.document()){
+        const status = await job.cancel()
+        if(status?.state !== 'FINISHED' || status.persistence?.status === 'failed')throw failure('RESET_JOB_STOP_UNCONFIRMED')
+      }
+      host.shared.quarryAutoResume = false
+      host.shared.quarryRestoreDisabled = true
+    },
+    save: async value => {
+      await fs.mkdir(journalDirectory,{recursive:true})
+      return writeDurableJson(filename(),value)
+    },
+    load: async () => {
+      try { return await readJsonBounded(filename()) }
+      catch(error){if(error.code==='ENOENT')return null;throw error}
+    },
+    select: (slot, options) => inventory.selectHotbarForReset(slot,options),
+    open: async (p, size) => {crafting.closeContainer();return chest.open(p,undefined,{expectedSlots:size})},
+    close: async () => {crafting.closeContainer()},
+    deposit: options => chest.depositItem(options),
+    container: () => inspection.snapshot(getState()).openContainer,
+    cancelTransfers,
+    publishHomeSite: site => {host.shared.quarryV22HomeChest = structuredClone(site)}
+  }
+  return createQuarryV22Reset({adapter,commands:command})
+}
+
+module.exports = { createRuntimeLoadoutReset, createRuntimeV22ChestReset }
