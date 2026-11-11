@@ -161,3 +161,16 @@ test('loadout-runtime: decoded Bedrock slot updates recover unobserved armor/off
   assert.equal(f.reset.status().serverConfirmed, false, 'the deliberate later rejection is never reported as a complete kit')
   assert.equal(f.held(), null)
 })
+
+test('loadout-runtime: a cancelled job no longer blocks the v2.2 reset; a paused or running one with unfinished work still does', () => {
+  const { jobPending } = require('../src/loadout-runtime-adapter')
+  const job = (state, doc = {}) => ({ status: () => ({ state }), document: () => ({ state, ...doc }), holdsWork: () => false })
+  const restock = { supplyRestock: { operationId: 'op' } }
+  assert.equal(jobPending(job('FINISHED', restock)), false, 'a cancelled job keeps its records but never resumes')
+  assert.equal(jobPending(job('PAUSED', restock)), true)
+  assert.equal(jobPending(job('PAUSED', { portableStorage: {} })), true)
+  assert.equal(jobPending(job('PAUSED', { egress: { operationId: 'e' } })), true)
+  assert.equal(jobPending(job('MINE')), true)
+  assert.equal(jobPending({ ...job('FINISHED', restock), status: () => ({ state: 'FINISHED', persistence: { status: 'failed' } }) }), true)
+  assert.equal(jobPending(null), false)
+})

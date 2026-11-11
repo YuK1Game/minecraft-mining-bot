@@ -64,6 +64,19 @@ function createRuntimeLoadoutReset ({ host, getState, inspection, crafting, armo
   return createLoadoutReset({ adapter, commands })
 }
 
+// A job blocks the surface-chest reset while it may still act: running, its
+// persistence failed, or (unless it was cancelled to FINISHED) an unfinished
+// container, supply or exit operation. A FINISHED job never resumes; its
+// records of unfinished work stay in its document (live 2026-11-11 18:40: a
+// cancelled job's placed supply box kept every reset refused).
+function jobPending (job) {
+  const d = job?.document?.(), state = job?.status?.()
+  if (state?.state && !['IDLE', 'PAUSED', 'FINISHED'].includes(state.state)) return true
+  if (job?.holdsWork?.() || state?.persistence?.status === 'failed') return true
+  if (state?.state === 'FINISHED' && d?.state === 'FINISHED') return false
+  return Boolean(d?.portableStorage || d?.supplyRestock || d?.egress?.operationId && !d?.surfaceReturnedAt)
+}
+
 function createRuntimeV22ChestReset ({
   host, getState, inspection, crafting, armor, inventory, chest,
   assertIdle, acquire, release, getJob, generation, cancelTransfers,
@@ -85,11 +98,7 @@ function createRuntimeV22ChestReset ({
       assertIdle()
       const current = crafting.snapshot(), job = getJob(), d = job?.document(), state = job?.status()
       if (current.authority !== true || current.inventoryKnown !== true || current.pendingRequestId != null ||
-        (state?.state && !['IDLE','PAUSED','FINISHED'].includes(state.state)) ||
-        job?.holdsWork?.() || state?.persistence?.status === 'failed' ||
-        d?.portableStorage || d?.supplyRestock ||
-        d?.egress?.operationId && !d?.surfaceReturnedAt ||
-        current.openContainer) throw failure('RESET_JOB_PENDING')
+        jobPending(job) || current.openContainer) throw failure('RESET_JOB_PENDING')
     },
     acquire, release,
     cancelJob: async () => {
@@ -120,4 +129,4 @@ function createRuntimeV22ChestReset ({
   return createQuarryV22Reset({adapter,commands:command})
 }
 
-module.exports = { createRuntimeLoadoutReset, createRuntimeV22ChestReset }
+module.exports = { createRuntimeLoadoutReset, createRuntimeV22ChestReset, jobPending }
