@@ -192,6 +192,31 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
     }
     return false
   }
+  // On v2.2, an observed outside-connected fluid body is intercepted at the
+  // one-block ring. It never chooses the inside leak cell as an intrusion plug.
+  // Search only actual received fluid connectivity; unknown terrain is not air.
+  function externalRingSource (start) {
+    if (!regions.seal?.sourceOnly || !regions.seal?.ready) return null
+    const seen = new Set([key(start.x, start.y, start.z)])
+    const queue = [start]
+    for (let i = 0; i < queue.length && queue.length <= 512; i++) {
+      const p = queue[i], b = read(p)
+      if (!known(b) || !fluid(b)) continue
+      if (!regions.columns.has(p.x + ',' + p.z) && regions.seal.columns.has(p.x + ',' + p.z)) {
+        if (!permits(regions, 'seal', p).allowed || b.protected || b.protectionSource || b.extra?.length) {
+          return { ok: false, reason: 'EXTERNAL_FLUID_RING_PROTECTED', position: p }
+        }
+        return { ok: true, position: { ...p }, purpose: 'seal', materialRequired: 'dirt', sourceKind: 'external' }
+      }
+      for (const face of FACES) {
+        const next = add(p, face), k = key(next.x, next.y, next.z)
+        if (seen.has(k) || !fluid(read(next))) continue
+        seen.add(k); queue.push(next)
+      }
+    }
+    return null
+  }
+
   const heldFluid = p => { const d = deferred.get(key(p.x, p.y, p.z)); return d?.reason === 'LARGE_FLUID_WALL' && fluid(read(p)) }
   // A stand whose body touches held outside water is never used for walking or mining.
   const touchesHeldFluid = p => [p, add(p, { x: 0, y: 1, z: 0 })].some(c => FACES.some(f => heldFluid(add(c, f))))
@@ -507,7 +532,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       // Fluids inside the layer: plug small ones, pause on large ones.
       let held = 0
       for (const f of layer.fluid) {
-        const plan = sealPlan({ position: f.position, name: f.name, lava: /lava/.test(nameOf(f.name)) })
+        const plan = externalRingSource(f.position) ?? sealPlan({ position: f.position, name: f.name, lava: /lava/.test(nameOf(f.name)) })
         // Outside water leaking into the edge: the fluid cell is held (never
         // sealed or broken) and its inner neighbours become the wall below.
         if (!plan.ok && plan.reason === 'LARGE_FLUID_AREA' && connectsOutside(f.position)) {
@@ -578,7 +603,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
         if (hazards.length) {
           let wall = false
           for (const h of hazards) {
-            const plan = sealPlan(h)
+            const plan = externalRingSource(h.position) ?? sealPlan(h)
             // A large water body outside the target columns cannot be sealed
             // here; the target cell itself is the wall that holds it back, so it
             // is left in place (never broken) and the rest of the layer goes on.
