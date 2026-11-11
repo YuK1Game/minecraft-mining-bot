@@ -6,7 +6,7 @@ const {validateV22Loadout}=require('../src/quarry-v22-loadout')
 const key=p=>[p.x,p.y,p.z].join(',')
 const empty=()=>({known:true,empty:true,name:null,count:0})
 const item=(name,count=1)=>({known:true,empty:false,name,count,metadata:0,container:/shulker_box$/.test(name)?{known:true,slots:Array(27).fill(null)}:null,enchantmentsKnown:true,enchantments:[]})
-function fixture({ combined = false } = {}) {
+function fixture({ combined = false, handRejections = 0 } = {}) {
  const state={phase:'spawned',profile:'bot',realm:{id:'42',name:'Test Realm'},connectionId:'one',startedAt:'2026-11-11T00:00:00Z',runtimeEntityId:'1',dimension:'overworld',
    lifecycle:{deathId:0},gameMode:'survival',health:20,position:{x:8.5,y:66.62,z:8.5},inventory:{known:true}}
  const world=new Map(),container=new Map(),bag=Array.from({length:36},empty),armor=Array.from({length:4},empty),offhand=[empty()]
@@ -29,6 +29,7 @@ function fixture({ combined = false } = {}) {
  const commands={send:async c=>{
    steps.push(c)
    const args=c.split(' ')
+   if(c.startsWith('/testfor @s[hasitem={item=minecraft:bow')&&handRejections>0){handRejections--;throw Object.assign(new Error('rejected'),{code:'RESET_COMMAND_REJECTED',serverRejected:true,messageId:'commands.generic.noTargetMatch'})}
    if(c==='/testfor @s'||c.startsWith('/testfor @s[hasitem='))return {serverConfirmed:true,scope:observedScope(state)}
    if(c.startsWith('/setblock ')){const p=parse(args,1);assert.equal(block(p.x,p.y,p.z).name,'minecraft:air');put(p,args[4]);return {serverConfirmed:true,scope:observedScope(state)}}
    if(c.startsWith('/replaceitem block ')) {
@@ -99,4 +100,17 @@ test('live case 2026-11-11: a pair addressed as one 54-slot container from eithe
  assert.equal(validateV22Loadout({known:true,slots}).ready,true)
  assert.ok(f.steps.includes('/replaceitem block '+[preview.homeChest.position.x,preview.homeChest.position.y,preview.homeChest.position.z].join(' ')+' slot.container 27 minecraft:dirt 2'),'the combined index was confirmed before use')
  assert.equal(f.journal.some(j=>j.home?.addressing==='combined'||JSON.stringify(j).includes('"addressing":"combined"')),true)
+})
+
+test('live case 2026-11-11: a main-hand probe answered noTargetMatch re-selects and asks again; three refusals stop', async () => {
+ for (const [rejections, phase] of [[1, 'completed'], [3, 'failed']]) {
+  const f=fixture({ handRejections: rejections })
+  const preview=await f.reset.prepare()
+  f.reset.start({token:preview.token,confirm:'REPLACE_SURFACE_CHEST'})
+  await f.reset.drain()
+  const status=f.reset.status()
+  assert.equal(status.phase,phase,JSON.stringify(status.error))
+  if (phase === 'failed') assert.equal(status.error.code,'RESET_HAND_UNCONFIRMED')
+  assert.equal(f.steps.filter(c=>c==='/enchant @s infinity 1').length, phase === 'completed' ? 1 : 0, 'the enchant is never sent without a confirmed main hand')
+ }
 })
