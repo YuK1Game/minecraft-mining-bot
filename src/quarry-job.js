@@ -58,6 +58,7 @@ const TERRAIN_OBSERVATION_MAX_REQUESTS = 2
 // sections and had evicted the next layer's, so Y-33 was unknown on arrival).
 const TERRAIN_LAYER_WAITS_MS = [2000, 4000, 8000, 8000, 8000, 8000]
 const TERRAIN_PREFETCH_INTERVAL_MS = 15000
+const TERRAIN_LOOKAHEAD_LAYERS = 8 // layers under the work layer received before it is planned
 // With a full bag a placed supply box can lose its slot to natural pickup; a
 // small stack of placeable mined blocks is put back into dug cells of the
 // current layer (re-mined later) to free one slot (live 2026-11-10 22:01, 23:27).
@@ -879,6 +880,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         return y <= job.cursorY && b?.known === true && b.name === d.name && blockRule(b.name).kind === 'dig' && !b.protected && !b.protectionSource && !canopyName(b.name)
       })
       if (initialUnreachable.length) return finish('PAUSED', 'INITIAL_LAYER_UNREACHABLE', { pauseDetails: { y: Math.max(...initialUnreachable.map(d => Number(d.position.split(',')[1]))), count: initialUnreachable.length, feet: planningFeet } })
+    }
+    // Receive the layers under the work layer before planning it, so a cave
+    // below is known before its roof is dug (never plan over unreceived cells).
+    for (let k = 1; k <= TERRAIN_LOOKAHEAD_LAYERS; k++) {
+      const ly = job.cursorY - k
+      if (ly < regions.yBottom) break
+      if (layerUnknown(ly) === 0) continue
+      if (await retryLayerTerrain(myEpoch, ly)) return
+      return finish('PAUSED', 'UNOBSERVED_CELLS', { pauseDetails: { y: ly, unknown: layerUnknown(ly), lookahead: true } })
     }
     const planningInventory = items(planningState)
     if (!planningInventory) { await sleep(300); return }
