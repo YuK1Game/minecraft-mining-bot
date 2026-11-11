@@ -172,6 +172,22 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
         signal?.throwIfAborted()
         const view=current(cp.world,cp.life).view
         chestSlots(view,request.position)
+        if(cp.equipmentIntent) {
+          close()
+          if(await resync({signal})!==true)throw fail('FINAL_EQUIPMENT_RECONCILE_UNCONFIRMED')
+          const receipt=current(cp.world,cp.life).view,intent=cp.equipmentIntent
+          const source=intent.kind==='armor'?receipt.armor?.slots?.[intent.slot]:receipt.offhand?.slots?.[0]
+          const destination=receipt.slots?.[intent.targetSlot]
+          if(source?.known!==true||destination?.known!==true)throw fail('FINAL_EQUIPMENT_RECONCILE_UNKNOWN')
+          const applied=source.empty&&destination.name===intent.name&&destination.count===1
+          const unchanged=source.name===intent.name&&destination.empty
+          if(!applied&&!unchanged)throw fail('FINAL_EQUIPMENT_TRANSFER_AMBIGUOUS')
+          if(unchanged)throw fail('FINAL_EQUIPMENT_TRANSFER_PENDING')
+          cp.equipmentIntent=null
+          await saveCheckpoint(cp,onCheckpoint)
+          await inStation(request)
+          continue
+        }
         if(cp.intent) {
           if(await resync({signal})!==true)throw fail('FINAL_CHEST_RECONCILE_MAIN_UNCONFIRMED')
           await inStation(request)
