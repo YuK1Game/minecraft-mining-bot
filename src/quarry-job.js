@@ -2583,6 +2583,18 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       for (const e of toolWait) { const n = e.needs ? `${e.needs.kind ?? e.needs}${e.needs.tier != null ? `:${e.needs.tier}` : ''}` : 'unknown'; needs[n] = (needs[n] ?? 0) + 1 }
       return finish('PAUSED', 'WAITING_FOR_TOOL', { pauseDetails: { cells: toolWait.length, needs, byReason, examples: toolWait.slice(0, 10) } })
     }
+    if (fourLayerStorage() && job.config.exit?.mode === 'adjacent_pillar') {
+      // The dirt box keeps the exit reserve while the quarry is in progress.
+      // Withdraw only after all ordinary drops have reached the cargo boxes.
+      if (!job.egressPreparation) { job.egressPreparation = true; await save('egress_dirt_intent') }
+      const inv = items(guard(myEpoch))
+      if (!inv) return finish('PAUSED', 'INVENTORY_UNKNOWN')
+      if ((totals(inv).get('dirt') ?? 0) < 192) {
+        if (await restock(myEpoch, 'FINAL_CHECK', true)) return
+        return finish('PAUSED', 'EXIT_DIRT_WITHDRAW_BLOCKED')
+      }
+      if (!(await prepareExit(myEpoch))) return
+    }
     if (job.config.exit?.mode === 'adjacent_pillar') {
       job.miningCompletedAt ??= new Date(now()).toISOString()
       await save('mining_completed')
@@ -2596,7 +2608,35 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const byReason = {}
     for (const e of exceptions) { const r = e.reason ?? e.kind; byReason[r] = (byReason[r] ?? 0) + 1 }
     if (exceptions.length && !job.acceptedExceptions) return finish('PAUSED', 'UNRESOLVED_EXCEPTIONS', { pauseDetails: { count: exceptions.length, byReason, exceptions: exceptions.slice(0, 50), miningCompleted: true, surfaceReturned: true } })
-    return finish(exceptions.length ? 'COMPLETED_WITH_EXCEPTIONS' : 'COMPLETED', null)
+    if (fourLayerStorage()) {
+      const home = job.config.homeChest, owner = job
+      if (!home?.position || !home.stand) return finish('PAUSED', 'FINAL_CHEST_UNKNOWN')
+      if (!job.finalChest) {
+        job.finalChest = { operationId: job.config.jobId + ':final_chest:1', checkpoint: null }
+        await save('final_chest_intent')
+      }
+      const active = job.finalChest
+      const myEpoch = epoch
+      const current = guard(myEpoch)
+      if (!samePoint(feetCell(current),home.stand)) await moveToStance(myEpoch,home.stand)
+      const result = await call(myEpoch,'final_chest',signal=>adapter.finalChestDeposit({
+        jobId:job.config.jobId,operationId:active.operationId,position:copy(home.position),
+        checkpoint:copy(active.checkpoint)
+      },{signal,onCheckpoint:async cp=>{
+        if(job!==owner || job.finalChest!==active || cp.operationId!==active.operationId) throw new Error('FINAL_CHEST_STALE_CHECKPOINT')
+        active.checkpoint=copy(cp);await save('final_chest_checkpoint')
+      }}),{drain:true})
+      guard(myEpoch)
+      if(result?.status!=='completed' || result.serverConfirmed!==true) {
+        return finish('PAUSED',result?.reason??'FINAL_CHEST_UNCONFIRMED',{pauseDetails:{operationId:active.operationId}})
+      }
+      job.finalChestStoredAt=new Date(now()).toISOString()
+      await save('final_chest_verified')
+    }
+    await finish(exceptions.length ? 'COMPLETED_WITH_EXCEPTIONS' : 'COMPLETED', null)
+    if (fourLayerStorage() && job?.state === 'FINISHED' && job.persistence?.status !== 'failed' && typeof adapter.logout === 'function') {
+      try { await adapter.logout() } catch (error) { note('logout_failed',{error:String(error.message??error).slice(0,200)}) }
+    }
   }
 
   async function egress (myEpoch) {
