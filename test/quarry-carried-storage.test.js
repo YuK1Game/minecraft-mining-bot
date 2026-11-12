@@ -375,3 +375,22 @@ test('live case 2026-11-12: a relief box refused after placement pauses; one ref
     assert.equal(f.job.document().pendingRelief === null || f.job.document().pendingRelief === undefined, !placedRelief)
   }
 })
+
+test('live case 2026-11-13: a re-selected site follows the same box to its current slot before anything is placed', async () => {
+  const f = fixture([{ name: 'shulker_box', count: 1, stackId: 14 }])
+  f.sim.adapter.storeCarried = async (request, { onCheckpoint }) => {
+    const cp = { version: 1, operationId: request.operationId, jobId: request.jobId, kind: request.selection.kind, stage: 'planned', stand: { x: 5, y: 63, z: 5 }, positions: [{ x: 7, y: 63, z: 5 }], placed: [], deposited: [], intent: null }
+    await onCheckpoint(cp)
+    return { status: 'blocked', reason: 'STORAGE_PLACEMENT_PREVIEW_REJECTED', serverConfirmed: false, checkpoint: cp }
+  }
+  await f.job.storeCarriedNow({ deposits: [{ slot: 3, name: 'minecraft:cobblestone', count: 8 }] })
+  const box = f.sim.state.inventory.items.find(i => i.stackId === 14)
+  const before = f.job.document().portableStorage.selection.sources[0].slot
+  assert.equal(box.slot, before)
+  const free = [...Array(36).keys()].find(slot => !f.sim.state.inventory.items.some(i => i.slot === slot))
+  box.slot = free // the refused attempt had equipped the box into another slot
+  const c = controller(f)
+  const done = await f.job.storeCarriedNow()
+  assert.equal(done.storageResult?.serverConfirmed, true, JSON.stringify(done.pauseDetails))
+  assert.equal(c.calls[0].selection.sources[0].slot, free)
+})

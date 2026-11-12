@@ -2377,6 +2377,18 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (job.portableStorage) { await finish('PAUSED', 'CARRIED_STORAGE_UNAVAILABLE'); return true }
       return false
     }
+    // Live 2026-11-13 00:17: after a site re-selection the same box had moved
+    // to the hotbar (equipped for the refused attempt) and the stale source
+    // slot paused the retry (STORAGE_SOURCE_CHANGED). Before anything is
+    // placed, follow the same received stack to its current slot.
+    if (job.portableStorage && !job.portableStorage.checkpoint && job.portableStorage.selection?.kind === 'shulker' && job.portableStorage.selection.sources?.length === 1) {
+      const sel = job.portableStorage.selection, src = sel.sources[0]
+      const same = inv.filter(i => i.count === 1 && isShulkerBox(i.name) && carriedContainerKey(i) === sel.key && (src.stackId == null || i.stackId === src.stackId))
+      if (same.length === 1 && same[0].slot !== src.slot) {
+        note('storage_source_slot_refreshed', { operationId: job.portableStorage.operationId, from: src.slot, to: same[0].slot })
+        job.portableStorage.selection = { ...sel, sources: [{ ...src, slot: same[0].slot }] }
+      }
+    }
     const selection = job.portableStorage?.selection ?? cargoSelection(inv, { excludedShulkerKeys: [...(job.exhaustedShulkerKeys ?? []), ...storageSupplyExclusions(job.config.inventory.supplyBoxes)] })
     if (!selection) return false
     if (shulkerOnly && selection.kind !== 'shulker') throw new QuarryInterrupt('LEGACY_CHEST_STORAGE')
