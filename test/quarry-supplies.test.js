@@ -20,6 +20,67 @@ function box (slot, itemName = null, stack = 100 + slot) {
 }
 const initialBoxes = () => [...Array.from({ length: 20 }, (_, slot) => box(slot)), ...['diamond_pickaxe', 'diamond_shovel', 'bread', 'dirt'].map((name, i) => box(20 + i, name))]
 
+function layoutBox (slot, itemName, colour) {
+  const result = box(slot, itemName)
+  result.name = `minecraft:${colour}_shulker_box`
+  result.raw.network_id = data.itemsByName[colour + '_shulker_box'].id
+  // Totems are unstackable; an invalid64 fixture would never reach discovery.
+  if (itemName === 'totem_of_undying') for (const entry of result.raw.extra.nbt.nbt.value.Items.value.value) entry.Count.value = 1
+  return result
+}
+const legacyLayout = () => [layoutBox(20, 'diamond_pickaxe', 'blue'), layoutBox(21, 'diamond_shovel', 'light_blue'), layoutBox(22, 'bread', 'yellow'), layoutBox(23, 'dirt', 'brown')]
+const v22Layout = () => [layoutBox(20, 'diamond_pickaxe', 'blue'), layoutBox(21, 'diamond_shovel', 'light_blue'), layoutBox(22, 'dirt', 'brown'), layoutBox(23, 'totem_of_undying', 'yellow')]
+
+test('supply layout regression: complete legacy supplies ignore an additional yellow totem box', () => {
+  const items = [...legacyLayout(), layoutBox(24, 'totem_of_undying', 'yellow')], before = structuredClone(items)
+  const result = discoverSupplyBindings(items, { resolveName: id => names.get(id), layout: 'legacy' })
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.bindings.map(binding => binding.role), ['pickaxe', 'shovel', 'food', 'dirt'])
+  assert.deepEqual(result.bindings.map(binding => binding.key), items.slice(0, 4).map(carriedContainerKey))
+  assert.deepEqual(items, before, 'discovery cannot consume or rewrite carried boxes')
+})
+
+test('supply layout regression: complete v22 supplies ignore an additional legacy bread box', () => {
+  const items = [...v22Layout(), layoutBox(24, 'bread', 'yellow')], before = structuredClone(items)
+  const result = discoverSupplyBindings(items, { resolveName: id => names.get(id), layout: 'v22' })
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.bindings.map(binding => binding.role), ['pickaxe', 'shovel', 'dirt', 'totem'])
+  assert.deepEqual(result.bindings.map(binding => binding.key), items.slice(0, 4).map(carriedContainerKey))
+  assert.deepEqual(items, before)
+})
+
+test('supply layout regression: a v22-only kit remains missing legacy food rather than inventing a binding', () => {
+  const result = discoverSupplyBindings(v22Layout(), { resolveName: id => names.get(id), layout: 'legacy' })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'SUPPLY_BOXES_UNCONFIRMED')
+  assert.deepEqual(Object.keys(result.candidates), ['pickaxe', 'shovel', 'food', 'dirt'])
+  assert.deepEqual(result.candidates.food, [])
+  assert.equal(Object.hasOwn(result.candidates, 'totem'), false)
+  assert.equal(result.bindings, undefined)
+})
+
+test('supply layout regression: dashboard chunk125 rectangle reaches real planning without world or kit mutations', () => {
+  const { quarryConfig } = require('../src/dashboard-control')
+  const { createQuarryJob } = require('../src/quarry-job')
+  const items = [...v22Layout(), box(0)], before = structuredClone(items), layouts = []
+  const state = { phase: 'spawned', gameMode: 'survival', profile: 'bot', realm: { id: '42' }, connectionId: 'planning-only', startedAt: '2026-11-12T00:00:00Z', runtimeEntityId: '1', lifecycle: { deathId: 0 },
+    dimension: 'overworld', health: 20, position: { x: 2008.5, y: 76.62, z: 2008.5 }, inventory: { known: true, items } }
+  const forbidden = () => assert.fail('plan/discovery must not send world actions or stop existing work')
+  let discovery
+  const adapter = { getState: () => structuredClone(state), getBlock: () => ({ known: false }),
+    discoverSupplies: layout => { layouts.push(layout); discovery = discoverSupplyBindings(items, { resolveName: id => names.get(id), layout }); return discovery },
+    stopAll: forbidden, mine: forbidden, moveTo: forbidden, equip: forbidden, place: forbidden, restockSupplies: forbidden, entities: () => [], combatActive: () => false }
+  const input = quarryConfig({ x1: 125, z1: 125, top: 75, bottom: -59 }, state)
+  assert.equal(input.permissions, undefined)
+  const job = createQuarryJob({ adapter, storageMode: 'shulker' }), summary = job.plan(input)
+  assert.deepEqual(layouts, ['legacy'])
+  assert.equal(discovery.ok, false); assert.equal(discovery.reason, 'SUPPLY_BOXES_UNCONFIRMED')
+  assert.deepEqual(summary.chunks, [{ x: 125, z: 125 }])
+  assert.ok(Array.isArray(summary.issues))
+  assert.deepEqual(items, before)
+  assert.equal(job.status().state, 'IDLE')
+})
+
 test('initial discovery separates all four full supply boxes from twenty empty output boxes without inferring unknown contents', () => {
   const items = initialBoxes(), result = discoverSupplyBindings(items, { resolveName: id => names.get(id) })
   assert.equal(result.ok, true)

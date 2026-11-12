@@ -51,7 +51,8 @@ function discoverSupplyBindings (items, { resolveName, layout = 'legacy' } = {})
     const entries = contents.slots.filter(Boolean)
     if (!entries.length) continue
     const name = entries[0].name, role = roleOf(name), limit = limitOf(name)
-    if (!role || !Number.isInteger(limit)) continue
+    // A box belonging to another layout is not a candidate for this plan.
+    if (!roles.includes(role) || !Number.isInteger(limit)) continue
     // A box in its role's supply colour stays a supply after some of it was
     // used (live 2026-11-10: blue gave one pickaxe, brown 32 dirt, and a new
     // job could no longer bind them): any stacks of that one item. Any other
