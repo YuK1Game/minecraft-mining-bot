@@ -57,6 +57,16 @@ function deriveDropGuarantee (target, tool) {
     return rule('observed_bds_1_26_60_leaf_litter', [[item('leaf_litter', props.growth + 1)]])
   }
 
+  if (name === 'wildflowers') {
+    if (type !== 'hand') return fail('DROP_TOOL_NOT_CONFIRMED')
+    const props = target.properties
+    if (!props || Array.isArray(props) || Object.keys(props).length !== 2 || !Number.isInteger(props.growth) || props.growth < 0 || props.growth > 3 || !['north', 'south', 'east', 'west'].includes(props['minecraft:cardinal_direction']) || !Number.isInteger(target.runtimeId) || target.runtimeId < 0 || target.runtimeId > 0xffffffff) return fail('DROP_RULE_UNKNOWN')
+    // Bedrock's layered flower state is growth 0..3 for one to four flowers.
+    // Keep the received state through planning and check it again before mining.
+    // https://www.minecraft.net/en-us/article/minecraft-1-21-70-bedrock-changelog
+    return rule('bedrock_layered_wildflowers', [[item('wildflowers', props.growth + 1)]])
+  }
+
   // Mojang Bedrock 1.21.70.23: bush drops itself only with shears or Silk
   // Touch. The received 1.26.60 hand-broken bush has no other possible drop.
   if (name === 'bush') {

@@ -14,7 +14,11 @@ function scene(t,{old=false}={}){
  return{movement,packets,frames,changes,stack:()=>capturedStack,advance:()=>{elapsed+=50;t.mock.timers.tick(50)}}
 }
 test('old actual Nav shadow reproduces full first-frame TDZ stack before any real Movement queue',t=>{
- const f=scene(t,{old:true});assert.equal(f.movement.preview(capture.target,capture.options).ready,true);const result=f.movement.start(capture.target,capture.options);assert.equal(result.phase,'failed');assert.match(result.reason,/Cannot access 'distance' before initialization/);assert.equal(f.packets.length,0);assert.match(f.stack(),/navigation\.js:703/)
+ const source=fs.readFileSync(navFile,'utf8'),statement='const required = distance(circle.position, a) < padded - CONTACT_EPSILON ? circle.minDistance : padded'
+ assert.equal(source.split(statement).length,2,'the exact historical shadow call has one source location')
+ const line=source.slice(0,source.indexOf(statement)).split('\n').length
+ assert.equal(source.split('\n')[line-1].trim(),statement,'the stack location follows the verified source line')
+ const f=scene(t,{old:true});assert.equal(f.movement.preview(capture.target,capture.options).ready,true);const result=f.movement.start(capture.target,capture.options);assert.equal(result.phase,'failed');assert.match(result.reason,/Cannot access 'distance' before initialization/);assert.equal(f.packets.length,0);assert.match(f.stack(),/^ReferenceError: Cannot access 'distance' before initialization\n/);assert.match(f.stack(),new RegExp('navigation\\.js:'+line+':\\d+'))
 })
 test('renamed waypoint distance lets actual Movement queue the captured origin connector with unchanged current circles and goal',t=>{
  const f=scene(t);const p=f.movement.preview(capture.target,capture.options);assert.equal(p.ready,true);assert.ok(p.originRecenter);const result=f.movement.start(capture.target,capture.options);assert.equal(result.phase,'moving');assert.equal(f.packets.length,1);assert.deepEqual(result.target,capture.target);assert.deepEqual(result.route.avoidance,capture.options.avoidance)

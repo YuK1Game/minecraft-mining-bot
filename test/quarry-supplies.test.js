@@ -3,8 +3,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { serialize } = require('node:v8')
-const { discoverSupplyBindings, storageSupplyExclusions, supplyNeeds, supplyScope, createQuarrySupplies } = require('../src/quarry-supplies')
-const { carriedContainerKey, selectCarriedStorage } = require('../src/quarry-inventory')
+const { discoverSupplyBindings, storageSupplyExclusions, supplyNeeds, supplyScope, createQuarrySupplies, rolesFor } = require('../src/quarry-supplies')
+const { carriedContainerKey, selectCarriedStorage, keepPlan } = require('../src/quarry-inventory')
 const data = require('minecraft-data')('bedrock_1.26.60')
 const names = new Map(data.itemsArray.map(item => [item.id, `minecraft:${item.name}`]))
 const tag = (type, value) => ({ type, value })
@@ -19,6 +19,145 @@ function box (slot, itemName = null, stack = 100 + slot) {
   return { slot, name: 'minecraft:undyed_shulker_box', count: 1, stackId: stack, raw: out }
 }
 const initialBoxes = () => [...Array.from({ length: 20 }, (_, slot) => box(slot)), ...['diamond_pickaxe', 'diamond_shovel', 'bread', 'dirt'].map((name, i) => box(20 + i, name))]
+
+function layoutBox (slot, itemName, colour) {
+  const result = box(slot, itemName)
+  result.name = `minecraft:${colour}_shulker_box`
+  result.raw.network_id = data.itemsByName[colour + '_shulker_box'].id
+  // Totems are unstackable; an invalid64 fixture would never reach discovery.
+  if (itemName === 'totem_of_undying') for (const entry of result.raw.extra.nbt.nbt.value.Items.value.value) entry.Count.value = 1
+  return result
+}
+const legacyLayout = () => [layoutBox(20, 'diamond_pickaxe', 'blue'), layoutBox(21, 'diamond_shovel', 'light_blue'), layoutBox(22, 'bread', 'yellow'), layoutBox(23, 'dirt', 'brown')]
+const v22Layout = () => [layoutBox(20, 'diamond_pickaxe', 'blue'), layoutBox(21, 'diamond_shovel', 'light_blue'), layoutBox(22, 'dirt', 'brown'), layoutBox(23, 'totem_of_undying', 'yellow')]
+
+test('supply layout regression: complete legacy supplies ignore an additional yellow totem box', () => {
+  const items = [...legacyLayout(), layoutBox(24, 'totem_of_undying', 'yellow')], before = structuredClone(items)
+  const result = discoverSupplyBindings(items, { resolveName: id => names.get(id), layout: 'legacy' })
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.bindings.map(binding => binding.role), ['pickaxe', 'shovel', 'food', 'dirt'])
+  assert.deepEqual(result.bindings.map(binding => binding.key), items.slice(0, 4).map(carriedContainerKey))
+  assert.deepEqual(items, before, 'discovery cannot consume or rewrite carried boxes')
+})
+
+test('supply layout regression: complete v22 supplies ignore an additional legacy bread box', () => {
+  const items = [...v22Layout(), layoutBox(24, 'bread', 'yellow')], before = structuredClone(items)
+  const result = discoverSupplyBindings(items, { resolveName: id => names.get(id), layout: 'v22' })
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.bindings.map(binding => binding.role), ['pickaxe', 'shovel', 'dirt', 'totem'])
+  assert.deepEqual(result.bindings.map(binding => binding.key), items.slice(0, 4).map(carriedContainerKey))
+  assert.deepEqual(items, before)
+})
+
+test('explicit v22 layout selects its four roles without changing passive/full storage', () => {
+  const policy = { pickupMode: 'passive', depositWhen: 'full', supplyLayout: 'v22' }, before = structuredClone(policy)
+  const result = discoverSupplyBindings(v22Layout(), { resolveName: id => names.get(id), layout: policy })
+  assert.equal(result.ok, true)
+  assert.deepEqual(rolesFor(policy), ['pickaxe', 'shovel', 'dirt', 'totem'])
+  assert.deepEqual(result.bindings.map(binding => binding.role), rolesFor(policy))
+  assert.deepEqual(policy, before)
+  assert.deepEqual(rolesFor({ depositWhen: 'full' }), ['pickaxe', 'shovel', 'food', 'dirt'])
+})
+
+test('v22 full layout preserves real bread and exit192 plus seal32 while demanding no nonexistent food box', () => {
+  const policy = { pickupMode: 'passive', depositWhen: 'full', supplyLayout: 'v22', keepFood: 64, keepExitDirt: 192, keepSealBlocks: 32 }
+  const bread = { slot: 0, name: 'minecraft:bread', count: 64 }
+  const dirt = [1, 2, 3].map(slot => ({ slot, name: 'minecraft:dirt', count: 64 }))
+  const needs = supplyNeeds([bread, ...dirt], policy)
+  assert.equal(needs.desired.dirt, 224); assert.equal(needs.missing.dirt, 32); assert.equal(needs.required.dirt, true)
+  assert.equal(needs.available.food, 64); assert.equal(needs.desired.food, 0); assert.equal(needs.required.food, false)
+  assert.equal(supplyNeeds([], policy).available.food, 0, 'an absent box never supplies a predicted meal')
+  assert.equal(supplyNeeds([], policy).required.food, false)
+  const retained = keepPlan([bread, ...dirt, { slot: 4, name: 'minecraft:dirt', count: 32 }], policy)
+  assert.equal(retained.keep.get(0), 64); assert.deepEqual(retained.deposits, [])
+  assert.equal(supplyNeeds([...dirt, { slot: 4, name: 'minecraft:dirt', count: 1 }], policy).required.dirt, false, 'ordinary full refill threshold is unchanged above the exit reserve')
+  assert.deepEqual(needs.exitDirt, { required: 192, available: 192 }); assert.deepEqual(needs.sealDirt, { required: 32, available: 0 })
+})
+
+test('layout controls v22 totems and shovel exhaustion while four-layer dirt and all legacy defaults remain unchanged', () => {
+  const policy = { depositWhen: 'full', supplyLayout: 'v22', totemNeeded: true, shovelExhausted: true, miningExhausted: { shovel: 2 } }
+  const needs = supplyNeeds([], policy)
+  assert.equal(needs.required.totem, true); assert.equal(needs.desired.totem, 1)
+  assert.equal(needs.desired.shovel, 0); assert.equal(needs.required.shovel, false); assert.equal(needs.desired.dirt, 224)
+  const four = { depositWhen: 'four_layers', totemNeeded: true, shovelExhausted: true }
+  assert.deepEqual(supplyNeeds([], four), supplyNeeds([], { ...four, supplyLayout: 'v22' }))
+  assert.equal(supplyNeeds([], four).desired.dirt, 64)
+  assert.equal(supplyNeeds([], { ...four, exitPreparing: true, exitDirtTarget: 237 }).desired.dirt, 237)
+  assert.equal(supplyNeeds([], { depositWhen: 'full' }).desired.food, 64)
+  assert.equal(Object.hasOwn(supplyNeeds([], { depositWhen: 'full' }).required, 'totem'), false)
+})
+
+test('explicit v22 exit deferral carries work64 and demands the actual exit target only during exit preparation', () => {
+  const policy = { pickupMode: 'passive', depositWhen: 'full', supplyLayout: 'v22', deferExitSupplies: true }
+  const dirt = [{ slot: 0, name: 'minecraft:dirt', count: 64 }]
+  const work = supplyNeeds(dirt, policy)
+  assert.equal(work.desired.dirt, 64); assert.equal(work.missing.dirt, 0); assert.equal(work.required.dirt, false)
+  assert.deepEqual(work.exitDirt, { required: 192, available: 64 }, 'deferred supplies are never counted as carried')
+  const emptyWork = supplyNeeds([], policy)
+  assert.equal(emptyWork.missing.dirt, 64); assert.equal(emptyWork.required.dirt, true)
+  const exiting = supplyNeeds(dirt, { ...policy, exitPreparing: true })
+  assert.equal(exiting.desired.dirt, 192); assert.equal(exiting.missing.dirt, 128); assert.equal(exiting.required.dirt, true)
+  assert.equal(supplyNeeds(dirt, { ...policy, exitPreparing: true, exitDirtTarget: 237 }).missing.dirt, 173)
+  assert.equal(supplyNeeds([], { depositWhen: 'full', deferExitSupplies: true }).desired.dirt, 224, 'legacy full policy cannot opt into v22 behavior by the flag alone')
+  assert.equal(supplyNeeds([], { ...policy, deferExitSupplies: false }).desired.dirt, 224)
+  assert.equal(supplyNeeds([], { ...policy, deferExitSupplies: 'true' }).desired.dirt, 224)
+  const four = { depositWhen: 'four_layers', exitPreparing: true, exitDirtTarget: 219 }
+  assert.deepEqual(supplyNeeds(dirt, four), supplyNeeds(dirt, { ...four, deferExitSupplies: false }))
+})
+
+test('the outer v22 passive/full runner accepts the four-role layout and does not open a nonexistent food supply', async () => {
+  const boxes = v22Layout(), main = Array.from({ length: 36 }, air)
+  for (const box of boxes) main[box.slot] = structuredClone(box.raw)
+  main[0] = raw('diamond_pickaxe', 1, 500, 0); main[1] = raw('diamond_shovel', 1, 501, 0)
+  main[2] = raw('bread', 64, 502)
+  for (const slot of [3, 4, 5]) main[slot] = raw('dirt', 64, 500 + slot)
+  main[6] = raw('dirt', 32, 506)
+  const before = structuredClone(main), policy = { pickupMode: 'passive', depositWhen: 'full', supplyLayout: 'v22', keepFood: 64, keepExitDirt: 192, keepSealBlocks: 32 }
+  const state = { phase: 'spawned', profile: 'test', realm: { id: 'realm' }, connectionId: 'socket', startedAt: '2026-11-06T00:00:00.000Z', runtimeEntityId: '1', dimension: 'overworld', health: 20, lifecycle: { deathId: 1 }, inventory: { known: true } }
+  const forbidden = () => assert.fail('already fulfilled supplies cannot mutate or open a box')
+  const controller = createQuarrySupplies({ getState: () => state,
+    crafting: { rawItem: slot => structuredClone(main[slot]), itemNameOf: id => names.get(id), status: () => ({ authority: true, inventoryKnown: true }) },
+    chest: { snapshot: () => ({}), rawItem: forbidden, withdrawItem: forbidden, depositItem: forbidden, open: forbidden, close: forbidden },
+    refreshInventory: forbidden, getPortable: forbidden })
+  const bindings = discoverSupplyBindings(boxes, { resolveName: id => names.get(id), layout: 'v22' }).bindings
+  const result = await controller.run({ jobId: 'v22-full', operationId: 'v22-full:supplies:1', bindings, policy }, { onCheckpoint: async () => {} })
+  assert.equal(result.status, 'completed', result.reason)
+  assert.deepEqual(result.bindings.map(binding => binding.role), ['pickaxe', 'shovel', 'dirt', 'totem'])
+  assert.equal(result.checkpoint.index, 4); assert.deepEqual(result.checkpoint.policy, policy)
+  assert.deepEqual(result.withdrawn, []); assert.deepEqual(main, before)
+})
+
+test('supply layout regression: a v22-only kit remains missing legacy food rather than inventing a binding', () => {
+  const result = discoverSupplyBindings(v22Layout(), { resolveName: id => names.get(id), layout: 'legacy' })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'SUPPLY_BOXES_UNCONFIRMED')
+  assert.deepEqual(Object.keys(result.candidates), ['pickaxe', 'shovel', 'food', 'dirt'])
+  assert.deepEqual(result.candidates.food, [])
+  assert.equal(Object.hasOwn(result.candidates, 'totem'), false)
+  assert.equal(result.bindings, undefined)
+})
+
+test('supply layout regression: dashboard chunk125 rectangle reaches real planning without world or kit mutations', () => {
+  const { quarryConfig } = require('../src/dashboard-control')
+  const { createQuarryJob } = require('../src/quarry-job')
+  const items = [...v22Layout(), box(0)], before = structuredClone(items), layouts = []
+  const state = { phase: 'spawned', gameMode: 'survival', profile: 'bot', realm: { id: '42' }, connectionId: 'planning-only', startedAt: '2026-11-12T00:00:00Z', runtimeEntityId: '1', lifecycle: { deathId: 0 },
+    dimension: 'overworld', health: 20, position: { x: 2008.5, y: 76.62, z: 2008.5 }, inventory: { known: true, items } }
+  const forbidden = () => assert.fail('plan/discovery must not send world actions or stop existing work')
+  let discovery
+  const adapter = { getState: () => structuredClone(state), getBlock: () => ({ known: false }),
+    discoverSupplies: layout => { layouts.push(layout); discovery = discoverSupplyBindings(items, { resolveName: id => names.get(id), layout }); return discovery },
+    stopAll: forbidden, mine: forbidden, moveTo: forbidden, equip: forbidden, place: forbidden, restockSupplies: forbidden, entities: () => [], combatActive: () => false }
+  const input = quarryConfig({ x1: 125, z1: 125, top: 75, bottom: -59 }, state)
+  assert.equal(input.permissions, undefined)
+  const job = createQuarryJob({ adapter, storageMode: 'shulker' }), summary = job.plan(input)
+  assert.deepEqual(layouts, ['legacy'])
+  assert.equal(discovery.ok, false); assert.equal(discovery.reason, 'SUPPLY_BOXES_UNCONFIRMED')
+  assert.deepEqual(summary.chunks, [{ x: 125, z: 125 }])
+  assert.ok(Array.isArray(summary.issues))
+  assert.deepEqual(items, before)
+  assert.equal(job.status().state, 'IDLE')
+})
 
 test('initial discovery separates all four full supply boxes from twenty empty output boxes without inferring unknown contents', () => {
   const items = initialBoxes(), result = discoverSupplyBindings(items, { resolveName: id => names.get(id) })
@@ -49,7 +188,7 @@ test('tool wear, safe food and dirt requirements distinguish exit192 from seal32
 })
 
 function transferFixture ({ role = 'dirt', sourceCount = 64, stock = 0, policy = {}, worn = false } = {}) {
-  const itemName = { pickaxe: 'minecraft:diamond_pickaxe', shovel: 'minecraft:diamond_shovel', food: 'minecraft:bread', dirt: 'minecraft:dirt' }[role]
+  const itemName = { pickaxe: 'minecraft:diamond_pickaxe', shovel: 'minecraft:diamond_shovel', food: 'minecraft:bread', dirt: 'minecraft:dirt', totem: 'minecraft:totem_of_undying' }[role]
   const main = Array.from({ length: 36 }, air), slots = Array.from({ length: 27 }, air)
   if (['pickaxe', 'shovel'].includes(role)) for (let i = 0; i < 26; i++) slots[i] = raw(itemName, 1, 100 + i, 0)
   else for (let i = 0; i < 27; i++) slots[i] = raw(itemName, sourceCount, 100 + i)
@@ -82,6 +221,34 @@ function transferFixture ({ role = 'dirt', sourceCount = 64, stock = 0, policy =
   const run = (checkpoint = null, extra = {}) => controller.workWithContainer({ request, position, checkpoint }, { onCheckpoint: async cp => { saves++; if (saves === failSave) throw new Error('controlled persistence failure'); docs.push(structuredClone(cp)) }, ...extra })
   return { controller, request, main, slots, logs, docs, state, crafting, chest, run, setMode: value => { mode = value }, setFresh: value => { fresh = value }, failSave: at => { failSave = at }, setSaves: value => { saves = value } }
 }
+
+test('real supply withdrawal with v22 full policy receives the ordinary full dirt reserve and exact totem count', async () => {
+  const policy = { pickupMode: 'passive', depositWhen: 'full', supplyLayout: 'v22' }
+  const dirt = transferFixture({ role: 'dirt', policy }), received = await dirt.run()
+  assert.equal(received.status, 'completed', received.reason)
+  assert.equal(received.withdrawn.reduce((sum, row) => sum + row.count, 0), 224)
+  const totem = transferFixture({ role: 'totem', sourceCount: 1, policy: { ...policy, totemNeeded: true } }), equipped = await totem.run()
+  assert.equal(equipped.status, 'completed', equipped.reason)
+  assert.equal(equipped.withdrawn.reduce((sum, row) => sum + row.count, 0), 1)
+  const noFood = transferFixture({ role: 'food', policy })
+  assert.equal((await noFood.run()).reason, 'SUPPLY_REQUEST_INVALID')
+  assert.equal(noFood.logs.length, 0)
+})
+
+test('deferred v22 full supplies receive work64 then the real exit192 without bypassing recovery-slot safety', async () => {
+  const policy = { pickupMode: 'passive', depositWhen: 'full', supplyLayout: 'v22', deferExitSupplies: true }
+  const work = transferFixture({ role: 'dirt', policy }), prepared = await work.run()
+  assert.equal(prepared.status, 'completed', prepared.reason)
+  assert.equal(prepared.withdrawn.reduce((sum, row) => sum + row.count, 0), 64)
+  const exit = transferFixture({ role: 'dirt', stock: 64, policy: { ...policy, exitPreparing: true } }), ready = await exit.run()
+  assert.equal(ready.status, 'completed', ready.reason)
+  assert.equal(ready.withdrawn.reduce((sum, row) => sum + row.count, 0), 128)
+  assert.equal(exit.main.filter(raw => raw.network_id === data.itemsByName.dirt.id).reduce((sum, raw) => sum + raw.count, 0), 192)
+  const full = transferFixture({ role: 'dirt', policy })
+  for (let slot = 0; slot < 35; slot++) full.main[slot] = raw('cobblestone', 64, 700 + slot)
+  assert.equal((await full.run()).reason, 'SUPPLY_RECOVERY_SLOT_REQUIRED')
+  assert.equal(full.logs.length, 0)
+})
 
 test('dirt top-up withdraws exactly224 and preserves192 exit plus32 seal dirt', async () => {
   const f = transferFixture(), result = await f.run()

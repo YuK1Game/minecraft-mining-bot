@@ -24,7 +24,9 @@ function fixture (t, { realSafety = false, wanted = false } = {}) {
       return result
     } finally { inventoryBusy = false }
   } }
-  const crafting = { snapshot: () => ({ authority: true, inventoryKnown: true, pendingRequestId: null, openContainer, inventory: [], availableRecipes: [] }), rawItem: slot => slot === 0 ? { network_id: 1, count: 1, has_stack_id: true, stack_id: 32 } : { network_id: 0, count: 0 }, applyPacket () {}, preview: () => ({ ready: true }), cancel () {}, closeContainer: () => { calls.push({ type: 'close_gui' }); openContainer = null } }
+  const crafting = { snapshot: () => ({ authority: true, inventoryKnown: true, pendingRequestId: null, openContainer, inventory: [], availableRecipes: [] }), rawItem: slot => slot === 0 ? { network_id: 1, count: 1, has_stack_id: true, stack_id: 32 } : { network_id: 0, count: 0 }, applyPacket () {}, preview: () => ({ ready: true }), cancel () {},
+    openInventory: async () => { throw new Error('Inventory UI is unsupported by the idle Runtime fixture') },
+    closeContainer: () => { calls.push({ type: 'close_gui' }); openContainer = null } }
   const host = { shared, meta: { version: '1.26.60', startGame: { current_tick: 1000n } }, apiUrl: 'http://127.0.0.1:49999', client: { queue: (name, params) => packets.push({ name, params }) }, world: {
     stats: () => ({ version: '1.26.60', initialized: true, loadedSections: 9 }),
     getBlock: (x, y, z) => ({ known: true, name: y <= 64 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y <= 64 ? 'block' : 'empty', properties: {}, runtimeId: y <= 64 ? 1 : 0, extra: [], position: { x, y, z } })

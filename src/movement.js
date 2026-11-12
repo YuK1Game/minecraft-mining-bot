@@ -462,7 +462,7 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
       }
     }
     correctionRun=null
-    if(replanMixedAfterReplay&&prepared.continueAfterReplay&&typeof prepared.beforeInput==='function'&&prepared.allowWater&&(prepared.initial.isInWater===true||prepared.route.waypoints.some(w=>w.medium==='water'))&&prepared.route.waypoints.some(w=>w.medium==='land')){
+    if(replanMixedAfterReplay&&prepared.continueAfterReplay&&typeof prepared.beforeInput==='function'&&prepared.allowWater&&prepared.route.waypoints.some(w=>w.medium==='land')){
       const scope=fullCorrectionScope(prepared.state)
       if(!scope)throw new Error('Trusted mixed replay requires full actual life scope')
       correctionRun={scope,health:prepared.state.health,target:copy(prepared.route.target),options:structuredClone(prepared.replanOptions),maxTicks:prepared.tickLimit,usedTicks:0,replans:0,deadline:clock()+prepared.tickLimit*INTERVAL}

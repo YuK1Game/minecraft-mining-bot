@@ -2,13 +2,13 @@
 
 const { isDeepStrictEqual } = require('node:util')
 
-// A legacy timeout is not an acknowledgement. Preserve a received empty main
+// A legacy failure is not an acknowledgement. Preserve a received empty main
 // slot as evidence; the controller must still refresh inventory, retain every
 // other individual box, and freshly open all 27 exact slots before adopting it.
 function historicalEmptyPlacement ({ checkpoint: cp, recordedFailure: record, events, state } = {}) {
   const no = reason => ({ ok: false, reason })
   if (!cp || cp.version !== 1 || cp.kind !== 'shulker' || cp.stage !== 'placing' || cp.intent?.type !== 'place' || cp.intent.notSent === true || cp.placed?.length !== 0 || cp.deposited?.length !== 0 || cp.positions?.length !== 1 || !isDeepStrictEqual(cp.positions[0], cp.intent.position) || !Number.isInteger(cp.intent.slot) || cp.intent.slot < 0 || cp.intent.slot > 8 || typeof cp.intent.source !== 'string' || !cp.initialContents || !Array.isArray(cp.plan) || cp.plan.some(p => p.transferred !== 0)) return no('PLACEMENT_HISTORY_CHECKPOINT_UNSUPPORTED')
-  if (record?.type !== 'carried_storage' || record.operationId !== cp.operationId || record.status !== 'blocked' || record.result?.status !== 'blocked' || record.result.reason !== 'サーバーから設置・使用の完了を確認できませんでした。' || !isDeepStrictEqual(record.result.checkpoint, cp)) return no('PLACEMENT_HISTORY_RECORD_MISMATCH')
+  if (record?.type !== 'carried_storage' || record.operationId !== cp.operationId || record.status !== 'blocked' || record.result?.status !== 'blocked' || !['サーバーから設置・使用の完了を確認できませんでした。', 'プレイヤー位置・次元が変わりました。'].includes(record.result.reason) || !isDeepStrictEqual(record.result.checkpoint, cp)) return no('PLACEMENT_HISTORY_RECORD_MISMATCH')
   const life = state?.lifecycle?.deathId ?? state?.deathId
   const scope = { profile: state?.profile, realmId: state?.realm?.id == null ? null : String(state.realm.id), dimension: state?.dimension, connectionId: state?.connectionId, startedAt: state?.startedAt, runtimeEntityId: state?.runtimeEntityId == null ? null : String(state.runtimeEntityId), life }
   if (state?.phase !== 'spawned' || state.dead || state.isDead || !(state.health > 0) || !Number.isSafeInteger(life) || !isDeepStrictEqual(scope, cp.scope)) return no('PLACEMENT_HISTORY_SCOPE_CHANGED')

@@ -30,7 +30,7 @@ function harness ({ legacy = false, dry = false, mutate } = {}) {
   assert.ok(start >= 0 && end > start)
   // This executes the real Runtime neutralFrame and real Physics. The idle
   // contact-repair branch is unrelated; no task/input owner is acquired here.
-  const frame = Function('idlePhysics', 'host', `let idlePhysicsState = null, idleStamp = null; const inputOwner = 'none'; ${code.slice(start, end)}; return neutralFrame`)(physics, host)
+  const frame = Function('idlePhysics', 'host', 'publishControlPrediction', `let idlePhysicsState = null, idleStamp = null; const inputOwner = 'none'; ${code.slice(start, end)}; return neutralFrame`)(physics, host, (prediction, source) => host.setPrediction(prediction, source))
   function next () { const value = frame({ state, rotation: state.rotation }); value.commitPrediction(); return value }
   return { physics, world, rows, state, frame, next, commits: () => commits }
 }
@@ -100,9 +100,10 @@ test('dead player still cannot start the real input sender; ordinary dry support
 test('real maintainIdle still yields to task/movement ownership and dead or loading lifecycle gates', () => {
   const code = source(), start = code.indexOf('  function maintainIdle ()'), end = code.indexOf('  function startIdle ()', start)
   assert.ok(start >= 0 && end > start)
-  for (const mode of ['task', 'movement', 'dead', 'loading']) {
+  for (const mode of ['task', 'movement', 'dead', 'loading', 'chunk_move']) {
     const counts = { starts: 0, stops: 0 }, state = { phase: 'spawned', health: mode === 'dead' ? 0 : 6 }, host = { shared: { loadingScreenEnded: mode !== 'loading' } }
-    const run = Function('host', 'state', 'counts', 'owner', 'moving', `let disposed=false,disposing=false,inputOwner=owner,idleFailureAt=0;const inputStream={start:()=>counts.starts++,stop:()=>counts.stops++,stats:()=>({running:false})};const food={snapshot:()=>({hunger:20,busy:false})};const restoreFoodHungerBaseline=()=>{};const maybeEquipArmor=()=>{};const userBehaviorSleeping=false,userBehaviorWakePending=false,userBehaviorSnapshot=()=>({}),publishWalker=()=>{},working=()=>state,resumeSafety=()=>{},maybeResyncInventory=()=>{},motionActive=()=>moving,stopIdleStream=()=>counts.stops++;${code.slice(start, end)};return maintainIdle`)(host, state, counts, mode === 'task' ? 'task' : 'idle', mode === 'movement')
+    const run = Function('host', 'state', 'counts', 'owner', 'moving', 'chunkMoving', `let disposed=false,disposing=false,inputOwner=owner,idleFailureAt=0;const chunkMoveHeld=()=>chunkMoving,userBehaviorOwns=()=>false;const inputStream={start:()=>counts.starts++,stop:()=>counts.stops++,stats:()=>({running:false})};const food={snapshot:()=>({hunger:20,busy:false})};const restoreFoodHungerBaseline=()=>{};const maybeEquipArmor=()=>{};const userBehaviorSleeping=false,userBehaviorWakePending=false,userBehaviorSnapshot=()=>({}),publishWalker=()=>{},working=()=>state,resumeSafety=()=>{},maybeResyncInventory=()=>{},motionActive=()=>moving,stopIdleStream=()=>counts.stops++;${code.slice(start, end)};return maintainIdle`)(host, state, counts, mode === 'task' ? 'task' : 'idle', mode === 'movement', mode === 'chunk_move')
     run(); assert.equal(counts.starts, 0, mode)
+    if (mode === 'chunk_move') assert.equal(counts.stops, 1, 'the ordinary idle stream yields instead of restarting over chunk movement')
   }
 })

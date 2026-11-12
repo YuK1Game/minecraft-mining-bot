@@ -189,7 +189,7 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
   let nightWaitDeadline = null
   const failures = new Map()
   const noProgress = new Map()
-  let status = { phase: 'idle', running: false, busy: false, actionActive: false, goal: { logs: 3, stone: 16 }, reason: 'まだ開始していません。', lastDecision: null, lastActionResult: null, requiredCapability: null, lastError: null, lastSafetyInterrupt: null, progress: {}, trace: [] }
+  let status = { phase: 'idle', running: false, busy: false, actionActive: false, goal: { logs: 0, stone: 16 }, reason: 'まだ開始していません。', lastDecision: null, lastActionResult: null, requiredCapability: null, lastError: null, lastSafetyInterrupt: null, progress: {}, trace: [] }
 
   function snapshot () { return serial(status) }
   function waitForProtection (state) {
@@ -634,7 +634,7 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
     failures.clear(); noProgress.clear(); waitKey = null; waits = 0; nightWaitDeadline = null
     status = {
       phase: 'running', running: true, busy: false, actionActive: false, runId,
-      goal: { logs: positive(configuration.logCount, 3, 64), stone: positive(configuration.stoneCount, 16, 2304), ...(options.objective === 'diamond' ? { diamond: options.diamondCount } : {}) },
+      goal: { logs: 0, stone: positive(configuration.stoneCount, 16, 2304), ...(options.objective === 'diamond' ? { diamond: options.diamondCount } : {}) },
       reason: '最新の状態を観測して次の作業を決めます。', startedAt: new Date().toISOString(), startedAtMs: Date.now(),
       lastDecision: null, lastActionResult: null, requiredCapability: null, lastError: null, lastSafetyInterrupt: null,
       progress: { logsCollected: amount(seed.logsCollected), stoneCollected: amount(seed.stoneCollected), observations: 0, decisions: 0, actionsReturned: 0, failures: 0, safetyInterruptions: amount(seed.safetyInterruptions), consecutiveSafetyInterruptions: 0, explorations: amount(seed.explorations), learningExplorationBudget: mergeExplorationBudget(seed.learningExplorationBudget), explorationAttempts: Math.max(amount(seed.explorationAttempts), amount(seed.explorations)), excludedResources: normalizeExcludedResources(seed.excludedResources), emptyProspects: normalizeEmptyProspects(seed.emptyProspects), excludedDropIds: [...new Set((Array.isArray(seed.excludedDropIds) ? seed.excludedDropIds : []).filter(value => value != null && String(value).length > 0).map(String))], inventory: seed.inventory ?? null, milestones: { ...seed.milestones } }, trace: []

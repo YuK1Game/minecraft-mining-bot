@@ -3,7 +3,9 @@
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const { createHash } = require('node:crypto')
+const { serialize } = require('node:v8')
 const { createLoadoutReset } = require('./loadout-reset')
+const { createQuarryV22Reset } = require('./quarry-v22-reset')
 const { createLoadoutCommand } = require('./loadout-command')
 const { writeDurableJson, readJsonBounded } = require('./durable-json')
 const { isShulkerBox } = require('./container-types')
@@ -77,21 +79,47 @@ function jobPending (job) {
   return Boolean(d?.portableStorage || d?.supplyRestock || d?.egress?.operationId && !d?.surfaceReturnedAt)
 }
 
+// Reset admission can describe unknown equipment, but clearing must observe
+// actual slot packets. ACK-derived Armor/UI state cannot prove an empty slot.
+function receivedEquipmentView (inspection, crafting, state) {
+  if (typeof inspection.rawEquipment !== 'function') throw failure('RESET_RECEIPTS_UNAVAILABLE')
+  const view = inspection.snapshot(state)
+  for (const [kind, size] of [['armor', 4], ['offhand', 1]]) {
+    const slots = Array.from({ length: size }, (_, slot) => {
+      const raw = inspection.rawEquipment(kind, slot)
+      if (!raw) return { slot, known: false, empty: false, name: null, count: null }
+      const empty = raw.network_id === 0 && raw.count === 0
+      return {
+        slot, known: true, empty,
+        name: empty ? null : crafting.itemNameOf(raw.network_id), count: raw.count,
+        networkId: raw.network_id, stackId: raw.stack_id ?? 0, metadata: raw.metadata ?? 0,
+        receiptIdentity: createHash('sha256').update(serialize(raw)).digest('hex')
+      }
+    })
+    view[kind] = { known: slots.every(slot => slot.known), slots }
+  }
+  return view
+}
+
 function createRuntimeV22ChestReset ({
   host, getState, inspection, crafting, armor, inventory, chest,
-  assertIdle, acquire, release, getJob, generation, cancelTransfers,
+  assertIdle, acquire, release, getJob, generation, cancelTransfers, confirmArea = null,
   journalDirectory = path.resolve(__dirname, '..', '.local', 'loadout-reset-v22')
 }) {
-  const { createQuarryV22Reset } = require('./quarry-v22-reset')
   const worldKey = () => {
     const state = getState()
     return createHash('sha256').update(JSON.stringify([state.profile, String(state.realm?.id), state.dimension])).digest('hex')
   }
-  const filename = () => path.join(journalDirectory, worldKey() + '.json')
+  const filename = world => path.join(journalDirectory, (world == null ? worldKey() : createHash('sha256').update(world).digest('hex')) + '.json')
   const command = createLoadoutCommand({ client: host.client, getState })
+  const jobIdentity = (job = getJob()) => {
+    const doc = job?.document()
+    return doc ? `${doc.instanceId}:${doc.state}:${doc.userRunIntent}` : null
+  }
   const adapter = {
     getState,
-    getView: () => inspection.snapshot(getState()),
+    ...(typeof confirmArea==='function'?{confirmArea}:{}),
+    getView: () => receivedEquipmentView(inspection, crafting, getState()),
     getBlock: (x,y,z) => host.world.getBlock(x,y,z),
     generation,
     assertIdle: () => {
@@ -100,19 +128,23 @@ function createRuntimeV22ChestReset ({
       if (current.authority !== true || current.inventoryKnown !== true || current.pendingRequestId != null ||
         jobPending(job) || current.openContainer) throw failure('RESET_JOB_PENDING')
     },
-    acquire, release,
-    cancelJob: async () => {
+    acquire, release, jobIdentity,
+    cancelJob: async ({ expectedJobIdentity } = {}) => {
       const job = getJob()
+      const previousJobIdentity = jobIdentity(job), instanceId = job?.document()?.instanceId
+      if (previousJobIdentity !== expectedJobIdentity) throw failure('RESET_JOB_CHANGED')
       if(job?.document()){
         const status = await job.cancel()
         if(status?.state !== 'FINISHED' || status.persistence?.status === 'failed')throw failure('RESET_JOB_STOP_UNCONFIRMED')
       }
+      if (getJob() !== job || job?.document()?.instanceId !== instanceId) throw failure('RESET_JOB_CHANGED')
       host.shared.quarryAutoResume = false
       host.shared.quarryRestoreDisabled = true
+      return { serverConfirmed: true, previousJobIdentity, jobIdentity: jobIdentity(job) }
     },
     save: async value => {
       await fs.mkdir(journalDirectory,{recursive:true})
-      return writeDurableJson(filename(),value)
+      return writeDurableJson(filename(value.world),value)
     },
     load: async () => {
       try { return await readJsonBounded(filename()) }
@@ -129,4 +161,4 @@ function createRuntimeV22ChestReset ({
   return createQuarryV22Reset({adapter,commands:command})
 }
 
-module.exports = { createRuntimeLoadoutReset, createRuntimeV22ChestReset, jobPending }
+module.exports = { createRuntimeLoadoutReset, createRuntimeV22ChestReset, jobPending, receivedEquipmentView }

@@ -75,6 +75,8 @@ const SUPPLY_ROOM_MAX_ATTEMPTS = 2
 // a few times, instead of pausing the job.
 const SUPPLY_SITE_REASONS = new Set(['STORAGE_SITE_CHANGED', 'STORAGE_STAND_UNCONFIRMED', 'SUPPLY_SITE_CHANGED'])
 const SUPPLY_SITE_RETRIES = 3, SUPPLY_SITE_RETRY_WAIT_MS = 3000
+// Carried storage refused before any placement, deposit or move (live 2026-11-12).
+const STORAGE_SITE_RETRY_REASONS = new Set([...SUPPLY_SITE_REASONS, 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'])
 const PICKUP_XZ = 1.3 // half player width 0.3 + 1 block reach for item pickup
 const ACTIVE = new Set(['PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT', 'RETURN', 'DEPOSIT', 'PORTABLE_STORAGE', 'RESTOCK', 'HAZARD', 'RECOVER', 'SUSPEND_FOR_COMBAT', 'COMBAT', 'COMBAT_SETTLE', 'RECOVER_AFTER_COMBAT', 'RECONCILE', 'FINAL_CHECK', 'EGRESS', 'DISCONNECTED'])
 const RESULT = new Set(['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS', 'PAUSED', 'CANCELLED', 'FAILED'])
@@ -98,6 +100,7 @@ function defaults (config = {}) {
     dimension: c.dimension ?? 'overworld',
     target: c.target,
     homeChest: c.homeChest ?? null,
+    initialLoadout: c.initialLoadout ?? null,
     yTop: c.yTop ?? 'auto',
     // Default bottom (2026-11-10, user request): Y-59, just above the overworld
     // bedrock band; 'world_min' stays available as an explicit choice.
@@ -164,10 +167,29 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   const healthRatio = s => s.health / (Number.isFinite(s.maxHealth) && s.maxHealth > 0 ? s.maxHealth : 20)
   const foodOf = s => s.food ?? s.hunger ?? null
   const items = s => s?.inventory?.known === true && !s.inventory.uncertain && Array.isArray(s.inventory.items) ? s.inventory.items : null
-  const inventoryPolicy = () => ({ ...job.config.inventory, toolPolicy: job.config.tools, ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64 } : {}) })
+  // Shulker-only jobs do not build storage chests. Keep explicit material
+  // reservations, but do not inherit the old chest-building wood defaults.
+  const inventoryPolicy = () => ({ ...job.config.inventory, ...(shulkerOnly ? { keepLogs: job.config.inventory.keepLogs ?? 0, keepPlanks: job.config.inventory.keepPlanks ?? 0 } : {}), toolPolicy: job.config.tools, ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64 } :
+    deferredExitSupplies() ? { keepExitDirt: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 0, keepSealBlocks: 64 } : {}) })
   const passivePickup = () => job?.config.inventory.pickupMode === 'passive'
   const fullOnlyStorage = () => job?.config.inventory.depositWhen === 'full'
   const fourLayerStorage = () => job?.config.inventory.pickupMode === 'active' && job?.config.inventory.depositWhen === 'four_layers'
+  const usesV22Loadout = () => job?.config.initialLoadout === 'v22' || fourLayerStorage()
+  const deferredExitSupplies = () => fourLayerStorage() || job?.config.initialLoadout === 'v22' && job.config.strategy.dirtFromSupplyAtExit === true && completedV22Loadout()
+  const v22SupplyLayout = config => config?.inventory?.supplyLayout === 'v22' || config?.inventory?.depositWhen === 'four_layers'
+  const loadoutPorts = () => ['loadoutWithdraw', 'equipmentView', 'equipmentTransfer', 'discoverSupplies', 'restockSupplies', 'previewSupplySite', 'storeCarried', 'registeredHomeChest'].every(name => typeof adapter[name] === 'function')
+  const configuredLoadoutHome = config => {
+    const home = config.homeChest
+    if (!home || !['position', 'other', 'stand', 'stage'].every(part => home[part] && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(home[part][axis])))) return false
+    const registered = adapter.registeredHomeChest?.()
+    return registered && ['position', 'other', 'stand', 'stage'].every(part => samePoint(home[part], registered[part])) &&
+      [home.position, home.other].every(p => { const block = adapter.getBlock(p.x, p.y, p.z); return block?.known === true && nameOf(block) === 'chest' && !block.extra?.length })
+  }
+  const emptyLoadoutInventory = state => {
+    const view = adapter.equipmentView?.(), empty = row => row?.known === true && row.empty === true && row.count === 0
+    return items(state)?.length === 0 && view?.known === true && view.uncertain !== true && view.slots?.length === 36 && view.slots.every(empty) &&
+      view.armor?.known === true && view.armor.slots?.length === 4 && view.armor.slots.every(empty) && view.offhand?.known === true && view.offhand.slots?.length === 1 && view.offhand.slots.every(empty)
+  }
   const storageSettings = () => ({ pickupMode: job?.config.inventory.pickupMode ?? 'active', depositWhen: job?.config.inventory.depositWhen ?? 'capacity' })
   const validStoragePair = inventory => {
     const pickup = inventory?.pickupMode === undefined ? 'active' : inventory.pickupMode
@@ -364,16 +386,31 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     const state = adapter.getState()
     const issues = []; const warnings = []
+    if (![null, 'v22'].includes(config.initialLoadout)) issues.push('INVALID_INITIAL_LOADOUT')
+    if (config.initialLoadout === 'v22') config.inventory.supplyLayout = 'v22'
+    if (config.inventory.supplyLayout != null && config.inventory.supplyLayout !== 'v22') issues.push('INVALID_SUPPLY_LAYOUT')
+    const initialLoadout = config.initialLoadout === 'v22'
+    if (initialLoadout) {
+      config.strategy.dirtFromSupplyAtExit = true
+      if (input.inventory?.minFreeSlots == null) config.inventory.minFreeSlots = 3
+    }
+    const pendingLoadout = initialLoadout && loadoutPorts() && configuredLoadoutHome(config) && emptyLoadoutInventory(state)
+    if (initialLoadout) {
+      if (!configuredLoadoutHome(config)) issues.push('LOADOUT_CHEST_NOT_CONFIGURED')
+      if (!loadoutPorts()) issues.push('V22_RUNTIME_UNAVAILABLE')
+      if (!emptyLoadoutInventory(state)) issues.push('LOADOUT_START_INVENTORY_NOT_EMPTY')
+      if (pendingLoadout) warnings.push({ code: 'INITIAL_LOADOUT_ON_START' })
+    }
     if (!worldIdentity(state)) issues.push('WORLD_IDENTITY_UNKNOWN')
     if (config.inventory.pickupMode !== undefined && !['active', 'passive'].includes(config.inventory.pickupMode)) issues.push('INVALID_PICKUP_MODE')
     if (config.inventory.depositWhen !== undefined && !['capacity', 'full', 'four_layers'].includes(config.inventory.depositWhen)) issues.push('INVALID_DEPOSIT_POLICY')
     if (!validStoragePair(config.inventory)) issues.push('UNSUPPORTED_STORAGE_POLICY')
     if (shulkerOnly && config.inventory.storage?.length) issues.push('SHULKER_ONLY_STORAGE')
-    if (config.inventory.depositWhen === 'four_layers') {
+    if (config.inventory.depositWhen === 'four_layers' || initialLoadout) {
       const chest = config.homeChest
-      if (chest?.chunk && Array.isArray(config.target?.chunks) && !config.target.chunks.some(c=>c.x===chest.chunk.x&&c.z===chest.chunk.z)) issues.push('LOADOUT_TARGET_CHUNK_MISMATCH')
+      if (!initialLoadout && chest?.chunk && Array.isArray(config.target?.chunks) && !config.target.chunks.some(c=>c.x===chest.chunk.x&&c.z===chest.chunk.z)) issues.push('LOADOUT_TARGET_CHUNK_MISMATCH')
       if (!chest || !['position', 'other', 'stand'].every(part=>chest[part] && ['x','y','z'].every(axis=>Number.isSafeInteger(chest[part][axis])))) issues.push('LOADOUT_CHEST_NOT_CONFIGURED')
-      if (typeof adapter.loadoutWithdraw !== 'function' || typeof adapter.finalChestDeposit !== 'function' || typeof adapter.equipmentTransfer !== 'function') issues.push('V22_RUNTIME_UNAVAILABLE')
+      if (!initialLoadout && (typeof adapter.loadoutWithdraw !== 'function' || typeof adapter.finalChestDeposit !== 'function' || typeof adapter.equipmentTransfer !== 'function')) issues.push('V22_RUNTIME_UNAVAILABLE')
       if (chest?.position && chest?.other && chest?.stand) {
         // A fixed surface station survives excavation and retains its own
         // interaction floor. Everything else in the chunk remains mineable.
@@ -387,16 +424,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         }
       }
     }
-    if (shulkerOnly && !config.inventory.supplyBoxes?.length && !(config.inventory.depositWhen === 'four_layers' && config.homeChest)) {
-      const discovered = adapter.discoverSupplies?.(config.inventory.depositWhen === 'four_layers' ? 'v22' : 'legacy')
+    if (shulkerOnly && !config.inventory.supplyBoxes?.length && !(config.inventory.depositWhen === 'four_layers' && config.homeChest) && !pendingLoadout) {
+      const discovered = adapter.discoverSupplies?.(v22SupplyLayout(config) ? 'v22' : 'legacy')
       if (discovered?.ok) { config.inventory.supplyBoxes = copy(discovered.bindings); config.inventory.autoSupplies = true }
     }
-    if (config.inventory.autoSupplies && !config.inventory.supplyBoxes?.length && !(config.inventory.depositWhen === 'four_layers' && config.homeChest)) {
-      const discovered = adapter.discoverSupplies?.(config.inventory.depositWhen === 'four_layers' ? 'v22' : 'legacy')
+    if (config.inventory.autoSupplies && !config.inventory.supplyBoxes?.length && !(config.inventory.depositWhen === 'four_layers' && config.homeChest) && !pendingLoadout) {
+      const discovered = adapter.discoverSupplies?.(v22SupplyLayout(config) ? 'v22' : 'legacy')
       if (discovered?.ok) config.inventory.supplyBoxes = copy(discovered.bindings)
       else issues.push(discovered?.reason ?? 'SUPPLY_BOXES_UNCONFIRMED')
     }
-    if (config.inventory.supplyBoxes?.length && (!validSupplyBindings(config.inventory.supplyBoxes, config.inventory.depositWhen) || typeof adapter.restockSupplies !== 'function')) issues.push('SUPPLY_BINDINGS_INVALID')
+    if (config.inventory.supplyBoxes?.length && (!validSupplyBindings(config.inventory.supplyBoxes, config.inventory) || typeof adapter.restockSupplies !== 'function')) issues.push('SUPPLY_BINDINGS_INVALID')
     if (state?.phase !== 'spawned' || state.dead) issues.push('NOT_SPAWNED')
     if (state?.gameMode !== 'survival' && state?.gameMode !== 0) issues.push('NOT_SURVIVAL')
     if (state?.dimension && state.dimension !== config.dimension.replace(/^minecraft:/, '')) issues.push('WRONG_DIMENSION')
@@ -405,7 +442,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     let yTop = Number.isSafeInteger(config.yTop) ? config.yTop : null
     let unknownAbove = 0
     if (yTop === null) { const s = p.surveyTop(); yTop = s.yTop; unknownAbove = s.unknownAbove }
-    if (config.inventory.depositWhen === 'four_layers') {
+    if (config.inventory.depositWhen === 'four_layers' || initialLoadout) {
       if (Number.isSafeInteger(yTop)) yTop = Math.min(yTop, 75)
       // The upper bound is clamped; terrain above it is outside the quarry.
     }
@@ -415,13 +452,13 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const inv = items(state)
     if (!inv) issues.push('INVENTORY_UNKNOWN')
     const storageList = config.inventory.storage ?? []
-    if ((shulkerOnly || !storageList.length && config.inventory.carryOnly !== true) && !(config.inventory.depositWhen === 'four_layers' && config.homeChest && !inv?.length || typeof adapter.storeCarried === 'function' && cargoSelection(inv, { excludedShulkerKeys: storageSupplyExclusions(config.inventory.supplyBoxes) }))) issues.push(shulkerOnly ? 'NO_CARGO_SHULKER' : 'NO_STORAGE_REGISTERED')
+    if ((shulkerOnly || !storageList.length && config.inventory.carryOnly !== true) && !pendingLoadout && !(config.inventory.depositWhen === 'four_layers' && config.homeChest && !inv?.length || typeof adapter.storeCarried === 'function' && cargoSelection(inv, { excludedShulkerKeys: storageSupplyExclusions(config.inventory.supplyBoxes) }))) issues.push(shulkerOnly ? 'NO_CARGO_SHULKER' : 'NO_STORAGE_REGISTERED')
     for (const s of storageList) {
       const b = s?.position ? adapter.getBlock(s.position.x, s.position.y, s.position.z) : null
       if (!b?.known || !/chest|barrel/.test(nameOf(b))) issues.push(`STORAGE_NOT_OBSERVED:${JSON.stringify(s?.position ?? null)}`)
       else if (permits(regs, 'break', s.position).allowed) issues.push('STORAGE_INSIDE_EXCAVATION')
     }
-    if (inv && !(config.inventory.depositWhen === 'four_layers' && config.homeChest && !inv.length)) {
+    if (inv && !pendingLoadout && !(config.inventory.depositWhen === 'four_layers' && config.homeChest && !inv.length)) {
       const picks = inv.filter(i => /_pickaxe$/.test(nameOf(i)))
       if (!picks.length) warnings.push({ code: 'NO_PICKAXE', note: 'Stone and ores will wait for a tool' })
       if (!inv.some(i => isFood(i.name))) warnings.push({ code: 'NO_FOOD' })
@@ -450,7 +487,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // leaves no exit column is refused here instead of after start; unknown
     // terrain only warns. A shallower bottom that would work is suggested.
     let exitPreflight = null
-    if (yTop !== null && inv && state?.position && config.exit?.mode === 'adjacent_pillar' && typeof adapter.egress === 'function' && config.inventory.depositWhen !== 'four_layers') {
+    if (yTop !== null && inv && state?.position && config.exit?.mode === 'adjacent_pillar' && typeof adapter.egress === 'function' && config.inventory.depositWhen !== 'four_layers' && !pendingLoadout) {
       exitPreflight = planExitPreview(config, regs, yTop, state, inv)
       if (!exitPreflight.ready) {
         if (exitPreflight.reason === 'EXIT_COLUMN_UNAVAILABLE' && !exitPreflight.unknown) {
@@ -472,7 +509,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       } else if (caveSurvey.unknownRatio > CAVE_UNKNOWN_RATIO) warnings.push({ code: 'CAVE_VOLUME_PROVISIONAL', unknownRatio: caveSurvey.unknownRatio })
     }
     const sealCells = regs.seal.ready ? regs.seal.columns.size * (regs.seal.yMax - regs.seal.yMin + 1) : 0
-    const summary = { ready: issues.length === 0, issues, warnings, jobId: config.jobId, chunks: regs.chunks, yTop, yTopProvisional: unknownAbove > 0, yBottom: regs.yBottom, columns: regs.columns.size, counts, survey, stair, exitPreflight, caveSurvey, boundarySeal: { enabled: regs.seal.enabled, ready: regs.seal.ready, columns: regs.seal.columns.size, yMin: regs.seal.yMin, yMax: regs.seal.yMax, cells: sealCells, placementOnly: true }, travelRegion: regs.travel, storage: storageList }
+    const summary = { ready: issues.length === 0, issues, warnings, jobId: config.jobId, chunks: regs.chunks, yTop, yTopProvisional: unknownAbove > 0, yBottom: regs.yBottom, columns: regs.columns.size, counts, survey, stair, exitPreflight, caveSurvey, boundarySeal: { enabled: regs.seal.enabled, ready: regs.seal.ready, columns: regs.seal.columns.size, yMin: regs.seal.yMin, yMax: regs.seal.yMax, cells: sealCells, placementOnly: true }, travelRegion: regs.travel, storage: storageList,
+      ...(pendingLoadout ? { initialLoadout: { mode: 'v22', pending: true, serverConfirmed: false, position: copy(config.homeChest.position) } } : {}) }
     job = { config, instanceId: randomUUID(), world: worldIdentity(state), actionSequence: 0, state: 'IDLE', planned: summary, yTop, cursorY: yTop, deepestY: yTop, records: { stair }, ledger: {}, userRunIntent: 'idle', result: null, pauseReason: null, interruption: null, checkpoint: null, actions: [], deaths: [], startedAt: null, scope: null, life: null }
     regions = regs; planner = pl; ledger = createLedger()
     return copy(summary)
@@ -691,9 +729,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   async function preflight (myEpoch) {
-    if (fourLayerStorage() && !job.loadoutReady) {
+    if (usesV22Loadout() && !job.loadoutReady) {
       const home = job.config.homeChest, owner = job
       if (!home?.position || !home.stand) return finish('PAUSED', 'LOADOUT_CHEST_NOT_CONFIGURED')
+      if (job.config.initialLoadout === 'v22' && !configuredLoadoutHome(job.config)) return finish('PAUSED', 'LOADOUT_CHEST_CHANGED')
       if (!job.loadout) {
         job.loadout = { operationId: job.config.jobId + ':loadout:1', checkpoint: null }
         await save('loadout_intent')
@@ -704,13 +743,19 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const from = feetCell(guard(myEpoch))
       if (!samePoint(from, home.stand)) await moveToStance(myEpoch, home.stand)
       const active = job.loadout
-      const response = await call(myEpoch, 'loadout_withdraw', signal => adapter.loadoutWithdraw({
+      const response = await call(myEpoch, 'loadout_withdraw', signal => {
+        if (job.config.initialLoadout === 'v22' && (!active.checkpoint || active.checkpoint.index === 0 && active.checkpoint.intent == null)) {
+          if (!configuredLoadoutHome(job.config)) return { status: 'blocked', reason: 'LOADOUT_CHEST_CHANGED', serverConfirmed: false }
+          if (!emptyLoadoutInventory(guard(myEpoch))) return { status: 'blocked', reason: 'LOADOUT_START_INVENTORY_NOT_EMPTY', serverConfirmed: false }
+        }
+        return adapter.loadoutWithdraw({
         jobId: job.config.jobId, operationId: active.operationId,
+        allowReceivedPrefixUse: job.config.initialLoadout === 'v22',
         checkpoint: copy(active.checkpoint), position: copy(home.position)
       }, { signal, onCheckpoint: async cp => {
         if (job !== owner || job.loadout !== active || cp.operationId !== active.operationId) throw new Error('LOADOUT_STALE_CHECKPOINT')
         active.checkpoint = copy(cp); await save('loadout_checkpoint')
-      }}), { drain: true })
+      }}) }, { drain: true })
       guard(myEpoch)
       if (response?.status !== 'completed' || response.serverConfirmed !== true) {
         return finish('PAUSED', response?.reason ?? 'LOADOUT_WITHDRAW_BLOCKED', { pauseDetails: { details: response?.details ?? null, operationId: active.operationId } })
@@ -719,11 +764,13 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (!discovered?.ok || !validSupplyBindings(discovered.bindings, 'four_layers')) {
         return finish('PAUSED', discovered?.reason ?? 'V22_SUPPLIES_UNKNOWN')
       }
+      if (job.config.initialLoadout === 'v22' && !completedV22Loadout(false)) return finish('PAUSED', 'LOADOUT_RECEIPTS_UNCONFIRMED')
       job.config.inventory.supplyBoxes = copy(discovered.bindings)
       job.config.inventory.autoSupplies = true
       job.loadoutReady = true
       await save('loadout_received')
     }
+    if (job.config.initialLoadout === 'v22' && !completedV22Loadout()) return finish('PAUSED', 'LOADOUT_RECEIPTS_UNCONFIRMED')
     const s = guard(myEpoch)
     if (!items(s)) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
     job.scope = scopeOf(s); job.life = lifeOf(s)
@@ -731,9 +778,18 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!Object.keys(ledger.export().startInventory).length) for (const [n, c] of lastInventory) ledger.add('startInventory', n, c)
     combatBridge.activate({ jobId: job.config.jobId, epoch, travel: p => permits(regions, 'travel', p).allowed })
     await save('start')
-    if (!fourLayerStorage() && !(await prepareExit(myEpoch))) return
+    if (job.config.initialLoadout === 'v22' && job.pendingTotemEquip && await ensureTotem(myEpoch)) return
+    // A passive/full job needs actual tools and reserved dirt from its received
+    // supply boxes before the ordinary exit preflight can judge readiness.
+    if (job.config.initialLoadout === 'v22' && await restock(myEpoch, 'PREFLIGHT', true)) return
+    if (job.config.initialLoadout === 'v22') {
+      if (!completedV22Loadout()) return finish('PAUSED', 'LOADOUT_RECEIPTS_UNCONFIRMED')
+      if (await ensureTotem(myEpoch)) return
+      if (!(await verifyExitSupplyStock(myEpoch))) return
+    }
+    if (!deferredExitSupplies() && !(await prepareExit(myEpoch))) return
     if (fourLayerStorage()) { setState('SURVEY'); return }
-    if (await restock(myEpoch, 'SURVEY', true)) return
+    if (job.config.initialLoadout !== 'v22' && await restock(myEpoch, 'SURVEY', true)) return
     setState('SURVEY')
   }
 
@@ -768,7 +824,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const obs = job.terrainObservation
     if (obs && obs.requests && !obs.waiting && Number.isFinite(obs.requestedAt) && now() - obs.requestedAt > TERRAIN_BUDGET_RENEW_MS) { obs.requests = 0; obs.phase = 'idle' }
     if (!(await confirmPoseAfterPause(myEpoch))) return
+    if (job.config.initialLoadout === 'v22' && job.loadoutReady !== true) { setState('PREFLIGHT'); return }
     if (job.supplyRestock) { job.supplyRestock.resumeTo = 'RECONCILE'; return restock(myEpoch, 'RECONCILE', true) }
+    if (job.config.initialLoadout === 'v22' && job.pendingTotemEquip && await ensureTotem(myEpoch)) return
     // Re-observe instead of trusting saved cells (§15.3): unreachable and
     // tool deferrals are retried; protected/unbreakable stay.
     // MINING_FAILED (and the falling-block chains it holds up) were transient
@@ -790,7 +848,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
     }
     if (job.miningCompletedAt && job.config.exit?.mode === 'adjacent_pillar') { setState('EGRESS'); return }
-    if (!fourLayerStorage() && !(await prepareExit(myEpoch))) return
+    if (job.config.initialLoadout === 'v22' && !(await verifyExitSupplyStock(myEpoch))) return
+    if (!deferredExitSupplies() && !(await prepareExit(myEpoch))) return
     const floorY = workFloorY()
     clearWorkDeferred([...TRANSIENT_DEFER, ...TOOL_WAIT])
     badStances.clear()
@@ -972,12 +1031,41 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   async function ensureTotem (myEpoch) {
-    if (!fourLayerStorage()) return false
+    if (!usesV22Loadout()) return false
+    const observedHand = () => adapter.equipmentView?.()?.offhand
+    const knownHand = () => { const hand = observedHand(); return hand?.known === true && hand.slots?.[0]?.known === true ? hand.slots[0] : null }
+    const waitHand = async () => {
+      if (knownHand()) return knownHand()
+      if (typeof adapter.resyncInventory !== 'function') return null
+      try {
+        let refreshed
+        try { refreshed = await call(myEpoch, 'totem_observe', signal => adapter.resyncInventory({ signal })) } catch (error) {
+          if (error.code !== 'RESYNC_RATE_LIMIT') throw error
+          const until = now() + 20000
+          while (now() < until) { guard(myEpoch); await sleep(100) }
+          refreshed = await call(myEpoch, 'totem_observe', signal => adapter.resyncInventory({ signal }))
+        }
+        if (refreshed !== true) return null
+        const until = now() + 5000
+        do { guard(myEpoch); if (knownHand()) return knownHand(); await sleep(100) } while (now() < until)
+      } catch (error) { if (error instanceof QuarryInterrupt) throw error }
+      return null
+    }
+    let hand = await waitHand()
+    const pending = job.pendingTotemEquip
+    if (pending) {
+      const state = guard(myEpoch)
+      if (pending.scope !== scopeOf(state) || pending.life !== lifeOf(state) || pending.self !== String(state.runtimeEntityId)) { await finish('PAUSED', 'TOTEM_EQUIP_SCOPE_CHANGED'); return true }
+      if (!hand || hand.empty || hand.name !== 'minecraft:totem_of_undying' || hand.count !== 1) { await finish('PAUSED', 'TOTEM_EQUIP_UNCONFIRMED'); return true }
+      delete job.pendingTotemEquip
+      job.totemsEquipped = (job.totemsEquipped ?? 0) + 1
+      await save('totem_equipped'); return true
+    }
     const view = adapter.equipmentView?.()
     if (view?.offhand?.known !== true || view.offhand.slots?.[0]?.known !== true) {
       await finish('PAUSED', 'OFFHAND_OBSERVATION_UNKNOWN'); return true
     }
-    const hand = view.offhand.slots[0]
+    hand = view.offhand.slots[0]
     if (!hand.empty) {
       if (hand.name === 'minecraft:totem_of_undying') return false
       await finish('PAUSED', 'OFFHAND_OCCUPIED'); return true
@@ -988,13 +1076,24 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!totem) {
       await finish('PAUSED', 'TOTEM_EXHAUSTED'); return true
     }
+    if (job.config.initialLoadout === 'v22') {
+      const state = guard(myEpoch)
+      job.pendingTotemEquip = { scope: scopeOf(state), life: lifeOf(state), self: String(state.runtimeEntityId), fromSlot: totem.slot, stage: 'intent' }
+      await save('totem_equip_intent')
+    }
     const receipt = await call(myEpoch, 'equip_totem', signal => adapter.equipmentTransfer({
       from:'main',fromSlot:totem.slot,to:'offhand',toSlot:0,
       expectedName:'minecraft:totem_of_undying',signal
     }))
-    if (receipt?.serverConfirmed !== true || adapter.equipmentView?.()?.offhand?.slots?.[0]?.name !== 'minecraft:totem_of_undying') {
+    if (receipt?.serverConfirmed === true && job.pendingTotemEquip) {
+      Object.assign(job.pendingTotemEquip, { stage: 'accepted', requestId: receipt.requestId ?? null })
+      await save('totem_equip_accepted')
+    }
+    hand = await waitHand()
+    if (receipt?.serverConfirmed !== true || hand?.name !== 'minecraft:totem_of_undying' || hand.count !== 1 || hand.empty) {
       await finish('PAUSED','TOTEM_EQUIP_UNCONFIRMED');return true
     }
+    delete job.pendingTotemEquip
     job.totemsEquipped = (job.totemsEquipped ?? 0) + 1
     await save('totem_equipped')
     return true
@@ -1002,7 +1101,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   // ---- normal work -------------------------------------------------------
   async function work (myEpoch) {
-    if (!fourLayerStorage() && job.exitPreflight?.layer !== job.cursorY && !(await prepareExit(myEpoch))) return
+    if (job.config.initialLoadout === 'v22' && job.pendingTotemEquip && await ensureTotem(myEpoch)) return
+    if (job.config.initialLoadout === 'v22' && !(await verifyExitSupplyStock(myEpoch))) return
+    if (!deferredExitSupplies() && job.exitPreflight?.layer !== job.cursorY && !(await prepareExit(myEpoch))) return
     const s = guard(myEpoch)
     const hz = hazardNow(s)
     if (hz) return escapeHazard(myEpoch, hz)
@@ -1203,13 +1304,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   async function mine (myEpoch, decision, { capacityActionId = null } = {}) {
-    // Capacity check against worst-case drops of the whole batch (T06).
+    // Passive pickup uses received inventory and stops at a full bag. Only
+    // active collection and held-box batches need predicted drop capacity.
     const initial = guard(myEpoch)
     const receiptScope = { job, epoch: myEpoch, scope: scopeOf(initial), life: lifeOf(initial) }
     const inv = items(initial)
     if (!inv) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
-    let drops
-    try { drops = fullDropBudget(decision.targets, decision.tool) } catch (error) {
+    const requireDropCapacity = !passivePickup() || capacityActionId != null
+    let drops = []
+    try { if (requireDropCapacity) drops = fullDropBudget(decision.targets, decision.tool) } catch (error) {
       if (/^DROP_/.test(error.code ?? '')) {
         const p = error.details?.target?.position
         const b = p ? adapter.getBlock(p.x, p.y, p.z) : null
@@ -1218,7 +1321,6 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
       throw error
     }
-    const requireDropCapacity = !passivePickup() || capacityActionId != null
     if (requireDropCapacity && !capacityActionId && !canAccept(inv, drops)) {
       try { decision = chooseCapacityPrefix(decision, inv); drops = fullDropBudget(decision.targets, decision.tool) } catch (error) { if (!['MINING_CAPACITY_REQUIRED', 'CAPACITY_BATCH_INVALID'].includes(error.code)) throw error }
     }
@@ -1267,7 +1369,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const beforeDispatch = items(guard(myEpoch))
     if (!beforeDispatch) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
     if (!capacityActionId && passivePickup() && !job.storageExhausted && freeSlots(beforeDispatch) === 0) { job.depositReason = 'full'; setState('RETURN'); return }
-    for (const target of plannedTargets.filter(t => nameOf(t.name) === 'leaf_litter')) {
+    for (const target of plannedTargets.filter(t => ['leaf_litter', 'wildflowers'].includes(nameOf(t.name)))) {
       const p = target.position, b = adapter.getBlock(p.x, p.y, p.z)
       if (b?.known !== true || b.name !== target.name || b.runtimeId !== target.runtimeId || !isDeepStrictEqual(b.properties, target.properties)) {
         const error = new QuarryInterrupt('DROP_TARGET_STATE_CHANGED')
@@ -1293,8 +1395,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (prepared) job.miningEquipmentPending = false
     // Re-plan from the actual stance; the world may have changed while moving.
     setState('MINE')
-    const targets = plannedTargets.map(t => ({ x: t.position.x, y: t.position.y, z: t.position.z, expectedName: t.name, expectedRuntimeId: t.runtimeId ?? null, requiredTool: tool.kind !== 'hand' ? { kind: tool.kind, tier: tool.tier, reserve: tool.reserve } : null, ...(nameOf(t.name) === 'leaf_litter' ? { expectedProperties: copy(t.properties ?? null) } : {}), ...(t.accessPreparation ? { accessPreparation: t.accessPreparation } : {}), ...(t.fluidSource ? { fluidSource: copy(t.fluidSource) } : {}) }))
-    const rec = recordAction({ type: 'mine', stance: decision.stance, targets: targets.map(t => ({ x: t.x, y: t.y, z: t.z, name: t.expectedName, ...(t.expectedName === 'minecraft:leaf_litter' ? { runtimeId: t.expectedRuntimeId, properties: copy(t.expectedProperties) } : {}) })), tool: decision.tool?.name ?? 'hand', ...(capacityActionId ? { capacityActionId } : {}) })
+    const targets = plannedTargets.map(t => ({ x: t.position.x, y: t.position.y, z: t.position.z, expectedName: t.name, expectedRuntimeId: t.runtimeId ?? null, requiredTool: tool.kind !== 'hand' ? { kind: tool.kind, tier: tool.tier, reserve: tool.reserve } : null, ...(['leaf_litter', 'wildflowers'].includes(nameOf(t.name)) ? { expectedProperties: copy(t.properties ?? null) } : {}), ...(t.accessPreparation ? { accessPreparation: t.accessPreparation } : {}), ...(t.fluidSource ? { fluidSource: copy(t.fluidSource) } : {}) }))
+    const rec = recordAction({ type: 'mine', stance: decision.stance, targets: targets.map(t => ({ x: t.x, y: t.y, z: t.z, name: t.expectedName, ...(['minecraft:leaf_litter', 'minecraft:wildflowers'].includes(t.expectedName) ? { runtimeId: t.expectedRuntimeId, properties: copy(t.expectedProperties) } : {}) })), tool: decision.tool?.name ?? 'hand', ...(capacityActionId ? { capacityActionId } : {}) })
     const confirmCurrent = interruption => {
       const state = adapter.getState()
       // A manual stop advances the epoch before draining this same job. Its
@@ -1460,18 +1562,28 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   // Collect drops (§10.2): walk next to each, then confirm by inventory gain.
-  async function collect (myEpoch, why, { onObservation = null } = {}) {
-    if (passivePickup()) {
+  async function collect (myEpoch, why, { onObservation = null, onlyDropIds = null } = {}) {
+    const storageCleanup = why === 'storage_recovery_space'
+    if (storageCleanup && (!Array.isArray(onlyDropIds) || !onlyDropIds.length || onlyDropIds.length > 16 || !onlyDropIds.every(id => typeof id === 'string' && /^\d{1,20}$/.test(id)) || new Set(onlyDropIds).size !== onlyDropIds.length)) throw new QuarryInterrupt('STORAGE_PICKUP_TARGETS_INVALID')
+    const selectedIds = storageCleanup ? new Set(onlyDropIds) : null
+    // The adapter already scopes/filters its item actors and intentionally
+    // omits dimension/positionKnown from this narrow port. Honor either field
+    // when present without requiring metadata the port does not expose.
+    const selectedDrop = e => !storageCleanup || selectedIds.has(String(e.runtimeId)) && e.alive !== false && e.positionKnown !== false && (e.dimension == null || e.dimension === adapter.getState().dimension) && Number.isSafeInteger(e.count) && e.count > 0 && e.count <= 127 && ['x', 'y', 'z'].every(axis => Number.isFinite(e.position?.[axis])) && typeof e.name === 'string' && /^(?:minecraft:)?[a-z0-9_]+$/.test(e.name) && !isShulkerBox(e.name) && !['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(blockRule(e.name).reason)
+    const preservedDrops = storageCleanup ? pendingDrops.filter(d => !selectedIds.has(String(d.runtimeId))) : []
+    if (passivePickup() && !storageCleanup) {
       guard(myEpoch); observeInventory(job.state); observeDrops(); recordPassivePickup(why)
       setState('PLAN')
       return
     }
     setState('COLLECT', { collectReason: why })
     const s = guard(myEpoch)
-    const ents = new Map(adapter.entities().filter(e => e.kind === 'item' && e.position).map(e => [e.runtimeId, e]))
+    const ents = new Map(adapter.entities().filter(e => e.kind === 'item' && e.position && selectedDrop(e)).map(e => [e.runtimeId, e]))
     if (onObservation) await onObservation([...ents.values()])
     // Refresh tracked drops; vanished ones are unknown unless the bag grew.
-    const before = totals(items(s) ?? [])
+    const initialInventory = items(s)
+    if (storageCleanup && !initialInventory) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
+    const before = totals(initialInventory ?? [])
     const remaining = []
     for (const d of pendingDrops) { const e = ents.get(d.runtimeId); if (e) remaining.push({ ...d, position: copy(e.position), count: e.count }) }
     // Every item lying inside the travel region is collected, not only the
@@ -1482,10 +1594,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // except on the final sweep.
     const observedOnPass=remaining.map(d=>({...d}))
     const skipped = []
-    for (let k = remaining.length - 1; k >= 0; k--) if (why !== 'final' && (stuckItems.has(remaining[k].runtimeId) || remaining[k].reason === 'STUCK_REPEATED')) skipped.push(...remaining.splice(k, 1))
+    for (let k = remaining.length - 1; k >= 0; k--) if (!storageCleanup && why !== 'final' && (stuckItems.has(remaining[k].runtimeId) || remaining[k].reason === 'STUCK_REPEATED')) skipped.push(...remaining.splice(k, 1))
     const unreachable = skipped.map(d => ({ ...d, reason: d.reason === 'STUCK_REPEATED' ? d.reason : 'STUCK' }))
     let needRoom = false
-    const PASS = 48
+    const PASS = storageCleanup ? 4 : 48
     const around = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
     const present = id => adapter.entities().some(e => e.runtimeId === id)
     const waitGone = async (id, ms) => { const until = now() + ms; while (now() < until && present(id)) await sleep(50); return !present(id) }
@@ -1495,7 +1607,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // cover several items passively. Recompute after each confirmed move.
     while (remaining.length) {
       const here = guard(myEpoch); const feet = { x: here.position.x, y: here.position.y - FEET, z: here.position.z }
-      const actors = adapter.entities()
+      const actors = adapter.entities().filter(selectedDrop)
       if (onObservation) await onObservation(actors.filter(e => e.kind === 'item' && e.position))
       const live = new Set(actors.map(e => e.runtimeId))
       for (let i = remaining.length - 1; i >= 0; i--) if (!live.has(remaining[i].runtimeId)) remaining.splice(i, 1)
@@ -1526,6 +1638,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (!present(d.runtimeId)) continue
       const inv = items(guard(myEpoch))
       if (!inv) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
+      // Cleanup never relies on name-only stack merging to enter a full bag.
+      if (storageCleanup && freeSlots(inv) === 0) { needRoom = true; unreachable.push({ ...d, reason: 'NO_CAPACITY' }); continue }
       if (!canAccept(inv, [{ name: d.name ?? 'unknown', count: d.count ?? 1 }])) { needRoom = true; unreachable.push({ ...d, reason: 'NO_CAPACITY' }); continue }
       // Already within pickup range: no walk, just a short wait.
       if (inPickupRange(feet, d.position) && await waitGone(d.runtimeId, 400)) continue
@@ -1562,7 +1676,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // Items still on the ground stay tracked: capacity misses are retried after
     // a deposit, unreachable ones are only written off at the end (§10.2).
     const still = new Set(adapter.entities().filter(e => e.kind === 'item').map(e => e.runtimeId))
-    pendingDrops = unreachable.filter(d => still.has(d.runtimeId)).map(d => ({ ...d, unreachable: !['NO_CAPACITY', 'NEXT_PASS', 'STUCK'].includes(d.reason) }))
+    pendingDrops = [...preservedDrops, ...unreachable.filter(d => still.has(d.runtimeId)).map(d => ({ ...d, unreachable: !['NO_CAPACITY', 'NEXT_PASS', 'STUCK'].includes(d.reason) }))]
     job.unreachableItems = pendingDrops.filter(d => d.unreachable).map(d => ({ name: d.name, count: d.count, position: d.position, reason: d.reason }))
     batchCount = 0
     // The bag could not take everything: empty it into the chests, then the
@@ -1580,7 +1694,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const fail = reason => ({ reason, details: { stance, floor: { ...stance, y: stance.y - 1 }, position: p } })
       if (!planner.safeSealStance(stance)) return fail('SEAL_UNSAFE_STANCE')
       const inv = items(state), material = nameOf(decision.material), dirt = totals(inv ?? []).get('dirt') ?? 0
-      const reserve = fourLayerStorage() ? 0 : Math.max(job.config.inventory.keepExitDirt ?? 0, decision.materialRequired === 'dirt' ? 192 : 0)
+      const reserve = fourLayerStorage() || deferredExitSupplies() && job.egressPreparation !== true ? 0 : Math.max(job.config.inventory.keepExitDirt ?? 0, decision.materialRequired === 'dirt' ? 192 : 0)
       if (!inv || decision.materialRequired && material !== decision.materialRequired || material === 'dirt' && dirt <= reserve || !inv?.some(i => i.slot === decision.slot && nameOf(i) === material && i.count > 0)) return fail('SEAL_MATERIAL_MISSING')
       const b = adapter.getBlock(p.x, p.y, p.z)
       if (!permits(regions, 'seal', p).allowed || !b?.known || b.protected || b.protectionSource || b.extra?.length) return fail('SEAL_CONTEXT_CHANGED')
@@ -1874,11 +1988,53 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     note(busy(list) ? 'storage_area_wait_timeout' : 'storage_area_clear', { count: list.length })
   }
 
-  function validSupplyBindings (bindings, mode = job?.config?.inventory?.depositWhen) {
-    const roles = mode === 'four_layers' ? ['pickaxe', 'shovel', 'dirt', 'totem'] : ['pickaxe', 'shovel', 'food', 'dirt']
+  function validSupplyBindings (bindings, mode = job?.config?.inventory) {
+    const roles = mode === 'four_layers' || mode?.depositWhen === 'four_layers' || mode?.supplyLayout === 'v22' ? ['pickaxe', 'shovel', 'dirt', 'totem'] : ['pickaxe', 'shovel', 'food', 'dirt']
     return Array.isArray(bindings) && bindings.length === 4 && roles.every(role => bindings.filter(b => b?.role === role && typeof b.key === 'string' && typeof b.itemName === 'string').length === 1) && new Set(bindings.map(b => b.key)).size === 4
   }
-  const supplyCanPlace = p => supplyPlacementAllowed(regions, p)
+  function completedV22Loadout (requireReady = true) {
+    if (!usesV22Loadout() || requireReady && job.loadoutReady !== true) return null
+    const cp = job.loadout?.checkpoint, home = job.config.homeChest
+    if (cp?.version !== 1 || cp.direction !== 'withdraw' || cp.phase !== 'completed' || cp.index !== 34 || cp.intent != null || !samePoint(cp.position, home?.position) ||
+        cp.jobId !== job.config.jobId || cp.operationId !== job.loadout.operationId || !Array.isArray(cp.plan) || cp.plan.length !== 34 || !Array.isArray(cp.receipts) || cp.receipts.length !== 34 ||
+        !Array.isArray(cp.identities) || cp.identities.length !== 34 || cp.identities.some(value => typeof value !== 'string' || !value) ||
+        cp.receipts.some((receipt, i) => ['from', 'to', 'name', 'count'].some(key => receipt?.[key] !== cp.plan[i]?.[key]))) return null
+    try {
+      const state = adapter.getState(), world = assertJobWorld(job, state)
+      const key = JSON.stringify([world.profile, world.realmId, world.dimension])
+      if (cp.world !== key || cp.life !== JSON.stringify([key, lifeOf(state)])) return null
+      if (job.config.initialLoadout === 'v22') {
+        const registered = adapter.registeredHomeChest?.()
+        if (!registered || !['position', 'other', 'stand', 'stage'].every(part => samePoint(home?.[part], registered[part]))) return null
+      }
+      return true
+    } catch { return null }
+  }
+  async function verifyExitSupplyStock (myEpoch) {
+    const state = guard(myEpoch), main = items(state), view = adapter.equipmentView?.(), bindings = job.config.inventory.supplyBoxes
+    if (!main || view?.known !== true || view.uncertain || view.armor?.known !== true || view.offhand?.known !== true ||
+      !completedV22Loadout() || !validSupplyBindings(bindings)) { await finish('PAUSED', 'EXIT_SUPPLY_UNCONFIRMED'); return false }
+    const required = Math.max(192, job.config.exit?.reservedDirt ?? 0, job.exitReservation?.plan?.totalDirt ?? 0)
+    const available = dirtCount(main)
+    if (available >= required) return true
+    const binding = bindings.find(row => row.role === 'dirt'), candidates = (view?.slots ?? []).filter(row => row?.known === true && !row.empty && row.count === 1 && row.name === binding?.boxName && binding.itemName === 'minecraft:dirt' && carriedContainerKey(row) === binding?.key)
+    const slots = candidates.length === 1 && candidates[0].container?.known === true ? candidates[0].container.slots : null
+    if (!Array.isArray(slots) || slots.length !== 27 || slots.some(row => row && !(row.known === true && (row.empty === true && row.count === 0 || row.name === 'minecraft:dirt' && Number.isInteger(row.count) && row.count > 0 && row.count <= 64)))) {
+      await finish('PAUSED', 'EXIT_SUPPLY_UNCONFIRMED'); return false
+    }
+    const stored = slots.reduce((total, row) => total + (row && !row.empty ? row.count : 0), 0)
+    if (available + stored < required) { await finish('PAUSED', 'EXIT_SUPPLY_MISSING', { pauseDetails: { carried: available, stored, required } }); return false }
+    return true
+  }
+  function initialSupplyStation () {
+    const progress = ledger.summary(), home = job.config.homeChest
+    if (!completedV22Loadout() || progress.minedBlocks + progress.reminedTemporary !== 0) return null
+    const registered = adapter.registeredHomeChest?.()
+    if (!registered || !['position', 'other', 'stand', 'stage'].every(part => samePoint(home?.[part], registered[part]))) return null
+    if (job.config.initialLoadout === 'v22' && ![home.stand, home.stage].every(p => regions.columns.has(`${p.x},${p.z}`))) return null
+    return { stand: copy(home.stand), stage: copy(home.stage) }
+  }
+  const supplyCanPlace = p => supplyPlacementAllowed(regions, p, initialSupplyStation())
   const supplyCanClear = p => permits(regions, 'break', p).allowed && clearableSitePlant(planningBlocks(job.config)(p.x, p.y, p.z))
   // Nearest reachable stand inside the quarry columns (higher first: the
   // surface), walked to with the ordinary verified movement. Bounded.
@@ -1913,7 +2069,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!items(state)) return blocked('SUPPLY_INVENTORY_UNKNOWN')
     if (active.checkpoint && !isDeepStrictEqual(active.checkpoint.scope, supplyScope(state))) return blocked('SUPPLY_SCOPE_CHANGED')
     if (typeof adapter.previewSupplySite !== 'function') return blocked('SUPPLY_APPROACH_UNSUPPORTED')
-    const approachFrom = from => planSupplyApproach({ origin: from, regions, planner, canPlace: supplyCanPlace,
+    const approachFrom = from => planSupplyApproach({ origin: from, regions, planner, canPlace: supplyCanPlace, initialStation: initialSupplyStation(),
       previewSite: stand => adapter.previewSupplySite(stand, { canPlace: supplyCanPlace, canClear: supplyCanClear }),
       previewRoute: typeof adapter.previewStorage === 'function' ? (site, path) => call(myEpoch, 'preview_supply_route', signal => adapter.previewStorage({ stand: site.stand, position: site.positions[0] }, { signal, path, travel: p => permits(regions, 'travel', p).allowed })) : null,
       guard: () => { const current = guard(myEpoch); if (!samePoint(feetCell(current), from)) throw new QuarryInterrupt('SUPPLY_APPROACH_ORIGIN_CHANGED') } })
@@ -1991,6 +2147,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!validSupplyBindings(bindings) || typeof adapter.restockSupplies !== 'function') { await finish('PAUSED', 'SUPPLY_UNSUPPORTED'); return true }
     const inventory = items(guard(myEpoch)), equipmentView = adapter.equipmentView?.()
     const policy = { ...job.config.inventory, tools: job.config.tools,
+      ...(v22SupplyLayout(job.config) ? { totemNeeded: equipmentView?.offhand?.known === true && equipmentView.offhand.slots?.[0]?.empty === true } : {}),
+      ...(deferredExitSupplies() ? { deferExitSupplies: true, exitPreparing: job.egressPreparation === true,
+        exitDirtTarget: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 64 } : {}),
       ...(job.miningExhausted ? { miningExhausted: copy(job.miningExhausted) } : {}),
       ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64,
         exitPreparing: job.egressPreparation === true, exitDirtTarget: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 64,
@@ -2136,9 +2295,54 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return controller.workWithContainer(context, options)
   }
 
+  const storageScopeMatches = (cp, state) => cp?.scope && ['profile', 'dimension', 'connectionId', 'startedAt'].every(field => cp.scope[field] === state[field]) && cp.scope.realmId === String(state.realm?.id) && cp.scope.runtimeEntityId === String(state.runtimeEntityId) && cp.scope.life === lifeOf(state)
+  const sameOwnedStorageBox = (cp, state) => {
+    if (!storageScopeMatches(cp, state) || cp.kind !== 'shulker' || cp.purpose != null || !['placed', 'depositing'].includes(cp.stage) || cp.intent != null && cp.intent.type !== 'deposit' || cp.placed?.length !== 1 || cp.positions?.length !== 1 || cp.recovered != null) return false
+    const owned = cp.placed[0]
+    if (owned.confirmedBy !== 'server_block_and_inventory' || !isShulkerBox(owned.name) || !samePoint(owned.position, cp.positions[0])) return false
+    const block = adapter.getBlock(owned.position.x, owned.position.y, owned.position.z)
+    return block?.known === true && nameOf(block.name) === nameOf(owned.name) && Number.isSafeInteger(owned.runtimeId) && owned.runtimeId >= 0 && owned.runtimeId <= 4294967295 && block.runtimeId === owned.runtimeId && !(block.extra ?? []).length
+  }
+  // This admits only read-only inventory refresh. A pending placement gains
+  // no ownership, consumption or success credit until portable reconciliation.
+  const samePendingStoragePlacement = (cp, state) => storageScopeMatches(cp, state) && cp.jobId === job.config.jobId && cp.operationId === job.portableStorage?.operationId && cp.selectionKey === job.portableStorage?.selection?.key && job.portableStorage?.selection?.kind === 'shulker' && cp.kind === 'shulker' && cp.purpose == null && cp.stage === 'placing' && cp.intent?.type === 'place' && cp.placed?.length === 0 && cp.positions?.length === 1 && samePoint(cp.intent.position, cp.positions[0]) && Number.isInteger(cp.intent.slot) && cp.intent.slot >= 0 && cp.intent.slot < 36 && isShulkerBox(cp.intent.name) && typeof cp.intent.source === 'string' && cp.intent.source.length > 0 && cp.recovered == null && cp.expectedContents == null && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => entry.transferred === 0) && Array.isArray(cp.deposited) && cp.deposited.length === 0
+  const requireStorageOwner = (myEpoch, owner, active, checkpoint) => {
+    const state = guard(myEpoch)
+    if (job !== owner || job.portableStorage !== active || active.checkpoint !== checkpoint || !storageScopeMatches(checkpoint, state)) throw new QuarryInterrupt('STORAGE_CHECKPOINT_CHANGED')
+    return state
+  }
+  async function reserveStorageRecovery (myEpoch, owner, active, checkpoint, reason, maxAttempts = 3) {
+    requireStorageOwner(myEpoch, owner, active, checkpoint)
+    const current = now(), previous = active.recoveryAttempts?.[reason]
+    if (active.recoveryAttempts !== undefined && (!active.recoveryAttempts || typeof active.recoveryAttempts !== 'object' || Array.isArray(active.recoveryAttempts))) return false
+    if (previous !== undefined && (!previous || !Number.isSafeInteger(previous.attempts) || previous.attempts < 0 || !Number.isFinite(previous.startedAt) || !Number.isFinite(previous.deadlineAt) || previous.deadlineAt !== previous.startedAt + 120000)) return false
+    if (previous && (previous.attempts >= maxAttempts || current < previous.startedAt || current >= previous.deadlineAt)) return false
+    const next = { attempts: (previous?.attempts ?? 0) + 1, startedAt: previous?.startedAt ?? current, deadlineAt: previous?.deadlineAt ?? current + 120000, lastAttemptAt: current }
+    active.recoveryAttempts ??= {}
+    active.recoveryAttempts[reason] = next
+    await save('storage_recovery_pending')
+    requireStorageOwner(myEpoch, owner, active, checkpoint)
+    note('storage_recovery_retry', { operationId: active.operationId, reason, attempt: next.attempts, deadlineAt: new Date(next.deadlineAt).toISOString() })
+    return true
+  }
+
   async function storeCarried (myEpoch, why, depositLimit = null, capacityDecision = null) {
     const state = guard(myEpoch); const inv = items(state)
-    if (!inv) { await sleep(300); return true }
+    if (!inv) {
+      const owner = job, active = job.portableStorage, checkpoint = active?.checkpoint
+      if (!active) { await sleep(300); return true }
+      const pendingPlacement = samePendingStoragePlacement(checkpoint, state)
+      if ((sameOwnedStorageBox(checkpoint, state) || pendingPlacement) && typeof adapter.resyncInventory === 'function' && await reserveStorageRecovery(myEpoch, owner, active, checkpoint, pendingPlacement ? 'STORAGE_PLACEMENT_INVENTORY_WAIT' : 'STORAGE_INVENTORY_WAIT')) {
+        try { await call(myEpoch, 'storage_inventory_observe', signal => adapter.resyncInventory({ signal })) } catch (error) {
+          if (error instanceof QuarryInterrupt) throw error
+          note('storage_inventory_refresh_failed', { error: String(error.message ?? error).slice(0, 160) })
+        }
+        const fresh = requireStorageOwner(myEpoch, owner, active, checkpoint)
+        if (sameOwnedStorageBox(checkpoint, fresh) || samePendingStoragePlacement(checkpoint, fresh)) { setState('RETURN'); await sleep(500); requireStorageOwner(myEpoch, owner, active, checkpoint); return true }
+      }
+      await finish('PAUSED', 'CARRIED_STORAGE_BLOCKED', { pauseDetails: { reason: 'STORAGE_INVENTORY_UNKNOWN', operationId: active.operationId, kind: active.selection?.kind ?? null } })
+      return true
+    }
     const feet = feetCell(state), head = { ...feet, y: feet.y + 1 }
     if (!permits(regions, 'travel', feet).allowed || !permits(regions, 'travel', head).allowed) {
       if (Array.isArray(job.config.permissions.travelRegion)) { await finish('PAUSED', 'OUTSIDE_TRAVEL_REGION', { pauseDetails: { feet, head, phase: 'carried_storage' } }); return true }
@@ -2158,7 +2362,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (shulkerOnly && selection.kind !== 'shulker') throw new QuarryInterrupt('LEGACY_CHEST_STORAGE')
     if (capacity && selection.kind !== 'shulker') return false
     const markerDirt = capacity && job.config.exit?.mode === 'adjacent_pillar'
-    if (!job.portableStorage && markerDirt && dirtCount(inv) <= Math.max(192, job.config.inventory.keepExitDirt ?? 192)) { await finish('PAUSED', 'CAPACITY_MARKER_MATERIAL_MISSING'); return true }
+    const markerReserve = job.config.initialLoadout === 'v22' && deferredExitSupplies() && !job.egressPreparation ? 0 : Math.max(192, job.config.inventory.keepExitDirt ?? 192)
+    if (!job.portableStorage && markerDirt && dirtCount(inv) <= markerReserve) { await finish('PAUSED', 'CAPACITY_MARKER_MATERIAL_MISSING'); return true }
     if (!job.portableStorage) {
       job.portableStorageSequence = (job.portableStorageSequence ?? 0) + 1
       job.portableStorage = { operationId: `${job.config.jobId}:storage:${job.portableStorageSequence}`, selection: copy(selection), checkpoint: null, why, ...(depositLimit ? { depositLimit: copy(depositLimit) } : {}), ...(capacity ? { purpose: 'capacity_batch', capacityBatch: { decision: copy(capacityDecision), beforePlacementItems: copy(inv), inventoryPolicy: copy(inventoryPolicy()), markerDirt } } : {}) }
@@ -2199,7 +2404,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     try {
       let callFailure = null
       try { result = await call(myEpoch, 'carried_storage', async signal => {
-        try { return await adapter.storeCarried({ jobId: owner.config.jobId, operationId: active.operationId, selection: copy(selection), deposits, inventoryPolicy: copy(inventoryPolicy()), checkpoint: copy(active.checkpoint), ...(!capacity && active.why === 'full' && passivePickup() && fullOnlyStorage() ? { allowRecoverySpace: true } : {}), ...(capacity ? { purpose: 'capacity_batch', capacityBatch: copy(active.capacityBatch) } : {}) }, {
+        try { return await adapter.storeCarried({ jobId: owner.config.jobId, operationId: active.operationId, selection: copy(selection), deposits, inventoryPolicy: copy(inventoryPolicy()), checkpoint: copy(active.checkpoint), ...(active.avoidPositions?.length && !active.checkpoint ? { avoidPositions: copy(active.avoidPositions) } : {}), ...(!capacity && active.why === 'full' && passivePickup() && fullOnlyStorage() ? { allowRecoverySpace: true } : {}), ...(capacity ? { purpose: 'capacity_batch', capacityBatch: copy(active.capacityBatch) } : {}) }, {
         signal, onCheckpoint,
         ...(capacity ? { capacityWork: (context, options) => capacityWork(myEpoch, context, options) } : {}),
         canPlace: p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 })
@@ -2210,7 +2415,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       guard(myEpoch, { combat: false })
       if (checkpointFailure) throw checkpointFailure
       if (result?.checkpoint) {
-        if (callbackCount && !isDeepStrictEqual(result.checkpoint, active.checkpoint)) throw new Error('STORAGE_FINAL_CHECKPOINT_CHANGED')
+        if (callbackCount && !isDeepStrictEqual(result.checkpoint, active.checkpoint)) {
+          const fin = result.checkpoint ?? {}, saved = active.checkpoint ?? {}
+          note('storage_checkpoint_mismatch', { operationId: active.operationId, status: result.status, reason: result.reason, fields: [...new Set([...Object.keys(fin), ...Object.keys(saved)])].filter(k => !isDeepStrictEqual(fin[k], saved[k])).map(k => ({ field: k, saved: JSON.stringify(saved[k] ?? null).slice(0, 160), final: JSON.stringify(fin[k] ?? null).slice(0, 160) })) })
+          throw new Error('STORAGE_FINAL_CHECKPOINT_CHANGED')
+        }
         if (!isDeepStrictEqual(result.checkpoint, active.checkpoint)) await commitCheckpoint(result.checkpoint)
       }
       guard(myEpoch, { combat: false })
@@ -2234,17 +2443,84 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
       if (callFailure && !criticalResult) throw callFailure.drainedError ?? callFailure
       if (!criticalResult) guard(myEpoch)
-      if (result?.status === 'replan' && result.serverConfirmed === false && result.checkpoint?.stage === 'planned' && result.checkpoint.intent == null && !result.checkpoint.placed?.length) {
+      if (result?.status === 'replan' && result.serverConfirmed === false && ['STORAGE_STAND_RELOCATED', 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'].includes(result.reason) && result.checkpoint?.stage === 'planned' && result.checkpoint.intent == null && !result.checkpoint.placed?.length && await reserveStorageRecovery(myEpoch, owner, active, cp, result.reason)) {
         rec.status = 'replanned'; rec.result = copy(result)
         note('carried_storage_site_replanned', { operationId: active.operationId, rejected: result.checkpoint.rejectedPlacementSites?.length ?? 0 })
         setState('RETURN'); return true
       }
       const openRetries = active.openRetries === undefined ? 0 : active.openRetries
-      const openRetryScope = cp?.scope && ['profile', 'dimension', 'connectionId', 'startedAt'].every(field => cp.scope[field] === callState[field]) && cp.scope.realmId === String(callState.realm?.id) && cp.scope.runtimeEntityId === String(callState.runtimeEntityId) && cp.scope.life === lifeOf(callState)
+      const openRetryScope = storageScopeMatches(cp, callState)
+      const placementReason = result?.reason
+      const notSentPlacement = placementReason === 'STORAGE_PLACEMENT_NOT_SENT'
+      const observedPlacement = placementReason === 'STORAGE_PLACEMENT_RECONCILE_REQUIRED'
+      const reconcilePlacement = notSentPlacement ? adapter.reconcileCarriedPlacement : observedPlacement ? adapter.reconcileObservedPlacement : null
+      if (!callFailure && !capacity && result?.status === 'blocked' && typeof reconcilePlacement === 'function' && selection.kind === 'shulker' && cp?.purpose == null && cp.stage === 'placing' && cp.intent?.type === 'place' && cp.placed?.length === 0 && cp.positions?.length === 1 && samePoint(cp.intent.position, cp.positions[0]) && openRetryScope) {
+        rec.status = 'blocked'; rec.result = copy(result)
+        if (await reserveStorageRecovery(myEpoch, owner, active, cp, placementReason)) {
+          let staged = null, response = null
+          // Historical receive evidence is tied to the original action time.
+          // Reuse that exact record only when its entire pending CP matches;
+          // a later retry must never invent a new placement time or evidence.
+          const recordedFailure = observedPlacement ? job.actions.findLast(action => action !== rec && action.type === 'carried_storage' && action.operationId === active.operationId && action.status === 'blocked' && action.result?.status === 'blocked' && ['サーバーから設置・使用の完了を確認できませんでした。', 'プレイヤー位置・次元が変わりました。'].includes(action.result.reason) && isDeepStrictEqual(action.result.checkpoint, cp)) ?? rec : rec
+          const stableObserved = checkpoint => { const value = copy(checkpoint); for (const field of ['intent', 'stage', 'placed', 'windowId']) delete value[field]; return value }
+          try {
+            response = await call(myEpoch, 'storage_placement_reconcile', signal => reconcilePlacement({ jobId: owner.config.jobId, operationId: active.operationId, purpose: 'cargo', selection: copy(selection), checkpoint: copy(cp), reason: placementReason, recordedFailure: copy(recordedFailure) }, {
+              signal,
+              canPlace: p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 }),
+              onCheckpoint: async checkpoint => {
+                requireStorageOwner(myEpoch, owner, active, cp)
+                if (checkpoint?.jobId !== owner.config.jobId || checkpoint.operationId !== active.operationId || checkpoint.kind !== cp.kind || checkpoint.selectionKey !== cp.selectionKey || checkpoint.purpose != null || checkpoint.intent != null || !isDeepStrictEqual(checkpoint.scope, cp.scope) || !isDeepStrictEqual(checkpoint.plan, cp.plan) || !isDeepStrictEqual(checkpoint.deposited, cp.deposited) || !isDeepStrictEqual(checkpoint.sourceIdentities, cp.sourceIdentities)) throw new Error('STORAGE_RECONCILIATION_CHANGED_ASSETS')
+                if (notSentPlacement) {
+                  if (checkpoint.stage !== 'planned' || checkpoint.placed?.length !== 0 || !storagePoint(checkpoint.stand) || checkpoint.positions?.length !== 1 || !checkpoint.positions.every(storagePoint) || checkpoint.notSentPlacementProofs?.at(-1)?.notSent !== true) throw new Error('STORAGE_UNSENT_PROOF_REQUIRED')
+                } else {
+                  const placed = checkpoint.placed?.[0]
+                  if (checkpoint.stage !== 'placed' || checkpoint.placed?.length !== 1 || !samePoint(placed?.position, cp.intent.position) || placed.name !== cp.intent.name || placed.confirmedBy !== 'server_block_and_inventory' || !Number.isSafeInteger(placed.runtimeId) || placed.runtimeId < 0 || placed.runtimeId > 4294967295 || placed.placementReconciliation?.confirmedBy !== 'received_empty_source_main_and_fresh_exact_container' || !isDeepStrictEqual(stableObserved(checkpoint), stableObserved(cp))) throw new Error('STORAGE_PLACEMENT_RECONCILIATION_UNCONFIRMED')
+                }
+                staged = copy(checkpoint)
+              }
+            }), { drain: true })
+          } catch (error) {
+            if (error instanceof QuarryInterrupt) throw error
+            note('storage_placement_reconcile_failed', { reason: placementReason, error: String(error.message ?? error).slice(0, 160) })
+          }
+          requireStorageOwner(myEpoch, owner, active, cp)
+          if (response?.status === 'blocked') {
+            rec.recovery = { reason: placementReason, status: 'blocked', detail: response.reason ?? 'UNCONFIRMED' }
+            note('storage_placement_reconcile_blocked', { operationId: active.operationId, reason: placementReason, detail: rec.recovery.detail })
+            // Reconciliation only reads inventory and opens the same box. A
+            // receive timeout may retry the unchanged CP within its budget;
+            // missing ownership, send facts or contents never enter this list.
+            if (['STORAGE_INVENTORY_REFRESH_FAILED', 'STORAGE_FRESH_INVENTORY_REQUIRED', 'STORAGE_OPEN_UNCONFIRMED', 'STORAGE_CONTENTS_UNKNOWN', 'サーバーから設置・使用の完了を確認できませんでした。'].includes(response.reason)) {
+              setState('RETURN'); await sleep(500); requireStorageOwner(myEpoch, owner, active, cp); return true
+            }
+          }
+          const proof = notSentPlacement ? staged?.notSentPlacementProofs?.at(-1) : staged?.placed?.[0]?.placementReconciliation
+          if (response?.status === 'reconciled' && response.serverConfirmed === false && (notSentPlacement ? response.notSent === true : response.placementConfirmed === true) && staged && isDeepStrictEqual(response.checkpoint, staged) && isDeepStrictEqual(response.proof, proof)) {
+            active.checkpoint = staged
+            rec.status = 'reconciled'; rec.recovery = { reason: placementReason, notSent: notSentPlacement, placementConfirmed: observedPlacement }
+            try { await save('storage_placement_auto_reconciled') } catch (error) { active.checkpoint = cp; throw error }
+            requireStorageOwner(myEpoch, owner, active, staged)
+            note('storage_placement_auto_reconciled', { operationId: active.operationId, reason: placementReason, credited: 0 })
+            setState('RETURN'); return true
+          }
+        }
+      }
+      const receptionWait = ['STORAGE_CONTENTS_UNKNOWN', 'STORAGE_OPEN_UNCONFIRMED', 'STORAGE_INVENTORY_REFRESH_FAILED', 'STORAGE_FRESH_INVENTORY_REQUIRED'].includes(result?.reason)
+      if (!callFailure && !capacity && result?.status === 'blocked' && receptionWait && sameOwnedStorageBox(cp, guard(myEpoch)) && typeof adapter.resyncInventory === 'function') {
+        rec.status = 'blocked'; rec.result = copy(result)
+        if (await reserveStorageRecovery(myEpoch, owner, active, cp, result.reason)) {
+          try { await call(myEpoch, 'storage_reception_observe', signal => adapter.resyncInventory({ signal })) } catch (error) {
+            if (error instanceof QuarryInterrupt) throw error
+            note('storage_reception_refresh_failed', { error: String(error.message ?? error).slice(0, 160) })
+          }
+          const fresh = requireStorageOwner(myEpoch, owner, active, cp)
+          if (sameOwnedStorageBox(cp, fresh)) { setState('RETURN'); await sleep(500); requireStorageOwner(myEpoch, owner, active, cp); return true }
+        }
+      }
       // Opening a confirmed, untouched box can be retried without replaying a
       // placement or transfer. Preserve the failed attempt; the next normal
       // storage call still requires a fresh GUI and exact contents evidence.
-      if (!callFailure && !capacity && selection.kind === 'shulker' && result?.status === 'blocked' && result.reason === 'サーバーから設置・使用の完了を確認できませんでした。' && result.serverConfirmed === false && result.recovered === false && Array.isArray(result.deposited) && result.deposited.length === 0 && cp?.kind === 'shulker' && cp.purpose == null && cp.stage === 'placed' && cp.intent == null && cp.recovered == null && cp.opened !== true && cp.windowId == null && cp.initialContents && cp.initialContentsVerified == null && cp.positions?.length === 1 && cp.placed?.length === 1 && owned?.confirmedBy === 'server_block_and_inventory' && samePoint(owned.position, cp.positions[0]) && Number.isSafeInteger(owned.runtimeId) && owned.runtimeId >= 0 && owned.runtimeId <= 4294967295 && Array.isArray(cp.deposited) && cp.deposited.length === 0 && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => Number.isSafeInteger(entry.count) && entry.count > 0 && entry.transferred === 0) && openRetryScope && Number.isSafeInteger(openRetries) && openRetries >= 0 && openRetries < 2) {
+      if (!callFailure && !capacity && selection.kind === 'shulker' && result?.status === 'blocked' && result.reason === 'サーバーから設置・使用の完了を確認できませんでした。' && result.serverConfirmed === false && result.recovered === false && Array.isArray(result.deposited) && result.deposited.length === 0 && cp?.kind === 'shulker' && cp.purpose == null && cp.stage === 'placed' && cp.intent == null && cp.recovered == null && cp.opened !== true && cp.windowId == null && cp.initialContents && cp.initialContentsVerified == null && cp.positions?.length === 1 && cp.placed?.length === 1 && owned?.confirmedBy === 'server_block_and_inventory' && samePoint(owned.position, cp.positions[0]) && Number.isSafeInteger(owned.runtimeId) && owned.runtimeId >= 0 && owned.runtimeId <= 4294967295 && Array.isArray(cp.deposited) && cp.deposited.length === 0 && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => Number.isSafeInteger(entry.count) && entry.count > 0 && entry.transferred === 0) && openRetryScope && Number.isSafeInteger(openRetries) && openRetries >= 0 && openRetries < 2 && await reserveStorageRecovery(myEpoch, owner, active, cp, 'STORAGE_OPEN_WAIT', 2)) {
         guard(myEpoch)
         active.openRetries = openRetries + 1
         rec.status = 'blocked'; rec.result = copy(result)
@@ -2253,7 +2529,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         note('storage_open_retry', { operationId: active.operationId, attempt: active.openRetries })
         setState('RETURN'); await sleep(200); return true
       }
-      if (result?.status === 'blocked' && result.reason === 'STORAGE_SOURCE_REJECTED' && cp?.stage === 'depositing' && cp.intent?.type === 'deposit' && cp.intent.rejectionProof?.protocolStatusCode === 49 && (active.sourceRejectionRetries ?? 0) < 2) {
+      if (result?.status === 'blocked' && result.reason === 'STORAGE_SOURCE_REJECTED' && cp?.stage === 'depositing' && cp.intent?.type === 'deposit' && cp.intent.rejectionProof?.protocolStatusCode === 49 && openRetryScope && (active.sourceRejectionRetries ?? 0) < 2 && await reserveStorageRecovery(myEpoch, owner, active, cp, 'STORAGE_SOURCE_REJECTED', 2)) {
         guard(myEpoch)
         active.sourceRejectionRetries = (active.sourceRejectionRetries ?? 0) + 1
         rec.status = 'interrupted'; rec.result = copy(result)
@@ -2261,6 +2537,63 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         guard(myEpoch)
         note('storage_source_rejection_retry', { operationId: active.operationId, attempt: active.sourceRejectionRetries, requestId: cp.intent.rejectionProof.requestId })
         setState('RETURN'); await sleep(200); return true
+      }
+      const pickupRetries = active.pickupSpaceRetries === undefined ? 0 : active.pickupSpaceRetries
+      const pickupDrops = stopped?.nearbyDrops
+      // Pick up only the actual loose blockers while the confirmed owned box
+      // is still intact. Its normal reopen/packing path keeps every receipt
+      // and capacity guard; no missing entity is treated as a pickup receipt.
+      if (!callFailure && !capacity && passivePickup() && fullOnlyStorage() && active.why === 'full' && result?.status === 'blocked' && result.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED' && stopped?.kind === 'owned_box_pickup_capacity' && stopped.phase === 'before_packing' && cp?.kind === 'shulker' && cp.purpose == null && cp.stage === 'depositing' && cp.intent == null && cp.expectedContents == null && cp.full !== true && cp.recovered == null && cp.positions?.length === 1 && cp.placed?.length === 1 && owned?.confirmedBy === 'server_block_and_inventory' && samePoint(owned.position, cp.positions[0]) && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => Number.isSafeInteger(entry.count) && entry.count > 0 && entry.transferred === entry.count) && openRetryScope && Number.isSafeInteger(pickupRetries) && pickupRetries >= 0 && pickupRetries < 3 && Array.isArray(pickupDrops) && pickupDrops.length > 0 && pickupDrops.length <= 16) {
+        const inventory = items(guard(myEpoch))
+        const allowedDrops = pickupDrops.filter(drop => typeof drop.runtimeId === 'string' && /^\d{1,20}$/.test(drop.runtimeId) && typeof drop.name === 'string' && !isShulkerBox(drop.name) && !['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(blockRule(drop.name).reason))
+        const ids = [...new Set(allowedDrops.map(drop => drop.runtimeId))]
+        if (inventory && freeSlots(inventory) > 0 && ids.length && await reserveStorageRecovery(myEpoch, owner, active, cp, 'STORAGE_PICKUP_CAPACITY_REQUIRED')) {
+          const baseline = totals(inventory), targetNames = new Set(allowedDrops.map(drop => nameOf(drop.name)))
+          const requireOwner = () => {
+            const current = guard(myEpoch)
+            if (job !== owner || job.portableStorage !== active || active.checkpoint !== cp) throw new QuarryInterrupt('STORAGE_CHECKPOINT_CHANGED')
+            return current
+          }
+          active.pickupSpaceRetries = pickupRetries + 1
+          rec.status = 'blocked'; rec.result = copy(result)
+          await save('storage_pickup_space_pending')
+          requireOwner()
+          note('storage_pickup_space_collect', { operationId: active.operationId, attempt: active.pickupSpaceRetries, targets: ids.length })
+          await collect(myEpoch, 'storage_recovery_space', { onlyDropIds: ids })
+          let fresh = items(requireOwner())
+          const gains = () => fresh ? diff(baseline, totals(fresh)).filter(entry => entry.delta > 0 && targetNames.has(nameOf(entry.name))) : []
+          if (!gains().length && typeof adapter.resyncInventory === 'function') {
+            try { await call(myEpoch, 'storage_pickup_observe', signal => adapter.resyncInventory({ signal })) } catch (error) {
+              if (error instanceof QuarryInterrupt) throw error
+              note('storage_pickup_space_resync_failed', { error: String(error.message ?? error).slice(0, 160) })
+            }
+            fresh = items(requireOwner())
+          }
+          const received = gains()
+          if (received.length) {
+            active.pickupSpaceObservation = { attempt: active.pickupSpaceRetries, observedAt: new Date(now()).toISOString(), gains: copy(received) }
+            await save('storage_pickup_space_received')
+            requireOwner()
+            note('storage_pickup_space_received', { operationId: active.operationId, attempt: active.pickupSpaceRetries, gains: received })
+            setState('RETURN'); return true
+          }
+          note('storage_pickup_space_unconfirmed', { operationId: active.operationId, attempt: active.pickupSpaceRetries })
+        }
+      }
+      // Like supplies (live 2026-11-12 21:12, chickens on the box cell): a
+      // storage operation refused before anything was placed, deposited or
+      // moved starts over at a newly chosen site, up to three times.
+      if (!['completed', 'full'].includes(result?.status) && STORAGE_SITE_RETRY_REASONS.has(result?.reason) && supplyUntouched({ child: active.checkpoint }) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
+        active.siteRetries = (active.siteRetries ?? 0) + 1
+        const refused = (active.checkpoint?.positions ?? []).filter(p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])))
+        active.avoidPositions = [...(active.avoidPositions ?? []), ...refused].slice(-12)
+        note('storage_site_retry', { operationId: active.operationId, reason: result.reason, attempt: active.siteRetries, issue: copy(active.checkpoint?.siteIssue ?? null), mobOverlap: /^ENTIT/.test(active.checkpoint?.siteIssue?.cause ?? ''), previewRejection: copy(active.checkpoint?.previewRejection ?? null), avoid: copy(refused) })
+        rec.status = 'blocked'; rec.result = copy(result)
+        active.checkpoint = null
+        await save('storage_site_retry')
+        const until = now() + SUPPLY_SITE_RETRY_WAIT_MS
+        while (now() < until) { await sleep(100); guard(myEpoch) }
+        setState('RETURN'); return true
       }
       if (!['completed', 'full'].includes(result?.status) || result.serverConfirmed !== true || selection.kind === 'shulker' && result.recovered !== true) {
         rec.status = 'blocked'; rec.result = copy(result)
@@ -2526,7 +2859,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (active.roomAttempts > SUPPLY_ROOM_MAX_ATTEMPTS || typeof adapter.place !== 'function' || typeof adapter.equip !== 'function') return false
     let inventory = items(guard(myEpoch))
     if (!inventory) return false
-    const keepDirt = (job.config.inventory?.keepExitDirt ?? 192) + (job.config.inventory?.keepSealBlocks ?? 32)
+    const roomPolicy = job.config.initialLoadout === 'v22' && deferredExitSupplies() ? inventoryPolicy() : job.config.inventory
+    const keepDirt = (roomPolicy?.keepExitDirt ?? 192) + (roomPolicy?.keepSealBlocks ?? 32)
     const dirtTotal = inventory.filter(i => nameOf(i.name) === 'dirt' && i.slot >= 0 && i.slot < 36).reduce((n, i) => n + i.count, 0)
     const pick = inventory.filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot < 36 && i.count > 0 && i.count <= SUPPLY_ROOM_MAX_BLOCKS && SEAL_MATERIALS.includes(nameOf(i.name)) && (nameOf(i.name) !== 'dirt' || dirtTotal - i.count >= keepDirt)).sort((a, b) => a.count - b.count || a.slot - b.slot)[0]
     if (!pick) { note('supply_room_unavailable', {}); return false }
@@ -2673,13 +3007,13 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       for (const e of toolWait) { const n = e.needs ? `${e.needs.kind ?? e.needs}${e.needs.tier != null ? `:${e.needs.tier}` : ''}` : 'unknown'; needs[n] = (needs[n] ?? 0) + 1 }
       return finish('PAUSED', 'WAITING_FOR_TOOL', { pauseDetails: { cells: toolWait.length, needs, byReason, examples: toolWait.slice(0, 10) } })
     }
-    if (fourLayerStorage() && job.config.exit?.mode === 'adjacent_pillar') {
+    if (deferredExitSupplies() && job.config.exit?.mode === 'adjacent_pillar') {
       // The dirt box keeps the exit reserve while the quarry is in progress.
       // Withdraw only after all ordinary drops have reached the cargo boxes.
       if (!job.egressPreparation) { job.egressPreparation = true; await save('egress_dirt_intent') }
       const inv = items(guard(myEpoch))
       if (!inv) return finish('PAUSED', 'INVENTORY_UNKNOWN')
-      if ((totals(inv).get('dirt') ?? 0) < 192) {
+      if ((totals(inv).get('dirt') ?? 0) < Math.max(192, job.config.inventory.keepExitDirt ?? 0)) {
         if (await restock(myEpoch, 'FINAL_CHECK', true)) return
         return finish('PAUSED', 'EXIT_DIRT_WITHDRAW_BLOCKED')
       }
@@ -2737,7 +3071,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job.egress?.operationId) {
       const read = planningBlocks(job.config); let unknownExitTerrain = false
       const exitBlocks = (x, y, z) => { const b = read(x, y, z); if (b?.known !== true) unknownExitTerrain = true; return b }
-      const selected = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(s), getBlock: exitBlocks, inventory: items(s), policy: { ...job.config.tools, ...job.config.collection }, minFreeSlots: fourLayerStorage() ? 0 : job.config.inventory.minFreeSlots, allowFullBag: fourLayerStorage() || !!job.storageExhausted && passivePickup(), exit: job.config.exit, reservation: job.exitReservation?.plan ?? null, reachable: planner.reachableFrom(feetCell(s)) })
+      const selected = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(s), getBlock: exitBlocks, inventory: items(s), policy: { ...job.config.tools, ...job.config.collection }, minFreeSlots: deferredExitSupplies() ? 0 : job.config.inventory.minFreeSlots, allowFullBag: deferredExitSupplies() || !!job.storageExhausted && passivePickup(), exit: job.config.exit, reservation: job.exitReservation?.plan ?? null, reachable: planner.reachableFrom(feetCell(s)) })
       job.egress = { phase: selected.ok ? 'planned' : 'blocked', reason: selected.reason ?? null, plan: copy(selected.plan ?? null), operationId: null, checkpoint: null, scope: scopeOf(s), life: lifeOf(s) }
       if (selected.plan) job.config.inventory.keepExitDirt = selected.plan.totalDirt
       if (!selected.ok && selected.reason === 'EXIT_COLUMN_UNAVAILABLE' && unknownExitTerrain && await requestTerrainObservation(myEpoch, 'egress')) { job.egress.phase = 'planned'; job.egress.reason = 'EXIT_TERRAIN_PENDING'; return }
@@ -2769,7 +3103,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     active.phase = 'running'; active.reason = null
     const hpBefore = Number(guard(myEpoch).health), feetBefore = active.checkpoint?.confirmedFeetY ?? null
     const rec = recordAction({ type: 'egress', operationId: active.operationId, column: active.plan.column })
-    const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint), ...(reconnect ? { reconnect: true } : {}), ...(fourLayerStorage() || job.storageExhausted && passivePickup() ? { allowFullInventory: true } : {}) }, { signal, onCheckpoint }))
+    const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint), ...(reconnect ? { reconnect: true } : {}), ...(deferredExitSupplies() || job.storageExhausted && passivePickup() ? { allowFullInventory: true } : {}) }, { signal, onCheckpoint }))
     guard(myEpoch)
     if (result?.checkpoint) await onCheckpoint(result.checkpoint)
     rec.result = copy(result ?? null)
@@ -3064,6 +3398,59 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       return { ...status(), carriedPlacementReconciliation: { status: 'reconciled', notSent: true, proof: copy(response.proof), nextSite: copy(response.nextSite) } }
     } finally { reconcilingCarriedPlacement = false; release(); if (worker === lock) worker = null }
   }
+  async function reconcileCurrentStoragePlacement () {
+    requireDrained()
+    if (!job || job.state !== 'PAUSED' || typeof adapter.reconcileCurrentPlacement !== 'function') throw new Error('Current storage reconciliation requires a drained paused operation')
+    if (job.persistence?.status === 'failed') throw new QuarryInterrupt('PERSISTENCE_FAILED')
+    const owner = job, active = job.portableStorage, generation = epoch, intent = job.userRunIntent
+    if (!active?.checkpoint || active.purpose != null || active.selection?.kind !== 'shulker' || job.supplyRestock || job.pauseReason !== 'CARRIED_STORAGE_BLOCKED' || job.pauseDetails?.operationId !== active.operationId) throw new Error('No matching paused cargo placement is recorded')
+    const before = copy(active.checkpoint), actions = job.actions.slice(), beforeCheckpoint = active.checkpoint
+    let expectedCheckpoint = beforeCheckpoint
+    if (!samePendingStoragePlacement(before, adapter.getState()) || before.plan.some(entry => !Number.isSafeInteger(entry.count) || entry.count < 1)) throw new Error('A current unresolved cargo placement is required')
+    const prior = { pauseReason: job.pauseReason, pauseDetails: copy(job.pauseDetails), result: copy(job.result), savedAt: job.savedAt }
+    const owns = () => {
+      const current = adapter.getState()
+      if (job !== owner || job.portableStorage !== active || active.checkpoint !== expectedCheckpoint || epoch !== generation || job.state !== 'PAUSED' || job.userRunIntent !== intent || job.persistence?.status === 'failed' || current?.phase !== 'spawned' || current.dead || current.isDead || current.lifecycle?.dead || !(current.health > 0) || !storageScopeMatches(before, current) || scopeOf(current) !== job.scope || lifeOf(current) !== job.life || adapter.combatActive() || job.actions.length !== actions.length || job.actions.some((action, index) => action !== actions[index])) throw new Error('Current storage reconciliation was interrupted')
+      assertJobWorld(job, current)
+    }
+    const stable = checkpoint => {
+      const value = copy(checkpoint)
+      for (const field of ['intent', 'stage', 'windowId', 'currentPlacementReconciliations']) delete value[field]
+      return value
+    }
+    const local = new AbortController()
+    let release, staged = null, watcher, outcome
+    const lock = new Promise(resolve => { release = resolve })
+    clearAutoResume()
+    worker = lock; reconcilingCarriedPlacement = true
+    try {
+      owns()
+      watcher = setInterval(() => { try { owns() } catch (error) { local.abort(error) } }, pollMs)
+      const response = await adapter.reconcileCurrentPlacement({ jobId: owner.config.jobId, operationId: active.operationId, purpose: 'cargo', selection: copy(active.selection), checkpoint: copy(before), manual: true }, {
+        signal: local.signal,
+        canPlace: p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 }),
+        onCheckpoint: async checkpoint => {
+          owns()
+          const previous = before.currentPlacementReconciliations ?? [], audits = checkpoint?.currentPlacementReconciliations, latest = audits?.at(-1)
+          const proof = latest?.proof, server = proof?.serverState
+          if (checkpoint?.jobId !== owner.config.jobId || checkpoint.operationId !== active.operationId || checkpoint.kind !== 'shulker' || checkpoint.stage !== 'planned' || checkpoint.intent != null || checkpoint.windowId != null || !storagePoint(checkpoint.stand) || checkpoint.positions?.length !== 1 || !checkpoint.positions.every(storagePoint) || !isDeepStrictEqual(stable(checkpoint), stable(before)) || !Array.isArray(previous) || !Array.isArray(audits) || audits.length !== previous.length + 1 || audits.length > 3 || !isDeepStrictEqual(audits.slice(0, -1), previous) || latest?.version !== 1 || !isDeepStrictEqual(latest.originalIntent, before.intent) || !isDeepStrictEqual(latest.originalFailure, before.intent.placementFailure ?? null) || proof?.kind !== 'current_state_placement_reconciliation' || proof.version !== 1 || proof.manual !== true || proof.requestOutcome !== 'unknown' || proof.notSent === true || proof.jobId !== owner.config.jobId || proof.operationId !== active.operationId || !isDeepStrictEqual(proof.scope, before.scope) || !samePoint(proof.position, before.intent.position) || proof.sourceSlot !== before.intent.slot || !Number.isSafeInteger(proof.sourceStackId) || proof.sourceStackId < 1 || typeof proof.sourceHash !== 'string' || !/^[a-f0-9]{64}$/.test(proof.sourceHash) || server?.serverConfirmed !== true || server.kind !== 'current_placement_state' || server.targetAir !== true || server.quiet !== true || server.jobId !== owner.config.jobId || server.operationId !== active.operationId || !isDeepStrictEqual(server.scope, before.scope) || !samePoint(server.position, before.intent.position)) throw new Error('Current storage reconciliation changed assets or history')
+          staged = copy(checkpoint)
+        }
+      })
+      owns()
+      const proof = staged?.currentPlacementReconciliations?.at(-1)?.proof
+      if (response?.status !== 'reconciled' || response.currentStateConfirmed !== true || response.serverConfirmed !== false || response.notSent === true || !staged || !isDeepStrictEqual(staged, response.checkpoint) || !isDeepStrictEqual(proof, response.proof)) outcome = { status: 'blocked', reason: response?.reason ?? 'UNCONFIRMED' }
+      else {
+        active.checkpoint = staged
+        expectedCheckpoint = staged
+        job.pauseReason = 'STORAGE_CURRENT_STATE_RECONCILED'; job.pauseDetails = { operationId: active.operationId, currentStateConfirmed: true, requestOutcome: 'unknown' }; job.result = null
+        try { await save('storage_current_state_reconciled') } catch (error) { active.checkpoint = beforeCheckpoint; expectedCheckpoint = beforeCheckpoint; Object.assign(job, prior); throw error }
+        note('storage_current_state_reconciled', { operationId: active.operationId, credited: 0, requestOutcome: 'unknown' })
+        outcome = { status: 'reconciled', currentStateConfirmed: true, serverConfirmed: false, requestOutcome: 'unknown', proof: copy(proof) }
+      }
+    } finally { clearInterval(watcher); reconcilingCarriedPlacement = false; release(); if (worker === lock) worker = null }
+    return { ...status(), currentStoragePlacementReconciliation: outcome }
+  }
   async function reconcileSupplyPlacement () {
     if (!job || worker || job.state !== 'PAUSED' || typeof adapter.reconcileSupplyPlacement !== 'function') throw new Error('Placement reconciliation requires a drained paused supply operation')
     const owner = job, active = job.supplyRestock
@@ -3312,9 +3699,13 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const world = assertJobWorld(doc, adapter.getState())
     clearAutoResume()
     if (!validStoragePair(doc.config.inventory)) throw new Error('Unsupported saved storage policy')
+    if (doc.config.initialLoadout != null && doc.config.initialLoadout !== 'v22') throw new Error('Unsupported saved initial loadout')
+    if (doc.config.inventory.supplyLayout != null && doc.config.inventory.supplyLayout !== 'v22') throw new Error('Unsupported saved supply layout')
     const pendingStorage = doc.pendingStorageConfiguration
     if (pendingStorage != null && (typeof pendingStorage !== 'object' || Array.isArray(pendingStorage) || Object.keys(pendingStorage).some(key => !['pickupMode', 'depositWhen', 'requestedAt'].includes(key)) || typeof pendingStorage.pickupMode !== 'string' || typeof pendingStorage.depositWhen !== 'string' || !validStoragePair(pendingStorage) || pendingStorage.requestedAt !== undefined && (typeof pendingStorage.requestedAt !== 'string' || !Number.isFinite(Date.parse(pendingStorage.requestedAt))))) throw new Error('Invalid pending storage configuration')
     job = copy(doc)
+    job.config.initialLoadout ??= null
+    if (job.config.initialLoadout === 'v22') job.config.inventory.supplyLayout = 'v22'
     job.world = world
     job.instanceId = documentInstance(doc)
     job.actionSequence ??= Math.max(0, ...(job.actions ?? []).map(action => action.sequence ?? 0))
@@ -3369,7 +3760,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       ledger: ledger.summary(), ledgerDetail: ledger.export(), pendingDrops: pendingDrops.length, unreachableItems: job.unreachableItems ?? [],
       combat: { ...combatBridge.snapshot(), settle: job.settle ?? null, recovery: job.recovery ?? null, interruption: job.interruption },
       portableStorage: job.portableStorage ? { operationId: job.portableStorage.operationId, kind: job.portableStorage.selection?.kind, stage: job.portableStorage.checkpoint?.stage ?? 'intent', positions: copy(job.portableStorage.checkpoint?.positions ?? []), why: job.portableStorage.why } : null,
-      supplies: { enabled: !!job.config.inventory.supplyBoxes?.length, bindings: copy(job.config.inventory.supplyBoxes ?? []), needs: items(s) ? supplyNeeds(items(s), { ...job.config.inventory, tools: job.config.tools }) : null, active: job.supplyRestock ? { operationId: job.supplyRestock.operationId, index: job.supplyRestock.checkpoint?.index ?? null, phase: job.supplyRestock.checkpoint?.phase ?? 'intent' } : null, lastResult: copy(job.lastSupplyResult ?? null) },
+      supplies: { enabled: !!job.config.inventory.supplyBoxes?.length, bindings: copy(job.config.inventory.supplyBoxes ?? []), needs: items(s) ? supplyNeeds(items(s), { ...job.config.inventory, tools: job.config.tools,
+        ...(deferredExitSupplies() ? { deferExitSupplies: true, exitPreparing: job.egressPreparation === true, exitDirtTarget: Math.max(192, job.config.inventory.keepExitDirt ?? 0) } : {}) }) : null, active: job.supplyRestock ? { operationId: job.supplyRestock.operationId, index: job.supplyRestock.checkpoint?.index ?? null, phase: job.supplyRestock.checkpoint?.phase ?? 'intent' } : null, lastResult: copy(job.lastSupplyResult ?? null) },
       egress: egressStatus(inv),
       tools: { ...copy(job.config.tools), hardMinimumRemaining: 1, states: inv ? inv.map(i => toolState(i, job.config.tools)).filter(Boolean).map(t => ({ slot: t.item.slot, name: t.item.name, remaining: t.remaining ?? null, reserve: t.reserve ?? null, usable: t.usable, reason: t.reason ?? null })) : null },
       terrainObservation: copy(job.terrainObservation ?? null),
@@ -3405,7 +3797,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
+  return { plan, start, pause, emergencyStop, resume, cancel, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults }

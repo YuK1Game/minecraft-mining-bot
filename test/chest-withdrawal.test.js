@@ -11,7 +11,7 @@ loaded._compile(fs.readFileSync(file, 'utf8').split('\ntest(')[0] + '\nmodule.ex
 const { fixture, item, air } = loaded.exports
 
 function setup (t, { name = 'minecraft:bread', count = 64, targetCount = 0, blockName = 'minecraft:undyed_shulker_box', timeoutMs = 2000 } = {}) {
-  const f = fixture({ actualCrafting: true, wireDecode: true, blockName, timeoutMs })
+  const f = fixture({ actualCrafting: true, wireDecode: true, reconcile: true, blockName, timeoutMs })
   f.observe('item_registry', { itemstates: [{ runtime_id: 401, name: 'minecraft:diamond' }, { runtime_id: 402, name: 'minecraft:dirt' }, { runtime_id: 410, name }] })
   const source = item(410, count, 810)
   if (name.endsWith('_pickaxe')) source.extra = { ...source.extra, has_nbt: true, nbt: { version: 1, nbt: { type: 'compound', name: '', value: { Damage: { type: 'int', value: 29 }, display: { type: 'compound', value: { Name: { type: 'string', value: 'received tool' } } } } } } }

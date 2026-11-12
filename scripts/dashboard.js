@@ -156,7 +156,10 @@ function createDashboard ({ controls = null, workspaceRoot = path.resolve(__dirn
       response.end(method === 'HEAD' ? undefined : data)
     }
     const canonical = `http://${HOST}:${PORT}`
-    if (request.headers.host !== `${HOST}:${PORT}` || request.headers.origin != null && request.headers.origin !== canonical || request.headers['sec-fetch-site'] === 'cross-site') { request.resume?.(); send(403, { error: 'このPCのBot監視ページから利用してください。' }); return }
+    // A top-level browser entry can be cross-site; only the exact landing
+    // document may enter that way. APIs, assets and writes keep the gate.
+    const documentEntry = method === 'GET' && request.url === '/' && request.headers['sec-fetch-mode'] === 'navigate' && request.headers['sec-fetch-dest'] === 'document'
+    if (request.headers.host !== `${HOST}:${PORT}` || request.headers.origin != null && request.headers.origin !== canonical || request.headers['sec-fetch-site'] === 'cross-site' && !documentEntry) { request.resume?.(); send(403, { error: 'このPCのBot監視ページから利用してください。' }); return }
     if (!['GET', 'HEAD', 'POST'].includes(method)) { request.resume?.(); send(405, { error: 'Bot監視ページは読み取り専用です。' }, undefined, { Allow: 'GET, HEAD' }); return }
     if (typeof request.url !== 'string' || request.url.length > 2048 || !request.url.startsWith('/') || request.url.startsWith('//')) { send(400, { error: 'Invalid request URL' }); return }
     let url
@@ -169,7 +172,7 @@ function createDashboard ({ controls = null, workspaceRoot = path.resolve(__dirn
       if (request.headers['x-bot-control'] !== controlToken || method === 'POST' && request.headers.origin !== canonical) { request.resume?.(); send(403, { error: '画面を再読み込みしてから操作してください。' }); return }
       if (method === 'GET' && url.pathname === '/api/control/state') { send(200, await controls.snapshot()); return }
       const route = url.pathname.slice('/api/control/'.length)
-      if (method !== 'POST' || !['realms', 'connect', 'disconnect', 'quarry', 'loadout'].includes(route) || request.url !== url.pathname) { request.resume?.(); send(404, { error: 'Not found' }); return }
+      if (method !== 'POST' || !['realms', 'connect', 'disconnect', 'quarry', 'loadout', 'storage'].includes(route) || request.url !== url.pathname) { request.resume?.(); send(404, { error: 'Not found' }); return }
       if (request.headers['content-type']?.split(';')[0].trim() !== 'application/json') { request.resume?.(); send(415, { error: 'application/json が必要です。' }); return }
       try {
         const chunks = []; let bytes = 0

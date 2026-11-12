@@ -18,6 +18,19 @@ const samePosition = (a, b) => a && b && a.x === b.x && a.y === b.y && a.z === b
 const rawEmpty = raw => raw?.network_id === 0 && raw.count === 0
 const validRaw = raw => Boolean(raw && Number.isInteger(raw.network_id) && Number.isInteger(raw.count) && raw.count >= 0 && raw.count <= 255 && (raw.network_id === 0 ? raw.count === 0 && (raw.has_stack_id !== true || raw.stack_id === 0) : raw.count > 0 && raw.has_stack_id === true && Number.isInteger(raw.stack_id) && raw.stack_id > 0 && raw.stack_id <= 2147483647))
 const identity = raw => raw && { network_id: raw.network_id, metadata: raw.metadata, block_runtime_id: raw.block_runtime_id, extra: raw.extra }
+function knownUnnamedItem (raw) {
+  if (!Number.isInteger(raw?.metadata) || !Number.isInteger(raw.block_runtime_id) || !raw.extra ||
+    !Array.isArray(raw.extra.can_place_on) || !Array.isArray(raw.extra.can_destroy)) return false
+  if ([false, 'false', 0].includes(raw.extra.has_nbt)) return raw.extra.nbt == null
+  const tag = raw.extra.nbt?.nbt ?? raw.extra.nbt
+  if (![true, 'true', 65535].includes(raw.extra.has_nbt) || tag?.type !== 'compound' || !tag.value || typeof tag.value !== 'object' || Array.isArray(tag.value) || tag.name && tag.name !== '') return false
+  const unnamed = field => field?.type === 'string' && field.value === ''
+  if (Object.hasOwn(tag.value, 'CustomName') && !unnamed(tag.value.CustomName)) return false
+  const display = tag.value.display
+  return !Object.hasOwn(tag.value, 'display') || display?.type === 'compound' && display.value && typeof display.value === 'object' && !Array.isArray(display.value) &&
+    (!Object.hasOwn(display.value, 'Name') || unnamed(display.value.Name))
+}
+const uncorrectedSlot = slot => slot?.durability_correction === 0 && slot.custom_name === '' && slot.filtered_custom_name === ''
 const fullName = container_id => ({ container_id, dynamic_container_id: null })
 const stackSlot = (container, slot, raw) => ({ slot_type: fullName(container), slot, stack_id: rawEmpty(raw) ? 0 : raw.stack_id })
 const canonical = name => String(name).includes(':') ? String(name) : `minecraft:${name}`
@@ -163,9 +176,10 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
     } catch (error) { cancel(error.message) }
   }
   function checkWithdrawal (attempt) {
-    // A take never synthesizes a tool/NBT from ACK counts. Both changed slots
-    // must actually arrive after this request in the same open window/life.
-    if (!attempt.accepted || !attempt.ack || (slotVersions.get(attempt.chestSlot) ?? 0) <= attempt.beforeSequence || (playerVersions.get(attempt.playerSlot) ?? 0) <= attempt.beforeSequence) return
+    if (!attempt.accepted || !attempt.ack || attempt.reconciling || (slotVersions.get(attempt.chestSlot) ?? 0) <= attempt.beforeSequence) return
+    if ((playerVersions.get(attempt.playerSlot) ?? 0) <= attempt.beforeSequence) {
+      if (!reconcileWholeWithdrawal(attempt)) return
+    }
     const chest = slots.get(attempt.chestSlot), player = playerSlots.get(attempt.playerSlot)
     const chestCount = attempt.source.count - attempt.count, playerCount = attempt.destination.count + attempt.count
     if (!validRaw(chest) || !validRaw(player)) throw new Error('引き出した実アイテムの両側スロットが不明です。')
@@ -174,7 +188,36 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
     if (player.stack_id !== attempt.ack.player.item_stack_id || chestCount > 0 && chest.stack_id !== attempt.ack.chest.item_stack_id) throw new Error('引き出しの実スロットと受理応答のスタックIDが一致しません。')
     if (!isDeepStrictEqual(player, crafting.rawItem(attempt.playerSlot))) throw new Error('引き出し先のサーバー持ち物キャッシュが一致しません。')
     attempt.confirmed = true
-    finish(attempt, { phase: 'completed', operation: 'withdraw_item', serverConfirmed: true, inventoryConfirmed: true, containerConfirmed: true, inventoryEvidence: 'received_slot_descriptor', containerEvidence: 'received_slot_descriptor', item: attempt.name, count: attempt.count, requestId: attempt.id, playerSlot: attempt.playerSlot, chestSlot: attempt.chestSlot, windowId: attempt.windowId, position: copy(attempt.position), scope: copy(attempt.scope), confirmedBy: 'matching_response_and_actual_inventory_slots', before: { playerCount: attempt.destination.count, chestCount: attempt.source.count, playerStackId: rawEmpty(attempt.destination) ? 0 : attempt.destination.stack_id, chestStackId: attempt.source.stack_id }, after: { playerCount, chestCount, playerStackId: player.stack_id, chestStackId: rawEmpty(chest) ? 0 : chest.stack_id } })
+    finish(attempt, { phase: 'completed', operation: 'withdraw_item', serverConfirmed: true, inventoryConfirmed: true, containerConfirmed: true, inventoryEvidence: attempt.playerReconciled ? 'server_item_stack_response' : 'received_slot_descriptor', containerEvidence: 'received_slot_descriptor', item: attempt.name, count: attempt.count, requestId: attempt.id, playerSlot: attempt.playerSlot, chestSlot: attempt.chestSlot, windowId: attempt.windowId, position: copy(attempt.position), scope: copy(attempt.scope), confirmedBy: attempt.playerReconciled ? 'matching_response_main_slot_and_actual_chest_slot' : 'matching_response_and_actual_inventory_slots', before: { playerCount: attempt.destination.count, chestCount: attempt.source.count, playerStackId: rawEmpty(attempt.destination) ? 0 : attempt.destination.stack_id, chestStackId: attempt.source.stack_id }, after: { playerCount, chestCount, playerStackId: player.stack_id, chestStackId: rawEmpty(chest) ? 0 : chest.stack_id } })
+  }
+  function reconcileWholeWithdrawal (attempt) {
+    const ack = attempt.ack, type = ack.playerContainer
+    const mainAlias = ['hotbar_and_inventory', 12].includes(type) || ['hotbar', 28].includes(type) && attempt.playerSlot < 9 || ['inventory', 29].includes(type) && attempt.playerSlot >= 9
+    const chest = slots.get(attempt.chestSlot)
+    // A whole take into an empty slot preserves an already received item.
+    // The fresh empty source and both exact ACK rows prove this transfer;
+    // counts alone, splits, merges, renames and corrections cannot supply NBT.
+    if (!attempt.wireSent || !mainAlias || attempt.count !== attempt.source.count || !rawEmpty(attempt.destination) ||
+      !knownUnnamedItem(attempt.source) || !validRaw(chest) || !rawEmpty(chest) || !uncorrectedSlot(ack.player) || !uncorrectedSlot(ack.chest) ||
+      blockAt(attempt.position).runtimeId !== attempt.blockRuntimeId) return false
+    const targetVersion = playerVersions.get(attempt.playerSlot) ?? 0, sourceVersion = slotVersions.get(attempt.chestSlot)
+    if (targetVersion > attempt.beforeSequence || !isDeepStrictEqual(crafting.rawItem(attempt.playerSlot), attempt.destination)) return false
+    const updated = { ...copy(attempt.source), count: attempt.count, has_stack_id: true, stack_id: ack.player.item_stack_id }
+    validate(attempt, true)
+    attempt.reconciling = true
+    try {
+      onInventory({ window_id: 'inventory', slot: attempt.playerSlot, item: copy(updated), source: 'server_item_stack_response', requestId: attempt.id, fullRefresh: false, scope: copy(attempt.scope),
+        evidence: { requestId: attempt.id, windowId: attempt.windowId, player: copy(ack.player), chest: copy(ack.chest), chestSlot: attempt.chestSlot, containerEvidence: 'received_slot_descriptor', identityEvidence: 'received_whole_source_before_take' } })
+    } finally { attempt.reconciling = false }
+    if (pending !== attempt) return false
+    validate(attempt, true); activeWindow()
+    if (window.id !== attempt.windowId || window.epoch !== attempt.epoch || !samePosition(window.position, attempt.position) || window.slotCount !== attempt.slotCount ||
+      blockAt(attempt.position).runtimeId !== attempt.blockRuntimeId || (playerVersions.get(attempt.playerSlot) ?? 0) !== targetVersion ||
+      slotVersions.get(attempt.chestSlot) !== sourceVersion || !isDeepStrictEqual(slots.get(attempt.chestSlot), chest)) throw new Error('引き出しの確認中に受信状態が変わりました。')
+    if (!isDeepStrictEqual(crafting.rawItem(attempt.playerSlot), updated)) throw new Error('受理応答の引き出し先1枠を反映できませんでした。')
+    playerSlots.set(attempt.playerSlot, copy(updated)); playerVersions.set(attempt.playerSlot, ++sequence)
+    attempt.playerReconciled = true
+    return true
   }
   function arm (attempt) {
     attempt.timer = setTimeout(() => { if (pending === attempt) cancel('チェスト操作の実際の完了を確認できませんでした。') }, timeoutMs)
@@ -227,17 +270,18 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
   }
   function responseEvidence (response, attempt) {
     const player = [], chest = []
+    let playerContainer = null
     for (const container of response.containers ?? []) {
       if (container.slot_type?.dynamic_container_id != null) continue
       const type = container.slot_type?.container_id
-      if (['hotbar_and_inventory', 'inventory', 'hotbar', 12, 28, 29].includes(type)) for (const slot of container.slots ?? []) if (slot.slot === attempt.playerSlot) player.push(slot)
+      if (['hotbar_and_inventory', 'inventory', 'hotbar', 12, 28, 29].includes(type)) for (const slot of container.slots ?? []) if (slot.slot === attempt.playerSlot) { player.push(slot); playerContainer = type }
       if ([attempt.slotType, attempt.slotTypeId].includes(type)) for (const slot of container.slots ?? []) if (slot.slot === attempt.chestSlot) chest.push(slot)
     }
     const valid = (slot, expected) => slot && slot.count === expected && (expected === 0 ? slot.item_stack_id == null || slot.item_stack_id === 0 : Number.isInteger(slot.item_stack_id) && slot.item_stack_id > 0 && slot.item_stack_id <= 2147483647)
     const playerCount = attempt.kind === 'withdraw' ? attempt.destination.count + attempt.count : attempt.source.count - attempt.count
     const chestCount = attempt.kind === 'withdraw' ? attempt.source.count - attempt.count : attempt.destination.count + attempt.count
     if (player.length > 1 || chest.length > 1 || player.length && !valid(player[0], playerCount) || chest.length && !valid(chest[0], chestCount)) throw new Error('受理応答の移動元・移動先の個数または実IDが一致しません。')
-    return player.length === 1 && chest.length === 1 ? { player: copy(player[0]), chest: copy(chest[0]) } : null
+    return player.length === 1 && chest.length === 1 ? { player: copy(player[0]), chest: copy(chest[0]), playerContainer } : null
   }
   function withdrawItem ({ chestSlot, count = 1, targetSlot, expectedName, signal } = {}) {
     if (pending) throw new Error('前のチェスト操作の完了を待ってください。')
@@ -260,7 +304,7 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
     if (!Number.isInteger(id) || id >= 0 || id < -2147483647 || Math.abs(id % 2) !== 1) throw new Error('接続が管理する負の32ビット奇数の要求IDが必要です。')
     return new Promise((resolve, reject) => {
       const container = storageContainerType(window.blockName)
-      const attempt = pending = { kind: 'withdraw', operation: 'withdraw_item', name, id, position: copy(window.position), blockName: window.blockName, slotCount: window.slotCount, slotType: container.slotType, slotTypeId: container.slotTypeId, scope, windowId: window.id, epoch: window.epoch, beforeSequence: sequence, playerSlot: targetSlot, chestSlot, count, source, destination, accepted: false, wireSent: false, rejected: false, confirmed: false, resolve, reject, signal }
+      const attempt = pending = { kind: 'withdraw', operation: 'withdraw_item', name, id, position: copy(window.position), blockName: window.blockName, blockRuntimeId: blockAt(window.position).runtimeId, slotCount: window.slotCount, slotType: container.slotType, slotTypeId: container.slotTypeId, scope, windowId: window.id, epoch: window.epoch, beforeSequence: sequence, playerSlot: targetSlot, chestSlot, count, source, destination, accepted: false, wireSent: false, rejected: false, confirmed: false, resolve, reject, signal }
       attempt.onAbort = () => { if (pending === attempt) cancel('引き出しを中断しました。') }
       signal?.addEventListener('abort', attempt.onAbort, { once: true })
       arm(attempt); lastResult = { phase: 'requested', operation: 'withdraw_item', requestId: id, count, serverConfirmed: false }

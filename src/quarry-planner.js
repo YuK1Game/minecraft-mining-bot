@@ -141,9 +141,9 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
     if (tools) {
       const tool = selectTool(rule, tools, policy)
       if (!tool.ok) return { status: 'blocked', reason: tool.reason, name: b.name, rule, needs: tool.needs }
-      return { status: 'pending', name: b.name, rule, tool, runtimeId: b.runtimeId, ...(nameOf(b) === 'leaf_litter' ? { properties: structuredClone(b.properties ?? null) } : {}) }
+      return { status: 'pending', name: b.name, rule, tool, runtimeId: b.runtimeId, ...(['leaf_litter', 'wildflowers'].includes(nameOf(b)) ? { properties: structuredClone(b.properties ?? null) } : {}) }
     }
-    return { status: 'pending', name: b.name, rule, runtimeId: b.runtimeId, ...(nameOf(b) === 'leaf_litter' ? { properties: structuredClone(b.properties ?? null) } : {}) }
+    return { status: 'pending', name: b.name, rule, runtimeId: b.runtimeId, ...(['leaf_litter', 'wildflowers'].includes(nameOf(b)) ? { properties: structuredClone(b.properties ?? null) } : {}) }
   }
   function defer (p, reason, extra = {}) {
     const b = read(p)
@@ -769,7 +769,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
 
   function batchFrom (chosen, target, layerPending, limit) {
     const removed = new Set()
-    const batch = [{ position: target.position, name: target.name, runtimeId: target.runtimeId, tool: target.tool, aim: chosen.aim, ...(nameOf(target.name) === 'leaf_litter' ? { properties: structuredClone(target.properties ?? null) } : {}) }]
+    const batch = [{ position: target.position, name: target.name, runtimeId: target.runtimeId, tool: target.tool, aim: chosen.aim, ...(['leaf_litter', 'wildflowers'].includes(nameOf(target.name)) ? { properties: structuredClone(target.properties ?? null) } : {}) }]
     removed.add(key(target.position.x, target.position.y, target.position.z))
     let misses = 0
     for (const other of layerPending) {
@@ -780,7 +780,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       if (fluidNeighbours(other.position).length) continue
       const aim = selectVisibleBlockFace({ eye: eyeOf(chosen.stance), target: other.position, world: { getBlock }, maxReach: REACH, removed })
       if (!aim) { misses++; continue }
-      batch.push({ position: other.position, name: other.name, runtimeId: other.runtimeId, tool: other.tool, aim, ...(nameOf(other.name) === 'leaf_litter' ? { properties: structuredClone(other.properties ?? null) } : {}) })
+      batch.push({ position: other.position, name: other.name, runtimeId: other.runtimeId, tool: other.tool, aim, ...(['leaf_litter', 'wildflowers'].includes(nameOf(other.name)) ? { properties: structuredClone(other.properties ?? null) } : {}) })
       removed.add(key(other.position.x, other.position.y, other.position.z))
     }
     return batch

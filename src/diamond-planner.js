@@ -221,16 +221,7 @@ function nextDiamondAction (state, observations = {}, options = {}) {
     return { ...proposal, recipeNetworkId: preview.recipeNetworkId, expectedOutputCount: preview.output?.count }
   }
   function gatherWood (needed) {
-    const found = drops(new Set([...WOODS].map(wood => `${wood}_log`)), 'logs', needed)
-    if (found) return found
-    // This private view selects wood only. Existing boards/sticks must not
-    // redirect it into a starter pickaxe recipe; real host slots/counts remain
-    // unchanged and the outer material shortfall supplies the requested logs.
-    const decisionState = { ...resourceState, heldItem: null, inventory: { ...state.inventory, items: items.filter(item => !TIERS[nameOf(item.name)] && !STONE_ITEMS.has(nameOf(item.name)) && !isWoodFuel(nameOf(item.name)) && nameOf(item.name) !== 'stick') } }
-    const action = nextBootstrapAction(decisionState, observations, { ...options, stoneCount: 1, starterGearPickup: false })
-    const proposed = action.type === 'capability_required' ? action.proposedAction : action
-    if (proposed && ['gather_logs', 'move_to', 'scan_blocks', 'collect_drops'].includes(proposed.type) && (proposed.resource === 'logs' || proposed.stage === 'logs')) return wrap({ ...action, ...(action.type === 'gather_logs' ? { count: needed } : {}) }, { name: 'additional_wood', logsNeeded: needed })
-    return requireAction('scan_blocks', result('scan_blocks', 'logs', '不足分の原木を採れる自然木がまだ特定できないため、周囲を調べます。', { resource: 'logs', count: needed, rejectUnknown: true }), ['scan', 'world_scan'])
+    return wait('materials', 'wood_harvest_disabled', '手持ちの木材が不足しています。木の採取や探索は行いません。', { missingMaterials: { logs: needed }, woodCollectionDisabled: true })
   }
   function planks (needed, stage) {
     if (counts.planks >= needed) return null

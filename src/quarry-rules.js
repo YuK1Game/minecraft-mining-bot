@@ -32,7 +32,7 @@ function toolOf (item) {
 const STONE_LIKE = ['stone', 'cobblestone', 'mossy_cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'polished_andesite', 'polished_diorite', 'polished_granite', 'tuff', 'calcite', 'dripstone_block', 'sandstone', 'red_sandstone', 'smooth_stone', 'netherrack', 'blackstone', 'basalt', 'smooth_basalt', 'end_stone', 'terracotta', 'amethyst_block', 'magma']
 const STONE_DROP = { stone: 'cobblestone', deepslate: 'cobbled_deepslate' }
 const SHOVEL = { dirt: 'dirt', grass_block: 'dirt', coarse_dirt: 'coarse_dirt', rooted_dirt: 'rooted_dirt', podzol: 'dirt', mycelium: 'dirt', dirt_with_roots: 'dirt_with_roots', mud: 'mud', farmland: 'dirt', grass_path: 'dirt', dirt_path: 'dirt', sand: 'sand', red_sand: 'red_sand', gravel: 'gravel', soul_sand: 'soul_sand', soul_soil: 'soul_soil', clay: 'clay_ball' }
-const LOG_WOODS = ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'crimson', 'warped']
+const LOG_WOODS = ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'poplar', 'crimson', 'warped']
 const LEAVES = ['oak_leaves', 'spruce_leaves', 'birch_leaves', 'jungle_leaves', 'acacia_leaves', 'dark_oak_leaves', 'mangrove_leaves', 'cherry_leaves', 'pale_oak_leaves', 'azalea_leaves', 'azalea_leaves_flowered']
 // Instant-break surface plants (no tool, drop is optional or nothing).
 const PLANTS = ['short_grass', 'tallgrass', 'tall_grass', 'fern', 'large_fern', 'dead_bush', 'deadbush', 'vine', 'leaf_litter', 'dandelion', 'poppy', 'blue_orchid', 'allium', 'azure_bluet', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'oxeye_daisy', 'cornflower', 'lily_of_the_valley', 'sunflower', 'lilac', 'rose_bush', 'peony', 'brown_mushroom', 'red_mushroom', 'moss_carpet', 'glow_lichen', 'hanging_roots', 'pink_petals', 'wildflowers', 'bush', 'firefly_bush', 'short_dry_grass', 'tall_dry_grass', 'seagrass', 'kelp', 'sugar_cane', 'snow_layer']
@@ -59,6 +59,9 @@ function blockRule (blockName) {
   if (!name) return { kind: 'unknown', reason: 'UNKNOWN_BLOCK' }
   if (AIR.has(name)) return { kind: 'air' }
   if (FLUIDS.has(name)) return { kind: 'fluid', fluid: /lava/.test(name) ? 'lava' : 'water' }
+  const wood = LOG_WOODS.some(w => ['log', 'wood', 'stem', 'hyphae'].some(part => name === `${w}_${part}` || name === `stripped_${w}_${part}`))
+  if (wood || ['mangrove_roots', 'muddy_mangrove_roots'].includes(name)) return { kind: 'protected', reason: 'WOOD_HARVEST_DISABLED' }
+  if (LEAVES.includes(name) || /_leaves$/.test(name) || name === 'leaf_litter') return { kind: 'protected', reason: 'LEAF_HARVEST_DISABLED' }
   const knownOre = oreRule(name)
   if (knownOre) return knownOre
   for (const [pattern, reason] of PROTECTED) if (pattern.test(name)) return { kind: 'protected', reason }
@@ -69,9 +72,7 @@ function blockRule (blockName) {
   if (name === 'snow') return { kind: 'dig', tool: 'shovel', needs: 'shovel', tier: 1, drops: ['snowball'], maxDrop: 4, gravity }
   if (/^(packed_ice|blue_ice|ice)$/.test(name)) return { kind: 'protected', reason: name === 'ice' ? 'ICE_MELTS_TO_WATER' : 'NEEDS_SILK_TOUCH' }
   if (name === 'snow_layer') return { kind: 'dig', tool: 'shovel', needs: null, tier: 0, drops: ['snowball'], maxDrop: 8, plant: true, gravity }
-  const wood = LOG_WOODS.find(w => name === `${w}_log` || name === `stripped_${w}_log` || name === `${w}_wood` || name === `stripped_${w}_wood` || name === `${w}_stem` || name === `${w}_hyphae`)
-  if (wood || ['mangrove_roots', 'muddy_mangrove_roots', 'mushroom_stem', 'brown_mushroom_block', 'red_mushroom_block', 'pumpkin', 'melon_block', 'bamboo', 'bamboo_block'].includes(name)) return { kind: 'dig', tool: 'axe', needs: null, tier: 0, drops: [name === 'melon_block' ? 'melon_slice' : /mushroom_block/.test(name) ? name.replace('_block', '') : name], maxDrop: name === 'melon_block' ? 7 : 2, gravity }
-  if (LEAVES.includes(name) || /_leaves$/.test(name)) return { kind: 'dig', tool: 'hoe', needs: null, tier: 0, drops: ['stick', 'apple', name.replace('_leaves', '_sapling')], maxDrop: 2, leaves: true, gravity }
+  if (['mushroom_stem', 'brown_mushroom_block', 'red_mushroom_block', 'pumpkin', 'melon_block', 'bamboo', 'bamboo_block'].includes(name)) return { kind: 'dig', tool: 'axe', needs: null, tier: 0, drops: [name === 'melon_block' ? 'melon_slice' : /mushroom_block/.test(name) ? name.replace('_block', '') : name], maxDrop: name === 'melon_block' ? 7 : 2, gravity }
   if (PLANTS.includes(name)) return { kind: 'dig', tool: null, needs: null, tier: 0, drops: ['wheat_seeds', name], maxDrop: 2, plant: true, gravity }
   if (gravity) return { kind: 'dig', tool: 'shovel', needs: null, tier: 0, drops: [name], maxDrop: 1, gravity }
   return { kind: 'unknown', reason: 'UNKNOWN_BLOCK' }

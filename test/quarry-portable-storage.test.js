@@ -349,3 +349,43 @@ test('live case 2026-11-11: a cow on the box cell before placement is waited out
     } else assert.ok(result.checkpoint.siteWaits.some(w => w.mobOverlap), 'the wait for the mob was recorded')
   }
 })
+
+test('live case 2026-11-12: a box cell with a live mob next to it is passed over for another site', async () => {
+  const base = fixture('shulker', { pickupOnMove: true }), plain = await base.run()
+  assert.equal(plain.status, 'completed', JSON.stringify(plain.reason))
+  const chosen = plain.checkpoint.positions[0]
+  let mobs = [{ kind: 'mob', name: 'minecraft:chicken', runtimeId: '77', alive: true, positionKnown: true, position: { x: chosen.x + 0.5, y: chosen.y, z: chosen.z - 0.6 } }]
+  const f = fixture('shulker', { pickupOnMove: true, entities: () => mobs })
+  const result = await f.run()
+  assert.equal(result.status, 'completed', JSON.stringify(result.reason))
+  const next = result.checkpoint.positions[0]
+  assert.ok(Math.hypot(next.x + 0.5 - mobs[0].position.x, next.z + 0.5 - mobs[0].position.z) > 1.5, 'the chosen cell is away from the chicken')
+})
+
+test('live case 2026-11-12: a preview refused after placement preparation returns the saved checkpoint and keeps the refusal text', async () => {
+  const { observedScope } = require('../src/server-position-verifier')
+  const f = fixture('shulker')
+  assert.ok(observedScope(f.getState()), 'fixture state has an observed scope')
+  const controller = createQuarryPortableStorage({ ...f.dependencies,
+    preparePlacement: async () => { const s = f.getState(); return { ready: true, proof: { serverConfirmed: true, kind: 'server_position_volume', scope: observedScope(s), feet: { x: s.position.x, y: s.position.y - 1.62, z: s.position.z }, radius: 0.12, receivedAt: f.dependencies.now() } } },
+    interactions: { ...f.dependencies.interactions, previewPlace: () => ({ ready: false, errors: ['unexpected refusal'] }) } })
+  let saved = null
+  const result = await controller.storeCarried(copy(f.request), { canPlace: () => true, onCheckpoint: async cp => { saved = copy(cp) } })
+  assert.equal(result.reason, 'STORAGE_PLACEMENT_PREVIEW_REJECTED')
+  assert.deepEqual(result.checkpoint, saved, 'nothing changed after the last save')
+  assert.ok(saved.placementPreparation, 'the preparation proof was saved')
+  assert.deepEqual(saved.previewRejection.errors, ['unexpected refusal'])
+  assert.equal(saved.placed.length, 0)
+})
+
+test('live case 2026-11-12: a box cell with a loose drop on it is tried after a clean cell', async () => {
+  const base = fixture('shulker', { pickupOnMove: true }), plain = await base.run()
+  assert.equal(plain.status, 'completed', JSON.stringify(plain.reason))
+  const chosen = plain.checkpoint.positions[0]
+  const drops = [{ kind: 'item', name: 'minecraft:cobblestone', runtimeId: '88', alive: true, position: { x: chosen.x + 0.5, y: chosen.y + 0.125, z: chosen.z + 0.5 } }]
+  const f = fixture('shulker', { pickupOnMove: true, entities: () => drops })
+  await f.run()
+  const planned = f.checkpoints.find(cp => cp.positions?.length)
+  assert.ok(planned, 'a site was planned')
+  assert.notDeepEqual(planned.positions[0], chosen, 'a clean cell was chosen instead')
+})

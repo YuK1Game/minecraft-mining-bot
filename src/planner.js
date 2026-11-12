@@ -121,7 +121,7 @@ function inventoryCounts (items) {
 
 function nextBootstrapAction (snapshot, observations = {}, options = {}) {
   snapshot = snapshot ?? {}
-  const goal = { logs: positive(options.logCount, 3), stone: positive(options.stoneCount, 16) }
+  const goal = { logs: 0, stone: positive(options.stoneCount, 16) }
   const items = Array.isArray(snapshot.inventory?.items) ? snapshot.inventory.items : []
   const counts = inventoryCounts(items)
   const progress = observations.progress ?? {}
@@ -329,22 +329,9 @@ function nextBootstrapAction (snapshot, observations = {}, options = {}) {
   // Work backwards from a pickaxe. Existing boards/sticks/table are progress,
   // not raw logs; consuming logs must not reset the plan to its initial stage.
   const neededPlanks = (tableOwned ? 0 : 4) + (counts.sticks >= 2 ? 0 : 2) + 3
-  const woodProgress = amount(progress.logsCollected) >= goal.logs || counts.planks > 0 || counts.sticks > 0 || tableOwned
-  const requiredLogs = woodProgress ? Math.ceil(Math.max(0, neededPlanks - counts.planks) / 4) : Math.max(goal.logs, Math.ceil(neededPlanks / 4))
-  if (counts.planks < neededPlanks && counts.logs < requiredLogs) {
-    const needed = requiredLogs - counts.logs
-    const droppedLogs = collectDrops(isLog, 'logs', needed)
-    if (droppedLogs) return droppedLogs
-    const logs = known.filter(block => isLog(nameOf(block.name)))
-    const natural = naturalLogCandidates(logs, getBlock)
-    const selected = chooseResource(natural, 'logs', needed)
-    const resourceTarget = selected.type === 'gather_logs' ? selected.target : selected.type === 'move_to' ? selected.resourceTarget : null
-    if (resourceTarget) selected.treeEvidence = natural.find(log => key(log.position) === key(resourceTarget))?.evidence
-    return selected
-  }
   if (counts.planks < neededPlanks) {
     const log = items.filter(item => amount(item.count) && isLog(nameOf(item.name))).sort((a, b) => (a.slot ?? 99) - (b.slot ?? 99))[0]
-    if (!log) return scan('logs', '板材用の原木が不足しています。')
+    if (!log) return result('wait', 'materials', '手持ちの木材が不足しています。木の採取や探索は行いません。', { code: 'wood_harvest_disabled', missingMaterials: { planks: neededPlanks - counts.planks }, woodCollectionDisabled: true })
     const times = Math.min(amount(log.count), 16, Math.ceil((neededPlanks - counts.planks) / 4))
     return craft(`${nameOf(log.name).slice(0, -4)}_planks`, times, 'planks')
   }

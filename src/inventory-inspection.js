@@ -34,6 +34,45 @@ function createInventoryInspection ({ crafting, armorStore = {}, getChest = () =
   // full window. Count only actual valid observations in this lifecycle.
   const mainReceived = store.mainReceived instanceof Set ? store.mainReceived : (store.mainReceived = new Set())
   const armorReceived = store.armorReceived instanceof Set ? store.armorReceived : (store.armorReceived = new Set())
+  // Legacy worn/offhand views may adopt count-only ACKs. Recovery evidence
+  // keeps its own descriptors and never borrows those reconstructed values.
+  const equipmentProof = store.equipmentProof?.version === 1 && store.equipmentProof.armor instanceof Map && store.equipmentProof.offhand instanceof Map
+    ? store.equipmentProof : (store.equipmentProof = { version: 1, scope: null, revision: 0, armor: new Map(), offhand: new Map() })
+  const equipmentScope = () => {
+    const s = getState()
+    return JSON.stringify([s?.profile ?? null, s?.realm?.id == null ? null : String(s.realm.id), s?.connectionId ?? null, s?.startedAt ?? null, s?.dimension ?? null, String(s?.runtimeEntityId ?? ''), s?.lifecycle?.deathId ?? null])
+  }
+  function clearEquipmentProof () {
+    equipmentProof.armor.clear(); equipmentProof.offhand.clear(); equipmentProof.revision++
+  }
+  function syncEquipmentScope () {
+    const scope = equipmentScope()
+    if (equipmentProof.scope !== scope) { clearEquipmentProof(); equipmentProof.scope = scope }
+  }
+  function observeEquipment (kind, size, name, packet) {
+    const slots = equipmentProof[kind]
+    if (name === 'inventory_content') {
+      slots.clear(); equipmentProof.revision++
+      if (packet.source != null || !Array.isArray(packet.input) || packet.input.length < size || size === 1 && packet.input.length !== 1) return
+      for (let slot = 0; slot < size; slot++) if (validRaw(packet.input[slot])) slots.set(slot, { raw: structuredClone(packet.input[slot]), revision: ++equipmentProof.revision })
+    } else if (Number.isInteger(packet.slot) && packet.slot >= 0 && packet.slot < size) {
+      slots.delete(packet.slot); equipmentProof.revision++
+      if (packet.source == null && validRaw(packet.item)) slots.set(packet.slot, { raw: structuredClone(packet.item), revision: ++equipmentProof.revision })
+    }
+  }
+  function invalidateEquipment (kind, rows, size) {
+    const affected = Array.isArray(rows) ? rows.filter(row => Number.isInteger(row.slot) && row.slot >= 0 && row.slot < size) : []
+    if (!affected.length) equipmentProof[kind].clear()
+    else for (const row of affected) equipmentProof[kind].delete(row.slot)
+    equipmentProof.revision++
+  }
+  function rawEquipment (kind, slot) {
+    syncEquipmentScope()
+    const state = getState()
+    if (!['armor', 'offhand'].includes(kind) || !Number.isInteger(slot) || slot < 0 || slot >= (kind === 'armor' ? 4 : 1) || state.health === 0 || state.dead || state.isDead || state.lifecycle?.dead || state.spawnPending) return null
+    const observed = equipmentProof[kind].get(slot)
+    return observed && validRaw(observed.raw) ? structuredClone(observed.raw) : null
+  }
   function receiveSlots (set, size, name, packet) {
     if (name === 'inventory_content') {
       set.clear()
@@ -117,11 +156,13 @@ function createInventoryInspection ({ crafting, armorStore = {}, getChest = () =
 
   function applyPacket (name, packet, { replaying = false } = {}) {
     if (replaying) return
+    syncEquipmentScope()
     if (name === 'start_game' || name === 'change_dimension' || name === 'death_info' || name === 'respawn' && (packet.runtime_entity_id == null || String(packet.runtime_entity_id) === String(getState().runtimeEntityId))) {
       mainReceived.clear(); armorReceived.clear()
       offhand.clear(); store.offhandKnown = false; store.offhandObservedAt = null
       store.mainInvalidated = true; store.armorInvalidated = true; store.armorObservedAt = null; store.observedAt = null; store.containerObservedAt = null
       store.armorInvalidationSource = 'lifecycle'
+      clearEquipmentProof()
     }
     if (name === 'inventory_content' || name === 'inventory_slot') {
       if (mainWindow(packet.window_id)) {
@@ -130,6 +171,7 @@ function createInventoryInspection ({ crafting, armorStore = {}, getChest = () =
         if (name === 'inventory_content') store.mainInvalidated = !(Array.isArray(packet.input) && packet.input.length === 36 && complete)
         else if (complete) store.mainInvalidated = false
       } else if (armorWindow(packet.window_id)) {
+        observeEquipment('armor', 4, name, packet)
         // A rejected armor transaction can separately invalidate the controller.
         // Do not use earlier coverage to revive its other three cached slots.
         if (name === 'inventory_slot' && armorStore.known !== true && store.armorInvalidated !== true) {
@@ -148,6 +190,7 @@ function createInventoryInspection ({ crafting, armorStore = {}, getChest = () =
         }
       }
       else if (offhandWindow(packet.window_id)) {
+        observeEquipment('offhand', 1, name, packet)
         store.offhandObservedAt = clock()
         if (name === 'inventory_content' && Array.isArray(packet.input) && packet.input.length === 1 && validRaw(packet.input[0])) { offhand.clear(); offhand.set(0, structuredClone(packet.input[0])); store.offhandKnown = true }
         else if (name === 'inventory_slot' && packet.slot === 0 && validRaw(packet.item)) { offhand.set(0, structuredClone(packet.item)); store.offhandKnown = true }
@@ -159,8 +202,10 @@ function createInventoryInspection ({ crafting, armorStore = {}, getChest = () =
         const id = container.slot_type?.container_id
         if (['inventory', 'hotbar_and_inventory', 'hotbar', 12, 28, 29].includes(id)) store.observedAt = clock()
         if (id === 'armor') store.armorObservedAt = clock()
+        if (id === 'armor' || id === 6) invalidateEquipment('armor', container.slots, 4)
         // Count-only updates do not identify a new offhand stack or its NBT.
-        if (id === 'offhand') { offhand.clear(); store.offhandKnown = false }
+        if (id === 'offhand') { offhand.clear(); store.offhandKnown = false; invalidateEquipment('offhand', container.slots, 1) }
+        else if (id === 34) invalidateEquipment('offhand', container.slots, 1)
       }
     }
   }
@@ -194,7 +239,7 @@ function createInventoryInspection ({ crafting, armorStore = {}, getChest = () =
     }
   }
 
-  return { applyPacket, snapshot }
+  return { applyPacket, snapshot, rawEquipment }
 }
 
 module.exports = { createInventoryInspection }

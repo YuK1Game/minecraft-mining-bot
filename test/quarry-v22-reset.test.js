@@ -12,7 +12,7 @@ function fixture({x=8,nonempty=false,rejectCommand=true}={}){
  let calls=[],saved=[],released=0,site=null
  const adapter={
   getState:()=>state,getView:view,getBlock:(x,y,z)=>({known:true,boundingBox:y<=64?'block':'empty',name:y<=64?'minecraft:stone':'minecraft:air',extra:[]}),
-  assertIdle:()=>{},acquire:()=>{},release:()=>{released++},cancelJob:async()=>{},save:async x=>saved.push(structuredClone(x)),
+  assertIdle:()=>{},acquire:()=>{},release:()=>{released++},cancelJob:async()=>({serverConfirmed:true,previousJobIdentity:null,jobIdentity:null}),save:async x=>saved.push(structuredClone(x)),
   load:async()=>null,select:async()=>{},open:async()=>({serverConfirmed:false}),close:async()=>{},deposit:async()=>{},container:()=>null,
   cancelTransfers:async()=>{},publishHomeSite:x=>{site=x},generation:()=>0
  }
@@ -28,6 +28,7 @@ test('preview is read-only and chooses an observed two-chest footprint in the se
  assert.ok(p.homeChest.other.x>=0&&p.homeChest.other.x<16)
  assert.equal(p.manifest.cargoBoxes,22)
  assert.equal(p.manifest.supplies.find(x=>x.role==='totem').total,27)
+ assert.deepEqual(p.replaces,{surfaceChest:false,inventory:true,armor:true,offhand:true})
 })
 test('near east boundary, prepare does not place the second half outside the chunk',async()=>{
  const f=fixture({x:15}),p=await f.reset.prepare()
@@ -36,7 +37,7 @@ test('near east boundary, prepare does not place the second half outside the chu
 })
 test('operator denial does not clear inventory or place any chest and preserves an error checkpoint',async()=>{
  const f=fixture(),p=await f.reset.prepare()
- f.reset.start({token:p.token,confirm:'REPLACE_SURFACE_CHEST'})
+ f.reset.start({token:p.token,confirm:'REPLACE_SURFACE_CHEST_AND_CLEAR_INVENTORY'})
  await f.reset.drain()
  assert.deepEqual(f.calls,['/testfor @s'])
  assert.equal(f.saved.at(-1).phase,'failed')
@@ -44,12 +45,16 @@ test('operator denial does not clear inventory or place any chest and preserves 
  assert.equal(f.released(),1)
  assert.equal(f.slots.every(x=>x.empty),true)
 })
-test('reset cannot touch occupied player inventory or accept the old destructive confirmation',async()=>{
+test('occupied preview is read-only and neither prior confirmation literal authorizes inventory clearing',async()=>{
  const f=fixture({nonempty:true})
- await assert.rejects(f.reset.prepare(),{code:'RESET_BOT_INVENTORY_NOT_EMPTY'})
- const empty=fixture(),p=await empty.reset.prepare()
- assert.throws(()=>empty.reset.start({token:p.token,confirm:'REPLACE_INITIAL_INVENTORY'}),{code:'RESET_CONFIRMATION_REQUIRED'})
- assert.equal(empty.calls.length,0)
+ const preview=await f.reset.prepare()
+ assert.equal(preview.replaces.inventory,true)
+ assert.equal(f.slots[0].name,'minecraft:diamond');assert.equal(f.calls.length,0)
+ for(const confirm of ['REPLACE_INITIAL_INVENTORY','REPLACE_SURFACE_CHEST']) {
+  const fresh=fixture({nonempty:true}),p=await fresh.reset.prepare()
+  assert.throws(()=>fresh.reset.start({token:p.token,confirm}),{code:'RESET_CONFIRMATION_REQUIRED'})
+  assert.equal(fresh.calls.length,0)
+ }
 })
 test('debug command whitelist permits only bounded chest and shulker operations',()=>{
  const yes=[
