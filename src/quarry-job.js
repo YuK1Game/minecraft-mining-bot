@@ -137,7 +137,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   let job = null // persistent document
   let planner = null; let regions = null; let ledger = createLedger()
   let worker = null; let loopWorker = null; let epoch = 0; let abort = null
-  let stopTask = null; let autoResumeTimer = null; let savesInFlight = 0
+  let stopTask = null; let autoResumeTimer = null; let savesInFlight = 0; let retired = false
   const pendingActions = new Set()
   const busyError = () => Object.assign(new Error('QUARRY_BUSY: previous work or checkpoint is still draining'), { code: 'QUARRY_BUSY' })
   function requireDrained () { if (worker || stopTask || pendingActions.size || savesInFlight) throw busyError() }
@@ -3201,10 +3201,19 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       job.result = { type: 'PAUSED', reason: 'PERSISTENCE_FAILED', intendedResult: result, at: new Date(now()).toISOString() }
       setState('PAUSED')
     }
-    if (job.persistence?.status !== 'failed' && result === 'PAUSED' && /^ACTION_FAILED/.test(String(reason)) && (job.autoResumes ?? 0) < 3 && job.userRunIntent === 'running') {
+    if (paused) scheduleAutoResume(reason, extra.pauseDetails)
+    try { adapter.onFinished?.(status()) } catch {}
+  }
+
+  // Automatic resumes of a paused job (bounded; counts are persisted).
+  function scheduleAutoResume (reason, pauseDetails) {
+    if (!job || retired) return
+    if (job.persistence?.status !== 'failed' && /^ACTION_FAILED/.test(String(reason)) && (job.autoResumes ?? 0) < 3 && job.userRunIntent === 'running') {
       const owner = job, expectedEpoch = epoch
       const retry = () => {
         autoResumeTimer = null
+        // A retired instance (replaced by a hot reload) never resumes its old job.
+        if (retired) return
         if (job !== owner || epoch !== expectedEpoch || job.state !== 'PAUSED' || job.pauseReason !== reason || job.userRunIntent !== 'running') return
         if (worker || stopTask || pendingActions.size || savesInFlight) { autoResumeTimer = setTimeout(retry, 100); autoResumeTimer.unref?.(); return }
         job.autoResumes = (job.autoResumes ?? 0) + 1; job.lastAutoResumeAt = now()
@@ -3217,20 +3226,34 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // block its safe recovery. They despawn within minutes and nothing moves
     // while waiting, so this pause retries itself (bounded) instead of
     // stalling for hours (live 2026-11-10 05:38: 2h until a manual resume).
-    const capacityWait = paused && reason === 'CARRIED_STORAGE_BLOCKED' && extra.pauseDetails?.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED'
+    const capacityWait = reason === 'CARRIED_STORAGE_BLOCKED' && pauseDetails?.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED'
     if (job.persistence?.status !== 'failed' && capacityWait && (job.capacityRetries ?? 0) < CAPACITY_RETRIES && job.userRunIntent === 'running') {
       const owner = job, expectedEpoch = epoch
       const retry = () => {
         autoResumeTimer = null
+        // A retired instance (replaced by a hot reload) never resumes its old job.
+        if (retired) return
         if (job !== owner || epoch !== expectedEpoch || job.state !== 'PAUSED' || job.pauseReason !== reason || job.userRunIntent !== 'running') return
         if (worker || stopTask || pendingActions.size || savesInFlight) { autoResumeTimer = setTimeout(retry, 100); autoResumeTimer.unref?.(); return }
         job.capacityRetries = (job.capacityRetries ?? 0) + 1
-        note('capacity_wait_resume', { count: job.capacityRetries, required: extra.pauseDetails?.details?.requiredFreeSlots ?? null, free: extra.pauseDetails?.details?.freeSlots ?? null })
+        note('capacity_wait_resume', { count: job.capacityRetries, required: pauseDetails?.details?.requiredFreeSlots ?? null, free: pauseDetails?.details?.freeSlots ?? null })
         try { resume() } catch (error) { note('auto_resume_failed', { error: String(error.message ?? error) }) }
       }
       autoResumeTimer = setTimeout(retry, capacityRetryMs); autoResumeTimer.unref?.()
     }
-    try { adapter.onFinished?.(status()) } catch {}
+  }
+  // Live 2026-11-12 22:51: a capacity retry timer of the instance replaced by a
+  // hot reload resumed the old job (STORAGE_ACTION_OWNER_CHANGED). The runtime
+  // retires the old instance and asks the new one to schedule the retry again.
+  function retire () {
+    const pending = autoResumeTimer != null
+    clearAutoResume(); retired = true
+    return { pendingAutoResume: pending, jobId: job?.config?.jobId ?? null, pauseReason: job?.pauseReason ?? null }
+  }
+  function rescheduleAutoResume () {
+    if (!job || retired || autoResumeTimer || job.state !== 'PAUSED' || worker || stopTask) return false
+    scheduleAutoResume(job.pauseReason, job.pauseDetails ?? null)
+    return autoResumeTimer != null
   }
 
   // ---- operations (§4.1) -------------------------------------------------
@@ -3802,7 +3825,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
+  return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults }
