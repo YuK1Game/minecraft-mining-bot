@@ -43,6 +43,7 @@ const { createQuarryRuntimeAdapter } = require('./quarry-runtime-adapter')
 const { createQuarryPillar } = require('./quarry-pillar')
 const { createQuarryEgressRuntime } = require('./quarry-egress-runtime')
 const { createServerPositionVerifier, observedScope } = require('./server-position-verifier')
+const { createStoragePlacementAudit } = require('./storage-placement-audit')
 const { createPlainsLocator } = require('./locate-plains')
 const { createQuarryTerrainRequester } = require('./quarry-terrain')
 const { permitsExitAction } = require('./quarry-exit-plan')
@@ -373,6 +374,7 @@ function createRuntime (host) {
   let quarryPorts = null, quarryJob = null, quarryRetreatDepth = 0, quarryCombatArmed = false, quarryBehaviorRestore = null, quarryPortableStorage = null, quarrySupplies = null
   let quarryPillar = null, quarryPillarTask = null, quarryEgressRuntime = null, quarryEgressTask = null, quarryEgressAbort = null
   let quarryPositionVerifier = null
+  let storagePlacementAudit = null
   let plainsLocator = null
   let quarryTerrainRequester = null
   let manualShulkerRecovery = null, manualShulkerDocument = null, manualShulkerTask = null, manualShulkerAbort = null, manualShulkerMiningSerial = null, manualShulkerLoadSequence = 0
@@ -1159,6 +1161,7 @@ function createRuntime (host) {
     armorTask = armor.equipBest().catch(() => {}).finally(() => { armorTask = null })
   }
   function maybeResyncInventory () {
+    if (quarryPlacementPreparation) return
     if (resetHeld() || !(defenseEnabled(host.shared) || host.shared.autoWanted === true || quarryCombatArmed) || !host.shared.inventoryUncertain) return
     const stamp = host.shared.inventoryUncertain.at
     const since = typeof stamp === 'number' ? stamp : typeof stamp === 'string' ? Date.parse(stamp) : NaN
@@ -5017,6 +5020,10 @@ function createRuntime (host) {
     if (!replaying) loadoutReset?.applyPacket(name, packet)
     if (!replaying && ['start_game', 'change_dimension', 'respawn', 'disconnect', 'close'].includes(name)) { selfResistance.clear(); selfSlowFalling.clear(); selfEffectEvents.clear() }
     if (!replaying && !disposing) plainsLocator?.applyPacket(name, packet)
+    if (!replaying && !disposing) {
+      if (name === 'command_output' && storagePlacementAudit?.snapshot().requestId === packet.origin?.uuid) host.shared.storagePlacementAuditOutput = { at: Date.now(), success_count: packet.success_count, output: (packet.output ?? []).slice(0, 1).map(value => ({ success: value.success, message_id: value.message_id, parameters: (value.parameters ?? []).slice(0, 3) })) }
+      storagePlacementAudit?.applyPacket(name, packet)
+    }
     if (name === 'command_output') {
       if (quarryPositionVerifier?.snapshot().pending) host.shared.quarryPositionOutput = { at: Date.now(), keys: Object.keys(packet), origin: packet.origin ? { type: packet.origin.type, uuid: packet.origin.uuid, request_id: packet.origin.request_id, player_entity_id: packet.origin.player_entity_id == null ? null : String(packet.origin.player_entity_id), player_entity_id_type: typeof packet.origin.player_entity_id, player_entity_id_class: packet.origin.player_entity_id?.constructor?.name } : null, output_type: packet.output_type, has_data: packet.has_data, dataType: typeof packet.data, success_count: packet.success_count, output: (packet.output ?? []).slice(0, 3).map(item => ({ success: item.success, message_id: item.message_id, parameters: (item.parameters ?? []).slice(0, 3) })) }
       quarryPositionVerifier?.applyPacket(name, packet)
@@ -5202,6 +5209,7 @@ function createRuntime (host) {
     quarryEgressAbort?.abort(new Error(reason ?? 'EGRESS_INTERRUPTED'))
     quarryPillar?.cancel(reason ?? 'ASCENT_INTERRUPTED')
     quarryPositionVerifier?.cancel(reason ?? 'POSITION_QUERY_INTERRUPTED')
+    storagePlacementAudit?.cancel(reason ?? 'STORAGE_AUDIT_INTERRUPTED')
     plainsLocator?.cancel()
     if (reason === 'ダメージを検知しました。' && !disposed && !disposing) {
       const damage = bindRecentDamage({ ...receiptState, lifecycle: { phase: receiptState.dead ? 'dead' : 'alive', deathId: actualLifeId(), dead: receiptState.dead === true } })
@@ -5417,6 +5425,8 @@ function createRuntime (host) {
       restockSuppliesNow: () => { requireIdle(); return ensureQuarryJob().restockSuppliesNow() },
       reconcileSupplyPlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileSupplyPlacement() },
       reconcileCarriedPlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileCarriedPlacement() },
+      reconcileCurrentStoragePlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileCurrentStoragePlacement() },
+      currentPlacementAuditStatus: () => ({ ...(storagePlacementAudit?.snapshot() ?? {}), lastOutput: structuredClone(host.shared.storagePlacementAuditOutput ?? null) }),
       reconcileRejectedStorage: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileRejectedStorage() },
       reconcileObservedStoragePlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileObservedStoragePlacement() },
       acceptExceptions: () => ensureQuarryJob().acceptExceptions(),
@@ -6749,6 +6759,51 @@ function createRuntime (host) {
         throw Object.assign(new Error('収納設置前の着地と実位置がまだ安定していません。'), { code: 'STORAGE_PLACEMENT_NOT_SETTLED' })
       } finally { if (quarryPlacementPreparation === prep) quarryPlacementPreparation = null }
     }
+    async function reconcileCurrentPortablePlacement (request, options = {}) {
+      const cp = request?.checkpoint
+      if (request?.manual !== true || !cp?.scope || cp.intent?.type !== 'place') throw new Error('STORAGE_CURRENT_AUDIT_MANUAL_REQUIRED')
+      await own(preparePortablePlacement)({ jobId: request.jobId, operationId: request.operationId, scope: cp.scope }, { signal: options.signal })
+      const generation = live(), state = quarryState(), stream = inputStream, scope = observedScope(state)
+      if (quarryPlacementPreparation || !scope || !stream?.drainQueued) throw new Error('STORAGE_CURRENT_AUDIT_BUSY')
+      const owner = { kind: 'current_storage_audit', history: inputHistory, revision: quarryCancellationRevision, generation, stream, scope, request, signal: options.signal, health: state.health, startedAt: Date.now(), deadline: Date.now() + 20000 }
+      quarryPlacementPreparation = owner
+      try {
+        requireCurrentPlacementAudit(owner)
+        owner.drain = stream.drainQueued(); inputOwner = 'none'
+        if (owner.drain.queuedTransaction !== false || owner.drain.queuedActions !== 0) throw new Error('STORAGE_CURRENT_AUDIT_QUEUE_PENDING')
+        owner.transactionGeneration = owner.drain.revision
+        startIdle()
+        const current = requireCurrentPlacementAudit(owner), feet = { ...current.position, y: current.position.y - 1.62 }
+        // Input and commands share Bedrock's RELIABLE_ORDERED channel 0.
+        // This fresh reply follows all earlier queued input on this connection.
+        const positionReceipt = await controlLocation.confirm(feet, { signal: options.signal, radius: 0.12, operationId: request.operationId + ':current_fence' })
+        requireCurrentPlacementAudit(owner)
+        if (positionReceipt?.serverConfirmed !== true || positionReceipt.receivedAt < owner.drain.drainedAt) throw new Error('STORAGE_CURRENT_AUDIT_FENCE_UNCONFIRMED')
+        owner.fence = { kind: 'drained_input_and_server_position_barrier', generation: host.shared.loadoutGeneration, transactionGeneration: owner.transactionGeneration, startedAt: owner.drain.drainedAt, receivedAt: positionReceipt.receivedAt, drain: structuredClone(owner.drain), positionReceipt }
+        return await getPortable().reconcileCurrentPlacement(request, options)
+      } finally {
+        if (quarryPlacementPreparation === owner) quarryPlacementPreparation = null
+      }
+    }
+    function requireCurrentPlacementAudit (owner) {
+      const state = quarryState(), stats = owner.stream.stats()
+      if (owner.signal?.aborted || disposed || disposing || Date.now() >= owner.deadline || quarryPlacementPreparation !== owner || live() !== owner.generation || inputStream !== owner.stream || inputHistory !== owner.history || quarryCancellationRevision !== owner.revision || observedScope(state) !== owner.scope || state.health < owner.health || userBehaviorOwns() || motionActive() || input?.stats().running || mining.snapshot().phase === 'mining' || armorTask || manualArmorOwner || chest.snapshot().busy || inventory.snapshot().busy || craftStatus().pendingRequestId != null || interactions.snapshot().pendingOperation != null || owner.transactionGeneration !== undefined && (stats.queuedActions !== 0 || stats.queuedTransaction !== false || stats.actionRevision !== owner.transactionGeneration)) throw new Error('STORAGE_CURRENT_AUDIT_INTERRUPTED')
+      owner.health = Math.max(owner.health, state.health)
+      return state
+    }
+    async function confirmCurrentPlacementState (context, { signal } = {}) {
+      const owner = quarryPlacementPreparation, cp = owner?.request?.checkpoint
+      if (owner?.kind !== 'current_storage_audit' || !owner.fence || context.jobId !== cp?.jobId || context.operationId !== cp.operationId || JSON.stringify(context.scope) !== JSON.stringify(cp.scope) || ['x', 'y', 'z'].some(axis => context.position?.[axis] !== cp.intent.position[axis]) || context.slot !== cp.intent.slot || context.sourceStackId !== cp.placementSourcePin?.stackId) throw new Error('STORAGE_CURRENT_AUDIT_OWNER_CHANGED')
+      signal?.throwIfAborted(); requireCurrentPlacementAudit(owner)
+      storagePlacementAudit ??= createStoragePlacementAudit({ client: host.client, getState: quarryState })
+      const targetAirReceipt = await storagePlacementAudit.confirmAir(context.position, { signal, operationId: cp.operationId })
+      const state = requireCurrentPlacementAudit(owner), feet = { ...state.position, y: state.position.y - 1.62 }
+      if (targetAirReceipt?.serverConfirmed !== true || targetAirReceipt.scope !== owner.scope) throw new Error(targetAirReceipt?.reason ?? 'STORAGE_CURRENT_TARGET_UNCONFIRMED')
+      const positionReceipt = await controlLocation.confirm(feet, { signal, radius: 0.12, operationId: cp.operationId + ':current_after_air' })
+      requireCurrentPlacementAudit(owner); signal?.throwIfAborted()
+      if (positionReceipt?.serverConfirmed !== true || positionReceipt.scope !== owner.scope) throw new Error('STORAGE_CURRENT_POSITION_UNCONFIRMED')
+      return { serverConfirmed: true, kind: 'current_placement_state', scope: structuredClone(cp.scope), jobId: cp.jobId, operationId: cp.operationId, position: structuredClone(context.position), targetAir: true, quiet: true, generation: host.shared.loadoutGeneration, transactionGeneration: owner.transactionGeneration, observedAt: positionReceipt.receivedAt, requestId: targetAirReceipt.requestId, fence: structuredClone(owner.fence), targetAirReceipt, positionReceipt }
+    }
     function getPortable () {
       return quarryPortableStorage ??= createQuarryPortableStorage({ shulkerOnly: true,
         getState: quarryState,
@@ -6786,6 +6841,7 @@ function createRuntime (host) {
         previewMove: cell => ports.movement.preview({ x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }, { allowWater: false, maxDistance: 8, maxExpanded: 500 }),
         refreshInventory: ({ signal }) => adapter.resyncInventory({ signal }),
         preparePlacement: own(preparePortablePlacement),
+        confirmPlacementState: confirmCurrentPlacementState,
         mine: async (target, { signal } = {}) => {
           signal?.throwIfAborted()
           // A cargo shulker's v2.2 break must preserve the selected pickaxe.
@@ -6908,6 +6964,7 @@ function createRuntime (host) {
       previewSupplySite: (stand, options) => getPortable().previewSupplySite(stand, options),
       reconcileSupplyPlacement: (request, options) => getSupplies().reconcileUnsentPlacement(request, options),
       reconcileCarriedPlacement: (request, options) => getPortable().reconcileUnsentPlacement(request, options),
+      reconcileCurrentPlacement: (request, options) => reconcileCurrentPortablePlacement(request, options),
       reconcileObservedPlacement: (request, options) => {
         // New placement receipts retain send facts. The portable controller
         // validates them and still requires fresh source, block and exact NBT.

@@ -10,7 +10,7 @@ const { isShulkerBox, isShulkerBlock, sameWindowId, canonicalWindowId, storageCo
 const { readShulkerContents, readContainerContents, compareShulkerContents, diagnoseShulkerContents } = require('./shulker-contents')
 const { canSeePlacementFloor } = require('./interaction-sight')
 const { plainAir, clearableSitePlant, passableSiteBody, describeBlock, supportIssue } = require('./storage-site-terrain')
-const { observedScope } = require('./server-position-verifier')
+const { observedScope, uuidOf } = require('./server-position-verifier')
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const HAZARD = /water|lava|fire|magma|cactus|campfire|sand$|gravel$|powder|anvil$|scaffolding|dripstone/
@@ -37,11 +37,12 @@ const scopeOf = state => {
 const UNSENT_PLACE_REASON = '操作対象への視線が遮られているか、未取得です。'
 
 const SITE_RECHECKS = 5, SITE_RECHECK_MS = 1000
-function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, interactions, equip, moveTo, getPath = null, travel = null, previewMove = null, refreshInventory = null, preparePlacement = null, workWithContainer = null, getObservationFreshness = null, onRecoveryDiagnostic = null, mine, getMining, stopMining, getEntities, captureActionOwner = null, runActionOwned = null, shulkerOnly = false, cancelAction = () => {}, now = Date.now, sleep = ms => delay(ms) }) {
+function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, interactions, equip, moveTo, getPath = null, travel = null, previewMove = null, refreshInventory = null, preparePlacement = null, confirmPlacementState = null, workWithContainer = null, getObservationFreshness = null, onRecoveryDiagnostic = null, mine, getMining, stopMining, getEntities, captureActionOwner = null, runActionOwned = null, shulkerOnly = false, cancelAction = () => {}, now = Date.now, sleep = ms => delay(ms) }) {
   if ([getState, getBlock, equip, moveTo, mine, getMining, stopMining, getEntities, cancelAction, now, sleep].some(fn => typeof fn !== 'function') || typeof crafting?.rawItem !== 'function' || typeof crafting?.closeContainer !== 'function' || typeof chest?.open !== 'function' || typeof chest?.depositItem !== 'function' || typeof chest?.rawItem !== 'function' || typeof interactions?.placeBlock !== 'function') throw new Error('Portable storage requires observed inventory, containers and owned normal actions')
   if (previewMove !== null && typeof previewMove !== 'function') throw new Error('Portable storage movement preview must be a function')
   if (refreshInventory !== null && typeof refreshInventory !== 'function') throw new Error('Portable storage refresh must request a new received main inventory')
   if (preparePlacement !== null && typeof preparePlacement !== 'function') throw new Error('Portable placement preparation must be an owned bounded callback')
+  if (confirmPlacementState !== null && typeof confirmPlacementState !== 'function') throw new Error('Current placement reconciliation requires a read-only server-state fence')
   if (workWithContainer !== null && typeof workWithContainer !== 'function') throw new Error('Portable supply work must be a scoped received-container callback')
   if (getObservationFreshness !== null && typeof getObservationFreshness !== 'function') throw new Error('Portable observation freshness must be a read-only callback')
   if (onRecoveryDiagnostic !== null && typeof onRecoveryDiagnostic !== 'function') throw new Error('Portable recovery diagnostic sink must be a function')
@@ -1091,6 +1092,88 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       if (active === run) active = null
     }
   }
+  async function reconcileCurrentPlacement (request, { signal, onCheckpoint } = {}) {
+    const original = copy(request?.checkpoint ?? null)
+    const blocked = reason => ({ status: 'blocked', reason, currentStateConfirmed: false, serverConfirmed: false, checkpoint: copy(original) })
+    if (active) return blocked('STORAGE_BUSY')
+    const run = active = { checkpoint: original }
+    let operationOwner = null, inventoryRequired = false, anchor = null
+    const guard = () => {
+      signal?.throwIfAborted()
+      if (operationOwner) runActionOwned(operationOwner, () => {})
+      const frame = inventoryRequired ? observe(original) : placementContext(original)
+      if (anchor && (frame.state.health !== anchor.health || Math.hypot(frame.state.position.x - anchor.position.x, frame.state.position.y - anchor.position.y, frame.state.position.z - anchor.position.z) > 0.03)) throw failure('STORAGE_CURRENT_CONTEXT_CHANGED')
+      if (chest.snapshot().busy || chest.snapshot().pendingRequestId != null || interactions.snapshot?.().pendingOperation != null) throw failure('STORAGE_PRIOR_ACTION_PENDING')
+      return frame
+    }
+    const perform = async fn => {
+      guard()
+      let abort
+      const interrupted = new Promise((resolve, reject) => { abort = () => reject(failure('STORAGE_ABORTED')); signal?.addEventListener('abort', abort, { once: true }) })
+      try { return await Promise.race([Promise.resolve().then(() => { guard(); return operationOwner ? runActionOwned(operationOwner, fn) : fn() }), interrupted]) }
+      finally { signal?.removeEventListener('abort', abort) }
+    }
+    try {
+      const cp = original, intent = cp?.intent, pin = cp?.placementSourcePin, audits = cp?.currentPlacementReconciliations ?? []
+      if (request?.manual !== true || !cp || cp.version !== 1 || cp.jobId !== request.jobId || cp.operationId !== request.operationId || cp.kind !== 'shulker' || cp.purpose != null ||
+        request.selection?.kind !== 'shulker' || request.selection.key !== cp.selectionKey || cp.stage !== 'placing' || intent?.type !== 'place' || !samePoint(intent.position, cp.positions?.[0]) ||
+        cp.positions?.length !== 1 || !point(cp.stand) || !Array.isArray(cp.placed) || cp.placed.length || !Array.isArray(cp.deposited) || cp.deposited.length ||
+        !Array.isArray(cp.plan) || !cp.plan.length || cp.plan.some(entry => !Number.isSafeInteger(entry.count) || entry.count < 1 || entry.transferred !== 0) ||
+        !Number.isInteger(intent.slot) || intent.slot < 0 || intent.slot > 8 || typeof intent.source !== 'string' || !isShulkerBlock(intent.name) || pin?.slot !== intent.slot || pin.selectionKey !== cp.selectionKey ||
+        typeof pin.source !== 'string' || !Array.isArray(audits) || audits.length >= 3 || typeof refreshInventory !== 'function' || typeof confirmPlacementState !== 'function' || typeof onCheckpoint !== 'function') return blocked('STORAGE_CURRENT_AUDIT_INVALID')
+      const source = unpack(intent.source), initial = cp.initialContents ? unpack(cp.initialContents) : null
+      const sourceContents = readShulkerContents(source, { resolveName: id => crafting.itemNameOf?.(id) })
+      if (!validRaw(source) || source.count !== 1 || source.stack_id !== pin.stackId || !isDeepStrictEqual(unpack(pin.source), source) || crafting.itemNameOf?.(source.network_id) !== intent.name ||
+        !initial?.known || initial.slotCount !== 27 || initial.slots?.length !== 27 || !sourceContents.known || !isDeepStrictEqual(sourceContents, initial) ||
+        !Array.isArray(cp.sourceIdentities) || !cp.sourceIdentities.some(row => row.name === intent.name && row.count === 1 && matches(source, row.identity))) return blocked('STORAGE_CURRENT_SOURCE_INVALID')
+      const baseline = intent.boxesBefore
+      if (!Array.isArray(baseline) || !baseline.length || baseline.length > 36 || new Set(baseline.map(box => box.stackId)).size !== baseline.length ||
+        baseline.some(box => !isShulkerBox(box.name) || box.count !== 1 || !Number.isSafeInteger(box.stackId) || box.stackId < 1 || !/^[a-f0-9]{64}$/.test(box.identityHash ?? ''))) return blocked('STORAGE_CURRENT_BASELINE_INVALID')
+      operationOwner = captureActionOwner?.('reconcile', { jobId: cp.jobId, operationId: cp.operationId }) ?? null
+      const entry = guard(); anchor = { health: entry.state.health, position: copy(entry.state.position) }
+      const requestedAt = now()
+      if (await perform(() => refreshInventory({ signal, operationId: cp.operationId })) !== true) return blocked('STORAGE_FRESH_INVENTORY_REQUIRED')
+      inventoryRequired = true
+      const refreshedAt = now(), stamp = value => typeof value === 'number' ? value : Date.parse(value)
+      const freshness = getObservationFreshness?.(), mainAt = stamp(freshness?.inventoryResync?.observedAt ?? freshness?.inventoryObservedAt)
+      if (getObservationFreshness && (!Number.isFinite(mainAt) || mainAt < requestedAt || mainAt > refreshedAt)) return blocked('STORAGE_CURRENT_MAIN_UNCONFIRMED')
+      const refreshObservedAt = Number.isFinite(mainAt) ? mainAt : refreshedAt
+      const inspect = expectedMain => {
+        const current = guard(), actual = crafting.rawItem(intent.slot), boxes = current.items.filter(item => isShulkerBox(item.name))
+        if (!isDeepStrictEqual(actual, source) || boxes.length !== baseline.length || new Set(boxes.map(box => box.stackId)).size !== boxes.length ||
+          !baseline.every(before => boxes.some(after => after.name === before.name && after.count === before.count && after.stackId === before.stackId && identityHash(after.raw) === before.identityHash))) throw failure('STORAGE_CURRENT_ASSETS_CHANGED')
+        const contents = readShulkerContents(actual, { resolveName: id => crafting.itemNameOf?.(id) })
+        if (!contents.known || !isDeepStrictEqual(contents, initial) || !air(intent.position)) throw failure('STORAGE_CURRENT_TARGET_CHANGED')
+        const main = Array.from({ length: 36 }, (_, slot) => copy(crafting.rawItem(slot)))
+        if (main.some(raw => !validRaw(raw)) || expectedMain && !isDeepStrictEqual(main, expectedMain)) throw failure('STORAGE_CURRENT_MAIN_CHANGED')
+        return main
+      }
+      const main = inspect()
+      const serverState = await perform(() => confirmPlacementState({ jobId: cp.jobId, operationId: cp.operationId, scope: copy(cp.scope), stand: copy(cp.stand), position: copy(intent.position), slot: intent.slot, sourceStackId: source.stack_id, refreshRequestedAt: requestedAt, refreshObservedAt }, { signal }))
+      const state = guard().state, scope = observedScope(state), fence = serverState?.fence, airReceipt = serverState?.targetAirReceipt, positionReceipt = serverState?.positionReceipt
+      const feet = { x: state.position.x, y: state.position.y - 1.62, z: state.position.z }
+      if (serverState?.serverConfirmed !== true || serverState.kind !== 'current_placement_state' || !isDeepStrictEqual(serverState.scope, cp.scope) || serverState.jobId !== cp.jobId || serverState.operationId !== cp.operationId ||
+        !samePoint(serverState.position, intent.position) || serverState.targetAir !== true || serverState.quiet !== true || !Number.isSafeInteger(serverState.generation) || serverState.generation < 0 ||
+        !Number.isSafeInteger(serverState.transactionGeneration) || serverState.transactionGeneration < 0 || !uuidOf(serverState.requestId) ||
+        fence?.kind !== 'drained_input_and_server_position_barrier' || fence.generation !== serverState.generation || fence.transactionGeneration !== serverState.transactionGeneration ||
+        !Number.isFinite(fence.startedAt) || !Number.isFinite(fence.receivedAt) || fence.startedAt > fence.receivedAt || fence.receivedAt > requestedAt ||
+        fence.positionReceipt?.serverConfirmed !== true || fence.positionReceipt.kind !== 'server_position_volume' || fence.positionReceipt.scope !== scope || fence.positionReceipt.receivedAt !== fence.receivedAt ||
+        airReceipt?.serverConfirmed !== true || airReceipt.kind !== 'server_storage_target_air' || airReceipt.scope !== scope || airReceipt.operationId !== cp.operationId || !samePoint(airReceipt.position, intent.position) ||
+        airReceipt.requestId !== serverState.requestId || !Number.isFinite(airReceipt.startedAt) || airReceipt.startedAt < refreshObservedAt || !Number.isFinite(airReceipt.receivedAt) || airReceipt.receivedAt < airReceipt.startedAt ||
+        positionReceipt?.serverConfirmed !== true || positionReceipt.kind !== 'server_position_volume' || positionReceipt.scope !== scope || !finite(positionReceipt.feet) || positionReceipt.radius !== 0.12 ||
+        !Number.isFinite(positionReceipt.receivedAt) || positionReceipt.receivedAt < airReceipt.receivedAt || positionReceipt.receivedAt > now() || serverState.observedAt !== positionReceipt.receivedAt ||
+        Math.hypot(feet.x - positionReceipt.feet.x, feet.y - positionReceipt.feet.y, feet.z - positionReceipt.feet.z) > 0.03) return blocked('STORAGE_CURRENT_FENCE_UNCONFIRMED')
+      inspect(main)
+      const proof = { kind: 'current_state_placement_reconciliation', version: 1, manual: true, requestOutcome: 'unknown', jobId: cp.jobId, operationId: cp.operationId, scope: copy(cp.scope), position: copy(intent.position),
+        sourceSlot: intent.slot, sourceStackId: source.stack_id, sourceHash: createHash('sha256').update(Buffer.from(intent.source, 'base64')).digest('hex'), requestedAt, refreshedAt, observedAt: now(), serverState: copy(serverState) }
+      const staged = copy(cp)
+      staged.currentPlacementReconciliations = [...copy(audits), { version: 1, originalIntent: copy(intent), originalFailure: copy(intent.placementFailure ?? null), proof: copy(proof) }]
+      staged.intent = null; staged.stage = 'planned'; staged.windowId = null
+      await onCheckpoint(copy(staged)); inspect(main)
+      return { status: 'reconciled', currentStateConfirmed: true, serverConfirmed: false, checkpoint: staged, proof }
+    } catch (error) { return blocked(error.code ?? String(error.message ?? error)) }
+    finally { if (active === run) active = null }
+  }
   async function reconcileObservedPlacement (request, { signal, onCheckpoint } = {}) {
     const original = copy(request?.checkpoint ?? null)
     const blocked = reason => ({ status: 'blocked', reason, placementConfirmed: false, serverConfirmed: false, checkpoint: copy(original) })
@@ -1286,7 +1369,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     } catch (error) { return blocked(error.code ?? String(error.message ?? error)) }
     finally { if (active === run) active = null }
   }
-  return { storeCarried, previewSupplySite, ownsShulker, reconcileUnsentPlacement, reconcileRejectedDeposit, reconcileObservedPlacement, snapshot: () => ({ busy: active !== null, operationId: active?.checkpoint?.operationId ?? null, stage: active?.checkpoint?.stage ?? null }) }
+  return { storeCarried, previewSupplySite, ownsShulker, reconcileUnsentPlacement, reconcileRejectedDeposit, reconcileObservedPlacement, reconcileCurrentPlacement, snapshot: () => ({ busy: active !== null, operationId: active?.checkpoint?.operationId ?? null, stage: active?.checkpoint?.stage ?? null }) }
 }
 
 module.exports = { createQuarryPortableStorage, UNSENT_PLACE_REASON }

@@ -3377,6 +3377,59 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       return { ...status(), carriedPlacementReconciliation: { status: 'reconciled', notSent: true, proof: copy(response.proof), nextSite: copy(response.nextSite) } }
     } finally { reconcilingCarriedPlacement = false; release(); if (worker === lock) worker = null }
   }
+  async function reconcileCurrentStoragePlacement () {
+    requireDrained()
+    if (!job || job.state !== 'PAUSED' || typeof adapter.reconcileCurrentPlacement !== 'function') throw new Error('Current storage reconciliation requires a drained paused operation')
+    if (job.persistence?.status === 'failed') throw new QuarryInterrupt('PERSISTENCE_FAILED')
+    const owner = job, active = job.portableStorage, generation = epoch, intent = job.userRunIntent
+    if (!active?.checkpoint || active.purpose != null || active.selection?.kind !== 'shulker' || job.supplyRestock || job.pauseReason !== 'CARRIED_STORAGE_BLOCKED' || job.pauseDetails?.operationId !== active.operationId) throw new Error('No matching paused cargo placement is recorded')
+    const before = copy(active.checkpoint), actions = job.actions.slice(), beforeCheckpoint = active.checkpoint
+    let expectedCheckpoint = beforeCheckpoint
+    if (!samePendingStoragePlacement(before, adapter.getState()) || before.plan.some(entry => !Number.isSafeInteger(entry.count) || entry.count < 1)) throw new Error('A current unresolved cargo placement is required')
+    const prior = { pauseReason: job.pauseReason, pauseDetails: copy(job.pauseDetails), result: copy(job.result), savedAt: job.savedAt }
+    const owns = () => {
+      const current = adapter.getState()
+      if (job !== owner || job.portableStorage !== active || active.checkpoint !== expectedCheckpoint || epoch !== generation || job.state !== 'PAUSED' || job.userRunIntent !== intent || job.persistence?.status === 'failed' || current?.phase !== 'spawned' || current.dead || current.isDead || current.lifecycle?.dead || !(current.health > 0) || !storageScopeMatches(before, current) || scopeOf(current) !== job.scope || lifeOf(current) !== job.life || adapter.combatActive() || job.actions.length !== actions.length || job.actions.some((action, index) => action !== actions[index])) throw new Error('Current storage reconciliation was interrupted')
+      assertJobWorld(job, current)
+    }
+    const stable = checkpoint => {
+      const value = copy(checkpoint)
+      for (const field of ['intent', 'stage', 'windowId', 'currentPlacementReconciliations']) delete value[field]
+      return value
+    }
+    const local = new AbortController()
+    let release, staged = null, watcher, outcome
+    const lock = new Promise(resolve => { release = resolve })
+    clearAutoResume()
+    worker = lock; reconcilingCarriedPlacement = true
+    try {
+      owns()
+      watcher = setInterval(() => { try { owns() } catch (error) { local.abort(error) } }, pollMs)
+      const response = await adapter.reconcileCurrentPlacement({ jobId: owner.config.jobId, operationId: active.operationId, purpose: 'cargo', selection: copy(active.selection), checkpoint: copy(before), manual: true }, {
+        signal: local.signal,
+        canPlace: p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 }),
+        onCheckpoint: async checkpoint => {
+          owns()
+          const previous = before.currentPlacementReconciliations ?? [], audits = checkpoint?.currentPlacementReconciliations, latest = audits?.at(-1)
+          const proof = latest?.proof, server = proof?.serverState
+          if (checkpoint?.jobId !== owner.config.jobId || checkpoint.operationId !== active.operationId || checkpoint.kind !== 'shulker' || checkpoint.stage !== 'planned' || checkpoint.intent != null || checkpoint.windowId != null || !storagePoint(checkpoint.stand) || checkpoint.positions?.length !== 1 || !checkpoint.positions.every(storagePoint) || !isDeepStrictEqual(stable(checkpoint), stable(before)) || !Array.isArray(previous) || !Array.isArray(audits) || audits.length !== previous.length + 1 || audits.length > 3 || !isDeepStrictEqual(audits.slice(0, -1), previous) || latest?.version !== 1 || !isDeepStrictEqual(latest.originalIntent, before.intent) || !isDeepStrictEqual(latest.originalFailure, before.intent.placementFailure ?? null) || proof?.kind !== 'current_state_placement_reconciliation' || proof.version !== 1 || proof.manual !== true || proof.requestOutcome !== 'unknown' || proof.notSent === true || proof.jobId !== owner.config.jobId || proof.operationId !== active.operationId || !isDeepStrictEqual(proof.scope, before.scope) || !samePoint(proof.position, before.intent.position) || proof.sourceSlot !== before.intent.slot || !Number.isSafeInteger(proof.sourceStackId) || proof.sourceStackId < 1 || typeof proof.sourceHash !== 'string' || !/^[a-f0-9]{64}$/.test(proof.sourceHash) || server?.serverConfirmed !== true || server.kind !== 'current_placement_state' || server.targetAir !== true || server.quiet !== true || server.jobId !== owner.config.jobId || server.operationId !== active.operationId || !isDeepStrictEqual(server.scope, before.scope) || !samePoint(server.position, before.intent.position)) throw new Error('Current storage reconciliation changed assets or history')
+          staged = copy(checkpoint)
+        }
+      })
+      owns()
+      const proof = staged?.currentPlacementReconciliations?.at(-1)?.proof
+      if (response?.status !== 'reconciled' || response.currentStateConfirmed !== true || response.serverConfirmed !== false || response.notSent === true || !staged || !isDeepStrictEqual(staged, response.checkpoint) || !isDeepStrictEqual(proof, response.proof)) outcome = { status: 'blocked', reason: response?.reason ?? 'UNCONFIRMED' }
+      else {
+        active.checkpoint = staged
+        expectedCheckpoint = staged
+        job.pauseReason = 'STORAGE_CURRENT_STATE_RECONCILED'; job.pauseDetails = { operationId: active.operationId, currentStateConfirmed: true, requestOutcome: 'unknown' }; job.result = null
+        try { await save('storage_current_state_reconciled') } catch (error) { active.checkpoint = beforeCheckpoint; expectedCheckpoint = beforeCheckpoint; Object.assign(job, prior); throw error }
+        note('storage_current_state_reconciled', { operationId: active.operationId, credited: 0, requestOutcome: 'unknown' })
+        outcome = { status: 'reconciled', currentStateConfirmed: true, serverConfirmed: false, requestOutcome: 'unknown', proof: copy(proof) }
+      }
+    } finally { clearInterval(watcher); reconcilingCarriedPlacement = false; release(); if (worker === lock) worker = null }
+    return { ...status(), currentStoragePlacementReconciliation: outcome }
+  }
   async function reconcileSupplyPlacement () {
     if (!job || worker || job.state !== 'PAUSED' || typeof adapter.reconcileSupplyPlacement !== 'function') throw new Error('Placement reconciliation requires a drained paused supply operation')
     const owner = job, active = job.supplyRestock
@@ -3723,7 +3776,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
+  return { plan, start, pause, emergencyStop, resume, cancel, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults }

@@ -102,6 +102,7 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
   let actions = []
   let transaction = null
   let transactionSent = null
+  let actionRevision = 0
   let activeTarget = null
   let lastError = null
   let sent = 0
@@ -319,6 +320,7 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
     if (distance > 4.5) throw new Error('対象ブロックが採掘範囲外です。')
     const followsRelease = action === 'start_break' && actions.length === 1 && actions[0].action === 'abort_break'
     if (actions.length && !followsRelease) throw new Error('前のブロック操作が送信されるまで待ってください。')
+    actionRevision++
     actions.push({ action, position, face })
   }
 
@@ -342,9 +344,18 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
     currentState()
     if (!value || typeof value !== 'object' || !value.data || !value.legacy || !Array.isArray(value.actions)) throw new Error('正規のアイテム操作データが必要です。')
     if (transaction) throw new Error('前のアイテム操作の送信を待ってください。')
+    actionRevision++
     transaction = structuredClone(value)
     if (onSent != null && typeof onSent !== 'function') { transaction = null; throw new Error('送信通知は関数で指定してください。') }
     transactionSent = onSent ?? null
+  }
+
+  function drainQueued () {
+    // A present-time local queue fence, never evidence that an older request
+    // was not already sent. The caller must await a server barrier afterwards.
+    stop(false)
+    actionRevision++
+    return { kind: 'input_queue_drained', revision: actionRevision, drainedAt: Date.now(), queuedActions: actions.length, queuedTransaction: transaction !== null }
   }
 
   return {
@@ -354,7 +365,8 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
     sendAction,
     lookAt,
     sendTransaction,
-    stats: () => ({ running: timer !== null, tick: String(tick), sent, queuedActions: actions.length, target: activeTarget ? structuredClone(activeTarget.position) : null, rotation: desiredRotation ? { ...desiredRotation } : null, lastError, receiptMismatches: structuredClone(receiptMismatches) })
+    drainQueued,
+    stats: () => ({ running: timer !== null, tick: String(tick), sent, queuedActions: actions.length, queuedTransaction: transaction !== null, actionRevision, target: activeTarget ? structuredClone(activeTarget.position) : null, rotation: desiredRotation ? { ...desiredRotation } : null, lastError, receiptMismatches: structuredClone(receiptMismatches) })
   }
 }
 

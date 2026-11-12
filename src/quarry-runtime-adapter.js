@@ -311,6 +311,7 @@ function createQuarryRuntimeAdapter (ports) {
     ...(typeof logout === 'function' ? { logout: () => logout() } : {}),
     ...(typeof reconcileSupplyPlacement === 'function' ? { reconcileSupplyPlacement: (request, options) => reconcileSupplyPlacement(request, options) } : {}),
     ...(typeof reconcileCarriedPlacement === 'function' ? { reconcileCarriedPlacement: (request, options) => reconcileCarriedPlacement(request, options) } : {}),
+    ...(typeof ports.reconcileCurrentPlacement === 'function' ? { reconcileCurrentPlacement: (request, options) => ports.reconcileCurrentPlacement(request, options) } : {}),
     ...(typeof reconcileRejectedDeposit === 'function' ? { reconcileRejectedDeposit: (request, options) => reconcileRejectedDeposit(request, options) } : {}),
     ...(typeof reconcileObservedPlacement === 'function' ? { reconcileObservedPlacement: (request, options) => reconcileObservedPlacement(request, options) } : {}),
     ...(typeof egress === 'function' ? { egress: (request, options) => egress(request, options) } : {}),
