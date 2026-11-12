@@ -24,7 +24,11 @@ function createControlLocation ({ getState, getObservedState, generation, confir
     const c = context()
     if (!finite(prediction?.position)) { invalidate(); return }
     const previous = store.lastPrediction ?? c.state.position
-    if (source !== 'idle_physics' || distance(previous, prediction.position) > 0.003 || store.proof && distance(feetOf({ position: prediction.position }), store.proof.pose) > 0.03) invalidate()
+    const proof = store.proof, witnessed = proof && proof.scope === c.scope && proof.generation === c.generation
+    // A tiny neutral settling step may widen an actual witness's uncertainty;
+    // it cannot create a witness or move its received centre.
+    const moved = witnessed ? distance(feetOf({ position: prediction.position }), proof.pose) > 0.03 : distance(previous, prediction.position) > 0.003
+    if (source !== 'idle_physics' || moved) invalidate()
     store.lastPrediction = { ...prediction.position }
   }
   const unknown = () => ({ confirmed: false, feet: null, radius: null, scope: null, generation: generation(), observedAt: null, source: null })
@@ -34,7 +38,7 @@ function createControlLocation ({ getState, getObservedState, generation, confir
     const proof = store.proof
     if (proof && proof.scope === c.scope && proof.generation === c.generation && distance(c.feet, proof.pose) <= 0.03) {
       const { pose, ...result } = proof
-      return structuredClone(result)
+      return structuredClone({ ...result, radius: result.radius + distance(c.feet, pose) })
     }
     store.proof = null
     const observed = getObservedState(), feet = feetOf(observed), at = stamp(observed?.positionUpdatedAt)

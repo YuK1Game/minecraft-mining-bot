@@ -26,7 +26,7 @@ function fixture (options = {}) {
     sleep: async ms => { clock += Math.max(1, ms); await turn() }, uuid: () => '01234567-89ab-4cde-8123-456789abcdef', pollMs: 5,
     async acquire (id, value) { events.push('acquire'); lease = id; assert.equal(value.scope, observedScope(state)); await options.acquire?.(value) },
     async release (id) { assert.equal(id, lease); events.push('release'); lease = null },
-    async planRoute (target, value) { plans.push({ target: copy(target), options: copy(value) }); await options.plan?.(state); return options.noRoute ? { ready: false } : route(target, true) },
+    async planRoute (target, value) { plans.push({ target: copy(target), options: { ...value } }); await options.plan?.(state); return options.noRoute ? { ready: false } : route(target, true) },
     async previewMove (target, value) { previews.push({ target: copy(target), options: copy(value) }); await options.preview?.(state); return options.noShort ? { ready: false } : route(target, false) },
     startMove (target, value) {
       assert.equal(lease, value.operationId); assert.equal(value.allowWater, true); assert.equal(value.maxDistance, 6)
@@ -77,6 +77,89 @@ test('a long planning-only path executes fresh short prefixes and succeeds on ar
   assert.equal(f.previews.length, f.moves.length)
   assert.ok(distance(feetOf(f.state), result.target) > 0.4, 'entering the safe selected area is sufficient')
   assert.equal(result.positionProof.scope, observedScope(f.state)); assert.equal(result.positionProof.source, 'server_position_volume')
+})
+
+function cardinalPath (origin, corners) {
+  const points = [copy(origin)], cursor = copy(origin)
+  for (const target of corners) for (const axis of ['x', 'z']) while (Math.abs(cursor[axis] - target[axis]) > 0.001) {
+    cursor[axis] += Math.sign(target[axis] - cursor[axis])
+    points.push(copy(cursor))
+  }
+  return points
+}
+
+test('a known detour longer than48m executes short owned legs while the trusted planning radius remains48m', async () => {
+  const f = fixture(), origin = feetOf(f.state)
+  const travel = createChunkTravel({ ...f.ports, planRoute: async (target, options) => {
+    assert.equal(options.maxDistance, 48)
+    const all = cardinalPath(origin, [{ x: -7.5, y: 63, z: 0.5 }, { x: -7.5, y: 63, z: -7.5 }, { x: target.x, y: 63, z: -7.5 }, target])
+    assert.ok(all.every(point => distance(point, origin) <= 48))
+    const here = feetOf(f.state), index = all.findIndex(point => distance(point, here) < 0.01)
+    assert.ok(index >= 0)
+    return { ready: true, planningOnly: true, origin: here, target, waypoints: all.slice(index + 1).map(position => ({ position, action: 'walk', medium: 'land' })) }
+  } })
+  travel.start({ area: { x1: 1, z1: 0 } }); await travel.drain()
+  assert.equal(travel.status().phase, 'arrived', JSON.stringify(travel.status()))
+  const walked = f.moves.reduce((sum, move) => sum + distance(move.origin, move.target), 0)
+  assert.ok(walked > 48 && walked <= 128, `bounded detour ${walked}`)
+  assert.ok(f.moves.every(move => distance(move.origin, move.target) <= 4.5 + 1e-6 && move.options.maxDistance === 6))
+  assert.equal(f.witnesses.length, f.moves.length)
+})
+
+test('a route exceeding128m is refused even when all its points stay inside the48m planning radius', async () => {
+  const f = fixture(), origin = feetOf(f.state)
+  const travel = createChunkTravel({ ...f.ports, planRoute: async target => {
+    const square = [{ x: 20.5, y: 63, z: 0.5 }, { x: 20.5, y: 63, z: 20.5 }, { x: 0.5, y: 63, z: 20.5 }, origin]
+    const all = cardinalPath(origin, [...square, ...square, target])
+    assert.ok(all.length < 256 && all.every(point => distance(point, origin) <= 48))
+    return { ready: true, planningOnly: true, origin, target, waypoints: all.slice(1).map(position => ({ position, action: 'walk', medium: 'land' })) }
+  } })
+  travel.start({ area: { x1: 1, z1: 0 }, maxTravelDistance: 1000 }); await travel.drain()
+  assert.equal(travel.status().error.code, 'CHUNK_TRAVEL_NO_ROUTE')
+  assert.equal(f.moves.length, 0)
+  assert.throws(() => createChunkTravel({ ...f.ports, maxTravelDistance: 129 }), TypeError)
+})
+
+test('a fresh short-route detour above4.5m backs off to an earlier full-route waypoint without loosening limits', async () => {
+  const f = fixture(); let rejected = null
+  const travel = createChunkTravel({ ...f.ports, previewMove: async (target, options) => {
+    if (!rejected) {
+      f.previews.push({ target: copy(target), options: copy(options) }); rejected = copy(target)
+      const origin = feetOf(f.state)
+      return { ready: true, origin, target, waypoints: [{ x: origin.x, y: origin.y, z: origin.z + 2 }, { ...target, z: target.z + 2 }, target].map(position => ({ position, action: 'walk', medium: 'land' })) }
+    }
+    return f.ports.previewMove(target, options)
+  } })
+  travel.start({ area: { x1: 1, z1: 0 } }); await travel.drain()
+  assert.equal(travel.status().phase, 'arrived', JSON.stringify(travel.status()))
+  assert.ok(distance(f.moves[0].origin, f.moves[0].target) < distance(f.moves[0].origin, rejected))
+  assert.notDeepEqual(f.moves[0].target, rejected, 'the rejected longest preview is never dispatched')
+  assert.ok(f.moves.every(move => distance(move.origin, move.target) <= 4.5 + 1e-6 && move.options.maxDistance === 6))
+  assert.equal(travel.status().shortRouteFailure, null)
+})
+
+test('four unknown short previews send no input and retain only the last bounded rejection', async () => {
+  const f = fixture(), travel = createChunkTravel({ ...f.ports, previewMove: async (target, options) => {
+    f.blocks.set('1,63,0', { known: false })
+    return f.ports.previewMove(target, options)
+  } })
+  travel.start({ area: { x1: 1, z1: 0 } }); await travel.drain()
+  const result = travel.status()
+  assert.equal(result.error.code, 'CHUNK_TRAVEL_SHORT_ROUTE_UNCONFIRMED')
+  assert.equal(f.previews.length, 4); assert.equal(f.moves.length, 0)
+  assert.deepEqual(result.shortRouteFailure.target, f.previews.at(-1).target)
+  assert.equal(result.shortRouteFailure.ready, true); assert.ok(Number.isFinite(result.shortRouteFailure.pathLength))
+})
+
+test('a scheduled cancel between rejected short prefixes prevents every remaining preview and input', async () => {
+  const f = fixture(); let travel
+  travel = createChunkTravel({ ...f.ports, previewMove: async (target, options) => {
+    f.previews.push({ target: copy(target), options: copy(options) })
+    setImmediate(() => travel.cancel())
+    return { ready: false, reason: 'current ordinary route unavailable' }
+  } })
+  travel.start({ area: { x1: 1, z1: 0 } }); await travel.drain()
+  assert.equal(travel.status().phase, 'cancelled'); assert.equal(f.previews.length, 1); assert.equal(f.moves.length, 0)
 })
 
 for (const option of [{ witnessOk: false }, { wrongScope: true }, { witnessKind: 'client_prediction' }]) test(`predicted completion without a matching actual witness cannot arrive: ${JSON.stringify(option)}`, async () => {
@@ -143,6 +226,22 @@ test('cancel releases a lease even when a read-only long planner has not resolve
   wait.resolve()
 })
 
+test('the pending long planner receives its own scoped abort signal and a live context check', async () => {
+  const wait = deferred()
+  let acquiredSignal
+  const f = fixture({ acquire: value => { acquiredSignal = value.signal }, plan: () => wait.promise })
+  f.travel.start({ area: { x1: 1, z1: 0 } }); await waitFor(() => f.plans.length === 1)
+  const options = f.plans[0].options
+  assert.equal(options.signal, acquiredSignal, 'CPU planning shares the exact operation cancellation signal')
+  assert.equal(options.signal.aborted, false); assert.equal(typeof options.check, 'function')
+  assert.doesNotThrow(options.check)
+  f.travel.cancel(); await f.travel.drain()
+  assert.equal(options.signal.aborted, true)
+  assert.throws(options.check, { code: 'CHUNK_TRAVEL_CANCELLED' })
+  assert.equal(f.moves.length, 0); assert.equal(f.previews.length, 0)
+  wait.resolve()
+})
+
 test('context changes while an awaited planner is pending cancel without later movement', async () => {
   const wait = deferred(), f = fixture({ plan: () => wait.promise })
   f.travel.start({ area: { x1: 1, z1: 0 } }); await waitFor(() => f.plans.length === 1)
@@ -172,6 +271,23 @@ test('leg and operation bounds stop unconfirmed progress', async () => {
   assert.equal(f.travel.status().error.code, 'CHUNK_TRAVEL_LEG_TIMEOUT')
   const limited = fixture({ bounds: { maxLegs: 1 } }); limited.travel.start({ area: { x1: 2, z1: 0 } }); await limited.travel.drain()
   assert.equal(limited.travel.status().error.code, 'CHUNK_TRAVEL_LEG_LIMIT')
+})
+
+for (const phase of ['failed', 'stopped', 'replan_required']) test(`native ${phase} diagnostics survive owned cleanup overwriting the movement reason`, async () => {
+  const f = fixture({ hangMove: true }), reason = 'Native made no progress after 51 frames. ' + 'x'.repeat(260)
+  let native = { phase: 'idle', running: false }
+  const travel = createChunkTravel({ ...f.ports, getMovement: () => copy(native),
+    startMove: (target, options) => { f.ports.startMove(target, options); native = { phase, reason, target: copy(target), waypointIndex: 0, sent: 51, running: false }; return copy(native) },
+    stopMove: (id, cleanupReason) => { f.ports.stopMove(id, cleanupReason); native.phase = 'stopped'; native.reason = cleanupReason; native.target.x = 777 }
+  })
+  travel.start({ area: { x1: 1, z1: 0 } }); await travel.drain()
+  const status = travel.status()
+  assert.equal(status.error.code, 'CHUNK_TRAVEL_MOVE_FAILED'); assert.equal(status.serverConfirmed, false)
+  assert.equal(native.reason, 'CHUNK_TRAVEL_FINISHED')
+  assert.deepEqual(status.movementFailure, { phase, reason: reason.slice(0, 240), target: f.moves[0].target, waypointIndex: 0, sent: 51 })
+  assert.equal(status.movementFailure.reason.length, 240)
+  status.movementFailure.target.x = 999
+  assert.deepEqual(travel.status().movementFailure.target, f.moves[0].target, 'public diagnostics are isolated copies')
 })
 
 test('terrain becoming unknown during final position verification never publishes arrival', async () => {

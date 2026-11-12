@@ -85,3 +85,27 @@ test('invalidating a received pose cannot re-publish the same packet from the sa
   f.advance(); f.raw.positionUpdatedAt = 1001
   assert.equal(f.location.snapshot().confirmed, true)
 })
+
+test('neutral settling retains only a real witness and widens its original volume without shifting the received centre', async () => {
+  const f = fixture(); await f.location.confirm()
+  const received = f.location.snapshot(), next = { ...f.state.position, x: f.state.position.x + .01 }
+  f.location.notePrediction({ position: next }, 'idle_physics'); f.state.position = next
+  const proof = f.location.snapshot()
+  assert.equal(proof.confirmed, true)
+  assert.deepEqual(proof.feet, received.feet)
+  assert.equal(proof.observedAt, received.observedAt)
+  assert.ok(Math.abs(proof.radius - .21) < 1e-10)
+  assert.deepEqual(f.location.snapshot(), proof, 'polling cannot accumulate an invented uncertainty or a new position')
+  const beyond = { ...next, x: next.x + .04 }
+  f.location.notePrediction({ position: beyond }, 'idle_physics'); f.state.position = beyond
+  assert.equal(f.location.snapshot().confirmed, false)
+})
+
+test('neutral movement cannot create a witness and other movement always revokes an existing one', async () => {
+  const unknown = fixture(), moved = { ...unknown.state.position, x: unknown.state.position.x + .01 }
+  unknown.location.notePrediction({ position: moved }, 'idle_physics'); unknown.state.position = moved
+  assert.equal(unknown.location.snapshot().confirmed, false)
+  const f = fixture(); await f.location.confirm()
+  f.location.notePrediction({ position: { ...f.state.position, x: f.state.position.x + .001 } }, 'navigation')
+  assert.equal(f.location.snapshot().confirmed, false)
+})

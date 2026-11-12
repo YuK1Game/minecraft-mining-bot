@@ -11,12 +11,12 @@ loaded._compile(fs.readFileSync(filename, 'utf8').split('\ntest(')[0] + '\nmodul
 const { scene } = loaded.exports
 const area = { x1: 1, z1: 0, x2: 1, z2: 0 }
 
-function fixture (t) {
+function fixture (t, { combatExposure = null } = {}) {
   let ports, creations = 0, quarryCreations = 0, busy = false, operationId = null, sequence = 0, controller = null, phase = 'idle', drain = Promise.resolve()
-  let motion = { phase: 'idle', running: false }, hop = 0
-  const events = [], starts = [], stops = []
+  let motion = { phase: 'idle', running: false }, hop = 0, nativeState = null
+  const events = [], starts = [], stops = [], previews = []
   const movement = {
-    snapshot: () => structuredClone(motion), preview: () => ({ ready: true }), previewHop: () => ({ ready: true }),
+    snapshot: () => structuredClone(motion), preview: target => { previews.push({ target, origin: nativeState?.().position }); return { ready: true } }, previewHop: () => ({ ready: true }),
     start: (target, options) => { starts.push({ target, options }); motion = { phase: 'moving', running: true, route: { operation: 'navigation' } }; return movement.snapshot() },
     startHop: () => { motion = { phase: 'moving', running: true, route: { operation: 'critical_hop' }, criticalHopId: ++hop, queuedTick: '1001', queuedReceiptConfirmed: true }; return movement.snapshot() },
     stop: reason => { stops.push(reason); motion = { phase: 'stopped', running: false } }, resetLifecycle: reason => movement.stop(reason), applyPacket () {}, diagnostics: () => null
@@ -34,7 +34,8 @@ function fixture (t) {
   const f = scene(t, { runtimeOverrides: {
     './chunk-travel': { createChunkTravel: options => { creations++; ports = options; return travel } },
     './quarry-job': { createQuarryJob: () => { quarryCreations++; throw new Error('Chunk movement must not create a quarry job') } },
-    './movement': { createMovement: () => movement }
+    './movement': { createMovement: options => { nativeState = options.getState; return movement } },
+    ...(combatExposure ? { './combat-exposure': { createCombatExposure: () => ({ evaluate: combatExposure, sight: () => false, snapshot: () => ({}) }) } } : {})
   } })
   // The real Host supplies the current confirmed lifecycle independently of
   // the reloadable Runtime. Ordinary water-capable movement requires it.
@@ -42,7 +43,7 @@ function fixture (t) {
   const begin = () => f.runtime.operations.quarry.moveToChunk({ area })
   const acquire = () => ports.acquire(operationId, { scope: observedScope(ports.getState()), signal: controller.signal })
   const finish = () => { busy = false; ports?.release(operationId) }
-  return { ...f, events, starts, stops, movement, travel, begin, acquire, finish,
+  return { ...f, events, starts, stops, previews, movement, travel, begin, acquire, finish,
     ports: () => ports, creations: () => creations, quarryCreations: () => quarryCreations, id: () => operationId,
     settleActor: () => { busy = false }, setDrain: value => { drain = value } }
 }
@@ -114,6 +115,34 @@ test('a late chunk stop or release cannot stop a newer ordinary movement or rele
   f.ports().release(first)
   assert.throws(() => f.runtime.operations.crafting.openInventory(), { code: 'CHUNK_MOVE_BUSY' })
   f.finish()
+})
+
+test('each chunk preview uses the current working position rather than the previous leg origin', async t => {
+  const f = fixture(t); f.begin(); await f.acquire()
+  const first = { ...f.raw.position }, next = { x: first.x + 4, y: first.y, z: first.z }
+  f.ports().previewMove({ x: first.x + 1, y: first.y - 1.62, z: first.z }, {})
+  f.ports().startMove({ x: first.x + 1, y: first.y - 1.62, z: first.z }, { operationId: f.id(), beforeInput: () => true })
+  f.movement.stop('offline first-leg completion')
+  f.host.setPrediction({ position: next, source: 'client_prediction', serverConfirmed: false })
+  f.ports().previewMove({ x: next.x + 1, y: next.y - 1.62, z: next.z }, {})
+  assert.deepEqual(f.previews.map(p => p.origin), [first, next])
+  assert.deepEqual(f.raw.position, first, 'preview rebasing cannot overwrite a received server position')
+  assert.equal(f.runtime.operations.quarry.controlPosition().confirmed, false)
+  f.finish()
+})
+
+test('chunk movement uses observed attack access for a blocked drowned while ordinary water movement keeps its existing policy', async t => {
+  const checks = [], f = fixture(t, { combatExposure: (actor, state) => { checks.push({ actor: actor.runtimeId, position: state.position }); return { intercept: false, unknown: false, reason: 'PROJECTILE_SIGHT_BLOCKED' } } })
+  f.begin(); await f.acquire()
+  f.actors.push({ runtimeId: '9', uniqueId: '-99', entityType: 'minecraft:drowned', kind: 'mob', hostile: true, alive: true, positionKnown: true, dimension: 'overworld', position: { x: 6.5, y: 65, z: .5 } })
+  const target = { x: 1.5, y: 65, z: .5 }, frame = { packetPosition: { x: .6, y: 66.62, z: .5 }, predictedState: { position: { x: .6, y: 65, z: .5 }, isInLava: false } }
+  f.ports().startMove(target, { operationId: f.id(), beforeInput: () => true })
+  assert.equal(f.starts[0].options.beforeInput(frame), true)
+  assert.ok(checks.length > 0, 'the real chunk port must use the canonical attack-access policy')
+  f.finish()
+  f.runtime.operations.movement.start(target, { allowWater: true })
+  assert.equal(f.starts.at(-1).options.beforeInput(frame), false, 'the unrelated ordinary water policy stays unchanged')
+  f.movement.stop('offline cleanup')
 })
 
 test('combat cancels chunk movement synchronously and old cleanup cannot stop the new combat movement', { timeout: 2500 }, async t => {

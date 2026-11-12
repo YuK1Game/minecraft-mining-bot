@@ -182,6 +182,17 @@ test('a movement failure stays visible without granting arrival or automatically
   assert.equal(f.$('reset').disabled, true); assert.deepEqual(f.calls, [])
 })
 
+test('a cancelled movement reports interruption even when its cancellation reason is an error', () => {
+  for (const phase of ['cancelled', 'canceled']) {
+    const f = fixture({ inside: false })
+    Object.assign(f.live().chunkMove, { phase, error: { code: 'COMBAT_PRIORITY', message: '移動を完了できませんでした。現在位置と経路を確認してください。' } }); f.render()
+    assert.equal(f.$('move-message').textContent, '中断しました')
+    assert.equal(f.$('move-message').classList.contains('error'), false)
+    assert.equal(f.$('move-cancel').hidden, true)
+    assert.equal(f.$('reset').disabled, true); assert.deepEqual(f.calls, [])
+  }
+})
+
 test('the current-location selection and grid marker use actual proof instead of stale raw or predicted display coordinates', () => {
   const f = fixture()
   f.live().chunk = { x: 7, z: 7 }; f.live().position = { x: 120, y: 63, z: 120 }; f.render()

@@ -302,10 +302,10 @@
     $('move-cancel').hidden = !moving
     $('move-cancel').disabled = !!busy || !token || !live?.session || typeof move?.operationId !== 'string' || !move.operationId
     if (moving) { plan = null; $('plan-results').hidden = true; message('move', '移動中') }
+    else if (['cancelled', 'canceled'].includes(move?.phase)) message('move', '中断しました')
     else if (move?.error || move?.phase === 'failed') message('move', clean(move.error?.message || '移動できませんでした。'), true)
     else if (move?.serverConfirmed === true && proofInsideArea(live)) message('move', '到着確認済み')
     else if (['completed', 'arrived'].includes(move?.phase)) message('move', '位置の受信待ち')
-    else if (['cancelled', 'canceled'].includes(move?.phase)) message('move', '中断しました')
   }
   $('move').addEventListener('click', () => {
     if (!canMoveToArea()) return

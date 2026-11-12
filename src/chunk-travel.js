@@ -15,9 +15,9 @@ const errorView = error => ({ code: /^CHUNK_TRAVEL_[A-Z_]+$/.test(error?.code ??
 
 function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previewMove, startMove, stopMove, confirmPosition,
   acquire, release, generation, jobIdentity, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
-  uuid = randomUUID, maxDistance = 48, maxLegs = 32, timeoutMs = 180000, legTimeoutMs = 20000, pollMs = 50 } = {}) {
+  uuid = randomUUID, maxDistance = 48, maxTravelDistance = 128, maxLegs = 32, timeoutMs = 180000, legTimeoutMs = 20000, pollMs = 50 } = {}) {
   if ([getState, getBlock, getMovement, planRoute, previewMove, startMove, stopMove, confirmPosition, acquire, release, generation, jobIdentity, now, sleep, uuid].some(fn => typeof fn !== 'function')) throw TypeError('Chunk travel requires owned ordinary movement and actual position witnesses')
-  if (!Number.isFinite(maxDistance) || maxDistance <= 0 || maxDistance > 48 || !Number.isInteger(maxLegs) || maxLegs < 1 || maxLegs > 32 || !Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 180000 || !Number.isFinite(legTimeoutMs) || legTimeoutMs < 1 || legTimeoutMs > timeoutMs || !Number.isFinite(pollMs) || pollMs < 1 || pollMs > 1000) throw TypeError('Chunk travel bounds must be finite')
+  if (!Number.isFinite(maxDistance) || maxDistance <= 0 || maxDistance > 48 || !Number.isFinite(maxTravelDistance) || maxTravelDistance <= 0 || maxTravelDistance > 128 || !Number.isInteger(maxLegs) || maxLegs < 1 || maxLegs > 32 || !Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 180000 || !Number.isFinite(legTimeoutMs) || legTimeoutMs < 1 || legTimeoutMs > timeoutMs || !Number.isFinite(pollMs) || pollMs < 1 || pollMs > 1000) throw TypeError('Chunk travel bounds must be finite')
   let task = null, owner = null, active = null
   const read = p => getBlock(p.x, p.y, p.z)
   const pathBody = block => passableSiteBody(block) || block?.known === true && block.name === 'minecraft:wildflowers' && block.boundingBox === 'empty' && !block.extra?.length
@@ -69,8 +69,8 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
   }
   function status () {
     return active ? { available: true, busy: !!task, phase: active.phase, operationId: active.id, area: copy(active.area), target: copy(active.target), legs: active.legs,
-      serverConfirmed: active.phase === 'arrived' && active.serverConfirmed === true, positionProof: copy(active.positionProof), error: copy(active.error) }
-      : { available: true, busy: false, phase: 'idle', operationId: null, area: null, target: null, legs: 0, serverConfirmed: false, positionProof: null, error: null }
+      serverConfirmed: active.phase === 'arrived' && active.serverConfirmed === true, positionProof: copy(active.positionProof), error: copy(active.error), movementFailure: copy(active.movementFailure), shortRouteFailure: copy(active.shortRouteFailure) }
+      : { available: true, busy: false, phase: 'idle', operationId: null, area: null, target: null, legs: 0, serverConfirmed: false, positionProof: null, error: null, movementFailure: null, shortRouteFailure: null }
   }
   async function stopOwned (run, reason) {
     if (!run.moving) return run.stopping
@@ -101,7 +101,16 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
     if (distance(points.at(-1)?.position ?? {}, goal) > 0.4 || points.slice(1).some(point => !['walk', 'jump', 'swim'].includes(point?.action) || !knownRoutePoint(point.position, point.medium))) return null
     let length = 0
     for (let i = 1; i < points.length; i++) { if (!finite(points[i].position)) return null; length += distance(points[i - 1].position, points[i].position) }
-    return length <= (short ? 4.5 : maxDistance) + 1e-6 ? { points, length } : null
+    return length <= (short ? 4.5 : maxTravelDistance) + 1e-6 ? { points, length } : null
+  }
+  function rejectedPreview (preview, origin, target) {
+    let pathLength = null
+    if (Array.isArray(preview?.waypoints) && preview.waypoints.length <= 256 && preview.waypoints.every(point => finite(point?.position))) {
+      pathLength = 0; let previous = origin
+      for (const point of preview.waypoints) { pathLength += distance(previous, point.position); previous = point.position }
+    }
+    return { target: copy(target), ready: preview?.ready === true, reason: typeof preview?.reason === 'string' ? preview.reason.slice(0, 240) : null,
+      waypointCount: Array.isArray(preview?.waypoints) ? preview.waypoints.length : null, pathLength }
   }
   async function witness (run, final) {
     const feet = guard(run).feet, radius = 0.2, began = now()
@@ -114,14 +123,20 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
   }
   async function leg (run, target, preview) {
     const origin = guard(run).feet, checked = routePoints(preview, origin, target, true)
-    if (!checked || checked.length <= 0.05 || distance(origin, target) > 6 || run.usedDistance + checked.length > maxDistance) throw fail('CHUNK_TRAVEL_SHORT_ROUTE_UNCONFIRMED')
+    if (!checked || checked.length <= 0.05 || distance(origin, target) > 6 || run.usedDistance + checked.length > maxTravelDistance) throw fail('CHUNK_TRAVEL_SHORT_ROUTE_UNCONFIRMED')
     const beforeInput = () => { guard(run); if (!routePoints(preview, origin, target, true)) throw fail('CHUNK_TRAVEL_TERRAIN_CHANGED'); return true }
     active.phase = 'moving'; active.positionProof = null; run.moving = true
     await call(run, () => startMove(copy(target), { allowWater: true, maxDistance: 6, maxExpanded: 1500, maxTicks: 240, beforeInput, operationId: run.id }))
     const until = Math.min(run.deadline, now() + legTimeoutMs)
     for (;;) {
       const { feet } = guard(run), movement = getMovement()
-      if (['failed', 'stopped', 'replan_required'].includes(movement?.phase)) throw fail('CHUNK_TRAVEL_MOVE_FAILED')
+      if (['failed', 'stopped', 'replan_required'].includes(movement?.phase)) {
+        active.movementFailure = { phase: movement.phase, reason: typeof movement.reason === 'string' ? movement.reason.slice(0, 240) : null,
+          target: finite(movement.target) ? { x: movement.target.x, y: movement.target.y, z: movement.target.z } : null,
+          waypointIndex: Number.isSafeInteger(movement.waypointIndex) && movement.waypointIndex >= 0 ? movement.waypointIndex : null,
+          sent: Number.isSafeInteger(movement.sent) && movement.sent >= 0 ? movement.sent : null }
+        throw fail('CHUNK_TRAVEL_MOVE_FAILED')
+      }
       if (['completed', 'idle', 'awaiting_server_confirmation'].includes(movement?.phase) && movement.running !== true) {
         if (distance(feet, target) > 0.4) throw fail('CHUNK_TRAVEL_MOVE_ENDED_SHORT')
         await stopOwned(run, 'CHUNK_TRAVEL_VERIFY_POSITION'); guard(run)
@@ -150,26 +165,38 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
         active.phase = 'planning'; const origin = guard(run).feet
         let full = null
         for (const candidate of goal ? [goal] : goals) {
-          // Native planning is synchronous; let cancellation and combat run
-          // between bounded candidate searches instead of chaining microtasks.
+          // Let cancellation and combat run between bounded candidate searches
+          // as well as within the cooperative trusted planner.
           await sleep(0); guard(run)
-          const proposal = await call(run, () => planRoute(copy(candidate), { allowWater: true, maxDistance, maxExpanded: 5000 }))
+          const proposal = await call(run, () => planRoute(copy(candidate), { allowWater: true, maxDistance, maxExpanded: 5000, signal: run.controller.signal, check: () => guard(run) }))
           const checked = routePoints(proposal, origin, candidate)
-          if (checked && run.usedDistance + checked.length <= maxDistance + 1e-6) { goal = candidate; full = checked; break }
+          if (checked && run.usedDistance + checked.length <= maxTravelDistance + 1e-6) { goal = candidate; full = checked; break }
         }
         if (!full) throw fail('CHUNK_TRAVEL_NO_ROUTE')
         active.target = copy(goal)
-        let target = null, length = 0
+        const targets = []; let length = 0
         for (let i = 1; i < full.points.length; i++) {
           length += distance(full.points[i - 1].position, full.points[i].position)
           if (length > 4.5 || distance(origin, full.points[i].position) > 6) break
-          if (distance(origin, full.points[i].position) > 0.05) target = full.points[i].position
+          if (distance(origin, full.points[i].position) > 0.05) targets.push(full.points[i].position)
         }
-        if (!target) throw fail('CHUNK_TRAVEL_NO_SHORT_PREFIX')
-        const short = await call(run, () => previewMove(copy(target), { allowWater: true, maxDistance: 6, maxExpanded: 1500, maxTicks: 240 }))
-        guard(run)
-        if (distance(guard(run).feet, origin) > 0.03) throw fail('CHUNK_TRAVEL_ORIGIN_CHANGED')
-        await leg(run, target, short)
+        if (!targets.length) throw fail('CHUNK_TRAVEL_NO_SHORT_PREFIX')
+        let selected = null, lastRejected = null
+        for (const target of targets.reverse().slice(0, 4)) {
+          if (lastRejected) {
+            await sleep(0); guard(run)
+            if (distance(guard(run).feet, origin) > 0.03) throw fail('CHUNK_TRAVEL_ORIGIN_CHANGED')
+          }
+          const short = await call(run, () => previewMove(copy(target), { allowWater: true, maxDistance: 6, maxExpanded: 1500, maxTicks: 240 }))
+          const actualOrigin = guard(run).feet
+          if (distance(actualOrigin, origin) > 0.03) throw fail('CHUNK_TRAVEL_ORIGIN_CHANGED')
+          const checked = routePoints(short, actualOrigin, target, true)
+          if (checked && checked.length > 0.05 && distance(actualOrigin, target) <= 6 && run.usedDistance + checked.length <= maxTravelDistance) { selected = { target, short }; break }
+          lastRejected = rejectedPreview(short, actualOrigin, target)
+        }
+        if (!selected) { active.shortRouteFailure = lastRejected; throw fail('CHUNK_TRAVEL_SHORT_ROUTE_UNCONFIRMED') }
+        active.shortRouteFailure = null
+        await leg(run, selected.target, selected.short)
         const feet = guard(run).feet
         if (areaContainsFeet(run.area, feet, 0.2) && dryStand(feet)) { active.phase = 'arrived'; active.serverConfirmed = true; return }
       }
@@ -189,7 +216,7 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
     const selected = normalizeChunkArea(area), state = getState(), scope = observedScope(state), feet = feetOf(state), currentGeneration = generation()
     if (!scope || state.dimension !== 'overworld' || !feet || !Number.isSafeInteger(currentGeneration) || currentGeneration < 0) throw fail('CHUNK_TRAVEL_NOT_READY')
     const run = { id: uuid(), area: selected, scope, generation: currentGeneration, job: copy(jobIdentity()), health: state.health, controller: new AbortController(), deadline: now() + timeoutMs, usedDistance: 0, moving: false }
-    active = { id: run.id, area: copy(selected), target: null, legs: 0, phase: 'planning', serverConfirmed: false, positionProof: null, error: null }; owner = run
+    active = { id: run.id, area: copy(selected), target: null, legs: 0, phase: 'planning', serverConfirmed: false, positionProof: null, error: null, movementFailure: null, shortRouteFailure: null }; owner = run
     const promise = Promise.resolve().then(() => execute(run)), tracked = promise.finally(() => { if (task === tracked) task = null; if (owner === run) owner = null })
     task = tracked
     return status()

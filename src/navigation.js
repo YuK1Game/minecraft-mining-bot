@@ -55,17 +55,55 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     const previous = planGeometry
     planGeometry = new Map()
     try {
-      const route = planWithoutCache(initialState, target, options)
-      if (planningDistanceLimit > 24) route.planningOnly = true
-      const first = route.waypoints?.[0]
-      let partial = false
-      try { partial = route.ready && !allowWater && !route.partialRecenter && !route.partialDrop && !route.controlledDrop && !route.boundedJump && first?.medium === 'land' && first.action === 'walk' && Math.abs(first.position.y - initialState.position.y) <= CONTACT_EPSILON && horizontalDistance(initialState.position, first.position) >= 0.2 && horizontalDistance(initialState.position, first.position) <= 1.2 && !fullFootprintSupport(initialState.position) && verifyOrigin(initialState, { stablePartialOrigin: true }) } catch { /* Unknown origins cannot borrow a connector proof. */ }
-      if (!partial) return route
-      const connector = planWithoutCache(initialState, first.position, { partialRecenter: true, maxDistance: 2, maxExpanded: 64, avoidance: route.avoidance })
-      // Keep the existing validated primitive as a real prefix, not a larger
-      // waypoint tolerance or an assumption that recentering already happened.
-      return connector.ready ? { ...route, originRecenter: connector } : { ...connector, origin: route.origin, target: route.target }
+      const iterator = planCore(initialState, target, options)
+      let next
+      do { next = iterator.next() } while (!next.done)
+      return next.value
     } finally { planGeometry = previous }
+  }
+  function * planCore (initialState, target, options, control = null) {
+    const route = yield * planWithoutCache(initialState, target, options, control)
+    if (planningDistanceLimit > 24) route.planningOnly = true
+    const first = route.waypoints?.[0]
+    let partial = false
+    try { partial = route.ready && !allowWater && !route.partialRecenter && !route.partialDrop && !route.controlledDrop && !route.boundedJump && first?.medium === 'land' && first.action === 'walk' && Math.abs(first.position.y - initialState.position.y) <= CONTACT_EPSILON && horizontalDistance(initialState.position, first.position) >= 0.2 && horizontalDistance(initialState.position, first.position) <= 1.2 && !fullFootprintSupport(initialState.position) && verifyOrigin(initialState, { stablePartialOrigin: true }) } catch { /* Unknown origins cannot borrow a connector proof. */ }
+    if (!partial) return route
+    const connector = yield * planWithoutCache(initialState, first.position, { partialRecenter: true, maxDistance: 2, maxExpanded: 64, avoidance: route.avoidance }, control)
+    // Keep the same validated primitive for synchronous and trusted async plans.
+    return connector.ready ? { ...route, originRecenter: connector } : { ...connector, origin: route.origin, target: route.target }
+  }
+  async function planAsync (initialState, target, options = {}) {
+    if (planningDistanceLimit !== 48) throw new Error('Asynchronous planning requires the trusted 48-block navigator')
+    if (typeof world?.revision !== 'function') throw new Error('Asynchronous planning requires a revisioned trusted world')
+    const { signal, check, ...settings } = options
+    if (signal != null && typeof signal.throwIfAborted !== 'function' || check != null && typeof check !== 'function') throw new TypeError('Invalid trusted planning cancellation guard')
+    const started = performance.now(), revision = world.revision(), geometry = new Map()
+    if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('Invalid trusted world revision')
+    let cpuMs = 0, sliceUntil = 0
+    const guard = () => {
+      signal?.throwIfAborted()
+      const result = check?.()
+      if (result === false || result?.then || revision !== world?.revision?.()) throw Object.assign(new Error('Trusted planning context changed'), { code: 'NAVIGATION_CONTEXT_CHANGED' })
+    }
+    const iterator = planCore(structuredClone(initialState), structuredClone(target), structuredClone(settings), { shouldYield: () => performance.now() >= sliceUntil })
+    const expired = () => ({ ready: false, reason: 'The trusted asynchronous planning time limit was reached', waypoints: [], unknownFrontier: [], predictionOnly: true, serverConfirmed: false, planningOnly: true })
+    try {
+      guard()
+      await new Promise(resolve => setImmediate(resolve))
+      for (;;) {
+        guard()
+        if (cpuMs >= 2000 || performance.now() - started >= 15000) return expired()
+        const before = performance.now(), previous = planGeometry
+        sliceUntil = before + 8
+        let next
+        planGeometry = geometry
+        try { next = iterator.next() } finally { planGeometry = previous; cpuMs += performance.now() - before }
+        guard()
+        if (cpuMs >= 2000 || performance.now() - started >= 15000) return expired()
+        if (next.done) return { ...next.value, planningOnly: true }
+        await new Promise(resolve => setImmediate(resolve))
+      }
+    } finally { iterator.return() }
   }
 
   function bodyFree (position, horizontalSkin = EPSILON) {
@@ -221,8 +259,8 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     return true
   }
 
-  function planWithoutCache (initialState, target, { maxDistance = 12, maxExpanded = 1500, avoidance = [], directFlat = false, directSurface = false, exactGoal = false, partialDrop = false, partialRecenter = false, controlledDrop = false, shoreRecenter = false, stablePartialOrigin = false, boundedJump = null } = {}) {
-    const planningStarted = planningDistanceLimit > 24 ? performance.now() : null
+  function * planWithoutCache (initialState, target, { maxDistance = 12, maxExpanded = 1500, avoidance = [], directFlat = false, directSurface = false, exactGoal = false, partialDrop = false, partialRecenter = false, controlledDrop = false, shoreRecenter = false, stablePartialOrigin = false, boundedJump = null } = {}, control = null) {
+    const planningStarted = planningDistanceLimit > 24 && !control ? performance.now() : null
     const unknown = new Map()
     const empty = reason => ({ ready: false, reason, waypoints: [], unknownFrontier: [...unknown.values()].slice(0, 32), predictionOnly: true, serverConfirmed: false })
     if (!finite(initialState?.position) || !(boundedJump !== null && target == null) && (!Number.isFinite(target?.x) || !Number.isFinite(target?.z) || (target.y != null && !Number.isFinite(target.y)))) return empty('Invalid navigation coordinates')
@@ -264,6 +302,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
         const route = { ready: true, origin, target: copy(target), waypoints: [{ position: copy(target), action: 'walk', medium: 'land' }], partialRecenter: true, shoreRecenter, predictionOnly: true, serverConfirmed: false, avoidance: circles }
         const stepper = createStepper(route, initialState, { maxTicks: 40, sprint: false }); const trace = [copy(origin)]
         for (let index = 0; index < 40; index++) {
+          if (control?.shouldYield()) yield
           const frame = stepper.next(); const next = frame.predictedState.position; const previous = trace.at(-1)
           if (!finite(next) || frame.predictedState.isInWater || frame.predictedState.isInLava || frame.predictedState.onGround !== true || Math.abs(next.y - origin.y) > CONTACT_EPSILON || horizontalDistance(origin, next) > 1.5 || !bodyFree(next, CONTACT_EPSILON) || !knownUnitSupportOrAir(next, shoreRecenter) || !physics.hasSupport(next) || !policyEdge(previous, next, true)) return empty('Partial recenter prediction is unsafe or violates avoidance')
           trace.push(copy(next))
@@ -281,6 +320,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
         const stepper = createStepper(route, initialState, { maxTicks: 40, sprint: false })
         const trace = [copy(origin)]
         for (let index = 0; index < 40; index++) {
+          if (control?.shouldYield()) yield
           const frame = stepper.next(); const next = frame.predictedState.position; const previous = trace.at(-1)
           if (!finite(next) || frame.predictedState.isInWater || frame.predictedState.isInLava || next.y < target.y - 0.05 || next.y > origin.y + 0.05 || horizontalDistance(origin, next) > 1.5 || !bodyFree(next, CONTACT_EPSILON) || !policyEdge(previous, next, true)) return empty('Partial descent prediction is unsafe or violates avoidance')
           trace.push(copy(next))
@@ -298,6 +338,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
         const route = { ready: true, origin, target: copy(target), waypoints: [{ position: copy(target), action: 'walk', medium: 'land' }], controlledDrop: true, predictionOnly: true, serverConfirmed: false, avoidance: circles }
         const stepper = createStepper(route, initialState, { maxTicks: 80, sprint: false }); const trace = [copy(origin)]
         for (let index = 0; index < 80; index++) {
+          if (control?.shouldYield()) yield
           const frame = stepper.next(); const next = frame.predictedState.position; const previous = trace.at(-1)
           if (!finite(next) || frame.predictedState.isInWater || frame.predictedState.isInLava || next.y < target.y - 0.05 || next.y > origin.y + 0.05 || horizontalDistance(origin, next) > 1.75 || !bodyFree(next, CONTACT_EPSILON) || !policyEdge(previous, next, true)) return empty('Controlled descent prediction is unsafe or violates avoidance')
           trace.push(copy(next))
@@ -358,11 +399,13 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
             }
             return true
           }
+          if (control?.shouldYield()) yield
           if (surfaceSegment(origin, destination)) {
             const route = { ready: true, origin, target: destination, waypoints: [{ position: destination, action: 'swim', medium: 'water', waterSurfaceY: surfaceY }], expanded: 0, unknownFrontier: [], avoidance: circles, directSurface: true, predictionOnly: true, serverConfirmed: false, water: 'experimental-unverified' }
             const stepper = createStepper(route, initialState, { maxTicks: 80, sprint: false })
             const predictedTrace = [copy(origin)]
             for (let index = 0; index < 80; index++) {
+              if (control?.shouldYield()) yield
               const frame = stepper.next(); const next = frame.predictedState.position
               if (frame.predictedState.isInLava || !surfaceSegment(predictedTrace.at(-1), next)) break
               predictedTrace.push(copy(next))
@@ -382,6 +425,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
         let clear = standAt(origin) && waterAt(destination) && policyEdge(origin, destination)
         const count = Math.max(1, Math.ceil(horizontalDistance(origin, destination) / 0.1))
         for (let index = 0; clear && index <= count; index++) {
+          if (control?.shouldYield()) yield
           const t = index / count
           const point = { x: origin.x + (destination.x - origin.x) * t, y: origin.y, z: origin.z + (destination.z - origin.z) * t }
           if (!bodyFree(point)) { clear = false; break }
@@ -423,6 +467,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
           const stepper = createStepper(route, initialState, { maxTicks: 80, sprint: false })
           let prior = origin; const predictedTrace = [copy(origin)]
           for (let index = 0; index < 80; index++) {
+            if (control?.shouldYield()) yield
             const frame = stepper.next(); const next = frame.predictedState.position
             if (!finite(next) || frame.predictedState.isInLava || next.y < origin.y - 1.6 || next.y > origin.y + 0.6 || !bodyFree(next) || !policyEdge(prior, next)) break
             prior = copy(next); predictedTrace.push(prior)
@@ -441,6 +486,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
         const count = Math.max(1, Math.ceil(horizontalDistance(origin, destination) / 0.1))
         let clear = safeClassify(destination)?.medium === 'land' && policyEdge(origin, destination, false)
         for (let i = 0; clear && i <= count; i++) {
+          if (control?.shouldYield()) yield
           const t = i / count
           const point = { x: origin.x + (destination.x - origin.x) * t, y: origin.y, z: origin.z + (destination.z - origin.z) * t }
           clear = bodyFree(point) && fullFootprintSupport(point)
@@ -487,6 +533,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
       }
       candidates.sort((a, b) => horizontalDistance(a.position, origin) - horizontalDistance(b.position, origin))
       for (const candidate of candidates) {
+        if (control?.shouldYield()) yield
         if (start) break
         try {
           if (!policyEdge(origin, candidate.position, true)) continue
@@ -523,6 +570,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     let expanded = 0
     let found = null
     while (open.size && expanded < maxExpanded) {
+      if (control?.shouldYield()) yield
       if (planningStarted !== null && performance.now() - planningStarted >= 120) return empty('The trusted planning time limit was reached')
       let currentKey
       for (const candidate of open) if (currentKey === undefined || records.get(candidate).f < records.get(currentKey).f) currentKey = candidate
@@ -539,6 +587,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
         const z = current.position.z + dz
         if (horizontalDistance(origin, { x, z }) > maxDistance + 0.01) continue
         for (const dy of [0, 0.5, -0.5, 1, -1]) {
+          if (control?.shouldYield()) yield
           // A bounded caller may request its exact safe landing point in the
           // neighbouring goal cell. The ordinary cell-centre route remains the
           // default; all body, footing and actor checks still apply.
@@ -764,7 +813,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
         const waterRise = waypoint.action === 'swim' && predicted.position.y < waypoint.position.y + 0.15 && (!predicted.onGround || immersedOnSupport)
         let sprintCandidate = false
         try { sprintCandidate = canSprint(waypoint) } catch { /* An unproven footprint keeps normal speed. */ }
-        const nearDryPulse = !allowWater && !route.partialRecenter && !route.partialDrop && !route.controlledDrop && waypoint.medium === 'land' && waypoint.action === 'walk' && predicted.onGround === true && !predicted.isInWater && !predicted.isInLava && Math.abs(predicted.position.y - waypoint.position.y) <= CONTACT_EPSILON && waypointDistance <= 0.6 && fullFootprintSupport(predicted.position)
+        const nearDryPulse = !route.partialRecenter && !route.partialDrop && !route.controlledDrop && waypoint.medium === 'land' && waypoint.action === 'walk' && predicted.onGround === true && !predicted.isInWater && !predicted.isInLava && Math.abs(predicted.position.y - waypoint.position.y) <= CONTACT_EPSILON && waypointDistance <= 0.6 && fullFootprintSupport(predicted.position)
         const releaseForecast = route.partialRecenter || nearDryPulse
         const candidates = [...(sprintCandidate ? [{ forward: true, sprint: true }] : []), { forward: true }, {}, { back: true }]
         let selected
@@ -903,7 +952,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     return { next, snapshot, stop, reconcile }
   }
 
-  return { plan, createStepper, createSettler, verifyOrigin, physics, capabilities: Object.freeze({ version, predictionOnly: true, serverAcceptanceVerified: false, maxSearchDistance: planningDistanceLimit, oneBlockJumpPlanning: true, water: allowWater ? 'experimental-surface-only' : 'disabled', fastSwimmingPose: false }) }
+  return { plan, planAsync, createStepper, createSettler, verifyOrigin, physics, capabilities: Object.freeze({ version, predictionOnly: true, serverAcceptanceVerified: false, maxSearchDistance: planningDistanceLimit, oneBlockJumpPlanning: true, water: allowWater ? 'experimental-surface-only' : 'disabled', fastSwimmingPose: false }) }
 }
 
 module.exports = { createNavigator }

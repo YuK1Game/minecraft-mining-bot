@@ -17,6 +17,7 @@ const { createQuarryV22ChestWork } = require('./quarry-v22-chest-work')
 const { createRuntimeV22ChestReset, receivedEquipmentView, jobPending } = require('./loadout-runtime-adapter')
 const { createManualChestRuntime } = require('./manual-chest-runtime-adapter')
 const { createChunkTravel } = require('./chunk-travel')
+const { chunkTravelThreatsClear } = require('./chunk-travel-threats')
 const { createControlLocation } = require('./control-location')
 const { normalizeChunkArea } = require('./chunk-area')
 const { historicalSourceRejection } = require('./rejected-source-history')
@@ -5268,7 +5269,7 @@ function createRuntime (host) {
     const confirmed=currentHostRespawnReceipt()
     return confirmed?confirmed.scope.life:verifiedInitialLifeReceipt()?0:null
   }
-  function normalWaterMovementOptions (options) {
+  function normalWaterMovementOptions (options, { combatAware = false } = {}) {
     if(options?.allowWater!==true||options.beforeInput!=null)return options
     const initial=lightweightUserState();initial.lifecycle={...initial.lifecycle,deathId:movementKnownLife()};const scope=continuationScope(initial),controller=movement,generation=inputHistoryGeneration,serial=portableMovementSerial,force=userBehaviorForceRevision
     if(!scope||!controller||!idlePhysics)throw Error('Normal water movement needs an actual scoped life and Native owner')
@@ -5277,11 +5278,15 @@ function createRuntime (host) {
       const current=lightweightUserState();current.lifecycle={...current.lifecycle,deathId:movementKnownLife()};const p=frame?.packetPosition,n=frame?.predictedState
       if(disposed||disposing||movement!==controller||inputHistoryGeneration!==generation||portableMovementSerial!==serial||userBehaviorForceRevision!==force||controller.snapshot().phase!=='moving'||JSON.stringify(continuationScope(current))!==JSON.stringify(scope)||current.health<initial.health||current.entityStats?.unknownPositions!==0||!p||!n?.position||!['x','y','z'].every(k=>Number.isFinite(p[k])&&Number.isFinite(n.position[k]))||Math.hypot(p.x-n.position.x,p.y-n.position.y-1.62,p.z-n.position.z)>1e-4||n.isInLava)return false
       const risk=evaluateThreats(current,current.entities,{observationRadius:32})
-      if(risk.requiresObservation||risk.threats.length)return false
-      for(const a of [...risk.outsideDanger,...risk.suppressedByTerrain]){
+      if (combatAware) {
+        if (!chunkTravelThreatsClear({ state: current, previous, next: p, risk, attackExposure: combatAttackExposure })) return false
+      } else {
+        if(risk.requiresObservation||risk.threats.length)return false
+        for(const a of [...risk.outsideDanger,...risk.suppressedByTerrain]){
         if(!current.entities.some(e=>String(e.runtimeId)===a.runtimeId&&e.uniqueId!=null&&/^-?\d+$/.test(String(e.uniqueId))&&String(e.uniqueId)!=='0'&&e.entityType===a.name&&e.dimension===current.dimension&&e.positionKnown===true&&e.position&&['x','y','z'].every(k=>Number.isFinite(e.position[k]))))return false
         const q=a.position,dx=p.x-previous.x,dy=p.y-previous.y,dz=p.z-previous.z,den=dx*dx+dy*dy+dz*dz,t=den?Math.max(0,Math.min(1,((q.x-previous.x)*dx+(q.y-previous.y)*dy+(q.z-previous.z)*dz)/den)):0
         if(Math.hypot(previous.x+t*dx-q.x,previous.y+t*dy-q.y,previous.z+t*dz-q.z)<a.dangerRadius-1e-4)return false
+        }
       }
       try{for(let x=Math.floor(n.position.x-.3+1e-6);x<=Math.floor(n.position.x+.3-1e-6);x++)for(let z=Math.floor(n.position.z-.3+1e-6);z<=Math.floor(n.position.z+.3-1e-6);z++)for(let y=Math.floor(n.position.y+1e-6);y<=Math.floor(n.position.y+1.8-1e-6);y++){
         const b=idlePhysics.blockAt({x,y,z});if(!b||b.known===false||['lava','flowing_lava','fire','soul_fire','magma','magma_block','cactus'].includes(String(b.name).replace(/^minecraft:/,''))||!Array.isArray(b.shapes))return false
@@ -5318,7 +5323,7 @@ function createRuntime (host) {
         if (chunkMoveDepth > 0) {
           const owner = chunkMoveLease, controllerGuard = options?.beforeInput, baseOptions = { ...options }
           delete baseOptions.beforeInput
-          const ordinary = normalWaterMovementOptions(portableMovementOptions(target, baseOptions)), ordinaryGuard = ordinary.beforeInput
+          const ordinary = normalWaterMovementOptions(portableMovementOptions(target, baseOptions), { combatAware: true }), ordinaryGuard = ordinary.beforeInput
           preparedPortableOptions = { ...ordinary, beforeInput: frame => {
             if (!owner || chunkMoveLease !== owner || owner.signal?.aborted || disposed || disposing) return false
             if (controllerGuard && controllerGuard(frame) === false) return false
@@ -7105,9 +7110,13 @@ function createRuntime (host) {
         planner ??= createNavigator({ world: host.world, version: host.meta.version, allowWater: true,
           physics: idlePhysics.withWorld(host.world, { allowWater: true }), planningDistanceLimit: 48 })
         const state = quarryState()
-        return planner.plan(planner.physics.fromServer(state), target, { ...options, maxDistance: 48, maxExpanded: 5000 })
+        return planner.planAsync(planner.physics.fromServer(state), target, { ...options, maxDistance: 48, maxExpanded: 5000 })
       },
-      previewMove: (target, options) => movement?.preview(target, { ...options, allowWater: true, sprint: false }),
+      previewMove: (target, options) => {
+        verifyChunkMoveLease(chunkMoveLease?.id)
+        motionOrigin = working()
+        return movement?.preview(target, { ...options, allowWater: true, sprint: false })
+      },
       startMove: (target, options) => {
         const owner = verifyChunkMoveLease(options.operationId)
         controlLocation.invalidate()
