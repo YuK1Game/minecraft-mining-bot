@@ -1364,7 +1364,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const beforeDispatch = items(guard(myEpoch))
     if (!beforeDispatch) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
     if (!capacityActionId && passivePickup() && !job.storageExhausted && freeSlots(beforeDispatch) === 0) { job.depositReason = 'full'; setState('RETURN'); return }
-    for (const target of plannedTargets.filter(t => nameOf(t.name) === 'leaf_litter')) {
+    for (const target of plannedTargets.filter(t => ['leaf_litter', 'wildflowers'].includes(nameOf(t.name)))) {
       const p = target.position, b = adapter.getBlock(p.x, p.y, p.z)
       if (b?.known !== true || b.name !== target.name || b.runtimeId !== target.runtimeId || !isDeepStrictEqual(b.properties, target.properties)) {
         const error = new QuarryInterrupt('DROP_TARGET_STATE_CHANGED')
@@ -1390,8 +1390,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (prepared) job.miningEquipmentPending = false
     // Re-plan from the actual stance; the world may have changed while moving.
     setState('MINE')
-    const targets = plannedTargets.map(t => ({ x: t.position.x, y: t.position.y, z: t.position.z, expectedName: t.name, expectedRuntimeId: t.runtimeId ?? null, requiredTool: tool.kind !== 'hand' ? { kind: tool.kind, tier: tool.tier, reserve: tool.reserve } : null, ...(nameOf(t.name) === 'leaf_litter' ? { expectedProperties: copy(t.properties ?? null) } : {}), ...(t.accessPreparation ? { accessPreparation: t.accessPreparation } : {}), ...(t.fluidSource ? { fluidSource: copy(t.fluidSource) } : {}) }))
-    const rec = recordAction({ type: 'mine', stance: decision.stance, targets: targets.map(t => ({ x: t.x, y: t.y, z: t.z, name: t.expectedName, ...(t.expectedName === 'minecraft:leaf_litter' ? { runtimeId: t.expectedRuntimeId, properties: copy(t.expectedProperties) } : {}) })), tool: decision.tool?.name ?? 'hand', ...(capacityActionId ? { capacityActionId } : {}) })
+    const targets = plannedTargets.map(t => ({ x: t.position.x, y: t.position.y, z: t.position.z, expectedName: t.name, expectedRuntimeId: t.runtimeId ?? null, requiredTool: tool.kind !== 'hand' ? { kind: tool.kind, tier: tool.tier, reserve: tool.reserve } : null, ...(['leaf_litter', 'wildflowers'].includes(nameOf(t.name)) ? { expectedProperties: copy(t.properties ?? null) } : {}), ...(t.accessPreparation ? { accessPreparation: t.accessPreparation } : {}), ...(t.fluidSource ? { fluidSource: copy(t.fluidSource) } : {}) }))
+    const rec = recordAction({ type: 'mine', stance: decision.stance, targets: targets.map(t => ({ x: t.x, y: t.y, z: t.z, name: t.expectedName, ...(['minecraft:leaf_litter', 'minecraft:wildflowers'].includes(t.expectedName) ? { runtimeId: t.expectedRuntimeId, properties: copy(t.expectedProperties) } : {}) })), tool: decision.tool?.name ?? 'hand', ...(capacityActionId ? { capacityActionId } : {}) })
     const confirmCurrent = interruption => {
       const state = adapter.getState()
       // A manual stop advances the epoch before draining this same job. Its

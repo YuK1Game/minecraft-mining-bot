@@ -14,7 +14,7 @@ const copy = value => structuredClone(value)
 const failure = (code, details = null) => Object.assign(new Error(code), { code, ...(details ? { details: copy(details) } : {}) })
 const point = p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]) && Math.abs(p[k]) <= 30000000)
 const key = p => `${p.x},${p.y},${p.z}`
-const fingerprint = t => ({ position: copy(t.position), name: t.name, runtimeId: t.runtimeId ?? null, ...(nameOf(t.name) === 'leaf_litter' ? { properties: copy(t.properties ?? null) } : {}) })
+const fingerprint = t => ({ position: copy(t.position), name: t.name, runtimeId: t.runtimeId ?? null, ...(['leaf_litter', 'wildflowers'].includes(nameOf(t.name)) ? { properties: copy(t.properties ?? null) } : {}) })
 
 function mainItems (items) {
   if (!Array.isArray(items) || items.length > 36) throw failure('CAPACITY_INVENTORY_UNKNOWN')
@@ -33,7 +33,7 @@ function fullDropBudget (targets, tool = null) {
   if (!Array.isArray(targets) || !targets.length || targets.length > 8) throw failure('DROP_TARGETS_INVALID')
   return targets.flatMap(target => {
     const guarantee = deriveDropGuarantee(target, target.tool ?? tool)
-    if (!guarantee.ok) throw failure(guarantee.reason, { reason: guarantee.reason, stage: 'before_mine_capacity', target: { position: point(target.position) ? copy(target.position) : null, name: target.name ?? null, runtimeId: target.runtimeId ?? null, ...(nameOf(target.name) === 'leaf_litter' ? { properties: copy(target.properties ?? null) } : {}) }, tool: copy(target.tool ?? tool ?? null) })
+    if (!guarantee.ok) throw failure(guarantee.reason, { reason: guarantee.reason, stage: 'before_mine_capacity', target: { position: point(target.position) ? copy(target.position) : null, name: target.name ?? null, runtimeId: target.runtimeId ?? null, ...(['leaf_litter', 'wildflowers'].includes(nameOf(target.name)) ? { properties: copy(target.properties ?? null) } : {}) }, tool: copy(target.tool ?? tool ?? null) })
     const maximum = new Map()
     for (const bundle of guarantee.capacityAlternatives) {
       const sum = new Map()
@@ -95,7 +95,7 @@ function createQuarryCapacityBatch ({ getState, getBlock, refreshInventory, clos
     const validateTargets = decision => {
       for (const t of decision.targets) {
         const b = getBlock(t.position.x, t.position.y, t.position.z)
-        if (b?.known !== true || b.name !== t.name || t.runtimeId != null && b.runtimeId !== t.runtimeId || nameOf(t.name) === 'leaf_litter' && !isDeepStrictEqual(b.properties, t.properties) || b.protected || b.protectionSource || b.extra?.length || blockRule(b.name).kind !== 'dig') throw failure('CAPACITY_TARGET_CHANGED')
+        if (b?.known !== true || b.name !== t.name || t.runtimeId != null && b.runtimeId !== t.runtimeId || ['leaf_litter', 'wildflowers'].includes(nameOf(t.name)) && !isDeepStrictEqual(b.properties, t.properties) || b.protected || b.protectionSource || b.extra?.length || blockRule(b.name).kind !== 'dig') throw failure('CAPACITY_TARGET_CHANGED')
       }
     }
     const validateMine = receipt => {
