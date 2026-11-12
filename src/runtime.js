@@ -14,7 +14,7 @@ const { createQuarryPortableStorage } = require('./quarry-portable-storage')
 const { createQuarrySupplies } = require('./quarry-supplies')
 const { createQuarryV22Equipment } = require('./quarry-v22-equipment')
 const { createQuarryV22ChestWork } = require('./quarry-v22-chest-work')
-const { createRuntimeV22ChestReset, jobPending } = require('./loadout-runtime-adapter')
+const { createRuntimeV22ChestReset, receivedEquipmentView, jobPending } = require('./loadout-runtime-adapter')
 const { createManualChestRuntime } = require('./manual-chest-runtime-adapter')
 const { historicalSourceRejection } = require('./rejected-source-history')
 const { historicalEmptyPlacement } = require('./placement-source-history')
@@ -5307,7 +5307,7 @@ function createRuntime (host) {
       const state = quarryState()
       const key = createHash('sha256').update(JSON.stringify([state.profile, String(state.realm?.id), state.dimension])).digest('hex')
       const record = JSON.parse(fs.readFileSync(path.join(__dirname,'..','.local','loadout-reset-v22',key+'.json'),'utf8'))
-      if (record?.phase !== 'completed' || record.world !== JSON.stringify([state.profile,String(state.realm?.id),state.dimension]) || !record.home?.position) return null
+      if (record?.phase !== 'completed' || record.serverConfirmed !== true || record.world !== JSON.stringify([state.profile,String(state.realm?.id),state.dimension]) || !record.home?.position) return null
       host.shared.quarryV22HomeChest = structuredClone(record.home)
       return structuredClone(record.home)
     } catch { return null }
@@ -5324,8 +5324,20 @@ function createRuntime (host) {
       plan: config => {
         if (!quarryJob?.holdsWork()) requireIdle()
         const input=structuredClone(config??{})
-        if (input.homeChest == null && (input.inventory?.depositWhen == null || input.inventory.depositWhen === 'four_layers')) {
-          input.homeChest = getRegisteredQuarryHomeSite()
+        const registered=getRegisteredQuarryHomeSite()
+        const view=receivedEquipmentView(inventoryInspection,crafting,quarryState())
+        const empty=section=>section?.known===true&&Array.isArray(section.slots)&&section.slots.every(slot=>slot?.known===true&&slot.empty===true&&slot.count===0)
+        const emptyBot=view.known===true&&!view.uncertain&&view.slots?.length===36&&empty(view)&&view.armor?.slots?.length===4&&empty(view.armor)&&view.offhand?.slots?.length===1&&empty(view.offhand)
+        const explicit=input.initialLoadout==='v22'
+        if (explicit && (!registered || input.homeChest && ['position','other','stand','stage'].some(part=>['x','y','z'].some(axis=>input.homeChest[part]?.[axis]!==registered[part]?.[axis])))) {
+          throw Object.assign(new Error('初期セットの登録済みチェストを確認してください。'),{code:'LOADOUT_SOURCE_NOT_REGISTERED'})
+        }
+        if (registered && (explicit || input.homeChest==null&&emptyBot)) {
+          input.homeChest=registered
+          input.initialLoadout='v22'
+          input.inventory={...input.inventory,supplyLayout:'v22'}
+        } else if (input.homeChest == null && (input.inventory?.depositWhen == null || input.inventory.depositWhen === 'four_layers')) {
+          input.homeChest=registered
         }
         return ensureQuarryJob().plan(input)
       },
@@ -6779,7 +6791,8 @@ function createRuntime (host) {
       placeQuarry: own(options => { requireIdle(); crafting.closeContainer(); return interactions.placeQuarryBlock(options) }),
       eat: own(() => operations.food.eat({})),
       equipmentTransfer: value => quarryV22Equipment.transfer(value),
-      equipmentView: () => inventoryInspection.snapshot(),
+      equipmentView: () => receivedEquipmentView(inventoryInspection,crafting,quarryState()),
+      registeredHomeChest: () => getRegisteredQuarryHomeSite(),
       logout: () => { if (quarryJob?.status()?.state !== 'FINISHED' || quarryJob?.status()?.persistence?.status === 'failed') throw new Error('QUARRY_LOGOUT_NOT_READY'); host.disconnectOnCompletedQuarry() },
       chest: { open: own(position => operations.chest.open(position)), depositItem: own(options => operations.chest.depositItem(options)), close: () => crafting.closeContainer() },
       addChest: own(options => { requireIdle(); crafting.closeContainer(); return quarryAddChest(options) }),

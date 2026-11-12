@@ -12,7 +12,7 @@ const { SUPPLY_COLORS } = require('./loadout-manifest')
 
 const ROLES = ['pickaxe', 'shovel', 'food', 'dirt']
 const V22_ROLES = ['pickaxe', 'shovel', 'dirt', 'totem']
-const rolesFor = policy => policy?.depositWhen === 'four_layers' || policy === 'v22' ? V22_ROLES : ROLES
+const rolesFor = policy => policy?.supplyLayout === 'v22' || policy?.depositWhen === 'four_layers' || policy === 'v22' ? V22_ROLES : ROLES
 const copy = value => structuredClone(value)
 const pack = value => serialize(value).toString('base64')
 const unpack = value => deserialize(Buffer.from(value, 'base64'))
@@ -73,10 +73,13 @@ function storageSupplyExclusions (bindings) {
 const WORN_TOOL_USES = 100 // a tool below this is returned when its kind is exhausted for mining
 const FRESH_TOOL_USES = 500 // with a full bag, one carried tool of an exhausted kind with this many uses is enough
 const usesOf = item => item?.durabilityKnown === true && Number.isFinite(item.durabilityRemaining) ? item.durabilityRemaining : null
-function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true, miningExhausted = null, depositWhen = 'capacity', totemNeeded = false, shovelExhausted = false, exitPreparing = false, exitDirtTarget = 192 } = {}) {
+function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true, miningExhausted = null, depositWhen = 'capacity', supplyLayout = null, deferExitSupplies = false, totemNeeded = false, shovelExhausted = false, exitPreparing = false, exitDirtTarget = 192 } = {}) {
   const main = (items ?? []).filter(item => Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && item.count > 0)
-  const v22 = depositWhen === 'four_layers'
-  const desired = { pickaxe: 1, shovel: v22 && shovelExhausted ? 0 : 1, food: v22 ? 0 : foodEnabled ? keepFood : 0, dirt: v22 ? exitPreparing ? exitDirtTarget : 64 : keepExitDirt + keepSealBlocks, ...(v22 ? { totem: totemNeeded ? 1 : 0 } : {}) }
+  const fourLayers = depositWhen === 'four_layers', v22 = supplyLayout === 'v22' || fourLayers
+  const workDirt = fourLayers || v22 && deferExitSupplies === true
+  // Layout selects available supply roles. Ordinary full/capacity jobs still
+  // reserve their original dirt unless v22 exit-only supplies are explicit.
+  const desired = { pickaxe: 1, shovel: v22 && shovelExhausted ? 0 : 1, food: v22 ? 0 : foodEnabled ? keepFood : 0, dirt: workDirt ? exitPreparing ? exitDirtTarget : 64 : keepExitDirt + keepSealBlocks, ...(v22 ? { totem: totemNeeded ? 1 : 0 } : {}) }
   // A tool whose remaining uses are all reserved for the exit still counts as
   // carried (it is kept for the exit), so one more of that kind is wanted.
   const available = { pickaxe: 0, shovel: 0, food: 0, dirt: 0, ...(v22 ? { totem: 0 } : {}) }, returns = []
@@ -116,7 +119,7 @@ function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks
   for (const [kind, n] of Object.entries(wanted)) if ((kind === 'pickaxe' || kind === 'shovel') && Number.isSafeInteger(n) && !(v22 && shovelExhausted && kind === 'shovel')) desired[kind] = Math.max(desired[kind], Math.min(4, n))
   for (const kind of exhaustedKinds) if (tight && (kind === 'pickaxe' || kind === 'shovel') && usesOf(best[kind]) >= FRESH_TOOL_USES) desired[kind] = Math.max(1, Math.min(desired[kind], available[kind]))
   const missing = Object.fromEntries((v22 ? [...new Set([...ROLES,...V22_ROLES])] : ROLES).map(role => [role, Math.max(0, desired[role] - available[role])]))
-  const required = { pickaxe: missing.pickaxe > 0, shovel: missing.shovel > 0, food: desired.food > 0 && available.food === 0, dirt: v22 ? missing.dirt > 0 : missing.dirt > 0 && available.dirt <= keepExitDirt, ...(v22 ? { totem: missing.totem > 0 } : {}) }
+  const required = { pickaxe: missing.pickaxe > 0, shovel: missing.shovel > 0, food: desired.food > 0 && available.food === 0, dirt: workDirt ? missing.dirt > 0 : missing.dirt > 0 && available.dirt <= keepExitDirt, ...(v22 ? { totem: missing.totem > 0 } : {}) }
   return { desired, available, missing, required, returns, freeSlots: freeSlots(main), exitDirt: { required: keepExitDirt, available: Math.min(keepExitDirt, available.dirt) }, sealDirt: { required: keepSealBlocks, available: Math.max(0, available.dirt - keepExitDirt) } }
 }
 

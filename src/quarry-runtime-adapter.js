@@ -307,6 +307,7 @@ function createQuarryRuntimeAdapter (ports) {
     ...(typeof finalChestDeposit === 'function' ? { finalChestDeposit: (request, options) => finalChestDeposit(request, options) } : {}),
     ...(typeof equipmentTransfer === 'function' ? { equipmentTransfer: request => equipmentTransfer(request) } : {}),
     ...(typeof equipmentView === 'function' ? { equipmentView: () => equipmentView() } : {}),
+    ...(typeof ports.registeredHomeChest === 'function' ? { registeredHomeChest: () => ports.registeredHomeChest() } : {}),
     ...(typeof logout === 'function' ? { logout: () => logout() } : {}),
     ...(typeof reconcileSupplyPlacement === 'function' ? { reconcileSupplyPlacement: (request, options) => reconcileSupplyPlacement(request, options) } : {}),
     ...(typeof reconcileCarriedPlacement === 'function' ? { reconcileCarriedPlacement: (request, options) => reconcileCarriedPlacement(request, options) } : {}),

@@ -69,7 +69,9 @@
     fact('ワールド', result.state.realm?.name ?? '未確認')
     fact('チャンク', (p.chunks ?? []).map(c => `(${c.x}, ${c.z})`).join(' / '))
     fact('高さ', `Y ${p.yTop ?? '未確認'} → ${p.yBottom ?? '未確認'}`)
-    for (const [codes, kind, label] of [[p.issues, 'blocked', '停止理由'], [p.warnings, 'warning', '注意']]) {
+    if (p.warnings?.includes('INITIAL_LOADOUT_ON_START')) fact('初期セット', '開始時にチェストから受領')
+    for (const [allCodes, kind, label] of [[p.issues, 'blocked', '停止理由'], [p.warnings, 'warning', '注意']]) {
+      const codes = kind === 'warning' ? allCodes?.filter(code => code !== 'INITIAL_LOADOUT_ON_START') : allCodes
       if (!codes?.length) continue
       const group = element('div', 'plan-diagnostics ' + kind); group.setAttribute('role', 'group'); group.setAttribute('aria-label', label)
       for (const code of codes) { const chip = element('span', 'plan-diagnostic', (kind === 'blocked' ? '× ' : '△ ') + (diagnosticLabels[code] || clean(code))); chip.title = clean(code); group.append(chip) }

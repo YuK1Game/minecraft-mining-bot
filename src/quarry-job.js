@@ -98,6 +98,7 @@ function defaults (config = {}) {
     dimension: c.dimension ?? 'overworld',
     target: c.target,
     homeChest: c.homeChest ?? null,
+    initialLoadout: c.initialLoadout ?? null,
     yTop: c.yTop ?? 'auto',
     // Default bottom (2026-11-10, user request): Y-59, just above the overworld
     // bedrock band; 'world_min' stays available as an explicit choice.
@@ -164,10 +165,27 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   const healthRatio = s => s.health / (Number.isFinite(s.maxHealth) && s.maxHealth > 0 ? s.maxHealth : 20)
   const foodOf = s => s.food ?? s.hunger ?? null
   const items = s => s?.inventory?.known === true && !s.inventory.uncertain && Array.isArray(s.inventory.items) ? s.inventory.items : null
-  const inventoryPolicy = () => ({ ...job.config.inventory, toolPolicy: job.config.tools, ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64 } : {}) })
+  const inventoryPolicy = () => ({ ...job.config.inventory, toolPolicy: job.config.tools, ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64 } :
+    deferredExitSupplies() ? { keepExitDirt: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 0, keepSealBlocks: 64 } : {}) })
   const passivePickup = () => job?.config.inventory.pickupMode === 'passive'
   const fullOnlyStorage = () => job?.config.inventory.depositWhen === 'full'
   const fourLayerStorage = () => job?.config.inventory.pickupMode === 'active' && job?.config.inventory.depositWhen === 'four_layers'
+  const usesV22Loadout = () => job?.config.initialLoadout === 'v22' || fourLayerStorage()
+  const deferredExitSupplies = () => fourLayerStorage() || job?.config.initialLoadout === 'v22' && job.config.strategy.dirtFromSupplyAtExit === true && completedV22Loadout()
+  const v22SupplyLayout = config => config?.inventory?.supplyLayout === 'v22' || config?.inventory?.depositWhen === 'four_layers'
+  const loadoutPorts = () => ['loadoutWithdraw', 'equipmentView', 'equipmentTransfer', 'discoverSupplies', 'restockSupplies', 'previewSupplySite', 'storeCarried', 'registeredHomeChest'].every(name => typeof adapter[name] === 'function')
+  const configuredLoadoutHome = config => {
+    const home = config.homeChest
+    if (!home || !['position', 'other', 'stand', 'stage'].every(part => home[part] && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(home[part][axis])))) return false
+    const registered = adapter.registeredHomeChest?.()
+    return registered && ['position', 'other', 'stand', 'stage'].every(part => samePoint(home[part], registered[part])) &&
+      [home.position, home.other].every(p => { const block = adapter.getBlock(p.x, p.y, p.z); return block?.known === true && nameOf(block) === 'chest' && !block.extra?.length })
+  }
+  const emptyLoadoutInventory = state => {
+    const view = adapter.equipmentView?.(), empty = row => row?.known === true && row.empty === true && row.count === 0
+    return items(state)?.length === 0 && view?.known === true && view.uncertain !== true && view.slots?.length === 36 && view.slots.every(empty) &&
+      view.armor?.known === true && view.armor.slots?.length === 4 && view.armor.slots.every(empty) && view.offhand?.known === true && view.offhand.slots?.length === 1 && view.offhand.slots.every(empty)
+  }
   const storageSettings = () => ({ pickupMode: job?.config.inventory.pickupMode ?? 'active', depositWhen: job?.config.inventory.depositWhen ?? 'capacity' })
   const validStoragePair = inventory => {
     const pickup = inventory?.pickupMode === undefined ? 'active' : inventory.pickupMode
@@ -364,16 +382,31 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     const state = adapter.getState()
     const issues = []; const warnings = []
+    if (![null, 'v22'].includes(config.initialLoadout)) issues.push('INVALID_INITIAL_LOADOUT')
+    if (config.initialLoadout === 'v22') config.inventory.supplyLayout = 'v22'
+    if (config.inventory.supplyLayout != null && config.inventory.supplyLayout !== 'v22') issues.push('INVALID_SUPPLY_LAYOUT')
+    const initialLoadout = config.initialLoadout === 'v22'
+    if (initialLoadout) {
+      config.strategy.dirtFromSupplyAtExit = true
+      if (input.inventory?.minFreeSlots == null) config.inventory.minFreeSlots = 3
+    }
+    const pendingLoadout = initialLoadout && loadoutPorts() && configuredLoadoutHome(config) && emptyLoadoutInventory(state)
+    if (initialLoadout) {
+      if (!configuredLoadoutHome(config)) issues.push('LOADOUT_CHEST_NOT_CONFIGURED')
+      if (!loadoutPorts()) issues.push('V22_RUNTIME_UNAVAILABLE')
+      if (!emptyLoadoutInventory(state)) issues.push('LOADOUT_START_INVENTORY_NOT_EMPTY')
+      if (pendingLoadout) warnings.push({ code: 'INITIAL_LOADOUT_ON_START' })
+    }
     if (!worldIdentity(state)) issues.push('WORLD_IDENTITY_UNKNOWN')
     if (config.inventory.pickupMode !== undefined && !['active', 'passive'].includes(config.inventory.pickupMode)) issues.push('INVALID_PICKUP_MODE')
     if (config.inventory.depositWhen !== undefined && !['capacity', 'full', 'four_layers'].includes(config.inventory.depositWhen)) issues.push('INVALID_DEPOSIT_POLICY')
     if (!validStoragePair(config.inventory)) issues.push('UNSUPPORTED_STORAGE_POLICY')
     if (shulkerOnly && config.inventory.storage?.length) issues.push('SHULKER_ONLY_STORAGE')
-    if (config.inventory.depositWhen === 'four_layers') {
+    if (config.inventory.depositWhen === 'four_layers' || initialLoadout) {
       const chest = config.homeChest
-      if (chest?.chunk && Array.isArray(config.target?.chunks) && !config.target.chunks.some(c=>c.x===chest.chunk.x&&c.z===chest.chunk.z)) issues.push('LOADOUT_TARGET_CHUNK_MISMATCH')
+      if (!initialLoadout && chest?.chunk && Array.isArray(config.target?.chunks) && !config.target.chunks.some(c=>c.x===chest.chunk.x&&c.z===chest.chunk.z)) issues.push('LOADOUT_TARGET_CHUNK_MISMATCH')
       if (!chest || !['position', 'other', 'stand'].every(part=>chest[part] && ['x','y','z'].every(axis=>Number.isSafeInteger(chest[part][axis])))) issues.push('LOADOUT_CHEST_NOT_CONFIGURED')
-      if (typeof adapter.loadoutWithdraw !== 'function' || typeof adapter.finalChestDeposit !== 'function' || typeof adapter.equipmentTransfer !== 'function') issues.push('V22_RUNTIME_UNAVAILABLE')
+      if (!initialLoadout && (typeof adapter.loadoutWithdraw !== 'function' || typeof adapter.finalChestDeposit !== 'function' || typeof adapter.equipmentTransfer !== 'function')) issues.push('V22_RUNTIME_UNAVAILABLE')
       if (chest?.position && chest?.other && chest?.stand) {
         // A fixed surface station survives excavation and retains its own
         // interaction floor. Everything else in the chunk remains mineable.
@@ -387,16 +420,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         }
       }
     }
-    if (shulkerOnly && !config.inventory.supplyBoxes?.length && !(config.inventory.depositWhen === 'four_layers' && config.homeChest)) {
-      const discovered = adapter.discoverSupplies?.(config.inventory.depositWhen === 'four_layers' ? 'v22' : 'legacy')
+    if (shulkerOnly && !config.inventory.supplyBoxes?.length && !(config.inventory.depositWhen === 'four_layers' && config.homeChest) && !pendingLoadout) {
+      const discovered = adapter.discoverSupplies?.(v22SupplyLayout(config) ? 'v22' : 'legacy')
       if (discovered?.ok) { config.inventory.supplyBoxes = copy(discovered.bindings); config.inventory.autoSupplies = true }
     }
-    if (config.inventory.autoSupplies && !config.inventory.supplyBoxes?.length && !(config.inventory.depositWhen === 'four_layers' && config.homeChest)) {
-      const discovered = adapter.discoverSupplies?.(config.inventory.depositWhen === 'four_layers' ? 'v22' : 'legacy')
+    if (config.inventory.autoSupplies && !config.inventory.supplyBoxes?.length && !(config.inventory.depositWhen === 'four_layers' && config.homeChest) && !pendingLoadout) {
+      const discovered = adapter.discoverSupplies?.(v22SupplyLayout(config) ? 'v22' : 'legacy')
       if (discovered?.ok) config.inventory.supplyBoxes = copy(discovered.bindings)
       else issues.push(discovered?.reason ?? 'SUPPLY_BOXES_UNCONFIRMED')
     }
-    if (config.inventory.supplyBoxes?.length && (!validSupplyBindings(config.inventory.supplyBoxes, config.inventory.depositWhen) || typeof adapter.restockSupplies !== 'function')) issues.push('SUPPLY_BINDINGS_INVALID')
+    if (config.inventory.supplyBoxes?.length && (!validSupplyBindings(config.inventory.supplyBoxes, config.inventory) || typeof adapter.restockSupplies !== 'function')) issues.push('SUPPLY_BINDINGS_INVALID')
     if (state?.phase !== 'spawned' || state.dead) issues.push('NOT_SPAWNED')
     if (state?.gameMode !== 'survival' && state?.gameMode !== 0) issues.push('NOT_SURVIVAL')
     if (state?.dimension && state.dimension !== config.dimension.replace(/^minecraft:/, '')) issues.push('WRONG_DIMENSION')
@@ -405,7 +438,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     let yTop = Number.isSafeInteger(config.yTop) ? config.yTop : null
     let unknownAbove = 0
     if (yTop === null) { const s = p.surveyTop(); yTop = s.yTop; unknownAbove = s.unknownAbove }
-    if (config.inventory.depositWhen === 'four_layers') {
+    if (config.inventory.depositWhen === 'four_layers' || initialLoadout) {
       if (Number.isSafeInteger(yTop)) yTop = Math.min(yTop, 75)
       // The upper bound is clamped; terrain above it is outside the quarry.
     }
@@ -415,13 +448,13 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const inv = items(state)
     if (!inv) issues.push('INVENTORY_UNKNOWN')
     const storageList = config.inventory.storage ?? []
-    if ((shulkerOnly || !storageList.length && config.inventory.carryOnly !== true) && !(config.inventory.depositWhen === 'four_layers' && config.homeChest && !inv?.length || typeof adapter.storeCarried === 'function' && cargoSelection(inv, { excludedShulkerKeys: storageSupplyExclusions(config.inventory.supplyBoxes) }))) issues.push(shulkerOnly ? 'NO_CARGO_SHULKER' : 'NO_STORAGE_REGISTERED')
+    if ((shulkerOnly || !storageList.length && config.inventory.carryOnly !== true) && !pendingLoadout && !(config.inventory.depositWhen === 'four_layers' && config.homeChest && !inv?.length || typeof adapter.storeCarried === 'function' && cargoSelection(inv, { excludedShulkerKeys: storageSupplyExclusions(config.inventory.supplyBoxes) }))) issues.push(shulkerOnly ? 'NO_CARGO_SHULKER' : 'NO_STORAGE_REGISTERED')
     for (const s of storageList) {
       const b = s?.position ? adapter.getBlock(s.position.x, s.position.y, s.position.z) : null
       if (!b?.known || !/chest|barrel/.test(nameOf(b))) issues.push(`STORAGE_NOT_OBSERVED:${JSON.stringify(s?.position ?? null)}`)
       else if (permits(regs, 'break', s.position).allowed) issues.push('STORAGE_INSIDE_EXCAVATION')
     }
-    if (inv && !(config.inventory.depositWhen === 'four_layers' && config.homeChest && !inv.length)) {
+    if (inv && !pendingLoadout && !(config.inventory.depositWhen === 'four_layers' && config.homeChest && !inv.length)) {
       const picks = inv.filter(i => /_pickaxe$/.test(nameOf(i)))
       if (!picks.length) warnings.push({ code: 'NO_PICKAXE', note: 'Stone and ores will wait for a tool' })
       if (!inv.some(i => isFood(i.name))) warnings.push({ code: 'NO_FOOD' })
@@ -450,7 +483,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // leaves no exit column is refused here instead of after start; unknown
     // terrain only warns. A shallower bottom that would work is suggested.
     let exitPreflight = null
-    if (yTop !== null && inv && state?.position && config.exit?.mode === 'adjacent_pillar' && typeof adapter.egress === 'function' && config.inventory.depositWhen !== 'four_layers') {
+    if (yTop !== null && inv && state?.position && config.exit?.mode === 'adjacent_pillar' && typeof adapter.egress === 'function' && config.inventory.depositWhen !== 'four_layers' && !pendingLoadout) {
       exitPreflight = planExitPreview(config, regs, yTop, state, inv)
       if (!exitPreflight.ready) {
         if (exitPreflight.reason === 'EXIT_COLUMN_UNAVAILABLE' && !exitPreflight.unknown) {
@@ -472,7 +505,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       } else if (caveSurvey.unknownRatio > CAVE_UNKNOWN_RATIO) warnings.push({ code: 'CAVE_VOLUME_PROVISIONAL', unknownRatio: caveSurvey.unknownRatio })
     }
     const sealCells = regs.seal.ready ? regs.seal.columns.size * (regs.seal.yMax - regs.seal.yMin + 1) : 0
-    const summary = { ready: issues.length === 0, issues, warnings, jobId: config.jobId, chunks: regs.chunks, yTop, yTopProvisional: unknownAbove > 0, yBottom: regs.yBottom, columns: regs.columns.size, counts, survey, stair, exitPreflight, caveSurvey, boundarySeal: { enabled: regs.seal.enabled, ready: regs.seal.ready, columns: regs.seal.columns.size, yMin: regs.seal.yMin, yMax: regs.seal.yMax, cells: sealCells, placementOnly: true }, travelRegion: regs.travel, storage: storageList }
+    const summary = { ready: issues.length === 0, issues, warnings, jobId: config.jobId, chunks: regs.chunks, yTop, yTopProvisional: unknownAbove > 0, yBottom: regs.yBottom, columns: regs.columns.size, counts, survey, stair, exitPreflight, caveSurvey, boundarySeal: { enabled: regs.seal.enabled, ready: regs.seal.ready, columns: regs.seal.columns.size, yMin: regs.seal.yMin, yMax: regs.seal.yMax, cells: sealCells, placementOnly: true }, travelRegion: regs.travel, storage: storageList,
+      ...(pendingLoadout ? { initialLoadout: { mode: 'v22', pending: true, serverConfirmed: false, position: copy(config.homeChest.position) } } : {}) }
     job = { config, instanceId: randomUUID(), world: worldIdentity(state), actionSequence: 0, state: 'IDLE', planned: summary, yTop, cursorY: yTop, deepestY: yTop, records: { stair }, ledger: {}, userRunIntent: 'idle', result: null, pauseReason: null, interruption: null, checkpoint: null, actions: [], deaths: [], startedAt: null, scope: null, life: null }
     regions = regs; planner = pl; ledger = createLedger()
     return copy(summary)
@@ -691,9 +725,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   async function preflight (myEpoch) {
-    if (fourLayerStorage() && !job.loadoutReady) {
+    if (usesV22Loadout() && !job.loadoutReady) {
       const home = job.config.homeChest, owner = job
       if (!home?.position || !home.stand) return finish('PAUSED', 'LOADOUT_CHEST_NOT_CONFIGURED')
+      if (job.config.initialLoadout === 'v22' && !configuredLoadoutHome(job.config)) return finish('PAUSED', 'LOADOUT_CHEST_CHANGED')
       if (!job.loadout) {
         job.loadout = { operationId: job.config.jobId + ':loadout:1', checkpoint: null }
         await save('loadout_intent')
@@ -704,13 +739,18 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const from = feetCell(guard(myEpoch))
       if (!samePoint(from, home.stand)) await moveToStance(myEpoch, home.stand)
       const active = job.loadout
-      const response = await call(myEpoch, 'loadout_withdraw', signal => adapter.loadoutWithdraw({
+      const response = await call(myEpoch, 'loadout_withdraw', signal => {
+        if (job.config.initialLoadout === 'v22' && (!active.checkpoint || active.checkpoint.index === 0 && active.checkpoint.intent == null)) {
+          if (!configuredLoadoutHome(job.config)) return { status: 'blocked', reason: 'LOADOUT_CHEST_CHANGED', serverConfirmed: false }
+          if (!emptyLoadoutInventory(guard(myEpoch))) return { status: 'blocked', reason: 'LOADOUT_START_INVENTORY_NOT_EMPTY', serverConfirmed: false }
+        }
+        return adapter.loadoutWithdraw({
         jobId: job.config.jobId, operationId: active.operationId,
         checkpoint: copy(active.checkpoint), position: copy(home.position)
       }, { signal, onCheckpoint: async cp => {
         if (job !== owner || job.loadout !== active || cp.operationId !== active.operationId) throw new Error('LOADOUT_STALE_CHECKPOINT')
         active.checkpoint = copy(cp); await save('loadout_checkpoint')
-      }}), { drain: true })
+      }}) }, { drain: true })
       guard(myEpoch)
       if (response?.status !== 'completed' || response.serverConfirmed !== true) {
         return finish('PAUSED', response?.reason ?? 'LOADOUT_WITHDRAW_BLOCKED', { pauseDetails: { details: response?.details ?? null, operationId: active.operationId } })
@@ -719,11 +759,13 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (!discovered?.ok || !validSupplyBindings(discovered.bindings, 'four_layers')) {
         return finish('PAUSED', discovered?.reason ?? 'V22_SUPPLIES_UNKNOWN')
       }
+      if (job.config.initialLoadout === 'v22' && !completedV22Loadout(false)) return finish('PAUSED', 'LOADOUT_RECEIPTS_UNCONFIRMED')
       job.config.inventory.supplyBoxes = copy(discovered.bindings)
       job.config.inventory.autoSupplies = true
       job.loadoutReady = true
       await save('loadout_received')
     }
+    if (job.config.initialLoadout === 'v22' && !completedV22Loadout()) return finish('PAUSED', 'LOADOUT_RECEIPTS_UNCONFIRMED')
     const s = guard(myEpoch)
     if (!items(s)) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
     job.scope = scopeOf(s); job.life = lifeOf(s)
@@ -731,9 +773,18 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!Object.keys(ledger.export().startInventory).length) for (const [n, c] of lastInventory) ledger.add('startInventory', n, c)
     combatBridge.activate({ jobId: job.config.jobId, epoch, travel: p => permits(regions, 'travel', p).allowed })
     await save('start')
-    if (!fourLayerStorage() && !(await prepareExit(myEpoch))) return
+    if (job.config.initialLoadout === 'v22' && job.pendingTotemEquip && await ensureTotem(myEpoch)) return
+    // A passive/full job needs actual tools and reserved dirt from its received
+    // supply boxes before the ordinary exit preflight can judge readiness.
+    if (job.config.initialLoadout === 'v22' && await restock(myEpoch, 'PREFLIGHT', true)) return
+    if (job.config.initialLoadout === 'v22') {
+      if (!completedV22Loadout()) return finish('PAUSED', 'LOADOUT_RECEIPTS_UNCONFIRMED')
+      if (await ensureTotem(myEpoch)) return
+      if (!(await verifyExitSupplyStock(myEpoch))) return
+    }
+    if (!deferredExitSupplies() && !(await prepareExit(myEpoch))) return
     if (fourLayerStorage()) { setState('SURVEY'); return }
-    if (await restock(myEpoch, 'SURVEY', true)) return
+    if (job.config.initialLoadout !== 'v22' && await restock(myEpoch, 'SURVEY', true)) return
     setState('SURVEY')
   }
 
@@ -769,6 +820,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (obs && obs.requests && !obs.waiting && Number.isFinite(obs.requestedAt) && now() - obs.requestedAt > TERRAIN_BUDGET_RENEW_MS) { obs.requests = 0; obs.phase = 'idle' }
     if (!(await confirmPoseAfterPause(myEpoch))) return
     if (job.supplyRestock) { job.supplyRestock.resumeTo = 'RECONCILE'; return restock(myEpoch, 'RECONCILE', true) }
+    if (job.config.initialLoadout === 'v22' && job.pendingTotemEquip && await ensureTotem(myEpoch)) return
     // Re-observe instead of trusting saved cells (§15.3): unreachable and
     // tool deferrals are retried; protected/unbreakable stay.
     // MINING_FAILED (and the falling-block chains it holds up) were transient
@@ -790,7 +842,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
     }
     if (job.miningCompletedAt && job.config.exit?.mode === 'adjacent_pillar') { setState('EGRESS'); return }
-    if (!fourLayerStorage() && !(await prepareExit(myEpoch))) return
+    if (job.config.initialLoadout === 'v22' && !(await verifyExitSupplyStock(myEpoch))) return
+    if (!deferredExitSupplies() && !(await prepareExit(myEpoch))) return
     const floorY = workFloorY()
     clearWorkDeferred([...TRANSIENT_DEFER, ...TOOL_WAIT])
     badStances.clear()
@@ -972,12 +1025,41 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   async function ensureTotem (myEpoch) {
-    if (!fourLayerStorage()) return false
+    if (!usesV22Loadout()) return false
+    const observedHand = () => adapter.equipmentView?.()?.offhand
+    const knownHand = () => { const hand = observedHand(); return hand?.known === true && hand.slots?.[0]?.known === true ? hand.slots[0] : null }
+    const waitHand = async () => {
+      if (knownHand()) return knownHand()
+      if (typeof adapter.resyncInventory !== 'function') return null
+      try {
+        let refreshed
+        try { refreshed = await call(myEpoch, 'totem_observe', signal => adapter.resyncInventory({ signal })) } catch (error) {
+          if (error.code !== 'RESYNC_RATE_LIMIT') throw error
+          const until = now() + 20000
+          while (now() < until) { guard(myEpoch); await sleep(100) }
+          refreshed = await call(myEpoch, 'totem_observe', signal => adapter.resyncInventory({ signal }))
+        }
+        if (refreshed !== true) return null
+        const until = now() + 5000
+        do { guard(myEpoch); if (knownHand()) return knownHand(); await sleep(100) } while (now() < until)
+      } catch (error) { if (error instanceof QuarryInterrupt) throw error }
+      return null
+    }
+    let hand = await waitHand()
+    const pending = job.pendingTotemEquip
+    if (pending) {
+      const state = guard(myEpoch)
+      if (pending.scope !== scopeOf(state) || pending.life !== lifeOf(state) || pending.self !== String(state.runtimeEntityId)) { await finish('PAUSED', 'TOTEM_EQUIP_SCOPE_CHANGED'); return true }
+      if (!hand || hand.empty || hand.name !== 'minecraft:totem_of_undying' || hand.count !== 1) { await finish('PAUSED', 'TOTEM_EQUIP_UNCONFIRMED'); return true }
+      delete job.pendingTotemEquip
+      job.totemsEquipped = (job.totemsEquipped ?? 0) + 1
+      await save('totem_equipped'); return true
+    }
     const view = adapter.equipmentView?.()
     if (view?.offhand?.known !== true || view.offhand.slots?.[0]?.known !== true) {
       await finish('PAUSED', 'OFFHAND_OBSERVATION_UNKNOWN'); return true
     }
-    const hand = view.offhand.slots[0]
+    hand = view.offhand.slots[0]
     if (!hand.empty) {
       if (hand.name === 'minecraft:totem_of_undying') return false
       await finish('PAUSED', 'OFFHAND_OCCUPIED'); return true
@@ -988,13 +1070,24 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!totem) {
       await finish('PAUSED', 'TOTEM_EXHAUSTED'); return true
     }
+    if (job.config.initialLoadout === 'v22') {
+      const state = guard(myEpoch)
+      job.pendingTotemEquip = { scope: scopeOf(state), life: lifeOf(state), self: String(state.runtimeEntityId), fromSlot: totem.slot, stage: 'intent' }
+      await save('totem_equip_intent')
+    }
     const receipt = await call(myEpoch, 'equip_totem', signal => adapter.equipmentTransfer({
       from:'main',fromSlot:totem.slot,to:'offhand',toSlot:0,
       expectedName:'minecraft:totem_of_undying',signal
     }))
-    if (receipt?.serverConfirmed !== true || adapter.equipmentView?.()?.offhand?.slots?.[0]?.name !== 'minecraft:totem_of_undying') {
+    if (receipt?.serverConfirmed === true && job.pendingTotemEquip) {
+      Object.assign(job.pendingTotemEquip, { stage: 'accepted', requestId: receipt.requestId ?? null })
+      await save('totem_equip_accepted')
+    }
+    hand = await waitHand()
+    if (receipt?.serverConfirmed !== true || hand?.name !== 'minecraft:totem_of_undying' || hand.count !== 1 || hand.empty) {
       await finish('PAUSED','TOTEM_EQUIP_UNCONFIRMED');return true
     }
+    delete job.pendingTotemEquip
     job.totemsEquipped = (job.totemsEquipped ?? 0) + 1
     await save('totem_equipped')
     return true
@@ -1002,7 +1095,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   // ---- normal work -------------------------------------------------------
   async function work (myEpoch) {
-    if (!fourLayerStorage() && job.exitPreflight?.layer !== job.cursorY && !(await prepareExit(myEpoch))) return
+    if (job.config.initialLoadout === 'v22' && job.pendingTotemEquip && await ensureTotem(myEpoch)) return
+    if (job.config.initialLoadout === 'v22' && !(await verifyExitSupplyStock(myEpoch))) return
+    if (!deferredExitSupplies() && job.exitPreflight?.layer !== job.cursorY && !(await prepareExit(myEpoch))) return
     const s = guard(myEpoch)
     const hz = hazardNow(s)
     if (hz) return escapeHazard(myEpoch, hz)
@@ -1580,7 +1675,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const fail = reason => ({ reason, details: { stance, floor: { ...stance, y: stance.y - 1 }, position: p } })
       if (!planner.safeSealStance(stance)) return fail('SEAL_UNSAFE_STANCE')
       const inv = items(state), material = nameOf(decision.material), dirt = totals(inv ?? []).get('dirt') ?? 0
-      const reserve = fourLayerStorage() ? 0 : Math.max(job.config.inventory.keepExitDirt ?? 0, decision.materialRequired === 'dirt' ? 192 : 0)
+      const reserve = fourLayerStorage() || deferredExitSupplies() && job.egressPreparation !== true ? 0 : Math.max(job.config.inventory.keepExitDirt ?? 0, decision.materialRequired === 'dirt' ? 192 : 0)
       if (!inv || decision.materialRequired && material !== decision.materialRequired || material === 'dirt' && dirt <= reserve || !inv?.some(i => i.slot === decision.slot && nameOf(i) === material && i.count > 0)) return fail('SEAL_MATERIAL_MISSING')
       const b = adapter.getBlock(p.x, p.y, p.z)
       if (!permits(regions, 'seal', p).allowed || !b?.known || b.protected || b.protectionSource || b.extra?.length) return fail('SEAL_CONTEXT_CHANGED')
@@ -1874,14 +1969,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     note(busy(list) ? 'storage_area_wait_timeout' : 'storage_area_clear', { count: list.length })
   }
 
-  function validSupplyBindings (bindings, mode = job?.config?.inventory?.depositWhen) {
-    const roles = mode === 'four_layers' ? ['pickaxe', 'shovel', 'dirt', 'totem'] : ['pickaxe', 'shovel', 'food', 'dirt']
+  function validSupplyBindings (bindings, mode = job?.config?.inventory) {
+    const roles = mode === 'four_layers' || mode?.depositWhen === 'four_layers' || mode?.supplyLayout === 'v22' ? ['pickaxe', 'shovel', 'dirt', 'totem'] : ['pickaxe', 'shovel', 'food', 'dirt']
     return Array.isArray(bindings) && bindings.length === 4 && roles.every(role => bindings.filter(b => b?.role === role && typeof b.key === 'string' && typeof b.itemName === 'string').length === 1) && new Set(bindings.map(b => b.key)).size === 4
   }
-  function initialSupplyStation () {
-    if (!fourLayerStorage() || job.loadoutReady !== true) return null
-    const progress = ledger.summary(), cp = job.loadout?.checkpoint, home = job.config.homeChest
-    if (progress.minedBlocks + progress.reminedTemporary !== 0 || cp?.version !== 1 || cp.direction !== 'withdraw' || cp.phase !== 'completed' || cp.index !== 34 || cp.intent != null || !samePoint(cp.position, home?.position) ||
+  function completedV22Loadout (requireReady = true) {
+    if (!usesV22Loadout() || requireReady && job.loadoutReady !== true) return null
+    const cp = job.loadout?.checkpoint, home = job.config.homeChest
+    if (cp?.version !== 1 || cp.direction !== 'withdraw' || cp.phase !== 'completed' || cp.index !== 34 || cp.intent != null || !samePoint(cp.position, home?.position) ||
         cp.jobId !== job.config.jobId || cp.operationId !== job.loadout.operationId || !Array.isArray(cp.plan) || cp.plan.length !== 34 || !Array.isArray(cp.receipts) || cp.receipts.length !== 34 ||
         !Array.isArray(cp.identities) || cp.identities.length !== 34 || cp.identities.some(value => typeof value !== 'string' || !value) ||
         cp.receipts.some((receipt, i) => ['from', 'to', 'name', 'count'].some(key => receipt?.[key] !== cp.plan[i]?.[key]))) return null
@@ -1889,10 +1984,36 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const state = adapter.getState(), world = assertJobWorld(job, state)
       const key = JSON.stringify([world.profile, world.realmId, world.dimension])
       if (cp.world !== key || cp.life !== JSON.stringify([key, lifeOf(state)])) return null
-      const registered = adapter.registeredHomeChest?.()
-      if (!registered || !['position', 'other', 'stand', 'stage'].every(part => samePoint(home?.[part], registered[part]))) return null
-      return { stand: copy(home.stand), stage: copy(home.stage) }
+      if (job.config.initialLoadout === 'v22') {
+        const registered = adapter.registeredHomeChest?.()
+        if (!registered || !['position', 'other', 'stand', 'stage'].every(part => samePoint(home?.[part], registered[part]))) return null
+      }
+      return true
     } catch { return null }
+  }
+  async function verifyExitSupplyStock (myEpoch) {
+    const state = guard(myEpoch), main = items(state), view = adapter.equipmentView?.(), bindings = job.config.inventory.supplyBoxes
+    if (!main || view?.known !== true || view.uncertain || view.armor?.known !== true || view.offhand?.known !== true ||
+      !completedV22Loadout() || !validSupplyBindings(bindings)) { await finish('PAUSED', 'EXIT_SUPPLY_UNCONFIRMED'); return false }
+    const required = Math.max(192, job.config.exit?.reservedDirt ?? 0, job.exitReservation?.plan?.totalDirt ?? 0)
+    const available = dirtCount(main)
+    if (available >= required) return true
+    const binding = bindings.find(row => row.role === 'dirt'), candidates = (view?.slots ?? []).filter(row => row?.known === true && !row.empty && row.count === 1 && row.name === binding?.boxName && binding.itemName === 'minecraft:dirt' && carriedContainerKey(row) === binding?.key)
+    const slots = candidates.length === 1 && candidates[0].container?.known === true ? candidates[0].container.slots : null
+    if (!Array.isArray(slots) || slots.length !== 27 || slots.some(row => row && !(row.known === true && (row.empty === true && row.count === 0 || row.name === 'minecraft:dirt' && Number.isInteger(row.count) && row.count > 0 && row.count <= 64)))) {
+      await finish('PAUSED', 'EXIT_SUPPLY_UNCONFIRMED'); return false
+    }
+    const stored = slots.reduce((total, row) => total + (row && !row.empty ? row.count : 0), 0)
+    if (available + stored < required) { await finish('PAUSED', 'EXIT_SUPPLY_MISSING', { pauseDetails: { carried: available, stored, required } }); return false }
+    return true
+  }
+  function initialSupplyStation () {
+    const progress = ledger.summary(), home = job.config.homeChest
+    if (!completedV22Loadout() || progress.minedBlocks + progress.reminedTemporary !== 0) return null
+    const registered = adapter.registeredHomeChest?.()
+    if (!registered || !['position', 'other', 'stand', 'stage'].every(part => samePoint(home?.[part], registered[part]))) return null
+    if (job.config.initialLoadout === 'v22' && ![home.stand, home.stage].every(p => regions.columns.has(`${p.x},${p.z}`))) return null
+    return { stand: copy(home.stand), stage: copy(home.stage) }
   }
   const supplyCanPlace = p => supplyPlacementAllowed(regions, p, initialSupplyStation())
   const supplyCanClear = p => permits(regions, 'break', p).allowed && clearableSitePlant(planningBlocks(job.config)(p.x, p.y, p.z))
@@ -2007,6 +2128,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!validSupplyBindings(bindings) || typeof adapter.restockSupplies !== 'function') { await finish('PAUSED', 'SUPPLY_UNSUPPORTED'); return true }
     const inventory = items(guard(myEpoch)), equipmentView = adapter.equipmentView?.()
     const policy = { ...job.config.inventory, tools: job.config.tools,
+      ...(v22SupplyLayout(job.config) ? { totemNeeded: equipmentView?.offhand?.known === true && equipmentView.offhand.slots?.[0]?.empty === true } : {}),
+      ...(deferredExitSupplies() ? { deferExitSupplies: true, exitPreparing: job.egressPreparation === true,
+        exitDirtTarget: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 64 } : {}),
       ...(job.miningExhausted ? { miningExhausted: copy(job.miningExhausted) } : {}),
       ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64,
         exitPreparing: job.egressPreparation === true, exitDirtTarget: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 64,
@@ -2174,7 +2298,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (shulkerOnly && selection.kind !== 'shulker') throw new QuarryInterrupt('LEGACY_CHEST_STORAGE')
     if (capacity && selection.kind !== 'shulker') return false
     const markerDirt = capacity && job.config.exit?.mode === 'adjacent_pillar'
-    if (!job.portableStorage && markerDirt && dirtCount(inv) <= Math.max(192, job.config.inventory.keepExitDirt ?? 192)) { await finish('PAUSED', 'CAPACITY_MARKER_MATERIAL_MISSING'); return true }
+    const markerReserve = job.config.initialLoadout === 'v22' && deferredExitSupplies() && !job.egressPreparation ? 0 : Math.max(192, job.config.inventory.keepExitDirt ?? 192)
+    if (!job.portableStorage && markerDirt && dirtCount(inv) <= markerReserve) { await finish('PAUSED', 'CAPACITY_MARKER_MATERIAL_MISSING'); return true }
     if (!job.portableStorage) {
       job.portableStorageSequence = (job.portableStorageSequence ?? 0) + 1
       job.portableStorage = { operationId: `${job.config.jobId}:storage:${job.portableStorageSequence}`, selection: copy(selection), checkpoint: null, why, ...(depositLimit ? { depositLimit: copy(depositLimit) } : {}), ...(capacity ? { purpose: 'capacity_batch', capacityBatch: { decision: copy(capacityDecision), beforePlacementItems: copy(inv), inventoryPolicy: copy(inventoryPolicy()), markerDirt } } : {}) }
@@ -2542,7 +2667,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (active.roomAttempts > SUPPLY_ROOM_MAX_ATTEMPTS || typeof adapter.place !== 'function' || typeof adapter.equip !== 'function') return false
     let inventory = items(guard(myEpoch))
     if (!inventory) return false
-    const keepDirt = (job.config.inventory?.keepExitDirt ?? 192) + (job.config.inventory?.keepSealBlocks ?? 32)
+    const roomPolicy = job.config.initialLoadout === 'v22' && deferredExitSupplies() ? inventoryPolicy() : job.config.inventory
+    const keepDirt = (roomPolicy?.keepExitDirt ?? 192) + (roomPolicy?.keepSealBlocks ?? 32)
     const dirtTotal = inventory.filter(i => nameOf(i.name) === 'dirt' && i.slot >= 0 && i.slot < 36).reduce((n, i) => n + i.count, 0)
     const pick = inventory.filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot < 36 && i.count > 0 && i.count <= SUPPLY_ROOM_MAX_BLOCKS && SEAL_MATERIALS.includes(nameOf(i.name)) && (nameOf(i.name) !== 'dirt' || dirtTotal - i.count >= keepDirt)).sort((a, b) => a.count - b.count || a.slot - b.slot)[0]
     if (!pick) { note('supply_room_unavailable', {}); return false }
@@ -2689,13 +2815,13 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       for (const e of toolWait) { const n = e.needs ? `${e.needs.kind ?? e.needs}${e.needs.tier != null ? `:${e.needs.tier}` : ''}` : 'unknown'; needs[n] = (needs[n] ?? 0) + 1 }
       return finish('PAUSED', 'WAITING_FOR_TOOL', { pauseDetails: { cells: toolWait.length, needs, byReason, examples: toolWait.slice(0, 10) } })
     }
-    if (fourLayerStorage() && job.config.exit?.mode === 'adjacent_pillar') {
+    if (deferredExitSupplies() && job.config.exit?.mode === 'adjacent_pillar') {
       // The dirt box keeps the exit reserve while the quarry is in progress.
       // Withdraw only after all ordinary drops have reached the cargo boxes.
       if (!job.egressPreparation) { job.egressPreparation = true; await save('egress_dirt_intent') }
       const inv = items(guard(myEpoch))
       if (!inv) return finish('PAUSED', 'INVENTORY_UNKNOWN')
-      if ((totals(inv).get('dirt') ?? 0) < 192) {
+      if ((totals(inv).get('dirt') ?? 0) < Math.max(192, job.config.inventory.keepExitDirt ?? 0)) {
         if (await restock(myEpoch, 'FINAL_CHECK', true)) return
         return finish('PAUSED', 'EXIT_DIRT_WITHDRAW_BLOCKED')
       }
@@ -2753,7 +2879,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job.egress?.operationId) {
       const read = planningBlocks(job.config); let unknownExitTerrain = false
       const exitBlocks = (x, y, z) => { const b = read(x, y, z); if (b?.known !== true) unknownExitTerrain = true; return b }
-      const selected = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(s), getBlock: exitBlocks, inventory: items(s), policy: { ...job.config.tools, ...job.config.collection }, minFreeSlots: fourLayerStorage() ? 0 : job.config.inventory.minFreeSlots, allowFullBag: fourLayerStorage() || !!job.storageExhausted && passivePickup(), exit: job.config.exit, reservation: job.exitReservation?.plan ?? null, reachable: planner.reachableFrom(feetCell(s)) })
+      const selected = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(s), getBlock: exitBlocks, inventory: items(s), policy: { ...job.config.tools, ...job.config.collection }, minFreeSlots: deferredExitSupplies() ? 0 : job.config.inventory.minFreeSlots, allowFullBag: deferredExitSupplies() || !!job.storageExhausted && passivePickup(), exit: job.config.exit, reservation: job.exitReservation?.plan ?? null, reachable: planner.reachableFrom(feetCell(s)) })
       job.egress = { phase: selected.ok ? 'planned' : 'blocked', reason: selected.reason ?? null, plan: copy(selected.plan ?? null), operationId: null, checkpoint: null, scope: scopeOf(s), life: lifeOf(s) }
       if (selected.plan) job.config.inventory.keepExitDirt = selected.plan.totalDirt
       if (!selected.ok && selected.reason === 'EXIT_COLUMN_UNAVAILABLE' && unknownExitTerrain && await requestTerrainObservation(myEpoch, 'egress')) { job.egress.phase = 'planned'; job.egress.reason = 'EXIT_TERRAIN_PENDING'; return }
@@ -2785,7 +2911,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     active.phase = 'running'; active.reason = null
     const hpBefore = Number(guard(myEpoch).health), feetBefore = active.checkpoint?.confirmedFeetY ?? null
     const rec = recordAction({ type: 'egress', operationId: active.operationId, column: active.plan.column })
-    const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint), ...(reconnect ? { reconnect: true } : {}), ...(fourLayerStorage() || job.storageExhausted && passivePickup() ? { allowFullInventory: true } : {}) }, { signal, onCheckpoint }))
+    const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint), ...(reconnect ? { reconnect: true } : {}), ...(deferredExitSupplies() || job.storageExhausted && passivePickup() ? { allowFullInventory: true } : {}) }, { signal, onCheckpoint }))
     guard(myEpoch)
     if (result?.checkpoint) await onCheckpoint(result.checkpoint)
     rec.result = copy(result ?? null)
@@ -3328,9 +3454,13 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const world = assertJobWorld(doc, adapter.getState())
     clearAutoResume()
     if (!validStoragePair(doc.config.inventory)) throw new Error('Unsupported saved storage policy')
+    if (doc.config.initialLoadout != null && doc.config.initialLoadout !== 'v22') throw new Error('Unsupported saved initial loadout')
+    if (doc.config.inventory.supplyLayout != null && doc.config.inventory.supplyLayout !== 'v22') throw new Error('Unsupported saved supply layout')
     const pendingStorage = doc.pendingStorageConfiguration
     if (pendingStorage != null && (typeof pendingStorage !== 'object' || Array.isArray(pendingStorage) || Object.keys(pendingStorage).some(key => !['pickupMode', 'depositWhen', 'requestedAt'].includes(key)) || typeof pendingStorage.pickupMode !== 'string' || typeof pendingStorage.depositWhen !== 'string' || !validStoragePair(pendingStorage) || pendingStorage.requestedAt !== undefined && (typeof pendingStorage.requestedAt !== 'string' || !Number.isFinite(Date.parse(pendingStorage.requestedAt))))) throw new Error('Invalid pending storage configuration')
     job = copy(doc)
+    job.config.initialLoadout ??= null
+    if (job.config.initialLoadout === 'v22') job.config.inventory.supplyLayout = 'v22'
     job.world = world
     job.instanceId = documentInstance(doc)
     job.actionSequence ??= Math.max(0, ...(job.actions ?? []).map(action => action.sequence ?? 0))
@@ -3385,7 +3515,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       ledger: ledger.summary(), ledgerDetail: ledger.export(), pendingDrops: pendingDrops.length, unreachableItems: job.unreachableItems ?? [],
       combat: { ...combatBridge.snapshot(), settle: job.settle ?? null, recovery: job.recovery ?? null, interruption: job.interruption },
       portableStorage: job.portableStorage ? { operationId: job.portableStorage.operationId, kind: job.portableStorage.selection?.kind, stage: job.portableStorage.checkpoint?.stage ?? 'intent', positions: copy(job.portableStorage.checkpoint?.positions ?? []), why: job.portableStorage.why } : null,
-      supplies: { enabled: !!job.config.inventory.supplyBoxes?.length, bindings: copy(job.config.inventory.supplyBoxes ?? []), needs: items(s) ? supplyNeeds(items(s), { ...job.config.inventory, tools: job.config.tools }) : null, active: job.supplyRestock ? { operationId: job.supplyRestock.operationId, index: job.supplyRestock.checkpoint?.index ?? null, phase: job.supplyRestock.checkpoint?.phase ?? 'intent' } : null, lastResult: copy(job.lastSupplyResult ?? null) },
+      supplies: { enabled: !!job.config.inventory.supplyBoxes?.length, bindings: copy(job.config.inventory.supplyBoxes ?? []), needs: items(s) ? supplyNeeds(items(s), { ...job.config.inventory, tools: job.config.tools,
+        ...(deferredExitSupplies() ? { deferExitSupplies: true, exitPreparing: job.egressPreparation === true, exitDirtTarget: Math.max(192, job.config.inventory.keepExitDirt ?? 0) } : {}) }) : null, active: job.supplyRestock ? { operationId: job.supplyRestock.operationId, index: job.supplyRestock.checkpoint?.index ?? null, phase: job.supplyRestock.checkpoint?.phase ?? 'intent' } : null, lastResult: copy(job.lastSupplyResult ?? null) },
       egress: egressStatus(inv),
       tools: { ...copy(job.config.tools), hardMinimumRemaining: 1, states: inv ? inv.map(i => toolState(i, job.config.tools)).filter(Boolean).map(t => ({ slot: t.item.slot, name: t.item.name, remaining: t.remaining ?? null, reserve: t.reserve ?? null, usable: t.usable, reason: t.reason ?? null })) : null },
       terrainObservation: copy(job.terrainObservation ?? null),
