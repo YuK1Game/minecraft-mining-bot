@@ -149,3 +149,20 @@ test('two-slot reserve is best effort and the existing minimum-one-slot recovery
   assert.equal(result.checkpoint.recoverySpaceExtensions, undefined)
   assert.equal(result.recovered, true)
 })
+
+test('live case 2026-11-12: after a received drop-pickup round, three more confirmed top-ups free the recovery slot', async () => {
+  const h = await lateSurplus()
+  const capped = await h.resume({}, cp => {
+    if (cp.intent === null && cp.plan.at(-1)?.recoverySpace && cp.plan.at(-1).transferred === cp.plan.at(-1).count) {
+      for (let slot = 0; slot < 36; slot++) if (!h.f.bag[slot].count) h.f.bag[slot] = item(4, 2, 12000 + cp.recoverySpaceExtensions * 100 + slot)
+    }
+  })
+  assert.equal(capped.reason, 'STORAGE_RECOVERY_SLOT_REQUIRED')
+  assert.equal(capped.checkpoint.recoverySpaceExtensions, 3)
+  const again = await h.resume({ checkpoint: capped.checkpoint })
+  assert.equal(again.reason, 'STORAGE_RECOVERY_SLOT_REQUIRED', 'without a pickup round the cap holds')
+  const topped = await h.resume({ checkpoint: capped.checkpoint, recoverySpaceRounds: 1 })
+  assert.ok(topped.checkpoint.recoverySpaceExtensions > 3 && topped.checkpoint.recoverySpaceExtensions <= 6, String(topped.checkpoint.recoverySpaceExtensions))
+  assert.notEqual(topped.reason, 'STORAGE_RECOVERY_SLOT_REQUIRED', JSON.stringify(topped.reason))
+  assert.ok(topped.checkpoint.plan.filter(p => p.recoverySpace).every(p => p.transferred === p.count), 'every top-up is a confirmed whole transfer')
+})

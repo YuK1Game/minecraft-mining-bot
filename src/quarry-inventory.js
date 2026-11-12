@@ -119,4 +119,12 @@ function createLedger (saved = {}) {
   return { add, export: () => structuredClone(ledger), summary: () => Object.fromEntries(buckets.map(b => [b, Object.values(ledger[b]).reduce((s, v) => s + v, 0)])) }
 }
 
-module.exports = { keepPlan, freeSlots, canAccept, totals, diff, createLedger, maxStack, isFood, isShulkerBox, carriedContainerKey, selectCarriedStorage, SLOTS }
+// Drops that fit the room of existing plain stacks, in order, without using a
+// free slot (live 2026-11-12 22:30: a make-room pickup overflowed into a new stack).
+function dropsFittingStacks (items, drops) {
+  const fitting = [], free = freeSlots(items)
+  for (const drop of drops ?? []) if (Number.isSafeInteger(drop?.count) && drop.count > 0 && typeof drop.name === 'string' && canAccept(items, [...fitting, drop], { minFreeSlots: free })) fitting.push(drop)
+  return fitting
+}
+
+module.exports = { keepPlan, freeSlots, canAccept, dropsFittingStacks, totals, diff, createLedger, maxStack, isFood, isShulkerBox, carriedContainerKey, selectCarriedStorage, SLOTS }

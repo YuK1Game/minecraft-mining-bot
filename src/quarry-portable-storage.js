@@ -454,7 +454,11 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       const current = guard()
       if (freeSlots(current.items) >= 2) return false
       const count = cp.recoverySpaceExtensions === undefined ? 0 : cp.recoverySpaceExtensions
-      if (!Number.isSafeInteger(count) || count < 0 || count >= 3 || cp.plan.some(entry => entry.recoverySpace !== undefined && entry.recoverySpace !== true) || cp.plan.filter(entry => entry.recoverySpace === true).length !== count) return false
+      // Live 2026-11-12 22:30: cobblestone picked up to make room filled the
+      // last slot after the three top-ups were used. Each received pickup round
+      // (bounded by the job) allows three more, still one server-confirmed stack each.
+      const rounds = Number.isSafeInteger(request.recoverySpaceRounds) && request.recoverySpaceRounds > 0 ? Math.min(request.recoverySpaceRounds, 3) : 0
+      if (!Number.isSafeInteger(count) || count < 0 || count >= 3 * (1 + rounds) || cp.plan.some(entry => entry.recoverySpace !== undefined && entry.recoverySpace !== true) || cp.plan.filter(entry => entry.recoverySpace === true).length !== count) return false
       const known = chest.snapshot()
       if (known.contentsKnown !== true || known.slotCount !== 27 || known.window?.replayed === true || !['server_inventory_content', 'server_inventory_slot'].includes(known.observationSource) || !isDeepStrictEqual(readWindowEvidence(current), windowEvidence)) return false
       const slots = Array.from({ length: 27 }, (_, slot) => chest.rawItem(slot))
