@@ -10,6 +10,11 @@ const { isShulkerBox, isShulkerBlock, sameWindowId, canonicalWindowId, storageCo
 const { readShulkerContents, readContainerContents, compareShulkerContents, diagnoseShulkerContents } = require('./shulker-contents')
 const { canSeePlacementFloor } = require('./interaction-sight')
 const { plainAir, clearableSitePlant, passableSiteBody, describeBlock, supportIssue, placementSupportOk } = require('./storage-site-terrain')
+// The mining precondition refuses to break while the feet stand on these
+// (src/mining.js HAZARDS); a storage stand must not, or its box cannot be
+// recovered (live 2026-11-13 01:28, storage:237 on gravel).
+const MINING_FLOOR_HAZARD = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|dragon_egg|scaffolding)/
+const miningFloorOk = b => b?.known === true && typeof b.name === 'string' && !MINING_FLOOR_HAZARD.test(b.name) && !plainAir(b)
 const { observedScope, uuidOf } = require('./server-position-verifier')
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
@@ -306,6 +311,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       if (blockedBody) { const b = read(blockedBody); reject({ cause: b?.known !== true ? 'STAND_TERRAIN_UNKNOWN' : 'STAND_BODY_BLOCKED', position: blockedBody, part: 'stand', ...describeBlock(b) }); continue }
       const floor = supportIssue(read, stand)
       if (floor) { reject(floor); continue }
+      if (!exactStand && !miningFloorOk(read({ x: stand.x, y: stand.y - 1, z: stand.z }))) { const below = { x: stand.x, y: stand.y - 1, z: stand.z }; reject({ cause: 'STAND_FLOOR_BLOCKS_MINING', position: below, part: 'stand', ...describeBlock(read(below)) }); continue }
       const eye = samePoint(stand, origin) ? state.position : { x: stand.x + 0.5, y: stand.y + 1.62, z: stand.z + 0.5 }
       // This is a proposal to walk to stand before placing. Its self hitbox
       // belongs at that proposed stand, not at the previous pickup position.
@@ -941,6 +947,15 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         if (!placedCurrent(cp, owned)) throw failure('STORAGE_OWNED_BLOCK_CHANGED')
         const current = guard()
         if (freeSlots(current.items) < 1) throw failure('STORAGE_RECOVERY_SLOT_REQUIRED')
+        if (!miningFloorOk(read({ x: cp.stand.x, y: cp.stand.y - 1, z: cp.stand.z }))) {
+          const box = owned.position, candidates = []
+          for (const [dx, dz] of [[0, 2], [0, -2], [2, 0], [-2, 0], [1, 1], [1, -1], [-1, 1], [-1, -1], [0, 1], [0, -1], [1, 0], [-1, 0]]) candidates.push({ x: box.x + dx, y: box.y, z: box.z + dz })
+          const next = candidates.find(p => !samePoint(p, box) && standBody(p) && standBody({ ...p, y: p.y + 1 }) && support(p) && miningFloorOk(read({ x: p.x, y: p.y - 1, z: p.z })) && canPlace(p) === true && Math.hypot(box.x + 0.5 - (p.x + 0.5), box.y + 0.5 - (p.y + 1.62), box.z + 0.5 - (p.z + 0.5)) <= 4.5)
+          if (!next) throw failure('STORAGE_RECOVERY_STAND_UNSAFE')
+          const previousStand = cp.stand
+          cp.stand = copy(next); cp.recoveryStandMoved = { from: copy(previousStand), to: copy(next), at: now() }
+          try { await save() } catch (error) { cp.stand = previousStand; delete cp.recoveryStandMoved; throw error }
+        }
         if (!standBody(cp.stand) || !standBody({ ...cp.stand, y: cp.stand.y + 1 }) || !support(cp.stand) || canPlace(cp.stand) !== true) throw failure('STORAGE_STAND_UNCONFIRMED')
         if (Math.hypot(current.state.position.x - cp.stand.x - 0.5, current.state.position.y - 1.62 - cp.stand.y, current.state.position.z - cp.stand.z - 0.5) > 0.7) await moveToCell(cp.stand)
         close()

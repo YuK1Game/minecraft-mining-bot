@@ -446,3 +446,28 @@ test('live case 2026-11-13: a box cell whose floor the placement preview would r
   assert.equal(placementSupportOk({ known: true, name: 'minecraft:gravel', boundingBox: 'block', extra: [] }), false)
   assert.equal(placementSupportOk({ known: false }), false)
 })
+
+test('live case 2026-11-13: storage stands on a floor that blocks mining (gravel) are not chosen, and a placed box is broken from a safe nearby stand', async () => {
+  const base = fixture('shulker', { pickupOnMove: true }), plain = await base.run()
+  assert.equal(plain.status, 'completed', JSON.stringify(plain.reason))
+  const g = fixture('shulker', { pickupOnMove: true })
+  for (let x = -6; x <= 6; x++) for (let z = -6; z <= 6; z++) if (x !== 0 || z !== 0) g.blocks.set(key({ x, y: 64, z }), { known: true, name: 'minecraft:stone', runtimeId: 1, boundingBox: 'block', extra: [] })
+  const stand = plain.checkpoint.stand
+  if (!(stand.x === 0 && stand.z === 0)) {
+    g.blocks.set(key({ x: stand.x, y: stand.y - 1, z: stand.z }), { known: true, name: 'minecraft:gravel', runtimeId: 9, boundingBox: 'block', extra: [] })
+    await g.run()
+    const planned = g.checkpoints.find(cp => cp.positions?.length)
+    assert.ok(planned)
+    assert.notDeepEqual(planned.stand, stand, 'the gravel-floored stand is passed over')
+  }
+  // A box already placed from a stand whose floor turns out to block mining.
+  const f = fixture('shulker', { pickupOnMove: true })
+  let switched = false
+  const result = await f.run({ onCheckpoint: cp => {
+    if (!switched && cp.stage === 'packed') { switched = true; f.blocks.set(key({ x: cp.stand.x, y: cp.stand.y - 1, z: cp.stand.z }), { known: true, name: 'minecraft:gravel', runtimeId: 9, boundingBox: 'block', extra: [] }) }
+  } })
+  assert.equal(switched, true)
+  assert.equal(result.status, 'completed', JSON.stringify(result.reason))
+  assert.ok(result.checkpoint.recoveryStandMoved, 'the break used a safe nearby stand')
+  assert.notEqual(f.getBlock(result.checkpoint.stand.x, result.checkpoint.stand.y - 1, result.checkpoint.stand.z).name, 'minecraft:gravel')
+})
