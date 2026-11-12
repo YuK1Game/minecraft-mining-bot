@@ -28,6 +28,7 @@ function fixture () {
     if (behavior === 'site') { behavior = 'success'; return { status: 'blocked', serverConfirmed: false, reason: 'STORAGE_SITE_CHANGED', checkpoint: { withdrawn: [], returned: [], child: { placed: [], siteIssue: { cause: 'ENTITY_OCCUPIES_OR_UNOBSERVED', part: 'box' } } } } }
     if (behavior === 'placed-site') { return { status: 'blocked', serverConfirmed: false, reason: 'STORAGE_SITE_CHANGED', checkpoint: { withdrawn: [], returned: [], child: { placed: [{ position: { x: 0, y: 0, z: 0 } }] } } } }
     if (behavior === 'room') { behavior = 'success'; return { status: 'blocked', serverConfirmed: false, reason: 'SUPPLY_CAPACITY_REQUIRED' } }
+    if (behavior === 'pickup-once' || behavior === 'pickup-always') { if (behavior === 'pickup-once') behavior = 'success'; return { status: 'blocked', serverConfirmed: false, reason: 'STORAGE_PICKUP_ITEM_CHANGED', checkpoint: { withdrawn: [], returned: [], child: { stage: 'awaiting_recovery', placed: [{ position: { x: 0, y: 0, z: 0 } }] } } } }
     const dirt = sim.state.inventory.items.filter(i => i.name === 'minecraft:dirt').reduce((sum, item) => sum + item.count, 0), need = 224 - dirt
     if (need > 0) sim.give('dirt', need)
     const box = sim.state.inventory.items.find(item => carriedContainerKey(item) === bindings.find(b => b.role === 'dirt').key)
@@ -168,4 +169,28 @@ test('live case 2026-11-11: a stack larger than eight (ten diorite) is put back 
   assert.equal(placed.length, 10)
   assert.ok(placed.every(a => a.confirmedBy === 'server_block_and_inventory'))
   assert.equal(f.sim.state.inventory.items.filter(i => i.name === 'minecraft:dirt').reduce((n, i) => n + i.count, 0), dirtBefore, 'no dirt from the exit and seal reserve was used')
+})
+
+test('live case 2026-11-13: a supply box drop that vanished before its pickup was confirmed is rechecked at once; repeated failures still pause', async () => {
+  const f = fixture()
+  assert.equal(f.job.plan(f.config).ready, true)
+  await f.job.configureSupplies()
+  f.setBehavior('pickup-once')
+  const first = await f.job.restockSuppliesNow()
+  assert.notEqual(first.pauseReason, 'SUPPLY_RESTOCK_BLOCKED', 'rechecked instead of pausing')
+  assert.ok(f.job.document().supplyRestock.checkpoint, 'the same saved operation is kept for the recheck')
+  const result = await f.job.restockSuppliesNow()
+  assert.equal(result.supplyResult.status, 'completed', JSON.stringify(result.supplyResult))
+  assert.equal(f.requests.length, 2)
+  assert.equal(f.requests[1].operationId, f.requests[0].operationId)
+
+  const g = fixture()
+  assert.equal(g.job.plan(g.config).ready, true)
+  await g.job.configureSupplies()
+  g.setBehavior('pickup-always')
+  let last = null
+  for (let n = 0; n < 3; n++) last = await g.job.restockSuppliesNow()
+  assert.equal(g.requests.length, 3, 'two rechecks at most')
+  assert.equal(last.pauseReason, 'SUPPLY_RESTOCK_BLOCKED')
+  assert.equal(last.pauseDetails.reason, 'STORAGE_PICKUP_ITEM_CHANGED')
 })
