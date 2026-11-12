@@ -5025,6 +5025,8 @@ function createRuntime (host) {
       storagePlacementAudit?.applyPacket(name, packet)
     }
     if (name === 'command_output') {
+      const diag = host.shared.diagCommandOutputs?.get(packet.origin?.uuid)
+      if (diag) { diag.output = { at: Date.now(), success_count: packet.success_count, output: (packet.output ?? []).slice(0, 3).map(o => ({ success: o.success, message_id: o.message_id, parameters: (o.parameters ?? []).slice(0, 4) })) } }
       if (quarryPositionVerifier?.snapshot().pending) host.shared.quarryPositionOutput = { at: Date.now(), keys: Object.keys(packet), origin: packet.origin ? { type: packet.origin.type, uuid: packet.origin.uuid, request_id: packet.origin.request_id, player_entity_id: packet.origin.player_entity_id == null ? null : String(packet.origin.player_entity_id), player_entity_id_type: typeof packet.origin.player_entity_id, player_entity_id_class: packet.origin.player_entity_id?.constructor?.name } : null, output_type: packet.output_type, has_data: packet.has_data, dataType: typeof packet.data, success_count: packet.success_count, output: (packet.output ?? []).slice(0, 3).map(item => ({ success: item.success, message_id: item.message_id, parameters: (item.parameters ?? []).slice(0, 3) })) }
       quarryPositionVerifier?.applyPacket(name, packet)
       return
@@ -5565,9 +5567,15 @@ function createRuntime (host) {
       // check the world or inventory afterwards.
       command: (text, version = 'latest') => {
         if (typeof text !== 'string' || !/^\/\S/.test(text) || text.length > 512 || /[\r\n]/.test(text)) throw new Error('コマンドは / で始まる1行（512文字以内）で指定してください。')
-        host.client.queue('command_request', { command: text, origin: { type: 'player', uuid: require('node:crypto').randomUUID(), request_id: '', player_entity_id: 0n }, internal: false, version: String(version) })
-        return { sent: true, command: text, version: String(version) }
-      }
+        const uuid = require('node:crypto').randomUUID()
+        // The reply with this request UUID is kept (bounded) for commandOutput().
+        host.shared.diagCommandOutputs ??= new Map()
+        host.shared.diagCommandOutputs.set(uuid, { command: text, sentAt: Date.now(), output: null })
+        while (host.shared.diagCommandOutputs.size > 20) host.shared.diagCommandOutputs.delete(host.shared.diagCommandOutputs.keys().next().value)
+        host.client.queue('command_request', { command: text, origin: { type: 'player', uuid, request_id: '', player_entity_id: 0n }, internal: false, version: String(version) })
+        return { sent: true, command: text, version: String(version), uuid }
+      },
+      commandOutput: uuid => { const row = host.shared.diagCommandOutputs?.get(String(uuid ?? '').toLowerCase()) ?? host.shared.diagCommandOutputs?.get(String(uuid ?? '')); return row ? structuredClone(row) : null }
     },
     shelter: {
       preview: options => shelter?.preview(options) ?? { ready: false },
