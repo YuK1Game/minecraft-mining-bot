@@ -178,9 +178,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   const inventoryPolicy = () => ({ ...job.config.inventory, ...(shulkerOnly ? { keepLogs: job.config.inventory.keepLogs ?? 0, keepPlanks: job.config.inventory.keepPlanks ?? 0 } : {}), toolPolicy: job.config.tools, ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64 } :
     deferredExitSupplies() ? { keepExitDirt: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 0, keepSealBlocks: 64, ...(workDirtOnDemand() ? { sealDirt: job.egressPreparation === true || job.dirtDemand === true, keepSticks: job.config.inventory.keepSticks ?? 0 } : {}) } : {}) })
   // Live 2026-11-12 23:28: 34 of 36 slots were fixed items, leaving 2 for
-  // mining. In the v2.2 carried mode the 64 work dirt and the sticks are not
-  // held; dirt is taken from the dirt supply box only when a seal needs it.
-  const workDirtOnDemand = () => !fourLayerStorage() && deferredExitSupplies() && (job.config.inventory.supplyBoxes ?? []).some(b => b?.role === 'dirt') && job.config.inventory.workDirtOnDemand !== false
+  // mining. Opt-in (strategy.dirtFromSupplyOnDemand, 2026-11-13): in the v2.2
+  // carried mode the 64 work dirt and the sticks are not held; dirt is taken
+  // from the dirt supply box only when a seal needs it. New jobs keep the
+  // v2.2 default (64 work dirt carried) unless the job asks for it.
+  const workDirtOnDemand = () => job?.config.strategy?.dirtFromSupplyOnDemand === true && !fourLayerStorage() && deferredExitSupplies() && (job.config.inventory.supplyBoxes ?? []).some(b => b?.role === 'dirt')
   const passivePickup = () => job?.config.inventory.pickupMode === 'passive'
   const fullOnlyStorage = () => job?.config.inventory.depositWhen === 'full'
   const fourLayerStorage = () => job?.config.inventory.pickupMode === 'active' && job?.config.inventory.depositWhen === 'four_layers'
@@ -3361,6 +3363,18 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return autoResumeTimer != null
   }
 
+  // Turns the opt-in work-dirt-on-demand mode on or off for the current job.
+  async function configureDirtSupply (options = {}) {
+    if (!job) throw new Error('No quarry job')
+    if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).length !== 1 || typeof options.dirtFromSupplyOnDemand !== 'boolean') throw new Error('configureDirtSupply accepts { dirtFromSupplyOnDemand: true|false } only')
+    const prior = job.config.strategy?.dirtFromSupplyOnDemand
+    if (prior === options.dirtFromSupplyOnDemand) return status()
+    job.config.strategy = { ...(job.config.strategy ?? {}), dirtFromSupplyOnDemand: options.dirtFromSupplyOnDemand }
+    try { await save('dirt_supply_configured') } catch (error) { if (prior === undefined) delete job.config.strategy.dirtFromSupplyOnDemand; else job.config.strategy.dirtFromSupplyOnDemand = prior; throw error }
+    note('dirt_supply_configured', { dirtFromSupplyOnDemand: options.dirtFromSupplyOnDemand, active: workDirtOnDemand() })
+    return status()
+  }
+
   // ---- operations (§4.1) -------------------------------------------------
   async function configureStorage (options = {}) {
     if (!job) throw new Error('No quarry job')
@@ -3930,7 +3944,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
+  return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults }
