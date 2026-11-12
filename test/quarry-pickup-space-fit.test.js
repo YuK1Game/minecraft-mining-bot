@@ -21,3 +21,14 @@ test('no existing room means nothing is collected; malformed drops are skipped',
   const items = fullBag([stack(6, 'minecraft:cobblestone', 64)]).filter(i => i.slot !== 35)
   assert.deepEqual(dropsFittingStacks(items, [{ runtimeId: '1', name: 'minecraft:cobblestone', count: 1 }, { runtimeId: '2', name: 'minecraft:cobblestone' }, null]), [])
 })
+
+test('live case 2026-11-12: with keepFree 1, drops may open new stacks but one slot always stays empty for the box', () => {
+  const items = fullBag([stack(6, 'minecraft:cobblestone', 64)]).filter(i => i.slot !== 35 && i.slot !== 34 && i.slot !== 33)
+  assert.equal(freeSlots(items), 3)
+  const drops = [{ runtimeId: '1', name: 'minecraft:cobblestone', count: 4 }, { runtimeId: '2', name: 'minecraft:egg', count: 1 }, { runtimeId: '3', name: 'minecraft:granite', count: 1 }, { runtimeId: '4', name: 'minecraft:cobblestone', count: 2 }]
+  const fitting = dropsFittingStacks(items, drops, { keepFree: 1 })
+  assert.deepEqual(fitting.map(d => d.runtimeId), ['1', '2', '4'], 'cobblestone opens one stack (4+2), the egg a second; granite would take the last slot')
+  assert.deepEqual(dropsFittingStacks(items.slice(0, -2).concat([]), [], { keepFree: 1 }), [])
+  const one = fullBag([]).filter(i => i.slot !== 35)
+  assert.deepEqual(dropsFittingStacks(one, drops, { keepFree: 1 }), [], 'only the box slot is free: nothing is collected')
+})

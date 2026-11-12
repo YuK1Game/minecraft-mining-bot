@@ -119,11 +119,12 @@ function createLedger (saved = {}) {
   return { add, export: () => structuredClone(ledger), summary: () => Object.fromEntries(buckets.map(b => [b, Object.values(ledger[b]).reduce((s, v) => s + v, 0)])) }
 }
 
-// Drops that fit the room of existing plain stacks, in order, without using a
-// free slot (live 2026-11-12 22:30: a make-room pickup overflowed into a new stack).
-function dropsFittingStacks (items, drops) {
-  const fitting = [], free = freeSlots(items)
-  for (const drop of drops ?? []) if (Number.isSafeInteger(drop?.count) && drop.count > 0 && typeof drop.name === 'string' && canAccept(items, [...fitting, drop], { minFreeSlots: free })) fitting.push(drop)
+// Drops that fit, in order, while keepFree slots stay empty (live 2026-11-12
+// 22:30: a make-room pickup overflowed into a new stack). Without keepFree, no
+// free slot is used at all.
+function dropsFittingStacks (items, drops, { keepFree = null } = {}) {
+  const fitting = [], free = freeSlots(items), keep = Number.isSafeInteger(keepFree) && keepFree >= 0 ? Math.min(keepFree, free) : free
+  for (const drop of drops ?? []) if (Number.isSafeInteger(drop?.count) && drop.count > 0 && typeof drop.name === 'string' && canAccept(items, [...fitting, drop], { minFreeSlots: keep })) fitting.push(drop)
   return fitting
 }
 
