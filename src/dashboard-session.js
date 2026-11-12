@@ -13,6 +13,11 @@ function publicAuth (data, now = Date.now()) {
   const seconds = Number.isFinite(data.expires_in) ? Math.min(900, Math.max(1, data.expires_in)) : 900
   return { code: data.user_code, url: 'https://www.microsoft.com/link', expiresAt: now + seconds * 1000 }
 }
+function connectionFailure (error) {
+  if (error?.code === 'REALM_JOIN_UNAVAILABLE' && error.statusCode === 503) return 'Realmsの参加先取得が一時的に利用できません（HTTP 503）。再試行の上限に達しました。時間をおいて一覧取得からやり直してください。'
+  if (error?.code === 'REALM_JOIN_FAILED' && Number.isInteger(error.statusCode) && error.statusCode >= 400 && error.statusCode <= 599) return `Realmsの参加先取得に失敗しました（HTTP ${error.statusCode}）。`
+  return 'Botの接続処理に失敗しました。ターミナルのエラーを確認してください。'
+}
 function createDashboardSession ({ channel = process, onStop, getRealms, selectionTimeoutMs = 900000 }) {
   let selection = null, stopped = false, refreshing = false
   const send = payload => { if (!stopped && channel.connected && typeof channel.send === 'function') { try { channel.send({ channel: CHANNEL, ...payload }, () => {}) } catch {} } }
@@ -51,7 +56,7 @@ function createDashboardSession ({ channel = process, onStop, getRealms, selecti
       publish()
     })
   }
-  return { selectRealm, auth: data => send({ type: 'auth', auth: publicAuth(data) }), failed: () => send({ type: 'error', message: 'Botの接続処理に失敗しました。ターミナルのエラーを確認してください。' }),
+  return { selectRealm, auth: data => send({ type: 'auth', auth: publicAuth(data) }), failed: error => send({ type: 'error', message: connectionFailure(error) }),
     dispose: () => { stopped = true; if (selection) { clearTimeout(selection.timer); selection.reject(Object.assign(new Error('CANCELLED'), { code: 'CANCELLED' })); selection = null } channel.off('message', listener); channel.off('disconnect', stop) } }
 }
 module.exports = { CHANNEL, realmId, publicRealms, publicAuth, createDashboardSession }
