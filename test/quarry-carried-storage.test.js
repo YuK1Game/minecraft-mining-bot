@@ -316,3 +316,62 @@ test('live case 2026-11-12: a storage walk that timed out before anything was pl
     assert.deepEqual(c.calls[0].avoidPositions, [refused])
   }
 })
+
+test('live case 2026-11-12: a full box blocked only by loose drops is relieved by holding the next empty box, then that box continues as the next storage', async () => {
+  const f = fixture([{ name: 'shulker_box', count: 1, stackId: 14 }, { name: 'red_shulker_box', count: 1, stackId: 15 }])
+  const mainCell = { x: 7, y: 63, z: 5 }, reliefCell = { x: 8, y: 63, z: 7 }
+  const requests = []
+  f.sim.adapter.storeCarried = async (request, { onCheckpoint }) => {
+    requests.push(structuredClone(request))
+    if (request.holdAfterPlacement) {
+      const source = request.selection.sources[0]
+      consume(f.sim, source.slot, source.name, 1); f.sim.world.set(reliefCell.x, reliefCell.y, reliefCell.z, source.name)
+      const cp = { version: 1, operationId: request.operationId, jobId: request.jobId, kind: 'shulker', stage: 'placed', stand: { x: 6, y: 63, z: 7 }, positions: [reliefCell], placed: [{ position: reliefCell, name: source.name, confirmedBy: 'server_block_and_inventory' }], deposited: [], plan: [], intent: null, relief: true }
+      await onCheckpoint(cp)
+      return { status: 'held', serverConfirmed: false, recovered: false, deposited: [], checkpoint: cp }
+    }
+    const cp = { version: 1, operationId: request.operationId, jobId: request.jobId, kind: 'shulker', scope: { life: f.sim.state.lifecycle.deathId }, stage: 'depositing', stand: { x: 5, y: 63, z: 5 }, positions: [mainCell], placed: [{ position: mainCell, name: 'minecraft:shulker_box', confirmedBy: 'server_block_and_inventory' }], deposited: [], plan: [], intent: null, full: true }
+    await onCheckpoint(cp)
+    return { status: 'blocked', reason: 'STORAGE_PICKUP_CAPACITY_REQUIRED', serverConfirmed: false, recovered: false, details: { kind: 'owned_box_pickup_capacity', phase: 'before_packing', freeSlots: 1, requiredFreeSlots: 2 }, checkpoint: cp }
+  }
+  const first = await f.job.storeCarriedNow({ deposits: [{ slot: 3, name: 'minecraft:cobblestone', count: 8 }] })
+  assert.notEqual(first.pauseReason, 'CARRIED_STORAGE_BLOCKED', JSON.stringify(first.pauseDetails))
+  assert.equal(requests.length, 2)
+  assert.equal(requests[1].holdAfterPlacement, true)
+  assert.deepEqual(requests[1].deposits, [])
+  assert.deepEqual(requests[1].avoidPositions, [mainCell])
+  assert.notEqual(requests[1].selection.key, requests[0].selection.key, 'a different, empty cargo box')
+  assert.notEqual(requests[1].operationId, requests[0].operationId)
+  const doc = f.job.document()
+  assert.equal(doc.pendingRelief.checkpoint.stage, 'placed')
+  assert.equal(doc.pendingRelief.forOperationId, requests[0].operationId)
+  // The full box is recovered normally; the held box becomes the next storage.
+  const c = controller(f)
+  await f.job.storeCarriedNow()
+  assert.equal(c.calls[0].operationId, requests[0].operationId)
+  const after = f.job.document()
+  assert.equal(after.pendingRelief, null)
+  assert.equal(after.portableStorage?.operationId, requests[1].operationId, 'the relief box continues as the next storage')
+  assert.equal(after.portableStorage.checkpoint.stage, 'placed')
+})
+
+test('live case 2026-11-12: a relief box refused after placement pauses; one refused before placement falls back to the usual wait', async () => {
+  for (const placedRelief of [true, false]) {
+    const f = fixture([{ name: 'shulker_box', count: 1, stackId: 14 }, { name: 'red_shulker_box', count: 1, stackId: 15 }])
+    const mainCell = { x: 7, y: 63, z: 5 }, reliefCell = { x: 8, y: 63, z: 7 }
+    f.sim.adapter.storeCarried = async (request, { onCheckpoint }) => {
+      if (request.holdAfterPlacement) {
+        const cp = { version: 1, operationId: request.operationId, jobId: request.jobId, kind: 'shulker', stage: placedRelief ? 'placed' : 'planned', stand: { x: 6, y: 63, z: 7 }, positions: [reliefCell], placed: placedRelief ? [{ position: reliefCell, name: 'minecraft:red_shulker_box', confirmedBy: 'server_block_and_inventory' }] : [], deposited: [], plan: [], intent: null, relief: true }
+        await onCheckpoint(cp)
+        return { status: 'blocked', reason: 'STORAGE_SITE_CHANGED', serverConfirmed: false, checkpoint: cp }
+      }
+      const cp = { version: 1, operationId: request.operationId, jobId: request.jobId, kind: 'shulker', scope: { life: f.sim.state.lifecycle.deathId }, stage: 'depositing', stand: { x: 5, y: 63, z: 5 }, positions: [mainCell], placed: [{ position: mainCell, name: 'minecraft:shulker_box', confirmedBy: 'server_block_and_inventory' }], deposited: [], plan: [], intent: null, full: true }
+      await onCheckpoint(cp)
+      return { status: 'blocked', reason: 'STORAGE_PICKUP_CAPACITY_REQUIRED', serverConfirmed: false, recovered: false, details: { kind: 'owned_box_pickup_capacity', phase: 'before_packing' }, checkpoint: cp }
+    }
+    const r = await f.job.storeCarriedNow({ deposits: [{ slot: 3, name: 'minecraft:cobblestone', count: 8 }] })
+    assert.equal(r.pauseReason, 'CARRIED_STORAGE_BLOCKED')
+    assert.equal(r.pauseDetails.reason, placedRelief ? 'STORAGE_RELIEF_UNCONFIRMED' : 'STORAGE_PICKUP_CAPACITY_REQUIRED')
+    assert.equal(f.job.document().pendingRelief === null || f.job.document().pendingRelief === undefined, !placedRelief)
+  }
+})
