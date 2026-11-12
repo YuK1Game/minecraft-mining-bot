@@ -75,6 +75,8 @@ const SUPPLY_ROOM_MAX_ATTEMPTS = 2
 // a few times, instead of pausing the job.
 const SUPPLY_SITE_REASONS = new Set(['STORAGE_SITE_CHANGED', 'STORAGE_STAND_UNCONFIRMED', 'SUPPLY_SITE_CHANGED'])
 const SUPPLY_SITE_RETRIES = 3, SUPPLY_SITE_RETRY_WAIT_MS = 3000
+// Pick-up-then-top-up rounds before an owned box is recovered (bounded).
+const PICKUP_SPACE_ROUNDS = 5
 // Carried storage refused before any placement, deposit or move (live 2026-11-12).
 const STORAGE_SITE_RETRY_REASONS = new Set([...SUPPLY_SITE_REASONS, 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'])
 const PICKUP_XZ = 1.3 // half player width 0.3 + 1 block reach for item pickup
@@ -2543,13 +2545,17 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       // Pick up only the actual loose blockers while the confirmed owned box
       // is still intact. Its normal reopen/packing path keeps every receipt
       // and capacity guard; no missing entity is treated as a pickup receipt.
-      if (!callFailure && !capacity && passivePickup() && fullOnlyStorage() && active.why === 'full' && result?.status === 'blocked' && result.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED' && stopped?.kind === 'owned_box_pickup_capacity' && stopped.phase === 'before_packing' && cp?.kind === 'shulker' && cp.purpose == null && cp.stage === 'depositing' && cp.intent == null && cp.expectedContents == null && cp.full !== true && cp.recovered == null && cp.positions?.length === 1 && cp.placed?.length === 1 && owned?.confirmedBy === 'server_block_and_inventory' && samePoint(owned.position, cp.positions[0]) && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => Number.isSafeInteger(entry.count) && entry.count > 0 && entry.transferred === entry.count) && openRetryScope && Number.isSafeInteger(pickupRetries) && pickupRetries >= 0 && pickupRetries < 3 && Array.isArray(pickupDrops) && pickupDrops.length > 0 && pickupDrops.length <= 16) {
+      if (!callFailure && !capacity && passivePickup() && fullOnlyStorage() && active.why === 'full' && result?.status === 'blocked' && result.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED' && stopped?.kind === 'owned_box_pickup_capacity' && stopped.phase === 'before_packing' && cp?.kind === 'shulker' && cp.purpose == null && cp.stage === 'depositing' && cp.intent == null && cp.expectedContents == null && cp.full !== true && cp.recovered == null && cp.positions?.length === 1 && cp.placed?.length === 1 && owned?.confirmedBy === 'server_block_and_inventory' && samePoint(owned.position, cp.positions[0]) && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => Number.isSafeInteger(entry.count) && entry.count > 0 && entry.transferred === entry.count) && openRetryScope && Number.isSafeInteger(pickupRetries) && pickupRetries >= 0 && pickupRetries < PICKUP_SPACE_ROUNDS && Array.isArray(pickupDrops) && pickupDrops.length > 0 && pickupDrops.length <= 16) {
         const inventory = items(guard(myEpoch))
         const allowedDrops = pickupDrops.filter(drop => typeof drop.runtimeId === 'string' && /^\d{1,20}$/.test(drop.runtimeId) && typeof drop.name === 'string' && !isShulkerBox(drop.name) && !['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(blockRule(drop.name).reason))
         // Live 2026-11-12 22:30: collecting merge-only drops overflowed into a
         // new stack and took the box's slot. Take only drops whose counts fit the
         // received room of existing plain stacks.
-        const fitting = inventory ? dropsFittingStacks(inventory, allowedDrops) : []
+        // Live 2026-11-12 23:20: drops that need new stacks kept the box waiting
+        // for despawn (storage:79, five retries). Collect them into free slots,
+        // always keeping the box's one slot; the next run stores them in the same
+        // box with server-confirmed top-ups before the box is recovered.
+        const fitting = inventory ? dropsFittingStacks(inventory, allowedDrops, { keepFree: 1 }) : []
         if (fitting.length < allowedDrops.length) note('storage_pickup_space_limited', { operationId: active.operationId, offered: allowedDrops.length, fitting: fitting.length })
         const ids = [...new Set(fitting.map(drop => drop.runtimeId))]
         if (inventory && freeSlots(inventory) > 0 && ids.length && await reserveStorageRecovery(myEpoch, owner, active, cp, 'STORAGE_PICKUP_CAPACITY_REQUIRED')) {
