@@ -522,6 +522,16 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         if (cp.plan.some(p => p.capacityMarker && (!cp.markerEnabled || p.name !== 'minecraft:dirt' || p.count !== 1))) throw failure('STORAGE_CHECKPOINT_INVALID')
         if (cp.kind === 'double_chest' && (cp.positions[0].y !== cp.positions[1].y || Math.abs(cp.positions[0].x - cp.positions[1].x) + Math.abs(cp.positions[0].z - cp.positions[1].z) !== 1)) throw failure('STORAGE_CHECKPOINT_INVALID')
         if (pendingPlacement) placementContext(cp); else observe(cp)
+        // Continuing a held relief box: plan the current deposits once.
+        if (cp.relief === true && cp.stage === 'placed' && !cp.plan.length && !cp.deposited.length && request.holdAfterPlacement !== true && Array.isArray(request.deposits) && request.deposits.length) {
+          const now0 = observe(cp)
+          cp.plan = request.deposits.map(deposit => {
+            const item = now0.items.find(item => item.slot === deposit.slot && item.name === fullName(deposit.name))
+            if (!item || !Number.isSafeInteger(deposit.count) || deposit.count < 1 || deposit.count > item.count || isShulkerBox(item.name)) throw failure('STORAGE_DEPOSIT_CHANGED')
+            return { name: item.name, count: deposit.count, identity: pack(rawIdentity(item.raw)), transferred: 0 }
+          })
+          await save()
+        }
       } else {
         const sourceIdentities = selection.sources.map(source => {
           if (!Number.isSafeInteger(source.count) || source.count < 1) throw failure('STORAGE_SOURCE_COUNT')
@@ -535,10 +545,13 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
           if (!item || !Number.isSafeInteger(deposit.count) || deposit.count < 1 || deposit.count > item.count || isShulkerBox(item.name)) throw failure('STORAGE_DEPOSIT_CHANGED')
           return { name: item.name, count: deposit.count, identity: pack(rawIdentity(item.raw)), transferred: 0 }
         })
-        if (!plan.length && !supplyWork && !capacityBatch) throw failure('STORAGE_NO_DEPOSITS')
+        // A relief box (live 2026-11-12 23:55) is placed with nothing to deposit
+        // and held; its deposits are planned when it is continued.
+        const relief = request.holdAfterPlacement === true && selection.kind === 'shulker' && !supplyWork && !capacityBatch
+        if (!plan.length && !supplyWork && !capacityBatch && !relief) throw failure('STORAGE_NO_DEPOSITS')
         if (supplyWork && plan.length) throw failure('STORAGE_SUPPLY_DEPOSITS_FORBIDDEN')
         if (capacityBatch && plan.length) throw failure('STORAGE_CAPACITY_DEPOSITS_FORBIDDEN')
-        cp = { version: 1, operationId: request.operationId, jobId: request.jobId, scope: initial.scope, kind: selection.kind, selectionKey: selection.key, stage: 'planned', ...planSite(initial.state, selection.kind, canPlace, Array.isArray(request.avoidPositions) ? request.avoidPositions.filter(p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]))) : []), sourceIdentities, plan, placed: [], deposited: [], intent: null, full: false, ...(supplyWork ? { purpose: 'supply', supplyCheckpoint: null } : {}), ...(capacityBatch ? { purpose: 'capacity_batch', capacityCheckpoint: null, capacityResult: null } : {}) }
+        cp = { version: 1, operationId: request.operationId, jobId: request.jobId, scope: initial.scope, kind: selection.kind, selectionKey: selection.key, stage: 'planned', ...planSite(initial.state, selection.kind, canPlace, Array.isArray(request.avoidPositions) ? request.avoidPositions.filter(p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]))) : []), sourceIdentities, plan, placed: [], deposited: [], intent: null, full: false, ...(relief ? { relief: true } : {}), ...(supplyWork ? { purpose: 'supply', supplyCheckpoint: null } : {}), ...(capacityBatch ? { purpose: 'capacity_batch', capacityCheckpoint: null, capacityResult: null } : {}) }
         if (selection.kind === 'shulker') {
           const source = selection.sources[0], item = initial.items.find(item => item.slot === source.slot && item.name === source.name && item.count === 1 && (source.stackId == null || item.stackId === source.stackId))
           if (!item) throw failure('STORAGE_SOURCE_CHANGED')
@@ -722,6 +735,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
           if (observed ? !observedBoxPlacement(cp, receipt, source, block, afterPlacement) : !validRaw(after) || source.count - after.count !== 1 || after.count && !isDeepStrictEqual(rawIdentity(source), rawIdentity(after))) throw failure('STORAGE_PLACE_UNCONFIRMED')
           cp.placed.push({ position: copy(position), name: item.name, runtimeId: block.runtimeId, confirmedBy: 'server_block_and_inventory', ...(observed ? { placementObservation: copy(receipt.placementObservation), boxesBefore: copy(cp.intent.boxesBefore) } : {}) })
           cp.intent = null; cp.stage = 'placed'; await save()
+          if (request.holdAfterPlacement === true && cp.relief === true && cp.kind === 'shulker' && !cp.deposited.length) return result('held')
         }
         const slots = cp.kind === 'double_chest' ? 54 : 27
         let refreshBarrier = null
@@ -823,6 +837,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
           if (noBatch) cp.full = true
           cp.capacityResult = copy(worked); cp.windowId = chest.snapshot().window?.id; await save()
         }
+        if (!cp.plan.length && cp.relief === true) await appendRecoverySpace()
         for (let index = 0; index < cp.plan.length && !cp.full; index++) {
           const entry = cp.plan[index]
           while (entry.transferred < entry.count) {

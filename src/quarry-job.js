@@ -2420,6 +2420,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (evidence?.preemptionStarted !== true || evidence.kind !== 'combat' || !Number.isSafeInteger(evidence.sequence) || evidence.sequence <= startSequence || evidence.jobId !== owner.config.jobId || evidence.operationId !== active.operationId || evidence.epoch !== myEpoch || evidence.scope !== scopeOf(callState) || evidence.life !== lifeOf(callState) || !Number.isFinite(evidence.claimedAt) || evidence.claimedAt < startedAt || evidence.claimedAt > now()) return null
       return copy(evidence)
     }
+    const storageCanPlace = p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 })
     let result
     try {
       let callFailure = null
@@ -2609,6 +2610,44 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
           note('storage_pickup_space_unconfirmed', { operationId: active.operationId, attempt: active.pickupSpaceRetries })
         }
       }
+      // Live 2026-11-12 23:55: a full box could not be recovered because a
+      // loose drop needed the one other slot. Place the next empty cargo box
+      // (held right after its server-confirmed placement) to free a slot,
+      // recover the full box, then continue the held box as the next storage.
+      if (!callFailure && !capacity && selection.kind === 'shulker' && result?.status === 'blocked' && result.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED' && result.details?.kind === 'owned_box_pickup_capacity' && active.checkpoint?.full === true && active.checkpoint.placed?.length === 1 && !job.pendingRelief && !active.reliefTried) {
+        const inv0 = items(guard(myEpoch))
+        const next = inv0 && cargoSelection(inv0, { excludedShulkerKeys: [...(job.exhaustedShulkerKeys ?? []), ...storageSupplyExclusions(job.config.inventory.supplyBoxes), active.selection?.key].filter(Boolean) })
+        if (next?.kind === 'shulker') {
+          active.reliefTried = true
+          job.portableStorageSequence = (job.portableStorageSequence ?? 0) + 1
+          job.pendingRelief = { operationId: owner.config.jobId + ':storage:' + job.portableStorageSequence, selection: copy(next), checkpoint: null, forOperationId: active.operationId }
+          await save('storage_relief_intent')
+          const relief = job.pendingRelief
+          let held = null, reliefError = null
+          try {
+            held = await call(myEpoch, 'carried_storage', signal => adapter.storeCarried({ jobId: owner.config.jobId, operationId: relief.operationId, selection: copy(next), deposits: [], inventoryPolicy: copy(inventoryPolicy()), checkpoint: null, avoidPositions: [copy(active.checkpoint.positions[0])], holdAfterPlacement: true }, {
+              signal, canPlace: storageCanPlace,
+              onCheckpoint: async checkpoint => { if (job !== owner || job.pendingRelief !== relief || checkpoint?.operationId !== relief.operationId) throw new Error('Relief checkpoint belongs to another operation'); relief.checkpoint = copy(checkpoint); await save('storage_relief_checkpoint') }
+            }))
+          } catch (error) { if (error instanceof QuarryInterrupt) throw error; reliefError = error }
+          const rcp = held?.checkpoint ?? relief.checkpoint
+          if (held?.status === 'held' && rcp?.stage === 'placed' && rcp.placed?.length === 1 && rcp.placed[0].confirmedBy === 'server_block_and_inventory') {
+            relief.checkpoint = copy(rcp)
+            note('storage_relief_placed', { operationId: active.operationId, relief: relief.operationId, position: copy(rcp.placed[0].position) })
+            rec.status = 'blocked'; rec.result = copy(result)
+            await save('storage_relief_placed')
+            setState('RETURN'); return true
+          }
+          if (rcp?.placed?.length) {
+            rec.status = 'blocked'; rec.result = copy(result)
+            await finish('PAUSED', 'CARRIED_STORAGE_BLOCKED', { pauseDetails: { reason: 'STORAGE_RELIEF_UNCONFIRMED', operationId: active.operationId, relief: relief.operationId, kind: selection.kind, error: String(reliefError?.message ?? held?.reason ?? '').slice(0, 160) } })
+            return true
+          }
+          note('storage_relief_skipped', { operationId: active.operationId, reason: String(reliefError?.message ?? held?.reason ?? 'not_held').slice(0, 160) })
+          job.pendingRelief = null
+          await save('storage_relief_skipped')
+        }
+      }
       // Live 2026-11-12 22:19 and 22:57: the tracked box drop vanished before
       // its pickup was confirmed, and a manual resume confirmed the recovery
       // from the received inventory. Run that same saved operation again at
@@ -2660,6 +2699,12 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
       rec.status = 'confirmed'; rec.result = copy(result)
       job.portableStorage = null
+      // A held relief box continues as the next storage operation.
+      if (job.pendingRelief?.forOperationId === active.operationId && job.pendingRelief.checkpoint?.stage === 'placed') {
+        job.portableStorage = { operationId: job.pendingRelief.operationId, selection: copy(job.pendingRelief.selection), checkpoint: copy(job.pendingRelief.checkpoint), why: 'full' }
+        note('storage_relief_continue', { operationId: job.pendingRelief.operationId })
+        job.pendingRelief = null
+      }
       rebuildPlanner()
       const fresh = items(guard(myEpoch))
       if (!fresh) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
