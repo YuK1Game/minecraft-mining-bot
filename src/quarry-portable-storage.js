@@ -9,7 +9,7 @@ const { selectTool, toolState } = require('./quarry-rules')
 const { isShulkerBox, isShulkerBlock, sameWindowId, canonicalWindowId, storageContainerType, storageWindowMatches } = require('./container-types')
 const { readShulkerContents, readContainerContents, compareShulkerContents, diagnoseShulkerContents } = require('./shulker-contents')
 const { canSeePlacementFloor } = require('./interaction-sight')
-const { plainAir, clearableSitePlant, passableSiteBody, describeBlock, supportIssue } = require('./storage-site-terrain')
+const { plainAir, clearableSitePlant, passableSiteBody, describeBlock, supportIssue, placementSupportOk } = require('./storage-site-terrain')
 const { observedScope, uuidOf } = require('./server-position-verifier')
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
@@ -261,6 +261,10 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     }
     const floor = supportIssue(read, p)
     if (floor) return floor
+    // Live 2026-11-13 00:17: the preview refused a box cell whose floor was
+    // not ordinary ground. Candidates use the preview's own floor rule.
+    const below = { x: p.x, y: p.y - 1, z: p.z }, belowBlock = read(below)
+    if (!placementSupportOk(belowBlock)) return { cause: 'BOX_FLOOR_NOT_PLACEABLE', position: below, part: 'support', ...describeBlock(belowBlock) }
     if (overlaps(p, { self: true, position: state.position })) return { cause: 'SELF_OCCUPIES_BOX', position: p, part: 'box' }
     const actors = getEntities()
     if (!Array.isArray(actors)) return { cause: 'ENTITIES_UNOBSERVED', position: p, part: 'box' }

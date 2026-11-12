@@ -11,6 +11,8 @@ const { bedVisibleFace, bedFingerprint, BED_HEIGHT } = require('./portable-bed')
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const HAZARD = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|scaffolding)/
+// One floor rule for the placement preview and storage site selection.
+const { placementSupportOk } = require('./storage-site-terrain')
 const PLANKS = new Set(['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'poplar', 'bamboo', 'crimson', 'warped'].map(wood => `minecraft:${wood}_planks`))
 const PLACEABLE = new Set(['minecraft:crafting_table', 'minecraft:furnace', 'minecraft:chest', 'minecraft:cobblestone', 'minecraft:cobbled_deepslate', 'minecraft:dirt', 'minecraft:torch', ...PLANKS, ...SHULKER_BLOCKS])
 // Bedrock is a full, unbreakable block: the floor of a quarry dug to Y-59 (live
@@ -124,7 +126,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     for (const player of players.values()) if (overlapsPlayer(target, player.position, true)) throw new Error('他のプレイヤーに重なる可能性があります。')
     const supportPosition = { x: target.x, y: target.y - 1, z: target.z }
     const support = world.getBlock(supportPosition.x, supportPosition.y, supportPosition.z)
-    if (!support.known || support.boundingBox !== 'block' || HAZARD.test(support.name) || support.extra?.length || !GROUND.has(support.name) && !PLANKS.has(support.name)) throw new Error('設置先の下に安全な通常の地面ブロックが必要です。')
+    if (!placementSupportOk(support)) throw new Error('設置先の下に安全な通常の地面ブロックが必要です。')
     for (const offset of FACE) {
       const neighbour = world.getBlock(target.x + offset.x, target.y + offset.y, target.z + offset.z)
       if (!neighbour.known || HAZARD.test(neighbour.name) || neighbour.extra?.length) throw new Error('設置先の周囲に未取得領域・液体・落下ブロックがあります。')
