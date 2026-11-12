@@ -389,3 +389,20 @@ test('live case 2026-11-12: a box cell with a loose drop on it is tried after a 
   assert.ok(planned, 'a site was planned')
   assert.notDeepEqual(planned.positions[0], chosen, 'a clean cell was chosen instead')
 })
+
+test('live case 2026-11-12: several same-kind plain drops share one new stack in the recovery room check', async () => {
+  // Stone stacks in the bag are all full, so the drops need a new stack: one, not four.
+  const drop = i => ({ kind: 'item', alive: true, dimension: 'overworld', positionKnown: true, position: { x: 1.5, y: 65, z: 0.5 }, count: 1, runtimeId: String(710 + i), uniqueId: String(-710 - i), networkId: 4, name: 'minecraft:stone' })
+  const four = [0, 1, 2, 3].map(drop)
+  const f = fixture('shulker', { entities: () => copy(four) })
+  for (let slot = 1; slot < 36; slot++) if (slot !== 14 && slot !== 15) f.bag[slot] = item(4, 64, 1000 + slot)
+  const result = await f.run()
+  assert.equal(result.status, 'completed', JSON.stringify([result.reason, result.details]))
+  // Drops without a known numeric id still each need their own slot.
+  const unknown = four.map(d => ({ ...d, networkId: undefined }))
+  const g = fixture('shulker', { entities: () => copy(unknown) })
+  for (let slot = 1; slot < 36; slot++) if (slot !== 14 && slot !== 15) g.bag[slot] = item(4, 64, 2000 + slot)
+  const blocked = await g.run()
+  assert.equal(blocked.reason, 'STORAGE_PICKUP_CAPACITY_REQUIRED')
+  assert.equal(blocked.details.requiredFreeSlots, 5)
+})

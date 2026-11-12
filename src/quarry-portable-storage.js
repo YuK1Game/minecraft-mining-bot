@@ -411,6 +411,10 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         const k = drop.networkId + '|' + drop.name, left = room.get(k) ?? 0
         if (Number.isSafeInteger(drop.networkId) && maxStack(drop.name) === 64 && left >= drop.count) { room.set(k, left - drop.count); drop.merge = true; continue }
         drop.slots = Math.max(1, Math.ceil(drop.count / maxStack(drop.name))); slots += drop.slots
+        // Live 2026-11-12 22:40: four 1-count cobblestone drops were counted as
+        // four new slots. Under the same plain-drop assumption as above, the
+        // new stack's remaining room takes later drops with the same key.
+        if (Number.isSafeInteger(drop.networkId) && maxStack(drop.name) === 64) room.set(k, left + drop.slots * 64 - drop.count)
       }
       return slots
     }
