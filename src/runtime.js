@@ -5336,7 +5336,7 @@ function createRuntime (host) {
       configureTools: options => ensureQuarryJob().configureTools(options ?? {}),
       configureStorage: options => ensureQuarryJob().configureStorage(options ?? {}),
       requestTerrain: () => { const doc = ensureQuarryJob().document(); if (!doc) throw new Error('No quarry job'); return requestQuarryTerrain({ config: doc.config, yTop: doc.yTop, yBottom: doc.config.yBottom }) },
-      confirmPosition: feet => confirmQuarryPosition(feet),
+      confirmPosition: (feet, options) => confirmQuarryPosition(feet, options),
       positionStatus: () => ({ ...(quarryPositionVerifier?.snapshot() ?? { busy: false }), lastOutput: structuredClone(host.shared.quarryPositionOutput ?? null) }),
       pillarStatus: () => quarryPillar?.snapshot() ?? { busy: false, phase: 'unavailable' },
       pillarContext: () => {

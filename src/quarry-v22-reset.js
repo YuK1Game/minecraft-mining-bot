@@ -6,7 +6,7 @@
 // the temporary enchanted bow are verified from actual server observations.
 const { randomUUID, createHash } = require('node:crypto')
 const { observedScope } = require('./server-position-verifier')
-const { chunkOf, chunkBounds } = require('./quarry-region')
+const { findDebugChestSite, debugSiteReachable } = require('./quarry-debug-site')
 const { CARGO, roles, singles, validateV22Loadout } = require('./quarry-v22-loadout')
 const fail = (code, details = null) => Object.assign(new Error(code), {code, ...(details ? {details}: {})})
 const copy = v => structuredClone(v)
@@ -15,7 +15,7 @@ const key = p => p.x+','+p.y+','+p.z
 const worldOf = s => JSON.stringify([s.profile,String(s.realm?.id),s.dimension])
 const stamp = o => createHash('sha256').update(JSON.stringify(o)).digest('hex')
 const isAir = block => block?.known === true && /^minecraft:(?:air|cave_air|void_air)$/.test(block.name) && !block.extra?.length && !block.protected && !block.protectionSource
-const isFloor = b => b?.known === true && b.boundingBox === 'block' && !b.extra?.length && !/water|lava|magma|fire|powder_snow|scaffolding|cactus/.test(b.name??'')
+const isFloor = b => b?.known === true && b.boundingBox === 'block' && !b.extra?.length && !b.protected && !b.protectionSource && !/water|lava|magma|fire|powder_snow|scaffolding|cactus/.test(b.name??'')
 const same = (a,b) => a && b && key(a)===key(b)
 const known = item => item?.known === true && !item.empty && typeof item.name === 'string' && item.count > 0
 const mainView = view => view?.known===true && view.uncertain!==true && Array.isArray(view.slots) && view.slots.length===36 && view.slots.every(x=>x?.known===true)
@@ -52,25 +52,18 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
     if(!mainView(view)||s.inventory?.uncertain)throw fail('RESET_INVENTORY_UNKNOWN')
     return {s,scope,feet,view}
   }
-  function site ({feet},registered=null) {
+  function site ({feet,s},registered=null) {
     if(registered && registered.position && registered.other && registered.stage && registered.stand) {
       if(!vec(registered.position)||!vec(registered.other)||!vec(registered.stage)||!same(registered.stand,feet))throw fail('RESET_SITE_REACHABILITY_CHANGED')
+      if(!debugSiteReachable(registered,s.position))throw fail('RESET_SITE_REACHABILITY_CHANGED')
       const both=[registered.position,registered.other].every(p=>{const block=adapter.getBlock(p.x,p.y,p.z);return block?.known===true&&block.name==='minecraft:chest'&&!block.extra?.length})
       if(!both)throw fail('RESET_REGISTERED_CHEST_CHANGED')
       if(!isAir(adapter.getBlock(registered.stage.x,registered.stage.y,registered.stage.z))||
         ![registered.position,registered.other,registered.stage].every(p=>isFloor(adapter.getBlock(p.x,p.y-1,p.z))&&isAir(adapter.getBlock(p.x,p.y+1,p.z))))throw fail('RESET_STAGING_UNSAFE')
       return {...copy(registered),existing:true}
     }
-    const chunk=chunkOf(feet.x,feet.z),bounds=chunkBounds(chunk), inside=p=>p.x>=bounds.xMin&&p.x<=bounds.xMax&&p.z>=bounds.zMin&&p.z<=bounds.zMax
-    // Default chest facing north combines most reliably along east/west.
-    const dirs=[[1,0],[-1,0]]
-    for(const [dx,dz] of dirs) {
-      const position={x:feet.x+dx,y:feet.y,z:feet.z+dz},other={x:feet.x+2*dx,y:feet.y,z:feet.z+2*dz}
-      const stage={x:feet.x-dx,y:feet.y,z:feet.z-dz}
-      if(!inside(position)||!inside(other)||!vec(stage)||stage.y < -63||stage.y>317)continue
-      if(![position,other,stage].every(p=>isAir(adapter.getBlock(p.x,p.y,p.z))&&isFloor(adapter.getBlock(p.x,p.y-1,p.z))&&isAir(adapter.getBlock(p.x,p.y+1,p.z))))continue
-      return {position,other,stage,stand:copy(feet),chunk,existing:false}
-    }
+    const selected=findDebugChestSite({feet,position:s.position,getBlock:adapter.getBlock,isAir,isFloor})
+    if(selected)return selected
     throw fail('RESET_CHEST_SITE_UNAVAILABLE')
   }
   const siteIdentity = p => stamp({position:p.position,other:p.other,stage:p.stage,stand:p.stand})
@@ -93,6 +86,7 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
     abort?.signal.throwIfAborted()
     const frame=scene()
     if(!active||frame.scope!==active.scope||worldOf(frame.s)!==active.world||!same(frame.feet,active.feet)||(adapter.generation?.()??0)!==active.generation)throw fail('RESET_CONTEXT_CHANGED')
+    if(!debugSiteReachable(active.home,frame.s.position))throw fail('RESET_SITE_REACHABILITY_CHANGED')
     if(!sameIdentity(jobIdentity(),active.jobIdentity))throw fail('RESET_JOB_CHANGED')
     if(!active.clearStarted && fingerprint(frame.view)!==active.fingerprint)throw fail('RESET_PREVIEW_STALE')
     if(!active.clearStarted || active.phase==='clearing') {
