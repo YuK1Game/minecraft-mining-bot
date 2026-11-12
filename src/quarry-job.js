@@ -86,7 +86,9 @@ const storageMoveTimedOut = (result, cp) => result?.reason === 'quarry move: tim
 // an unconfirmed, ambiguous or changed result are never transient.
 const NOT_TRANSIENT = /UNCONFIRMED|AMBIGUOUS|RECONCIL|INVALID|PERSISTENCE|MISMATCH|SCOPE|OWNER|ABORT|DEAD|DISCONNECT|LEGACY|EXHAUSTED|FULL|NO_DEPOSITS|CAPACITY|SLOT_REQUIRED|SOURCE_CHANGED|ITEM_CHANGED|BASELINE_CHANGED|STALE/
 const TRANSIENT_CODES = new Set(['STORAGE_SITE_CHANGED', 'STORAGE_STAND_UNCONFIRMED', 'SUPPLY_SITE_CHANGED', 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'])
-const transientReason = reason => typeof reason === 'string' && reason.length > 0 && (TRANSIENT_CODES.has(reason) || !/^[A-Z][A-Z0-9_]*$/.test(reason) && !NOT_TRANSIENT.test(reason))
+// Messages about a server result or a timeout come after something was sent.
+const AFTER_DISPATCH_TEXT = /サーバー|完了を確認できません|応答|timed out|timeout/i
+const transientReason = reason => typeof reason === 'string' && reason.length > 0 && (TRANSIENT_CODES.has(reason) || !/^[A-Z][A-Z0-9_]*$/.test(reason) && !NOT_TRANSIENT.test(reason) && !AFTER_DISPATCH_TEXT.test(reason))
 const TRANSIENT_RETRIES = 3, TRANSIENT_WAIT_MS = 1500
 const storageFingerprint = cp => JSON.stringify(cp ? [cp.stage ?? null, (cp.placed ?? []).map(p => [p.position, p.name]), (cp.deposited ?? []).map(d => [d.name, d.count]), (cp.plan ?? []).map(e => e.transferred), cp.intent?.type ?? null, !!cp.recovered, !!cp.full] : null)
 const supplyFingerprint = cp => JSON.stringify(cp ? [cp.index ?? null, (cp.withdrawn ?? []).length, (cp.returned ?? []).length, storageFingerprint(cp.child), (cp.child?.supplyCheckpoint?.withdrawn ?? []).length, (cp.child?.supplyCheckpoint?.returned ?? []).length] : null)
