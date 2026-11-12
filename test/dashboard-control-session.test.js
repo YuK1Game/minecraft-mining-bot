@@ -42,3 +42,24 @@ test('dashboard-control-session: list refresh never joins a world', async t => {
   assert.equal(f.sent.filter(m => m.type === 'connecting').length, 0)
   const rejected = assert.rejects(pending); f.send({ type: 'stop' }); await rejected
 })
+
+test('dashboard-control-session: exhausted Realm join reports its HTTP status without forwarding response details', t => {
+  const f = fixture(t)
+  f.session.failed({ code: 'REALM_JOIN_UNAVAILABLE', statusCode: 503, message: 'private upstream response', headers: { authorization: 'secret' } })
+  assert.equal(f.sent.at(-1).type, 'error')
+  assert.match(f.sent.at(-1).message, /HTTP 503/)
+  assert.match(f.sent.at(-1).message, /再試行/)
+  assert.ok(!JSON.stringify(f.sent).includes('private'))
+  assert.ok(!JSON.stringify(f.sent).includes('secret'))
+})
+
+test('dashboard-control-session: only classified Realm errors expose validated HTTP status', t => {
+  const f = fixture(t)
+  f.session.failed({ code: 'REALM_JOIN_FAILED', statusCode: 403, message: 'secret' })
+  assert.match(f.sent.at(-1).message, /HTTP 403/)
+  for (const error of [new Error('secret'), { statusCode: 503 }, { code: 'REALM_JOIN_FAILED', statusCode: '403 secret' }]) {
+    f.session.failed(error)
+    assert.equal(f.sent.at(-1).message, 'Botの接続処理に失敗しました。ターミナルのエラーを確認してください。')
+  }
+  assert.ok(!JSON.stringify(f.sent).includes('secret'))
+})

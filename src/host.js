@@ -7,6 +7,7 @@ const { randomUUID } = require('node:crypto')
 const { PerformanceObserver } = require('node:perf_hooks')
 const { loadConfig } = require('./config')
 const { chooseRealm, printRealms, displayText } = require('./realms')
+const { installRealmJoinHandling } = require('./realm-join')
 const { createState } = require('./state')
 const { createApi } = require('./api')
 const { createWorld } = require('./world')
@@ -373,6 +374,8 @@ async function main () {
   }
   let client = null; let api = null; let terminal = null; let reloader = null; let lifecycle = null; let chunkTimer = null
   let dashboardSession = null
+  const realmJoinAbort = new AbortController()
+  let restoreRealmJoin = null
   if (managed) shared.quarryRestoreDisabled = true // Connecting from the UI must never restart old digging.
   let stopping = false; let nextOdd = -1; let nextEven = -2; let lastInputTick = -1n; let loginSwim = null
   const current = () => reloader?.current
@@ -481,6 +484,8 @@ async function main () {
   function stop (code = 0) {
     if (stopping) return
     const cleanup = current()?.dispose('接続を終了します。'); stopping = true
+    realmJoinAbort.abort()
+    restoreRealmJoin?.()
     dashboardSession?.dispose()
     loginSwim?.stop(); packetEvents.dispose(); gcObserver?.disconnect()
     clearInterval(chunkTimer); reloader?.stop(); lifecycle?.stop('接続を終了します。')
@@ -504,6 +509,13 @@ async function main () {
     await fs.mkdir(config.authDir, { recursive: true })
     const onMsaCode = data => { state.phase = 'authenticating'; if (managed) { dashboardSession?.auth(data); return } console.log(`Microsoft認証: ${data.verification_uri ?? 'https://www.microsoft.com/link'}\nコード: ${data.user_code}`) }
     const authflow = new Authflow(config.profile, config.authDir, { flow: 'live', authTitle: Titles.MinecraftNintendoSwitch, deviceType: 'Nintendo' }, onMsaCode)
+    restoreRealmJoin = installRealmJoinHandling({
+      Rest: require('prismarine-realms/src/rest'), fetch: require('node-fetch'), signal: realmJoinAbort.signal,
+      onAttempt: event => {
+        const retry = event.waitMs == null ? '' : `、${Math.ceil(event.waitMs / 1000)}秒後に再試行${event.retryAfterMs == null ? '' : '（サーバー指定）'}`
+        log(`Realms参加先取得: HTTP ${event.status}、${event.attempt}回目、経過${Math.floor(event.elapsedMs / 1000)}秒${retry}`)
+      }
+    })
     if (managed) dashboardSession = require('./dashboard-session').createDashboardSession({
       onStop: async () => { try { await current()?.operations.quarry?.pause() } finally { stop() } },
       getRealms: () => RealmAPI.from(authflow, 'bedrock', { minecraftVersion: version }).getRealms()
@@ -545,8 +557,7 @@ async function main () {
     }
     const dashboardControl = require('./dashboard-control').createDashboardControl({
       getState: () => { const observed = rawSnapshot(); return { ...observed, lifecycle: lifecycle.stats(), loadingScreenEnded: shared.loadingScreenEnded, inventory: shared.inventoryUncertain ? { ...observed.inventory, known: false, uncertain: true } : observed.inventory } },
-      getQuarry: () => current()?.operations.quarry, getReset: () => current()?.operations.loadout,
-      getStorage: () => current()?.operations.storage, getGeneration: () => reloader.snapshot().generation, disconnect: () => stop()
+      getQuarry: () => current()?.operations.quarry, getReset: () => current()?.operations.loadout, getStorage: () => current()?.operations.storage, getGeneration: () => reloader.snapshot().generation, disconnect: () => stop()
     })
     api = createApi({ dashboardControl, snapshot: fullSnapshot, disconnect: () => stop(), lifecycle: { ...lifecycle, respawn: options => deathRespawn.request(options) },
       mining: invoke('mining'), walking: invoke('walking'), movement: invoke('movement'), crafting: invoke('crafting'), interactions: invoke('interactions'), combat: invoke('combat'), agent: invoke('agent'), reload: () => reloader.reload({ reason: 'api' }),
@@ -588,6 +599,7 @@ async function main () {
       })
     }
     state.phase = 'authenticating'
+    log(`Realms接続バージョン: ${version}`)
     client = bedrock.createClient({ username: config.profile, profilesFolder: config.authDir, authflow, offline: false, onMsaCode,
       raknetBackend: 'jsp-raknet', ...(config.version ? { version: config.version } : {}), conLog: message => log(message),
       realms: { pickRealm: async realms => {
@@ -636,9 +648,9 @@ async function main () {
       log('ワールドに参加しました。接続を保ったまま行動コードを更新できます。'); requestChunks(); chunkTimer = setInterval(requestChunks, 2000)
     })
     client.on('kick', packet => { if (!stopping) { log(`接続終了: ${packet.message}`); stop(1) } })
-    client.on('error', error => { if (!stopping) { dashboardSession?.failed(); console.error(errorText(error)); stop(error.code === 'CANCELLED' ? 0 : 1) } })
+    client.on('error', error => { if (!stopping) { dashboardSession?.failed(error); console.error(errorText(error)); stop(error.code === 'CANCELLED' ? 0 : 1) } })
     client.on('close', () => { if (!stopping) { log('サーバーとの接続が閉じられました。'); stop(1) } })
-  } catch (error) { if (!stopping) { dashboardSession?.failed(); console.error(errorText(error)); stop(error.code === 'CANCELLED' ? 0 : 1) } }
+  } catch (error) { if (!stopping) { dashboardSession?.failed(error); console.error(errorText(error)); stop(error.code === 'CANCELLED' ? 0 : 1) } }
 }
 
 module.exports = { main, errorText, createHostPacketEvents, createHostPacketReceiver, startupFuseDanger, createStartupFuseGuard, resumeRuntimeSafely, formatOnlineEmergency, createOnlineEmergencyHandler, createDeathRespawnReflex, requestStartupTerrain, respawnTerrainKnown, createRespawnTerrainHandoff }
