@@ -10,8 +10,10 @@ function fixture (options = {}) {
   const state = { profile: 'position-test', realm: { id: '1' }, connectionId: 'c1', startedAt: 't1', dimension: 'overworld', runtimeEntityId: '41', playerName: 'Bot', lifecycle: { deathId: 2 }, phase: 'spawned', health: 20, gameMode: 'survival', rawServerPosition: { x: 0.5, y: 66.62, z: 0.5 }, position: { x: 0.5, y: 66.62, z: 0.5 }, positionSource: 'client_prediction' }
   const sent = []
   const verifier = createServerPositionVerifier({ client: { queue: (name, packet) => sent.push({ name, packet: structuredClone(packet) }) }, getState: () => { reads++; return state }, now: () => clock, timeoutMs: 100, randomUUID: () => `12345678-1234-4321-8765-${String(++serial).padStart(12, '0')}`, ...options })
-  const output = (patch = {}) => ({ origin: structuredClone(sent.at(-1).packet.origin), output_type: 'all_output', success_count: 1, output: [{ message_id: 'commands.testfor.success', success: true, parameters: ['Bot'] }], has_data: false, ...patch })
-  return { verifier, state, sent, output, reads: () => reads, advance: ms => { clock += ms } }
+  // The confirming reply of the inverted selector: no target matched.
+  const output = (patch = {}) => ({ origin: structuredClone(sent.at(-1).packet.origin), output_type: 'all_output', success_count: 0, output: [{ message_id: 'commands.generic.noTargetMatch', success: false, parameters: [] }], has_data: false, ...patch })
+  const found = (patch = {}) => output({ success_count: 1, output: [{ message_id: 'commands.testfor.success', success: true, parameters: ['Bot'] }], ...patch })
+  return { verifier, state, sent, output, found, reads: () => reads, advance: ms => { clock += ms } }
 }
 
 test('the pinned command_output schema uses origin, success_count and output message containers', () => {
@@ -21,12 +23,12 @@ test('the pinned command_output schema uses origin, success_count and output mes
   assert.deepEqual(messages.type[1].type[1].map(f => f.name), ['message_id', 'success', 'parameters'])
 })
 
-test('only the requested testfor volume and matching successful server output supply a position receipt', async () => {
+test('only the requested inverted testfor volume and its matching no-target reply supply a position receipt', async () => {
   const f = fixture(); const before = structuredClone(f.state)
   const pending = f.verifier.confirm(feet, { operationId: 'pillar:step:1' })
   assert.equal(f.sent.length, 1)
   assert.equal(f.sent[0].name, 'command_request')
-  assert.equal(f.sent[0].packet.command, '/testfor @s[x=-48.5,y=-1,z=36.5,r=0.12]')
+  assert.equal(f.sent[0].packet.command, '/testfor @s[x=-48.5,y=-1,z=36.5,rm=0.12]')
   assert.equal(f.sent[0].packet.origin.request_id, '', 'use the known Realm command envelope; the UUID identifies the request')
   assert.equal(f.verifier.snapshot().lastResult, null, 'sending supplies no position evidence')
   f.advance(20)
@@ -66,9 +68,9 @@ test('unknown UUIDs, predictions, movement hints and chunk packets cannot satisf
   assert.equal((await pending).serverConfirmed, false)
 })
 
-test('not-found is a negative result, not a position or a command retry', async () => {
+test('a match of the inverted selector (the player is elsewhere) is a negative result, not a position or a command retry', async () => {
   const f = fixture(); const pending = f.verifier.confirm(feet)
-  f.verifier.applyPacket('command_output', f.output({ success_count: 0, output: [{ message_id: 'commands.generic.noTargetMatch', success: false, parameters: [] }] }))
+  f.verifier.applyPacket('command_output', f.found())
   const result = await pending
   assert.equal(result.serverConfirmed, false)
   assert.equal(result.reason, 'POSITION_NOT_FOUND')
@@ -76,13 +78,13 @@ test('not-found is a negative result, not a position or a command retry', async 
   assert.equal(f.verifier.snapshot().pending, false)
 })
 
-test('ambiguous, foreign-player and malformed positive replies never count as success', async () => {
+test('ambiguous and malformed no-target replies never count as a position', async () => {
   const variants = [
     p => { p.success_count = 2 },
-    p => { p.output[0].success = false },
+    p => { p.output[0].success = true },
     p => { p.output[0].message_id = 'commands.give.success' },
-    p => { p.output[0].parameters = ['AnotherPlayer'] },
-    p => { p.output[0].parameters = [] },
+    p => { p.output[0].message_id = 'commands.generic.syntax' },
+    p => { p.output[0].parameters = [42] },
     p => { p.output.push(p.output[0]) },
     p => { p.output_messages = p.output; delete p.output },
     p => { delete p.origin.request_id },
@@ -97,14 +99,14 @@ test('ambiguous, foreign-player and malformed positive replies never count as su
     f.verifier.applyPacket('command_output', packet)
     const result = await pending
     assert.equal(result.serverConfirmed, false)
-    assert.equal(result.reason, 'POSITION_OUTPUT_UNCONFIRMED')
+    assert.ok(['POSITION_OUTPUT_UNCONFIRMED', 'POSITION_COMMAND_REJECTED'].includes(result.reason), result.reason)
   }
 })
 
-test('a namespaced success key is accepted but an explicit permission refusal is not', async () => {
+test('a namespaced no-target key is accepted but an explicit permission refusal is not', async () => {
   const f = fixture()
   let pending = f.verifier.confirm(feet)
-  f.verifier.applyPacket('command_output', f.output({ output: [{ message_id: '%commands.testfor.success', success: true, parameters: ['Bot'] }] }))
+  f.verifier.applyPacket('command_output', f.output({ output: [{ message_id: '%commands.generic.noTargetMatch', success: false, parameters: [] }] }))
   assert.equal((await pending).serverConfirmed, true)
   pending = f.verifier.confirm(feet)
   f.verifier.applyPacket('command_output', f.output({ success_count: 0, output: [{ message_id: 'commands.generic.permission', success: false, parameters: [] }] }))
@@ -175,7 +177,7 @@ test('non-centred, fractional-Y, injected or unavailable-state requests do not q
 test('a wider check accepts an off-centre pose with a bounded radius and still needs the matching server output', async () => {
   const f = fixture(); const before = structuredClone(f.state)
   const pending = f.verifier.confirm({ x: -28.8312, y: 36.004, z: 0.9631 }, { radius: 1.5, operationId: 'quarry:pose' })
-  assert.equal(f.sent.at(-1).packet.command, '/testfor @s[x=-28.83,y=36,z=0.96,r=1.5]')
+  assert.equal(f.sent.at(-1).packet.command, '/testfor @s[x=-28.83,y=36,z=0.96,rm=1.5]')
   f.advance(20)
   assert.equal(f.verifier.applyPacket('command_output', f.output()), true)
   const receipt = await pending

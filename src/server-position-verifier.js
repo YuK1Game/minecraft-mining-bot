@@ -2,8 +2,14 @@
 
 const { randomUUID: cryptoRandomUUID } = require('node:crypto')
 
-// A sandbox-only, read-only position witness. testfor tests the executing
-// player inside the requested volume; no prediction or queued input is a reply.
+// A sandbox-only, read-only position witness. The selector is inverted
+// (rm = minimum distance, 2026-11-13): the executing player matches only when
+// OUTSIDE the requested volume, so 'at the position' is the failure reply
+// commands.generic.noTargetMatch, which the Realm still sends with the
+// gamerule sendcommandfeedback false (a success reply is suppressed there and
+// showed 'HouchiChan was found' in chat). A success reply proves the player is
+// elsewhere. Anything else, or no reply, is unconfirmed. No prediction or
+// queued input is a reply.
 // Schema: minecraft-data bedrock/1.26.60 packet_command_output (origin/output).
 // https://learn.microsoft.com/en-us/minecraft/creator/commands/commands/testfor
 // https://learn.microsoft.com/en-us/minecraft/creator/documents/targetselectors
@@ -65,7 +71,7 @@ function createServerPositionVerifier ({ client, getState, now = Date.now, timeo
       if (signal?.aborted) { request.abort(); return }
       try {
         client.queue('command_request', {
-          command: `/testfor @s[x=${target.x},y=${target.y},z=${target.z},r=${request.radius ?? RADIUS}]`,
+          command: `/testfor @s[x=${target.x},y=${target.y},z=${target.z},rm=${request.radius ?? RADIUS}]`,
           origin: { type: 'player', uuid: id, request_id: '', player_entity_id: 0n },
           internal: false, version: 'latest'
         })
@@ -87,12 +93,12 @@ function createServerPositionVerifier ({ client, getState, now = Date.now, timeo
     const schema = origin.type === 'player' && typeof origin.request_id === 'string' && int64(origin.player_entity_id) && typeof packet.output_type === 'string' && typeof packet.has_data === 'boolean' && (!packet.has_data || typeof packet.data === 'string') && Number.isInteger(packet.success_count) && packet.success_count >= 0 && packet.success_count <= 0xffffffff && Array.isArray(packet.output) && packet.output.length === 1
     const output = schema ? packet.output[0] : null
     const parameters = output && Array.isArray(output.parameters) && output.parameters.length === 1 && output.parameters.every(p => typeof p === 'string' && p.length > 0)
-    const success = schema && packet.success_count === 1 && output?.success === true && messageKey(output.message_id) === 'commands.testfor.success' && parameters && (!request.playerName || output.parameters[0] === request.playerName)
-    if (success) finish(request, { serverConfirmed: true, kind: 'server_position_volume', feet: copy(request.feet), radius: request.radius ?? RADIUS, requestId: request.id, receivedAt, scope: request.scope })
-    else {
-      const notFound = schema && packet.success_count === 0 && output?.success === false && ['commands.generic.noTargetMatch', 'commands.testfor.failure'].includes(messageKey(output.message_id)) && Array.isArray(output.parameters) && output.parameters.every(p => typeof p === 'string')
-      fail(request, notFound ? 'POSITION_NOT_FOUND' : packet.success_count === 0 ? 'POSITION_COMMAND_REJECTED' : 'POSITION_OUTPUT_UNCONFIRMED', output?.message_id)
-    }
+    // Inside the volume: exactly one failure message saying no target matched.
+    const inside = schema && packet.success_count === 0 && packet.output.length === 1 && output?.success === false && ['commands.generic.noTargetMatch', 'commands.testfor.failure'].includes(messageKey(output.message_id)) && Array.isArray(output.parameters) && output.parameters.every(p => typeof p === 'string')
+    // Outside the volume: our own player matched the inverted selector.
+    const outside = schema && packet.success_count === 1 && output?.success === true && messageKey(output.message_id) === 'commands.testfor.success' && parameters && (!request.playerName || output.parameters[0] === request.playerName)
+    if (inside) finish(request, { serverConfirmed: true, kind: 'server_position_volume', feet: copy(request.feet), radius: request.radius ?? RADIUS, requestId: request.id, receivedAt, scope: request.scope, witness: 'inverted_no_target' })
+    else fail(request, outside ? 'POSITION_NOT_FOUND' : packet.success_count === 0 ? 'POSITION_COMMAND_REJECTED' : 'POSITION_OUTPUT_UNCONFIRMED', output?.message_id)
     return true
   }
 
