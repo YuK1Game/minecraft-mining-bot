@@ -296,3 +296,23 @@ test('live case 2026-11-12: a preview refusal or an unsettled placement before a
     assert.deepEqual(c.calls[0].avoidPositions, [refused], reason)
   }
 })
+
+test('live case 2026-11-12: a storage walk that timed out before anything was placed starts over at another site; after a placement it still pauses', async () => {
+  for (const [stage, placed, expectRetry] of [['planned', [], true], ['placing', [{ position: { x: 7, y: 63, z: 5 } }], false]]) {
+    const f = fixture([{ name: 'shulker_box', count: 1, stackId: 14 }])
+    const refused = { x: 7, y: 63, z: 5 }
+    f.sim.adapter.storeCarried = async (request, { onCheckpoint }) => {
+      const cp = { version: 1, operationId: request.operationId, jobId: request.jobId, kind: request.selection.kind, stage, stand: { x: 5, y: 63, z: 5 }, positions: [refused], placed, deposited: [], intent: null }
+      await onCheckpoint(cp)
+      return { status: 'blocked', reason: 'quarry move: timed out', serverConfirmed: false, checkpoint: cp }
+    }
+    const first = await f.job.storeCarriedNow({ deposits: [{ slot: 3, name: 'minecraft:cobblestone', count: 8 }] })
+    if (!expectRetry) { assert.equal(first.pauseReason, 'CARRIED_STORAGE_BLOCKED', stage); continue }
+    assert.notEqual(first.pauseReason, 'CARRIED_STORAGE_BLOCKED')
+    assert.equal(f.job.document().portableStorage.checkpoint, null)
+    const c = controller(f)
+    const second = await f.job.storeCarriedNow()
+    assert.equal(second.storageResult.serverConfirmed, true)
+    assert.deepEqual(c.calls[0].avoidPositions, [refused])
+  }
+})
