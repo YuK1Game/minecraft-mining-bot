@@ -98,14 +98,15 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
   if (starterSword) return required('collect_drops', result('collect_drops', 'wooden_sword', '近くで確認した剣を先に回収します。', { resource: 'starter_gear', count: 1, targets: [starterSword], requiresLivePreview: true, requiresServerInventory: true }), ['pickup', 'collection'])
 
   const minimumStone = Number.isSafeInteger(options.survivalStoneCount) && options.survivalStoneCount >= 2 && options.survivalStoneCount <= 16 ? options.survivalStoneCount : 5
-  // Existing stone materials can make the stronger weapon immediately. Fresh
-  // starts get a separate two-log wooden-sword budget before any pickaxe work.
-  const earlyPreparation = firstWoodenSwordOnly || !preparedSword && !earlySword && counts.stone < minimumStone
+  // An existing pickaxe can supply stone without a new wooden-sword budget.
+  const hasPickaxe = items.some(item => amount(item.count) && /^(?:wooden|stone|iron|golden|diamond|netherite)_pickaxe$/.test(nameOf(item.name)) &&
+    !(item.durabilityKnown === true && Number.isFinite(item.durabilityRemaining) && item.durabilityRemaining <= 0))
+  const earlyPreparation = firstWoodenSwordOnly || !preparedSword && !earlySword && counts.stone < minimumStone && !hasPickaxe
   const preparationStage = earlyPreparation ? 'wooden_sword' : 'stone_sword'
   const wrap = (action, name) => ({ ...action, goal: { ...goal }, counts: { ...counts }, preparation: name, subgoal: { ...(action.subgoal ?? {}), name, stone: minimumStone } })
   const inactiveMotion = task => task?.phase === 'awaiting_server_confirmation' && task.running !== true && task.busy !== true
   const bootstrapState = { ...state, walking: inactiveMotion(state.walking) ? null : state.walking, movement: inactiveMotion(state.movement) ? null : state.movement }
-  const bootstrap = () => nextBootstrapAction(bootstrapState, observations, { ...options, logCount: 3, stoneCount: minimumStone })
+  const bootstrap = () => nextBootstrapAction(bootstrapState, observations, { ...options, logCount: 0, stoneCount: minimumStone })
   const blocks = (Array.isArray(observations.blocks) ? observations.blocks : []).filter(block => integer(block?.position))
   const map = new Map(blocks.map(block => [key(block.position), block]))
   const known = blocks.filter(block => block.known === true)
@@ -145,14 +146,7 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
     if (counts.planks >= needed) return null
     const logs = items.filter(item => isLog(nameOf(item.name)) && amount(item.count)).sort((a, b) => a.slot - b.slot)
     if (logs.length) return craft(`${nameOf(logs[0].name).slice(0, -4)}_planks`, Math.min(logs[0].count, 16, Math.ceil((needed - counts.planks) / 4)))
-    // Reuse natural-tree selection without letting existing stone/tools hide a
-    // real wood shortage. This decision view does not mutate host inventory.
-    const woodView = { ...bootstrapState, heldItem: null, inventory: { ...state.inventory, items: items.filter(item => !/_pickaxe$/.test(nameOf(item.name)) && !STONE.has(nameOf(item.name))) } }
-    const missingLogs = Math.ceil((needed - counts.planks) / 4)
-    let action = nextBootstrapAction(woodView, observations, { ...options, starterGearPickup: false, logCount: Math.max(1, missingLogs), stoneCount: 1 })
-    if (action.type === 'gather_logs' || action.type === 'collect_drops' && action.resource === 'logs') action = { ...action, count: missingLogs }
-    else if (action.type === 'capability_required' && action.proposedAction?.type === 'gather_logs') action = { ...action, proposedAction: { ...action.proposedAction, count: missingLogs } }
-    return wrap(action, earlyPreparation ? 'wooden_sword_wood' : 'sword_wood')
+    return result('wait', 'materials', '手持ちの木材が不足しています。木の採取や探索は行いません。', { code: 'wood_harvest_disabled', missingMaterials: { planks: needed - counts.planks }, woodCollectionDisabled: true })
   }
   function prepareTable () {
     if (station?.action) return station.action
@@ -202,6 +196,9 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
     return craft('stone_sword')
   }
   const preparation = swordPreparation()
+  // Defer optional wood-dependent equipment rather than blocking an existing
+  // pickaxe. This grants no sword, shelter, material or completion evidence.
+  if (preparation?.code === 'wood_harvest_disabled' && hasPickaxe && !firstWoodenSwordOnly) return null
   if (preparation) return preparation
   if (shelterReady || deferOptionalShelter) return null
 

@@ -10,13 +10,7 @@ const { isShulkerBlock } = require('./container-types')
 const { fluidRoofNeighbourSafe } = require('./quarry-fluid-roof-safety')
 
 const AIR = new Set(['air', 'cave_air', 'void_air'])
-// Keep processed wood out of automatic harvesting. The caller must still select
-// an actual tree: a log's block type cannot identify whether a player placed it.
-const TREE_LOGS = ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'poplar'].map(tree => `${tree}_log`)
-// Explicit vanilla canopy blocks from the supported Bedrock registry. The
-// caller selects the natural tree; a leaf name does not prove ownership.
-const TREE_LEAVES = ['oak_leaves', 'spruce_leaves', 'birch_leaves', 'jungle_leaves', 'acacia_leaves', 'dark_oak_leaves', 'mangrove_leaves', 'cherry_leaves', 'pale_oak_leaves', 'azalea_leaves', 'azalea_leaves_flowered', 'orange_poplar_leaves', 'red_poplar_leaves', 'yellow_poplar_leaves']
-const HAND = new Set(['dirt', 'grass_block', 'grass', 'coarse_dirt', 'rooted_dirt', 'moss_block', 'leaf_litter', 'vine', ...TREE_LOGS, ...TREE_LEAVES])
+const HAND = new Set(['dirt', 'grass_block', 'grass', 'coarse_dirt', 'rooted_dirt', 'moss_block', 'vine'])
 const PICK = new Map([
   ...['stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', 'netherrack', 'coal_ore', 'deepslate_coal_ore', 'nether_quartz_ore'].map(name => [name, 1]),
   ...['iron_ore', 'deepslate_iron_ore', 'copper_ore', 'deepslate_copper_ore', 'lapis_ore', 'deepslate_lapis_ore'].map(name => [name, 2]),
@@ -184,6 +178,8 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     } else if (target.x === feet.x && target.z === feet.z && target.y <= feet.y) throw new Error('自分の足元は掘れません。')
     const block = world.getBlock(target.x, target.y, target.z)
     if (!block.known) throw new Error('対象ブロックをまだ読み取れていません。')
+    const harvestRule = quarryRule(block.name)
+    if (['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(harvestRule.reason)) throw Object.assign(new Error(harvestRule.reason), { code: harvestRule.reason })
     const name = blockName(block)
     if (target.accessPreparation === 'tree_access' && (!isDryAccessPlant(block) || block.name !== target.expectedName)) throw new Error('準備採掘の植物が変更されたか、乾いた未保護の植物ではありません。')
     const ownedBed = target.accessPreparation === 'owned_bed' && name === 'bed' && block.name === target.expectedName && typeof verifyOwnedBed === 'function' && verifyOwnedBed(state, target, block) === true

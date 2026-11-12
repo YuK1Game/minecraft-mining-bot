@@ -5798,6 +5798,7 @@ function createRuntime (host) {
     if (unknown) await prospecting.scan({minY:Math.max(-64,Math.floor(p.y-1.62)-2),maxY:319,chunkRadius:1,maxResults:1},{signal})
   }
   async function runDepotResource (intent, context) {
+    if (['logs', 'wood', 'leaf', 'leaves'].includes(intent?.resource)) return { phase: 'blocked', code: 'WOOD_LEAF_HARVEST_DISABLED', reason: '木・葉の採取は無効です。必要な材料は補給してください。' }
     if (userBehaviorOwns() || idleSafety?.snapshot().busy || pendingStops.size) return { phase: 'yielding', owner: 'survival' }
     requireIdle()
     const observations = await runner.observe({ signal: context.signal, radius: 8 })

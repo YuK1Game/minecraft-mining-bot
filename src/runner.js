@@ -7,6 +7,7 @@ const { setTimeout: sleep } = require('node:timers/promises')
 const { createExploration, knownStandpoints, rankRetreatTargets } = require('./exploration')
 const { evaluateThreats } = require('./threats')
 const { naturalLogCandidates } = require('./planner')
+const { blockRule: harvestRule } = require('./quarry-rules')
 const { soilCandidates } = require('./soil-gathering')
 const { waterExplorationAdmission, waterExplorationCandidates, validateWaterExplorationRoute } = require('./water-exploration')
 const { treeAccessScope, isDryAccessPlant, safeAccessPlant, planTreeAccess, planStationAccess, ACCESS_LIMIT } = require('./action-access')
@@ -277,6 +278,10 @@ function makeActions ({ request, refreshState, getState, observe, getLastObserva
   }
   function operation (type, fn) {
     return async (decision = {}, context = {}) => {
+      const harvestResource = ['logs', 'wood', 'leaf', 'leaves'].includes(decision.resource)
+      const harvesting = type === 'gather_logs' || harvestResource && ['scan_blocks', 'explore', 'move_to', 'collect_drops', 'clear_access'].includes(type) || decision.accessPreparation?.kind === 'clear_tree_access'
+      const treeDrops = type === 'collect_drops' && Array.isArray(decision.targets) && decision.targets.some(target => ['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(harvestRule(target?.name).reason))
+      if (harvesting || treeDrops) throw new RunnerError('木・葉の採取は無効です。必要な材料は補給してください。', 'WOOD_LEAF_HARVEST_DISABLED')
       if (active) throw new RunnerError('Another autonomous action is still running', 'ACTION_BUSY')
       const controller = new AbortController()
       const signal = context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal

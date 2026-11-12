@@ -56,6 +56,8 @@ function * emergencyLeafPlans ({ state, world, version = '1.26.60', physics } = 
   const swordConfirmed = sword && state.heldItem?.name === sword.name && state.heldItem?.count === 1 && state.equipmentServerConfirmed !== false && !state.crafting?.openContainer
   const handKey = swordConfirmed ? null : clearanceHandKey(state)
   if (!swordConfirmed && handKey === null) return denied('sword_unconfirmed')
+  // Leaf clearance is disabled; preserve the existing hand-only soil escape.
+  if (swordConfirmed) return denied('leaf_clearance_disabled')
   const physical = state.predicted?.physicsState ?? state.physicsState
   if (physical?.onGround !== true || physical?.isInWater || physical?.isInLava) return denied('unsupported_origin')
   const evaluation = evaluateThreats(state, state.entities, { observationRadius: 32 })
