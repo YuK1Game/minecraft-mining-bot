@@ -2585,6 +2585,19 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
           note('storage_pickup_space_unconfirmed', { operationId: active.operationId, attempt: active.pickupSpaceRetries })
         }
       }
+      // Live 2026-11-12 22:19 and 22:57: the tracked box drop vanished before
+      // its pickup was confirmed, and a manual resume confirmed the recovery
+      // from the received inventory. Run that same saved operation again at
+      // once (twice at most); anything it cannot confirm still pauses below.
+      // Live 2026-11-12 23:02: the nearby item IDs changed between the baseline
+      // and the check just before the break was sent; the box stayed placed.
+      if (result?.status === 'blocked' && ['STORAGE_PICKUP_ITEM_CHANGED', 'STORAGE_PICKUP_ENTITY_BASELINE_CHANGED'].includes(result.reason) && selection.kind === 'shulker' && active.checkpoint?.kind === 'shulker' && active.checkpoint.placed?.length === 1 && (active.pickupItemRechecks ?? 0) < 2) {
+        active.pickupItemRechecks = (active.pickupItemRechecks ?? 0) + 1
+        note('storage_pickup_recheck', { operationId: active.operationId, attempt: active.pickupItemRechecks, stage: active.checkpoint.stage ?? null })
+        rec.status = 'blocked'; rec.result = copy(result)
+        await save('storage_pickup_recheck')
+        setState('RETURN'); return true
+      }
       // Like supplies (live 2026-11-12 21:12, chickens on the box cell): a
       // storage operation refused before anything was placed, deposited or
       // moved starts over at a newly chosen site, up to three times.
