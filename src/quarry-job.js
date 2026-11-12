@@ -3320,7 +3320,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // block its safe recovery. They despawn within minutes and nothing moves
     // while waiting, so this pause retries itself (bounded) instead of
     // stalling for hours (live 2026-11-10 05:38: 2h until a manual resume).
-    const capacityWait = reason === 'CARRIED_STORAGE_BLOCKED' && pauseDetails?.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED'
+    // Live 2026-11-13 00:59: a supply box (supplies:6) waited for loose drops the same way.
+    const capacityWait = ['CARRIED_STORAGE_BLOCKED', 'SUPPLY_RESTOCK_BLOCKED'].includes(reason) && pauseDetails?.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED'
     if (job.persistence?.status !== 'failed' && capacityWait && (job.capacityRetries ?? 0) < CAPACITY_RETRIES && job.userRunIntent === 'running') {
       const owner = job, expectedEpoch = epoch
       const retry = () => {
