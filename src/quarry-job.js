@@ -2202,6 +2202,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       while (now() < until) { await sleep(100); guard(myEpoch) }
       setState('RESTOCK'); return true
     }
+    // Live 2026-11-13 01:06: the supply box drop vanished before its pickup was
+    // confirmed (supplies:6) and a manual resume confirmed the recovery from the
+    // received inventory. Run that same saved operation again at once (twice at
+    // most), as for carried storage; anything unconfirmed still pauses below.
+    if (response?.status !== 'completed' && ['STORAGE_PICKUP_ITEM_CHANGED', 'STORAGE_PICKUP_ENTITY_BASELINE_CHANGED'].includes(response?.reason) && (response?.checkpoint?.child ?? active.checkpoint?.child)?.placed?.length === 1 && (active.pickupItemRechecks ?? 0) < 2) {
+      active.pickupItemRechecks = (active.pickupItemRechecks ?? 0) + 1
+      note('supply_pickup_recheck', { operationId: active.operationId, reason: response.reason, attempt: active.pickupItemRechecks, stage: (response?.checkpoint?.child ?? active.checkpoint?.child)?.stage ?? null })
+      await save('supply_pickup_recheck')
+      setState('RESTOCK'); return true
+    }
     if (fourLayerStorage() && response?.reason === 'SUPPLY_EXHAUSTED' && active.checkpoint?.bindings?.[active.checkpoint.index]?.role === 'shovel') {
       job.shovelSupplyExhausted = true
       job.miningExhausted = null
