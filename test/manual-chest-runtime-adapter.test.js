@@ -13,11 +13,12 @@ const ID = '01234567-89ab-4cde-8fab-0123456789ab'
 const OTHER = '11234567-89ab-4cde-8fab-0123456789ab'
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })
 const item = (id = 1, stack = 10) => ({ ...air(), network_id: id, count: 1, has_stack_id: true, stack_id: stack })
-const names = new Map([[1, 'minecraft:totem_of_undying'], [2, 'minecraft:diamond_helmet']])
+const names = new Map([[1, 'minecraft:totem_of_undying'], [2, 'minecraft:diamond_helmet'],
+  [3, 'minecraft:diamond_chestplate'], [4, 'minecraft:diamond_leggings'], [5, 'minecraft:diamond_boots']])
 const tick = () => new Promise(resolve => setImmediate(resolve))
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
 
-function fixture ({ journalDirectory, unknownGear = false, composed = false } = {}) {
+function fixture ({ journalDirectory, unknownGear = false, composed = false, closeTimeoutMs, shared = {} } = {}) {
   const captured = {}, filename = require.resolve('../src/manual-chest-runtime-adapter')
   const loaded = new Module(filename, module), ordinary = Module.createRequire(filename)
   loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
@@ -41,7 +42,8 @@ function fixture ({ journalDirectory, unknownGear = false, composed = false } = 
     startedAt: '2026-11-12T00:00:00Z', runtimeEntityId: '41', lifecycle: { deathId: 0 }, health: 20, gameMode: 'survival',
     position: { x: 0.5, y: 66.62, z: 0.5 }, inventory: { known: true } }
   const target = { x: 2, y: 65, z: 0 }, contents = Array.from({ length: 54 }, air), packets = [], commits = [], callbacks = [], closes = []
-  let ui = null, chestWindow = null, pendingId = null, bridge, refreshes = 0, job = 'job:PAUSED:paused', gen = 1
+  let ui = null, chestWindow = null, pendingId = null, bridge, refreshes = 0, job = 'job:PAUSED:paused', gen = 1, nextRequestId = -3
+  const allocate = () => { const id = nextRequestId; nextRequestId -= 2; return id }
   const description = (raw, slot) => ({ slot, known: true, empty: raw.count === 0, name: raw.count ? names.get(raw.network_id) : null, count: raw.count })
   const getView = () => ({ known: captured.viewKnown !== false, uncertain: captured.viewUncertain === true,
     slots: main.map((raw, slot) => ({ ...description(raw, slot), known: captured.unknownSlot !== slot })), armor: { known: true, slots: armor.map(description) },
@@ -53,7 +55,14 @@ function fixture ({ journalDirectory, unknownGear = false, composed = false } = 
       bridge.applyPacket('container_open', { window_id: 99, window_type: 'inventory' })
       return copy(ui)
     }, cancel: () => callbacks.push({ type: 'cancel_inventory_open' }),
-    closeContainer: () => { closes.push(ui?.id); ui = null; chestWindow = null } }
+    closeContainer: () => {
+      const closing = ui
+      closes.push(ui?.id); ui = null; chestWindow = null
+      if (closing) {
+        if (captured.closeEcho) captured.closeEcho(closing)
+        else queueMicrotask(() => bridge.applyPacket('container_close', { window_id: closing.id, window_type: closing.type, server: true }))
+      }
+    } }
   const chest = { snapshot: () => ({ busy: pendingId != null, pendingRequestId: pendingId, contentsKnown: !!chestWindow, slotCount: captured.slotCount ?? 54,
     window: chestWindow ? { ...chestWindow, position: target, replayed: false } : null }), rawItem: slot => copy(contents[slot]),
     open: async () => {
@@ -64,10 +73,11 @@ function fixture ({ journalDirectory, unknownGear = false, composed = false } = 
     }, depositItem: options => {
       packets.push({ name: 'deposit', options }); contents[options.chestSlot] = copy(main[options.sourceSlot]); main[options.sourceSlot] = air()
       return { serverConfirmed: true, inventoryConfirmed: true, containerConfirmed: true, item: options.expectedName, count: options.count,
-        playerSlot: options.sourceSlot, chestSlot: options.chestSlot, requestId: -17 }
+        playerSlot: options.sourceSlot, chestSlot: options.chestSlot, requestId: allocate() }
     },
     cancel: () => { pendingId = null } }
-  const host = { client: { queue: (name, packet) => { assert.equal(name, 'item_stack_request'); packets.push({ name, packet }) } },
+  const host = { shared, allocate: kind => { assert.equal(kind, 'craft'); return allocate() },
+    client: { queue: (name, packet) => { assert.ok(['item_stack_request', 'container_close'].includes(name)); packets.push({ name, packet }); if (name === 'item_stack_request') captured.onStackRequest?.(packet) } },
     world: { getBlock: (x, y, z) => ({ known: true, name: x === target.x && y === target.y && z === target.z ? 'minecraft:chest' : 'minecraft:air', extra: [] }) } }
   bridge = loaded.exports.createManualChestRuntime({ host, getState: () => copy(state), getView, getRawMain: slot => copy(main[slot]),
     getRawEquipment: (kind, slot) => copy(actual[kind][slot]), crafting, chest, generation: () => gen, jobIdentity: () => job,
@@ -80,12 +90,12 @@ function fixture ({ journalDirectory, unknownGear = false, composed = false } = 
       actual.armor = armor.map(copy); actual.offhand = offhand.map(copy)
       return true
     },
-    allocateRequestId: () => -3, commitMain: (slot, raw) => { commits.push('main'); main[slot] = copy(raw) },
-    commitEquipment: (kind, slot, raw) => { commits.push(kind); (kind === 'armor' ? armor : offhand)[slot] = copy(raw) }, onUncertain: () => {}, journalDirectory })
+    allocateRequestId: allocate, commitMain: (slot, raw) => { commits.push('main'); main[slot] = copy(raw) },
+    commitEquipment: (kind, slot, raw) => { commits.push(kind); (kind === 'armor' ? armor : offhand)[slot] = copy(raw) }, onUncertain: () => {}, journalDirectory, closeTimeoutMs })
   captured.run = async () => ({ status: 'completed', serverConfirmed: true })
   const acquire = (preview = false) => captured.adapter.acquire(ID, { scope: observedScope(state), preview, identity: preview ? null : captured.adapter.inventoryIdentity() })
   return { bridge, captured, state, main, armor, offhand, actual, target, contents, packets, commits, callbacks, closes, crafting, chest, acquire,
-    refreshes: () => refreshes, setJob: value => { job = value }, nextGeneration: () => { gen++ },
+    refreshes: () => refreshes, setJob: value => { job = value }, nextGeneration: () => { gen++ }, reserveId: allocate,
     setWindow: value => { ui = copy(value) }, setPending: id => { pendingId = id } }
 }
 
@@ -157,6 +167,103 @@ test('the real controller and chest worker compose into receipt-backed storage w
   assert.equal(f.bridge.isBusy(), false)
 })
 
+for (const resumeInterrupted of [false, true]) test(`all 41 stacks reach the chest through delayed close echoes${resumeInterrupted ? ' when resuming an unsent equipment intent' : ''}`, async t => {
+  const directory = await io.mkdtemp(path.join(os.tmpdir(), 'mc-manual-chest-all-gear-'))
+  t.after(async () => {
+    assert.ok(path.resolve(directory).startsWith(path.resolve(os.tmpdir()) + path.sep))
+    assert.ok(path.basename(directory).startsWith('mc-manual-chest-all-gear-'))
+    await io.rm(directory, { recursive: true, force: true })
+  })
+  const f = fixture({ journalDirectory: directory, composed: true })
+  for (let slot = 0; slot < 36; slot++) f.main[slot] = item(1, 100 + slot)
+  for (let slot = 0; slot < 4; slot++) {
+    f.armor[slot] = { ...item(2 + slot, 200 + slot), extra: { has_nbt: 'true', nbt: { type: 'compound', name: '', value: {
+      Damage: { type: 'int', value: slot + 5 }, ench: { type: 'list', value: { type: 'compound', value: [{ id: { type: 'short', value: 0 }, lvl: { type: 'short', value: 4 } }] } }
+    } }, can_place_on: [], can_destroy: [] } }
+    f.actual.armor[slot] = copy(f.armor[slot])
+  }
+  f.offhand[0] = item(1, 210); f.actual.offhand[0] = copy(f.offhand[0])
+  const gearBefore = [...f.armor, ...f.offhand].map(copy)
+  let requestId = -3, interruptFirst = resumeInterrupted, waitingClose = false
+  f.captured.closeEcho = window => {
+    waitingClose = true
+    setImmediate(() => {
+      f.bridge.applyPacket('container_close', { window_id: window.id, window_type: window.type, server: true })
+      waitingClose = false
+    })
+  }
+  f.captured.openInventory = async () => {
+    assert.equal(waitingClose, false, 'inventory opening waits for the preceding owned close acknowledgement')
+    await tick()
+    const window = { id: 99, type: 'inventory' }
+    f.setWindow(window)
+    f.bridge.applyPacket('container_open', { window_id: window.id, window_type: window.type })
+    if (interruptFirst) {
+      interruptFirst = false
+      f.setWindow(null)
+      f.bridge.applyPacket('container_close', { window_id: window.id, server: true })
+    }
+    return window
+  }
+  f.captured.onStackRequest = packet => {
+    const request = packet.requests[0], action = request.actions[0]
+    assert.equal(action.type_id, 'take')
+    const kind = action.source.slot_type.container_id
+    const slot = kind === 'offhand' ? 0 : action.source.slot
+    assert.ok(['armor', 'offhand'].includes(kind))
+    assert.equal(action.destination.slot_type.container_id, 'hotbar')
+    assert.equal(action.destination.slot, 0)
+    requestId -= 2
+    queueMicrotask(() => {
+      f.bridge.applyPacket('item_stack_response', { responses: [{ request_id: request.request_id, status: 0, containers: [
+        { slot_type: { container_id: kind }, slots: [{ slot: action.source.slot, count: 0, item_stack_id: 0 }] },
+        { slot_type: { container_id: 'hotbar' }, slots: [{ slot: 0, count: 1, item_stack_id: 300 - requestId }] }
+      ] }] })
+      // Fresh slot observations are independent of the accepted request.
+      f.actual[kind][slot] = air()
+    })
+  }
+  const preview = await f.bridge.prepare()
+  assert.deepEqual(preview.stacks, { main: 36, armor: 4, offhand: 1, total: 41 })
+  f.bridge.start({ token: preview.token, confirm: 'STORE_ALL_IN_EMPTY_CHEST' })
+  await f.bridge.drain()
+  if (resumeInterrupted) {
+    const paused = f.bridge.status()
+    assert.equal(paused.phase, 'paused'); assert.equal(paused.error.code, 'EQUIPMENT_CONTAINER_CHANGED')
+    assert.equal(paused.transferredStacks, 36); assert.equal(paused.remainingStacks, 5)
+    const pending = JSON.parse(await io.readFile(path.join(directory, preview.operationId + '.json'), 'utf8'))
+    assert.equal(pending.checkpoint.equipmentIntent.kind, 'armor')
+    assert.equal(f.packets.filter(packet => packet.name === 'item_stack_request').length, 0)
+    const resumed = await f.bridge.prepare({ operationId: preview.operationId })
+    assert.equal(resumed.resume, true); assert.equal(resumed.stacks.total, 5)
+    f.bridge.start({ token: resumed.token, confirm: 'STORE_ALL_IN_EMPTY_CHEST' })
+    await f.bridge.drain()
+  }
+  const result = f.bridge.status()
+  assert.equal(result.phase, 'completed', JSON.stringify(result.error))
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(result.transferredStacks, 41); assert.equal(result.remainingStacks, 0)
+  assert.equal(f.packets.filter(packet => packet.name === 'deposit').length, 41)
+  assert.equal(f.packets.filter(packet => packet.name === 'item_stack_request').length, 5)
+  assert.ok([...f.main, ...f.armor, ...f.offhand].every(raw => raw.network_id === 0))
+  assert.equal(f.contents.filter(raw => raw.network_id !== 0).length, 41)
+  assert.deepEqual(f.contents.slice(36, 41).map(raw => names.get(raw.network_id)),
+    ['minecraft:diamond_helmet', 'minecraft:diamond_chestplate', 'minecraft:diamond_leggings', 'minecraft:diamond_boots', 'minecraft:totem_of_undying'])
+  assert.deepEqual(f.contents.slice(36, 41).map(raw => raw.extra), gearBefore.map(raw => raw.extra), 'durability and enchantment NBT are retained')
+  const saved = JSON.parse(await io.readFile(path.join(directory, preview.operationId + '.json'), 'utf8'))
+  assert.equal(saved.checkpoint.phase, 'completed'); assert.equal(saved.checkpoint.equipmentIntent, null)
+  assert.equal(saved.checkpoint.receipts.length, 41)
+  assert.equal(saved.checkpoint.equipmentRecoveries?.length ?? 0, resumeInterrupted ? 1 : 0)
+  if (resumeInterrupted) {
+    const proof = saved.checkpoint.equipmentRecoveries[0]
+    assert.equal(proof.source, 'connection_request_allocator')
+    assert.equal(proof.reservedRequestId, proof.afterRequestId - 2)
+    assert.equal(proof.intent.kind, 'armor'); assert.equal(proof.intent.slot, 0)
+    assert.equal(proof.scope, observedScope(f.state))
+    assert.match(proof.inventoryIdentity, /^[a-f0-9]{64}$/)
+  }
+})
+
 test('a failed start acquisition can record its original failure after releasing game control', async t => {
   const directory = await io.mkdtemp(path.join(os.tmpdir(), 'mc-manual-chest-acquire-'))
   t.after(async () => {
@@ -220,6 +327,53 @@ test('the first chest mutation rechecks confirmed raw identity and rejects stale
   }
 })
 
+test('only a one-time adjacent connection-owned request reservation proves an equipment request was never dispatched', async () => {
+  for (const mode of ['adjacent', 'gap', 'preview', 'context']) {
+    const f = fixture(); await f.acquire(mode === 'preview')
+    if (mode === 'gap') assert.equal(f.reserveId(), -3)
+    if (mode === 'context') f.state.connectionId = 'replacement'
+    const cp = { operationId: ID, receipts: [{ kind: 'deposit', requestId: -1 }] }
+    if (mode === 'preview' || mode === 'context') {
+      assert.throws(() => f.captured.ports.proveEquipmentNotDispatched(cp))
+    } else {
+      const proof = f.captured.ports.proveEquipmentNotDispatched(cp)
+      assert.equal(!!proof, mode === 'adjacent')
+      if (proof) {
+        assert.equal(proof.afterRequestId, -1); assert.equal(proof.reservedRequestId, -3)
+        assert.equal(proof.scope, observedScope(f.state))
+        assert.match(proof.inventoryIdentity, /^[a-f0-9]{64}$/)
+      }
+      assert.equal(f.captured.ports.proveEquipmentNotDispatched(cp), null, 'no second reservation in the same lease')
+    }
+    assert.equal(f.packets.length, 0); assert.equal(f.commits.length, 0)
+    await f.captured.adapter.release(ID)
+  }
+})
+
+test('consumed reservations require a fresh adjacent allocation and cannot conceal an already allocated retry', async () => {
+  for (const mode of ['unconsumed', 'unsent_retry', 'allocated_retry', 'invalid_chain']) {
+    const f = fixture(); await f.acquire()
+    const intent = { kind: 'armor', slot: 0, targetSlot: 0, name: 'minecraft:diamond_helmet', beforeEquipment: 'same-item', beforeMain: 'empty' }
+    const cp = { operationId: ID, equipmentIntent: intent, receipts: [{ kind: 'deposit', requestId: -1 }] }
+    const original = f.captured.ports.proveEquipmentNotDispatched(cp)
+    assert.equal(original.reservedRequestId, -3)
+    await f.captured.adapter.release(ID)
+    if (mode === 'allocated_retry') assert.equal(f.reserveId(), -5, 'models a retry reaching allocation before failure')
+    await f.acquire()
+    cp.equipmentRecoveries = [{ ...original, intent: copy(intent), consumed: mode !== 'unconsumed' }]
+    if (mode === 'invalid_chain') cp.equipmentRecoveries[0].reservedRequestId = -5
+    const proof = f.captured.ports.proveEquipmentNotDispatched(cp)
+    if (mode === 'allocated_retry' || mode === 'invalid_chain') assert.equal(proof, null, 'gaps and malformed chains cannot become unsent proof')
+    else if (mode === 'unconsumed') assert.deepEqual(proof, original, 'an interrupted proof save may reuse only its still-active unconsumed audit')
+    else {
+      assert.equal(proof.afterRequestId, -1); assert.equal(proof.afterAllocationId, -3); assert.equal(proof.reservedRequestId, -5)
+      assert.notDeepEqual(proof, original, 'an unsent retry earns a new reservation rather than reusing a consumed proof')
+    }
+    assert.equal(f.packets.length, 0); assert.equal(f.commits.length, 0)
+    await f.captured.adapter.release(ID)
+  }
+})
+
 test('only the owned chest generation may be closed or used for a deposit', async () => {
   const f = fixture(); await f.acquire()
   await f.captured.adapter.open(f.target, { expectedSlots: 54 })
@@ -243,6 +397,74 @@ test('an unsuitable normal single chest closes only its observed UI before anoth
   assert.equal((await f.captured.adapter.open(f.target, { expectedSlots: 54 })).slotCount, 54)
   await f.captured.adapter.release(ID)
   assert.deepEqual(f.closes, [5, 5]); assert.equal(f.packets.length, 0)
+})
+
+test('equipment opening waits for the matching owned chest close ACK and ignores unrelated closes', async () => {
+  const f = fixture(), closing = []
+  f.captured.closeEcho = window => closing.push(copy(window))
+  await f.acquire(); await f.captured.adapter.open(f.target, { expectedSlots: 54 })
+  f.captured.adapter.close()
+  let opens = 0
+  f.captured.openInventory = async () => {
+    opens++
+    const window = { id: 99, type: 'inventory' }
+    f.setWindow(window); f.bridge.applyPacket('container_open', { window_id: 99, window_type: 'inventory' })
+    return window
+  }
+  const pending = f.captured.ports.equipmentTransfer({ from: 'main', fromSlot: 0, to: 'offhand', toSlot: 0, expectedName: names.get(1) })
+  await tick(); assert.equal(opens, 0); assert.equal(f.packets.length, 0)
+  f.bridge.applyPacket('container_close', { window_id: 77, window_type: 'container', server: true })
+  await tick(); assert.equal(opens, 0)
+  f.bridge.applyPacket('container_close', { window_id: 5, window_type: 'none', server: false })
+  await tick(); assert.equal(opens, 1); assert.equal(f.packets.length, 1)
+  f.bridge.applyPacket('item_stack_response', { responses: [{ request_id: -3, status: 0, containers: [
+    { slot_type: { container_id: 'hotbar' }, slots: [{ slot: 0, count: 0, item_stack_id: 0 }] },
+    { slot_type: { container_id: 'offhand' }, slots: [{ slot: 1, count: 1, item_stack_id: 51 }] }
+  ] }] })
+  assert.equal((await pending).serverConfirmed, true)
+  assert.deepEqual(closing.map(window => window.id), [5, 99])
+  f.bridge.applyPacket('container_close', { window_id: 99, window_type: 'inventory', server: true })
+  await f.captured.adapter.release(ID)
+  assert.equal(f.bridge.isBusy(), false)
+})
+
+test('combat cancellation while waiting for a close ACK sends no inventory open or equipment mutation', async () => {
+  const f = fixture()
+  f.captured.closeEcho = () => {}
+  await f.acquire(); await f.captured.adapter.open(f.target, { expectedSlots: 54 }); f.captured.adapter.close()
+  let opens = 0
+  f.captured.openInventory = async () => { opens++; throw new Error('must not open') }
+  const pending = f.captured.ports.equipmentTransfer({ from: 'main', fromSlot: 0, to: 'offhand', toSlot: 0, expectedName: names.get(1) })
+  void pending.catch(() => {})
+  await tick(); f.bridge.cancel('combat'); await assert.rejects(pending)
+  f.setWindow({ id: 77, type: 'inventory' })
+  f.bridge.applyPacket('container_open', { window_id: 77, window_type: 'inventory' })
+  await f.captured.adapter.release(ID)
+  assert.equal(opens, 0); assert.equal(f.packets.length, 0); assert.deepEqual(f.closes, [5], 'combat UI remains untouched')
+  f.bridge.applyPacket('container_close', { window_id: 5, window_type: 'container', server: true })
+})
+
+test('a close timeout stays bounded and cannot be forgotten by a behavior reload before its actual ACK', async () => {
+  const shared = {}, f = fixture({ shared, closeTimeoutMs: 20 })
+  f.captured.closeEcho = () => {}
+  await f.acquire(); await f.captured.adapter.open(f.target, { expectedSlots: 54 }); f.captured.adapter.close()
+  const started = Date.now()
+  const pending = f.captured.ports.equipmentTransfer({ from: 'main', fromSlot: 0, to: 'offhand', toSlot: 0, expectedName: names.get(1) })
+  await assert.rejects(pending, error => /CLOSE/.test(error.code ?? error.message))
+  assert.ok(Date.now() - started < 500, 'the close wait has its own finite timeout')
+  assert.equal(f.packets.length, 0); await f.captured.adapter.release(ID)
+  const reloaded = fixture({ shared, closeTimeoutMs: 20 })
+  await reloaded.acquire()
+  await assert.rejects(reloaded.captured.adapter.open(reloaded.target, { expectedSlots: 54 }))
+  assert.equal(reloaded.packets.length, 0)
+  assert.throws(() => reloaded.bridge.retryClose(), { code: 'MANUAL_DEPOSIT_BUSY' })
+  await reloaded.captured.adapter.release(ID)
+  assert.equal(reloaded.bridge.retryClose().requested, true)
+  assert.deepEqual(reloaded.packets, [{ name: 'container_close', packet: { window_id: 5, window_type: 'container', server: false } }])
+  reloaded.bridge.applyPacket('container_close', { window_id: 5, window_type: 'none', server: false })
+  await reloaded.acquire()
+  assert.equal((await reloaded.captured.adapter.open(reloaded.target, { expectedSlots: 54 })).serverConfirmed, true)
+  await reloaded.captured.adapter.release(ID)
 })
 
 test('an untouched setup checkpoint cannot adopt somebody else’s newly filled target', async () => {

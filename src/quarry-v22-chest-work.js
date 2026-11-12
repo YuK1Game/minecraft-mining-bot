@@ -36,6 +36,17 @@ const sameNbt = (a,b) => {
 const known = s => s?.known === true && s.empty !== true && typeof s.name === 'string' && Number.isInteger(s.count) && s.count > 0
 const armorSlot = name => ['diamond_helmet','diamond_chestplate','diamond_leggings','diamond_boots'].indexOf(clean(name))
 const nbtKnown = raw => raw?.extra && (['false',false,0].includes(raw.extra.has_nbt) && raw.extra.nbt == null || ['true',true,65535].includes(raw.extra.has_nbt) && raw.extra.nbt != null)
+const validRequestId = id => Number.isSafeInteger(id) && id < 0 && id >= -2147483647 && Math.abs(id % 2) === 1
+function equipmentAllocationAnchor(cp,proof,last) {
+  let anchor=last?.requestId
+  for(const audit of cp.equipmentRecoveries??[]) {
+    if(audit.consumed!==true||audit.source!=='connection_request_allocator'||audit.operationId!==cp.operationId||audit.connection!==proof.connection||
+      audit.scope!==proof.scope||audit.afterRequestId!==last.requestId)continue
+    if((audit.afterAllocationId??audit.afterRequestId)!==anchor||!validRequestId(audit.reservedRequestId)||audit.reservedRequestId!==anchor-2)return null
+    anchor=audit.reservedRequestId
+  }
+  return anchor
+}
 
 function buildStartupPlan (slots) {
   const used = new Set(), plan = []
@@ -71,9 +82,10 @@ function buildStartupPlan (slots) {
 
 function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest, open, close,
   withdraw, deposit, equipArmor, equipmentTransfer, resync = async()=>true, now=Date.now,
-  sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)), getRawEquipment = null } = {}) {
+  sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)), getRawEquipment = null, proveEquipmentNotDispatched = null } = {}) {
   if ([getState,getView,getRawMain,getRawChest,open,close,withdraw,deposit,equipArmor,equipmentTransfer,resync,now,sleep].some(fn=>typeof fn!=='function')) throw new TypeError('V22 chest work requires observed 54-slot and equipment ports')
   if(getRawEquipment!==null&&typeof getRawEquipment!=='function')throw new TypeError('Equipment observations must be a function')
+  if(proveEquipmentNotDispatched!==null&&typeof proveEquipmentNotDispatched!=='function')throw new TypeError('Unsent equipment proof must be a function')
   let busy=false
   const current = (expectedWorld=null,expectedLife=null,{allowUncertain=false}={}) => {
     const s=getState(), view=getView()
@@ -352,8 +364,28 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
           const applied=empty(source)&&sameNbt(destination,before)
           const unchanged=sameNbt(source,before)&&empty(destination)
           if(!applied&&!unchanged)throw fail('FINAL_EQUIPMENT_TRANSFER_AMBIGUOUS')
-          if(unchanged)throw fail('FINAL_EQUIPMENT_TRANSFER_PENDING')
-          cp.receipts.push({kind:'reconciled_equipment',from:intent.kind,fromSlot:intent.slot,to:intent.targetSlot,name:intent.name,count:1,identity:intent.beforeEquipment})
+          if(unchanged) {
+            const last=cp.receipts.at(-1),proof=await proveEquipmentNotDispatched?.(copy(cp))
+            verify()
+            if(!proof||proof.source!=='connection_request_allocator'||proof.operationId!==cp.operationId||proof.connection!==connection||
+              last?.kind!=='deposit'||!validRequestId(last.requestId)||proof.afterRequestId!==last.requestId||
+              (proof.afterAllocationId??proof.afterRequestId)!==equipmentAllocationAnchor(cp,proof,last)||!validRequestId(proof.reservedRequestId)||
+              proof.reservedRequestId!==(proof.afterAllocationId??proof.afterRequestId)-2)throw fail('FINAL_EQUIPMENT_TRANSFER_PENDING')
+            // A reservation is evidence of no dispatch, never a transfer receipt.
+            // Recheck both observed sides and retain the original intent in audit.
+            if(!sameNbt(equipmentRaw(verify().view,intent.kind,intent.slot),before)||!empty(getRawMain(intent.targetSlot)))throw fail('FINAL_EQUIPMENT_TRANSFER_AMBIGUOUS')
+            cp.equipmentRecoveries??=[]
+            let audit={...copy(proof),intent:copy(intent),consumed:false}
+            const saved=cp.equipmentRecoveries.find(entry=>isDeepStrictEqual(entry,audit))
+            if(saved)audit=saved
+            else cp.equipmentRecoveries.push(audit)
+            await saveCheckpoint(cp,onCheckpoint)
+            verify()
+            if(!sameNbt(equipmentRaw(verify().view,intent.kind,intent.slot),before)||!empty(getRawMain(intent.targetSlot)))throw fail('FINAL_EQUIPMENT_TRANSFER_AMBIGUOUS')
+            // Consume this proof with the intent-clear checkpoint, before a
+            // retry could create an identical but already-dispatched intent.
+            audit.consumed=true
+          } else cp.receipts.push({kind:'reconciled_equipment',from:intent.kind,fromSlot:intent.slot,to:intent.targetSlot,name:intent.name,count:1,identity:intent.beforeEquipment})
           cp.equipmentIntent=null
           await saveCheckpoint(cp,onCheckpoint)
           await inStation(request);verify()

@@ -19,15 +19,60 @@ const sameWindow = (a, b) => a && b && String(a.id) === String(b.id) && String(a
 
 function createManualChestRuntime ({ host, getState, getView, getRawMain, getRawEquipment, crafting, chest,
   generation, jobIdentity, assertIdle, onAcquire, onRelease, refreshInventory, allocateRequestId,
-  commitMain, commitEquipment, onUncertain, journalDirectory = path.resolve(__dirname, '..', '.local', 'manual-chest-deposit') }) {
+  commitMain, commitEquipment, onUncertain, journalDirectory = path.resolve(__dirname, '..', '.local', 'manual-chest-deposit'), closeTimeoutMs = 5000 }) {
   if ([getState, getView, getRawMain, getRawEquipment, generation, jobIdentity, assertIdle, onAcquire, onRelease,
     refreshInventory, allocateRequestId, commitMain, commitEquipment, onUncertain].some(fn => typeof fn !== 'function') ||
     typeof host?.client?.queue !== 'function' || typeof host?.world?.getBlock !== 'function' ||
     ['status', 'openInventory', 'closeContainer'].some(method => typeof crafting?.[method] !== 'function') ||
     ['open', 'depositItem', 'snapshot', 'rawItem'].some(method => typeof chest?.[method] !== 'function')) throw new TypeError('Manual chest storage requires observed runtime ports')
+  if (!Number.isFinite(closeTimeoutMs) || closeTimeoutMs <= 0 || closeTimeoutMs > 30000) throw new TypeError('Manual chest close timeout must be bounded')
   let lease = null, journalOwner = null, windowEpoch = 0
+  const closeState = host.shared ??= {}
   const currentWindow = () => crafting.status().openContainer
   const fingerprintJob = () => serialize(jobIdentity()).toString('base64')
+  const currentClose = () => {
+    const barrier = closeState.manualChestCloseBarrier
+    return barrier?.scope === observedScope(getState()) ? barrier : null
+  }
+  function settleClose (barrier, error) {
+    if (!barrier || !barrier.pending) return
+    barrier.pending = false
+    clearTimeout(barrier.timer); clearInterval(barrier.poll)
+    if (error) { barrier.error = error.code ?? 'MANUAL_DEPOSIT_CLOSE_FAILED'; barrier.reject(fail(barrier.error)) }
+    else { barrier.acknowledged = true; barrier.resolve() }
+  }
+  function sendOwnedClose (owner, window) {
+    verify(owner)
+    if (!window || !sameWindow(currentWindow(), window)) throw fail('MANUAL_DEPOSIT_FOREIGN_WINDOW')
+    const prior = currentClose()
+    if (prior && !prior.acknowledged) throw fail(prior.error ?? 'MANUAL_DEPOSIT_CLOSE_PENDING')
+    const obsolete = closeState.manualChestCloseBarrier
+    if (obsolete?.pending) settleClose(obsolete, fail('MANUAL_DEPOSIT_CONTEXT_CHANGED'))
+    const barrier = { scope: owner.scope, generation: owner.generation, job: owner.job, window: clone(window), pending: true, acknowledged: false, error: null }
+    barrier.promise = new Promise((resolve, reject) => { barrier.resolve = resolve; barrier.reject = reject })
+    void barrier.promise.catch(() => {})
+    closeState.manualChestCloseBarrier = barrier
+    barrier.timer = setTimeout(() => settleClose(barrier, fail('MANUAL_DEPOSIT_CLOSE_TIMEOUT')), closeTimeoutMs)
+    barrier.poll = setInterval(() => {
+      try { if (observedScope(getState()) !== barrier.scope) settleClose(barrier, fail('MANUAL_DEPOSIT_CONTEXT_CHANGED')) } catch { settleClose(barrier, fail('MANUAL_DEPOSIT_CONTEXT_CHANGED')) }
+    }, 50)
+    try { crafting.closeContainer() } catch (error) { settleClose(barrier, fail('MANUAL_DEPOSIT_CLOSE_FAILED')); throw error }
+  }
+  async function waitForClose (owner, signal) {
+    verify(owner); signal?.throwIfAborted()
+    const barrier = currentClose()
+    if (!barrier || barrier.acknowledged) return
+    if (barrier.error) throw fail(barrier.error)
+    const abort = AbortSignal.any([owner.abort.signal, ...(owner.signal ? [owner.signal] : []), ...(signal ? [signal] : [])])
+    abort.throwIfAborted()
+    await new Promise((resolve, reject) => {
+      const onAbort = () => { abort.removeEventListener('abort', onAbort); reject(fail('MANUAL_DEPOSIT_INTERRUPTED')) }
+      abort.addEventListener('abort', onAbort, { once: true })
+      barrier.promise.then(() => { abort.removeEventListener('abort', onAbort); resolve() }, error => { abort.removeEventListener('abort', onAbort); reject(error) })
+    })
+    verify(owner); signal?.throwIfAborted()
+    if (!barrier.acknowledged || currentWindow()) throw fail('MANUAL_DEPOSIT_FOREIGN_WINDOW')
+  }
   const actualView = () => {
     const view = clone(getView())
     for (const [kind, size] of [['armor', 4], ['offhand', 1]]) {
@@ -69,8 +114,15 @@ function createManualChestRuntime ({ host, getState, getView, getRawMain, getRaw
     return owner
   }
   const equipmentCrafting = { status: () => crafting.status(),
-    openInventory: () => { const owner = verify(); if (owner.preview) throw fail('MANUAL_DEPOSIT_PREVIEW_READ_ONLY'); return crafting.openInventory() },
-    closeContainer: () => { try { verify(); crafting.closeContainer() } catch {} }
+    openInventory: async () => {
+      const owner = verify()
+      if (owner.preview) throw fail('MANUAL_DEPOSIT_PREVIEW_READ_ONLY')
+      await waitForClose(owner)
+      verify(owner)
+      if (currentWindow()) throw fail('MANUAL_DEPOSIT_FOREIGN_WINDOW')
+      return crafting.openInventory()
+    },
+    closeContainer: () => { try { const owner = verify(), window = currentWindow(); if (window) sendOwnedClose(owner, window) } catch {} }
   }
   const equipment = createQuarryV22Equipment({ client: { queue: (name, packet) => {
     if (name !== 'item_stack_request') throw fail('MANUAL_DEPOSIT_PACKET_FORBIDDEN')
@@ -79,9 +131,9 @@ function createManualChestRuntime ({ host, getState, getView, getRawMain, getRaw
   const pendingMutation = () => equipment.status().stage === 'awaiting_response' && equipment.status().busy || !!lease?.chestMutation
   function closeOwned (owner = lease) {
     if (!owner || lease !== owner || owner.revoked || owner.signal?.aborted || owner.abort.signal.aborted ||
-      observedScope(getState()) !== owner.scope || !owner.window || owner.window.epoch !== windowEpoch ||
+      observedScope(getState()) !== owner.scope || generation() !== owner.generation || fingerprintJob() !== owner.job || !owner.window || owner.window.epoch !== windowEpoch ||
       !sameWindow(currentWindow(), owner.window) || chest.snapshot().pendingRequestId != null || crafting.status().pendingRequestId != null || equipment.status().busy) return
-    crafting.closeContainer(); owner.window = null
+    sendOwnedClose(owner, owner.window); owner.window = null
   }
   function revoke (owner, reason) {
     if (!owner || lease !== owner) return
@@ -131,6 +183,8 @@ function createManualChestRuntime ({ host, getState, getView, getRawMain, getRaw
     const block = host.world.getBlock(position.x, position.y, position.z)
     if (expectedSlots !== 54 || block?.known !== true || block.name !== 'minecraft:chest') throw fail('MANUAL_DEPOSIT_CHEST_INVALID')
     closeOwned(owner)
+    await waitForClose(owner, signal)
+    verify(owner); signal?.throwIfAborted()
     if (currentWindow()) throw fail('MANUAL_DEPOSIT_FOREIGN_WINDOW')
     owner.opening = true; owner.firstOpen = null
     const beforeEpoch = windowEpoch
@@ -170,6 +224,43 @@ function createManualChestRuntime ({ host, getState, getView, getRawMain, getRaw
       } catch (error) { if (owner.chestMutation === token) owner.chestMutation = null; throw error }
     },
     equipmentTransfer: options => equipment.transfer({ ...options, signal: undefined }),
+    proveEquipmentNotDispatched: cp => {
+      const owner = verify(), state = getState(), last = cp.receipts?.at(-1)
+      if (owner.preview || cp.operationId !== owner.id || equipment.status().busy || pendingMutation() ||
+        crafting.status().pendingRequestId != null || chest.snapshot().pendingRequestId != null) throw fail('MANUAL_DEPOSIT_OPERATION_INVALID')
+      assertIdle()
+      if (owner.proofAttempted || typeof host.allocate !== 'function' || last?.kind !== 'deposit' || !Number.isSafeInteger(last.requestId) ||
+        last.requestId >= 0 || last.requestId < -2147483645 || Math.abs(last.requestId % 2) !== 1) return null
+      const identity = inventoryIdentity()
+      owner.proofAttempted = true
+      const connection = JSON.stringify([state.connectionId, state.startedAt, String(state.runtimeEntityId)])
+      let afterAllocationId = last.requestId
+      const related = entry => entry?.source === 'connection_request_allocator' && entry.operationId === owner.id &&
+        entry.scope === owner.scope && entry.connection === connection && entry.afterRequestId === last.requestId
+      for (const entry of cp.equipmentRecoveries ?? []) {
+        if (entry?.consumed !== true || !related(entry)) continue
+        if ((entry.afterAllocationId ?? entry.afterRequestId) !== afterAllocationId || !Number.isSafeInteger(entry.reservedRequestId) ||
+          entry.reservedRequestId >= 0 || entry.reservedRequestId < -2147483647 || Math.abs(entry.reservedRequestId % 2) !== 1 ||
+          entry.reservedRequestId !== afterAllocationId - 2) return null
+        afterAllocationId = entry.reservedRequestId
+      }
+      if (afterAllocationId < -2147483645) return null
+      const saved = cp.equipmentRecoveries?.find(entry => entry?.consumed === false && related(entry) &&
+        entry.scope === owner.scope && entry.connection === connection && entry.inventoryIdentity === identity &&
+        (entry.afterAllocationId ?? entry.afterRequestId) === afterAllocationId && entry.reservedRequestId === afterAllocationId - 2 &&
+        serialize(entry.intent).equals(serialize(cp.equipmentIntent)))
+      if (saved) { const { intent, consumed, ...proof } = saved; return { ...clone(proof), afterAllocationId } }
+      // Host's odd IDs only decrease and survive behavior reloads. If the next
+      // reserved ID immediately follows our last accepted chest request, no
+      // equipment request could have allocated an ID, hence none was queued.
+      // Any intervening allocation makes the proof unavailable; never resend it.
+      const reservedRequestId = host.allocate('craft')
+      if (reservedRequestId !== afterAllocationId - 2) return null
+      return { source: 'connection_request_allocator', operationId: owner.id,
+        scope: owner.scope, inventoryIdentity: identity,
+        connection,
+        afterRequestId: last.requestId, afterAllocationId, reservedRequestId }
+    },
     resync: async options => { verify(); const refreshed = await refreshInventory(options); verify(); return refreshed }
   })
   const filename = id => {
@@ -205,11 +296,43 @@ function createManualChestRuntime ({ host, getState, getView, getRawMain, getRaw
   }
   const controller = createManualChestDeposit({ adapter })
   return { prepare: input => controller.prepare(input), start: input => controller.start(input), status: () => controller.status(),
+    diagnostics: () => {
+      const barrier = currentClose()
+      return { window: clone(currentWindow()), equipment: equipment.status(), windowEpoch,
+        closing: barrier ? { window: clone(barrier.window), pending: barrier.pending, acknowledged: barrier.acknowledged, error: barrier.error, foreignOpened: barrier.foreignOpened === true } : null,
+        events: clone(closeState.manualChestWindowEvents ?? []) }
+    },
+    retryClose: () => {
+      const barrier = currentClose(), state = getState()
+      if (lease || equipment.status().busy || controller.status().busy || pendingMutation()) throw fail('MANUAL_DEPOSIT_BUSY')
+      assertIdle()
+      if (!barrier || barrier.acknowledged || barrier.foreignOpened || currentWindow() || state.phase !== 'spawned' || !(state.health > 0) ||
+        crafting.status().pendingRequestId != null || chest.snapshot().pendingRequestId != null) throw fail('MANUAL_DEPOSIT_CLOSE_RETRY_UNAVAILABLE')
+      host.client.queue('container_close', { window_id: barrier.window.id, window_type: barrier.window.type, server: false })
+      return { requested: true, serverConfirmed: false }
+    },
     cancel: reason => { if (lease) revoke(lease, reason); return controller.cancel(reason) }, drain: () => controller.drain(),
-    isBusy: () => !!lease || equipment.status().busy || controller.status().busy === true,
+    isBusy: () => !!lease || equipment.status().busy || controller.status().busy === true || currentClose()?.pending === true,
     equipmentBusy: () => equipment.status().busy, pendingMutation,
     applyPacket: (name, packet) => {
+      if (name === 'container_open' || name === 'container_close') {
+        const events = closeState.manualChestWindowEvents ??= []
+        events.push({ name, at: new Date().toISOString(), id: packet.window_id, type: packet.window_type, server: packet.server })
+        if (events.length > 16) events.splice(0, events.length - 16)
+      }
       const window = currentWindow()
+      const barrier = currentClose()
+      if (barrier && !barrier.acknowledged) {
+        if (name === 'container_open') {
+          barrier.foreignOpened = true
+          settleClose(barrier, fail('MANUAL_DEPOSIT_CLOSE_WINDOW_CHANGED'))
+        } else if (name === 'container_close' && !barrier.foreignOpened && String(packet.window_id) === String(barrier.window.id) &&
+          (packet.window_type == null || ['none', -9].includes(packet.window_type) || String(packet.window_type) === String(barrier.window.type))) {
+          if (barrier.pending) settleClose(barrier)
+          else barrier.acknowledged = true
+          if (closeState.manualChestCloseBarrier === barrier) closeState.manualChestCloseBarrier = null
+        }
+      }
       if (name === 'container_open' || name === 'container_close' && [window, lease?.window].some(value => value && String(value.id) === String(packet.window_id))) {
         windowEpoch++
         if (lease?.opening && name === 'container_open' && !lease.firstOpen) lease.firstOpen = { epoch: windowEpoch, window: { id: packet.window_id, type: packet.window_type } }

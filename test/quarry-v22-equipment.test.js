@@ -312,6 +312,74 @@ test('a delayed close for an unrelated old window does not invalidate the owned 
  assert.equal(f.offhand[0].stack_id,138);assert.deepEqual(f.ui.closes,[55])
 })
 
+function openingAfterChest (priorId = 12) {
+  const f = fixture({ alreadyOpen: false })
+  f.bag.fill(null); for (let slot = 0; slot < 36; slot++) f.bag[slot] = raw()
+  f.armor[0] = raw(2, 50)
+  f.ui.window = { id: priorId, type: 'container' }
+  f.equipment.applyPacket('container_open', { window_id: priorId, window_type: 'container' })
+  f.crafting.closeContainer()
+  let resolveOpen
+  f.ui.openHook = () => new Promise(resolve => { resolveOpen = resolve })
+  const task = f.equipment.transfer({ from: 'armor', fromSlot: 0, to: 'main', toSlot: 0, expectedName: 'minecraft:diamond_helmet' })
+  void task.catch(() => {})
+  return { ...f, task, resolveOpen: value => resolveOpen(value) }
+}
+const ARMOR_MAIN_ACK = { responses: [{ request_id: -3, status: 0, containers: [
+  { slot_type: { container_id: 'armor' }, slots: [{ slot: 0, count: 0, item_stack_id: 0 }] },
+  { slot_type: { container_id: 'hotbar' }, slots: [{ slot: 0, count: 1, item_stack_id: 64 }] }
+] }] }
+
+test('a prior chest close echo before the first inventory open does not cancel armor unloading', async () => {
+  for (const priorId of [12, 55]) for (const closeType of ['container', 'none', -9]) {
+    const f = openingAfterChest(priorId)
+    assert.equal(f.equipment.status().stage, 'opening_inventory')
+    f.equipment.applyPacket('container_close', { window_id: priorId, window_type: closeType, server: false })
+    assert.equal(f.equipment.status().busy, true)
+    assert.equal(f.commands.length, 0); assert.equal(f.uncertain.length, 0)
+    f.ui.window = { id: 55, type: 'inventory' }
+    f.equipment.applyPacket('container_open', { window_id: 55, window_type: 'inventory' })
+    f.resolveOpen({ id: 55, type: 'inventory' })
+    await tick()
+    assert.equal(f.commands.length, 1)
+    assert.equal(f.commands[0].actions[0].type_id, 'take')
+    f.equipment.applyPacket('item_stack_response', structuredClone(ARMOR_MAIN_ACK))
+    assert.equal((await f.task).serverConfirmed, true)
+    assert.equal(f.bag[0].network_id, 2); assert.equal(f.armor[0].count, 0)
+    assert.deepEqual(f.ui.closes, [priorId, 55])
+    assert.equal(f.uncertain.length, 0)
+  }
+})
+
+test('a same-id owned inventory close after opening never inherits the prior chest close allowance', async () => {
+  const f = openingAfterChest(55)
+  f.equipment.applyPacket('container_close', { window_id: 55, window_type: 'container', server: true })
+  f.ui.window = { id: 55, type: 'inventory' }
+  f.equipment.applyPacket('container_open', { window_id: 55, window_type: 'inventory' })
+  f.ui.window = null
+  f.equipment.applyPacket('container_close', { window_id: 55, window_type: 'inventory', server: true })
+  f.resolveOpen({ id: 55, type: 'inventory' })
+  await assert.rejects(f.task, { code: 'EQUIPMENT_CONTAINER_CHANGED' })
+  await tick()
+  f.equipment.applyPacket('item_stack_response', structuredClone(ARMOR_MAIN_ACK))
+  assert.equal(f.commands.length, 0); assert.equal(f.commits.length, 0)
+  assert.equal(f.armor[0].count, 1); assert.equal(f.bag[0].count, 0)
+  assert.deepEqual(f.ui.closes, [55], 'only the explicit old chest close was sent')
+})
+
+test('the prior close allowance cannot conceal a changed scope or a different window type', async () => {
+  for (const mode of ['scope', 'type']) {
+    const f = openingAfterChest(55)
+    if (mode === 'scope') f.state.connectionId = 'new-connection'
+    f.equipment.applyPacket('container_close', { window_id: 55, window_type: mode === 'type' ? 'inventory' : 'container', server: true })
+    f.resolveOpen({ id: 55, type: 'inventory' })
+    await assert.rejects(f.task, { code: mode === 'scope' ? 'EQUIPMENT_SCOPE_CHANGED' : 'EQUIPMENT_CONTAINER_CHANGED' })
+    await tick()
+    assert.equal(f.commands.length, 0); assert.equal(f.commits.length, 0)
+    assert.deepEqual(f.ui.closes, [55])
+  }
+})
+
 test('missing UI capabilities and an unsupported fixture opener both fail closed', async () => {
   const ports = {
     client: { queue: () => { throw new Error('must not send') } },

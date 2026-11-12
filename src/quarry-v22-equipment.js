@@ -101,6 +101,7 @@ function createQuarryV22Equipment ({ client, crafting, getState, getView, getRaw
       if (!open) {
         p.openingRequested = true
         p.openingEpoch = windowEpoch
+        p.priorWindow = observedWindow ? clone(observedWindow) : null
         let opening
         try { opening = Promise.resolve(crafting.openInventory()) } catch (error) {
           throw fail('EQUIPMENT_OPEN_FAILED', { message: String(error.message ?? error) })
@@ -160,14 +161,20 @@ function createQuarryV22Equipment ({ client, crafting, getState, getView, getRaw
   }
   function applyPacket (name, packet) {
     const p = pending
+    const open = getOpen()
     const windowEvent = name === 'container_open' || name === 'container_close' &&
-      [observedWindow, p?.window, p?.observedOpen?.window, getOpen()].some(window => window && String(window.id) === String(packet.window_id))
+      [observedWindow, p?.window, p?.observedOpen?.window, open].some(window => window && String(window.id) === String(packet.window_id))
+    // A locally closed chest can acknowledge its close after inventory opening
+    // starts. Only that captured prior window may close before the first open.
+    const priorClose = name === 'container_close' && p?.openingRequested && !p.window && !p.observedOpen && !open &&
+      sameWindow(observedWindow, p.priorWindow) && String(packet.window_id) === String(p.priorWindow.id) &&
+      (packet.window_type == null || ['none', -9].includes(packet.window_type) || String(packet.window_type) === String(p.priorWindow.type))
     if (windowEvent) {
       windowEpoch++
       observedWindow = name === 'container_open' ? { id: packet.window_id, type: packet.window_type } : null
     }
     if (!p || p.settled) return false
-    if (p.openingRequested && !p.window && windowEvent) {
+    if (p.openingRequested && !p.window && windowEvent && !priorClose) {
       if (name !== 'container_open' || p.observedOpen) {
         p.abandoned = true
         cancel('EQUIPMENT_CONTAINER_CHANGED')

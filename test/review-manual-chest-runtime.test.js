@@ -10,7 +10,10 @@ const loadout = require('../src/loadout-runtime-adapter')
 // storage bridge and unrelated movement/behavior dependencies substituted.
 const filename = require.resolve('./runtime-user-behaviors.test.js'), loaded = new Module(filename, module)
 loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
-loaded._compile(fs.readFileSync(filename, 'utf8').split('\ntest(')[0] + '\nmodule.exports = { scene }\n', filename)
+const sceneSource = fs.readFileSync(filename, 'utf8').split('\ntest(')[0]
+const reloadableSceneSource = sceneSource.replace('return { runtime, host, raw, shared,', 'return { recreateRuntime: () => loaded.exports.createRuntime(host), runtime, host, raw, shared,')
+assert.notEqual(reloadableSceneSource, sceneSource, 'the shared Host fixture must expose its Runtime factory')
+loaded._compile(reloadableSceneSource + '\nmodule.exports = { scene }\n', filename)
 const { scene } = loaded.exports
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })
 
@@ -41,7 +44,7 @@ function fixture (t) {
     cancel (reason) { events.push(['cancel', reason]); if (!mutationPending && !equipmentPending) busy = false; return bridge.status() },
     drain () { events.push(['drain']); return mutationPending || equipmentPending ? drained.promise : Promise.resolve() },
     applyPacket (name, packet) {
-      events.push(['packet', name])
+      events.push(['packet', name, structuredClone(packet)])
       if (name === 'inventory_slot' && packet.window_id === 'inventory' && packet.slot === 35 && (mutationPending || equipmentPending)) finish()
     }
   }
@@ -84,6 +87,46 @@ test('manual chest Runtime status is passive and prepare uses current ports with
   for (const name of ['getState', 'getView', 'getRawMain', 'getRawEquipment', 'assertIdle', 'refreshInventory', 'commitMain', 'commitEquipment']) assert.equal(typeof f.ports()[name], 'function', name)
   assert.equal(f.ports().getState().loadingScreenEnded, true)
   delete f.shared.inventoryUncertain
+})
+
+test('a reloaded Runtime forwards the actual owned close before lazy storage is requested', async t => {
+  const f = fixture(t), job = { instanceId: 'saved-instance', state: 'PAUSED', userRunIntent: 'pause', ledger: { minedBlocks: 0 } }
+  await f.runtime.dispose('fixture_reload')
+  f.shared.manualChestCloseBarrier = { pending: true, window: { id: 11, type: 'container' } }
+  f.shared.quarryDocument = structuredClone(job)
+  const runtime = f.recreateRuntime()
+  t.after(async () => { await runtime.dispose('test_reloaded_cleanup') })
+  assert.equal(f.creations(), 0, 'reloading must leave storage lazy until an actual window response arrives')
+  const packet = { window_id: 11, window_type: 'none', server: false }, beforeWire = f.wire.length
+  runtime.applyPacket('container_close', packet)
+  assert.equal(f.creations(), 1)
+  assert.deepEqual(f.events.filter(([name]) => name === 'packet'), [['packet', 'container_close', packet]])
+  assert.equal(f.quarryCreations(), 0); assert.equal(f.counters.autonomyStarts, 0)
+  assert.deepEqual(f.shared.quarryDocument, job)
+  assert.equal(f.shared.autoWanted, false); assert.equal(f.mockMovement.snapshot().running, false)
+  assert.equal(f.wire.length, beforeWire, 'handling the close cannot start a transfer, movement, or mining')
+})
+
+test('replayed window packets and actual windows without a persisted barrier keep storage lazy', async t => {
+  const f = fixture(t)
+  await f.runtime.dispose('fixture_reload')
+  f.shared.manualChestCloseBarrier = { pending: true, window: { id: 11, type: 'container' } }
+  const replay = f.host.cache.replay
+  f.host.cache.replay = receive => {
+    replay(receive)
+    receive('container_open', { window_id: 11, window_type: 'container' })
+    receive('container_close', { window_id: 11, window_type: 'none', server: false })
+  }
+  const runtime = f.recreateRuntime()
+  t.after(async () => { await runtime.dispose('test_reloaded_cleanup') })
+  assert.equal(f.creations(), 0, 'cached window packets cannot construct a receipt observer or acknowledge a close')
+  assert.equal(f.events.filter(([name]) => name === 'packet').length, 0)
+  delete f.shared.manualChestCloseBarrier
+  runtime.applyPacket('container_open', { window_id: 12, window_type: 'inventory' })
+  runtime.applyPacket('container_close', { window_id: 12, window_type: 'none', server: false })
+  assert.equal(f.creations(), 0, 'ordinary window responses without an owned close do not initialize storage')
+  assert.equal(f.quarryCreations(), 0); assert.equal(f.counters.autonomyStarts, 0)
+  assert.equal(f.wire.filter(packet => packet.name === 'item_stack_request').length, 0)
 })
 
 test('manual chest Runtime busy lease blocks ordinary movement, gear, chest and debug reset operations', async t => {

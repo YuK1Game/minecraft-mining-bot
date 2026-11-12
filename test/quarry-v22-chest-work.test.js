@@ -439,3 +439,162 @@ test('unknown actual equipment before final dispatch remains read-only and does 
  assert.equal(refreshes,1);assert.equal(equips,0);assert.equal(waited,5000)
  assert.equal(result.checkpoint.equipmentIntent,undefined)
 })
+
+async function unsentEquipmentIntent () {
+  const f = fixture(), deposit = f.ports.deposit, transfer = f.ports.equipmentTransfer
+  let deposits = 0
+  for (let slot = 0; slot < 54; slot++) f.base[slot] = empty()
+  f.bag[0] = raw('minecraft:bread', 64, 500)
+  f.armor[0] = raw('minecraft:diamond_helmet', 1, 501)
+  f.ports.deposit = async options => ({ ...await deposit(options), requestId: deposits++ === 0 ? -71 : -77 })
+  f.ports.equipmentTransfer = async () => { throw Object.assign(new Error('inventory changed before dispatch'), { code: 'EQUIPMENT_CONTAINER_CHANGED' }) }
+  const stopped = await createQuarryV22ChestWork(f.ports).depositAll(finishRequest(f), f.options)
+  assert.equal(stopped.reason, 'EQUIPMENT_CONTAINER_CHANGED')
+  assert.equal(stopped.checkpoint.index, 1)
+  assert.equal(stopped.checkpoint.receipts.at(-1).requestId, -71)
+  assert.ok(stopped.checkpoint.equipmentIntent)
+  f.ports.equipmentTransfer = transfer
+  return { ...f, checkpoint: stopped.checkpoint }
+}
+function allocatorProof (f, changes = {}) {
+  return { source: 'connection_request_allocator', operationId: f.checkpoint.operationId,
+    connection: JSON.stringify([f.state.connectionId, f.state.startedAt, String(f.state.runtimeEntityId)]),
+    afterRequestId: -71, reservedRequestId: -73, ...changes }
+}
+
+test('unchanged equipment without optional allocator proof keeps its original intent and cannot resend', async () => {
+  const f = await unsentEquipmentIntent(), before = f.transfers.length
+  let equipmentSends = 0
+  f.ports.equipmentTransfer = async () => { equipmentSends++; throw new Error('must not resend') }
+  const result = await createQuarryV22ChestWork(f.ports).depositAll({ ...finishRequest(f), checkpoint: f.checkpoint }, f.options)
+  assert.equal(result.reason, 'FINAL_EQUIPMENT_TRANSFER_PENDING')
+  assert.deepEqual(result.checkpoint.equipmentIntent, f.checkpoint.equipmentIntent)
+  assert.equal(equipmentSends, 0); assert.equal(f.transfers.length, before)
+})
+
+test('allocator proof retains the original equipment intent in durable audit before the first retry', async () => {
+  const f = await unsentEquipmentIntent(), intent = structuredClone(f.checkpoint.equipmentIntent), proof = allocatorProof(f)
+  let proofs = 0, equipmentSends = 0, durableAudit = false, durableConsumed = false
+  const saved = [], transfer = f.ports.equipmentTransfer
+  f.ports.proveEquipmentNotDispatched = async checkpoint => {
+    proofs++; assert.deepEqual(checkpoint.equipmentIntent, intent)
+    assert.equal(checkpoint.receipts.at(-1).requestId, -71)
+    return proof
+  }
+  f.ports.equipmentTransfer = async options => {
+    assert.equal(durableAudit, true, 'no retry can precede persistence of proof and original intent')
+    assert.equal(durableConsumed, true, 'proof consumption and intent clearing must persist before retry')
+    equipmentSends++; return transfer(options)
+  }
+  const result = await createQuarryV22ChestWork(f.ports).depositAll({ ...finishRequest(f), checkpoint: f.checkpoint }, { onCheckpoint: async checkpoint => {
+    saved.push(structuredClone(checkpoint))
+    if (checkpoint.equipmentRecoveries?.length) {
+      const { consumed, ...audit } = checkpoint.equipmentRecoveries[0]
+      assert.deepEqual(audit, { ...proof, intent })
+      if (!durableAudit) {
+        assert.equal(equipmentSends, 0)
+        assert.equal(consumed, false); assert.deepEqual(checkpoint.equipmentIntent, intent)
+        await Promise.resolve()
+        durableAudit = true
+      }
+      if (consumed && checkpoint.equipmentIntent === null) durableConsumed = true
+    }
+  } })
+  assert.equal(result.status, 'completed', JSON.stringify(result))
+  assert.equal(proofs, 1); assert.equal(equipmentSends, 1)
+  assert.equal(result.checkpoint.index, 2)
+  assert.deepEqual(result.checkpoint.equipmentRecoveries, [{ ...proof, intent, consumed: true }])
+  assert.ok(saved.some(checkpoint => checkpoint.equipmentIntent === null && checkpoint.equipmentRecoveries?.length === 1))
+  assert.equal(f.bag.every(item => item.count === 0), true)
+  assert.equal(f.armor.every(item => item.count === 0), true)
+})
+
+test('invalid allocator proof cannot clear an unchanged equipment intent or create a retry', async () => {
+  for (const changes of [null, { source: 'untrusted' }, { connection: 'other-connection' }, { operationId: 'other-operation' }, { afterRequestId: -69 }, { reservedRequestId: -75 }]) {
+    const f = await unsentEquipmentIntent(), before = f.transfers.length
+    let equipmentSends = 0
+    f.ports.proveEquipmentNotDispatched = async () => changes === null ? null : allocatorProof(f, changes)
+    f.ports.equipmentTransfer = async () => { equipmentSends++; throw new Error('must not resend') }
+    const result = await createQuarryV22ChestWork(f.ports).depositAll({ ...finishRequest(f), checkpoint: f.checkpoint }, f.options)
+    assert.equal(result.reason, 'FINAL_EQUIPMENT_TRANSFER_PENDING', JSON.stringify(changes))
+    assert.deepEqual(result.checkpoint.equipmentIntent, f.checkpoint.equipmentIntent)
+    assert.equal(result.checkpoint.equipmentRecoveries, undefined)
+    assert.equal(equipmentSends, 0); assert.equal(f.transfers.length, before)
+  }
+})
+
+test('equipment or destination changes while proving no dispatch remain ambiguous and preserve the intent', async () => {
+  for (const side of ['equipment', 'main']) {
+    const f = await unsentEquipmentIntent(), before = f.transfers.length
+    let equipmentSends = 0
+    f.ports.proveEquipmentNotDispatched = async () => {
+      await Promise.resolve()
+      if (side === 'equipment') f.armor[0].extra.nbt.changed = true
+      else f.bag[f.checkpoint.equipmentIntent.targetSlot] = raw('minecraft:stone', 1, 999)
+      return allocatorProof(f)
+    }
+    f.ports.equipmentTransfer = async () => { equipmentSends++; throw new Error('must not resend') }
+    const result = await createQuarryV22ChestWork(f.ports).depositAll({ ...finishRequest(f), checkpoint: f.checkpoint }, f.options)
+    assert.equal(result.reason, 'FINAL_EQUIPMENT_TRANSFER_AMBIGUOUS', side)
+    assert.deepEqual(result.checkpoint.equipmentIntent, f.checkpoint.equipmentIntent)
+    assert.equal(result.checkpoint.equipmentRecoveries, undefined)
+    assert.equal(equipmentSends, 0); assert.equal(f.transfers.length, before)
+  }
+})
+
+test('allocator proof cannot bypass connection changes or cancellation while it is pending', async () => {
+  for (const mode of ['connection', 'cancel']) {
+    const f = await unsentEquipmentIntent(), abort = new AbortController(), before = f.transfers.length
+    let equipmentSends = 0
+    f.ports.proveEquipmentNotDispatched = async () => {
+      const proof = allocatorProof(f); await Promise.resolve()
+      if (mode === 'connection') f.state.connectionId = 'changed'
+      else abort.abort(Object.assign(new Error('aborted'), { code: 'ABORTED' }))
+      return proof
+    }
+    f.ports.equipmentTransfer = async () => { equipmentSends++; throw new Error('must not resend') }
+    const result = await createQuarryV22ChestWork(f.ports).depositAll({ ...finishRequest(f), checkpoint: f.checkpoint }, { ...f.options, signal: abort.signal })
+    assert.equal(result.reason, mode === 'connection' ? 'LOADOUT_CONNECTION_CHANGED' : 'ABORTED')
+    assert.deepEqual(result.checkpoint.equipmentIntent, f.checkpoint.equipmentIntent)
+    assert.equal(equipmentSends, 0); assert.equal(f.transfers.length, before)
+  }
+})
+
+test('failed persistence of no-dispatch audit stops before any equipment retry', async () => {
+  const f = await unsentEquipmentIntent(), intent = structuredClone(f.checkpoint.equipmentIntent), proof = allocatorProof(f), before = f.transfers.length
+  let equipmentSends = 0, saves = 0
+  f.ports.proveEquipmentNotDispatched = async () => proof
+  f.ports.equipmentTransfer = async () => { equipmentSends++; throw new Error('must not resend') }
+  const result = await createQuarryV22ChestWork(f.ports).depositAll({ ...finishRequest(f), checkpoint: f.checkpoint }, { onCheckpoint: async checkpoint => {
+    saves++
+    assert.deepEqual(checkpoint.equipmentRecoveries, [{ ...proof, intent, consumed: false }])
+    throw Object.assign(new Error('durable write failed'), { code: 'PERSISTENCE_FAILED' })
+  } })
+  assert.equal(result.reason, 'PERSISTENCE_FAILED')
+  assert.equal(saves, 1); assert.equal(equipmentSends, 0); assert.equal(f.transfers.length, before)
+  assert.deepEqual(result.checkpoint.equipmentIntent, intent, 'a failed proof save cannot clear the pending intent')
+  assert.deepEqual(result.checkpoint.equipmentRecoveries, [{ ...proof, intent, consumed: false }], 'original intent remains in the audit when its durable write fails')
+})
+
+test('a new unused reservation may follow a consumed allocator anchor but never skip a malformed chain', async () => {
+  for (const mode of ['contiguous', 'gap', 'duplicate']) {
+    const f = await unsentEquipmentIntent(), intent = structuredClone(f.checkpoint.equipmentIntent)
+    const old = { ...allocatorProof(f), intent, consumed: true }
+    f.checkpoint.equipmentRecoveries = [old]
+    if (mode === 'gap') old.reservedRequestId = -75
+    if (mode === 'duplicate') f.checkpoint.equipmentRecoveries.push(structuredClone(old))
+    f.ports.proveEquipmentNotDispatched = async () => allocatorProof(f, { afterAllocationId: -73, reservedRequestId: -75 })
+    const before = f.transfers.length
+    const result = await createQuarryV22ChestWork(f.ports).depositAll({ ...finishRequest(f), checkpoint: f.checkpoint }, f.options)
+    if (mode === 'contiguous') {
+      assert.equal(result.status, 'completed', JSON.stringify(result))
+      assert.equal(result.checkpoint.equipmentRecoveries.length, 2)
+      assert.equal(result.checkpoint.equipmentRecoveries[1].afterAllocationId, -73)
+      assert.equal(result.checkpoint.equipmentRecoveries[1].reservedRequestId, -75)
+    } else {
+      assert.equal(result.reason, 'FINAL_EQUIPMENT_TRANSFER_PENDING', mode)
+      assert.deepEqual(result.checkpoint.equipmentIntent, intent)
+      assert.equal(f.transfers.length, before)
+    }
+  }
+})

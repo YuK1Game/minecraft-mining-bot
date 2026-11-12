@@ -5085,7 +5085,12 @@ function createRuntime (host) {
     chest.applyPacket(name, packet, { replaying })
     inventory.applyPacket(name, packet, { replaying })
     if (!replaying) quarryV22Equipment.applyPacket(name, packet)
-    if (!replaying) manualChestStorage?.applyPacket(name, packet)
+    if (!replaying) {
+      // An owned close may finish between behavior reload and the next button
+      // click. Preserve that actual response for the connection-owned barrier.
+      if (!manualChestStorage && host.shared.manualChestCloseBarrier && ['container_open', 'container_close'].includes(name)) ensureManualChestStorage()
+      manualChestStorage?.applyPacket(name, packet)
+    }
     // A reload replays the cached start_game; that is not a new world for armor.
     if (!(replaying && ['start_game', 'change_dimension', 'respawn'].includes(name))) armor.applyPacket(name, packet)
     food.applyPacket(name, packet)
@@ -5360,6 +5365,8 @@ function createRuntime (host) {
       prepare: options => ensureManualChestStorage().prepare(options ?? {}),
       start: options => ensureManualChestStorage().start(options ?? {}),
       status: () => manualChestStorage?.status() ?? { available: true, busy: false, phase: 'idle', operationId: null, serverConfirmed: false, target: null, transferredStacks: 0, remainingStacks: null, error: null },
+      diagnostics: () => ensureManualChestStorage().diagnostics(),
+      retryClose: () => ensureManualChestStorage().retryClose(),
       cancel: reason => manualChestStorage?.cancel(reason ?? 'MANUAL_STOP') ?? { available: true, busy: false, phase: 'idle' },
       drain: () => manualChestStorage?.drain() ?? Promise.resolve()
     },
