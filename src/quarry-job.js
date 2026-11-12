@@ -80,6 +80,18 @@ const PICKUP_SPACE_ROUNDS = 5
 // Live 2026-11-12 23:42: the walk to a storage stand timed out before anything
 // was placed (storage:102); like a refused site, a new site is chosen.
 const storageMoveTimedOut = (result, cp) => result?.reason === 'quarry move: timed out' && cp?.stage === 'planned' && !(cp.placed ?? []).length
+// Live 2026-11-13 01:28 (storage:237): a refusal raised by a precondition
+// before anything was sent (not settled, face not visible, preview refused,
+// ...) is transient when the received state did not change. Codes that report
+// an unconfirmed, ambiguous or changed result are never transient.
+const NOT_TRANSIENT = /UNCONFIRMED|AMBIGUOUS|RECONCIL|INVALID|PERSISTENCE|MISMATCH|SCOPE|OWNER|ABORT|DEAD|DISCONNECT|LEGACY|EXHAUSTED|FULL|NO_DEPOSITS|CAPACITY|SLOT_REQUIRED|SOURCE_CHANGED|ITEM_CHANGED|BASELINE_CHANGED|STALE/
+const TRANSIENT_CODES = new Set(['STORAGE_SITE_CHANGED', 'STORAGE_STAND_UNCONFIRMED', 'SUPPLY_SITE_CHANGED', 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'])
+// Messages about a server result or a timeout come after something was sent.
+const AFTER_DISPATCH_TEXT = /サーバー|完了を確認できません|応答|timed out|timeout/i
+const transientReason = reason => typeof reason === 'string' && reason.length > 0 && (TRANSIENT_CODES.has(reason) || !/^[A-Z][A-Z0-9_]*$/.test(reason) && !NOT_TRANSIENT.test(reason) && !AFTER_DISPATCH_TEXT.test(reason))
+const TRANSIENT_RETRIES = 3, TRANSIENT_WAIT_MS = 1500
+const storageFingerprint = cp => JSON.stringify(cp ? [cp.stage ?? null, (cp.placed ?? []).map(p => [p.position, p.name]), (cp.deposited ?? []).map(d => [d.name, d.count]), (cp.plan ?? []).map(e => e.transferred), cp.intent?.type ?? null, !!cp.recovered, !!cp.full] : null)
+const supplyFingerprint = cp => JSON.stringify(cp ? [cp.index ?? null, (cp.withdrawn ?? []).length, (cp.returned ?? []).length, storageFingerprint(cp.child), (cp.child?.supplyCheckpoint?.withdrawn ?? []).length, (cp.child?.supplyCheckpoint?.returned ?? []).length] : null)
 const WORK_DIRT_DEMAND = 32 // dirt taken from the supply box when a seal needs it
 // Carried storage refused before any placement, deposit or move (live 2026-11-12).
 const STORAGE_SITE_RETRY_REASONS = new Set([...SUPPLY_SITE_REASONS, 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'])
@@ -2187,6 +2199,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!(await approachSupplySite(myEpoch, active))) return true
     guard(myEpoch)
     setState('RESTOCK'); await save('supply_intent')
+    const supplyPreFingerprint = supplyFingerprint(active.checkpoint), supplyPreTotals = JSON.stringify([...totals(items(guard(myEpoch)) ?? [])].sort())
     const response = await call(myEpoch, 'restock_supplies', signal => adapter.restockSupplies({ jobId: job.config.jobId, operationId: active.operationId, bindings: copy(bindings), policy: copy(policy), checkpoint: copy(active.checkpoint), canPlace: supplyCanPlace }, { signal, onCheckpoint: async checkpoint => {
       if (job !== owner || job.supplyRestock !== active || checkpoint?.jobId !== owner.config.jobId || checkpoint?.operationId !== active.operationId) throw new Error('Supply checkpoint belongs to another operation')
       active.checkpoint = copy(checkpoint); await save('supply_checkpoint')
@@ -2222,6 +2235,20 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       await save('shovel_supply_exhausted')
       setState('SURVEY')
       return true
+    }
+    // Same transient refusal rule as carried storage (2026-11-13).
+    if (response?.status === 'blocked' && transientReason(response.reason) && (active.transientRetries ?? 0) < TRANSIENT_RETRIES) {
+      const fresh = items(guard(myEpoch)), cp = active.checkpoint
+      if (fresh && supplyFingerprint(cp) === supplyPreFingerprint && JSON.stringify([...totals(fresh)].sort()) === supplyPreTotals) {
+        active.transientRetries = (active.transientRetries ?? 0) + 1
+        const untouched = supplyUntouched(cp)
+        note('supply_transient_retry', { operationId: active.operationId, attempt: active.transientRetries, reason: String(response.reason).slice(0, 160), newSite: untouched })
+        if (untouched) { active.checkpoint = null; active.approach = null }
+        await save('supply_transient_retry')
+        const until = now() + TRANSIENT_WAIT_MS
+        while (now() < until) { await sleep(100); guard(myEpoch) }
+        setState('RESTOCK'); return true
+      }
     }
     if (response?.status !== 'completed' || response.serverConfirmed !== true || !validSupplyBindings(response.bindings)) { await finish('PAUSED', 'SUPPLY_RESTOCK_BLOCKED', { pauseDetails: { reason: response?.reason ?? 'UNCONFIRMED', operationId: active.operationId } }); return true }
     job.config.inventory.supplyBoxes = copy(response.bindings)
@@ -2417,6 +2444,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const rec = recordAction({ type: 'carried_storage', operationId: active.operationId, kind: selection.kind, why: active.why })
     setState(why === 'manual' ? 'PORTABLE_STORAGE' : 'DEPOSIT')
     const callState = guard(myEpoch), startSequence = adapter.userControlInterruption?.()?.sequence ?? 0, startedAt = now()
+    const preFingerprint = storageFingerprint(active.checkpoint), preTotals = JSON.stringify([...totals(items(callState) ?? [])].sort())
     let checkpointOpen = true, checkpointTail = Promise.resolve(), checkpointFailure = null, callbackCount = 0
     const commitCheckpoint = async checkpoint => {
       if (job !== owner || job.portableStorage !== active || checkpoint?.operationId !== active.operationId || checkpoint?.jobId !== owner.config.jobId || checkpoint?.kind !== selection.kind) throw new Error('Carried storage checkpoint belongs to another operation')
@@ -2699,6 +2727,23 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         const until = now() + SUPPLY_SITE_RETRY_WAIT_MS
         while (now() < until) { await sleep(100); guard(myEpoch) }
         setState('RETURN'); return true
+      }
+      if (!callFailure && result?.status === 'blocked' && transientReason(result.reason) && (active.transientRetries ?? 0) < TRANSIENT_RETRIES) {
+        const fresh = items(guard(myEpoch)), cp = active.checkpoint
+        const owned = cp?.placed?.length === 1 ? cp.placed[0] : null, block = owned ? adapter.getBlock(owned.position.x, owned.position.y, owned.position.z) : null
+        const unchanged = fresh && storageFingerprint(cp) === preFingerprint && JSON.stringify([...totals(fresh)].sort()) === preTotals && (!owned || block?.known === true && nameOf(block) === nameOf(owned.name))
+        if (unchanged) {
+          active.transientRetries = (active.transientRetries ?? 0) + 1
+          const untouched = !(cp?.placed ?? []).length && !(cp?.deposited ?? []).length && !cp?.intent
+          const refused = untouched ? (cp?.positions ?? []).filter(p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]))) : []
+          note('storage_transient_retry', { operationId: active.operationId, attempt: active.transientRetries, reason: String(result.reason).slice(0, 160), stage: cp?.stage ?? null, newSite: untouched })
+          rec.status = 'blocked'; rec.result = copy(result)
+          if (untouched) { active.avoidPositions = [...(active.avoidPositions ?? []), ...refused].slice(-12); active.checkpoint = null }
+          await save('storage_transient_retry')
+          const until = now() + TRANSIENT_WAIT_MS
+          while (now() < until) { await sleep(100); guard(myEpoch) }
+          setState('RETURN'); return true
+        }
       }
       if (!['completed', 'full'].includes(result?.status) || result.serverConfirmed !== true || selection.kind === 'shulker' && result.recovered !== true) {
         rec.status = 'blocked'; rec.result = copy(result)
