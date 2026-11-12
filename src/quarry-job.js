@@ -2402,7 +2402,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     try {
       let callFailure = null
       try { result = await call(myEpoch, 'carried_storage', async signal => {
-        try { return await adapter.storeCarried({ jobId: owner.config.jobId, operationId: active.operationId, selection: copy(selection), deposits, inventoryPolicy: copy(inventoryPolicy()), checkpoint: copy(active.checkpoint), ...(!capacity && active.why === 'full' && passivePickup() && fullOnlyStorage() ? { allowRecoverySpace: true } : {}), ...(capacity ? { purpose: 'capacity_batch', capacityBatch: copy(active.capacityBatch) } : {}) }, {
+        try { return await adapter.storeCarried({ jobId: owner.config.jobId, operationId: active.operationId, selection: copy(selection), deposits, inventoryPolicy: copy(inventoryPolicy()), checkpoint: copy(active.checkpoint), ...(active.avoidPositions?.length && !active.checkpoint ? { avoidPositions: copy(active.avoidPositions) } : {}), ...(!capacity && active.why === 'full' && passivePickup() && fullOnlyStorage() ? { allowRecoverySpace: true } : {}), ...(capacity ? { purpose: 'capacity_batch', capacityBatch: copy(active.capacityBatch) } : {}) }, {
         signal, onCheckpoint,
         ...(capacity ? { capacityWork: (context, options) => capacityWork(myEpoch, context, options) } : {}),
         canPlace: p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 })
@@ -2573,6 +2573,21 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
           }
           note('storage_pickup_space_unconfirmed', { operationId: active.operationId, attempt: active.pickupSpaceRetries })
         }
+      }
+      // Like supplies (live 2026-11-12 21:12, chickens on the box cell): a
+      // storage operation refused before anything was placed, deposited or
+      // moved starts over at a newly chosen site, up to three times.
+      if (!['completed', 'full'].includes(result?.status) && SUPPLY_SITE_REASONS.has(result?.reason) && supplyUntouched({ child: active.checkpoint }) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
+        active.siteRetries = (active.siteRetries ?? 0) + 1
+        const refused = (active.checkpoint?.positions ?? []).filter(p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])))
+        active.avoidPositions = [...(active.avoidPositions ?? []), ...refused].slice(-12)
+        note('storage_site_retry', { operationId: active.operationId, reason: result.reason, attempt: active.siteRetries, issue: copy(active.checkpoint?.siteIssue ?? null), mobOverlap: /^ENTIT/.test(active.checkpoint?.siteIssue?.cause ?? ''), avoid: copy(refused) })
+        rec.status = 'blocked'; rec.result = copy(result)
+        active.checkpoint = null
+        await save('storage_site_retry')
+        const until = now() + SUPPLY_SITE_RETRY_WAIT_MS
+        while (now() < until) { await sleep(100); guard(myEpoch) }
+        setState('RETURN'); return true
       }
       if (!['completed', 'full'].includes(result?.status) || result.serverConfirmed !== true || selection.kind === 'shulker' && result.recovered !== true) {
         rec.status = 'blocked'; rec.result = copy(result)

@@ -288,6 +288,12 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     const stands = exactStand ? [copy(exactStand)] : []
     if (!exactStand) for (const dy of [0, 1, -1, 2, -2]) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) if (Math.hypot(dx, dz) <= 3) stands.push({ x: origin.x + dx, y: y + dy, z: origin.z + dz })
     const nearbyActors = kind === 'shulker' ? getEntities() : null, drops = new Map()
+    // Live 2026-11-12 21:12: chickens wandered onto the chosen box cell. A cell
+    // with a received live mob within 1.5 blocks is used only when no other
+    // site is available.
+    const liveMobs = (Array.isArray(nearbyActors) ? nearbyActors : getEntities() ?? []).filter(a => a?.kind === 'mob' && a.alive !== false && a.position && finite(a.position))
+    const mobNear = cells => cells.some(p => liveMobs.some(a => Math.hypot(a.position.x - (p.x + 0.5), a.position.z - (p.z + 0.5)) <= 1.5 && Math.abs(a.position.y - p.y) <= 2))
+    let mobFallback = null
     const dropCount = p => { const k = key(p); if (!drops.has(k)) drops.set(k, looseDropsNear(p, nearbyActors)); return drops.get(k) }
     stands.sort((a, b) => dropCount(a) - dropCount(b) || Math.hypot(a.x - origin.x, a.y - origin.y, a.z - origin.z) - Math.hypot(b.x - origin.x, b.y - origin.y, b.z - origin.z))
     nextStand: for (const stand of stands) {
@@ -323,9 +329,12 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         if (previewMove && !exactStand) {
           try { if (previewMove(copy(stand))?.ready !== true) { reject({ cause: 'NATIVE_ROUTE_UNAVAILABLE', position: stand }); continue nextStand } } catch { reject({ cause: 'NATIVE_ROUTE_UNAVAILABLE', position: stand }); continue nextStand }
         }
-        return { stand, positions, ...(pending.size ? { preparation: [...pending.values()].sort((a, b) => Math.hypot(a.x + 0.5 - eye.x, a.y + 0.5 - eye.y, a.z + 0.5 - eye.z) - Math.hypot(b.x + 0.5 - eye.x, b.y + 0.5 - eye.y, b.z + 0.5 - eye.z)), requiresPreparation: true } : {}) }
+        const site = { stand, positions, ...(pending.size ? { preparation: [...pending.values()].sort((a, b) => Math.hypot(a.x + 0.5 - eye.x, a.y + 0.5 - eye.y, a.z + 0.5 - eye.z) - Math.hypot(b.x + 0.5 - eye.x, b.y + 0.5 - eye.y, b.z + 0.5 - eye.z)), requiresPreparation: true } : {}) }
+        if (mobNear(positions)) { mobFallback ??= site; continue }
+        return site
       }
     }
+    if (mobFallback) return mobFallback
     const first = failures.find(d => /UNKNOWN|UNOBSERVED/.test(d.cause)) ?? failures[0]
     throw Object.assign(failure('STORAGE_SITE_UNOBSERVED', 'No nearby known storage footprint and standing cell'), { details: { cause: first?.cause ?? 'NO_SITE', position: first?.position ?? null, ...(first?.block ? { block: first.block } : {}), counts, failures } })
   }
@@ -515,7 +524,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         if (!plan.length && !supplyWork && !capacityBatch) throw failure('STORAGE_NO_DEPOSITS')
         if (supplyWork && plan.length) throw failure('STORAGE_SUPPLY_DEPOSITS_FORBIDDEN')
         if (capacityBatch && plan.length) throw failure('STORAGE_CAPACITY_DEPOSITS_FORBIDDEN')
-        cp = { version: 1, operationId: request.operationId, jobId: request.jobId, scope: initial.scope, kind: selection.kind, selectionKey: selection.key, stage: 'planned', ...planSite(initial.state, selection.kind, canPlace), sourceIdentities, plan, placed: [], deposited: [], intent: null, full: false, ...(supplyWork ? { purpose: 'supply', supplyCheckpoint: null } : {}), ...(capacityBatch ? { purpose: 'capacity_batch', capacityCheckpoint: null, capacityResult: null } : {}) }
+        cp = { version: 1, operationId: request.operationId, jobId: request.jobId, scope: initial.scope, kind: selection.kind, selectionKey: selection.key, stage: 'planned', ...planSite(initial.state, selection.kind, canPlace, Array.isArray(request.avoidPositions) ? request.avoidPositions.filter(p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]))) : []), sourceIdentities, plan, placed: [], deposited: [], intent: null, full: false, ...(supplyWork ? { purpose: 'supply', supplyCheckpoint: null } : {}), ...(capacityBatch ? { purpose: 'capacity_batch', capacityCheckpoint: null, capacityResult: null } : {}) }
         if (selection.kind === 'shulker') {
           const source = selection.sources[0], item = initial.items.find(item => item.slot === source.slot && item.name === source.name && item.count === 1 && (source.stackId == null || item.stackId === source.stackId))
           if (!item) throw failure('STORAGE_SOURCE_CHANGED')

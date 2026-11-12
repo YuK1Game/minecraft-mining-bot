@@ -248,3 +248,32 @@ test('a checkpoint write failure stops before sending any carried-container acti
   assert.equal(c.placements(), 0)
   assert.equal(f.sim.state.inventory.items.filter(i => isShulkerBox(i.name)).length, 1)
 })
+
+test('live case 2026-11-12: a storage site refused before anything was placed starts over at another site; the refused cell is avoided', async () => {
+  const f = fixture([{ name: 'shulker_box', count: 1, stackId: 14 }])
+  const refused = { x: 7, y: 63, z: 5 }
+  f.sim.adapter.storeCarried = async (request, { onCheckpoint }) => {
+    const cp = { version: 1, operationId: request.operationId, jobId: request.jobId, kind: request.selection.kind, stage: 'planned', stand: { x: 5, y: 63, z: 5 }, positions: [refused], placed: [], deposited: [], intent: null, siteIssue: { cause: 'ENTITY_OCCUPIES_OR_UNOBSERVED', position: refused, part: 'box' } }
+    await onCheckpoint(cp)
+    return { status: 'blocked', reason: 'STORAGE_SITE_CHANGED', serverConfirmed: false, checkpoint: cp }
+  }
+  const first = await f.job.storeCarriedNow({ deposits: [{ slot: 3, name: 'minecraft:cobblestone', count: 8 }] })
+  assert.notEqual(first.pauseReason, 'CARRIED_STORAGE_BLOCKED', 'an untouched site refusal is retried, not a pause')
+  assert.equal(f.job.document().portableStorage.checkpoint, null, 'started over from the beginning')
+  assert.deepEqual(f.job.document().portableStorage.avoidPositions, [refused])
+  const c = controller(f)
+  const second = await f.job.storeCarriedNow()
+  assert.equal(second.storageResult.serverConfirmed, true, JSON.stringify(second.pauseDetails))
+  assert.deepEqual(c.calls[0].avoidPositions, [refused], 'the refused cell is passed on as avoided')
+})
+
+test('live case 2026-11-12: after a placement, a site refusal still pauses', async () => {
+  const f = fixture([{ name: 'shulker_box', count: 1, stackId: 14 }])
+  f.sim.adapter.storeCarried = async (request, { onCheckpoint }) => {
+    const cp = { version: 1, operationId: request.operationId, jobId: request.jobId, kind: request.selection.kind, stage: 'placed', stand: { x: 5, y: 63, z: 5 }, positions: [{ x: 7, y: 63, z: 5 }], placed: [{ position: { x: 7, y: 63, z: 5 } }], deposited: [], intent: null }
+    await onCheckpoint(cp)
+    return { status: 'blocked', reason: 'STORAGE_SITE_CHANGED', serverConfirmed: false, checkpoint: cp }
+  }
+  const blocked = await f.job.storeCarriedNow({ deposits: [{ slot: 3, name: 'minecraft:cobblestone', count: 8 }] })
+  assert.equal(blocked.pauseReason, 'CARRIED_STORAGE_BLOCKED')
+})

@@ -349,3 +349,15 @@ test('live case 2026-11-11: a cow on the box cell before placement is waited out
     } else assert.ok(result.checkpoint.siteWaits.some(w => w.mobOverlap), 'the wait for the mob was recorded')
   }
 })
+
+test('live case 2026-11-12: a box cell with a live mob next to it is passed over for another site', async () => {
+  const base = fixture('shulker', { pickupOnMove: true }), plain = await base.run()
+  assert.equal(plain.status, 'completed', JSON.stringify(plain.reason))
+  const chosen = plain.checkpoint.positions[0]
+  let mobs = [{ kind: 'mob', name: 'minecraft:chicken', runtimeId: '77', alive: true, positionKnown: true, position: { x: chosen.x + 0.5, y: chosen.y, z: chosen.z - 0.6 } }]
+  const f = fixture('shulker', { pickupOnMove: true, entities: () => mobs })
+  const result = await f.run()
+  assert.equal(result.status, 'completed', JSON.stringify(result.reason))
+  const next = result.checkpoint.positions[0]
+  assert.ok(Math.hypot(next.x + 0.5 - mobs[0].position.x, next.z + 0.5 - mobs[0].position.z) > 1.5, 'the chosen cell is away from the chicken')
+})
