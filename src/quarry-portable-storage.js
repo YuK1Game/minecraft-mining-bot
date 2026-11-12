@@ -293,7 +293,11 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     // site is available.
     const liveMobs = (Array.isArray(nearbyActors) ? nearbyActors : getEntities() ?? []).filter(a => a?.kind === 'mob' && a.alive !== false && a.position && finite(a.position))
     const mobNear = cells => cells.some(p => liveMobs.some(a => Math.hypot(a.position.x - (p.x + 0.5), a.position.z - (p.z + 0.5)) <= 1.5 && Math.abs(a.position.y - p.y) <= 2))
-    let mobFallback = null
+    let mobFallback = null, dropFallback = null
+    // Live 2026-11-12 21:52: loose drops lay on the refused box cell. A cell
+    // with a received drop on it is tried after clean cells.
+    const liveDrops = (Array.isArray(nearbyActors) ? nearbyActors : getEntities() ?? []).filter(a => a?.kind === 'item' && a.alive !== false && a.position && finite(a.position))
+    const dropOn = cells => cells.some(p => liveDrops.some(a => a.position.x >= p.x - 0.2 && a.position.x <= p.x + 1.2 && a.position.z >= p.z - 0.2 && a.position.z <= p.z + 1.2 && a.position.y >= p.y - 0.5 && a.position.y <= p.y + 1.5))
     const dropCount = p => { const k = key(p); if (!drops.has(k)) drops.set(k, looseDropsNear(p, nearbyActors)); return drops.get(k) }
     stands.sort((a, b) => dropCount(a) - dropCount(b) || Math.hypot(a.x - origin.x, a.y - origin.y, a.z - origin.z) - Math.hypot(b.x - origin.x, b.y - origin.y, b.z - origin.z))
     nextStand: for (const stand of stands) {
@@ -331,9 +335,11 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         }
         const site = { stand, positions, ...(pending.size ? { preparation: [...pending.values()].sort((a, b) => Math.hypot(a.x + 0.5 - eye.x, a.y + 0.5 - eye.y, a.z + 0.5 - eye.z) - Math.hypot(b.x + 0.5 - eye.x, b.y + 0.5 - eye.y, b.z + 0.5 - eye.z)), requiresPreparation: true } : {}) }
         if (mobNear(positions)) { mobFallback ??= site; continue }
+        if (dropOn(positions)) { dropFallback ??= site; continue }
         return site
       }
     }
+    if (dropFallback) return dropFallback
     if (mobFallback) return mobFallback
     const first = failures.find(d => /UNKNOWN|UNOBSERVED/.test(d.cause)) ?? failures[0]
     throw Object.assign(failure('STORAGE_SITE_UNOBSERVED', 'No nearby known storage footprint and standing cell'), { details: { cause: first?.cause ?? 'NO_SITE', position: first?.position ?? null, ...(first?.block ? { block: first.block } : {}), counts, failures } })
@@ -643,9 +649,18 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
               if (replannable) return result('replan', 'STORAGE_PLACEMENT_NOT_SETTLED')
               throw failure('STORAGE_PLACEMENT_NOT_SETTLED')
             }
-            cp.placementPreparation = copy(proof)
+            // Saved at once: a later refusal (live 2026-11-12 21:52, preview
+            // rejected) must not return an unsaved checkpoint.
+            cp.placementPreparation = copy(proof); await save(); guard()
             const issue = cellIssue(position, current.state, canPlace, cp.positions)
-            if (issue) throw failure('STORAGE_SITE_CHANGED')
+            if (issue) {
+              // Live 2026-11-12 21:48: this refusal returned a checkpoint that
+              // differed from the last saved one (STORAGE_FINAL_CHECKPOINT_CHANGED).
+              // Save what changed so the job can choose another site.
+              cp.siteIssue = { ...copy(issue), at: now(), afterPreparation: true }
+              try { await save() } catch {}
+              throw failure('STORAGE_SITE_CHANGED')
+            }
           }
           if (typeof interactions.previewPlace === 'function') {
             const preview = interactions.previewPlace({ position: copy(position), slot: item.slot, face: 1, ...(cp.kind === 'double_chest' ? { alignFacing: true } : {}) })
@@ -658,6 +673,10 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
                 cp.rejectedPlacementSites = rejected; cp.stage = 'planned'; cp.intent = null; cp.stand = site.stand; cp.positions = site.positions
                 await save(); return result('replan', 'STORAGE_PLACEMENT_PREVIEW_REJECTED')
               }
+              // Keep the refusal text in the job record (live 2026-11-12 21:52
+              // it was lost), before anything is placed.
+              cp.previewRejection = { position: copy(position), stand: copy(cp.stand), errors: (Array.isArray(preview?.errors) ? preview.errors : []).slice(0, 4).map(e => String(e).slice(0, 200)), at: now() }
+              try { await save() } catch {}
               throw failure('STORAGE_PLACEMENT_PREVIEW_REJECTED', preview?.errors?.join(' / ') ?? 'Placement preview refused before intent')
             }
           }

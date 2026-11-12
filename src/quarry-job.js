@@ -75,6 +75,8 @@ const SUPPLY_ROOM_MAX_ATTEMPTS = 2
 // a few times, instead of pausing the job.
 const SUPPLY_SITE_REASONS = new Set(['STORAGE_SITE_CHANGED', 'STORAGE_STAND_UNCONFIRMED', 'SUPPLY_SITE_CHANGED'])
 const SUPPLY_SITE_RETRIES = 3, SUPPLY_SITE_RETRY_WAIT_MS = 3000
+// Carried storage refused before any placement, deposit or move (live 2026-11-12).
+const STORAGE_SITE_RETRY_REASONS = new Set([...SUPPLY_SITE_REASONS, 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'])
 const PICKUP_XZ = 1.3 // half player width 0.3 + 1 block reach for item pickup
 const ACTIVE = new Set(['PREFLIGHT', 'SURVEY', 'PLAN', 'MOVE', 'MINE', 'COLLECT', 'RETURN', 'DEPOSIT', 'PORTABLE_STORAGE', 'RESTOCK', 'HAZARD', 'RECOVER', 'SUSPEND_FOR_COMBAT', 'COMBAT', 'COMBAT_SETTLE', 'RECOVER_AFTER_COMBAT', 'RECONCILE', 'FINAL_CHECK', 'EGRESS', 'DISCONNECTED'])
 const RESULT = new Set(['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS', 'PAUSED', 'CANCELLED', 'FAILED'])
@@ -2413,7 +2415,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       guard(myEpoch, { combat: false })
       if (checkpointFailure) throw checkpointFailure
       if (result?.checkpoint) {
-        if (callbackCount && !isDeepStrictEqual(result.checkpoint, active.checkpoint)) throw new Error('STORAGE_FINAL_CHECKPOINT_CHANGED')
+        if (callbackCount && !isDeepStrictEqual(result.checkpoint, active.checkpoint)) {
+          const fin = result.checkpoint ?? {}, saved = active.checkpoint ?? {}
+          note('storage_checkpoint_mismatch', { operationId: active.operationId, status: result.status, reason: result.reason, fields: [...new Set([...Object.keys(fin), ...Object.keys(saved)])].filter(k => !isDeepStrictEqual(fin[k], saved[k])).map(k => ({ field: k, saved: JSON.stringify(saved[k] ?? null).slice(0, 160), final: JSON.stringify(fin[k] ?? null).slice(0, 160) })) })
+          throw new Error('STORAGE_FINAL_CHECKPOINT_CHANGED')
+        }
         if (!isDeepStrictEqual(result.checkpoint, active.checkpoint)) await commitCheckpoint(result.checkpoint)
       }
       guard(myEpoch, { combat: false })
@@ -2577,11 +2583,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       // Like supplies (live 2026-11-12 21:12, chickens on the box cell): a
       // storage operation refused before anything was placed, deposited or
       // moved starts over at a newly chosen site, up to three times.
-      if (!['completed', 'full'].includes(result?.status) && SUPPLY_SITE_REASONS.has(result?.reason) && supplyUntouched({ child: active.checkpoint }) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
+      if (!['completed', 'full'].includes(result?.status) && STORAGE_SITE_RETRY_REASONS.has(result?.reason) && supplyUntouched({ child: active.checkpoint }) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
         active.siteRetries = (active.siteRetries ?? 0) + 1
         const refused = (active.checkpoint?.positions ?? []).filter(p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])))
         active.avoidPositions = [...(active.avoidPositions ?? []), ...refused].slice(-12)
-        note('storage_site_retry', { operationId: active.operationId, reason: result.reason, attempt: active.siteRetries, issue: copy(active.checkpoint?.siteIssue ?? null), mobOverlap: /^ENTIT/.test(active.checkpoint?.siteIssue?.cause ?? ''), avoid: copy(refused) })
+        note('storage_site_retry', { operationId: active.operationId, reason: result.reason, attempt: active.siteRetries, issue: copy(active.checkpoint?.siteIssue ?? null), mobOverlap: /^ENTIT/.test(active.checkpoint?.siteIssue?.cause ?? ''), previewRejection: copy(active.checkpoint?.previewRejection ?? null), avoid: copy(refused) })
         rec.status = 'blocked'; rec.result = copy(result)
         active.checkpoint = null
         await save('storage_site_retry')
