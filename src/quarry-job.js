@@ -77,6 +77,9 @@ const SUPPLY_SITE_REASONS = new Set(['STORAGE_SITE_CHANGED', 'STORAGE_STAND_UNCO
 const SUPPLY_SITE_RETRIES = 3, SUPPLY_SITE_RETRY_WAIT_MS = 3000
 // Pick-up-then-top-up rounds before an owned box is recovered (bounded).
 const PICKUP_SPACE_ROUNDS = 5
+// Live 2026-11-12 23:42: the walk to a storage stand timed out before anything
+// was placed (storage:102); like a refused site, a new site is chosen.
+const storageMoveTimedOut = (result, cp) => result?.reason === 'quarry move: timed out' && cp?.stage === 'planned' && !(cp.placed ?? []).length
 const WORK_DIRT_DEMAND = 32 // dirt taken from the supply box when a seal needs it
 // Carried storage refused before any placement, deposit or move (live 2026-11-12).
 const STORAGE_SITE_RETRY_REASONS = new Set([...SUPPLY_SITE_REASONS, 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'])
@@ -2622,7 +2625,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       // Like supplies (live 2026-11-12 21:12, chickens on the box cell): a
       // storage operation refused before anything was placed, deposited or
       // moved starts over at a newly chosen site, up to three times.
-      if (!['completed', 'full'].includes(result?.status) && STORAGE_SITE_RETRY_REASONS.has(result?.reason) && supplyUntouched({ child: active.checkpoint }) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
+      if (!['completed', 'full'].includes(result?.status) && (STORAGE_SITE_RETRY_REASONS.has(result?.reason) || storageMoveTimedOut(result, active.checkpoint)) && supplyUntouched({ child: active.checkpoint }) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
         active.siteRetries = (active.siteRetries ?? 0) + 1
         const refused = (active.checkpoint?.positions ?? []).filter(p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])))
         active.avoidPositions = [...(active.avoidPositions ?? []), ...refused].slice(-12)
