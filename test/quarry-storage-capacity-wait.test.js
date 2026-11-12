@@ -9,6 +9,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
 const { setImmediate: turn } = require('node:timers/promises')
+const { createQuarryJob } = require('../src/quarry-job')
 
 // Reuse the open-retry fixture (a confirmed placed box in a paused job) with a scripted storeCarried.
 const file = path.resolve(__dirname, 'quarry-storage-open-retry.test.js'), loaded = new Module(file, module)
@@ -17,6 +18,7 @@ const src = fs.readFileSync(file, 'utf8').split('\ntest(')[0]
   .replace("      const result = await h.runner.storeCarried(request, options)", "      const result = scripted ? scripted(calls.length) : await h.runner.storeCarried(request, options)")
   .replace("async function fixture ({ failOpens = Infinity,", "async function fixture ({ scripted = null, capacityRetryMs, failOpens = Infinity,")
   .replace("  job = createQuarryJob({ adapter, pollMs: 5,", "  job = createQuarryJob({ adapter, pollMs: 5, ...(capacityRetryMs ? { capacityRetryMs } : {}),")
+  .replace('  return { h, sim, job, op,', '  return { adapter, h, sim, job, op,')
 loaded._compile(src + '\nmodule.exports = { fixture, until }\n', file)
 const { fixture, until } = loaded.exports
 
@@ -41,4 +43,23 @@ test('other storage blocks are not retried automatically', async () => {
   await new Promise(resolve => setTimeout(resolve, 60))
   assert.equal(h.calls.length, 1)
   await h.cleanup()
+})
+
+test('live case 2026-11-12: a hot reload retires the pending retry of the old instance and the new instance schedules it again', async () => {
+  const h = await fixture({ scripted: () => blocked(), capacityRetryMs: 10 })
+  h.job.resume()
+  await until(h, () => h.calls.length >= 1 && h.job.status().state === 'PAUSED')
+  const retired = h.job.retire()
+  assert.equal(retired.pendingAutoResume, true)
+  assert.equal(retired.pauseReason, 'CARRIED_STORAGE_BLOCKED')
+  await new Promise(resolve => setTimeout(resolve, 60))
+  assert.equal(h.calls.length, 1, 'the retired instance never resumes its old job')
+  assert.equal(h.job.rescheduleAutoResume(), false, 'a retired instance cannot schedule again')
+  const next = createQuarryJob({ adapter: h.adapter, pollMs: 5, capacityRetryMs: 10, storage: { save: async () => {} } })
+  next.load(h.job.document())
+  assert.equal(next.rescheduleAutoResume(), true)
+  await until({ job: next }, () => h.calls.length >= 2 && next.status().state === 'PAUSED')
+  assert.equal(h.calls.length >= 2, true, 'the new instance resumed the job')
+  next.retire()
+  await next.drain()
 })

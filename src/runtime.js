@@ -7116,6 +7116,12 @@ function createRuntime (host) {
     resumeSafety()
     if (raw().phase === 'spawned' && host.shared.loadingScreenEnded) startIdle()
     maybeRestoreQuarryJob()
+    // A pending automatic retry of the replaced instance is scheduled again here.
+    if (host.shared.quarryRetryAfterReload && quarryPorts && raw().phase === 'spawned' && host.shared.loadingScreenEnded && !raw().spawnPending) {
+      const pending = host.shared.quarryRetryAfterReload
+      host.shared.quarryRetryAfterReload = null
+      try { const job = ensureQuarryJob(), s = job.status(); if (s.jobId === pending.jobId && s.state === 'PAUSED' && s.pauseReason === pending.pauseReason) job.rescheduleAutoResume() } catch (error) { host.shared.quarryLoadError = String(error.message).slice(0, 200) }
+    }
     // A quarry job paused only by a hot reload resumes once on the new code.
     if (host.shared.quarryAutoResume && quarryPorts && raw().phase === 'spawned' && host.shared.loadingScreenEnded && !raw().spawnPending) {
       host.shared.quarryAutoResume = false
@@ -7312,6 +7318,8 @@ function createRuntime (host) {
       const resetDrain = loadoutReset?.drain()
       if (quarryJob?.holdsWork()) { try { await quarryJob.pause('PROCESS_RESTARTED'); host.shared.quarryAutoResume = true } catch {} }
       try { const doc = quarryJob?.document(); if (doc) host.shared.quarryDocument = doc } catch {}
+      // The old instance's pending automatic retry is cancelled and handed to the new code.
+      try { const retired = quarryJob?.retire?.(); host.shared.quarryRetryAfterReload = retired?.pendingAutoResume ? { jobId: retired.jobId, pauseReason: retired.pauseReason } : null } catch {}
       const memoryFlush = missionJournal.close()
       depotPrebuild?.cancel('Runtime reload')
       const depotFlush = depotMission?.close()
