@@ -261,10 +261,6 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     }
     const floor = supportIssue(read, p)
     if (floor) return floor
-    // Live 2026-11-13 00:17: the preview refused a box cell whose floor was
-    // not ordinary ground. Candidates use the preview's own floor rule.
-    const below = { x: p.x, y: p.y - 1, z: p.z }, belowBlock = read(below)
-    if (!placementSupportOk(belowBlock)) return { cause: 'BOX_FLOOR_NOT_PLACEABLE', position: below, part: 'support', ...describeBlock(belowBlock) }
     if (overlaps(p, { self: true, position: state.position })) return { cause: 'SELF_OCCUPIES_BOX', position: p, part: 'box' }
     const actors = getEntities()
     if (!Array.isArray(actors)) return { cause: 'ENTITIES_UNOBSERVED', position: p, part: 'box' }
@@ -331,6 +327,13 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         if (positions.some(p => rejected.has(key(p)))) { reject({ cause: 'PREVIOUSLY_REJECTED_SITE', position: first }); continue }
         const issue = positions.map(p => cellIssue(p, proposedState, allowed, [], prepare)).find(Boolean)
         if (issue) { reject(issue); continue }
+        // Live 2026-11-13 00:17: the placement preview refused a chosen box cell
+        // whose floor was not ordinary ground. Choosing a site (not checking one
+        // exact supply stand) uses the preview's own floor rule.
+        if (!exactStand) {
+          const bad = positions.find(p => !placementSupportOk(read({ x: p.x, y: p.y - 1, z: p.z })))
+          if (bad) { const below = { x: bad.x, y: bad.y - 1, z: bad.z }; reject({ cause: 'BOX_FLOOR_NOT_PLACEABLE', position: below, part: 'support', ...describeBlock(read(below)) }); continue }
+        }
         if (positions.some(p => Math.hypot(p.x + 0.5 - eye.x, p.y - eye.y, p.z + 0.5 - eye.z) > 4.5)) { reject({ cause: 'BOX_OUT_OF_REACH', position: first }); continue }
         if (!positions.every(p => canSeePlacementFloor(read, eye, p, { plannedClearance: prepare }))) { reject({ cause: 'PLACEMENT_SIGHT_BLOCKED', position: first }); continue }
         if (positions.length === 2 && (!heading(eye, first) || heading(eye, first) !== heading(eye, positions[1]))) continue
