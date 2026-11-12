@@ -64,7 +64,10 @@ function createStoragePlacementAudit ({ client, getState, now = Date.now, timeou
       if (signal?.aborted) { request.abort(); return }
       try {
         client.queue('command_request', {
-          command: `/testforblock ${target.x} ${target.y} ${target.z} minecraft:air`,
+          // Inverted (2026-11-13): only failure replies, which the Realm sends with
+          // the gamerule sendcommandfeedback false. Air: the inner testfor finds no
+          // target (rm = 1000000). Not air: the execute condition is false.
+          command: `/execute if block ${target.x} ${target.y} ${target.z} air run testfor @s[rm=1000000]`,
           origin: { type: 'player', uuid: id, request_id: '', player_entity_id: 0n },
           internal: false, version: 'latest'
         })
@@ -89,17 +92,22 @@ function createStoragePlacementAudit ({ client, getState, now = Date.now, timeou
     const origin = packet.origin
     const schema = origin.type === 'player' && typeof origin.request_id === 'string' && int64(origin.player_entity_id) &&
       typeof packet.output_type === 'string' && typeof packet.has_data === 'boolean' && (!packet.has_data || typeof packet.data === 'string') &&
-      Number.isInteger(packet.success_count) && packet.success_count >= 0 && packet.success_count <= 0xffffffff && Array.isArray(packet.output) && packet.output.length === 1
+      Number.isInteger(packet.success_count) && packet.success_count >= 0 && packet.success_count <= 0xffffffff && Array.isArray(packet.output) && packet.output.length >= 1 && packet.output.length <= 2
     const output = schema ? packet.output[0] : null
-    const parameters = output && Array.isArray(output.parameters) && output.parameters.length === 3 &&
-      output.parameters.every((value, index) => typeof value === 'string' && value === String(request.position[['x', 'y', 'z'][index]]))
-    if (schema && packet.success_count === 1 && output?.success === true && messageKey(output.message_id) === 'commands.testforblock.success' && parameters) {
+    const strings = o => o && Array.isArray(o.parameters) && o.parameters.every(p => typeof p === 'string')
+    // Recorded on the live Realm (2026-11-13, sendcommandfeedback false):
+    // air -> [commands.generic.noTargetMatch [], commands.execute.failed [testfor, <player>]]
+    // not air -> [commands.execute.falseCondition [if, block]]. Anything else (a success
+    // reply included: the inversion no longer holds) is unconfirmed.
+    const air = schema && packet.success_count === 0 && packet.output.length === 2 && output?.success === false && messageKey(output.message_id) === 'commands.generic.noTargetMatch' && strings(output) && output.parameters.length === 0 &&
+      packet.output[1]?.success === false && messageKey(packet.output[1].message_id) === 'commands.execute.failed' && strings(packet.output[1]) && packet.output[1].parameters.length === 2 && packet.output[1].parameters[0] === 'testfor'
+    if (air) {
       finish(request, {
         serverConfirmed: true, kind: KIND, scope: request.scope, position: copy(request.position),
         requestId: request.id, operationId: request.operationId, startedAt: request.startedAt, receivedAt
       })
     } else {
-      const notAir = schema && packet.success_count === 0 && output?.success === false && messageKey(output.message_id) === 'commands.testforblock.failed.tile'
+      const notAir = schema && packet.success_count === 0 && packet.output.length === 1 && output?.success === false && messageKey(output.message_id) === 'commands.execute.falseCondition' && strings(output) && output.parameters.length === 2 && output.parameters[0] === 'if' && output.parameters[1] === 'block'
       fail(request, notAir ? 'STORAGE_TARGET_NOT_AIR' : packet.success_count === 0 ? 'STORAGE_AIR_COMMAND_REJECTED' : 'STORAGE_AIR_OUTPUT_UNCONFIRMED', output?.message_id)
     }
     return true
