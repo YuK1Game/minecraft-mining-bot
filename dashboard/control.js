@@ -162,9 +162,9 @@
     return Number(el.value)
   }
   function config () {
-    return { x1: number('x1'), z1: number('z1'), x2: number('x2', true), z2: number('z2', true), top: number('top', true), bottom: number('bottom', true), pickupMode: $('pickup').value }
+    return { x1: number('x1'), z1: number('z1'), x2: number('x2', true), z2: number('z2', true), top: number('top', true), bottom: number('bottom', true) }
   }
-  const fields = ['x1', 'z1', 'x2', 'z2', 'top', 'bottom', 'pickup']
+  const fields = ['x1', 'z1', 'x2', 'z2', 'top', 'bottom']
   function invalidate (keepGrid = false) { plan = null; version++; if (!keepGrid) gridOrigin = null; $('plan-results').hidden = true; message('action', ''); render() }
   for (const field of fields) $(field).addEventListener('input', () => { $(field).removeAttribute('aria-invalid'); invalidate() })
   function selectArea (x, z, size = preset, keepGrid = false) {
@@ -263,15 +263,15 @@
     const live = current?.live, r = live?.loadout
     const idleJob = !live?.quarry || ['IDLE', 'PAUSED', 'FINISHED'].includes(live.quarry.state)
     $('reset').disabled = !!busy || !token || !live?.ready || !r || r.busy || !idleJob
-    $('reset').textContent = r?.busy ? '↻ リセット中' : '↻ 初期セット'
+    $('reset').textContent = r?.busy ? 'デバッグチェスト設置中' : 'デバッグチェスト設置'
     $('reset-confirm').disabled = !!busy || !resetPreview || resetPreview.expiresAt <= Date.now() || resetPreview.session !== live?.session
-    if (resetPreview && (resetPreview.session !== live?.session || resetPreview.expiresAt <= Date.now())) { closeReset(); message('reset', '確認が失効しました。初期セットを確認し直してください。', true) }
+    if (resetPreview && (resetPreview.session !== live?.session || resetPreview.expiresAt <= Date.now())) { closeReset(); message('reset', '確認が失効しました。デバッグチェストの設置を確認し直してください。', true) }
     $('reset-progress').hidden = !r || r.phase === 'idle'
     $('reset-progress').classList.toggle('failed', r?.phase === 'failed')
     $('reset-progress').classList.toggle('running', r?.busy === true)
     $('reset-stop').hidden = r?.busy !== true
     $('reset-icon').textContent = r?.busy ? '↻' : r?.serverConfirmed ? '✓' : '!'
-    $('reset-state').textContent = r?.busy ? r.step || '開始確認中' : r?.serverConfirmed ? '初期セット確認済み' : r?.phase === 'failed' ? 'リセット未完了' : ''
+    $('reset-state').textContent = r?.busy ? r.step || '開始確認中' : r?.serverConfirmed ? 'デバッグチェスト設置済み' : r?.phase === 'failed' ? 'チェスト設置未完了' : ''
     $('reset-detail').textContent = r?.error ? clean(r.error.message) + (r.stage ? ` / 一時箱 ${r.stage.x}, ${r.stage.y}, ${r.stage.z}` : '') : r?.supplyProgress ? `${r.supplyProgress.role}  ${r.supplyProgress.filled} / 27  ·  補給箱 ${r.suppliesCompleted} / 4` : ''
   }
   $('reset').addEventListener('click', () => {
