@@ -11,7 +11,7 @@ const { validateJobId, newJobId, worldIdentity, assertJobWorld, documentInstance
 const { buildRegions, permits, chunkBounds } = require('./quarry-region')
 const { createQuarryPlanner } = require('./quarry-planner')
 const { blockRule, nameOf, selectTool, toolState, AIR, SEAL_MATERIALS } = require('./quarry-rules')
-const { keepPlan, canAccept, totals, diff, createLedger, freeSlots, isFood, selectCarriedStorage, isShulkerBox, carriedContainerKey } = require('./quarry-inventory')
+const { keepPlan, canAccept, dropsFittingStacks, totals, diff, createLedger, freeSlots, isFood, selectCarriedStorage, isShulkerBox, carriedContainerKey } = require('./quarry-inventory')
 const { createQuarryCombatBridge } = require('./quarry-combat-bridge')
 const { miningUsesAfterExitReserve } = require('./quarry-exit-reserve')
 const { normalizeExit, dirtCount, planQuarryExit } = require('./quarry-exit-plan')
@@ -2404,7 +2404,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     try {
       let callFailure = null
       try { result = await call(myEpoch, 'carried_storage', async signal => {
-        try { return await adapter.storeCarried({ jobId: owner.config.jobId, operationId: active.operationId, selection: copy(selection), deposits, inventoryPolicy: copy(inventoryPolicy()), checkpoint: copy(active.checkpoint), ...(active.avoidPositions?.length && !active.checkpoint ? { avoidPositions: copy(active.avoidPositions) } : {}), ...(!capacity && active.why === 'full' && passivePickup() && fullOnlyStorage() ? { allowRecoverySpace: true } : {}), ...(capacity ? { purpose: 'capacity_batch', capacityBatch: copy(active.capacityBatch) } : {}) }, {
+        try { return await adapter.storeCarried({ jobId: owner.config.jobId, operationId: active.operationId, selection: copy(selection), deposits, inventoryPolicy: copy(inventoryPolicy()), checkpoint: copy(active.checkpoint), ...(active.avoidPositions?.length && !active.checkpoint ? { avoidPositions: copy(active.avoidPositions) } : {}), ...(!capacity && active.why === 'full' && passivePickup() && fullOnlyStorage() ? { allowRecoverySpace: true, ...(Number.isSafeInteger(active.pickupSpaceRetries) && active.pickupSpaceRetries > 0 ? { recoverySpaceRounds: active.pickupSpaceRetries } : {}) } : {}), ...(capacity ? { purpose: 'capacity_batch', capacityBatch: copy(active.capacityBatch) } : {}) }, {
         signal, onCheckpoint,
         ...(capacity ? { capacityWork: (context, options) => capacityWork(myEpoch, context, options) } : {}),
         canPlace: p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 })
@@ -2546,9 +2546,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (!callFailure && !capacity && passivePickup() && fullOnlyStorage() && active.why === 'full' && result?.status === 'blocked' && result.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED' && stopped?.kind === 'owned_box_pickup_capacity' && stopped.phase === 'before_packing' && cp?.kind === 'shulker' && cp.purpose == null && cp.stage === 'depositing' && cp.intent == null && cp.expectedContents == null && cp.full !== true && cp.recovered == null && cp.positions?.length === 1 && cp.placed?.length === 1 && owned?.confirmedBy === 'server_block_and_inventory' && samePoint(owned.position, cp.positions[0]) && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => Number.isSafeInteger(entry.count) && entry.count > 0 && entry.transferred === entry.count) && openRetryScope && Number.isSafeInteger(pickupRetries) && pickupRetries >= 0 && pickupRetries < 3 && Array.isArray(pickupDrops) && pickupDrops.length > 0 && pickupDrops.length <= 16) {
         const inventory = items(guard(myEpoch))
         const allowedDrops = pickupDrops.filter(drop => typeof drop.runtimeId === 'string' && /^\d{1,20}$/.test(drop.runtimeId) && typeof drop.name === 'string' && !isShulkerBox(drop.name) && !['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(blockRule(drop.name).reason))
-        const ids = [...new Set(allowedDrops.map(drop => drop.runtimeId))]
+        // Live 2026-11-12 22:30: collecting merge-only drops overflowed into a
+        // new stack and took the box's slot. Take only drops whose counts fit the
+        // received room of existing plain stacks.
+        const fitting = inventory ? dropsFittingStacks(inventory, allowedDrops) : []
+        if (fitting.length < allowedDrops.length) note('storage_pickup_space_limited', { operationId: active.operationId, offered: allowedDrops.length, fitting: fitting.length })
+        const ids = [...new Set(fitting.map(drop => drop.runtimeId))]
         if (inventory && freeSlots(inventory) > 0 && ids.length && await reserveStorageRecovery(myEpoch, owner, active, cp, 'STORAGE_PICKUP_CAPACITY_REQUIRED')) {
-          const baseline = totals(inventory), targetNames = new Set(allowedDrops.map(drop => nameOf(drop.name)))
+          const baseline = totals(inventory), targetNames = new Set(fitting.map(drop => nameOf(drop.name)))
           const requireOwner = () => {
             const current = guard(myEpoch)
             if (job !== owner || job.portableStorage !== active || active.checkpoint !== cp) throw new QuarryInterrupt('STORAGE_CHECKPOINT_CHANGED')
