@@ -1,9 +1,9 @@
 'use strict'
 
-// Explicit operator debug reset: prepare a double chest, not the Bot's bag.
+// Explicit operator debug reset: clear the Bot, then prepare a double chest.
 // Game play (excavation, storage, combat, return) never calls this controller.
-// The only temporary player item is one bow in a previously verified EMPTY
-// hotbar, enchanted then deposited by a normal, receipt-checked chest request.
+// A fresh destructive confirmation is required. Empty inventory/equipment and
+// the temporary enchanted bow are verified from actual server observations.
 const { randomUUID, createHash } = require('node:crypto')
 const { observedScope } = require('./server-position-verifier')
 const { chunkOf, chunkBounds } = require('./quarry-region')
@@ -18,10 +18,11 @@ const isAir = block => block?.known === true && /^minecraft:(?:air|cave_air|void
 const isFloor = b => b?.known === true && b.boundingBox === 'block' && !b.extra?.length && !/water|lava|magma|fire|powder_snow|scaffolding|cactus/.test(b.name??'')
 const same = (a,b) => a && b && key(a)===key(b)
 const known = item => item?.known === true && !item.empty && typeof item.name === 'string' && item.count > 0
-const fullView = view => view?.known===true && Array.isArray(view.slots) && view.slots.length===36 &&
-  view.slots.every(x=>x?.known===true) && view.armor?.known===true && view.armor.slots?.length===4 &&
+const mainView = view => view?.known===true && view.uncertain!==true && Array.isArray(view.slots) && view.slots.length===36 && view.slots.every(x=>x?.known===true)
+const fullView = view => mainView(view) && view.armor?.known===true && view.armor.slots?.length===4 &&
   view.armor.slots.every(x=>x?.known===true) && view.offhand?.known===true && view.offhand.slots?.[0]?.known===true
-const emptyBot = v => fullView(v) && v.slots.every(x=>x.empty) && v.armor.slots.every(x=>x.empty) && v.offhand.slots[0].empty
+const emptySlot = row => row?.known===true && row.empty===true && row.count===0
+const emptyBot = v => fullView(v) && v.slots.every(emptySlot) && v.armor.slots.every(emptySlot) && emptySlot(v.offhand.slots[0])
 const vec = p => p && ['x','y','z'].every(n=>Number.isSafeInteger(p[n])&&Math.abs(p[n])<30000000)
 const ROLE_ORDER = ['pickaxe','shovel','dirt','totem']
 const CARGO_NAME = 'minecraft:purple_shulker_box'
@@ -39,21 +40,25 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
   const required=['getState','getView','getBlock','assertIdle','acquire','release','cancelJob','save','load','select','open','close','deposit','container','cancelTransfers']
   if(required.some(k=>typeof adapter?.[k]!=='function')||typeof commands?.send!=='function')throw TypeError('V22 reset requires receipt-backed server ports')
   let preview=null,active=null,task=null,result=null,lastError=null,abort=null,acquisition=null
+  const jobIdentity = () => adapter.jobIdentity?.() ?? null
+  const sameIdentity = (a,b) => a===undefined||b===undefined ? a===b : stamp(a)===stamp(b)
+  const fingerprint = view => stamp({slots:view.slots,armor:view.armor,offhand:view.offhand})
   function scene () {
     const s=adapter.getState(), scope=observedScope(s)
     if(!scope||s.phase!=='spawned'||s.dead||s.isDead||!(s.health>0)||s.dimension!=='overworld'||!['survival',0].includes(s.gameMode)||!s.position)throw fail('RESET_NOT_READY')
     const feet={x:Math.floor(s.position.x),y:Math.floor(s.position.y-1.62+0.001),z:Math.floor(s.position.z)}
     if(!vec(feet)||!isAir(adapter.getBlock(feet.x,feet.y,feet.z))||!isAir(adapter.getBlock(feet.x,feet.y+1,feet.z))||!isFloor(adapter.getBlock(feet.x,feet.y-1,feet.z)))throw fail('RESET_UNSAFE_STANCE')
     const view=adapter.getView()
-    if(!fullView(view)||s.inventory?.uncertain)throw fail('RESET_INVENTORY_UNKNOWN')
+    if(!mainView(view)||s.inventory?.uncertain)throw fail('RESET_INVENTORY_UNKNOWN')
     return {s,scope,feet,view}
   }
   function site ({feet},registered=null) {
     if(registered && registered.position && registered.other && registered.stage && registered.stand) {
       if(!vec(registered.position)||!vec(registered.other)||!vec(registered.stage)||!same(registered.stand,feet))throw fail('RESET_SITE_REACHABILITY_CHANGED')
-      const both=[registered.position,registered.other].every(p=>adapter.getBlock(p.x,p.y,p.z)?.name==='minecraft:chest')
+      const both=[registered.position,registered.other].every(p=>{const block=adapter.getBlock(p.x,p.y,p.z);return block?.known===true&&block.name==='minecraft:chest'&&!block.extra?.length})
       if(!both)throw fail('RESET_REGISTERED_CHEST_CHANGED')
-      if(!isAir(adapter.getBlock(registered.stage.x,registered.stage.y,registered.stage.z)))throw fail('RESET_STAGING_UNSAFE')
+      if(!isAir(adapter.getBlock(registered.stage.x,registered.stage.y,registered.stage.z))||
+        ![registered.position,registered.other,registered.stage].every(p=>isFloor(adapter.getBlock(p.x,p.y-1,p.z))&&isAir(adapter.getBlock(p.x,p.y+1,p.z))))throw fail('RESET_STAGING_UNSAFE')
       return {...copy(registered),existing:true}
     }
     const chunk=chunkOf(feet.x,feet.z),bounds=chunkBounds(chunk), inside=p=>p.x>=bounds.xMin&&p.x<=bounds.xMax&&p.z>=bounds.zMin&&p.z<=bounds.zMax
@@ -73,20 +78,26 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
     if(task)throw fail('RESET_BUSY')
     adapter.assertIdle()
     const snap=scene()
-    if(!emptyBot(snap.view))throw fail('RESET_BOT_INVENTORY_NOT_EMPTY')
+    const generation=adapter.generation?.()??0,job=copy(jobIdentity())
     const prior=await adapter.load()
     if(prior && prior.world===worldOf(snap.s) && prior.phase!=='completed' && prior.phase!=='idle')throw fail('RESET_RECOVERY_REQUIRED',{stage:prior.home?.stage,operationId:prior.operationId})
-    const home=site(snap,prior?.phase==='completed'&&prior.world===worldOf(snap.s)?prior.home:null)
+    const home=site(snap,prior?.phase==='completed'&&prior.world===worldOf(snap.s)&&same(prior.home?.stand,snap.feet)?prior.home:null)
+    const after=scene()
+    if(after.scope!==snap.scope||!same(after.feet,snap.feet)||fingerprint(after.view)!==fingerprint(snap.view)||(adapter.generation?.()??0)!==generation||!sameIdentity(jobIdentity(),job)||siteIdentity(site(after,home.existing?home:null))!==siteIdentity(home))throw fail('RESET_PREVIEW_STALE')
     preview={token:uuid(),expiresAt:now()+120000,scope:snap.scope,world:worldOf(snap.s),home,feet:snap.feet,
-      fingerprint:stamp({slots:snap.view.slots,armor:snap.view.armor,offhand:snap.view.offhand}),
-      generation:adapter.generation?.()??0}
+      fingerprint:fingerprint(snap.view),jobIdentity:job,generation}
     return {token:preview.token,expiresAt:preview.expiresAt,target:{player:snap.s.playerName??snap.s.profile,realm:snap.s.realm?.name??'',realmId:String(snap.s.realm?.id),dimension:snap.s.dimension},
-      stage:copy(home.stage),homeChest:copy(home),manifest:summary(),replaces:{surfaceChest:home.existing,inventory:false}}
+      stage:copy(home.stage),homeChest:copy(home),manifest:summary(),replaces:{surfaceChest:home.existing,inventory:true,armor:true,offhand:true}}
   }
   function guard () {
     abort?.signal.throwIfAborted()
     const frame=scene()
     if(!active||frame.scope!==active.scope||worldOf(frame.s)!==active.world||!same(frame.feet,active.feet)||(adapter.generation?.()??0)!==active.generation)throw fail('RESET_CONTEXT_CHANGED')
+    if(!sameIdentity(jobIdentity(),active.jobIdentity))throw fail('RESET_JOB_CHANGED')
+    if(!active.clearStarted && fingerprint(frame.view)!==active.fingerprint)throw fail('RESET_PREVIEW_STALE')
+    if(!active.clearStarted || active.phase==='clearing') {
+      if(siteIdentity(site(frame,active.home.existing?active.home:null))!==siteIdentity(active.home))throw fail('RESET_SITE_CHANGED')
+    }
     return frame
   }
   async function mark(step,info={}) {
@@ -101,10 +112,46 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
   async function command(cmd,label) {
     await mark(label,{pending:{type:'command',label,cmd}})
     guard()
+    if(active.phase==='clearing'&&!active.clearStarted&&(cmd==='/clear @s'||cmd.startsWith('/replaceitem entity @s ')))active.clearStarted=true
     const out=await commands.send(cmd,{signal:abort?.signal})
     guard()
     if(out?.serverConfirmed!==true||out.scope!==active.scope)throw fail('RESET_COMMAND_UNCONFIRMED',{label})
     active.steps++;await mark(label,{pending:null})
+  }
+  async function clearBot () {
+    await mark('Botの持ち物と装備を空にする準備',{phase:'clearing',pending:{type:'clear_bot'}})
+    guard() // Recheck confirmation, site and durable intent before the first write.
+    const armorNames=['head','chest','legs','feet']
+    const pieces=['helmet','chestplate','leggings','boots']
+    // Non-empty writes force an actual slot observation for previously unknown
+    // equipment. A command ACK never supplies an item descriptor or emptiness.
+    for(let slot=0;slot<4;slot++) {
+      if(adapter.getView().armor?.slots?.[slot]?.known===true)continue
+      const name='minecraft:diamond_'+pieces[slot]
+      await command('/replaceitem entity @s slot.armor.'+armorNames[slot]+' 0 '+name+' 1','未受信の防具枠を同期')
+      await waitFor(()=>{const row=adapter.getView().armor?.slots?.[slot];return known(row)&&row.name===name&&row.count===1},'armor_bootstrap_'+slot)
+    }
+    if(adapter.getView().offhand?.slots?.[0]?.known!==true) {
+      await command('/replaceitem entity @s slot.weapon.offhand 0 minecraft:arrow 1','未受信のオフハンドを同期')
+      await waitFor(()=>{const row=adapter.getView().offhand?.slots?.[0];return known(row)&&row.name==='minecraft:arrow'&&row.count===1},'offhand_bootstrap')
+    }
+    if(!adapter.getView().slots.every(emptySlot)) {
+      await command('/clear @s','主所持品を空にする')
+      await waitFor(()=>{const view=adapter.getView();return mainView(view)&&view.slots.every(emptySlot)},'empty_main_inventory')
+    }
+    for(let slot=0;slot<4;slot++) {
+      if(emptySlot(adapter.getView().armor?.slots?.[slot]))continue
+      await command('/replaceitem entity @s slot.armor.'+armorNames[slot]+' 0 minecraft:air 1','防具枠を空にする')
+      await waitFor(()=>emptySlot(adapter.getView().armor?.slots?.[slot]),'empty_armor_'+slot)
+    }
+    if(!emptySlot(adapter.getView().offhand?.slots?.[0])) {
+      await command('/replaceitem entity @s slot.weapon.offhand 0 minecraft:air 1','オフハンドを空にする')
+      await waitFor(()=>emptySlot(adapter.getView().offhand?.slots?.[0]),'empty_offhand')
+    }
+    if(!emptyBot(guard().view))throw fail('RESET_CLEAR_UNCONFIRMED')
+    await mark('Botの空の持ち物と装備を受信確認',{pending:null})
+    if(!emptyBot(guard().view))throw fail('RESET_CLEAR_UNCONFIRMED')
+    active.clearStarted=true
   }
   async function openAt(p,n) {
     guard();await adapter.close()
@@ -265,9 +312,14 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
       await acquisition
       guard()
       const view=adapter.getView()
-      if(!emptyBot(view)||stamp({slots:view.slots,armor:view.armor,offhand:view.offhand})!==active.fingerprint)throw fail('RESET_PREVIEW_STALE')
+      if(fingerprint(view)!==active.fingerprint)throw fail('RESET_PREVIEW_STALE')
       await command('/testfor @s','管理者権限を確認')
-      await adapter.cancelJob()
+      guard()
+      const expected=copy(active.jobIdentity),cancelled=await adapter.cancelJob({expectedJobIdentity:expected})
+      if(cancelled?.serverConfirmed!==true||!sameIdentity(cancelled.previousJobIdentity,expected)||!sameIdentity(cancelled.jobIdentity,jobIdentity()))throw fail('RESET_JOB_STOP_UNCONFIRMED')
+      active.jobIdentity=copy(cancelled.jobIdentity)
+      guard()
+      await clearBot()
       await mark('ラージチェストを準備',{phase:'running'})
       await existingChest()
       await prepareStage('cargo',0)
@@ -304,13 +356,13 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
   function start ({token,confirm}={}) {
     const prepared=preview;preview=null
     if(task)throw fail('RESET_BUSY')
-    if(!prepared||prepared.token!==token||prepared.expiresAt<=now()||confirm!=='REPLACE_SURFACE_CHEST')throw fail('RESET_CONFIRMATION_REQUIRED')
+    if(!prepared||prepared.token!==token||prepared.expiresAt<=now()||confirm!=='REPLACE_SURFACE_CHEST_AND_CLEAR_INVENTORY')throw fail('RESET_CONFIRMATION_REQUIRED')
     adapter.assertIdle()
     const snapshot=scene()
-    if(snapshot.scope!==prepared.scope||!same(snapshot.feet,prepared.feet)||stamp({slots:snapshot.view.slots,armor:snapshot.view.armor,offhand:snapshot.view.offhand})!==prepared.fingerprint||
-      (adapter.generation?.()??0)!==prepared.generation||!emptyBot(snapshot.view))throw fail('RESET_PREVIEW_STALE')
+    if(snapshot.scope!==prepared.scope||worldOf(snapshot.s)!==prepared.world||!same(snapshot.feet,prepared.feet)||fingerprint(snapshot.view)!==prepared.fingerprint||
+      (adapter.generation?.()??0)!==prepared.generation||!sameIdentity(jobIdentity(),prepared.jobIdentity)||siteIdentity(site(snapshot,prepared.home.existing?prepared.home:null))!==siteIdentity(prepared.home))throw fail('RESET_PREVIEW_STALE')
     active={operationId:uuid(),phase:'preparing',scope:prepared.scope,world:prepared.world,home:prepared.home,feet:prepared.feet,
-      fingerprint:prepared.fingerprint,generation:prepared.generation,steps:0,suppliesCompleted:0,supplyProgress:null,pending:null,serverConfirmed:false,
+      fingerprint:prepared.fingerprint,jobIdentity:copy(prepared.jobIdentity),clearStarted:false,generation:prepared.generation,steps:0,suppliesCompleted:0,supplyProgress:null,pending:null,serverConfirmed:false,
       startedAt:now()}
     let acquired
     try{acquired=adapter.acquire(active.operationId)}catch(error){active=null;throw error}
