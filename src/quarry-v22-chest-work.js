@@ -36,6 +36,33 @@ const sameNbt = (a,b) => {
 const known = s => s?.known === true && s.empty !== true && typeof s.name === 'string' && Number.isInteger(s.count) && s.count > 0
 const armorSlot = name => ['diamond_helmet','diamond_chestplate','diamond_leggings','diamond_boots'].indexOf(clean(name))
 const nbtKnown = raw => raw?.extra && (['false',false,0].includes(raw.extra.has_nbt) && raw.extra.nbt == null || ['true',true,65535].includes(raw.extra.has_nbt) && raw.extra.nbt != null)
+function receivedTag (raw) {
+  if (!nbtKnown(raw)) return null
+  const extra=copy(raw.extra)
+  if (['false',false,0].includes(extra.has_nbt)) { delete extra.has_nbt;delete extra.nbt;return {extra,tag:{type:'compound',name:'',value:{}}} }
+  const tag=extra.nbt?.nbt??extra.nbt
+  if(tag?.type!=='compound'||!tag.value||typeof tag.value!=='object'||Array.isArray(tag.value))return null
+  delete extra.has_nbt;delete extra.nbt
+  return {extra,tag:copy(tag)}
+}
+function receivedPrefixMatch (op,before,actual) {
+  if(!valid(before)||!valid(actual)||before.network_id!==actual.network_id||before.metadata!==actual.metadata||before.block_runtime_id!==actual.block_runtime_id||before.count!==op.count)return null
+  const a=receivedTag(before),b=receivedTag(actual)
+  if(!a||!b)return null
+  if(op.name==='minecraft:bread')return actual.count>0&&actual.count<=before.count&&isDeepStrictEqual(before.extra,actual.extra)?{damage:null}:null
+  if(actual.count!==before.count)return null
+  const wears=armorSlot(op.name)>=0||['minecraft:diamond_sword','minecraft:bow'].includes(op.name)
+  if(!wears)return sameNbt(before,actual)?{damage:null}:null
+  const damage=tag=>{
+    if(!Object.hasOwn(tag.value,'Damage'))return 0
+    const value=tag.value.Damage
+    return value?.type==='int'&&Number.isSafeInteger(value.value)&&value.value>=0?value.value:null
+  }
+  const original=damage(a.tag),current=damage(b.tag)
+  if(original===null||current===null||current<original)return null
+  delete a.tag.value.Damage;delete b.tag.value.Damage
+  return isDeepStrictEqual(a.extra,b.extra)&&isDeepStrictEqual(a.tag,b.tag)?{damage:current}:null
+}
 const validRequestId = id => Number.isSafeInteger(id) && id < 0 && id >= -2147483647 && Math.abs(id % 2) === 1
 function equipmentAllocationAnchor(cp,proof,last) {
   let anchor=last?.requestId
@@ -165,6 +192,7 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
     return true
   }
   async function verifyPrefix(cp,onCheckpoint,request,signal) {
+    if(request.allowReceivedPrefixUse===true)return verifyReceivedPrefix(cp,onCheckpoint,request,signal)
     let frame=current(cp.world,cp.life),view=frame.view
     const connection=connectionKey(frame.s)
     const wornSlots=cp.plan.slice(0,cp.index).filter(op=>armorSlot(op.name)>=0&&empty(getRawMain(op.to))).map(op=>armorSlot(op.name))
@@ -185,6 +213,73 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
       if(!saved){cp.identities[index]=pack(actual.raw);changed=true}
     }
     if(changed){cp.prefixIdentitySource='received_manifest_migration';await saveCheckpoint(cp,onCheckpoint)}
+  }
+  async function verifyReceivedPrefix(cp,onCheckpoint,request,signal) {
+    const connection=connectionKey(current(cp.world,cp.life).s)
+    const verify=()=>{
+      signal?.throwIfAborted()
+      const frame=current(cp.world,cp.life)
+      if(connectionKey(frame.s)!==connection)throw fail('LOADOUT_CONNECTION_CHANGED')
+      return frame
+    }
+    if(!Array.isArray(cp.receipts)||cp.receipts.length!==cp.index||!Array.isArray(cp.identities))throw fail('LOADOUT_PREFIX_UNKNOWN')
+    const expected=cp.plan.slice(0,cp.index).map((op,index)=>{
+      if(['from','to','name','count'].some(field=>cp.receipts[index]?.[field]!==op[field])||typeof cp.identities[index]!=='string')throw fail('LOADOUT_PREFIX_CHANGED')
+      let raw;try{raw=unpack(cp.identities[index])}catch{throw fail('LOADOUT_PREFIX_UNKNOWN')}
+      if(!valid(raw)||!receivedTag(raw))throw fail('LOADOUT_PREFIX_UNKNOWN')
+      return {op,index,raw}
+    })
+    const previous=cp.prefixUseObservations??[]
+    if(!Array.isArray(previous)||previous.some(entry=>!Number.isInteger(entry?.index)||entry.index<0||entry.index>=cp.index||entry.connection!==connection||
+      !['main','armor'].includes(entry.location)||!Number.isInteger(entry.slot)||entry.slot<0||entry.slot>=(entry.location==='main'?36:4)||
+      !Number.isInteger(entry.count)||entry.count<1||entry.damage!=null&&(!Number.isSafeInteger(entry.damage)||entry.damage<0))||new Set(previous.map(entry=>entry.index)).size!==previous.length)throw fail('LOADOUT_PREFIX_UNKNOWN')
+    const candidates=()=>{
+      const {view}=verify(),main=mainItems(view)
+      if(!main||main.some(row=>row?.known!==true))throw fail('LOADOUT_PREFIX_UNKNOWN')
+      const rows=main.map((descriptor,slot)=>({location:'main',slot,descriptor,raw:getRawMain(slot)}))
+      if(rows.some(row=>!valid(row.raw)))throw fail('LOADOUT_PREFIX_UNKNOWN')
+      for(let slot=0;slot<4;slot++){
+        const raw=equipmentRaw(view,'armor',slot)
+        if(raw)rows.push({location:'armor',slot,descriptor:view.armor.slots[slot],raw})
+      }
+      return rows.filter(row=>!empty(row.raw))
+    }
+    let rows=candidates()
+    const missingArmor=expected.filter(({op,raw})=>armorSlot(op.name)>=0&&!rows.some(row=>row.location==='main'&&receivedPrefixMatch(op,raw,row.raw))&&
+      !equipmentRaw(verify().view,'armor',armorSlot(op.name))).map(({op})=>armorSlot(op.name))
+    if(missingArmor.length){
+      await observeEquipment(cp,{signal,connection,reason:'LOADOUT_PREFIX_UNKNOWN',ready:view=>missingArmor.every(slot=>!!equipmentRaw(view,'armor',slot))})
+      await inStation(request);verify();rows=candidates()
+    }
+    const used=new Set(),usedIds=new Set(),observed=[],audits=new Map(previous.map(entry=>[entry.index,copy(entry)]))
+    for(const {op,index,raw}of expected){
+      const prior=audits.get(index),ordered=[...rows].sort((a,b)=>(a.location==='main'&&a.slot===op.to?-1:0)-(b.location==='main'&&b.slot===op.to?-1:0))
+      let match=null,usage=null
+      for(const row of ordered){
+        const key=row.location+':'+row.slot
+        if(used.has(key)||usedIds.has(row.raw.stack_id)||row.location==='armor'&&row.slot!==armorSlot(op.name))continue
+        const state=receivedPrefixMatch(op,raw,row.raw)
+        if(!state||prior?.damage!=null&&(state.damage===null||state.damage<prior.damage)||!prefixManifestMatches({...op,count:row.raw.count},row.raw,row.descriptor))continue
+        match=row;usage=state;break
+      }
+      if(!match)throw fail('LOADOUT_PREFIX_CHANGED')
+      used.add(match.location+':'+match.slot);usedIds.add(match.raw.stack_id);observed.push({...match,op})
+      const originalDamage=receivedPrefixMatch(op,raw,raw)?.damage
+      if(prior||match.location!=='main'||match.slot!==op.to||match.raw.count!==op.count||usage.damage!==originalDamage){
+        audits.set(index,{index,location:match.location,slot:match.slot,count:match.raw.count,damage:usage.damage,connection})
+      }
+    }
+    const next=[...audits.values()].sort((a,b)=>a.index-b.index)
+    if(!isDeepStrictEqual(previous,next)){
+      cp.prefixUseObservations=next
+      await saveCheckpoint(cp,onCheckpoint)
+    }
+    const {view}=verify()
+    for(const row of observed){
+      const actual=row.location==='main'?getRawMain(row.slot):equipmentRaw(view,'armor',row.slot)
+      const descriptor=row.location==='main'?view.slots?.[row.slot]:view.armor?.slots?.[row.slot]
+      if(!isDeepStrictEqual(actual,row.raw)||!prefixManifestMatches({...row.op,count:row.raw.count},actual,descriptor))throw fail('LOADOUT_PREFIX_CHANGED')
+    }
   }
   async function reconcileWithdrawal(cp,op,request,signal) {
     signal?.throwIfAborted()
@@ -308,7 +403,7 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
           const raw=equipmentRaw(view,'armor',slot)
           if(!raw)return false
           const index=cp.plan.findIndex(op=>armorSlot(op.name)===slot),saved=cp.identities?.[index]
-          if(!saved||!sameNbt(raw,unpack(saved)))throw fail('LOADOUT_ARMOR_UNCONFIRMED')
+          if(!saved||!(request.allowReceivedPrefixUse===true?receivedPrefixMatch(cp.plan[index],unpack(saved),raw):sameNbt(raw,unpack(saved))))throw fail('LOADOUT_ARMOR_UNCONFIRMED')
         }
         return true
       }})

@@ -18,6 +18,11 @@ const copy = value => structuredClone(value)
 const home = { position: { x: 2, y: 63, z: -1 }, other: { x: 3, y: 63, z: -1 }, stand: { x: 1, y: 63, z: -1 }, stage: { x: 0, y: 63, z: -1 }, chunk: { x: 0, z: -1 } }
 function fixture ({ missing = false, blockedSupply = true, rejectTransfer = false, mutateSave = null, seal = false, corruptStock = false, delayedHand = false, neverHand = false, invalidCp = false } = {}) {
   const f = chestFixture({ missing }), blocks = new Map(), saved = [], requests = [], events = []
+  // The shared routing fixture has decoded contents separately. Its raw
+  // identity still needs an actual typed compound for received-prefix checks.
+  for (const item of f.base) if (item.network_id && item.extra?.nbt?.name) {
+    item.extra.nbt = { version: 1, nbt: { type: 'compound', name: '', value: { FixtureName: { type: 'string', value: item.extra.nbt.name } } } }
+  }
   Object.assign(f.pos, home.position)
   f.state.position = { x: 1.5, y: 64.62, z: -0.5 }
   f.state.maxHealth = 20; f.state.food = 20
@@ -241,4 +246,29 @@ test('the new marker caps work at Y75 and preserves an explicitly chosen slot re
   const f = fixture(); f.config.yTop = 90; f.config.worldMaxY = 100; f.config.inventory.minFreeSlots = 5
   const summary = f.job.plan(f.config)
   assert.equal(summary.yTop, 75); assert.equal(f.job.document().config.inventory.minFreeSlots, 5)
+})
+
+test('a recovered partial startup returns to the existing loadout checkpoint before checking future supply stock', async () => {
+  let interrupted = false
+  const f = fixture(), withdraw = f.adapter.loadoutWithdraw
+  f.adapter.loadoutWithdraw = (request, options) => withdraw(request, { ...options, onCheckpoint: async cp => {
+    await options.onCheckpoint(cp)
+    if (!interrupted && cp.index === 4) { interrupted = true; throw Object.assign(new Error('combat handoff after durable receipt'), { code: 'COMBAT' }) }
+  } })
+  assert.equal(f.job.plan(f.config).ready, true)
+  await f.run()
+  const partial = f.job.document()
+  assert.equal(partial.loadout.checkpoint.index, 4)
+  assert.notEqual(partial.loadoutReady, true)
+  f.f.state.health = 20
+  partial.state = 'PAUSED'; partial.userRunIntent = 'paused'; partial.pauseReason = 'COMBAT'
+  const state = f.f.state
+  partial.scope = JSON.stringify([state.profile, state.realm?.id ?? state.realmId ?? null, state.dimension, state.connectionId ?? null, state.startedAt ?? null])
+  partial.life = state.lifecycle.deathId
+  f.job.load(partial)
+  const result = await f.run({ resume: true })
+  assert.equal(result.pauseReason, 'SUPPLY_RESTOCK_BLOCKED', JSON.stringify(result))
+  assert.equal(f.f.transfers.filter(row => row.kind === 'withdraw').length, 34)
+  assert.equal(f.job.document().loadoutReady, true)
+  assert.equal(f.requests.length, 1); assert.equal(f.mining, 0)
 })

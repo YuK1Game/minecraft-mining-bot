@@ -746,6 +746,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         }
         return adapter.loadoutWithdraw({
         jobId: job.config.jobId, operationId: active.operationId,
+        allowReceivedPrefixUse: job.config.initialLoadout === 'v22',
         checkpoint: copy(active.checkpoint), position: copy(home.position)
       }, { signal, onCheckpoint: async cp => {
         if (job !== owner || job.loadout !== active || cp.operationId !== active.operationId) throw new Error('LOADOUT_STALE_CHECKPOINT')
@@ -819,6 +820,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const obs = job.terrainObservation
     if (obs && obs.requests && !obs.waiting && Number.isFinite(obs.requestedAt) && now() - obs.requestedAt > TERRAIN_BUDGET_RENEW_MS) { obs.requests = 0; obs.phase = 'idle' }
     if (!(await confirmPoseAfterPause(myEpoch))) return
+    if (job.config.initialLoadout === 'v22' && job.loadoutReady !== true) { setState('PREFLIGHT'); return }
     if (job.supplyRestock) { job.supplyRestock.resumeTo = 'RECONCILE'; return restock(myEpoch, 'RECONCILE', true) }
     if (job.config.initialLoadout === 'v22' && job.pendingTotemEquip && await ensureTotem(myEpoch)) return
     // Re-observe instead of trusting saved cells (§15.3): unreachable and
