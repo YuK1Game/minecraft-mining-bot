@@ -5575,6 +5575,12 @@ function createRuntime (host) {
         host.client.queue('command_request', { command: text, origin: { type: 'player', uuid, request_id: '', player_entity_id: 0n }, internal: false, version: String(version) })
         return { sent: true, command: text, version: String(version), uuid }
       },
+      // Runs the real storage air audit once (read-only) at a received cell.
+      auditAir: async (x, y, z) => {
+        if (![x, y, z].every(Number.isSafeInteger)) throw new Error('整数の座標を指定してください。')
+        storagePlacementAudit ??= createStoragePlacementAudit({ client: host.client, getState: quarryState })
+        return storagePlacementAudit.confirmAir({ x, y, z }, { operationId: 'diagnostics:audit-air' })
+      },
       commandOutput: uuid => { const row = host.shared.diagCommandOutputs?.get(String(uuid ?? '').toLowerCase()) ?? host.shared.diagCommandOutputs?.get(String(uuid ?? '')); return row ? structuredClone(row) : null }
     },
     shelter: {
