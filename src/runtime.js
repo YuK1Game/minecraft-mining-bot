@@ -14,6 +14,8 @@ const { createQuarryPortableStorage } = require('./quarry-portable-storage')
 const { createQuarrySupplies } = require('./quarry-supplies')
 const { createQuarryV22Equipment } = require('./quarry-v22-equipment')
 const { createQuarryV22ChestWork } = require('./quarry-v22-chest-work')
+const { createRuntimeV22ChestReset, jobPending } = require('./loadout-runtime-adapter')
+const { createManualChestRuntime } = require('./manual-chest-runtime-adapter')
 const { historicalSourceRejection } = require('./rejected-source-history')
 const { historicalEmptyPlacement } = require('./placement-source-history')
 
@@ -370,6 +372,7 @@ function createRuntime (host) {
   let plainsLocator = null
   let quarryTerrainRequester = null
   let manualShulkerRecovery = null, manualShulkerDocument = null, manualShulkerTask = null, manualShulkerAbort = null, manualShulkerMiningSerial = null, manualShulkerLoadSequence = 0
+  let manualChestStorage = null
   let tunneling = null
   let stoneAccessProposal = null, stoneAccessSequence = 0
   const STONE_ACCESS_BOUNDS = Object.freeze({ maxDistance: 6, maxVertical: 6, maxRouteSteps: 6, maxRouteDigBlocks: 16, maxExpanded: 3000 })
@@ -975,16 +978,17 @@ function createRuntime (host) {
     return userBehaviorOwns() ? { ...effective, requestedSafetyWanted: effective.wanted, wanted: true, running: true, busy: true, active: userBehaviorSnapshot().activeKind ?? 'user_behavior', phase: 'user_behavior', userBehaviorOwned: true } : effective
   }
   function resumeSafety () {
-    if (resetHeld()) return safetySnapshot()
+    if (resetHeld() || manualChestStorage?.isBusy()) return safetySnapshot()
     if (surfaceReturnOwner || userBehaviorOwns()) return safetySnapshot()
     if (disposed || disposing || host.shared.respawnTerrain?.pending || !host.shared.safetyWanted || !idleSafety || idleSafety.snapshot().running || idleSafety.snapshot().busy) return safetySnapshot()
     idleSafety.start({ enableEpoch: host.shared.safetyEnableEpoch, ...(host.shared.safetyRecoveryDeadline ? { recoveryDeadline: host.shared.safetyRecoveryDeadline } : {}) })
     return safetySnapshot()
   }
-  function requireIdle ({ inventoryRequired = true, armorOwner = null, loadoutHandoff = false, loadoutOwner = null } = {}) {
+  function requireIdle ({ inventoryRequired = true, armorOwner = null, loadoutHandoff = false, loadoutOwner = null, storageHandoff = false } = {}) {
     const behavior = userBehaviorSnapshot()
     const combatHandoff = loadoutHandoff && (userBehaviorLease?.kind === 'combat' || behavior.claim?.kind === 'combat' || combat?.snapshot().busy || combat?.snapshot().defending || combat?.snapshot().engaging)
     if (resetHeld() && (loadoutOwner === null || loadoutOwner !== loadoutLease)) throw Object.assign(new Error('初期アイテムのリセット処理中です。'), { code: 'RESET_BUSY' })
+    if (!ownedCall && !storageHandoff && manualChestStorage?.isBusy()) throw Object.assign(new Error('ラージチェストへの収納操作中です。'), { code: 'STORAGE_BUSY' })
     if (!ownedCall && manualShulkerTask) throw new Error('指定したシュルカーボックスの回収完了を待ってください。')
     if (manualArmorOwner && manualArmorOwner !== armorOwner) throw new Error('手動の防具装備が完了するまで待ってください。')
     if (disposed || disposing) throw new Error('行動コードを更新しました。新しい状態からやり直してください。')
@@ -1124,7 +1128,7 @@ function createRuntime (host) {
     })
   }
   function maybeEquipArmor () {
-    if (resetHeld() || host.shared.quarrySurfaceStorageOwner || !(host.shared.autoWanted === true || quarryCombatArmed) || armorTask || Date.now() - (host.shared.armorCheckedAt ?? 0) < 3000) return
+    if (resetHeld() || manualChestStorage?.isBusy() || host.shared.quarrySurfaceStorageOwner || !(host.shared.autoWanted === true || quarryCombatArmed) || armorTask || Date.now() - (host.shared.armorCheckedAt ?? 0) < 3000) return
     host.shared.armorCheckedAt = Date.now()
     try { if (!armor.preview() || !armorWorkFree() || nearestHostileDistance() < 8) return } catch { return }
     armorTask = armor.equipBest().catch(() => {}).finally(() => { armorTask = null })
@@ -4470,6 +4474,7 @@ function createRuntime (host) {
       // fail. This also removes any not-yet-sent placement transaction.
       generationPillar?.cancel('ASCENT_COMBAT_INTERRUPTED')
       if (context.kind === 'combat') {
+        manualChestStorage?.cancel('COMBAT_PRIORITY')
         manualShulkerAbort?.abort(new Error('COMBAT_PRIORITY'))
         manualShulkerRecovery?.cancel('COMBAT_PRIORITY')
         if (!host.shared.autoWanted && quarryJob?.holdsWork()) lease.defenseAnchor = createDefenseAnchor(lightweightUserState())
@@ -4497,8 +4502,8 @@ function createRuntime (host) {
         // Cancel input synchronously. Bookkeeping/drain promises retain their
         // checkpoints but cannot delay the new combat owner's first action.
         stopOrdinaryUserStream(); mining.stop('user_behavior'); walker?.stop('user_behavior'); generationMovement.stop('user_behavior'); generationCombat.cancel('user_behavior')
-        const mutationPending = () => inventory.snapshot().pendingRequestId != null || chest.snapshot().pendingRequestId != null || furnace.snapshot().pendingRequestId != null || craftStatus().pendingRequestId != null
-        const receiptWaiting = () => mutationPending() || inventory.snapshot().busy || chest.snapshot().busy || furnace.snapshot().busy
+        const mutationPending = () => inventory.snapshot().pendingRequestId != null || chest.snapshot().pendingRequestId != null || furnace.snapshot().pendingRequestId != null || craftStatus().pendingRequestId != null || manualChestStorage?.pendingMutation()
+        const receiptWaiting = () => mutationPending() || inventory.snapshot().busy || chest.snapshot().busy || furnace.snapshot().busy || manualChestStorage?.equipmentBusy?.()
         if (craftStatus().pendingRequestId == null) crafting.cancel('user_behavior')
         if (furnace.snapshot().pendingRequestId == null) furnace.cancel('user_behavior')
         if (chest.snapshot().pendingRequestId == null) chest.cancel('user_behavior')
@@ -4960,7 +4965,7 @@ function createRuntime (host) {
         coordinatorOptions: { log: host.log, controlReady: ({ claimId, token }) => !(userBehaviorLease?.kind === 'combat' && userBehaviorLease.claimId === `combat:${claimId}` && userBehaviorLease.token === token && userBehaviorLease.receiptsReady === false), canAcquireMeleeApproach: (target, state) => canAcquireStuckMeleeApproach(target, state) || canAcquireHealthyMeleeApproach(target, state), canEngage: (target, state) => combatAttackExposure(target, state).intercept, engageRadius: threatReachability.ENGAGE_RADIUS, getRecentDamageAt: () => host.shared.recentDamageNoPrimary?.at ?? null, workGuard: { canSelectTarget: quarryCanSelectTarget, canContinue: quarryCanContinue } },
         // Defense remains available while work is paused; other behaviors keep
         // their original work permission. An eligible enemy preempts meals.
-        canAct: ({ kind } = {}) => !resetHeld() && currentGeneration() && !replaying && host.shared.loadingScreenEnded === true && !host.shared.respawnTerrain?.pending && !userBehaviorWakePending && (kind === 'combat' ? defenseEnabled(host.shared) : !surfaceReturnOwner && host.shared.userBehaviorsEnabled === true && (host.shared.autoWanted === true || quarryCombatArmed)),
+        canAct: ({ kind } = {}) => !resetHeld() && currentGeneration() && !replaying && host.shared.loadingScreenEnded === true && !host.shared.respawnTerrain?.pending && !userBehaviorWakePending && (kind === 'combat' ? defenseEnabled(host.shared) : !manualChestStorage?.isBusy() && !surfaceReturnOwner && host.shared.userBehaviorsEnabled === true && (host.shared.autoWanted === true || quarryCombatArmed)),
         isBusy: context => !sameLease(context) || !userBehaviorLease?.ready || userBehaviorLease.receiptsReady === false || pendingStops.size > 0 || craftStatus().pendingRequestId != null || inventory.snapshot().busy || (furnace.snapshot().busy || chest.snapshot().busy) || food.snapshot().busy || mining.snapshot().phase === 'mining',
         // A released bow shot with no ammo delta only leaves the arrow count in
         // doubt (no arrow fired = unchanged inventory). Marking the whole
@@ -5080,6 +5085,7 @@ function createRuntime (host) {
     chest.applyPacket(name, packet, { replaying })
     inventory.applyPacket(name, packet, { replaying })
     if (!replaying) quarryV22Equipment.applyPacket(name, packet)
+    if (!replaying) manualChestStorage?.applyPacket(name, packet)
     // A reload replays the cached start_game; that is not a new world for armor.
     if (!(replaying && ['start_game', 'change_dimension', 'respawn'].includes(name))) armor.applyPacket(name, packet)
     food.applyPacket(name, packet)
@@ -5151,6 +5157,7 @@ function createRuntime (host) {
     return stopActionsAfterRaw(reason)
   }
   function stopActionsAfterRaw (reason, confirmedRespawn = null) {
+    manualChestStorage?.cancel(reason ?? 'STORAGE_INTERRUPTED')
     manualShulkerAbort?.abort(new Error(reason ?? 'SHULKER_RECOVERY_INTERRUPTED'))
     manualShulkerRecovery?.cancel(reason ?? 'SHULKER_RECOVERY_INTERRUPTED')
     const receiptState = raw()
@@ -5348,6 +5355,13 @@ function createRuntime (host) {
       load: jobId => loadQuarryFile(jobId),
       status: () => quarrySnapshot(),
       document: () => quarryJob?.document() ?? structuredClone(host.shared.quarryDocument ?? null)
+    },
+    storage: {
+      prepare: options => ensureManualChestStorage().prepare(options ?? {}),
+      start: options => ensureManualChestStorage().start(options ?? {}),
+      status: () => manualChestStorage?.status() ?? { available: true, busy: false, phase: 'idle', operationId: null, serverConfirmed: false, target: null, transferredStacks: 0, remainingStacks: null, error: null },
+      cancel: reason => manualChestStorage?.cancel(reason ?? 'MANUAL_STOP') ?? { available: true, busy: false, phase: 'idle' },
+      drain: () => manualChestStorage?.drain() ?? Promise.resolve()
     },
     userBehaviors: {
       start: () => { if (disposed || disposing) throw new Error('Runtime is reloading'); host.shared.combatDefenseWanted = true; host.shared.userBehaviorsEnabled = true; tickUserBehaviors(); return userBehaviorSnapshot() },
@@ -5694,16 +5708,17 @@ function createRuntime (host) {
         return {released:true,policyUnchanged:true}
       },
       start: options => {
+        if (manualChestStorage?.isBusy()) throw Object.assign(new Error('ラージチェストへの収納操作中です。'), { code: 'STORAGE_BUSY' })
         if (resetHeld()) throw Object.assign(new Error('初期アイテムのリセット処理中です。'), { code: 'RESET_BUSY' })
         if (disposed || disposing) throw new Error('行動コードを更新しました。新しい状態からやり直してください。')
         host.shared.legacyWorkHoldScope = null; host.shared.legacyWorkHoldLease = null
         host.shared.autoWanted = true
         host.shared.autoOptions = { objective: 'diamond', diamondCount: 1, maxRunMs: 7200000, maxWaitTicks: 1200, ...options }
-        const start = () => { if (disposed || disposing || resetHeld()) return autonomy.snapshot(); return autonomy.start({ ...host.shared.autoOptions, progress: options?.progress ?? host.shared.autonomyProgress }) }
+        const start = () => { if (disposed || disposing || resetHeld() || manualChestStorage?.isBusy()) return autonomy.snapshot(); return autonomy.start({ ...host.shared.autoOptions, progress: options?.progress ?? host.shared.autonomyProgress }) }
         return missionJournal.enabled ? missionJournal.load().then(result => missionReady(result) ? start() : autonomy.snapshot()) : start()
       },
       stop: reason => { host.shared.autoWanted = false; clearNavigationDestination(); const result = autonomy.stop(reason); stopActions(reason); return result },
-      tick: () => { if (resetHeld()) throw Object.assign(new Error('初期アイテムのリセット処理中です。'), { code: 'RESET_BUSY' }); return autonomy.tick() }
+      tick: () => { if (manualChestStorage?.isBusy()) throw Object.assign(new Error('ラージチェストへの収納操作中です。'), { code: 'STORAGE_BUSY' }); if (resetHeld()) throw Object.assign(new Error('初期アイテムのリセット処理中です。'), { code: 'RESET_BUSY' }); return autonomy.tick() }
     }
   }
   async function observeDepotSky (signal) {
@@ -6852,6 +6867,7 @@ function createRuntime (host) {
   }
 
   function maybeRestoreQuarryJob () {
+    if (manualChestStorage?.isBusy()) return
     if (resetHeld()) return
     if (disposed || disposing || host.shared.quarryRestoreDisabled || host.shared.quarryRestoreTried || quarryRestoreTask || !quarryPorts || Date.now() < (host.shared.quarryRestoreNextAt ?? 0)) return
     const state = raw()
@@ -6904,7 +6920,7 @@ function createRuntime (host) {
   worldRetentionTimer.unref?.()
 
   function resumeRequested () {
-    if (disposed || disposing || resetHeld()) return
+    if (disposed || disposing || resetHeld() || manualChestStorage?.isBusy()) return
     if (manualShulkerTask) return
     ensureInitialLifeReceipt()
     void loadShoreHistory()
@@ -6921,6 +6937,7 @@ function createRuntime (host) {
       try { const job = ensureQuarryJob(); if (job.status().pauseReason === 'PROCESS_RESTARTED') { job.resume(); return } } catch (error) { host.shared.quarryLoadError = String(error.message).slice(0, 200) }
     }
     const resume = () => {
+      if (manualChestStorage?.isBusy()) return
       if (logicalWorkHeld()) return
       if (depotMission?.isEnabled()) { void depotMission.resume(); return }
       const status = autonomy.snapshot()
@@ -6939,10 +6956,70 @@ function createRuntime (host) {
     }).catch(error => { host.shared.depotResumeError = String(error.message).slice(0,200) })
   }
 
+  function ensureManualChestStorage () {
+    if (manualChestStorage) return manualChestStorage
+    const state = () => ({ ...quarryState(), loadingScreenEnded: host.shared.loadingScreenEnded })
+    const quietJob = () => quarryJob ?? (host.shared.quarryDocument ? {
+      document: () => host.shared.quarryDocument,
+      status: () => ({ state: host.shared.quarryDocument.state, persistence: host.shared.quarryDocument.persistence }),
+      holdsWork: () => false
+    } : null)
+    manualChestStorage = createManualChestRuntime({
+      host, getState: state, getView: () => inventoryInspection.snapshot(state()),
+      getRawMain: slot => crafting.rawItem(slot),
+      getRawEquipment: (kind, slot) => inventoryInspection.rawEquipment(kind, slot),
+      crafting, chest,
+      generation: () => host.shared.loadoutGeneration ?? 0,
+      jobIdentity: () => {
+        const doc = quietJob()?.document()
+        return doc ? `${doc.instanceId}:${doc.state}:${doc.userRunIntent}` : null
+      },
+      assertIdle: () => {
+        requireIdle({ inventoryRequired: false, storageHandoff: true })
+        if (craftStatus().authority !== true) throw Object.assign(new Error('サーバーから所持品の確認を待っています。'), { code: 'STORAGE_AUTHORITY_UNKNOWN' })
+        if (armorTask || manualArmorOwner || manualShulkerTask || quarryRestoreTask || autonomy.snapshot().running || depotMission?.isBusy() || host.shared.rangedShotUncertain || jobPending(quietJob())) throw Object.assign(new Error('作業・収納・持ち替えの終了を確認してください。'), { code: 'STORAGE_NOT_IDLE' })
+      },
+      onAcquire: owner => {
+        stopIdleStream()
+        if (!owner.preview) {
+          host.shared.autoWanted = false
+          host.shared.quarryAutoResume = false
+          host.shared.quarryRestoreDisabled = true
+          autonomy.stop('ラージチェストへ収納')
+        }
+      },
+      onRelease: () => { setTimeout(() => resumeSafety(), 0).unref?.() },
+      refreshInventory: async ({ signal } = {}) => {
+        const started = Date.now()
+        signal?.throwIfAborted()
+        await requestInventoryResyncWithReceipt('manual_chest_deposit')
+        do {
+          signal?.throwIfAborted()
+          const receipt = host.shared.inventoryResync?.lastRequest
+          if (receipt?.status === 'FRESH_MAIN_OBSERVED' && Date.parse(receipt.requestedAt) >= started - 50) return true
+          await delay(80)
+        } while (Date.now() - started < 5000)
+        return false
+      },
+      allocateRequestId: () => host.allocate('craft'), onUncertain,
+      commitMain: (slot, item, requestId) => {
+        const delta = { window_id: 'inventory', slot, item, source: 'server_item_stack_response', requestId }
+        crafting.applyPacket('inventory_slot', delta)
+        host.commitInventory({ window_id: 'inventory', input: Array.from({ length: 36 }, (_, i) => crafting.rawItem(i)), changedSlots: [slot], fullRefresh: false, source: delta.source, requestId })
+      },
+      commitEquipment: (kind, slot, item, requestId) => {
+        const delta = { window_id: kind, slot, item, source: 'server_item_stack_response', requestId }
+        if (kind === 'armor') armor.applyPacket('inventory_slot', delta)
+        inventoryInspection.applyPacket('inventory_slot', delta)
+      }
+    })
+    return manualChestStorage
+  }
+
   function ensureLoadoutReset () {
     if (loadoutReset) return loadoutReset
     const getState = () => ({ ...quarryState(), loadingScreenEnded: host.shared.loadingScreenEnded })
-    loadoutReset = require('./loadout-runtime-adapter').createRuntimeV22ChestReset({
+    loadoutReset = createRuntimeV22ChestReset({
       host, getState, inspection: inventoryInspection, crafting, armor, inventory, chest,
       generation: () => host.shared.loadoutGeneration ?? 0,
       getJob: () => ensureQuarryJob(),
@@ -6976,9 +7053,11 @@ function createRuntime (host) {
   }
   return {
     operations, snapshot: getSnapshot, applyPacket, onSpawn, onRespawn, stopActions, resumeRequested,
-    canReload: () => !resetHeld() && !host.shared.quarrySurfaceStorageOwner && !quarryV22Equipment.status().busy && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && mining.snapshot().phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !food.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(furnace.snapshot().busy || chest.snapshot().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging,
+    canReload: () => !resetHeld() && !manualChestStorage?.isBusy() && !host.shared.quarrySurfaceStorageOwner && !quarryV22Equipment.status().busy && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && mining.snapshot().phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !food.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(furnace.snapshot().busy || chest.snapshot().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging,
     dispose: async reason => {
       if (disposed) return
+      manualChestStorage?.cancel('RUNTIME_RELOADED')
+      const storageDrain = manualChestStorage?.drain()
       loadoutReset?.cancel()
       const resetDrain = loadoutReset?.drain()
       if (quarryJob?.holdsWork()) { try { await quarryJob.pause('PROCESS_RESTARTED'); host.shared.quarryAutoResume = true } catch {} }
@@ -6995,7 +7074,7 @@ function createRuntime (host) {
       autonomy.stop(reason ?? '行動コードを更新します。')
       const cleanup = stopActions(reason ?? '行動コードを更新します。')
       // Stop ordinary inputs synchronously above, then wait for owned reset cleanup.
-      await Promise.allSettled([manualShulkerTask, resetDrain])
+      await Promise.allSettled([manualShulkerTask, resetDrain, storageDrain])
       inputStream?.stop()
       inputOwner = 'none'
       await cleanup

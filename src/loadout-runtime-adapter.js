@@ -5,6 +5,7 @@ const path = require('node:path')
 const { createHash } = require('node:crypto')
 const { serialize } = require('node:v8')
 const { createLoadoutReset } = require('./loadout-reset')
+const { createQuarryV22Reset } = require('./quarry-v22-reset')
 const { createLoadoutCommand } = require('./loadout-command')
 const { writeDurableJson, readJsonBounded } = require('./durable-json')
 const { isShulkerBox } = require('./container-types')
@@ -105,7 +106,6 @@ function createRuntimeV22ChestReset ({
   assertIdle, acquire, release, getJob, generation, cancelTransfers,
   journalDirectory = path.resolve(__dirname, '..', '.local', 'loadout-reset-v22')
 }) {
-  const { createQuarryV22Reset } = require('./quarry-v22-reset')
   const worldKey = () => {
     const state = getState()
     return createHash('sha256').update(JSON.stringify([state.profile, String(state.realm?.id), state.dimension])).digest('hex')

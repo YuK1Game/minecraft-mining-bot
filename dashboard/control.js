@@ -4,7 +4,7 @@
   const $ = id => document.getElementById('control-' + id)
   const phases = { offline: '未接続', starting: '起動中', authenticating: '認証待ち', selecting_realm: '選択待ち', connecting: '接続中', joined: '読込中', spawned: '接続済み', stopping: '切断中', disconnected: '未接続' }
   const jobs = { IDLE: '計画待ち', PREFLIGHT: '開始確認', SURVEY: '調査中', PLAN: '計画中', MOVE: '移動中', MINE: '採掘中', COLLECT: '回収中', RETURN: '搬入移動', DEPOSIT: '収納中', PORTABLE_STORAGE: '収納中', RESTOCK: '補給中', COMBAT: '戦闘中', SUSPEND_FOR_COMBAT: '戦闘へ切替', COMBAT_SETTLE: '安全確認', RECOVER_AFTER_COMBAT: '復帰確認', RECOVER: '回復中', RECONCILE: '照合中', HAZARD: '危険対処', FINAL_CHECK: '最終確認', EGRESS_PREPARE: '帰還準備', EGRESS: '地上へ帰還中', PAUSED: '一時停止', STOPPING: '停止確認中', FINISHED: 'ジョブ終了', DISCONNECTED: '未接続' }
-  let token = null, current = null, plan = null, busy = 0, polling = false, version = 0, viewEpoch = 0, lastPhase = null, gridOrigin = null, preset = 1, resetPreview = null
+  let token = null, current = null, plan = null, busy = 0, polling = false, version = 0, viewEpoch = 0, lastPhase = null, gridOrigin = null, preset = 1, resetPreview = null, storagePreview = null
   const clean = value => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ')
   function message (kind, text, error = false) { const el = $(kind + '-message'); el.textContent = text; el.hidden = !text; el.classList.toggle('error', error) }
   async function request (route, body) {
@@ -81,7 +81,7 @@
     $('plan-results').hidden = false
   }
   function render () {
-    const s = current, live = s?.live, q = live?.quarry, ready = live?.ready === true, connected = !!s?.managed || !!live, idle = !busy && !!token && live?.loadout?.busy !== true
+    const s = current, live = s?.live, q = live?.quarry, ready = live?.ready === true, connected = !!s?.managed || !!live, idle = !busy && !!token && live?.loadout?.busy !== true && live?.storage?.busy !== true
     $('size-one').disabled = busy > 0; $('size-four').disabled = busy > 0
     const a = renderArea()
     document.getElementById('control').dataset.online = String(ready)
@@ -141,6 +141,7 @@
     else if (s?.phase !== lastPhase) message('connection', '')
     lastPhase = s?.phase
     renderReset()
+    renderStorage()
   }
   async function poll () {
     if (!token || polling || document.hidden) return
@@ -262,9 +263,9 @@
   function renderReset () {
     const live = current?.live, r = live?.loadout
     const idleJob = !live?.quarry || ['IDLE', 'PAUSED', 'FINISHED'].includes(live.quarry.state)
-    $('reset').disabled = !!busy || !token || !live?.ready || !r || r.busy || !idleJob
+    $('reset').disabled = !!busy || !token || !live?.ready || !r || r.busy || live?.storage?.busy || !idleJob
     $('reset').textContent = r?.busy ? 'デバッグチェスト設置中' : 'デバッグチェスト設置'
-    $('reset-confirm').disabled = !!busy || !resetPreview || resetPreview.expiresAt <= Date.now() || resetPreview.session !== live?.session
+    $('reset-confirm').disabled = !!busy || !live?.ready || live?.storage?.busy || !resetPreview || resetPreview.expiresAt <= Date.now() || resetPreview.session !== live?.session
     if (resetPreview && (resetPreview.session !== live?.session || resetPreview.expiresAt <= Date.now())) { closeReset(); message('reset', '確認が失効しました。デバッグチェストの設置を確認し直してください。', true) }
     $('reset-progress').hidden = !r || r.phase === 'idle'
     $('reset-progress').classList.toggle('failed', r?.phase === 'failed')
@@ -297,15 +298,64 @@
   $('reset-dialog').addEventListener('close', () => { resetPreview = null })
   $('reset-confirm').addEventListener('click', () => {
     const p = resetPreview
-    if (!p || busy || p.expiresAt <= Date.now() || p.session !== current?.live?.session) return
+    if (!p || busy || !current?.live?.ready || current.live?.storage?.busy || current.live?.loadout?.busy || p.expiresAt <= Date.now() || p.session !== current.live.session) return
     closeReset(); plan = null; $('plan-results').hidden = true
     act('reset', 'loadout', { command: 'resetStart', session: p.session, resetToken: p.token, confirm: 'REPLACE_SURFACE_CHEST_AND_CLEAR_INVENTORY' }, () => message('reset', ''))
   })
   $('reset-stop').addEventListener('click', () => act('reset', 'loadout', { command: 'resetCancel', session: current?.live?.session }, () => message('reset', '中断を要求しました。途中結果を確認してください。')))
 
+  function closeStorage () { storagePreview = null; $('storage-dialog').close() }
+  function renderStorage () {
+    const live = current?.live, status = live?.storage
+    const idleJob = !live?.quarry || ['IDLE', 'PAUSED', 'FINISHED'].includes(live.quarry.state)
+    const canPrepare = status?.ready ?? live?.ready
+    $('storage').disabled = !!busy || !token || !status?.available || status.busy || !canPrepare || live?.loadout?.busy || !idleJob
+    if (storagePreview && (storagePreview.session !== live?.session || storagePreview.expiresAt <= Date.now())) { closeStorage(); message('storage', '確認が失効しました。', true) }
+    $('storage-confirm').disabled = !!busy || !live?.ready || live?.loadout?.busy || status?.busy || !storagePreview || storagePreview.expiresAt <= Date.now() || storagePreview.session !== live?.session
+    if (storagePreview) $('storage-time').textContent = Math.max(0, Math.ceil((storagePreview.expiresAt - Date.now()) / 1000)) + 's'
+    const labels = { preparing: '確認中', running: '収納中', completed: '収納完了', paused: '一時停止', failed: '収納未完了', cancelled: '中断' }
+    const phase = status?.phase ?? 'idle', shown = !['idle', 'unavailable', 'ready'].includes(phase)
+    $('storage-progress').hidden = !shown
+    $('storage-state').textContent = labels[phase] ?? (status?.busy ? '収納中' : '')
+    const moved = status?.transferredStacks ?? 0, total = moved + (status?.remainingStacks ?? 0)
+    $('storage-meter').max = Math.max(1, total); $('storage-meter').value = moved
+    $('storage-count').textContent = total ? `${moved} / ${total}` : ''
+    $('storage-cancel').hidden = !status?.busy
+    $('storage-cancel').disabled = !!busy
+    $('storage-resume').hidden = !status?.operationId || status.busy || !['paused', 'failed', 'cancelled'].includes(phase)
+    $('storage-resume').disabled = !!busy || !canPrepare || live?.loadout?.busy
+    $('storage-progress').classList.toggle('failed', phase === 'failed')
+    if (status?.error?.message) message('storage', clean(status.error.message), true)
+  }
+  function prepareStorage (operationId) {
+    storagePreview = null
+    act('storage', 'storage', { command: 'storagePreview', session: current?.live?.session, ...(operationId ? { operationId } : {}) }, result => {
+      const p = result.storagePreview
+      storagePreview = { ...p, session: result.state.session }
+      $('storage-world').textContent = clean(p.target.realm)
+      $('storage-player').textContent = clean(p.target.player || 'Bot')
+      $('storage-position').textContent = `X ${p.position.x} / Y ${p.position.y} / Z ${p.position.z}`
+      for (const key of ['main', 'armor', 'offhand', 'total']) $('storage-' + key).textContent = p.stacks[key]
+      $('storage-target-state').textContent = p.resume ? '再開' : '空'
+      $('storage-dialog').showModal()
+    })
+  }
+  $('storage').addEventListener('click', () => prepareStorage())
+  $('storage-resume').addEventListener('click', () => prepareStorage(current?.live?.storage?.operationId))
+  for (const id of ['storage-close', 'storage-back']) $(id).addEventListener('click', closeStorage)
+  $('storage-dialog').addEventListener('cancel', () => { storagePreview = null })
+  $('storage-dialog').addEventListener('close', () => { storagePreview = null })
+  $('storage-confirm').addEventListener('click', () => {
+    const p = storagePreview
+    if (!p || busy || !current?.live?.ready || current.live?.storage?.busy || current.live?.loadout?.busy || p.expiresAt <= Date.now() || p.session !== current.live.session) return
+    closeStorage()
+    act('storage', 'storage', { command: 'storageStart', session: p.session, storageToken: p.token, confirm: 'STORE_ALL_IN_EMPTY_CHEST' }, () => message('storage', ''))
+  })
+  $('storage-cancel').addEventListener('click', () => act('storage', 'storage', { command: 'storageCancel', session: current?.live?.session, operationId: current?.live?.storage?.operationId }, () => message('storage', '')))
+
   request('session').then(data => { if (!data.enabled) throw new Error('管理操作は無効です。管理画面サーバーを更新してください。'); token = data.token; $('profile').value = data.profile; render(); return poll() }).catch(error => message('connection', error.message, true))
   render()
   setInterval(poll, 2000)
-  setInterval(() => { if ((plan?.planToken || resetPreview) && !document.hidden) render() }, 1000)
+  setInterval(() => { if ((plan?.planToken || resetPreview || storagePreview) && !document.hidden) render() }, 1000)
   document.addEventListener('visibilitychange', () => { if (!document.hidden) void poll() })
 })()

@@ -70,3 +70,16 @@ test('dashboard-control-http: reset writes use the same strict JSON, token, Host
   assert.equal((await f.call(valid)).status, 200)
   assert.deepEqual(f.calls, [['loadout', { command: 'resetPreview', session: 's' }]])
 })
+test('dashboard-control-http: storage writes retain exact origin, Host, token, JSON and fixed POST route fences', async t => {
+  const f = fixture(t), token = (await f.call()).value.token
+  const payload = { command: 'storageStart', session: 's', storageToken: 't', confirm: 'STORE_ALL_IN_EMPTY_CHEST' }
+  const valid = { method: 'POST', url: '/api/control/storage', token, origin: 'http://127.0.0.1:3001', body: JSON.stringify(payload) }
+  for (const extra of [{ token: null }, { token: 'old' }, { origin: null }, { origin: 'https://evil.invalid' }, { host: 'localhost:3001' }, { site: 'cross-site' }]) assert.equal((await f.call({ ...valid, ...extra })).status, 403)
+  assert.equal((await f.call({ ...valid, contentType: 'text/plain' })).status, 415)
+  for (const extra of [{ method: 'GET' }, { url: '/api/control/storage?command=storageStart' }, { url: '/api/control/action' }, { url: '/api/control/storage/start' }]) assert.equal((await f.call({ ...valid, ...extra })).status, 404)
+  assert.equal((await f.call({ ...valid, body: '{oops' })).status, 400)
+  assert.equal((await f.call({ ...valid, body: 'x'.repeat(4097) })).status, 413)
+  assert.deepEqual(f.calls, [])
+  assert.equal((await f.call(valid)).status, 200)
+  assert.deepEqual(f.calls, [['storage', payload]])
+})

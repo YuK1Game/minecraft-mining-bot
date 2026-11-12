@@ -33,7 +33,30 @@ function scope (state) {
   if (!state?.connectionId || !state.profile || state.realm?.id == null || !state.dimension) return null
   return digest([state.profile, String(state.realm.id), state.dimension, state.connectionId, state.startedAt, state.lifecycle?.deathId ?? 0])
 }
-function createDashboardControl ({ getState, getQuarry, getReset = () => null, getGeneration = () => 0, disconnect, now = Date.now, uuid = randomUUID }) {
+const storageCommands = ['storagePreview', 'storageStart', 'storageCancel']
+const operationId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,159}$/.test(value)
+const point = value => value && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(value[axis]) && Math.abs(value[axis]) <= 30000000)
+  ? { x: value.x, y: value.y, z: value.z } : null
+const count = value => Number.isSafeInteger(value) && value >= 0 ? value : 0
+const storageReady = state => !!scope(state) && state.phase === 'spawned' && state.loadingScreenEnded === true && !state.dead && !state.isDead && !state.lifecycle?.dead && !state.spawnPending && state.health > 0
+function storageStatus (storage, state) {
+  const value = storage?.status() ?? {}
+  return { available: !!storage, ready: !!storage && storageReady(state), busy: value.busy === true, phase: text(value.phase || (storage ? 'idle' : 'unavailable')),
+    operationId: operationId(value.operationId) ? value.operationId : null, serverConfirmed: value.serverConfirmed === true,
+    target: point(value.target), transferredStacks: count(value.transferredStacks), remainingStacks: count(value.remainingStacks),
+    error: value.error ? { code: text(value.error.code), message: text(value.error.message) } : null }
+}
+function storagePreview (value) {
+  const stacks = value?.stacks, position = point(value?.position)
+  if (!value || typeof value.token !== 'string' || !value.token || value.token.length > 256 || !Number.isFinite(value.expiresAt) ||
+    !operationId(value.operationId) || !position || value.slotCount !== 54 ||
+    !stacks || !['main', 'armor', 'offhand', 'total'].every(key => Number.isSafeInteger(stacks[key]) && stacks[key] >= 0) ||
+    stacks.main > 36 || stacks.armor > 4 || stacks.offhand > 1 || stacks.total !== stacks.main + stacks.armor + stacks.offhand) throw error('INVALID_STORAGE_PREVIEW', '収納先と持ち物の確認結果が不正です。')
+  return { token: value.token, expiresAt: value.expiresAt, operationId: value.operationId, position, slotCount: 54,
+    resume: value.resume === true, stacks: { main: stacks.main, armor: stacks.armor, offhand: stacks.offhand, total: stacks.total },
+    target: { position: point(value.target?.position), realm: text(value.target?.realm), player: text(value.target?.player), dimension: text(value.target?.dimension) } }
+}
+function createDashboardControl ({ getState, getQuarry, getReset = () => null, getStorage = () => null, getGeneration = () => 0, disconnect, now = Date.now, uuid = randomUUID }) {
   let receipt = null, busy = 0
   const invalidate = () => { receipt = null }
   function snapshot () {
@@ -42,18 +65,56 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
     return { protocol: 1, phase: text(s?.phase), ready: s?.phase === 'spawned' && s.loadingScreenEnded === true && !s.dead && !s.isDead && !s.lifecycle?.dead && !s.spawnPending && s.health > 0 && s.inventory?.known === true && !s.inventory.uncertain,
       session: scope(s), profile: text(s?.profile), realm: s?.realm ? { id: String(s.realm.id), name: text(s.realm.name) } : null, dimension: text(s?.dimension), position,
       chunk: position ? { x: Math.floor(position.x / 16), z: Math.floor(position.z / 16) } : null,
-      busy: busy > 0, loadout: getReset()?.status() ?? { busy: false, phase: 'idle' }, quarry: q?.jobId ? { jobId: text(q.jobId), state: text(q.state), userRunIntent: text(q.userRunIntent), pauseReason: text(q.pauseReason), persistence: q.persistence ?? null, currentY: q.currentY ?? null } : null }
+      busy: busy > 0, loadout: getReset()?.status() ?? { busy: false, phase: 'idle' }, storage: storageStatus(getStorage(), s),
+      quarry: q?.jobId ? { jobId: text(q.jobId), state: text(q.state), userRunIntent: text(q.userRunIntent), pauseReason: text(q.pauseReason), persistence: q.persistence ?? null, currentY: q.currentY ?? null } : null }
   }
   function checkSession (input) {
     const current = scope(getState())
     if (!current || input.session !== current) throw error('STALE_SESSION', '接続先または生存状態が変わりました。状態を更新して操作してください。')
   }
   async function execute (input) {
-    object(input, ['command', 'session', 'config', 'planToken', 'jobId', 'resetToken', 'confirm'])
-    if (!['plan', 'start', 'pause', 'resume', 'emergencyStop', 'cancel', 'disconnect', 'resetPreview', 'resetStart', 'resetCancel'].includes(input.command)) throw error('INVALID_COMMAND', 'この操作は管理画面に公開されていません。', 400)
+    object(input, storageCommands.includes(input?.command)
+      ? ['command', 'session', 'operationId', 'storageToken', 'confirm']
+      : ['command', 'session', 'config', 'planToken', 'jobId', 'resetToken', 'confirm'])
+    if (!['plan', 'start', 'pause', 'resume', 'emergencyStop', 'cancel', 'disconnect', 'resetPreview', 'resetStart', 'resetCancel', ...storageCommands].includes(input.command)) throw error('INVALID_COMMAND', 'この操作は管理画面に公開されていません。', 400)
     checkSession(input)
-    const reset = getReset()
+    const reset = getReset(), storage = getStorage(), storing = storage?.status().busy === true
+    if (storageCommands.includes(input.command)) {
+      invalidate()
+      if (!storage) throw error('STORAGE_UNAVAILABLE', 'Bot本体の収納機能が未反映です。')
+      if (input.command === 'storageCancel') {
+        object(input, ['command', 'session', 'operationId'])
+        if (!operationId(input.operationId) || input.operationId !== storage.status().operationId) throw error('STALE_STORAGE_OPERATION', '収納操作が変わりました。状態を更新してください。')
+        storage.cancel()
+        return { storage: storageStatus(storage, getState()), state: snapshot() }
+      }
+      if (reset?.status().busy) throw error('RESET_BUSY', 'デバッグ操作の終了を待ってください。')
+      if (storing) throw error('STORAGE_BUSY', '収納操作の終了を待ってください。')
+      if (busy) throw error('CONTROL_BUSY', '前の操作の終了を待っています。')
+      if (!storageReady(getState())) throw error('NOT_READY', '参加位置・体力の受信を待っています。')
+      busy++
+      try {
+        if (input.command === 'storagePreview') {
+          object(input, ['command', 'session', 'operationId'])
+          if (input.operationId !== undefined && !operationId(input.operationId)) throw error('INVALID_INPUT', '収納操作IDが不正です。', 400)
+          const preview = await storage.prepare(input.operationId === undefined ? {} : { operationId: input.operationId })
+          checkSession(input)
+          if (getStorage() !== storage) throw error('STALE_STORAGE_OPERATION', '収納機能が更新されました。状態を更新してください。')
+          return { storagePreview: storagePreview(preview), state: snapshot() }
+        }
+        object(input, ['command', 'session', 'storageToken', 'confirm'])
+        if (typeof input.storageToken !== 'string' || !input.storageToken || input.storageToken.length > 256 || input.confirm !== 'STORE_ALL_IN_EMPTY_CHEST') throw error('INVALID_INPUT', '収納の確認情報が不正です。', 400)
+        const started = storage.start({ token: input.storageToken, confirm: input.confirm })
+        if (started?.then) {
+          void Promise.resolve(started).catch(() => {})
+          throw error('STORAGE_RESULT_UNKNOWN', '収納の受付状態を再確認してください。操作を繰り返さないでください。')
+        }
+        return { storage: storageStatus(storage, getState()), state: snapshot() }
+      } finally { busy-- }
+    }
+    if (storing && ['plan', 'start', 'resume', 'resetPreview', 'resetStart'].includes(input.command)) throw error('STORAGE_BUSY', '収納操作の終了を待ってください。')
     if (['resetPreview', 'resetStart', 'resetCancel'].includes(input.command)) {
+      if (busy && input.command !== 'resetCancel') throw error('CONTROL_BUSY', '前の操作の終了を待っています。')
       invalidate()
       if (!reset) throw error('RESET_UNAVAILABLE', 'Bot本体を更新・再起動してください。')
       if (input.command === 'resetPreview') return { resetPreview: await reset.preview(), state: snapshot() }
@@ -65,9 +126,17 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
     if (stopping && reset?.status().busy) reset.cancel()
     if (busy && !stopping) throw error('CONTROL_BUSY', '前の操作の終了を待っています。')
     const q = getQuarry()
-    if (!q) throw error('NOT_READY', 'Botの初期化を待っています。')
+    if (!q) {
+      if (stopping && storing && input.jobId === null) {
+        storage.cancel()
+        if (input.command === 'disconnect') { checkSession(input); setImmediate(disconnect); return { disconnecting: true } }
+        return { state: snapshot() }
+      }
+      throw error('NOT_READY', 'Botの初期化を待っています。')
+    }
     const current = q.status()
     if (input.command !== 'plan' && input.command !== 'start' && input.jobId !== (current?.jobId ?? null)) throw error('STALE_JOB', 'ジョブが変わりました。状態を更新してください。')
+    if (stopping && storing) storage.cancel()
     if (!stopping && !snapshot().ready) throw error('NOT_READY', '参加位置・体力・所持品の受信を待っています。')
     if (input.command === 'plan') {
       if (current?.jobId && !['IDLE', 'FINISHED'].includes(current.state)) throw error('JOB_EXISTS', '既存のジョブを再開するか、キャンセルしてから新しい計画を作成してください。')

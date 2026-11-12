@@ -73,3 +73,19 @@ test('dashboard-control-manager: no raw proxy or arbitrary operations', async t 
   await assert.rejects(f.manager.execute('action', { group: 'mining', method: 'start' }))
   assert.equal(f.requests.length, 0)
 })
+test('dashboard-control-manager: only fixed storage commands use the existing loopback control transport without spawning', async t => {
+  const f = fixture(t)
+  const payloads = [{ command: 'storagePreview', session: 's' }, { command: 'storagePreview', session: 's', operationId: 'manual_deposit_1' },
+    { command: 'storageStart', session: 's', storageToken: 't', confirm: 'STORE_ALL_IN_EMPTY_CHEST' }, { command: 'storageCancel', session: 's', operationId: 'manual_deposit_1' }]
+  for (const payload of payloads) assert.deepEqual(await f.manager.execute('storage', payload), { accepted: true })
+  assert.deepEqual(f.requests, payloads.map(payload => ({ apiPort: 3000, payload, timeoutMs: 30000 })))
+  assert.equal(f.spawns.length, 0)
+})
+test('dashboard-control-manager: storage route cannot tunnel arbitrary commands or extra destination and action fields', async t => {
+  const f = fixture(t)
+  for (const payload of [{ command: 'plan' }, { command: 'resetStart' }, { command: 'action' },
+    ...['url', 'path', 'group', 'method', 'args', 'config', 'jobId', 'resetToken', 'profile', 'checkpoint'].map(key => ({ command: 'storagePreview', [key]: 'unexpected' }))]) {
+    await assert.rejects(f.manager.execute('storage', payload), { code: ['plan', 'resetStart', 'action'].includes(payload.command) ? 'INVALID_COMMAND' : 'INVALID_INPUT' })
+  }
+  assert.deepEqual(f.requests, []); assert.deepEqual(f.spawns, [])
+})

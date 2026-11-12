@@ -18,7 +18,7 @@ function fixture () {
   const context = {
     userBehaviorSnapshot: () => behavior, userBehaviorLease: { kind: 'combat' }, userBehaviorOwns: () => true,
     userBehaviorSleeping: false, userBehaviorWakePending: false,
-    resetHeld: () => false, loadoutLease: null, ownedCall: 0, manualShulkerTask: null, manualArmorOwner: null,
+    resetHeld: () => false, loadoutLease: null, ownedCall: 0, manualShulkerTask: null, manualArmorOwner: null, manualChestStorage: null,
     disposed: false, disposing: false, host: { shared: {} }, working: () => ({}), pendingStops: new Set(),
     quarryJob: null, quarryPillar: null, idleSafety: op, excavation: op, tunneling: op, recovery: op, foraging: op,
     surfaceReturn: op, shelter: op, hut: op, guardRoute: op, motionActive: () => true,
@@ -74,7 +74,7 @@ test('loadout-handoff: confirmation fences combat before draining and validates 
   const drain = new Promise(resolve => { resolveDrain = resolve })
   const c = { loadoutReset: null, loadoutLease: null, host: { shared: { loadingScreenEnded: true } }, quarryState: () => ({}),
     inventoryInspection: {}, crafting: {}, armor: {}, inventory: {}, chest: {}, ensureQuarryJob: () => null,
-    require: name => { assert.equal(name, './loadout-runtime-adapter'); return { createRuntimeV22ChestReset: o => { options = o; return {} } } },
+    createRuntimeV22ChestReset: o => { options = o; return {} },
     resetHeld: () => c.loadoutLease !== null, requireIdle: o => validations.push(o),
     autonomy: { stop: () => events.push('autonomy_stop') }, stopIdleStream: () => events.push('stream_stop'),
     stopActionsAfterRaw: reason => { assert.equal(reason, 'loadout_reset'); assert.equal(c.loadoutLease, 'reset-1'); events.push('drain'); return drain },
