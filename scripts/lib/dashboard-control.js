@@ -139,7 +139,7 @@ function createDashboardManager ({ workspaceRoot, apiPort, defaultProfile = 'mai
       return requestBot({ apiPort, payload: { command: 'disconnect', session: input.session, jobId: input.jobId }, timeoutMs: 30000 })
     }
     if (route === 'loadout') {
-      inputKeys(input, ['command', 'session', 'resetToken', 'confirm'])
+      inputKeys(input, input?.command === 'resetPreview' ? ['command', 'session', 'area'] : input?.command === 'resetStart' ? ['command', 'session', 'resetToken', 'confirm', 'area'] : ['command', 'session'])
       if (!['resetPreview', 'resetStart', 'resetCancel'].includes(input.command)) throw failure('INVALID_COMMAND', 'この操作は公開されていません。', 400)
       return requestBot({ apiPort, payload: input, timeoutMs: 30000 })
     }
@@ -149,8 +149,8 @@ function createDashboardManager ({ workspaceRoot, apiPort, defaultProfile = 'mai
       return requestBot({ apiPort, payload: input, timeoutMs: 30000 })
     }
     if (route === 'quarry') {
-      inputKeys(input, ['command', 'session', 'config', 'planToken', 'jobId'])
-      if (!['plan', 'start', 'pause', 'resume', 'emergencyStop', 'cancel'].includes(input.command)) throw failure('INVALID_COMMAND', 'この操作は公開されていません。', 400)
+      inputKeys(input, input?.command === 'moveToChunk' ? ['command', 'session', 'area'] : input?.command === 'cancelChunkMove' ? ['command', 'session', 'operationId'] : ['command', 'session', 'config', 'planToken', 'jobId'])
+      if (!['plan', 'start', 'pause', 'resume', 'emergencyStop', 'cancel', 'moveToChunk', 'cancelChunkMove'].includes(input.command)) throw failure('INVALID_COMMAND', 'この操作は公開されていません。', 400)
       return requestBot({ apiPort, payload: input, timeoutMs: 30000 })
     }
     throw failure('NOT_FOUND', '操作が見つかりません。', 404)

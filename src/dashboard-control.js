@@ -3,6 +3,8 @@
 // Narrow, host-side command boundary. Never expose the arbitrary /action API to
 // a browser. A start receipt belongs to one live connection, job and code generation.
 const { createHash, randomUUID } = require('node:crypto')
+const { observedScope } = require('./server-position-verifier')
+const { normalizeChunkArea, areaContainsFeet, chunkAreaKey } = require('./chunk-area')
 const error = (code, message, status = 409) => Object.assign(new Error(message), { code, status })
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const text = value => String(value ?? '').replace(/[\p{C}\u00a7]/gu, ' ').slice(0, 240)
@@ -57,15 +59,48 @@ function storagePreview (value) {
     target: { position: point(value.target?.position), realm: text(value.target?.realm), player: text(value.target?.player), dimension: text(value.target?.dimension) } }
 }
 function createDashboardControl ({ getState, getQuarry, getReset = () => null, getStorage = () => null, getGeneration = () => 0, disconnect, now = Date.now, uuid = randomUUID }) {
-  let receipt = null, busy = 0
-  const invalidate = () => { receipt = null }
+  let receipt = null, resetReceipt = null, revision = 0, busy = 0
+  const invalidate = () => { receipt = null; resetReceipt = null; revision++ }
+  const areaOf = value => { try { return normalizeChunkArea(value) } catch { throw error('INVALID_INPUT', '移動・初期チェストのチャンク範囲が不正です。', 400) } }
+  function positionProof (q, state) {
+    let value
+    try { value = q?.controlPosition?.() } catch { return null }
+    const currentScope = observedScope(state), feet = value?.feet
+    if (!currentScope || value?.confirmed !== true || value.scope !== currentScope || !Number.isSafeInteger(value.generation) || value.generation < 0 ||
+      typeof value.source !== 'string' || !/position/i.test(value.source) || /prediction/i.test(value.source) ||
+      !feet || !['x', 'y', 'z'].every(axis => Number.isFinite(feet[axis]) && Math.abs(feet[axis]) <= 30000000) ||
+      !Number.isFinite(value.radius) || value.radius < 0 || value.radius > 1.5) return null
+    const observedAt = typeof value.observedAt === 'number' ? value.observedAt : Date.parse(value.observedAt)
+    if (!Number.isFinite(observedAt) || observedAt > now()) return null
+    return { confirmed: true, session: scope(state), feet: { x: feet.x, y: feet.y, z: feet.z }, radius: value.radius, generation: value.generation, observedAt, source: text(value.source) }
+  }
+  function moveStatus (q, state) {
+    const available = ['moveToChunk', 'cancelChunkMove', 'chunkMoveStatus', 'controlPosition'].every(name => typeof q?.[name] === 'function')
+    let value = {}, area = null
+    try { value = q?.chunkMoveStatus?.() ?? {}; if (value.area != null) area = normalizeChunkArea(value.area) } catch { /* Unavailable status cannot grant a permission. */ }
+    const proof = positionProof(q, state), confirmed = value.serverConfirmed === true && !!area && !!proof && areaContainsFeet(area, proof.feet, proof.radius)
+    return { available, busy: value.busy === true, phase: text(value.phase || (available ? 'idle' : 'unavailable')), operationId: operationId(value.operationId) ? value.operationId : null,
+      area, serverConfirmed: confirmed, ...(value.error ? { error: { code: text(value.error.code), message: text(value.error.message) } } : {}) }
+  }
+  function requireAreaPosition (area, q = getQuarry()) {
+    const proof = positionProof(q, getState())
+    if (!proof || !areaContainsFeet(area, proof.feet, proof.radius)) throw error('CHUNK_POSITION_UNCONFIRMED', '選択した範囲内のBotの実位置を確認してから操作してください。')
+    return proof
+  }
+  function requireMovableJob (q) {
+    const status = q.status?.(), doc = q.document?.()
+    if (status?.draining || status?.persistence?.status === 'failed' || status?.jobId && !['IDLE', 'PAUSED', 'FINISHED'].includes(status.state) ||
+      status?.supplies?.active || status?.portableStorage || doc?.supplyRestock || doc?.portableStorage || doc?.pendingTotemEquip ||
+      doc?.loadout && doc.loadoutReady !== true || doc?.finalChest && doc.finalChest.checkpoint?.phase !== 'completed' ||
+      doc?.egress?.checkpoint && !doc.surfaceReturnedAt) throw error('QUARRY_BUSY', '既存の作業と未確認の回収が終了してから移動してください。')
+  }
   function snapshot () {
-    const s = getState(), q = getQuarry()?.status() ?? null
+    const s = getState(), engine = getQuarry(), q = engine?.status() ?? null
     const position = s?.position && ['x', 'y', 'z'].every(k => Number.isFinite(s.position[k])) ? { x: s.position.x, y: s.position.y - 1.62, z: s.position.z } : null
     return { protocol: 1, phase: text(s?.phase), ready: s?.phase === 'spawned' && s.loadingScreenEnded === true && !s.dead && !s.isDead && !s.lifecycle?.dead && !s.spawnPending && s.health > 0 && s.inventory?.known === true && !s.inventory.uncertain,
       session: scope(s), profile: text(s?.profile), realm: s?.realm ? { id: String(s.realm.id), name: text(s.realm.name) } : null, dimension: text(s?.dimension), position,
       chunk: position ? { x: Math.floor(position.x / 16), z: Math.floor(position.z / 16) } : null,
-      busy: busy > 0, loadout: getReset()?.status() ?? { busy: false, phase: 'idle' }, storage: storageStatus(getStorage(), s),
+      busy: busy > 0, loadout: getReset()?.status() ?? { busy: false, phase: 'idle' }, storage: storageStatus(getStorage(), s), chunkMove: moveStatus(engine, s), positionProof: positionProof(engine, s),
       quarry: q?.jobId ? { jobId: text(q.jobId), state: text(q.state), userRunIntent: text(q.userRunIntent), pauseReason: text(q.pauseReason), persistence: q.persistence ?? null, currentY: q.currentY ?? null } : null }
   }
   function checkSession (input) {
@@ -73,12 +108,32 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
     if (!current || input.session !== current) throw error('STALE_SESSION', '接続先または生存状態が変わりました。状態を更新して操作してください。')
   }
   async function execute (input) {
-    object(input, storageCommands.includes(input?.command)
+    object(input, input?.command === 'moveToChunk' ? ['command', 'session', 'area'] : input?.command === 'cancelChunkMove' ? ['command', 'session', 'operationId'] : input?.command === 'resetPreview' ? ['command', 'session', 'area'] : input?.command === 'resetStart' ? ['command', 'session', 'resetToken', 'confirm', 'area'] : input?.command === 'resetCancel' ? ['command', 'session'] : storageCommands.includes(input?.command)
       ? ['command', 'session', 'operationId', 'storageToken', 'confirm']
       : ['command', 'session', 'config', 'planToken', 'jobId', 'resetToken', 'confirm'])
-    if (!['plan', 'start', 'pause', 'resume', 'emergencyStop', 'cancel', 'disconnect', 'resetPreview', 'resetStart', 'resetCancel', ...storageCommands].includes(input.command)) throw error('INVALID_COMMAND', 'この操作は管理画面に公開されていません。', 400)
+    if (!['plan', 'start', 'pause', 'resume', 'emergencyStop', 'cancel', 'disconnect', 'resetPreview', 'resetStart', 'resetCancel', 'moveToChunk', 'cancelChunkMove', ...storageCommands].includes(input.command)) throw error('INVALID_COMMAND', 'この操作は管理画面に公開されていません。', 400)
     checkSession(input)
     const reset = getReset(), storage = getStorage(), storing = storage?.status().busy === true
+    const movement = getQuarry(), moving = moveStatus(movement, getState())
+    if (['moveToChunk', 'cancelChunkMove'].includes(input.command)) {
+      invalidate()
+      if (!moving.available) throw error('CHUNK_MOVE_UNAVAILABLE', 'Botの移動機能が未反映です。')
+      if (input.command === 'cancelChunkMove') {
+        if (!operationId(input.operationId) || input.operationId !== moving.operationId) throw error('STALE_CHUNK_MOVE', '移動操作が変わりました。状態を更新してください。')
+        movement.cancelChunkMove(input.operationId)
+        return { chunkMove: moveStatus(movement, getState()), state: snapshot() }
+      }
+      const area = areaOf(input.area)
+      if (busy || moving.busy) throw error('CONTROL_BUSY', '前の操作の終了を待っています。')
+      if (reset?.status().busy) throw error('RESET_BUSY', 'デバッグ操作の終了を待ってください。')
+      if (storing) throw error('STORAGE_BUSY', '収納操作の終了を待ってください。')
+      if (!storageReady(getState())) throw error('NOT_READY', '参加位置・体力の受信を待っています。')
+      requireMovableJob(movement)
+      const result = movement.moveToChunk({ area })
+      if (result?.then) { void Promise.resolve(result).catch(() => {}); throw error('CHUNK_MOVE_RESULT_UNKNOWN', '移動の受付状態を再確認してください。操作を繰り返さないでください。') }
+      return { chunkMove: moveStatus(movement, getState()), state: snapshot() }
+    }
+    if (moving.busy && ['plan', 'start', 'resume', 'resetPreview', 'resetStart', 'storagePreview', 'storageStart'].includes(input.command)) throw error('CHUNK_MOVE_BUSY', 'Botの移動が終わるまで待ってください。')
     if (storageCommands.includes(input.command)) {
       invalidate()
       if (!storage) throw error('STORAGE_UNAVAILABLE', 'Bot本体の収納機能が未反映です。')
@@ -115,11 +170,27 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
     if (storing && ['plan', 'start', 'resume', 'resetPreview', 'resetStart'].includes(input.command)) throw error('STORAGE_BUSY', '収納操作の終了を待ってください。')
     if (['resetPreview', 'resetStart', 'resetCancel'].includes(input.command)) {
       if (busy && input.command !== 'resetCancel') throw error('CONTROL_BUSY', '前の操作の終了を待っています。')
-      invalidate()
       if (!reset) throw error('RESET_UNAVAILABLE', 'Bot本体を更新・再起動してください。')
-      if (input.command === 'resetPreview') return { resetPreview: await reset.preview(), state: snapshot() }
-      if (input.command === 'resetCancel') return { reset: reset.cancel(), state: snapshot() }
-      return { reset: reset.start({ token: input.resetToken, confirm: input.confirm }), state: snapshot() }
+      if (input.command === 'resetCancel') { invalidate(); return { reset: reset.cancel(), state: snapshot() } }
+      const r = input.command === 'resetStart' ? resetReceipt : null
+      if (input.command === 'resetStart') invalidate()
+      const area = areaOf(input.area)
+      const proof = requireAreaPosition(area, movement)
+      if (input.command === 'resetPreview') {
+        invalidate()
+        const generation = getGeneration(), runtimeGeneration = proof.generation, previewRevision = revision
+        let preview
+        busy++
+        try { preview = await reset.preview({ area: structuredClone(area) }) } finally { busy-- }
+        checkSession(input)
+        if (revision !== previewRevision || getReset() !== reset || getQuarry() !== movement || getGeneration() !== generation || moveStatus(movement, getState()).busy) throw error('STALE_RESET', '初期チェストの確認中に状態が変わりました。')
+        if (requireAreaPosition(area, movement).generation !== runtimeGeneration) throw error('STALE_RESET', '初期チェストの確認中に状態が変わりました。')
+        if (typeof preview?.token !== 'string' || !preview.token || preview.token.length > 256 || !Number.isFinite(preview.expiresAt)) throw error('INVALID_RESET_PREVIEW', '初期チェストの確認結果が不正です。')
+        resetReceipt = { token: preview.token, area: chunkAreaKey(area), session: input.session, generation, runtimeGeneration, reset, quarry: movement, expiresAt: Math.min(preview.expiresAt, now() + 120000) }
+        return { resetPreview: preview, state: snapshot() }
+      }
+      if (!r || r.token !== input.resetToken || r.area !== chunkAreaKey(area) || r.session !== input.session || r.generation !== getGeneration() || r.runtimeGeneration !== proof.generation || r.reset !== reset || r.quarry !== movement || r.expiresAt <= now()) throw error('STALE_RESET', '初期チェストの確認が変更・失効しました。もう一度確認してください。')
+      return { reset: reset.start({ token: input.resetToken, confirm: input.confirm, area: structuredClone(area) }), state: snapshot() }
     }
     const stopping = ['pause', 'emergencyStop', 'cancel', 'disconnect'].includes(input.command)
     if (reset?.status().busy && !stopping) throw error('RESET_BUSY', '初期アイテムのリセット処理中です。')
@@ -136,6 +207,7 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
     }
     const current = q.status()
     if (input.command !== 'plan' && input.command !== 'start' && input.jobId !== (current?.jobId ?? null)) throw error('STALE_JOB', 'ジョブが変わりました。状態を更新してください。')
+    if (stopping && moving.busy) { invalidate(); movement.cancelChunkMove(moving.operationId) }
     if (stopping && storing) storage.cancel()
     if (!stopping && !snapshot().ready) throw error('NOT_READY', '参加位置・体力・所持品の受信を待っています。')
     if (input.command === 'plan') {

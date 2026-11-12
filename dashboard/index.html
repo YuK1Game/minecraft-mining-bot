@@ -121,10 +121,11 @@ h1{font-size:21px;letter-spacing:0}h2{font-size:14px}.intro{padding:14px 0 12px;
             <label>上限 Y<input id="control-top" type="number" step="1" min="-64" max="319" placeholder="自動"></label>
             <label>下限 Y<input id="control-bottom" type="number" step="1" min="-64" max="319" placeholder="最下層"></label>
           </div>
-          <div class="debug-chest-actions"><button id="control-reset" type="button" class="loadout-reset-button" disabled>デバッグチェスト設置</button></div>
+          <div class="debug-chest-actions"><button id="control-move" type="button" class="chunk-move-button" disabled>Botを移動させる</button><button id="control-move-cancel" type="button" hidden>中断</button><button id="control-reset" type="button" class="loadout-reset-button" disabled>デバッグチェスト設置</button></div>
         </div>
       </div>
       <p class="control-message error" id="control-range-message" role="status" hidden></p>
+      <span class="control-message chunk-move-message" id="control-move-message" role="status" aria-live="polite" hidden></span>
       <section class="loadout-progress" id="control-reset-progress" role="status" aria-live="polite" hidden><span class="loadout-status-icon" id="control-reset-icon" aria-hidden="true">↻</span><div><strong id="control-reset-state"></strong><span id="control-reset-detail"></span></div><button id="control-reset-stop" type="button" hidden>中断</button></section>
       <p class="control-message" id="control-reset-message" role="alert" hidden></p>
     </section>

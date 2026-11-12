@@ -19,6 +19,7 @@ function fixture () {
     userBehaviorSnapshot: () => behavior, userBehaviorLease: { kind: 'combat' }, userBehaviorOwns: () => true,
     userBehaviorSleeping: false, userBehaviorWakePending: false,
     resetHeld: () => false, loadoutLease: null, ownedCall: 0, manualShulkerTask: null, manualArmorOwner: null, manualChestStorage: null,
+    chunkMoveHeld: () => false, chunkMoveDepth: 0,
     disposed: false, disposing: false, host: { shared: {} }, working: () => ({}), pendingStops: new Set(),
     quarryJob: null, quarryPillar: null, idleSafety: op, excavation: op, tunneling: op, recovery: op, foraging: op,
     surfaceReturn: op, shelter: op, hut: op, guardRoute: op, motionActive: () => true,
@@ -35,12 +36,13 @@ test('loadout-handoff: only private debug admission allows active combat; ordina
   assert.throws(() => f.call({ loadoutHandoff: true }), /戦闘・睡眠/)
 })
 test('loadout-handoff: debug admission does not bypass inventory, active quarry or pending cleanup', () => {
-  for (const blocker of ['inventory', 'quarry', 'pending', 'uncertain']) {
+  for (const blocker of ['inventory', 'quarry', 'pending', 'uncertain', 'chunkMove']) {
     const f = fixture(), c = f.context
     if (blocker === 'inventory') c.inventory = { snapshot: () => ({ busy: true }) }
     if (blocker === 'quarry') c.quarryJob = { holdsWork: () => true }
     if (blocker === 'pending') c.pendingStops.add('previous')
     if (blocker === 'uncertain') c.host.shared.inventoryUncertain = true
+    if (blocker === 'chunkMove') c.chunkMoveHeld = () => true
     assert.throws(() => f.call({ loadoutHandoff: true }), undefined, blocker)
   }
 })

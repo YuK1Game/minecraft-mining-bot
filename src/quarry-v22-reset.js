@@ -7,6 +7,7 @@
 const { randomUUID, createHash } = require('node:crypto')
 const { observedScope } = require('./server-position-verifier')
 const { findDebugChestSite, debugSiteReachable } = require('./quarry-debug-site')
+const { normalizeChunkArea, areaContainsFeet, chunkAreaKey } = require('./chunk-area')
 const { CARGO, roles, singles, validateV22Loadout } = require('./quarry-v22-loadout')
 const fail = (code, details = null) => Object.assign(new Error(code), {code, ...(details ? {details}: {})})
 const copy = v => structuredClone(v)
@@ -67,26 +68,41 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
     throw fail('RESET_CHEST_SITE_UNAVAILABLE')
   }
   const siteIdentity = p => stamp({position:p.position,other:p.other,stage:p.stage,stand:p.stand})
-  async function prepare () {
+  function selectedSite (frame, home, area) {
+    if(!area)return
+    if(!areaContainsFeet(area,{x:frame.s.position.x,y:frame.feet.y,z:frame.s.position.z}))throw fail('RESET_OUTSIDE_SELECTED_CHUNKS')
+    if(home&&![home.position,home.other,home.stage,home.stand].every(p=>areaContainsFeet(area,{x:p.x+0.5,y:p.y,z:p.z+0.5})))throw fail('RESET_SITE_OUTSIDE_SELECTED_CHUNKS')
+  }
+  async function confirmSelected (area, scope, signal) {
+    if(!area)return
+    const receipt=await adapter.confirmArea?.(copy(area),{signal})
+    if(receipt?.serverConfirmed!==true||receipt.scope!==scope)throw fail('RESET_POSITION_UNCONFIRMED')
+  }
+  async function prepare (options={}) {
     if(task)throw fail('RESET_BUSY')
     adapter.assertIdle()
     const snap=scene()
     const generation=adapter.generation?.()??0,job=copy(jobIdentity())
+    const selectedArea=options?.area==null?null:normalizeChunkArea(options.area)
+    selectedSite(snap,null,selectedArea)
+    await confirmSelected(selectedArea,snap.scope)
     const prior=await adapter.load()
     if(prior && prior.world===worldOf(snap.s) && prior.phase!=='completed' && prior.phase!=='idle')throw fail('RESET_RECOVERY_REQUIRED',{stage:prior.home?.stage,operationId:prior.operationId})
     const home=site(snap,prior?.phase==='completed'&&prior.world===worldOf(snap.s)&&same(prior.home?.stand,snap.feet)?prior.home:null)
+    selectedSite(snap,home,selectedArea)
     const after=scene()
     if(after.scope!==snap.scope||!same(after.feet,snap.feet)||fingerprint(after.view)!==fingerprint(snap.view)||(adapter.generation?.()??0)!==generation||!sameIdentity(jobIdentity(),job)||siteIdentity(site(after,home.existing?home:null))!==siteIdentity(home))throw fail('RESET_PREVIEW_STALE')
     preview={token:uuid(),expiresAt:now()+120000,scope:snap.scope,world:worldOf(snap.s),home,feet:snap.feet,
-      fingerprint:fingerprint(snap.view),jobIdentity:job,generation}
+      fingerprint:fingerprint(snap.view),jobIdentity:job,generation,selectedArea}
     return {token:preview.token,expiresAt:preview.expiresAt,target:{player:snap.s.playerName??snap.s.profile,realm:snap.s.realm?.name??'',realmId:String(snap.s.realm?.id),dimension:snap.s.dimension},
-      stage:copy(home.stage),homeChest:copy(home),manifest:summary(),replaces:{surfaceChest:home.existing,inventory:true,armor:true,offhand:true}}
+      stage:copy(home.stage),homeChest:copy(home),...(selectedArea?{area:copy(selectedArea)}:{}),manifest:summary(),replaces:{surfaceChest:home.existing,inventory:true,armor:true,offhand:true}}
   }
   function guard () {
     abort?.signal.throwIfAborted()
     const frame=scene()
     if(!active||frame.scope!==active.scope||worldOf(frame.s)!==active.world||!same(frame.feet,active.feet)||(adapter.generation?.()??0)!==active.generation)throw fail('RESET_CONTEXT_CHANGED')
     if(!debugSiteReachable(active.home,frame.s.position))throw fail('RESET_SITE_REACHABILITY_CHANGED')
+    selectedSite(frame,active.home,active.selectedArea)
     if(!sameIdentity(jobIdentity(),active.jobIdentity))throw fail('RESET_JOB_CHANGED')
     if(!active.clearStarted && fingerprint(frame.view)!==active.fingerprint)throw fail('RESET_PREVIEW_STALE')
     if(!active.clearStarted || active.phase==='clearing') {
@@ -305,6 +321,8 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
     try {
       await acquisition
       guard()
+      await confirmSelected(active.selectedArea,active.scope,abort?.signal)
+      guard()
       const view=adapter.getView()
       if(fingerprint(view)!==active.fingerprint)throw fail('RESET_PREVIEW_STALE')
       await command('/testfor @s','管理者権限を確認')
@@ -347,16 +365,21 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
       adapter.release(active?.operationId)
     }
   }
-  function start ({token,confirm}={}) {
+  function start ({token,confirm,area}={}) {
     const prepared=preview;preview=null
     if(task)throw fail('RESET_BUSY')
     if(!prepared||prepared.token!==token||prepared.expiresAt<=now()||confirm!=='REPLACE_SURFACE_CHEST_AND_CLEAR_INVENTORY')throw fail('RESET_CONFIRMATION_REQUIRED')
+    if(prepared.selectedArea||area!=null){
+      let matches=false
+      try{matches=chunkAreaKey(area)===chunkAreaKey(prepared.selectedArea)}catch{}
+      if(!matches)throw fail('RESET_SELECTION_CHANGED')
+    }
     adapter.assertIdle()
     const snapshot=scene()
     if(snapshot.scope!==prepared.scope||worldOf(snapshot.s)!==prepared.world||!same(snapshot.feet,prepared.feet)||fingerprint(snapshot.view)!==prepared.fingerprint||
       (adapter.generation?.()??0)!==prepared.generation||!sameIdentity(jobIdentity(),prepared.jobIdentity)||siteIdentity(site(snapshot,prepared.home.existing?prepared.home:null))!==siteIdentity(prepared.home))throw fail('RESET_PREVIEW_STALE')
     active={operationId:uuid(),phase:'preparing',scope:prepared.scope,world:prepared.world,home:prepared.home,feet:prepared.feet,
-      fingerprint:prepared.fingerprint,jobIdentity:copy(prepared.jobIdentity),clearStarted:false,generation:prepared.generation,steps:0,suppliesCompleted:0,supplyProgress:null,pending:null,serverConfirmed:false,
+      fingerprint:prepared.fingerprint,jobIdentity:copy(prepared.jobIdentity),selectedArea:copy(prepared.selectedArea),clearStarted:false,generation:prepared.generation,steps:0,suppliesCompleted:0,supplyProgress:null,pending:null,serverConfirmed:false,
       startedAt:now()}
     let acquired
     try{acquired=adapter.acquire(active.operationId)}catch(error){active=null;throw error}

@@ -103,7 +103,7 @@ function receivedEquipmentView (inspection, crafting, state) {
 
 function createRuntimeV22ChestReset ({
   host, getState, inspection, crafting, armor, inventory, chest,
-  assertIdle, acquire, release, getJob, generation, cancelTransfers,
+  assertIdle, acquire, release, getJob, generation, cancelTransfers, confirmArea = null,
   journalDirectory = path.resolve(__dirname, '..', '.local', 'loadout-reset-v22')
 }) {
   const worldKey = () => {
@@ -118,6 +118,7 @@ function createRuntimeV22ChestReset ({
   }
   const adapter = {
     getState,
+    ...(typeof confirmArea==='function'?{confirmArea}:{}),
     getView: () => receivedEquipmentView(inspection, crafting, getState()),
     getBlock: (x,y,z) => host.world.getBlock(x,y,z),
     generation,

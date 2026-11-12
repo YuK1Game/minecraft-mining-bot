@@ -30,16 +30,16 @@
     return { x1, z1, x2, z2, width, depth, count, valid: count <= 4, message: count > 4 ? '最大4チャンク' : '' }
   }
   function renderArea () {
-    const a = area(), live = current?.live
+    const a = area(), live = current?.live, actualChunk = observedChunk(live)
     $('area-count').textContent = a.count ?? '—'
     $('area-size').textContent = a.count ? `${a.width * 16} × ${a.depth * 16} BLOCKS` : '範囲未設定'
     $('range-message').textContent = a.count && !a.valid ? a.message : ''
     $('range-message').hidden = !(a.count && !a.valid)
     $('size-one').setAttribute('aria-pressed', String(a.valid && a.width === 1 && a.depth === 1))
     $('size-four').setAttribute('aria-pressed', String(a.valid && a.width === 2 && a.depth === 2))
-    const centre = gridOrigin ?? { x: a.x1 ?? live?.chunk?.x ?? 0, z: a.z1 ?? live?.chunk?.z ?? 0 }
+    const centre = gridOrigin ?? { x: a.x1 ?? actualChunk?.x ?? 0, z: a.z1 ?? actualChunk?.z ?? 0 }
     const left = Math.min(MAX - 4, Math.max(MIN, centre.x - 2)), top = Math.min(MAX - 4, Math.max(MIN, centre.z - 2))
-    const grid = $('grid'), signature = JSON.stringify([left, top, a, live?.chunk ?? null, busy])
+    const grid = $('grid'), signature = JSON.stringify([left, top, a, actualChunk, busy, live?.chunkMove?.busy === true])
     grid.dataset.invalid = String(!!a.count && !a.valid)
     $('grid-origin').textContent = `X ${left}…${left + 4} / Z ${top}…${top + 4}`
     if (grid.dataset.signature === signature) return a
@@ -48,11 +48,11 @@
     const fragment = document.createDocumentFragment()
     for (let z = top; z < top + 5; z++) for (let x = left; x < left + 5; x++) {
       const selected = a.count && x >= Math.min(a.x1, a.x2) && x <= Math.max(a.x1, a.x2) && z >= Math.min(a.z1, a.z2) && z <= Math.max(a.z1, a.z2)
-      const here = live?.ready === true && live.chunk?.x === x && live.chunk?.z === z
+      const here = live?.ready === true && actualChunk?.x === x && actualChunk?.z === z
       const cell = element('button', 'chunk-cell' + (here ? ' bot' : ''), `${x}, ${z}`)
       cell.type = 'button'; cell.dataset.x = x; cell.dataset.z = z; cell.dataset.key = `${x}:${z}`
       cell.setAttribute('aria-label', `チャンク X ${x}, Z ${z}${here ? '・現在地' : ''}`)
-      cell.setAttribute('aria-pressed', String(!!selected)); cell.title = cell.getAttribute('aria-label'); cell.disabled = busy > 0
+      cell.setAttribute('aria-pressed', String(!!selected)); cell.title = cell.getAttribute('aria-label'); cell.disabled = busy > 0 || live?.chunkMove?.busy === true
       cell.tabIndex = focus ? cell.dataset.key === focus ? 0 : -1 : x === Math.min(MAX, Math.max(MIN, centre.x)) && z === Math.min(MAX, Math.max(MIN, centre.z)) ? 0 : -1
       fragment.append(cell)
     }
@@ -83,7 +83,7 @@
     $('plan-results').hidden = false
   }
   function render () {
-    const s = current, live = s?.live, q = live?.quarry, ready = live?.ready === true, connected = !!s?.managed || !!live, idle = !busy && !!token && live?.loadout?.busy !== true && live?.storage?.busy !== true
+    const s = current, live = s?.live, q = live?.quarry, ready = live?.ready === true, connected = !!s?.managed || !!live, idle = !busy && !!token && live?.loadout?.busy !== true && live?.storage?.busy !== true && live?.chunkMove?.busy !== true
     $('size-one').disabled = busy > 0; $('size-four').disabled = busy > 0
     const a = renderArea()
     document.getElementById('control').dataset.online = String(ready)
@@ -111,7 +111,7 @@
     $('world').disabled = !idle || s?.phase !== 'selecting_realm'
     $('connect').disabled = !idle || s?.phase !== 'selecting_realm' || !$('world').value
     $('disconnect').disabled = !token || !connected || s?.phase === 'stopping'
-    $('here').disabled = !idle || !ready || !live?.chunk
+    $('here').disabled = !idle || !ready || !observedChunk(live)
     $('plan').disabled = !idle || !ready || !a.valid || !!q && !['IDLE', 'FINISHED'].includes(q.state)
     $('start').disabled = !idle || !ready || !plan?.planToken || plan.expiresAt <= Date.now() || plan.state.session !== live?.session || plan.plan.jobId !== q?.jobId || q?.state !== 'IDLE'
     $('pause').disabled = !idle || !q || ['IDLE', 'FINISHED', 'PAUSED', 'STOPPING'].includes(q.state)
@@ -144,6 +144,7 @@
     lastPhase = s?.phase
     renderReset()
     renderStorage()
+    renderChunkMove()
   }
   async function poll () {
     if (!token || polling || document.hidden) return
@@ -168,9 +169,10 @@
     return { x1: number('x1'), z1: number('z1'), x2: number('x2', true), z2: number('z2', true), top: number('top', true), bottom: number('bottom', true) }
   }
   const fields = ['x1', 'z1', 'x2', 'z2', 'top', 'bottom']
-  function invalidate (keepGrid = false) { plan = null; version++; if (!keepGrid) gridOrigin = null; $('plan-results').hidden = true; message('action', ''); render() }
+  function invalidate (keepGrid = false) { plan = null; version++; if (resetPreview) closeReset(); if (!keepGrid) gridOrigin = null; $('plan-results').hidden = true; message('action', ''); render() }
   for (const field of fields) $(field).addEventListener('input', () => { $(field).removeAttribute('aria-invalid'); invalidate() })
   function selectArea (x, z, size = preset, keepGrid = false) {
+    if (current?.live?.chunkMove?.busy) return
     if (!Number.isSafeInteger(x) || !Number.isSafeInteger(z)) return
     x = Math.min(MAX - size + 1, Math.max(MIN, x)); z = Math.min(MAX - size + 1, Math.max(MIN, z))
     if (keepGrid && !gridOrigin) gridOrigin = { x: area().x1 ?? current?.live?.chunk?.x ?? 0, z: area().z1 ?? current?.live?.chunk?.z ?? 0 }
@@ -178,6 +180,7 @@
     invalidate(keepGrid)
   }
   $('grid').addEventListener('click', event => {
+    if (busy || current?.live?.chunkMove?.busy) return
     const cell = event.target.closest('button[data-x]')
     if (!cell || cell.disabled) return
     selectArea(Number(cell.dataset.x), Number(cell.dataset.z), preset, true)
@@ -192,6 +195,7 @@
     cells.forEach(c => { c.tabIndex = -1 }); cells[next].tabIndex = 0; cells[next].focus()
   })
   for (const [id, size] of [['size-one', 1], ['size-four', 2]]) $(id).addEventListener('click', () => {
+    if (busy || current?.live?.chunkMove?.busy) return
     preset = size
     selectArea(area().x1 ?? current?.live?.chunk?.x ?? 0, area().z1 ?? current?.live?.chunk?.z ?? 0, size)
   })
@@ -203,7 +207,7 @@
     const live = current?.live
     act('connection', 'disconnect', { processId: current?.processId, session: live?.session, jobId: live?.quarry?.jobId ?? null }, () => { current = null; plan = null; message('connection', '') })
   })
-  $('here').addEventListener('click', () => { selectArea(current.live.chunk.x, current.live.chunk.z) })
+  $('here').addEventListener('click', () => { const chunk = observedChunk(); if (!busy && !current?.live?.chunkMove?.busy && chunk) selectArea(chunk.x, chunk.z) })
   $('plan').addEventListener('click', () => {
     let value
     try { value = config() } catch (error) { message('action', error.message, true); return }
@@ -261,14 +265,69 @@
       const card = element('div', 'loadout-hand-item'); card.append(kitIcon(name), element('span', '', label), element('b', '', Number(count).toLocaleString('ja-JP'))); return card
     }))
   }
+  function selectedArea () {
+    const value = area()
+    return value.valid ? { x1: Math.min(value.x1, value.x2), z1: Math.min(value.z1, value.z2), x2: Math.max(value.x1, value.x2), z2: Math.max(value.z1, value.z2) } : null
+  }
+  const areaKey = value => value ? JSON.stringify([value.x1, value.z1, value.x2, value.z2]) : null
+  function observedProof (live = current?.live) {
+    const proof = live?.positionProof, feet = proof?.feet
+    const observedAt = typeof proof?.observedAt === 'number' ? proof.observedAt : Date.parse(proof?.observedAt)
+    const valid = live?.chunkMove?.available === true && proof?.confirmed === true && !!live?.session && proof.session === live.session &&
+      Number.isSafeInteger(proof.generation) && proof.generation >= 0 && typeof proof.source === 'string' && /position/i.test(proof.source) && !/prediction/i.test(proof.source) &&
+      Number.isFinite(observedAt) && observedAt <= Date.now() && !!feet && ['x', 'y', 'z'].every(axis => Number.isFinite(feet[axis]) && Math.abs(feet[axis]) <= 30000000) &&
+      Number.isFinite(proof.radius) && proof.radius >= 0 && proof.radius <= 1.5
+    return valid ? proof : null
+  }
+  function observedChunk (live = current?.live) {
+    const proof = observedProof(live)
+    return proof ? { x: Math.floor(proof.feet.x / 16), z: Math.floor(proof.feet.z / 16) } : null
+  }
+  function proofInsideArea (live = current?.live, selected = selectedArea()) {
+    const proof = observedProof(live), feet = proof?.feet
+    return !!selected && !!proof && feet.x - proof.radius >= selected.x1 * 16 && feet.x + proof.radius < (selected.x2 + 1) * 16 &&
+      feet.z - proof.radius >= selected.z1 * 16 && feet.z + proof.radius < (selected.z2 + 1) * 16
+  }
+  function canMoveToArea () {
+    const live = current?.live, q = live?.quarry
+    return !busy && !!token && live?.ready === true && live.chunkMove?.available === true && !live.chunkMove.busy &&
+      !live.loadout?.busy && !live.storage?.busy && (!q || ['IDLE', 'PAUSED', 'FINISHED'].includes(q.state)) && !!selectedArea()
+  }
+  function renderChunkMove () {
+    const live = current?.live, move = live?.chunkMove, moving = move?.busy === true
+    for (const id of ['x1', 'z1', 'x2', 'z2', 'size-one', 'size-four']) $(id).disabled = !!busy || moving
+    $('here').disabled = !!busy || moving || !live?.ready || !observedChunk(live)
+    $('move').disabled = !canMoveToArea()
+    $('move').textContent = moving ? '移動中' : 'Botを移動させる'
+    $('move-cancel').hidden = !moving
+    $('move-cancel').disabled = !!busy || !token || !live?.session || typeof move?.operationId !== 'string' || !move.operationId
+    if (moving) { plan = null; $('plan-results').hidden = true; message('move', '移動中') }
+    else if (move?.error || move?.phase === 'failed') message('move', clean(move.error?.message || '移動できませんでした。'), true)
+    else if (move?.serverConfirmed === true && proofInsideArea(live)) message('move', '到着確認済み')
+    else if (['completed', 'arrived'].includes(move?.phase)) message('move', '位置の受信待ち')
+    else if (['cancelled', 'canceled'].includes(move?.phase)) message('move', '中断しました')
+  }
+  $('move').addEventListener('click', () => {
+    if (!canMoveToArea()) return
+    const selected = selectedArea()
+    if (resetPreview) closeReset()
+    plan = null; $('plan-results').hidden = true
+    act('move', 'quarry', { command: 'moveToChunk', session: current.live.session, area: selected }, () => {})
+  })
+  $('move-cancel').addEventListener('click', () => {
+    const live = current?.live, move = live?.chunkMove
+    if (busy || !token || !live?.session || move?.busy !== true || typeof move.operationId !== 'string' || !move.operationId) return
+    act('move', 'quarry', { command: 'cancelChunkMove', session: live.session, operationId: move.operationId }, () => {})
+  })
   function closeReset () { resetPreview = null; $('reset-dialog').close() }
   function renderReset () {
     const live = current?.live, r = live?.loadout
     const idleJob = !live?.quarry || ['IDLE', 'PAUSED', 'FINISHED'].includes(live.quarry.state)
-    $('reset').disabled = !!busy || !token || !live?.ready || !r || r.busy || live?.storage?.busy || !idleJob
+    const selected = selectedArea(), locationReady = proofInsideArea(live, selected) && live?.chunkMove?.busy !== true
+    $('reset').disabled = !!busy || !token || !live?.ready || !r || r.busy || live?.storage?.busy || !idleJob || !locationReady
     $('reset').textContent = r?.busy ? 'デバッグチェスト設置中' : 'デバッグチェスト設置'
-    $('reset-confirm').disabled = !!busy || !live?.ready || live?.storage?.busy || !resetPreview || resetPreview.expiresAt <= Date.now() || resetPreview.session !== live?.session
-    if (resetPreview && (resetPreview.session !== live?.session || resetPreview.expiresAt <= Date.now())) { closeReset(); message('reset', '確認が失効しました。デバッグチェストの設置を確認し直してください。', true) }
+    $('reset-confirm').disabled = !!busy || !live?.ready || live?.storage?.busy || r?.busy || !idleJob || !locationReady || !resetPreview || resetPreview.expiresAt <= Date.now() || resetPreview.session !== live?.session || resetPreview.areaKey !== areaKey(selected) || resetPreview.proofGeneration !== live?.positionProof?.generation
+    if (resetPreview && (resetPreview.session !== live?.session || resetPreview.expiresAt <= Date.now() || resetPreview.areaKey !== areaKey(selected) || resetPreview.proofGeneration !== live?.positionProof?.generation || !locationReady)) { closeReset(); message('reset', '設置場所を確認し直してください。', true) }
     $('reset-progress').hidden = !r || r.phase === 'idle'
     $('reset-progress').classList.toggle('failed', r?.phase === 'failed')
     $('reset-progress').classList.toggle('running', r?.busy === true)
@@ -278,10 +337,13 @@
     $('reset-detail').textContent = r?.error ? clean(r.error.message) + (r.stage ? ` / 一時箱 ${r.stage.x}, ${r.stage.y}, ${r.stage.z}` : '') : r?.supplyProgress ? `${r.supplyProgress.role}  ${r.supplyProgress.filled} / 27  ·  補給箱 ${r.suppliesCompleted} / 4` : ''
   }
   $('reset').addEventListener('click', () => {
+    const live = current?.live, selected = selectedArea(), key = areaKey(selected), revision = version
+    if (busy || !token || !live?.ready || !live.loadout || live.loadout.busy || live.storage?.busy || live.chunkMove?.busy || !proofInsideArea(live, selected) || live.quarry && !['IDLE', 'PAUSED', 'FINISHED'].includes(live.quarry.state)) return
     resetPreview = null
-    act('reset', 'loadout', { command: 'resetPreview', session: current?.live?.session }, result => {
+    act('reset', 'loadout', { command: 'resetPreview', session: live.session, area: selected }, result => {
       const p = result.resetPreview
-      resetPreview = { ...p, session: result.state.session }
+      if (revision !== version || key !== areaKey(selectedArea()) || result.state.session !== current?.live?.session || !proofInsideArea(result.state, selected) || result.state.chunkMove?.busy) return
+      resetPreview = { ...p, session: result.state.session, area: selected, areaKey: key, proofGeneration: result.state.positionProof.generation }
       $('reset-world').textContent = clean(p.target.realm)
       $('reset-player').textContent = clean(p.target.player)
       showLoadoutKit(p.manifest)
@@ -300,20 +362,22 @@
   $('reset-dialog').addEventListener('close', () => { resetPreview = null })
   $('reset-confirm').addEventListener('click', () => {
     const p = resetPreview
-    if (!p || busy || !current?.live?.ready || current.live?.storage?.busy || current.live?.loadout?.busy || p.expiresAt <= Date.now() || p.session !== current.live.session) return
+    const live = current?.live, selected = selectedArea()
+    if (!p || busy || !token || !live?.ready || !live.loadout || live.storage?.busy || live.loadout.busy || live.chunkMove?.busy || live.quarry && !['IDLE', 'PAUSED', 'FINISHED'].includes(live.quarry.state) || p.expiresAt <= Date.now() || p.session !== live.session || p.areaKey !== areaKey(selected) || p.proofGeneration !== live.positionProof?.generation || !proofInsideArea(live, selected)) return
     closeReset(); plan = null; $('plan-results').hidden = true
-    act('reset', 'loadout', { command: 'resetStart', session: p.session, resetToken: p.token, confirm: 'REPLACE_SURFACE_CHEST_AND_CLEAR_INVENTORY' }, () => message('reset', ''))
+    act('reset', 'loadout', { command: 'resetStart', session: p.session, resetToken: p.token, area: p.area, confirm: 'REPLACE_SURFACE_CHEST_AND_CLEAR_INVENTORY' }, () => message('reset', ''))
   })
   $('reset-stop').addEventListener('click', () => act('reset', 'loadout', { command: 'resetCancel', session: current?.live?.session }, () => message('reset', '中断を要求しました。途中結果を確認してください。')))
 
   function closeStorage () { storagePreview = null; $('storage-dialog').close() }
   function renderStorage () {
     const live = current?.live, status = live?.storage
+    if (storagePreview && live?.chunkMove?.busy) closeStorage()
     const idleJob = !live?.quarry || ['IDLE', 'PAUSED', 'FINISHED'].includes(live.quarry.state)
     const canPrepare = status?.ready ?? live?.ready
-    $('storage').disabled = !!busy || !token || !status?.available || status.busy || !canPrepare || live?.loadout?.busy || !idleJob
+    $('storage').disabled = !!busy || !token || !status?.available || status.busy || !canPrepare || live?.loadout?.busy || live?.chunkMove?.busy || !idleJob
     if (storagePreview && (storagePreview.session !== live?.session || storagePreview.expiresAt <= Date.now())) { closeStorage(); message('storage', '確認が失効しました。', true) }
-    $('storage-confirm').disabled = !!busy || !live?.ready || live?.loadout?.busy || status?.busy || !storagePreview || storagePreview.expiresAt <= Date.now() || storagePreview.session !== live?.session
+    $('storage-confirm').disabled = !!busy || !live?.ready || live?.loadout?.busy || live?.chunkMove?.busy || status?.busy || !storagePreview || storagePreview.expiresAt <= Date.now() || storagePreview.session !== live?.session
     if (storagePreview) $('storage-time').textContent = Math.max(0, Math.ceil((storagePreview.expiresAt - Date.now()) / 1000)) + 's'
     const labels = { preparing: '確認中', running: '収納中', completed: '収納完了', paused: '一時停止', failed: '収納未完了', cancelled: '中断' }
     const phase = status?.phase ?? 'idle', shown = !['idle', 'unavailable', 'ready'].includes(phase)
@@ -325,11 +389,12 @@
     $('storage-cancel').hidden = !status?.busy
     $('storage-cancel').disabled = !!busy
     $('storage-resume').hidden = !status?.operationId || status.busy || !['paused', 'failed', 'cancelled'].includes(phase)
-    $('storage-resume').disabled = !!busy || !canPrepare || live?.loadout?.busy
+    $('storage-resume').disabled = !!busy || !canPrepare || live?.loadout?.busy || live?.chunkMove?.busy === true
     $('storage-progress').classList.toggle('failed', phase === 'failed')
     if (status?.error?.message) message('storage', clean(status.error.message), true)
   }
   function prepareStorage (operationId) {
+    if (current?.live?.chunkMove?.busy) return
     storagePreview = null
     act('storage', 'storage', { command: 'storagePreview', session: current?.live?.session, ...(operationId ? { operationId } : {}) }, result => {
       const p = result.storagePreview
@@ -349,7 +414,7 @@
   $('storage-dialog').addEventListener('close', () => { storagePreview = null })
   $('storage-confirm').addEventListener('click', () => {
     const p = storagePreview
-    if (!p || busy || !current?.live?.ready || current.live?.storage?.busy || current.live?.loadout?.busy || p.expiresAt <= Date.now() || p.session !== current.live.session) return
+    if (!p || busy || !current?.live?.ready || current.live?.storage?.busy || current.live?.loadout?.busy || current.live?.chunkMove?.busy || p.expiresAt <= Date.now() || p.session !== current.live.session) return
     closeStorage()
     act('storage', 'storage', { command: 'storageStart', session: p.session, storageToken: p.token, confirm: 'STORE_ALL_IN_EMPTY_CHEST' }, () => message('storage', ''))
   })
