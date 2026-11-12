@@ -91,3 +91,14 @@ test('live case 2026-11-12: a pickup baseline that changed before the break is r
   assert.equal(h.job.status().pauseDetails?.reason, 'STORAGE_RECOVERY_UNCONFIRMED')
   await h.cleanup()
 })
+
+test('live case 2026-11-13: a supply box recovery blocked only by loose drops uses the same bounded wait', async () => {
+  const h = await fixture({ scripted: () => blocked(), capacityRetryMs: 10 })
+  h.job.retire()
+  for (const [pauseReason, detail, expected] of [['SUPPLY_RESTOCK_BLOCKED', 'STORAGE_PICKUP_CAPACITY_REQUIRED', true], ['SUPPLY_RESTOCK_BLOCKED', 'SUPPLY_SITE_CHANGED', false], ['CARRIED_STORAGE_BLOCKED', 'STORAGE_PICKUP_CAPACITY_REQUIRED', true]]) {
+    const next = createQuarryJob({ adapter: h.adapter, pollMs: 5, capacityRetryMs: 100000, storage: { save: async () => {} } })
+    next.load({ ...h.job.document(), state: 'PAUSED', userRunIntent: 'running', pauseReason, pauseDetails: { reason: detail, operationId: 'x' } })
+    assert.equal(next.rescheduleAutoResume(), expected, pauseReason + ' ' + detail)
+    next.retire()
+  }
+})
