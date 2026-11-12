@@ -394,3 +394,40 @@ test('live case 2026-11-13: a re-selected site follows the same box to its curre
   assert.equal(done.storageResult?.serverConfirmed, true, JSON.stringify(done.pauseDetails))
   assert.equal(c.calls[0].selection.sources[0].slot, free)
 })
+
+test('live case 2026-11-13: a precondition refusal with no received change is retried (3 at most); a changed state or an unconfirmed code still pauses', async () => {
+  const msg = '2021,25,2024: 通常の地面に静止していることを確認できません。'
+  // Box placed, break refused before dispatch: retried on the same box.
+  const f = fixture([{ name: 'shulker_box', count: 1, stackId: 14 }])
+  const cell = { x: 7, y: 63, z: 5 }
+  let calls = 0
+  f.sim.adapter.storeCarried = async (request, { onCheckpoint }) => {
+    calls++
+    if (calls === 1) { const src = request.selection.sources[0]; consume(f.sim, src.slot, src.name, 1); f.sim.world.set(cell.x, cell.y, cell.z, 'shulker_box') }
+    const cp = request.checkpoint ?? { version: 1, operationId: request.operationId, jobId: request.jobId, kind: 'shulker', stage: 'breaking', stand: { x: 5, y: 63, z: 5 }, positions: [cell], placed: [{ position: cell, name: 'minecraft:shulker_box', confirmedBy: 'server_block_and_inventory' }], deposited: [], plan: [], intent: { type: 'break', position: cell } }
+    if (calls === 1) await onCheckpoint(cp)
+    return { status: 'blocked', reason: msg, serverConfirmed: false, checkpoint: cp }
+  }
+  // The first call places the box (a received change): it pauses at once.
+  let r = await f.job.storeCarriedNow({ deposits: [{ slot: 3, name: 'minecraft:cobblestone', count: 8 }] })
+  assert.equal(calls, 1)
+  assert.equal(r.pauseReason, 'CARRIED_STORAGE_BLOCKED', 'a refusal after a received change is not transient')
+  // Continued from the saved breaking checkpoint, nothing changes: transient.
+  f.job.load({ ...f.job.document(), pauseReason: 'MANUAL_PAUSE', pauseDetails: null, result: null })
+  r = await f.job.storeCarriedNow()
+  for (let n = 0; n < 4 && r.pauseReason !== 'CARRIED_STORAGE_BLOCKED'; n++) r = await f.job.storeCarriedNow()
+  assert.equal(calls, 5, 'the resumed call plus three transient retries')
+  assert.equal(r.pauseReason, 'CARRIED_STORAGE_BLOCKED')
+  assert.equal(r.pauseDetails.reason, msg)
+  assert.equal(f.job.document().portableStorage.checkpoint.placed.length, 1, 'the placed box is kept')
+  // An unconfirmed code is never transient.
+  const g = fixture([{ name: 'shulker_box', count: 1, stackId: 14 }])
+  g.sim.adapter.storeCarried = async (request, { onCheckpoint }) => {
+    const cp = { version: 1, operationId: request.operationId, jobId: request.jobId, kind: 'shulker', stage: 'planned', stand: { x: 5, y: 63, z: 5 }, positions: [cell], placed: [], deposited: [], plan: [], intent: null }
+    await onCheckpoint(cp)
+    return { status: 'blocked', reason: 'STORAGE_PLACE_UNCONFIRMED', serverConfirmed: false, checkpoint: cp }
+  }
+  const u = await g.job.storeCarriedNow({ deposits: [{ slot: 3, name: 'minecraft:cobblestone', count: 8 }] })
+  assert.equal(u.pauseReason, 'CARRIED_STORAGE_BLOCKED')
+  assert.equal(u.pauseDetails.reason, 'STORAGE_PLACE_UNCONFIRMED')
+})
