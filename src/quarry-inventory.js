@@ -44,7 +44,7 @@ function selectCarriedStorage (items, { excludedShulkerKeys = [], shulkerOnly = 
 // Material for one more storage chest is kept too: carried chests and a
 // crafting table, plus a few logs/planks (2 logs make a chest, 1 a table).
 // A little coal and a few sticks stay too, to craft torches for the chest area.
-function keepPlan (items, { keepSealBlocks = 32, keepSealMaterial = null, keepFood = 64, keepLogs = 4, keepPlanks = 12, keepCoal = 4, keepSticks = 4, keepExitDirt = 0, autoSupplies = false, supplyBoxes = [], toolPolicy = {}, storeInferiorTools = true } = {}) {
+function keepPlan (items, { keepSealBlocks = 32, keepSealMaterial = null, keepFood = 64, keepLogs = 4, keepPlanks = 12, keepCoal = 4, keepSticks = 4, keepExitDirt = 0, sealDirt = true, autoSupplies = false, supplyBoxes = [], toolPolicy = {}, storeInferiorTools = true } = {}) {
   const keep = new Map() // slot -> count kept
   let seal = 0; let food = 0; let logs = 0; let planks = 0; let coal = 0; let sticks = 0; let exitDirt = 0
   const sorted = [...(items ?? [])].filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot < SLOTS).sort((a, b) => a.slot - b.slot)
@@ -66,7 +66,9 @@ function keepPlan (items, { keepSealBlocks = 32, keepSealMaterial = null, keepFo
     if (n === 'stick' && sticks < keepSticks) { const k = Math.min(item.count, keepSticks - sticks); sticks += k; keep.set(item.slot, k); continue }
     if (/_planks$/.test(n) && planks < keepPlanks) { const k = Math.min(item.count, keepPlanks - planks); planks += k; keep.set(item.slot, k); continue }
     if (isFood(n) && keep.has(item.slot)) continue
-    if (SEAL_MATERIALS.includes(n) && (!keepSealMaterial || n === nameOf(keepSealMaterial)) && seal < keepSealBlocks) { const prior = keep.get(item.slot) ?? 0; const k = Math.min(item.count - prior, keepSealBlocks - seal); seal += k; keep.set(item.slot, prior + k) }
+    // sealDirt false (v2.2 work dirt on demand, 2026-11-12): dirt is not kept as
+    // seal material; it comes from the dirt supply box when a seal needs it.
+    if (SEAL_MATERIALS.includes(n) && (sealDirt !== false || n !== 'dirt') && (!keepSealMaterial || n === nameOf(keepSealMaterial)) && seal < keepSealBlocks) { const prior = keep.get(item.slot) ?? 0; const k = Math.min(item.count - prior, keepSealBlocks - seal); seal += k; keep.set(item.slot, prior + k) }
   }
   const deposits = []
   for (const item of sorted) { const k = keep.get(item.slot) ?? 0; if (item.count > k) deposits.push({ slot: item.slot, name: item.name, count: item.count - k }) }

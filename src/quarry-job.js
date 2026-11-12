@@ -77,6 +77,7 @@ const SUPPLY_SITE_REASONS = new Set(['STORAGE_SITE_CHANGED', 'STORAGE_STAND_UNCO
 const SUPPLY_SITE_RETRIES = 3, SUPPLY_SITE_RETRY_WAIT_MS = 3000
 // Pick-up-then-top-up rounds before an owned box is recovered (bounded).
 const PICKUP_SPACE_ROUNDS = 5
+const WORK_DIRT_DEMAND = 32 // dirt taken from the supply box when a seal needs it
 // Carried storage refused before any placement, deposit or move (live 2026-11-12).
 const STORAGE_SITE_RETRY_REASONS = new Set([...SUPPLY_SITE_REASONS, 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'])
 const PICKUP_XZ = 1.3 // half player width 0.3 + 1 block reach for item pickup
@@ -172,7 +173,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // Shulker-only jobs do not build storage chests. Keep explicit material
   // reservations, but do not inherit the old chest-building wood defaults.
   const inventoryPolicy = () => ({ ...job.config.inventory, ...(shulkerOnly ? { keepLogs: job.config.inventory.keepLogs ?? 0, keepPlanks: job.config.inventory.keepPlanks ?? 0 } : {}), toolPolicy: job.config.tools, ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64 } :
-    deferredExitSupplies() ? { keepExitDirt: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 0, keepSealBlocks: 64 } : {}) })
+    deferredExitSupplies() ? { keepExitDirt: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 0, keepSealBlocks: 64, ...(workDirtOnDemand() ? { sealDirt: job.egressPreparation === true || job.dirtDemand === true, keepSticks: job.config.inventory.keepSticks ?? 0 } : {}) } : {}) })
+  // Live 2026-11-12 23:28: 34 of 36 slots were fixed items, leaving 2 for
+  // mining. In the v2.2 carried mode the 64 work dirt and the sticks are not
+  // held; dirt is taken from the dirt supply box only when a seal needs it.
+  const workDirtOnDemand = () => !fourLayerStorage() && deferredExitSupplies() && (job.config.inventory.supplyBoxes ?? []).some(b => b?.role === 'dirt') && job.config.inventory.workDirtOnDemand !== false
   const passivePickup = () => job?.config.inventory.pickupMode === 'passive'
   const fullOnlyStorage = () => job?.config.inventory.depositWhen === 'full'
   const fourLayerStorage = () => job?.config.inventory.pickupMode === 'active' && job?.config.inventory.depositWhen === 'four_layers'
@@ -1209,6 +1214,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (decision.action !== 'pause' || decision.reason !== 'UNOBSERVED_CELLS') job.layerTerrain = null
     if (decision.action === 'mine' && Number.isFinite(nextY)) prefetchTerrain(nextY)
     if (decision.action === 'pause') {
+      // A seal needs dirt that is no longer carried: take it from the dirt
+      // supply box (ordinary supply restock, server-confirmed), retried on the
+      // spot up to three times before the usual pause.
+      if (decision.reason === 'SEAL_MATERIAL_MISSING' && workDirtOnDemand() && (job.dirtDemandTries ?? 0) < 3) {
+        job.dirtDemand = true; job.dirtDemandTries = (job.dirtDemandTries ?? 0) + 1
+        note('work_dirt_demand', { attempt: job.dirtDemandTries, details: copy(decision.details ?? null) })
+        await save('work_dirt_demand')
+        if (await restock(myEpoch, 'SURVEY')) return
+      }
       if (decision.reason === 'BOUNDARY_UNOBSERVED' && await requestTerrainObservation(myEpoch, 'boundary', decision.details?.position)) return
       await collect(myEpoch, 'before_pause'); return finish('PAUSED', decision.reason, { pauseDetails: decision.details ?? null })
     }
@@ -1755,6 +1769,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (decision.sourceSeal) job.fluidDrain = { source: copy(decision.sourceSeal.source), cells: copy(decision.sourceSeal.cells), sourceOnly: decision.sourceSeal.sourceOnly === true, expectedBlock: `minecraft:${nameOf(decision.material)}`, startedAt: now(), deadline: now() + (decision.sourceSeal.sourceOnly ? 120000 : 60000), scope: scopeOf(after), life: lifeOf(after), remaining: decision.sourceSeal.cells.length - 1 }
     }
     rec.status = 'confirmed'; job.placeFailures = 0
+    if (job.dirtDemand && nameOf(decision.material) === 'dirt') { job.dirtDemand = false; job.dirtDemandTries = 0 }
     planner.recordPlacement(decision.position, decision.purpose, decision.material)
     countsRevision++
     ledger.add(decision.purpose === 'seal' ? 'placedSeal' : 'placedTemporary', decision.material)
@@ -2151,7 +2166,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const policy = { ...job.config.inventory, tools: job.config.tools,
       ...(v22SupplyLayout(job.config) ? { totemNeeded: equipmentView?.offhand?.known === true && equipmentView.offhand.slots?.[0]?.empty === true } : {}),
       ...(deferredExitSupplies() ? { deferExitSupplies: true, exitPreparing: job.egressPreparation === true,
-        exitDirtTarget: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 64 } : {}),
+        exitDirtTarget: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 64, ...(workDirtOnDemand() ? { workDirtTarget: job.dirtDemand === true ? WORK_DIRT_DEMAND : 0 } : {}) } : {}),
       ...(job.miningExhausted ? { miningExhausted: copy(job.miningExhausted) } : {}),
       ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64,
         exitPreparing: job.egressPreparation === true, exitDirtTarget: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 64,

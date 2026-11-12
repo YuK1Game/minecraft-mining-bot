@@ -73,13 +73,13 @@ function storageSupplyExclusions (bindings) {
 const WORN_TOOL_USES = 100 // a tool below this is returned when its kind is exhausted for mining
 const FRESH_TOOL_USES = 500 // with a full bag, one carried tool of an exhausted kind with this many uses is enough
 const usesOf = item => item?.durabilityKnown === true && Number.isFinite(item.durabilityRemaining) ? item.durabilityRemaining : null
-function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true, miningExhausted = null, depositWhen = 'capacity', supplyLayout = null, deferExitSupplies = false, totemNeeded = false, shovelExhausted = false, exitPreparing = false, exitDirtTarget = 192 } = {}) {
+function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks = 32, tools = {}, foodEnabled = true, miningExhausted = null, depositWhen = 'capacity', supplyLayout = null, deferExitSupplies = false, totemNeeded = false, shovelExhausted = false, exitPreparing = false, exitDirtTarget = 192, workDirtTarget = 64 } = {}) {
   const main = (items ?? []).filter(item => Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && item.count > 0)
   const fourLayers = depositWhen === 'four_layers', v22 = supplyLayout === 'v22' || fourLayers
   const workDirt = fourLayers || v22 && deferExitSupplies === true
   // Layout selects available supply roles. Ordinary full/capacity jobs still
   // reserve their original dirt unless v22 exit-only supplies are explicit.
-  const desired = { pickaxe: 1, shovel: v22 && shovelExhausted ? 0 : 1, food: v22 ? 0 : foodEnabled ? keepFood : 0, dirt: workDirt ? exitPreparing ? exitDirtTarget : 64 : keepExitDirt + keepSealBlocks, ...(v22 ? { totem: totemNeeded ? 1 : 0 } : {}) }
+  const desired = { pickaxe: 1, shovel: v22 && shovelExhausted ? 0 : 1, food: v22 ? 0 : foodEnabled ? keepFood : 0, dirt: workDirt ? exitPreparing ? exitDirtTarget : Number.isSafeInteger(workDirtTarget) && workDirtTarget >= 0 ? workDirtTarget : 64 : keepExitDirt + keepSealBlocks, ...(v22 ? { totem: totemNeeded ? 1 : 0 } : {}) }
   // A tool whose remaining uses are all reserved for the exit still counts as
   // carried (it is kept for the exit), so one more of that kind is wanted.
   const available = { pickaxe: 0, shovel: 0, food: 0, dirt: 0, ...(v22 ? { totem: 0 } : {}) }, returns = []
