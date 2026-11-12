@@ -428,3 +428,21 @@ test('live case 2026-11-12: a relief box is held right after its confirmed place
   const g = fixture('shulker')
   assert.equal((await g.run({}, { ...g.request, deposits: [] })).reason, 'STORAGE_NO_DEPOSITS')
 })
+
+test('live case 2026-11-13: a box cell whose floor the placement preview would refuse is not chosen', async () => {
+  const base = fixture('shulker', { pickupOnMove: true }), plain = await base.run()
+  assert.equal(plain.status, 'completed', JSON.stringify(plain.reason))
+  const chosen = plain.checkpoint.positions[0]
+  const f = fixture('shulker', { pickupOnMove: true })
+  // A minable but non-ground floor (an ore) passes the old support check only.
+  f.blocks.set(key({ x: chosen.x, y: chosen.y - 1, z: chosen.z }), { known: true, name: 'minecraft:iron_ore', runtimeId: 77, boundingBox: 'block', extra: [] })
+  await f.run()
+  const planned = f.checkpoints.find(cp => cp.positions?.length)
+  assert.ok(planned, 'a site was planned')
+  assert.notDeepEqual(planned.positions[0], chosen, 'the ore-floored cell is passed over')
+  const { placementSupportOk } = require('../src/storage-site-terrain')
+  assert.equal(placementSupportOk({ known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] }), true)
+  assert.equal(placementSupportOk({ known: true, name: 'minecraft:iron_ore', boundingBox: 'block', extra: [] }), false)
+  assert.equal(placementSupportOk({ known: true, name: 'minecraft:gravel', boundingBox: 'block', extra: [] }), false)
+  assert.equal(placementSupportOk({ known: false }), false)
+})
