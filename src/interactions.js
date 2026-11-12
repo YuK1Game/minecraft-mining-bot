@@ -172,6 +172,17 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     return { target, clicked: click, face, clickPos: { x: 0.5 + normal.x * 0.5, y: 0.5 + normal.y * 0.5, z: 0.5 + normal.z * 0.5 }, point, blockRuntimeId: support.runtimeId, expectedBlock, slot, raw }
   }
   const interactionScope = state => JSON.stringify([state.profile ?? null, state.realm?.id ?? null, state.dimension, state.connectionId ?? null, state.startedAt ?? null, state.runtimeEntityId ?? null, state.lifecycle?.deathId ?? null])
+  const observedScope = state => state ? {
+    profile: state.profile ?? null, realmId: state.realm?.id == null ? null : String(state.realm.id), dimension: state.dimension ?? null,
+    connectionId: state.connectionId ?? null, startedAt: state.startedAt ?? null, runtimeEntityId: state.runtimeEntityId == null ? null : String(state.runtimeEntityId),
+    life: state.lifecycle?.deathId ?? state.deathId ?? null
+  } : null
+  const contextFailure = (code, message) => Object.assign(new Error(message), { code })
+  function requireRequestContext (request, state) {
+    if (state.dimension !== request.dimension) throw contextFailure('INTERACTION_DIMENSION_CHANGED', '操作中に次元が変わりました。')
+    if (request.scope !== interactionScope(state)) throw contextFailure('INTERACTION_SCOPE_CHANGED', '操作中に接続またはlifeが変わりました。')
+    if (Math.hypot(state.position.x - request.origin.x, state.position.y - request.origin.y, state.position.z - request.origin.z) > 0.3) throw contextFailure('INTERACTION_POSITION_CHANGED', '操作中にプレイヤー位置が30cmを超えて変わりました。')
+  }
   function openPlan (position, requestedSlot, container = 'workbench') {
     const state = session()
     const target = integerPosition(position)
@@ -233,17 +244,51 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     lastResult = result
     request.resolve(copy(result))
   }
+  function failureReceipt (request, error, inputStopError = null) {
+    let state = null, sourceAfter = null, block = null
+    try { state = getState() } catch { /* Missing observations cannot prove an unchanged context. */ }
+    try { sourceAfter = crafting.rawItem(request.plan.slot) } catch { /* Keep unknown raw inventory unknown. */ }
+    try { block = world.getBlock(request.plan.target.x, request.plan.target.y, request.plan.target.z) } catch { /* A failed read is not known air. */ }
+    const encode = raw => {
+      if (!validItem(raw)) return null
+      try { const bytes = serialize(raw); return bytes.length <= 1048576 ? bytes.toString('base64') : null } catch { return null }
+    }
+    const sourceBeforeEncoded = encode(request.plan.raw), sourceAfterEncoded = encode(sourceAfter)
+    const currentPosition = finitePosition(state?.position) ? copy(state.position) : null
+    // stop() has no transaction-cancellation receipt. Once queued, a request
+    // remains uncertain even if onSent has not run or the sender is stopped.
+    const notSent = request.transactionQueued !== true && request.wireSent !== true
+    return {
+      kind: 'interaction_failure', version: 1, operation: request.kind, requestId: request.id, reasonCode: error.code,
+      scope: copy(request.observedScope), currentScope: observedScope(state), scopeKey: request.scope, currentScopeKey: state ? interactionScope(state) : null,
+      origin: copy(request.origin), currentPosition, dimension: request.dimension, currentDimension: state?.dimension ?? null,
+      positionDelta: currentPosition ? Math.hypot(currentPosition.x - request.origin.x, currentPosition.y - request.origin.y, currentPosition.z - request.origin.z) : null,
+      transactionQueued: request.transactionQueued === true, wireSent: request.wireSent === true, serverRejected: request.serverRejected === true,
+      notSent, notSentBasis: notSent ? 'not_queued_before_cancel' : null, queuedCancellationConfirmed: false,
+      rawEncoding: 'v8-base64', slot: request.plan.slot, sourceBefore: sourceBeforeEncoded, sourceAfter: sourceAfterEncoded,
+      sourceUnchanged: sourceBeforeEncoded !== null && sourceAfterEncoded !== null && isDeepStrictEqual(request.plan.raw, sourceAfter),
+      targetBlock: { position: copy(request.plan.target), known: block?.known === true, name: typeof block?.name === 'string' ? block.name : null, runtimeId: block?.runtimeId ?? null },
+      observedAt: Date.now(), ...(inputStopError ? { inputStopError } : {})
+    }
+  }
   function cancel (reason = '設置・使用操作を停止しました。') {
     const request = pending
     if (!request) return
+    const error = reason instanceof Error ? reason : new Error(String(reason))
+    error.code ??= 'INTERACTION_FAILED'
     pending = null
     request.cancelled = true
     clearTimeout(request.timeout)
     clearInterval(request.poll)
-    if (request.startedInput || request.plan.alignFacing && request.transactionQueued && !request.wireSent && request.input.stats().running) request.input.stop()
-    notifyUncertain(request, reason)
-    lastResult = { phase: 'failed', operation: request.kind, reason }
-    request.reject(new Error(reason))
+    let inputStopError = null
+    try {
+      if (request.startedInput || request.plan.alignFacing && request.transactionQueued && !request.wireSent && request.input.stats().running) request.input.stop()
+    } catch (failure) { inputStopError = String(failure?.message ?? failure).slice(0, 256) }
+    notifyUncertain(request, error.message)
+    const receipt = request.failureReceipt = failureReceipt(request, error, inputStopError)
+    error.details = { ...(error.details ?? {}), [request.kind === 'place' ? 'placementFailure' : 'interactionFailure']: receipt }
+    lastResult = { phase: 'failed', operation: request.kind, reason: error.message, code: error.code, details: error.details }
+    request.reject(error)
   }
   const observedSelection = state => state.rawServerSelectedSlot ?? state.rawSelectedSlot ?? state.selectedSlot ?? null
   function sendRequest (request) {
@@ -251,6 +296,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     request.transactionQueued = true
     request.input.sendTransaction(packedTransaction(request.plan, request.id, request.kind === 'place'), { onSent: () => {
       request.wireSent = true
+      if (request.failureReceipt) Object.assign(request.failureReceipt, { wireSent: true, notSent: false, notSentBasis: null, lateWireSentAt: Date.now() })
       if (request.cancelled) notifyUncertain(request, '停止後に設置要求の送信が確認されました。')
       if (request.kind === 'bed_use' && !request.cancelled && pending === request) {
         pending = null; clearTimeout(request.timeout); clearInterval(request.poll)
@@ -279,7 +325,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     if (!pending) return
     try {
       const state = session(pending.plan.expectedBlock === 'minecraft:bed' && ['place', 'bed_use'].includes(pending.kind))
-      if (pending.scope !== interactionScope(state) || state.dimension !== pending.dimension || Math.hypot(state.position.x - pending.origin.x, state.position.y - pending.origin.y, state.position.z - pending.origin.z) > 0.3) throw new Error('プレイヤー位置・次元が変わりました。')
+      requireRequestContext(pending, state)
       if (pending.kind === 'place') {
         if (!pending.wireSent) {
           if (pending.plan.alignFacing) checkAlignment(pending, state)
@@ -320,7 +366,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
           finish({ phase: 'completed', operation: 'place', position: pending.plan.target, blockName: block.name, expectedBlock: pending.plan.expectedBlock, requestId: pending.id, placementObservation, confirmedBy: 'server_block_and_inventory' })
         }
       }
-    } catch (error) { cancel(error.message) }
+    } catch (error) { cancel(error) }
   }
   function begin (kind, plan) {
     if (pending) throw new Error('前の設置・使用操作の結果を待っています。')
@@ -333,7 +379,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     if (kind === 'place' && (!Number.isInteger(id) || id >= 0 || id < -2147483648 || id % 2 !== 0)) throw new Error('Legacy要求IDは32ビット範囲の負の偶数である必要があります。')
     if (kind === 'place' && !allocateLegacyId) nextLegacyId -= 2
     return new Promise((resolve, reject) => {
-      const request = pending = { kind, plan, id, input, origin: copy(state.position), dimension: state.dimension, scope: interactionScope(state), startedInput: !input.stats().running, resolve, reject, wireSent: false, serverRejected: false, serverConfirmed: false, uncertaintyNotified: false, cancelled: false }
+      const request = pending = { kind, plan, id, input, origin: copy(state.position), dimension: state.dimension, scope: interactionScope(state), observedScope: observedScope(state), startedInput: !input.stats().running, resolve, reject, transactionQueued: false, wireSent: false, serverRejected: false, serverConfirmed: false, uncertaintyNotified: false, cancelled: false }
       pending.timeout = setTimeout(() => cancel('サーバーから設置・使用の完了を確認できませんでした。'), timeoutMs)
       pending.poll = setInterval(check, plan.alignFacing ? 25 : 100)
       lastResult = { phase: 'requesting', operation: kind, position: plan.target }
@@ -348,13 +394,13 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
         }
         input.start()
         if (plan.alignFacing) { request.alignment.owner = input.stats().owner; check() } else sendRequest(request)
-      } catch (error) { cancel(error.message) }
+      } catch (error) { cancel(error) }
     })
   }
   function applyPacket (name, packet) {
     let sourceReceiptObserved = false
     if (name === 'start_game' || name === 'change_dimension' || name === 'disconnect') {
-      cancel('接続・次元が変わりました。'); players.clear(); selected = { requestedSlot: null, confirmedSlot: null }
+      cancel(contextFailure(name === 'change_dimension' ? 'INTERACTION_DIMENSION_CHANGED' : 'INTERACTION_SCOPE_CHANGED', '接続・次元が変わりました。')); players.clear(); selected = { requestedSlot: null, confirmedSlot: null }
       ownRuntimeId = name === 'start_game' && packet.runtime_entity_id != null ? String(packet.runtime_entity_id) : null
       return
     }
@@ -384,12 +430,12 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     if (pending) {
       try {
         const current = session(pending.plan.expectedBlock === 'minecraft:bed' && ['place', 'bed_use'].includes(pending.kind))
-        if (pending.scope !== interactionScope(current)) throw new Error('操作中に接続またはlifeが変わりました。')
+        requireRequestContext(pending, current)
         if (pending.kind === 'open') {
           const block = world.getBlock(pending.plan.target.x, pending.plan.target.y, pending.plan.target.z)
           if (block?.known !== true || block.name !== pending.plan.expectedBlock) throw new Error('操作対象のブロックが変わりました。')
         }
-      } catch (error) { cancel(error.message) }
+      } catch (error) { cancel(error) }
     }
     if (name === 'mob_equipment' && inventoryWindow(packet.window_id) && packet.selected_slot === selected.requestedSlot) selected.confirmedSlot = packet.selected_slot
     if (name === 'player_hotbar' && inventoryWindow(packet.window_id) && packet.selected_slot === selected.requestedSlot) selected.confirmedSlot = packet.selected_slot
@@ -403,7 +449,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
           if (!['inventory', 'hotbar', 'hotbar_and_inventory', 12, 28, 29].includes(container.slot_type?.container_id) || container.slot_type?.dynamic_container_id != null) continue
           const slot = container.slots?.find(slot => slot.slot === request.plan.slot && slot.count === request.plan.raw.count - 1)
           if (!slot || slot.count > 0 && (!Number.isInteger(slot.item_stack_id) || slot.item_stack_id <= 0)) continue
-          try { publishItem(request.plan.slot, slot.count ? { ...copy(request.plan.raw), count: slot.count, has_stack_id: true, stack_id: slot.item_stack_id } : airItem()); sourceReceiptObserved = true } catch (error) { cancel(error.message); return }
+          try { publishItem(request.plan.slot, slot.count ? { ...copy(request.plan.raw), count: slot.count, has_stack_id: true, stack_id: slot.item_stack_id } : airItem()); sourceReceiptObserved = true } catch (error) { cancel(error); return }
         }
       }
     }

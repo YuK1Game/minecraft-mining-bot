@@ -2293,9 +2293,54 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return controller.workWithContainer(context, options)
   }
 
+  const storageScopeMatches = (cp, state) => cp?.scope && ['profile', 'dimension', 'connectionId', 'startedAt'].every(field => cp.scope[field] === state[field]) && cp.scope.realmId === String(state.realm?.id) && cp.scope.runtimeEntityId === String(state.runtimeEntityId) && cp.scope.life === lifeOf(state)
+  const sameOwnedStorageBox = (cp, state) => {
+    if (!storageScopeMatches(cp, state) || cp.kind !== 'shulker' || cp.purpose != null || !['placed', 'depositing'].includes(cp.stage) || cp.intent != null && cp.intent.type !== 'deposit' || cp.placed?.length !== 1 || cp.positions?.length !== 1 || cp.recovered != null) return false
+    const owned = cp.placed[0]
+    if (owned.confirmedBy !== 'server_block_and_inventory' || !isShulkerBox(owned.name) || !samePoint(owned.position, cp.positions[0])) return false
+    const block = adapter.getBlock(owned.position.x, owned.position.y, owned.position.z)
+    return block?.known === true && nameOf(block.name) === nameOf(owned.name) && Number.isSafeInteger(owned.runtimeId) && owned.runtimeId >= 0 && owned.runtimeId <= 4294967295 && block.runtimeId === owned.runtimeId && !(block.extra ?? []).length
+  }
+  // This admits only read-only inventory refresh. A pending placement gains
+  // no ownership, consumption or success credit until portable reconciliation.
+  const samePendingStoragePlacement = (cp, state) => storageScopeMatches(cp, state) && cp.jobId === job.config.jobId && cp.operationId === job.portableStorage?.operationId && cp.selectionKey === job.portableStorage?.selection?.key && job.portableStorage?.selection?.kind === 'shulker' && cp.kind === 'shulker' && cp.purpose == null && cp.stage === 'placing' && cp.intent?.type === 'place' && cp.placed?.length === 0 && cp.positions?.length === 1 && samePoint(cp.intent.position, cp.positions[0]) && Number.isInteger(cp.intent.slot) && cp.intent.slot >= 0 && cp.intent.slot < 36 && isShulkerBox(cp.intent.name) && typeof cp.intent.source === 'string' && cp.intent.source.length > 0 && cp.recovered == null && cp.expectedContents == null && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => entry.transferred === 0) && Array.isArray(cp.deposited) && cp.deposited.length === 0
+  const requireStorageOwner = (myEpoch, owner, active, checkpoint) => {
+    const state = guard(myEpoch)
+    if (job !== owner || job.portableStorage !== active || active.checkpoint !== checkpoint || !storageScopeMatches(checkpoint, state)) throw new QuarryInterrupt('STORAGE_CHECKPOINT_CHANGED')
+    return state
+  }
+  async function reserveStorageRecovery (myEpoch, owner, active, checkpoint, reason, maxAttempts = 3) {
+    requireStorageOwner(myEpoch, owner, active, checkpoint)
+    const current = now(), previous = active.recoveryAttempts?.[reason]
+    if (active.recoveryAttempts !== undefined && (!active.recoveryAttempts || typeof active.recoveryAttempts !== 'object' || Array.isArray(active.recoveryAttempts))) return false
+    if (previous !== undefined && (!previous || !Number.isSafeInteger(previous.attempts) || previous.attempts < 0 || !Number.isFinite(previous.startedAt) || !Number.isFinite(previous.deadlineAt) || previous.deadlineAt !== previous.startedAt + 120000)) return false
+    if (previous && (previous.attempts >= maxAttempts || current < previous.startedAt || current >= previous.deadlineAt)) return false
+    const next = { attempts: (previous?.attempts ?? 0) + 1, startedAt: previous?.startedAt ?? current, deadlineAt: previous?.deadlineAt ?? current + 120000, lastAttemptAt: current }
+    active.recoveryAttempts ??= {}
+    active.recoveryAttempts[reason] = next
+    await save('storage_recovery_pending')
+    requireStorageOwner(myEpoch, owner, active, checkpoint)
+    note('storage_recovery_retry', { operationId: active.operationId, reason, attempt: next.attempts, deadlineAt: new Date(next.deadlineAt).toISOString() })
+    return true
+  }
+
   async function storeCarried (myEpoch, why, depositLimit = null, capacityDecision = null) {
     const state = guard(myEpoch); const inv = items(state)
-    if (!inv) { await sleep(300); return true }
+    if (!inv) {
+      const owner = job, active = job.portableStorage, checkpoint = active?.checkpoint
+      if (!active) { await sleep(300); return true }
+      const pendingPlacement = samePendingStoragePlacement(checkpoint, state)
+      if ((sameOwnedStorageBox(checkpoint, state) || pendingPlacement) && typeof adapter.resyncInventory === 'function' && await reserveStorageRecovery(myEpoch, owner, active, checkpoint, pendingPlacement ? 'STORAGE_PLACEMENT_INVENTORY_WAIT' : 'STORAGE_INVENTORY_WAIT')) {
+        try { await call(myEpoch, 'storage_inventory_observe', signal => adapter.resyncInventory({ signal })) } catch (error) {
+          if (error instanceof QuarryInterrupt) throw error
+          note('storage_inventory_refresh_failed', { error: String(error.message ?? error).slice(0, 160) })
+        }
+        const fresh = requireStorageOwner(myEpoch, owner, active, checkpoint)
+        if (sameOwnedStorageBox(checkpoint, fresh) || samePendingStoragePlacement(checkpoint, fresh)) { setState('RETURN'); await sleep(500); requireStorageOwner(myEpoch, owner, active, checkpoint); return true }
+      }
+      await finish('PAUSED', 'CARRIED_STORAGE_BLOCKED', { pauseDetails: { reason: 'STORAGE_INVENTORY_UNKNOWN', operationId: active.operationId, kind: active.selection?.kind ?? null } })
+      return true
+    }
     const feet = feetCell(state), head = { ...feet, y: feet.y + 1 }
     if (!permits(regions, 'travel', feet).allowed || !permits(regions, 'travel', head).allowed) {
       if (Array.isArray(job.config.permissions.travelRegion)) { await finish('PAUSED', 'OUTSIDE_TRAVEL_REGION', { pauseDetails: { feet, head, phase: 'carried_storage' } }); return true }
@@ -2392,17 +2437,84 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
       if (callFailure && !criticalResult) throw callFailure.drainedError ?? callFailure
       if (!criticalResult) guard(myEpoch)
-      if (result?.status === 'replan' && result.serverConfirmed === false && result.checkpoint?.stage === 'planned' && result.checkpoint.intent == null && !result.checkpoint.placed?.length) {
+      if (result?.status === 'replan' && result.serverConfirmed === false && ['STORAGE_STAND_RELOCATED', 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'].includes(result.reason) && result.checkpoint?.stage === 'planned' && result.checkpoint.intent == null && !result.checkpoint.placed?.length && await reserveStorageRecovery(myEpoch, owner, active, cp, result.reason)) {
         rec.status = 'replanned'; rec.result = copy(result)
         note('carried_storage_site_replanned', { operationId: active.operationId, rejected: result.checkpoint.rejectedPlacementSites?.length ?? 0 })
         setState('RETURN'); return true
       }
       const openRetries = active.openRetries === undefined ? 0 : active.openRetries
-      const openRetryScope = cp?.scope && ['profile', 'dimension', 'connectionId', 'startedAt'].every(field => cp.scope[field] === callState[field]) && cp.scope.realmId === String(callState.realm?.id) && cp.scope.runtimeEntityId === String(callState.runtimeEntityId) && cp.scope.life === lifeOf(callState)
+      const openRetryScope = storageScopeMatches(cp, callState)
+      const placementReason = result?.reason
+      const notSentPlacement = placementReason === 'STORAGE_PLACEMENT_NOT_SENT'
+      const observedPlacement = placementReason === 'STORAGE_PLACEMENT_RECONCILE_REQUIRED'
+      const reconcilePlacement = notSentPlacement ? adapter.reconcileCarriedPlacement : observedPlacement ? adapter.reconcileObservedPlacement : null
+      if (!callFailure && !capacity && result?.status === 'blocked' && typeof reconcilePlacement === 'function' && selection.kind === 'shulker' && cp?.purpose == null && cp.stage === 'placing' && cp.intent?.type === 'place' && cp.placed?.length === 0 && cp.positions?.length === 1 && samePoint(cp.intent.position, cp.positions[0]) && openRetryScope) {
+        rec.status = 'blocked'; rec.result = copy(result)
+        if (await reserveStorageRecovery(myEpoch, owner, active, cp, placementReason)) {
+          let staged = null, response = null
+          // Historical receive evidence is tied to the original action time.
+          // Reuse that exact record only when its entire pending CP matches;
+          // a later retry must never invent a new placement time or evidence.
+          const recordedFailure = observedPlacement ? job.actions.findLast(action => action !== rec && action.type === 'carried_storage' && action.operationId === active.operationId && action.status === 'blocked' && action.result?.status === 'blocked' && ['サーバーから設置・使用の完了を確認できませんでした。', 'プレイヤー位置・次元が変わりました。'].includes(action.result.reason) && isDeepStrictEqual(action.result.checkpoint, cp)) ?? rec : rec
+          const stableObserved = checkpoint => { const value = copy(checkpoint); for (const field of ['intent', 'stage', 'placed', 'windowId']) delete value[field]; return value }
+          try {
+            response = await call(myEpoch, 'storage_placement_reconcile', signal => reconcilePlacement({ jobId: owner.config.jobId, operationId: active.operationId, purpose: 'cargo', selection: copy(selection), checkpoint: copy(cp), reason: placementReason, recordedFailure: copy(recordedFailure) }, {
+              signal,
+              canPlace: p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 }),
+              onCheckpoint: async checkpoint => {
+                requireStorageOwner(myEpoch, owner, active, cp)
+                if (checkpoint?.jobId !== owner.config.jobId || checkpoint.operationId !== active.operationId || checkpoint.kind !== cp.kind || checkpoint.selectionKey !== cp.selectionKey || checkpoint.purpose != null || checkpoint.intent != null || !isDeepStrictEqual(checkpoint.scope, cp.scope) || !isDeepStrictEqual(checkpoint.plan, cp.plan) || !isDeepStrictEqual(checkpoint.deposited, cp.deposited) || !isDeepStrictEqual(checkpoint.sourceIdentities, cp.sourceIdentities)) throw new Error('STORAGE_RECONCILIATION_CHANGED_ASSETS')
+                if (notSentPlacement) {
+                  if (checkpoint.stage !== 'planned' || checkpoint.placed?.length !== 0 || !storagePoint(checkpoint.stand) || checkpoint.positions?.length !== 1 || !checkpoint.positions.every(storagePoint) || checkpoint.notSentPlacementProofs?.at(-1)?.notSent !== true) throw new Error('STORAGE_UNSENT_PROOF_REQUIRED')
+                } else {
+                  const placed = checkpoint.placed?.[0]
+                  if (checkpoint.stage !== 'placed' || checkpoint.placed?.length !== 1 || !samePoint(placed?.position, cp.intent.position) || placed.name !== cp.intent.name || placed.confirmedBy !== 'server_block_and_inventory' || !Number.isSafeInteger(placed.runtimeId) || placed.runtimeId < 0 || placed.runtimeId > 4294967295 || placed.placementReconciliation?.confirmedBy !== 'received_empty_source_main_and_fresh_exact_container' || !isDeepStrictEqual(stableObserved(checkpoint), stableObserved(cp))) throw new Error('STORAGE_PLACEMENT_RECONCILIATION_UNCONFIRMED')
+                }
+                staged = copy(checkpoint)
+              }
+            }), { drain: true })
+          } catch (error) {
+            if (error instanceof QuarryInterrupt) throw error
+            note('storage_placement_reconcile_failed', { reason: placementReason, error: String(error.message ?? error).slice(0, 160) })
+          }
+          requireStorageOwner(myEpoch, owner, active, cp)
+          if (response?.status === 'blocked') {
+            rec.recovery = { reason: placementReason, status: 'blocked', detail: response.reason ?? 'UNCONFIRMED' }
+            note('storage_placement_reconcile_blocked', { operationId: active.operationId, reason: placementReason, detail: rec.recovery.detail })
+            // Reconciliation only reads inventory and opens the same box. A
+            // receive timeout may retry the unchanged CP within its budget;
+            // missing ownership, send facts or contents never enter this list.
+            if (['STORAGE_INVENTORY_REFRESH_FAILED', 'STORAGE_FRESH_INVENTORY_REQUIRED', 'STORAGE_OPEN_UNCONFIRMED', 'STORAGE_CONTENTS_UNKNOWN', 'サーバーから設置・使用の完了を確認できませんでした。'].includes(response.reason)) {
+              setState('RETURN'); await sleep(500); requireStorageOwner(myEpoch, owner, active, cp); return true
+            }
+          }
+          const proof = notSentPlacement ? staged?.notSentPlacementProofs?.at(-1) : staged?.placed?.[0]?.placementReconciliation
+          if (response?.status === 'reconciled' && response.serverConfirmed === false && (notSentPlacement ? response.notSent === true : response.placementConfirmed === true) && staged && isDeepStrictEqual(response.checkpoint, staged) && isDeepStrictEqual(response.proof, proof)) {
+            active.checkpoint = staged
+            rec.status = 'reconciled'; rec.recovery = { reason: placementReason, notSent: notSentPlacement, placementConfirmed: observedPlacement }
+            try { await save('storage_placement_auto_reconciled') } catch (error) { active.checkpoint = cp; throw error }
+            requireStorageOwner(myEpoch, owner, active, staged)
+            note('storage_placement_auto_reconciled', { operationId: active.operationId, reason: placementReason, credited: 0 })
+            setState('RETURN'); return true
+          }
+        }
+      }
+      const receptionWait = ['STORAGE_CONTENTS_UNKNOWN', 'STORAGE_OPEN_UNCONFIRMED', 'STORAGE_INVENTORY_REFRESH_FAILED', 'STORAGE_FRESH_INVENTORY_REQUIRED'].includes(result?.reason)
+      if (!callFailure && !capacity && result?.status === 'blocked' && receptionWait && sameOwnedStorageBox(cp, guard(myEpoch)) && typeof adapter.resyncInventory === 'function') {
+        rec.status = 'blocked'; rec.result = copy(result)
+        if (await reserveStorageRecovery(myEpoch, owner, active, cp, result.reason)) {
+          try { await call(myEpoch, 'storage_reception_observe', signal => adapter.resyncInventory({ signal })) } catch (error) {
+            if (error instanceof QuarryInterrupt) throw error
+            note('storage_reception_refresh_failed', { error: String(error.message ?? error).slice(0, 160) })
+          }
+          const fresh = requireStorageOwner(myEpoch, owner, active, cp)
+          if (sameOwnedStorageBox(cp, fresh)) { setState('RETURN'); await sleep(500); requireStorageOwner(myEpoch, owner, active, cp); return true }
+        }
+      }
       // Opening a confirmed, untouched box can be retried without replaying a
       // placement or transfer. Preserve the failed attempt; the next normal
       // storage call still requires a fresh GUI and exact contents evidence.
-      if (!callFailure && !capacity && selection.kind === 'shulker' && result?.status === 'blocked' && result.reason === 'サーバーから設置・使用の完了を確認できませんでした。' && result.serverConfirmed === false && result.recovered === false && Array.isArray(result.deposited) && result.deposited.length === 0 && cp?.kind === 'shulker' && cp.purpose == null && cp.stage === 'placed' && cp.intent == null && cp.recovered == null && cp.opened !== true && cp.windowId == null && cp.initialContents && cp.initialContentsVerified == null && cp.positions?.length === 1 && cp.placed?.length === 1 && owned?.confirmedBy === 'server_block_and_inventory' && samePoint(owned.position, cp.positions[0]) && Number.isSafeInteger(owned.runtimeId) && owned.runtimeId >= 0 && owned.runtimeId <= 4294967295 && Array.isArray(cp.deposited) && cp.deposited.length === 0 && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => Number.isSafeInteger(entry.count) && entry.count > 0 && entry.transferred === 0) && openRetryScope && Number.isSafeInteger(openRetries) && openRetries >= 0 && openRetries < 2) {
+      if (!callFailure && !capacity && selection.kind === 'shulker' && result?.status === 'blocked' && result.reason === 'サーバーから設置・使用の完了を確認できませんでした。' && result.serverConfirmed === false && result.recovered === false && Array.isArray(result.deposited) && result.deposited.length === 0 && cp?.kind === 'shulker' && cp.purpose == null && cp.stage === 'placed' && cp.intent == null && cp.recovered == null && cp.opened !== true && cp.windowId == null && cp.initialContents && cp.initialContentsVerified == null && cp.positions?.length === 1 && cp.placed?.length === 1 && owned?.confirmedBy === 'server_block_and_inventory' && samePoint(owned.position, cp.positions[0]) && Number.isSafeInteger(owned.runtimeId) && owned.runtimeId >= 0 && owned.runtimeId <= 4294967295 && Array.isArray(cp.deposited) && cp.deposited.length === 0 && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => Number.isSafeInteger(entry.count) && entry.count > 0 && entry.transferred === 0) && openRetryScope && Number.isSafeInteger(openRetries) && openRetries >= 0 && openRetries < 2 && await reserveStorageRecovery(myEpoch, owner, active, cp, 'STORAGE_OPEN_WAIT', 2)) {
         guard(myEpoch)
         active.openRetries = openRetries + 1
         rec.status = 'blocked'; rec.result = copy(result)
@@ -2411,7 +2523,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         note('storage_open_retry', { operationId: active.operationId, attempt: active.openRetries })
         setState('RETURN'); await sleep(200); return true
       }
-      if (result?.status === 'blocked' && result.reason === 'STORAGE_SOURCE_REJECTED' && cp?.stage === 'depositing' && cp.intent?.type === 'deposit' && cp.intent.rejectionProof?.protocolStatusCode === 49 && (active.sourceRejectionRetries ?? 0) < 2) {
+      if (result?.status === 'blocked' && result.reason === 'STORAGE_SOURCE_REJECTED' && cp?.stage === 'depositing' && cp.intent?.type === 'deposit' && cp.intent.rejectionProof?.protocolStatusCode === 49 && openRetryScope && (active.sourceRejectionRetries ?? 0) < 2 && await reserveStorageRecovery(myEpoch, owner, active, cp, 'STORAGE_SOURCE_REJECTED', 2)) {
         guard(myEpoch)
         active.sourceRejectionRetries = (active.sourceRejectionRetries ?? 0) + 1
         rec.status = 'interrupted'; rec.result = copy(result)
@@ -2429,7 +2541,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         const inventory = items(guard(myEpoch))
         const allowedDrops = pickupDrops.filter(drop => typeof drop.runtimeId === 'string' && /^\d{1,20}$/.test(drop.runtimeId) && typeof drop.name === 'string' && !isShulkerBox(drop.name) && !['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(blockRule(drop.name).reason))
         const ids = [...new Set(allowedDrops.map(drop => drop.runtimeId))]
-        if (inventory && freeSlots(inventory) > 0 && ids.length) {
+        if (inventory && freeSlots(inventory) > 0 && ids.length && await reserveStorageRecovery(myEpoch, owner, active, cp, 'STORAGE_PICKUP_CAPACITY_REQUIRED')) {
           const baseline = totals(inventory), targetNames = new Set(allowedDrops.map(drop => nameOf(drop.name)))
           const requireOwner = () => {
             const current = guard(myEpoch)
