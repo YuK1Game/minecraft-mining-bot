@@ -165,7 +165,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   const healthRatio = s => s.health / (Number.isFinite(s.maxHealth) && s.maxHealth > 0 ? s.maxHealth : 20)
   const foodOf = s => s.food ?? s.hunger ?? null
   const items = s => s?.inventory?.known === true && !s.inventory.uncertain && Array.isArray(s.inventory.items) ? s.inventory.items : null
-  const inventoryPolicy = () => ({ ...job.config.inventory, toolPolicy: job.config.tools, ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64 } :
+  // Shulker-only jobs do not build storage chests. Keep explicit material
+  // reservations, but do not inherit the old chest-building wood defaults.
+  const inventoryPolicy = () => ({ ...job.config.inventory, ...(shulkerOnly ? { keepLogs: job.config.inventory.keepLogs ?? 0, keepPlanks: job.config.inventory.keepPlanks ?? 0 } : {}), toolPolicy: job.config.tools, ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64 } :
     deferredExitSupplies() ? { keepExitDirt: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 0, keepSealBlocks: 64 } : {}) })
   const passivePickup = () => job?.config.inventory.pickupMode === 'passive'
   const fullOnlyStorage = () => job?.config.inventory.depositWhen === 'full'
@@ -1558,18 +1560,28 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   // Collect drops (§10.2): walk next to each, then confirm by inventory gain.
-  async function collect (myEpoch, why, { onObservation = null } = {}) {
-    if (passivePickup()) {
+  async function collect (myEpoch, why, { onObservation = null, onlyDropIds = null } = {}) {
+    const storageCleanup = why === 'storage_recovery_space'
+    if (storageCleanup && (!Array.isArray(onlyDropIds) || !onlyDropIds.length || onlyDropIds.length > 16 || !onlyDropIds.every(id => typeof id === 'string' && /^\d{1,20}$/.test(id)) || new Set(onlyDropIds).size !== onlyDropIds.length)) throw new QuarryInterrupt('STORAGE_PICKUP_TARGETS_INVALID')
+    const selectedIds = storageCleanup ? new Set(onlyDropIds) : null
+    // The adapter already scopes/filters its item actors and intentionally
+    // omits dimension/positionKnown from this narrow port. Honor either field
+    // when present without requiring metadata the port does not expose.
+    const selectedDrop = e => !storageCleanup || selectedIds.has(String(e.runtimeId)) && e.alive !== false && e.positionKnown !== false && (e.dimension == null || e.dimension === adapter.getState().dimension) && Number.isSafeInteger(e.count) && e.count > 0 && e.count <= 127 && ['x', 'y', 'z'].every(axis => Number.isFinite(e.position?.[axis])) && typeof e.name === 'string' && /^(?:minecraft:)?[a-z0-9_]+$/.test(e.name) && !isShulkerBox(e.name) && !['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(blockRule(e.name).reason)
+    const preservedDrops = storageCleanup ? pendingDrops.filter(d => !selectedIds.has(String(d.runtimeId))) : []
+    if (passivePickup() && !storageCleanup) {
       guard(myEpoch); observeInventory(job.state); observeDrops(); recordPassivePickup(why)
       setState('PLAN')
       return
     }
     setState('COLLECT', { collectReason: why })
     const s = guard(myEpoch)
-    const ents = new Map(adapter.entities().filter(e => e.kind === 'item' && e.position).map(e => [e.runtimeId, e]))
+    const ents = new Map(adapter.entities().filter(e => e.kind === 'item' && e.position && selectedDrop(e)).map(e => [e.runtimeId, e]))
     if (onObservation) await onObservation([...ents.values()])
     // Refresh tracked drops; vanished ones are unknown unless the bag grew.
-    const before = totals(items(s) ?? [])
+    const initialInventory = items(s)
+    if (storageCleanup && !initialInventory) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
+    const before = totals(initialInventory ?? [])
     const remaining = []
     for (const d of pendingDrops) { const e = ents.get(d.runtimeId); if (e) remaining.push({ ...d, position: copy(e.position), count: e.count }) }
     // Every item lying inside the travel region is collected, not only the
@@ -1580,10 +1592,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // except on the final sweep.
     const observedOnPass=remaining.map(d=>({...d}))
     const skipped = []
-    for (let k = remaining.length - 1; k >= 0; k--) if (why !== 'final' && (stuckItems.has(remaining[k].runtimeId) || remaining[k].reason === 'STUCK_REPEATED')) skipped.push(...remaining.splice(k, 1))
+    for (let k = remaining.length - 1; k >= 0; k--) if (!storageCleanup && why !== 'final' && (stuckItems.has(remaining[k].runtimeId) || remaining[k].reason === 'STUCK_REPEATED')) skipped.push(...remaining.splice(k, 1))
     const unreachable = skipped.map(d => ({ ...d, reason: d.reason === 'STUCK_REPEATED' ? d.reason : 'STUCK' }))
     let needRoom = false
-    const PASS = 48
+    const PASS = storageCleanup ? 4 : 48
     const around = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
     const present = id => adapter.entities().some(e => e.runtimeId === id)
     const waitGone = async (id, ms) => { const until = now() + ms; while (now() < until && present(id)) await sleep(50); return !present(id) }
@@ -1593,7 +1605,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // cover several items passively. Recompute after each confirmed move.
     while (remaining.length) {
       const here = guard(myEpoch); const feet = { x: here.position.x, y: here.position.y - FEET, z: here.position.z }
-      const actors = adapter.entities()
+      const actors = adapter.entities().filter(selectedDrop)
       if (onObservation) await onObservation(actors.filter(e => e.kind === 'item' && e.position))
       const live = new Set(actors.map(e => e.runtimeId))
       for (let i = remaining.length - 1; i >= 0; i--) if (!live.has(remaining[i].runtimeId)) remaining.splice(i, 1)
@@ -1624,6 +1636,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (!present(d.runtimeId)) continue
       const inv = items(guard(myEpoch))
       if (!inv) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
+      // Cleanup never relies on name-only stack merging to enter a full bag.
+      if (storageCleanup && freeSlots(inv) === 0) { needRoom = true; unreachable.push({ ...d, reason: 'NO_CAPACITY' }); continue }
       if (!canAccept(inv, [{ name: d.name ?? 'unknown', count: d.count ?? 1 }])) { needRoom = true; unreachable.push({ ...d, reason: 'NO_CAPACITY' }); continue }
       // Already within pickup range: no walk, just a short wait.
       if (inPickupRange(feet, d.position) && await waitGone(d.runtimeId, 400)) continue
@@ -1660,7 +1674,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // Items still on the ground stay tracked: capacity misses are retried after
     // a deposit, unreachable ones are only written off at the end (§10.2).
     const still = new Set(adapter.entities().filter(e => e.kind === 'item').map(e => e.runtimeId))
-    pendingDrops = unreachable.filter(d => still.has(d.runtimeId)).map(d => ({ ...d, unreachable: !['NO_CAPACITY', 'NEXT_PASS', 'STUCK'].includes(d.reason) }))
+    pendingDrops = [...preservedDrops, ...unreachable.filter(d => still.has(d.runtimeId)).map(d => ({ ...d, unreachable: !['NO_CAPACITY', 'NEXT_PASS', 'STUCK'].includes(d.reason) }))]
     job.unreachableItems = pendingDrops.filter(d => d.unreachable).map(d => ({ name: d.name, count: d.count, position: d.position, reason: d.reason }))
     batchCount = 0
     // The bag could not take everything: empty it into the chests, then the
@@ -2405,6 +2419,48 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         guard(myEpoch)
         note('storage_source_rejection_retry', { operationId: active.operationId, attempt: active.sourceRejectionRetries, requestId: cp.intent.rejectionProof.requestId })
         setState('RETURN'); await sleep(200); return true
+      }
+      const pickupRetries = active.pickupSpaceRetries === undefined ? 0 : active.pickupSpaceRetries
+      const pickupDrops = stopped?.nearbyDrops
+      // Pick up only the actual loose blockers while the confirmed owned box
+      // is still intact. Its normal reopen/packing path keeps every receipt
+      // and capacity guard; no missing entity is treated as a pickup receipt.
+      if (!callFailure && !capacity && passivePickup() && fullOnlyStorage() && active.why === 'full' && result?.status === 'blocked' && result.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED' && stopped?.kind === 'owned_box_pickup_capacity' && stopped.phase === 'before_packing' && cp?.kind === 'shulker' && cp.purpose == null && cp.stage === 'depositing' && cp.intent == null && cp.expectedContents == null && cp.full !== true && cp.recovered == null && cp.positions?.length === 1 && cp.placed?.length === 1 && owned?.confirmedBy === 'server_block_and_inventory' && samePoint(owned.position, cp.positions[0]) && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => Number.isSafeInteger(entry.count) && entry.count > 0 && entry.transferred === entry.count) && openRetryScope && Number.isSafeInteger(pickupRetries) && pickupRetries >= 0 && pickupRetries < 3 && Array.isArray(pickupDrops) && pickupDrops.length > 0 && pickupDrops.length <= 16) {
+        const inventory = items(guard(myEpoch))
+        const allowedDrops = pickupDrops.filter(drop => typeof drop.runtimeId === 'string' && /^\d{1,20}$/.test(drop.runtimeId) && typeof drop.name === 'string' && !isShulkerBox(drop.name) && !['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(blockRule(drop.name).reason))
+        const ids = [...new Set(allowedDrops.map(drop => drop.runtimeId))]
+        if (inventory && freeSlots(inventory) > 0 && ids.length) {
+          const baseline = totals(inventory), targetNames = new Set(allowedDrops.map(drop => nameOf(drop.name)))
+          const requireOwner = () => {
+            const current = guard(myEpoch)
+            if (job !== owner || job.portableStorage !== active || active.checkpoint !== cp) throw new QuarryInterrupt('STORAGE_CHECKPOINT_CHANGED')
+            return current
+          }
+          active.pickupSpaceRetries = pickupRetries + 1
+          rec.status = 'blocked'; rec.result = copy(result)
+          await save('storage_pickup_space_pending')
+          requireOwner()
+          note('storage_pickup_space_collect', { operationId: active.operationId, attempt: active.pickupSpaceRetries, targets: ids.length })
+          await collect(myEpoch, 'storage_recovery_space', { onlyDropIds: ids })
+          let fresh = items(requireOwner())
+          const gains = () => fresh ? diff(baseline, totals(fresh)).filter(entry => entry.delta > 0 && targetNames.has(nameOf(entry.name))) : []
+          if (!gains().length && typeof adapter.resyncInventory === 'function') {
+            try { await call(myEpoch, 'storage_pickup_observe', signal => adapter.resyncInventory({ signal })) } catch (error) {
+              if (error instanceof QuarryInterrupt) throw error
+              note('storage_pickup_space_resync_failed', { error: String(error.message ?? error).slice(0, 160) })
+            }
+            fresh = items(requireOwner())
+          }
+          const received = gains()
+          if (received.length) {
+            active.pickupSpaceObservation = { attempt: active.pickupSpaceRetries, observedAt: new Date(now()).toISOString(), gains: copy(received) }
+            await save('storage_pickup_space_received')
+            requireOwner()
+            note('storage_pickup_space_received', { operationId: active.operationId, attempt: active.pickupSpaceRetries, gains: received })
+            setState('RETURN'); return true
+          }
+          note('storage_pickup_space_unconfirmed', { operationId: active.operationId, attempt: active.pickupSpaceRetries })
+        }
       }
       if (!['completed', 'full'].includes(result?.status) || result.serverConfirmed !== true || selection.kind === 'shulker' && result.recovered !== true) {
         rec.status = 'blocked'; rec.result = copy(result)
