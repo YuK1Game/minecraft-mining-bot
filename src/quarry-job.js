@@ -1300,13 +1300,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   }
 
   async function mine (myEpoch, decision, { capacityActionId = null } = {}) {
-    // Capacity check against worst-case drops of the whole batch (T06).
+    // Passive pickup uses received inventory and stops at a full bag. Only
+    // active collection and held-box batches need predicted drop capacity.
     const initial = guard(myEpoch)
     const receiptScope = { job, epoch: myEpoch, scope: scopeOf(initial), life: lifeOf(initial) }
     const inv = items(initial)
     if (!inv) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
-    let drops
-    try { drops = fullDropBudget(decision.targets, decision.tool) } catch (error) {
+    const requireDropCapacity = !passivePickup() || capacityActionId != null
+    let drops = []
+    try { if (requireDropCapacity) drops = fullDropBudget(decision.targets, decision.tool) } catch (error) {
       if (/^DROP_/.test(error.code ?? '')) {
         const p = error.details?.target?.position
         const b = p ? adapter.getBlock(p.x, p.y, p.z) : null
@@ -1315,7 +1317,6 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
       throw error
     }
-    const requireDropCapacity = !passivePickup() || capacityActionId != null
     if (requireDropCapacity && !capacityActionId && !canAccept(inv, drops)) {
       try { decision = chooseCapacityPrefix(decision, inv); drops = fullDropBudget(decision.targets, decision.tool) } catch (error) { if (!['MINING_CAPACITY_REQUIRED', 'CAPACITY_BATCH_INVALID'].includes(error.code)) throw error }
     }
