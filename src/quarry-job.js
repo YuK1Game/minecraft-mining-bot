@@ -11,7 +11,7 @@ const { validateJobId, newJobId, worldIdentity, assertJobWorld, documentInstance
 const { buildRegions, permits, chunkBounds } = require('./quarry-region')
 const { createQuarryPlanner } = require('./quarry-planner')
 const { blockRule, nameOf, selectTool, toolState, AIR, SEAL_MATERIALS } = require('./quarry-rules')
-const { keepPlan, canAccept, dropsFittingStacks, totals, diff, createLedger, freeSlots, isFood, selectCarriedStorage, isShulkerBox, carriedContainerKey, spareArmorStackIds } = require('./quarry-inventory')
+const { keepPlan, canAccept, dropsFittingStacks, totals, diff, createLedger, freeSlots, isFood, selectCarriedStorage, isShulkerBox, carriedContainerKey, spareArmorStackIds, egressDirtRoom } = require('./quarry-inventory')
 const { createQuarryCombatBridge } = require('./quarry-combat-bridge')
 const { miningUsesAfterExitReserve } = require('./quarry-exit-reserve')
 const { normalizeExit, dirtCount, planQuarryExit } = require('./quarry-exit-plan')
@@ -202,8 +202,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // Shulker-only jobs do not build storage chests. Keep explicit material
   // reservations, but do not inherit the old chest-building wood defaults.
   const spareArmor = () => { if (job.config.strategy?.storeSpareArmor !== true) return []; try { return spareArmorStackIds(adapter.inventoryDetails?.()) } catch { return [] } }
+  const exitDirtGoal = () => job.exitDirtLimit ?? Math.max(192, job.config.inventory.keepExitDirt ?? 0)
   const inventoryPolicy = () => ({ ...job.config.inventory, ...(job.config.strategy?.clearAnimals === true ? { keepRawMeat: false } : {}), ...(job.config.strategy?.storeSpareArmor === true ? { cargoStackIds: spareArmor() } : {}), ...(shulkerOnly ? { keepLogs: job.config.inventory.keepLogs ?? 0, keepPlanks: job.config.inventory.keepPlanks ?? 0 } : {}), toolPolicy: job.config.tools, ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64 } :
-    deferredExitSupplies() ? { keepExitDirt: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 0, keepSealBlocks: 64, ...(workDirtOnDemand() ? { sealDirt: job.egressPreparation === true || job.dirtDemand === true, keepSticks: job.config.inventory.keepSticks ?? 0 } : {}) } : {}) })
+    deferredExitSupplies() ? { keepExitDirt: job.egressPreparation === true ? exitDirtGoal() : 0, keepSealBlocks: job.egressPreparation === true && job.egressRoom === true ? 0 : 64, ...(job.egressPreparation === true && job.egressRoom === true ? { keepCoal: 0, keepSticks: 0 } : {}), ...(workDirtOnDemand() ? { sealDirt: job.egressPreparation === true || job.dirtDemand === true, keepSticks: job.config.inventory.keepSticks ?? 0 } : {}) } : {}) })
   // Live 2026-11-12 23:28: 34 of 36 slots were fixed items, leaving 2 for
   // mining. Opt-in (strategy.dirtFromSupplyOnDemand, 2026-11-13): in the v2.2
   // carried mode the 64 work dirt and the sticks are not held; dirt is taken
@@ -743,6 +744,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return null
   }
 
+  // The selected exit column's dirt need (prediction only, no state change).
+  function exitPlanDirt (myEpoch) {
+    if (job.config.exit?.mode !== 'adjacent_pillar') return null
+    try {
+      const state = guard(myEpoch), read = planningBlocks(job.config)
+      const result = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(state), getBlock: (x, y, z) => read(x, y, z), inventory: items(state), policy: { ...job.config.tools, ...job.config.collection }, exit: job.config.exit, preflight: true, reservation: job.exitReservation?.plan ?? null })
+      return Number.isSafeInteger(result?.plan?.totalDirt) ? result.plan.totalDirt : null
+    } catch (error) { if (error instanceof QuarryInterrupt) throw error; return null }
+  }
   async function prepareExit (myEpoch) {
     if (job.config.exit?.mode !== 'adjacent_pillar' || typeof adapter.egress !== 'function' || job.miningCompletedAt || job.surfaceReturnedAt) return true
     const state = guard(myEpoch), read = planningBlocks(job.config)
@@ -2247,7 +2257,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const policy = { ...job.config.inventory, tools: job.config.tools,
       ...(v22SupplyLayout(job.config) ? { totemNeeded: equipmentView?.offhand?.known === true && equipmentView.offhand.slots?.[0]?.empty === true } : {}),
       ...(deferredExitSupplies() ? { deferExitSupplies: true, exitPreparing: job.egressPreparation === true,
-        exitDirtTarget: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 64, ...(workDirtOnDemand() ? { workDirtTarget: job.dirtDemand === true ? WORK_DIRT_DEMAND : 0 } : {}) } : {}),
+        exitDirtTarget: job.egressPreparation === true ? exitDirtGoal() : 64, ...(workDirtOnDemand() ? { workDirtTarget: job.dirtDemand === true ? WORK_DIRT_DEMAND : 0 } : {}) } : {}),
       ...(job.miningExhausted ? { miningExhausted: copy(job.miningExhausted) } : {}),
       ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64,
         exitPreparing: job.egressPreparation === true, exitDirtTarget: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 64,
@@ -3237,7 +3247,18 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (!job.egressPreparation) { job.egressPreparation = true; await save('egress_dirt_intent') }
       const inv = items(guard(myEpoch))
       if (!inv) return finish('PAUSED', 'INVENTORY_UNKNOWN')
-      if ((totals(inv).get('dirt') ?? 0) < Math.max(192, job.config.inventory.keepExitDirt ?? 0)) {
+      if ((totals(inv).get('dirt') ?? 0) < exitDirtGoal()) {
+        // Make room first (2026-11-13): store what the exit does not need,
+        // then, if still short, withdraw the selected column's need plus 8.
+        job.egressRoom = true
+        const room = egressDirtRoom(inv, { target: exitDirtGoal(), keepPolicy: inventoryPolicy(), storageAvailable: hasStorageOption(), depositAttempts: job.egressRoomDeposits ?? 0, planDirt: exitPlanDirt(myEpoch) })
+        if (room.action === 'deposit') {
+          job.egressRoomDeposits = (job.egressRoomDeposits ?? 0) + 1
+          note('egress_dirt_room_deposit', { attempt: job.egressRoomDeposits, deposits: room.deposits.length })
+          await save('egress_dirt_room'); job.finalDeposited = false
+          job.depositReason = 'final'; await returnAndDeposit(myEpoch, 'final'); return
+        }
+        if (room.limited && room.target !== job.exitDirtLimit) { job.exitDirtLimit = room.target; note('egress_dirt_limited', { target: room.target, short: room.short === true }); await save('egress_dirt_limited') }
         if (await restock(myEpoch, 'FINAL_CHECK', true)) return
         return finish('PAUSED', 'EXIT_DIRT_WITHDRAW_BLOCKED')
       }
@@ -4201,7 +4222,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       combat: { ...combatBridge.snapshot(), settle: job.settle ?? null, recovery: job.recovery ?? null, interruption: job.interruption },
       portableStorage: job.portableStorage ? { operationId: job.portableStorage.operationId, kind: job.portableStorage.selection?.kind, stage: job.portableStorage.checkpoint?.stage ?? 'intent', positions: copy(job.portableStorage.checkpoint?.positions ?? []), why: job.portableStorage.why } : null,
       supplies: { enabled: !!job.config.inventory.supplyBoxes?.length, bindings: copy(job.config.inventory.supplyBoxes ?? []), needs: items(s) ? supplyNeeds(items(s), { ...job.config.inventory, tools: job.config.tools,
-        ...(deferredExitSupplies() ? { deferExitSupplies: true, exitPreparing: job.egressPreparation === true, exitDirtTarget: Math.max(192, job.config.inventory.keepExitDirt ?? 0) } : {}) }) : null, active: job.supplyRestock ? { operationId: job.supplyRestock.operationId, index: job.supplyRestock.checkpoint?.index ?? null, phase: job.supplyRestock.checkpoint?.phase ?? 'intent' } : null, lastResult: copy(job.lastSupplyResult ?? null) },
+        ...(deferredExitSupplies() ? { deferExitSupplies: true, exitPreparing: job.egressPreparation === true, exitDirtTarget: exitDirtGoal() } : {}) }) : null, active: job.supplyRestock ? { operationId: job.supplyRestock.operationId, index: job.supplyRestock.checkpoint?.index ?? null, phase: job.supplyRestock.checkpoint?.phase ?? 'intent' } : null, lastResult: copy(job.lastSupplyResult ?? null) },
       egress: egressStatus(inv),
       tools: { ...copy(job.config.tools), hardMinimumRemaining: 1, states: inv ? inv.map(i => toolState(i, job.config.tools)).filter(Boolean).map(t => ({ slot: t.item.slot, name: t.item.name, remaining: t.remaining ?? null, reserve: t.reserve ?? null, usable: t.usable, reason: t.reason ?? null })) : null },
       terrainObservation: copy(job.terrainObservation ?? null),
