@@ -614,6 +614,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       throw error
     } finally { clearInterval(watcher) }
   }
+  // An exit action keeps only a summary of its checkpoint: the full checkpoint
+  // (every climbed step with its diagnostics) already lives in job.egress, and
+  // copying it into each action made saved jobs 10-15 MB and every save block
+  // the event loop for most of a second during the climb.
+  function egressActionResult (result) {
+    if (result == null) return null
+    const { checkpoint, ...rest } = result
+    if (checkpoint == null || typeof checkpoint !== 'object') return copy(result)
+    return { ...copy(rest), checkpoint: { summary: true, operationId: checkpoint.operationId ?? null, phase: checkpoint.phase ?? null, confirmedFeetY: checkpoint.confirmedFeetY ?? null, steps: Array.isArray(checkpoint.steps) ? checkpoint.steps.length : null, serverConfirmed: checkpoint.serverConfirmed ?? null } }
+  }
   function recordAction (action) {
     const sequence = job.actionSequence = (job.actionSequence ?? 0) + 1
     const rec = { id: `${job.config.jobId}:${sequence}:${randomUUID()}`, sequence, epoch, at: new Date(now()).toISOString(), status: 'intent', ...copy(action) }
@@ -3512,7 +3522,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint), ...(reconnect ? { reconnect: true } : {}), ...(deferredExitSupplies() || job.storageExhausted && passivePickup() ? { allowFullInventory: true } : {}) }, { signal, onCheckpoint }))
     guard(myEpoch)
     if (result?.checkpoint) await onCheckpoint(result.checkpoint)
-    rec.result = copy(result ?? null)
+    rec.result = egressActionResult(result)
     if (result?.status !== 'completed' || result.serverConfirmed !== true || !active.checkpoint) {
       const reason = /^(EXIT_|EGRESS_|ASCENT_)/.test(result?.reason ?? '') ? result.reason : 'EXIT_UNCONFIRMED'
       // A combat claim that could do nothing (no target action: bow out of
@@ -4419,6 +4429,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     job.world = world
     job.instanceId = documentInstance(doc)
     job.actionSequence ??= Math.max(0, ...(job.actions ?? []).map(action => action.sequence ?? 0))
+    for (const action of job.actions ?? []) if (action?.type === 'egress' && action.result?.checkpoint && action.result.checkpoint.summary !== true) action.result = egressActionResult(action.result)
     // Missing exit settings identify older saved jobs. Loading alone never
     // changes their staircase policy; migration is explicit via configureExit.
     job.config.exit = normalizeExit(job.config.exit, { legacy: !job.config.exit })
