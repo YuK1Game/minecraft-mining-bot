@@ -64,7 +64,9 @@ const TERRAIN_LOOKAHEAD_LAYERS = 8 // layers under the work layer received befor
 // With a full bag a placed supply box can lose its slot to natural pickup; a
 // small stack of placeable mined blocks is put back into dug cells of the
 // current layer (re-mined later) to free one slot (live 2026-11-10 22:01, 23:27).
-const SUPPLY_ROOM_REASONS = new Set(['SUPPLY_CAPACITY_REQUIRED', 'SUPPLY_RECOVERY_SLOT_REQUIRED'])
+// Live 2026-11-14 02:38 (supplies:18): a placed supply box waited for pickup
+// room with a full bag; making room is the same bounded placement of blocks.
+const SUPPLY_ROOM_REASONS = new Set(['SUPPLY_CAPACITY_REQUIRED', 'SUPPLY_RECOVERY_SLOT_REQUIRED', 'STORAGE_PICKUP_CAPACITY_REQUIRED', 'STORAGE_RECOVERY_SLOT_REQUIRED'])
 // Live 2026-11-11 13:27: the smallest placeable stack was 10 diorite, over the
 // old limit of 8, and the restock paused. Up to 24 blocks are now put back,
 // bounded by the dug cells of the layer that can actually take them.
@@ -2395,6 +2397,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job.supplyRestock && !(shortage || force && need.returns.length)) return false
     if (!job.supplyRestock) { job.supplySequence = (job.supplySequence ?? 0) + 1; job.supplyRestock = { operationId: `${job.config.jobId}:supplies:${job.supplySequence}`, checkpoint: null, resumeTo } }
     const owner = job, active = job.supplyRestock
+    await rescopeBoxAfterReconnect(active?.checkpoint?.child, active?.checkpoint, 'supply', active?.operationId)
+    // A box whose window was closed under the operation is opened again by the
+    // ordinary operation instead of stopping STORAGE_WINDOW_CHANGED again.
+    { const ch = active?.checkpoint?.child
+      if (job.lastSupplyResult?.operationId === active?.operationId && job.lastSupplyResult?.reason === 'STORAGE_WINDOW_CHANGED' && ch?.kind === 'shulker' && ch.stage === 'depositing' && ch.opened === true && ch.intent == null && !ch.supplyCheckpoint?.intent) {
+        ch.stage = 'placed'; ch.opened = false; ch.windowId = null; job.lastSupplyResult = { ...job.lastSupplyResult, reason: 'STORAGE_WINDOW_REOPEN' }
+        note('supply_box_reopen', { operationId: active.operationId }); await save('supply_box_reopen')
+      } }
     await refreshSupplyBindingKeys(active)
     if (!(await approachSupplySite(myEpoch, active))) return true
     guard(myEpoch)
@@ -2407,6 +2417,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     guard(myEpoch)
     job.lastSupplyResult = { operationId: active.operationId, status: response?.status ?? 'blocked', reason: response?.reason ?? null, serverConfirmed: response?.serverConfirmed === true, withdrawn: copy(response?.withdrawn ?? []), returned: copy(response?.returned ?? []) }
     if (response?.status !== 'completed' && SUPPLY_ROOM_REASONS.has(response?.reason) && await makeSupplyRoom(myEpoch, active)) { setState('RESTOCK'); await save('supply_room_retry'); return true }
+    // Right after placements the received inventory is briefly uncertain (live
+    // 2026-11-14 03:32 SUPPLY_SCOPE_UNKNOWN): resync and retry (3 at most).
+    if (response?.status !== 'completed' && response?.reason === 'SUPPLY_SCOPE_UNKNOWN' && (active.scopeUnknownRetries ?? 0) < 3) {
+      active.scopeUnknownRetries = (active.scopeUnknownRetries ?? 0) + 1
+      note('supply_scope_unknown_retry', { attempt: active.scopeUnknownRetries })
+      if (typeof adapter.resyncInventory === 'function') { try { await call(myEpoch, 'resync', signal => adapter.resyncInventory({ signal })) } catch (error) { if (error instanceof QuarryInterrupt) throw error } }
+      const until = now() + 1500
+      while (now() < until) { await sleep(100); guard(myEpoch) }
+      await save('supply_scope_unknown_retry'); setState('RESTOCK'); return true
+    }
     // Live 2026-11-13 13:53 (supplies:13): the walk to the supply stand timed out
     // before anything was placed; like storage, it is a site re-selection.
     if (response?.status !== 'completed' && (SUPPLY_SITE_REASONS.has(response?.reason) || response?.reason === 'quarry move: timed out') && supplyUntouched(response?.checkpoint) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
@@ -2460,6 +2480,36 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     job.supplyRestock = null; lastInventory = totals(items(adapter.getState()) ?? [])
     clearWorkDeferred([...TOOL_WAIT]); job.miningEquipmentPending = true
     await save('supply_completed'); setState(active.resumeTo ?? resumeTo)
+    return true
+  }
+  // A box operation left with its box placed when only the connection
+  // changed (live 2026-11-14 02:50: server-side disconnect; supplies:18 then
+  // stopped SUPPLY_SCOPE_CHANGED). Continued on the new connection when: no
+  // unconfirmed action (no intent anywhere), the placed box block is received
+  // at its cell with the same name and block state, and the same player
+  // (profile, realm), dimension and life. The scopes are taken over, the window
+  // is opened again by the ordinary operation, and anything derived from old
+  // stack IDs (pack baseline) is dropped so it is taken again before the break.
+  // A box already being broken or awaiting pickup is never continued this way.
+  async function rescopeBoxAfterReconnect (box, parent, kind, operationId) {
+    if (!box || box.kind !== 'shulker' || box.placed?.length !== 1 || !['placed', 'depositing', 'packed'].includes(box.stage)) return false
+    let scope = null
+    try { scope = supplyScope(adapter.getState()) } catch { return false }
+    const old = box.scope
+    if (!old) return false
+    if (['profile', 'realmId', 'dimension'].some(k => String(old[k]) !== String(scope[k])) || old.life !== scope.life) return false
+    if (old.connectionId === scope.connectionId && old.startedAt === scope.startedAt && (!parent || isDeepStrictEqual(parent.scope, scope))) return false
+    if (box.intent != null || parent?.intent != null || box.supplyCheckpoint?.intent != null || box.placementFailure) return false
+    const placed = box.placed[0], block = adapter.getBlock(placed.position.x, placed.position.y, placed.position.z)
+    if (block?.known !== true || nameOf(block) !== nameOf(placed.name) || placed.runtimeId != null && block.runtimeId != null && block.runtimeId !== placed.runtimeId) return false
+    const from = { connectionId: old.connectionId, startedAt: old.startedAt }
+    const take = s => s ? Object.assign(s, { connectionId: scope.connectionId, startedAt: scope.startedAt, runtimeEntityId: scope.runtimeEntityId }) : s
+    take(box.scope); if (parent) take(parent.scope); take(box.supplyCheckpoint?.scope)
+    const stage = box.stage
+    box.stage = 'placed'; box.opened = false; box.windowId = null
+    delete box.expectedContents; delete box.recoveryBaseline
+    note('box_operation_rescoped', { kind, operationId: operationId ?? null, stage, position: copy(placed.position), from, to: { connectionId: scope.connectionId, startedAt: scope.startedAt } })
+    await save('box_operation_rescoped')
     return true
   }
   // Stack IDs change on a reconnect (live 2026-11-14 02:19: after the bot
@@ -2677,6 +2727,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       job.portableStorage = { operationId: `${job.config.jobId}:storage:${job.portableStorageSequence}`, selection: copy(selection), checkpoint: null, why, ...(depositLimit ? { depositLimit: copy(depositLimit) } : {}), ...(capacity ? { purpose: 'capacity_batch', capacityBatch: { decision: copy(capacityDecision), beforePlacementItems: copy(inv), inventoryPolicy: copy(inventoryPolicy()), markerDirt } } : {}) }
       await save('carried_storage_intent')
     }
+    await rescopeBoxAfterReconnect(job.portableStorage?.checkpoint, null, 'cargo', job.portableStorage?.operationId)
     const owner = job; const active = job.portableStorage
     const rec = recordAction({ type: 'carried_storage', operationId: active.operationId, kind: selection.kind, why: active.why })
     setState(why === 'manual' ? 'PORTABLE_STORAGE' : 'DEPOSIT')
@@ -3287,6 +3338,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // A supply box left open by the blocked restock is closed first: the
     // normal inventory refuses a hotbar move while a container is open.
     adapter.closeContainer?.()
+    // The closed box is opened again by the ordinary operation (live 2026-11-14
+    // 03:36: the retry found the old window and stopped STORAGE_WINDOW_CHANGED).
+    const openChild = active.checkpoint?.child
+    if (openChild?.kind === 'shulker' && openChild.opened === true && openChild.intent == null && openChild.stage === 'depositing') { openChild.stage = 'placed'; openChild.opened = false; openChild.windowId = null; await save('supply_room_closed_box') }
     if (slot > 8) {
       await call(myEpoch, 'equip_seal', signal => adapter.equip(slot, { signal }))
       inventory = items(guard(myEpoch))
@@ -3356,6 +3411,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const back = feetCell(guard(myEpoch))
     const freed = !(items(guard(myEpoch)) ?? []).some(i => i.slot === slot && i.count > 0) && back.x === home.x && back.y === home.y && back.z === home.z
     note('supply_room', { material, placed, freed, moved })
+    // Live 2026-11-14 03:32: each attempt placed a few blocks before an
+    // unconfirmed update; progress does not use up the bounded attempts.
+    if (placed > 0) active.roomAttempts = 0
     await save('supply_room')
     return freed
   }
@@ -3665,7 +3723,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // Automatic resumes of a paused job (bounded; counts are persisted).
   function scheduleAutoResume (reason, pauseDetails) {
     if (!job || retired) return
-    if (job.persistence?.status !== 'failed' && reason === 'SUPPLY_RESTOCK_BLOCKED' && job.config.strategy?.autoAcceptCargoLoss === true && job.userRunIntent === 'running' && lostDirtSupply() && !job.dirtSupplyLossStopped) { if (scheduleSupplyLossSearch(reason)) return }
+    if (job.persistence?.status !== 'failed' && reason === 'SUPPLY_RESTOCK_BLOCKED' && job.config.strategy?.autoAcceptCargoLoss === true && job.userRunIntent === 'running' && lostDirtSupply() && !job.dirtSupplyLossStopped && supplyBoxCellAir()) { if (scheduleSupplyLossSearch(reason)) return }
     if (job.persistence?.status !== 'failed' && reason === 'CARRIED_STORAGE_BLOCKED' && pauseDetails?.reason === 'STORAGE_RECOVERY_UNCONFIRMED' && job.config.strategy?.autoAcceptCargoLoss === true && job.userRunIntent === 'running') { if (scheduleCargoLossSearch(reason)) return }
     // Pauses that a plain resume (which re-runs every check and reconciliation)
     // cleared by hand on 2026-11-13 also retry themselves, bounded like
@@ -4353,6 +4411,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const at = child.placed[0].position
     if (!at || !['x', 'y', 'z'].every(k => Number.isSafeInteger(at[k]))) return null
     return { active, cp, child, binding, position: at }
+  }
+  // Only a box whose cell is received air can be lost. Live 2026-11-14 02:38
+  // (supplies:18): the placed dirt box waited for pickup room
+  // (STORAGE_PICKUP_CAPACITY_REQUIRED); the search started, stopped at once
+  // (BOX_CELL_NOT_AIR) and kept the ordinary capacity retry from being armed.
+  function supplyBoxCellAir () {
+    const lost = lostDirtSupply()
+    if (!lost) return false
+    const block = adapter.getBlock(lost.position.x, lost.position.y, lost.position.z)
+    return block?.known === true && nameOf(block) === 'air'
   }
   // Same bounded search as a lost cargo box (60 s: 32 m items, one inventory
   // resync, the box cell). Found: the ordinary recovery runs again. Otherwise
