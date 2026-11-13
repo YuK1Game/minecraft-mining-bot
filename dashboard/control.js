@@ -43,6 +43,8 @@
     grid.dataset.invalid = String(!!a.count && !a.valid)
     $('grid-origin').textContent = `X ${left}…${left + 4} / Z ${top}…${top + 4}`
     if (grid.dataset.signature === signature) return a
+    $('grid-x').replaceChildren(...Array.from({ length: 5 }, (_, i) => element('span', '', i === 0 ? `X ${left}` : String(left + i))))
+    $('grid-z').replaceChildren(...Array.from({ length: 5 }, (_, i) => element('span', '', `Z ${top + i}`)))
     const focus = grid.contains(document.activeElement) ? document.activeElement.dataset.key : null
     grid.dataset.signature = signature
     const fragment = document.createDocumentFragment()
@@ -91,7 +93,7 @@
     const running = ready && q && !['IDLE', 'PAUSED', 'STOPPING', 'FINISHED'].includes(q.state)
     document.getElementById('control').dataset.running = String(!!running)
     $('phase').textContent = phases[s?.phase] ?? '確認中'
-    $('phase').className = 'badge' + (ready ? ' live' : s?.phase === 'authenticating' ? ' warn' : '')
+    $('phase').className = 'badge connect-state' + (ready ? ' live' : s?.phase === 'authenticating' ? ' warn' : '')
     $('step-connect').className = ready ? 'done' : 'active'
     $('step-area').className = ready && !running ? 'active' : ''
     $('step-run').className = running ? 'active' : ''
@@ -128,6 +130,7 @@
     $('dimension').textContent = live?.dimension ? clean(live.dimension).toUpperCase() : 'REALMS'
     $('live').textContent = q ? jobs[q.state] ?? clean(q.state) : 'ジョブ未設定'
     $('live').title = q?.jobId ? clean(q.jobId) : ''
+    $('live').className = 'badge run-state' + (running ? ' live' : q ? ' warn' : '')
     // A scheduled bounded automatic retry is a wait, not an error (2026-11-13).
     const retry = q?.state === 'PAUSED' && q.autoRetry ? q.autoRetry : null
     $('job-reason').textContent = retry ? `待機中（自動で再試行）${clean(retry.reason ?? q.pauseReason ?? '')} · あと${retry.inSeconds ?? '?'}秒 · ${retry.attempt ?? '?'}/${retry.max ?? '?'}回目` : q?.pauseReason ? clean(q.pauseReason) : ''
@@ -180,6 +183,8 @@
     if (current?.live?.chunkMove?.busy) return
     if (!Number.isSafeInteger(x) || !Number.isSafeInteger(z)) return
     x = Math.min(MAX - size + 1, Math.max(MIN, x)); z = Math.min(MAX - size + 1, Math.max(MIN, z))
+    const shown = keepGrid && !gridOrigin ? $('grid')?.firstElementChild : null
+    if (shown) gridOrigin = { x: Number(shown.dataset.x) + 2, z: Number(shown.dataset.z) + 2 } // keep the window the user clicked in
     if (keepGrid && !gridOrigin) gridOrigin = { x: area().x1 ?? current?.live?.chunk?.x ?? 0, z: area().z1 ?? current?.live?.chunk?.z ?? 0 }
     $('x1').value = x; $('z1').value = z; $('x2').value = size > 1 ? x + size - 1 : ''; $('z2').value = size > 1 ? z + size - 1 : ''
     invalidate(keepGrid)
