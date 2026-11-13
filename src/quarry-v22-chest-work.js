@@ -332,8 +332,34 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
       // Only its read-only reconciliation may run until fresh receipts arrive.
       const {s,view}=current(cp?.world??null,cp?.life??null,{allowUncertain:!!cp?.intent})
       if(!cp) {
-        if(!mainItems(view).every(slot=>slot.empty)||!equipmentEmpty(view))throw fail('START_INVENTORY_NOT_EMPTY')
-        const slots=await inStation(request)
+        // Live 2026-11-13 23:26: after a reconnect the armour was simply not
+        // received yet (known:false) and the start stopped as "not empty".
+        // Unknown equipment is fetched again from the server first.
+        const equipmentKnown=v=>v?.armor?.known===true&&v.armor.slots?.length===4&&v.armor.slots.every(x=>x?.known===true)&&v?.offhand?.known===true&&v.offhand.slots?.[0]?.known===true
+        let startView=view
+        if(!equipmentKnown(startView)) {
+          try{startView=await observeEquipment({world:worldKey(s),life:lifeKey(s)},{signal,connection:connectionKey(s),reason:'START_EQUIPMENT_UNKNOWN',ready:equipmentKnown})}
+          catch(error) {
+            if(error.code!=='START_EQUIPMENT_UNKNOWN')throw error
+            const names=['ヘルメット','チェストプレート','レギンス','ブーツ'],latest=current(null,null,{allowUncertain:true}).view
+            const missing=[...(latest?.armor?.slots??[0,1,2,3]).map((x,i)=>x?.known===true?null:names[i]+'未受信'),latest?.offhand?.slots?.[0]?.known===true?null:'オフハンド未受信'].filter(Boolean)
+            const e=fail('START_EQUIPMENT_UNKNOWN');e.message='開始前の装備を受信できません: '+(missing.join('、')||'装備欄未受信');e.details={missing};throw e
+          }
+        }
+        // Anything really held goes to empty slots of the same chest first, by
+        // the ordinary final-storage deposit (received on both sides); those
+        // slots are left out of the kit check below.
+        let held=[]
+        if(!mainItems(startView).every(slot=>slot.empty)||!equipmentEmpty(startView)) {
+          busy=false
+          const stored=await depositAll({jobId:request.jobId,operationId:request.operationId+':start-deposit',position:copy(request.position),checkpoint:null},{onCheckpoint,signal})
+          busy=true
+          if(stored?.status!=='completed'||stored.serverConfirmed!==true){const error=fail(stored?.reason==='FINAL_CHEST_FULL'?'START_DEPOSIT_CHEST_FULL':'START_INVENTORY_NOT_EMPTY');error.details={reason:stored?.reason??null};throw error}
+          held=(stored.checkpoint?.receipts??[]).filter(r=>Number.isInteger(r.slot)).map(r=>r.slot)
+        }
+        const raw=await inStation(request)
+        const heldSet=new Set(held)
+        const slots=raw.map((slot,index)=>heldSet.has(index)?{...slot,known:true,empty:true,count:0,name:null,heldDeposit:true}:slot)
         const validation=validateV22Loadout({known:true,slots})
         if(!validation.ready) {
           const error=fail('LOADOUT_MISSING')
@@ -518,7 +544,7 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
           verify()
           checkReceipt(result,{name:first.name,count:first.count,to:first.slot,from:spot})
           if(!empty(getRawMain(first.slot))||!sameNbt(getRawChest(spot),before))throw fail('FINAL_CHEST_TRANSFER_UNCONFIRMED')
-          cp.receipts.push({kind:'deposit',requestId:result.requestId,name:first.name,count:first.count})
+          cp.receipts.push({kind:'deposit',requestId:result.requestId,name:first.name,count:first.count,slot:spot})
           cp.index++;cp.intent=null;await saveCheckpoint(cp,onCheckpoint)
           continue
         }

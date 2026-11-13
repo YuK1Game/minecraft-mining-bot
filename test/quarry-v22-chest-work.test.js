@@ -617,3 +617,27 @@ test('a new unused reservation may follow a consumed allocator anchor but never 
     }
   }
 })
+
+// Live 2026-11-13 23:26: after a reconnect the armour was not received yet
+// (known:false) and the start stopped as START_INVENTORY_NOT_EMPTY although the
+// bag was empty. Unknown equipment is fetched again; real held items go to the
+// same chest first and are not taken for the kit.
+test('unreceived equipment at the start is fetched again instead of refusing as not empty',async()=>{
+  const f=fixture()
+  let resyncs=0
+  const view=f.ports.getView
+  f.ports.getView=()=>{const v=view();if(resyncs===0){v.armor={known:false,slots:v.armor.slots.map(x=>({...x,known:false,empty:false,name:null,count:null}))}}return v}
+  f.ports.resync=async()=>{resyncs++;return true}
+  const result=await createQuarryV22ChestWork(f.ports).withdrawAll({jobId:'q',operationId:'start-unknown',position:f.pos},f.options)
+  assert.equal(result.status,'completed',JSON.stringify(result))
+  assert.ok(resyncs>=1)
+})
+test('a real held item is stored in an empty chest slot first and the kit is taken without it',async()=>{
+  const f=fixture()
+  f.bag[5]=raw('minecraft:cobblestone',12,777)
+  const result=await f.controller.withdrawAll({jobId:'q',operationId:'start-held',position:f.pos},f.options)
+  assert.equal(result.status,'completed',JSON.stringify(result))
+  assert.ok(f.base.some(x=>x.count===12&&names.get(x.network_id)==='minecraft:cobblestone'),'the held stack is in the chest')
+  assert.ok(!f.bag.some(x=>x.count&&names.get(x.network_id)==='minecraft:cobblestone'),'it is not taken back as kit')
+  assert.equal(f.armor.filter(x=>x.count).length,4)
+})
