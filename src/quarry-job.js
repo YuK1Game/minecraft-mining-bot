@@ -3986,6 +3986,29 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     await save('work_layer_reopened')
     return { y, reopened, before }
   }
+  // User-only acceptance (2026-11-13) of one cargo shulker that was mined
+  // (received air) but never came back: its received contents are recorded as
+  // lost and the storage operation is closed. Nothing is credited as stored.
+  async function acceptCarriedStorageLoss (options = {}) {
+    if (!job || job.state !== 'PAUSED' || worker || job.pauseReason !== 'CARRIED_STORAGE_BLOCKED' || job.pauseDetails?.reason !== 'STORAGE_RECOVERY_UNCONFIRMED') throw new Error('No unrecovered cargo box is waiting for acceptance')
+    if (!options || typeof options !== 'object' || Object.keys(options).some(k => k !== 'operationId') || typeof options.operationId !== 'string') throw new Error('acceptCarriedStorageLoss accepts { operationId } only')
+    const ps = job.portableStorage, cp = ps?.checkpoint
+    if (!ps || ps.operationId !== options.operationId || job.pauseDetails.operationId !== options.operationId || cp?.kind !== 'shulker' || cp.stage !== 'awaiting_recovery' || cp.placed?.length !== 1 || job.pendingRelief) throw new Error('The waiting operation does not match an unrecovered cargo box')
+    const at = cp.placed[0].position, block = adapter.getBlock(at.x, at.y, at.z)
+    if (block?.known !== true || nameOf(block) !== 'air') throw new Error('The box position is not received air')
+    const record = { operationId: ps.operationId, acceptedAt: new Date(now()).toISOString(), acceptedBy: 'user', position: copy(at), box: cp.placed[0].name, selectionKey: cp.selectionKey ?? null, deposited: copy(cp.deposited ?? []), initialContents: cp.initialContents ?? null, scope: copy(cp.scope ?? null) }
+    job.lostCargoBoxes = [...(job.lostCargoBoxes ?? []), record].slice(-32)
+    for (const d of cp.deposited ?? []) if (typeof d?.name === 'string' && Number.isSafeInteger(d.count) && d.count > 0) ledger.add('lost', d.name, d.count)
+    ledger.add('lost', cp.placed[0].name, 1)
+    const receipts = job.carriedStorageReceipts ??= []
+    if (!receipts.includes(ps.operationId)) receipts.push(ps.operationId)
+    for (const action of job.actions ?? []) if (action.type === 'carried_storage' && action.operationId === ps.operationId && action.status === 'blocked') action.status = 'loss_accepted'
+    job.portableStorage = null
+    rebuildPlanner()
+    await save('carried_storage_loss_accepted')
+    note('carried_storage_loss_accepted', { operationId: record.operationId, position: record.position, deposited: record.deposited })
+    return resume()
+  }
   function acceptExceptions () {
     if (!job || job.state !== 'PAUSED' || job.pauseReason !== 'UNRESOLVED_EXCEPTIONS') throw new Error('No exceptions are waiting for acceptance')
     job.acceptedExceptions = true
@@ -4099,7 +4122,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, configureAnimalClearing, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
+  return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, configureAnimalClearing, acceptCarriedStorageLoss, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults }
