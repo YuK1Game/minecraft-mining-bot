@@ -10,7 +10,12 @@ const ITEM = '(?:air|diamond_(?:sword|pickaxe|shovel|helmet|chestplate|leggings|
 const ENCHANT = '(?:protection|unbreaking|mending|thorns|respiration|aqua_affinity|swift_sneak|feather_falling|depth_strider|soul_speed|efficiency|fortune|silk_touch|sharpness|looting|fire_aspect|knockback|power|infinity|flame|punch)'
 const HAND_PROBE = /^\/testfor @s\[hasitem=\{item=minecraft:(?:diamond_(?:sword|pickaxe|shovel|helmet|chestplate|leggings|boots)|bow),location=slot\.weapon\.mainhand,quantity=1\}\]$/
 const POS = '-?\\d{1,8} -?\\d{1,3} -?\\d{1,8}'
-const ALLOWED = [ /^\/testfor @s$/, HAND_PROBE, /^\/clear @s$/,
+// Command feedback is switched on only for a reset (2026-11-13): the gamerule
+// itself and a probe that always fails (no such player) to tell a live but
+// silent channel from a lost one.
+const FEEDBACK_RULE = /^\/gamerule sendcommandfeedback (?:true|false)$/
+const FAILURE_PROBE = '/testfor @s[name=__houchi_no_such_target__]'
+const ALLOWED = [ /^\/testfor @s$/, HAND_PROBE, /^\/clear @s$/, FEEDBACK_RULE, /^\/testfor @s\[name=__houchi_no_such_target__\]$/,
   new RegExp(`^/replaceitem entity @s slot\\.(?:hotbar|inventory|weapon\\.offhand|armor\\.(?:head|chest|legs|feet)) \\d{1,2} minecraft:${ITEM}(?: (?:[1-9]|[1-5][0-9]|6[0-4]))?$`),
   new RegExp(`^/enchant @s ${ENCHANT} [1-5]$`),
   new RegExp(`^/setblock ${POS} minecraft:(?:purple|blue|light_blue|yellow|brown)_shulker_box keep$`),
@@ -70,4 +75,4 @@ function createLoadoutCommand ({ client, getState, timeoutMs = 5000, now = Date.
   }
   return { send, applyPacket, cancel: () => { if (pending) pending.abort() }, busy: () => !!pending }
 }
-module.exports = { createLoadoutCommand, allowed }
+module.exports = { createLoadoutCommand, allowed, FAILURE_PROBE }
