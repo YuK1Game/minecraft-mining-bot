@@ -7287,7 +7287,7 @@ function createRuntime (host) {
   const worldRetentionTimer = setInterval(() => { if (disposed || disposing) { clearInterval(worldRetentionTimer); return } try { updateWorldRetention() } catch {} }, 5000)
   worldRetentionTimer.unref?.()
   const eventLoopStallWatch = createEventLoopStallWatch({
-    context: () => { const q = quarryJob?.status?.(); return q ? { quarry: q.state ?? null, layer: q.cursorY ?? null } : null },
+    context: () => { const q = quarryJob?.status?.(); return q ? { quarry: q.state ?? null, layer: q.currentY ?? null } : null },
     report: r => host.log(`処理の停止を検知: ${r.stallMs}ms 作業=${JSON.stringify(r.doing)}${r.suppressed ? ` 直前の未記録${r.suppressed}件` : ''} 最大=${r.worstMs}ms 累計${r.stalls}回`)
   })
   eventLoopStallWatch.start()
