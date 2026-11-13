@@ -28,8 +28,10 @@ test('a stale received position in the air triggers one witness of both origins;
 
 test('live case 22:35: the chunk move from the same state reaches the chunk instead of failing before its first leg', async () => {
   let stalePrediction = true, discards = 0, clock = 100000
-  const state = { phase: 'spawned', profile: 'bot', realm: { id: '42' }, connectionId: 'c', startedAt: '2026-11-13T12:49:48.473Z', runtimeEntityId: '1', dimension: 'overworld', lifecycle: { deathId: 0 },
+  const state = { phase: 'spawned', profile: 'bot', realm: { id: '42' }, connectionId: 'c', startedAt: '2026-11-13T12:49:48.473Z', runtimeEntityId: '1', dimension: 'overworld', lifecycle: { deathId: 0 }, health: 20,
     position: { x: 1946.83, y: 71.62, z: -2037.26 }, rawServerPosition: { x: 1946.83, y: 73.46, z: -2037.26 }, rawServerPositionUpdatedAt: '2026-11-13T13:21:14.907Z', inventory: { known: true, items: [] } }
+  const steps = (from, to) => { const n = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.z - from.z))), out = []; for (let i = 1; i <= n; i++) out.push({ position: { x: from.x + (to.x - from.x) * i / n, y: to.y, z: from.z + (to.z - from.z) * i / n }, action: 'walk', medium: 'land' }); return out }
+  const here = () => ({ x: state.position.x, y: state.position.y - 1.62, z: state.position.z })
   const getBlock = (x, y, z) => ({ known: true, name: y < 70 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y < 70 ? 'block' : 'empty', extra: [] })
   // The runtime's planning entry: witness when needed, then an origin that a
   // mismatched prediction can no longer break.
@@ -41,9 +43,9 @@ test('live case 22:35: the chunk move from the same state reaches the chunk inst
     planRoute: async target => {
       await reconcileMoveOrigin({ state, now: Date.parse('2026-11-13T13:35:34Z'), hasSupport: f => Math.abs(f.y - 70) < 1e-6, discardPrediction: () => {}, confirm: async f => ({ serverConfirmed: Math.abs(f.y - 70) < 1e-3 }) })
       const origin = planningOrigin({ fromServer, getState: () => state, discardPrediction: () => { stalePrediction = false; discards++ } })
-      return { ready: true, origin: origin.position, target, waypoints: [{ position: target, action: 'walk', medium: 'land' }] }
+      return { ready: true, origin: origin.position, target, waypoints: steps(origin.position, target) }
     },
-    previewMove: async target => ({ ready: true, origin: { x: state.position.x, y: state.position.y - 1.62, z: state.position.z }, target, waypoints: [{ position: target, action: 'walk', medium: 'land' }] }),
+    previewMove: async target => ({ ready: true, origin: here(), target, waypoints: steps(here(), target) }),
     startMove: (target, value) => { value.beforeInput(); state.position = { x: target.x, y: target.y + 1.62, z: target.z }; return { phase: 'awaiting_server_confirmation', running: false } },
     stopMove: () => {},
     confirmPosition: async (feet, value) => ({ serverConfirmed: true, kind: 'server_position_volume', scope: observedScope(state), feet: copy(feet), radius: value.radius, receivedAt: clock })
