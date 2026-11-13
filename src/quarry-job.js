@@ -1176,7 +1176,12 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (await ensureTotem(myEpoch)) return
     if (await continueLayerCollection(myEpoch)) return
     // Capacity: collect then return before the bag is full (§10.3, §11.1).
-    if (fullOnlyStorage() ? freeSlots(inv) === 0 && !job.storageExhausted : freeSlots(inv) < job.config.inventory.minFreeSlots) { await collect(myEpoch, 'capacity'); job.depositReason = fullOnlyStorage() ? 'full' : 'capacity'; setState('RETURN'); return }
+    // Live 2026-11-13 17:15: after the exit dirt withdrawal the bag was full of
+    // kept items only (exit dirt, tools, boxes); returning to store nothing
+    // paused the job (WAITING_FOR_STORAGE). During the exit preparation a full
+    // bag with nothing to deposit goes on to the exit instead.
+    const egressFullOfKept = job.egressPreparation === true && freeSlots(inv) === 0 && !keepPlan(inv, inventoryPolicy()).deposits.length
+    if (!egressFullOfKept && (fullOnlyStorage() ? freeSlots(inv) === 0 && !job.storageExhausted : freeSlots(inv) < job.config.inventory.minFreeSlots)) { await collect(myEpoch, 'capacity'); job.depositReason = fullOnlyStorage() ? 'full' : 'capacity'; setState('RETURN'); return }
     // Oldest drop deadline / pending count (§10.1). Collection is not tied to
     // each 8-block batch: drops are gathered when the oldest reaches
     // collectAfterSeconds (inside the spec's collectWithinSeconds), when many
