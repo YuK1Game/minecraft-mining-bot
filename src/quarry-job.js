@@ -3770,6 +3770,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!['PAUSED', 'IDLE', 'DISCONNECTED'].includes(job.state)) throw new Error(`Cannot resume from ${job.state}`)
     // A user resume may try freeing a slot for a blocked restock again.
     if (job.supplyRestock) job.supplyRestock.roomAttempts = 0
+    // Live 2026-11-13 12:06: an untouched storage operation (nothing placed,
+    // deposited or pending) that used up its site and preparation retries
+    // starts over on a resume, at a newly chosen site with a fresh budget.
+    const ps = job.portableStorage, pcp = ps?.checkpoint
+    if (ps && job.pauseReason === 'CARRIED_STORAGE_BLOCKED' && pcp?.stage === 'planned' && !(pcp.placed ?? []).length && !(pcp.deposited ?? []).length && pcp.intent == null) {
+      ps.checkpoint = null; delete ps.siteRetries; delete ps.transientRetries
+      note('storage_untouched_restart', { operationId: ps.operationId })
+    }
     // The bot may have died or reconnected while the job was paused. Resume
     // binds to the current living session (the death is recorded once) and
     // reconciles from there instead of pausing again with DEATH.
