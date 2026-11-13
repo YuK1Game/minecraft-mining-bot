@@ -74,7 +74,7 @@
     if (focus) [...grid.children].find(c => c.dataset.key === focus)?.focus({ preventScroll: true })
     return a
   }
-  const diagnosticLabels = { NO_CARGO_SHULKER: '収納用シュルカーなし', SHULKER_ONLY_STORAGE: 'シュルカー専用', Y_TOP_PROVISIONAL: '上限Y 未確定', Y_TOP_UNKNOWN: '上限Y 未受信', NO_PICKAXE: 'ツルハシなし', NO_FOOD: '食料なし', NO_SEAL_MATERIAL: '土・止水材なし', LARGE_FLUID_IN_TARGET: '水・溶岩あり', PROTECTED_BLOCKS_IN_TARGET: '保護ブロックあり', INVENTORY_UNKNOWN: '所持品 未受信', NOT_SURVIVAL: 'サバイバルで接続', NOT_SPAWNED: '参加位置 未確定', WRONG_DIMENSION: '次元が不一致', WORLD_IDENTITY_UNKNOWN: 'ワールド 未確認' }
+  const diagnosticLabels = { NO_CARGO_SHULKER: '収納用シュルカーなし', SHULKER_ONLY_STORAGE: 'シュルカー専用', Y_TOP_PROVISIONAL: '上限Y 未確定', Y_TOP_UNKNOWN: '上限Y 未受信', NO_PICKAXE: 'ツルハシなし', NO_FOOD: '食料なし', NO_SEAL_MATERIAL: '土・止水材なし', LARGE_FLUID_IN_TARGET: '水・溶岩あり', PROTECTED_BLOCKS_IN_TARGET: '保護ブロックあり', INVENTORY_UNKNOWN: '所持品 未受信', NOT_SURVIVAL: 'サバイバルで接続', NOT_SPAWNED: '参加位置 未確定', WRONG_DIMENSION: '次元が不一致', WORLD_IDENTITY_UNKNOWN: 'ワールド 未確認', CAVE_VOLUME_HIGH: '大きな洞窟あり', CAVE_VOLUME_PROVISIONAL: '洞窟 未確認', PLAN_EXIT_UNAVAILABLE: '脱出列なし', EXIT_PREFLIGHT_PROVISIONAL: '脱出列 未確認' }
   function showPlan (result) {
     const p = result.plan, host = $('plan-summary')
     const fact = (label, value) => { const row = element('div', 'plan-fact'); row.append(element('span', '', label), element('b', '', clean(value))); host.append(row) }
