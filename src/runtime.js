@@ -5284,12 +5284,29 @@ function createRuntime (host) {
     const state=raw(),r=host.shared.deathRespawn
     if(Number.isSafeInteger(r?.deathId)&&r.deathId>=0&&r.connectionId===state.connectionId&&r.phase==='confirmed'&&r.serverConfirmed===true)return r.deathId
     const confirmed=currentHostRespawnReceipt()
-    return confirmed?confirmed.scope.life:verifiedInitialLifeReceipt()?0:null
+    if(confirmed)return confirmed.scope.life
+    if(verifiedInitialLifeReceipt())return 0
+    return hostStatusLife(state)
+  }
+  // A Host /status receipt for this exact connection/entity/dimension names the
+  // life the Host itself tracks. Any later death updates deathRespawn first, so
+  // a receipt whose life differs from that record is never used.
+  function hostStatusLife (state=raw()) {
+    const receipt=host.shared.inventoryLifeReceipt,r=host.shared.deathRespawn,started=Date.parse(state.startedAt)
+    if(disposed||disposing||receipt?.source!=='host_status_get'||!Number.isSafeInteger(receipt.deathId)||receipt.deathId<0||receipt.key!==inventoryLifeBaseKey(state)||!Number.isFinite(receipt.observedAt)||!Number.isFinite(started)||receipt.observedAt<started||receipt.observedAt>Date.now()||host.shared.loadingScreenEnded!==true||host.shared.respawnTerrain?.pending)return null
+    if(r!=null&&(r.deathId!==receipt.deathId||r.connectionId!==state.connectionId||Date.parse(r.at)>receipt.observedAt))return null
+    if(state.phase!=='spawned'||state.dead||state.isDead||state.lifecycle?.dead||state.spawnPending||!(Number.isFinite(state.health)&&state.health>0))return null
+    return receipt.deathId
+  }
+  async function ensureMovementLifeKnown () {
+    if(movementKnownLife()!=null)return true
+    try{await prepareInventoryLifeReceipt()}catch{ /* reported below as an unknown life */ }
+    return movementKnownLife()!=null
   }
   function normalWaterMovementOptions (options, { combatAware = false } = {}) {
     if(options?.allowWater!==true||options.beforeInput!=null)return options
     const initial=lightweightUserState();initial.lifecycle={...initial.lifecycle,deathId:movementKnownLife()};const scope=continuationScope(initial),controller=movement,generation=inputHistoryGeneration,serial=portableMovementSerial,force=userBehaviorForceRevision
-    if(!scope||!controller||!idlePhysics)throw Error('Normal water movement needs an actual scoped life and Native owner')
+    if(!scope||!controller||!idlePhysics)throw Object.assign(new Error(!scope?'Botの生存状態をまだ確認できていません。数秒待ってからもう一度お試しください。':'移動の準備ができていません。数秒待ってからもう一度お試しください。'),{code:!scope?'MOVE_LIFE_UNKNOWN':'MOVE_NOT_READY'})
     let previous={...initial.position}
     return {...options,continueAfterReplay:options.continueAfterReplay??true,beforeInput:frame=>{
       const current=lightweightUserState();current.lifecycle={...current.lifecycle,deathId:movementKnownLife()};const p=frame?.packetPosition,n=frame?.predictedState
@@ -7346,6 +7363,8 @@ function createRuntime (host) {
         idlePhysicsState = null
         await idleSafety?.stop('選択チャンクへの移動')
         await idleSafety?.drain()
+        verifyChunkMoveLease(id)
+        if (!(await ensureMovementLifeKnown())) throw Object.assign(new Error('Botの生存状態をまだ確認できていません。数秒待ってからもう一度お試しください。'), { code: 'MOVE_LIFE_UNKNOWN' })
         verifyChunkMoveLease(id)
       },
       release: id => { if (chunkMoveLease?.id === id) { stopChunkMovement(id, 'CHUNK_MOVE_FINISHED'); chunkMoveLease = null; resumeSafety() } }
