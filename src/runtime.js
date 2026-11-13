@@ -450,7 +450,12 @@ function createRuntime (host) {
   // Only the offhand slot received from the server counts; an unreceived or
   // empty offhand is no totem.
   function offhandTotem () {
-    try { const r = inventoryInspection.rawEquipment('offhand', 0); return !!r && r.count > 0 && crafting.itemNameOf(r.network_id) === 'minecraft:totem_of_undying' } catch { return false }
+    try {
+      // A totem received before the last consumption is not trusted.
+      const info = inventoryStore.slotInfo?.('offhand', 0)
+      if (Number.isFinite(host.shared.totemConsumedAt) && !(Date.parse(info?.at ?? '') > host.shared.totemConsumedAt)) return false
+      const r = inventoryInspection.rawEquipment('offhand', 0); return !!r && r.count > 0 && crafting.itemNameOf(r.network_id) === 'minecraft:totem_of_undying'
+    } catch { return false }
   }
   const working = () => {
     const state = host.getState()
@@ -5169,6 +5174,11 @@ function createRuntime (host) {
     if (!replaying) {
       const life = rawFields(['health', 'dead', 'isDead'])
       if (name === 'death_info' || life.health === 0 || life.dead || life.isDead) host.shared.initialLifeDeathKey = inventoryLifeBaseKey(rawScope())
+    }
+    if (!replaying && name === 'entity_event' && (packet.event_id === 'consume_totem' || packet.event_id === 65) && String(packet.runtime_entity_id) === String(raw().runtimeEntityId)) {
+      host.shared.totemConsumedAt = Date.now()
+      try { inventoryStore.forget('offhand', 0, 'totem_consumed') } catch {}
+      try { host.log(`不死のトーテムが発動しました: オフハンドを未受信として扱い、体力による保護を戻します (HP ${raw().health ?? '?'})`) } catch {}
     }
     inventoryStore.apply(name, packet, { replaying })
     crafting.applyPacket(name, packet)

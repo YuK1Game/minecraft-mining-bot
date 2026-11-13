@@ -160,3 +160,17 @@ test('CLI auto mode enables the same persistent protection intent without an ext
   assert.match(source, /onEmergency: onlineEmergency/)
   assert.doesNotMatch(source, /onDanger:.*stop\(0\)/)
 })
+
+// Live 2026-11-14 07:31: after a dashboard reconnect neither the protection nor
+// the auto intent was set and the dead bot stayed dead for an hour. A confirmed
+// death always schedules the normal respawn unless explicitly disabled.
+test('a confirmed death is respawned even without the protection or auto intent; an explicit opt-out still holds', async t => {
+  const f = fixture(); t.after(() => f.lifecycle.stop())
+  f.shared.safetyWanted = false; f.shared.autoWanted = false
+  f.health(0)
+  assert.equal(f.scheduled.length, 1, 'the respawn is scheduled')
+  const g = fixture(); t.after(() => g.lifecycle.stop())
+  g.shared.safetyWanted = false; g.shared.autoWanted = false; g.shared.respawnDisabled = true
+  g.health(0)
+  assert.equal(g.scheduled.length, 0)
+})

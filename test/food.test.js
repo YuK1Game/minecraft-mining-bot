@@ -424,3 +424,22 @@ test('holding duration without sent input ticks, unrelated responses and partial
   invalid.bag.set(35, { ...air(), has_stack_id: true, stack_id: 99 })
   assert.equal(invalid.food.preview().ready, false)
 })
+
+// Live 2026-11-14 03:55-04:00: a meal interrupted by combat left the food
+// module uncertain; 15 full server inventories arrived but did not match the
+// local slots exactly, every meal failed and the bot died. A complete received
+// main inventory with no sent use unresolved clears it.
+test('a fresh full server inventory clears the meal uncertainty even when slots differ from the local copy', async t => {
+  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] })
+  let safe = true
+  const f = fixture({ foodName: 'minecraft:rotten_flesh', count: 1, health: 10, canEmergencyEat: () => safe })
+  f.food.applyPacket('update_attributes', { runtime_entity_id: 41n, attributes: [{ name: 'minecraft:player.hunger', current: 17 }] })
+  const { pending } = await f.start({ allowEmergencyRotten: true }); const rejected = assert.rejects(pending)
+  safe = false; t.mock.timers.tick(50); await rejected
+  assert.equal(f.uncertainties.length, 1)
+  safe = true
+  assert.equal(f.food.preview({ allowEmergencyRotten: true }).code, 'INVENTORY_UNKNOWN')
+  const fresh = [...f.bag.values()].map(raw => ({ ...structuredClone(raw), stack_id: raw.count ? (raw.stack_id ?? 0) + 1000 : raw.stack_id }))
+  f.food.applyPacket('inventory_content', { window_id: 'inventory', input: fresh, container: { container_id: 'inventory', dynamic_container_id: null }, storage_item: air() })
+  assert.notEqual(f.food.preview({ allowEmergencyRotten: true }).code, 'INVENTORY_UNKNOWN')
+})
