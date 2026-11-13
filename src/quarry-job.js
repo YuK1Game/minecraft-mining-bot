@@ -2209,6 +2209,25 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // placement/transfer. Its normal recovery must run before any relocation.
     if (active.checkpoint?.child) return true
     const blocked = async (reason, details = {}) => {
+      // Live 2026-11-13 03:14: the stored server position (an old correction)
+      // and the working position disagreed and the approach found "no known
+      // safe support". Ask the server about both once; use only a confirmed one.
+      if (/no known safe support/.test(String(details.cause ?? '') + ' ' + String(details.error ?? '')) && !active.originWitnessTried && typeof adapter.confirmPosition === 'function') {
+        active.originWitnessTried = true
+        const s = adapter.getState(), feet = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k])) ? { x: Math.round(p.x * 100) / 100, y: Math.round((p.y - 1.62) * 1000) / 1000, z: Math.round(p.z * 100) / 100 } : null
+        const working = feet(s?.position), received = feet(s?.rawServerPosition)
+        const apart = working && received ? Math.hypot(working.x - received.x, working.z - received.z) : 0
+        if (apart >= 0.3 && Number.isInteger(working.y) && Number.isInteger(received.y)) {
+          const ask = async p => { try { return (await call(myEpoch, 'confirm_position', signal => adapter.confirmPosition(p, { signal, radius: 0.3, operationId: `${active.operationId}:origin` })))?.serverConfirmed === true } catch (error) { if (error instanceof QuarryInterrupt) throw error; return false } }
+          const workingOk = await ask(working), receivedOk = await ask(received)
+          note('position_disagreement', { operationId: active.operationId, working, received, apart: Math.round(apart * 100) / 100, positionSource: s?.positionSource ?? null, receivedAt: s?.rawServerPositionUpdatedAt ?? null, correction: copy(s?.lastServerCorrection ?? null), workingOk, receivedOk })
+          if (workingOk !== receivedOk) {
+            if (receivedOk && typeof adapter.discardPrediction === 'function') adapter.discardPrediction('supply approach: the received position was confirmed')
+            await save('position_disagreement_resolved')
+            setState('RESTOCK'); return false
+          }
+        }
+      }
       job.lastSupplyResult = { operationId: active.operationId, status: 'blocked', reason, serverConfirmed: false, withdrawn: copy(active.checkpoint?.withdrawn ?? []), returned: copy(active.checkpoint?.returned ?? []) }
       note('supply_site_blocked', { reason, cause: details.cause ?? null, position: details.position ?? null, block: details.block ?? null, counts: details.counts ?? null })
       await finish('PAUSED', 'SUPPLY_RESTOCK_BLOCKED', { pauseDetails: { reason, ...copy(details), operationId: active.operationId } })
