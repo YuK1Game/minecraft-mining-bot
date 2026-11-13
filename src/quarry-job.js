@@ -3396,7 +3396,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       await save('final_chest_verified')
     }
     await finish(exceptions.length ? 'COMPLETED_WITH_EXCEPTIONS' : 'COMPLETED', null)
-    if (fourLayerStorage() && job?.state === 'FINISHED' && job.persistence?.status !== 'failed' && typeof adapter.logout === 'function') {
+    // 2026-11-13 user request: once everything is back in the registered chest
+    // and the bag is received empty, the unarmed bot logs out normally (no
+    // automatic reconnect) instead of waiting to be killed on the surface.
+    if ((fourLayerStorage() || job?.finalChestStoredAt && job.config.strategy?.finalChestKeepGear !== true) && job?.state === 'FINISHED' && job.persistence?.status !== 'failed' && typeof adapter.logout === 'function') {
       try { await adapter.logout() } catch (error) { note('logout_failed',{error:String(error.message??error).slice(0,200)}) }
     }
   }
