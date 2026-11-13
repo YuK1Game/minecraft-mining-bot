@@ -144,11 +144,18 @@ function defaults (config = {}) {
   }
 }
 
-function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, bridge = null, pollMs = 50, autoResumeMs = 30000, capacityRetryMs = 75000, stopTimeoutMs = 5000, storageMode = 'legacy' } = {}) {
+function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, bridge = null, pollMs = 50, cargoLossSearchMs = 60000, cargoLossStepMs = 5000, autoResumeMs = 30000, capacityRetryMs = 75000, stopTimeoutMs = 5000, storageMode = 'legacy' } = {}) {
   // The production Runtime pins this to shulker. Legacy primitives remain for
   // read/recovery tests, never as a browser/CLI-selectable policy.
   const shulkerOnly = storageMode === 'shulker'
-  const cargoSelection = (inventory, options = {}) => selectCarriedStorage(inventory, { excludedShulkerIdentities: job?.exhaustedShulkerIdentities ?? [], ...options, shulkerOnly })
+  // The job's state items carry no NBT; attach the received raw bag item when
+  // its stack ID matches (box identity and contents, 2026-11-13).
+  const withRaw = inventory => Array.isArray(inventory) && typeof adapter.rawItem === 'function' ? inventory.map(item => {
+    if (item?.raw || !Number.isInteger(item?.slot)) return item
+    let raw = null; try { raw = adapter.rawItem(item.slot) } catch {}
+    return raw && raw.stack_id === item.stackId && raw.count === item.count ? { ...item, raw } : item
+  }) : inventory
+  const cargoSelection = (inventory, options = {}) => selectCarriedStorage(withRaw(inventory), { excludedShulkerIdentities: job?.exhaustedShulkerIdentities ?? [], ...options, shulkerOnly })
   function assertStoragePolicy () {
     if (shulkerOnly && job && (job.config.inventory.storage?.length || job.portableStorage && job.portableStorage.selection?.kind !== 'shulker')) throw new QuarryInterrupt('LEGACY_CHEST_STORAGE', '旧チェストジョブは再開できません。未回収容器を確認してキャンセルし、シュルカーで再計画してください。')
   }
@@ -3419,6 +3426,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // Automatic resumes of a paused job (bounded; counts are persisted).
   function scheduleAutoResume (reason, pauseDetails) {
     if (!job || retired) return
+    if (job.persistence?.status !== 'failed' && reason === 'CARRIED_STORAGE_BLOCKED' && pauseDetails?.reason === 'STORAGE_RECOVERY_UNCONFIRMED' && job.config.strategy?.autoAcceptCargoLoss === true && job.userRunIntent === 'running') { if (scheduleCargoLossSearch(reason)) return }
     if (job.persistence?.status !== 'failed' && /^ACTION_FAILED/.test(String(reason)) && (job.autoResumes ?? 0) < 3 && job.userRunIntent === 'running') {
       const owner = job, expectedEpoch = epoch
       const retry = () => {
@@ -3503,6 +3511,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     job.config.strategy = { ...(job.config.strategy ?? {}), clearAnimals: options.enabled }
     await save('animal_clearing_configured')
     note('animal_clearing_configured', { enabled: options.enabled })
+    return status()
+  }
+  async function configureCargoLossAcceptance (options = {}) {
+    if (!job) throw new Error('No quarry job')
+    if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).length !== 1 || typeof options.enabled !== 'boolean') throw new Error('configureCargoLossAcceptance accepts { enabled: true|false } only')
+    job.config.strategy = { ...(job.config.strategy ?? {}), autoAcceptCargoLoss: options.enabled }
+    await save('cargo_loss_acceptance_configured')
+    note('cargo_loss_acceptance_configured', { enabled: options.enabled })
     return status()
   }
   // Turns the opt-in work-dirt-on-demand mode on or off for the current job.
@@ -3986,17 +4002,105 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     await save('work_layer_reopened')
     return { y, reopened, before }
   }
+  // Received contents of the lost box (its NBT before placement plus what this
+  // operation deposited), summarized by item name for the record and dashboard.
+  function lostBoxItems (cp) {
+    const totals = new Map()
+    try {
+      const raw = require('v8').deserialize(Buffer.from(cp.placed[0].placementObservation.sourceBefore, 'base64'))
+      const root = raw?.extra?.nbt?.nbt ?? raw?.extra?.nbt
+      for (const entry of root?.value?.Items?.value?.value ?? []) {
+        const v = entry?.type === 'compound' ? entry.value : entry
+        if (typeof v?.Name?.value === 'string' && Number.isSafeInteger(v?.Count?.value)) totals.set(v.Name.value, (totals.get(v.Name.value) ?? 0) + v.Count.value)
+      }
+    } catch {}
+    for (const d of cp.deposited ?? []) if (typeof d?.name === 'string' && Number.isSafeInteger(d.count)) totals.set(d.name, (totals.get(d.name) ?? 0) + d.count)
+    return [...totals].map(([name, count]) => ({ name, count })).slice(0, 27)
+  }
+  // Remaining cargo room of the carried, not-full cargo boxes (27 slots of 64,
+  // less the received NBT entries) against the expected remaining deposits at
+  // this job's storage rate. Unknown is reported as insufficient.
+  function cargoCapacityOutlook () {
+    const inv = withRaw(items(adapter.getState()))
+    if (!inv) return { sufficient: false, reason: 'INVENTORY_UNKNOWN' }
+    const supply = require('./loadout-manifest').SUPPLY_NAMES
+    const exhaustedKeys = new Set(job.exhaustedShulkerKeys ?? []), exhaustedIds = new Set(job.exhaustedShulkerIdentities ?? [])
+    const { carriedContainerIdentity } = require('./quarry-inventory')
+    let room = 0
+    for (const item of inv) {
+      if (!isShulkerBox(item.name) || supply.includes(item.name) || exhaustedKeys.has(carriedContainerKey(item)) || exhaustedIds.has(carriedContainerIdentity?.(item))) continue
+      const root = item.raw?.extra?.nbt?.nbt ?? item.raw?.extra?.nbt
+      const used = Array.isArray(root?.value?.Items?.value?.value) ? root.value.Items.value.value.length : null
+      if (used == null && item.raw?.extra?.has_nbt !== false && item.raw?.extra?.has_nbt !== 0) return { sufficient: false, reason: 'BOX_CONTENTS_UNKNOWN' }
+      room += (27 - (used ?? 0)) * 64
+    }
+    const l = ledger.export()
+    const sum = v => typeof v === 'number' ? v : Object.values(v ?? {}).reduce((a, b) => a + (Number(b) || 0), 0)
+    const deposited = sum(l?.deposited ?? job.ledger?.deposited), mined = sum(l?.minedBlocks ?? job.ledger?.minedBlocks)
+    const floor = regions?.yBottom ?? job.config.yBottom, cursor = Math.min(job.cursorY ?? job.yTop, job.deepestY ?? job.yTop)
+    const layersDone = Math.max(1, job.yTop - cursor), layersLeft = Math.max(0, cursor - floor + 1)
+    const columns = regions?.columns?.length ?? 256
+    if (!Number.isFinite(floor) || !mined) return { sufficient: false, reason: 'RATE_UNKNOWN' }
+    const need = Math.ceil(Math.max(deposited / layersDone * layersLeft, deposited / mined * columns * layersLeft))
+    return { sufficient: room >= need, room, need }
+  }
+  // Opt-in automatic acceptance of a lost cargo shulker (2026-11-13 user
+  // request): search up to 60 s (32 m items, inventory resync, the box cell);
+  // anything found resumes the normal recovery. Otherwise it is accepted
+  // unless it is a supply box, it would be this job's third lost cargo box,
+  // the remaining cargo room is short, or the received state disagrees.
+  const CARGO_LOSS_SEARCH_MS = cargoLossSearchMs, CARGO_LOSS_STEP_MS = cargoLossStepMs, CARGO_LOSS_LIMIT = 2
+  function scheduleCargoLossSearch (reason) {
+    const owner = job, expectedEpoch = epoch, ps = job.portableStorage, cp = ps?.checkpoint
+    const operationId = ps?.operationId, startedAt = now(), box = cp?.placed?.[0]
+    if (!operationId || cp?.kind !== 'shulker' || cp.stage !== 'awaiting_recovery' || !box) return false
+    const baseline = Array.isArray(cp.recoveryBaseline) ? cp.recoveryBaseline.reduce((n, b) => n + (b.count ?? 0), 0) : null
+    let resynced = false
+    const stop = why => { note('cargo_loss_auto_stopped', { operationId, reason: why }); autoRetryInfo = null; autoResumeTimer = null }
+    const run = async () => {
+      autoResumeTimer = null
+      if (retired || job !== owner || epoch !== expectedEpoch || job.state !== 'PAUSED' || job.pauseReason !== reason || job.userRunIntent !== 'running' || job.portableStorage?.operationId !== operationId) return
+      if (worker || stopTask || pendingActions.size || savesInFlight) { autoResumeTimer = setTimeout(run, 500); autoResumeTimer.unref?.(); return }
+      if (!resynced && typeof adapter.resyncInventory === 'function') { resynced = true; try { await adapter.resyncInventory() } catch {} }
+      const block = adapter.getBlock(box.position.x, box.position.y, box.position.z)
+      if (block?.known !== true || nameOf(block) !== 'air') return stop('BOX_CELL_NOT_AIR')
+      const inv = items(adapter.getState())
+      const boxes = inv ? inv.filter(i => isShulkerBox(i.name)).reduce((n, i) => n + i.count, 0) : null
+      const seen = (adapter.entities?.() ?? []).some(e => nameOf(e.name) === nameOf(box.name) && e.position && Math.hypot(e.position.x - box.position.x, e.position.y - box.position.y, e.position.z - box.position.z) <= 32)
+      if ((baseline != null && boxes != null && boxes > baseline) || seen) {
+        if ((job.cargoLossFoundResumes ?? 0) >= 2) return stop('FOUND_BUT_UNRECOVERED')
+        job.cargoLossFoundResumes = (job.cargoLossFoundResumes ?? 0) + 1
+        note('cargo_loss_box_found', { operationId, inInventory: boxes > baseline, entity: seen })
+        try { resume() } catch (error) { note('auto_resume_failed', { error: String(error.message ?? error) }) }
+        return
+      }
+      if (now() - startedAt < CARGO_LOSS_SEARCH_MS) {
+        autoResumeTimer = setTimeout(run, CARGO_LOSS_STEP_MS); autoResumeTimer.unref?.()
+        autoRetryInfo = { kind: 'cargo_loss', reason: 'STORAGE_RECOVERY_UNCONFIRMED', attempt: 1, max: 1, nextAt: startedAt + CARGO_LOSS_SEARCH_MS }
+        return
+      }
+      if (require('./loadout-manifest').SUPPLY_NAMES.includes(box.name)) return stop('SUPPLY_BOX_LOST')
+      if ((job.lostCargoBoxes ?? []).length >= CARGO_LOSS_LIMIT) return stop('CARGO_LOSS_LIMIT')
+      const outlook = cargoCapacityOutlook()
+      if (!outlook.sufficient) return stop(outlook.reason ?? 'CARGO_CAPACITY_SHORT')
+      try { await acceptCarriedStorageLoss({ operationId }, { acceptedBy: 'auto' }) } catch (error) { stop(String(error.message ?? error).slice(0, 120)) }
+    }
+    autoResumeTimer = setTimeout(run, Math.min(1000, CARGO_LOSS_STEP_MS)); autoResumeTimer.unref?.()
+    autoRetryInfo = { kind: 'cargo_loss', reason: 'STORAGE_RECOVERY_UNCONFIRMED', attempt: 1, max: 1, nextAt: startedAt + CARGO_LOSS_SEARCH_MS }
+    note('cargo_loss_search', { operationId })
+    return true
+  }
   // User-only acceptance (2026-11-13) of one cargo shulker that was mined
   // (received air) but never came back: its received contents are recorded as
   // lost and the storage operation is closed. Nothing is credited as stored.
-  async function acceptCarriedStorageLoss (options = {}) {
+  async function acceptCarriedStorageLoss (options = {}, { acceptedBy = 'user' } = {}) {
     if (!job || job.state !== 'PAUSED' || worker || job.pauseReason !== 'CARRIED_STORAGE_BLOCKED' || job.pauseDetails?.reason !== 'STORAGE_RECOVERY_UNCONFIRMED') throw new Error('No unrecovered cargo box is waiting for acceptance')
     if (!options || typeof options !== 'object' || Object.keys(options).some(k => k !== 'operationId') || typeof options.operationId !== 'string') throw new Error('acceptCarriedStorageLoss accepts { operationId } only')
     const ps = job.portableStorage, cp = ps?.checkpoint
     if (!ps || ps.operationId !== options.operationId || job.pauseDetails.operationId !== options.operationId || cp?.kind !== 'shulker' || cp.stage !== 'awaiting_recovery' || cp.placed?.length !== 1 || job.pendingRelief) throw new Error('The waiting operation does not match an unrecovered cargo box')
     const at = cp.placed[0].position, block = adapter.getBlock(at.x, at.y, at.z)
     if (block?.known !== true || nameOf(block) !== 'air') throw new Error('The box position is not received air')
-    const record = { operationId: ps.operationId, acceptedAt: new Date(now()).toISOString(), acceptedBy: 'user', position: copy(at), box: cp.placed[0].name, selectionKey: cp.selectionKey ?? null, deposited: copy(cp.deposited ?? []), initialContents: cp.initialContents ?? null, scope: copy(cp.scope ?? null) }
+    const record = { operationId: ps.operationId, acceptedAt: new Date(now()).toISOString(), acceptedBy, position: copy(at), items: lostBoxItems(cp), box: cp.placed[0].name, selectionKey: cp.selectionKey ?? null, deposited: copy(cp.deposited ?? []), initialContents: cp.initialContents ?? null, scope: copy(cp.scope ?? null) }
     job.lostCargoBoxes = [...(job.lostCargoBoxes ?? []), record].slice(-32)
     for (const d of cp.deposited ?? []) if (typeof d?.name === 'string' && Number.isSafeInteger(d.count) && d.count > 0) ledger.add('lost', d.name, d.count)
     ledger.add('lost', cp.placed[0].name, 1)
@@ -4076,6 +4180,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const finalCarried = inv ? keepPlan(inv, inventoryPolicy()).deposits : null
     return copy({
       jobId: job.config.jobId, state: ['PAUSED', 'FINISHED'].includes(job.state) && (loopWorker || stopTask || pendingActions.size || savesInFlight) ? 'STOPPING' : job.state, draining: !!(worker || stopTask || pendingActions.size || savesInFlight), persistence: copy(job.persistence ?? null), world: copy(job.world), userRunIntent: job.userRunIntent, result: job.result, pauseReason: job.pauseReason, pauseDetails: job.pauseDetails ?? null,
+      lostCargoBoxes: (job.lostCargoBoxes ?? []).slice(-32).map(r => ({ at: r.acceptedAt, by: r.acceptedBy, operationId: r.operationId, box: r.box, position: r.position, items: r.items ?? [] })),
       autoRetry: autoResumeTimer && autoRetryInfo && job.state === 'PAUSED' ? { ...autoRetryInfo, inSeconds: Math.max(0, Math.ceil((autoRetryInfo.nextAt - now()) / 1000)) } : null,
       chunks: regions?.chunks ?? null, yTop: job.yTop, yBottom: regions?.yBottom ?? null, currentY: job.lastDecision?.y ?? job.cursorY,
       counts, deferred: planner?.deferredList().slice(0, 30) ?? [], deferredCount: planner?.deferredList().length ?? 0, temporary: planner?.temporaryList() ?? [], seals: planner?.sealList() ?? [],
@@ -4122,7 +4227,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, configureAnimalClearing, acceptCarriedStorageLoss, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
+  return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, configureAnimalClearing, acceptCarriedStorageLoss, configureCargoLossAcceptance, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults }
