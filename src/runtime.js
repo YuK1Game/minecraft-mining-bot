@@ -7213,7 +7213,24 @@ function createRuntime (host) {
     const docs = await quarryStorage.list()
     if (disposed || disposing || host.shared.quarryRestoreDisabled || ticket !== quarryLoadSequence || generation !== quarryPorts || job.document()) throw Object.assign(new Error('Quarry recovery context changed'), { code: 'RECOVERY_CONTEXT_CHANGED' })
     const candidate = selectRecoveryCandidate(docs, quarryState())
-    if (!candidate) return { skipped: 'none' }
+    if (!candidate) {
+      // Only on the dashboard's reconnect after an unexpected disconnect (the
+      // restore is disabled for a UI connect): a job left running but paused for
+      // another reason is loaded and its own bounded retries are re-armed; a
+      // placed-box operation stopped by the connection change is resumed once
+      // (its takeover rules decide; anything unsafe pauses again).
+      const paused = host.shared.quarryRestoreAfterReconnect === true ? require('./quarry-recovery').selectPausedRunningCandidate(docs, quarryState()) : null
+      if (!paused) return { skipped: 'none' }
+      const status = await loadQuarryFile(paused.config.jobId)
+      const detail = status?.pauseDetails?.reason ?? null
+      host.log(`露天掘り: 再接続後に一時停止中のジョブを読み込みました: ${paused.config.jobId} (${status?.pauseReason ?? ''}${detail ? ' / ' + detail : ''})`)
+      if (['SUPPLY_RESTOCK_BLOCKED', 'CARRIED_STORAGE_BLOCKED'].includes(status?.pauseReason) && ['SUPPLY_SCOPE_CHANGED', 'STORAGE_PICKUP_CAPACITY_REQUIRED', 'STORAGE_RECOVERY_SLOT_REQUIRED', 'STORAGE_WINDOW_CHANGED'].includes(detail)) {
+        ensureQuarryJob().resume()
+        return { loaded: paused.config.jobId, resumed: true, reason: status.pauseReason, detail }
+      }
+      const rearmed = ensureQuarryJob().rescheduleAutoResume()
+      return { loaded: paused.config.jobId, resumed: false, rearmed: rearmed === true, reason: status?.pauseReason ?? null, detail }
+    }
     const status = await loadQuarryFile(candidate.config.jobId)
     const reason = status?.pauseReason ?? ''
     host.log(`露天掘り: 同じワールドのジョブを復元しました: ${candidate.config.jobId} (${reason || status?.state})`)
