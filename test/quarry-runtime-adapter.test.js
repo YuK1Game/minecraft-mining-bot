@@ -290,3 +290,16 @@ test('runtime adapter preserves the v2.2 supply layout and discovery results or 
   rejectDiscovery = true
   assert.throws(() => adapter.discoverSupplies('v22'), error => error === failure)
 })
+
+test('live case 2026-11-13: a move to the cell the bot already stands in re-centres when off by more than 0.25 m', async () => {
+  const { ports, calls, state } = fakePorts()
+  state.position = { x: 0.94, y: 1.62, z: 0.46 }
+  const a = createQuarryRuntimeAdapter(ports)
+  await a.moveTo({ x: 0, y: 0, z: 0 })
+  const moves = calls.filter(c => c[0] === 'move')
+  assert.equal(moves.length, 1)
+  assert.ok(Math.abs(state.position.x - 0.5) < 0.01 && Math.abs(state.position.z - 0.5) < 0.01)
+  const near = fakePorts(); near.state.position = { x: 0.6, y: 1.62, z: 0.5 }
+  await createQuarryRuntimeAdapter(near.ports).moveTo({ x: 0, y: 0, z: 0 })
+  assert.equal(near.calls.filter(c => c[0] === 'move').length, 0, 'already near the centre: no move')
+})
