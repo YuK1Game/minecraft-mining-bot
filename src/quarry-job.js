@@ -1304,6 +1304,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const target = pick.target, skip = job.animalClearSkips ??= {}
     if ((skip[target.uniqueId] ?? 0) > now()) return false
     note('animal_clear_start', { type: target.entityType, runtimeId: target.runtimeId, distance: Math.round(pick.distance * 10) / 10 })
+    // Live 2026-11-13 13:05: the 400 ms wait was shorter than the 750 ms attack
+    // cooldown, so refused swings used up the attempts. Wait 800 ms; a cooldown
+    // refusal is not an attempt.
     for (let attempt = 0; attempt < 8; attempt++) {
       guard(myEpoch)
       if (adapter.combatActive()) return true
@@ -1325,9 +1328,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       }
       try { await call(myEpoch, 'attack_animal', signal => adapter.attackAnimal(target.runtimeId, { signal })) } catch (error) {
         if (error instanceof QuarryInterrupt) throw error
-        note('animal_attack_refused', { runtimeId: target.runtimeId, error: String(error.message ?? error).slice(0, 120) })
+        const cooldown = /連打を避ける/.test(String(error.message ?? ''))
+        if (cooldown) attempt--
+        else note('animal_attack_refused', { runtimeId: target.runtimeId, error: String(error.message ?? error).slice(0, 120) })
       }
-      await sleep(400)
+      await sleep(800)
     }
     skip[target.uniqueId] = now() + 60000
     job.animalClearHoldUntil = now() + 5000
