@@ -77,7 +77,7 @@
   const diagnosticLabels = { NO_CARGO_SHULKER: '収納用シュルカーなし', SHULKER_ONLY_STORAGE: 'シュルカー専用', Y_TOP_PROVISIONAL: '上限Y 未確定', Y_TOP_UNKNOWN: '上限Y 未受信', NO_PICKAXE: 'ツルハシなし', NO_FOOD: '食料なし', NO_SEAL_MATERIAL: '土・止水材なし', LARGE_FLUID_IN_TARGET: '水・溶岩あり', PROTECTED_BLOCKS_IN_TARGET: '保護ブロックあり', INVENTORY_UNKNOWN: '所持品 未受信', NOT_SURVIVAL: 'サバイバルで接続', NOT_SPAWNED: '参加位置 未確定', WRONG_DIMENSION: '次元が不一致', WORLD_IDENTITY_UNKNOWN: 'ワールド 未確認',
     LOADOUT_CHEST_INSIDE_QUARRY: 'デバッグチェストが採掘範囲の中（範囲の外へ設置し直す）', LOADOUT_CHEST_NEAR_QUARRY_EDGE: 'デバッグチェストが採掘範囲の端から2ブロック以内', LOADOUT_CHEST_NOT_CONFIGURED: 'デバッグチェスト 未設置',
     LOADOUT_START_INVENTORY_NOT_EMPTY: '所持品が空ではない', LOADOUT_TARGET_CHUNK_MISMATCH: 'チェストのチャンクが採掘範囲と不一致', V22_RUNTIME_UNAVAILABLE: 'Bot本体が初期セットに未対応（再起動）',
-    CAVE_VOLUME_HIGH: '洞窟が多い', CAVE_VOLUME_PROVISIONAL: '洞窟の量 未確定', PLAN_EXIT_UNAVAILABLE: '地上へ戻る列が見つからない', STAIR_START_UNKNOWN: '階段の開始位置 不明', STORAGE_INSIDE_EXCAVATION: '収納先が採掘範囲の中',
+    CAVE_VOLUME_HIGH: '大きな洞窟あり', CAVE_VOLUME_PROVISIONAL: '洞窟 未確認', PLAN_EXIT_UNAVAILABLE: '脱出列なし', EXIT_PREFLIGHT_PROVISIONAL: '脱出列 未確認', STAIR_START_UNKNOWN: '階段の開始位置 不明', STORAGE_INSIDE_EXCAVATION: '収納先が採掘範囲の中',
     SUPPLY_BINDINGS_INVALID: '補給箱の設定が不正', INVALID_SUPPLY_LAYOUT: '補給の構成が不正', INVALID_INITIAL_LOADOUT: '初期セットの指定が不正', INVALID_PICKUP_MODE: '回収方針が不正', INVALID_DEPOSIT_POLICY: '収納方針が不正', UNSUPPORTED_STORAGE_POLICY: '収納方針の組み合わせが未対応' }
   function showPlan (result) {
     const p = result.plan, host = $('plan-summary')
