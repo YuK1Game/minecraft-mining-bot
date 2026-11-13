@@ -17,6 +17,7 @@ const { createQuarryV22ChestWork } = require('./quarry-v22-chest-work')
 const { createRuntimeV22ChestReset, receivedEquipmentView, jobPending } = require('./loadout-runtime-adapter')
 const { createInventoryStore } = require('./inventory-store')
 const { createEventLoopStallWatch } = require('./event-loop-stall')
+const { currentLifeId } = require('./life-identity')
 const { createManualChestRuntime } = require('./manual-chest-runtime-adapter')
 const { createChunkTravel } = require('./chunk-travel')
 const { chunkTravelThreatsClear } = require('./chunk-travel-threats')
@@ -484,7 +485,7 @@ function createRuntime (host) {
   const scopeFields = ['profile', 'realm', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId']
   const rawScope = () => rawFields(scopeFields)
   const actualWireClock = createActualQueuedWireClock({ client: host.client, shared: host.shared, getState: () => rawFields(['connectionId', 'startedAt', 'runtimeEntityId']) })
-  const actualLifeId = () => Number.isSafeInteger(host.shared.deathRespawn?.deathId) ? host.shared.deathRespawn.deathId : 0
+  const actualLifeId = () => currentLifeId({ hostLife: typeof host.getLife === 'function' ? host.getLife() : null, connectionId: rawFields(['connectionId']).connectionId ?? null, respawnRecord: host.shared.deathRespawn })
   const effectState = () => {
     const state = rawFields([...scopeFields, 'phase', 'health', 'position', 'dead', 'isDead', 'spawnPending'])
     return { ...state, profile: state.profile ?? host.meta.profile, lifecycle: { deathId: actualLifeId(), dead: state.dead === true, phase: state.dead ? 'dead' : 'alive' } }
