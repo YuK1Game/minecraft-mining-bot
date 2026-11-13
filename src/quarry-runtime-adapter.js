@@ -12,7 +12,7 @@ const FEET = 1.62
 function createQuarryRuntimeAdapter (ports) {
   const {
     getState, getBlock, entities, mining, getMining, movement, getMovement, equip, placeQuarry, eat, resyncInventory = null, craftTorches = null, placeTorch = null, prepareMining = null,
-    chest, addChest = null, storeCarried = null, restockSupplies = null, previewSupplySite = null, discoverSupplies = null, loadoutWithdraw = null, finalChestDeposit = null, equipmentTransfer = null, equipmentView = null, logout = null, reconcileSupplyPlacement = null, reconcileCarriedPlacement = null, reconcileRejectedDeposit = null, reconcileObservedPlacement = null, egress = null, requestTerrain = null, confirmPosition = null, previewStorageRoute = null, stopAll, combatActive, userControlInterruption = null, threatEvidence = null, recentDamageAt = null, harmfulEffect = null, worldRevision = null,
+    chest, addChest = null, storeCarried = null, restockSupplies = null, previewSupplySite = null, discoverSupplies = null, loadoutWithdraw = null, finalChestDeposit = null, equipmentTransfer = null, equipmentView = null, logout = null, reconcileSupplyPlacement = null, reconcileCarriedPlacement = null, reconcileRejectedDeposit = null, reconcileObservedPlacement = null, egress = null, requestTerrain = null, confirmPosition = null, attackAnimal = null, previewStorageRoute = null, stopAll, combatActive, userControlInterruption = null, threatEvidence = null, recentDamageAt = null, harmfulEffect = null, worldRevision = null,
     sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now,
     segmentCells = 6, segmentTimeoutMs = 20000, mineTimeoutMs = 15000, previewSettleMs = 3000, shortStopMs = 1500, pollMs = 25, slowBreakMinMs = 1500, log = () => {}
   } = ports
@@ -274,6 +274,10 @@ function createQuarryRuntimeAdapter (ports) {
     getBlock,
     ...(typeof requestTerrain === 'function' ? { requestTerrain: (request, options) => requestTerrain(request, options) } : {}),
     ...(typeof confirmPosition === 'function' ? { confirmPosition: (feet, options) => confirmPosition(feet, options) } : {}),
+    // Quarry animal clearing (2026-11-13): every received actor (copied) and a
+    // single guarded melee hit on an allowed passive animal.
+    actors: () => entities().map(e => structuredClone(e)),
+    ...(typeof attackAnimal === 'function' ? { attackAnimal: (runtimeId, options) => attackAnimal(runtimeId, options) } : {}),
     ...(typeof worldRevision === 'function' ? { worldRevision: () => worldRevision() } : {}),
     // Hostiles and projectiles for the post-combat settle check (§9.4).
     actors: () => entities().filter(e => e.kind !== 'item' && e.positionKnown !== false && e.position),

@@ -92,6 +92,7 @@ const transientReason = reason => typeof reason === 'string' && reason.length > 
 const TRANSIENT_RETRIES = 3, TRANSIENT_WAIT_MS = 1500
 const storageFingerprint = cp => JSON.stringify(cp ? [cp.stage ?? null, (cp.placed ?? []).map(p => [p.position, p.name]), (cp.deposited ?? []).map(d => [d.name, d.count]), (cp.plan ?? []).map(e => e.transferred), cp.intent?.type ?? null, !!cp.recovered, !!cp.full] : null)
 const supplyFingerprint = cp => JSON.stringify(cp ? [cp.index ?? null, (cp.withdrawn ?? []).length, (cp.returned ?? []).length, storageFingerprint(cp.child), (cp.child?.supplyCheckpoint?.withdrawn ?? []).length, (cp.child?.supplyCheckpoint?.returned ?? []).length] : null)
+const { selectAnimalTarget } = require('./quarry-animal-clear')
 const WORK_DIRT_DEMAND = 32 // dirt taken from the supply box when a seal needs it
 // Carried storage refused before any placement, deposit or move (live 2026-11-12).
 const STORAGE_SITE_RETRY_REASONS = new Set([...SUPPLY_SITE_REASONS, 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'])
@@ -1195,6 +1196,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     }
     const planningInventory = items(planningState)
     if (!planningInventory) { await sleep(300); return }
+    if (await clearAnimal(myEpoch)) return
     const decision = await planner.next({ feet: planningFeet, yTop: job.cursorY, tools: planningInventory, policy: { ...job.config.tools, ...job.config.collection, allowHandShovel: fourLayerStorage() && job.shovelSupplyExhausted === true }, inventoryItems: planningInventory, maxBatch: st.maxBlocksPerBatch, selectedSlot: planningState.selectedSlot, avoid: new Set([...badStances].filter(([, n]) => n >= 2).map(([k]) => k)) })
     guard(myEpoch)
     job.lastDecision = { action: decision.action, reason: decision.reason ?? null, details: decision.details ?? null, y: decision.targets?.[0]?.position?.y ?? decision.y ?? null }
@@ -1286,6 +1288,49 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return true
   }
 
+  // Quarry animal clearing (2026-11-13, opt-in strategy.clearAnimals): with
+  // no hostile around and no combat active, remove one allowed passive animal
+  // inside the pit (job columns + 1, surface to the deepest layer, 8 m from
+  // the bot). Unreachable animals are left alone; drops are not collected.
+  async function clearAnimal (myEpoch) {
+    if (job.config.strategy?.clearAnimals !== true || typeof adapter.attackAnimal !== 'function' || typeof adapter.actors !== 'function' || adapter.combatActive()) return false
+    if ((job.animalClearHoldUntil ?? 0) > now()) return false
+    const s = guard(myEpoch), actors = adapter.actors()
+    const pick = selectAnimalTarget({ actors, state: s, columns: regions.columns, yTop: job.config.yTop ?? job.yTop, yBottom: Math.min(job.deepestY ?? job.cursorY, job.cursorY) })
+    if (!pick.target) return false
+    const target = pick.target, skip = job.animalClearSkips ??= {}
+    if ((skip[target.uniqueId] ?? 0) > now()) return false
+    note('animal_clear_start', { type: target.entityType, runtimeId: target.runtimeId, distance: Math.round(pick.distance * 10) / 10 })
+    for (let attempt = 0; attempt < 8; attempt++) {
+      guard(myEpoch)
+      if (adapter.combatActive()) return true
+      const current = adapter.actors().find(a => String(a.runtimeId) === String(target.runtimeId) && String(a.uniqueId) === String(target.uniqueId))
+      if (!current || current.alive === false) {
+        job.animalsCleared = (job.animalsCleared ?? 0) + 1
+        note('animal_cleared', { type: target.entityType, runtimeId: target.runtimeId, total: job.animalsCleared })
+        await save('animal_cleared'); return true
+      }
+      const st = guard(myEpoch), eye = st.position, aim = { x: current.position.x, y: current.position.y + 0.3, z: current.position.z }
+      if (Math.hypot(aim.x - eye.x, aim.y - eye.y, aim.z - eye.z) > 2.6) {
+        const f = feetCell(st), base = { x: Math.floor(current.position.x), y: Math.floor(current.position.y), z: Math.floor(current.position.z) }, cells = []
+        for (let dy = -1; dy <= 1; dy++) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) cells.push({ x: base.x + dx, y: base.y + dy, z: base.z + dz })
+        const stance = cells.filter(c => planner.standable(c) && permits(regions, 'travel', c).allowed && permits(regions, 'travel', { ...c, y: c.y + 1 }).allowed)
+          .sort((a, b) => Math.hypot(a.x - f.x, a.y - f.y, a.z - f.z) - Math.hypot(b.x - f.x, b.y - f.y, b.z - f.z))[0]
+        if (!stance) break
+        try { await moveToStance(myEpoch, stance) } catch (error) { if (error instanceof QuarryInterrupt) throw error; break }
+        continue
+      }
+      try { await call(myEpoch, 'attack_animal', signal => adapter.attackAnimal(target.runtimeId, { signal })) } catch (error) {
+        if (error instanceof QuarryInterrupt) throw error
+        note('animal_attack_refused', { runtimeId: target.runtimeId, error: String(error.message ?? error).slice(0, 120) })
+      }
+      await sleep(400)
+    }
+    skip[target.uniqueId] = now() + 60000
+    job.animalClearHoldUntil = now() + 5000
+    note('animal_clear_skipped', { type: target.entityType, runtimeId: target.runtimeId })
+    return false
+  }
   async function moveToStance (myEpoch, stance) {
     const s = guard(myEpoch); const f = feetCell(s)
     if (f.x === stance.x && f.y === stance.y && f.z === stance.z) return
@@ -3408,6 +3453,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return autoResumeTimer != null
   }
 
+  // Turns the opt-in quarry animal clearing on or off for the current job.
+  async function configureAnimalClearing (options = {}) {
+    if (!job) throw new Error('No quarry job')
+    if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).length !== 1 || typeof options.enabled !== 'boolean') throw new Error('configureAnimalClearing accepts { enabled: true|false } only')
+    job.config.strategy = { ...(job.config.strategy ?? {}), clearAnimals: options.enabled }
+    await save('animal_clearing_configured')
+    note('animal_clearing_configured', { enabled: options.enabled })
+    return status()
+  }
   // Turns the opt-in work-dirt-on-demand mode on or off for the current job.
   async function configureDirtSupply (options = {}) {
     if (!job) throw new Error('No quarry job')
@@ -3999,7 +4053,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
+  return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, configureAnimalClearing, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults }
