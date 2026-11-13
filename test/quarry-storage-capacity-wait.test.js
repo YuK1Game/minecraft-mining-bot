@@ -102,3 +102,18 @@ test('live case 2026-11-13: a supply box recovery blocked only by loose drops us
     next.retire()
   }
 })
+
+test('a scheduled automatic retry is reported as a wait with its reason, attempt and countdown', async () => {
+  const h = await fixture({ scripted: () => blocked(), capacityRetryMs: 5000 })
+  h.job.resume()
+  await until(h, () => h.calls.length >= 1 && h.job.status().state === 'PAUSED')
+  const retry = h.job.status().autoRetry
+  assert.ok(retry, 'the retry is visible in status')
+  assert.equal(retry.kind, 'capacity')
+  assert.equal(retry.reason, 'STORAGE_PICKUP_CAPACITY_REQUIRED')
+  assert.equal(retry.attempt, 1); assert.equal(retry.max, 8)
+  assert.ok(retry.inSeconds > 0 && retry.inSeconds <= 5)
+  await h.job.pause().catch(() => {})
+  assert.equal(h.job.status().autoRetry, null, 'a manual pause clears the scheduled retry')
+  await h.cleanup()
+})

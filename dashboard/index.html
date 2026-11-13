@@ -290,7 +290,8 @@ function renderQuarry(d) {
  set('quarry-job', txt(q.jobId, '未設定')); set('quarry-drops', has ? fmt(q.pendingDrops) + ' 個' : '—');
  const result = typeof q.result === 'string' ? q.result : q.result?.type;
  const reason = q.pauseReason || q.egress?.reason;
- set('quarry-reason', reason ? reasons[reason] || reason : state === 'FINISHED' ? title : result ? reasons[result] || result : '—');
+ const autoRetry = q.state === 'PAUSED' && q.autoRetry ? q.autoRetry : null;
+ set('quarry-reason', autoRetry ? '待機中（自動で再試行）' + (autoRetry.reason ? ' ' + (reasons[autoRetry.reason] || autoRetry.reason) : '') + ' · あと' + fmt(autoRetry.inSeconds) + '秒 · ' + fmt(autoRetry.attempt) + '/' + fmt(autoRetry.max) + '回目' : reason ? reasons[reason] || reason : state === 'FINISHED' ? title : result ? reasons[result] || result : '—');
  renderEgress(has ? q.egress : null);
 }
 function durability(i){const r=num(i.durabilityRemaining),m=num(i.maxDurability);return i.durabilityApplicable!==false&&i.durabilityKnown===true&&r!==null&&r>=0&&m!==null&&m>0&&r<=m?{r,m,p:r/m*100}:null;}

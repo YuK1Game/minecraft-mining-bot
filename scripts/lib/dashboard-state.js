@@ -160,6 +160,7 @@ function quarryState (input) {
     persistence: input.persistence ? { status: ['saved', 'failed'].includes(input.persistence.status) ? input.persistence.status : 'unknown', savedAt: timestamp(input.persistence.savedAt), error: text(input.persistence.error, 300), fileSynced: input.persistence.fileSynced === true, directorySynced: input.persistence.directorySynced === true } : null,
     userRunIntent: ['running', 'paused', 'stopped', 'cancelled', 'finished'].includes(input.userRunIntent) ? input.userRunIntent : null,
     result, pauseReason: text(input.pauseReason, 240), error: text(input.error, 240),
+    autoRetry: input.autoRetry && typeof input.autoRetry === 'object' ? { kind: text(input.autoRetry.kind, 40), reason: text(input.autoRetry.reason, 160), attempt: integer(input.autoRetry.attempt, 0, 100), max: integer(input.autoRetry.max, 0, 100), inSeconds: integer(input.autoRetry.inSeconds, 0, 86400) } : null,
     chunks: (Array.isArray(input.chunks) ? input.chunks : []).slice(0, 64).filter(c => c && integer(c.x, -1875000, 1875000) !== null && integer(c.z, -1875000, 1875000) !== null).map(c => ({ x: c.x, z: c.z })),
     yTop: integer(input.yTop, -2048, 2048), yBottom: integer(input.yBottom, -2048, 2048), currentY: integer(input.currentY, -2048, 2048),
     counts: input.counts ? numericFields(input.counts, ['remaining', 'unknown', 'reserved', 'deferred']) : null,
