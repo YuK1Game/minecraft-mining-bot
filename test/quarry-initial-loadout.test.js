@@ -36,7 +36,7 @@ function fixture ({ missing = false, blockedSupply = true, rejectTransfer = fals
   const actualView = () => { const view = f.view(); return { ...view, slots: view.slots.map(row => ({ ...row, ...(!row.empty ? { stackId: f.bag[row.slot].stack_id } : {}) })),
     ...(!handReceived ? { offhand: { known: false, slots: [{ slot: 0, known: false, empty: false, name: null, count: null }] } } : {}) } }
   if (seal) blocks.set('2,62,1', { known: true, name: 'minecraft:water', boundingBox: 'empty', runtimeId: 100, properties: { liquid_depth: 0 }, extra: [] })
-  let mining = 0, moves = 0, maxMain = 0, seals = 0, controller
+  let mining = 0, moves = 0, maxMain = 0, seals = 0, controller, holdSeen = null, holdAfter = null
   const bindings = () => ['pickaxe', 'shovel', 'dirt', 'totem'].map((role, i) => {
     const name = ['blue', 'light_blue', 'brown', 'yellow'][i] + '_shulker_box'
     const item = describe().find(row => row.name === 'minecraft:' + name)
@@ -96,6 +96,7 @@ function fixture ({ missing = false, blockedSupply = true, rejectTransfer = fals
         const scope = { lost: true }
         await onCheckpoint({ version: 1, jobId: request.jobId, operationId: request.operationId, scope, bindings: copy(request.bindings), policy: copy(request.policy), boxCount, index: 2, withdrawn: [], returned: [],
           child: { version: 1, kind: 'shulker', stage: 'breaking', scope, selectionKey: request.bindings[2].key, placed: [{ name: 'minecraft:brown_shulker_box', position: { x: 5, y: 63, z: 5 } }], supplyCheckpoint: { withdrawn: [] } } })
+        holdSeen = job.shulkerHold()
         return { status: 'blocked', serverConfirmed: false, reason: 'SUPPLY_SCOPE_CHANGED', checkpoint: null }
       }
       const need = supplyNeeds(describe(), request.policy)
@@ -109,6 +110,7 @@ function fixture ({ missing = false, blockedSupply = true, rejectTransfer = fals
       for (let i = 0; i < 27 && remaining; i++) { const row = dirt.contents[i]; if (!row || row.name !== 'minecraft:dirt') continue; const take = Math.min(row.count, remaining); row.count -= take; remaining -= take; if (!row.count) dirt.contents[i] = null }
       if (corruptStock) dirt.contents = Array.from({ length: 27 }, () => null)
       await onCheckpoint({ version: 1, jobId: request.jobId, operationId: request.operationId, phase: 'completed' })
+      holdAfter = job.shulkerHold()
       return { status: 'completed', serverConfirmed: true, bindings: copy(request.bindings), withdrawn: [{ role: 'dirt', count: 64 }], returned: [] }
     },
     async equipmentTransfer (request) {
@@ -131,7 +133,7 @@ function fixture ({ missing = false, blockedSupply = true, rejectTransfer = fals
     while (job.status().state !== 'PAUSED' && job.status().state !== 'FINISHED') { if (Date.now() > until) { await job.pause(); throw Error('bounded initial loadout test timed out') } await turn() }
     const status = job.status(); await job.pause(); return status
   }
-  return { f, job, adapter, config, blocks, saved, requests, events, run, receiveHand: () => { handReceived = true }, get mining () { return mining }, get moves () { return moves }, get maxMain () { return maxMain }, get seals () { return seals } }
+  return { f, job, adapter, config, blocks, saved, requests, events, run, receiveHand: () => { handReceived = true }, get mining () { return mining }, get holdSeen () { return holdSeen }, get holdAfter () { return holdAfter }, get moves () { return moves }, get maxMain () { return maxMain }, get seals () { return seals } }
 }
 
 test('a passive/full plan defers actual inventory until start without changing its separate target or storage policy', () => {
@@ -354,6 +356,11 @@ test('live case 2026-11-14: a lost dirt supply box is searched for, accepted as 
   assert.equal(doc.config.inventory.supplyBoxes.find(b => b.role === 'dirt').boxName, 'minecraft:purple_shulker_box')
   assert.equal(f.requests[1].bindings.find(b => b.role === 'dirt').boxName, 'minecraft:purple_shulker_box', 'the next withdrawal is the ordinary supply operation on the cargo box')
   assert.equal(status.lostCargoBoxes.length, 1, 'the loss is listed for the dashboard')
+  // 2026-11-14 user: box recovery has priority over combat. While the box was
+  // out (breaking) the job reported a hold; with the box back, none.
+  assert.deepEqual({ kind: f.holdSeen?.kind, stage: f.holdSeen?.stage, box: f.holdSeen?.box }, { kind: 'supply', stage: 'breaking', box: 'minecraft:brown_shulker_box' })
+  assert.equal(f.holdAfter, null)
+  assert.equal(f.job.shulkerHold(), null, 'a paused job holds nothing')
 })
 
 test('a lost dirt supply box is not accepted when no carried cargo box holds enough received dirt', async () => {
