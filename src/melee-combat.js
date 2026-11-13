@@ -5,7 +5,7 @@ const { setTimeout: delay } = require('node:timers/promises')
 const { isDeepStrictEqual } = require('node:util')
 const { selectMeleeWeapon } = require('./melee-weapons')
 
-const HOSTILES = new Set(['zombie', 'zombie_villager', 'zombie_villager_v2', 'husk', 'drowned', 'skeleton', 'stray', 'bogged', 'wither_skeleton', 'creeper', 'spider', 'cave_spider', 'witch', 'slime', 'magma_cube', 'silverfish', 'endermite', 'blaze', 'ghast', 'guardian', 'elder_guardian', 'phantom', 'pillager', 'vindicator', 'evocation_illager', 'ravager', 'vex', 'piglin_brute', 'hoglin', 'zoglin', 'breeze'].map(n => `minecraft:${n}`))
+const { isAttackableHostileType } = require('./mob-catalog')
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const WATER = new Set(['minecraft:water', 'minecraft:flowing_water'])
 const PLANTS = new Set(['torch', 'leaf_litter', 'grass', 'short_grass', 'tall_grass', 'tallgrass', 'fern', 'large_fern', 'deadbush', 'dead_bush', 'bush', 'firefly_bush', 'short_dry_grass', 'tall_dry_grass', 'wildflowers', 'dandelion', 'poppy', 'blue_orchid', 'allium', 'azure_bluet', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'oxeye_daisy', 'cornflower', 'lily_of_the_valley', 'pink_petals'].map(n => `minecraft:${n}`))
@@ -121,7 +121,7 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
     const limit = limitOf(reachLimit) ?? run?.reachLimit ?? reach
     const s = session(); const targetId = id(runtimeId); const all = entities.snapshot({ kind: 'all' })
     const target = targetId === null ? null : all.find(e => id(e.runtimeId) === targetId)
-    if (!target || target.kind !== 'mob' || target.hostile !== true || !HOSTILES.has(target.entityType) || target.alive !== true || target.positionKnown !== true || !finite(target.position) || target.dimension !== s.state.dimension || id(target.uniqueId, true) === null || id(target.runtimeId) === id(s.state.runtimeEntityId) || target.positionSource === 'client_prediction') throw failure('Only a known living hostile NPC may be attacked', 'INVALID_TARGET')
+    if (!target || target.kind !== 'mob' || target.hostile !== true || !isAttackableHostileType(target.entityType) || target.alive !== true || target.positionKnown !== true || !finite(target.position) || target.dimension !== s.state.dimension || id(target.uniqueId, true) === null || id(target.runtimeId) === id(s.state.runtimeEntityId) || target.positionSource === 'client_prediction') throw failure('Only a known living hostile NPC may be attacked', 'INVALID_TARGET')
     if (expected && (id(target.runtimeId) !== id(expected.runtimeId) || id(target.uniqueId, true) !== id(expected.uniqueId, true) || target.entityType !== expected.entityType)) throw failure('The bound target identity changed', 'TARGET_CHANGED')
     const aimPoint = bodyAim(target); const workingDistance = distance(s.state.position, aimPoint); const rawDistance = distance(s.rawPosition, aimPoint)
     const tracking = hopTracking && run && expected && (run.hopId != null || run.hopStarting === true) && id(expected.runtimeId) === id(run.target.runtimeId) && id(expected.uniqueId, true) === id(run.target.uniqueId, true)

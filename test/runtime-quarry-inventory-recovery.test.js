@@ -4,6 +4,8 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
+const { createSnapshotReader } = require('../src/runtime-observation-views')
+const { inventoryRefreshDelay } = require('../src/inventory-refresh')
 
 const source = fs.readFileSync(require.resolve('../src/runtime'), 'utf8')
 function section (from, to) {
@@ -20,6 +22,8 @@ function fixture () {
   const wire = [], state = { profile: 'quarry-test', realm: { id: '1' }, connectionId: 'socket', startedAt: 'started', runtimeEntityId: '1', dimension: 'overworld', phase: 'spawned', gameMode: 'survival', health: 20, lifecycle: { deathId: 1, dead: false }, inventory: { known: false } }
   const client = { queue: (name, packet) => wire.push({ name, packet: structuredClone(packet) }) }
   const context = { Date: ClockDate, Object, Number, String, JSON, Math, Error, Promise, Set, structuredClone,
+    createSnapshotReader, inventoryRefreshDelay,
+    chestStatus: () => typeof context.chest.status === 'function' ? context.chest.status() : context.chest.snapshot(),
     host: { client, meta: { profile: state.profile, version: '1.26.60', startGame: { runtime_entity_id: 1n } }, shared: { autoWanted: false, loadingScreenEnded: true, deathRespawn: { deathId: 1 }, inventoryUncertain: { at: clock - 1000, reason: 'withdraw receipt timeout' } } },
     inventoryResyncClient: client, disposed: false, disposing: false, replaying: false, ownedCall: 0, pendingStops: new Set(), userBehaviorTickTask: null, inputOwner: 'idle', quarryCombatArmed: true,
     raw: () => state, inventoryLifeBaseKey: () => 'same-life', verifiedInitialLifeReceipt: () => null,

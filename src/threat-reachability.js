@@ -55,7 +55,7 @@ function verdict (state, entity, now = Date.now()) {
   if (nearSeen(fill.seen, entity.position)) return true
   const sought = fill.targets?.get(String(idOf(entity)))
   if (sought && Math.hypot(entity.position.x - sought.position.x, entity.position.y - sought.position.y, entity.position.z - sought.position.z) <= SEEK_REUSE_DISTANCE && sought.result !== null) return sought.result
-  return fill.truncated ? null : false
+  return fill.truncated || fill.unknown ? null : false
 }
 
 // True only with fresh evidence that no route exists.
@@ -97,18 +97,48 @@ function cellCache (world) {
   return shared.map
 }
 
+// Both searches must preserve the same three-way evidence. In particular,
+// unreceived support is not a wall and a cache hit is still unknown evidence.
+function walkGrid (world) {
+  const cache = cellCache(world)
+  let unknown = false
+  const at = (x, y, z) => {
+    const id = `${x},${y},${z}`
+    let value = cache.get(id)
+    if (value === undefined) {
+      value = kind(world.getBlock(x, y, z)); cache.set(id, value)
+      if (cache.size > CELL_CACHE_LIMIT) cache.clear()
+    }
+    if (value === 'unknown') unknown = true
+    return value
+  }
+  const body = (x, y, z) => {
+    const lower = at(x, y, z)
+    if (lower !== 'open' && lower !== 'water') return false
+    const upper = at(x, y + 1, z)
+    return upper === 'open' || upper === 'water'
+  }
+  const stand = (x, y, z) => body(x, y, z) && (at(x, y, z) === 'water' || at(x, y - 1, z) === 'solid')
+  const originKnown = ({ x, y, z }) => {
+    const lower = at(x, y, z), upper = at(x, y + 1, z)
+    if (lower === 'unknown' || upper === 'unknown') return false
+    // The existing water route uses water itself as support. Its unseen bed
+    // must not invalidate a route entirely through received water cells.
+    return lower === 'water' || at(x, y - 1, z) !== 'unknown'
+  }
+  return { at, body, stand, originKnown, unknown: () => unknown }
+}
+
 // Flood fill of standable cells from the bot's feet cell within the radius.
 function walkableCells (world, feet, { radius = ENGAGE_RADIUS, maxNodes = MAX_NODES, maxMs = FILL_TIME_LIMIT_MS } = {}) {
   // Hard time budget: a fill that runs out is truncated (unknown evidence),
   // so it can never hold the input/heartbeat loop for long.
   const deadline = performance.now() + maxMs
-  const cache = cellCache(world)
-  const at = (x, y, z) => { const id = `${x},${y},${z}`; let k = cache.get(id); if (k === undefined) { k = kind(world.getBlock(x, y, z)); cache.set(id, k); if (cache.size > CELL_CACHE_LIMIT) cache.clear() } return k }
-  const body = (x, y, z) => { const a = at(x, y, z), b = at(x, y + 1, z); return (a === 'open' || a === 'water') && (b === 'open' || b === 'water') }
-  const stand = (x, y, z) => body(x, y, z) && (at(x, y - 1, z) === 'solid' || at(x, y, z) === 'water')
+  const grid = walkGrid(world), { at, body, stand } = grid
   const start = { x: Math.floor(feet.x), y: Math.floor(feet.y), z: Math.floor(feet.z) }
+  if (!grid.originKnown(start)) return { seen: new Set(), truncated: false, unknown: true, origin: start }
   const seen = new Set([`${start.x},${start.y},${start.z}`]); const queue = [start]
-  let truncated = false; let unknown = false
+  let truncated = false
   for (let i = 0; i < queue.length; i++) {
     if (seen.size >= maxNodes || (i & 63) === 0 && performance.now() > deadline) { truncated = true; break }
     const c = queue[i]
@@ -117,7 +147,6 @@ function walkableCells (world, feet, { radius = ENGAGE_RADIUS, maxNodes = MAX_NO
       if (Math.hypot(nx - start.x, nz - start.z) > radius) continue
       // Step up one (needs headroom above the current cell), level, or drop.
       for (let ny = c.y + 1; ny >= c.y - MAX_DROP; ny--) {
-        if (at(nx, ny, nz) === 'unknown' || at(nx, ny + 1, nz) === 'unknown') unknown = true
         if (ny === c.y + 1 && !['open', 'water'].includes(at(c.x, c.y + 2, c.z))) continue
         if (ny < c.y && !body(nx, c.y, nz)) break
         if (!stand(nx, ny, nz)) { if (ny <= c.y && ['solid', 'hazard'].includes(at(nx, ny, nz))) break; continue }
@@ -127,20 +156,18 @@ function walkableCells (world, feet, { radius = ENGAGE_RADIUS, maxNodes = MAX_NO
       }
     }
   }
-  return { seen, truncated, unknown, origin: start }
+  return { seen, truncated, unknown: grid.unknown(), origin: start }
 }
 
 // Targeted search toward one hostile (greedy best-first over the same
 // standable-cell moves). Used when the radius flood fill ran out of budget on
 // rough terrain: it answers that hostile without scanning the whole disk.
-// true = reached, false = searched out within the radius, null = budget.
+// true = reached, false = searched out over known terrain, null = unknown/budget.
 function seekCells (world, feet, goal, { radius = ENGAGE_RADIUS, maxNodes = SEEK_MAX_NODES, maxMs = SEEK_TIME_LIMIT_MS } = {}) {
   const deadline = performance.now() + maxMs
-  const cache = cellCache(world)
-  const at = (x, y, z) => { const id = `${x},${y},${z}`; let k = cache.get(id); if (k === undefined) { k = kind(world.getBlock(x, y, z)); cache.set(id, k); if (cache.size > CELL_CACHE_LIMIT) cache.clear() } return k }
-  const body = (x, y, z) => { const a = at(x, y, z), b = at(x, y + 1, z); return (a === 'open' || a === 'water') && (b === 'open' || b === 'water') }
-  const stand = (x, y, z) => body(x, y, z) && (at(x, y - 1, z) === 'solid' || at(x, y, z) === 'water')
+  const grid = walkGrid(world), { at, body, stand } = grid
   const start = { x: Math.floor(feet.x), y: Math.floor(feet.y), z: Math.floor(feet.z) }
+  if (!grid.originKnown(start)) return null
   const g = { x: Math.floor(goal.x), y: Math.floor(goal.y), z: Math.floor(goal.z) }
   const h = c => Math.hypot(c.x - g.x, c.z - g.z) + Math.abs(c.y - g.y) * 0.5
   const heap = [], push = c => { c.f = h(c); heap.push(c); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p].f <= heap[i].f) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p } }
@@ -164,7 +191,7 @@ function seekCells (world, feet, goal, { radius = ENGAGE_RADIUS, maxNodes = SEEK
       }
     }
   }
-  return false
+  return grid.unknown() ? null : false
 }
 
 // One bounded flood fill per interval. Callers read state many times per tick

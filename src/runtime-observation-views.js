@@ -19,4 +19,15 @@ function createActorReader (entities) {
   }
 }
 
-module.exports = { createActorReader }
+// Create this reader inside one synchronous control decision. It preserves
+// short-circuit checks and is discarded before any later operation/receipt.
+function createSnapshotReader () {
+  const snapshots = new Map()
+  return controller => {
+    if (controller == null) return undefined
+    if (!snapshots.has(controller)) snapshots.set(controller, controller.snapshot())
+    return snapshots.get(controller)
+  }
+}
+
+module.exports = { createActorReader, createSnapshotReader }

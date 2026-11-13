@@ -9,6 +9,7 @@ const { toolOf, toolState } = require('./quarry-rules')
 const { foodNutrition } = require('./food')
 const { createDurabilityReader } = require('./durability')
 const { SUPPLY_COLORS } = require('./loadout-manifest')
+const { refreshInventoryWithRetry } = require('./inventory-refresh')
 
 const ROLES = ['pickaxe', 'shovel', 'food', 'dirt']
 const V22_ROLES = ['pickaxe', 'shovel', 'dirt', 'totem']
@@ -123,39 +124,22 @@ function supplyNeeds (items, { keepFood = 64, keepExitDirt = 192, keepSealBlocks
   return { desired, available, missing, required, returns, freeSlots: freeSlots(main), exitDirt: { required: keepExitDirt, available: Math.min(keepExitDirt, available.dirt) }, sealDirt: { required: keepSealBlocks, available: Math.max(0, available.dirt - keepExitDirt) } }
 }
 
-function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, getPortable, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), getRefreshDelay = () => 0 } = {}) {
-  if ([getState, refreshInventory, getPortable, now, sleep, getRefreshDelay].some(fn => typeof fn !== 'function') || typeof crafting?.rawItem !== 'function' || typeof crafting?.itemNameOf !== 'function' || typeof chest?.snapshot !== 'function' || typeof chest?.rawItem !== 'function' || typeof chest?.withdrawItem !== 'function' || typeof chest?.depositItem !== 'function' || typeof chest?.open !== 'function' || typeof chest?.close !== 'function') throw new Error('Supply operations require received inventory, ordinary storage ports and persisted portable ownership')
+function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, getPortable, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), getRefreshDelay = null } = {}) {
+  if ([getState, refreshInventory, getPortable, now, sleep].some(fn => typeof fn !== 'function') || getRefreshDelay !== null && typeof getRefreshDelay !== 'function' || typeof crafting?.rawItem !== 'function' || typeof crafting?.itemNameOf !== 'function' || typeof chest?.status !== 'function' && typeof chest?.snapshot !== 'function' || typeof chest?.rawItem !== 'function' || typeof chest?.withdrawItem !== 'function' || typeof chest?.depositItem !== 'function' || typeof chest?.open !== 'function' || typeof chest?.close !== 'function') throw new Error('Supply operations require received inventory, ordinary storage ports and persisted portable ownership')
   const readDurability = createDurabilityReader('1.26.60')
+  const chestStatus = () => typeof chest.status === 'function' ? chest.status() : chest.snapshot()
   let busy = false, activeAbort = null, activeOperation = null
   const pendingSession = (scope, signal) => {
     signal?.throwIfAborted()
     if (!isDeepStrictEqual(supplyScope(getState(), { allowUnknownInventory: true }), scope)) throw fail('SUPPLY_SCOPE_CHANGED')
-    const pending = chest.snapshot()
+    const pending = chestStatus()
     if (pending.busy || pending.pendingRequestId != null) throw fail('SUPPLY_PREVIOUS_TRANSFER_PENDING')
   }
   const refreshPending = async (scope, signal) => {
-    const started = now()
-    for (let attempt = 0; attempt < 2; attempt++) {
-      for (;;) {
-        pendingSession(scope, signal)
-        const delay = getRefreshDelay()
-        if (!Number.isFinite(delay) || delay < 0 || delay > 20000 || now() - started > 45000) throw fail('SUPPLY_REFRESH_WAIT_LIMIT')
-        if (delay === 0) break
-        await sleep(Math.min(100, delay))
-      }
-      try {
-        if (await refreshInventory({ signal }) !== true) throw fail('SUPPLY_FRESH_INVENTORY_REQUIRED')
-        pendingSession(scope, signal)
-        return true
-      } catch (error) {
-        if (error.code !== 'RESYNC_RATE_LIMIT' || attempt > 0) throw error
-        // Older ports omit a cooldown clock. Even then, no request is retried
-        // before the existing 20-second limit, and only one rate retry exists.
-        const until = now() + 20000
-        while (now() < until) { pendingSession(scope, signal); await sleep(Math.min(100, until - now())) }
-      }
-    }
-    throw fail('SUPPLY_FRESH_INVENTORY_REQUIRED')
+    const refreshed = await refreshInventoryWithRetry({ refreshInventory, getRefreshDelay, now, sleep, signal,
+      verify: () => pendingSession(scope, signal), waitErrorCode: 'SUPPLY_REFRESH_WAIT_LIMIT' })
+    if (refreshed !== true) throw fail('SUPPLY_FRESH_INVENTORY_REQUIRED')
+    return true
   }
   function observe (expectedScope = null, signal) {
     signal?.throwIfAborted()
@@ -176,7 +160,7 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
     return { state, scope, items }
   }
   function currentWindow (expectedScope, position = null) {
-    const w = chest.snapshot()
+    const w = chestStatus()
     if (w.busy || w.contentsKnown !== true || w.slotCount !== 27 || w.window?.replayed || !isDeepStrictEqual(w.window?.scope, expectedScope) || !['server_inventory_content', 'server_inventory_slot'].includes(w.observationSource) || position && !['x', 'y', 'z'].every(k => w.window.position?.[k] === position[k])) throw fail('SUPPLY_CONTAINER_UNKNOWN')
     const raw = Array.from({ length: 27 }, (_, slot) => chest.rawItem(slot))
     if (!raw.every(valid)) throw fail('SUPPLY_CONTAINER_UNKNOWN')
@@ -235,7 +219,7 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
       if (cp.intent) {
         if (!freshMainReady) await refreshPending(cp.scope, signal)
         observe(cp.scope, signal)
-        const beforeEpoch = chest.snapshot().window?.epoch
+        const beforeEpoch = chestStatus().window?.epoch
         chest.close()
         const opened = await chest.open(position, undefined, { expectedSlots: 27 })
         observe(cp.scope, signal)

@@ -42,8 +42,8 @@ const profiles = require('./combat-profiles')
 function stop (code, reason, extra = {}) { return { phase: 'stopped', code, reason, targetDead: false, targetRemoved: false, serverConfirmed: false, botCausedDamage: null, botCausedDeath: null, attribution: 'unconfirmed', ...extra } }
 
 const { totemGuarded } = require('./learning-health')
-function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, resume, approach = null, canAcquireMeleeApproach = null, canEngage = null, engageRadius = 32, getRecentDamageAt = null, retreat = null, log = () => {}, canAct = () => false, controlReady = () => true, now = () => performance.now(), sleep = ms => delay(ms), pollMs = 50, backoffMs = 400, durationMs = 120000, maxChaseDistance = 40, controllerSliceMs = 8000, workGuard = null }) {
-  if ([getState, acquire, resume, canAct, controlReady, now, sleep].some(f => typeof f !== 'function') || typeof entities?.snapshot !== 'function' || [melee, ranged].some(c => ['preview', 'engage', 'cancel', 'drain', 'snapshot'].some(k => typeof c?.[k] !== 'function')) || approach != null && typeof approach !== 'function' || canAcquireMeleeApproach != null && typeof canAcquireMeleeApproach !== 'function' || canEngage != null && typeof canEngage !== 'function' || retreat != null && typeof retreat !== 'function' || !(engageRadius > 0)) throw new Error('Combat coordinator requires observed state, controllers and protective lease callbacks')
+function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, resume, approach = null, canAcquireMeleeApproach = null, canEngage = null, engageRadius = 32, getRecentDamageAt = null, retreat = null, log = () => {}, canAct = () => false, controlReady = () => true, now = () => performance.now(), sleep = ms => delay(ms), pollMs = 50, backoffMs = 400, durationMs = 120000, maxChaseDistance = 40, controllerSliceMs = 8000, workGuard = null, withDecision = fn => fn() }) {
+  if ([getState, acquire, resume, canAct, controlReady, now, sleep, withDecision].some(f => typeof f !== 'function') || typeof entities?.snapshot !== 'function' || [melee, ranged].some(c => ['preview', 'engage', 'cancel', 'drain', 'snapshot'].some(k => typeof c?.[k] !== 'function')) || approach != null && typeof approach !== 'function' || canAcquireMeleeApproach != null && typeof canAcquireMeleeApproach !== 'function' || canEngage != null && typeof canEngage !== 'function' || retreat != null && typeof retreat !== 'function' || !(engageRadius > 0)) throw new Error('Combat coordinator requires observed state, controllers and protective lease callbacks')
   if (!(pollMs >= 10 && pollMs <= 250) || !(backoffMs >= 100 && backoffMs <= 30000) || !Number.isInteger(durationMs) || durationMs < 1000 || durationMs > 120000 || !(maxChaseDistance > 0 && maxChaseDistance <= 48) || !Number.isInteger(controllerSliceMs) || controllerSliceMs < 1200 || controllerSliceMs > 120000) throw new Error('Invalid combat coordination bounds')
   let claim = null; let worker = null; let sequence = 0; let lastResult = null; let lastError = null; let hpRetreating = false; let lastTargetKey = null
   const backoffs = new Map()
@@ -225,7 +225,10 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     if (!eligible(actor, s)) return { outcome: stop('TARGET_UNKNOWN', 'Bound target life or position is no longer known') }
     return { actor, ...preferredMode(s, actor) }
   }
-  function guard (lease, { preparing = false } = {}) {
+  // Selection and each guard are separate synchronous observations. Sharing
+  // their unchanged terrain rays must never retain guard outcomes across awaits.
+  function guard (lease, options) { return withDecision(() => guardInDecision(lease, options)) }
+  function guardInDecision (lease, { preparing = false } = {}) {
     if (lease.stopOutcome) return { outcome: lease.stopOutcome }
     const s = getState(); const scope = readScope(s)
     if (!scope || scopeKey(scope) !== scopeKey(lease.scope)) return { outcome: stop('SESSION_CHANGED', 'Attacker connection, world or lifecycle changed') }
@@ -633,7 +636,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
     const cleanup = controllerCleanup()
     if (cleanup.pending) return Promise.resolve({ ...stop('RANGED_CLEANUP_PENDING', 'A pre-existing bow cleanup must resolve before another fight'), phase: 'blocked', blocked: true })
     let selected
-    try { selected = selectCandidate() } catch (error) { lastError = String(error.message ?? error); return Promise.resolve(stop('OBSERVATION_ERROR', lastError)) }
+    try { selected = withDecision(selectCandidate) } catch (error) { lastError = String(error.message ?? error); return Promise.resolve(stop('OBSERVATION_ERROR', lastError)) }
     tickTrace.last = selected ? 'claim' : 'no_candidate'
     if (!selected) return Promise.resolve(stop('NO_CANDIDATE', 'No automatic eligible combat candidate; resources retain ownership'))
     const s = getState(); const startedAt = clock()

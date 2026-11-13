@@ -12,7 +12,9 @@ const { parseTap, compareReports } = require('./lib/test-report')
 const root = path.resolve(__dirname, '..')
 async function runSuite (directory, filename) {
   const output = createWriteStream(filename, { flags: 'w' })
-  const child = spawn(process.execPath, ['--test', '--test-concurrency=2', '--test-timeout=30000', '--test-reporter=tap'], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] })
+  // Failed legacy tests can leave intervals/polling alive. Preserve their
+  // reported failures and timeouts, then exit after all test results exist.
+  const child = spawn(process.execPath, ['--test', '--test-force-exit', '--test-concurrency=2', '--test-timeout=30000', '--test-reporter=tap'], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] })
   child.stdout.pipe(output, { end: false }); child.stderr.pipe(output, { end: false })
   const timeout = setTimeout(() => child.kill('SIGTERM'), 12 * 60 * 1000)
   let code

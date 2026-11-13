@@ -7,14 +7,7 @@ const { evaluateThreats, threatRadius } = require('./threats')
 const { guardedSecondaryMinimum } = require('./combat-policy')
 const { resourceMinHealth } = require('./learning-health')
 
-const HOSTILES = new Set([
-  'zombie', 'zombie_villager', 'zombie_villager_v2', 'husk', 'drowned', 'skeleton',
-  'stray', 'bogged', 'wither_skeleton', 'creeper', 'spider', 'cave_spider', 'witch',
-  'slime', 'magma_cube', 'silverfish', 'endermite', 'blaze', 'ghast', 'guardian',
-  'elder_guardian', 'phantom', 'pillager', 'vindicator', 'evocation_illager',
-  'ravager', 'vex', 'piglin_brute', 'hoglin', 'zoglin', 'warden', 'breeze', 'creaking',
-  'wither', 'ender_dragon'
-].map(name => `minecraft:${name}`))
+const { isAttackableHostileType } = require('./mob-catalog')
 const FOOD_ANIMALS = new Set(['minecraft:cow', 'minecraft:pig', 'minecraft:sheep'])
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const BOSSES = new Set(['minecraft:wither', 'minecraft:ender_dragon'])
@@ -118,7 +111,7 @@ function createCombat ({ client, getState, world, entities, crafting, getInput, 
       if (!entity || entity.kind !== 'mob' || !(FOOD_ANIMALS.has(entity.entityType) || chicken) || entity.hostile !== false) throw new Error('食料目的の狩りは観測済みの対応する食用動物だけに限定しています。')
     } else if (purpose === 'animal') {
       if (!entity || entity.kind !== 'mob' || entity.hostile !== false || !ANIMAL_CLEAR_TARGETS.has(entity.entityType) || entity.uniqueId == null) throw new Error('動物の除去は許可した受動動物だけに限定しています。')
-    } else if (!entity || entity.kind !== 'mob' || !entity.hostile || !HOSTILES.has(entity.entityType) || BOSSES.has(entity.entityType)) throw new Error('攻撃対象は観測済みの既知の敵モブだけに限定し、ボスは除外しています。')
+    } else if (!entity || entity.kind !== 'mob' || !entity.hostile || !isAttackableHostileType(entity.entityType) || BOSSES.has(entity.entityType)) throw new Error('攻撃対象は観測済みの既知の敵モブだけに限定し、ボスは除外しています。')
     if (purpose === 'engage' && (!MELEE_TARGETS.has(entity.entityType) || entity.uniqueId == null)) throw new Error('継続交戦は個体を確認したゾンビ・ハスク・ドラウンド・クモ類だけに限定しています。')
     if (purpose === 'water_creeper' && (entity.entityType !== 'minecraft:creeper' || entity.uniqueId == null || entity.charged !== false || typeof entity.primed !== 'boolean' || entity.primed && (!Number.isInteger(entity.fuseLength) || entity.fuseLength < 20))) throw new Error('水中のクリーパー個体・帯電・点火状態を確認できません。')
     if (purpose === 'emergency' && (!(entity.entityType === 'minecraft:zombie' || allowEmergencySpider && state.health > 10 && entity.entityType === 'minecraft:spider' || allowEmergencyCreeper && state.health > 6 && entity.entityType === 'minecraft:creeper' && threatRadius(entity) === 8) || entity.uniqueId == null)) throw new Error('緊急自衛は個体を確認した対象だけに限定しています。')

@@ -25,9 +25,11 @@ async function dispatch(f,kind='deposit_diamond',{valid=true}={}){
  assert.ok(start>0&&end>start)
  const moves=[],observations=[],context={scope:f.scope(),signal:new AbortController().signal,extra:{campBuilder:{tableCell:{x:2,y:67,z:0}},tableCell:{x:2,y:67,z:0}},policy:{memo:()=>({base:{position:{x:2,y:67,z:0},storageCell:f.target},chest:f.options.ownedChest}),observeStored:value=>{observations.push(value);return false},acceptDeposit:()=>{throw Error('No deposit receipt in access test')}},setExtra:()=>{}}
  const names=['depotStorage','approachOwnedCamp','context','intent','lightweightUserState','host','depotBuilder','selectDepotTableCell','operations','chest','crafting','input','createInteractions','planDepotStorageAccess','runner','planPrebuildChestStance','movePrebuildStance','runDepotResource']
+ const chestStatus=()=>typeof f.chest.status==='function'?f.chest.status():f.chest.snapshot()
+ names.push('chestStatus')
  const invoke=new Function(...names,'return(async()=>{'+runtime.slice(start,end)+'})()')
  const operations={interactions:{previewOpenChest:f.interactions.previewOpenChest},chest:{open:p=>f.chest.open(p)}}
- const result=await invoke(f.work,async()=>null,context,{kind},()=>f.state,{world:{...f.world,getArea:()=>[]},client:f.client,meta:{version:'1.26.60'}},{validate:()=>({ready:valid}),protectedCells:()=>[]},selectDepotTableCell,operations,f.chest,f.crafting,f.input,createInteractions,planDepotStorageAccess,{actions:{move_to:async decision=>{moves.push(decision);return{phase:'predicted',serverConfirmed:false,target:decision.target}}}},()=>null,()=>{throw Error('Unexpected placement move')},()=>{throw Error('Unexpected resource work')})
+ const result=await invoke(f.work,async()=>null,context,{kind},()=>f.state,{world:{...f.world,getArea:()=>[]},client:f.client,meta:{version:'1.26.60'}},{validate:()=>({ready:valid}),protectedCells:()=>[]},selectDepotTableCell,operations,f.chest,f.crafting,f.input,createInteractions,planDepotStorageAccess,{actions:{move_to:async decision=>{moves.push(decision);return{phase:'predicted',serverConfirmed:false,target:decision.target}}}},()=>null,()=>{throw Error('Unexpected placement move')},()=>{throw Error('Unexpected resource work')},chestStatus)
  return{result,moves,observations}
 }
 

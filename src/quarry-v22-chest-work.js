@@ -7,6 +7,7 @@ const { isDeepStrictEqual } = require('node:util')
 const { serialize, deserialize } = require('node:v8')
 const { validateV22Loadout, CARGO, roles, singles } = require('./quarry-v22-loadout')
 const { isShulkerBox } = require('./quarry-inventory')
+const { refreshInventoryWithRetry } = require('./inventory-refresh')
 const copy = value => structuredClone(value)
 const pack = value => serialize(value).toString('base64')
 const unpack = value => deserialize(Buffer.from(value, 'base64'))
@@ -109,8 +110,9 @@ function buildStartupPlan (slots) {
 
 function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest, open, close,
   withdraw, deposit, equipArmor, equipmentTransfer, resync = async()=>true, now=Date.now,
-  sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)), getRawEquipment = null, proveEquipmentNotDispatched = null } = {}) {
+  sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)), getRefreshDelay = null, getRawEquipment = null, proveEquipmentNotDispatched = null } = {}) {
   if ([getState,getView,getRawMain,getRawChest,open,close,withdraw,deposit,equipArmor,equipmentTransfer,resync,now,sleep].some(fn=>typeof fn!=='function')) throw new TypeError('V22 chest work requires observed 54-slot and equipment ports')
+  if(getRefreshDelay!==null&&typeof getRefreshDelay!=='function')throw new TypeError('Inventory refresh delay must be a function')
   if(getRawEquipment!==null&&typeof getRawEquipment!=='function')throw new TypeError('Equipment observations must be a function')
   if(proveEquipmentNotDispatched!==null&&typeof proveEquipmentNotDispatched!=='function')throw new TypeError('Unsent equipment proof must be a function')
   let busy=false
@@ -159,12 +161,8 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
       return frame
     }
     if(ready(verify().view))return verify().view
-    close();let refreshed
-    try{refreshed=await resync({signal})}catch(error){
-      if(error.code!=='RESYNC_RATE_LIMIT')throw error
-      for(let waited=0;waited<20000;waited+=100){verify(true);await sleep(100)}
-      verify(true);refreshed=await resync({signal})
-    }
+    close()
+    const refreshed=await refreshInventoryWithRetry({refreshInventory:resync,getRefreshDelay,verify:()=>verify(true),signal,sleep,now})
     verify(true)
     if(refreshed!==true)throw fail(reason)
     return waitEquipment(verify,ready,reason)
@@ -290,20 +288,7 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
       return frame
     }
     close()
-    let refreshed
-    try { refreshed=await resync({signal}) } catch(error) {
-      if(error.code!=='RESYNC_RATE_LIMIT')throw error
-      // The shared server refresh has a 20-second cooldown. Respect it with
-      // one bounded retry; keep checking the recorded life while waiting.
-      for(let waited=0;waited<20000;waited+=100) {
-        signal?.throwIfAborted()
-        verify(true)
-        await sleep(100)
-      }
-      signal?.throwIfAborted()
-      verify(true)
-      refreshed=await resync({signal})
-    }
+    const refreshed=await refreshInventoryWithRetry({refreshInventory:resync,getRefreshDelay,verify:()=>verify(true),signal,sleep,now})
     if(refreshed!==true)throw fail('LOADOUT_RECONCILE_MAIN_UNCONFIRMED')
     signal?.throwIfAborted()
     verify()
@@ -468,12 +453,7 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
       }
       const refresh=async reason=>{
         verify(true);close()
-        let refreshed
-        try{refreshed=await resync({signal})}catch(error){
-          if(error.code!=='RESYNC_RATE_LIMIT')throw error
-          for(let waited=0;waited<20000;waited+=100){verify(true);await sleep(100)}
-          verify(true);refreshed=await resync({signal})
-        }
+        const refreshed=await refreshInventoryWithRetry({refreshInventory:resync,getRefreshDelay,verify:()=>verify(true),signal,sleep,now})
         verify(true)
         if(refreshed!==true)throw fail(reason)
         return verify().view
