@@ -443,8 +443,16 @@ function createRuntime (host) {
   let readDurability = null
   function craftStatus () { return typeof crafting.status === 'function' ? crafting.status() : crafting.snapshot() }
   function craftInventory () { return typeof crafting.inventorySnapshot === 'function' ? crafting.inventorySnapshot() : crafting.snapshot() }
+  // 2026-11-14 01:59 user: "クリーパーに爆破され落下しました。不死のトーテムを持っている
+// 限り死ぬことはないので、過剰な待機保護をやめてください".
+  // Only the offhand slot received from the server counts; an unreceived or
+  // empty offhand is no totem.
+  function offhandTotem () {
+    try { const r = inventoryInspection.rawEquipment('offhand', 0); return !!r && r.count > 0 && crafting.itemNameOf(r.network_id) === 'minecraft:totem_of_undying' } catch { return false }
+  }
   const working = () => {
     const state = host.getState()
+    state.totemGuard = offhandTotem()
     if (readDurability) {
       // Older connected hosts omit stack IDs from their public inventory.
       // Fill only missing fields from the matching received crafting inventory;
@@ -2504,7 +2512,7 @@ function createRuntime (host) {
     let recentUserSafetyObservation = null
     const safetyState = () => {
       requireSafety()
-      const state = { ...routeState(), loading: !host.shared.loadingScreenEnded, loadingScreenEnded: host.shared.loadingScreenEnded === true, world: host.world.stats() }
+      const state = { ...routeState(), loading: !host.shared.loadingScreenEnded, loadingScreenEnded: host.shared.loadingScreenEnded === true, world: host.world.stats(), totemGuard: offhandTotem() }
       // Keep the raw entity catalogue intact. This safety view omits only
       // known non-intercepting actors; unknown access remains an observation.
       state.entities = state.entities.filter(actor => {
@@ -6583,6 +6591,30 @@ function createRuntime (host) {
     }
     return { allowed: false, reason: 'SHULKER_RECOVERY_PRIORITY', stage: hold.stage }
   }
+  // 2026-11-14 02:01 user: "満腹度が一定以下になると体力を回復しなくなるので、満腹度が
+  // 一定以下の場合は食事を取るようにしてください". While no quarry work runs (paused,
+  // waiting), a received hunger below 18 starts the ordinary eat operation and
+  // it repeats up to 20. requireIdle() keeps it out of combat, box work and any
+  // other operation; refused attempts just wait for the next check.
+  const idleEat = { timer: null, toFull: false, busy: false, refusedAt: 0 }
+  idleEat.timer = setInterval(async () => {
+    if (disposed || disposing) { clearInterval(idleEat.timer); return }
+    if (idleEat.busy || quarryJob?.holdsWork()) return
+    const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : null
+    if (hunger == null) return
+    if (hunger < 18) idleEat.toFull = true
+    if (hunger >= 20) idleEat.toFull = false
+    if (!idleEat.toFull) return
+    let s = null
+    try { s = working() } catch { return }
+    if (s?.phase !== 'spawned' || s.dead || s.isDead || !(s.health > 0) || s.inventory?.known !== true) return
+    if (!(s.inventory.items ?? []).some(i => i.count > 0 && isFood(i.name))) { idleEat.toFull = false; return }
+    idleEat.busy = true
+    try { await operations.food.eat({}); host.log(`待機中の食事: 満腹度 ${hunger} → 食事しました`) } catch (error) {
+      if (Date.now() - idleEat.refusedAt > 60000) { idleEat.refusedAt = Date.now(); host.log(`待機中の食事を見送り: 満腹度 ${hunger} (${String(error.message ?? error).slice(0, 80)})`) }
+    } finally { idleEat.busy = false }
+  }, 5000)
+  idleEat.timer.unref?.()
   function quarryCanSelectTarget (target, state, info = {}) { const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
   function quarryCanContinue (target, state, info = {}) { const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canContinue(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true, retreating: info.retreating === true || quarryRetreatDepth > 0 }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
   function quarryState () {

@@ -16,6 +16,7 @@ const { createQuarryCombatBridge } = require('./quarry-combat-bridge')
 const { miningUsesAfterExitReserve } = require('./quarry-exit-reserve')
 const { normalizeExit, dirtCount, planQuarryExit } = require('./quarry-exit-plan')
 const { supplyNeeds, supplyScope, storageSupplyExclusions } = require('./quarry-supplies')
+const { totemGuarded } = require('./learning-health')
 const { UNSENT_PLACE_REASON } = require('./quarry-portable-storage')
 const { supplyPlacementAllowed, planSupplyApproach } = require('./quarry-supply-site')
 const { clearableSitePlant, plainAir } = require('./storage-site-terrain')
@@ -142,7 +143,7 @@ function defaults (config = {}) {
     tools: { reserveMinUses: 1, reserveFraction: 0, returnUses: 0, reservedTools: [], ...(c.tools ?? {}) },
     collection: { orePolicy: 'maximize_yield', buildingBlockPolicy: 'preserve_if_possible', ...(c.collection ?? {}) },
     inventory: { minFreeSlots: 6, keepSealBlocks: 32, storage: [], autoSupplies: false, supplyBoxes: [], ...(c.inventory ?? {}), ...(c.boundarySeal?.material === 'dirt' ? { keepSealMaterial: 'dirt' } : {}), keepExitDirt: exit.mode === 'adjacent_pillar' ? Math.max(exit.reservedDirt, c.inventory?.keepExitDirt ?? 0) : c.inventory?.keepExitDirt ?? 0 },
-    safety: { retreatHealthRatio: 0.70, emergencyHealthRatio: 0.40, resumeHealthRatio: 0.90, eatFoodLevel: 16, recoverTimeoutMs: 180000, ...(c.safety ?? {}) },
+    safety: { retreatHealthRatio: 0.70, emergencyHealthRatio: 0.40, resumeHealthRatio: 0.90, eatFoodLevel: 17, recoverTimeoutMs: 180000, ...(c.safety ?? {}) },
     quarryCombat: { enabled: true, ...(c.quarryCombat ?? {}) },
     persistence: { checkpointAfterBatch: true, ...(c.persistence ?? {}) }
   }
@@ -200,7 +201,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
 
   const note = (type, details = {}) => { const e = { at: new Date(now()).toISOString(), type, ...copy(details) }; events.push(e); if (events.length > 200) events.shift(); try { log(`[quarry] ${type} ${JSON.stringify(details).slice(0, 300)}`) } catch {} }
   const feetCell = s => ({ x: Math.floor(s.position.x), y: Math.floor(s.position.y - FEET + 1e-3), z: Math.floor(s.position.z) })
-  const healthRatio = s => s.health / (Number.isFinite(s.maxHealth) && s.maxHealth > 0 ? s.maxHealth : 20)
+  // A received offhand totem: the 70%/40% retreat and the 90% recovery wait
+  // do not stop the work (2026-11-14 01:59 user). Without it, unchanged.
+  const healthRatio = s => totemGuarded(s) ? 1 : s.health / (Number.isFinite(s.maxHealth) && s.maxHealth > 0 ? s.maxHealth : 20)
   const foodOf = s => s.food ?? s.hunger ?? null
   const items = s => s?.inventory?.known === true && !s.inventory.uncertain && Array.isArray(s.inventory.items) ? s.inventory.items : null
   // Shulker-only jobs do not build storage chests. Keep explicit material
@@ -1019,8 +1022,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const s = adapter.getState(); const inv = items(s)
     if (!inv || typeof adapter.eat !== 'function') return false
     const food = foodOf(s)
-    if (!(Number.isFinite(food) && (food <= job.config.safety.eatFoodLevel || recovering && food < 20))) return false
-    if (!inv.some(i => isFood(i.name))) return false
+    // 2026-11-14 02:01 user: "満腹度が一定以下になると体力を回復しなくなるので、満腹度が
+    // 一定以下の場合は食事を取るようにしてください". Natural regeneration needs 18+:
+    // below 18 the bot eats, then keeps eating up to 20 (saved jobs with the
+    // old 16 are raised to 17).
+    const eatBelow = Math.max(17, job.config.safety.eatFoodLevel ?? 17)
+    if (Number.isFinite(food) && food <= eatBelow) job.eatingToFull = true
+    if (Number.isFinite(food) && food >= 20) job.eatingToFull = false
+    if (!(Number.isFinite(food) && (food <= eatBelow || (recovering || job.eatingToFull === true) && food < 20))) return false
+    if (!inv.some(i => isFood(i.name))) { job.eatingToFull = false; return false }
     try { await call(myEpoch, 'eat', signal => adapter.eat({ signal })); note('ate', { food }); return true } catch (error) {
       if (error instanceof QuarryInterrupt) throw error
       note('eat_failed', { error: error.message })
