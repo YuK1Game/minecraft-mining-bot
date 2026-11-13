@@ -203,7 +203,8 @@ Object.assign(activityReasons, {
   UNRESOLVED_EXCEPTIONS: '保留の受諾待ち',
   MANUAL_PAUSE: '手動で一時停止',
   USER_PAUSED: '手動で一時停止',
-  ASCENT_UNCERTAIN_STEP: '土柱の段を確認できません'
+  ASCENT_UNCERTAIN_STEP: '土柱の段を確認できません',
+  SUPPLY_BOX_SEARCH: '見失った補給箱を探しています'
 })
 const reasonLabel = code => activityReasons[code] ?? null
 

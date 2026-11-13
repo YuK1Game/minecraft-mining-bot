@@ -16,7 +16,7 @@ loaded._compile(fs.readFileSync(file, 'utf8').split('\ntest(')[0] + '\nmodule.ex
 const { fixture: chestFixture, raw, empty } = loaded.exports
 const copy = value => structuredClone(value)
 const home = { position: { x: 2, y: 63, z: -1 }, other: { x: 3, y: 63, z: -1 }, stand: { x: 1, y: 63, z: -1 }, stage: { x: 0, y: 63, z: -1 }, chunk: { x: 0, z: -1 } }
-function fixture ({ missing = false, blockedSupply = true, rejectTransfer = false, mutateSave = null, seal = false, corruptStock = false, delayedHand = false, neverHand = false, invalidCp = false } = {}) {
+function fixture ({ missing = false, blockedSupply = true, rejectTransfer = false, mutateSave = null, seal = false, corruptStock = false, delayedHand = false, neverHand = false, invalidCp = false, cargoDirt = 0, loseDirtBox = false, jobOptions = {} } = {}) {
   const f = chestFixture({ missing }), blocks = new Map(), saved = [], requests = [], events = []
   // The shared routing fixture has decoded contents separately. Its raw
   // identity still needs an actual typed compound for received-prefix checks.
@@ -82,17 +82,34 @@ function fixture ({ missing = false, blockedSupply = true, rejectTransfer = fals
       assert.equal(mining, 0); assert.equal(request.policy.pickupMode, 'passive'); assert.equal(request.policy.depositWhen, 'full')
       assert.equal(request.policy.deferExitSupplies, true)
       if (blockedSupply) return { status: 'blocked', serverConfirmed: false, reason: 'TEST_INITIAL_SUPPLY_BLOCKED' }
+      if (cargoDirt && requests.length === 1) {
+        // The mining put dirt (and other blocks) into a carried cargo box.
+        const cargo = f.bag[describe().find(row => row.name === 'minecraft:purple_shulker_box').slot]
+        cargo.contents = [...Array.from({ length: Math.ceil(cargoDirt / 64) }, (_, i) => ({ name: 'minecraft:dirt', count: Math.min(64, cargoDirt - i * 64) })), { name: 'minecraft:cobblestone', count: 64 }]
+      }
+      // Live 2026-11-14 00:03: the placed dirt supply box was never picked up
+      // (combat, then a new connection); the block is air and it is not carried.
+      if (loseDirtBox && requests.length === 1) {
+        const boxCount = describe().filter(row => /shulker_box$/.test(row.name)).length
+        const brown = describe().find(row => row.name === 'minecraft:brown_shulker_box')
+        f.bag[brown.slot] = empty()
+        const scope = { lost: true }
+        await onCheckpoint({ version: 1, jobId: request.jobId, operationId: request.operationId, scope, bindings: copy(request.bindings), policy: copy(request.policy), boxCount, index: 2, withdrawn: [], returned: [],
+          child: { version: 1, kind: 'shulker', stage: 'breaking', scope, selectionKey: request.bindings[2].key, placed: [{ name: 'minecraft:brown_shulker_box', position: { x: 5, y: 63, z: 5 } }], supplyCheckpoint: { withdrawn: [] } } })
+        return { status: 'blocked', serverConfirmed: false, reason: 'SUPPLY_SCOPE_CHANGED', checkpoint: null }
+      }
       const need = supplyNeeds(describe(), request.policy)
       for (const [role, name] of [['pickaxe', 'diamond_pickaxe'], ['shovel', 'stone_shovel'], ['totem', 'totem_of_undying']]) if (need.missing[role]) add('minecraft:' + name, need.missing[role])
       if (need.missing.dirt) add('minecraft:dirt', need.missing.dirt)
       maxMain = Math.max(maxMain, describe().length)
-      assert.equal(maxMain, 34)
-      const dirt = f.bag[describe().find(row => row.name === 'minecraft:brown_shulker_box').slot]
+      assert.equal(maxMain, loseDirtBox ? 33 : 34)
+      const dirtKey = request.bindings.find(b => b.role === 'dirt').key
+      const dirt = f.bag[describe().find(row => carriedContainerKey(row) === dirtKey).slot]
       let remaining = need.missing.dirt
-      for (let i = 0; i < 27 && remaining; i++) { const row = dirt.contents[i]; if (!row) continue; const take = Math.min(row.count, remaining); row.count -= take; remaining -= take; if (!row.count) dirt.contents[i] = null }
+      for (let i = 0; i < 27 && remaining; i++) { const row = dirt.contents[i]; if (!row || row.name !== 'minecraft:dirt') continue; const take = Math.min(row.count, remaining); row.count -= take; remaining -= take; if (!row.count) dirt.contents[i] = null }
       if (corruptStock) dirt.contents = Array.from({ length: 27 }, () => null)
       await onCheckpoint({ version: 1, jobId: request.jobId, operationId: request.operationId, phase: 'completed' })
-      return { status: 'completed', serverConfirmed: true, bindings: bindings(), withdrawn: [{ role: 'dirt', count: 64 }], returned: [] }
+      return { status: 'completed', serverConfirmed: true, bindings: copy(request.bindings), withdrawn: [{ role: 'dirt', count: 64 }], returned: [] }
     },
     async equipmentTransfer (request) {
       events.push('totem'); assert.equal(request.from, 'main'); assert.equal(request.to, 'offhand')
@@ -105,7 +122,7 @@ function fixture ({ missing = false, blockedSupply = true, rejectTransfer = fals
   adapter.previewSupplySite = supplySitePreview(adapter)
   if (rejectTransfer) f.ports.withdraw = async () => ({ serverConfirmed: false })
   let clock = Date.now()
-  const job = createQuarryJob({ adapter, storageMode: 'shulker', pollMs: 5, sleep: () => turn(), ...(neverHand ? { now: () => (clock += 100) } : {}), storage: { save: async (_id, doc) => { saved.push(copy(doc)); mutateSave?.(doc, f) } } })
+  const job = createQuarryJob({ adapter, storageMode: 'shulker', pollMs: 5, ...jobOptions, sleep: () => turn(), ...(neverHand ? { now: () => (clock += 100) } : {}), storage: { save: async (_id, doc) => { saved.push(copy(doc)); mutateSave?.(doc, f) } } })
   const config = { jobId: 'initial-loadout-full', initialLoadout: 'v22', homeChest: copy(home), target: { chunks: [{ x: 0, z: 0 }] }, yTop: 62, yBottom: 61,
     worldMinY: 50, worldMaxY: 80, inventory: { pickupMode: 'passive', depositWhen: 'full' } }
   const run = async ({ resume = false } = {}) => {
@@ -308,4 +325,44 @@ test('a recovered partial startup returns to the existing loadout checkpoint bef
   assert.equal(f.f.transfers.filter(row => row.kind === 'withdraw').length, 34)
   assert.equal(f.job.document().loadoutReady, true)
   assert.equal(f.requests.length, 1); assert.equal(f.mining, 0)
+})
+
+test('live case 2026-11-14: the received dirt in a carried cargo box covers the exit when the dirt supply box is empty', async () => {
+  const f = fixture({ blockedSupply: false, corruptStock: true, cargoDirt: 256 }); assert.equal(f.job.plan(f.config).ready, true)
+  const result = await f.run()
+  assert.notEqual(result.pauseReason, 'EXIT_SUPPLY_MISSING', JSON.stringify(result.pauseDetails))
+  assert.equal(f.mining, 1)
+  const doc = f.job.document(), dirt = doc.config.inventory.supplyBoxes.find(b => b.role === 'dirt')
+  assert.equal(dirt.boxName, 'minecraft:purple_shulker_box')
+  assert.equal(doc.dirtSourceChanges.length, 1); assert.equal(doc.dirtSourceChanges[0].dirt, 256)
+})
+
+async function untilMining (f, ms = 6000) {
+  const until = Date.now() + ms
+  while (f.mining === 0 && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 5))
+  const status = f.job.status(); await f.job.pause(); return status
+}
+
+test('live case 2026-11-14: a lost dirt supply box is searched for, accepted as lost, and the cargo box dirt becomes the source', async () => {
+  const f = fixture({ blockedSupply: false, loseDirtBox: true, cargoDirt: 256, jobOptions: { cargoLossSearchMs: 40, cargoLossStepMs: 5 } }); assert.equal(f.job.plan(f.config).ready, true)
+  f.job.start()
+  const status = await untilMining(f)
+  assert.equal(f.mining, 1, JSON.stringify({ state: status.state, reason: status.pauseReason, details: status.pauseDetails }))
+  const doc = f.job.document()
+  assert.equal(doc.lostCargoBoxes.length, 1)
+  assert.equal(doc.lostCargoBoxes[0].box, 'minecraft:brown_shulker_box'); assert.equal(doc.lostCargoBoxes[0].kind, 'supply'); assert.equal(doc.lostCargoBoxes[0].acceptedBy, 'auto')
+  assert.equal(doc.config.inventory.supplyBoxes.find(b => b.role === 'dirt').boxName, 'minecraft:purple_shulker_box')
+  assert.equal(f.requests[1].bindings.find(b => b.role === 'dirt').boxName, 'minecraft:purple_shulker_box', 'the next withdrawal is the ordinary supply operation on the cargo box')
+  assert.equal(status.lostCargoBoxes.length, 1, 'the loss is listed for the dashboard')
+})
+
+test('a lost dirt supply box is not accepted when no carried cargo box holds enough received dirt', async () => {
+  const f = fixture({ blockedSupply: false, loseDirtBox: true, jobOptions: { cargoLossSearchMs: 40, cargoLossStepMs: 5 } }); assert.equal(f.job.plan(f.config).ready, true)
+  f.job.start()
+  const until = Date.now() + 3000
+  while (!f.job.document().dirtSupplyLossStopped && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 5))
+  const doc = f.job.document()
+  assert.equal(doc.pauseReason, 'SUPPLY_RESTOCK_BLOCKED'); assert.equal(doc.dirtSupplyLossStopped, 'CARGO_DIRT_SHORT')
+  assert.equal(doc.lostCargoBoxes, undefined); assert.equal(f.mining, 0)
+  await f.job.pause()
 })

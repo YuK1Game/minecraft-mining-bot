@@ -2169,16 +2169,55 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const state = guard(myEpoch), main = items(state), view = adapter.equipmentView?.(), bindings = job.config.inventory.supplyBoxes
     if (!main || view?.known !== true || view.uncertain || view.armor?.known !== true || view.offhand?.known !== true ||
       !completedV22Loadout() || !validSupplyBindings(bindings)) { await finish('PAUSED', 'EXIT_SUPPLY_UNCONFIRMED'); return false }
-    const required = Math.max(192, job.config.exit?.reservedDirt ?? 0, job.exitReservation?.plan?.totalDirt ?? 0)
-    const available = dirtCount(main)
+    const required = exitDirtRequired(), available = dirtCount(main)
     if (available >= required) return true
-    const binding = bindings.find(row => row.role === 'dirt'), candidates = (view?.slots ?? []).filter(row => row?.known === true && !row.empty && row.count === 1 && row.name === binding?.boxName && binding.itemName === 'minecraft:dirt' && carriedContainerKey(row) === binding?.key)
-    const slots = candidates.length === 1 && candidates[0].container?.known === true ? candidates[0].container.slots : null
-    if (!Array.isArray(slots) || slots.length !== 27 || slots.some(row => row && !(row.known === true && (row.empty === true && row.count === 0 || row.name === 'minecraft:dirt' && Number.isInteger(row.count) && row.count > 0 && row.count <= 64)))) {
-      await finish('PAUSED', 'EXIT_SUPPLY_UNCONFIRMED'); return false
+    // 2026-11-14 (user: "土はシュルカーボックスにあるはずだが？"): the dirt the
+    // mining put into the carried cargo boxes counts too. The withdrawal takes
+    // from one bound box, so the box that covers the need becomes the source.
+    const source = await preferDirtSource(required - available, 'exit_supply_check', view)
+    if (source?.dirt != null && available + source.dirt >= required) return true
+    const boxes = carriedDirtBoxes(view), stored = boxes.reduce((n, b) => n + (b.dirt ?? 0), 0)
+    if (!boxes.some(b => b.bound) || boxes.some(b => b.dirt == null)) { await finish('PAUSED', 'EXIT_SUPPLY_UNCONFIRMED'); return false }
+    await finish('PAUSED', 'EXIT_SUPPLY_MISSING', { pauseDetails: { carried: available, stored, best: Math.max(0, ...boxes.map(b => b.dirt ?? 0)), required } }); return false
+  }
+  const exitDirtRequired = () => Math.max(192, job.config.exit?.reservedDirt ?? 0, job.exitReservation?.plan?.totalDirt ?? 0)
+  // Received dirt of each carried box: the bound dirt supply box and the cargo
+  // boxes (not a supply colour). A box whose 27 slots were not all received
+  // reports dirt null (unknown, never counted).
+  function carriedDirtBoxes (view = adapter.equipmentView?.()) {
+    const supply = require('./loadout-manifest').SUPPLY_NAMES, binding = (job.config.inventory.supplyBoxes ?? []).find(b => b?.role === 'dirt')
+    const rows = []
+    for (const row of view?.slots ?? []) {
+      if (row?.known !== true || row.empty || row.count !== 1 || !isShulkerBox(row.name)) continue
+      const key = carriedContainerKey(row), bound = key === binding?.key && row.name === binding?.boxName
+      if (!bound && supply.includes(row.name)) continue
+      const slots = row.container?.known === true ? row.container.slots : null
+      const known = Array.isArray(slots) && slots.length === 27 && slots.every(s => !s || s.known === true && (s.empty === true || typeof s.name === 'string' && Number.isInteger(s.count) && s.count > 0 && s.count <= 64))
+      const dirt = known ? slots.reduce((n, s) => n + (s && !s.empty && s.name === 'minecraft:dirt' ? s.count : 0), 0) : null
+      rows.push({ key, boxName: row.name, stackId: row.stackId ?? null, slot: row.slot ?? null, bound, dirt })
     }
-    const stored = slots.reduce((total, row) => total + (row && !row.empty ? row.count : 0), 0)
-    if (available + stored < required) { await finish('PAUSED', 'EXIT_SUPPLY_MISSING', { pauseDetails: { carried: available, stored, required } }); return false }
+    return rows
+  }
+  // The bound dirt box when it covers the need; otherwise the carried cargo box
+  // with the most received dirt that does becomes the dirt supply binding. The
+  // withdrawal itself stays the ordinary supply operation (place, open,
+  // withdraw, pick up; confirmed by the received inventory and box NBT).
+  async function preferDirtSource (needed, why, view = adapter.equipmentView?.()) {
+    const boxes = carriedDirtBoxes(view), bound = boxes.find(b => b.bound) ?? null
+    if (job.supplyRestock || job.portableStorage || !validSupplyBindings(job.config.inventory.supplyBoxes)) return bound
+    if (bound?.dirt != null && bound.dirt >= needed) return bound
+    const best = boxes.filter(b => !b.bound && b.dirt != null && b.dirt >= needed).sort((a, b) => b.dirt - a.dirt || (a.slot ?? 99) - (b.slot ?? 99))[0]
+    if (!best) return bound
+    return (await rebindDirtSource(best, why)) ? best : bound
+  }
+  async function rebindDirtSource (box, why) {
+    const bindings = job.config.inventory.supplyBoxes, index = bindings.findIndex(b => b?.role === 'dirt'), prior = copy(bindings[index] ?? null)
+    if (index < 0 || typeof box?.key !== 'string') return false
+    bindings[index] = { role: 'dirt', itemName: 'minecraft:dirt', key: box.key, boxName: box.boxName, stackId: box.stackId, source: 'cargo' }
+    if (!validSupplyBindings(bindings)) { bindings[index] = prior; return false }
+    job.dirtSourceChanges = [...(job.dirtSourceChanges ?? []), { at: new Date(now()).toISOString(), why, from: prior, to: copy(bindings[index]), dirt: box.dirt }].slice(-16)
+    note('dirt_source_rebound', { why, from: prior?.boxName ?? null, to: box.boxName, slot: box.slot, dirt: box.dirt })
+    await save('dirt_source_rebound')
     return true
   }
   function initialSupplyStation () {
@@ -3353,6 +3392,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         }
         delete job.egressRoomForce
         if (room.limited && room.target !== job.exitDirtLimit) { job.exitDirtLimit = room.target; note('egress_dirt_limited', { target: room.target, short: room.short === true }); await save('egress_dirt_limited') }
+        await preferDirtSource(exitDirtGoal() - (totals(items(guard(myEpoch)) ?? []).get('dirt') ?? 0), 'egress_withdraw')
         if (await restock(myEpoch, 'FINAL_CHECK', true)) return
         return finish('PAUSED', 'EXIT_DIRT_WITHDRAW_BLOCKED')
       }
@@ -3569,6 +3609,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // Automatic resumes of a paused job (bounded; counts are persisted).
   function scheduleAutoResume (reason, pauseDetails) {
     if (!job || retired) return
+    if (job.persistence?.status !== 'failed' && reason === 'SUPPLY_RESTOCK_BLOCKED' && job.config.strategy?.autoAcceptCargoLoss === true && job.userRunIntent === 'running' && lostDirtSupply() && !job.dirtSupplyLossStopped) { if (scheduleSupplyLossSearch(reason)) return }
     if (job.persistence?.status !== 'failed' && reason === 'CARRIED_STORAGE_BLOCKED' && pauseDetails?.reason === 'STORAGE_RECOVERY_UNCONFIRMED' && job.config.strategy?.autoAcceptCargoLoss === true && job.userRunIntent === 'running') { if (scheduleCargoLossSearch(reason)) return }
     // Pauses that a plain resume (which re-runs every check and reconciliation)
     // cleared by hand on 2026-11-13 also retry themselves, bounded like
@@ -4247,6 +4288,85 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     note('cargo_loss_search', { operationId })
     return true
   }
+  // The dirt supply box of the active supply operation was placed and is not
+  // carried any more (2026-11-14 live: combat interrupted its pickup, then the
+  // connection changed). Only the dirt role: other supply boxes still stop.
+  function lostDirtSupply () {
+    const active = job?.supplyRestock, cp = active?.checkpoint, child = cp?.child, binding = cp?.bindings?.[cp?.index]
+    if (binding?.role !== 'dirt' || binding.itemName !== 'minecraft:dirt' || child?.kind !== 'shulker' || child.placed?.length !== 1 || child.placed[0].name !== binding.boxName) return null
+    const at = child.placed[0].position
+    if (!at || !['x', 'y', 'z'].every(k => Number.isSafeInteger(at[k]))) return null
+    return { active, cp, child, binding, position: at }
+  }
+  // Same bounded search as a lost cargo box (60 s: 32 m items, one inventory
+  // resync, the box cell). Found: the ordinary recovery runs again. Otherwise
+  // accepted only when one carried cargo box's received dirt plus the loose
+  // dirt covers the exit; else it stops as before.
+  function scheduleSupplyLossSearch (reason) {
+    const owner = job, expectedEpoch = epoch, lost = lostDirtSupply(), startedAt = now()
+    if (!lost) return false
+    const operationId = lost.active.operationId, box = { name: lost.child.placed[0].name, position: copy(lost.position) }, baseline = Number.isInteger(lost.cp.boxCount) ? lost.cp.boxCount : null
+    let resynced = false
+    const stop = why => { job.dirtSupplyLossStopped = why; note('supply_loss_auto_stopped', { operationId, reason: why }); autoRetryInfo = null; autoResumeTimer = null }
+    const run = async () => {
+      autoResumeTimer = null
+      if (retired || job !== owner || epoch !== expectedEpoch || job.state !== 'PAUSED' || job.pauseReason !== reason || job.userRunIntent !== 'running' || job.supplyRestock?.operationId !== operationId) return
+      if (worker || stopTask || pendingActions.size || savesInFlight) { autoResumeTimer = setTimeout(run, 500); autoResumeTimer.unref?.(); return }
+      if (!resynced && typeof adapter.resyncInventory === 'function') { resynced = true; try { await adapter.resyncInventory() } catch {} }
+      const block = adapter.getBlock(box.position.x, box.position.y, box.position.z)
+      if (block?.known !== true || nameOf(block) !== 'air') return stop('BOX_CELL_NOT_AIR')
+      const inv = items(adapter.getState())
+      const boxes = inv ? inv.filter(i => isShulkerBox(i.name)).reduce((n, i) => n + i.count, 0) : null
+      const carried = inv ? inv.some(i => carriedContainerKey(i) === lost.binding.key || i.name === box.name) : null
+      const seen = (adapter.entities?.() ?? []).some(e => nameOf(e.name) === nameOf(box.name) && e.position && Math.hypot(e.position.x - box.position.x, e.position.y - box.position.y, e.position.z - box.position.z) <= 32)
+      if (carried || (baseline != null && boxes != null && boxes >= baseline) || seen) {
+        if ((job.supplyLossFoundResumes ?? 0) >= 2) return stop('FOUND_BUT_UNRECOVERED')
+        job.supplyLossFoundResumes = (job.supplyLossFoundResumes ?? 0) + 1
+        note('supply_loss_box_found', { operationId, inInventory: carried === true, entity: seen })
+        try { resume() } catch (error) { note('auto_resume_failed', { error: String(error.message ?? error) }) }
+        return
+      }
+      if (now() - startedAt < CARGO_LOSS_SEARCH_MS) {
+        autoResumeTimer = setTimeout(run, CARGO_LOSS_STEP_MS); autoResumeTimer.unref?.()
+        autoRetryInfo = { kind: 'supply_loss', reason: 'SUPPLY_BOX_SEARCH', attempt: 1, max: 1, nextAt: startedAt + CARGO_LOSS_SEARCH_MS }
+        return
+      }
+      if ((job.lostCargoBoxes ?? []).length >= CARGO_LOSS_LIMIT) return stop('CARGO_LOSS_LIMIT')
+      try { await acceptLostDirtSupply({ acceptedBy: 'auto' }) } catch (error) { stop(String(error.message ?? error).slice(0, 120)) }
+    }
+    autoResumeTimer = setTimeout(run, Math.min(1000, CARGO_LOSS_STEP_MS)); autoResumeTimer.unref?.()
+    autoRetryInfo = { kind: 'supply_loss', reason: 'SUPPLY_BOX_SEARCH', attempt: 1, max: 1, nextAt: startedAt + CARGO_LOSS_SEARCH_MS }
+    note('supply_loss_search', { operationId, box: box.name, position: box.position })
+    return true
+  }
+  async function acceptLostDirtSupply ({ acceptedBy = 'auto' } = {}) {
+    const lost = lostDirtSupply()
+    if (!job || job.state !== 'PAUSED' || worker || job.pauseReason !== 'SUPPLY_RESTOCK_BLOCKED' || !lost || job.portableStorage) throw new Error('No lost dirt supply box is waiting for acceptance')
+    const block = adapter.getBlock(lost.position.x, lost.position.y, lost.position.z)
+    if (block?.known !== true || nameOf(block) !== 'air') throw new Error('SUPPLY_BOX_CELL_NOT_AIR')
+    const inv = items(adapter.getState()), view = adapter.equipmentView?.()
+    if (!inv || view?.known !== true || view.uncertain) throw new Error('INVENTORY_UNKNOWN')
+    if (inv.some(i => carriedContainerKey(i) === lost.binding.key || i.name === lost.child.placed[0].name)) throw new Error('SUPPLY_BOX_STILL_CARRIED')
+    const required = exitDirtRequired(), loose = dirtCount(inv)
+    const best = carriedDirtBoxes(view).filter(b => !b.bound && b.dirt != null).sort((a, b) => b.dirt - a.dirt || (a.slot ?? 99) - (b.slot ?? 99))[0]
+    if (!best || loose + best.dirt < required) throw new Error('CARGO_DIRT_SHORT')
+    // Received contents before placement less what this operation withdrew.
+    const items0 = new Map(lostBoxItems(lost.child).map(i => [i.name, i.count]))
+    for (const w of lost.child.supplyCheckpoint?.withdrawn ?? []) if (items0.has(w.name)) items0.set(w.name, Math.max(0, items0.get(w.name) - (w.count ?? 0)))
+    const record = { operationId: lost.active.operationId, kind: 'supply', role: 'dirt', acceptedAt: new Date(now()).toISOString(), acceptedBy, position: copy(lost.position), items: [...items0].filter(([, c]) => c > 0).map(([name, count]) => ({ name, count })), box: lost.child.placed[0].name, selectionKey: lost.child.selectionKey ?? null, deposited: [], withdrawnBefore: copy(lost.cp.withdrawn ?? []), scope: copy(lost.child.scope ?? null), replacedBy: { boxName: best.boxName, slot: best.slot, dirt: best.dirt } }
+    job.lostCargoBoxes = [...(job.lostCargoBoxes ?? []), record].slice(-32)
+    for (const i of record.items) ledger.add('lost', i.name, i.count)
+    ledger.add('lost', record.box, 1)
+    job.supplyReceipts ??= []
+    if (!job.supplyReceipts.some(r => r.operationId === record.operationId)) job.supplyReceipts.push({ operationId: record.operationId, at: record.acceptedAt, withdrawn: copy(lost.cp.withdrawn ?? []), returned: copy(lost.cp.returned ?? []), lossAccepted: true })
+    job.lastSupplyResult = { operationId: record.operationId, status: 'loss_accepted', reason: 'SUPPLY_BOX_LOST', serverConfirmed: false, withdrawn: copy(lost.cp.withdrawn ?? []), returned: copy(lost.cp.returned ?? []) }
+    job.supplyRestock = null
+    rebuildPlanner()
+    await save('supply_box_loss_accepted')
+    note('supply_box_loss_accepted', { operationId: record.operationId, box: record.box, position: record.position, items: record.items, by: acceptedBy })
+    if (!(await rebindDirtSource(best, 'supply_box_lost'))) throw new Error('DIRT_SOURCE_REBIND_FAILED')
+    return resume()
+  }
   // User-only acceptance (2026-11-13) of one cargo shulker that was mined
   // (received air) but never came back: its received contents are recorded as
   // lost and the storage operation is closed. Nothing is credited as stored.
@@ -4390,7 +4510,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, configureAnimalClearing, acceptCarriedStorageLoss, configureCargoLossAcceptance, configureSpareArmor, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
+  return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, configureAnimalClearing, acceptCarriedStorageLoss, acceptLostDirtSupply, configureCargoLossAcceptance, configureSpareArmor, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults, FINAL_CHEST_KEEP }
