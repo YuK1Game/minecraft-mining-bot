@@ -41,6 +41,7 @@ const EMERGENCY_STRIKE_REACH = 3.5 // cornered creeper, no path: in-place swing 
 const profiles = require('./combat-profiles')
 function stop (code, reason, extra = {}) { return { phase: 'stopped', code, reason, targetDead: false, targetRemoved: false, serverConfirmed: false, botCausedDamage: null, botCausedDeath: null, attribution: 'unconfirmed', ...extra } }
 
+const { totemGuarded } = require('./learning-health')
 function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, resume, approach = null, canAcquireMeleeApproach = null, canEngage = null, engageRadius = 32, getRecentDamageAt = null, retreat = null, log = () => {}, canAct = () => false, controlReady = () => true, now = () => performance.now(), sleep = ms => delay(ms), pollMs = 50, backoffMs = 400, durationMs = 120000, maxChaseDistance = 40, controllerSliceMs = 8000, workGuard = null }) {
   if ([getState, acquire, resume, canAct, controlReady, now, sleep].some(f => typeof f !== 'function') || typeof entities?.snapshot !== 'function' || [melee, ranged].some(c => ['preview', 'engage', 'cancel', 'drain', 'snapshot'].some(k => typeof c?.[k] !== 'function')) || approach != null && typeof approach !== 'function' || canAcquireMeleeApproach != null && typeof canAcquireMeleeApproach !== 'function' || canEngage != null && typeof canEngage !== 'function' || retreat != null && typeof retreat !== 'function' || !(engageRadius > 0)) throw new Error('Combat coordinator requires observed state, controllers and protective lease callbacks')
   if (!(pollMs >= 10 && pollMs <= 250) || !(backoffMs >= 100 && backoffMs <= 30000) || !Number.isInteger(durationMs) || durationMs < 1000 || durationMs > 120000 || !(maxChaseDistance > 0 && maxChaseDistance <= 48) || !Number.isInteger(controllerSliceMs) || controllerSliceMs < 1200 || controllerSliceMs > 120000) throw new Error('Invalid combat coordination bounds')
@@ -112,6 +113,9 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
   // HP hysteresis: below HP_RETREAT only an in-reach counterattack starts;
   // new engagements resume once health is back at HP_RESUME.
   function updateHpRetreat (s) {
+    // A received offhand totem: no low-HP retreat or disengage; keep fighting
+    // (2026-11-14 01:59 user). A used totem restores the hysteresis.
+    if (totemGuarded(s)) { hpRetreating = false; return false }
     const fraction = s.health / (Number.isFinite(s.maxHealth) && s.maxHealth > 0 ? s.maxHealth : 20)
     if (fraction < profiles.HP_RETREAT) hpRetreating = true
     else if (fraction >= profiles.HP_RESUME) hpRetreating = false
@@ -525,7 +529,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       // Kite only when surrounded at healthy HP. At low HP a single hostile is
       // pressed with continuous hits; several close hostiles end the claim
       // (crowdedLowHp) so Safety disengages and health recovers first.
-      const lowHp = g.state.health / (Number.isFinite(g.state.maxHealth) && g.state.maxHealth > 0 ? g.state.maxHealth : 20) < profiles.HP_RETREAT
+      const lowHp = !totemGuarded(g.state) && g.state.health / (Number.isFinite(g.state.maxHealth) && g.state.maxHealth > 0 ? g.state.maxHealth : 20) < profiles.HP_RETREAT
       const risky = !lowHp && closeHostiles(g.state) >= 2
       const kite = risky && g.mode === 'melee' && retreat && profiles.profileOf(lease.target.entityType)?.routine === 'melee_kite'
       const sliceHits = hitLimit ?? (kite ? 1 : null)
