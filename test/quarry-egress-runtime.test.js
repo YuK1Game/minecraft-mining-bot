@@ -226,6 +226,19 @@ test('a placement that never happened (air, no dirt spent, pose unchanged) is cl
   assert.ok(f.steps.length > steps, 'the step is sent again')
 })
 
+test('live case 2026-11-13 17:24: a placement that never happened is cleared even when picked-up dirt raised the count', async () => {
+  const f = fixture({ oracle: true })
+  await f.run()
+  const done = f.checkpoints.find(cp => cp.pendingStep?.phase === 'completed' && cp.confirmedFeetY === 65)
+  const pending = { ...structuredClone(done), pendingStep: { ...structuredClone(done.pendingStep), phase: 'placement_pending', serverConfirmed: false, beforeDirt: 10 } }
+  f.blocks.set('1,65,0', 'minecraft:air'); f.blocks.set('1,66,0', 'minecraft:air'); f.state.inventory.items[0].count = 11
+  f.state.position = { x: 1.5, y: 66.62, z: 0.5 }
+  const steps = f.steps.length
+  const resumed = await f.run(pending)
+  assert.notEqual(resumed.reason, 'ASCENT_UNCERTAIN_STEP', JSON.stringify(resumed.reason))
+  assert.ok(f.steps.length > steps, 'the step is sent again')
+})
+
 test('live case 2026-11-11: a gap low in the finished pillar is recorded on resume; the block carrying the bot must still be dirt', async () => {
   for (const supportGone of [false, true]) {
     const f = fixture({ dirt: 12, oracle: true })
