@@ -149,6 +149,7 @@
     renderReset()
     renderStorage()
     renderChunkMove()
+    window.dispatchEvent(new CustomEvent('dashboard-control-live', { detail: current?.live ?? null }))
   }
   async function poll () {
     if (!token || polling || document.hidden) return
