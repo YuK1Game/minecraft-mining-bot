@@ -103,6 +103,21 @@ function shiftFloor (f, dy) {
   }
 }
 
+// Live 2026-11-13 14:20 (storage:692): combat cut into the break of the owned
+// box and the box never came back. A received hostile within 16 m holds the
+// break (bounded); a hostile that leaves lets it start at once.
+test('the owned box break waits for a nearby hostile to leave, bounded', async () => {
+  for (const leaves of [true, false]) {
+    let ref = null, polls = 0
+    const hostile = () => { const p = ref.getState().position; return [{ kind: 'mob', hostile: true, alive: true, runtimeId: '99', name: 'minecraft:zombie', positionKnown: true, position: { x: p.x + 8, y: p.y, z: p.z } }] }
+    const f = ref = fixture('shulker', { entities: () => { if (!ref?.getState) return []; const cp = ref.checkpoints?.at?.(-1); if (cp?.stage !== 'packed') return []; polls++; return leaves && polls > 3 ? [] : hostile() } })
+    const result = await f.run()
+    assert.equal(result.status, 'completed', JSON.stringify(result))
+    assert.equal(result.checkpoint.breakWaitedForHostile, true)
+    assert.ok(polls >= 3)
+  }
+})
+
 test('storage chooses an observed reachable upper or lower ledge when the current layer has no footprint', async () => {
   for (const dy of [1, -1, 2, -2]) for (const kind of ['shulker', 'double_chest']) {
     const previews = []

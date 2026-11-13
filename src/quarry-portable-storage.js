@@ -944,7 +944,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         // Live 2026-11-13 14:20 (storage:692): combat cut into the box break and
         // the box never came back. With a received hostile within 16 m the
         // break of the owned box waits (up to 20 s) for the area to clear.
-        const hostileNear = () => { const st = guard(), list = getEntities(); return Array.isArray(list) && list.some(a => a?.kind === 'mob' && a.hostile === true && a.alive !== false && a.position && Math.hypot(a.position.x - st.position.x, a.position.y - st.position.y, a.position.z - st.position.z) <= 16) }
+        const hostileNear = () => { guard(); const st = getState(), list = getEntities(); return Array.isArray(list) && list.some(a => a?.kind === 'mob' && a.hostile === true && a.alive !== false && a.position && st?.position && Math.hypot(a.position.x - st.position.x, a.position.y - st.position.y, a.position.z - st.position.z) <= 16) }
         for (const until = now() + 20000; hostileNear() && now() < until;) { cp.breakWaitedForHostile = true; await sleep(250) }
         cp.stage = 'breaking'; cp.intent = { type: 'break', position: copy(cp.positions[0]) }; await save()
       }
