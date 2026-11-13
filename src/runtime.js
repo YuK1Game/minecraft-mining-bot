@@ -930,7 +930,7 @@ function createRuntime (host) {
     return food.restoreHunger({ ...structuredClone(observation), scope: Object.hasOwn(observation, 'scope') ? structuredClone(observation.scope) : foodHungerScope(), respawn: structuredClone(host.shared.deathRespawn ?? null) })
   }
   function motionState () {
-    const latest = { ...raw(), threatPolicy: host.shared.autoWanted ? 'online_learning' : 'balanced_mining', vitals: structuredClone(host.shared.vitals ?? {}) }
+    const latest = { ...raw(), threatPolicy: host.shared.autoWanted ? 'online_learning' : 'balanced_mining', vitals: structuredClone(host.shared.vitals ?? {}), totemGuard: offhandTotem() }
     if (!motionOrigin) return latest
     return { ...latest, position: { ...motionOrigin.position }, positionUpdatedAt: motionOrigin.positionUpdatedAt, positionSource: motionOrigin.positionSource, predicted: motionOrigin.predicted ? structuredClone(motionOrigin.predicted) : null }
   }
@@ -6597,7 +6597,7 @@ function createRuntime (host) {
   // it repeats up to 20. requireIdle() keeps it out of combat, box work and any
   // other operation; refused attempts just wait for the next check.
   const idleEat = { timer: null, toFull: false, busy: false, refusedAt: 0 }
-  idleEat.timer = setInterval(async () => {
+  const idleEatTick = async () => {
     if (disposed || disposing) { clearInterval(idleEat.timer); return }
     if (idleEat.busy || quarryJob?.holdsWork()) return
     const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : null
@@ -6608,12 +6608,14 @@ function createRuntime (host) {
     let s = null
     try { s = working() } catch { return }
     if (s?.phase !== 'spawned' || s.dead || s.isDead || !(s.health > 0) || s.inventory?.known !== true) return
-    if (!(s.inventory.items ?? []).some(i => i.count > 0 && isFood(i.name))) { idleEat.toFull = false; return }
+    if (!(s.inventory.items ?? []).some(i => i.count > 0 && require('./quarry-inventory').isFood(i.name))) { idleEat.toFull = false; return }
     idleEat.busy = true
     try { await operations.food.eat({}); host.log(`待機中の食事: 満腹度 ${hunger} → 食事しました`) } catch (error) {
       if (Date.now() - idleEat.refusedAt > 60000) { idleEat.refusedAt = Date.now(); host.log(`待機中の食事を見送り: 満腹度 ${hunger} (${String(error.message ?? error).slice(0, 80)})`) }
     } finally { idleEat.busy = false }
-  }, 5000)
+  }
+  // Never throws out of the timer: a fault only logs (a timer error ends the process).
+  idleEat.timer = setInterval(() => { idleEatTick().catch(error => { idleEat.busy = false; try { host.log(`待機中の食事の確認に失敗: ${String(error?.message ?? error).slice(0, 120)}`) } catch {} }) }, 5000)
   idleEat.timer.unref?.()
   function quarryCanSelectTarget (target, state, info = {}) { const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
   function quarryCanContinue (target, state, info = {}) { const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canContinue(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true, retreating: info.retreating === true || quarryRetreatDepth > 0 }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
