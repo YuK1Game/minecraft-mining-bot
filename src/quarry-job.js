@@ -378,7 +378,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         const b = read(x, y, z)
         if (b?.known !== true) { unknown++; run = 0; continue }
         const isAir = AIR.has(nameOf(b))
-        if (surface === null) { if (!isAir) surface = y; continue }
+        // Trees and plants are not the ground: the air under a canopy is not
+        // a cave (live 2026-11-13, chunk 123,-128 counted forest air as 43%).
+        if (surface === null) { const r = isAir ? null : blockRule(b.name); if (!isAir && !(r.plant || r.leaves || /^(WOOD|LEAF)_HARVEST_DISABLED$/.test(r.reason ?? '') || b.boundingBox !== 'block')) surface = y; continue }
         known++
         if (isAir) { air++; run++; longestRun = Math.max(longestRun, run) } else run = 0
       }
@@ -1907,6 +1909,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     ledger.add(decision.purpose === 'seal' ? 'placedSeal' : 'placedTemporary', decision.material)
     if (decision.sourceSeal) { note('fluid_source_plugged', { position: decision.position, cells: decision.sourceSeal.size }); await save('fluid_source_plugged'); setState('SURVEY'); return }
     if (decision.boundaryOpening) { note('boundary_opening_closed', { position: decision.position }); await save('boundary_opening_closed'); setState('SURVEY'); return }
+    if (decision.purpose === 'floor') { note('cave_floor_filled', { position: decision.position, material: decision.material }); await save('cave_floor_filled'); setState('SURVEY'); return }
     // Fluids keep moving after a seal: observe several times before work
     // continues; a still-changing flow pauses instead of guessing (§12.1).
     const until = now() + 6000; let calm = 0
