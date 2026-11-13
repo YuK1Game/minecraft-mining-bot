@@ -10,7 +10,7 @@ const { validateJobId, newJobId, worldIdentity, assertJobWorld, documentInstance
 
 const { buildRegions, permits, chunkBounds } = require('./quarry-region')
 const { createQuarryPlanner } = require('./quarry-planner')
-const { blockRule, nameOf, selectTool, toolState, AIR, SEAL_MATERIALS } = require('./quarry-rules')
+const { blockRule, nameOf, selectTool, toolState, AIR, SEAL_MATERIALS, setUnknownBlockDefault } = require('./quarry-rules')
 const { keepPlan, canAccept, dropsFittingStacks, totals, diff, createLedger, freeSlots, isFood, selectCarriedStorage, isShulkerBox, carriedContainerKey, spareArmorStackIds, egressDirtRoom } = require('./quarry-inventory')
 const { createQuarryCombatBridge } = require('./quarry-combat-bridge')
 const { miningUsesAfterExitReserve } = require('./quarry-exit-reserve')
@@ -415,6 +415,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (job && ACTIVE.has(job.state)) throw new Error('A quarry job is running; pause or cancel it first')
     clearAutoResume()
     const config = defaults(input)
+    // New jobs mine unlisted ordinary blocks by their data (2026-11-13 user request).
+    if (input.strategy?.unknownBlockDefault == null) config.strategy.unknownBlockDefault = true
+    setUnknownBlockDefault(config.strategy.unknownBlockDefault === true)
     // Only new production shulker plans adopt v2.2 by default. Persisted
     // legacy jobs keep their explicit policy and require deliberate migration.
     if (shulkerOnly && input.inventory?.pickupMode == null && input.inventory?.depositWhen == null) {
@@ -4208,6 +4211,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     validateJobId(doc.config.jobId)
     const world = assertJobWorld(doc, adapter.getState())
     clearAutoResume()
+    setUnknownBlockDefault(doc.config.strategy?.unknownBlockDefault === true)
     if (!validStoragePair(doc.config.inventory)) throw new Error('Unsupported saved storage policy')
     if (doc.config.initialLoadout != null && doc.config.initialLoadout !== 'v22') throw new Error('Unsupported saved initial loadout')
     if (doc.config.inventory.supplyLayout != null && doc.config.inventory.supplyLayout !== 'v22') throw new Error('Unsupported saved supply layout')
