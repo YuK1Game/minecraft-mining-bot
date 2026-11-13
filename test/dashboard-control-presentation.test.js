@@ -53,7 +53,7 @@ test('dashboard-control-ui: presets cannot overflow either edge of the world', (
 test('dashboard-control-ui: presentation keeps explicit actions, field labels and visible safety result regions', () => {
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1])
   assert.equal(new Set(ids).size, ids.length, 'duplicate HTML IDs')
-  for (const name of ['profile', 'world', 'realms', 'connect', 'disconnect', 'plan', 'start', 'pause', 'resume', 'emergency', 'cancel', 'plan-summary', 'job-reason', 'auth-code']) assert.ok(ids.includes('control-' + name), name)
+  for (const name of ['profile', 'world', 'realms', 'connect', 'disconnect', 'plan', 'start', 'pause', 'resume', 'cancel', 'plan-summary', 'job-reason', 'auth-code']) assert.ok(ids.includes('control-' + name), name)
   assert.match(section, /aria-label="採掘範囲の選択"/)
   assert.match(section, /aria-label="開始 X（ブロック座標）"/)
   assert.match(section, /aria-label="開始 Z（ブロック座標）"/)

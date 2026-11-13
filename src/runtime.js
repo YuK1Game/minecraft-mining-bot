@@ -7304,7 +7304,7 @@ function createRuntime (host) {
       previewMove: (target, options) => {
         verifyChunkMoveLease(chunkMoveLease?.id)
         motionOrigin = working()
-        return movement?.preview(target, { ...options, allowWater: true, sprint: false })
+        return movement?.preview(target, { ...options, allowWater: true, sprint: false, allowLowHealth: true })
       },
       startMove: (target, options) => {
         const owner = verifyChunkMoveLease(options.operationId)
@@ -7312,7 +7312,8 @@ function createRuntime (host) {
         chunkMoveDepth++
         try {
           const { operationId, ...native } = options
-          const result = startMotion('navigation', target, { ...native, allowWater: true, sprint: false })
+          // User decision 2026-11-13: a dashboard move runs at any health above zero.
+          const result = startMotion('navigation', target, { ...native, allowWater: true, sprint: false, allowLowHealth: true })
           owner.startedMovement = movement; owner.startedSerial = portableMovementSerial; owner.stopped = false
           return result
         } finally { chunkMoveDepth-- }

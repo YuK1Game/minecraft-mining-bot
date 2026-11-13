@@ -104,12 +104,13 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
     return {accepted:true,frame:next.snapshot(),replanned:true}
   }
 
-  function currentState (duringMovement = false, emergency = status.emergency === true, onStateRead = null) {
+  // allowLowHealth: an explicitly requested move may continue at any health above zero.
+  function currentState (duringMovement = false, emergency = status.emergency === true, onStateRead = null, lowHealth = status.allowLowHealth === true) {
     const state = getState()
     onStateRead?.(state)
     if (state?.phase !== 'spawned' || !finite(state.position)) throw new Error('Movement requires a spawned player with a server position')
     if (state.gameMode !== 'survival' && state.gameMode !== 0) throw new Error('Movement prediction is survival-only')
-    if (state.dead || state.isDead || state.lifecycle?.dead || !Number.isFinite(state.health) || state.health <= (emergency ? 0 : resourceMinHealth(state))) throw new Error('Movement stopped because health is low, dead or unknown')
+    if (state.dead || state.isDead || state.lifecycle?.dead || !Number.isFinite(state.health) || state.health <= (emergency || lowHealth ? 0 : resourceMinHealth(state))) throw new Error('Movement stopped because health is low, dead or unknown')
     if (duringMovement) {
       if(correctionRun&&(fullCorrectionScope(state)!==correctionRun.scope||clock()>=correctionRun.deadline))throw new Error('Original mixed movement scope or deadline ended')
       if (status.route?.boundedJump && jumpScope !== JSON.stringify([state.profile ?? null, state.realm?.id ?? null, state.dimension ?? null, state.connectionId ?? null, state.startedAt ?? null, state.runtimeEntityId ?? null])) throw new Error('Bounded jump session or player changed')
@@ -204,7 +205,9 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
     if (options.sprint !== undefined && typeof options.sprint !== 'boolean') throw new Error('sprint must be an explicit boolean')
     const continueAfterReplay = options.continueAfterReplay ?? false
     if (typeof continueAfterReplay !== 'boolean' || options.beforeInput != null && typeof options.beforeInput !== 'function') throw new Error('Replay continuation requires a boolean option and a synchronous frame guard')
-    const state = currentState(false, emergency, onStateRead)
+    if (options.allowLowHealth !== undefined && typeof options.allowLowHealth !== 'boolean') throw new Error('allowLowHealth must be an explicit boolean')
+    const lowHealth = options.allowLowHealth === true
+    const state = currentState(false, emergency, onStateRead, lowHealth)
     const automatic = options.sprint === undefined && options.boundedJump == null && state.threatPolicy === 'online_learning' && receivedSprintHunger(state)
     const sprint = options.sprint ?? automatic
     if (options.boundedJump != null) requireJumpHunger(state, sprintPolicy(state, sprint), enabled, emergency)
@@ -216,7 +219,7 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
     const policy = routeSprintPolicy(state, sprint, sprintRouteDry, automatic)
     if (!route.ready && !initial.onGround && !initial.isInWater) route.settleRequired = true
     Object.assign(route, policy, { sprintRouteDry, sprintAutomatic: automatic })
-    return { state, candidate, initial, route, allowWater: enabled, emergency, requestedDirectSurface: options.directSurface === true, continueAfterReplay, beforeInput: options.beforeInput ?? null, sprintRouteDry, sprintAutomatic: automatic, ...policy }
+    return { state, candidate, initial, route, allowWater: enabled, emergency, allowLowHealth: lowHealth, requestedDirectSurface: options.directSurface === true, continueAfterReplay, beforeInput: options.beforeInput ?? null, sprintRouteDry, sprintAutomatic: automatic, ...policy }
   }
 
   function preview (target, options = {}) {
@@ -496,7 +499,7 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
       serverConfirmed: false, requiresServerConfirmation: true, allowWater: prepared.allowWater,
       criticalHopId: prepared.criticalHopId ?? null,
       queuedTick: null, queuedAt: null, queuedReceiptConfirmed: false, criticalHopQueuedPair: null,
-      physicsState: structuredClone(prepared.initial), velocity: copy(prepared.initial.velocity), onGround: prepared.initial.onGround, settled: false, emergency: prepared.emergency === true, continueAfterReplay: prepared.continueAfterReplay === true && typeof beforeInput === 'function', sprintRouteDry: prepared.sprintRouteDry ?? null, sprintAutomatic: prepared.sprintAutomatic === true, ...routeSprintPolicy(prepared.state, prepared.sprintRequested === true, prepared.sprintRouteDry, prepared.sprintAutomatic)
+      physicsState: structuredClone(prepared.initial), velocity: copy(prepared.initial.velocity), onGround: prepared.initial.onGround, settled: false, emergency: prepared.emergency === true, allowLowHealth: prepared.allowLowHealth === true, continueAfterReplay: prepared.continueAfterReplay === true && typeof beforeInput === 'function', sprintRouteDry: prepared.sprintRouteDry ?? null, sprintAutomatic: prepared.sprintAutomatic === true, ...routeSprintPolicy(prepared.state, prepared.sprintRequested === true, prepared.sprintRouteDry, prepared.sprintAutomatic)
     }
     flush()
     if (active()) timer = setInterval(flush, INTERVAL)
@@ -577,7 +580,7 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
     if (name === 'update_attributes') {
       if (String(packet.runtime_entity_id) !== state.runtimeEntityId) return
       const health = packet.attributes?.find(attribute => attribute.name === 'minecraft:health')?.current
-      if (Number.isFinite(health) && (health <= (status.emergency ? 0 : resourceMinHealth({ ...state, health })) || health < previousHealth && state.combatMotion !== true)) fail(new Error('Movement stopped because the bot took damage'))
+      if (Number.isFinite(health) && (health <= (status.emergency || status.allowLowHealth ? 0 : resourceMinHealth({ ...state, health })) || health < previousHealth && state.combatMotion !== true)) fail(new Error('Movement stopped because the bot took damage'))
       return
     }
     if (name === 'move_player' && String(packet.runtime_id) !== state.runtimeEntityId) return
