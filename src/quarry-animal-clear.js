@@ -37,13 +37,16 @@ function excludedReason (actor) {
 function selectAnimalTarget ({ actors, state, columns, yTop, yBottom, dimension = state?.dimension } = {}) {
   if (!Array.isArray(actors) || !finite(state?.position) || !(columns instanceof Set) || !Number.isFinite(yTop) || !Number.isFinite(yBottom)) return { target: null, reason: 'INPUT_UNKNOWN' }
   const feet = { x: state.position.x, y: state.position.y - 1.62, z: state.position.z }
-  // Hostiles always come first: any live observed hostile nearby stops selection.
-  if (actors.some(a => a?.kind === 'mob' && a.hostile === true && a.alive !== false && finite(a.position) && (a.dimension ?? dimension) === dimension && horizontal(a.position, feet) <= HOSTILE_RADIUS)) return { target: null, reason: 'HOSTILE_PRESENT' }
   const villagers = actors.filter(a => VILLAGERS.has(a?.entityType) && a.alive !== false && finite(a.position))
   const inPit = p => {
     for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (columns.has(`${Math.floor(p.x) + dx},${Math.floor(p.z) + dz}`)) return p.y >= yBottom - 1 && p.y <= yTop + 2
     return false
   }
+  // Hostiles always come first (live 2026-11-13: cave mobs behind rock within
+  // 32 m blocked every pick underground). A hostile counts when it is within
+  // 6 m, or inside the open pit within 16 m; combat activity is checked by the job.
+  const dist3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+  if (actors.some(a => a?.kind === 'mob' && a.hostile === true && a.alive !== false && finite(a.position) && (a.dimension ?? dimension) === dimension && (dist3(a.position, feet) <= 6 || dist3(a.position, feet) <= 16 && inPit(a.position)))) return { target: null, reason: 'HOSTILE_PRESENT' }
   const rejected = {}, candidates = []
   for (const actor of actors) {
     if (!ANIMAL_TARGETS.has(actor?.entityType) && !EXCLUDED.has(actor?.entityType)) continue

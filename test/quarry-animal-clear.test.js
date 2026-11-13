@@ -54,7 +54,7 @@ test('no animal is chosen within 6 m of a villager or wandering trader', () => {
 
 test('a nearby hostile always comes first', () => {
   const chicken = mob('minecraft:chicken', { x: 10.5, y: 20, z: 9.5 })
-  const zombie = mob('minecraft:zombie', { x: 20.5, y: 20, z: 20.5 }, { hostile: true })
+  const zombie = mob('minecraft:zombie', { x: 14.5, y: 20, z: 14.5 }, { hostile: true })
   const r = pick([chicken, zombie])
   assert.equal(r.target, null); assert.equal(r.reason, 'HOSTILE_PRESENT')
 })
@@ -80,4 +80,14 @@ test('babies of allowed kinds, foxes, frogs and armadillos are targets; wild hor
   assert.equal(pick([baby]).target, baby)
   for (const type of ['minecraft:fox', 'minecraft:frog', 'minecraft:armadillo']) { const a = mob(type, { x: 10.5, y: 20, z: 9.5 }); assert.equal(pick([a]).target, a, type) }
   for (const type of ['minecraft:horse', 'minecraft:donkey']) assert.equal(pick([mob(type, { x: 10.5, y: 20, z: 9.5 })]).target, null, type)
+})
+
+test('live case 2026-11-13: cave hostiles behind rock outside the pit do not block; a hostile in the pit or within 6 m does', () => {
+  const chicken = mob('minecraft:chicken', { x: 10.5, y: 20, z: 9.5 })
+  const caveZombie = mob('minecraft:zombie', { x: -10.5, y: 10, z: 8.5 }, { hostile: true })
+  assert.equal(pick([chicken, caveZombie]).target, chicken)
+  const pitZombie = mob('minecraft:zombie', { x: 3.5, y: 20, z: 3.5 }, { hostile: true })
+  assert.equal(pick([chicken, pitZombie]).reason, 'HOSTILE_PRESENT')
+  const close = mob('minecraft:spider', { x: 8.5, y: 16, z: 8.5 }, { hostile: true })
+  assert.equal(pick([chicken, close]).reason, 'HOSTILE_PRESENT')
 })
