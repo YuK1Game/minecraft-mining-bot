@@ -569,7 +569,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       // Only for a real void under the layer, while the bot is not already cut off
       // (that case keeps its DESCENT_REQUIRED stop below).
       if (y > regions.yBottom && reach.size > SMALL_REACH && layer.pending.filter(t => !grounded(t.position)).length >= WRITE_OFF_LAYER_CELLS && !exitAfter(feet, [], y, layer.pending).down) {
-        const fill = floorFillAction(reach, layer.pending.filter(t => !grounded(t.position)).map(t => t.position), inventoryItems, yTop)
+        const fill = floorFillAction(reach, layer.pending.filter(t => !grounded(t.position)).map(t => t.position), inventoryItems, yTop, y)
         if (fill?.action) return fill
       }
       if (y > regions.yBottom && reach.size > SMALL_REACH && layer.pending.filter(t => !grounded(t.position)).length >= WRITE_OFF_LAYER_CELLS && !exitAfter(feet, [], y, layer.pending).down) return { action: 'pause', reason: 'LAYER_ISOLATION_RISK', details: { y, reach: reach.size, pending: layer.pending.length, groundedCells: layer.pending.filter(t => grounded(t.position)).length, feet: { ...feet } } }
@@ -643,7 +643,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       const unreachable = layer.pending.filter(t => !deferred.has(key(t.position.x, t.position.y, t.position.z)))
       // Bridge or step down over the void toward the unreached cells first.
       if (unreachable.length) {
-        const fill = floorFillAction(reach, unreachable.map(t => t.position), inventoryItems, yTop)
+        const fill = floorFillAction(reach, unreachable.map(t => t.position), inventoryItems, yTop, y)
         if (fill?.action) return fill
       }
       // A whole layer out of reach from a tiny walkable area is not "done":
@@ -671,7 +671,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
   // target columns is filled, from a safe stance with a visible face to click;
   // the placed block is ordinary later work of its own layer.
   const FLOOR_FILL_CANDIDATES = 16
-  function floorFillAction (reach, wanted, inventoryItems, yTop) {
+  function floorFillAction (reach, wanted, inventoryItems, yTop, workY) {
     if (!wanted.length) return null
     const distTo = p => { let best = Infinity; for (const w of wanted) { const d = Math.abs(w.x - p.x) + Math.abs(w.z - p.z) + Math.abs(w.y + 1 - p.y); if (d < best) best = d } return best }
     let current = Infinity
@@ -683,7 +683,10 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
         const a = { x: s.x + h.x, y: s.y + dy, z: s.z + h.z }; const f = add(a, { x: 0, y: -1, z: 0 }); const fk = key(f.x, f.y, f.z)
         if (seen.has(fk)) continue
         seen.add(fk)
-        if (!regions.columns.has(`${f.x},${f.z}`) || f.y < regions.yBottom || f.y > yTop || isStairCell(f) || seals.has(fk)) continue
+        // Only below the layer being dug: a floor in this layer (or above) is
+        // pending work again at once and was mined and refilled in a loop (live
+        // 2026-11-14 01:57). A cell filled once and mined since is not refilled.
+        if (!regions.columns.has(`${f.x},${f.z}`) || f.y < regions.yBottom || f.y >= workY || f.y > yTop || isStairCell(f) || seals.has(fk) || temporary.get(fk)?.purpose === 'floor') continue
         if (!airLike(read(f)) || !travelOk(a) || !passable(read(a)) || !passable(read(add(a, { x: 0, y: 1, z: 0 })))) continue
         if (dy === -1 && !passable(read(add(a, { x: 0, y: 2, z: 0 })))) continue
         if (touchesHeldFluid(a) || !permits(regions, 'seal', f).allowed) continue
