@@ -354,3 +354,35 @@ test('a throwing log port cannot change the outcome of a move', async () => {
   assert.equal(travel.status().error.code, 'CHUNK_TRAVEL_NO_ROUTE')
   assert.equal(travel.status().error.message, '移動を完了できませんでした。選択範囲までの歩行経路が見つかりません。')
 })
+
+test('a Bot already inside the area has its position confirmed in place without planning or walking, whatever its footing', async () => {
+  for (const y of [64.62, 65.12, 66.46]) {
+    const f = fixture(), logs = []
+    f.state.position = { x: 8.5, y, z: 8.5 }
+    const travel = createChunkTravel({ ...f.ports, log: line => logs.push(line) })
+    travel.start({ area: { x1: 0, z1: 0 } }); await travel.drain()
+    const status = travel.status()
+    assert.equal(status.phase, 'arrived', JSON.stringify(status)); assert.equal(status.serverConfirmed, true)
+    assert.equal(status.positionProof.source, 'server_position_volume')
+    assert.deepEqual([f.plans.length, f.previews.length, f.moves.length, f.witnesses.length], [0, 0, 0, 1])
+    assert.match(logs[0], /範囲内のため歩かずに位置を確認/)
+  }
+})
+
+test('an in-place confirmation still needs the server witness and the whole body inside the area', async () => {
+  const refused = fixture({ witnessOk: false }); refused.state.position = { x: 8.5, y: 64.62, z: 8.5 }
+  refused.travel.start({ area: { x1: 0, z1: 0 } }); await refused.travel.drain()
+  assert.equal(refused.travel.status().error.code, 'CHUNK_TRAVEL_POSITION_UNCONFIRMED'); assert.equal(refused.moves.length, 0)
+  const edge = fixture(); edge.state.position = { x: 15.9, y: 64.62, z: 8.5 }
+  edge.travel.start({ area: { x1: 0, z1: 0 } }); await edge.travel.drain()
+  assert.ok(edge.plans.length > 0, 'a body crossing the chunk edge is moved inward by the ordinary route')
+})
+
+test('an uncoded failure keeps its own message in the log and in the shown reason', async () => {
+  const f = fixture(), logs = []
+  const travel = createChunkTravel({ ...f.ports, log: line => logs.push(line), startMove: () => { throw new Error('Movement requires a spawned player with a server position') } })
+  travel.start({ area: { x1: 1, z1: 0 } }); await travel.drain()
+  assert.equal(travel.status().error.code, 'CHUNK_TRAVEL_FAILED')
+  assert.match(travel.status().error.message, /Movement requires a spawned player with a server position/)
+  assert.match(logs[0], /cause=Movement requires a spawned player with a server position/)
+})

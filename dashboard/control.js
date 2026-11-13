@@ -122,9 +122,10 @@
     $('here').disabled = !idle || !ready || !observedChunk(live)
     $('plan').disabled = !idle || !ready || !a.valid || !!q && !['IDLE', 'FINISHED'].includes(q.state)
     $('start').disabled = !idle || !ready || !plan?.planToken || plan.expiresAt <= Date.now() || plan.state.session !== live?.session || plan.plan.jobId !== q?.jobId || q?.state !== 'IDLE'
-    $('pause').disabled = !idle || !q || ['IDLE', 'FINISHED', 'PAUSED', 'STOPPING'].includes(q.state)
+    // The one stop button: available while another request is in flight, and for a move, storage or chest placement without a running job.
+    const otherWork = live?.loadout?.busy === true || live?.storage?.busy === true || live?.chunkMove?.busy === true
+    $('pause').disabled = !token || !live || !otherWork && (!q || ['IDLE', 'FINISHED', 'PAUSED'].includes(q.state))
     $('resume').disabled = !idle || !ready || q?.state !== 'PAUSED'
-    $('emergency').disabled = !token || !q || q.state === 'FINISHED'
     $('cancel').disabled = !idle || !q || q.state === 'FINISHED'
     const auth = s?.auth
     $('auth').hidden = !auth || auth.expiresAt <= Date.now()
@@ -233,7 +234,8 @@
     const live = current?.live
     act('connection', 'disconnect', { processId: current?.processId, session: live?.session, jobId: live?.quarry?.jobId ?? null }, () => { current = null; plan = null; message('connection', '') })
   })
-  $('here').addEventListener('click', () => { const chunk = observedChunk(); if (!busy && !current?.live?.chunkMove?.busy && chunk) selectArea(chunk.x, chunk.z) })
+  // Standing in the chosen area without a server proof, 現在地 also asks for the position check (no walking).
+  $('here').addEventListener('click', () => { const chunk = observedChunk(); if (busy || current?.live?.chunkMove?.busy || !chunk) return; selectArea(chunk.x, chunk.z); if (reportedInsideArea() && !proofInsideArea() && canMoveToArea()) $('move').click() })
   $('plan').addEventListener('click', () => {
     let value
     try { value = config() } catch (error) { message('action', error.message, true); return }
@@ -250,7 +252,7 @@
     plan = null; $('plan-results').hidden = true
     act('action', 'quarry', { command: 'start', session: p.state.session, planToken: p.planToken }, () => message('action', ''))
   })
-  for (const [button, command, label] of [['pause', 'pause', '一時停止'], ['resume', 'resume', '再開'], ['emergency', 'emergencyStop', '緊急停止'], ['cancel', 'cancel', 'キャンセル']]) {
+  for (const [button, command, label] of [['pause', 'pause', '一時停止'], ['resume', 'resume', '再開'], ['cancel', 'cancel', 'キャンセル']]) {
     $(button).addEventListener('click', () => {
       if (['resume', 'cancel'].includes(button) && !confirm(`現在のジョブを${label}しますか？`)) return
       plan = null; $('plan-results').hidden = true

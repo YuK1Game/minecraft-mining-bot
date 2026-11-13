@@ -161,6 +161,27 @@ test('emergency health relaxation is explicit per operation and still stops imme
   assert.equal(f.movement.preview(target, { emergency: true }).ready, false)
 })
 
+test('an explicit low-health allowance moves at half a heart without emergency behaviour and still refuses a dead or unknown player', t => {
+  t.mock.timers.enable({ apis: ['setInterval'] })
+  const f = fixture()
+  t.after(() => f.movement.stop())
+  f.state.health = 0.5
+  const target = { x: 2.5, y: 65, z: 0.5 }
+  assert.equal(f.movement.preview(target).ready, false)
+  assert.equal(f.movement.preview(target, { allowLowHealth: 'true' }).ready, false)
+  assert.equal(f.movement.preview(target, { allowLowHealth: true }).ready, true)
+  f.movement.start(target, { allowLowHealth: true })
+  assert.equal(f.movement.snapshot().phase, 'moving'); assert.equal(f.movement.snapshot().emergency, false)
+  f.movement.applyPacket('update_attributes', { runtime_entity_id: 41n, attributes: [{ name: 'minecraft:health', current: 0.5 }] })
+  assert.equal(f.movement.snapshot().phase, 'moving')
+  f.movement.stop()
+  assert.throws(() => f.movement.start(target), /health/, 'the allowance does not carry over to an ordinary move')
+  for (const change of [s => { s.health = 0 }, s => { s.health = undefined }, s => { s.dead = true }]) {
+    const g = fixture(); g.state.health = 0.5; change(g.state)
+    assert.equal(g.movement.preview(target, { allowLowHealth: true }).ready, false)
+  }
+})
+
 test('sprint input requires opt-in and known hunger above six; a hunger update releases sprint without stopping movement', t => {
   t.mock.timers.enable({ apis: ['setInterval'] })
   const f = fixture()

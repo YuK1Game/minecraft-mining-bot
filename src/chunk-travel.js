@@ -137,13 +137,16 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
     return { target: copy(target), ready: preview?.ready === true, reason: typeof preview?.reason === 'string' ? preview.reason.slice(0, 240) : null,
       waypointCount: Array.isArray(preview?.waypoints) ? preview.waypoints.length : null, pathLength }
   }
-  async function witness (run, final) {
+  // inPlace: the Bot already stands inside the area, so only its position is
+  // confirmed. Nothing walks, so the footing is not judged here.
+  async function witness (run, final, inPlace = false) {
     const feet = guard(run).feet, radius = 0.2, began = now()
-    if (final && (!dryStand(feet) || !areaContainsFeet(run.area, feet, radius))) throw fail('CHUNK_TRAVEL_ARRIVAL_UNSAFE')
+    const stand = p => inPlace || dryStand(p)
+    if (final && (!stand(feet) || !areaContainsFeet(run.area, feet, radius))) throw fail('CHUNK_TRAVEL_ARRIVAL_UNSAFE')
     active.phase = 'verifying'
     const receipt = await call(run, () => confirmPosition(copy(feet), { signal: run.controller.signal, radius, operationId: run.id }))
     const after = guard(run).feet
-    if (receipt?.serverConfirmed !== true || receipt.kind !== 'server_position_volume' || receipt.scope !== run.scope || receipt.radius !== radius || !finite(receipt.feet) || distance(receipt.feet, feet) > 0.015 || distance(after, feet) > 0.03 || !Number.isFinite(receipt.receivedAt) || receipt.receivedAt < began || receipt.receivedAt > now() || final && (!dryStand(after) || !areaContainsFeet(run.area, receipt.feet, radius))) throw fail('CHUNK_TRAVEL_POSITION_UNCONFIRMED')
+    if (receipt?.serverConfirmed !== true || receipt.kind !== 'server_position_volume' || receipt.scope !== run.scope || receipt.radius !== radius || !finite(receipt.feet) || distance(receipt.feet, feet) > 0.015 || distance(after, feet) > 0.03 || !Number.isFinite(receipt.receivedAt) || receipt.receivedAt < began || receipt.receivedAt > now() || final && (!stand(after) || !areaContainsFeet(run.area, receipt.feet, radius))) throw fail('CHUNK_TRAVEL_POSITION_UNCONFIRMED')
     active.positionProof = { confirmed: true, feet: copy(receipt.feet), radius, scope: run.scope, generation: run.generation, observedAt: receipt.receivedAt, source: 'server_position_volume' }
   }
   async function leg (run, target, preview) {
@@ -182,7 +185,7 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
       const acquired = await call(run, () => run.acquiring)
       if (acquired === false || acquired?.acquired === false) throw fail('CHUNK_TRAVEL_BUSY')
       guard(run)
-      if (areaContainsFeet(run.area, guard(run).feet, 0.2) && dryStand(guard(run).feet)) { await witness(run, true); active.phase = 'arrived'; active.serverConfirmed = true; return }
+      if (areaContainsFeet(run.area, guard(run).feet, 0.2)) { await witness(run, true, true); active.phase = 'arrived'; active.serverConfirmed = true; try { log(`チャンク移動: 範囲内のため歩かずに位置を確認 feet=${round(guard(run).feet)}`) } catch {} return }
       const goals = await candidates(run)
       if (!goals.length) throw fail('CHUNK_TRAVEL_NO_KNOWN_STAND')
       let goal = null
@@ -230,7 +233,7 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
       active.phase = run.controller.signal.aborted && run.controller.signal.reason?.code === 'CHUNK_TRAVEL_CANCELLED' ? 'cancelled' : 'failed'
       const cause = run.controller.signal.reason ?? error
       active.serverConfirmed = false; active.positionProof = null
-      active.error = errorView(cause, active.movementFailure?.reason ?? active.shortRouteFailure?.reason)
+      active.error = errorView(cause, active.movementFailure?.reason ?? active.shortRouteFailure?.reason ?? (/^CHUNK_TRAVEL_[A-Z_]+$/.test(cause?.code ?? '') ? null : cause?.message))
       report(run, cause)
     } finally {
       clearInterval(watcher)
@@ -243,7 +246,8 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
   function report (run, cause) {
     try {
       const a = active, feet = feetOf(getState()), failure = a.movementFailure, short = a.shortRouteFailure
-      const original = cause?.code && cause.code !== a.error.code ? ` cause=${String(cause.code).slice(0, 60)}${typeof cause.message === 'string' && cause.message !== cause.code ? ':' + cause.message.slice(0, 120) : ''}` : ''
+      const detail = typeof cause?.message === 'string' && cause.message !== cause.code ? cause.message.replace(/\s+/g, ' ').slice(0, 160) : ''
+      const original = cause?.code && cause.code !== a.error.code ? ` cause=${String(cause.code).slice(0, 60)}${detail ? ':' + detail : ''}` : detail ? ` cause=${detail}` : ''
       log(`チャンク移動${a.phase === 'cancelled' ? 'を中断' : 'に失敗'}: ${a.error.code} ${a.error.message}${original} area=${a.area.x1},${a.area.z1}..${a.area.x2},${a.area.z2} feet=${round(feet)} target=${round(a.target)} legs=${a.legs} walked=${run.usedDistance.toFixed(1)}m` +
         (failure ? ` movement=${failure.phase}:${failure.reason ?? 'none'} waypoint=${failure.waypointIndex ?? 'unknown'}` : '') +
         (short ? ` shortRoute=ready:${short.ready} reason=${short.reason ?? 'none'} to=${round(short.target)}` : ''))
