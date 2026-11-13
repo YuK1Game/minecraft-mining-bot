@@ -128,7 +128,11 @@
     $('dimension').textContent = live?.dimension ? clean(live.dimension).toUpperCase() : 'REALMS'
     $('live').textContent = q ? jobs[q.state] ?? clean(q.state) : 'ジョブ未設定'
     $('live').title = q?.jobId ? clean(q.jobId) : ''
-    $('job-reason').textContent = q?.pauseReason ? clean(q.pauseReason) : ''
+    // A scheduled bounded automatic retry is a wait, not an error (2026-11-13).
+    const retry = q?.state === 'PAUSED' && q.autoRetry ? q.autoRetry : null
+    $('job-reason').textContent = retry ? `待機中（自動で再試行）${clean(retry.reason ?? q.pauseReason ?? '')} · あと${retry.inSeconds ?? '?'}秒 · ${retry.attempt ?? '?'}/${retry.max ?? '?'}回目` : q?.pauseReason ? clean(q.pauseReason) : ''
+    $('job-reason').classList.toggle('error', !retry)
+    $('job-reason').classList.toggle('waiting', !!retry)
     $('job-reason').hidden = !q?.pauseReason
     if (plan?.planToken && (plan.state.session !== live?.session || plan.plan.jobId !== q?.jobId || q?.state !== 'IDLE')) {
       plan = null; $('plan-results').hidden = true

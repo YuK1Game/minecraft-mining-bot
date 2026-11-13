@@ -160,7 +160,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   const pendingActions = new Set()
   const busyError = () => Object.assign(new Error('QUARRY_BUSY: previous work or checkpoint is still draining'), { code: 'QUARRY_BUSY' })
   function requireDrained () { if (worker || stopTask || pendingActions.size || savesInFlight) throw busyError() }
-  function clearAutoResume () { clearTimeout(autoResumeTimer); autoResumeTimer = null }
+  // The scheduled bounded automatic retry, shown as a wait (not an error) on the
+  // dashboard (2026-11-13).
+  let autoRetryInfo = null
+  function clearAutoResume () { clearTimeout(autoResumeTimer); autoResumeTimer = null; autoRetryInfo = null }
   function launchWorker () {
     const owner = job
     const task = loop()
@@ -3417,6 +3420,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         try { resume() } catch (error) { note('auto_resume_failed', { error: String(error.message ?? error) }) }
       }
       autoResumeTimer = setTimeout(retry, autoResumeMs); autoResumeTimer.unref?.()
+      autoRetryInfo = { kind: 'action', reason: String(reason), attempt: (job.autoResumes ?? 0) + 1, max: 3, nextAt: now() + autoResumeMs }
     }
     // Loose drops around a placed storage box (passive pickup leaves them) can
     // block its safe recovery. They despawn within minutes and nothing moves
@@ -3437,6 +3441,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         try { resume() } catch (error) { note('auto_resume_failed', { error: String(error.message ?? error) }) }
       }
       autoResumeTimer = setTimeout(retry, capacityRetryMs); autoResumeTimer.unref?.()
+      autoRetryInfo = { kind: 'capacity', reason: String(pauseDetails?.reason ?? reason), attempt: (job.capacityRetries ?? 0) + 1, max: CAPACITY_RETRIES, nextAt: now() + capacityRetryMs }
     }
   }
   // Live 2026-11-12 22:51: a capacity retry timer of the instance replaced by a
@@ -4008,6 +4013,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const finalCarried = inv ? keepPlan(inv, inventoryPolicy()).deposits : null
     return copy({
       jobId: job.config.jobId, state: ['PAUSED', 'FINISHED'].includes(job.state) && (loopWorker || stopTask || pendingActions.size || savesInFlight) ? 'STOPPING' : job.state, draining: !!(worker || stopTask || pendingActions.size || savesInFlight), persistence: copy(job.persistence ?? null), world: copy(job.world), userRunIntent: job.userRunIntent, result: job.result, pauseReason: job.pauseReason, pauseDetails: job.pauseDetails ?? null,
+      autoRetry: autoResumeTimer && autoRetryInfo && job.state === 'PAUSED' ? { ...autoRetryInfo, inSeconds: Math.max(0, Math.ceil((autoRetryInfo.nextAt - now()) / 1000)) } : null,
       chunks: regions?.chunks ?? null, yTop: job.yTop, yBottom: regions?.yBottom ?? null, currentY: job.lastDecision?.y ?? job.cursorY,
       counts, deferred: planner?.deferredList().slice(0, 30) ?? [], deferredCount: planner?.deferredList().length ?? 0, temporary: planner?.temporaryList() ?? [], seals: planner?.sealList() ?? [],
       freeSlots: inv ? freeSlots(inv) : null, health: s?.health ?? null, food: foodOf(s), held: s?.heldItem?.name ?? null,
