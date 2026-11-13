@@ -323,12 +323,29 @@
     return !busy && !!token && live?.ready === true && live.chunkMove?.available === true && !live.chunkMove.busy &&
       !live.loadout?.busy && !live.storage?.busy && (!q || ['IDLE', 'PAUSED', 'FINISHED'].includes(q.state)) && !!selectedArea()
   }
+  function reportedInsideArea (live = current?.live, selected = selectedArea()) {
+    const p = live?.ready === true ? live.position : null
+    return !!selected && Number.isFinite(p?.x) && Number.isFinite(p?.z) && p.x >= selected.x1 * 16 && p.x < (selected.x2 + 1) * 16 && p.z >= selected.z1 * 16 && p.z < (selected.z2 + 1) * 16
+  }
+  // Why the debug chest cannot be placed right now; null when it can.
+  function resetBlocker (live = current?.live) {
+    const r = live?.loadout, selected = selectedArea()
+    if (!live?.ready || !r) return '未接続'
+    if (r.busy) return null
+    if (live.chunkMove?.busy) return '移動中'
+    if (live.storage?.busy) return '収納中'
+    if (live.quarry && !['IDLE', 'PAUSED', 'FINISHED'].includes(live.quarry.state)) return '採掘中'
+    if (!selected) return '範囲を選択'
+    if (proofInsideArea(live, selected)) return null
+    return reportedInsideArea(live, selected) ? '位置が未確認' : '範囲の外'
+  }
   function renderChunkMove () {
     const live = current?.live, move = live?.chunkMove, moving = move?.busy === true
     for (const id of ['x1', 'z1', 'x2', 'z2', 'size-one', 'size-four']) $(id).disabled = !!busy || moving
     $('here').disabled = !!busy || moving || !live?.ready || !observedChunk(live)
     $('move').disabled = !canMoveToArea()
-    $('move').textContent = moving ? '移動中' : 'Botを移動させる'
+    // Inside the area a move only asks the server to confirm the position.
+    $('move').textContent = moving ? '移動中' : reportedInsideArea(live) && !proofInsideArea(live) ? '位置を確認' : 'Botを移動させる'
     $('move-cancel').hidden = !moving
     $('move-cancel').disabled = !!busy || !token || !live?.session || typeof move?.operationId !== 'string' || !move.operationId
     // Progress and failures of a move are shown in the page's activity banner.
@@ -357,6 +374,8 @@
     const selected = selectedArea(), locationReady = proofInsideArea(live, selected) && live?.chunkMove?.busy !== true
     $('reset').disabled = !!busy || !token || !live?.ready || !r || r.busy || live?.storage?.busy || !idleJob || !locationReady
     $('reset').textContent = r?.busy ? 'デバッグチェスト設置中' : 'デバッグチェスト設置'
+    const why = resetBlocker(live)
+    $('reset-why').textContent = why ?? ''; $('reset-why').hidden = !why; $('reset').title = why ? '設置不可: ' + why : ''
     $('reset-confirm').disabled = !!busy || !live?.ready || live?.storage?.busy || r?.busy || !idleJob || !locationReady || !resetPreview || resetPreview.expiresAt <= Date.now() || resetPreview.session !== live?.session || resetPreview.areaKey !== areaKey(selected) || resetPreview.proofGeneration !== live?.positionProof?.generation
     if (resetPreview && (resetPreview.session !== live?.session || resetPreview.expiresAt <= Date.now() || resetPreview.areaKey !== areaKey(selected) || resetPreview.proofGeneration !== live?.positionProof?.generation || !locationReady)) { closeReset(); message('reset', '設置場所を確認し直してください。', true) }
     $('reset-progress').hidden = !r || r.phase === 'idle'
