@@ -2212,7 +2212,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       // Live 2026-11-13 03:14: the stored server position (an old correction)
       // and the working position disagreed and the approach found "no known
       // safe support". Ask the server about both once; use only a confirmed one.
-      if (/no known safe support/.test(String(details.cause ?? '')) && !active.originWitnessTried && typeof adapter.confirmPosition === 'function') {
+      if (/no known safe support/.test(String(details.cause ?? '') + ' ' + String(details.error ?? '')) && !active.originWitnessTried && typeof adapter.confirmPosition === 'function') {
         active.originWitnessTried = true
         const s = adapter.getState(), feet = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k])) ? { x: Math.round(p.x * 100) / 100, y: Math.round((p.y - 1.62) * 1000) / 1000, z: Math.round(p.z * 100) / 100 } : null
         const working = feet(s?.position), received = feet(s?.rawServerPosition)

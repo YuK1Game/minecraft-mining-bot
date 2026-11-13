@@ -284,3 +284,35 @@ test('review: when walking into the chunk fails the restock stops with SUPPLY_EN
   assert.ok(f.events.filter(e => e.kind === 'move').length <= 4, 'entry attempts are bounded')
   assert.equal(f.requests.length, 0, 'supplies were never opened')
 })
+
+// Live 2026-11-13 03:14: the stored server position (an old correction) and the
+// working position disagreed and the approach move failed with "no known safe
+// support". The server is asked about both once; only a confirmed one is used.
+test('review: a position disagreement is settled by the server witness before the approach stops', async () => {
+  for (const confirmed of ['received', 'working', 'neither']) {
+    const witnessed = [], discarded = []
+    let moves = 0
+    const f = fixture({ move: ({ stand, settings, move }) => {
+      moves++
+      if (moves === 1) throw new Error('The starting footprint has no known safe support')
+      return move(stand, settings)
+    } })
+    const p = f.sim.state.position
+    f.sim.state.rawServerPosition = { x: p.x + 1, y: p.y, z: p.z }
+    f.sim.state.rawServerPositionUpdatedAt = '2026-11-13T03:14:00Z'
+    f.sim.adapter.confirmPosition = async feet => {
+      const isReceived = Math.abs(feet.x - (p.x + 1)) < 0.05
+      witnessed.push(isReceived ? 'received' : 'working')
+      return { serverConfirmed: confirmed === (isReceived ? 'received' : 'working') }
+    }
+    f.sim.adapter.discardPrediction = reason => discarded.push(reason)
+    await run(f)
+    assert.deepEqual(witnessed, ['working', 'received'], confirmed)
+    assert.ok(f.logs.some(l => l.includes('position_disagreement')), confirmed)
+    if (confirmed === 'neither') assert.equal(f.job.status().pauseReason, 'SUPPLY_RESTOCK_BLOCKED')
+    else {
+      assert.ok(moves >= 2, 'the approach is planned again after a confirmed position')
+      assert.equal(discarded.length, confirmed === 'received' ? 1 : 0)
+    }
+  }
+})
