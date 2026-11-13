@@ -93,6 +93,9 @@ const TRANSIENT_RETRIES = 3, TRANSIENT_WAIT_MS = 1500
 const storageFingerprint = cp => JSON.stringify(cp ? [cp.stage ?? null, (cp.placed ?? []).map(p => [p.position, p.name]), (cp.deposited ?? []).map(d => [d.name, d.count]), (cp.plan ?? []).map(e => e.transferred), cp.intent?.type ?? null, !!cp.recovered, !!cp.full] : null)
 const supplyFingerprint = cp => JSON.stringify(cp ? [cp.index ?? null, (cp.withdrawn ?? []).length, (cp.returned ?? []).length, storageFingerprint(cp.child), (cp.child?.supplyCheckpoint?.withdrawn ?? []).length, (cp.child?.supplyCheckpoint?.returned ?? []).length] : null)
 const { selectAnimalTarget } = require('./quarry-animal-clear')
+// Automatic current-state reconciliation of an unconfirmed cargo placement
+// (2026-11-13): after the inventory resync rate limit, at most twice per job run.
+const AUTO_RECONCILE_WAIT_MS = 65000, AUTO_RECONCILES = 2
 const WORK_DIRT_DEMAND = 32 // dirt taken from the supply box when a seal needs it
 // Carried storage refused before any placement, deposit or move (live 2026-11-12).
 const STORAGE_SITE_RETRY_REASONS = new Set([...SUPPLY_SITE_REASONS, 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'])
@@ -1551,7 +1554,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // Confirmed progress also renews the terrain request budget: received
     // subchunks far above are dropped as the bot digs down, so the exit column
     // may need a fresh request later (live 2026-11-10 11:35: budget spent at start).
-    if (confirmed) { job.slowBreaks = 0; job.slowCells = []; job.routeSkips = 0; job.autoResumes = 0; job.capacityRetries = 0; if (job.terrainObservation?.phase === 'exhausted') { job.terrainObservation.requests = 0; job.terrainObservation.phase = 'idle' } }
+    if (confirmed) { job.slowBreaks = 0; job.slowCells = []; job.routeSkips = 0; job.autoResumes = 0; job.capacityRetries = 0; job.autoReconciles = 0; if (job.terrainObservation?.phase === 'exhausted') { job.terrainObservation.requests = 0; job.terrainObservation.phase = 'idle' } }
     if (failure && !confirmed) {
       rec.status = 'failed'; rec.error = String(failure.message ?? failure)
       // A preview refused for the stance (pose not settled, face not visible
@@ -3432,6 +3435,32 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // while waiting, so this pause retries itself (bounded) instead of
     // stalling for hours (live 2026-11-10 05:38: 2h until a manual resume).
     // Live 2026-11-13 00:59: a supply box (supplies:6) waited for loose drops the same way.
+    // Live 2026-11-13 (storage:296/352/524): an unconfirmed cargo placement was
+    // each time resolved by the current-state reconciliation (inverted air
+    // audit, the same box and contents in hand, same connection and life).
+    // Run it automatically; only a confirmed "nothing was placed" resumes.
+    if (job.persistence?.status !== 'failed' && reason === 'CARRIED_STORAGE_BLOCKED' && pauseDetails?.reason === 'STORAGE_PLACEMENT_RECONCILE_REQUIRED' && (job.autoReconciles ?? 0) < AUTO_RECONCILES && job.userRunIntent === 'running') {
+      const owner = job, expectedEpoch = epoch
+      const run = async () => {
+        autoResumeTimer = null; autoRetryInfo = null
+        if (retired) return
+        if (job !== owner || epoch !== expectedEpoch || job.state !== 'PAUSED' || job.pauseReason !== reason || job.userRunIntent !== 'running') return
+        if (worker || stopTask || pendingActions.size || savesInFlight) { autoResumeTimer = setTimeout(run, 500); autoResumeTimer.unref?.(); return }
+        job.autoReconciles = (job.autoReconciles ?? 0) + 1
+        note('storage_auto_reconcile', { attempt: job.autoReconciles, operationId: job.portableStorage?.operationId ?? null })
+        let outcome = null
+        try { outcome = await reconcileCurrentStoragePlacement() } catch (error) { note('storage_auto_reconcile_failed', { error: String(error.message ?? error).slice(0, 160) }) }
+        if (outcome?.status === 'reconciled' && job === owner && job.state === 'PAUSED' && job.userRunIntent === 'running') { try { resume() } catch (error) { note('auto_resume_failed', { error: String(error.message ?? error) }) } return }
+        if (job === owner && job.state === 'PAUSED' && (job.autoReconciles ?? 0) < AUTO_RECONCILES && job.userRunIntent === 'running') {
+          note('storage_auto_reconcile_blocked', { reason: outcome?.reason ?? null })
+          autoResumeTimer = setTimeout(run, AUTO_RECONCILE_WAIT_MS); autoResumeTimer.unref?.()
+          autoRetryInfo = { kind: 'reconcile', reason: 'STORAGE_PLACEMENT_RECONCILE_REQUIRED', attempt: (job.autoReconciles ?? 0) + 1, max: AUTO_RECONCILES, nextAt: now() + AUTO_RECONCILE_WAIT_MS }
+        }
+      }
+      autoResumeTimer = setTimeout(run, AUTO_RECONCILE_WAIT_MS); autoResumeTimer.unref?.()
+      autoRetryInfo = { kind: 'reconcile', reason: 'STORAGE_PLACEMENT_RECONCILE_REQUIRED', attempt: (job.autoReconciles ?? 0) + 1, max: AUTO_RECONCILES, nextAt: now() + AUTO_RECONCILE_WAIT_MS }
+      return
+    }
     const capacityWait = ['CARRIED_STORAGE_BLOCKED', 'SUPPLY_RESTOCK_BLOCKED'].includes(reason) && pauseDetails?.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED'
     if (job.persistence?.status !== 'failed' && capacityWait && (job.capacityRetries ?? 0) < CAPACITY_RETRIES && job.userRunIntent === 'running') {
       const owner = job, expectedEpoch = epoch
@@ -3838,7 +3867,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // deposited or pending) that used up its site and preparation retries
     // starts over on a resume, at a newly chosen site with a fresh budget.
     const ps = job.portableStorage, pcp = ps?.checkpoint
-    if (ps && job.pauseReason === 'CARRIED_STORAGE_BLOCKED' && pcp?.stage === 'planned' && !(pcp.placed ?? []).length && !(pcp.deposited ?? []).length && pcp.intent == null) {
+    if (ps && ['CARRIED_STORAGE_BLOCKED', 'STORAGE_CURRENT_STATE_RECONCILED'].includes(job.pauseReason) && pcp?.stage === 'planned' && !(pcp.placed ?? []).length && !(pcp.deposited ?? []).length && pcp.intent == null) {
+      // The site that left the placement unconfirmed is avoided by the new choice.
+      if (job.pauseReason === 'STORAGE_CURRENT_STATE_RECONCILED') ps.avoidPositions = [...(ps.avoidPositions ?? []), ...(pcp.positions ?? []).filter(p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])))].slice(-12)
       ps.checkpoint = null; delete ps.siteRetries; delete ps.transientRetries
       note('storage_untouched_restart', { operationId: ps.operationId })
     }
