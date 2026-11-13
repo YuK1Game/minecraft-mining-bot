@@ -282,3 +282,4 @@ body.v2 .debug-chest-actions{padding:0;margin-top:auto;justify-content:stretch;f
  body.v2 .logs-head .filter-group button{padding:1px 12px}body.v2 .logs-head input[type=search]{height:26px}
  body.v2 .log-view{flex:1 1 0;height:auto;min-height:0;font-size:13px}body.v2 .log-line{min-height:23px;padding:1px 24px}
 }
+body.v2 .control-heading-row{cursor:default;user-select:auto}
