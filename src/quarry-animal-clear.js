@@ -4,7 +4,7 @@
 // inside the quarry pit to remove while no hostile is around. Hostiles always
 // come first (the combat coordinator owns them); unknown is never a target.
 
-const ANIMAL_TARGETS = new Set(['minecraft:chicken', 'minecraft:cow', 'minecraft:pig', 'minecraft:sheep', 'minecraft:rabbit', 'minecraft:mooshroom'])
+const ANIMAL_TARGETS = new Set(['minecraft:chicken', 'minecraft:cow', 'minecraft:pig', 'minecraft:sheep', 'minecraft:rabbit', 'minecraft:mooshroom', 'minecraft:fox', 'minecraft:frog', 'minecraft:armadillo'])
 // Never attacked, even if a later list change would allow them.
 const EXCLUDED = new Set([
   'minecraft:villager', 'minecraft:villager_v2', 'minecraft:wandering_trader', 'minecraft:iron_golem', 'minecraft:snow_golem', 'minecraft:allay',
@@ -25,7 +25,8 @@ function excludedReason (actor) {
   const m = actor.animalMeta
   if (!m || m.flagsKnown !== true) return 'METADATA_UNKNOWN'
   if (m.tamed !== false || m.leashed !== false) return 'TAMED_OR_LEASHED'
-  if (m.baby !== false) return 'BABY'
+  // Babies of allowed kinds are targets too (agreed 2026-11-13: they grow into egg layers).
+  if (typeof m.baby !== 'boolean') return 'METADATA_UNKNOWN'
   if (m.nameTagKnown === true && typeof m.nameTag === 'string' && m.nameTag.length > 0) return 'NAMED'
   if (m.ownerKnown === true && m.owner != null && !['0', '-1'].includes(String(m.owner))) return 'OWNED'
   return null

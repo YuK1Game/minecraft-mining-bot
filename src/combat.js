@@ -82,7 +82,7 @@ function createCombat ({ client, getState, world, entities, crafting, getInput, 
   const threatActors = state => Array.isArray(state.entities) ? state.entities : entities.snapshot({ kind: 'all' })
 
   // Quarry animal clearing (2026-11-13): only these ordinary passive animals.
-  const ANIMAL_CLEAR_TARGETS = new Set(['minecraft:chicken', 'minecraft:cow', 'minecraft:pig', 'minecraft:sheep', 'minecraft:rabbit', 'minecraft:mooshroom'])
+  const ANIMAL_CLEAR_TARGETS = new Set(['minecraft:chicken', 'minecraft:cow', 'minecraft:pig', 'minecraft:sheep', 'minecraft:rabbit', 'minecraft:mooshroom', 'minecraft:fox', 'minecraft:frog', 'minecraft:armadillo'])
   function session (purpose = 'defense', { allowCritical = false } = {}) {
     const state = getState()
     if (state.dead === true || state.isDead === true || state.phase !== 'spawned' || !finite(state.position)) throw new Error('生存してワールドに参加している必要があります。')

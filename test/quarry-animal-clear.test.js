@@ -23,13 +23,12 @@ test('excluded kinds are never chosen', () => {
   }
 })
 
-test('named, leashed, tamed, owned, baby and metadata-unknown animals are not chosen', () => {
+test('named, leashed, tamed, owned and metadata-unknown animals are not chosen', () => {
   for (const [patch, reason] of [
     [{ animalMeta: meta({ nameTag: 'Bob' }) }, 'NAMED'],
     [{ animalMeta: meta({ leashed: true }) }, 'TAMED_OR_LEASHED'],
     [{ animalMeta: meta({ tamed: true }) }, 'TAMED_OR_LEASHED'],
     [{ animalMeta: meta({ ownerKnown: true, owner: '12345' }) }, 'OWNED'],
-    [{ animalMeta: meta({ baby: true }) }, 'BABY'],
     [{ animalMeta: meta({ flagsKnown: false }) }, 'METADATA_UNKNOWN'],
     [{ animalMeta: undefined }, 'METADATA_UNKNOWN']
   ]) {
@@ -74,4 +73,11 @@ test('animal clearing is a per-job setting, off by default', async () => {
   assert.equal(job.document().config.strategy.clearAnimals, true)
   await job.configureAnimalClearing({ enabled: false })
   assert.equal(job.document().config.strategy.clearAnimals, false)
+})
+
+test('babies of allowed kinds, foxes, frogs and armadillos are targets; wild horses and donkeys are not', () => {
+  const baby = mob('minecraft:chicken', { x: 10.5, y: 20, z: 9.5 }, { animalMeta: meta({ baby: true }) })
+  assert.equal(pick([baby]).target, baby)
+  for (const type of ['minecraft:fox', 'minecraft:frog', 'minecraft:armadillo']) { const a = mob(type, { x: 10.5, y: 20, z: 9.5 }); assert.equal(pick([a]).target, a, type) }
+  for (const type of ['minecraft:horse', 'minecraft:donkey']) assert.equal(pick([mob(type, { x: 10.5, y: 20, z: 9.5 })]).target, null, type)
 })
