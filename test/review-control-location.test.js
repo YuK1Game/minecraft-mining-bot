@@ -109,3 +109,18 @@ test('neutral movement cannot create a witness and other movement always revokes
   f.location.notePrediction({ position: { ...f.state.position, x: f.state.position.x + .001 } }, 'navigation')
   assert.equal(f.location.snapshot().confirmed, false)
 })
+test('an unknown location and a refused confirmation say which fact is missing', async () => {
+  const moving = fixture(); moving.moving(true)
+  assert.equal(moving.location.snapshot().reason, 'BOT_MOVING')
+  const none = fixture(); none.state.position.x = 16.5
+  assert.equal(none.location.snapshot().reason, 'NO_SERVER_POSITION')
+  const dead = fixture(); dead.state.health = 0
+  assert.equal(dead.location.snapshot().reason, 'BOT_STATE_UNAVAILABLE')
+  const outside = fixture()
+  assert.deepEqual(await outside.location.confirm(null, { area: { x1: 5, z1: 5 }, radius: 0.12 }), { serverConfirmed: false, reason: 'CONTROL_POSITION_UNCONFIRMED', detail: 'OUTSIDE_AREA' })
+  assert.equal(outside.queries(), 0)
+  const timeout = fixture(); timeout.respond(() => ({ serverConfirmed: false, reason: 'POSITION_TIMEOUT' }))
+  assert.equal((await timeout.location.confirm(null, { area: { x1: 0, z1: 0 }, radius: 0.12 })).detail, 'SERVER_POSITION_TIMEOUT')
+  const wrong = fixture(); wrong.respond((feet, options) => ({ serverConfirmed: true, kind: 'other', scope: observedScope(wrong.state), feet, radius: options.radius, receivedAt: 1001 }))
+  assert.equal((await wrong.location.confirm(null, { area: { x1: 0, z1: 0 }, radius: 0.12 })).detail, 'RECEIPT_MISMATCH')
+})

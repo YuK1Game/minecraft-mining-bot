@@ -362,14 +362,14 @@ function controlActivity(){
  if(mv.phase==='failed'||mv.error&&!['cancelled','canceled'].includes(mv.phase))return{kind:'error',label:'移動を完了できませんでした',detail:clean(mv.error?.message||'').replace(/^移動を完了できませんでした。/,'')||null,code:txt(mv.error?.code,null)};
  return null;
 }
-function noteActivity(){const note=currentNote();return note?{kind:note.error?'error':note.text.includes('中断')?'paused':'done',label:note.text,detail:null,code:null}:null;}
+function noteActivity(){const note=currentNote();if(!note)return null;const parts=note.text.match(/^(.{1,24}?)(?:: |。)(.+)$/);return{kind:note.error?'error':note.text.includes('中断')?'paused':'done',label:parts?parts[1]:note.text,detail:parts?parts[2]:null,code:null};}
 let activityDigest='';
 function renderActivity(){
  const base=obj(snapshot?.activity),control=controlActivity(),note=noteActivity(),a=note?.kind==='error'?note:control?.kind==='busy'?control:note??(control&&['idle','paused'].includes(base.kind)?control:base),kind=activityIcons[a.kind]?a.kind:'offline';
  const label=failed?'状態を更新できません':txt(a.label,'状態を確認中'),detail=failed?null:txt(a.detail,null),code=failed?null:txt(a.code,null);
  const digest=JSON.stringify([kind,label,detail,code]);if(digest===activityDigest)return;activityDigest=digest;
  const bar=$('activity');bar.dataset.kind=failed?'offline':kind;set('activity-icon',activityIcons[failed?'offline':kind]);set('activity-label',label);
- $('activity-detail').hidden=!detail;set('activity-detail',detail||'');$('activity-code').hidden=!code;set('activity-code',code||'');
+ $('activity-detail').hidden=!detail;set('activity-detail',detail||'');$('activity-detail').classList.toggle('long',(detail||'').length>30);$('activity-code').hidden=!code;set('activity-code',code||'');
  bar.title=[label,detail,code].filter(Boolean).join(' · ');
 }
 function render(){

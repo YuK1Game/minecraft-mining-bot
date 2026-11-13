@@ -168,3 +168,37 @@ test('a missing proof is requested once from the server before the initial chest
   throwing.q.confirmControlPosition = async () => { throw new Error('offline') }
   await assert.rejects(throwing.preview(), { code: 'CHUNK_POSITION_UNCONFIRMED' }); assert.equal(throwing.calls.length, 0)
 })
+
+test('a Runtime proof counted under a different life number than the Host is still this connection\'s proof', async () => {
+  // Host: every death on this connection. Runtime: only the automatic respawn record.
+  const f = fixture()
+  f.state.lifecycle.deathId = 2
+  f.proof.scope = observedScope({ ...f.state, lifecycle: { deathId: 0 } })
+  assert.notEqual(f.proof.scope, observedScope(f.state))
+  assert.equal(f.control.snapshot().positionProof.confirmed, true)
+  assert.equal((await f.preview()).resetPreview.token, 'reset_1')
+  for (const change of [s => { s.connectionId = 'other' }, s => { s.runtimeEntityId = '9' }, s => { s.dimension = 'nether' }, s => { s.realm = { id: '7' } }]) {
+    const other = fixture(), stale = copy(other.state); change(stale); other.proof.scope = observedScope(stale)
+    assert.equal(other.control.snapshot().positionProof, null)
+    await assert.rejects(other.preview(), error => error.code === 'CHUNK_POSITION_UNCONFIRMED' && error.positionCheck === 'SCOPE' && /現在の接続のものではない/.test(error.message))
+  }
+  const malformed = fixture(); malformed.proof.scope = 'not-json'
+  await assert.rejects(malformed.preview(), { code: 'CHUNK_POSITION_UNCONFIRMED', positionCheck: 'SCOPE' })
+})
+
+test('a refused placement names the failed check, the Bot position and the selected block range', async () => {
+  const outside = fixture(); outside.proof.feet.x = 40
+  await assert.rejects(outside.preview(), error => error.positionCheck === 'OUTSIDE' && error.message === 'Botの位置をサーバーで確認できません: サーバーで確認した位置 X 40.0 Z 8.0 が選択範囲の外、または端から0.1ブロック未満。Bot X 8.0 Y 64.0 Z 8.0 ／ 範囲 X 0〜15 Z 0〜15')
+  const moving = fixture(); moving.q.controlPosition = () => ({ confirmed: false, reason: 'BOT_MOVING' })
+  await assert.rejects(moving.preview(), error => error.positionCheck === 'RUNTIME' && error.positionDetail === 'BOT_MOVING' && /Botが移動中。Bot X 8\.0 Y 64\.0 Z 8\.0 ／ 範囲 X 0〜15 Z 0〜15$/.test(error.message))
+  const timeout = fixture(); timeout.q.controlPosition = () => ({ confirmed: false, reason: 'NO_SERVER_POSITION' })
+  timeout.q.confirmControlPosition = async () => ({ serverConfirmed: false, reason: 'CONTROL_POSITION_UNCONFIRMED', detail: 'SERVER_POSITION_TIMEOUT' })
+  await assert.rejects(timeout.preview(), error => error.positionDetail === 'SERVER_POSITION_TIMEOUT' && /サーバーが時間内に回答しなかった/.test(error.message))
+  const unknown = fixture(); unknown.q.controlPosition = () => ({ confirmed: false })
+  unknown.q.confirmControlPosition = async () => ({ serverConfirmed: false, detail: 'SERVER_SOMETHING_NEW' })
+  await assert.rejects(unknown.preview(), /位置確認の記録がない（SERVER_SOMETHING_NEW）/)
+  const old = fixture(); delete old.q.controlPosition
+  await assert.rejects(old.preview(), /Bot本体が位置確認に未対応。Botの再起動が必要/)
+  const malformed = fixture(); malformed.proof.generation = -1
+  await assert.rejects(malformed.preview(), error => error.positionCheck === 'INVALID_PROOF' && /位置確認の記録が不正（generation）/.test(error.message))
+})
