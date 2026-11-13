@@ -16,7 +16,7 @@ loaded._compile(fs.readFileSync(file, 'utf8').split('\ntest(')[0] + '\nmodule.ex
 const { fixture: chestFixture, raw, empty } = loaded.exports
 const copy = value => structuredClone(value)
 const home = { position: { x: 2, y: 63, z: -1 }, other: { x: 3, y: 63, z: -1 }, stand: { x: 1, y: 63, z: -1 }, stage: { x: 0, y: 63, z: -1 }, chunk: { x: 0, z: -1 } }
-function fixture ({ missing = false, blockedSupply = true, rejectTransfer = false, mutateSave = null, seal = false, corruptStock = false, delayedHand = false, neverHand = false, invalidCp = false, cargoDirt = 0, loseDirtBox = false, jobOptions = {} } = {}) {
+function fixture ({ missing = false, blockedSupply = true, rejectTransfer = false, mutateSave = null, seal = false, corruptStock = false, delayedHand = false, neverHand = false, invalidCp = false, cargoDirt = 0, loseDirtBox = false, renumber = false, jobOptions = {} } = {}) {
   const f = chestFixture({ missing }), blocks = new Map(), saved = [], requests = [], events = []
   // The shared routing fixture has decoded contents separately. Its raw
   // identity still needs an actual typed compound for received-prefix checks.
@@ -93,6 +93,8 @@ function fixture ({ missing = false, blockedSupply = true, rejectTransfer = fals
         const boxCount = describe().filter(row => /shulker_box$/.test(row.name)).length
         const brown = describe().find(row => row.name === 'minecraft:brown_shulker_box')
         f.bag[brown.slot] = empty()
+        // A reconnect gives every carried box a new stack ID (live 2026-11-14 02:19).
+        if (renumber) for (const row of f.bag) if (row.count && /shulker_box/.test(row.network_id ? describe().find(d => d.stackId === row.stack_id)?.name ?? '' : '')) row.stack_id += 5000
         const scope = { lost: true }
         await onCheckpoint({ version: 1, jobId: request.jobId, operationId: request.operationId, scope, bindings: copy(request.bindings), policy: copy(request.policy), boxCount, index: 2, withdrawn: [], returned: [],
           child: { version: 1, kind: 'shulker', stage: 'breaking', scope, selectionKey: request.bindings[2].key, placed: [{ name: 'minecraft:brown_shulker_box', position: { x: 5, y: 63, z: 5 } }], supplyCheckpoint: { withdrawn: [] } } })
@@ -372,4 +374,16 @@ test('a lost dirt supply box is not accepted when no carried cargo box holds eno
   assert.equal(doc.pauseReason, 'SUPPLY_RESTOCK_BLOCKED'); assert.equal(doc.dirtSupplyLossStopped, 'CARGO_DIRT_SHORT')
   assert.equal(doc.lostCargoBoxes, undefined); assert.equal(f.mining, 0)
   await f.job.pause()
+})
+
+test('live case 2026-11-14 02:19: after a reconnect renumbers the carried boxes, the supply bindings are re-found before the next restock', async () => {
+  const f = fixture({ blockedSupply: false, loseDirtBox: true, cargoDirt: 256, renumber: true, jobOptions: { cargoLossSearchMs: 40, cargoLossStepMs: 5 } }); assert.equal(f.job.plan(f.config).ready, true)
+  f.job.start()
+  const until = Date.now() + 6000
+  while (f.mining === 0 && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 5))
+  await f.job.pause()
+  assert.equal(f.mining, 1, JSON.stringify({ reason: f.job.status().pauseReason, details: f.job.status().pauseDetails }))
+  const carried = new Set(f.f.view().slots.filter(r => !r.empty).map(r => carriedContainerKey({ ...r, stackId: f.f.bag[r.slot].stack_id })))
+  for (const b of f.requests[1].bindings) assert.ok(carried.has(b.key), b.role + ' ' + b.key + ' is carried')
+  assert.ok(f.job.status().events.some(e => e.type === 'supply_bindings_refreshed'))
 })
