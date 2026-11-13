@@ -55,7 +55,7 @@ function fixture ({ ready = true, warnings = ['INITIAL_LOADOUT_ON_START', 'LARGE
 test('the initial-loadout annotation is a short fact while real fluid and terrain warnings remain warnings', () => {
   const f = fixture(), facts = f.facts(), groups = f.groups()
   assert.deepEqual(facts.map(row => row.children.map(child => child.textContent)), [
-    ['ワールド', 'Test Realm'], ['チャンク', '(127, 126)'], ['高さ', 'Y 63 → -59'], ['初期セット', '開始時にチェストから受領']
+    ['ワールド', 'Test Realm'], ['範囲', 'X 2032〜2047 / Z 2016〜2031'], ['高さ', 'Y 63 → -59'], ['初期セット', '開始時にチェストから受領']
   ])
   assert.equal(groups.length, 1); assert.equal(groups[0].className, 'plan-diagnostics warning')
   assert.deepEqual(groups[0].children.map(chip => chip.textContent), ['△ 水・溶岩あり', '△ 上限Y 未確定'])

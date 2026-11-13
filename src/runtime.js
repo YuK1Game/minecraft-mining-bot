@@ -7284,7 +7284,7 @@ function createRuntime (host) {
     let planner = null
     chunkTravel = createChunkTravel({ getState: quarryState, getBlock: (x, y, z) => host.world.getBlock(x, y, z),
       getMovement: () => movement?.snapshot() ?? { phase: 'unavailable', running: false },
-      generation: () => host.shared.loadoutGeneration, jobIdentity: chunkMoveJobIdentity,
+      generation: () => host.shared.loadoutGeneration, jobIdentity: chunkMoveJobIdentity, log: message => host.log(message),
       planRoute: (target, options) => {
         if (!idlePhysics) return { ready: false, reason: '移動に必要な地形が未受信です。' }
         planner ??= createNavigator({ world: host.world, version: host.meta.version, allowWater: true,
