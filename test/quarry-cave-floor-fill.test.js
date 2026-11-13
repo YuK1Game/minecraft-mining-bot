@@ -56,3 +56,28 @@ test('without placeable material the old deferral stays', async () => {
   const decision = await planner.next({ feet: { x: 1, y: 51, z: 1 }, yTop: 53, tools, inventoryItems: tools })
   assert.notEqual(decision.action, 'seal')
 })
+
+test('no floor is filled into the layer being dug, and a filled cell mined since is never refilled', async () => {
+  // The strip stands on layer 50 rock; work at layer 51 beyond a gap. A floor
+  // at y=50 would be in the layer below 51 (allowed), but once layer 50 is the
+  // work layer a fill there would be mined again at once (live loop 01:57).
+  const solid = []
+  for (let x = 0; x <= 15; x++) for (let z = 0; z <= 2; z++) if (x < 4 || x > 7) for (let y = 41; y <= 50; y++) solid.push([x, y, z])
+  for (let x = 4; x <= 7; x++) for (const z of [0, 2]) solid.push([x, 50, z, 'minecraft:chest'])
+  const k = (x, y, z) => `${x},${y},${z}`
+  const set = new Map(solid.map(([x, y, z, name]) => [k(x, y, z), name ?? 'minecraft:stone']))
+  const read = (x, y, z) => { const rock = set.has(k(x, y, z)) || y <= 40; return { known: true, position: { x, y, z }, name: rock ? (set.get(k(x, y, z)) ?? 'minecraft:stone') : 'minecraft:air', boundingBox: rock ? 'block' : 'empty', runtimeId: rock ? 2 : 0, properties: {}, extra: [], diggable: true } }
+  // Layer 50 itself is the top work layer: the far strip cells at x>7 are its pending work.
+  const regions = buildRegions({ target: { chunks: [{ x: 0, z: 0 }] }, yTop: 50, yBottom: 45, worldMinY: 30, worldMaxY: 80, travelRegion: [{ xMin: 0, xMax: 15, yMin: 30, yMax: 80, zMin: 0, zMax: 2 }] })
+  const planner = createQuarryPlanner({ regions, getBlock: read, records: { deferred: {}, temporary: { '4,49,1': { purpose: 'floor', material: 'cobblestone' } } }, exit: { mode: 'adjacent_pillar', reservedDirt: 0 } })
+  const tools = [{ slot: 0, name: 'minecraft:diamond_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 1000, maxDurability: 1561 }]
+  const items = [...tools, { slot: 1, name: 'minecraft:cobblestone', count: 64 }]
+  for (let i = 0; i < 4; i++) {
+    const decision = await planner.next({ feet: { x: 1, y: 51, z: 1 }, yTop: 50, tools, inventoryItems: items })
+    if (decision.action !== 'seal') break
+    assert.ok(decision.position.y < 50, 'never into the work layer: ' + JSON.stringify(decision.position))
+    assert.notDeepEqual(decision.position, { x: 4, y: 49, z: 1 }, 'a previously filled cell is not refilled')
+    set.set(k(decision.position.x, decision.position.y, decision.position.z), 'minecraft:cobblestone')
+    planner.recordPlacement(decision.position, 'floor', 'cobblestone')
+  }
+})
