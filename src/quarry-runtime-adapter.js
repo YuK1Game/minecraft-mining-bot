@@ -96,6 +96,16 @@ function createQuarryRuntimeAdapter (ports) {
     if (travel !== undefined && typeof travel !== 'function') throw Object.assign(new Error('QUARRY_TRAVEL_GUARD_INVALID'), { code: 'QUARRY_TRAVEL_GUARD_INVALID' })
     const route = Array.isArray(path) && path.length ? path : [goal]
     let index = Math.max(0, route.findIndex(c => same(c, cellOf(getState()))))
+    // Live 2026-11-13 12:27: a move to the cell the bot already stands in did
+    // nothing, leaving it 0.44 m off centre at a storage stand. Re-centre once.
+    if (same(cellOf(getState()), goal)) {
+      const p = getState()?.position
+      if (p && Math.hypot(p.x - goal.x - 0.5, p.z - goal.z - 0.5) > 0.25) {
+        const r = await step(goal, signal, travel)
+        if (!r.ok) throw new Error(`quarry move refused: ${r.reason}`)
+      }
+      return { phase: 'completed' }
+    }
     while (!same(cellOf(getState()), goal)) {
       aborted(signal)
       let span = Math.min(segmentCells, route.length - 1 - index)
