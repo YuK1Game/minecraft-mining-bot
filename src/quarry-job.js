@@ -2263,7 +2263,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     guard(myEpoch)
     job.lastSupplyResult = { operationId: active.operationId, status: response?.status ?? 'blocked', reason: response?.reason ?? null, serverConfirmed: response?.serverConfirmed === true, withdrawn: copy(response?.withdrawn ?? []), returned: copy(response?.returned ?? []) }
     if (response?.status !== 'completed' && SUPPLY_ROOM_REASONS.has(response?.reason) && await makeSupplyRoom(myEpoch, active)) { setState('RESTOCK'); await save('supply_room_retry'); return true }
-    if (response?.status !== 'completed' && SUPPLY_SITE_REASONS.has(response?.reason) && supplyUntouched(response?.checkpoint) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
+    // Live 2026-11-13 13:53 (supplies:13): the walk to the supply stand timed out
+    // before anything was placed; like storage, it is a site re-selection.
+    if (response?.status !== 'completed' && (SUPPLY_SITE_REASONS.has(response?.reason) || response?.reason === 'quarry move: timed out') && supplyUntouched(response?.checkpoint) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
       active.siteRetries = (active.siteRetries ?? 0) + 1
       const issue = response.checkpoint?.child?.siteIssue ?? null
       note('supply_site_retry', { reason: response.reason, attempt: active.siteRetries, issue: copy(issue), mobOverlap: /^ENTIT/.test(issue?.cause ?? ''), waits: (response.checkpoint?.child?.siteWaits ?? []).length, site: copy(active.approach ?? null) })
