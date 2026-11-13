@@ -16,6 +16,7 @@ const { createQuarryV22Equipment } = require('./quarry-v22-equipment')
 const { createQuarryV22ChestWork } = require('./quarry-v22-chest-work')
 const { createRuntimeV22ChestReset, receivedEquipmentView, jobPending } = require('./loadout-runtime-adapter')
 const { createInventoryStore } = require('./inventory-store')
+const { createEventLoopStallWatch } = require('./event-loop-stall')
 const { createManualChestRuntime } = require('./manual-chest-runtime-adapter')
 const { createChunkTravel } = require('./chunk-travel')
 const { chunkTravelThreatsClear } = require('./chunk-travel-threats')
@@ -7285,6 +7286,11 @@ function createRuntime (host) {
   const inventoryStoreTimer = setInterval(() => { if (disposed || disposing) { clearInterval(inventoryStoreTimer); return } try { inventoryStoreResyncTick() } catch {} }, 1000)
   const worldRetentionTimer = setInterval(() => { if (disposed || disposing) { clearInterval(worldRetentionTimer); return } try { updateWorldRetention() } catch {} }, 5000)
   worldRetentionTimer.unref?.()
+  const eventLoopStallWatch = createEventLoopStallWatch({
+    context: () => { const q = quarryJob?.status?.(); return q ? { quarry: q.state ?? null, layer: q.cursorY ?? null } : null },
+    report: r => host.log(`処理の停止を検知: ${r.stallMs}ms 作業=${JSON.stringify(r.doing)}${r.suppressed ? ` 直前の未記録${r.suppressed}件` : ''} 最大=${r.worstMs}ms 累計${r.stalls}回`)
+  })
+  eventLoopStallWatch.start()
 
   function resumeRequested () {
     if (disposed || disposing || resetHeld() || manualChestStorage?.isBusy()) return
@@ -7521,7 +7527,7 @@ function createRuntime (host) {
       clearInterval(idleTimer)
       idleTimer = null
       clearInterval(userBehaviorTimer); userBehaviorTimer = null
-      clearInterval(quarryRestoreTimer); clearInterval(worldRetentionTimer); clearInterval(inventoryStoreTimer); quarryLoadSequence++
+      clearInterval(quarryRestoreTimer); clearInterval(worldRetentionTimer); eventLoopStallWatch.stop(); clearInterval(inventoryStoreTimer); quarryLoadSequence++
       publishWalker()
       autonomy.stop(reason ?? '行動コードを更新します。')
       const cleanup = stopActions(reason ?? '行動コードを更新します。')
