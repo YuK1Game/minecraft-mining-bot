@@ -194,3 +194,25 @@ test('Runtime disposal cancels chunk movement and waits for its bounded controll
   await disposing
   assert.equal(disposed, true); assert.equal(f.quarryCreations(), 0)
 })
+
+const hostStatusReceipt = (f, deathId) => ({ source: 'host_status_get', key: JSON.stringify([f.raw.profile, String(f.raw.realm.id), f.raw.connectionId, f.raw.startedAt, String(f.raw.runtimeEntityId), f.raw.dimension]), deathId, health: f.raw.health, observedAt: Date.now() })
+
+test('chunk movement accepts the Host status life when the respawn record is not yet confirmed', async t => {
+  const f = fixture(t)
+  Object.assign(f.shared.deathRespawn, { deathId: 3, phase: 'unconfirmed', serverConfirmed: false, at: new Date(Date.now() - 5000).toISOString() })
+  f.shared.inventoryLifeReceipt = hostStatusReceipt(f, 3)
+  f.begin(); await f.acquire()
+  f.ports().startMove({ x: 1.5, y: 65, z: .5 }, { operationId: f.id(), maxDistance: 6, beforeInput: () => true })
+  assert.equal(f.starts.length, 1)
+  f.finish()
+})
+
+test('chunk movement refuses a stale Host status life and reports it in Japanese before moving', { timeout: 5000 }, async t => {
+  const f = fixture(t)
+  Object.assign(f.shared.deathRespawn, { deathId: 4, phase: 'unconfirmed', serverConfirmed: false, at: new Date().toISOString() })
+  f.shared.inventoryLifeReceipt = hostStatusReceipt(f, 3)
+  f.begin()
+  await assert.rejects(f.acquire(), error => error.code === 'MOVE_LIFE_UNKNOWN' && /生存状態/.test(error.message))
+  assert.equal(f.starts.length, 0)
+  f.finish()
+})
