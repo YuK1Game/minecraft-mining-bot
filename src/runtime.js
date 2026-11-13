@@ -6575,7 +6575,7 @@ function createRuntime (host) {
     const hp = Number(state?.health)
     if (Number.isFinite(hp) && Number.isFinite(shulkerHoldLog.health) && hp < shulkerHoldLog.health) host.log(`露天掘り: 箱の作業中に被弾 HP ${shulkerHoldLog.health}→${hp} (${hold.operationId} ${hold.stage})。戦闘は箱の回収の確定まで保留`)
     if (Number.isFinite(hp)) shulkerHoldLog.health = hp
-    const key = `${hold.operationId}|${hold.stage}|${target?.runtimeId ?? ''}`, at = Date.now()
+    const key = `${hold.operationId}|${hold.stage}`, at = Date.now()
     if (key !== shulkerHoldLog.key || at - shulkerHoldLog.at > 5000) {
       shulkerHoldLog.key = key; shulkerHoldLog.at = at
       const d = target?.position && state?.position ? Math.hypot(target.position.x - state.position.x, target.position.y - state.position.y, target.position.z - state.position.z) : null
