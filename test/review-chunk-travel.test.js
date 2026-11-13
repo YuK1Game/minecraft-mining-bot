@@ -333,3 +333,24 @@ test('a native known shallow-water route uses ordinary short moves and actual wi
   assert.ok(Math.abs(feetOf(f.state).y - 63) < 1e-6)
   assert.ok(areaContainsFeet(travel.status().area, feetOf(f.state), 0.2))
 })
+
+test('a failed move states its cause and writes one diagnostic log line', async () => {
+  const f = fixture({ hangMove: true }), logs = []
+  let native = { phase: 'idle', running: false }
+  const travel = createChunkTravel({ ...f.ports, log: line => logs.push(line), getMovement: () => copy(native),
+    startMove: (target, options) => { f.ports.startMove(target, options); native = { phase: 'failed', reason: 'Native made no progress after 51 frames.', target: copy(target), waypointIndex: 2, sent: 51, running: false }; return copy(native) } })
+  travel.start({ area: { x1: 1, z1: 0 } }); await travel.drain()
+  const { error } = travel.status()
+  assert.equal(error.code, 'CHUNK_TRAVEL_MOVE_FAILED')
+  assert.equal(error.message, '移動を完了できませんでした。歩行が途中で止まりました。（Native made no progress after 51 frames.）')
+  assert.equal(logs.length, 1)
+  assert.match(logs[0], /^チャンク移動に失敗: CHUNK_TRAVEL_MOVE_FAILED .*area=1,0\.\.1,0 feet=[-\d.,]+ target=[-\d.,]+ legs=0 .*movement=failed:Native made no progress after 51 frames\. waypoint=2$/)
+})
+
+test('a throwing log port cannot change the outcome of a move', async () => {
+  const f = fixture()
+  const travel = createChunkTravel({ ...f.ports, log: () => { throw new Error('log unavailable') }, planRoute: async () => ({ ready: false }) })
+  travel.start({ area: { x1: 1, z1: 0 } }); await travel.drain()
+  assert.equal(travel.status().error.code, 'CHUNK_TRAVEL_NO_ROUTE')
+  assert.equal(travel.status().error.message, '移動を完了できませんでした。選択範囲までの歩行経路が見つかりません。')
+})

@@ -18,19 +18,21 @@ function selection (values = {}) {
     return [id, { value, validity: { valid: !value || /^-?\d+$/.test(value) } }]
   }))
   const source = script.slice(script.indexOf('  function area () {'), script.indexOf('  function renderArea () {'))
-  return vm.runInNewContext(source + '\narea()', { $: id => inputs[id], MIN: -1875000, MAX: 1874999 })
+  return vm.runInNewContext(source + '\narea()', { $: id => inputs[id], BLOCK_MIN: -30000000, BLOCK_MAX: 29999999, chunkOf: block => Math.floor(block / 16) })
 }
 
 test('dashboard-control-ui: negative and reverse rectangle coordinates use inclusive chunk counts', () => {
-  const single = selection({ x1: -4, z1: 2 })
-  assert.equal(single.count, 1); assert.equal(single.valid, true)
-  const square = selection({ x1: -3, z1: 3, x2: -4, z2: 2 })
+  // Fields are block coordinates: any block selects the chunk that contains it.
+  const single = selection({ x1: -50, z1: 47 })
+  assert.equal(single.count, 1); assert.equal(single.valid, true); assert.equal(single.x1, -4); assert.equal(single.z1, 2)
+  assert.equal(selection({ x1: -1, z1: 15 }).x1, -1); assert.equal(selection({ x1: 0, z1: 16 }).z1, 1)
+  const square = selection({ x1: -33, z1: 63, x2: -64, z2: 32 })
   assert.equal(square.count, 4); assert.equal(square.width, 2); assert.equal(square.depth, 2); assert.equal(square.valid, true)
-  const strip = selection({ x1: -4, z1: -1, x2: -1 })
+  const strip = selection({ x1: -64, z1: -1, x2: -1 })
   assert.equal(strip.count, 4); assert.equal(strip.valid, true)
 })
 test('dashboard-control-ui: incomplete, fractional, out-of-world and oversized ranges cannot enable planning', () => {
-  for (const input of [{}, { x1: 0 }, { x1: 0.5, z1: 0 }, { x1: -1875001, z1: 0 }, { x1: 1875000, z1: 0 }, { x1: 0, z1: 0, x2: 4 }]) {
+  for (const input of [{}, { x1: 0 }, { x1: 0.5, z1: 0 }, { x1: -30000001, z1: 0 }, { x1: 30000000, z1: 0 }, { x1: 0, z1: 0, x2: 64 }]) {
     assert.equal(selection(input).valid, false, JSON.stringify(input))
   }
   assert.match(script, /\$\('plan'\)\.disabled = !idle \|\| !ready \|\| !a\.valid/)
@@ -43,18 +45,18 @@ test('dashboard-control-ui: presets cannot overflow either edge of the world', (
     const ctx = { $: id => inputs[id], MIN: -1875000, MAX: 1874999, gridOrigin: null, current: null, area: () => ({}), invalidate: () => { edits++ } }
     vm.runInNewContext(source + `\nselectArea(${origin}, ${origin}, 2)`, ctx)
     assert.equal(edits, 1)
-    for (const input of Object.values(inputs)) assert.ok(input.value >= ctx.MIN && input.value <= ctx.MAX)
-    assert.equal(inputs.x2.value - inputs.x1.value, 1)
-    assert.equal(inputs.z2.value - inputs.z1.value, 1)
+    for (const input of Object.values(inputs)) assert.ok(input.value >= ctx.MIN * 16 && input.value <= ctx.MAX * 16 + 15)
+    assert.equal(inputs.x2.value - inputs.x1.value, 31)
+    assert.equal(inputs.z2.value - inputs.z1.value, 31)
   }
 })
 test('dashboard-control-ui: presentation keeps explicit actions, field labels and visible safety result regions', () => {
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1])
   assert.equal(new Set(ids).size, ids.length, 'duplicate HTML IDs')
   for (const name of ['profile', 'world', 'realms', 'connect', 'disconnect', 'plan', 'start', 'pause', 'resume', 'emergency', 'cancel', 'plan-summary', 'job-reason', 'auth-code']) assert.ok(ids.includes('control-' + name), name)
-  assert.match(section, /aria-label="チャンク座標の選択"/)
-  assert.match(section, /aria-label="開始チャンク X"/)
-  assert.match(section, /aria-label="開始チャンク Z"/)
+  assert.match(section, /aria-label="採掘範囲の選択"/)
+  assert.match(section, /aria-label="開始 X（ブロック座標）"/)
+  assert.match(section, /aria-label="開始 Z（ブロック座標）"/)
   assert.match(section, /id="control-job-reason"[^>]*role="status"/)
   assert.doesNotMatch(section, /control-hint|既存の認証を使う場合|入力はブロック座標ではなく|安全確認はBot本体/)
   assert.match(script, /p\.issues, 'blocked', '停止理由'/)

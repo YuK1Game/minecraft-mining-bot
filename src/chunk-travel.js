@@ -11,10 +11,35 @@ const feetOf = state => finite(state?.position) ? { x: state.position.x, y: stat
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
 const hazard = /water|lava|fire|magma|cactus|campfire|powder|cobweb|wither_rose|dripstone/
 const fail = code => Object.assign(new Error(code), { code })
-const errorView = error => ({ code: /^CHUNK_TRAVEL_[A-Z_]+$/.test(error?.code ?? '') ? error.code : 'CHUNK_TRAVEL_FAILED', message: '移動を完了できませんでした。現在位置と経路を確認してください。' })
+const reasons = {
+  CHUNK_TRAVEL_NO_KNOWN_STAND: '選択範囲に、受信済みの安全な足場が見つかりません（現在地から48m以内）。',
+  CHUNK_TRAVEL_NO_ROUTE: '選択範囲までの歩行経路が見つかりません。',
+  CHUNK_TRAVEL_NO_SHORT_PREFIX: '経路の最初の区間を決められません。',
+  CHUNK_TRAVEL_SHORT_ROUTE_UNCONFIRMED: '次の区間の歩行経路を確認できません。',
+  CHUNK_TRAVEL_MOVE_FAILED: '歩行が途中で止まりました。',
+  CHUNK_TRAVEL_MOVE_ENDED_SHORT: '区間の目標の手前で止まりました。',
+  CHUNK_TRAVEL_LEG_TIMEOUT: '区間の歩行が制限時間内に終わりませんでした。',
+  CHUNK_TRAVEL_TIMEOUT: '制限時間内に到着できませんでした。',
+  CHUNK_TRAVEL_LEG_LIMIT: '区間数の上限に達しました。',
+  CHUNK_TRAVEL_DAMAGED: '被弾したため停止しました。',
+  CHUNK_TRAVEL_CONTEXT_CHANGED: '接続・生存回・ジョブのいずれかが変わったため停止しました。',
+  CHUNK_TRAVEL_POSITION_UNCONFIRMED: 'サーバーで現在位置を確認できませんでした。',
+  CHUNK_TRAVEL_ARRIVAL_UNSAFE: '到着した足場が安全ではありません。',
+  CHUNK_TRAVEL_TERRAIN_CHANGED: '歩行の直前に地形が変わりました。',
+  CHUNK_TRAVEL_ORIGIN_CHANGED: '経路の確認中にBotの位置が動きました。',
+  CHUNK_TRAVEL_BUSY: '他の作業中のため移動を開始できません。',
+  CHUNK_TRAVEL_RELEASE_FAILED: '移動後の後片付けに失敗しました。',
+  CHUNK_TRAVEL_CANCELLED: '移動を中断しました。'
+}
+const errorView = (error, hint = null) => {
+  const code = /^CHUNK_TRAVEL_[A-Z_]+$/.test(error?.code ?? '') ? error.code : 'CHUNK_TRAVEL_FAILED'
+  const hinted = typeof hint === 'string' && hint.trim() ? `（${hint.trim().slice(0, 120)}）` : ''
+  return { code, message: `移動を完了できませんでした。${reasons[code] ?? '現在位置と経路を確認してください。'}${hinted}` }
+}
+const round = p => finite(p) ? `${p.x.toFixed(1)},${p.y.toFixed(1)},${p.z.toFixed(1)}` : 'unknown'
 
 function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previewMove, startMove, stopMove, confirmPosition,
-  acquire, release, generation, jobIdentity, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  acquire, release, generation, jobIdentity, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
   uuid = randomUUID, maxDistance = 48, maxTravelDistance = 128, maxLegs = 32, timeoutMs = 180000, legTimeoutMs = 20000, pollMs = 50 } = {}) {
   if ([getState, getBlock, getMovement, planRoute, previewMove, startMove, stopMove, confirmPosition, acquire, release, generation, jobIdentity, now, sleep, uuid].some(fn => typeof fn !== 'function')) throw TypeError('Chunk travel requires owned ordinary movement and actual position witnesses')
   if (!Number.isFinite(maxDistance) || maxDistance <= 0 || maxDistance > 48 || !Number.isFinite(maxTravelDistance) || maxTravelDistance <= 0 || maxTravelDistance > 128 || !Number.isInteger(maxLegs) || maxLegs < 1 || maxLegs > 32 || !Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 180000 || !Number.isFinite(legTimeoutMs) || legTimeoutMs < 1 || legTimeoutMs > timeoutMs || !Number.isFinite(pollMs) || pollMs < 1 || pollMs > 1000) throw TypeError('Chunk travel bounds must be finite')
@@ -198,18 +223,31 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
         active.shortRouteFailure = null
         await leg(run, selected.target, selected.short)
         const feet = guard(run).feet
-        if (areaContainsFeet(run.area, feet, 0.2) && dryStand(feet)) { active.phase = 'arrived'; active.serverConfirmed = true; return }
+        if (areaContainsFeet(run.area, feet, 0.2) && dryStand(feet)) { active.phase = 'arrived'; active.serverConfirmed = true; try { log(`チャンク移動が完了: feet=${round(feet)} legs=${active.legs} walked=${run.usedDistance.toFixed(1)}m`) } catch {} return }
       }
       throw fail('CHUNK_TRAVEL_LEG_LIMIT')
     } catch (error) {
       active.phase = run.controller.signal.aborted && run.controller.signal.reason?.code === 'CHUNK_TRAVEL_CANCELLED' ? 'cancelled' : 'failed'
-      active.serverConfirmed = false; active.positionProof = null; active.error = errorView(run.controller.signal.reason ?? error)
+      const cause = run.controller.signal.reason ?? error
+      active.serverConfirmed = false; active.positionProof = null
+      active.error = errorView(cause, active.movementFailure?.reason ?? active.shortRouteFailure?.reason)
+      report(run, cause)
     } finally {
       clearInterval(watcher)
       try { await stopOwned(run, 'CHUNK_TRAVEL_FINISHED') } catch {}
       try { await run.acquiring } catch {}
       try { if (run.acquireStarted) await release(run.id) } catch { active.phase = 'failed'; active.serverConfirmed = false; active.positionProof = null; active.error = errorView(fail('CHUNK_TRAVEL_RELEASE_FAILED')) }
     }
+  }
+  // The reason goes to the Bot log so a failed move can be diagnosed afterwards.
+  function report (run, cause) {
+    try {
+      const a = active, feet = feetOf(getState()), failure = a.movementFailure, short = a.shortRouteFailure
+      const original = cause?.code && cause.code !== a.error.code ? ` cause=${String(cause.code).slice(0, 60)}${typeof cause.message === 'string' && cause.message !== cause.code ? ':' + cause.message.slice(0, 120) : ''}` : ''
+      log(`チャンク移動${a.phase === 'cancelled' ? 'を中断' : 'に失敗'}: ${a.error.code} ${a.error.message}${original} area=${a.area.x1},${a.area.z1}..${a.area.x2},${a.area.z2} feet=${round(feet)} target=${round(a.target)} legs=${a.legs} walked=${run.usedDistance.toFixed(1)}m` +
+        (failure ? ` movement=${failure.phase}:${failure.reason ?? 'none'} waypoint=${failure.waypointIndex ?? 'unknown'}` : '') +
+        (short ? ` shortRoute=ready:${short.ready} reason=${short.reason ?? 'none'} to=${round(short.target)}` : ''))
+    } catch {}
   }
   function start ({ area } = {}) {
     if (task) throw fail('CHUNK_TRAVEL_BUSY')

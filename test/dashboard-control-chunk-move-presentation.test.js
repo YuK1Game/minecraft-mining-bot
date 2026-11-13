@@ -107,7 +107,7 @@ test('movement locks the selected area and cancellation targets the currently ob
 })
 
 test('reset preview and confirmation use the same canonical multi-chunk area and token', () => {
-  const f = fixture({ values: { x1: '-1', z1: '0', x2: '-2', z2: '-1' } })
+  const f = fixture({ values: { x1: '-1', z1: '0', x2: '-32', z2: '-16' } }) // block coordinates
   f.live().positionProof.feet = { x: -8, y: 63, z: 8 }; f.render()
   assert.equal(f.$('reset').disabled, false)
   f.$('reset').click()
@@ -149,13 +149,13 @@ test('missing old-server capability and unknown, predicted or malformed proof ne
 
 test('proof circles respect negative coordinates, exclusive chunk edges and their complete radius', () => {
   for (const [chunk, x, radius, inside] of [[0, 15.8, .12, true], [0, 15.9, .12, false], [0, 16, 0, false], [0, 0, 0, true], [0, .01, .12, false], [-1, -.01, 0, true], [-1, -16, 0, true], [-2, -16.01, 0, true], [-1, -16.01, 0, false]]) {
-    const f = fixture({ values: { x1: String(chunk) } }); Object.assign(f.live().positionProof, { feet: { x, y: 63, z: 8 }, radius }); f.render()
+    const f = fixture({ values: { x1: String(chunk * 16 + 5) } }); Object.assign(f.live().positionProof, { feet: { x, y: 63, z: 8 }, radius }); f.render()
     assert.equal(f.$('reset').disabled, !inside, JSON.stringify({ chunk, x, radius }))
   }
 })
 
 test('invalid selections and existing busy work block movement without changing quarry or storage actions', () => {
-  for (const values of [{ x1: '' }, { x1: '.5' }, { x1: '0', x2: '4' }, { x1: '1875000' }]) {
+  for (const values of [{ x1: '' }, { x1: '.5' }, { x1: '0', x2: '64' }, { x1: '30000000' }]) {
     const f = fixture({ values }); assert.equal(f.$('move').disabled, true); assert.equal(f.$('reset').disabled, true)
     f.$('move').dispatch('click'); f.$('reset').dispatch('click'); assert.deepEqual(f.calls, [])
   }
@@ -174,11 +174,11 @@ test('session, code generation, position, busy state and expiry changes reject a
   }
 })
 
-test('a movement failure stays visible without granting arrival or automatically starting another operation', () => {
+test('a movement failure leaves the control message to the activity banner without granting arrival or automatically starting another operation', () => {
   const f = fixture({ inside: false })
   Object.assign(f.live().chunkMove, { phase: 'failed', error: { code: 'MOVE_BLOCKED', message: '安全な移動先を確認できません。' } }); f.render()
-  assert.equal(f.$('move-message').textContent, '安全な移動先を確認できません。')
-  assert.equal(f.$('move-message').classList.contains('error'), true)
+  // The reason is shown in the activity banner, not next to the button.
+  assert.equal(f.$('move-message').textContent, ''); assert.equal(f.$('move-message').hidden, true)
   assert.equal(f.$('reset').disabled, true); assert.deepEqual(f.calls, [])
 })
 

@@ -22,17 +22,23 @@
   }
   const MIN = -1875000, MAX = 1874999
   const element = (tag, cls, text) => { const el = document.createElement(tag); if (cls) el.className = cls; if (text != null) el.textContent = text; return el }
+  // The fields hold block coordinates; the Bot API keeps taking whole chunks.
+  const BLOCK_MIN = -30000000, BLOCK_MAX = 29999999
+  const chunkOf = block => Math.floor(block / 16)
+  const span = (a, b = a) => `${Math.min(a, b) * 16}〜${Math.max(a, b) * 16 + 15}`
+  const blockRange = chunks => chunks?.length ? `X ${span(Math.min(...chunks.map(c => c.x)), Math.max(...chunks.map(c => c.x)))} / Z ${span(Math.min(...chunks.map(c => c.z)), Math.max(...chunks.map(c => c.z)))}` : '未確認'
   function area () {
     const value = id => { const input = $(id); return input.value.trim() && input.validity.valid && Number.isSafeInteger(Number(input.value)) ? Number(input.value) : null }
-    const x1 = value('x1'), z1 = value('z1'), x2 = $('x2').value.trim() ? value('x2') : x1, z2 = $('z2').value.trim() ? value('z2') : z1
-    if ([x1, z1, x2, z2].some(n => n === null || n < MIN || n > MAX)) return { valid: false, message: 'チャンク座標を入力' }
+    const blocks = [value('x1'), value('z1'), $('x2').value.trim() ? value('x2') : value('x1'), $('z2').value.trim() ? value('z2') : value('z1')]
+    if (blocks.some(n => n === null || n < BLOCK_MIN || n > BLOCK_MAX)) return { valid: false, message: '座標を入力' }
+    const [x1, z1, x2, z2] = blocks.map(chunkOf)
     const width = Math.abs(x2 - x1) + 1, depth = Math.abs(z2 - z1) + 1, count = width * depth
     return { x1, z1, x2, z2, width, depth, count, valid: count <= 4, message: count > 4 ? '最大4チャンク' : '' }
   }
   function renderArea () {
     const a = area(), live = current?.live, actualChunk = observedChunk(live)
     $('area-count').textContent = a.count ?? '—'
-    $('area-size').textContent = a.count ? `${a.width * 16} × ${a.depth * 16} BLOCKS` : '範囲未設定'
+    $('area-size').textContent = a.count ? `X ${span(a.x1, a.x2)} / Z ${span(a.z1, a.z2)}` : '範囲未設定'
     $('range-message').textContent = a.count && !a.valid ? a.message : ''
     $('range-message').hidden = !(a.count && !a.valid)
     $('size-one').setAttribute('aria-pressed', String(a.valid && a.width === 1 && a.depth === 1))
@@ -41,19 +47,19 @@
     const left = Math.min(MAX - 4, Math.max(MIN, centre.x - 2)), top = Math.min(MAX - 4, Math.max(MIN, centre.z - 2))
     const grid = $('grid'), signature = JSON.stringify([left, top, a, actualChunk, busy, live?.chunkMove?.busy === true])
     grid.dataset.invalid = String(!!a.count && !a.valid)
-    $('grid-origin').textContent = `X ${left}…${left + 4} / Z ${top}…${top + 4}`
+    $('grid-origin').textContent = `X ${span(left, left + 4)} / Z ${span(top, top + 4)}`
     if (grid.dataset.signature === signature) return a
-    $('grid-x').replaceChildren(...Array.from({ length: 5 }, (_, i) => element('span', '', i === 0 ? `X ${left}` : String(left + i))))
-    $('grid-z').replaceChildren(...Array.from({ length: 5 }, (_, i) => element('span', '', `Z ${top + i}`)))
+    $('grid-x').replaceChildren(...Array.from({ length: 5 }, (_, i) => element('span', '', i === 0 ? `X ${left * 16}` : String((left + i) * 16))))
+    $('grid-z').replaceChildren(...Array.from({ length: 5 }, (_, i) => element('span', '', `Z ${(top + i) * 16}`)))
     const focus = grid.contains(document.activeElement) ? document.activeElement.dataset.key : null
     grid.dataset.signature = signature
     const fragment = document.createDocumentFragment()
     for (let z = top; z < top + 5; z++) for (let x = left; x < left + 5; x++) {
       const selected = a.count && x >= Math.min(a.x1, a.x2) && x <= Math.max(a.x1, a.x2) && z >= Math.min(a.z1, a.z2) && z <= Math.max(a.z1, a.z2)
       const here = live?.ready === true && actualChunk?.x === x && actualChunk?.z === z
-      const cell = element('button', 'chunk-cell' + (here ? ' bot' : ''), `${x}, ${z}`)
+      const cell = element('button', 'chunk-cell' + (here ? ' bot' : ''), `${x * 16}, ${z * 16}`)
       cell.type = 'button'; cell.dataset.x = x; cell.dataset.z = z; cell.dataset.key = `${x}:${z}`
-      cell.setAttribute('aria-label', `チャンク X ${x}, Z ${z}${here ? '・現在地' : ''}`)
+      cell.setAttribute('aria-label', `X ${span(x)}, Z ${span(z)}${here ? '・現在地' : ''}`)
       cell.setAttribute('aria-pressed', String(!!selected)); cell.title = cell.getAttribute('aria-label'); cell.disabled = busy > 0 || live?.chunkMove?.busy === true
       cell.tabIndex = focus ? cell.dataset.key === focus ? 0 : -1 : x === Math.min(MAX, Math.max(MIN, centre.x)) && z === Math.min(MAX, Math.max(MIN, centre.z)) ? 0 : -1
       fragment.append(cell)
@@ -69,7 +75,7 @@
     const fact = (label, value) => { const row = element('div', 'plan-fact'); row.append(element('span', '', label), element('b', '', clean(value))); host.append(row) }
     host.replaceChildren()
     fact('ワールド', result.state.realm?.name ?? '未確認')
-    fact('チャンク', (p.chunks ?? []).map(c => `(${c.x}, ${c.z})`).join(' / '))
+    fact('範囲', blockRange(p.chunks))
     fact('高さ', `Y ${p.yTop ?? '未確認'} → ${p.yBottom ?? '未確認'}`)
     if (p.warnings?.includes('INITIAL_LOADOUT_ON_START')) fact('初期セット', '開始時にチェストから受領')
     for (const [allCodes, kind, label] of [[p.issues, 'blocked', '停止理由'], [p.warnings, 'warning', '注意']]) {
@@ -174,11 +180,21 @@
     return Number(el.value)
   }
   function config () {
-    return { x1: number('x1'), z1: number('z1'), x2: number('x2', true), z2: number('z2', true), top: number('top', true), bottom: number('bottom', true) }
+    const chunk = (id, optional) => { const block = number(id, optional); return block === null ? null : chunkOf(block) }
+    return { x1: chunk('x1'), z1: chunk('z1'), x2: chunk('x2', true), z2: chunk('z2', true), top: number('top', true), bottom: number('bottom', true) }
   }
   const fields = ['x1', 'z1', 'x2', 'z2', 'top', 'bottom']
   function invalidate (keepGrid = false) { plan = null; version++; if (resetPreview) closeReset(); if (!keepGrid) gridOrigin = null; $('plan-results').hidden = true; message('action', ''); render() }
   for (const field of fields) $(field).addEventListener('input', () => { $(field).removeAttribute('aria-invalid'); invalidate() })
+  // Once an entry is finished, show the whole-chunk range it selects.
+  for (const [low, high] of [['x1', 'x2'], ['z1', 'z2']]) for (const field of [low, high]) $(field).addEventListener('change', () => {
+    const a = area()
+    if (!Number.isSafeInteger(a.x1)) return
+    const [from, to] = low === 'x1' ? [a.x1, a.x2] : [a.z1, a.z2]
+    $(low).value = Math.min(from, to) * 16
+    if ($(high).value.trim()) $(high).value = Math.max(from, to) * 16 + 15
+    render()
+  })
   function selectArea (x, z, size = preset, keepGrid = false) {
     if (current?.live?.chunkMove?.busy) return
     if (!Number.isSafeInteger(x) || !Number.isSafeInteger(z)) return
@@ -186,7 +202,7 @@
     const shown = keepGrid && !gridOrigin ? $('grid')?.firstElementChild : null
     if (shown) gridOrigin = { x: Number(shown.dataset.x) + 2, z: Number(shown.dataset.z) + 2 } // keep the window the user clicked in
     if (keepGrid && !gridOrigin) gridOrigin = { x: area().x1 ?? current?.live?.chunk?.x ?? 0, z: area().z1 ?? current?.live?.chunk?.z ?? 0 }
-    $('x1').value = x; $('z1').value = z; $('x2').value = size > 1 ? x + size - 1 : ''; $('z2').value = size > 1 ? z + size - 1 : ''
+    $('x1').value = x * 16; $('z1').value = z * 16; $('x2').value = size > 1 ? (x + size) * 16 - 1 : ''; $('z2').value = size > 1 ? (z + size) * 16 - 1 : ''
     invalidate(keepGrid)
   }
   $('grid').addEventListener('click', event => {
@@ -230,7 +246,7 @@
   $('start').addEventListener('click', () => {
     if (!plan) return
     const p = plan
-    if (!confirm(`${clean(p.state.realm?.name)} の ${(p.plan.chunks ?? []).map(c => `(${c.x}, ${c.z})`).join(' / ')} を Y=${p.plan.yTop}〜${p.plan.yBottom} まで露天掘りします。開始しますか？`)) return
+    if (!confirm(`${clean(p.state.realm?.name)} の ${blockRange(p.plan.chunks)} を Y=${p.plan.yTop}〜${p.plan.yBottom} まで露天掘りします。開始しますか？`)) return
     plan = null; $('plan-results').hidden = true
     act('action', 'quarry', { command: 'start', session: p.state.session, planToken: p.planToken }, () => message('action', ''))
   })
@@ -315,9 +331,10 @@
     $('move').textContent = moving ? '移動中' : 'Botを移動させる'
     $('move-cancel').hidden = !moving
     $('move-cancel').disabled = !!busy || !token || !live?.session || typeof move?.operationId !== 'string' || !move.operationId
-    if (moving) { plan = null; $('plan-results').hidden = true; message('move', '移動中') }
+    // Progress and failures of a move are shown in the page's activity banner.
+    if (moving) { plan = null; $('plan-results').hidden = true; message('move', '') }
     else if (['cancelled', 'canceled'].includes(move?.phase)) message('move', '中断しました')
-    else if (move?.error || move?.phase === 'failed') message('move', clean(move.error?.message || '移動できませんでした。'), true)
+    else if (move?.error || move?.phase === 'failed') message('move', '')
     else if (move?.serverConfirmed === true && proofInsideArea(live)) message('move', '到着確認済み')
     else if (['completed', 'arrived'].includes(move?.phase)) message('move', '位置の受信待ち')
   }
