@@ -49,3 +49,19 @@ test('quarry: HP 4/20 without a totem still retreats as before', async () => {
   assert.ok((s.events ?? []).some(e => e.type === 'low_health'), JSON.stringify({ state: s.state, events: (s.events ?? []).slice(-5) }))
   assert.equal(s.ledger.minedBlocks ?? 0, 0)
 })
+
+// Live 2026-11-14 03:56:45: the totem fired (HP 1.19 -> 1) but the offhand
+// record kept it and the health protections stayed off until death at 04:00.
+test('a consumed totem empties the trusted offhand at once', () => {
+  const { createInventoryStore } = require('../src/inventory-store')
+  const store = createInventoryStore({ shared: {} })
+  const totem = { network_id: 578, count: 1, metadata: 0, has_stack_id: true, stack_id: 7, block_runtime_id: 0, extra: { has_nbt: false, can_place_on: [], can_destroy: [] } }
+  store.commit('offhand', 0, totem, 'server_inventory_slot')
+  assert.ok(store.raw('offhand', 0), 'a received totem is trusted')
+  store.forget('offhand', 0, 'totem_consumed')
+  assert.equal(store.raw('offhand', 0), null, 'after consumption the offhand is unreceived, not a totem')
+  const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  assert.match(source, /consume_totem' \|\| packet\.event_id === 65/)
+  assert.match(source, /inventoryStore\.forget\('offhand', 0, 'totem_consumed'\)/)
+  assert.match(source, /totemConsumedAt\) && !\(Date\.parse\(info\?\.at/)
+})

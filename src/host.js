@@ -151,7 +151,10 @@ function createDeathRespawnReflex ({ getState, getShared, getLifecycle, getCurre
   }
   function observe () {
     const shared = getShared(); const state = getState(); const life = getLifecycle()?.stats()
-    if (isStopping() || !(shared.safetyWanted === true || shared.autoWanted === true) || !life?.dead || !Number.isSafeInteger(life.deathId) || life.deathId < 1 || !['spawned', 'dead', 'respawning'].includes(state.phase)) return false
+    // Live 2026-11-14 07:31: after a dashboard reconnect neither intent was set
+    // and the dead bot stayed dead for an hour. A confirmed death always gets
+    // the normal respawn unless it is explicitly disabled.
+    if (isStopping() || shared.respawnDisabled === true || !life?.dead || !Number.isSafeInteger(life.deathId) || life.deathId < 1 || !['spawned', 'dead', 'respawning'].includes(state.phase)) return false
     const key = `${scope(state)}:${life.deathId}`
     if (automaticKey === key) return false
     automaticKey = key
@@ -159,7 +162,7 @@ function createDeathRespawnReflex ({ getState, getShared, getLifecycle, getCurre
     const receipt = { deathId: life.deathId, connectionId: state.connectionId, phase: 'scheduled', at: new Date().toISOString() }
     shared.deathRespawn = receipt
     schedule(() => {
-      if (isStopping() || scope(getState()) !== session || !(shared.safetyWanted === true || shared.autoWanted === true) || getLifecycle()?.stats().deathId !== life.deathId || !getLifecycle()?.stats().dead) return
+      if (isStopping() || scope(getState()) !== session || shared.respawnDisabled === true || getLifecycle()?.stats().deathId !== life.deathId || !getLifecycle()?.stats().dead) return
       receipt.phase = 'respawning'
       void request().then(result => {
         Object.assign(receipt, { phase: result?.serverConfirmed === true ? 'confirmed' : 'unconfirmed', serverConfirmed: result?.serverConfirmed === true })

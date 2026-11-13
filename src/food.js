@@ -366,6 +366,12 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
     if (name === 'inventory_content' && inventoryContentScope(packet) && Array.isArray(packet.input) && packet.input.length >= 36 && packet.input.slice(0, 36).every((raw, slot) => valid(raw) && sameRaw(raw, crafting.rawItem(slot)))) {
       inventoryUncertain = false
       if (operation?.wireSent) operation.fullInventoryWireEpoch = operation.wireEpoch
+    } else if (inventoryUncertain && name === 'inventory_content' && inventoryContentScope(packet) && Array.isArray(packet.input) && packet.input.length >= 36 && packet.input.slice(0, 36).every(raw => valid(raw)) && !(operation?.wireSent && !operation.serverConfirmed && !operation.serverRejected)) {
+      // Live 2026-11-14 03:55-04:00: after a meal interrupted by combat, 15 full
+      // server inventories arrived but the strict slot-by-slot match never held
+      // and every meal failed until death. A complete received main inventory
+      // with no sent use still unresolved is the fresh baseline.
+      inventoryUncertain = false
     }
     const attempt = operation
     if (!attempt || attempt.cancelled) return
