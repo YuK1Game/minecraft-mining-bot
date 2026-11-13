@@ -159,7 +159,7 @@ function quarryState (input) {
     draining: input.draining === true,
     persistence: input.persistence ? { status: ['saved', 'failed'].includes(input.persistence.status) ? input.persistence.status : 'unknown', savedAt: timestamp(input.persistence.savedAt), error: text(input.persistence.error, 300), fileSynced: input.persistence.fileSynced === true, directorySynced: input.persistence.directorySynced === true } : null,
     userRunIntent: ['running', 'paused', 'stopped', 'cancelled', 'finished'].includes(input.userRunIntent) ? input.userRunIntent : null,
-    result, pauseReason: text(input.pauseReason, 240), error: text(input.error, 240),
+    result, pauseReason: text(input.pauseReason, 240), pauseDetailReason: text(input.pauseDetails?.reason, 120), error: text(input.error, 240),
     acceptedExceptions: input.acceptedExceptions && typeof input.acceptedExceptions === 'object' ? { at: timestamp(input.acceptedExceptions.at), by: ['user', 'auto'].includes(input.acceptedExceptions.by) ? input.acceptedExceptions.by : null, count: integer(input.acceptedExceptions.count, 0, 1000000), byReason: Object.fromEntries(Object.entries(input.acceptedExceptions.byReason ?? {}).slice(0, 40).map(([k, v]) => [text(k, 60), integer(v, 0, 1000000)])), items: (Array.isArray(input.acceptedExceptions.items) ? input.acceptedExceptions.items : []).slice(0, 200).map(i => ({ position: text(i?.position, 40), reason: text(i?.reason, 60), name: text(i?.name, 80) })) } : null,
     lostCargoBoxes: (Array.isArray(input.lostCargoBoxes) ? input.lostCargoBoxes : []).slice(-32).filter(r => r && typeof r === 'object').map(r => ({ at: timestamp(r.at), by: ['user', 'auto'].includes(r.by) ? r.by : null, box: text(r.box, 80), position: r.position && ['x', 'y', 'z'].every(k => integer(r.position[k], -30000000, 30000000) !== null) ? { x: r.position.x, y: r.position.y, z: r.position.z } : null, items: (Array.isArray(r.items) ? r.items : []).slice(0, 27).map(i => ({ name: text(i?.name, 80), count: integer(i?.count, 0, 100000) })) })),
     autoRetry: input.autoRetry && typeof input.autoRetry === 'object' ? { kind: text(input.autoRetry.kind, 40), reason: text(input.autoRetry.reason, 160), attempt: integer(input.autoRetry.attempt, 0, 100), max: integer(input.autoRetry.max, 0, 100), inSeconds: integer(input.autoRetry.inSeconds, 0, 86400) } : null,
@@ -188,6 +188,23 @@ const activityReasons = {
   TOTEM_EXHAUSTED: 'トーテムがありません', SEAL_PLACEMENT_FAILED: '液体を塞げません', FLUID_DRAIN_TIMEOUT: '液体が引きません', PROCESS_RESTARTED: '再接続後の再開待ち', LEGACY_CHEST_STORAGE: '旧チェスト方式のジョブです', PERSISTENCE_FAILED: '状態の保存に失敗'
 }
 const manualPauses = new Set(['MANUAL_PAUSE', 'USER_PAUSED', 'USER_STOPPED'])
+// Reasons that had no Japanese label (2026-11-14: "待機中" without saying what
+// for). Pause sub-reasons (pauseDetails.reason) are labelled too.
+Object.assign(activityReasons, {
+  EXIT_SUPPLY_UNCONFIRMED: '脱出用の補給品を確認できません',
+  SUPPLY_SCOPE_CHANGED: '接続が変わったため補給の続きを確認できません',
+  SUPPLY_BOXES_UNCONFIRMED: '補給箱を確認できません',
+  START_INVENTORY_NOT_EMPTY: '開始時の持ち物が空ではありません',
+  START_EQUIPMENT_UNKNOWN: '開始前の装備を受信できません',
+  STORAGE_PICKUP_CAPACITY_REQUIRED: '箱を拾い戻す空き枠を待っています',
+  STORAGE_SITE_UNOBSERVED: '箱の置き場所が見つかりません',
+  FINAL_INVENTORY_UNCONFIRMED: '最後の収納後の持ち物を確認できません',
+  FINAL_CHEST_UNCONFIRMED: '最後のチェスト収納を確認できません',
+  UNRESOLVED_EXCEPTIONS: '保留の受諾待ち',
+  MANUAL_PAUSE: '手動で一時停止',
+  USER_PAUSED: '手動で一時停止',
+  ASCENT_UNCERTAIN_STEP: '土柱の段を確認できません'
+})
 const reasonLabel = code => activityReasons[code] ?? null
 
 function activityOf (base) {
@@ -198,7 +215,9 @@ function activityOf (base) {
   const behavior = base.behavior?.activeKind
   if (behavior === 'combat' && !['COMBAT', 'SUSPEND_FOR_COMBAT'].includes(q?.state)) return { kind: 'busy', label: '戦闘中', detail: null, code: null }
   if (behavior === 'sleeping') return { kind: 'busy', label: 'ベッドで就寝中', detail: null, code: null }
-  if (!q || !q.jobId || q.state === 'IDLE') return { kind: 'idle', label: '待機中', detail: null, code: null }
+  // Waiting always says what for (2026-11-14 user request).
+  if (!q || !q.jobId) return { kind: 'idle', label: '待機中: 露天掘りのジョブなし', detail: null, code: null }
+  if (q.state === 'IDLE') return { kind: 'idle', label: '待機中: 計画の確認と開始待ち', detail: null, code: null }
   if (q.persistence?.status === 'failed') return { kind: 'error', label: '状態の保存に失敗', detail: q.persistence.error, code: 'PERSISTENCE_FAILED' }
   if (q.state === 'FINISHED') {
     const type = q.result?.type
@@ -211,11 +230,12 @@ function activityOf (base) {
     const retry = q.autoRetry
     if (retry) {
       const parts = [reasonLabel(retry.reason), retry.inSeconds !== null ? `あと${retry.inSeconds}秒` : null, retry.attempt !== null && retry.max !== null ? `${retry.attempt}/${retry.max}回目` : null].filter(Boolean)
-      return { kind: 'waiting', label: '待機中（自動で再試行）', detail: parts.join(' · ') || null, code: retry.reason }
+      return { kind: 'waiting', label: `待機中: ${reasonLabel(retry.reason) ?? '自動で再試行'}`, detail: ['自動で再試行', ...parts.slice(1)].join(' · ') || null, code: retry.reason }
     }
     const code = q.pauseReason ?? q.egress?.reason ?? null
-    if (!code || manualPauses.has(code)) return { kind: 'paused', label: '一時停止中', detail: null, code }
-    return { kind: 'error', label: reasonLabel(code) ?? '停止しています', detail: q.error, code }
+    if (!code || manualPauses.has(code)) return { kind: 'paused', label: '一時停止: 手動で一時停止', detail: null, code }
+    const sub = q.pauseDetailReason ? reasonLabel(q.pauseDetailReason) ?? q.pauseDetailReason : null
+    return { kind: 'error', label: `一時停止: ${reasonLabel(code) ?? code}`, detail: [sub, q.error].filter(Boolean).join(' · ') || null, code }
   }
   let label = activityStates[q.state] ?? '作業中'
   const storage = q.portableStorage

@@ -18,14 +18,25 @@ test('activity line names what the quarry is doing now', () => {
 })
 
 test('errors, waits and pauses share the same slot', () => {
-  assert.deepEqual(activity({ state: 'PAUSED', pauseReason: 'CARRIED_STORAGE_BLOCKED' }), { kind: 'error', label: 'シュルカーを置ける場所がありません', detail: null, code: 'CARRIED_STORAGE_BLOCKED' })
-  assert.deepEqual(activity({ state: 'PAUSED', pauseReason: 'ACTION_FAILED', autoRetry: { kind: 'action', reason: 'ACTION_FAILED', attempt: 1, max: 3, inSeconds: 27 } }), { kind: 'waiting', label: '待機中（自動で再試行）', detail: '操作が完了しませんでした · あと27秒 · 1/3回目', code: 'ACTION_FAILED' })
+  assert.deepEqual(activity({ state: 'PAUSED', pauseReason: 'CARRIED_STORAGE_BLOCKED' }), { kind: 'error', label: '一時停止: シュルカーを置ける場所がありません', detail: null, code: 'CARRIED_STORAGE_BLOCKED' })
+  assert.deepEqual(activity({ state: 'PAUSED', pauseReason: 'ACTION_FAILED', autoRetry: { kind: 'action', reason: 'ACTION_FAILED', attempt: 1, max: 3, inSeconds: 27 } }), { kind: 'waiting', label: '待機中: 操作が完了しませんでした', detail: '自動で再試行 · あと27秒 · 1/3回目', code: 'ACTION_FAILED' })
   assert.equal(activity({ state: 'PAUSED', pauseReason: 'MANUAL_PAUSE' }).kind, 'paused')
-  assert.equal(activity({ state: 'PAUSED', pauseReason: 'SOMETHING_NEW' }).label, '停止しています')
+  assert.equal(activity({ state: 'PAUSED', pauseReason: 'SOMETHING_NEW' }).label, '一時停止: SOMETHING_NEW')
   assert.equal(activity({ state: 'MINE', persistence: { status: 'failed', error: 'EIO' } }).kind, 'error')
   assert.equal(activity({ state: 'FINISHED', result: { type: 'COMPLETED' } }).kind, 'done')
   assert.equal(sanitizeStatus({ phase: 'spawned', health: 0 }, { observedAt: at }).activity.kind, 'error')
-  assert.equal(sanitizeStatus({ phase: 'spawned', health: 20 }, { observedAt: at }).activity.label, '待機中')
+  assert.equal(sanitizeStatus({ phase: 'spawned', health: 20 }, { observedAt: at }).activity.label, '待機中: 露天掘りのジョブなし')
+})
+
+// 2026-11-14 user question "なんの待機？": waiting and pauses always say what for,
+// including the sub-reason in pauseDetails.
+test('waiting and pauses always say what they wait for in Japanese', () => {
+  assert.equal(activity({ state: 'IDLE' }).label, '待機中: 計画の確認と開始待ち')
+  const paused = activity({ state: 'PAUSED', pauseReason: 'SUPPLY_RESTOCK_BLOCKED', pauseDetails: { reason: 'SUPPLY_SCOPE_CHANGED' } })
+  assert.equal(paused.label, '一時停止: 補給箱から取り出せません')
+  assert.equal(paused.detail, '接続が変わったため補給の続きを確認できません')
+  assert.equal(activity({ state: 'PAUSED', pauseReason: 'EXIT_SUPPLY_UNCONFIRMED' }).label, '一時停止: 脱出用の補給品を確認できません')
+  assert.equal(activity({ state: 'PAUSED', pauseReason: 'MANUAL_PAUSE' }).label, '一時停止: 手動で一時停止')
 })
 
 test('a cached snapshot never claims current activity', () => {
