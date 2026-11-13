@@ -18,6 +18,7 @@ const { createQuarryV22ChestWork } = require('./quarry-v22-chest-work')
 const { createRuntimeV22ChestReset, receivedEquipmentView, jobPending } = require('./loadout-runtime-adapter')
 const { createInventoryStore } = require('./inventory-store')
 const { createEventLoopStallWatch } = require('./event-loop-stall')
+const { currentLifeId } = require('./life-identity')
 const { createManualChestRuntime } = require('./manual-chest-runtime-adapter')
 const { createChunkTravel } = require('./chunk-travel')
 const { chunkTravelThreatsClear } = require('./chunk-travel-threats')
@@ -486,7 +487,7 @@ function createRuntime (host) {
   const scopeFields = ['profile', 'realm', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId']
   const rawScope = () => rawFields(scopeFields)
   const actualWireClock = createActualQueuedWireClock({ client: host.client, shared: host.shared, getState: () => rawFields(['connectionId', 'startedAt', 'runtimeEntityId']) })
-  const actualLifeId = () => Number.isSafeInteger(host.shared.deathRespawn?.deathId) ? host.shared.deathRespawn.deathId : 0
+  const actualLifeId = () => currentLifeId({ hostLife: typeof host.getLife === 'function' ? host.getLife() : null, connectionId: rawFields(['connectionId']).connectionId ?? null, respawnRecord: host.shared.deathRespawn })
   const effectState = () => {
     const state = rawFields([...scopeFields, 'phase', 'health', 'position', 'dead', 'isDead', 'spawnPending'])
     return { ...state, profile: state.profile ?? host.meta.profile, lifecycle: { deathId: actualLifeId(), dead: state.dead === true, phase: state.dead ? 'dead' : 'alive' } }
@@ -2517,12 +2518,10 @@ function createRuntime (host) {
       try { const result = await own(fn)(); requireSafety(); return result } finally { if (owners[kind] === record) owners[kind] = null }
     }
     let recentUserSafetyObservation = null
-    const safetyState = () => {
-      requireSafety()
-      const state = { ...routeState(), loading: !host.shared.loadingScreenEnded, loadingScreenEnded: host.shared.loadingScreenEnded === true, world: host.world.stats(), totemGuard: offhandTotem() }
-      // Keep the raw entity catalogue intact. This safety view omits only
-      // known non-intercepting actors; unknown access remains an observation.
-      state.entities = state.entities.filter(actor => {
+    function safetyActors (state, actors = state.entities) {
+      // Planning and live inspection use the same current attack-access view.
+      // Unknown access stays visible; this never proves future path safety.
+      return actors.filter(actor => {
         if (actor.hostile !== true || actor.alive === false || actor.primed === true) return true
         const exposure = combatAttackExposure(actor, state)
         // A forbidden combat profile (boss/avoid-only) is still dangerous.
@@ -2531,9 +2530,18 @@ function createRuntime (host) {
         if (!exposure.unknown && exposure.evidence.sight === false) return false
         return exposure.unknown || !['ENEMY_ATTACK_ROUTE_BLOCKED', 'PROJECTILE_SIGHT_BLOCKED', 'NO_CURRENT_RECOGNITION'].includes(exposure.reason)
       })
-      recentUserSafetyObservation = { state, at: Date.now(), scope: userScope(state) }
-      return state
     }
+    const safetyObservation = () => {
+      requireSafety()
+      const state = { ...routeState(), loading: !host.shared.loadingScreenEnded, loadingScreenEnded: host.shared.loadingScreenEnded === true, world: host.world.stats(), totemGuard: offhandTotem() }
+      // Keep both views from this one observation. A currently occluded actor
+      // still has an identity and position that bound an active retreat.
+      const observedEntities = state.entities
+      state.entities = safetyActors(state)
+      recentUserSafetyObservation = { state, at: Date.now(), scope: userScope(state) }
+      return { state, observedEntities }
+    }
+    const safetyState = () => safetyObservation().state
     function safetyIdle (context = {}) {
       if (!safetyCurrent() || depotBuilder?.snapshot().busy || depotStorage?.snapshot().busy) return false
       if (userBehaviorOwns()) return false
@@ -3070,7 +3078,8 @@ function createRuntime (host) {
           const check = () => {
             requireSafety(); if (signal.aborted) throw signal.reason ?? new Error('Partial escape interrupted')
             if (Date.now() >= deadline) throw new Error('Partial escape deadline')
-            const current = safetyState()
+            const { state: current, observedEntities } = safetyObservation()
+            if (signal.aborted) throw signal.reason ?? new Error('Partial escape interrupted')
             if (current.dead || current.health < initial.health || learningShore && actualLifeId() !== learningLife || current.connectionId !== initial.connectionId || !sameRouteScope(routeScope(current), routeScope(initial))) throw new Error('Partial escape session or health changed')
             const currentPhysical = current.predicted?.physicsState ?? current.physicsState
             if (shoreRecenter && (currentPhysical?.isInWater || currentPhysical?.isInLava)) throw new Error('Partial escape entered water or lava')
@@ -3080,14 +3089,18 @@ function createRuntime (host) {
             if (current.inventory?.known !== true || current.inventory.uncertain || current.equipmentServerConfirmed === false || currentSlot !== selected || !equipmentValid) throw new Error('Partial escape equipment changed')
             const evaluation = evaluateThreats(current, current.entities, { observationRadius: 32 })
             if (evaluation.requiresObservation || current.entityStats?.unknownPositions > evaluation.unknownPositions.length || evaluation.threats.some(actor => !activeIds.has(actor.runtimeId) && !trackedRangedIds.has(actor.runtimeId))) throw new Error('Partial escape danger changed')
-            const actors = new Map([...evaluation.threats, ...evaluation.outsideDanger].map(actor => [actor.runtimeId, actor]))
             if (trace) {
+              // Occlusion changes danger, not identity or the fixed distance
+              // floor of an actor already included in this retreat corridor.
+              const observed = evaluateThreats(current, observedEntities, { observationRadius: 32 })
+              if (observed.requiresObservation) throw new Error('Partial escape actor observations are incomplete')
+              const actors = new Map([...observed.threats, ...observed.outsideDanger, ...observed.suppressedByTerrain, ...observed.unreachable].map(actor => [actor.runtimeId, actor]))
               const nearest = trace.reduce((best, point, index) => index < traceIndex ? best : !best || distance(eye(point), current.position) < best.distance ? { index, distance: distance(eye(point), current.position) } : best, null)
               if (!nearest || nearest.distance > 0.5) throw new Error('Partial escape left its predicted corridor')
               traceIndex = nearest.index
               const remaining = [current.position, ...trace.slice(traceIndex + 1).map(eye)]
               for (const circle of circles) {
-                const actor = actors.get(circle.id); const entity = current.entities.find(item => String(item.runtimeId ?? item.runtimeEntityId ?? item.entityId ?? item.id) === circle.id); const known = identities.get(circle.id)
+                const actor = actors.get(circle.id); const entity = observedEntities.find(item => String(item.runtimeId ?? item.runtimeEntityId ?? item.entityId ?? item.id) === circle.id); const known = identities.get(circle.id)
                 if (!actor || !known) throw new Error('Partial escape actor no longer observed')
                 if (String(entity?.uniqueId) !== known.uniqueId || actor.name !== known.name) throw new Error('Partial escape actor identity changed')
                 if (actor.dangerRadius > known.radius) throw new Error('Partial escape actor danger expanded')
@@ -3333,7 +3346,7 @@ function createRuntime (host) {
           const feet = state => ({ ...state.position, y: state.position.y - 1.62 })
           const eye = point => ({ ...point, y: point.y + 1.62 })
           const assessEnemies = state => {
-            const actors = state.entities ?? []
+            const actors = safetyActors(state, state.entities ?? [])
             const canonical = evaluateThreats(state, actors, { observationRadius: 32 })
             if (canonical.requiresObservation || state.entityStats?.unknownPositions > canonical.unknownPositions.length) throw new Error('Idle escape actor positions are unknown')
             const retained = resolveWorkActors(state, canonical, retainedActors)
@@ -4285,6 +4298,10 @@ function createRuntime (host) {
             if (lastRejected) return { ...lastRejected, supported: true, escaped: false, partialEscape: false, safe: false, diagnostics }
             if (lastBoundedPartial) return { ...lastBoundedPartial, movementStarts: episodeMovementStarts, diagnostics }
             if (boundedJumpAttempted) return { supported: true, arrived: false, escaped: false, partialEscape: false, code: 'NO_SAFE_RETREAT', reason: 'no_known_away_route', movementStarts: episodeMovementStarts, safe: false, diagnostics }
+            // Keep the original deadline and live guards active while a partial origin recenters.
+            if (partialOrigin && episodeMovementStarts === 0 && partialEscapeAction && Date.now() < deadline) {
+              return await partialEscapeAction({ ...context, signal })
+            }
             return { supported: false, reason: 'no_known_away_route', diagnostics }
             }
           } catch (error) {
@@ -7221,7 +7238,24 @@ function createRuntime (host) {
     const docs = await quarryStorage.list()
     if (disposed || disposing || host.shared.quarryRestoreDisabled || ticket !== quarryLoadSequence || generation !== quarryPorts || job.document()) throw Object.assign(new Error('Quarry recovery context changed'), { code: 'RECOVERY_CONTEXT_CHANGED' })
     const candidate = selectRecoveryCandidate(docs, quarryState())
-    if (!candidate) return { skipped: 'none' }
+    if (!candidate) {
+      // Only on the dashboard's reconnect after an unexpected disconnect (the
+      // restore is disabled for a UI connect): a job left running but paused for
+      // another reason is loaded and its own bounded retries are re-armed; a
+      // placed-box operation stopped by the connection change is resumed once
+      // (its takeover rules decide; anything unsafe pauses again).
+      const paused = host.shared.quarryRestoreAfterReconnect === true ? require('./quarry-recovery').selectPausedRunningCandidate(docs, quarryState()) : null
+      if (!paused) return { skipped: 'none' }
+      const status = await loadQuarryFile(paused.config.jobId)
+      const detail = status?.pauseDetails?.reason ?? null
+      host.log(`露天掘り: 再接続後に一時停止中のジョブを読み込みました: ${paused.config.jobId} (${status?.pauseReason ?? ''}${detail ? ' / ' + detail : ''})`)
+      if (['SUPPLY_RESTOCK_BLOCKED', 'CARRIED_STORAGE_BLOCKED'].includes(status?.pauseReason) && ['SUPPLY_SCOPE_CHANGED', 'STORAGE_PICKUP_CAPACITY_REQUIRED', 'STORAGE_RECOVERY_SLOT_REQUIRED', 'STORAGE_WINDOW_CHANGED'].includes(detail)) {
+        ensureQuarryJob().resume()
+        return { loaded: paused.config.jobId, resumed: true, reason: status.pauseReason, detail }
+      }
+      const rearmed = ensureQuarryJob().rescheduleAutoResume()
+      return { loaded: paused.config.jobId, resumed: false, rearmed: rearmed === true, reason: status?.pauseReason ?? null, detail }
+    }
     const status = await loadQuarryFile(candidate.config.jobId)
     const reason = status?.pauseReason ?? ''
     host.log(`露天掘り: 同じワールドのジョブを復元しました: ${candidate.config.jobId} (${reason || status?.state})`)
@@ -7295,7 +7329,7 @@ function createRuntime (host) {
   const worldRetentionTimer = setInterval(() => { if (disposed || disposing) { clearInterval(worldRetentionTimer); return } try { updateWorldRetention() } catch {} }, 5000)
   worldRetentionTimer.unref?.()
   const eventLoopStallWatch = createEventLoopStallWatch({
-    context: () => { const q = quarryJob?.status?.(); return q ? { quarry: q.state ?? null, layer: q.cursorY ?? null } : null },
+    context: () => { const q = quarryJob?.status?.(); return q ? { quarry: q.state ?? null, layer: q.currentY ?? null } : null },
     report: r => host.log(`処理の停止を検知: ${r.stallMs}ms 作業=${JSON.stringify(r.doing)}${r.suppressed ? ` 直前の未記録${r.suppressed}件` : ''} 最大=${r.worstMs}ms 累計${r.stalls}回`)
   })
   eventLoopStallWatch.start()

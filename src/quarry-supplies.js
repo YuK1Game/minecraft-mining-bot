@@ -364,7 +364,7 @@ function createQuarrySupplies ({ getState, crafting, chest, refreshInventory, ge
         if (!cp.child && (!box || !isShulkerBox(box.name))) throw fail('SUPPLY_BOX_MISSING')
         cp.selection ??= { kind: 'shulker', key: binding.key, sources: [{ slot: box.slot, name: box.name, count: 1, stackId: box.stackId }] }
         await save()
-        const response = await getPortable().storeCarried({ jobId: cp.jobId, operationId: `${cp.operationId}:${binding.role}`, selection: copy(cp.selection), checkpoint: copy(cp.child), purpose: 'supply', supply: { binding: copy(binding), policy: copy(cp.policy) }, deposits: [], inventoryPolicy: copy(cp.policy) }, { signal, canPlace: request.canPlace, onCheckpoint: async child => { cp.child = copy(child); await save() } })
+        const response = await getPortable().storeCarried({ jobId: cp.jobId, operationId: `${cp.operationId}:${binding.role}`, selection: copy(cp.selection), checkpoint: copy(cp.child), purpose: 'supply', supply: { binding: copy(binding), policy: copy(cp.policy) }, deposits: [], inventoryPolicy: copy(cp.policy), allowRecoverySpace: true, recoverySpaceRounds: 1 }, { signal, canPlace: request.canPlace, onCheckpoint: async child => { cp.child = copy(child); await save() } })
         if (response?.status !== 'completed' || response.serverConfirmed !== true || response.recovered !== true || !response.checkpoint?.recovered?.key || response.checkpoint?.supplyResult?.serverConfirmed !== true) throw fail(response?.reason ?? 'SUPPLY_RECOVERY_UNCONFIRMED')
         const after = observe(cp.scope, signal)
         const recovered = response.checkpoint.recovered, actual = after.items.find(item => carriedContainerKey(item) === recovered.key)

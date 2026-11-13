@@ -1120,6 +1120,104 @@ test('a healthy unarmed respawn can leave the observed ledge while moving away f
   assert.equal(f.movements[0].starts.length, 1)
 })
 
+test('normal-to-partial ledge handoff does not start movement after its final observation expires the outer deadline', async t => {
+  // Keep periodic observers out of this exact synchronous observation edge.
+  // The real Runtime, navigator and partial preview still run unchanged.
+  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: 10000 })
+  let clock = 10000
+  t.mock.method(Date, 'now', () => clock)
+  const observed = require('./fixtures/unarmed-respawn-ledge.json')
+  const f = prepare(t, { realGuard: true, realPhysics: true })
+  f.raw.health = observed.health; f.raw.position = structuredClone(observed.position)
+  f.raw.inventory.items = []; f.raw.heldItem = null
+  f.actors.splice(0, f.actors.length, ...structuredClone(observed.enemies))
+  const blocks = new Map(observed.blocks.map(block => [`${block.position.x},${block.position.y},${block.position.z}`, block]))
+  f.host.world.getBlock = (x, y, z) => structuredClone(blocks.get(`${x},${y},${z}`) ?? { known: false })
+  const stats = f.host.entities.stats
+  let expiredInsideObservation = false
+  t.mock.method(f.host.entities, 'stats', () => {
+    if (!expiredInsideObservation && f.movements[0].previews.some(preview => preview.route?.ready && (preview.options.partialDrop || preview.options.partialRecenter))) {
+      expiredInsideObservation = true
+      clock = 14001
+    }
+    return stats()
+  })
+  await assert.rejects(f.safeties[0].options.escape(context(f)), /Idle escape four-second deadline exceeded/)
+  assert.equal(expiredInsideObservation, true, 'normal escape reaches the proven partial plan before the final observation expires its parent deadline')
+  assert.equal(f.movements[0].starts.length, 0, 'an observation-triggered abort must be checked before beginning movement')
+  assert.equal(f.movements[0].frames.length, 0)
+})
+
+test('partial ledge retreat keeps fixed actor guards after known terrain removes the actor from the safety view', async t => {
+  for (const mode of ['observed', 'unknown', 'uid', 'removed', 'dead', 'dimension', 'scope', 'distance', 'remaining']) {
+    await t.test(mode, async t => {
+      const observed = require('./fixtures/unarmed-respawn-ledge.json')
+      const f = prepare(t, { realGuard: true, realPhysics: true })
+      f.raw.health = observed.health; f.raw.position = structuredClone(observed.position)
+      f.raw.inventory.items = []; f.raw.heldItem = null
+      f.actors.splice(0, f.actors.length, ...structuredClone(observed.enemies))
+      const blocks = new Map(observed.blocks.map(block => [`${block.position.x},${block.position.y},${block.position.z}`, block]))
+      f.host.world.getBlock = (x, y, z) => structuredClone(blocks.get(`${x},${y},${z}`) ?? { known: false })
+      const initial = context(f)
+      const initialState = f.safeties[0].options.getState()
+      const evaluated = evaluateThreats(initialState, initialState.entities, { observationRadius: 32 })
+      const trackedActors = [...evaluated.threats, ...evaluated.outsideDanger]
+      const identities = new Map(initialState.entities.map(entity => [String(entity.runtimeId), String(entity.uniqueId)]))
+      let completed = false
+      // Attach rejection handling immediately: the native 25ms guard may stop
+      // the motion between the observer's polls.
+      const result = f.safeties[0].options.partialEscape(initial).then(value => ({ value }), error => ({ error })).then(value => { completed = true; return value })
+      let occlusionObserved = false
+      for (let poll = 0; poll < 800 && !completed; poll++) {
+        const state = f.safeties[0].options.getState()
+        const tracked = trackedActors.find(actor => !state.entities.some(entity => String(entity.runtimeId) === actor.runtimeId))
+        if (f.movements[0].frames.length && tracked) {
+          occlusionObserved = true
+          const actor = f.actors.find(entity => String(entity.runtimeId) === tracked.runtimeId)
+          const uid = identities.get(tracked.runtimeId)
+          assert.equal(String(f.host.entities.snapshot().find(entity => String(entity.runtimeId) === tracked.runtimeId)?.uniqueId), uid, 'the received catalogue still contains the same actor when the safety view omits it')
+          assert.equal(tracked.dangerous, false, 'this fixture occludes a previously observed outside actor, whose danger radius still bounds the retreat')
+          if (mode === 'unknown') actor.positionKnown = false
+          if (mode === 'uid') actor.uniqueId = '999999'
+          if (mode === 'removed') f.actors.splice(f.actors.indexOf(actor), 1)
+          if (mode === 'dead') actor.alive = false
+          if (mode === 'dimension') actor.dimension = 'nether'
+          if (mode === 'scope') f.raw.connectionId = 'replacement_socket'
+          if (mode === 'distance') {
+            // Keep the outside actor occluded and close the already active
+            // zombie, so the fixed floor (not the new-danger gate) is tested.
+            const primary = evaluated.threats[0]
+            const approaching = f.actors.find(entity => String(entity.runtimeId) === primary.runtimeId)
+            approaching.position = { ...state.position, x: state.position.x + primary.distance - 0.5 }
+          }
+          if (mode === 'remaining') {
+            const target = f.movements[0].starts[0].target
+            const goal = { ...target, y: target.y + 1.62 }
+            const length = Math.hypot(goal.x - state.position.x, goal.y - state.position.y, goal.z - state.position.z)
+            assert.ok(length > 0.05, 'a finite remainder of the predicted route is still ahead')
+            actor.position = Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, goal[axis] + (goal[axis] - state.position[axis]) / length * (tracked.dangerRadius - length / 2)]))
+            assert.ok(Math.hypot(actor.position.x - state.position.x, actor.position.y - state.position.y, actor.position.z - state.position.z) >= tracked.dangerRadius, 'the current distance floor still holds; only the remaining route is unsafe')
+          }
+          break
+        }
+        await new Promise(resolve => setTimeout(resolve, 5))
+      }
+      const outcome = await result
+      assert.equal(occlusionObserved, true, 'the real movement reaches known occlusion before this regression changes the observation')
+      if (mode === 'observed') {
+        assert.equal(outcome.error, undefined)
+        assert.equal(outcome.value.arrived, true)
+        assert.equal(outcome.value.serverConfirmed, false, 'physics completion does not manufacture a server receipt')
+      } else {
+        const reasons = { unknown: /danger changed|actor observations are incomplete/, uid: /identity changed/, removed: /no longer observed/, dead: /no longer observed/, dimension: /no longer observed/, scope: /ワールド・プレイヤー|session/, distance: /distance floor/, remaining: /remaining path/ }
+        assert.match(outcome.error?.message ?? '', reasons[mode])
+        assert.equal(outcome.value, undefined)
+      }
+      assert.equal(f.movements[0].starts.length, 1)
+    })
+  }
+})
+
 test('unarmed ledge retreat refuses low health, closer enemies and uncertain equipment', async t => {
   for (const mode of ['health', 'near', 'creeper', 'extra', 'inventory']) {
     const observed = require('./fixtures/unarmed-respawn-ledge.json')
