@@ -6941,7 +6941,7 @@ function createRuntime (host) {
       confirmPosition: (feet, options) => confirmQuarryPosition(feet, options),
       // A prediction the server-position witness disproved (2026-11-13) is
       // discarded; the received raw position is never rewritten.
-      discardPrediction: reason => { motionOrigin = null; host.shared.prediction = null; host.shared.motionSource = null; try { host.log(`位置: 外れた予測位置を破棄しました (${String(reason ?? '').slice(0, 80)})`) } catch {} return true },
+      discardPrediction: reason => discardWorkingPrediction(reason),
       rawItem: slot => crafting.rawItem(slot),
       inventoryDetails: () => inventoryInspection.snapshot(working()),
       attackAnimal: (runtimeId, options) => { if (!combat) throw new Error('戦闘モジュールが未準備です。'); return combat.animalAttack(runtimeId, options) },
@@ -7288,18 +7288,30 @@ function createRuntime (host) {
       owner.scope !== observedScope(quarryState()) || owner.job !== chunkMoveJobIdentity()) throw Object.assign(new Error('Botの移動条件が変わりました。'), { code: 'CHUNK_MOVE_CONTEXT_CHANGED' })
     return owner
   }
+  // Discard a working prediction the server witness disproved; the received
+  // raw position is never rewritten (2026-11-13).
+  function discardWorkingPrediction (reason) { motionOrigin = null; host.shared.prediction = null; host.shared.motionSource = null; try { host.log(`位置: 外れた予測位置を破棄しました (${String(reason ?? '').slice(0, 80)})`) } catch {} return true }
+  // Shared planning-origin check for moves (2026-11-13 live 22:35, see
+  // move-origin.js): a stale or distant received position without support is
+  // witnessed once before a route is planned.
+  async function reconcilePlanningOrigin () {
+    const { reconcileMoveOrigin } = require('./move-origin')
+    return reconcileMoveOrigin({ state: quarryState(), confirm: (feet, options) => confirmQuarryPosition(feet, options), discardPrediction: discardWorkingPrediction,
+      hasSupport: feet => idlePhysics ? idlePhysics.withWorld(host.world, { allowWater: true }).hasSupport(feet) : true, log: message => host.log(message) })
+  }
   function ensureChunkTravel () {
     if (chunkTravel) return chunkTravel
     let planner = null
     chunkTravel = createChunkTravel({ getState: quarryState, getBlock: (x, y, z) => host.world.getBlock(x, y, z),
       getMovement: () => movement?.snapshot() ?? { phase: 'unavailable', running: false },
       generation: () => host.shared.loadoutGeneration, jobIdentity: chunkMoveJobIdentity, log: message => host.log(message),
-      planRoute: (target, options) => {
+      planRoute: async (target, options) => {
         if (!idlePhysics) return { ready: false, reason: '移動に必要な地形が未受信です。' }
         planner ??= createNavigator({ world: host.world, version: host.meta.version, allowWater: true,
           physics: idlePhysics.withWorld(host.world, { allowWater: true }), planningDistanceLimit: 48 })
-        const state = quarryState()
-        return planner.planAsync(planner.physics.fromServer(state), target, { ...options, maxDistance: 48, maxExpanded: 5000 })
+        await reconcilePlanningOrigin()
+        const origin = require('./move-origin').planningOrigin({ fromServer: state => planner.physics.fromServer(state), getState: quarryState, discardPrediction: discardWorkingPrediction })
+        return planner.planAsync(origin, target, { ...options, maxDistance: 48, maxExpanded: 5000 })
       },
       previewMove: (target, options) => {
         verifyChunkMoveLease(chunkMoveLease?.id)
