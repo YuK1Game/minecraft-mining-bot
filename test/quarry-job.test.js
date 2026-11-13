@@ -681,3 +681,27 @@ test('live case 2026-11-13 16:03: persistent slow breaks wait and retry (bounded
   assert.equal(persistent.lines.filter(l => /slow_break_wait/.test(l)).length, 3)
   assert.equal(persistent.s.pauseReason, 'SLOW_BREAK_PERSISTS')
 })
+
+test('2026-11-13 unattended: pauses a plain resume cleared retry themselves (bounded); safety stops and opt-out do not', () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5)
+  const { j } = job(sim, { autoResumeMs: 60000 })
+  assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+  const base = j.document()
+  const scheduled = (pauseReason, pauseDetails = null, strategy = {}) => {
+    const doc = structuredClone(base)
+    Object.assign(doc, { state: 'PAUSED', pauseReason, pauseDetails, userRunIntent: 'running', scope: JSON.stringify([sim.state.profile, sim.state.realm.id, sim.state.dimension, sim.state.connectionId, sim.state.startedAt]), life: sim.state.lifecycle.deathId })
+    doc.config.strategy = { ...doc.config.strategy, ...strategy }
+    j.load(doc)
+    const armed = j.rescheduleAutoResume()
+    return armed
+  }
+  for (const reason of ['INVENTORY_UNKNOWN', 'POSITION_UNCONFIRMED', 'HEALTH_NOT_RECOVERING', 'ASCENT_UNCERTAIN_STEP']) assert.equal(scheduled(reason), true, reason)
+  assert.equal(scheduled('CARRIED_STORAGE_BLOCKED', { reason: 'STORAGE_SITE_UNOBSERVED' }), true)
+  for (const reason of ['DEATH', 'SEAL_PLACEMENT_FAILED', 'EXIT_SCOPE_CHANGED', 'LOADOUT_CHEST_CHANGED']) assert.equal(scheduled(reason), false, reason)
+  assert.equal(scheduled('INVENTORY_UNKNOWN', null, { autoResumeTransient: false }), false, 'opt-out')
+  // New jobs run unattended to the surface by default.
+  assert.equal(base.config.strategy.autoAcceptFinalExceptions, true)
+  assert.equal(base.config.strategy.autoAcceptCargoLoss, true)
+  assert.equal(base.config.strategy.storeSpareArmor, true)
+})

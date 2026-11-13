@@ -417,6 +417,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const config = defaults(input)
     // New jobs mine unlisted ordinary blocks by their data (2026-11-13 user request).
     if (input.strategy?.unknownBlockDefault == null) config.strategy.unknownBlockDefault = true
+    // Unattended to the surface (2026-11-13 17:46 user instruction): end-of-job
+    // exceptions and lost cargo boxes are accepted automatically, spare armour
+    // is stored. Each can still be turned off per job.
+    for (const key of ['autoAcceptFinalExceptions', 'autoAcceptCargoLoss', 'storeSpareArmor']) if (input.strategy?.[key] == null) config.strategy[key] = true
     setUnknownBlockDefault(config.strategy.unknownBlockDefault === true)
     // Only new production shulker plans adopt v2.2 by default. Persisted
     // legacy jobs keep their explicit policy and require deliberate migration.
@@ -3330,6 +3334,14 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const exceptions = exceptionsList()
     const byReason = {}
     for (const e of exceptions) { const r = e.reason ?? e.kind; byReason[r] = (byReason[r] ?? 0) + 1 }
+    // After the mining, the final storage and the return to the surface, the
+    // remaining exceptions are accepted without waiting (opt-out per job).
+    if (exceptions.length && !job.acceptedExceptions && job.config.strategy?.autoAcceptFinalExceptions === true && job.surfaceReturnedAt) {
+      recordAcceptedExceptions(exceptions, byReason, 'auto')
+      job.acceptedExceptions = true
+      await save('exceptions_auto_accepted')
+      note('exceptions_auto_accepted', { count: exceptions.length, byReason })
+    }
     if (exceptions.length && !job.acceptedExceptions) return finish('PAUSED', 'UNRESOLVED_EXCEPTIONS', { pauseDetails: { count: exceptions.length, byReason, exceptions: exceptions.slice(0, 50), miningCompleted: true, surfaceReturned: true } })
     if (fourLayerStorage()) {
       const home = job.config.homeChest, owner = job
@@ -3503,7 +3515,12 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   function scheduleAutoResume (reason, pauseDetails) {
     if (!job || retired) return
     if (job.persistence?.status !== 'failed' && reason === 'CARRIED_STORAGE_BLOCKED' && pauseDetails?.reason === 'STORAGE_RECOVERY_UNCONFIRMED' && job.config.strategy?.autoAcceptCargoLoss === true && job.userRunIntent === 'running') { if (scheduleCargoLossSearch(reason)) return }
-    if (job.persistence?.status !== 'failed' && /^ACTION_FAILED/.test(String(reason)) && (job.autoResumes ?? 0) < 3 && job.userRunIntent === 'running') {
+    // Pauses that a plain resume (which re-runs every check and reconciliation)
+    // cleared by hand on 2026-11-13 also retry themselves, bounded like
+    // ACTION_FAILED (3 per stretch without progress). Opt-out per job.
+    const transientPause = job.config.strategy?.autoResumeTransient !== false && (/^(INVENTORY_UNKNOWN|POSITION_UNCONFIRMED|HEALTH_NOT_RECOVERING|UNOBSERVED_CELLS|SLOW_BREAK_PERSISTS|ASCENT_[A-Z_]+|EGRESS_POSITION_UNCONFIRMED|EGRESS_RESUME_POSITION_CHANGED)$/.test(String(reason)) ||
+      ['CARRIED_STORAGE_BLOCKED', 'SUPPLY_RESTOCK_BLOCKED'].includes(reason) && ['STORAGE_SITE_UNOBSERVED'].includes(pauseDetails?.reason))
+    if (job.persistence?.status !== 'failed' && (/^ACTION_FAILED/.test(String(reason)) || transientPause) && (job.autoResumes ?? 0) < 3 && job.userRunIntent === 'running') {
       const owner = job, expectedEpoch = epoch
       const retry = () => {
         autoResumeTimer = null
@@ -4198,8 +4215,12 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     note('carried_storage_loss_accepted', { operationId: record.operationId, position: record.position, deposited: record.deposited })
     return resume()
   }
+  function recordAcceptedExceptions (exceptions, byReason, by) {
+    job.acceptedExceptionRecord = { at: new Date(now()).toISOString(), by, count: exceptions.length, byReason: copy(byReason), items: exceptions.slice(0, 1000).map(e => ({ position: e.position ?? null, reason: e.reason ?? e.kind ?? null, name: e.name ?? null })) }
+  }
   function acceptExceptions () {
     if (!job || job.state !== 'PAUSED' || job.pauseReason !== 'UNRESOLVED_EXCEPTIONS') throw new Error('No exceptions are waiting for acceptance')
+    { const list = exceptionsList(), byReason = {}; for (const e of list) { const r = e.reason ?? e.kind; byReason[r] = (byReason[r] ?? 0) + 1 } recordAcceptedExceptions(list, byReason, 'user') }
     job.acceptedExceptions = true
     return resume()
   }
@@ -4266,6 +4287,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const finalCarried = inv ? keepPlan(inv, inventoryPolicy()).deposits : null
     return copy({
       jobId: job.config.jobId, state: ['PAUSED', 'FINISHED'].includes(job.state) && (loopWorker || stopTask || pendingActions.size || savesInFlight) ? 'STOPPING' : job.state, draining: !!(worker || stopTask || pendingActions.size || savesInFlight), persistence: copy(job.persistence ?? null), world: copy(job.world), userRunIntent: job.userRunIntent, result: job.result, pauseReason: job.pauseReason, pauseDetails: job.pauseDetails ?? null,
+      acceptedExceptions: job.acceptedExceptionRecord ? { at: job.acceptedExceptionRecord.at, by: job.acceptedExceptionRecord.by, count: job.acceptedExceptionRecord.count, byReason: copy(job.acceptedExceptionRecord.byReason), items: job.acceptedExceptionRecord.items.slice(0, 200) } : null,
       lostCargoBoxes: (job.lostCargoBoxes ?? []).slice(-32).map(r => ({ at: r.acceptedAt, by: r.acceptedBy, operationId: r.operationId, box: r.box, position: r.position, items: r.items ?? [] })),
       autoRetry: autoResumeTimer && autoRetryInfo && job.state === 'PAUSED' ? { ...autoRetryInfo, inSeconds: Math.max(0, Math.ceil((autoRetryInfo.nextAt - now()) / 1000)) } : null,
       chunks: regions?.chunks ?? null, yTop: job.yTop, yBottom: regions?.yBottom ?? null, currentY: job.lastDecision?.y ?? job.cursorY,

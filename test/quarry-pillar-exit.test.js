@@ -189,17 +189,36 @@ test('mining and final storage complete before egress, and surface return is rec
   } finally { await job.pause() }
 })
 
-test('unapproved exceptions are presented after surface return without accepting them', async () => {
+test('with automatic acceptance off, exceptions are presented after surface return without accepting them', async () => {
   const { sim, job, config } = fixture()
   sim.world.set(5, 60, 5, 'chest')
   sim.adapter.egress = async request => completeExit(sim, request)
-  assert.equal(job.plan(config).ready, true)
+  assert.equal(job.plan({ ...config, strategy: { ...(config.strategy ?? {}), autoAcceptFinalExceptions: false } }).ready, true)
   job.start()
   try {
     await until(() => job.status().state === 'PAUSED')
     assert.equal(job.status().pauseReason, 'UNRESOLVED_EXCEPTIONS')
     assert.equal(job.status().egress.surfaceReturned, true)
     assert.equal(job.document().acceptedExceptions, undefined)
+  } finally { await job.pause() }
+})
+
+// 2026-11-13 17:46 user instruction: unattended to the surface. After the
+// return, the remaining exceptions are accepted and recorded, then FINISHED.
+test('by default the remaining exceptions are accepted after surface return and recorded', async () => {
+  const { sim, job, config } = fixture()
+  sim.world.set(5, 60, 5, 'chest')
+  sim.adapter.egress = async request => completeExit(sim, request)
+  assert.equal(job.plan(config).ready, true)
+  job.start()
+  try {
+    await until(() => ['FINISHED', 'PAUSED'].includes(job.status().state))
+    const s = job.status()
+    assert.equal(s.state, 'FINISHED', JSON.stringify(s.pauseReason))
+    assert.equal(s.result.type, 'COMPLETED_WITH_EXCEPTIONS')
+    const rec = job.document().acceptedExceptionRecord
+    assert.equal(rec.by, 'auto'); assert.ok(rec.count >= 1); assert.ok(rec.items.some(i => /5,60,5/.test(i.position)))
+    assert.equal(s.acceptedExceptions.count, rec.count)
   } finally { await job.pause() }
 })
 
