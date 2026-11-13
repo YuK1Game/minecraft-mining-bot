@@ -422,7 +422,10 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
       const armorConnection=connectionKey(current(cp.world,cp.life).s)
       const equipped=await equipArmor({maxMoves:4})
       const equippedView=current(cp.world,cp.life).view
-      if(equippedView.armor?.known!==true || !['diamond_helmet','diamond_chestplate','diamond_leggings','diamond_boots'].every((piece,i)=>equippedView.armor.slots[i]?.name==='minecraft:'+piece))throw fail('LOADOUT_ARMOR_UNCONFIRMED')
+      // The equip ACK alone does not make a worn slot "received" in the one
+      // inventory record; a slot still unreceived here is fetched again and
+      // identity-checked below. Only a received wrong piece fails now.
+      if(!Array.isArray(equippedView.armor?.slots) || ['diamond_helmet','diamond_chestplate','diamond_leggings','diamond_boots'].some((piece,i)=>equippedView.armor.slots[i]?.known===true&&equippedView.armor.slots[i].name!=='minecraft:'+piece))throw fail('LOADOUT_ARMOR_UNCONFIRMED')
       if(equipped?.some(x=>x.serverConfirmed!==true))throw fail('LOADOUT_ARMOR_UNCONFIRMED')
       await observeEquipment(cp,{signal,connection:armorConnection,reason:'LOADOUT_ARMOR_RECEIPT_UNKNOWN',ready:view=>{
         for(let slot=0;slot<4;slot++){

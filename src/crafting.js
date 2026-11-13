@@ -24,14 +24,15 @@ function action (type, data) {
   return { type_id: type, legacy_type_id: LEGACY_ACTION[type], ...data }
 }
 
-function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000, onInventory = () => {}, allocateRequestId, onUncertain = () => {}, onContainerClose = () => {} }) {
+function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000, onInventory = () => {}, allocateRequestId, onUncertain = () => {}, onContainerClose = () => {}, inventory: sharedInventory = null }) {
   if (version !== VERSION) throw new Error(`クラフト入力は${VERSION}専用です。`)
   if (typeof client?.queue !== 'function' || typeof getState !== 'function') throw new Error('クラフトには接続と状態取得関数が必要です。')
   if (allocateRequestId !== undefined && typeof allocateRequestId !== 'function') throw new Error('allocateRequestIdは関数で指定してください。')
   if (typeof onUncertain !== 'function') throw new Error('onUncertainは関数で指定してください。')
   if (typeof onContainerClose !== 'function') throw new Error('onContainerCloseは関数で指定してください。')
   const names = new Map()
-  const inventory = new Map()
+  // The main window is the shared inventory store when one is given.
+  const inventory = sharedInventory instanceof Map ? sharedInventory : new Map()
   const recipes = new Map()
   let availableRecipes = null
   let inventoryKnown = false
@@ -281,8 +282,10 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
         }
       }
     } else if (name === 'inventory_content' && inventoryWindow(packet.window_id)) {
-      inventory.clear()
-      for (const [slot, item] of (packet.input ?? []).entries()) if (slot < 36) inventory.set(slot, copy(item))
+      // Overwrite slot by slot (no clear first): the map may be the shared
+      // inventory store, which must not flash every slot to unreceived.
+      const input = Array.isArray(packet.input) ? packet.input : []
+      for (let slot = 0; slot < 36; slot++) if (slot < input.length) inventory.set(slot, copy(input[slot])); else inventory.delete(slot)
       inventoryKnown = true
       finishIfConfirmed()
     } else if (name === 'inventory_slot' && inventoryWindow(packet.window_id)) {

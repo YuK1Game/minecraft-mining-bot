@@ -18,6 +18,7 @@
 | 接続・認証 | Microsoft 認証（`.auth/` にキャッシュ）、Realm 一覧・選択、異常終了時の自動再接続（指数バックオフ、10分で最大5回） | `src/host.js`, `src/realms.js`, `scripts/keep-alive.js` |
 | ホットリロード | 行動コード保存で自動反映。構文・初期化エラー時は旧コードを維持。クラフト・設置中は安全な切替点まで待つ | `src/hotreload.js`, `src/lifecycle.js` |
 | 観測 | エンティティ・敵・地形（サブチャンク）・持ち物・体力/空腹の受信。未受信ブロック（`known:false`）を空気扱いしない | `src/entities.js`, `src/threats.js`, `src/world.js`, `src/inventory.js` |
+| 持ち物の一元記録 | メイン36・防具4・オフハンド・カーソルを1つの記録（`host.shared.inventoryStore`）に枠ごとの受信元・リビジョン付きで保持。クラフト・防具・画面・採掘ゲートは全てここを読む。未受信の枠は空ではなく「?」。待機中は未受信枠を `inventory_mismatch` で自動再取得 | `src/inventory-store.js`, `src/inventory-inspection.js` |
 | 移動 | 経路探索、物理予測（実験的 Bedrock 版 prismarine-physics）、段差・ジャンプ、水際、警戒付き経路移動と退避 | `src/navigation.js`, `src/movement.js`, `src/physics.js`, `src/guarded-route.js`, `src/escape-policy.js` |
 | 拠点 | 斜面の避難所、平地の土小屋（土17個）の建築・閉鎖・退出・帰還、保管庫（チェスト）の建設と収納 | `src/shelter*.js`, `src/hut*.js`, `src/depot-*.js`, `src/chest.js` |
 | クラフト・精錬 | 板材・作業台・棒・木剣・石剣・ツルハシ類、かまどでの精錬（鉄のツルハシまで確認済み） | `src/crafting.js`, `src/furnace.js`, `src/starter-gear.js` |

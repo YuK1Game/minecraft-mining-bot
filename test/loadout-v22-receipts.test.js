@@ -53,7 +53,7 @@ test('v22 reset equipment view cannot promote ACK-synthesized emptiness or a mai
   f.armorStore.worn.set(0, air())
   f.inspection.applyPacket('inventory_slot', { window_id: 'armor', slot: 0, item: air(), source: 'server_item_stack_response' })
   f.inspection.applyPacket('inventory_slot', { window_id: 'offhand', slot: 0, item: air(), source: 'server_item_stack_response' })
-  assert.equal(f.inspection.snapshot().armor.slots[0].empty, true, 'legacy presentation may adopt the ACK')
+  assert.equal(f.inspection.snapshot().armor.slots[0].empty, true, 'the shown view adopts our own accepted move')
   assert.equal(f.inspection.snapshot().offhand.slots[0].empty, true)
   f.inspection.applyPacket('inventory_content', { window_id: 'inventory', input: copy(f.main) })
   const view = f.view()
@@ -92,7 +92,7 @@ test('actual slot-only armor emptiness is usable even while the legacy armor con
   }
   f.inspection.applyPacket('inventory_slot', { window_id: 119, slot: 0, item: air() })
   f.armorStore.known = false
-  assert.equal(f.inspection.snapshot().armor.known, false)
+  assert.equal(f.inspection.snapshot().armor.known, true, 'the legacy controller flag is no longer a second source')
   const view = f.view()
   assert.equal(view.armor.known, true)
   assert.equal(view.armor.slots.every(slot => slot.known && slot.empty), true)

@@ -32,12 +32,14 @@ function scene () {
     status: () => ({ authority, inventoryKnown: true, pendingRequestId: null, openContainer: open }), snapshot: () => crafting.status(), closeContainer: () => { open = null } }
   const inspection = createInventoryInspection({ crafting, armorStore, getState: () => state, registry: mc })
   inspection.applyPacket('inventory_content', { window_id: 'offhand', input: [empty()] })
+  inspection.applyPacket('inventory_content', { window_id: 'inventory', input: main })
+  inspection.applyPacket('inventory_content', { window_id: 'armor', input: Array.from({ length: 4 }, empty) })
   return { state, main, armorStore, crafting, inspection, setAuthority: v => { authority = v }, setOpen: v => { open = v } }
 }
 test('loadout-runtime: the real NBT inspection decodes every kit slot, armor and all 108 supply entries', () => {
   const f = scene(), m = manifest()
   m.hotbar.forEach((spec, i) => { f.main[i] = raw(spec, i + 100) })
-  m.armor.forEach((spec, i) => f.armorStore.worn.set(i, raw(spec, i + 200)))
+  m.armor.forEach((spec, i) => f.inspection.applyPacket('inventory_slot', { window_id: 'armor', slot: i, item: raw(spec, i + 200) }))
   for (const spec of [...m.cargo, ...m.supplies]) f.main[spec.slot] = raw(spec, spec.slot + 100)
   const view = f.inspection.snapshot()
   assert.equal(knownInventory(view), true)

@@ -33,13 +33,20 @@ function armorInfo (name) {
   return { slot, score: MATERIAL[m[1]].points[slot] * 10 + MATERIAL[m[1]].toughness }
 }
 
-function createArmor ({ client, getState, crafting, allocateRequestId, store = {}, onInventory = () => {}, log = () => {}, now = () => Date.now(), timeoutMs = 3000 }) {
+function createArmor ({ client, getState, crafting, allocateRequestId, store = {}, inventoryStore = null, onInventory = () => {}, log = () => {}, now = () => Date.now(), timeoutMs = 3000 }) {
   // Hosts without a full inventory controller (test fakes, replay) get an
   // armor helper that never plans a move.
   const capable = typeof client?.queue === 'function' && typeof getState === 'function' && typeof crafting?.rawItem === 'function' && typeof crafting?.snapshot === 'function' && typeof crafting?.openInventory === 'function' && typeof crafting?.closeContainer === 'function' && typeof allocateRequestId === 'function'
   // Armor container slot -> raw item from the server. Kept in `store` so a
   // hot reload does not forget what is worn (the window is rarely re-sent).
-  const worn = store.worn instanceof Map ? store.worn : (store.worn = new Map())
+  // With the shared inventory store, worn pieces and whether they are known
+  // come from that one record (fed by the runtime from every packet).
+  const shared = inventoryStore && typeof inventoryStore.map === 'function' ? inventoryStore : null
+  const worn = shared ? shared.map('armor', 'armor_controller') : store.worn instanceof Map ? store.worn : (store.worn = new Map())
+  // The controller plans with its own confirmed moves (loose); views and
+  // gates read only server windows from the same record.
+  const isKnown = () => shared ? shared.known('armor', { loose: true }) : store.known === true
+  const markUnknown = reason => { if (shared) shared.invalidate('armor', null, reason); else store.known = false }
   let operation = null
   let lastResult = null
   let preemptionRevision = 0, runningBatches = 0
@@ -49,7 +56,7 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
 
   // The best upgrade still owned in the main inventory, or null.
   function nextUpgrade () {
-    if (!store.known) return null
+    if (!isKnown()) return null
     const items = crafting.snapshot().inventory ?? []
     let best = null
     for (const item of items) {
@@ -123,6 +130,10 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   }
 
   function applyPacket (name, packet) {
+    if (!shared) applyWire(name, packet)
+    applyOwnResponse(name, packet)
+  }
+  function applyWire (name, packet) {
     if (name === 'start_game' || name === 'change_dimension') { worn.clear(); store.known = false }
     // A death drops worn armor (the server re-sends the window if it was kept).
     if (name === 'respawn') worn.clear()
@@ -130,6 +141,8 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
       worn.clear(); packet.input.forEach((raw, slot) => worn.set(slot, copy(raw))); store.known = true
     }
     if (name === 'inventory_slot' && armorWindow(packet.window_id) && Number.isInteger(packet.slot)) worn.set(packet.slot, copy(packet.item))
+  }
+  function applyOwnResponse (name, packet) {
     const attempt = operation
     if (!attempt) return
     if (name === 'item_stack_response') {
@@ -137,7 +150,7 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
         if (response.request_id !== attempt.id) continue
         // A rejection means our view of the worn slots is wrong (e.g. right after
         // login): stop planning until the server sends the armor window again.
-        if (response.status !== 'ok' && response.status !== 0) { store.known = false; attempt.done?.({ phase: 'rejected', serverConfirmed: false, reason: `server status ${response.status}` }); return }
+        if (response.status !== 'ok' && response.status !== 0) { markUnknown('armor_request_rejected'); attempt.done?.({ phase: 'rejected', serverConfirmed: false, reason: `server status ${response.status}` }); return }
         attempt.accepted = true
         // The response lists the changed slots; adopt the armor one now so the
         // next upgrade is planned against what the server says is worn.
@@ -159,7 +172,7 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   }
 
   function snapshot () {
-    return { busy: !!operation, known: store.known === true, worn: PIECES.map(([piece, slot]) => ({ piece, name: nameOf(worn.get(slot)) })), next: store.known ? nextUpgrade() : null, lastResult: copy(lastResult) }
+    return { busy: !!operation, known: isKnown(), worn: PIECES.map(([piece, slot]) => ({ piece, name: nameOf(worn.get(slot)) })), next: isKnown() ? nextUpgrade() : null, lastResult: copy(lastResult) }
   }
   return { preview, equipBest, preemptForCombat, applyPacket, snapshot }
 }

@@ -2,6 +2,7 @@
 
 const { readShulkerContents } = require('./shulker-contents')
 const { isShulkerBox } = require('./container-types')
+const { createInventoryStore } = require('./inventory-store')
 
 const ARMOR_PIECES = ['helmet', 'chestplate', 'leggings', 'boots']
 const ENCHANTMENT_LABELS = {
@@ -18,78 +19,34 @@ const object = value => value !== null && typeof value === 'object' && !Array.is
 const compound = value => value?.type === 'compound' && object(value.value)
 const plain = new Set([false, 'false', 0])
 const tagged = new Set([true, 'true', 65535])
-const mainWindow = id => id === 'inventory' || id === 0
-const armorWindow = id => id === 'armor' || id === 120
-const offhandWindow = id => id === 'offhand' || id === 119
 const validRaw = raw => object(raw) && Number.isInteger(raw.network_id) && integer(raw.count) && (raw.network_id === 0 ? raw.count === 0 : raw.count > 0)
 const unknownSlot = slot => ({ slot, known: false, empty: false, name: null, count: null })
 
 // This view never opens a container, changes equipment, or sends a packet.
 // Item names come from the received registry; static game data supplies only
 // item properties (maximum durability and enchantment names).
-function createInventoryInspection ({ crafting, armorStore = {}, getChest = () => null, getState = () => ({}), store = {}, version = '1.26.60', registry, clock = () => new Date().toISOString() }) {
+//
+// Every slot shown here (main, armour, offhand) comes from the one inventory
+// store. The same record answers "what is worn" for the dashboard, the quarry
+// gates and recovery evidence, so they can no longer disagree. Without a
+// shared store (tests, tools) the inspection keeps a private one fed by its
+// own applyPacket.
+function createInventoryInspection ({ crafting, inventoryStore = null, getChest = () => null, getState = () => ({}), store = {}, version = '1.26.60', registry, clock = () => new Date().toISOString() }) {
   const data = registry ?? require('prismarine-registry')(`bedrock_${version}`)
-  const offhand = store.offhand instanceof Map ? store.offhand : (store.offhand = new Map())
-  // A server can refresh equipment one slot at a time rather than resend the
-  // full window. Count only actual valid observations in this lifecycle.
-  const mainReceived = store.mainReceived instanceof Set ? store.mainReceived : (store.mainReceived = new Set())
-  const armorReceived = store.armorReceived instanceof Set ? store.armorReceived : (store.armorReceived = new Set())
-  // Legacy worn/offhand views may adopt count-only ACKs. Recovery evidence
-  // keeps its own descriptors and never borrows those reconstructed values.
-  const equipmentProof = store.equipmentProof?.version === 1 && store.equipmentProof.armor instanceof Map && store.equipmentProof.offhand instanceof Map
-    ? store.equipmentProof : (store.equipmentProof = { version: 1, scope: null, revision: 0, armor: new Map(), offhand: new Map() })
-  const equipmentScope = () => {
+  const ownsStore = !(inventoryStore && typeof inventoryStore.view === 'function')
+  const scopeOf = () => {
     const s = getState()
-    return JSON.stringify([s?.profile ?? null, s?.realm?.id == null ? null : String(s.realm.id), s?.connectionId ?? null, s?.startedAt ?? null, s?.dimension ?? null, String(s?.runtimeEntityId ?? ''), s?.lifecycle?.deathId ?? null])
+    return [s?.profile ?? null, s?.realm?.id == null ? null : String(s.realm.id), s?.connectionId ?? null, s?.startedAt ?? null, String(s?.runtimeEntityId ?? ''), s?.lifecycle?.deathId ?? null]
   }
-  function clearEquipmentProof () {
-    equipmentProof.armor.clear(); equipmentProof.offhand.clear(); equipmentProof.revision++
-  }
-  function syncEquipmentScope () {
-    const scope = equipmentScope()
-    if (equipmentProof.scope !== scope) { clearEquipmentProof(); equipmentProof.scope = scope }
-  }
-  function observeEquipment (kind, size, name, packet) {
-    const slots = equipmentProof[kind]
-    if (name === 'inventory_content') {
-      slots.clear(); equipmentProof.revision++
-      if (packet.source != null || !Array.isArray(packet.input) || packet.input.length < size || size === 1 && packet.input.length !== 1) return
-      for (let slot = 0; slot < size; slot++) if (validRaw(packet.input[slot])) slots.set(slot, { raw: structuredClone(packet.input[slot]), revision: ++equipmentProof.revision })
-    } else if (Number.isInteger(packet.slot) && packet.slot >= 0 && packet.slot < size) {
-      slots.delete(packet.slot); equipmentProof.revision++
-      if (packet.source == null && validRaw(packet.item)) slots.set(packet.slot, { raw: structuredClone(packet.item), revision: ++equipmentProof.revision })
-    }
-  }
-  function invalidateEquipment (kind, rows, size) {
-    const affected = Array.isArray(rows) ? rows.filter(row => Number.isInteger(row.slot) && row.slot >= 0 && row.slot < size) : []
-    if (!affected.length) equipmentProof[kind].clear()
-    else for (const row of affected) equipmentProof[kind].delete(row.slot)
-    equipmentProof.revision++
-  }
+  const records = ownsStore ? createInventoryStore({ shared: store, key: 'records', clock, getScope: scopeOf }) : inventoryStore
   function rawEquipment (kind, slot) {
-    syncEquipmentScope()
+    records.syncScope?.()
     const state = getState()
     if (!['armor', 'offhand'].includes(kind) || !Number.isInteger(slot) || slot < 0 || slot >= (kind === 'armor' ? 4 : 1) || state.health === 0 || state.dead || state.isDead || state.lifecycle?.dead || state.spawnPending) return null
-    const observed = equipmentProof[kind].get(slot)
-    return observed && validRaw(observed.raw) ? structuredClone(observed.raw) : null
-  }
-  function receiveSlots (set, size, name, packet) {
-    if (name === 'inventory_content') {
-      set.clear()
-      if (!Array.isArray(packet.input) || packet.input.length < size || size === 36 && packet.input.length !== 36) return false
-      for (let slot = 0; slot < size; slot++) if (validRaw(packet.input[slot])) set.add(slot)
-    } else if (Number.isInteger(packet.slot) && packet.slot >= 0 && packet.slot < size) {
-      if (validRaw(packet.item)) set.add(packet.slot)
-      else set.delete(packet.slot)
-    }
-    return set.size === size
+    const raw = records.raw(kind, slot)
+    return raw && validRaw(raw) ? raw : null
   }
   const resolveName = id => crafting.itemNameOf?.(id) ?? null
-  // Bedrock also sends a fifth armor/body slot. The previous inspector rejected
-  // that full packet by its length, while Armor retained its received slots.
-  // Recover that specific old view from the retained full-window evidence.
-  if (store.armorInvalidated === true && store.armorInvalidationSource == null && store.armorObservedAt != null && armorStore.known === true && armorStore.worn instanceof Map && armorStore.worn.size >= 5 && Array.from({ length: 4 }, (_, slot) => validRaw(armorStore.worn.get(slot))).every(Boolean)) store.armorInvalidated = false
-
   function tagOf (raw) {
     const extra = raw?.extra
     if (plain.has(extra?.has_nbt) && extra.nbt == null) return { known: true, tag: null }
@@ -155,72 +112,30 @@ function createInventoryInspection ({ crafting, armorStore = {}, getChest = () =
   }
 
   function applyPacket (name, packet, { replaying = false } = {}) {
-    if (replaying) return
-    syncEquipmentScope()
-    if (name === 'start_game' || name === 'change_dimension' || name === 'death_info' || name === 'respawn' && (packet.runtime_entity_id == null || String(packet.runtime_entity_id) === String(getState().runtimeEntityId))) {
-      mainReceived.clear(); armorReceived.clear()
-      offhand.clear(); store.offhandKnown = false; store.offhandObservedAt = null
-      store.mainInvalidated = true; store.armorInvalidated = true; store.armorObservedAt = null; store.observedAt = null; store.containerObservedAt = null
-      store.armorInvalidationSource = 'lifecycle'
-      clearEquipmentProof()
-    }
-    if (name === 'inventory_content' || name === 'inventory_slot') {
-      if (mainWindow(packet.window_id)) {
-        store.observedAt = clock()
-        const complete = receiveSlots(mainReceived, 36, name, packet)
-        if (name === 'inventory_content') store.mainInvalidated = !(Array.isArray(packet.input) && packet.input.length === 36 && complete)
-        else if (complete) store.mainInvalidated = false
-      } else if (armorWindow(packet.window_id)) {
-        observeEquipment('armor', 4, name, packet)
-        // A rejected armor transaction can separately invalidate the controller.
-        // Do not use earlier coverage to revive its other three cached slots.
-        if (name === 'inventory_slot' && armorStore.known !== true && store.armorInvalidated !== true) {
-          armorReceived.clear(); store.armorInvalidated = true; store.armorInvalidationSource = 'controller'
-        }
-        store.armorObservedAt = clock()
-        const complete = receiveSlots(armorReceived, 4, name, packet)
-        if (name === 'inventory_content') {
-          store.armorInvalidated = !(Array.isArray(packet.input) && packet.input.length >= 4 && complete)
-          store.armorInvalidationSource = store.armorInvalidated ? 'incomplete_window' : null
-        } else if (complete) {
-          // Armor applies the same raw packet after this observer; all four
-          // pieces now have current-life evidence, not pre-respawn leftovers.
-          store.armorInvalidated = false; store.armorInvalidationSource = null
-          armorStore.known = true
-        }
-      }
-      else if (offhandWindow(packet.window_id)) {
-        observeEquipment('offhand', 1, name, packet)
-        store.offhandObservedAt = clock()
-        if (name === 'inventory_content' && Array.isArray(packet.input) && packet.input.length === 1 && validRaw(packet.input[0])) { offhand.clear(); offhand.set(0, structuredClone(packet.input[0])); store.offhandKnown = true }
-        else if (name === 'inventory_slot' && packet.slot === 0 && validRaw(packet.item)) { offhand.set(0, structuredClone(packet.item)); store.offhandKnown = true }
-        else { offhand.clear(); store.offhandKnown = false }
-      } else store.containerObservedAt = clock()
-    }
-    if (name === 'item_stack_response') {
-      for (const response of packet.responses ?? []) if (response.status === 'ok' || response.status === 0) for (const container of response.containers ?? []) {
-        const id = container.slot_type?.container_id
-        if (['inventory', 'hotbar_and_inventory', 'hotbar', 12, 28, 29].includes(id)) store.observedAt = clock()
-        if (id === 'armor') store.armorObservedAt = clock()
-        if (id === 'armor' || id === 6) invalidateEquipment('armor', container.slots, 4)
-        // Count-only updates do not identify a new offhand stack or its NBT.
-        if (id === 'offhand') { offhand.clear(); store.offhandKnown = false; invalidateEquipment('offhand', container.slots, 1) }
-        else if (id === 34) invalidateEquipment('offhand', container.slots, 1)
-      }
-    }
+    // A shared store is fed once by the runtime; only a private one is fed here.
+    if (ownsStore) records.apply(name, packet, { replaying })
   }
 
   function snapshot (state = getState()) {
     const status = crafting.status?.() ?? crafting.snapshot?.() ?? {}
     const alive = state.health !== 0 && !state.dead && !state.isDead && !state.lifecycle?.dead
-    const known = alive && store.mainInvalidated !== true && state.inventory?.known === true && !state.inventory?.uncertain && status.inventoryKnown === true
-    const slots = Array.from({ length: 36 }, (_, slot) => describe(crafting.rawItem(slot), slot, known))
-    const armorKnown = alive && armorStore.known === true && store.armorInvalidated !== true
-    const armor = { known: armorKnown, observedAt: store.armorObservedAt ?? null, slots: ARMOR_PIECES.map((piece, slot) => ({ ...describe(armorStore.worn?.get(slot), slot, armorKnown), piece })) }
-    armor.known = armor.known && armor.slots.every(slot => slot.known)
-    const offhandKnown = alive && store.offhandKnown === true
-    const offhandView = { known: offhandKnown, observedAt: store.offhandObservedAt ?? null, slots: [describe(offhand.get(0), 0, offhandKnown)] }
-    const containers = slots.filter(item => item.container).map(item => ({ id: `inventory:${item.slot}`, kind: 'shulker', name: item.displayName ?? item.name, location: 'inventory', sourceSlot: item.slot, observedAt: store.observedAt ?? null, ...item.container }))
+    records.syncScope?.()
+    const main = records.view('main')
+    const known = alive && main.known && state.inventory?.known === true && !state.inventory?.uncertain && status.inventoryKnown === true
+    // In production crafting's main map is the store itself; reading it keeps
+    // the private-store mode (tests) on the same transaction data.
+    const slots = Array.from({ length: 36 }, (_, slot) => describe(ownsStore ? crafting.rawItem(slot) : main.slots[slot].raw, slot, known && main.slots[slot].received))
+    const equipment = (kind, size) => {
+      // Shown as the server last confirmed it, including our own accepted
+      // moves; rawEquipment() below additionally requires a server window.
+      const v = records.view(kind, { loose: true })
+      const rows = Array.from({ length: size }, (_, slot) => describe(v.slots[slot].raw, slot, alive && v.slots[slot].received))
+      return { known: alive && rows.every(slot => slot.known), observedAt: v.observedAt, revision: v.revision, slots: rows }
+    }
+    const armor = equipment('armor', 4)
+    armor.slots = armor.slots.map((slot, index) => ({ ...slot, piece: ARMOR_PIECES[index] }))
+    const offhandView = equipment('offhand', 1)
+    const containers = slots.filter(item => item.container).map(item => ({ id: `inventory:${item.slot}`, kind: 'shulker', name: item.displayName ?? item.name, location: 'inventory', sourceSlot: item.slot, observedAt: main.observedAt, ...item.container }))
     const chest = getChest(), chestStatus = chest?.snapshot?.()
     let openContainer = null
     if (chestStatus?.window) {
@@ -228,12 +143,12 @@ function createInventoryInspection ({ crafting, armorStore = {}, getChest = () =
       const containerKnown = chestStatus.contentsKnown === true && chestStatus.window.replayed !== true
       openContainer = {
         id: `window:${chestStatus.window.id}`, kind: chestStatus.kind, name: chestStatus.blockName, position: chestStatus.window.position,
-        known: containerKnown, slotCount: size, observedAt: store.containerObservedAt ?? null,
+        known: containerKnown, slotCount: size, observedAt: chestStatus.observedAt ?? null,
         slots: Array.from({ length: Math.min(54, size) }, (_, slot) => describe(chest.rawItem(slot), slot, containerKnown))
       }
     }
     return {
-      known: known && slots.every(slot => slot.known), uncertain: state.inventory?.uncertain === true, observedAt: store.observedAt ?? null,
+      known: known && slots.every(slot => slot.known), uncertain: state.inventory?.uncertain === true, observedAt: main.observedAt, revision: records.revision(),
       selectedSlot: Number.isInteger(state.selectedSlot) ? state.selectedSlot : null, selectedSlotSource: state.equipmentSource ?? 'local_selection',
       slotCount: 36, slots, armor, offhand: offhandView, containers, openContainer
     }
