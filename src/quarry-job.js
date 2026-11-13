@@ -96,6 +96,8 @@ const { selectAnimalTarget } = require('./quarry-animal-clear')
 // Automatic current-state reconciliation of an unconfirmed cargo placement
 // (2026-11-13): after the inventory resync rate limit, at most twice per job run.
 const AUTO_RECONCILE_WAIT_MS = 65000, AUTO_RECONCILES = 2
+// Kept with the bot by the final chest storage of a v2.2 job (2026-11-13).
+const FINAL_CHEST_KEEP = { equipment: true, names: ['^(blue|light_blue|brown|yellow)_shulker_box$', '_(pickaxe|shovel|axe|sword|hoe)$', '^(bow|crossbow|arrow|spectral_arrow|tipped_arrow|shield|totem_of_undying|shears|flint_and_steel)$', '^(bread|cooked_[a-z_]+|baked_potato|golden_carrot|golden_apple|enchanted_golden_apple|apple|carrot|potato|beetroot|melon_slice|sweet_berries|glow_berries|cookie|pumpkin_pie|dried_kelp|mushroom_stew|rabbit_stew|beetroot_soup)$'] }
 // Bounded waits before SLOW_BREAK_PERSISTS (2026-11-13).
 const SLOW_BREAK_WAITS = 3
 const WORK_DIRT_DEMAND = 32 // dirt taken from the supply box when a seal needs it
@@ -420,7 +422,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // Unattended to the surface (2026-11-13 17:46 user instruction): end-of-job
     // exceptions and lost cargo boxes are accepted automatically, spare armour
     // is stored. Each can still be turned off per job.
-    for (const key of ['autoAcceptFinalExceptions', 'autoAcceptCargoLoss', 'storeSpareArmor']) if (input.strategy?.[key] == null) config.strategy[key] = true
+    for (const key of ['autoAcceptFinalExceptions', 'autoAcceptCargoLoss', 'storeSpareArmor', 'finalChestStore']) if (input.strategy?.[key] == null) config.strategy[key] = true
     setUnknownBlockDefault(config.strategy.unknownBlockDefault === true)
     // Only new production shulker plans adopt v2.2 by default. Persisted
     // legacy jobs keep their explicit policy and require deliberate migration.
@@ -446,6 +448,15 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const pendingLoadout = initialLoadout && loadoutPorts() && configuredLoadoutHome(config) && emptyLoadoutInventory(state)
     if (initialLoadout) {
       if (!configuredLoadoutHome(config)) issues.push('LOADOUT_CHEST_NOT_CONFIGURED')
+      // Live 2026-11-13: the registered chest stood inside the target chunk and
+      // was left on a 3-block island over the finished pit, out of reach for
+      // the final storage. It must stand outside the target, 2+ blocks away.
+      const home = config.homeChest, targetChunks = Array.isArray(config.target?.chunks) ? config.target.chunks : []
+      const nearTarget = margin => home?.position && targetChunks.length && [home.position, home.other, home.stand].filter(Boolean).some(p => targetChunks.some(c => { const b = chunkBounds(c); return p.x >= b.xMin - margin && p.x <= b.xMax + margin && p.z >= b.zMin - margin && p.z <= b.zMax + margin }))
+      // Inside is refused; within 2 blocks of the edge is only a warning (the
+      // usual station stands in the neighbouring chunk next to the pit edge).
+      if (nearTarget(0)) issues.push('LOADOUT_CHEST_INSIDE_QUARRY')
+      else if (nearTarget(2)) warnings.push({ code: 'LOADOUT_CHEST_NEAR_QUARRY_EDGE' })
       if (!loadoutPorts()) issues.push('V22_RUNTIME_UNAVAILABLE')
       if (!emptyLoadoutInventory(state)) issues.push('LOADOUT_START_INVENTORY_NOT_EMPTY')
       if (pendingLoadout) warnings.push({ code: 'INITIAL_LOADOUT_ON_START' })
@@ -3343,7 +3354,13 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       note('exceptions_auto_accepted', { count: exceptions.length, byReason })
     }
     if (exceptions.length && !job.acceptedExceptions) return finish('PAUSED', 'UNRESOLVED_EXCEPTIONS', { pauseDetails: { count: exceptions.length, byReason, exceptions: exceptions.slice(0, 50), miningCompleted: true, surfaceReturned: true } })
-    if (fourLayerStorage()) {
+    // v2.2 jobs (2026-11-13 user requests): after the return to the surface
+    // everything goes back to the registered chest by normal travel (cargo
+    // boxes, loose items, supply boxes, tools, weapons, worn armour, the totem
+    // and food), confirmed by received slots; FINISHED only after it.
+    // strategy.finalChestKeepGear keeps the gear with the bot instead.
+    const finalChestStore = job.config.strategy?.finalChestStore === true && job.config.initialLoadout === 'v22' && !!job.config.homeChest?.position && typeof adapter.finalChestDeposit === 'function'
+    if (fourLayerStorage() || finalChestStore) {
       const home = job.config.homeChest, owner = job
       if (!home?.position || !home.stand) return finish('PAUSED', 'FINAL_CHEST_UNKNOWN')
       if (!job.finalChest) {
@@ -3356,7 +3373,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (!samePoint(feetCell(current),home.stand)) await moveToStance(myEpoch,home.stand)
       const result = await call(myEpoch,'final_chest',signal=>adapter.finalChestDeposit({
         jobId:job.config.jobId,operationId:active.operationId,position:copy(home.position),
-        checkpoint:copy(active.checkpoint)
+        checkpoint:copy(active.checkpoint),...(!fourLayerStorage()&&job.config.strategy?.finalChestKeepGear===true?{keep:FINAL_CHEST_KEEP}:{})
       },{signal,onCheckpoint:async cp=>{
         if(job!==owner || job.finalChest!==active || cp.operationId!==active.operationId) throw new Error('FINAL_CHEST_STALE_CHECKPOINT')
         active.checkpoint=copy(cp);await save('final_chest_checkpoint')
@@ -3518,7 +3535,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // Pauses that a plain resume (which re-runs every check and reconciliation)
     // cleared by hand on 2026-11-13 also retry themselves, bounded like
     // ACTION_FAILED (3 per stretch without progress). Opt-out per job.
-    const transientPause = job.config.strategy?.autoResumeTransient !== false && (/^(INVENTORY_UNKNOWN|POSITION_UNCONFIRMED|HEALTH_NOT_RECOVERING|UNOBSERVED_CELLS|SLOW_BREAK_PERSISTS|ASCENT_[A-Z_]+|EGRESS_POSITION_UNCONFIRMED|EGRESS_RESUME_POSITION_CHANGED)$/.test(String(reason)) ||
+    const transientPause = job.config.strategy?.autoResumeTransient !== false && (/^(INVENTORY_UNKNOWN|POSITION_UNCONFIRMED|HEALTH_NOT_RECOVERING|UNOBSERVED_CELLS|SLOW_BREAK_PERSISTS|ASCENT_[A-Z_]+|EGRESS_POSITION_UNCONFIRMED|EGRESS_RESUME_POSITION_CHANGED|FINAL_CHEST_UNCONFIRMED|FINAL_CHEST_OPEN_UNCONFIRMED|LOADOUT_CHEST_OPEN_UNCONFIRMED|FINAL_INVENTORY_UNCONFIRMED)$/.test(String(reason)) ||
       ['CARRIED_STORAGE_BLOCKED', 'SUPPLY_RESTOCK_BLOCKED'].includes(reason) && ['STORAGE_SITE_UNOBSERVED'].includes(pauseDetails?.reason))
     if (job.persistence?.status !== 'failed' && (/^ACTION_FAILED/.test(String(reason)) || transientPause) && (job.autoResumes ?? 0) < 3 && job.userRunIntent === 'running') {
       const owner = job, expectedEpoch = epoch
@@ -4338,4 +4355,4 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, configureAnimalClearing, acceptCarriedStorageLoss, configureCargoLossAcceptance, configureSpareArmor, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
-module.exports = { createQuarryJob, QuarryInterrupt, defaults }
+module.exports = { createQuarryJob, QuarryInterrupt, defaults, FINAL_CHEST_KEEP }
