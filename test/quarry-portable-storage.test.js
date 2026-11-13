@@ -471,3 +471,15 @@ test('live case 2026-11-13: storage stands on a floor that blocks mining (gravel
   assert.ok(result.checkpoint.recoveryStandMoved, 'the break used a safe nearby stand')
   assert.notEqual(f.getBlock(result.checkpoint.stand.x, result.checkpoint.stand.y - 1, result.checkpoint.stand.z).name, 'minecraft:gravel')
 })
+
+test('live case 2026-11-13: a bot inside the stand cell but off-centre walks to the centre before placing', async () => {
+  const base = fixture('shulker'), plain = await base.run()
+  assert.equal(plain.status, 'completed', JSON.stringify(plain.reason))
+  const f = fixture('shulker')
+  f.state.position = { ...f.state.position, x: Math.floor(f.state.position.x) + 0.5, z: Math.floor(f.state.position.z) + 0.95 }
+  const result = await f.run()
+  assert.equal(result.status, 'completed', JSON.stringify(result.reason))
+  const stand = result.checkpoint.stand
+  const placeAt = f.events.findIndex(e => e.type === 'place')
+  assert.ok(f.events.slice(0, placeAt).some(e => e.type === 'move' && e.position.x === stand.x && e.position.z === stand.z), 'moved to the stand centre before placing')
+})

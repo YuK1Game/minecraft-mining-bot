@@ -623,7 +623,10 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
 
       if (!recovering) {
         let current = guard()
-        if (!samePoint({ x: Math.floor(current.state.position.x), y: Math.round(current.state.position.y - 1.62), z: Math.floor(current.state.position.z) }, cp.stand)) await moveToCell(cp.stand)
+        // Live 2026-11-13 11:56: the bot stayed in the stand cell but 0.45 m off
+        // centre over a ledge, so placement preparation never saw a clear,
+        // settled stance. Walk to the centre when off by more than 0.25 m.
+        if (!samePoint({ x: Math.floor(current.state.position.x), y: Math.round(current.state.position.y - 1.62), z: Math.floor(current.state.position.z) }, cp.stand) || Math.hypot(current.state.position.x - cp.stand.x - 0.5, current.state.position.z - cp.stand.z - 0.5) > 0.25) await moveToCell(cp.stand)
         current = guard()
         if (Math.hypot(current.state.position.x - cp.stand.x - 0.5, current.state.position.y - 1.62 - cp.stand.y, current.state.position.z - cp.stand.z - 0.5) > 0.7 || !support(cp.stand)) throw failure('STORAGE_STAND_UNCONFIRMED')
         if (cp.positions.length === 2 && heading(current.state.position, cp.positions[0]) !== heading(current.state.position, cp.positions[1])) throw failure('STORAGE_DOUBLE_FACING')
