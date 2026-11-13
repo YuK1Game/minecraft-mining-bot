@@ -194,3 +194,18 @@ test('live case 2026-11-13: a supply box drop that vanished before its pickup wa
   assert.equal(last.pauseReason, 'SUPPLY_RESTOCK_BLOCKED')
   assert.equal(last.pauseDetails.reason, 'STORAGE_PICKUP_ITEM_CHANGED')
 })
+
+test('live case 2026-11-13: re-registering supplies on a v2.2 job searches the v2.2 layout', async () => {
+  const f = fixture()
+  f.config.inventory = { ...f.config.inventory, supplyLayout: 'v22' }
+  f.job.plan(f.config)
+  const layouts = []
+  f.sim.adapter.discoverSupplies = layout => { layouts.push(layout); return { ok: false, reason: 'FIXTURE_STOP' } }
+  await assert.rejects(f.job.configureSupplies(), /FIXTURE_STOP/)
+  assert.deepEqual(layouts, ['v22'])
+  const g = fixture(); assert.equal(g.job.plan(g.config).ready, true)
+  const legacy = []
+  g.sim.adapter.discoverSupplies = layout => { legacy.push(layout); return { ok: false, reason: 'FIXTURE_STOP' } }
+  await assert.rejects(g.job.configureSupplies(), /FIXTURE_STOP/)
+  assert.deepEqual(legacy, ['legacy'])
+})

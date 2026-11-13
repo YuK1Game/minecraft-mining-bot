@@ -3476,7 +3476,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job || worker || !['PAUSED', 'IDLE'].includes(job.state)) throw new Error('Supply registration requires a drained paused or idle job')
     if (job.supplyRestock || job.portableStorage) throw new Error('An unfinished container operation must be reconciled before changing supply bindings')
     if (!bindings) {
-      const discovered = adapter.discoverSupplies?.()
+      // Live 2026-11-13 11:21: after a reconnect the v2.2 boxes (no food, a totem box)
+      // were searched with the legacy layout and SUPPLY_BOXES_UNCONFIRMED followed.
+      const discovered = adapter.discoverSupplies?.(v22SupplyLayout(job.config) ? 'v22' : 'legacy')
       if (!discovered?.ok) throw new Error(discovered?.reason ?? 'SUPPLY_BOXES_UNCONFIRMED')
       bindings = discovered.bindings
     }
