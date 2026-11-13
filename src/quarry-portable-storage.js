@@ -4,7 +4,7 @@ const { serialize, deserialize } = require('node:v8')
 const { isDeepStrictEqual } = require('node:util')
 const { createHash } = require('node:crypto')
 const { setTimeout: delay } = require('node:timers/promises')
-const { keepPlan, maxStack, carriedContainerKey, freeSlots } = require('./quarry-inventory')
+const { keepPlan, maxStack, carriedContainerKey, carriedContainerIdentity, freeSlots } = require('./quarry-inventory')
 const { selectTool, toolState } = require('./quarry-rules')
 const { isShulkerBox, isShulkerBlock, sameWindowId, canonicalWindowId, storageContainerType, storageWindowMatches } = require('./container-types')
 const { readShulkerContents, readContainerContents, compareShulkerContents, diagnoseShulkerContents } = require('./shulker-contents')
@@ -459,7 +459,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       if (ids.length > 512 || ids.some(id => !id || !/^\d+$/.test(id)) || new Set(ids).size !== ids.length) throw failure('STORAGE_PICKUP_ENTITY_BASELINE_UNKNOWN')
       return ids.sort()
     }
-    const result = (status, reason = null) => ({ status, ...(reason ? { reason } : {}), serverConfirmed: status === 'completed' || status === 'full', deposited: copy(cp?.deposited ?? []), ...(cp?.kind === 'shulker' ? { recovered: !!cp.recovered, ...(status === 'full' && cp.recovered ? { exhaustedShulkerKeys: [cp.recovered.key] } : {}) } : { storage: cp?.opened && point(cp.positions?.[0]) ? [{ position: copy(cp.positions[0]), ...(cp.kind === 'double_chest' ? { pairedPositions: copy(cp.positions) } : {}), stand: copy(cp.stand), slotCount: cp.kind === 'double_chest' ? 54 : 27 }] : [] }), checkpoint: copy(cp) })
+    const result = (status, reason = null) => ({ status, ...(reason ? { reason } : {}), serverConfirmed: status === 'completed' || status === 'full', deposited: copy(cp?.deposited ?? []), ...(cp?.kind === 'shulker' ? { recovered: !!cp.recovered, ...(status === 'full' && cp.recovered ? { exhaustedShulkerKeys: [cp.recovered.key], ...(cp.recovered.identity ? { exhaustedShulkerIdentities: [cp.recovered.identity] } : {}) } : {}) } : { storage: cp?.opened && point(cp.positions?.[0]) ? [{ position: copy(cp.positions[0]), ...(cp.kind === 'double_chest' ? { pairedPositions: copy(cp.positions) } : {}), stand: copy(cp.stand), slotCount: cp.kind === 'double_chest' ? 54 : 27 }] : [] }), checkpoint: copy(cp) })
     const readWindowEvidence = (current, expectedId = cp.windowId) => {
       const open = current.observed.openContainer, window = chest.snapshot().window, position = cp.positions?.[0]
       const descriptor = storageContainerType(cp.placed?.[0]?.name)
@@ -1147,7 +1147,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         }
         if (!box) throw failure('STORAGE_RECOVERY_UNCONFIRMED')
       }
-      cp.recovered = { name: box.name, slot: box.slot, stackId: box.stackId, key: carriedContainerKey(box), confirmedBy: 'received_air_and_new_inventory_box_with_exact_contents' }
+      cp.recovered = { name: box.name, slot: box.slot, stackId: box.stackId, key: carriedContainerKey(box), identity: carriedContainerIdentity(box), confirmedBy: 'received_air_and_new_inventory_box_with_exact_contents' }
       cp.stage = 'completed'; await save(); guard()
       return result(cp.full ? 'full' : 'completed')
     } catch (error) {

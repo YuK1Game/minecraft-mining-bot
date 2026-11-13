@@ -148,7 +148,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // The production Runtime pins this to shulker. Legacy primitives remain for
   // read/recovery tests, never as a browser/CLI-selectable policy.
   const shulkerOnly = storageMode === 'shulker'
-  const cargoSelection = (inventory, options = {}) => selectCarriedStorage(inventory, { ...options, shulkerOnly })
+  const cargoSelection = (inventory, options = {}) => selectCarriedStorage(inventory, { excludedShulkerIdentities: job?.exhaustedShulkerIdentities ?? [], ...options, shulkerOnly })
   function assertStoragePolicy () {
     if (shulkerOnly && job && (job.config.inventory.storage?.length || job.portableStorage && job.portableStorage.selection?.kind !== 'shulker')) throw new QuarryInterrupt('LEGACY_CHEST_STORAGE', '旧チェストジョブは再開できません。未回収容器を確認してキャンセルし、シュルカーで再計画してください。')
   }
@@ -2821,6 +2821,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (selection.kind === 'shulker' && result.status === 'full') {
         if (!Array.isArray(result.exhaustedShulkerKeys) || !result.exhaustedShulkerKeys.length || !result.exhaustedShulkerKeys.every(k => typeof k === 'string' && k.length)) throw new Error('Recovered full shulker lacks its current inventory identity')
         job.exhaustedShulkerKeys = [...new Set([...(job.exhaustedShulkerKeys ?? []), ...result.exhaustedShulkerKeys])].slice(-128)
+        const identities = (result.exhaustedShulkerIdentities ?? []).filter(k => typeof k === 'string' && /^[0-9a-f]{64}$/.test(k))
+        if (identities.length) job.exhaustedShulkerIdentities = [...new Set([...(job.exhaustedShulkerIdentities ?? []), ...identities])].slice(-128)
       } else if (selection.kind !== 'shulker' && result.status === 'full') {
         job.fullStorage = [...new Set([...(job.fullStorage ?? []), ...result.storage.map(st => posKey(st.position))])]
       }

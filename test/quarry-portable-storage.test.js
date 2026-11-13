@@ -4,7 +4,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setImmediate: turn } = require('node:timers/promises')
 const { createQuarryPortableStorage } = require('../src/quarry-portable-storage')
-const { selectCarriedStorage, carriedContainerKey } = require('../src/quarry-inventory')
+const { selectCarriedStorage, carriedContainerKey, carriedContainerIdentity } = require('../src/quarry-inventory')
 
 const copy = value => structuredClone(value)
 const extra = () => ({ has_nbt: 'false', can_place_on: [], can_destroy: [] })

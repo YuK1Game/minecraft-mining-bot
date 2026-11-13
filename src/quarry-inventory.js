@@ -24,11 +24,22 @@ function carriedContainerKey (item) {
   return Number.isSafeInteger(stack) && stack > 0 ? `${nameOf(item)}:stack:${stack}` : `${nameOf(item)}:slot:${item?.slot}`
 }
 
-function selectCarriedStorage (items, { excludedShulkerKeys = [], shulkerOnly = false } = {}) {
+// A connection-independent identity of a carried box: its received item
+// identity with the stack ID and count left out (the NBT holds the contents).
+// Live 2026-11-13: stack IDs change on reconnect, so the stack-keyed "full"
+// marks no longer matched and every full box was placed and recovered again.
+// A box that was full and received nothing since keeps the same contents.
+function carriedContainerIdentity (item) {
+  const r = item?.raw
+  if (!r || !Number.isInteger(r.network_id) || r.network_id === 0 || r.extra == null) return null
+  return require('crypto').createHash('sha256').update(require('v8').serialize({ network_id: r.network_id, metadata: r.metadata, block_runtime_id: r.block_runtime_id, extra: r.extra })).digest('hex')
+}
+
+function selectCarriedStorage (items, { excludedShulkerKeys = [], excludedShulkerIdentities = [], shulkerOnly = false } = {}) {
   const available = [...(items ?? [])].filter(item => Number.isInteger(item?.slot) && item.slot >= 0 && item.slot < SLOTS && Number.isSafeInteger(item.count) && item.count > 0).sort((a, b) => a.slot - b.slot)
-  const excluded = new Set(excludedShulkerKeys)
+  const excluded = new Set(excludedShulkerKeys), excludedIdentity = new Set(excludedShulkerIdentities)
   const source = (item, count) => ({ slot: item.slot, name: item.name, count, ...(Number.isSafeInteger(item.stackId ?? item.stack_id) ? { stackId: item.stackId ?? item.stack_id } : {}) })
-  const box = available.find(item => isShulkerBox(item.name) && item.count === 1 && !excluded.has(carriedContainerKey(item)) && !(shulkerOnly && require('./loadout-manifest').SUPPLY_NAMES.includes(item.name)))
+  const box = available.find(item => isShulkerBox(item.name) && item.count === 1 && !excluded.has(carriedContainerKey(item)) && !(excludedIdentity.size && excludedIdentity.has(carriedContainerIdentity(item))) && !(shulkerOnly && require('./loadout-manifest').SUPPLY_NAMES.includes(item.name)))
   if (box) return { kind: 'shulker', key: carriedContainerKey(box), sources: [source(box, 1)] }
   if (shulkerOnly) return null
   const chests = available.filter(item => nameOf(item) === 'chest')
@@ -133,4 +144,4 @@ function dropsFittingStacks (items, drops, { keepFree = null } = {}) {
   return fitting
 }
 
-module.exports = { keepPlan, freeSlots, canAccept, dropsFittingStacks, totals, diff, createLedger, maxStack, isFood, isShulkerBox, carriedContainerKey, selectCarriedStorage, SLOTS }
+module.exports = { keepPlan, freeSlots, canAccept, dropsFittingStacks, totals, diff, createLedger, maxStack, isFood, isShulkerBox, carriedContainerKey, carriedContainerIdentity, selectCarriedStorage, SLOTS }
