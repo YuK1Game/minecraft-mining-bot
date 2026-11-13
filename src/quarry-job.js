@@ -2395,6 +2395,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job.supplyRestock && !(shortage || force && need.returns.length)) return false
     if (!job.supplyRestock) { job.supplySequence = (job.supplySequence ?? 0) + 1; job.supplyRestock = { operationId: `${job.config.jobId}:supplies:${job.supplySequence}`, checkpoint: null, resumeTo } }
     const owner = job, active = job.supplyRestock
+    await refreshSupplyBindingKeys(active)
     if (!(await approachSupplySite(myEpoch, active))) return true
     guard(myEpoch)
     setState('RESTOCK'); await save('supply_intent')
@@ -2460,6 +2461,41 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     clearWorkDeferred([...TOOL_WAIT]); job.miningEquipmentPending = true
     await save('supply_completed'); setState(active.resumeTo ?? resumeTo)
     return true
+  }
+  // Stack IDs change on a reconnect (live 2026-11-14 02:19: after the bot
+  // restarted, the pickaxe box was bound as blue:1158 but carried as blue:2597;
+  // supplies:11 stopped SUPPLY_BOX_MISSING). Before a supply operation touches a
+  // box, a binding whose key is not carried is re-found: a supply colour by its
+  // one carried box of that colour; the cargo dirt source by the carried cargo
+  // box with the most received dirt. Ambiguous or absent: left as is (the
+  // operation then stops as before). An operation already holding a placed box
+  // is never rebound.
+  async function refreshSupplyBindingKeys (active) {
+    const inv = items(adapter.getState()), bindings = job.config.inventory.supplyBoxes
+    if (!inv || !Array.isArray(bindings) || active?.checkpoint?.child) return
+    const supply = require('./loadout-manifest').SUPPLY_NAMES, carried = new Set(inv.map(i => carriedContainerKey(i)))
+    const changes = []
+    for (const b of bindings) {
+      if (!b || typeof b.key !== 'string' || carried.has(b.key)) continue
+      let next = null
+      if (supply.includes(b.boxName)) {
+        const same = inv.filter(i => i.name === b.boxName && i.count === 1)
+        if (same.length === 1) next = same[0]
+      } else if (b.role === 'dirt' && b.source === 'cargo') {
+        const best = carriedDirtBoxes().filter(x => x.dirt != null && x.dirt > 0).sort((x, y) => y.dirt - x.dirt || (x.slot ?? 99) - (y.slot ?? 99))[0]
+        if (best) next = inv.find(i => carriedContainerKey(i) === best.key) ?? null
+      }
+      if (!next) continue
+      const key = carriedContainerKey(next)
+      if (bindings.some(o => o !== b && o.key === key)) continue
+      changes.push({ role: b.role, from: b.key, to: key })
+      b.key = key; b.stackId = next.stackId ?? null
+    }
+    if (!changes.length) return
+    const cp = active?.checkpoint
+    if (cp && Array.isArray(cp.bindings) && !cp.child) for (const c of changes) { const row = cp.bindings.find(x => x.role === c.role); if (row) { row.key = c.to; row.stackId = bindings.find(x => x.role === c.role).stackId } }
+    note('supply_bindings_refreshed', { changes })
+    await save('supply_bindings_refreshed')
   }
   function hasStorageOption () {
     return !!job.portableStorage || !shulkerOnly && !!job.config.inventory.storage?.length || typeof adapter.storeCarried === 'function' && !!cargoSelection(items(adapter.getState()), { excludedShulkerKeys: [...(job.exhaustedShulkerKeys ?? []), ...storageSupplyExclusions(job.config.inventory.supplyBoxes)] })
