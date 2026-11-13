@@ -28,6 +28,7 @@ function fixture () {
     if (behavior === 'site') { behavior = 'success'; return { status: 'blocked', serverConfirmed: false, reason: 'STORAGE_SITE_CHANGED', checkpoint: { withdrawn: [], returned: [], child: { placed: [], siteIssue: { cause: 'ENTITY_OCCUPIES_OR_UNOBSERVED', part: 'box' } } } } }
     if (behavior === 'placed-site') { return { status: 'blocked', serverConfirmed: false, reason: 'STORAGE_SITE_CHANGED', checkpoint: { withdrawn: [], returned: [], child: { placed: [{ position: { x: 0, y: 0, z: 0 } }] } } } }
     if (behavior === 'room') { behavior = 'success'; return { status: 'blocked', serverConfirmed: false, reason: 'SUPPLY_CAPACITY_REQUIRED' } }
+    if (behavior === 'movetimeout') { behavior = 'success'; return { status: 'blocked', serverConfirmed: false, reason: 'quarry move: timed out', checkpoint: { withdrawn: [], returned: [], child: { stage: 'planned', placed: [] } } } }
     if (behavior === 'pickup-once' || behavior === 'pickup-always') { if (behavior === 'pickup-once') behavior = 'success'; return { status: 'blocked', serverConfirmed: false, reason: 'STORAGE_PICKUP_ITEM_CHANGED', checkpoint: { withdrawn: [], returned: [], child: { stage: 'awaiting_recovery', placed: [{ position: { x: 0, y: 0, z: 0 } }] } } } }
     const dirt = sim.state.inventory.items.filter(i => i.name === 'minecraft:dirt').reduce((sum, item) => sum + item.count, 0), need = 224 - dirt
     if (need > 0) sim.give('dirt', need)
@@ -208,4 +209,16 @@ test('live case 2026-11-13: re-registering supplies on a v2.2 job searches the v
   g.sim.adapter.discoverSupplies = layout => { legacy.push(layout); return { ok: false, reason: 'FIXTURE_STOP' } }
   await assert.rejects(g.job.configureSupplies(), /FIXTURE_STOP/)
   assert.deepEqual(legacy, ['legacy'])
+})
+
+test('live case 2026-11-13: a supply walk that timed out before anything was placed is retried at a new site', async () => {
+  const f = fixture()
+  assert.equal(f.job.plan(f.config).ready, true)
+  await f.job.configureSupplies()
+  f.setBehavior('movetimeout')
+  const first = await f.job.restockSuppliesNow()
+  assert.notEqual(first.pauseReason, 'SUPPLY_RESTOCK_BLOCKED')
+  const result = await f.job.restockSuppliesNow()
+  assert.equal(result.supplyResult.status, 'completed', JSON.stringify(result.supplyResult))
+  assert.equal(f.requests.length, 2)
 })
