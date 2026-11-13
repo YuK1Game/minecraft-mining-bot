@@ -110,6 +110,29 @@ function createEntities ({ limit = 512, selfRuntimeId = null, clock = () => new 
     if (!(Math.hypot(velocity.x, velocity.y, velocity.z) <= maxSpeed)) return { velocity: { x: 0, y: 0, z: 0 }, ageMs, samples: samples.length, stationary: true, discarded: 'teleport' }
     return { velocity, ageMs, samples: samples.length, stationary: false }
   }
+  // Animal identity metadata (2026-11-13, quarry animal clearing): flags
+  // (baby/tamed/leashed/sitting), nametag and owner. Nothing is assumed when a
+  // field was not received; flagsKnown tells whether the flags ever arrived.
+  function applyAnimalMetadata (entity, metadata) {
+    if (entity.kind !== 'mob' || entity.hostile === true || !Array.isArray(metadata)) return
+    const meta = entity.animalMeta ?? (entity.animalMeta = { flagsKnown: false, baby: null, tamed: null, leashed: null, sitting: null, nameTagKnown: false, nameTag: null, ownerKnown: false, owner: null })
+    for (const entry of metadata) {
+      const key = entry?.key
+      if ((key === 'flags' || key === 0) && entry.value && typeof entry.value === 'object') {
+        const flags = entry.value
+        if (['baby', 'tamed', 'leashed'].every(name => typeof flags[name] === 'boolean')) {
+          meta.flagsKnown = true; meta.baby = flags.baby; meta.tamed = flags.tamed; meta.leashed = flags.leashed
+          meta.sitting = typeof flags.sitting === 'boolean' ? flags.sitting : null
+        }
+      } else if ((key === 'nametag' || key === 4) && typeof entry.value === 'string') {
+        meta.nameTagKnown = true; meta.nameTag = entry.value
+      } else if ((key === 'owner_eid' || key === 5) && entry.value != null) {
+        let owner = null
+        try { owner = BigInt(Array.isArray(entry.value) ? 0 : entry.value) } catch { owner = null }
+        meta.ownerKnown = owner !== null; meta.owner = owner === null ? null : String(owner)
+      }
+    }
+  }
   function applyCreeperMetadata (entity, metadata, tick = null) {
     if (entity.entityType !== 'minecraft:creeper' || !Array.isArray(metadata)) return
     let incoming = null
@@ -158,6 +181,7 @@ function createEntities ({ limit = 512, selfRuntimeId = null, clock = () => new 
     }
     setPosition(entity, packet.position, kind === 'item' ? 'add_item_entity' : kind === 'player' ? 'add_player' : 'add_entity')
     applyCreeperMetadata(entity, packet.metadata)
+    applyAnimalMetadata(entity, packet.metadata)
     entities.set(runtimeId, entity)
     if (uniqueId !== null) uniqueIds.set(uniqueId, runtimeId)
     while (entities.size > limit) forget(entities.keys().next().value)
@@ -205,6 +229,7 @@ function createEntities ({ limit = 512, selfRuntimeId = null, clock = () => new 
       if (!entity) { ignoredUpdates++; return { dangerChanged: false } }
       const before = entity.entityType === 'minecraft:creeper' ? [entity.primed, entity.charged] : null
       applyCreeperMetadata(entity, packet.metadata, packet.tick)
+      applyAnimalMetadata(entity, packet.metadata)
       touch(entity)
       return { dangerChanged: !!before && (before[0] !== entity.primed || before[1] !== entity.charged) }
     } else if (name === 'move_player') {
