@@ -5423,7 +5423,7 @@ function createRuntime (host) {
         const doc = quarryJob?.document?.()
         if (doc && !['FINISHED', 'PAUSED', 'IDLE', 'CANCELLED'].includes(doc.state)) throw new Error('露天掘りの実行中は収納できません。')
         const p = options?.position
-        if (!p || !['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]))) throw new Error('storeToChest accepts { position: {x,y,z} } of a large chest')
+        if (!p || !['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])) || Object.keys(options).some(k => !['position', 'all'].includes(k))) throw new Error('storeToChest accepts { position: {x,y,z}, all?: true } of a large chest')
         const operationId = 'manual-store:' + new Date().toISOString().replace(/[:.]/g, '-')
         const file = require('node:path').join(process.cwd(), '.local', 'manual-chest-deposit', operationId.replace(':', '-') + '.json')
         require('node:fs').mkdirSync(require('node:path').dirname(file), { recursive: true })
@@ -5431,7 +5431,8 @@ function createRuntime (host) {
         const { FINAL_CHEST_KEEP } = require('./quarry-job')
         ensureQuarryJob()
         if (!quarrySurfaceChestRunner) throw new Error('収納の準備ができていません。')
-        const result = await quarrySurfaceChestRunner('depositAll', { jobId: doc?.config?.jobId ?? 'manual', operationId, position: { x: p.x, y: p.y, z: p.z }, checkpoint: null, keep: FINAL_CHEST_KEEP }, { onCheckpoint: async cp => save(cp) })
+        // all: true stores the gear too (2026-11-13 18:17 user request).
+        const result = await quarrySurfaceChestRunner('depositAll', { jobId: doc?.config?.jobId ?? 'manual', operationId, position: { x: p.x, y: p.y, z: p.z }, checkpoint: null, ...(options.all === true ? {} : { keep: FINAL_CHEST_KEEP }) }, { onCheckpoint: async cp => save(cp) })
         save({ ...(result.checkpoint ?? {}), result: { status: result.status, reason: result.reason ?? null, serverConfirmed: result.serverConfirmed } })
         host.log(`手動収納（選択）: ${result.status} ${result.reason ?? ''} 記録 ${file}`)
         return { status: result.status, reason: result.reason ?? null, serverConfirmed: result.serverConfirmed, stored: (result.checkpoint?.receipts ?? []).filter(r => /deposit/.test(r.kind)).reduce((n, r) => n + (r.count ?? 0), 0), stacks: (result.checkpoint?.receipts ?? []).length, record: file }

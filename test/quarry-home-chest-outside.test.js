@@ -19,6 +19,7 @@ const chest = (x, z) => ({ position: { x, y: 63, z }, other: { x: x + 1, y: 63, 
 
 test('a registered chest inside the target or at its edge is refused; one outside is accepted', () => {
   assert.ok(planWith(chest(8, 6)).issues.includes('LOADOUT_CHEST_INSIDE_QUARRY'), 'inside the chunk')
-  assert.ok(planWith(chest(17, 6)).issues.includes('LOADOUT_CHEST_INSIDE_QUARRY'), 'stand within 2 of the edge')
+  const near = planWith(chest(17, 6))
+  assert.ok(!near.issues.includes('LOADOUT_CHEST_INSIDE_QUARRY')); assert.ok(near.warnings.some(w => w.code === 'LOADOUT_CHEST_NEAR_QUARRY_EDGE'), 'within 2 of the edge warns')
   assert.ok(!planWith(chest(21, 6)).issues.includes('LOADOUT_CHEST_INSIDE_QUARRY'), 'outside, 2+ blocks away')
 })

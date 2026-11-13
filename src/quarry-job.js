@@ -452,7 +452,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       // was left on a 3-block island over the finished pit, out of reach for
       // the final storage. It must stand outside the target, 2+ blocks away.
       const home = config.homeChest, targetChunks = Array.isArray(config.target?.chunks) ? config.target.chunks : []
-      if (home?.position && targetChunks.length && [home.position, home.other, home.stand].filter(Boolean).some(p => targetChunks.some(c => { const b = chunkBounds(c); return p.x >= b.xMin - 2 && p.x <= b.xMax + 2 && p.z >= b.zMin - 2 && p.z <= b.zMax + 2 }))) issues.push('LOADOUT_CHEST_INSIDE_QUARRY')
+      const nearTarget = margin => home?.position && targetChunks.length && [home.position, home.other, home.stand].filter(Boolean).some(p => targetChunks.some(c => { const b = chunkBounds(c); return p.x >= b.xMin - margin && p.x <= b.xMax + margin && p.z >= b.zMin - margin && p.z <= b.zMax + margin }))
+      // Inside is refused; within 2 blocks of the edge is only a warning (the
+      // usual station stands in the neighbouring chunk next to the pit edge).
+      if (nearTarget(0)) issues.push('LOADOUT_CHEST_INSIDE_QUARRY')
+      else if (nearTarget(2)) warnings.push({ code: 'LOADOUT_CHEST_NEAR_QUARRY_EDGE' })
       if (!loadoutPorts()) issues.push('V22_RUNTIME_UNAVAILABLE')
       if (!emptyLoadoutInventory(state)) issues.push('LOADOUT_START_INVENTORY_NOT_EMPTY')
       if (pendingLoadout) warnings.push({ code: 'INITIAL_LOADOUT_ON_START' })
@@ -3350,9 +3354,11 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       note('exceptions_auto_accepted', { count: exceptions.length, byReason })
     }
     if (exceptions.length && !job.acceptedExceptions) return finish('PAUSED', 'UNRESOLVED_EXCEPTIONS', { pauseDetails: { count: exceptions.length, byReason, exceptions: exceptions.slice(0, 50), miningCompleted: true, surfaceReturned: true } })
-    // v2.2 jobs (2026-11-13 user request): after the return to the surface the
-    // cargo boxes and loose items go to the registered chest by normal travel;
-    // supply boxes, tools, worn armour, the totem and food stay with the bot.
+    // v2.2 jobs (2026-11-13 user requests): after the return to the surface
+    // everything goes back to the registered chest by normal travel (cargo
+    // boxes, loose items, supply boxes, tools, weapons, worn armour, the totem
+    // and food), confirmed by received slots; FINISHED only after it.
+    // strategy.finalChestKeepGear keeps the gear with the bot instead.
     const finalChestStore = job.config.strategy?.finalChestStore === true && job.config.initialLoadout === 'v22' && !!job.config.homeChest?.position && typeof adapter.finalChestDeposit === 'function'
     if (fourLayerStorage() || finalChestStore) {
       const home = job.config.homeChest, owner = job
@@ -3367,7 +3373,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (!samePoint(feetCell(current),home.stand)) await moveToStance(myEpoch,home.stand)
       const result = await call(myEpoch,'final_chest',signal=>adapter.finalChestDeposit({
         jobId:job.config.jobId,operationId:active.operationId,position:copy(home.position),
-        checkpoint:copy(active.checkpoint),...(fourLayerStorage()?{}:{keep:FINAL_CHEST_KEEP})
+        checkpoint:copy(active.checkpoint),...(!fourLayerStorage()&&job.config.strategy?.finalChestKeepGear===true?{keep:FINAL_CHEST_KEEP}:{})
       },{signal,onCheckpoint:async cp=>{
         if(job!==owner || job.finalChest!==active || cp.operationId!==active.operationId) throw new Error('FINAL_CHEST_STALE_CHECKPOINT')
         active.checkpoint=copy(cp);await save('final_chest_checkpoint')

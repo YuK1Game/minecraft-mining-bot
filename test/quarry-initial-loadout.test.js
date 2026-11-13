@@ -203,8 +203,24 @@ test('an invalid completed native checkpoint cannot authorize initial supplies o
   assert.notEqual(f.job.document().loadoutReady, true)
 })
 
-test('a returned passive/full job keeps its nonfull inventory without final chest deposit or logout', async () => {
+// 2026-11-13 user request: by default everything returns to the registered chest.
+test('a returned passive/full job stores everything at the registered chest before FINISHED', async () => {
   const f = fixture({ blockedSupply: false }); f.job.plan(f.config); await f.run()
+  f.f.state.health = 20
+  const doc = f.job.document()
+  doc.state = 'PAUSED'; doc.userRunIntent = 'paused'; doc.pauseReason = 'MANUAL_PAUSE'; doc.records = {}
+  doc.surfaceReturnedAt = '2026-11-12T00:00:00Z'; doc.miningCompletedAt = '2026-11-12T00:00:00Z'
+  f.job.load(doc)
+  const requests = []
+  f.adapter.finalChestDeposit = async (request, { onCheckpoint }) => { requests.push(request); const cp = { operationId: request.operationId, phase: 'completed', receipts: [] }; await onCheckpoint(cp); return { status: 'completed', serverConfirmed: true, checkpoint: cp } }
+  const result = await f.run({ resume: true })
+  assert.equal(result.state, 'FINISHED')
+  assert.equal(requests.length, 1); assert.equal(requests[0].keep, undefined, 'nothing is kept back')
+  assert.ok(f.job.document().finalChestStoredAt)
+})
+
+test('with final chest storage off, a returned passive/full job keeps its nonfull inventory without final chest deposit or logout', async () => {
+  const f = fixture({ blockedSupply: false }); f.job.plan({ ...f.config, strategy: { ...(f.config.strategy ?? {}), finalChestStore: false } }); await f.run()
   f.f.state.health = 20
   const before = copy(f.f.bag), doc = f.job.document()
   doc.state = 'PAUSED'; doc.userRunIntent = 'paused'; doc.pauseReason = 'MANUAL_PAUSE'; doc.records = {}
