@@ -249,3 +249,36 @@ body.v2 .page-footer{display:none}
 }
 @media(prefers-reduced-motion:reduce){body.v2 .activity-banner .activity-icon{animation:none!important}}
 body.v2 .log-line{margin:0}body.v2 .job-reason,body.v2 #inventory-unknown{display:none!important}
+
+/* First-view fit (2026-11-13): on a desktop-width window the whole page aims to fit the viewport; the log takes what is left. */
+body.v2 .storage-button{margin:0;width:auto;min-height:28px;padding:3px 12px;font-size:13px}
+body.v2 .debug-chest-actions{padding:0;margin-top:auto;justify-content:stretch;flex-wrap:nowrap}body.v2 .debug-chest-actions button{flex:1 1 0;min-width:0;padding:6px 6px;overflow:hidden;text-overflow:ellipsis}
+@media(min-width:1181px){
+ body.v2{min-height:100dvh;display:flex;flex-direction:column}
+ body.v2 .topbar{margin:6px 8px 0;flex:none}body.v2 .topbar-inner{padding:4px 14px}body.v2 .brand h1{font-size:19px}body.v2 .brand-icon{width:26px;height:26px}
+ body.v2 .shell,body.v2 .shell:has(.control-panel[open]){flex:1;min-height:0;padding:6px 8px 8px;gap:6px}
+ body.v2 .vitals-bar{padding:4px 16px}body.v2 .vital-icon{font-size:20px}body.v2 .vital-number{font-size:14px}body.v2 .vital-gauge .meter{height:7px}body.v2 .feet-values{font-size:17px}
+ body.v2 .activity-banner{min-height:44px;padding:3px 18px}body.v2 .activity-banner .activity-icon{width:32px;height:32px;font-size:19px}body.v2 .activity-banner strong{font-size:23px}body.v2 .activity-banner .activity-detail{font-size:19px}
+ body.v2 .panel-title{padding:4px 14px}body.v2 .panel-title h2,body.v2 #quarry-heading,body.v2 #detail-heading{font-size:17px}body.v2 .title-icon{font-size:17px}
+ body.v2 .control-flow{font-size:13px}body.v2 .control-flow>span{padding:1px 11px}
+ body.v2 .control-columns{padding:6px 8px 8px}body.v2 .control-col{gap:7px}body.v2 .col-title{padding:2px 12px;font-size:15px}
+ body.v2 .control-panel button{min-height:30px;padding:4px 10px;font-size:13px}body.v2 .control-panel input:not([type=checkbox]),body.v2 .control-panel select{height:28px}
+ body.v2 .connect-grid{gap:7px 10px;padding-top:2px}
+ body.v2 .control-panel .chunk-cell{height:23px}body.v2 .chunk-axis-x,body.v2 .chunk-axis-z{font-size:12px}body.v2 .chunk-map{gap:2px 6px}
+ body.v2 .target-settings{gap:5px}body.v2 .coord-fields{gap:4px 14px}body.v2 .control-panel .coord-fields input{height:25px}body.v2 .field-group-title{margin:0;font-size:12px}
+ body.v2 .control-panel .area-presets button,body.v2 .control-panel .location-button{min-height:25px}
+ body.v2 .run-buttons{gap:6px 10px;padding-top:2px}body.v2 .control-panel button.danger{min-height:38px;font-size:19px}
+ body.v2 .workspace-grid{gap:6px;flex:none}body.v2 .work-sidebar{gap:6px}
+ body.v2 .inv-body{--slot:clamp(36px,calc((100dvh - 760px) / 5),52px);padding:5px 16px 6px;gap:2px;justify-content:center}
+ body.v2 .inv-body .slot .item-icon{width:74%;height:74%}body.v2 .inv-body .slot-grid{gap:3px}
+ body.v2 .inv-label{margin-top:1px;font-size:13px}body.v2 .equipment-name{font-size:12px}body.v2 .hotbar-grid{margin-bottom:16px}body.v2 .hotbar-grid .slot-number{bottom:-16px;font-size:12px}
+ body.v2 .quarry-strip{margin:6px 14px 0;font-size:14px}body.v2 .strip-item{padding:1px 16px}body.v2 .strip-item b,body.v2 #quarry-chunks{font-size:16px}body.v2 .strip-item b.layer{font-size:18px}
+ body.v2 .stat-cards{padding:6px 14px;gap:5px 8px}body.v2 .stat-cards>div{padding:2px 14px 1px}body.v2 .stat-cards .stat-label{font-size:14px}body.v2 .stat-cards .stat-value{font-size:21px}
+ body.v2 .quarry-foot{padding:0 18px 5px;font-size:13px}
+ body.v2 .detail-panel{min-height:96px}body.v2 .detail-panel #item-detail{padding:5px 16px 6px}
+ body.v2 .detail-panel .detail-icon{width:46px;height:46px}body.v2 .detail-panel .detail-icon .item-icon{width:36px;height:36px}body.v2 .detail-panel .item-detail-name{font-size:17px}body.v2 .detail-panel .detail-head{padding-bottom:3px}
+ body.v2 .detail-panel .detail-durability{padding:3px 10px}body.v2 .empty-message{padding:10px}
+ body.v2 .logs-panel,body.v2 .shell:has(.control-panel[open])>.logs-panel{flex:1 1 0;min-height:104px}body.v2 .logs-head{flex:none}
+ body.v2 .logs-head .filter-group button{padding:1px 12px}body.v2 .logs-head input[type=search]{height:26px}
+ body.v2 .log-view{flex:1 1 0;height:auto;min-height:0;font-size:13px}body.v2 .log-line{min-height:23px;padding:1px 24px}
+}
