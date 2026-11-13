@@ -287,6 +287,8 @@ function createQuarryRuntimeAdapter (ports) {
     // Quarry animal clearing (2026-11-13): every received actor (copied) and a
     // single guarded melee hit on an allowed passive animal.
     actors: () => entities().map(e => structuredClone(e)),
+    // Received raw bag item (NBT) for box identities and contents (2026-11-13).
+    ...(typeof ports.rawItem === 'function' ? { rawItem: slot => ports.rawItem(slot) } : {}),
     ...(typeof attackAnimal === 'function' ? { attackAnimal: (runtimeId, options) => attackAnimal(runtimeId, options) } : {}),
     ...(typeof worldRevision === 'function' ? { worldRevision: () => worldRevision() } : {}),
     // Hostiles and projectiles for the post-combat settle check (§9.4).
