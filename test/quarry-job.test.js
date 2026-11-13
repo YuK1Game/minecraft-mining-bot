@@ -651,3 +651,33 @@ test('live case 2026-11-11: a seal placement refused from one stance is planned 
   assert.ok(stances.length >= 2)
   assert.notEqual(stances[0], stances[1], 'the refused stance was not reused')
 })
+
+test('live case 2026-11-13 16:03: persistent slow breaks wait and retry (bounded) before SLOW_BREAK_PERSISTS', async () => {
+  const run = async ({ recoverAfter }) => {
+    const sim = setup({ stoneTop: 60, top: 62 })
+    sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+    const lines = []
+    const { j } = job(sim, { log: l => lines.push(l), slowBreakWaitMs: 5 })
+    let calls = 0; let resyncs = 0
+    const mine = sim.adapter.mine
+    sim.adapter.mine = async (targets, o) => {
+      calls++
+      if (calls <= recoverAfter) { const t = targets[0]; throw Object.assign(new Error('quarry mine: block took 2122ms (limit 2100ms)'), { code: 'SLOW_BREAK', target: { x: t.x + 1000 + calls, y: t.y, z: t.z } }) }
+      return mine(targets, o)
+    }
+    sim.adapter.resyncInventory = async () => { resyncs++; return true }
+    assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+    j.start()
+    const s = await runUntilStopped(j)
+    return { s, lines, resyncs, sim }
+  }
+  // Lag that passes after the first wait: the job keeps quarrying.
+  const passing = await run({ recoverAfter: 3 })
+  assert.equal(passing.lines.filter(l => /slow_break_wait/.test(l)).length, 1)
+  assert.notEqual(passing.s.pauseReason, 'SLOW_BREAK_PERSISTS')
+  assert.ok(passing.sim.stats.mined > 100)
+  // Lag that never passes: three waits, then the stop.
+  const persistent = await run({ recoverAfter: Infinity })
+  assert.equal(persistent.lines.filter(l => /slow_break_wait/.test(l)).length, 3)
+  assert.equal(persistent.s.pauseReason, 'SLOW_BREAK_PERSISTS')
+})

@@ -376,7 +376,11 @@ async function main () {
   let dashboardSession = null
   const realmJoinAbort = new AbortController()
   let restoreRealmJoin = null
-  if (managed) shared.quarryRestoreDisabled = true // Connecting from the UI must never restart old digging.
+  // Connecting from the UI must never restart old digging. Only the dashboard's
+  // automatic reconnect after an unexpected disconnect (2026-11-13) may restore
+  // the job that was running (the recovery rules still decide).
+  if (managed && process.env.DASHBOARD_RESTORE_QUARRY !== '1') shared.quarryRestoreDisabled = true
+  if (managed && process.env.DASHBOARD_RESTORE_QUARRY === '1') shared.quarryRestoreAfterReconnect = true
   let stopping = false; let nextOdd = -1; let nextEven = -2; let lastInputTick = -1n; let loginSwim = null
   const current = () => reloader?.current
   // Millisecond wall-clock prefix (JST, UTC+9) so combat/escape timelines can be rebuilt.

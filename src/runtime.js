@@ -7050,6 +7050,13 @@ function createRuntime (host) {
     return status
   }
 
+  // Supply boxes get new stack IDs on every connection; register them again
+  // from the received inventory before an automatic resume (2026-11-13).
+  async function rebindQuarrySupplies () {
+    const doc = ensureQuarryJob().document()
+    if (!doc?.config?.inventory?.supplyBoxes?.length) return
+    try { await ensureQuarryJob().configureSupplies(); host.log('露天掘り: 補給箱を再登録しました。') } catch (error) { host.log(`露天掘り: 補給箱の再登録をせずに再開します: ${String(error.message).slice(0, 160)}`) }
+  }
   async function restoreQuarryJob () {
     const job = ensureQuarryJob(), current = job.document()
     if (current) {
@@ -7067,6 +7074,7 @@ function createRuntime (host) {
     const reason = status?.pauseReason ?? ''
     host.log(`露天掘り: 同じワールドのジョブを復元しました: ${candidate.config.jobId} (${reason || status?.state})`)
     if (!QUARRY_AUTO_RESUMABLE.test(reason)) return { loaded: candidate.config.jobId, resumed: false, reason }
+    await rebindQuarrySupplies()
     ensureQuarryJob().resume()
     return { loaded: candidate.config.jobId, resumed: true, reason }
   }
