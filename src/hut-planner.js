@@ -9,7 +9,7 @@ const DIRECTIONS = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: 
 const FACES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 const UNSAFE = /(?:water|lava|sand$|gravel$|concrete_powder|anvil|fire|cactus|magma|powder_snow|cobweb|scaffolding|_log$|_wood$|_leaves$|planks|brick|crafting_table|furnace|chest|barrel|glass|concrete|wool|_stairs|_slab|_door|_trapdoor|_fence|torch|lantern|_bed|command_block|structure_block)/
 const nameOf = block => String(block?.name ?? '').replace(/^minecraft:/, '')
-const key = point => `${point.x},${point.y},${point.z}`
+const { pointKey: key } = require('./vec3')
 const clone = value => structuredClone(value)
 const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]) && Math.abs(point[axis]) <= 30000000)
 const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]))

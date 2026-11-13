@@ -6,7 +6,7 @@ const SUPPORT = new Set(['grass_block', 'dirt', 'coarse_dirt', 'rooted_dirt', 's
 const AIR = new Set(['air', 'cave_air', 'void_air'])
 const FALLING = new Set(['sand','red_sand','gravel'])
 const HAZARD = /(?:water|lava|fire|cactus|magma|campfire|sweet_berry_bush|powder_snow|cobweb|wither_rose|pointed_dripstone|sand$|gravel$|concrete_powder$|anvil$)/
-const finite = value => value && ['x', 'y', 'z'].every(axis => Number.isFinite(value[axis]))
+const { finitePoint: finite } = require('./vec3')
 const nameOf = value => String(value ?? '').replace(/^minecraft:/, '')
 const pointKey = point => `${point.x},${point.y},${point.z}`
 const horizontal = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)

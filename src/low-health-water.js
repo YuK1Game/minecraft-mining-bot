@@ -1,8 +1,8 @@
 'use strict'
 
-const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))
+const { finitePoint: finite } = require('./vec3')
 const eye = point => ({ ...point, y: point.y + 1.62 })
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const horizontal = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
 const AIR = new Set(['air', 'cave_air', 'void_air'])
 const WATER = new Set(['water', 'flowing_water'])

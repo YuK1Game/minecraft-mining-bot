@@ -13,7 +13,7 @@ const { WORK_MARGIN, workMargin, captureWorkActors, resolveWorkActors } = requir
 const MELEE = new Set(['zombie', 'zombie_villager', 'zombie_villager_v2', 'husk', 'spider', 'cave_spider', 'drowned'].map(name => `minecraft:${name}`))
 const SWORD = /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/
 const copy = value => structuredClone(value)
-const finite = p => p && ['x', 'y', 'z'].every(axis => Number.isFinite(p[axis]))
+const { finitePoint: finite } = require('./vec3')
 const covered = state => [state.hut, state.shelter].some(base => base?.inside && (base.closed || base.entranceClosed) && base.usable && base.serverConfirmed)
 const dead = state => state.dead || state.spawnPending || state.isDead || state.lifecycle?.dead || state.health === 0 || state.phase === 'dead'
 const loading = state => state.phase !== 'spawned' || state.loading === true || state.lifecycle?.loading === true || state.lifecycle?.phase === 'loading' || state.world?.initialized === false || state.world?.loadedSections === 0

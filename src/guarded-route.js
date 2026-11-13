@@ -14,7 +14,7 @@ const SWORDS = /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$
 const MELEE = new Set(['zombie', 'zombie_villager', 'zombie_villager_v2', 'husk', 'drowned', 'spider', 'cave_spider'].map(name => `minecraft:${name}`))
 const finite = p => p && ['x', 'y', 'z'].every(axis => Number.isFinite(p[axis]) && Math.abs(p[axis]) <= 30000000)
 const copy = value => structuredClone(value)
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const near = (state, target) => Math.hypot(state.position.x - target.x, state.position.z - target.z) <= 0.4 && Math.abs(state.position.y - EYE - target.y) <= EPS
 const feet = state => ({ ...state.position, y: state.position.y - EYE })
 const scopeOf = state => ({ profile: state.profile, realmId: state.realm?.id == null ? null : String(state.realm.id), dimension: state.dimension })

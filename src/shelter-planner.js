@@ -12,8 +12,8 @@ const STRUCTURE = /(?:planks|brick|crafting_table|furnace|chest|barrel|glass|con
 const DIRECTIONS = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }]
 const FACES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 const nameOf = value => String(value ?? '').replace(/^minecraft:/, '')
-const key = point => `${point.x},${point.y},${point.z}`
-const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))
+const { pointKey: key } = require('./vec3')
+const { finitePoint: finite } = require('./vec3')
 const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]) && Math.abs(point[axis]) <= 30000000)
 const clone = value => structuredClone(value)
 const center = cell => ({ x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 })

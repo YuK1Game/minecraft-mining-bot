@@ -13,9 +13,9 @@ const { waterExplorationAdmission, waterExplorationCandidates, validateWaterExpl
 const { treeAccessScope, isDryAccessPlant, safeAccessPlant, planTreeAccess, planStationAccess, ACCESS_LIMIT } = require('./action-access')
 
 const copy = value => structuredClone(value)
-const finite = value => value && ['x', 'y', 'z'].every(axis => Number.isFinite(value[axis]))
+const { finitePoint: finite } = require('./vec3')
 const nameOf = name => String(name ?? '').includes(':') ? String(name) : `minecraft:${name}`
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const horizontal = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
 const positionKey = point => `${point.x},${point.y},${point.z}`
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])

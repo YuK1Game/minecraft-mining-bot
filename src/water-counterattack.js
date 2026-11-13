@@ -4,9 +4,9 @@ const { setTimeout: delay, setImmediate: yieldNow } = require('node:timers/promi
 const { createNavigator } = require('./navigation')
 const { evaluateThreats } = require('./threats')
 
-const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]))
+const { finitePoint: finite } = require('./vec3')
 const horizontal = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const eye = p => ({ ...p, y: p.y + 1.62 })
 const feet = p => ({ ...p, y: p.y - 1.62 })
 function segment (point, a, b) {

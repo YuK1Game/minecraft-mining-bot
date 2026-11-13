@@ -26,7 +26,7 @@ const SOLID = new Set([
 const HAZARD = /(?:lava|sand$|gravel$|concrete_powder$|anvil$|fire|cactus|magma|scaffolding)/
 const finite = point => point && AXES.every(axis => Number.isFinite(point[axis]) && Math.abs(point[axis]) <= 30000000)
 const point = value => ({ x: value.x, y: value.y, z: value.z })
-const key = value => `${value.x},${value.y},${value.z}`
+const { pointKey: key } = require('./vec3')
 const dimension = value => ['overworld', 'nether', 'end'][value] ?? value ?? null
 const idOf = entity => entity?.runtimeId ?? entity?.runtimeEntityId ?? entity?.entityId ?? entity?.id ?? null
 const typeOf = entity => { const type = entity?.entityType ?? entity?.entity_type ?? entity?.identifier ?? entity?.type ?? entity?.name; return typeof type === 'string' ? type.includes(':') ? type : `minecraft:${type}` : null }

@@ -2,7 +2,7 @@
 
 const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]) && Math.abs(point[axis]) <= 30000000)
 const copy = point => ({ x: point.x, y: point.y, z: point.z })
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const stamp = value => typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) : NaN
 
 // A completed movement batch is distinct from arrival or construction. Only

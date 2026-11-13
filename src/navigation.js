@@ -14,7 +14,7 @@ const key = position => `${Math.floor(position.x)},${position.y},${Math.floor(po
 const copy = position => ({ x: position.x, y: position.y, z: position.z })
 const isWater = block => block.name === 'water' || block.name === 'flowing_water'
 const horizontalDistance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 
 function segmentDistance (point, from, to) {
   const delta = { x: to.x - from.x, y: to.y - from.y, z: to.z - from.z }

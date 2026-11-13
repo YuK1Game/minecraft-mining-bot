@@ -4,7 +4,7 @@ const { placementTopVisible, planStationAccess } = require('./action-access')
 const { traceBlockFace } = require('./aim')
 const { createNavigator } = require('./navigation')
 const copy = v => structuredClone(v), key = p => `${p.x},${p.y},${p.z}`
-const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]))
+const { finitePoint: finite } = require('./vec3')
 const integer = p => finite(p) && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]))
 const name = b => String(b?.name ?? '').replace(/^minecraft:/, '')
 const AIR = new Set(['air', 'cave_air', 'void_air'])

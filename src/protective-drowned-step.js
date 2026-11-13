@@ -15,7 +15,7 @@ const HAZARD = /water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_
 const copy = value => structuredClone(value)
 const finite = p => p && ['x','y','z'].every(k => Number.isFinite(p[k]) && Math.abs(p[k]) <= 30000000)
 const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z)
-const key = p => `${p.x},${p.y},${p.z}`
+const { pointKey: key } = require('./vec3')
 const type = e => e?.entityType ?? e?.name
 const id = e => String(e?.runtimeId ?? e?.runtimeEntityId ?? e?.entityId ?? e?.id)
 const validId = value => /^-?\d+$/.test(String(value ?? ''))

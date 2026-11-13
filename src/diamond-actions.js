@@ -17,7 +17,7 @@ const ORES = new Map([
 const TIERS = { 'minecraft:wooden_pickaxe': 1, 'minecraft:golden_pickaxe': 1, 'minecraft:stone_pickaxe': 2, 'minecraft:iron_pickaxe': 3, 'minecraft:diamond_pickaxe': 4, 'minecraft:netherite_pickaxe': 5 }
 const nameOf = value => String(value ?? '').includes(':') ? String(value) : `minecraft:${value}`
 const integerPoint = value => value && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(value[axis]) && Math.abs(value[axis]) <= 30000000)
-const key = point => `${point.x},${point.y},${point.z}`
+const { pointKey: key } = require('./vec3')
 const windowId = value => value === 'first' ? 1 : Number.isInteger(value) ? value : typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : null
 const itemCount = (state, name) => (state.inventory?.items ?? []).reduce((sum, item) => sum + (nameOf(item.name) === name && Number.isSafeInteger(item.count) && item.count > 0 ? item.count : 0), 0)
 

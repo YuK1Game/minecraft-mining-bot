@@ -13,10 +13,10 @@ const BED_HEIGHT = 0.5625
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const OFFSETS = [{ x: 0, z: 1 }, { x: -1, z: 0 }, { x: 0, z: -1 }, { x: 1, z: 0 }]
 const copy = value => structuredClone(value)
-const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))
+const { finitePoint: finite } = require('./vec3')
 const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]))
 const same = (a, b) => integer(a) && integer(b) && ['x', 'y', 'z'].every(axis => a[axis] === b[axis])
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const properties = block => Object.fromEntries(Object.entries(block?.properties ?? {}).map(([key, value]) => [key, value?.value ?? value]).sort(([a], [b]) => a.localeCompare(b)))
 const bit = value => value === true || value === 1 ? 1 : value === false || value === 0 ? 0 : null
 const bedItem = item => item?.name === BED && Number.isInteger(item.metadata) && item.metadata >= 0 && item.metadata <= 15 && Number.isSafeInteger(item.count) && item.count > 0

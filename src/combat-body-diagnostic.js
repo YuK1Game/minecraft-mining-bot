@@ -3,7 +3,7 @@
 // The stationary-strike body test, with bounded rejection evidence. It reads
 // the same physics shapes and contact tolerances; it never adjusts a pose,
 // grants an attack, starts movement, or treats missing terrain as empty.
-const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]))
+const { finitePoint: finite } = require('./vec3')
 const HAZARD = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush)/
 function diagnoseStrikeBody ({ state, observed, scopeMatches, blockAt, signal } = {}) {
   const no = (cause, details = {}) => ({ ready: false, cause, ...details })

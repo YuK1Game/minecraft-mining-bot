@@ -12,10 +12,10 @@ const HAZARD = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|swee
 const CONTACT = 1e-4
 // Second, still bounded search budget for a swim to a land shore.
 const WIDE_SHORE_BUDGET = 1500
-const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))
+const { finitePoint: finite } = require('./vec3')
 const nameOf = block => String(block?.name ?? '').replace(/^minecraft:/, '')
 const copy = value => structuredClone(value)
-const key = point => `${point.x},${point.y},${point.z}`
+const { pointKey: key } = require('./vec3')
 const horizontal = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
 const cleanLayers = block => !(block.extra ?? []).some(extra => !AIR.has(nameOf(extra)))
 const support = block => block?.known === true && SUPPORT.has(nameOf(block)) && block.boundingBox === 'block' && cleanLayers(block)

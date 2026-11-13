@@ -13,7 +13,7 @@
 // It never claims a hit: the server decides collisions, spread and damage.
 
 const DEFAULTS = Object.freeze({ speed: 3.0, gravity: 0.05, drag: 0.01, spawnDrop: 0.1, latencyTicks: 2, maxTicks: 60, maxLeadTicks: 20, maxHorizontalSpeed: 0.6 })
-const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]))
+const { finitePoint: finite } = require('./vec3')
 const RAD = Math.PI / 180
 
 function simulate ({ origin, yaw, pitch, speed, gravity, drag, maxTicks, horizontal = Infinity, onTick = null }) {

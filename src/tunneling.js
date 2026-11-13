@@ -22,8 +22,8 @@ const FACES = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }
 const CONTACT = 1e-4
 const nameOf = block => String(typeof block === 'string' ? block : block?.name ?? '').replace(/^minecraft:/, '')
 const copy = value => structuredClone(value)
-const key = point => `${point.x},${point.y},${point.z}`
-const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))
+const { pointKey: key } = require('./vec3')
+const { finitePoint: finite } = require('./vec3')
 const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]) && Math.abs(point[axis]) <= 30000000)
 const layered = block => block.extra?.some(extra => !AIR.has(nameOf(extra)))
 const clear = block => block.known === true && !HAZARD.test(nameOf(block)) && !layered(block) && (AIR.has(nameOf(block)) || block.boundingBox === 'empty')

@@ -8,7 +8,7 @@ const OWN_SOIL = new Set(['dirt', 'grass_block'])
 const HAZARD = /(?:water|lava|sand$|gravel$|concrete_powder|anvil|fire|cactus|magma|powder_snow|cobweb|scaffolding|pointed_dripstone)/
 const copy = value => structuredClone(value)
 const nameOf = value => String(typeof value === 'string' ? value : value?.name ?? '').replace(/^minecraft:/, '')
-const key = point => `${point.x},${point.y},${point.z}`
+const { pointKey: key } = require('./vec3')
 const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]) && Math.abs(point[axis]) <= 30000000)
 const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]))
 const horizontal = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)

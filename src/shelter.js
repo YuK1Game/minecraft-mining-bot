@@ -11,8 +11,8 @@ const SOIL = new Set(['dirt', 'grass_block'])
 const HAZARD = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|sand$|gravel$|concrete_powder$|anvil$|scaffolding|pointed_dripstone)/
 const copy = value => JSON.parse(JSON.stringify(value, (_, item) => typeof item === 'bigint' ? String(item) : item))
 const nameOf = block => String(typeof block === 'string' ? block : block?.name ?? '').replace(/^minecraft:/, '')
-const key = point => `${point.x},${point.y},${point.z}`
-const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))
+const { pointKey: key } = require('./vec3')
+const { finitePoint: finite } = require('./vec3')
 const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]) && Math.abs(point[axis]) <= 30000000)
 const horizontal = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
 const safeLayers = block => !block.extra?.some(layer => !AIR.has(nameOf(layer)))

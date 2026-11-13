@@ -15,7 +15,7 @@ const nameOf = value => String(value ?? '').replace(/^minecraft:/, '')
 const typeOf = entity => { const name = entity?.entityType ?? entity?.name; return typeof name === 'string' ? name.includes(':') ? name : `minecraft:${name}` : null }
 const idOf = entity => entity?.runtimeId ?? entity?.runtimeEntityId ?? entity?.entityId ?? entity?.id
 const dimension = value => ['overworld', 'nether', 'end'][value] ?? value ?? null
-const finite = value => value && ['x', 'y', 'z'].every(axis => Number.isFinite(value[axis]))
+const { finitePoint: finite } = require('./vec3')
 const copy = value => structuredClone(value)
 const horizontal = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
 const spatial = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)

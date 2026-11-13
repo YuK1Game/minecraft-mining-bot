@@ -3,7 +3,7 @@
 const { observedScope } = require('./server-position-verifier')
 const { normalizeChunkArea, areaContainsFeet } = require('./chunk-area')
 const sources = new Set(['start_game', 'move_player', 'correct_player_move_prediction', 'server_post_move', 'respawn'])
-const finite = p => p && ['x', 'y', 'z'].every(key => Number.isFinite(p[key]))
+const { finitePoint: finite } = require('./vec3')
 const feetOf = s => finite(s?.position) ? { x: s.position.x, y: s.position.y - 1.62, z: s.position.z } : null
 const distance = (a, b) => finite(a) && finite(b) ? Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) : Infinity
 const stamp = value => typeof value === 'number' ? value : Date.parse(value)

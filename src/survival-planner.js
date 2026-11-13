@@ -16,9 +16,9 @@ const HAZARD = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|fire|cactus|
 const nameOf = value => String(value ?? '').replace(/^minecraft:/, '')
 const fullName = value => `minecraft:${nameOf(value)}`
 const amount = value => Number.isSafeInteger(value) && value > 0 ? value : 0
-const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))
+const { finitePoint: finite } = require('./vec3')
 const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]))
-const key = point => `${point.x},${point.y},${point.z}`
+const { pointKey: key } = require('./vec3')
 const isLog = name => name.endsWith('_log') && WOODS.has(name.slice(0, -4))
 const range = (eye, block) => Math.hypot(eye.x - block.x - 0.5, eye.y - block.y - 0.5, eye.z - block.z - 0.5)
 const copy = value => structuredClone(value)

@@ -2,7 +2,7 @@
 
 const copy = value => structuredClone(value)
 const point = value => ({ x: value.x, y: value.y, z: value.z })
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const horizontal = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
 const HAZARD = /(?:water|lava|fire|cactus|magma|campfire|sweet_berry_bush|powder_snow|cobweb|wither_rose|pointed_dripstone)/
 

@@ -5,11 +5,11 @@ const { continuationScope } = require('./base-continuation')
 const { evaluateThreats } = require('./threats')
 const { campFloorMatches } = require('./worksite-camp')
 const copy = value => structuredClone(value)
-const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]))
+const { finitePoint: finite } = require('./vec3')
 const integer = p => finite(p) && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]))
 const worldKey = scope => JSON.stringify([scope.profile, scope.realmId, scope.dimension])
 const fingerprint = b => b?.known === true ? { name: b.name, runtimeId: b.runtimeId ?? null, properties: copy(b.properties ?? {}) } : null
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const OPEN = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air', 'minecraft:short_grass', 'minecraft:fern', 'minecraft:leaf_litter', 'minecraft:deadbush', 'minecraft:torch'])
 const GROUND = /^minecraft:(?:stone|deepslate|cobblestone|cobbled_deepslate|grass_block|dirt|coarse_dirt|rooted_dirt|andesite|diorite|granite|tuff|calcite|moss_block|crafting_table|furnace|lit_furnace|[a-z_]+_planks)$/
 const CAMP_GROUND = /^minecraft:(?:grass_block|dirt|coarse_dirt|rooted_dirt|stone|deepslate|andesite|diorite|granite|tuff|calcite|moss_block)$/

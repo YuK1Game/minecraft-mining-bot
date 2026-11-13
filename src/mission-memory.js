@@ -9,7 +9,7 @@ const queues = new Map()
 const STAGES = new Set(['idle', 'planning', 'build', 'leave', 'digging', 'dug', 'moving', 'arrived', 'collecting_soil', 'closing_entrance', 'door_confirmed', 'partial', 'closed_refuge', 'left_shelter', 'outside', 'failed', 'stopped'])
 const BLOCKS = new Set(['dirt', 'grass_block', 'air', 'cave_air', 'void_air', 'stone', 'deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', 'moss_block'].map(name => `minecraft:${name}`))
 const PLACEMENT_PROOFS = new Set(['received_dirt_and_inventory_decrease', 'received_dirt_and_inventory_after_resume'])
-const key = point => `${point.x},${point.y},${point.z}`
+const { pointKey: key } = require('./vec3')
 const clone = value => JSON.parse(JSON.stringify(value))
 class MissionMemoryError extends Error {
   constructor (message, code) { super(message); this.code = code }

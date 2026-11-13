@@ -23,7 +23,7 @@ const nameOf = block => {
   if (short === undefined) { short = full.replace(/^minecraft:/, ''); if (SHORT_NAMES.size < 4096) SHORT_NAMES.set(full, short) }
   return short
 }
-const key = point => `${point.x},${point.y},${point.z}`
+const { pointKey: key } = require('./vec3')
 const finite = point => point && AXES.every(axis => Number.isFinite(point[axis]) && Math.abs(point[axis]) <= 30000001)
 const clamp = value => Math.max(EDGE_MARGIN, Math.min(1 - EDGE_MARGIN, value))
 const air = block => block?.known === true && AIR.has(nameOf(block)) && !(block.extra ?? []).some(layer => !AIR.has(nameOf(layer)))

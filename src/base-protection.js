@@ -1,6 +1,6 @@
 'use strict'
 
-const key = point => `${point.x},${point.y},${point.z}`
+const { pointKey: key } = require('./vec3')
 const integer = point => point && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]) && Math.abs(point[axis]) <= 30000000) && point.y >= -64 && point.y <= 319
 const positionOf = value => value?.position ?? value
 

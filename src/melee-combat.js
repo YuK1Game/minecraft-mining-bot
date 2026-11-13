@@ -10,7 +10,7 @@ const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'
 const WATER = new Set(['minecraft:water', 'minecraft:flowing_water'])
 const PLANTS = new Set(['torch', 'leaf_litter', 'grass', 'short_grass', 'tall_grass', 'tallgrass', 'fern', 'large_fern', 'deadbush', 'dead_bush', 'bush', 'firefly_bush', 'short_dry_grass', 'tall_dry_grass', 'wildflowers', 'dandelion', 'poppy', 'blue_orchid', 'allium', 'azure_bluet', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'oxeye_daisy', 'cornflower', 'lily_of_the_valley', 'pink_petals'].map(n => `minecraft:${n}`))
 const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]) && Math.abs(p[k]) <= 30000001)
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const copy = value => structuredClone(value)
 // Bounded wait for the next fresh modeled pose after an input handover.
 const POSE_SETTLE_MS = 400

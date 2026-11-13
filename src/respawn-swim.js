@@ -4,7 +4,7 @@ const { createPhysics } = require('./physics')
 const { buildStationaryInput } = require('./input')
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const WATER = new Set(['minecraft:water', 'minecraft:flowing_water'])
-const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]))
+const { finitePoint: finite } = require('./vec3')
 
 // This temporary input is scoped to an acknowledged reconnect respawn. It
 // never changes the authoritative pose; a server movement correction must do

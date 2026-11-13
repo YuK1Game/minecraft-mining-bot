@@ -10,7 +10,7 @@ const { normalizePlayerCorrection } = require('./server-physics')
 const { previewCriticalHop, createCriticalHopStepper } = require('./critical-hop')
 
 const INTERVAL = 50
-const finite = position => position && ['x', 'y', 'z'].every(axis => Number.isFinite(position[axis]))
+const { finitePoint: finite } = require('./vec3')
 const copy = position => ({ x: position.x, y: position.y, z: position.z })
 
 function movementInput (controls, previous, predicted) {

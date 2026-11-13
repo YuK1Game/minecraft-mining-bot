@@ -15,7 +15,7 @@ const inventoryScope = packet => inventoryWindow(packet.window_id) && (packet.co
 // Vanilla BDS also labels a full main inventory with the fixed container0
 // (anvil_input) placeholder. It is not a slot scope or a dynamic container.
 const inventoryContentScope = packet => inventoryScope(packet) || inventoryWindow(packet.window_id) && Array.isArray(packet.input) && packet.input.length === 36 && ['anvil_input', 0].includes(packet.container?.container_id) && packet.container.dynamic_container_id == null
-const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))
+const { finitePoint: finite } = require('./vec3')
 const empty = raw => raw?.network_id === 0 && raw.count === 0
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })
 const identity = raw => ({ network_id: raw.network_id, metadata: raw.metadata, block_runtime_id: raw.block_runtime_id, extra: raw.extra })
