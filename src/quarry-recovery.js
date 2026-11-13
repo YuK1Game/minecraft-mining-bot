@@ -18,5 +18,18 @@ function selectRecoveryCandidate (docs, state, now = Date.now()) {
   const age = now - Date.parse(latest?.savedAt)
   return latest && age >= 0 && age < 24 * 3600e3 && recoverable(latest) ? latest : null
 }
+// After an unexpected disconnect (dashboard reconnect only), the latest job the
+// user left running but that was already paused for another reason (live
+// 2026-11-14 02:50: SUPPLY_RESTOCK_BLOCKED, so nothing was loaded). It is loaded
+// so its own bounded automatic retries can run; the resume rules are unchanged.
+function selectPausedRunningCandidate (docs, state, now = Date.now()) {
+  const world = worldIdentity(state)
+  if (!world) return null
+  const latest = docs.filter(doc => sameWorld(documentWorld(doc), world) && Number.isFinite(Date.parse(doc.savedAt))).sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))[0]
+  const age = now - Date.parse(latest?.savedAt)
+  if (!latest || !(age >= 0 && age < 24 * 3600e3) || recoverable(latest)) return null
+  if (latest.requestedStop || latest.state !== 'PAUSED' || latest.userRunIntent !== 'running' || latest.persistence?.status === 'failed' || ['CANCELLED', 'COMPLETED', 'COMPLETED_WITH_EXCEPTIONS', 'FINISHED'].includes(latest.result?.type)) return null
+  return latest
+}
 function retryableRecoveryError (error) { return ['EAGAIN', 'EBUSY', 'EIO', 'EMFILE', 'ENFILE', 'ESTALE', 'ETIMEDOUT', 'QUARRY_BUSY', 'RECOVERY_CONTEXT_CHANGED'].includes(error?.code) }
-module.exports = { RESUMABLE, recoverable, selectRecoveryCandidate, retryableRecoveryError }
+module.exports = { RESUMABLE, recoverable, selectRecoveryCandidate, selectPausedRunningCandidate, retryableRecoveryError }
