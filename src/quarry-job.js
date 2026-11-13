@@ -3614,7 +3614,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // Pauses that a plain resume (which re-runs every check and reconciliation)
     // cleared by hand on 2026-11-13 also retry themselves, bounded like
     // ACTION_FAILED (3 per stretch without progress). Opt-out per job.
-    const transientPause = job.config.strategy?.autoResumeTransient !== false && (/^(INVENTORY_UNKNOWN|POSITION_UNCONFIRMED|HEALTH_NOT_RECOVERING|UNOBSERVED_CELLS|SLOW_BREAK_PERSISTS|ASCENT_[A-Z_]+|EGRESS_POSITION_UNCONFIRMED|EGRESS_RESUME_POSITION_CHANGED|FINAL_CHEST_UNCONFIRMED|FINAL_CHEST_OPEN_UNCONFIRMED|LOADOUT_CHEST_OPEN_UNCONFIRMED|FINAL_INVENTORY_UNCONFIRMED)$/.test(String(reason)) ||
+    const transientPause = job.config.strategy?.autoResumeTransient !== false && (/^(INVENTORY_UNKNOWN|POSITION_UNCONFIRMED|HEALTH_NOT_RECOVERING|UNOBSERVED_CELLS|SLOW_BREAK_PERSISTS|ASCENT_[A-Z_]+|EGRESS_POSITION_UNCONFIRMED|EGRESS_RESUME_POSITION_CHANGED|FINAL_CHEST_UNCONFIRMED|FINAL_CHEST_OPEN_UNCONFIRMED|LOADOUT_CHEST_OPEN_UNCONFIRMED|FINAL_INVENTORY_UNCONFIRMED|EXIT_SUPPLY_UNCONFIRMED)$/.test(String(reason)) ||
       ['CARRIED_STORAGE_BLOCKED', 'SUPPLY_RESTOCK_BLOCKED'].includes(reason) && ['STORAGE_SITE_UNOBSERVED'].includes(pauseDetails?.reason))
     if (job.persistence?.status !== 'failed' && (/^ACTION_FAILED/.test(String(reason)) || transientPause) && (job.autoResumes ?? 0) < 3 && job.userRunIntent === 'running') {
       const owner = job, expectedEpoch = epoch

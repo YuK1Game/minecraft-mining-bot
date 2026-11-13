@@ -696,7 +696,9 @@ test('2026-11-13 unattended: pauses a plain resume cleared retry themselves (bou
     const armed = j.rescheduleAutoResume()
     return armed
   }
-  for (const reason of ['INVENTORY_UNKNOWN', 'POSITION_UNCONFIRMED', 'HEALTH_NOT_RECOVERING', 'ASCENT_UNCERTAIN_STEP']) assert.equal(scheduled(reason), true, reason)
+  // Live 2026-11-14 01:41: right after a hot reload the equipment was not yet
+  // re-received and the exit supply check paused; a plain resume cleared it.
+  for (const reason of ['INVENTORY_UNKNOWN', 'POSITION_UNCONFIRMED', 'HEALTH_NOT_RECOVERING', 'ASCENT_UNCERTAIN_STEP', 'EXIT_SUPPLY_UNCONFIRMED']) assert.equal(scheduled(reason), true, reason)
   assert.equal(scheduled('CARRIED_STORAGE_BLOCKED', { reason: 'STORAGE_SITE_UNOBSERVED' }), true)
   for (const reason of ['DEATH', 'SEAL_PLACEMENT_FAILED', 'EXIT_SCOPE_CHANGED', 'LOADOUT_CHEST_CHANGED']) assert.equal(scheduled(reason), false, reason)
   assert.equal(scheduled('INVENTORY_UNKNOWN', null, { autoResumeTransient: false }), false, 'opt-out')
