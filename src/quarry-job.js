@@ -2792,6 +2792,23 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       // Like supplies (live 2026-11-12 21:12, chickens on the box cell): a
       // storage operation refused before anything was placed, deposited or
       // moved starts over at a newly chosen site, up to three times.
+      // No site around the current stance: walk to a recent stand that held a
+      // box on this layer or near it, then choose again (bounded).
+      if (result?.status === 'blocked' && result.reason === 'STORAGE_SITE_UNOBSERVED' && supplyUntouched({ child: active.checkpoint }) && (active.siteRelocations ?? 0) < 2) {
+        const feet = feetCell(guard(myEpoch))
+        const options = (job.storageStands ?? []).slice().reverse().filter(p => posKey(p) !== posKey(feet) && Math.abs(p.y - feet.y) <= 2 && permits(regions, 'travel', p).allowed && !(active.relocationTried ?? []).includes(posKey(p)))
+        const target = options.find(p => planner.pathTo(feet, p))
+        if (target) {
+          active.siteRelocations = (active.siteRelocations ?? 0) + 1
+          active.relocationTried = [...(active.relocationTried ?? []), posKey(target)].slice(-8)
+          note('storage_site_relocate', { operationId: active.operationId, from: feet, to: target, attempt: active.siteRelocations })
+          rec.status = 'blocked'; rec.result = copy(result)
+          active.checkpoint = null
+          await save('storage_site_relocate')
+          await moveToStance(myEpoch, target)
+          setState('RETURN'); return true
+        }
+      }
       if (!['completed', 'full'].includes(result?.status) && (STORAGE_SITE_RETRY_REASONS.has(result?.reason) || storageMoveTimedOut(result, active.checkpoint)) && supplyUntouched({ child: active.checkpoint }) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
         active.siteRetries = (active.siteRetries ?? 0) + 1
         const refused = (active.checkpoint?.positions ?? []).filter(p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])))
@@ -2845,6 +2862,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         job.fullStorage = [...new Set([...(job.fullStorage ?? []), ...result.storage.map(st => posKey(st.position))])]
       }
       rec.status = 'confirmed'; rec.result = copy(result)
+      // Recent stands that really held a box: a fallback when no site is found
+      // around a cramped stance (live 2026-11-13 15:00, a chunk-edge pocket).
+      const okStand = result.checkpoint?.stand
+      if (okStand && ['x', 'y', 'z'].every(k => Number.isSafeInteger(okStand[k]))) job.storageStands = [...(job.storageStands ?? []).filter(p => posKey(p) !== posKey(okStand)), copy(okStand)].slice(-8)
       job.portableStorage = null
       // A held relief box continues as the next storage operation.
       if (job.pendingRelief?.forOperationId === active.operationId && job.pendingRelief.checkpoint?.stage === 'placed') {
