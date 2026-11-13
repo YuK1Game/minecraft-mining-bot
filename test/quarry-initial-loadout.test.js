@@ -215,10 +215,12 @@ test('a returned passive/full job stores everything at the registered chest befo
   f.adapter.finalChestDeposit = async (request, { onCheckpoint }) => { requests.push(request); const cp = { operationId: request.operationId, phase: 'completed', receipts: [] }; await onCheckpoint(cp); return { status: 'completed', serverConfirmed: true, checkpoint: cp } }
   const emptySlots = n => ({ known: true, slots: Array.from({ length: n }, (_, slot) => ({ slot, known: true, empty: true })) })
   f.adapter.inventoryDetails = () => ({ known: true, slots: emptySlots(36).slots, armor: emptySlots(4), offhand: emptySlots(1) })
+  let logouts = 0; f.adapter.logout = async () => { logouts++ }
   const result = await f.run({ resume: true })
   assert.equal(result.state, 'FINISHED')
   assert.equal(requests.length, 1); assert.equal(requests[0].keep, undefined, 'nothing is kept back')
   assert.ok(f.job.document().finalChestStoredAt)
+  assert.equal(logouts, 1, 'the unarmed bot logs out normally after the full return')
 })
 
 // 2026-11-13 18:35: after the storage the user saw an offhand item. The job
