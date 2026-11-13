@@ -3,7 +3,7 @@
 // Read-only geometry and observed terrain for the explicit debug chest reset.
 const { chunkOf, chunkBounds } = require('./quarry-region')
 const { interactionSightError } = require('./interaction-sight')
-const EYE_HEIGHT = 1.62, HALF_WIDTH = 0.31, HEIGHT = 1.8, REACH = 4.5
+const EYE_HEIGHT = 1.62, HALF_WIDTH = 0.31, HEIGHT = 1.8, REACH = 4.5, CORNER_ZONE = 4
 const FACE = [{ x: 0, y: -1, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: -1 }, { x: 0, y: 0, z: 1 }, { x: -1, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }]
 const key = p => `${p.x},${p.y},${p.z}`
 const point = p => p && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(p[axis]) && Math.abs(p[axis]) < 30000000)
@@ -70,9 +70,18 @@ function findDebugChestSite ({ feet, position, getBlock, isAir, isFloor } = {}) 
   // Initial supply recovery can rediscover only the normal portable planner's
   // cardinal cells one or two blocks from this fixed stand.
   for (const distance of [1, 2]) for (const [dx, dz] of [[0, -1], [0, 1], [1, 0], [-1, 0]]) nearby.push({ dx: dx * distance, dz: dz * distance })
+  // Near a chunk corner, prefer the pair closest to that corner (user request
+  // 2026-11-13). Away from the corners every pair ranks the same and the
+  // stable sort keeps the earlier east-first order.
+  const corners = [[bounds.xMin, bounds.zMin], [bounds.xMin, bounds.zMax], [bounds.xMax, bounds.zMin], [bounds.xMax, bounds.zMax]]
+  const cornerDistance = (first, other) => Math.min(...corners.map(([x, z]) => Math.min(Math.hypot(first.x - x, first.z - z), Math.hypot(other.x - x, other.z - z))))
+  const pairs = []
   for (const row of [0, 1, -1, 2, -2]) for (const dx of [1, -1]) {
-    const first = { x: feet.x + dx, y: feet.y, z: feet.z + row }
-    const other = { x: feet.x + 2 * dx, y: feet.y, z: feet.z + row }
+    const first = { x: feet.x + dx, y: feet.y, z: feet.z + row }, other = { x: feet.x + 2 * dx, y: feet.y, z: feet.z + row }
+    pairs.push({ dx, first, other, corner: Math.min(cornerDistance(first, other), CORNER_ZONE) })
+  }
+  pairs.sort((a, b) => a.corner - b.corner)
+  for (const { dx, first, other } of pairs) {
     if (!available(first) || !available(other) || !unjoined(first, other) || !unjoined(other, first)) continue
     const stages = [{ x: feet.x - dx, y: feet.y, z: feet.z }, ...nearby.map(offset => ({ x: feet.x + offset.dx, y: feet.y, z: feet.z + offset.dz }))]
     for (const stage of stages) {

@@ -74,3 +74,12 @@ test('dashboard-control-ui: plan expiry and changing the live session keep the s
   assert.doesNotMatch(script, /innerHTML|insertAdjacentHTML|\/api\/action|\/agent\/start/)
   new vm.Script(script)
 })
+test('dashboard-control-ui: every plan issue and warning code the quarry job can raise has a Japanese label', () => {
+  const job = fs.readFileSync(path.join(root, 'src/quarry-job.js'), 'utf8')
+  const labels = script.slice(script.indexOf('  const diagnosticLabels = {'), script.indexOf('  function showPlan ('))
+  const codes = new Set([...job.matchAll(/issues\.push\('([A-Z0-9_]+)'\)/g), ...job.matchAll(/warnings\.push\(\{ code: '([A-Z0-9_]+)'/g)].map(match => match[1]))
+  assert.ok(codes.has('LOADOUT_CHEST_INSIDE_QUARRY') && codes.size > 20)
+  // Shown as a fact row, not as a chip.
+  codes.delete('INITIAL_LOADOUT_ON_START')
+  for (const code of codes) assert.match(labels, new RegExp('\\b' + code + ": '[^']*[\\u3040-\\u30ff\\u4e00-\\u9fff]"), code)
+})
