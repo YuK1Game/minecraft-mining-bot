@@ -70,8 +70,11 @@ function fixture ({ values = {}, inside = true, capability = true } = {}) {
 
 test('selection and page rendering never move or reset; one explicit click sends only the fixed move command', () => {
   const f = fixture({ inside: false })
-  assert.equal(f.$('move').textContent, 'Botを移動させる')
+  // The Bot reports a position inside the area without a server proof: the same
+  // fixed move command only confirms the position, and the reset says why it waits.
+  assert.equal(f.$('move').textContent, '位置を確認')
   assert.equal(f.$('move').disabled, false); assert.equal(f.$('reset').disabled, true)
+  assert.equal(f.$('reset-why').textContent, '位置が未確認'); assert.equal(f.$('reset-why').hidden, false)
   f.edit('x1', '1'); f.edit('x1', '0')
   assert.deepEqual(f.calls, [])
   f.$('move').click()
@@ -209,4 +212,15 @@ test('the current-location selection and grid marker prefer the actual proof and
   assert.equal(f.$('here').disabled, true)
   assert.equal(f.$('grid').children.some(cell => cell.className.includes(' bot')), false)
   assert.deepEqual(f.calls, [])
+})
+
+test('the debug chest button states the one reason it is unavailable and clears it once the position is proven', () => {
+  const ready = fixture(); assert.equal(ready.$('reset').disabled, false)
+  assert.equal(ready.$('reset-why').hidden, true); assert.equal(ready.$('reset-why').textContent, ''); assert.equal(ready.$('move').textContent, 'Botを移動させる')
+  for (const [change, reason] of [[f => { f.live().position = { x: 40, y: 63, z: 8 } }, '範囲の外'], [f => { f.live().chunkMove.busy = true }, '移動中'],
+    [f => { f.live().storage.busy = true }, '収納中'], [f => { f.live().quarry = { state: 'MINE' } }, '採掘中'], [f => { f.live().ready = false }, '未接続'], [f => f.edit('x1', '')]]) {
+    const f = fixture({ inside: false }); change(f); f.render()
+    assert.equal(f.$('reset').disabled, true); assert.equal(f.$('reset-why').textContent, reason ?? '範囲を選択'); assert.equal(f.$('reset-why').hidden, false)
+    assert.deepEqual(f.calls, [])
+  }
 })

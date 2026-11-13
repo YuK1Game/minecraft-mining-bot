@@ -283,3 +283,4 @@ body.v2 .debug-chest-actions{padding:0;margin-top:auto;justify-content:stretch;f
  body.v2 .log-view{flex:1 1 0;height:auto;min-height:0;font-size:13px}body.v2 .log-line{min-height:23px;padding:1px 24px}
 }
 body.v2 .control-heading-row{cursor:default;user-select:auto}
+body.v2 .debug-chest-actions{position:relative}body.v2 .reset-why{position:absolute;right:6px;top:-9px;padding:0 7px;border:1px solid #e3b25c;border-radius:9px;background:#fff6e0;color:#8a5a00;font-size:11px;line-height:16px;font-weight:700;white-space:nowrap;pointer-events:none}
