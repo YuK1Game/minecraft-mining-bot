@@ -67,7 +67,7 @@ test('status is passive and start synchronously accepts an owned walk without st
   assert.ok(f.events.indexOf('witness') > f.events.indexOf('move'))
 })
 
-test('a long planning-only path executes fresh short prefixes and succeeds on area membership rather than its center', async () => {
+test('a long planning-only path executes fresh short prefixes and walks on to the corner of the area nearest the Bot', async () => {
   const f = fixture(); f.travel.start({ area: { x1: 2, z1: 0 } }); await f.travel.drain()
   const result = f.travel.status()
   assert.equal(result.phase, 'arrived', JSON.stringify(result))
@@ -75,7 +75,8 @@ test('a long planning-only path executes fresh short prefixes and succeeds on ar
   assert.equal(f.moves.length, f.witnesses.length)
   for (const move of f.moves) assert.ok(distance(move.origin, move.target) <= 4.5 + 1e-6)
   assert.equal(f.previews.length, f.moves.length)
-  assert.ok(distance(feetOf(f.state), result.target) > 0.4, 'entering the safe selected area is sufficient')
+  assert.deepEqual([result.target.x, result.target.z], [34.5, 2.5], 'the stand is two cells in from the nearest corner')
+  assert.ok(distance(feetOf(f.state), result.target) <= 0.6, 'the Bot walks on to the corner stand')
   assert.equal(result.positionProof.scope, observedScope(f.state)); assert.equal(result.positionProof.source, 'server_position_volume')
 })
 
@@ -177,7 +178,7 @@ test('already being inside the area still requires safe terrain and a fresh actu
 for (const mode of ['unknown', 'noRoute', 'noShort']) test(`${mode} never starts mutable movement`, async () => {
   const f = fixture({ [mode]: true }); f.travel.start({ area: { x1: 1, z1: 0 } }); await f.travel.drain()
   assert.equal(f.travel.status().phase, 'failed'); assert.equal(f.moves.length, 0)
-  assert.ok(f.plans.length <= 32); assert.equal(f.travel.status().serverConfirmed, false)
+  assert.ok(f.plans.length <= 40); assert.equal(f.travel.status().serverConfirmed, false)
 })
 
 test('area inputs normalize negative/reversed rectangles and reject oversized or extra coordinate controls', async () => {
@@ -355,10 +356,10 @@ test('a throwing log port cannot change the outcome of a move', async () => {
   assert.equal(travel.status().error.message, '移動を完了できませんでした。選択範囲までの歩行経路が見つかりません。')
 })
 
-test('a Bot already inside the area has its position confirmed in place without planning or walking, whatever its footing', async () => {
+test('a Bot already beside a corner of the area has its position confirmed in place without planning or walking, whatever its footing', async () => {
   for (const y of [64.62, 65.12, 66.46]) {
     const f = fixture(), logs = []
-    f.state.position = { x: 8.5, y, z: 8.5 }
+    f.state.position = { x: 4.5, y, z: 3.5 }
     const travel = createChunkTravel({ ...f.ports, log: line => logs.push(line) })
     travel.start({ area: { x1: 0, z1: 0 } }); await travel.drain()
     const status = travel.status()
@@ -369,8 +370,45 @@ test('a Bot already inside the area has its position confirmed in place without 
   }
 })
 
+test('a Bot inside the area but away from its corners walks to the nearest corner stand', async () => {
+  const f = fixture(), logs = []
+  f.state.position = { x: 9.5, y: 64.62, z: 6.5 }
+  const travel = createChunkTravel({ ...f.ports, log: line => logs.push(line) })
+  travel.start({ area: { x1: 0, z1: 0 } }); await travel.drain()
+  const status = travel.status()
+  assert.equal(status.phase, 'arrived', JSON.stringify(status)); assert.equal(status.serverConfirmed, true)
+  assert.deepEqual([status.target.x, status.target.z], [13.5, 2.5])
+  assert.ok(distance(feetOf(f.state), status.target) <= 0.6); assert.ok(f.moves.length > 0)
+  assert.equal(status.positionProof.feet.x, feetOf(f.state).x)
+  assert.match(logs.at(-1), /チャンク移動が完了/)
+})
+
+test('an unreachable corner is only a preference: the Bot inside the area is confirmed where it stands', async () => {
+  for (const mode of ['noRoute', 'noShort']) {
+    const f = fixture({ [mode]: true }), logs = []
+    f.state.position = { x: 8.5, y: 64.62, z: 8.5 }
+    const travel = createChunkTravel({ ...f.ports, log: line => logs.push(line) })
+    travel.start({ area: { x1: 0, z1: 0 } }); await travel.drain()
+    const status = travel.status()
+    assert.equal(status.phase, 'arrived', JSON.stringify(status)); assert.equal(status.serverConfirmed, true); assert.equal(status.error ?? null, null)
+    assert.equal(f.moves.length, 0); assert.equal(f.witnesses.length, 1)
+    assert.match(logs[0], /角へ進めないため現在位置で確認/)
+  }
+})
+
+test('a move that stops on the way to the corner settles inside the area with a fresh witness', async () => {
+  let count = 0
+  const f = fixture(); f.state.position = { x: 9.5, y: 64.62, z: 9.5 }
+  const start = f.ports.startMove
+  const travel = createChunkTravel({ ...f.ports, startMove: (target, value) => { if (++count === 2) throw Object.assign(new Error('blocked'), { code: 'CHUNK_TRAVEL_MOVE_FAILED' }); return start(target, value) } })
+  travel.start({ area: { x1: 0, z1: 0 } }); await travel.drain()
+  const status = travel.status()
+  assert.equal(status.phase, 'arrived', JSON.stringify(status)); assert.equal(f.moves.length, 1)
+  assert.deepEqual(status.positionProof.feet, feetOf(f.state))
+})
+
 test('an in-place confirmation still needs the server witness and the whole body inside the area', async () => {
-  const refused = fixture({ witnessOk: false }); refused.state.position = { x: 8.5, y: 64.62, z: 8.5 }
+  const refused = fixture({ witnessOk: false }); refused.state.position = { x: 3.5, y: 64.62, z: 3.5 }
   refused.travel.start({ area: { x1: 0, z1: 0 } }); await refused.travel.drain()
   assert.equal(refused.travel.status().error.code, 'CHUNK_TRAVEL_POSITION_UNCONFIRMED'); assert.equal(refused.moves.length, 0)
   const edge = fixture(); edge.state.position = { x: 15.9, y: 64.62, z: 8.5 }

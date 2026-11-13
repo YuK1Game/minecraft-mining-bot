@@ -74,7 +74,11 @@
     if (focus) [...grid.children].find(c => c.dataset.key === focus)?.focus({ preventScroll: true })
     return a
   }
-  const diagnosticLabels = { NO_CARGO_SHULKER: '収納用シュルカーなし', SHULKER_ONLY_STORAGE: 'シュルカー専用', Y_TOP_PROVISIONAL: '上限Y 未確定', Y_TOP_UNKNOWN: '上限Y 未受信', NO_PICKAXE: 'ツルハシなし', NO_FOOD: '食料なし', NO_SEAL_MATERIAL: '土・止水材なし', LARGE_FLUID_IN_TARGET: '水・溶岩あり', PROTECTED_BLOCKS_IN_TARGET: '保護ブロックあり', INVENTORY_UNKNOWN: '所持品 未受信', NOT_SURVIVAL: 'サバイバルで接続', NOT_SPAWNED: '参加位置 未確定', WRONG_DIMENSION: '次元が不一致', WORLD_IDENTITY_UNKNOWN: 'ワールド 未確認', CAVE_VOLUME_HIGH: '大きな洞窟あり', CAVE_VOLUME_PROVISIONAL: '洞窟 未確認', PLAN_EXIT_UNAVAILABLE: '脱出列なし', EXIT_PREFLIGHT_PROVISIONAL: '脱出列 未確認' }
+  const diagnosticLabels = { NO_CARGO_SHULKER: '収納用シュルカーなし', SHULKER_ONLY_STORAGE: 'シュルカー専用', Y_TOP_PROVISIONAL: '上限Y 未確定', Y_TOP_UNKNOWN: '上限Y 未受信', NO_PICKAXE: 'ツルハシなし', NO_FOOD: '食料なし', NO_SEAL_MATERIAL: '土・止水材なし', LARGE_FLUID_IN_TARGET: '水・溶岩あり', PROTECTED_BLOCKS_IN_TARGET: '保護ブロックあり', INVENTORY_UNKNOWN: '所持品 未受信', NOT_SURVIVAL: 'サバイバルで接続', NOT_SPAWNED: '参加位置 未確定', WRONG_DIMENSION: '次元が不一致', WORLD_IDENTITY_UNKNOWN: 'ワールド 未確認',
+    LOADOUT_CHEST_INSIDE_QUARRY: 'デバッグチェストが採掘範囲の中（範囲の外へ設置し直す）', LOADOUT_CHEST_NEAR_QUARRY_EDGE: 'デバッグチェストが採掘範囲の端から2ブロック以内', LOADOUT_CHEST_NOT_CONFIGURED: 'デバッグチェスト 未設置',
+    LOADOUT_START_INVENTORY_NOT_EMPTY: '所持品が空ではない', LOADOUT_TARGET_CHUNK_MISMATCH: 'チェストのチャンクが採掘範囲と不一致', V22_RUNTIME_UNAVAILABLE: 'Bot本体が初期セットに未対応（再起動）',
+    CAVE_VOLUME_HIGH: '大きな洞窟あり', CAVE_VOLUME_PROVISIONAL: '洞窟 未確認', PLAN_EXIT_UNAVAILABLE: '脱出列なし', EXIT_PREFLIGHT_PROVISIONAL: '脱出列 未確認', STAIR_START_UNKNOWN: '階段の開始位置 不明', STORAGE_INSIDE_EXCAVATION: '収納先が採掘範囲の中',
+    SUPPLY_BINDINGS_INVALID: '補給箱の設定が不正', INVALID_SUPPLY_LAYOUT: '補給の構成が不正', INVALID_INITIAL_LOADOUT: '初期セットの指定が不正', INVALID_PICKUP_MODE: '回収方針が不正', INVALID_DEPOSIT_POLICY: '収納方針が不正', UNSUPPORTED_STORAGE_POLICY: '収納方針の組み合わせが未対応' }
   function showPlan (result) {
     const p = result.plan, host = $('plan-summary')
     const fact = (label, value) => { const row = element('div', 'plan-fact'); row.append(element('span', '', label), element('b', '', clean(value))); host.append(row) }
@@ -252,13 +256,12 @@
   $('start').addEventListener('click', () => {
     if (!plan) return
     const p = plan
-    if (!confirm(`${clean(p.state.realm?.name)} の ${blockRange(p.plan.chunks)} を Y=${p.plan.yTop}〜${p.plan.yBottom} まで露天掘りします。開始しますか？`)) return
     plan = null; $('plan-results').hidden = true
     act('action', 'quarry', { command: 'start', session: p.state.session, planToken: p.planToken }, () => message('action', ''))
   })
   for (const [button, command, label] of [['pause', 'pause', '一時停止'], ['resume', 'resume', '再開'], ['cancel', 'cancel', 'キャンセル']]) {
     $(button).addEventListener('click', () => {
-      if (['resume', 'cancel'].includes(button) && !confirm(`現在のジョブを${label}しますか？`)) return
+      if (button === 'cancel' && !confirm(`現在のジョブを${label}しますか？`)) return
       plan = null; $('plan-results').hidden = true
       act('action', 'quarry', { command, session: current?.live?.session, jobId: current?.live?.quarry?.jobId ?? null }, () => message('action', ''))
     })

@@ -85,7 +85,7 @@ test('rendering the startup fact preserves the original plan confirmation and th
   assert.deepEqual(f.calls, [{ kind: 'action', route: 'quarry', payload: { command: 'start', session: 'original-session', planToken: 'original-one-use-token' } }])
   assert.equal(f.context.plan, null)
   assert.equal(f.$('plan-results').hidden, true)
-  assert.equal(f.prompts.length, 1)
+  assert.equal(f.prompts.length, 0, 'starting shows no browser prompt')
   assert.deepEqual(f.result, before, 'display and starting cannot rewrite the server plan or token')
 })
 

@@ -36,6 +36,7 @@ const errorView = (error, hint = null) => {
   const hinted = typeof hint === 'string' && hint.trim() ? `（${hint.trim().slice(0, 120)}）` : ''
   return { code, message: `移動を完了できませんでした。${reasons[code] ?? '現在位置と経路を確認してください。'}${hinted}` }
 }
+const softCorner = new Set(['CHUNK_TRAVEL_NO_ROUTE', 'CHUNK_TRAVEL_NO_SHORT_PREFIX', 'CHUNK_TRAVEL_SHORT_ROUTE_UNCONFIRMED', 'CHUNK_TRAVEL_MOVE_FAILED', 'CHUNK_TRAVEL_MOVE_ENDED_SHORT', 'CHUNK_TRAVEL_LEG_TIMEOUT', 'CHUNK_TRAVEL_LEG_LIMIT'])
 const round = p => finite(p) ? `${p.x.toFixed(1)},${p.y.toFixed(1)},${p.z.toFixed(1)}` : 'unknown'
 
 function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previewMove, startMove, stopMove, confirmPosition,
@@ -119,6 +120,27 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
     }
     return found
   }
+  // Stands beside the corner of the area nearest the Bot, two cells in from
+  // both edges, so a debug chest placed from there sits in that corner (user
+  // request 2026-11-13). Empty when no known dry stand exists there.
+  async function cornerStands (run) {
+    const origin = guard(run).feet, area = run.area
+    const xs = [area.x1 * 16 + 2.5, (area.x2 + 1) * 16 - 2.5], zs = [area.z1 * 16 + 2.5, (area.z2 + 1) * 16 - 2.5]
+    const anchors = xs.flatMap(x => zs.map(z => ({ x, z }))).sort((a, b) => Math.hypot(a.x - origin.x, a.z - origin.z) - Math.hypot(b.x - origin.x, b.z - origin.z))
+    const anchor = anchors[0], columns = [], found = []
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) columns.push({ x: anchor.x + dx, z: anchor.z + dz })
+    columns.sort((a, b) => Math.hypot(a.x - anchor.x, a.z - anchor.z) - Math.hypot(b.x - anchor.x, b.z - anchor.z) || a.x - b.x || a.z - b.z)
+    const heights = [0]; for (let dy = 1; dy <= 16; dy++) heights.push(dy, -dy)
+    await sleep(0); guard(run)
+    for (const column of columns) {
+      if (found.length >= 8) break
+      for (const dy of heights) {
+        const target = { x: column.x, y: Math.floor(origin.y + 0.001) + dy, z: column.z }
+        if (distance(origin, target) <= maxDistance && areaContainsFeet(area, target, 0.2) && dryStand(target)) { found.push(target); break }
+      }
+    }
+    return { anchor, stands: found }
+  }
   function routePoints (route, origin, goal, short = false) {
     if (route?.ready !== true || short && route.planningOnly || route.boundedJump || route.controlledDrop || route.partialDrop || !Array.isArray(route.waypoints) || !route.waypoints.length || route.waypoints.length > 256) return null
     if (route.origin && (!finite(route.origin) || distance(route.origin, origin) > 0.1)) return null
@@ -185,11 +207,30 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
       const acquired = await call(run, () => run.acquiring)
       if (acquired === false || acquired?.acquired === false) throw fail('CHUNK_TRAVEL_BUSY')
       guard(run)
-      if (areaContainsFeet(run.area, guard(run).feet, 0.2)) { await witness(run, true, true); active.phase = 'arrived'; active.serverConfirmed = true; try { log(`チャンク移動: 範囲内のため歩かずに位置を確認 feet=${round(guard(run).feet)}`) } catch {} return }
-      const goals = await candidates(run)
-      if (!goals.length) throw fail('CHUNK_TRAVEL_NO_KNOWN_STAND')
+      const startedInside = areaContainsFeet(run.area, guard(run).feet, 0.2)
+      const corner = await cornerStands(run), flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
+      const inPlace = async note => {
+        await witness(run, true, active.legs === 0); active.phase = 'arrived'; active.serverConfirmed = true
+        try { log(`チャンク移動: ${note} feet=${round(guard(run).feet)}`) } catch {}
+      }
+      if (startedInside && (!corner.stands.length || flat(guard(run).feet, corner.anchor) <= 3)) return await inPlace('範囲内のため歩かずに位置を確認')
+      // The corner is a preference only: when it cannot be reached the Bot
+      // settles where it is inside the area, or walks to the old centre goals.
+      let goals = corner.stands, cornering = goals.length > 0
+      const giveUpCorner = async error => {
+        if (!cornering || run.controller.signal.aborted || !softCorner.has(error?.code)) throw error
+        guard(run)
+        // Outside the area only a missing route is worth a second search;
+        // other failures keep their own diagnostics.
+        if (!areaContainsFeet(run.area, guard(run).feet, 0.2)) { if (error.code !== 'CHUNK_TRAVEL_NO_ROUTE') throw error; cornering = false; return false }
+        await stopOwned(run, 'CHUNK_TRAVEL_CORNER_UNREACHED'); guard(run)
+        cornering = false; active.movementFailure = null; active.shortRouteFailure = null
+        await inPlace(`角へ進めないため現在位置で確認（${reasons[error.code] ?? error.code}）`); return true
+      }
+      if (!cornering) { goals = await candidates(run); if (!goals.length) throw fail('CHUNK_TRAVEL_NO_KNOWN_STAND') }
       let goal = null
       for (let attempt = 0; attempt < maxLegs; attempt++) {
+       try {
         active.phase = 'planning'; const origin = guard(run).feet
         let full = null
         for (const candidate of goal ? [goal] : goals) {
@@ -226,8 +267,14 @@ function createChunkTravel ({ getState, getBlock, getMovement, planRoute, previe
         active.shortRouteFailure = null
         await leg(run, selected.target, selected.short)
         const feet = guard(run).feet
-        if (areaContainsFeet(run.area, feet, 0.2) && dryStand(feet)) { active.phase = 'arrived'; active.serverConfirmed = true; try { log(`チャンク移動が完了: feet=${round(feet)} legs=${active.legs} walked=${run.usedDistance.toFixed(1)}m`) } catch {} return }
+        if (areaContainsFeet(run.area, feet, 0.2) && dryStand(feet) && (!cornering || flat(feet, goal) <= 0.6)) { active.phase = 'arrived'; active.serverConfirmed = true; try { log(`チャンク移動が完了: feet=${round(feet)} legs=${active.legs} walked=${run.usedDistance.toFixed(1)}m`) } catch {} return }
+       } catch (error) {
+        if (await giveUpCorner(error)) return
+        goal = null; goals = await candidates(run)
+        if (!goals.length) throw fail('CHUNK_TRAVEL_NO_KNOWN_STAND')
+       }
       }
+      if (await giveUpCorner(fail('CHUNK_TRAVEL_LEG_LIMIT'))) return
       throw fail('CHUNK_TRAVEL_LEG_LIMIT')
     } catch (error) {
       active.phase = run.controller.signal.aborted && run.controller.signal.reason?.code === 'CHUNK_TRAVEL_CANCELLED' ? 'cancelled' : 'failed'

@@ -157,3 +157,21 @@ test('invalid inputs fail closed before observing terrain', () => {
   assert.equal(findDebugChestSite(), null)
   assert.equal(debugSiteReachable(null, f.position), false)
 })
+
+test('a stand beside a chunk corner puts the chest pair into that corner, and the middle of the chunk keeps the east-first row', () => {
+  for (const [feet, position, other] of [
+    [{ x: 2, y: 67, z: 2 }, { x: 1, z: 0 }, { x: 0, z: 0 }],
+    [{ x: 13, y: 67, z: 2 }, { x: 14, z: 0 }, { x: 15, z: 0 }],
+    [{ x: 2, y: 67, z: 13 }, { x: 1, z: 15 }, { x: 0, z: 15 }],
+    [{ x: 13, y: 67, z: 13 }, { x: 14, z: 15 }, { x: 15, z: 15 }]
+  ]) {
+    const f = fixture(feet), home = f.find()
+    assert.deepEqual([home.position.x, home.position.z, home.other.x, home.other.z], [position.x, position.z, other.x, other.z])
+    assert.equal(debugSiteReachable(home, f.position), true)
+  }
+  const blocked = fixture({ x: 2, y: 67, z: 2 }); blocked.put(0, 67, 0, 'minecraft:oak_log')
+  const next = blocked.find()
+  assert.ok(next && !(next.other.x === 0 && next.other.z === 0), 'an occupied corner falls back to the next nearest pair')
+  const middle = fixture().find()
+  assert.deepEqual([middle.position, middle.other], [{ x: 9, y: 67, z: 8 }, { x: 10, y: 67, z: 8 }])
+})
