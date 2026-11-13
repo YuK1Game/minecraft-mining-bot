@@ -291,7 +291,11 @@
   }
   function observedChunk (live = current?.live) {
     const proof = observedProof(live)
-    return proof ? { x: Math.floor(proof.feet.x / 16), z: Math.floor(proof.feet.z / 16) } : null
+    if (proof) return { x: Math.floor(proof.feet.x / 16), z: Math.floor(proof.feet.z / 16) }
+    // Choosing an area changes nothing in the world, so without a fresh proof the
+    // Bot's own reported chunk is enough here. Placement still needs the proof.
+    const chunk = live?.ready === true ? live.chunk : null
+    return Number.isSafeInteger(chunk?.x) && Number.isSafeInteger(chunk?.z) ? { x: chunk.x, z: chunk.z } : null
   }
   function proofInsideArea (live = current?.live, selected = selectedArea()) {
     const proof = observedProof(live), feet = proof?.feet
@@ -435,4 +439,9 @@
   setInterval(poll, 2000)
   setInterval(() => { if ((plan?.planToken || resetPreview || storagePreview) && !document.hidden) render() }, 1000)
   document.addEventListener('visibilitychange', () => { if (!document.hidden) void poll() })
+  // The control panel stays open: its heading is not a toggle.
+  const panel = document.getElementById('control')
+  panel.querySelector('summary').addEventListener('click', event => event.preventDefault())
+  panel.addEventListener('toggle', () => { if (!panel.open) panel.open = true })
+  panel.open = true
 })()

@@ -193,7 +193,7 @@ test('a cancelled movement reports interruption even when its cancellation reaso
   }
 })
 
-test('the current-location selection and grid marker use actual proof instead of stale raw or predicted display coordinates', () => {
+test('the current-location selection and grid marker prefer the actual proof and fall back to the reported chunk for selection only', () => {
   const f = fixture()
   f.live().chunk = { x: 7, z: 7 }; f.live().position = { x: 120, y: 63, z: 120 }; f.render()
   const marker = f.$('grid').children.find(cell => cell.className.includes(' bot'))
@@ -201,6 +201,11 @@ test('the current-location selection and grid marker use actual proof instead of
   f.$('here').click()
   assert.deepEqual(plain(f.context.selectedArea()), { x1: 0, z1: 0, x2: 0, z2: 0 })
   f.live().positionProof = null; f.render()
+  assert.equal(f.$('here').disabled, false, 'selecting the reported chunk needs no fresh proof')
+  f.$('here').click()
+  assert.deepEqual(plain(f.context.selectedArea()), { x1: 7, z1: 7, x2: 7, z2: 7 })
+  assert.equal(f.$('reset').disabled, true, 'placement still needs the proof')
+  f.live().chunk = null; f.render()
   assert.equal(f.$('here').disabled, true)
   assert.equal(f.$('grid').children.some(cell => cell.className.includes(' bot')), false)
   assert.deepEqual(f.calls, [])
