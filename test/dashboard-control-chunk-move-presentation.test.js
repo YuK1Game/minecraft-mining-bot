@@ -211,7 +211,8 @@ test('the current-location selection and grid marker prefer the actual proof and
   f.live().chunk = null; f.render()
   assert.equal(f.$('here').disabled, true)
   assert.equal(f.$('grid').children.some(cell => cell.className.includes(' bot')), false)
-  assert.deepEqual(f.calls, [])
+  // With a proof 現在地 only selects; without one it also sends the single fixed command that confirms the position.
+  assert.deepEqual(f.calls, [{ kind: 'move', route: 'quarry', payload: { command: 'moveToChunk', session: 'live-session', area: { x1: 7, z1: 7, x2: 7, z2: 7 } } }])
 })
 
 test('the debug chest button states the one reason it is unavailable and clears it once the position is proven', () => {
