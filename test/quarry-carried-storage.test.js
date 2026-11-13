@@ -451,3 +451,21 @@ test('live case 2026-11-13: resuming an untouched storage operation that used up
   assert.ok(ps == null || ps.siteRetries == null || ps.siteRetries < 3, 'a fresh retry budget')
   assert.ok(f.job.document().events?.some?.(e => e.type === 'storage_untouched_restart') ?? true)
 })
+
+test('live case 2026-11-13: resuming after a reconciled unconfirmed placement starts over at a new site, avoiding the old cell', async () => {
+  const f = fixture([{ name: 'shulker_box', count: 1, stackId: 14 }])
+  const cell = { x: 7, y: 63, z: 5 }
+  f.sim.adapter.storeCarried = async (request, { onCheckpoint }) => {
+    const cp = { version: 1, operationId: request.operationId, jobId: request.jobId, kind: 'shulker', stage: 'planned', stand: { x: 5, y: 63, z: 5 }, positions: [cell], placed: [], deposited: [], intent: null }
+    await onCheckpoint(cp)
+    return { status: 'blocked', reason: 'STORAGE_PLACE_UNCONFIRMED', serverConfirmed: false, checkpoint: cp }
+  }
+  await f.job.storeCarriedNow({ deposits: [{ slot: 3, name: 'minecraft:cobblestone', count: 8 }] })
+  const doc = f.job.document()
+  f.job.load({ ...doc, state: 'PAUSED', pauseReason: 'STORAGE_CURRENT_STATE_RECONCILED', pauseDetails: { operationId: doc.portableStorage.operationId, currentStateConfirmed: true }, result: null })
+  try { f.job.resume() } catch {}
+  await f.job.pause().catch(() => {})
+  const ps = f.job.document().portableStorage
+  assert.ok(ps == null || ps.checkpoint == null || !ps.checkpoint.positions.some(p => p.x === cell.x && p.z === cell.z), 'the old site is not reused')
+  if (ps) assert.ok((ps.avoidPositions ?? []).some(p => p.x === cell.x && p.z === cell.z), 'the old cell is avoided')
+})
