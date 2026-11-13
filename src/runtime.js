@@ -6564,8 +6564,27 @@ function createRuntime (host) {
     const exposure = combatAttackExposure(target, state)
     return { route: exposure.evidence.routeToBot, sight: exposure.evidence.sight, intercept: exposure.intercept, unknown: exposure.unknown }
   }
-  function quarryCanSelectTarget (target, state, info = {}) { return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
-  function quarryCanContinue (target, state, info = {}) { return quarryJob?.holdsWork() ? quarryJob.bridge.canContinue(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true, retreating: info.retreating === true || quarryRetreatDepth > 0 }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
+  // Own shulker out in the world: its recovery has priority over combat
+  // (2026-11-14 user). Hits taken meanwhile are logged; once the box is back in
+  // the received inventory the hold ends and combat proceeds as usual.
+  const shulkerHoldLog = { key: null, at: 0, health: null }
+  function quarryShulkerHold (target, state) {
+    let hold = null
+    try { hold = quarryJob?.shulkerHold?.() ?? null } catch {}
+    if (!hold) { shulkerHoldLog.health = null; shulkerHoldLog.key = null; return null }
+    const hp = Number(state?.health)
+    if (Number.isFinite(hp) && Number.isFinite(shulkerHoldLog.health) && hp < shulkerHoldLog.health) host.log(`露天掘り: 箱の作業中に被弾 HP ${shulkerHoldLog.health}→${hp} (${hold.operationId} ${hold.stage})。戦闘は箱の回収の確定まで保留`)
+    if (Number.isFinite(hp)) shulkerHoldLog.health = hp
+    const key = `${hold.operationId}|${hold.stage}|${target?.runtimeId ?? ''}`, at = Date.now()
+    if (key !== shulkerHoldLog.key || at - shulkerHoldLog.at > 5000) {
+      shulkerHoldLog.key = key; shulkerHoldLog.at = at
+      const d = target?.position && state?.position ? Math.hypot(target.position.x - state.position.x, target.position.y - state.position.y, target.position.z - state.position.z) : null
+      host.log(`露天掘り: 箱の回収を優先して戦闘を保留: target=${String(target?.entityType ?? target?.name ?? '?').replace('minecraft:', '')} distance=${d == null ? '?' : d.toFixed(1) + 'm'} box=${hold.box ?? '?'} stage=${hold.stage} operation=${hold.operationId}`)
+    }
+    return { allowed: false, reason: 'SHULKER_RECOVERY_PRIORITY', stage: hold.stage }
+  }
+  function quarryCanSelectTarget (target, state, info = {}) { const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
+  function quarryCanContinue (target, state, info = {}) { const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canContinue(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true, retreating: info.retreating === true || quarryRetreatDepth > 0 }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
   function quarryState () {
     const state = lightweightUserState()
     const hunger = host.shared.vitals?.hunger

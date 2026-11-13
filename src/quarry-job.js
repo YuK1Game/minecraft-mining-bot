@@ -4504,13 +4504,25 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return planner.pathTo(origin, goal)
   }
   function holdsWork () { return !!job && (ACTIVE.has(job.state) || !!worker || !!stopTask || pendingActions.size > 0) }
+  // 2026-11-14 user: "シュルカーボックスの回収は最優先にしてください、戦闘より優先度
+  // 高いです". While this job's own shulker (cargo or supply) is out in the world
+  // as an item: from its break until the received inventory has it back
+  // (01:29 correction: "シュルカーボックスの設置中は戦闘優先していい、壊して手元に
+  // 戻してる間はロストのリスクがあります"; a placed box waits for combat),
+  // combat does not take control. Only while the job is working.
+  const BOX_OUT_STAGES = new Set(['breaking', 'awaiting_recovery'])
+  function shulkerHold () {
+    if (!holdsWork()) return null
+    const out = (cp, operationId, kind) => cp?.kind === 'shulker' && BOX_OUT_STAGES.has(cp.stage) && !cp.recovered ? { operationId, kind, stage: cp.stage, box: cp.placed?.[0]?.name ?? null, position: copy(cp.placed?.[0]?.position ?? cp.positions?.[0] ?? null) } : null
+    return out(job.portableStorage?.checkpoint, job.portableStorage?.operationId ?? null, 'cargo') ?? out(job.supplyRestock?.checkpoint?.child, job.supplyRestock?.operationId ?? null, 'supply')
+  }
   function egressStatus (inv) {
     const e = job.egress; const p = e?.plan ?? job.exitReservation?.plan; const exit = job.config.exit ?? normalizeExit({}, { legacy: true })
     const available = inv ? dirtCount(inv) : null
     return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, configureAnimalClearing, acceptCarriedStorageLoss, acceptLostDirtSupply, configureCargoLossAcceptance, configureSpareArmor, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
+  return { shulkerHold, plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, configureAnimalClearing, acceptCarriedStorageLoss, acceptLostDirtSupply, configureCargoLossAcceptance, configureSpareArmor, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults, FINAL_CHEST_KEEP }
