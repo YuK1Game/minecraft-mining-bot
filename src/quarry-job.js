@@ -766,6 +766,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (result.reason === 'EXIT_COLUMN_UNAVAILABLE' && unknown && await requestTerrainObservation(myEpoch, 'egress')) return false
       if (result.plan && ['EXIT_MATERIAL_MISSING', 'EXIT_TOOL_MISSING'].includes(result.reason) && job.config.inventory.supplyBoxes?.length) {
         job.config.inventory.keepExitDirt = Math.max(job.config.inventory.keepExitDirt ?? 0, result.plan.totalDirt)
+        if (job.exitDirtLimit != null && job.exitDirtLimit < result.plan.totalDirt + 8) { job.exitDirtLimit = result.plan.totalDirt + 8; note('egress_dirt_limited', { target: job.exitDirtLimit, from: 'exit_plan' }) }
         if (await restock(myEpoch, 'PREFLIGHT', true)) return false
       }
       await finish('PAUSED', result.reason ?? 'EXIT_PREFLIGHT_FAILED', { pauseDetails: { ...copy(result.details ?? {}), stage: 'before_excavation' } })
@@ -2919,7 +2920,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job.portableStorage && !job.supplyRestock) { await applyStorageConfiguration(); guard(myEpoch) }
     // Re-evaluate actual room after safety travel or a completed box. Full-only
     // never starts a new storage operation merely because RETURN was queued.
-    if (fullOnlyStorage() && !job.portableStorage) {
+    // The exit-dirt room deposit (2026-11-13 17:11) stores even with free slots:
+    // full-only would otherwise skip it and leave no room for the exit dirt.
+    if (fullOnlyStorage() && !job.portableStorage && !(why === 'final' && job.egressRoomForce === true)) {
       const inventory = items(guard(myEpoch))
       if (!inventory) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
       if (freeSlots(inventory) > 0) {
@@ -3289,13 +3292,18 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
         // Make room first (2026-11-13): store what the exit does not need,
         // then, if still short, withdraw the selected column's need plus 8.
         job.egressRoom = true
+        // Version 2 (2026-11-13 17:11): the first version's room deposits were
+        // skipped by full-only storage; start the bounded attempts again.
+        if (job.egressRoomVersion !== 2) { job.egressRoomVersion = 2; job.egressRoomDeposits = 0; delete job.exitDirtLimit; delete job.egressRoomForce }
         const room = egressDirtRoom(inv, { target: exitDirtGoal(), keepPolicy: inventoryPolicy(), storageAvailable: hasStorageOption(), depositAttempts: job.egressRoomDeposits ?? 0, planDirt: exitPlanDirt(myEpoch) })
         if (room.action === 'deposit') {
           job.egressRoomDeposits = (job.egressRoomDeposits ?? 0) + 1
           note('egress_dirt_room_deposit', { attempt: job.egressRoomDeposits, deposits: room.deposits.length })
+          job.egressRoomForce = true
           await save('egress_dirt_room'); job.finalDeposited = false
           job.depositReason = 'final'; await returnAndDeposit(myEpoch, 'final'); return
         }
+        delete job.egressRoomForce
         if (room.limited && room.target !== job.exitDirtLimit) { job.exitDirtLimit = room.target; note('egress_dirt_limited', { target: room.target, short: room.short === true }); await save('egress_dirt_limited') }
         if (await restock(myEpoch, 'FINAL_CHECK', true)) return
         return finish('PAUSED', 'EXIT_DIRT_WITHDRAW_BLOCKED')
