@@ -3382,6 +3382,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if(result?.status!=='completed' || result.serverConfirmed!==true) {
         return finish('PAUSED',result?.reason??'FINAL_CHEST_UNCONFIRMED',{pauseDetails:{operationId:active.operationId}})
       }
+      // Everything returned (2026-11-13 18:35: the user saw an offhand item on
+      // the bot after the storage): the inventory is fetched again from the
+      // server and the offhand and armour must be received empty before FINISHED.
+      if (job.config.strategy?.finalChestKeepGear !== true && !fourLayerStorage()) {
+        try { await call(myEpoch, 'resync', signal => adapter.resyncInventory?.({ signal })) } catch (error) { if (error instanceof QuarryInterrupt) throw error }
+        guard(myEpoch)
+        const details = adapter.inventoryDetails?.()
+        const emptySection = section => section?.known === true && Array.isArray(section.slots) && section.slots.every(slot => slot?.known === true && slot.empty === true)
+        if (!details || !emptySection(details.offhand) || !emptySection(details.armor) || !emptySection({ known: details.known, slots: details.slots })) return finish('PAUSED', 'FINAL_INVENTORY_UNCONFIRMED', { pauseDetails: { operationId: active.operationId, offhand: details?.offhand?.slots?.map(s => s?.name ?? null) ?? null, armor: details?.armor?.slots?.map(s => s?.name ?? null) ?? null } })
+      }
       job.finalChestStoredAt=new Date(now()).toISOString()
       await save('final_chest_verified')
     }
