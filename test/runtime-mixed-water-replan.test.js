@@ -79,7 +79,7 @@ test('Runtime mixed replan rejects missing life, damage, canonical actors, owner
     if (mode === 'life') { delete f.host.shared.deathRespawn; delete f.host.shared.inventoryLifeReceipt }
     const beforeInput = () => allowed
     const options = { allowWater: true, sprint: false, maxDistance: 6, maxExpanded: 300, maxTicks: 100, ...(mode === 'guard' ? { continueAfterReplay: true, beforeInput } : {}), ...(mode === 'optOut' ? { continueAfterReplay: false } : {}) }
-    if (mode === 'life') { const count = f.sent.filter(p => p.name === 'player_auth_input').length; assert.throws(() => f.runtime.operations.movement.start({ x: 5.5, y: 65, z: .5 }, options), /actual (?:scoped life|life scope)/); assert.equal(f.sent.filter(p => p.name === 'player_auth_input').length, count); assert.ok(f.instances.every(m => m.snapshot().sent === 0)); return }
+    if (mode === 'life') { const count = f.sent.filter(p => p.name === 'player_auth_input').length; assert.throws(() => f.runtime.operations.movement.start({ x: 5.5, y: 65, z: .5 }, options), { code: 'MOVE_LIFE_UNKNOWN' }); assert.equal(f.sent.filter(p => p.name === 'player_auth_input').length, count); assert.ok(f.instances.every(m => m.snapshot().sent === 0)); return }
     f.runtime.operations.movement.start({ x: 5.5, y: 65, z: .5 }, options)
     if (mode === 'guard') assert.strictEqual(f.startOptions.at(-1).beforeInput, beforeInput, 'existing caller guard identity remains exact')
     const m = f.instances.find(value => value.snapshot().running)
