@@ -15,6 +15,7 @@ const { createQuarrySupplies } = require('./quarry-supplies')
 const { createQuarryV22Equipment } = require('./quarry-v22-equipment')
 const { createQuarryV22ChestWork } = require('./quarry-v22-chest-work')
 const { createRuntimeV22ChestReset, receivedEquipmentView, jobPending } = require('./loadout-runtime-adapter')
+const { createInventoryStore } = require('./inventory-store')
 const { createManualChestRuntime } = require('./manual-chest-runtime-adapter')
 const { createChunkTravel } = require('./chunk-travel')
 const { chunkTravelThreatsClear } = require('./chunk-travel-threats')
@@ -798,16 +799,24 @@ function createRuntime (host) {
     return state
   }
   const onInventory = packet => host.commitInventory(packet)
-  const crafting = createCrafting({ client: host.client, getState: working, version: host.meta.version, onInventory, onUncertain, onContainerClose: packet => host.cache.observe('container_close', packet), allocateRequestId: () => host.allocate('craft') })
+  // The one authoritative inventory record (main, armour, offhand, cursor).
+  // It lives in host.shared so a behaviour reload keeps what was received.
+  const inventoryStore = createInventoryStore({ shared: host.shared, getScope: () => {
+    const s = raw()
+    if (s.connectionId == null || s.startedAt == null || s.runtimeEntityId == null) return null
+    return [s.profile ?? host.meta.profile ?? null, s.realm?.id == null ? null : String(s.realm.id), s.connectionId, s.startedAt, String(s.runtimeEntityId)]
+  } })
+  migrateLegacyInventoryRecords()
+  const crafting = createCrafting({ client: host.client, getState: working, version: host.meta.version, onInventory, onUncertain, onContainerClose: packet => host.cache.observe('container_close', packet), allocateRequestId: () => host.allocate('craft'), inventory: inventoryStore.map('main', 'crafting') })
   readDurability = createDurabilityReader(host.meta.version)
-  const inventoryInspection = createInventoryInspection({ crafting, armorStore: host.shared.armorStore ??= {}, getChest: () => chest, getState: raw, store: host.shared.inventoryInspectionStore ??= {}, version: host.meta.version })
+  const inventoryInspection = createInventoryInspection({ crafting, inventoryStore, getChest: () => chest, getState: raw, store: host.shared.inventoryInspectionStore ??= {}, version: host.meta.version })
   const UserCombatItem = require('prismarine-item')(`bedrock_${host.meta.version}`)
   const furnace = createFurnace({ client: host.client, getState: working, crafting, version: host.meta.version, allocateRequestId: () => host.allocate('craft'), onUncertain, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
   const prospecting = createProspecting({ client: host.client, getState: working, world: host.world })
   const inventory = createInventory({ client: host.client, getState: working, crafting, allocateRequestId: () => host.allocate('craft'), commitSelection: typeof host.commitSelection === 'function' ? slot => host.commitSelection(slot) : null, selectionStore: host.shared.inventorySelection ??= {}, onUncertain, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
   let armorTask = null
   let manualArmorOwner = null
-  const armor = createArmor({ client: host.client, getState: working, crafting, allocateRequestId: () => host.allocate('craft'), store: host.shared.armorStore ??= {}, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) }, log: message => host.log(message) })
+  const armor = createArmor({ client: host.client, getState: working, crafting, allocateRequestId: () => host.allocate('craft'), store: host.shared.armorStore ??= {}, inventoryStore, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) }, log: message => host.log(message) })
   function canEmergencyEatHere () {
     const state = observedState()
     const threats = evaluateThreats(state, state.entities, { observationRadius: 32 })
@@ -842,7 +851,7 @@ function createRuntime (host) {
     getState: () => ({ ...working(), lifecycle: { ...(working().lifecycle ?? {}), deathId: actualLifeId() } }),
     getView: () => inventoryInspection.snapshot(),
     getRawMain: slot => crafting.rawItem(slot),
-    getRawEquipment: (kind, slot) => kind === 'armor' ? host.shared.armorStore?.worn?.get(slot) : kind === 'offhand' ? host.shared.inventoryInspectionStore?.offhand?.get(slot) : null,
+    getRawEquipment: (kind, slot) => ['armor', 'offhand'].includes(kind) ? inventoryStore.raw(kind, slot) : null,
     allocateRequestId: () => host.allocate('craft'),
     commitMain: (slot, item, requestId) => {
       const delta = { window_id: 'inventory', slot, item, source: 'server_item_stack_response', requestId }
@@ -851,11 +860,7 @@ function createRuntime (host) {
         input: Array.from({ length: 36 }, (_, i) => crafting.rawItem(i)),
         changedSlots: [slot], fullRefresh: false, source: 'server_item_stack_response', requestId })
     },
-    commitEquipment: (kind, slot, item, requestId) => {
-      const delta = { window_id: kind, slot, item, source: 'server_item_stack_response', requestId }
-      if (kind === 'armor') armor.applyPacket('inventory_slot', delta)
-      inventoryInspection.applyPacket('inventory_slot', delta)
-    },
+    commitEquipment: (kind, slot, item, requestId) => { inventoryStore.commit(kind, slot, item, 'server_item_stack_response') },
     onUncertain: onUncertain
   })
   portableActionOwners.track(inventory, ['equip', 'equipForMining', 'equipForCombat', 'equipForFood'], { invalidate: ['cancel'], isActive: c => c.snapshot().busy === true })
@@ -1030,6 +1035,41 @@ function createRuntime (host) {
     if (!combatHandoff && (motionActive() || input?.stats().running || combat?.snapshot().busy || combat?.snapshot().defending || combat?.snapshot().engaging) || food.snapshot().busy || (furnace.snapshot().busy || chest.snapshot().busy) || inventory.snapshot().busy || craftStatus().pendingRequestId != null || interactions.snapshot().pendingOperation) throw new Error('前の操作が完了するまで待ってください。')
     if (!ownedCall) host.shared.safetyManualActionAt = Date.now()
   }
+  // First load of the single inventory record on a live connection: adopt the
+  // equipment the previous behaviour code had already received, so a reload
+  // does not turn the worn armour and offhand into "unknown". Main slots come
+  // back through the session cache replay into crafting (the same record).
+  function migrateLegacyInventoryRecords () {
+    if (inventoryStore.revision() !== 0) return
+    const armorLegacy = host.shared.armorStore, inspectionLegacy = host.shared.inventoryInspectionStore
+    if (armorLegacy?.known === true && armorLegacy.worn instanceof Map && !(armorLegacy.worn.constructor?.name === 'StoreSlotMap')) {
+      for (let slot = 0; slot < 4; slot++) if (armorLegacy.worn.has(slot)) inventoryStore.commit('armor', slot, armorLegacy.worn.get(slot), 'migrated_legacy_armor')
+    }
+    if (inspectionLegacy?.offhandKnown === true && inspectionLegacy.offhand instanceof Map && inspectionLegacy.offhand.has(0)) inventoryStore.commit('offhand', 0, inspectionLegacy.offhand.get(0), 'migrated_legacy_offhand')
+  }
+  // Slots the record has not received (after a reconnect, death, dimension
+  // change or an unidentified stack move) are fetched again from the server
+  // with the existing rate-limited resync, only while the Bot is idle.
+  let inventoryStoreResyncTask = null
+  function inventoryStoreResyncTick () {
+    if (disposed || disposing || replaying) return
+    const state = raw()
+    if (state.phase !== 'spawned' || state.dead || state.isDead || !(state.health > 0) || state.spawnPending) { host.shared.inventoryStoreMissingSince = null; return }
+    const missing = inventoryStore.missing(['main', 'armor', 'offhand'])
+    if (!missing.length) { host.shared.inventoryStoreMissingSince = null; return }
+    const now = Date.now()
+    if (!Number.isFinite(host.shared.inventoryStoreMissingSince)) host.shared.inventoryStoreMissingSince = now
+    if (now - host.shared.inventoryStoreMissingSince < 3000) return
+    const note = result => inventoryStore.noteResync({ missing: missing.slice(0, 41), result })
+    const notSent = error => note({ status: 'NOT_SENT', code: error?.code ?? null, reason: String(error?.message ?? error).slice(0, 120) })
+    if (inventoryStoreResyncTask) return
+    try {
+      const task = Promise.resolve(requestInventoryResyncWithReceipt('inventory_store_missing'))
+      inventoryStoreResyncTask = task
+      task.then(result => { host.shared.inventoryStoreMissingSince = Date.now(); note(result) }, notSent).finally(() => { if (inventoryStoreResyncTask === task) inventoryStoreResyncTask = null })
+    } catch (error) { notSent(error) }
+  }
+
   function inventoryLifeBaseKey (state) { return JSON.stringify([state.profile ?? host.meta.profile ?? null, state.realm?.id == null ? null : String(state.realm.id), state.connectionId ?? null, state.startedAt ?? null, String(state.runtimeEntityId ?? ''), state.dimension ?? null]) }
   function prepareInventoryLifeReceipt () {
     if (!inventoryLifeReceiptTask) {
@@ -1127,7 +1167,7 @@ function createRuntime (host) {
       const moves = []
       for (let i = 0; i < 4; i++) {
         requireIdle({ armorOwner: owner })
-        const state = working(), worn = host.shared.armorStore.worn
+        const state = working(), worn = inventoryStore.map('armor', 'manual_armor')
         if (userScope(state) !== scope || state.phase !== 'spawned' || state.dead || !(state.health > 0) || !finitePosition(state.position)) throw new Error('防具の持ち替え中に生存状態または接続範囲が変わりました。')
         if (!armorWorkFree() || craftStatus().authority !== true || craftStatus().inventoryKnown !== true || state.inventory?.known !== true) throw new Error('確定した持ち物と閉じたインベントリ画面が必要です。')
         if (!armor.snapshot().known || ![0, 1, 2, 3].every(slot => Number.isInteger(worn.get(slot)?.network_id))) throw new Error('サーバーから防具4枠の受信を待ってください。')
@@ -1202,7 +1242,7 @@ function createRuntime (host) {
     const state = observedState()
     const prospect = prospecting.snapshot()
     const observedOres = prospect.phase === 'idle' ? host.shared.prospecting ?? prospect : prospect
-    return { ownedCampBootstrap: structuredClone(host.shared.ownedCampBootstrap ?? null), workHold: host.shared.legacyWorkHoldLease ? {leaseId:host.shared.legacyWorkHoldLease.id,scope:host.shared.legacyWorkHoldLease.scope,expiresAt:host.shared.legacyWorkHoldLease.expiresAt} : null, recentDamageRetreat: structuredClone(host.shared.recentDamageRetreatDiagnostic ?? null), survivalWorkClearance: state.survivalWorkClearance === true, spawnRangedClearance: state.spawnRangedClearance === true, depotPrebuild: depotPrebuild?.snapshot() ?? null, depotMission: depotMission?.snapshot() ?? null, surfaceReturn: surfaceReturn?.snapshot() ?? null, inventoryResync: structuredClone(host.shared.inventoryResync?.lastRequest ?? null), movementCalibration: structuredClone(movementCalibration), learningShoreEscape: structuredClone(host.shared.learningShoreEscape ?? null), startupPriority: structuredClone(host.shared.startupPriority ?? null), userBehaviors: userBehaviorSnapshot(), lowHealthWater: host.shared.lowHealthWaterDiagnostic ? { ...structuredClone(host.shared.lowHealthWaterDiagnostic), timing: structuredClone(host.shared.lowHealthWaterTiming ?? null) } : null, clearance: structuredClone(host.shared.clearanceDiagnostic ?? null), safety: safetySnapshot(), guardRoute: guardRouteSnapshot(), boundedJumpSearch: structuredClone(boundedJumpSearch), queuedPrediction: inputHistory?.snapshot() ?? null, queuedWireClock: structuredClone(actualWireClock.snapshot()), missionMemory: missionJournal.snapshot(), hut: hut?.snapshot() ?? null, shelter: activeBase()?.snapshot() ?? null, shelterKind: activeBase() === hut ? "hut" : "soil_hill", dayCycleStopTime: host.meta.startGame?.day_cycle_stop_time ?? null, worldClocks: structuredClone(host.shared.worldClocks ?? {}), lastServerMotion: structuredClone(host.shared.lastServerMotion ?? null), lastServerCorrection: structuredClone(host.shared.lastServerCorrection ?? null), worldTime: structuredClone(host.shared.worldTime ?? null), threatPolicy: state.threatPolicy, foraging: foraging?.snapshot() ?? null, food: food.snapshot(), vitals: structuredClone(host.shared.vitals ?? {}), recovery: recovery?.snapshot() ?? null, excavation: excavation?.snapshot() ?? null, quarry: quarrySnapshot(), tunneling: tunneling?.snapshot() ?? null, heldItem: state.heldItem, runtimeVersion: RUNTIME_VERSION, inventory: state.inventory, inventoryDetails: inventoryInspection.snapshot(state), inventoryConfidence: { known: !host.shared.inventoryUncertain, unresolved: host.shared.inventoryUncertain ?? null }, stations: structuredClone(host.shared.stations ?? {}), stationCatalog: structuredClone(host.shared.stationCatalog ?? null), portableWorksite: structuredClone(host.shared.portableWorksiteMemo ?? null), prospecting: observedOres, furnace: furnace.snapshot(), chest: chest.snapshot(), entities: state.entities, hostiles: state.hostiles, input: input?.stats() ?? null, mining: mining.snapshot(), walking: walker?.snapshot() ?? null, movement: movement ? { ...movement.snapshot(), runtimeHandoff: structuredClone(host.shared.movementHandoffTiming ?? null) } : null, crafting: crafting.snapshot(), inventoryActions: inventory.snapshot(), interactions: interactions.snapshot(), combat: combat?.snapshot() ?? null, agent: autonomy.snapshot(), idle: { owner: inputOwner, enabled: idleTimer !== null, error: host.shared.idleError ?? null, lastFailure: structuredClone(host.shared.lastInputFailure ?? null) } }
+    return { ownedCampBootstrap: structuredClone(host.shared.ownedCampBootstrap ?? null), workHold: host.shared.legacyWorkHoldLease ? {leaseId:host.shared.legacyWorkHoldLease.id,scope:host.shared.legacyWorkHoldLease.scope,expiresAt:host.shared.legacyWorkHoldLease.expiresAt} : null, recentDamageRetreat: structuredClone(host.shared.recentDamageRetreatDiagnostic ?? null), survivalWorkClearance: state.survivalWorkClearance === true, spawnRangedClearance: state.spawnRangedClearance === true, depotPrebuild: depotPrebuild?.snapshot() ?? null, depotMission: depotMission?.snapshot() ?? null, surfaceReturn: surfaceReturn?.snapshot() ?? null, inventoryResync: structuredClone(host.shared.inventoryResync?.lastRequest ?? null), movementCalibration: structuredClone(movementCalibration), learningShoreEscape: structuredClone(host.shared.learningShoreEscape ?? null), startupPriority: structuredClone(host.shared.startupPriority ?? null), userBehaviors: userBehaviorSnapshot(), lowHealthWater: host.shared.lowHealthWaterDiagnostic ? { ...structuredClone(host.shared.lowHealthWaterDiagnostic), timing: structuredClone(host.shared.lowHealthWaterTiming ?? null) } : null, clearance: structuredClone(host.shared.clearanceDiagnostic ?? null), safety: safetySnapshot(), guardRoute: guardRouteSnapshot(), boundedJumpSearch: structuredClone(boundedJumpSearch), queuedPrediction: inputHistory?.snapshot() ?? null, queuedWireClock: structuredClone(actualWireClock.snapshot()), missionMemory: missionJournal.snapshot(), hut: hut?.snapshot() ?? null, shelter: activeBase()?.snapshot() ?? null, shelterKind: activeBase() === hut ? "hut" : "soil_hill", dayCycleStopTime: host.meta.startGame?.day_cycle_stop_time ?? null, worldClocks: structuredClone(host.shared.worldClocks ?? {}), lastServerMotion: structuredClone(host.shared.lastServerMotion ?? null), lastServerCorrection: structuredClone(host.shared.lastServerCorrection ?? null), worldTime: structuredClone(host.shared.worldTime ?? null), threatPolicy: state.threatPolicy, foraging: foraging?.snapshot() ?? null, food: food.snapshot(), vitals: structuredClone(host.shared.vitals ?? {}), recovery: recovery?.snapshot() ?? null, excavation: excavation?.snapshot() ?? null, quarry: quarrySnapshot(), tunneling: tunneling?.snapshot() ?? null, heldItem: state.heldItem, runtimeVersion: RUNTIME_VERSION, inventory: state.inventory, inventoryDetails: inventoryInspection.snapshot(state), inventoryStore: inventoryStore.snapshot(), inventoryConfidence: { known: !host.shared.inventoryUncertain, unresolved: host.shared.inventoryUncertain ?? null }, stations: structuredClone(host.shared.stations ?? {}), stationCatalog: structuredClone(host.shared.stationCatalog ?? null), portableWorksite: structuredClone(host.shared.portableWorksiteMemo ?? null), prospecting: observedOres, furnace: furnace.snapshot(), chest: chest.snapshot(), entities: state.entities, hostiles: state.hostiles, input: input?.stats() ?? null, mining: mining.snapshot(), walking: walker?.snapshot() ?? null, movement: movement ? { ...movement.snapshot(), runtimeHandoff: structuredClone(host.shared.movementHandoffTiming ?? null) } : null, crafting: crafting.snapshot(), inventoryActions: inventory.snapshot(), interactions: interactions.snapshot(), combat: combat?.snapshot() ?? null, agent: autonomy.snapshot(), idle: { owner: inputOwner, enabled: idleTimer !== null, error: host.shared.idleError ?? null, lastFailure: structuredClone(host.shared.lastInputFailure ?? null) } }
   }
   const http = createHttpClient({ baseUrl: host.apiUrl })
   function runnerFoodWalkBody (body) {
@@ -5120,6 +5160,7 @@ function createRuntime (host) {
       const life = rawFields(['health', 'dead', 'isDead'])
       if (name === 'death_info' || life.health === 0 || life.dead || life.isDead) host.shared.initialLifeDeathKey = inventoryLifeBaseKey(rawScope())
     }
+    inventoryStore.apply(name, packet, { replaying })
     crafting.applyPacket(name, packet)
     inventoryInspection.applyPacket(name, packet, { replaying })
     furnace.applyPacket(name, packet)
@@ -7188,6 +7229,7 @@ function createRuntime (host) {
     if (position && Number.isFinite(position.x) && Number.isFinite(position.z)) points.push({ x: Math.floor(position.x / 16), z: Math.floor(position.z / 16) })
     host.world.setRetention({ pinned: worldRetentionJob.pinned, points })
   }
+  const inventoryStoreTimer = setInterval(() => { if (disposed || disposing) { clearInterval(inventoryStoreTimer); return } try { inventoryStoreResyncTick() } catch {} }, 1000)
   const worldRetentionTimer = setInterval(() => { if (disposed || disposing) { clearInterval(worldRetentionTimer); return } try { updateWorldRetention() } catch {} }, 5000)
   worldRetentionTimer.unref?.()
 
@@ -7287,11 +7329,7 @@ function createRuntime (host) {
         crafting.applyPacket('inventory_slot', delta)
         host.commitInventory({ window_id: 'inventory', input: Array.from({ length: 36 }, (_, i) => crafting.rawItem(i)), changedSlots: [slot], fullRefresh: false, source: delta.source, requestId })
       },
-      commitEquipment: (kind, slot, item, requestId) => {
-        const delta = { window_id: kind, slot, item, source: 'server_item_stack_response', requestId }
-        if (kind === 'armor') armor.applyPacket('inventory_slot', delta)
-        inventoryInspection.applyPacket('inventory_slot', delta)
-      }
+      commitEquipment: (kind, slot, item, requestId) => { inventoryStore.commit(kind, slot, item, 'server_item_stack_response') }
     })
     return manualChestStorage
   }
@@ -7430,7 +7468,7 @@ function createRuntime (host) {
       clearInterval(idleTimer)
       idleTimer = null
       clearInterval(userBehaviorTimer); userBehaviorTimer = null
-      clearInterval(quarryRestoreTimer); clearInterval(worldRetentionTimer); quarryLoadSequence++
+      clearInterval(quarryRestoreTimer); clearInterval(worldRetentionTimer); clearInterval(inventoryStoreTimer); quarryLoadSequence++
       publishWalker()
       autonomy.stop(reason ?? '行動コードを更新します。')
       const cleanup = stopActions(reason ?? '行動コードを更新します。')
