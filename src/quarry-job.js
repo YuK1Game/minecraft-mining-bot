@@ -458,7 +458,9 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (nearTarget(0)) issues.push('LOADOUT_CHEST_INSIDE_QUARRY')
       else if (nearTarget(2)) warnings.push({ code: 'LOADOUT_CHEST_NEAR_QUARRY_EDGE' })
       if (!loadoutPorts()) issues.push('V22_RUNTIME_UNAVAILABLE')
-      if (!emptyLoadoutInventory(state)) issues.push('LOADOUT_START_INVENTORY_NOT_EMPTY')
+      // Held or not yet received items are handled at the start (fetched again,
+      // or stored in the registered chest first): a warning, not a refusal.
+      if (!emptyLoadoutInventory(state)) warnings.push({ code: 'LOADOUT_START_INVENTORY_NOT_EMPTY' })
       if (pendingLoadout) warnings.push({ code: 'INITIAL_LOADOUT_ON_START' })
     }
     if (!worldIdentity(state)) issues.push('WORLD_IDENTITY_UNKNOWN')
@@ -816,7 +818,8 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       const response = await call(myEpoch, 'loadout_withdraw', signal => {
         if (job.config.initialLoadout === 'v22' && (!active.checkpoint || active.checkpoint.index === 0 && active.checkpoint.intent == null)) {
           if (!configuredLoadoutHome(job.config)) return { status: 'blocked', reason: 'LOADOUT_CHEST_CHANGED', serverConfirmed: false }
-          if (!emptyLoadoutInventory(guard(myEpoch))) return { status: 'blocked', reason: 'LOADOUT_START_INVENTORY_NOT_EMPTY', serverConfirmed: false }
+          // 2026-11-13: unreceived equipment is fetched again and held items go to
+          // the same chest first inside the withdrawal; no early refusal here.
         }
         return adapter.loadoutWithdraw({
         jobId: job.config.jobId, operationId: active.operationId,
