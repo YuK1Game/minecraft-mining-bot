@@ -502,7 +502,10 @@ async function main () {
   process.once('SIGINT', () => stop()); process.once('SIGTERM', () => stop())
   const context = {
     client: connection, world, entities, cache, meta, shared, apiUrl: `http://127.0.0.1:${config.port}`,
-    getState: workingSnapshot, getServerState: rawSnapshot, getServerFields: rawFields, commitInventory, commitSelection, setPrediction, allocate, log, onEmergency: onlineEmergency,
+    getState: workingSnapshot, getServerState: rawSnapshot, getServerFields: rawFields, commitInventory,
+    // The one life counter: every death seen on this connection (src/life-identity.js).
+    getLife: () => { const life = lifecycle?.stats(); return life ? { connectionId: state.connectionId, deathId: life.deathId, dead: life.dead === true } : null },
+    commitSelection, setPrediction, allocate, log, onEmergency: onlineEmergency,
     disconnectOnCompletedQuarry: () => stop(0),
     registerPacketEvents: packetEvents.registerPacketEvents,
     setEquipmentPrediction: slot => { shared.equipment = { slot, requestedAt: new Date().toISOString() } },
