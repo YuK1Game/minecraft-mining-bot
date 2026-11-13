@@ -51,3 +51,12 @@ test('work dirt on demand is opt-in per job (strategy.dirtFromSupplyOnDemand) an
   await job.configureDirtSupply({ dirtFromSupplyOnDemand: false })
   assert.equal(job.document().config.strategy.dirtFromSupplyOnDemand, false)
 })
+
+test('with keepRawMeat false, raw meat and feathers are deposited while bread stays kept (quarry animal clearing)', () => {
+  const bag = [{ slot: 1, name: 'minecraft:bread', count: 58 }, { slot: 2, name: 'minecraft:chicken', count: 2 }, { slot: 3, name: 'minecraft:feather', count: 3 }]
+  const kept = keepPlan(bag, { keepFood: 64 })
+  assert.equal(kept.keep.get(2), 2, 'default: raw chicken counts as food and is kept')
+  const plan = keepPlan(bag, { keepFood: 64, keepRawMeat: false })
+  assert.deepEqual(plan.deposits.map(d => [d.name, d.count]), [['minecraft:chicken', 2], ['minecraft:feather', 3]])
+  assert.equal(plan.keep.get(1), 58)
+})

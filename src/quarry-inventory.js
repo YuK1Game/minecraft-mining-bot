@@ -44,14 +44,17 @@ function selectCarriedStorage (items, { excludedShulkerKeys = [], shulkerOnly = 
 // Material for one more storage chest is kept too: carried chests and a
 // crafting table, plus a few logs/planks (2 logs make a chest, 1 a table).
 // A little coal and a few sticks stay too, to craft torches for the chest area.
-function keepPlan (items, { keepSealBlocks = 32, keepSealMaterial = null, keepFood = 64, keepLogs = 4, keepPlanks = 12, keepCoal = 4, keepSticks = 4, keepExitDirt = 0, sealDirt = true, autoSupplies = false, supplyBoxes = [], toolPolicy = {}, storeInferiorTools = true } = {}) {
+function keepPlan (items, { keepSealBlocks = 32, keepSealMaterial = null, keepFood = 64, keepLogs = 4, keepPlanks = 12, keepCoal = 4, keepSticks = 4, keepExitDirt = 0, sealDirt = true, keepRawMeat = true, autoSupplies = false, supplyBoxes = [], toolPolicy = {}, storeInferiorTools = true } = {}) {
   const keep = new Map() // slot -> count kept
   let seal = 0; let food = 0; let logs = 0; let planks = 0; let coal = 0; let sticks = 0; let exitDirt = 0
   const sorted = [...(items ?? [])].filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot < SLOTS).sort((a, b) => a.slot - b.slot)
   const surplus = surplusToolSlots(sorted, { enabled: autoSupplies === true && storeInferiorTools !== false, supplyBoxes, toolPolicy })
   // Reserve meals by hunger restoration before a low-slot stack fills the
   // food allowance. Other KEEP categories and deposit order stay slot-based.
-  for (const item of sorted.filter(i => isFood(i.name)).sort((a, b) => foodNutrition(b.name) - foodNutrition(a.name) || a.slot - b.slot)) {
+  // keepRawMeat false (quarry animal clearing, 2026-11-13): raw meat from
+  // cleared animals is cargo, not kept food, so it can leave the bag.
+  const RAW_MEAT = /^minecraft:(?:chicken|beef|porkchop|mutton|rabbit)$/
+  for (const item of sorted.filter(i => isFood(i.name) && (keepRawMeat !== false || !RAW_MEAT.test(i.name))).sort((a, b) => foodNutrition(b.name) - foodNutrition(a.name) || a.slot - b.slot)) {
     if (food >= keepFood) break
     const count = Math.min(item.count, keepFood - food)
     food += count; keep.set(item.slot, count)

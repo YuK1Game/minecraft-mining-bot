@@ -191,7 +191,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   const items = s => s?.inventory?.known === true && !s.inventory.uncertain && Array.isArray(s.inventory.items) ? s.inventory.items : null
   // Shulker-only jobs do not build storage chests. Keep explicit material
   // reservations, but do not inherit the old chest-building wood defaults.
-  const inventoryPolicy = () => ({ ...job.config.inventory, ...(shulkerOnly ? { keepLogs: job.config.inventory.keepLogs ?? 0, keepPlanks: job.config.inventory.keepPlanks ?? 0 } : {}), toolPolicy: job.config.tools, ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64 } :
+  const inventoryPolicy = () => ({ ...job.config.inventory, ...(job.config.strategy?.clearAnimals === true ? { keepRawMeat: false } : {}), ...(shulkerOnly ? { keepLogs: job.config.inventory.keepLogs ?? 0, keepPlanks: job.config.inventory.keepPlanks ?? 0 } : {}), toolPolicy: job.config.tools, ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64 } :
     deferredExitSupplies() ? { keepExitDirt: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 0, keepSealBlocks: 64, ...(workDirtOnDemand() ? { sealDirt: job.egressPreparation === true || job.dirtDemand === true, keepSticks: job.config.inventory.keepSticks ?? 0 } : {}) } : {}) })
   // Live 2026-11-12 23:28: 34 of 36 slots were fixed items, leaving 2 for
   // mining. Opt-in (strategy.dirtFromSupplyOnDemand, 2026-11-13): in the v2.2
