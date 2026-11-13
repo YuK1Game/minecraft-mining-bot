@@ -1,4 +1,5 @@
 'use strict'
+const { FAILURE_PROBE } = require('./loadout-command')
 
 // Explicit operator debug reset: clear the Bot, then prepare a double chest.
 // Game play (excavation, storage, combat, return) never calls this controller.
@@ -37,7 +38,7 @@ function summary () {
   }
 }
 function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms => new Promise(r=>setTimeout(r,ms)),
-  observationTimeoutMs = 8000, uuid = randomUUID } = {}) {
+  observationTimeoutMs = 8000, uuid = randomUUID, feedbackToggle = false } = {}) {
   const required=['getState','getView','getBlock','assertIdle','acquire','release','cancelJob','save','load','select','open','close','deposit','container','cancelTransfers']
   if(required.some(k=>typeof adapter?.[k]!=='function')||typeof commands?.send!=='function')throw TypeError('V22 reset requires receipt-backed server ports')
   let preview=null,active=null,task=null,result=null,lastError=null,abort=null,acquisition=null
@@ -317,6 +318,29 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
     if(box?.slots?.[slot]?.name!=='minecraft:bow'||!box.slots[slot].enchantments?.some(x=>x.name==='infinity'&&x.level>=1))throw fail('RESET_BOW_CHEST_UNCONFIRMED')
     await adapter.close()
   }
+  // The reset needs success replies, which sendcommandfeedback=false suppresses
+  // (2026-11-13). It is switched on for the reset only; the success reply of
+  // /testfor @s proves it, and it is switched back off in finally. "Off" is
+  // proven by the failure probe still replying while /testfor @s stays silent.
+  async function enableFeedback() {
+    if(feedbackToggle!==true)return
+    active.feedback={enabledAt:null,restored:false}
+    await mark('コマンド応答を有効化',{feedback:copy(active.feedback)})
+    try{await commands.send('/gamerule sendcommandfeedback true',{signal:abort?.signal})}catch(error){if(error.code!=='RESET_COMMAND_TIMEOUT')throw error}
+    active.feedback.enabledAt=now()
+    await mark('コマンド応答を有効化',{feedback:copy(active.feedback)})
+  }
+  async function restoreFeedback(record) {
+    if(feedbackToggle!==true)return null
+    if(!record?.feedback||record.feedback.restored===true)return null
+    try{await commands.send('/gamerule sendcommandfeedback false')}catch(error){if(!['RESET_COMMAND_TIMEOUT','RESET_COMMAND_REJECTED'].includes(error.code))throw error}
+    let alive=false,silent=false
+    try{await commands.send(FAILURE_PROBE)}catch(error){alive=error.serverRejected===true}
+    try{await commands.send('/testfor @s');silent=false}catch(error){silent=error.code==='RESET_COMMAND_TIMEOUT'}
+    record.feedback={...record.feedback,restored:alive&&silent,checkedAt:now(),failureProbeReplied:alive,successSuppressed:silent}
+    await adapter.save(copy(record))
+    return record.feedback
+  }
   async function execute() {
     try {
       await acquisition
@@ -325,6 +349,8 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
       guard()
       const view=adapter.getView()
       if(fingerprint(view)!==active.fingerprint)throw fail('RESET_PREVIEW_STALE')
+      await enableFeedback()
+      guard()
       await command('/testfor @s','管理者権限を確認')
       guard()
       const expected=copy(active.jobIdentity),cancelled=await adapter.cancelJob({expectedJobIdentity:expected})
@@ -362,8 +388,17 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
     } finally {
       try{await adapter.cancelTransfers(active?.operationId)}catch{}
       try{await adapter.close()}catch{}
+      try{const restored=await restoreFeedback(active);if(restored&&restored.restored!==true&&result)result.feedbackRestore=copy(restored)}catch(error){if(active)active.feedbackRestoreError=String(error.message??error).slice(0,160)}
       adapter.release(active?.operationId)
     }
+  }
+  // After a reconnect: a reset that switched feedback on and never confirmed
+  // switching it off is restored once (no reset is running).
+  async function restoreFeedbackIfPending() {
+    if(task)return null
+    const record=await adapter.load?.()
+    if(!record?.feedback||record.feedback.restored===true)return null
+    return restoreFeedback(record)
   }
   function start ({token,confirm,area}={}) {
     const prepared=preview;preview=null
@@ -398,6 +433,6 @@ function createQuarryV22Reset ({ adapter, commands, now = Date.now, sleep = ms =
   function status () {return {busy:!!task,operationId:active?.operationId??null,phase:active?.phase??'idle',step:active?.step??null,
     steps:active?.steps??0,suppliesCompleted:active?.suppliesCompleted??0,supplyProgress:copy(active?.supplyProgress??null),
     stage:active?.phase==='failed'?copy(active?.home?.stage??null):null,error:lastError,serverConfirmed:!task&&result?.serverConfirmed===true,result:copy(result)}}
-  return {prepare,start,cancel,status,drain:()=>task??Promise.resolve(),applyPacket:(...args)=>commands.applyPacket(...args)}
+  return {prepare,start,cancel,status,restoreFeedbackIfPending,drain:()=>task??Promise.resolve(),applyPacket:(...args)=>commands.applyPacket(...args)}
 }
 module.exports={createQuarryV22Reset,summary}

@@ -158,7 +158,7 @@ function createRuntimeV22ChestReset ({
     cancelTransfers,
     publishHomeSite: site => {host.shared.quarryV22HomeChest = structuredClone(site)}
   }
-  return createQuarryV22Reset({adapter,commands:command})
+  return createQuarryV22Reset({adapter,commands:command,feedbackToggle:true})
 }
 
 module.exports = { createRuntimeLoadoutReset, createRuntimeV22ChestReset, jobPending, receivedEquipmentView }

@@ -7135,6 +7135,15 @@ function createRuntime (host) {
   }
   // resumeRequested is not reached while autonomy is running (as it is right
   // after a restart), so the restore also runs from its own timer.
+  // A reset that switched command feedback on and never confirmed switching it
+  // off (e.g. a disconnect mid-reset) is restored once after spawn (2026-11-13).
+  const feedbackRestoreTimer = setInterval(() => {
+    if (disposed || disposing) { clearInterval(feedbackRestoreTimer); return }
+    if (host.shared.feedbackRestoreChecked || raw().phase !== 'spawned' || !host.shared.loadingScreenEnded) return
+    host.shared.feedbackRestoreChecked = true
+    Promise.resolve().then(() => ensureLoadoutReset().restoreFeedbackIfPending?.()).then(result => { if (result) host.log(`初期セット: コマンド応答の設定を戻しました ${JSON.stringify(result)}`) }).catch(error => host.log(`初期セット: コマンド応答の復元を確認できません: ${String(error.message).slice(0, 160)}`))
+  }, 15000)
+  feedbackRestoreTimer.unref?.()
   const quarryRestoreTimer = setInterval(() => { if (disposed || disposing) { clearInterval(quarryRestoreTimer); return } try { maybeRestoreQuarryJob() } catch {} }, 15000)
   quarryRestoreTimer.unref?.()
   // Keep the quarry's terrain: its chunks and the exit column are never evicted
