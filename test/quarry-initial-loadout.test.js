@@ -16,7 +16,7 @@ loaded._compile(fs.readFileSync(file, 'utf8').split('\ntest(')[0] + '\nmodule.ex
 const { fixture: chestFixture, raw, empty } = loaded.exports
 const copy = value => structuredClone(value)
 const home = { position: { x: 2, y: 63, z: -1 }, other: { x: 3, y: 63, z: -1 }, stand: { x: 1, y: 63, z: -1 }, stage: { x: 0, y: 63, z: -1 }, chunk: { x: 0, z: -1 } }
-function fixture ({ missing = false, blockedSupply = true, rejectTransfer = false, mutateSave = null, seal = false, corruptStock = false, delayedHand = false, neverHand = false, invalidCp = false, cargoDirt = 0, loseDirtBox = false, renumber = false, boxStillPlaced = false, jobOptions = {} } = {}) {
+function fixture ({ missing = false, blockedSupply = true, rejectTransfer = false, mutateSave = null, seal = false, corruptStock = false, delayedHand = false, neverHand = false, invalidCp = false, cargoDirt = 0, loseDirtBox = false, renumber = false, boxStillPlaced = false, reconnectPlaced = false, jobOptions = {} } = {}) {
   const f = chestFixture({ missing }), blocks = new Map(), saved = [], requests = [], events = []
   // The shared routing fixture has decoded contents separately. Its raw
   // identity still needs an actual typed compound for received-prefix checks.
@@ -36,7 +36,7 @@ function fixture ({ missing = false, blockedSupply = true, rejectTransfer = fals
   const actualView = () => { const view = f.view(); return { ...view, slots: view.slots.map(row => ({ ...row, ...(!row.empty ? { stackId: f.bag[row.slot].stack_id } : {}) })),
     ...(!handReceived ? { offhand: { known: false, slots: [{ slot: 0, known: false, empty: false, name: null, count: null }] } } : {}) } }
   if (seal) blocks.set('2,62,1', { known: true, name: 'minecraft:water', boundingBox: 'empty', runtimeId: 100, properties: { liquid_depth: 0 }, extra: [] })
-  let mining = 0, moves = 0, maxMain = 0, seals = 0, controller, holdSeen = null, holdAfter = null
+  let mining = 0, moves = 0, maxMain = 0, seals = 0, controller, holdSeen = null, holdAfter = null, reconnectSeen = null
   const bindings = () => ['pickaxe', 'shovel', 'dirt', 'totem'].map((role, i) => {
     const name = ['blue', 'light_blue', 'brown', 'yellow'][i] + '_shulker_box'
     const item = describe().find(row => row.name === 'minecraft:' + name)
@@ -82,6 +82,17 @@ function fixture ({ missing = false, blockedSupply = true, rejectTransfer = fals
       assert.equal(mining, 0); assert.equal(request.policy.pickupMode, 'passive'); assert.equal(request.policy.depositWhen, 'full')
       assert.equal(request.policy.deferExitSupplies, true)
       if (blockedSupply) return { status: 'blocked', serverConfirmed: false, reason: 'TEST_INITIAL_SUPPLY_BLOCKED' }
+      // Live 2026-11-14 02:50: the connection changed while the dirt box was
+      // placed and open (no unconfirmed action).
+      if (reconnectPlaced && requests.length === 1) {
+        const scope = { profile: f.state.profile, realmId: String(f.state.realm.id), connectionId: f.state.connectionId, startedAt: f.state.startedAt, runtimeEntityId: String(f.state.runtimeEntityId), dimension: f.state.dimension, life: f.state.lifecycle.deathId }
+        blocks.set('5,63,5', { known: true, name: 'minecraft:brown_shulker_box', boundingBox: 'block', runtimeId: 9, properties: {}, extra: [] })
+        await onCheckpoint({ version: 1, jobId: request.jobId, operationId: request.operationId, scope, bindings: copy(request.bindings), policy: copy(request.policy), boxCount: 30, index: 2, withdrawn: [], returned: [],
+          child: { version: 1, kind: 'shulker', stage: 'depositing', opened: true, windowId: 7, intent: null, scope: { ...scope }, placed: [{ name: 'minecraft:brown_shulker_box', position: { x: 5, y: 63, z: 5 }, runtimeId: 9 }], expectedContents: 'x', recoveryBaseline: [], supplyCheckpoint: { scope: { ...scope }, phase: 'completed', intent: null, withdrawn: [] } } })
+        f.state.connectionId = 'reconnected'; f.state.startedAt = '2026-11-14T00:00:00Z'
+        return { status: 'blocked', serverConfirmed: false, reason: 'SUPPLY_SCOPE_CHANGED', checkpoint: null }
+      }
+      if (reconnectPlaced && requests.length === 2) { reconnectSeen = copy(request.checkpoint ?? null); return { status: 'blocked', serverConfirmed: false, reason: 'TEST_STOP' } }
       if (cargoDirt && requests.length === 1) {
         // The mining put dirt (and other blocks) into a carried cargo box.
         const cargo = f.bag[describe().find(row => row.name === 'minecraft:purple_shulker_box').slot]
@@ -136,7 +147,7 @@ function fixture ({ missing = false, blockedSupply = true, rejectTransfer = fals
     while (job.status().state !== 'PAUSED' && job.status().state !== 'FINISHED') { if (Date.now() > until) { await job.pause(); throw Error('bounded initial loadout test timed out') } await turn() }
     const status = job.status(); await job.pause(); return status
   }
-  return { f, job, adapter, config, blocks, saved, requests, events, run, receiveHand: () => { handReceived = true }, get mining () { return mining }, get holdSeen () { return holdSeen }, get holdAfter () { return holdAfter }, get moves () { return moves }, get maxMain () { return maxMain }, get seals () { return seals } }
+  return { f, job, adapter, config, blocks, saved, requests, events, run, receiveHand: () => { handReceived = true }, get mining () { return mining }, get holdSeen () { return holdSeen }, get reconnectSeen () { return reconnectSeen }, get holdAfter () { return holdAfter }, get moves () { return moves }, get maxMain () { return maxMain }, get seals () { return seals } }
 }
 
 test('a passive/full plan defers actual inventory until start without changing its separate target or storage policy', () => {
@@ -399,4 +410,22 @@ test('live case 2026-11-14 02:38: a placed dirt box waiting for pickup room is n
   assert.equal(status.events.some(e => e.type === 'supply_loss_search'), false)
   assert.equal(status.autoRetry?.kind, 'capacity', JSON.stringify(status.autoRetry))
   await f.job.pause()
+})
+
+test('live case 2026-11-14 02:50: a placed-box supply operation continues on the new connection and reopens the box', async () => {
+  const f = fixture({ blockedSupply: false, reconnectPlaced: true }); assert.equal(f.job.plan(f.config).ready, true)
+  f.job.start()
+  const until = Date.now() + 4000
+  while (!f.reconnectSeen && Date.now() < until) {
+    const st = f.job.status()
+    if (st.state === 'PAUSED' && st.pauseDetails?.reason === 'SUPPLY_SCOPE_CHANGED' && !st.draining) f.job.resume()
+    await new Promise(resolve => setTimeout(resolve, 5))
+  }
+  await f.job.pause()
+  const cp = f.reconnectSeen
+  assert.ok(cp, 'the operation was handed to the supply worker again')
+  assert.equal(cp.scope.connectionId, 'reconnected'); assert.equal(cp.child.scope.connectionId, 'reconnected'); assert.equal(cp.child.supplyCheckpoint.scope.connectionId, 'reconnected')
+  assert.equal(cp.child.stage, 'placed'); assert.equal(cp.child.opened, false); assert.equal(cp.child.windowId, null)
+  assert.equal(cp.child.expectedContents, undefined); assert.equal(cp.child.recoveryBaseline, undefined)
+  assert.ok(f.job.status().events.some(e => e.type === 'box_operation_rescoped'))
 })

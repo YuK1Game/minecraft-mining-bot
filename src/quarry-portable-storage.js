@@ -467,7 +467,12 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       return { id: canonicalWindowId(open.id), position: copy(position), scope: copy(window.scope), type: descriptor.windowTypeId, epoch: window.epoch }
     }
     const appendRecoverySpace = async () => {
-      if (request.allowRecoverySpace !== true || request.purpose != null || cp.kind !== 'shulker' || cp.purpose != null || cp.full || cp.intent != null || !cp.plan.every(entry => entry.transferred === entry.count)) return false
+      // 2026-11-14 (supplies:18): a supply operation on a cargo-coloured box (the
+      // dirt source chosen from the cargo boxes) may also put loose mined items
+      // into its empty slots so the box can be picked up again. Supply colours
+      // never take cargo.
+      const recoveryPurpose = request.purpose == null && cp.purpose == null || request.purpose === 'supply' && cp.purpose === 'supply' && cp.placed?.length === 1 && !require('./loadout-manifest').SUPPLY_NAMES.includes(cp.placed[0].name)
+      if (request.allowRecoverySpace !== true || !recoveryPurpose || cp.kind !== 'shulker' || cp.full || cp.intent != null || !cp.plan.every(entry => entry.transferred === entry.count)) return false
       const current = guard()
       if (freeSlots(current.items) >= 2) return false
       const count = cp.recoverySpaceExtensions === undefined ? 0 : cp.recoverySpaceExtensions
@@ -853,7 +858,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
           if (noBatch) cp.full = true
           cp.capacityResult = copy(worked); cp.windowId = chest.snapshot().window?.id; await save()
         }
-        if (!cp.plan.length && cp.relief === true) await appendRecoverySpace()
+        if (!cp.plan.length && (cp.relief === true || supplyWork && freeSlots(guard().items) < 2)) await appendRecoverySpace()
         for (let index = 0; index < cp.plan.length && !cp.full; index++) {
           const entry = cp.plan[index]
           while (entry.transferred < entry.count) {
@@ -910,6 +915,18 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
           }
           if (index === cp.plan.length - 1) await appendRecoverySpace()
         }
+        }
+        // A completed supply transfer whose box then took confirmed recovery-space
+        // deposits (loose items, to make room for the pickup): its recorded final
+        // contents are moved forward only when the received contents are exactly
+        // those plus the confirmed deposits, by item totals (live 2026-11-14 03:41
+        // SUPPLY_COMPLETED_CONTENTS_CHANGED).
+        if (supplyWork && cp.supplyCheckpoint?.phase === 'completed' && cp.supplyCheckpoint.completedContents && cp.plan.some(e => e.recoverySpace === true) && cp.plan.every(e => e.transferred === e.count)) {
+          const before = unpack(cp.supplyCheckpoint.completedContents), now = readContainerContents(Array.from({ length: 27 }, (_, slot) => chest.rawItem(slot)), { resolveName: id => crafting.itemNameOf?.(id) })
+          const sum = (contents, extra = []) => { const m = new Map(); for (const r of contents?.slots ?? []) if (r) m.set(r.name, (m.get(r.name) ?? 0) + r.count); for (const e of extra) m.set(e.name, (m.get(e.name) ?? 0) + e.transferred); return JSON.stringify([...m].sort()) }
+          if (before?.known === true && now.known === true && sum(before, cp.plan.filter(e => e.recoverySpace === true)) === sum(now) && !isDeepStrictEqual(before, now)) {
+            cp.supplyCheckpoint.completedContents = pack(now); cp.supplyCheckpoint.recoverySpaceAdjusted = true; await save()
+          }
         }
         if (supplyWork) {
           let supplied, workError = null

@@ -2398,6 +2398,13 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     if (!job.supplyRestock) { job.supplySequence = (job.supplySequence ?? 0) + 1; job.supplyRestock = { operationId: `${job.config.jobId}:supplies:${job.supplySequence}`, checkpoint: null, resumeTo } }
     const owner = job, active = job.supplyRestock
     await rescopeBoxAfterReconnect(active?.checkpoint?.child, active?.checkpoint, 'supply', active?.operationId)
+    // A box whose window was closed under the operation is opened again by the
+    // ordinary operation instead of stopping STORAGE_WINDOW_CHANGED again.
+    { const ch = active?.checkpoint?.child
+      if (job.lastSupplyResult?.operationId === active?.operationId && job.lastSupplyResult?.reason === 'STORAGE_WINDOW_CHANGED' && ch?.kind === 'shulker' && ch.stage === 'depositing' && ch.opened === true && ch.intent == null && !ch.supplyCheckpoint?.intent) {
+        ch.stage = 'placed'; ch.opened = false; ch.windowId = null; job.lastSupplyResult = { ...job.lastSupplyResult, reason: 'STORAGE_WINDOW_REOPEN' }
+        note('supply_box_reopen', { operationId: active.operationId }); await save('supply_box_reopen')
+      } }
     await refreshSupplyBindingKeys(active)
     if (!(await approachSupplySite(myEpoch, active))) return true
     guard(myEpoch)
@@ -3331,6 +3338,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // A supply box left open by the blocked restock is closed first: the
     // normal inventory refuses a hotbar move while a container is open.
     adapter.closeContainer?.()
+    // The closed box is opened again by the ordinary operation (live 2026-11-14
+    // 03:36: the retry found the old window and stopped STORAGE_WINDOW_CHANGED).
+    const openChild = active.checkpoint?.child
+    if (openChild?.kind === 'shulker' && openChild.opened === true && openChild.intent == null && openChild.stage === 'depositing') { openChild.stage = 'placed'; openChild.opened = false; openChild.windowId = null; await save('supply_room_closed_box') }
     if (slot > 8) {
       await call(myEpoch, 'equip_seal', signal => adapter.equip(slot, { signal }))
       inventory = items(guard(myEpoch))
