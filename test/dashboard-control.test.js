@@ -98,6 +98,7 @@ test('dashboard-control: input bounds, optional heights, four inclusive chunks a
   const s = state()
   const c = quarryConfig({ x1: -1, z1: -1, x2: 0, z2: 0, bottom: -60 }, s)
   assert.equal(c.inventory.depositWhen, 'full'); assert.equal(c.inventory.storage.length, 0)
+  assert.equal(c.allowCaves, true, "dashboard plans warn about caves instead of refusing them")
   assert.throws(() => quarryConfig({ x1: 0, z1: 0, chest: { x: -3, y: 64, z: 3 } }, s), { code: 'SHULKER_ONLY_STORAGE' })
   assert.equal(c.quarryCombat.enabled, true); assert.equal(c.yTop, 'auto')
   for (const extra of [{ x2: 4 }, { x1: 0.2 }, { z1: '0' }, { x1: 1875000 }, { bottom: -65 }, { top: 1, bottom: 2 }, { permissions: {} }, { pickupMode: 'none' }, { chest: { x: 1, y: 2, z: 3, command: 'fill' } }]) {

@@ -29,7 +29,10 @@ function quarryConfig (input, state) {
   if (!['active', 'passive'].includes(mode)) throw error('INVALID_INPUT', '回収方針が不正です。', 400)
   const storage = []
   return { target: { rect: { x1, z1, x2, z2 } }, dimension: 'overworld', yTop, yBottom,
-    inventory: { pickupMode: mode, depositWhen: mode === 'passive' ? 'full' : 'capacity', storage }, quarryCombat: { enabled: true } }
+    inventory: { pickupMode: mode, depositWhen: mode === 'passive' ? 'full' : 'capacity', storage }, quarryCombat: { enabled: true },
+    // Caves are crossed by the running job (chunk 126,126 finished through lush
+    // caves on 2026-11-13); a large cave is a plan warning, not a refusal.
+    allowCaves: true }
 }
 function scope (state) {
   if (!state?.connectionId || !state.profile || state.realm?.id == null || !state.dimension) return null
