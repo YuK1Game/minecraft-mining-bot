@@ -186,6 +186,10 @@ test('mining and final storage complete before egress, and surface return is rec
     assert.equal(job.status().state, 'FINISHED', JSON.stringify(job.status().pauseDetails))
     assert.equal(called, true)
     assert.equal(job.status().egress.surfaceReturned, true)
+    // The exit action keeps a summary only; the full checkpoint lives in job.egress.
+    const action = job.document().actions.findLast(a => a.type === 'egress')
+    assert.equal(action.result.checkpoint.summary, true)
+    assert.equal(job.document().egress.checkpoint.stage, 'completed')
   } finally { await job.pause() }
 })
 

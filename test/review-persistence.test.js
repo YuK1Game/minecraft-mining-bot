@@ -62,3 +62,16 @@ test('review: Windows rename retries are bounded and unsupported directory fsync
   assert.equal(receipt.directorySynced, false)
   assert.deepEqual(JSON.parse(await fs.readFile(filename, 'utf8')), { ok: true })
 })
+test('review: repeated checkpoints of the same job do not re-read the saved document', async t => {
+  const directory = await temporary(t), reads = []
+  const io = { ...fs, open: async (file, flags, ...rest) => { if (flags === 'r' && file.endsWith('.json')) reads.push(file); return fs.open(file, flags, ...rest) } }
+  const store = createQuarryStore({ directory, io })
+  const doc = { ...document('cache-id'), instanceId: 'instance-cache' }
+  await store.save('cache-id', doc)
+  const first = reads.length
+  for (let i = 0; i < 3; i++) await store.save('cache-id', { ...doc, generation: i })
+  assert.equal(reads.length, first)
+  assert.equal((await store.load('cache-id')).generation, 2)
+  // A different instance under the same id is still checked against the disk.
+  await assert.rejects(store.save('cache-id', { ...doc, instanceId: 'other' }), { code: 'JOB_ID_COLLISION' })
+})
