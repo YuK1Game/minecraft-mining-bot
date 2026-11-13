@@ -51,13 +51,36 @@ function portOccupied (port) {
     socket.setTimeout(800, () => done(true)) // Unknown is occupied, never a reason to start twice.
   })
 }
-function createDashboardManager ({ workspaceRoot, apiPort, defaultProfile = 'main', spawnBot = fork, requestBot = requestControl, occupied = portOccupied, now = Date.now, stopGraceMs = 12000 } = {}) {
+function createDashboardManager ({ workspaceRoot, apiPort, defaultProfile = 'main', spawnBot = fork, requestBot = requestControl, occupied = portOccupied, now = Date.now, stopGraceMs = 12000, setTimer = setTimeout, clearTimer = clearTimeout, reconnectBaseMs = 2000, reconnectMaxMs = 60000, reconnectWindowMs = 600000, reconnectLimit = 5 } = {}) {
   profileName(defaultProfile)
   if (!Number.isSafeInteger(apiPort) || apiPort < 1 || apiPort > 65535 || apiPort === 3001) throw new Error('Bot APIポートを管理画面と異なる1〜65535で指定してください。')
   let child = null, childId = null, profile = defaultProfile, phase = 'offline', auth = null, realms = [], message = null
   let launching = false, closing = null, stopped = false, observing = null
+  // Automatic reconnect (2026-11-13), like keep-alive: only after an unexpected
+  // exit (nonzero) of a bot that was connecting or connected to a world, with
+  // exponential backoff and at most reconnectLimit restarts in reconnectWindowMs.
+  // A disconnect or stop from the dashboard, or a clean exit, never reconnects.
+  let lastRealm = null, reconnectTimer = null, reconnectAt = null, reconnectTimes = [], reconnectStreak = 0, autoConnect = null, restoreNext = false, joinedAt = null
+  const reconnectState = () => lastRealm && (reconnectTimer || autoConnect) ? { pending: true, attempt: reconnectTimes.length, max: reconnectLimit, nextAt: reconnectAt } : null
+  function cancelReconnect (forget = false) { clearTimer(reconnectTimer); reconnectTimer = null; reconnectAt = null; autoConnect = null; restoreNext = false; if (forget) { lastRealm = null; reconnectStreak = 0 } }
+  function scheduleReconnect (code) {
+    const at = now()
+    reconnectTimes = reconnectTimes.filter(t => at - t < reconnectWindowMs)
+    if (joinedAt != null && at - joinedAt >= reconnectWindowMs) reconnectStreak = 0
+    if (reconnectTimes.length >= reconnectLimit) { message = '短時間の再接続が上限に達したため、自動再接続を止めました。'; cancelReconnect(true); return }
+    reconnectStreak++
+    const delay = Math.min(reconnectMaxMs, reconnectBaseMs * (2 ** Math.min(30, reconnectStreak - 1)))
+    reconnectAt = at + delay; phase = 'reconnecting'; message = `サーバーから切断されました（終了コード ${code}）。${Math.round(delay / 1000)}秒後に再接続します。`
+    reconnectTimer = setTimer(() => {
+      reconnectTimer = null; reconnectAt = null
+      if (stopped || child || closing || !lastRealm) return
+      reconnectTimes.push(now()); autoConnect = lastRealm; restoreNext = true
+      list({ profile }).catch(error => { autoConnect = null; restoreNext = false; message = `自動再接続に失敗しました: ${String(error.message).slice(0, 160)}`; scheduleReconnect(1) })
+    }, delay)
+    reconnectTimer?.unref?.()
+  }
   const publicState = live => ({ processId: childId, managed: !!child, phase: live?.phase || phase, profile, auth: auth && auth.expiresAt > now() ? auth : null, realms,
-    message, live: live ?? null, canLaunch: !child && !launching && !live })
+    message, live: live ?? null, canLaunch: !child && !launching && !live, reconnect: reconnectState() })
   function snapshot () {
     if (observing) return observing
     const task = requestBot({ apiPort }).then(live => {
@@ -76,6 +99,9 @@ function createDashboardManager ({ workspaceRoot, apiPort, defaultProfile = 'mai
     inputKeys(input, ['profile'])
     const selected = profileName(input.profile ?? defaultProfile)
     if (stopped || launching || closing) throw failure('CONTROL_BUSY', '起動・停止処理中です。')
+    // A manual launch takes over from a pending automatic reconnect.
+    const automatic = autoConnect != null && restoreNext
+    if (!automatic) cancelReconnect()
     if (child) {
       if (selected !== profile) throw failure('PROFILE_BUSY', 'プロフィールを変更する前にBotを切断してください。')
       if (phase === 'selecting_realm') { send({ type: 'refresh' }); return publicState() }
@@ -88,18 +114,31 @@ function createDashboardManager ({ workspaceRoot, apiPort, defaultProfile = 'mai
       if (stopped) throw failure('CLOSED', '管理画面サーバーは終了しています。')
       profile = selected; phase = 'starting'; auth = null; realms = []; message = null; childId = randomUUID()
       const spawned = spawnBot(path.join(workspaceRoot, 'src/main.js'), ['--dashboard'], { cwd: workspaceRoot, execPath: process.execPath, execArgv: ['--env-file-if-exists=.env'],
-        env: { ...process.env, BOT_PROFILE: selected, REALM_ID: '', API_PORT: String(apiPort) }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'], windowsHide: true })
+        env: { ...process.env, BOT_PROFILE: selected, REALM_ID: '', API_PORT: String(apiPort), DASHBOARD_RESTORE_QUARRY: automatic ? '1' : '' }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'], windowsHide: true })
+      restoreNext = false
       child = spawned
       spawned.on('message', value => {
         if (child !== spawned || value?.channel !== CHANNEL || closing) return
         if (value.type === 'auth' && value.auth && /^[A-Za-z0-9 -]{4,32}$/.test(value.auth.code) && Number.isFinite(value.auth.expiresAt)) {
           phase = 'authenticating'; auth = { code: value.auth.code, url: 'https://www.microsoft.com/link', expiresAt: Math.min(value.auth.expiresAt, now() + 900000) }
-        } else if (value.type === 'realms') { phase = 'selecting_realm'; realms = publicRealms(value.realms); auth = null; message = realms.length ? null : '参加可能なRealmがありません。招待とアカウントを確認してください。' }
-        else if (value.type === 'connecting') { phase = 'connecting'; auth = null; realms = [] }
+        } else if (value.type === 'realms') {
+          phase = 'selecting_realm'; realms = publicRealms(value.realms); auth = null; message = realms.length ? null : '参加可能なRealmがありません。招待とアカウントを確認してください。'
+          // The automatic reconnect joins the same world again, only if it is still listed.
+          if (autoConnect) {
+            const target = autoConnect; autoConnect = null
+            if (realms.some(r => r.id === target && r.available)) { try { send({ type: 'connect', realmId: target }); phase = 'connecting'; message = null; joinedAt = now() } catch {} } else { message = '再接続先のワールドが一覧にありません。手動で接続してください。'; lastRealm = null }
+          }
+        } else if (value.type === 'connecting') { phase = 'connecting'; auth = null; realms = [] }
         else if (value.type === 'error') message = String(value.message ?? 'Botの操作に失敗しました。').slice(0, 300)
       })
       spawned.once('error', () => { if (child === spawned) message = 'Botを起動できませんでした。Node.jsと依存パッケージを確認してください。' })
-      spawned.once('close', code => { if (child !== spawned) return; child = null; childId = null; phase = 'offline'; auth = null; realms = []; if (code && !closing) message ??= 'Botが終了しました。ターミナルのエラーを確認してください。' })
+      spawned.once('close', code => {
+        if (child !== spawned) return
+        child = null; childId = null; phase = 'offline'; auth = null; realms = []
+        if (code && !closing && !stopped && lastRealm) { autoConnect = null; scheduleReconnect(code); return }
+        if (code && !closing) message ??= 'Botが終了しました。ターミナルのエラーを確認してください。'
+        if (!code) { lastRealm = null; reconnectStreak = 0 }
+      })
       return publicState()
     } catch (err) { if (!child) { childId = null; phase = 'offline' } throw err } finally { launching = false }
   }
@@ -108,9 +147,11 @@ function createDashboardManager ({ workspaceRoot, apiPort, defaultProfile = 'mai
     if (!child || input.processId !== childId || phase !== 'selecting_realm' || closing) throw failure('STALE_PROCESS', 'ワールド一覧を再取得してください。')
     if (!realmId(input.realmId) || !realms.some(r => r.id === input.realmId && r.available)) throw failure('INVALID_REALM', '参加可能なワールドを選択してください。', 400)
     send({ type: 'connect', realmId: input.realmId }); phase = 'connecting'; message = null
+    lastRealm = input.realmId; joinedAt = now()
     return publicState()
   }
   function stopChild () {
+    cancelReconnect(true)
     if (closing) return closing
     if (!child) return Promise.resolve({ disconnected: true })
     const owner = child
@@ -136,6 +177,7 @@ function createDashboardManager ({ workspaceRoot, apiPort, defaultProfile = 'mai
         if (input.processId !== childId) throw failure('STALE_PROCESS', '起動中のBotが変わりました。状態を更新してください。')
         return stopChild()
       }
+      if (reconnectTimer || autoConnect) { cancelReconnect(true); message = '自動再接続を取り消しました。'; return publicState() }
       return requestBot({ apiPort, payload: { command: 'disconnect', session: input.session, jobId: input.jobId }, timeoutMs: 30000 })
     }
     if (route === 'loadout') {

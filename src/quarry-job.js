@@ -96,6 +96,8 @@ const { selectAnimalTarget } = require('./quarry-animal-clear')
 // Automatic current-state reconciliation of an unconfirmed cargo placement
 // (2026-11-13): after the inventory resync rate limit, at most twice per job run.
 const AUTO_RECONCILE_WAIT_MS = 65000, AUTO_RECONCILES = 2
+// Bounded waits before SLOW_BREAK_PERSISTS (2026-11-13).
+const SLOW_BREAK_WAITS = 3
 const WORK_DIRT_DEMAND = 32 // dirt taken from the supply box when a seal needs it
 // Carried storage refused before any placement, deposit or move (live 2026-11-12).
 const STORAGE_SITE_RETRY_REASONS = new Set([...SUPPLY_SITE_REASONS, 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'])
@@ -144,7 +146,7 @@ function defaults (config = {}) {
   }
 }
 
-function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, bridge = null, pollMs = 50, cargoLossSearchMs = 60000, cargoLossStepMs = 5000, autoResumeMs = 30000, capacityRetryMs = 75000, stopTimeoutMs = 5000, storageMode = 'legacy' } = {}) {
+function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, bridge = null, pollMs = 50, slowBreakWaitMs = 30000, cargoLossSearchMs = 60000, cargoLossStepMs = 5000, autoResumeMs = 30000, capacityRetryMs = 75000, stopTimeoutMs = 5000, storageMode = 'legacy' } = {}) {
   // The production Runtime pins this to shulker. Legacy primitives remain for
   // read/recovery tests, never as a browser/CLI-selectable policy.
   const shulkerOnly = storageMode === 'shulker'
@@ -1564,6 +1566,21 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
       if (k) job.slowCells.push(k)
       job.slowBreaks = job.slowCells.length || (job.slowBreaks ?? 0) + 1
       note('slow_break', { message: failure.message, held: adapter.getState()?.heldItem?.name ?? null, selectedSlot: adapter.getState()?.selectedSlot ?? null, count: job.slowBreaks })
+      // Live 2026-11-13 16:03: three slow breaks (2.12 s of a 2.1 s limit) were
+      // the start of server lag that ended in a disconnect. Lag passes: resync,
+      // wait (30 s, 60 s, 90 s) and try again; stop only when it persists.
+      if (job.slowBreaks >= 3 && (job.slowBreakWaits ?? 0) < SLOW_BREAK_WAITS) {
+        job.slowBreakWaits = (job.slowBreakWaits ?? 0) + 1
+        const waitMs = slowBreakWaitMs * job.slowBreakWaits
+        note('slow_break_wait', { attempt: job.slowBreakWaits, max: SLOW_BREAK_WAITS, waitMs, cells: copy(job.slowCells) })
+        job.slowCells = []; job.slowBreaks = 0
+        await save('slow_break_wait')
+        const until = now() + waitMs
+        while (now() < until) { await sleep(Math.min(500, waitMs)); guard(myEpoch) }
+        try { await call(myEpoch, 'resync', signal => adapter.resyncInventory?.({ signal })) } catch (error) { if (error instanceof QuarryInterrupt) throw error; note('resync_failed', { error: String(error.message ?? error).slice(0, 200) }) }
+        lastInventory = totals(items(adapter.getState()) ?? [])
+        return
+      }
       if (job.slowBreaks >= 3) return finish('PAUSED', 'SLOW_BREAK_PERSISTS', { pauseDetails: { lastError: rec.error, held: adapter.getState()?.heldItem?.name ?? null, cells: copy(job.slowCells) } })
       try { await call(myEpoch, 'resync', signal => adapter.resyncInventory?.({ signal })) } catch (error) { if (error instanceof QuarryInterrupt) throw error; note('resync_failed', { error: String(error.message ?? error).slice(0, 200) }) }
       lastInventory = totals(items(adapter.getState()) ?? [])
@@ -1572,7 +1589,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     // Confirmed progress also renews the terrain request budget: received
     // subchunks far above are dropped as the bot digs down, so the exit column
     // may need a fresh request later (live 2026-11-10 11:35: budget spent at start).
-    if (confirmed) { job.slowBreaks = 0; job.slowCells = []; job.routeSkips = 0; job.autoResumes = 0; job.capacityRetries = 0; job.autoReconciles = 0; if (job.terrainObservation?.phase === 'exhausted') { job.terrainObservation.requests = 0; job.terrainObservation.phase = 'idle' } }
+    if (confirmed) { job.slowBreaks = 0; job.slowCells = []; job.slowBreakWaits = 0; job.routeSkips = 0; job.autoResumes = 0; job.capacityRetries = 0; job.autoReconciles = 0; if (job.terrainObservation?.phase === 'exhausted') { job.terrainObservation.requests = 0; job.terrainObservation.phase = 'idle' } }
     if (failure && !confirmed) {
       rec.status = 'failed'; rec.error = String(failure.message ?? failure)
       // A preview refused for the stance (pose not settled, face not visible
