@@ -416,6 +416,11 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
   async function depositAll (request,{onCheckpoint,signal}={}) {
     if(busy)throw fail('LOADOUT_BUSY')
     busy=true
+    // Optional keep (2026-11-13): bag items whose names match stay with the bot
+    // and the worn equipment stays on; without it everything is stored as before.
+    const keepNames=Array.isArray(request?.keep?.names)?request.keep.names.filter(n=>typeof n==='string'&&n.length<=1000).map(n=>new RegExp(n)):[]
+    const keepEquipment=request?.keep?.equipment===true
+    const kept=x=>keepNames.some(re=>re.test(String(x?.name??'').replace(/^minecraft:/,'')))
     let cp=request?.checkpoint?copy(request.checkpoint):null
     try {
       signal?.throwIfAborted()
@@ -501,7 +506,7 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
         const view=verify().view
         chestSlots(view,request.position)
         const items=mainItems(view)
-        const first=items.find(x=>known(x))
+        const first=items.find(x=>known(x)&&!kept(x))
         if(first) {
           const spot=chestSlots(current().view,request.position).findIndex(x=>x.empty)
           if(spot<0)throw fail('FINAL_CHEST_FULL')
@@ -521,7 +526,7 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
         const refreshed=verify().view
         const armor=refreshed.armor?.slots?.find(x=>known(x))
         const hand=refreshed.offhand?.slots?.[0]
-        const equip=armor?{kind:'armor',slot:armor.slot,name:armor.name}:known(hand)?{kind:'offhand',slot:0,name:hand.name}:null
+        const equip=keepEquipment?null:armor?{kind:'armor',slot:armor.slot,name:armor.name}:known(hand)?{kind:'offhand',slot:0,name:hand.name}:null
         if(equip) {
           const emptySlot=mainItems(refreshed).find(x=>x.empty)
           if(!emptySlot)throw fail('FINAL_EQUIPMENT_TARGET_FULL')
@@ -544,6 +549,12 @@ function createQuarryV22ChestWork ({ getState, getView, getRawMain, getRawChest,
           cp.equipmentIntent=null;await saveCheckpoint(cp,onCheckpoint)
           await inStation(request);verify()
           continue
+        }
+        if(keepEquipment||keepNames.length){
+          // Only the kept items remain: every other bag slot is received empty.
+          if(!mainItems(refreshed).every(x=>x.empty||known(x)&&kept(x)))throw fail('FINAL_INVENTORY_UNCONFIRMED')
+          cp.phase='completed';await saveCheckpoint(cp,onCheckpoint)
+          return {status:'completed',serverConfirmed:true,checkpoint:copy(cp)}
         }
         if(!equipmentEmpty(refreshed)||!mainItems(refreshed).every(x=>x.empty))throw fail('FINAL_INVENTORY_UNCONFIRMED')
         await observeEquipment(cp,{signal,connection,reason:'FINAL_INVENTORY_UNCONFIRMED',ready:view=>{

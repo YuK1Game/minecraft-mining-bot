@@ -5416,6 +5416,26 @@ function createRuntime (host) {
       configureDirtSupply: options => ensureQuarryJob().configureDirtSupply(options ?? {}),
       configureAnimalClearing: options => ensureQuarryJob().configureAnimalClearing(options ?? {}),
       acceptCarriedStorageLoss: options => ensureQuarryJob().acceptCarriedStorageLoss(options ?? {}),
+      // Manual selective storage into a large chest within reach (2026-11-13 user
+      // request): cargo boxes and loose items go in; supply boxes, tools, worn
+      // armour, the totem and food stay. Only while no quarry job is running.
+      storeToChest: async (options = {}) => {
+        const doc = quarryJob?.document?.()
+        if (doc && !['FINISHED', 'PAUSED', 'IDLE', 'CANCELLED'].includes(doc.state)) throw new Error('露天掘りの実行中は収納できません。')
+        const p = options?.position
+        if (!p || !['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]))) throw new Error('storeToChest accepts { position: {x,y,z} } of a large chest')
+        const operationId = 'manual-store:' + new Date().toISOString().replace(/[:.]/g, '-')
+        const file = require('node:path').join(process.cwd(), '.local', 'manual-chest-deposit', operationId.replace(':', '-') + '.json')
+        require('node:fs').mkdirSync(require('node:path').dirname(file), { recursive: true })
+        const save = cp => require('node:fs').writeFileSync(file, JSON.stringify(cp, null, 1))
+        const { FINAL_CHEST_KEEP } = require('./quarry-job')
+        ensureQuarryJob()
+        if (!quarrySurfaceChestRunner) throw new Error('収納の準備ができていません。')
+        const result = await quarrySurfaceChestRunner('depositAll', { jobId: doc?.config?.jobId ?? 'manual', operationId, position: { x: p.x, y: p.y, z: p.z }, checkpoint: null, keep: FINAL_CHEST_KEEP }, { onCheckpoint: async cp => save(cp) })
+        save({ ...(result.checkpoint ?? {}), result: { status: result.status, reason: result.reason ?? null, serverConfirmed: result.serverConfirmed } })
+        host.log(`手動収納（選択）: ${result.status} ${result.reason ?? ''} 記録 ${file}`)
+        return { status: result.status, reason: result.reason ?? null, serverConfirmed: result.serverConfirmed, stored: (result.checkpoint?.receipts ?? []).filter(r => /deposit/.test(r.kind)).reduce((n, r) => n + (r.count ?? 0), 0), stacks: (result.checkpoint?.receipts ?? []).length, record: file }
+      },
       configureCargoLossAcceptance: options => ensureQuarryJob().configureCargoLossAcceptance(options ?? {}),
       configureSpareArmor: options => ensureQuarryJob().configureSpareArmor(options ?? {}),
       requestTerrain: () => { const doc = ensureQuarryJob().document(); if (!doc) throw new Error('No quarry job'); return requestQuarryTerrain({ config: doc.config, yTop: doc.yTop, yBottom: doc.config.yBottom }) },
@@ -5766,6 +5786,10 @@ function createRuntime (host) {
         })
       },
       previewPlace: data => interactions.previewPlace(data),
+      // Manual normal placement against a side face (2026-11-13: a bridge to the
+      // registered chest over the finished pit). Same checks as the quarry's seals.
+      previewPlaceAgainst: data => interactions.previewQuarryPlace(data),
+      placeAgainst: data => { requireIdle(); crafting.closeContainer(); const plan = interactions.previewQuarryPlace(data); if (!plan.ready) throw new Error((plan.errors ?? []).join(' / ') || 'placement refused'); return interactions.placeQuarryBlock(data) },
       openCraftingTable: (...args) => { requireIdle(); crafting.closeContainer(); return interactions.openCraftingTable(...args) },
       openFurnace: (...args) => { requireIdle(); crafting.closeContainer(); return interactions.openFurnace(...args) },
       openChest: (position, slot) => { requireIdle(); crafting.closeContainer(); return chest.open(position, slot) },
@@ -6662,6 +6686,8 @@ function createRuntime (host) {
     } finally { try { crafting.closeContainer() } catch {} }
     return { ok: false, reason: 'NO_PLACEABLE_CELL', tried: tried.slice(0, 6), crafted }
   }
+  // Set by ensureQuarryJob: the guarded surface chest runner (manual storage).
+  let quarrySurfaceChestRunner = null
   function ensureQuarryJob () {
     if (quarryJob) return quarryJob
     if (disposed || disposing) throw new Error('行動コードを更新しています。少し待ってからやり直してください。')
@@ -6697,6 +6723,7 @@ function createRuntime (host) {
       owner?.signal?.throwIfAborted()
       if (owner && (disposed || disposing || owner.scope !== portableCancellationScope() || owner.revision !== quarryCancellationRevision)) throw Object.assign(new Error('SURFACE_STORAGE_INTERRUPTED'), { code: 'SURFACE_STORAGE_INTERRUPTED' })
     }
+    quarrySurfaceChestRunner = (method, request, options) => runSurfaceChest(method, request, options)
     async function runSurfaceChest (method, request, options = {}) {
       options.signal?.throwIfAborted()
       if (host.shared.quarrySurfaceStorageOwner) throw Object.assign(new Error('SURFACE_STORAGE_BUSY'), { code: 'SURFACE_STORAGE_BUSY' })
