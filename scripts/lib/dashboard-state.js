@@ -160,6 +160,9 @@ function quarryState (input) {
     persistence: input.persistence ? { status: ['saved', 'failed'].includes(input.persistence.status) ? input.persistence.status : 'unknown', savedAt: timestamp(input.persistence.savedAt), error: text(input.persistence.error, 300), fileSynced: input.persistence.fileSynced === true, directorySynced: input.persistence.directorySynced === true } : null,
     userRunIntent: ['running', 'paused', 'stopped', 'cancelled', 'finished'].includes(input.userRunIntent) ? input.userRunIntent : null,
     result, pauseReason: text(input.pauseReason, 240), error: text(input.error, 240),
+    acceptedExceptions: input.acceptedExceptions && typeof input.acceptedExceptions === 'object' ? { at: timestamp(input.acceptedExceptions.at), by: ['user', 'auto'].includes(input.acceptedExceptions.by) ? input.acceptedExceptions.by : null, count: integer(input.acceptedExceptions.count, 0, 1000000), byReason: Object.fromEntries(Object.entries(input.acceptedExceptions.byReason ?? {}).slice(0, 40).map(([k, v]) => [text(k, 60), integer(v, 0, 1000000)])), items: (Array.isArray(input.acceptedExceptions.items) ? input.acceptedExceptions.items : []).slice(0, 200).map(i => ({ position: text(i?.position, 40), reason: text(i?.reason, 60), name: text(i?.name, 80) })) } : null,
+    lostCargoBoxes: (Array.isArray(input.lostCargoBoxes) ? input.lostCargoBoxes : []).slice(-32).filter(r => r && typeof r === 'object').map(r => ({ at: timestamp(r.at), by: ['user', 'auto'].includes(r.by) ? r.by : null, box: text(r.box, 80), position: r.position && ['x', 'y', 'z'].every(k => integer(r.position[k], -30000000, 30000000) !== null) ? { x: r.position.x, y: r.position.y, z: r.position.z } : null, items: (Array.isArray(r.items) ? r.items : []).slice(0, 27).map(i => ({ name: text(i?.name, 80), count: integer(i?.count, 0, 100000) })) })),
+    autoRetry: input.autoRetry && typeof input.autoRetry === 'object' ? { kind: text(input.autoRetry.kind, 40), reason: text(input.autoRetry.reason, 160), attempt: integer(input.autoRetry.attempt, 0, 100), max: integer(input.autoRetry.max, 0, 100), inSeconds: integer(input.autoRetry.inSeconds, 0, 86400) } : null,
     chunks: (Array.isArray(input.chunks) ? input.chunks : []).slice(0, 64).filter(c => c && integer(c.x, -1875000, 1875000) !== null && integer(c.z, -1875000, 1875000) !== null).map(c => ({ x: c.x, z: c.z })),
     yTop: integer(input.yTop, -2048, 2048), yBottom: integer(input.yBottom, -2048, 2048), currentY: integer(input.currentY, -2048, 2048),
     counts: input.counts ? numericFields(input.counts, ['remaining', 'unknown', 'reserved', 'deferred']) : null,
@@ -167,9 +170,64 @@ function quarryState (input) {
     pendingDrops: integer(input.pendingDrops), freeSlots: integer(input.freeSlots, 0, 36), deferredCount: integer(input.deferredCount),
     deaths: Array.isArray(input.deaths) ? input.deaths.slice(-1000).map(d => ({ at: timestamp(d?.at), whilePaused: d?.whilePaused === true })) : [],
     portableStorage: input.portableStorage ? { kind: text(input.portableStorage.kind, 80), stage: text(input.portableStorage.stage, 80), why: text(input.portableStorage.why, 80) } : null,
+    supplyRestock: (() => { const active = input.supplyRestock ?? input.supplies?.active; return active && typeof active === 'object' ? { phase: text(active.phase, 80) } : null })(),
     egress: quarryEgress(input.egress),
     events: (Array.isArray(input.events) ? input.events : []).slice(-15).filter(e => e && typeof e === 'object').map(e => ({ at: timestamp(e.at), type: text(e.type, 80), state: text(e.state, 80), reason: text(e.reason, 200) }))
   }
+}
+
+// One line for "what is the Bot doing now". Errors and waits share the slot.
+const activityStorageStages = { intent: '収納の準備中', planned: '収納の準備中', placing: 'シュルカーを設置中', placed: 'シュルカーへ収納中', depositing: 'シュルカーへ収納中', packed: 'シュルカーを回収中', breaking: 'シュルカーを回収中', awaiting_recovery: 'シュルカーの回収を確認中', completed: '収納を完了' }
+const activityStates = { STOPPING: '停止処理中', PREFLIGHT: '開始前の確認中', SURVEY: '採掘範囲を確認中', PLAN: '次の採掘を計画中', MOVE: '採掘位置へ移動中', MINE: '採掘中', COLLECT: 'ドロップを回収中', RETURN: '収納場所へ移動中', DEPOSIT: '収納中', PORTABLE_STORAGE: 'シュルカーへ収納中', RESTOCK: '補給箱へ移動中', HAZARD: '水・溶岩を塞いでいます', RECOVER: '体力の回復待ち', SUSPEND_FOR_COMBAT: '戦闘へ切り替え中', COMBAT: '戦闘中', COMBAT_SETTLE: '戦闘後の安全確認中', RECOVER_AFTER_COMBAT: '採掘へ復帰中', RECONCILE: '保存した作業を確認中', FINAL_CHECK: '掘り残しを確認中', EGRESS_PREPARE: '地上への脱出を準備中', EGRESS: '土柱で地上へ移動中', DISCONNECTED: '再接続待ち' }
+const activityReasons = {
+  CARRIED_STORAGE_BLOCKED: 'シュルカーを置ける場所がありません', CARRIED_STORAGE_UNAVAILABLE: '使える収納用シュルカーがありません', CARRIED_STORAGE_FAILED: 'シュルカーへの収納に失敗', CARRIED_STORAGE_NO_PROGRESS: 'シュルカーへの収納が進みません', CARGO_CAPACITY_EXHAUSTED: '収納用シュルカーが満杯',
+  SUPPLY_RESTOCK_BLOCKED: '補給箱から取り出せません', SUPPLY_UNSUPPORTED: '補給箱に対応していません', WAITING_FOR_STORAGE: '収納先を待っています', WAITING_FOR_TOOL: '道具を待っています', DEPOSIT_FAILED: '収納に失敗',
+  INVENTORY_UNKNOWN: '持ち物が未確認', POSITION_UNCONFIRMED: '位置が未確認', UNOBSERVED_CELLS: '未受信の地形があります', OUTSIDE_TRAVEL_REGION: '移動範囲の外にいます', INITIAL_LAYER_UNREACHABLE: '最初の層へ行けません',
+  ACTION_FAILED: '操作が完了しませんでした', SLOW_BREAK_PERSISTS: '採掘が遅いままです', HEALTH_NOT_RECOVERING: '体力が回復しません', LOW_HEALTH: '体力の回復待ち', DEATH: '死亡しました', NO_TOOL: '使える道具がありません', NO_USABLE_TOOL: '使える道具がありません',
+  STORAGE_PLACEMENT_RECONCILE_REQUIRED: '設置したシュルカーを確認中', STORAGE_RECOVERY_UNCONFIRMED: 'シュルカーの回収が未確認', EXIT_MATERIAL_MISSING: '脱出用の土が不足', EXIT_UNAVAILABLE: '脱出列が見つかりません', EXIT_SUPPLY_MISSING: '脱出用の資材が不足',
+  TOTEM_EXHAUSTED: 'トーテムがありません', SEAL_PLACEMENT_FAILED: '液体を塞げません', FLUID_DRAIN_TIMEOUT: '液体が引きません', PROCESS_RESTARTED: '再接続後の再開待ち', LEGACY_CHEST_STORAGE: '旧チェスト方式のジョブです', PERSISTENCE_FAILED: '状態の保存に失敗'
+}
+const manualPauses = new Set(['MANUAL_PAUSE', 'USER_PAUSED', 'USER_STOPPED'])
+const reasonLabel = code => activityReasons[code] ?? null
+
+function activityOf (base) {
+  const q = base.quarry
+  if (base.stale || !base.apiAvailable) return { kind: 'offline', label: 'Botに接続していません', detail: null, code: null }
+  if (base.phase === 'dead') return { kind: 'error', label: '死亡・リスポーン待ち', detail: null, code: null }
+  if (base.phase !== 'spawned') return { kind: 'busy', label: '接続中', detail: null, code: null }
+  const behavior = base.behavior?.activeKind
+  if (behavior === 'combat' && !['COMBAT', 'SUSPEND_FOR_COMBAT'].includes(q?.state)) return { kind: 'busy', label: '戦闘中', detail: null, code: null }
+  if (behavior === 'sleeping') return { kind: 'busy', label: 'ベッドで就寝中', detail: null, code: null }
+  if (!q || !q.jobId || q.state === 'IDLE') return { kind: 'idle', label: '待機中', detail: null, code: null }
+  if (q.persistence?.status === 'failed') return { kind: 'error', label: '状態の保存に失敗', detail: q.persistence.error, code: 'PERSISTENCE_FAILED' }
+  if (q.state === 'FINISHED') {
+    const type = q.result?.type
+    const exitConfirmed = q.egress?.mode !== 'adjacent_pillar' || (q.egress.miningCompleted === true && q.egress.surfaceReturned === true)
+    if (['COMPLETED', 'COMPLETED_WITH_EXCEPTIONS'].includes(type) && exitConfirmed) return { kind: 'done', label: type === 'COMPLETED_WITH_EXCEPTIONS' ? '露天掘り完了（保留あり）' : '露天掘り完了', detail: null, code: null }
+    const code = q.result?.reason ?? type ?? null
+    return { kind: ['CANCELLED', 'USER_STOPPED'].includes(type) ? 'idle' : 'error', label: reasonLabel(code) ?? 'ジョブが終了しました', detail: null, code }
+  }
+  if (q.state === 'PAUSED') {
+    const retry = q.autoRetry
+    if (retry) {
+      const parts = [reasonLabel(retry.reason), retry.inSeconds !== null ? `あと${retry.inSeconds}秒` : null, retry.attempt !== null && retry.max !== null ? `${retry.attempt}/${retry.max}回目` : null].filter(Boolean)
+      return { kind: 'waiting', label: '待機中（自動で再試行）', detail: parts.join(' · ') || null, code: retry.reason }
+    }
+    const code = q.pauseReason ?? q.egress?.reason ?? null
+    if (!code || manualPauses.has(code)) return { kind: 'paused', label: '一時停止中', detail: null, code }
+    return { kind: 'error', label: reasonLabel(code) ?? '停止しています', detail: q.error, code }
+  }
+  let label = activityStates[q.state] ?? '作業中'
+  const storage = q.portableStorage
+  if (storage && ['RETURN', 'DEPOSIT', 'PORTABLE_STORAGE'].includes(q.state)) label = activityStorageStages[storage.stage] ?? label
+  if (q.state === 'RESTOCK' && q.supplyRestock?.phase === 'transferring') label = '補給箱からアイテムを回収中'
+  const detail = q.state === 'MINE' && q.currentY !== null ? `Y ${q.currentY}` : q.state === 'COLLECT' && q.pendingDrops ? `残り ${q.pendingDrops} 個` : null
+  if (q.error) return { kind: 'error', label, detail: q.error, code: null }
+  return { kind: 'busy', label, detail, code: null }
+}
+
+function behaviorState (input) {
+  return input && typeof input === 'object' ? { activeKind: ['combat', 'sleeping', 'bed'].includes(input.activeKind) ? input.activeKind : null } : null
 }
 
 function decorate (base) {
@@ -182,7 +240,7 @@ function decorate (base) {
   const waiting = !base.online || !q || !q.loaded || ['IDLE', 'STOPPING', 'PAUSED', 'DISCONNECTED', 'UNKNOWN'].includes(q.state)
   const title = q ? completed ? q.result.type === 'COMPLETED_WITH_EXCEPTIONS' ? '露天掘り完了（保留箇所あり）' : '露天掘り完了' : labels[q.state] ?? '露天掘りの状態を確認中' : '露天掘りの計画を待っています'
   const detail = base.stale ? '最終確認時の情報です。現在の状態は未確認です。' : (q?.persistence?.status === 'failed' ? '状態保存に失敗しています。自動再開は禁止されています。' : q?.draining && q?.state === 'PAUSED' ? '入力は停止済みです。処理と保存の完了を確認しています。' : null) ?? q?.pauseReason ?? q?.egress?.reason ?? q?.error ?? (q?.currentY != null ? `作業層 Y ${q.currentY}` : 'サーバーから確認できた情報を表示します。')
-  return { ...base, goal: 'quarry', work: { title, detail, state: base.stale ? 'waiting' : completed ? 'complete' : waiting ? 'waiting' : q.state === 'FINISHED' ? 'stopped' : 'running', updatedAt: base.observedAt, next: null }, milestones: [], recentEvents: q?.events ?? [] }
+  return { ...base, activity: activityOf(base), goal: 'quarry', work: { title, detail, state: base.stale ? 'waiting' : completed ? 'complete' : waiting ? 'waiting' : q.state === 'FINISHED' ? 'stopped' : 'running', updatedAt: base.observedAt, next: null }, milestones: [], recentEvents: q?.events ?? [] }
 }
 
 function sanitizeStatus (raw, { observedAt = new Date().toISOString(), checkedAt = observedAt, apiAvailable = true } = {}) {
@@ -196,14 +254,14 @@ function sanitizeStatus (raw, { observedAt = new Date().toISOString(), checkedAt
   const position = eye ? { x: eye.x, y: eye.y - EYE_HEIGHT, z: eye.z, source, confirmed: raw.positionServerConfirmed !== false && serverPositionSources.has(source) } : null
   const hungerEntry = raw.vitals?.hunger ?? raw.food?.hunger ?? raw.hunger
   const hunger = hungerEntry?.source === 'client_prediction' ? null : number(typeof hungerEntry === 'object' ? hungerEntry?.value : hungerEntry, 0, 20)
-  return decorate({ version: 1, apiAvailable: apiAvailable === true, online: apiAvailable === true && alive, stale: apiAvailable !== true, checkedAt: timestamp(checkedAt), observedAt: timestamp(observedAt), phase: apiAvailable !== true ? 'offline' : actualPhase === 'spawned' && (health === 0 || raw.dead || raw.isDead || raw.lifecycle?.dead) ? 'dead' : actualPhase, playerName: text(raw.playerName, 80), realmName: text(raw.realm?.name ?? raw.realmName, 160), health, hunger, position, inventoryKnown, inventory: inventoryItems(raw.inventory?.items, inventoryKnown), inventoryDetails: inventoryDetails(raw.inventoryDetails, inventoryKnown), quarry: quarryState(raw.quarry), connectionId: text(raw.connectionId, 80) })
+  return decorate({ version: 1, apiAvailable: apiAvailable === true, online: apiAvailable === true && alive, stale: apiAvailable !== true, checkedAt: timestamp(checkedAt), observedAt: timestamp(observedAt), phase: apiAvailable !== true ? 'offline' : actualPhase === 'spawned' && (health === 0 || raw.dead || raw.isDead || raw.lifecycle?.dead) ? 'dead' : actualPhase, playerName: text(raw.playerName, 80), realmName: text(raw.realm?.name ?? raw.realmName, 160), health, hunger, position, inventoryKnown, inventory: inventoryItems(raw.inventory?.items, inventoryKnown), inventoryDetails: inventoryDetails(raw.inventoryDetails, inventoryKnown), quarry: quarryState(raw.quarry), behavior: behaviorState(raw.userBehaviors), connectionId: text(raw.connectionId, 80) })
 }
 
 function sanitizeCachedStatus (input, { checkedAt = new Date().toISOString(), apiAvailable = false } = {}) {
   if (!input || input.version !== 1 || !timestamp(input.observedAt)) return null
   const inventoryKnown = input.inventoryKnown === true && Array.isArray(input.inventory)
   const cachedPosition = point(input.position)
-  return decorate({ version: 1, apiAvailable: apiAvailable === true, online: apiAvailable === true && input.online === true, stale: apiAvailable !== true, checkedAt: timestamp(checkedAt), observedAt: timestamp(input.observedAt), phase: apiAvailable === true ? text(input.phase, 64) ?? 'unknown' : 'offline', playerName: text(input.playerName, 80), realmName: text(input.realmName, 160), health: number(input.health), hunger: number(input.hunger, 0, 20), position: cachedPosition ? { ...cachedPosition, source: text(input.position.source, 80) ?? 'unknown', confirmed: input.position.confirmed === true } : null, inventoryKnown, inventory: inventoryItems(input.inventory, inventoryKnown, true), inventoryDetails: inventoryDetails(input.inventoryDetails, inventoryKnown), quarry: quarryState(input.quarry), connectionId: text(input.connectionId, 80) })
+  return decorate({ version: 1, apiAvailable: apiAvailable === true, online: apiAvailable === true && input.online === true, stale: apiAvailable !== true, checkedAt: timestamp(checkedAt), observedAt: timestamp(input.observedAt), phase: apiAvailable === true ? text(input.phase, 64) ?? 'unknown' : 'offline', playerName: text(input.playerName, 80), realmName: text(input.realmName, 160), health: number(input.health), hunger: number(input.hunger, 0, 20), position: cachedPosition ? { ...cachedPosition, source: text(input.position.source, 80) ?? 'unknown', confirmed: input.position.confirmed === true } : null, inventoryKnown, inventory: inventoryItems(input.inventory, inventoryKnown, true), inventoryDetails: inventoryDetails(input.inventoryDetails, inventoryKnown), quarry: quarryState(input.quarry), behavior: behaviorState(input.behavior), connectionId: text(input.connectionId, 80) })
 }
 
 module.exports = { sanitizeStatus, sanitizeCachedStatus, sanitizeMission, itemLabel }

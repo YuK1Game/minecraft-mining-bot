@@ -33,7 +33,17 @@ const STONE_LIKE = ['stone', 'cobblestone', 'mossy_cobblestone', 'deepslate', 'c
 const STONE_DROP = { stone: 'cobblestone', deepslate: 'cobbled_deepslate' }
 const SHOVEL = { dirt: 'dirt', grass_block: 'dirt', coarse_dirt: 'coarse_dirt', rooted_dirt: 'rooted_dirt', podzol: 'dirt', mycelium: 'dirt', dirt_with_roots: 'dirt_with_roots', mud: 'mud', farmland: 'dirt', grass_path: 'dirt', dirt_path: 'dirt', sand: 'sand', red_sand: 'red_sand', gravel: 'gravel', soul_sand: 'soul_sand', soul_soil: 'soul_soil', clay: 'clay_ball' }
 const LOG_WOODS = ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'poplar', 'crimson', 'warped']
-const LEAVES = ['oak_leaves', 'spruce_leaves', 'birch_leaves', 'jungle_leaves', 'acacia_leaves', 'dark_oak_leaves', 'mangrove_leaves', 'cherry_leaves', 'pale_oak_leaves', 'azalea_leaves', 'azalea_leaves_flowered']
+const LEAVES = ['oak_leaves', 'spruce_leaves', 'birch_leaves', 'jungle_leaves', 'acacia_leaves', 'dark_oak_leaves', 'mangrove_leaves', 'cherry_leaves', 'pale_oak_leaves', 'azalea_leaves', 'azalea_leaves_flowered', 'flowering_azalea_leaves']
+// Azalea bushes are tree parts too: not harvested (2026-11-13).
+const AZALEA = ['azalea', 'flowering_azalea']
+// Lush cave and dripstone blocks seen in a lush pocket (live 2026-11-13: 55
+// UNKNOWN_BLOCK cells of moss_block / cave_vines). Names are Bedrock 1.26.60's.
+// Soft blocks with no required tool: drop by hand.
+const LUSH_SOFT = { moss_block: 'moss_block', pale_moss_block: 'pale_moss_block' }
+// Instant or near-instant plants of caves (any drop is optional).
+const CAVE_PLANTS = ['moss_carpet', 'pale_moss_carpet', 'pale_hanging_moss', 'cave_vines', 'cave_vines_body_with_berries', 'cave_vines_head_with_berries', 'glow_lichen', 'spore_blossom', 'small_dripleaf_block', 'big_dripleaf', 'hanging_roots']
+// Amethyst buds and clusters break with a pickaxe; only a cluster drops shards.
+const AMETHYST_BUDS = ['small_amethyst_bud', 'medium_amethyst_bud', 'large_amethyst_bud', 'amethyst_cluster']
 // Instant-break surface plants (no tool, drop is optional or nothing).
 const PLANTS = ['short_grass', 'tallgrass', 'tall_grass', 'fern', 'large_fern', 'dead_bush', 'deadbush', 'vine', 'leaf_litter', 'dandelion', 'poppy', 'blue_orchid', 'allium', 'azure_bluet', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'oxeye_daisy', 'cornflower', 'lily_of_the_valley', 'sunflower', 'lilac', 'rose_bush', 'peony', 'brown_mushroom', 'red_mushroom', 'moss_carpet', 'glow_lichen', 'hanging_roots', 'pink_petals', 'wildflowers', 'bush', 'firefly_bush', 'short_dry_grass', 'tall_dry_grass', 'seagrass', 'kelp', 'sugar_cane', 'snow_layer']
 
@@ -61,7 +71,13 @@ function blockRule (blockName) {
   if (FLUIDS.has(name)) return { kind: 'fluid', fluid: /lava/.test(name) ? 'lava' : 'water' }
   const wood = LOG_WOODS.some(w => ['log', 'wood', 'stem', 'hyphae'].some(part => name === `${w}_${part}` || name === `stripped_${w}_${part}`))
   if (wood || ['mangrove_roots', 'muddy_mangrove_roots'].includes(name)) return { kind: 'protected', reason: 'WOOD_HARVEST_DISABLED' }
-  if (LEAVES.includes(name) || /_leaves$/.test(name) || name === 'leaf_litter') return { kind: 'protected', reason: 'LEAF_HARVEST_DISABLED' }
+  if (LEAVES.includes(name) || /_leaves$/.test(name) || name === 'leaf_litter' || AZALEA.includes(name)) return { kind: 'protected', reason: 'LEAF_HARVEST_DISABLED' }
+  // Natural cave carpets and plants come before the player-placed patterns
+  // (moss_carpet would otherwise match _carpet$).
+  if (CAVE_PLANTS.includes(name)) return { kind: 'dig', tool: null, needs: null, tier: 0, drops: name === 'glow_lichen' || name === 'hanging_roots' || name === 'cave_vines' || name === 'pale_hanging_moss' ? [] : [/^cave_vines/.test(name) ? 'glow_berries' : name], maxDrop: 1, plant: true, gravity: false }
+  if (name in LUSH_SOFT) return { kind: 'dig', tool: null, needs: null, tier: 0, drops: [LUSH_SOFT[name]], maxDrop: 1, gravity: false }
+  if (AMETHYST_BUDS.includes(name)) return { kind: 'dig', tool: 'pickaxe', needs: null, tier: 0, drops: name === 'amethyst_cluster' ? ['amethyst_shard'] : [], maxDrop: 4, gravity: false }
+  if (name === 'pointed_dripstone') return { kind: 'dig', tool: 'pickaxe', needs: null, tier: 0, drops: ['pointed_dripstone'], maxDrop: 1, gravity: true }
   const knownOre = oreRule(name)
   if (knownOre) return knownOre
   for (const [pattern, reason] of PROTECTED) if (pattern.test(name)) return { kind: 'protected', reason }
@@ -75,7 +91,24 @@ function blockRule (blockName) {
   if (['mushroom_stem', 'brown_mushroom_block', 'red_mushroom_block', 'pumpkin', 'melon_block', 'bamboo', 'bamboo_block'].includes(name)) return { kind: 'dig', tool: 'axe', needs: null, tier: 0, drops: [name === 'melon_block' ? 'melon_slice' : /mushroom_block/.test(name) ? name.replace('_block', '') : name], maxDrop: name === 'melon_block' ? 7 : 2, gravity }
   if (PLANTS.includes(name)) return { kind: 'dig', tool: null, needs: null, tier: 0, drops: ['wheat_seeds', name], maxDrop: 2, plant: true, gravity }
   if (gravity) return { kind: 'dig', tool: 'shovel', needs: null, tier: 0, drops: [name], maxDrop: 1, gravity }
-  return { kind: 'unknown', reason: 'UNKNOWN_BLOCK' }
+  const fallback = unknownBlockDefault ? defaultDigRule(name) : null
+  return fallback ?? { kind: 'unknown', reason: 'UNKNOWN_BLOCK' }
+}
+
+// Opt-in default for block types not in the table (2026-11-13): a block the
+// Bedrock 1.26.60 data marks diggable with a finite hardness (at most
+// obsidian's) is mined normally with the tool its material names. Protected,
+// container, spawner, fluid and unbreakable names never reach this point.
+let unknownBlockDefault = false
+let blockData = null
+function setUnknownBlockDefault (enabled) { unknownBlockDefault = enabled === true }
+function defaultDigRule (name) {
+  try { blockData ??= new Map(require('minecraft-data/minecraft-data/data/bedrock/1.26.60/blocks.json').map(b => [b.name, b])) } catch { blockData = new Map() }
+  const b = blockData.get(name)
+  if (!b || b.diggable !== true || !Number.isFinite(b.hardness) || b.hardness < 0 || b.hardness > 50) return null
+  const material = String(b.material ?? '')
+  const tool = /mineable\/pickaxe/.test(material) ? 'pickaxe' : /mineable\/shovel/.test(material) ? 'shovel' : /mineable\/axe/.test(material) ? 'axe' : null
+  return { kind: 'dig', tool, needs: null, tier: 0, drops: [name], maxDrop: 1, gravity: false, defaulted: true }
 }
 
 const isFluidName = name => FLUIDS.has(nameOf(name))
@@ -141,4 +174,4 @@ function selectTool (rule, items, { orePolicy = 'maximize_yield', buildingBlockP
   return { ok: true, kind: 'hand', slot: null, name: null, tier: 0 }
 }
 
-module.exports = { nameOf, AIR, blockRule, toolOf, toolState, selectTool, reserveUses, isFluidName, isGravityName, fluidLayer, SEAL_MATERIALS, MAX_DURABILITY, enchantLevel }
+module.exports = { setUnknownBlockDefault, nameOf, AIR, blockRule, toolOf, toolState, selectTool, reserveUses, isFluidName, isGravityName, fluidLayer, SEAL_MATERIALS, MAX_DURABILITY, enchantLevel }

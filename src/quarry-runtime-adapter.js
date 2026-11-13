@@ -12,7 +12,7 @@ const FEET = 1.62
 function createQuarryRuntimeAdapter (ports) {
   const {
     getState, getBlock, entities, mining, getMining, movement, getMovement, equip, placeQuarry, eat, resyncInventory = null, craftTorches = null, placeTorch = null, prepareMining = null,
-    chest, addChest = null, storeCarried = null, restockSupplies = null, previewSupplySite = null, discoverSupplies = null, loadoutWithdraw = null, finalChestDeposit = null, equipmentTransfer = null, equipmentView = null, logout = null, reconcileSupplyPlacement = null, reconcileCarriedPlacement = null, reconcileRejectedDeposit = null, reconcileObservedPlacement = null, egress = null, requestTerrain = null, confirmPosition = null, discardPrediction = null, previewStorageRoute = null, stopAll, combatActive, userControlInterruption = null, threatEvidence = null, recentDamageAt = null, harmfulEffect = null, worldRevision = null,
+    chest, addChest = null, storeCarried = null, restockSupplies = null, previewSupplySite = null, discoverSupplies = null, loadoutWithdraw = null, finalChestDeposit = null, equipmentTransfer = null, equipmentView = null, logout = null, reconcileSupplyPlacement = null, reconcileCarriedPlacement = null, reconcileRejectedDeposit = null, reconcileObservedPlacement = null, egress = null, requestTerrain = null, confirmPosition = null, discardPrediction = null, attackAnimal = null, previewStorageRoute = null, stopAll, combatActive, userControlInterruption = null, threatEvidence = null, recentDamageAt = null, harmfulEffect = null, worldRevision = null,
     sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now,
     segmentCells = 6, segmentTimeoutMs = 20000, mineTimeoutMs = 15000, previewSettleMs = 3000, shortStopMs = 1500, pollMs = 25, slowBreakMinMs = 1500, log = () => {}
   } = ports
@@ -96,6 +96,16 @@ function createQuarryRuntimeAdapter (ports) {
     if (travel !== undefined && typeof travel !== 'function') throw Object.assign(new Error('QUARRY_TRAVEL_GUARD_INVALID'), { code: 'QUARRY_TRAVEL_GUARD_INVALID' })
     const route = Array.isArray(path) && path.length ? path : [goal]
     let index = Math.max(0, route.findIndex(c => same(c, cellOf(getState()))))
+    // Live 2026-11-13 12:27: a move to the cell the bot already stands in did
+    // nothing, leaving it 0.44 m off centre at a storage stand. Re-centre once.
+    if (same(cellOf(getState()), goal)) {
+      const p = getState()?.position
+      if (p && Math.hypot(p.x - goal.x - 0.5, p.z - goal.z - 0.5) > 0.25) {
+        const r = await step(goal, signal, travel)
+        if (!r.ok) throw new Error(`quarry move refused: ${r.reason}`)
+      }
+      return { phase: 'completed' }
+    }
     while (!same(cellOf(getState()), goal)) {
       aborted(signal)
       let span = Math.min(segmentCells, route.length - 1 - index)
@@ -275,6 +285,15 @@ function createQuarryRuntimeAdapter (ports) {
     ...(typeof requestTerrain === 'function' ? { requestTerrain: (request, options) => requestTerrain(request, options) } : {}),
     ...(typeof confirmPosition === 'function' ? { confirmPosition: (feet, options) => confirmPosition(feet, options) } : {}),
     ...(typeof discardPrediction === 'function' ? { discardPrediction: reason => discardPrediction(reason) } : {}),
+    // Quarry animal clearing (2026-11-13): every received actor (copied) and a
+    // single guarded melee hit on an allowed passive animal.
+    actors: () => entities().map(e => structuredClone(e)),
+    // Received raw bag item (NBT) for box identities and contents (2026-11-13).
+    ...(typeof ports.rawItem === 'function' ? { rawItem: slot => ports.rawItem(slot) } : {}),
+    // Received inventory details (armour worn, enchantments) for the opt-in
+    // spare-armour storage (2026-11-13).
+    ...(typeof ports.inventoryDetails === 'function' ? { inventoryDetails: () => ports.inventoryDetails() } : {}),
+    ...(typeof attackAnimal === 'function' ? { attackAnimal: (runtimeId, options) => attackAnimal(runtimeId, options) } : {}),
     ...(typeof worldRevision === 'function' ? { worldRevision: () => worldRevision() } : {}),
     // Hostiles and projectiles for the post-combat settle check (§9.4).
     actors: () => entities().filter(e => e.kind !== 'item' && e.positionKnown !== false && e.position),

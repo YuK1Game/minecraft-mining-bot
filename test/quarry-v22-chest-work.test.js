@@ -69,6 +69,25 @@ test('final chest deposit empties main, armor and offhand with exact receipts',a
   assert.equal(f.hand[0].count,0)
   assert.equal(f.base.filter(x=>x.count).length,35)
 })
+// 2026-11-13 user request: at the end of a job only the cargo and loose items
+// go to the chest; supply boxes, tools, worn armour, the totem and food stay.
+test('final chest deposit with a keep list stores only the rest and leaves equipment on',async()=>{
+  const f=fixture()
+  const loaded=await f.controller.withdrawAll({jobId:'q',operationId:'start',position:f.pos},f.options)
+  assert.equal(loaded.status,'completed')
+  f.hand[0]=raw('minecraft:totem_of_undying',1,999)
+  const { FINAL_CHEST_KEEP } = require('../src/quarry-job')
+  const keptName = n => FINAL_CHEST_KEEP.names.some(re => new RegExp(re).test(n.replace(/^minecraft:/, '')))
+  const before = f.bag.filter(x => x.count).map(x => names.get(x.network_id))
+  const result=await f.controller.depositAll({jobId:'q',operationId:'finish-keep',position:f.pos,keep:FINAL_CHEST_KEEP},f.options)
+  assert.equal(result.status,'completed',JSON.stringify(result))
+  const after = f.bag.filter(x => x.count).map(x => names.get(x.network_id))
+  assert.deepEqual(after.sort(), before.filter(keptName).sort())
+  assert.ok(!after.includes('minecraft:purple_shulker_box'))
+  assert.equal(f.armor.filter(x=>x.count).length,4,'worn armour stays on')
+  assert.equal(f.hand[0].count,1,'the totem stays in the offhand')
+})
+
 test('an interrupted transfer is not reissued without exact reconciliation',async()=>{
   const f=fixture()
   let injected

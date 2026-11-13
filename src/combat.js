@@ -81,6 +81,8 @@ function createCombat ({ client, getState, world, entities, crafting, getInput, 
   // changing the entity tracker used to bind the actual attack target.
   const threatActors = state => Array.isArray(state.entities) ? state.entities : entities.snapshot({ kind: 'all' })
 
+  // Quarry animal clearing (2026-11-13): only these ordinary passive animals.
+  const ANIMAL_CLEAR_TARGETS = new Set(['minecraft:chicken', 'minecraft:cow', 'minecraft:pig', 'minecraft:sheep', 'minecraft:rabbit', 'minecraft:mooshroom', 'minecraft:fox', 'minecraft:frog', 'minecraft:armadillo'])
   function session (purpose = 'defense', { allowCritical = false } = {}) {
     const state = getState()
     if (state.dead === true || state.isDead === true || state.phase !== 'spawned' || !finite(state.position)) throw new Error('生存してワールドに参加している必要があります。')
@@ -91,7 +93,7 @@ function createCombat ({ client, getState, world, entities, crafting, getInput, 
     const inventory = crafting.snapshot()
     if (inventory.authority !== true) throw new Error('サーバー権威の持ち物情報を確認できません。')
     if (purpose === 'hunt' && (inventory.inventoryKnown === false || state.inventory?.known === false || state.inventory?.uncertain === true)) throw new Error('狩りに使う主手の持ち物をサーバーから取得してください。')
-    if (['engage', 'emergency', 'water_creeper'].includes(purpose) && (inventory.inventoryKnown !== true || state.inventory?.known !== true || state.inventory?.uncertain === true)) throw new Error('交戦にはサーバーで確定した持ち物が必要です。')
+    if (['engage', 'emergency', 'water_creeper', 'animal'].includes(purpose) && (inventory.inventoryKnown !== true || state.inventory?.known !== true || state.inventory?.uncertain === true)) throw new Error('交戦にはサーバーで確定した持ち物が必要です。')
     if (purpose === 'water_creeper' && (state.health !== 20 || state.equipmentServerConfirmed === false)) throw new Error('水中の緊急自衛には体力と選択装備の確認が必要です。')
     if (inventory.openContainer) throw new Error('インベントリ画面を閉じてから自衛してください。')
     return state
@@ -114,6 +116,8 @@ function createCombat ({ client, getState, world, entities, crafting, getInput, 
     if (purpose === 'hunt') {
       const chicken = entity?.entityType === 'minecraft:chicken' && resourceMinHealth(state) === 0 && entity.isBaby !== true && entity.baby !== true && entity.uniqueId != null && entity.protected !== true && entity.natural !== false && entity.owned !== true && entity.tamed !== true && entity.isTamed !== true && entity.owner == null && entity.ownerId == null && entity.ownerUniqueId == null && entity.isNpc !== true && typeof entity.username !== 'string' && !entity.customName && !entity.nameTag
       if (!entity || entity.kind !== 'mob' || !(FOOD_ANIMALS.has(entity.entityType) || chicken) || entity.hostile !== false) throw new Error('食料目的の狩りは観測済みの対応する食用動物だけに限定しています。')
+    } else if (purpose === 'animal') {
+      if (!entity || entity.kind !== 'mob' || entity.hostile !== false || !ANIMAL_CLEAR_TARGETS.has(entity.entityType) || entity.uniqueId == null) throw new Error('動物の除去は許可した受動動物だけに限定しています。')
     } else if (!entity || entity.kind !== 'mob' || !entity.hostile || !HOSTILES.has(entity.entityType) || BOSSES.has(entity.entityType)) throw new Error('攻撃対象は観測済みの既知の敵モブだけに限定し、ボスは除外しています。')
     if (purpose === 'engage' && (!MELEE_TARGETS.has(entity.entityType) || entity.uniqueId == null)) throw new Error('継続交戦は個体を確認したゾンビ・ハスク・ドラウンド・クモ類だけに限定しています。')
     if (purpose === 'water_creeper' && (entity.entityType !== 'minecraft:creeper' || entity.uniqueId == null || entity.charged !== false || typeof entity.primed !== 'boolean' || entity.primed && (!Number.isInteger(entity.fuseLength) || entity.fuseLength < 20))) throw new Error('水中のクリーパー個体・帯電・点火状態を確認できません。')
@@ -287,7 +291,7 @@ function createCombat ({ client, getState, world, entities, crafting, getInput, 
         if (target.entity.uniqueId !== original.entity.uniqueId || target.entity.entityType !== original.entity.entityType) throw new Error('視線入力中に対象の個体が変わりました。')
         if (target.slot !== original.slot || !isDeepStrictEqual(target.raw, original.raw)) throw new Error('視線入力中に選択スロットか実際の主手が変わりました。')
         if (target.dimension !== original.dimension || Math.hypot(state.position.x - original.origin.x, state.position.y - original.origin.y, state.position.z - original.origin.z) > 0.3) throw new Error('自分の位置が変わったため攻撃を中止しました。')
-        if ((purpose === 'hunt' || purpose === 'water_creeper' || purpose === 'emergency' && (allowCritical || allowEmergencyCreeper)) && state.health < original.health) throw new Error('視線入力中に被ダメージを確認したため中断しました。')
+        if ((purpose === 'hunt' || purpose === 'animal' || purpose === 'water_creeper' || purpose === 'emergency' && (allowCritical || allowEmergencyCreeper)) && state.health < original.health) throw new Error('視線入力中に被ダメージを確認したため中断しました。')
         if (purpose === 'water_creeper' && target.waterParticipants !== original.waterParticipants) throw new Error('水中の緊急自衛中に敵の個体が変わりました。')
         if (purpose === 'emergency' && otherThreats(target.entity.runtimeId, { allowDistantRanged, allowDistantZombie, allowGuardedGroup, allowCritical }) !== secondaryIdentity) throw new Error('緊急自衛中に遠距離の敵の個体が変わりました。')
         const tick = inputTick(receipt.tick)
@@ -304,8 +308,8 @@ function createCombat ({ client, getState, world, entities, crafting, getInput, 
       }
       state = session(purpose, { allowCritical })
       if (target.dimension !== original.dimension || Math.hypot(state.position.x - original.origin.x, state.position.y - original.origin.y, state.position.z - original.origin.z) > 0.3) throw new Error('自分の位置が変わったため攻撃を中止しました。')
-      if (purpose === 'hunt' && (target.entity.entityType !== original.entity.entityType || target.entity.uniqueId !== original.entity.uniqueId)) throw new Error('狩りの対象の種類または個体が変わったため中止しました。')
-      if (purpose === 'hunt' && state.health < original.health) throw new Error('狩りの準備中に被ダメージを確認したため中断しました。')
+      if ((purpose === 'hunt' || purpose === 'animal') && (target.entity.entityType !== original.entity.entityType || target.entity.uniqueId !== original.entity.uniqueId)) throw new Error('狩りの対象の種類または個体が変わったため中止しました。')
+      if ((purpose === 'hunt' || purpose === 'animal') && state.health < original.health) throw new Error('狩りの準備中に被ダメージを確認したため中断しました。')
       if (signal?.aborted) throw signal.reason ?? new Error('自衛操作を中断しました。')
       const timeout = Math.min(attackTimeoutMs, deadline - now())
       let abortPending = null
@@ -471,7 +475,7 @@ function createCombat ({ client, getState, world, entities, crafting, getInput, 
       try { engagementTarget(engagement) } catch (error) { cancel(error.message, 'unsafe_observation') }
     }
   }
-  return { preview, previewHunt, previewEngage, previewEmergency, previewWaterCreeper, waterCreeperAttack: (runtimeId, options = {}) => attackOnce(runtimeId, { purpose: 'water_creeper', signal: options.signal }), emergencyAttack: (runtimeId, options = {}) => attackOnce(runtimeId, { purpose: 'emergency', allowDistantRanged: options.allowDistantRanged ?? false, allowDistantZombie: options.allowDistantZombie ?? false, allowGuardedGroup: options.allowGuardedGroup ?? false, allowCritical: options.allowCritical ?? false, allowEmergencyCreeper: options.allowEmergencyCreeper ?? false }), attack: runtimeId => attackOnce(runtimeId), hunt: runtimeId => attackOnce(runtimeId, { purpose: 'hunt' }), defend, engage, drain: () => engagementTask ?? Promise.resolve(), applyPacket, cancel, snapshot: () => ({ busy, defending, engaging: engagement !== null, purpose: activePurpose ?? (engagement ? 'engage' : null), engagedTargetRuntimeId: engagement?.entity.runtimeId ?? null, engagementCooldownMs, unarmedEngagementCooldownMs: engagementInterval(true), cooldownRemainingMs: Math.max(0, (engagement ? engagementInterval(engagement.allowUnarmed) : cooldownMs) - (now() - lastAttackAt)), pendingTargetRuntimeId: pending?.entity.runtimeId ?? null, lastResult: copy(lastResult) }) }
+  return { animalAttack: (runtimeId, options = {}) => attackOnce(runtimeId, { purpose: 'animal', signal: options.signal }), previewAnimal: runtimeId => previewFor(runtimeId, 'animal'), preview, previewHunt, previewEngage, previewEmergency, previewWaterCreeper, waterCreeperAttack: (runtimeId, options = {}) => attackOnce(runtimeId, { purpose: 'water_creeper', signal: options.signal }), emergencyAttack: (runtimeId, options = {}) => attackOnce(runtimeId, { purpose: 'emergency', allowDistantRanged: options.allowDistantRanged ?? false, allowDistantZombie: options.allowDistantZombie ?? false, allowGuardedGroup: options.allowGuardedGroup ?? false, allowCritical: options.allowCritical ?? false, allowEmergencyCreeper: options.allowEmergencyCreeper ?? false }), attack: runtimeId => attackOnce(runtimeId), hunt: runtimeId => attackOnce(runtimeId, { purpose: 'hunt' }), defend, engage, drain: () => engagementTask ?? Promise.resolve(), applyPacket, cancel, snapshot: () => ({ busy, defending, engaging: engagement !== null, purpose: activePurpose ?? (engagement ? 'engage' : null), engagedTargetRuntimeId: engagement?.entity.runtimeId ?? null, engagementCooldownMs, unarmedEngagementCooldownMs: engagementInterval(true), cooldownRemainingMs: Math.max(0, (engagement ? engagementInterval(engagement.allowUnarmed) : cooldownMs) - (now() - lastAttackAt)), pendingTargetRuntimeId: pending?.entity.runtimeId ?? null, lastResult: copy(lastResult) }) }
 }
 
 module.exports = { createCombat }

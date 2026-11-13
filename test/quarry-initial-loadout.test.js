@@ -203,8 +203,45 @@ test('an invalid completed native checkpoint cannot authorize initial supplies o
   assert.notEqual(f.job.document().loadoutReady, true)
 })
 
-test('a returned passive/full job keeps its nonfull inventory without final chest deposit or logout', async () => {
+// 2026-11-13 user request: by default everything returns to the registered chest.
+test('a returned passive/full job stores everything at the registered chest before FINISHED', async () => {
   const f = fixture({ blockedSupply: false }); f.job.plan(f.config); await f.run()
+  f.f.state.health = 20
+  const doc = f.job.document()
+  doc.state = 'PAUSED'; doc.userRunIntent = 'paused'; doc.pauseReason = 'MANUAL_PAUSE'; doc.records = {}
+  doc.surfaceReturnedAt = '2026-11-12T00:00:00Z'; doc.miningCompletedAt = '2026-11-12T00:00:00Z'
+  f.job.load(doc)
+  const requests = []
+  f.adapter.finalChestDeposit = async (request, { onCheckpoint }) => { requests.push(request); const cp = { operationId: request.operationId, phase: 'completed', receipts: [] }; await onCheckpoint(cp); return { status: 'completed', serverConfirmed: true, checkpoint: cp } }
+  const emptySlots = n => ({ known: true, slots: Array.from({ length: n }, (_, slot) => ({ slot, known: true, empty: true })) })
+  f.adapter.inventoryDetails = () => ({ known: true, slots: emptySlots(36).slots, armor: emptySlots(4), offhand: emptySlots(1) })
+  let logouts = 0; f.adapter.logout = async () => { logouts++ }
+  const result = await f.run({ resume: true })
+  assert.equal(result.state, 'FINISHED')
+  assert.equal(requests.length, 1); assert.equal(requests[0].keep, undefined, 'nothing is kept back')
+  assert.ok(f.job.document().finalChestStoredAt)
+  assert.equal(logouts, 1, 'the unarmed bot logs out normally after the full return')
+})
+
+// 2026-11-13 18:35: after the storage the user saw an offhand item. The job
+// fetches the inventory again and FINISHED needs a received empty offhand.
+test('a final storage that leaves the offhand occupied is not FINISHED', async () => {
+  const f = fixture({ blockedSupply: false }); f.job.plan(f.config); await f.run()
+  f.f.state.health = 20
+  const doc = f.job.document()
+  doc.state = 'PAUSED'; doc.userRunIntent = 'paused'; doc.pauseReason = 'MANUAL_PAUSE'; doc.records = {}
+  doc.surfaceReturnedAt = '2026-11-12T00:00:00Z'; doc.miningCompletedAt = '2026-11-12T00:00:00Z'
+  f.job.load(doc)
+  f.adapter.finalChestDeposit = async (request, { onCheckpoint }) => { const cp = { operationId: request.operationId, phase: 'completed', receipts: [] }; await onCheckpoint(cp); return { status: 'completed', serverConfirmed: true, checkpoint: cp } }
+  const emptySlots = n => ({ known: true, slots: Array.from({ length: n }, (_, slot) => ({ slot, known: true, empty: true })) })
+  f.adapter.inventoryDetails = () => ({ known: true, slots: emptySlots(36).slots, armor: emptySlots(4), offhand: { known: true, slots: [{ slot: 0, known: true, empty: false, name: 'minecraft:totem_of_undying', count: 1 }] } })
+  const result = await f.run({ resume: true })
+  assert.equal(result.state, 'PAUSED'); assert.equal(result.pauseReason, 'FINAL_INVENTORY_UNCONFIRMED')
+  assert.equal(f.job.document().finalChestStoredAt, undefined)
+})
+
+test('with final chest storage off, a returned passive/full job keeps its nonfull inventory without final chest deposit or logout', async () => {
+  const f = fixture({ blockedSupply: false }); f.job.plan({ ...f.config, strategy: { ...(f.config.strategy ?? {}), finalChestStore: false } }); await f.run()
   f.f.state.health = 20
   const before = copy(f.f.bag), doc = f.job.document()
   doc.state = 'PAUSED'; doc.userRunIntent = 'paused'; doc.pauseReason = 'MANUAL_PAUSE'; doc.records = {}

@@ -4,7 +4,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setImmediate: turn } = require('node:timers/promises')
 const { createQuarryPortableStorage } = require('../src/quarry-portable-storage')
-const { selectCarriedStorage, carriedContainerKey } = require('../src/quarry-inventory')
+const { selectCarriedStorage, carriedContainerKey, carriedContainerIdentity } = require('../src/quarry-inventory')
 
 const copy = value => structuredClone(value)
 const extra = () => ({ has_nbt: 'false', can_place_on: [], can_destroy: [] })
@@ -102,6 +102,21 @@ function shiftFloor (f, dy) {
     for (let offset = 0; offset < Math.abs(dy); offset++) f.blocks.set(key({ x, y: dy > 0 ? 65 + offset : 64 - offset, z }), { known: true, name: dy > 0 ? 'minecraft:stone' : 'minecraft:air', runtimeId: dy > 0 ? 1 : 0, boundingBox: dy > 0 ? 'block' : 'empty', extra: [] })
   }
 }
+
+// Live 2026-11-13 14:20 (storage:692): combat cut into the break of the owned
+// box and the box never came back. A received hostile within 16 m holds the
+// break (bounded); a hostile that leaves lets it start at once.
+test('the owned box break waits for a nearby hostile to leave, bounded', async () => {
+  for (const leaves of [true, false]) {
+    let ref = null, polls = 0
+    const hostile = () => { const p = ref.getState().position; return [{ kind: 'mob', hostile: true, alive: true, runtimeId: '99', name: 'minecraft:zombie', positionKnown: true, position: { x: p.x + 8, y: p.y, z: p.z } }] }
+    const f = ref = fixture('shulker', { entities: () => { if (!ref?.getState) return []; const cp = ref.checkpoints?.at?.(-1); if (cp?.stage !== 'packed') return []; polls++; return leaves && polls > 3 ? [] : hostile() } })
+    const result = await f.run()
+    assert.equal(result.status, 'completed', JSON.stringify(result))
+    assert.equal(result.checkpoint.breakWaitedForHostile, true)
+    assert.ok(polls >= 3)
+  }
+})
 
 test('storage chooses an observed reachable upper or lower ledge when the current layer has no footprint', async () => {
   for (const dy of [1, -1, 2, -2]) for (const kind of ['shulker', 'double_chest']) {
@@ -470,4 +485,16 @@ test('live case 2026-11-13: storage stands on a floor that blocks mining (gravel
   assert.equal(result.status, 'completed', JSON.stringify(result.reason))
   assert.ok(result.checkpoint.recoveryStandMoved, 'the break used a safe nearby stand')
   assert.notEqual(f.getBlock(result.checkpoint.stand.x, result.checkpoint.stand.y - 1, result.checkpoint.stand.z).name, 'minecraft:gravel')
+})
+
+test('live case 2026-11-13: a bot inside the stand cell but off-centre walks to the centre before placing', async () => {
+  const base = fixture('shulker'), plain = await base.run()
+  assert.equal(plain.status, 'completed', JSON.stringify(plain.reason))
+  const f = fixture('shulker')
+  f.state.position = { ...f.state.position, x: Math.floor(f.state.position.x) + 0.5, z: Math.floor(f.state.position.z) + 0.95 }
+  const result = await f.run()
+  assert.equal(result.status, 'completed', JSON.stringify(result.reason))
+  const stand = result.checkpoint.stand
+  const placeAt = f.events.findIndex(e => e.type === 'place')
+  assert.ok(f.events.slice(0, placeAt).some(e => e.type === 'move' && e.position.x === stand.x && e.position.z === stand.z), 'moved to the stand centre before placing')
 })

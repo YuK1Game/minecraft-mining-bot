@@ -126,7 +126,9 @@ function createQuarryEgressRuntime ({ getState, getBlock, moveTo, mineTargets, p
           // spent, and the server confirms the feet at the old height. The step
           // never happened, so it is cleared and sent again as a new step.
           const neverPlaced = !unacked && pending.phase === 'placement_pending' && p && p.x === plan.column.x && p.z === plan.column.z && p.y === checkpoint.confirmedFeetY &&
-            air(getBlock(p.x, p.y, p.z)) && Number.isSafeInteger(pending.beforeDirt) && dirtTotal(check()) === pending.beforeDirt
+            // Live 2026-11-13 17:24: near the surface the column's dug dirt is
+            // picked up, so the count may rise; no dirt left the bag either way.
+            air(getBlock(p.x, p.y, p.z)) && Number.isSafeInteger(pending.beforeDirt) && dirtTotal(check()) >= pending.beforeDirt
           if (neverPlaced) {
             await verifyPosition({ x: p.x + 0.5, y: p.y, z: p.z + 0.5 }, 'ASCENT_UNCERTAIN_STEP')
             checkpoint.pendingStep = null; await save()

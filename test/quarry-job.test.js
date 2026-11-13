@@ -651,3 +651,57 @@ test('live case 2026-11-11: a seal placement refused from one stance is planned 
   assert.ok(stances.length >= 2)
   assert.notEqual(stances[0], stances[1], 'the refused stance was not reused')
 })
+
+test('live case 2026-11-13 16:03: persistent slow breaks wait and retry (bounded) before SLOW_BREAK_PERSISTS', async () => {
+  const run = async ({ recoverAfter }) => {
+    const sim = setup({ stoneTop: 60, top: 62 })
+    sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5); sim.give('cobblestone', 16)
+    const lines = []
+    const { j } = job(sim, { log: l => lines.push(l), slowBreakWaitMs: 5 })
+    let calls = 0; let resyncs = 0
+    const mine = sim.adapter.mine
+    sim.adapter.mine = async (targets, o) => {
+      calls++
+      if (calls <= recoverAfter) { const t = targets[0]; throw Object.assign(new Error('quarry mine: block took 2122ms (limit 2100ms)'), { code: 'SLOW_BREAK', target: { x: t.x + 1000 + calls, y: t.y, z: t.z } }) }
+      return mine(targets, o)
+    }
+    sim.adapter.resyncInventory = async () => { resyncs++; return true }
+    assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+    j.start()
+    const s = await runUntilStopped(j)
+    return { s, lines, resyncs, sim }
+  }
+  // Lag that passes after the first wait: the job keeps quarrying.
+  const passing = await run({ recoverAfter: 3 })
+  assert.equal(passing.lines.filter(l => /slow_break_wait/.test(l)).length, 1)
+  assert.notEqual(passing.s.pauseReason, 'SLOW_BREAK_PERSISTS')
+  assert.ok(passing.sim.stats.mined > 100)
+  // Lag that never passes: three waits, then the stop.
+  const persistent = await run({ recoverAfter: Infinity })
+  assert.equal(persistent.lines.filter(l => /slow_break_wait/.test(l)).length, 3)
+  assert.equal(persistent.s.pauseReason, 'SLOW_BREAK_PERSISTS')
+})
+
+test('2026-11-13 unattended: pauses a plain resume cleared retry themselves (bounded); safety stops and opt-out do not', () => {
+  const sim = setup({ stoneTop: 60, top: 62 })
+  sim.give('diamond_pickaxe'); sim.give('diamond_shovel'); sim.give('bread', 5)
+  const { j } = job(sim, { autoResumeMs: 60000 })
+  assert.equal(j.plan(baseConfig({ yBottom: 61 })).ready, true)
+  const base = j.document()
+  const scheduled = (pauseReason, pauseDetails = null, strategy = {}) => {
+    const doc = structuredClone(base)
+    Object.assign(doc, { state: 'PAUSED', pauseReason, pauseDetails, userRunIntent: 'running', scope: JSON.stringify([sim.state.profile, sim.state.realm.id, sim.state.dimension, sim.state.connectionId, sim.state.startedAt]), life: sim.state.lifecycle.deathId })
+    doc.config.strategy = { ...doc.config.strategy, ...strategy }
+    j.load(doc)
+    const armed = j.rescheduleAutoResume()
+    return armed
+  }
+  for (const reason of ['INVENTORY_UNKNOWN', 'POSITION_UNCONFIRMED', 'HEALTH_NOT_RECOVERING', 'ASCENT_UNCERTAIN_STEP']) assert.equal(scheduled(reason), true, reason)
+  assert.equal(scheduled('CARRIED_STORAGE_BLOCKED', { reason: 'STORAGE_SITE_UNOBSERVED' }), true)
+  for (const reason of ['DEATH', 'SEAL_PLACEMENT_FAILED', 'EXIT_SCOPE_CHANGED', 'LOADOUT_CHEST_CHANGED']) assert.equal(scheduled(reason), false, reason)
+  assert.equal(scheduled('INVENTORY_UNKNOWN', null, { autoResumeTransient: false }), false, 'opt-out')
+  // New jobs run unattended to the surface by default.
+  assert.equal(base.config.strategy.autoAcceptFinalExceptions, true)
+  assert.equal(base.config.strategy.autoAcceptCargoLoss, true)
+  assert.equal(base.config.strategy.storeSpareArmor, true)
+})

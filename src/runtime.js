@@ -5414,6 +5414,31 @@ function createRuntime (host) {
       configureTools: options => ensureQuarryJob().configureTools(options ?? {}),
       configureStorage: options => ensureQuarryJob().configureStorage(options ?? {}),
       configureDirtSupply: options => ensureQuarryJob().configureDirtSupply(options ?? {}),
+      configureAnimalClearing: options => ensureQuarryJob().configureAnimalClearing(options ?? {}),
+      acceptCarriedStorageLoss: options => ensureQuarryJob().acceptCarriedStorageLoss(options ?? {}),
+      // Manual selective storage into a large chest within reach (2026-11-13 user
+      // request): cargo boxes and loose items go in; supply boxes, tools, worn
+      // armour, the totem and food stay. Only while no quarry job is running.
+      storeToChest: async (options = {}) => {
+        const doc = quarryJob?.document?.()
+        if (doc && !['FINISHED', 'PAUSED', 'IDLE', 'CANCELLED'].includes(doc.state)) throw new Error('露天掘りの実行中は収納できません。')
+        const p = options?.position
+        if (!p || !['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])) || Object.keys(options).some(k => !['position', 'all'].includes(k))) throw new Error('storeToChest accepts { position: {x,y,z}, all?: true } of a large chest')
+        const operationId = 'manual-store:' + new Date().toISOString().replace(/[:.]/g, '-')
+        const file = require('node:path').join(process.cwd(), '.local', 'manual-chest-deposit', operationId.replace(':', '-') + '.json')
+        require('node:fs').mkdirSync(require('node:path').dirname(file), { recursive: true })
+        const save = cp => require('node:fs').writeFileSync(file, JSON.stringify(cp, null, 1))
+        const { FINAL_CHEST_KEEP } = require('./quarry-job')
+        ensureQuarryJob()
+        if (!quarrySurfaceChestRunner) throw new Error('収納の準備ができていません。')
+        // all: true stores the gear too (2026-11-13 18:17 user request).
+        const result = await quarrySurfaceChestRunner('depositAll', { jobId: doc?.config?.jobId ?? 'manual', operationId, position: { x: p.x, y: p.y, z: p.z }, checkpoint: null, ...(options.all === true ? {} : { keep: FINAL_CHEST_KEEP }) }, { onCheckpoint: async cp => save(cp) })
+        save({ ...(result.checkpoint ?? {}), result: { status: result.status, reason: result.reason ?? null, serverConfirmed: result.serverConfirmed } })
+        host.log(`手動収納（選択）: ${result.status} ${result.reason ?? ''} 記録 ${file}`)
+        return { status: result.status, reason: result.reason ?? null, serverConfirmed: result.serverConfirmed, stored: (result.checkpoint?.receipts ?? []).filter(r => /deposit/.test(r.kind)).reduce((n, r) => n + (r.count ?? 0), 0), stacks: (result.checkpoint?.receipts ?? []).length, record: file }
+      },
+      configureCargoLossAcceptance: options => ensureQuarryJob().configureCargoLossAcceptance(options ?? {}),
+      configureSpareArmor: options => ensureQuarryJob().configureSpareArmor(options ?? {}),
       requestTerrain: () => { const doc = ensureQuarryJob().document(); if (!doc) throw new Error('No quarry job'); return requestQuarryTerrain({ config: doc.config, yTop: doc.yTop, yBottom: doc.config.yBottom }) },
       confirmPosition: (feet, options) => confirmQuarryPosition(feet, options),
       positionStatus: () => ({ ...(quarryPositionVerifier?.snapshot() ?? { busy: false }), lastOutput: structuredClone(host.shared.quarryPositionOutput ?? null) }),
@@ -5762,6 +5787,10 @@ function createRuntime (host) {
         })
       },
       previewPlace: data => interactions.previewPlace(data),
+      // Manual normal placement against a side face (2026-11-13: a bridge to the
+      // registered chest over the finished pit). Same checks as the quarry's seals.
+      previewPlaceAgainst: data => interactions.previewQuarryPlace(data),
+      placeAgainst: data => { requireIdle(); crafting.closeContainer(); const plan = interactions.previewQuarryPlace(data); if (!plan.ready) throw new Error((plan.errors ?? []).join(' / ') || 'placement refused'); return interactions.placeQuarryBlock(data) },
       openCraftingTable: (...args) => { requireIdle(); crafting.closeContainer(); return interactions.openCraftingTable(...args) },
       openFurnace: (...args) => { requireIdle(); crafting.closeContainer(); return interactions.openFurnace(...args) },
       openChest: (position, slot) => { requireIdle(); crafting.closeContainer(); return chest.open(position, slot) },
@@ -6658,6 +6687,8 @@ function createRuntime (host) {
     } finally { try { crafting.closeContainer() } catch {} }
     return { ok: false, reason: 'NO_PLACEABLE_CELL', tried: tried.slice(0, 6), crafted }
   }
+  // Set by ensureQuarryJob: the guarded surface chest runner (manual storage).
+  let quarrySurfaceChestRunner = null
   function ensureQuarryJob () {
     if (quarryJob) return quarryJob
     if (disposed || disposing) throw new Error('行動コードを更新しています。少し待ってからやり直してください。')
@@ -6693,6 +6724,7 @@ function createRuntime (host) {
       owner?.signal?.throwIfAborted()
       if (owner && (disposed || disposing || owner.scope !== portableCancellationScope() || owner.revision !== quarryCancellationRevision)) throw Object.assign(new Error('SURFACE_STORAGE_INTERRUPTED'), { code: 'SURFACE_STORAGE_INTERRUPTED' })
     }
+    quarrySurfaceChestRunner = (method, request, options) => runSurfaceChest(method, request, options)
     async function runSurfaceChest (method, request, options = {}) {
       options.signal?.throwIfAborted()
       if (host.shared.quarrySurfaceStorageOwner) throw Object.assign(new Error('SURFACE_STORAGE_BUSY'), { code: 'SURFACE_STORAGE_BUSY' })
@@ -6910,6 +6942,9 @@ function createRuntime (host) {
       // A prediction the server-position witness disproved (2026-11-13) is
       // discarded; the received raw position is never rewritten.
       discardPrediction: reason => { motionOrigin = null; host.shared.prediction = null; host.shared.motionSource = null; try { host.log(`位置: 外れた予測位置を破棄しました (${String(reason ?? '').slice(0, 80)})`) } catch {} return true },
+      rawItem: slot => crafting.rawItem(slot),
+      inventoryDetails: () => inventoryInspection.snapshot(working()),
+      attackAnimal: (runtimeId, options) => { if (!combat) throw new Error('戦闘モジュールが未準備です。'); return combat.animalAttack(runtimeId, options) },
       worldRevision: () => host.world.revision?.() ?? null,
       entities: () => host.entities.snapshot({ kind: 'all' }),
       mining: ports.mining, getMining: ports.getMining, movement: ports.movement, getMovement: ports.getMovement,
@@ -7046,6 +7081,13 @@ function createRuntime (host) {
     return status
   }
 
+  // Supply boxes get new stack IDs on every connection; register them again
+  // from the received inventory before an automatic resume (2026-11-13).
+  async function rebindQuarrySupplies () {
+    const doc = ensureQuarryJob().document()
+    if (!doc?.config?.inventory?.supplyBoxes?.length) return
+    try { await ensureQuarryJob().configureSupplies(); host.log('露天掘り: 補給箱を再登録しました。') } catch (error) { host.log(`露天掘り: 補給箱の再登録をせずに再開します: ${String(error.message).slice(0, 160)}`) }
+  }
   async function restoreQuarryJob () {
     const job = ensureQuarryJob(), current = job.document()
     if (current) {
@@ -7063,6 +7105,7 @@ function createRuntime (host) {
     const reason = status?.pauseReason ?? ''
     host.log(`露天掘り: 同じワールドのジョブを復元しました: ${candidate.config.jobId} (${reason || status?.state})`)
     if (!QUARRY_AUTO_RESUMABLE.test(reason)) return { loaded: candidate.config.jobId, resumed: false, reason }
+    await rebindQuarrySupplies()
     ensureQuarryJob().resume()
     return { loaded: candidate.config.jobId, resumed: true, reason }
   }
