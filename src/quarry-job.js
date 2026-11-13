@@ -3665,7 +3665,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   // Automatic resumes of a paused job (bounded; counts are persisted).
   function scheduleAutoResume (reason, pauseDetails) {
     if (!job || retired) return
-    if (job.persistence?.status !== 'failed' && reason === 'SUPPLY_RESTOCK_BLOCKED' && job.config.strategy?.autoAcceptCargoLoss === true && job.userRunIntent === 'running' && lostDirtSupply() && !job.dirtSupplyLossStopped) { if (scheduleSupplyLossSearch(reason)) return }
+    if (job.persistence?.status !== 'failed' && reason === 'SUPPLY_RESTOCK_BLOCKED' && job.config.strategy?.autoAcceptCargoLoss === true && job.userRunIntent === 'running' && lostDirtSupply() && !job.dirtSupplyLossStopped && supplyBoxCellAir()) { if (scheduleSupplyLossSearch(reason)) return }
     if (job.persistence?.status !== 'failed' && reason === 'CARRIED_STORAGE_BLOCKED' && pauseDetails?.reason === 'STORAGE_RECOVERY_UNCONFIRMED' && job.config.strategy?.autoAcceptCargoLoss === true && job.userRunIntent === 'running') { if (scheduleCargoLossSearch(reason)) return }
     // Pauses that a plain resume (which re-runs every check and reconciliation)
     // cleared by hand on 2026-11-13 also retry themselves, bounded like
@@ -4353,6 +4353,16 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     const at = child.placed[0].position
     if (!at || !['x', 'y', 'z'].every(k => Number.isSafeInteger(at[k]))) return null
     return { active, cp, child, binding, position: at }
+  }
+  // Only a box whose cell is received air can be lost. Live 2026-11-14 02:38
+  // (supplies:18): the placed dirt box waited for pickup room
+  // (STORAGE_PICKUP_CAPACITY_REQUIRED); the search started, stopped at once
+  // (BOX_CELL_NOT_AIR) and kept the ordinary capacity retry from being armed.
+  function supplyBoxCellAir () {
+    const lost = lostDirtSupply()
+    if (!lost) return false
+    const block = adapter.getBlock(lost.position.x, lost.position.y, lost.position.z)
+    return block?.known === true && nameOf(block) === 'air'
   }
   // Same bounded search as a lost cargo box (60 s: 32 m items, one inventory
   // resync, the box cell). Found: the ordinary recovery runs again. Otherwise

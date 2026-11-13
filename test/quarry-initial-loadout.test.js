@@ -16,7 +16,7 @@ loaded._compile(fs.readFileSync(file, 'utf8').split('\ntest(')[0] + '\nmodule.ex
 const { fixture: chestFixture, raw, empty } = loaded.exports
 const copy = value => structuredClone(value)
 const home = { position: { x: 2, y: 63, z: -1 }, other: { x: 3, y: 63, z: -1 }, stand: { x: 1, y: 63, z: -1 }, stage: { x: 0, y: 63, z: -1 }, chunk: { x: 0, z: -1 } }
-function fixture ({ missing = false, blockedSupply = true, rejectTransfer = false, mutateSave = null, seal = false, corruptStock = false, delayedHand = false, neverHand = false, invalidCp = false, cargoDirt = 0, loseDirtBox = false, renumber = false, jobOptions = {} } = {}) {
+function fixture ({ missing = false, blockedSupply = true, rejectTransfer = false, mutateSave = null, seal = false, corruptStock = false, delayedHand = false, neverHand = false, invalidCp = false, cargoDirt = 0, loseDirtBox = false, renumber = false, boxStillPlaced = false, jobOptions = {} } = {}) {
   const f = chestFixture({ missing }), blocks = new Map(), saved = [], requests = [], events = []
   // The shared routing fixture has decoded contents separately. Its raw
   // identity still needs an actual typed compound for received-prefix checks.
@@ -99,6 +99,7 @@ function fixture ({ missing = false, blockedSupply = true, rejectTransfer = fals
         await onCheckpoint({ version: 1, jobId: request.jobId, operationId: request.operationId, scope, bindings: copy(request.bindings), policy: copy(request.policy), boxCount, index: 2, withdrawn: [], returned: [],
           child: { version: 1, kind: 'shulker', stage: 'breaking', scope, selectionKey: request.bindings[2].key, placed: [{ name: 'minecraft:brown_shulker_box', position: { x: 5, y: 63, z: 5 } }], supplyCheckpoint: { withdrawn: [] } } })
         holdSeen = job.shulkerHold()
+        if (boxStillPlaced) { blocks.set('5,63,5', { known: true, name: 'minecraft:brown_shulker_box', boundingBox: 'block', runtimeId: 9, properties: {}, extra: [] }); return { status: 'blocked', serverConfirmed: false, reason: 'STORAGE_PICKUP_CAPACITY_REQUIRED', checkpoint: null } }
         return { status: 'blocked', serverConfirmed: false, reason: 'SUPPLY_SCOPE_CHANGED', checkpoint: null }
       }
       const need = supplyNeeds(describe(), request.policy)
@@ -386,4 +387,16 @@ test('live case 2026-11-14 02:19: after a reconnect renumbers the carried boxes,
   const carried = new Set(f.f.view().slots.filter(r => !r.empty).map(r => carriedContainerKey({ ...r, stackId: f.f.bag[r.slot].stack_id })))
   for (const b of f.requests[1].bindings) assert.ok(carried.has(b.key), b.role + ' ' + b.key + ' is carried')
   assert.ok(f.job.status().events.some(e => e.type === 'supply_bindings_refreshed'))
+})
+
+test('live case 2026-11-14 02:38: a placed dirt box waiting for pickup room is not searched for as lost; the capacity retry is armed', async () => {
+  const f = fixture({ blockedSupply: false, loseDirtBox: true, boxStillPlaced: true, cargoDirt: 256, jobOptions: { cargoLossSearchMs: 40, cargoLossStepMs: 5 } }); assert.equal(f.job.plan(f.config).ready, true)
+  f.job.start()
+  const until = Date.now() + 3000
+  while (f.job.status().state !== 'PAUSED' && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 5))
+  const status = f.job.status()
+  assert.equal(status.pauseReason, 'SUPPLY_RESTOCK_BLOCKED'); assert.equal(status.pauseDetails.reason, 'STORAGE_PICKUP_CAPACITY_REQUIRED')
+  assert.equal(status.events.some(e => e.type === 'supply_loss_search'), false)
+  assert.equal(status.autoRetry?.kind, 'capacity', JSON.stringify(status.autoRetry))
+  await f.job.pause()
 })
