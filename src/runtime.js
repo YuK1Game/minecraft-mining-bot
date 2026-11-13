@@ -6907,6 +6907,9 @@ function createRuntime (host) {
       getBlock: quarryBlockReader(),
       requestTerrain: (request, options) => requestQuarryTerrain(request, options),
       confirmPosition: (feet, options) => confirmQuarryPosition(feet, options),
+      // A prediction the server-position witness disproved (2026-11-13) is
+      // discarded; the received raw position is never rewritten.
+      discardPrediction: reason => { motionOrigin = null; host.shared.prediction = null; host.shared.motionSource = null; try { host.log(`位置: 外れた予測位置を破棄しました (${String(reason ?? '').slice(0, 80)})`) } catch {} return true },
       worldRevision: () => host.world.revision?.() ?? null,
       entities: () => host.entities.snapshot({ kind: 'all' }),
       mining: ports.mining, getMining: ports.getMining, movement: ports.movement, getMovement: ports.getMovement,
