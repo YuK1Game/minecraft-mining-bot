@@ -6,7 +6,14 @@
 // acceptance runs; an unlisted block is never broken automatically.
 
 const { oreRule } = require('./quarry-ore')
-const nameOf = value => String(value?.name ?? value ?? '').replace(/^minecraft:/, '')
+// Called for every block the planner looks at: remember each short name.
+const SHORT_NAMES = new Map()
+const nameOf = value => {
+  const full = String(value?.name ?? value ?? '')
+  let short = SHORT_NAMES.get(full)
+  if (short === undefined) { short = full.replace(/^minecraft:/, ''); if (SHORT_NAMES.size < 4096) SHORT_NAMES.set(full, short) }
+  return short
+}
 const AIR = new Set(['air', 'cave_air', 'void_air'])
 const FLUIDS = new Set(['water', 'flowing_water', 'lava', 'flowing_lava', 'bubble_column'])
 const GRAVITY = new Set(['sand', 'red_sand', 'gravel', 'suspicious_sand', 'suspicious_gravel', 'anvil', 'chipped_anvil', 'damaged_anvil', 'dragon_egg', 'pointed_dripstone', 'scaffolding', 'powder_snow'])
