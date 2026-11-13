@@ -568,6 +568,10 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       // solid floor under it next to a reachable stance (mine it, step down).
       // Only for a real void under the layer, while the bot is not already cut off
       // (that case keeps its DESCENT_REQUIRED stop below).
+      if (y > regions.yBottom && reach.size > SMALL_REACH && layer.pending.filter(t => !grounded(t.position)).length >= WRITE_OFF_LAYER_CELLS && !exitAfter(feet, [], y, layer.pending).down) {
+        const fill = floorFillAction(reach, layer.pending.filter(t => !grounded(t.position)).map(t => t.position), inventoryItems, yTop)
+        if (fill?.action) return fill
+      }
       if (y > regions.yBottom && reach.size > SMALL_REACH && layer.pending.filter(t => !grounded(t.position)).length >= WRITE_OFF_LAYER_CELLS && !exitAfter(feet, [], y, layer.pending).down) return { action: 'pause', reason: 'LAYER_ISOLATION_RISK', details: { y, reach: reach.size, pending: layer.pending.length, groundedCells: layer.pending.filter(t => grounded(t.position)).length, feet: { ...feet } } }
       // Stair upkeep before the layer is opened.
       const step = stairStepAt(y)
@@ -637,6 +641,11 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       // Nothing reachable in this layer: defer the remaining cells with reason
       // so the same cells are not retried forever (§5.3).
       const unreachable = layer.pending.filter(t => !deferred.has(key(t.position.x, t.position.y, t.position.z)))
+      // Bridge or step down over the void toward the unreached cells first.
+      if (unreachable.length) {
+        const fill = floorFillAction(reach, unreachable.map(t => t.position), inventoryItems, yTop)
+        if (fill?.action) return fill
+      }
       // A whole layer out of reach from a tiny walkable area is not "done":
       // the bot is cut off (e.g. above a cave). Stop instead of deferring every
       // lower layer and declaring the job complete.
@@ -654,6 +663,40 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
       if (unreachable.length) return { action: 'deferred', reason: 'UNREACHABLE', count: unreachable.length, y }
     }
     return { action: 'finished' }
+  }
+
+  // Cave floors (user spec 2026-11-13): when work is out of reach because the
+  // next standing cell has a void under it, an ordinary block is placed into
+  // that void first so the cell becomes a floor. Only known air inside the
+  // target columns is filled, from a safe stance with a visible face to click;
+  // the placed block is ordinary later work of its own layer.
+  const FLOOR_FILL_CANDIDATES = 16
+  function floorFillAction (reach, wanted, inventoryItems, yTop) {
+    if (!wanted.length) return null
+    const distTo = p => { let best = Infinity; for (const w of wanted) { const d = Math.abs(w.x - p.x) + Math.abs(w.z - p.z) + Math.abs(w.y + 1 - p.y); if (d < best) best = d } return best }
+    let current = Infinity
+    const candidates = []; const seen = new Set()
+    for (const k of reach.keys()) {
+      const [x, y, z] = k.split(',').map(Number); const s = { x, y, z }
+      current = Math.min(current, distTo(s))
+      for (const h of HORIZONTAL) for (const dy of [0, -1]) {
+        const a = { x: s.x + h.x, y: s.y + dy, z: s.z + h.z }; const f = add(a, { x: 0, y: -1, z: 0 }); const fk = key(f.x, f.y, f.z)
+        if (seen.has(fk)) continue
+        seen.add(fk)
+        if (!regions.columns.has(`${f.x},${f.z}`) || f.y < regions.yBottom || f.y > yTop || isStairCell(f) || seals.has(fk)) continue
+        if (!airLike(read(f)) || !travelOk(a) || !passable(read(a)) || !passable(read(add(a, { x: 0, y: 1, z: 0 })))) continue
+        if (dy === -1 && !passable(read(add(a, { x: 0, y: 2, z: 0 })))) continue
+        if (touchesHeldFluid(a) || !permits(regions, 'seal', f).allowed) continue
+        candidates.push({ position: f, score: distTo(a) })
+      }
+    }
+    const useful = candidates.filter(c => c.score < current).sort((a, b) => a.score - b.score).slice(0, FLOOR_FILL_CANDIDATES)
+    for (const c of useful) {
+      const placement = placementFor({ ok: true, position: c.position, purpose: 'floor' }, reach, inventoryItems)
+      if (placement.action) return { ...placement, reason: 'CAVE_FLOOR_FILL' }
+      if (placement.reason === 'SEAL_MATERIAL_MISSING') break
+    }
+    return null
   }
 
   function mineAction (target, reach, tools, policy, layerPending, maxBatch, compareTravel = false) {
