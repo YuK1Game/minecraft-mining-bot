@@ -20,7 +20,7 @@ const HAZARDS = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|dragon_egg|
 const QUARRY_HAZARDS = /(?:water|lava|bubble_column)/
 const { blockRule: quarryRule, toolOf: quarryTool } = require('./quarry-rules')
 const blockName = block => String(block?.name ?? '').replace(/^minecraft:/, '')
-const key = position => `${position.x},${position.y},${position.z}`
+const { pointKey: key } = require('./vec3')
 const adjacent = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }]
 
 function targetList (targets) {

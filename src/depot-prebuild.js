@@ -5,7 +5,7 @@ const { continuationScope } = require('./base-continuation')
 const { evaluateThreats } = require('./threats')
 const { isSupportedFood } = require('./food')
 const copy = value => structuredClone(value)
-const key = p => `${p.x},${p.y},${p.z}`
+const { pointKey: key } = require('./vec3')
 const integer = p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]))
 const worldKey = s => s && JSON.stringify([s.profile, String(s.realmId ?? s.realm?.id), s.dimension])
 const fingerprint = b => b?.known === true ? { name: b.name, runtimeId: b.runtimeId ?? null, properties: copy(b.properties ?? {}) } : null

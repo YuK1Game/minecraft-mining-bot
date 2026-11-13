@@ -22,9 +22,9 @@ const BUSY = new Set(['running', 'queued', 'mining', 'moving', 'walking', 'craft
 const nameOf = value => String(value ?? '').replace(/^minecraft:/, '')
 const fullName = value => `minecraft:${nameOf(value)}`
 const amount = value => Number.isSafeInteger(value) && value > 0 ? value : 0
-const key = point => `${point.x},${point.y},${point.z}`
+const { pointKey: key } = require('./vec3')
 const copyPoint = point => ({ x: point.x, y: point.y, z: point.z })
-const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))
+const { finitePoint: finite } = require('./vec3')
 const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]))
 const isLog = name => name.endsWith('_log') && WOODS.has(name.slice(0, -4))
 const isWoodFuel = name => name.endsWith('_planks') && FUEL_WOODS.has(name.slice(0, -7))

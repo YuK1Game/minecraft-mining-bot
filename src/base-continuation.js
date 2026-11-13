@@ -5,7 +5,7 @@ const { evaluateThreats } = require('./threats')
 const copy = value => structuredClone(value)
 const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]) && Math.abs(p[k]) <= 30000000)
 const integer = p => finite(p) && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])) && p.y >= -64 && p.y <= 319
-const key = p => `${p.x},${p.y},${p.z}`
+const { pointKey: key } = require('./vec3')
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const FOODS = /^(?:apple|bread|carrot|potato|baked_potato|beetroot|melon_slice|sweet_berries|glow_berries|dried_kelp|cookie|pumpkin_pie|golden_carrot|golden_apple|enchanted_golden_apple|beef|cooked_beef|porkchop|cooked_porkchop|mutton|cooked_mutton|rabbit|cooked_rabbit|cod|cooked_cod|salmon|cooked_salmon|cooked_chicken)$/
 const count = (state, match) => state.inventory.items.reduce((sum, i) => sum + (match(String(i.name ?? '').replace(/^minecraft:/, '')) && Number.isSafeInteger(i.count) && i.count > 0 ? i.count : 0), 0)

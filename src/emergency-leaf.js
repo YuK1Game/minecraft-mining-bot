@@ -6,8 +6,8 @@ const { evaluateThreats } = require('./threats')
 const LEAVES = new Set([...['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'azalea', 'orange_poplar', 'red_poplar', 'yellow_poplar'].map(name => `minecraft:${name}_leaves`), 'minecraft:azalea_leaves_flowered'])
 const SOIL = new Set(['minecraft:grass_block', 'minecraft:dirt'])
 const SWORD = /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/
-const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]))
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { finitePoint: finite } = require('./vec3')
+const { distance3: distance } = require('./vec3')
 // The host marks requested/predicted equipment false; an absent flag is its
 // normal received-inventory representation. Never infer a selected hand from
 // a requested slot or from heldItem alone.

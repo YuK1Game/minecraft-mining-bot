@@ -4,7 +4,7 @@ const { performance } = require('node:perf_hooks')
 const { setTimeout: delay } = require('node:timers/promises')
 const copy = value => structuredClone(value)
 const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]) && Math.abs(p[k]) <= 30000001)
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 function id (value, signed = false) {
   if (value == null || typeof value === 'number' && !Number.isSafeInteger(value) || typeof value === 'string' && !(signed ? /^-?\d+$/ : /^\d+$/).test(value)) return null
   try { const n = BigInt(value); return n >= (signed ? -(1n << 63n) : 0n) && n < 1n << (signed ? 63n : 64n) ? String(n) : null } catch { return null }

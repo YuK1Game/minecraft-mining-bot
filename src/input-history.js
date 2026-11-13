@@ -4,9 +4,9 @@
 // Correction T is a post-input-T anchor; replay covers only queued T+1..N.
 const MAX_TICK = (1n << 64n) - 1n
 const CONTROLS = ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'sneak']
-const finite = value => value && ['x', 'y', 'z'].every(axis => Number.isFinite(value[axis]))
+const { finitePoint: finite } = require('./vec3')
 const copy = value => structuredClone(value)
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const stamp = value => typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) : NaN
 function tickOf (value) {
   if (typeof value !== 'bigint' && !(typeof value === 'number' && Number.isSafeInteger(value)) && !(typeof value === 'string' && /^\d+$/.test(value))) return null

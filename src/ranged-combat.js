@@ -16,7 +16,7 @@ const HOSTILES = new Set(['zombie', 'zombie_villager', 'zombie_villager_v2', 'hu
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const copy = value => structuredClone(value)
 const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]) && Math.abs(p[k]) <= 30000001)
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const inventoryWindow = value => value === 0 || value === 'inventory'
 const id = (value, signed = false) => {
   if (typeof value === 'number' && !Number.isSafeInteger(value) || value == null) return null

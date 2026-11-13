@@ -37,7 +37,7 @@ const BODY_AIM_HEIGHTS = new Map([
   ['slime', 0.2], ['magma_cube', 0.2], ['vex', 0.3], ['phantom', 0.2],
   ['guardian', 0.4], ['elder_guardian', 0.6], ['cow', 0.6], ['sheep', 0.6], ['pig', 0.4], ['chicken', 0.3]
 ].map(([name, height]) => [`minecraft:${name}`, height]))
-const finite = position => position && ['x', 'y', 'z'].every(axis => Number.isFinite(position[axis]))
+const { finitePoint: finite } = require('./vec3')
 const copy = value => structuredClone(value)
 
 function sightPassable (block) {

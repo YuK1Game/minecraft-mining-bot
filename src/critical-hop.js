@@ -1,7 +1,7 @@
 'use strict'
 
 const copy = value => structuredClone(value)
-const finite = point => point && ['x', 'y', 'z'].every(key => Number.isFinite(point[key]))
+const { finitePoint: finite } = require('./vec3')
 const HAZARD = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush|ladder|vine|scaffolding)/
 
 function aim (state, target) {

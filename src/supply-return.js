@@ -1,9 +1,9 @@
 'use strict'
 
 const { resourceMinHealth } = require('./learning-health')
-const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]))
+const { finitePoint: finite } = require('./vec3')
 const integer = p => finite(p) && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]))
-const key = p => `${p.x},${p.y},${p.z}`
+const { pointKey: key } = require('./vec3')
 const name = b => String(b?.name ?? '').replace(/^minecraft:/, '')
 const copy = v => structuredClone(v)
 const SUPPORT = new Set(['stone', 'deepslate', 'cobblestone', 'cobbled_deepslate', 'dirt', 'grass_block', 'coarse_dirt', 'rooted_dirt', 'granite', 'diorite', 'andesite', 'tuff', 'calcite'])

@@ -5,7 +5,7 @@
 // https://github.com/Mojang/bedrock-protocol-docs/blob/main/additional_docs/PlayerMovementOverview.md
 const MAX_TICK = (1n << 64n) - 1n
 const CONTROLS = ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'sneak']
-const finite = p => p && ['x', 'y', 'z'].every(axis => Number.isFinite(p[axis]))
+const { finitePoint: finite } = require('./vec3')
 const copy = value => structuredClone(value)
 function tickOf (value) {
   if (typeof value !== 'bigint' && !(typeof value === 'number' && Number.isSafeInteger(value)) && !(typeof value === 'string' && /^\d+$/.test(value))) return null

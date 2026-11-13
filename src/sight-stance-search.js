@@ -3,7 +3,7 @@
 const { performance } = require('node:perf_hooks')
 const { setImmediate: nextTurn } = require('node:timers/promises')
 
-const finite = p => p && ['x', 'y', 'z'].every(axis => Number.isFinite(p[axis]))
+const { finitePoint: finite } = require('./vec3')
 const samePosition = (a, b) => finite(a) && finite(b) && ['x', 'y', 'z'].every(axis => a[axis] === b[axis])
 const before = (a, b) => a.score < b.score || a.score === b.score && a.order < b.order
 

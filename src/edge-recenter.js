@@ -8,7 +8,7 @@
 const HALF_WIDTH = 0.2999
 const MIN_STEP = 0.2
 const MAX_STEP = 1.2
-const finite = p => p && ['x', 'y', 'z'].every(axis => Number.isFinite(p[axis]))
+const { finitePoint: finite } = require('./vec3')
 const open = b => b?.known === true && b.boundingBox === 'empty' && !(b.extra ?? []).length && !/(?:lava|fire|water|cactus|magma|powder_snow|sweet_berry)/.test(String(b.name ?? ''))
 const solid = b => b?.known === true && b.boundingBox === 'block' && !(b.extra ?? []).length && !/(?:lava|magma|cactus|campfire)/.test(String(b.name ?? ''))
 

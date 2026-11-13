@@ -9,10 +9,10 @@ const EMPTY = new Set([...AIR, 'torch', 'leaf_litter', 'short_grass', 'fern', 'd
 const SOLID = new Set(['stone', 'deepslate', 'cobblestone', 'cobbled_deepslate', 'dirt', 'grass_block', 'coarse_dirt', 'rooted_dirt', 'granite', 'diorite', 'andesite', 'tuff', 'calcite', 'netherrack', 'bedrock', ...['coal', 'iron', 'copper', 'gold', 'lapis', 'redstone', 'diamond', 'emerald'].flatMap(n => [`${n}_ore`, `deepslate_${n}_ore`])])
 const COVER_TYPES = new Set(['minecraft:skeleton', 'minecraft:zombie'])
 const finite = p => p && AXES.every(a => Number.isFinite(p[a]) && Math.abs(p[a]) <= 30000000)
-const key = p => `${p.x},${p.y},${p.z}`
+const { pointKey: key } = require('./vec3')
 const name = b => String(b?.name ?? '').replace(/^minecraft:/, '')
 const copy = v => structuredClone(v)
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const fail = (message, code) => Object.assign(new Error(message), { code })
 const validId = (v, signed = false) => typeof v === 'string' && (signed ? /^-?\d+$/ : /^\d+$/).test(v)
 function returnScope (s) {

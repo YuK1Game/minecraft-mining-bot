@@ -4,7 +4,7 @@ const SOIL = new Set(['minecraft:dirt', 'minecraft:grass_block'])
 const FLOOR = new Set(['dirt', 'grass_block', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'granite', 'diorite', 'andesite', 'tuff', 'calcite'].map(name => `minecraft:${name}`))
 const AIR = new Set(['air', 'cave_air', 'void_air'].map(name => `minecraft:${name}`))
 const PLANTS = new Set(['short_grass', 'tall_grass', 'fern', 'large_fern', 'deadbush', 'leaf_litter'].map(name => `minecraft:${name}`))
-const key = point => `${point.x},${point.y},${point.z}`
+const { pointKey: key } = require('./vec3')
 const integer = point => point && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]) && Math.abs(point[axis]) <= 30000000)
 const positionOf = value => value?.position ?? value
 const dry = block => block?.known === true && !block.extra?.length && block.protected !== true && block.owned !== true && block.natural !== false

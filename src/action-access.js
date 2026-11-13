@@ -10,8 +10,8 @@ const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'
 const ACCESS_PLANTS = new Set(['minecraft:leaf_litter', 'minecraft:vine'])
 const ACCESS_LIMIT = 4
 const HAZARD = /(?:water|lava|fire|cactus|magma|campfire|sweet_berry_bush|powder_snow|cobweb|wither_rose|pointed_dripstone|sand$|gravel$|concrete_powder$|anvil$|scaffolding)/
-const key = p => `${p.x},${p.y},${p.z}`
-const finite = p => p && ['x', 'y', 'z'].every(axis => Number.isFinite(p[axis]))
+const { pointKey: key } = require('./vec3')
+const { finitePoint: finite } = require('./vec3')
 const OFFSETS = [{ x: 0, z: 0 }, { x: 0.25, z: 0 }, { x: -0.25, z: 0 }, { x: 0, z: 0.25 }, { x: 0, z: -0.25 }, { x: 0.2, z: 0.2 }, { x: 0.2, z: -0.2 }, { x: -0.2, z: 0.2 }, { x: -0.2, z: -0.2 }]
 
 function treeAccessIdentity (state) {

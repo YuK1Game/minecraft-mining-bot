@@ -20,7 +20,7 @@ const HAZARDS = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|dragon_egg|
 const NEIGHBOURS = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }]
 const nameOf = value => String(value ?? '').replace(/^minecraft:/, '')
 const fullName = value => `minecraft:${nameOf(value)}`
-const key = position => `${position.x},${position.y},${position.z}`
+const { pointKey: key } = require('./vec3')
 const position = value => value && ['x', 'y', 'z'].every(axis => Number.isFinite(value[axis]))
 const integerPosition = value => position(value) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(value[axis]))
 const positive = (value, fallback) => Number.isSafeInteger(value) && value > 0 ? value : fallback

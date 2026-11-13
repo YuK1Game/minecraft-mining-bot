@@ -16,9 +16,9 @@ const FLOOR = new Set(['crafting_table', 'furnace', 'lit_furnace', 'stone', 'cob
 const FACES = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }]
 const nameOf = block => String(block?.name ?? '').replace(/^minecraft:/, '')
 const copy = value => structuredClone(value)
-const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))
+const { finitePoint: finite } = require('./vec3')
 const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]) && Math.abs(point[axis]) <= 30000000)
-const key = point => `${point.x},${point.y},${point.z}`
+const { pointKey: key } = require('./vec3')
 const spatial = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
 const layered = block => block.extra?.some(extra => !AIR.has(nameOf(extra)))
 const clear = block => block?.known === true && !UNSAFE.test(nameOf(block)) && !layered(block) && (AIR.has(nameOf(block)) || block.boundingBox === 'empty')

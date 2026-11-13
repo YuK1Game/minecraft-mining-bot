@@ -8,7 +8,7 @@ const { plainAir, passableSiteBody, supportIssue } = require('./storage-site-ter
 const copy = value => structuredClone(value)
 const finite = p => p && ['x', 'y', 'z'].every(axis => Number.isFinite(p[axis]) && Math.abs(p[axis]) < 30000000)
 const feetOf = state => finite(state?.position) ? { x: state.position.x, y: state.position.y - 1.62, z: state.position.z } : null
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+const { distance3: distance } = require('./vec3')
 const hazard = /water|lava|fire|magma|cactus|campfire|powder|cobweb|wither_rose|dripstone/
 const fail = code => Object.assign(new Error(code), { code })
 const reasons = {
