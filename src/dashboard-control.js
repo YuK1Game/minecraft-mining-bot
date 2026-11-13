@@ -87,6 +87,18 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
     if (!proof || !areaContainsFeet(area, proof.feet, proof.radius)) throw error('CHUNK_POSITION_UNCONFIRMED', '選択した範囲内のBotの実位置を確認してから操作してください。')
     return proof
   }
+  // A standing Bot rarely holds a fresh proof. Ask the server for one on demand;
+  // the placement is still refused unless that actual witness lands in the area.
+  async function ensureAreaPosition (area, q, input) {
+    try { return requireAreaPosition(area, q) } catch (failure) {
+      if (typeof q?.confirmControlPosition !== 'function') throw failure
+      busy++
+      try { await q.confirmControlPosition(structuredClone(area)) } catch { /* The check below reports the missing proof. */ } finally { busy-- }
+      checkSession(input)
+      if (getQuarry() !== q || moveStatus(q, getState()).busy) throw failure
+      return requireAreaPosition(area, q)
+    }
+  }
   function requireMovableJob (q) {
     const status = q.status?.(), doc = q.document?.()
     if (status?.draining || status?.persistence?.status === 'failed' || status?.jobId && !['IDLE', 'PAUSED', 'FINISHED'].includes(status.state) ||
@@ -175,7 +187,8 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
       const r = input.command === 'resetStart' ? resetReceipt : null
       if (input.command === 'resetStart') invalidate()
       const area = areaOf(input.area)
-      const proof = requireAreaPosition(area, movement)
+      let proof // Stay synchronous when the proof is already held.
+      try { proof = requireAreaPosition(area, movement) } catch { proof = await ensureAreaPosition(area, movement, input) }
       if (input.command === 'resetPreview') {
         invalidate()
         const generation = getGeneration(), runtimeGeneration = proof.generation, previewRevision = revision

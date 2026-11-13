@@ -149,3 +149,22 @@ test('manager forwards only the fixed new payload shapes without starting a Bot 
   await assert.rejects(manager.execute('loadout', { command: 'resetPreview', session: 's', area, commandText: '/tp' }))
   assert.equal(requests.length, 4)
 })
+
+test('a missing proof is requested once from the server before the initial chest preview and start, and an unconfirmed answer still refuses', async () => {
+  const f = fixture(), saved = copy(f.proof), asked = []
+  let held = null
+  f.q.controlPosition = () => copy(held)
+  f.q.confirmControlPosition = async value => { asked.push(copy(value)); held = saved; return { serverConfirmed: true } }
+  const preview = await f.preview()
+  assert.equal(preview.resetPreview.token, 'reset_1'); assert.equal(asked.length, 1); assert.equal(preview.state.positionProof.confirmed, true)
+  held = null
+  await f.control.execute(f.request({ command: 'resetStart', resetToken: 'reset_1', confirm: 'REPLACE_SURFACE_CHEST_AND_CLEAR_INVENTORY', area: asked[0] }))
+  assert.equal(asked.length, 2); assert.ok(f.calls.some(call => call[0] === 'reset'))
+
+  const refused = fixture(); refused.q.controlPosition = () => null
+  refused.q.confirmControlPosition = async () => ({ serverConfirmed: false })
+  await assert.rejects(refused.preview(), { code: 'CHUNK_POSITION_UNCONFIRMED' }); assert.equal(refused.calls.length, 0)
+  const throwing = fixture(); throwing.q.controlPosition = () => null
+  throwing.q.confirmControlPosition = async () => { throw new Error('offline') }
+  await assert.rejects(throwing.preview(), { code: 'CHUNK_POSITION_UNCONFIRMED' }); assert.equal(throwing.calls.length, 0)
+})

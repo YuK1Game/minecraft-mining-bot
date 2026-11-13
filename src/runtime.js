@@ -5387,6 +5387,7 @@ function createRuntime (host) {
       },
       chunkMoveStatus: () => chunkTravel?.status() ?? { available: true, busy: false, phase: 'idle', operationId: null, serverConfirmed: false },
       controlPosition: () => controlLocation.snapshot(),
+      confirmControlPosition: (area, options) => controlLocation.confirm(null, { ...options, area: normalizeChunkArea(area), radius: 0.12, operationId: 'dashboard_area_position' }),
       plan: config => {
         if (!quarryJob?.holdsWork()) requireIdle()
         const input=structuredClone(config??{})
