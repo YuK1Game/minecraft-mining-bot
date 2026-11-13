@@ -256,13 +256,12 @@
   $('start').addEventListener('click', () => {
     if (!plan) return
     const p = plan
-    if (!confirm(`${clean(p.state.realm?.name)} の ${blockRange(p.plan.chunks)} を Y=${p.plan.yTop}〜${p.plan.yBottom} まで露天掘りします。開始しますか？`)) return
     plan = null; $('plan-results').hidden = true
     act('action', 'quarry', { command: 'start', session: p.state.session, planToken: p.planToken }, () => message('action', ''))
   })
   for (const [button, command, label] of [['pause', 'pause', '一時停止'], ['resume', 'resume', '再開'], ['cancel', 'cancel', 'キャンセル']]) {
     $(button).addEventListener('click', () => {
-      if (['resume', 'cancel'].includes(button) && !confirm(`現在のジョブを${label}しますか？`)) return
+      if (button === 'cancel' && !confirm(`現在のジョブを${label}しますか？`)) return
       plan = null; $('plan-results').hidden = true
       act('action', 'quarry', { command, session: current?.live?.session, jobId: current?.live?.quarry?.jobId ?? null }, () => message('action', ''))
     })
