@@ -35,6 +35,29 @@ function carriedContainerIdentity (item) {
   return require('crypto').createHash('sha256').update(require('v8').serialize({ network_id: r.network_id, metadata: r.metadata, block_runtime_id: r.block_runtime_id, extra: r.extra })).digest('hex')
 }
 
+// Unenchanted, plain armour in the bag whose piece is already worn in a
+// strictly better material (e.g. a copper helmet dropped by a drowned while a
+// diamond helmet is worn). Everything must be server-received and known;
+// anything unclear stays kept.
+const ARMOR_RANK = { leather: 1, golden: 2, copper: 2, chainmail: 3, iron: 4, diamond: 5, netherite: 6 }
+const ARMOR = /^(leather|golden|copper|chainmail|iron|diamond|netherite)_(helmet|chestplate|leggings|boots)$/
+function spareArmorStackIds (details) {
+  const worn = new Map()
+  if (details?.armor?.known !== true || !Array.isArray(details.armor.slots) || !Array.isArray(details.slots)) return []
+  for (const piece of details.armor.slots) {
+    const m = piece?.known === true && piece.empty === false && ARMOR.exec(nameOf(piece.name))
+    if (m && piece.enchantmentsKnown === true) worn.set(m[2], Math.max(worn.get(m[2]) ?? 0, ARMOR_RANK[m[1]]))
+  }
+  const out = []
+  for (const item of details.slots) {
+    const m = item?.known === true && item.empty === false && Number.isInteger(item.slot) && item.slot >= 0 && item.slot < SLOTS && ARMOR.exec(nameOf(item.name))
+    if (!m || item.count !== 1 || !Number.isSafeInteger(item.stackId) || item.stackId < 1) continue
+    if (item.enchantmentsKnown !== true || !Array.isArray(item.enchantments) || item.enchantments.length || item.displayName != null || (Array.isArray(item.lore) ? item.lore.length : item.lore != null) || item.repairCost != null && item.repairCost !== 0) continue
+    if ((worn.get(m[2]) ?? 0) > ARMOR_RANK[m[1]]) out.push(item.stackId)
+  }
+  return out
+}
+
 function selectCarriedStorage (items, { excludedShulkerKeys = [], excludedShulkerIdentities = [], shulkerOnly = false } = {}) {
   const available = [...(items ?? [])].filter(item => Number.isInteger(item?.slot) && item.slot >= 0 && item.slot < SLOTS && Number.isSafeInteger(item.count) && item.count > 0).sort((a, b) => a.slot - b.slot)
   const excluded = new Set(excludedShulkerKeys), excludedIdentity = new Set(excludedShulkerIdentities)
@@ -55,10 +78,11 @@ function selectCarriedStorage (items, { excludedShulkerKeys = [], excludedShulke
 // Material for one more storage chest is kept too: carried chests and a
 // crafting table, plus a few logs/planks (2 logs make a chest, 1 a table).
 // A little coal and a few sticks stay too, to craft torches for the chest area.
-function keepPlan (items, { keepSealBlocks = 32, keepSealMaterial = null, keepFood = 64, keepLogs = 4, keepPlanks = 12, keepCoal = 4, keepSticks = 4, keepExitDirt = 0, sealDirt = true, keepRawMeat = true, autoSupplies = false, supplyBoxes = [], toolPolicy = {}, storeInferiorTools = true } = {}) {
+function keepPlan (items, { keepSealBlocks = 32, keepSealMaterial = null, keepFood = 64, keepLogs = 4, keepPlanks = 12, keepCoal = 4, keepSticks = 4, keepExitDirt = 0, sealDirt = true, keepRawMeat = true, cargoStackIds = [], autoSupplies = false, supplyBoxes = [], toolPolicy = {}, storeInferiorTools = true } = {}) {
   const keep = new Map() // slot -> count kept
   let seal = 0; let food = 0; let logs = 0; let planks = 0; let coal = 0; let sticks = 0; let exitDirt = 0
   const sorted = [...(items ?? [])].filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot < SLOTS).sort((a, b) => a.slot - b.slot)
+  const cargo = new Set(Array.isArray(cargoStackIds) ? cargoStackIds.filter(id => Number.isSafeInteger(id) && id > 0) : [])
   const surplus = surplusToolSlots(sorted, { enabled: autoSupplies === true && storeInferiorTools !== false, supplyBoxes, toolPolicy })
   // Reserve meals by hunger restoration before a low-slot stack fills the
   // food allowance. Other KEEP categories and deposit order stay slot-based.
@@ -74,6 +98,9 @@ function keepPlan (items, { keepSealBlocks = 32, keepSealMaterial = null, keepFo
     const n = nameOf(item)
     if (n === 'dirt' && exitDirt < keepExitDirt) { const k = Math.min(item.count, keepExitDirt - exitDirt); keep.set(item.slot, k); exitDirt += k; if (k === item.count) continue }
     if (surplus.has(item.slot)) continue
+    // Spare armour picked up from mobs that is worse than what is worn (opt-in,
+    // matched by its received stack ID, 2026-11-13) is cargo, not kept gear.
+    if (cargo.size && /_(helmet|chestplate|leggings|boots)$/.test(n) && cargo.has(item.stackId ?? item.stack_id)) continue
     if (toolOf(item) || KEEP.test(n) || isShulkerBox(n) || n === 'chest' || n === 'crafting_table') { keep.set(item.slot, item.count); continue }
     if (/_(log|stem)$/.test(n) && logs < keepLogs) { const k = Math.min(item.count, keepLogs - logs); logs += k; keep.set(item.slot, k); continue }
     if (/^(coal|charcoal)$/.test(n) && coal < keepCoal) { const k = Math.min(item.count, keepCoal - coal); coal += k; keep.set(item.slot, k); continue }
@@ -144,4 +171,4 @@ function dropsFittingStacks (items, drops, { keepFree = null } = {}) {
   return fitting
 }
 
-module.exports = { keepPlan, freeSlots, canAccept, dropsFittingStacks, totals, diff, createLedger, maxStack, isFood, isShulkerBox, carriedContainerKey, carriedContainerIdentity, selectCarriedStorage, SLOTS }
+module.exports = { keepPlan, freeSlots, canAccept, dropsFittingStacks, totals, diff, createLedger, maxStack, isFood, isShulkerBox, carriedContainerKey, carriedContainerIdentity, spareArmorStackIds, selectCarriedStorage, SLOTS }

@@ -289,6 +289,9 @@ function createQuarryRuntimeAdapter (ports) {
     actors: () => entities().map(e => structuredClone(e)),
     // Received raw bag item (NBT) for box identities and contents (2026-11-13).
     ...(typeof ports.rawItem === 'function' ? { rawItem: slot => ports.rawItem(slot) } : {}),
+    // Received inventory details (armour worn, enchantments) for the opt-in
+    // spare-armour storage (2026-11-13).
+    ...(typeof ports.inventoryDetails === 'function' ? { inventoryDetails: () => ports.inventoryDetails() } : {}),
     ...(typeof attackAnimal === 'function' ? { attackAnimal: (runtimeId, options) => attackAnimal(runtimeId, options) } : {}),
     ...(typeof worldRevision === 'function' ? { worldRevision: () => worldRevision() } : {}),
     // Hostiles and projectiles for the post-combat settle check (§9.4).
