@@ -89,6 +89,24 @@ function keepPlan (items, { keepSealBlocks = 32, keepSealMaterial = null, keepFo
   return { keep, deposits }
 }
 
+// Room for the exit dirt withdrawal (2026-11-13: a full-only bag kept 34 of
+// 36 slots fixed, 192 dirt needs 3). First make room by storing what the bag
+// no longer needs (bounded attempts); otherwise withdraw only the selected
+// exit column's need plus 8 when that fits. 'short' means even that does not
+// fit and the withdrawal is limited to the room.
+function egressDirtRoom (items, { target, keepPolicy = {}, storageAvailable = false, depositAttempts = 0, planDirt = null } = {}) {
+  const dirt = (items ?? []).filter(i => nameOf(i) === 'dirt')
+  const have = dirt.reduce((n, i) => n + i.count, 0)
+  if (!Number.isSafeInteger(target) || target <= have) return { action: 'restock', target: Number.isSafeInteger(target) ? target : have }
+  const partial = dirt.reduce((n, i) => n + Math.max(0, 64 - i.count), 0), free = freeSlots(items)
+  const fits = have + partial + free * 64
+  if (fits >= target) return { action: 'restock', target }
+  const storable = keepPlan(items, keepPolicy).deposits.filter(d => nameOf(d.name) !== 'dirt' && !isShulkerBox(d.name))
+  if (storable.length && storageAvailable && depositAttempts < 2) return { action: 'deposit', deposits: storable }
+  if (Number.isSafeInteger(planDirt) && planDirt > 0 && planDirt + 8 <= fits) return { action: 'restock', target: Math.max(have, planDirt + 8), limited: true }
+  return { action: 'restock', target: Math.max(have, fits), limited: true, short: true }
+}
+
 function freeSlots (items) {
   const used = new Set((items ?? []).filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot < SLOTS && i.count > 0).map(i => i.slot))
   return SLOTS - used.size
@@ -144,4 +162,4 @@ function dropsFittingStacks (items, drops, { keepFree = null } = {}) {
   return fitting
 }
 
-module.exports = { keepPlan, freeSlots, canAccept, dropsFittingStacks, totals, diff, createLedger, maxStack, isFood, isShulkerBox, carriedContainerKey, carriedContainerIdentity, selectCarriedStorage, SLOTS }
+module.exports = { keepPlan, freeSlots, canAccept, dropsFittingStacks, totals, diff, createLedger, maxStack, isFood, isShulkerBox, carriedContainerKey, carriedContainerIdentity, selectCarriedStorage, egressDirtRoom, SLOTS }
