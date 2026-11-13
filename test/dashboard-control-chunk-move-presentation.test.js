@@ -43,7 +43,7 @@ function fixture ({ values = {}, inside = true, capability = true } = {}) {
   const nodes = new Map([...html.matchAll(/\bid="control-([^"]+)"/g)].map(match => [match[1], node()]))
   const $ = id => { assert.ok(nodes.has(id), 'production element exists: ' + id); return nodes.get(id) }
   for (const [id, value] of Object.entries({ x1: '0', z1: '0', x2: '', z2: '', top: '', bottom: '', ...values })) $(id).value = value
-  const live = { session: 'live-session', ready: true, phase: 'spawned', chunk: { x: 0, z: 0 }, position: { x: 8, y: 63, z: 8 },
+  const live = { session: 'live-session', ready: true, phase: 'spawned', chunk: { x: inside ? 0 : 2, z: 0 }, position: { x: inside ? 8 : 40, y: 63, z: 8 },
     loadout: { busy: false, phase: 'idle' }, storage: { busy: false }, quarry: null,
     chunkMove: capability ? { available: true, busy: false, phase: 'idle', operationId: null, serverConfirmed: false } : undefined,
     positionProof: { confirmed: inside, feet: { x: inside ? 8 : 40, y: 63, z: 8 }, radius: 0.12, session: 'live-session', generation: 7, source: 'server_position_verifier', observedAt: 1000 } }
@@ -70,11 +70,9 @@ function fixture ({ values = {}, inside = true, capability = true } = {}) {
 
 test('selection and page rendering never move or reset; one explicit click sends only the fixed move command', () => {
   const f = fixture({ inside: false })
-  // The Bot reports a position inside the area without a server proof: the same
-  // fixed move command only confirms the position, and the reset says why it waits.
-  assert.equal(f.$('move').textContent, '位置を確認')
+  assert.equal(f.$('move').textContent, 'Botを移動させる')
   assert.equal(f.$('move').disabled, false); assert.equal(f.$('reset').disabled, true)
-  assert.equal(f.$('reset-why').textContent, '位置が未確認'); assert.equal(f.$('reset-why').hidden, false)
+  assert.equal(f.$('reset-why').textContent, '範囲の外'); assert.equal(f.$('reset-why').hidden, false)
   f.edit('x1', '1'); f.edit('x1', '0')
   assert.deepEqual(f.calls, [])
   f.$('move').click()
@@ -82,16 +80,17 @@ test('selection and page rendering never move or reset; one explicit click sends
   assert.ok(!JSON.stringify(f.calls).match(/group|options|resetStart|"start"|"top"|"bottom"/))
 })
 
-test('acceptance and predicted arrival do not enable reset; actual scoped arrival does without starting it', () => {
+test('a move in progress keeps reset disabled; arrival enables it without starting it', () => {
   const f = fixture({ inside: false }); f.$('move').click()
   Object.assign(f.live().chunkMove, { busy: true, phase: 'moving', operationId: 'move-1' }); f.live().position = { x: 8, y: 63, z: 8 }; f.live().chunk = { x: 0, z: 0 }
   f.live().positionSource = 'client_prediction'; f.render()
   assert.equal(f.$('move').textContent, '移動中'); assert.equal(f.$('reset').disabled, true)
   Object.assign(f.live().chunkMove, { busy: false, phase: 'completed', serverConfirmed: true }); f.render()
-  assert.equal(f.$('reset').disabled, true)
+  // The Bot reports itself inside; the Bot side confirms with the server when the placement is requested.
+  assert.equal(f.$('reset').disabled, false); assert.equal(f.$('move-message').textContent, '')
   f.live().positionProof.confirmed = true; f.live().positionProof.feet.x = 8; f.render()
   assert.equal(f.$('reset').disabled, false)
-  assert.equal(f.$('move-message').textContent, '到着確認済み')
+  assert.equal(f.$('move-message').textContent, '位置を確認済み')
   assert.equal(f.calls.length, 1, 'arrival cannot automatically request a reset or start mining')
 })
 
@@ -105,7 +104,7 @@ test('movement locks the selected area and cancellation targets the currently ob
   assert.equal(f.$('move-cancel').hidden, false)
   f.live().chunkMove.operationId = 'current-operation'; f.$('move-cancel').click()
   assert.deepEqual(f.calls, [{ kind: 'move', route: 'quarry', payload: { command: 'cancelChunkMove', session: 'live-session', operationId: 'current-operation' } }])
-  Object.assign(f.live().chunkMove, { busy: false, phase: 'cancelled' }); f.live().positionProof.confirmed = false; f.render()
+  Object.assign(f.live().chunkMove, { busy: false, phase: 'cancelled' }); f.live().positionProof.confirmed = false; f.live().position = { x: 40, y: 63, z: 8 }; f.render()
   assert.equal(f.$('move-cancel').hidden, true); assert.equal(f.$('reset').disabled, true)
 })
 
@@ -139,20 +138,24 @@ test('an edited and restored area cannot revive an in-flight preview response', 
   f.$('reset-confirm').dispatch('click'); assert.equal(f.calls.length, 1)
 })
 
-test('missing old-server capability and unknown, predicted or malformed proof never fall back to displayed coordinates', () => {
+test('without a usable proof the reported position decides, and the only request is the preview the Bot confirms itself', () => {
   const changes = [f => { f.live().chunkMove = undefined }, f => { f.live().chunkMove.available = false }, f => { f.live().positionProof = null },
     f => { f.live().positionProof.confirmed = false }, f => { f.live().positionProof.session = 'old-session' }, f => { f.live().positionProof.source = 'client_prediction' },
     f => { f.live().positionProof.feet.x = NaN }, f => { f.live().positionProof.radius = 2 }, f => { f.live().positionProof.generation = undefined }, f => { f.live().positionProof.observedAt = 'unknown' }]
   for (const change of changes) {
     const f = fixture(); change(f); f.render()
-    assert.equal(f.$('reset').disabled, true)
-    f.$('reset').dispatch('click'); assert.deepEqual(f.calls, [])
+    assert.equal(f.$('reset').disabled, false)
+    f.$('reset').dispatch('click')
+    assert.deepEqual(f.calls.map(call => call.payload.command), ['resetPreview'])
+    const away = fixture(); change(away); away.live().position = { x: 40, y: 63, z: 8 }; away.render()
+    assert.equal(away.$('reset').disabled, true)
+    away.$('reset').dispatch('click'); assert.deepEqual(away.calls, [])
   }
 })
 
-test('proof circles respect negative coordinates, exclusive chunk edges and their complete radius', () => {
+test('proof circles respect negative coordinates, exclusive chunk edges and their complete radius when the report is elsewhere', () => {
   for (const [chunk, x, radius, inside] of [[0, 15.8, .12, true], [0, 15.9, .12, false], [0, 16, 0, false], [0, 0, 0, true], [0, .01, .12, false], [-1, -.01, 0, true], [-1, -16, 0, true], [-2, -16.01, 0, true], [-1, -16.01, 0, false]]) {
-    const f = fixture({ values: { x1: String(chunk * 16 + 5) } }); Object.assign(f.live().positionProof, { feet: { x, y: 63, z: 8 }, radius }); f.render()
+    const f = fixture({ values: { x1: String(chunk * 16 + 5) } }); Object.assign(f.live().positionProof, { feet: { x, y: 63, z: 8 }, radius }); f.live().position = { x: 400, y: 63, z: 8 }; f.render()
     assert.equal(f.$('reset').disabled, !inside, JSON.stringify({ chunk, x, radius }))
   }
 })
@@ -169,7 +172,7 @@ test('invalid selections and existing busy work block movement without changing 
 })
 
 test('session, code generation, position, busy state and expiry changes reject a cached reset token', () => {
-  for (const change of [f => { f.live().session = 'new-session' }, f => { f.live().positionProof.generation++ }, f => { f.live().positionProof.feet.x = 40 },
+  for (const change of [f => { f.live().session = 'new-session' }, f => { f.live().positionProof.generation++ }, f => { f.live().positionProof.feet.x = 40; f.live().position.x = 40 },
     f => { f.live().chunkMove.busy = true }, f => { f.live().storage.busy = true }, f => { f.live().loadout.busy = true }, f => f.advance(120001)]) {
     const f = fixture(); f.$('reset').click(); change(f)
     f.$('reset-confirm').dispatch('click'); assert.equal(f.calls.length, 1)
@@ -207,12 +210,11 @@ test('the current-location selection and grid marker prefer the actual proof and
   assert.equal(f.$('here').disabled, false, 'selecting the reported chunk needs no fresh proof')
   f.$('here').click()
   assert.deepEqual(plain(f.context.selectedArea()), { x1: 7, z1: 7, x2: 7, z2: 7 })
-  assert.equal(f.$('reset').disabled, true, 'placement still needs the proof')
+  assert.equal(f.$('reset').disabled, false, 'the Bot side confirms the position when the placement is requested')
   f.live().chunk = null; f.render()
   assert.equal(f.$('here').disabled, true)
   assert.equal(f.$('grid').children.some(cell => cell.className.includes(' bot')), false)
-  // With a proof 現在地 only selects; without one it also sends the single fixed command that confirms the position.
-  assert.deepEqual(f.calls, [{ kind: 'move', route: 'quarry', payload: { command: 'moveToChunk', session: 'live-session', area: { x1: 7, z1: 7, x2: 7, z2: 7 } } }])
+  assert.deepEqual(f.calls, [], '現在地 only selects')
 })
 
 test('the debug chest button states the one reason it is unavailable and clears it once the position is proven', () => {
