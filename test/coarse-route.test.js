@@ -146,3 +146,15 @@ test('no step is carved next to water', () => {
   const r = planCoarseRoute({ getBlock: wet, start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 27, z: 2 }, maxDrop: 1, surfaceOnly: true, allowDig: true, maxNodes: 200000 })
   for (const p of r.path.filter(q => q.dig)) for (const c of p.dig) for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) assert.doesNotMatch(wet(c.x + ox, c.y, c.z + oz).name ?? '', /water/)
 })
+
+// Live 2026-11-14 14:42: an 18.6 s search stalled the event loop and the server
+// closed the connection. The search honours its time budget.
+test('the search stops at its time budget and returns the best partial route', () => {
+  let t = 0
+  const r = planCoarseRoute({ getBlock: world(flat(400, 400)), start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 390, z: 390 }, maxMs: 5, now: () => (t += 1) })
+  assert.equal(r.timedOut, true)
+  assert.equal(r.reached, false)
+  assert.ok(r.path.length >= 1)
+  const big = planCoarseRoute({ getBlock: world(flat(300, 300)), start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 290, z: 290 }, maxNodes: 200000 })
+  assert.equal(big.reached, true, 'a large open search still completes')
+})

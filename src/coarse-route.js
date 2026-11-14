@@ -52,7 +52,21 @@ function createSurface (getBlock, { minY = -60, maxY = 300, leafFloor = false } 
 // Blocks that ordinary bare-hand or tool mining may carve for a step.
 const NOT_DIGGABLE = /bedrock|obsidian|barrier|command|structure|reinforced|end_portal|spawner|chest|shulker|barrel|furnace|bed$|_bed$|door|log|leaves|wood|planks/
 const SOFT = /dirt|grass_block|gravel|sand|clay|snow|mud|podzol|mycelium|farmland/
-function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3, blocked = null, surfaceOnly = false }) {
+function createHeap () {
+  const a = []; let seq = 0
+  const less = (i, j) => a[i].f < a[j].f || a[i].f === a[j].f && a[i].seq < a[j].seq
+  const swap = (i, j) => { const t = a[i]; a[i] = a[j]; a[j] = t }
+  return {
+    get length () { return a.length },
+    push (v) { v.seq = seq++; a.push(v); let i = a.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (!less(i, p)) break; swap(i, p); i = p } },
+    pop () {
+      const top = a[0], last = a.pop()
+      if (a.length) { a[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < a.length && less(l, m)) m = l; if (r < a.length && less(r, m)) m = r; if (m === i) break; swap(i, m); i = m } }
+      return top
+    }
+  }
+}
+function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3, blocked = null, surfaceOnly = false, maxMs = Infinity, now = Date.now }) {
   // Live 2026-11-14 12:13: the route led down into a cave to y-33. With
   // surfaceOnly a stand must see the sky (nothing solid above but leaves/logs
   // within 40 blocks); covered stands cost five times and may only be entered
@@ -74,7 +88,10 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   const gx = Math.floor(goal.x), gz = Math.floor(goal.z)
   const h = (x, z) => Math.hypot(gx - x, gz - z)
   const key = (x, y, z) => `${x},${y},${z}`
-  const open = [{ x: sx, y: sy, z: sz, g: 0, f: h(sx, sz) }]
+  // Binary heap on f, ties by insertion order (live 14:42: the linear scan made
+  // large searches quadratic).
+  const open = createHeap()
+  open.push({ x: sx, y: sy, z: sz, g: 0, f: h(sx, sz) })
   const best = new Map([[key(sx, sy, sz), 0]])
   const parent = new Map(), digOf = new Map()
   const frontier = new Set()
@@ -82,8 +99,14 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   // Underground start (live 12:13, cave at y-33): the nearest open-sky stand is
   // the first goal; the trip continues from there.
   const startCovered = surfaceOnly && !sky(sx, sy, sz)
-  const pop = () => { let i = 0; for (let j = 1; j < open.length; j++) if (open[j].f < open[i].f) i = j; return open.splice(i, 1)[0] }
+  const pop = () => open.pop()
+  // Live 2026-11-14 14:42: an 18.6 s search stalled the event loop and the
+  // server closed the connection. The search stops at its time budget and the
+  // best partial route is used.
+  const deadline = now() + maxMs
+  let timedOut = false
   while (open.length && expanded < maxNodes) {
+    if ((expanded & 255) === 0 && now() > deadline) { timedOut = true; break }
     const n = pop(); expanded++
     const d = h(n.x, n.z)
     if (d < closest.d && (!surfaceOnly || !startCovered && sky(n.x, n.y, n.z) || startCovered)) closest = { x: n.x, y: n.y, z: n.z, d }
@@ -154,7 +177,7 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   let k = key(closest.x, closest.y, closest.z)
   while (k) { const [x, y, z] = k.split(',').map(Number); const dig = digOf.get(k); path.push({ x: x + 0.5, y, z: z + 0.5, ...(dig ? { dig } : {}) }); k = parent.get(k) }
   path.reverse()
-  return { ready: path.length > 1, reached, surfaced, path, remaining: Math.round(closest.d), expanded, frontier: [...frontier].slice(0, 64).map(s => { const [x, z] = s.split(',').map(Number); return { x, z } }) }
+  return { ready: path.length > 1, reached, surfaced, timedOut, path, remaining: Math.round(closest.d), expanded, frontier: [...frontier].slice(0, 64).map(s => { const [x, z] = s.split(',').map(Number); return { x, z } }) }
 }
 
 module.exports = { planCoarseRoute, createSurface, classify }

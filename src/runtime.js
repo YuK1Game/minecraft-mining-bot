@@ -7769,6 +7769,17 @@ function createRuntime (host) {
   // ordinary mining; nothing is picked up on purpose. The spot is chosen on
   // received terrain: every cell down to received solid ground, and the fall
   // damage (each air run minus three) leaves at least six health.
+  async function travelHoldTool (blockName) {
+    const soft = /dirt|grass_block|gravel|sand|clay|snow|mud|podzol|mycelium|farmland|soul_soil/.test(String(blockName ?? ''))
+    const kind = soft ? 'shovel' : 'pickaxe'
+    const tier = n => ['wooden', 'golden', 'stone', 'iron', 'diamond', 'netherite'].findIndex(t => n.startsWith(`minecraft:${t}_`))
+    const items = working().inventory?.items ?? []
+    const tool = items.filter(i => i.count > 0 && i.slot < 36 && new RegExp(`_${kind}$`).test(i.name ?? '')).sort((a, b) => tier(b.name) - tier(a.name))[0]
+    if (!tool) return false
+    if (working().heldItem?.name === tool.name) return true
+    await inventory.equipForMining(tool.slot)
+    return true
+  }
   async function travelLeafEscape (signal) {
     const sleep = ms => new Promise(r => setTimeout(r, ms))
     const feetOf = () => { const q = working().position; return q ? { x: q.x, y: q.y - 1.62, z: q.z } : null }
@@ -7940,7 +7951,7 @@ function createRuntime (host) {
         // Follow the coarse wide-area route first (2026-11-14): a point some
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
-          const planRoute = () => require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: host.shared.longTravelBadCells ??= new Set() })
+          const planRoute = () => require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, maxMs: 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: host.shared.longTravelBadCells ??= new Set() })
           let route = planRoute()
           // Live 2026-11-14 13:35: on a hilltop the terrain above y80 was not
           // received, so no column counted as open sky and the route closed in
@@ -8000,6 +8011,9 @@ function createRuntime (host) {
             const air = () => { const b = host.world.getBlock(cell.x, cell.y, cell.z); return b?.known === true && /^minecraft:(?:air|cave_air)$/.test(b.name ?? '') }
             if (air()) continue
             host.log(`長距離移動: 段を掘ります (${cell.x},${cell.y},${cell.z}) ${String(cell.name ?? '').replace('minecraft:', '')}`)
+            // Live 14:35: stone was refused with the wooden pickaxe in the bag.
+            // Hold the best received pickaxe (stone-like) or shovel (soft) first.
+            try { await travelHoldTool(cell.name) } catch {}
             try { operations.mining.start([{ x: cell.x, y: cell.y, z: cell.z }]) } catch (error) { return { ok: false, code: 'DIG_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
             const until = Date.now() + 30000
             while (!air()) {
