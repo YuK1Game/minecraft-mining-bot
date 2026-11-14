@@ -1219,8 +1219,22 @@ function createRuntime (host) {
       if (manualArmorOwner === owner) manualArmorOwner = null
     })
   }
+  // Armour, totem/shield (2026-11-14 user request relayed): worn automatically in
+  // every state at a safe point, not only in the legacy auto mode. Never during
+  // quarry work unless its combat is armed, never once the job has begun its
+  // final chest store (the gear goes back to the chest), and not mid-walk on a
+  // long trip (the trip equips between legs).
+  let armorFinalMemo = { at: 0, value: false }
+  function armorAutoAllowed () {
+    if (longTravel?.status?.().busy) return false
+    if (!quarryJob?.holdsWork()) return true
+    if (!quarryCombatArmed) return false
+    // The job copy is costly: read whether the final chest store began at most every 3 s.
+    if (Date.now() - armorFinalMemo.at > 3000) { let v = false; try { v = !!quarryJob.document?.()?.finalChest } catch {} armorFinalMemo = { at: Date.now(), value: v } }
+    return !armorFinalMemo.value
+  }
   function maybeEquipArmor () {
-    if (resetHeld() || manualChestStorage?.isBusy() || chunkMoveHeld() || quarryPlacementPreparation || host.shared.quarrySurfaceStorageOwner || !(host.shared.autoWanted === true || quarryCombatArmed) || armorTask || Date.now() - (host.shared.armorCheckedAt ?? 0) < 3000) return
+    if (resetHeld() || manualChestStorage?.isBusy() || chunkMoveHeld() || quarryPlacementPreparation || host.shared.quarrySurfaceStorageOwner || armorTask || Date.now() - (host.shared.armorCheckedAt ?? 0) < 3000 || !armorAutoAllowed()) return
     host.shared.armorCheckedAt = Date.now()
     try { if (!armor.preview() || !armorWorkFree() || nearestHostileDistance() < 8) return } catch { return }
     armorTask = armor.equipBest().catch(() => {}).finally(() => { armorTask = null })
@@ -7930,6 +7944,9 @@ function createRuntime (host) {
     // Food (2026-11-14): below hunger 18 natural healing stops; eat, or hunt
     // within 24 m by the food step of the preparation gatherer (no wood).
     const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : null
+    // Between legs is the trip's safe point for armour (no enemy within 8 m,
+    // inventory confirmed and the screen free).
+    try { if (!armorTask && armor.preview() && armorWorkFree() && nearestHostileDistance() >= 8) { const moves = await armor.equipBest(); if (moves.some(m => m.serverConfirmed)) host.log(`長距離移動: 装備を着けました（${moves.filter(m => m.serverConfirmed).map(m => m.name.replace('minecraft:', '')).join('・')}）`) } } catch {}
     // Shooters (live 16:22: a pillager shot the bot from 20 to 0 while the trip
     // kept trying legs): retreat out of range first.
     try { if (await travelShooterRetreat(signal)) return { hold: false } } catch {}

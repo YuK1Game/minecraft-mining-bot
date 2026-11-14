@@ -37,7 +37,7 @@ function fixture ({ remaining = 2, lastRequestedAt = null, onDelay = null } = {}
     idleSafety: busy(), excavation: busy(), tunneling: busy(), recovery: busy(), foraging: busy(), surfaceReturn: busy(), shelter: busy(), hut: busy(), guardRoute: busy(),
     mining: { snapshot: () => ({ phase: 'idle' }) }, walker: { snapshot: () => ({ phase: 'idle' }) },
     food: busy(), furnace: busy(), chest: busy(), interactions: { snapshot: () => ({ pendingOperation: null }) }, combat: busy(), quarryPillar: busy(),
-    quarryJob: { holdsWork: () => true }, quarryCombatArmed: false, armorTask: null,
+    quarryJob: { holdsWork: () => true }, quarryCombatArmed: false, armorTask: null, longTravel: null,
     craftStatus: () => ({ pendingRequestId: context.craftPending, openContainer: null }),
     inventory: {
       snapshot: () => ({ busy: context.inventoryBusy }),
