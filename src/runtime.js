@@ -1233,10 +1233,21 @@ function createRuntime (host) {
     if (Date.now() - armorFinalMemo.at > 3000) { let v = false; try { v = !!quarryJob.document?.()?.finalChest } catch {} armorFinalMemo = { at: Date.now(), value: v } }
     return !armorFinalMemo.value
   }
+  // Live 2026-11-14 21:14: hostiles kept wandering within 8 m (in caves and
+  // behind terrain) and the bot stood unarmoured for minutes. Armour waits only
+  // for a hostile that can reach the bot (the threat evaluation) within 8 m.
+  function armorThreatNear () {
+    try {
+      const st = lightweightUserState()
+      const risk = evaluateThreats(st, st.entities, { observationRadius: 16 })
+      if (risk.requiresObservation) return nearestHostileDistance() < 8
+      return risk.threats.some(t => Number.isFinite(t.distance) ? t.distance < 8 : true)
+    } catch { return nearestHostileDistance() < 8 }
+  }
   function maybeEquipArmor () {
     if (resetHeld() || manualChestStorage?.isBusy() || chunkMoveHeld() || quarryPlacementPreparation || host.shared.quarrySurfaceStorageOwner || armorTask || Date.now() - (host.shared.armorCheckedAt ?? 0) < 3000 || !armorAutoAllowed()) return
     host.shared.armorCheckedAt = Date.now()
-    try { if (!armor.preview() || !armorWorkFree() || nearestHostileDistance() < 8) return } catch { return }
+    try { if (!armor.preview() || !armorWorkFree() || armorThreatNear()) return } catch { return }
     armorTask = armor.equipBest().catch(() => {}).finally(() => { armorTask = null })
   }
   function maybeResyncInventory () {
@@ -5498,7 +5509,10 @@ function createRuntime (host) {
             if (controllerGuard && controllerGuard(frame) === false) return false
             return ordinaryGuard ? ordinaryGuard(frame) !== false : true
           } }
-        } else preparedPortableOptions = normalWaterMovementOptions(portableMovementOptions(target, options))
+        // Long-trip walks use the chunk-move admission rule for water frames (live
+        // 2026-11-14: any listed hostile, e.g. a drowned in the lake, rejected every
+        // swim frame and the bot stayed in the water for hours).
+        } else preparedPortableOptions = normalWaterMovementOptions(portableMovementOptions(target, options), { combatAware: !!longTravel?.status?.().busy })
         portableMovementOwner = options?._portableMovementLease ?? null
         if (portableMovementLease?.id === portableMovementOwner) { portableMovementLease.startedMovement = movement; portableMovementLease.startedSerial = portableMovementSerial }
         try { result = movement.start(target, preparedPortableOptions) } finally { phase('movementStart') }
@@ -5842,6 +5856,8 @@ function createRuntime (host) {
         say(`${missing().length ? `足りないもの: ${missing().join('・')}。` : '揃いました。'}ベッド ${kit.bed}・剣 ${kit.sword}・食料 ${kit.food}・ボート ${kit.boat}（受信した持ち物で確認、作ったもの: ${made.join('・') || 'なし'}）`)
         return { made, kit }
       },
+      // Read-only: each gate of the automatic armour step.
+      armorCheck: () => { const g = {}; for (const [k, f] of Object.entries({ resetHeld: () => resetHeld(), manualChest: () => !!manualChestStorage?.isBusy(), chunkMoveHeld: () => chunkMoveHeld(), placementPrep: () => !!quarryPlacementPreparation, surfaceOwner: () => !!host.shared.quarrySurfaceStorageOwner, allowed: () => armorAutoAllowed(), task: () => !!armorTask, workFree: () => armorWorkFree(), nearest: () => nearestHostileDistance(), preview: () => armor.preview(), snapshot: () => armor.snapshot() })) { try { g[k] = f() } catch (e) { g[k] = 'ERR ' + String(e.message ?? e).slice(0, 80) } } return g },
       // Read-only: why the empty-handed preparation flag is on or off.
       prepCheck: () => {
         const cheap = require('./learning-health').cheapItem, out = { allowance: longTravelLogAllowance(), flag: emptyHandedPrep(), blocking: [] }
@@ -8075,7 +8091,7 @@ function createRuntime (host) {
     const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : null
     // Between legs is the trip's safe point for armour (no enemy within 8 m,
     // inventory confirmed and the screen free).
-    try { if (!armorTask && armor.preview() && armorWorkFree() && nearestHostileDistance() >= 8) { const moves = await armor.equipBest(); if (moves.some(m => m.serverConfirmed)) host.log(`長距離移動: 装備を着けました（${moves.filter(m => m.serverConfirmed).map(m => m.name.replace('minecraft:', '')).join('・')}）`) } } catch {}
+    try { if (!armorTask && armor.preview() && armorWorkFree() && !armorThreatNear()) { const moves = await armor.equipBest(); if (moves.some(m => m.serverConfirmed)) host.log(`長距離移動: 装備を着けました（${moves.filter(m => m.serverConfirmed).map(m => m.name.replace('minecraft:', '')).join('・')}）`) } } catch {}
     // Shooters (live 16:22: a pillager shot the bot from 20 to 0 while the trip
     // kept trying legs): retreat out of range first.
     try { if (await travelShooterRetreat(signal)) return { hold: false } } catch {}

@@ -56,5 +56,7 @@ test('the runtime equips in every state at safe points, between long-trip legs, 
   assert.match(gate, /if \(!quarryJob\?\.holdsWork\(\)\) return true/)
   assert.match(gate, /finalChest/)
   assert.doesNotMatch(src, /!\(host\.shared\.autoWanted === true \|\| quarryCombatArmed\) \|\| armorTask/, 'no longer limited to the legacy auto mode')
-  assert.match(src, /if \(!armorTask && armor\.preview\(\) && armorWorkFree\(\) && nearestHostileDistance\(\) >= 8\)/)
+  assert.match(src, /if \(!armorTask && armor\.preview\(\) && armorWorkFree\(\) && !armorThreatNear\(\)\)/)
+  // Live 21:14: only a hostile that can reach the bot within 8 m holds armour back.
+  assert.match(src, /return risk\.threats\.some\(t => Number\.isFinite\(t\.distance\) \? t\.distance < 8 : true\)/)
 })

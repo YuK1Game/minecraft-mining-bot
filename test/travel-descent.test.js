@@ -77,3 +77,13 @@ test('drowned are fought on land, never from the water; the route prices water h
   assert.match(kit, /minecraft:bed/)
   assert.doesNotMatch(kit, /command_request|\/give/)
 })
+
+// Live 2026-11-14: long-trip walks in water had every frame rejected while any
+// hostile was listed; they now use the chunk-move admission rule (attack access
+// along the step), as chunk travel already does.
+test('long-trip walks use the combat-aware water frame guard', () => {
+  const src = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  assert.match(src, /preparedPortableOptions = normalWaterMovementOptions\(portableMovementOptions\(target, options\), \{ combatAware: !!longTravel\?\.status\?\.\(\)\.busy \}\)/)
+  const guard = src.slice(src.indexOf('  function normalWaterMovementOptions ('), src.indexOf('  function startMotion ('))
+  assert.match(guard, /else if \(combatAware\) \{\n\s+if \(!chunkTravelThreatsClear\(/)
+})
