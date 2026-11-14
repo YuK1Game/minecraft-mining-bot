@@ -10,7 +10,10 @@ const { createQuarryPortableStorage } = require('../src/quarry-portable-storage'
 const copy = value => structuredClone(value)
 const pack = value => serialize(value).toString('base64')
 const key = p => `${p.x},${p.y},${p.z}`
-const timeoutReason = 'サーバーから設置・使用の完了を確認できませんでした。'
+// The interaction layer still throws its timeout text; the storage runner
+// reports that sent-but-unconfirmed placement under this reason code.
+const timeoutReason = 'STORAGE_PLACEMENT_RECONCILE_REQUIRED'
+const INTERACTION_TIMEOUT = 'サーバーから設置・使用の完了を確認できませんでした。'
 const file = require.resolve('./quarry-portable-storage.test')
 const loaded = new Module(file, module)
 loaded.filename = file; loaded.paths = Module._nodeModulePaths(path.dirname(file))
@@ -29,7 +32,7 @@ async function pendingPlacement () {
   f.dependencies.interactions.placeBlock = async options => {
     await originalPlace(options)
     f.containers.set(key(options.position), copy(contents))
-    throw new Error(timeoutReason)
+    throw new Error(INTERACTION_TIMEOUT)
   }
   f.dependencies.chest.open = async (...args) => { const r = await originalOpen(...args); flags.afterOpen?.(); return r }
   f.dependencies.chest.snapshot = () => {

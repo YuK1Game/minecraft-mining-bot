@@ -10,15 +10,22 @@ const { createWriteStream } = require('node:fs')
 const { finished } = require('node:stream/promises')
 const { parseTap, compareReports } = require('./lib/test-report')
 const root = path.resolve(__dirname, '..')
+// Both runs use the same settings, so the comparison stays like for like.
+const CONCURRENCY = Math.max(2, Math.min(8, os.availableParallelism()))
+const SUITE_LIMIT_MS = 25 * 60 * 1000
 async function runSuite (directory, filename) {
   const output = createWriteStream(filename, { flags: 'w' })
   // Failed legacy tests can leave intervals/polling alive. Preserve their
   // reported failures and timeouts, then exit after all test results exist.
-  const child = spawn(process.execPath, ['--test', '--test-force-exit', '--test-concurrency=2', '--test-timeout=30000', '--test-reporter=tap'], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(process.execPath, ['--test', '--test-force-exit', `--test-concurrency=${CONCURRENCY}`, '--test-timeout=30000', '--test-reporter=tap'], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] })
   child.stdout.pipe(output, { end: false }); child.stderr.pipe(output, { end: false })
-  const timeout = setTimeout(() => child.kill('SIGTERM'), 12 * 60 * 1000)
+  let expired = false
+  const timeout = setTimeout(() => { expired = true; child.kill('SIGTERM') }, SUITE_LIMIT_MS)
   let code
   try { code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', (value, signal) => signal ? reject(new Error(`Test suite terminated: ${signal}`)) : resolve(value)) }) } finally { clearTimeout(timeout); output.end(); await finished(output) }
+  // The suite outgrew the earlier 12-minute cap (2026-11-14): the kill left a
+  // report without totals and every run failed as "incomplete". Say so plainly.
+  if (expired) throw new Error(`Test suite did not finish within ${SUITE_LIMIT_MS / 60000} minutes (concurrency ${CONCURRENCY}); no comparison was made`)
   const report = parseTap(await fs.readFile(filename, 'utf8'), { root: directory })
   if (![0, 1].includes(code) || code !== 0 && report.failures.length === 0) throw new Error(`Test process failed without an attributable test failure (${code})`)
   return report

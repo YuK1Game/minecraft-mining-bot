@@ -96,6 +96,15 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
     return { available, busy: value.busy === true, phase: text(value.phase || (available ? 'idle' : 'unavailable')), operationId: operationId(value.operationId) ? value.operationId : null,
       area, serverConfirmed: confirmed, ...(value.error ? { error: { code: text(value.error.code), message: text(value.error.message) } } : {}) }
   }
+  // A long trip is started from the terminal or API, not from this page, but the
+  // page still has to say the Bot is travelling rather than "waiting, no job".
+  function travelStatus (q) {
+    let value = null
+    try { value = q?.travelStatus?.() ?? null } catch { /* Unavailable status is shown as no trip. */ }
+    const whole = n => Number.isFinite(n) ? Math.round(n) : null, d = value?.destination
+    return { busy: value?.busy === true, phase: text(value?.phase || 'idle'), remaining: whole(value?.remaining), legs: whole(value?.legs),
+      destination: d && Number.isFinite(d.x) && Number.isFinite(d.z) ? { x: whole(d.x), z: whole(d.z) } : null, reason: value?.reason ? text(value.reason).slice(0, 60) : null }
+  }
   const runtimeReasons = { BOT_MOVING: 'Botが移動中', NO_SERVER_POSITION: 'サーバーから現在位置を受信していない', BOT_STATE_UNAVAILABLE: 'Botの接続・体力・生存状態が未確定', BOT_POSITION_UNAVAILABLE: 'Botの現在位置が不明',
     OUTSIDE_AREA: 'Botが選択範囲の外、または範囲の端から0.12ブロック未満', BOT_MOVED: '照会中にBotが動いた', SCOPE_CHANGED: '照会中に接続・生存状態が変わった', GENERATION_CHANGED: '照会中にコードが更新された', ABORTED: '照会が中断された',
     RECEIPT_MISMATCH: 'サーバーの回答が照会した位置と一致しない', SERVER_POSITION_TIMEOUT: 'サーバーが時間内に回答しなかった', SERVER_POSITION_NOT_MATCHED: 'サーバー上のBotの位置が照会した位置と一致しない', SERVER_POSITION_VERIFIER_BUSY: '別の位置照会が進行中' }
@@ -145,7 +154,7 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
     return { protocol: 1, phase: text(s?.phase), ready: s?.phase === 'spawned' && s.loadingScreenEnded === true && !s.dead && !s.isDead && !s.lifecycle?.dead && !s.spawnPending && s.health > 0 && s.inventory?.known === true && !s.inventory.uncertain,
       session: scope(s), profile: text(s?.profile), realm: s?.realm ? { id: String(s.realm.id), name: text(s.realm.name) } : null, dimension: text(s?.dimension), position,
       chunk: position ? { x: Math.floor(position.x / 16), z: Math.floor(position.z / 16) } : null,
-      busy: busy > 0, loadout: getReset()?.status() ?? { busy: false, phase: 'idle' }, storage: storageStatus(getStorage(), s), chunkMove: moveStatus(engine, s), positionProof: positionProof(engine, s),
+      busy: busy > 0, loadout: getReset()?.status() ?? { busy: false, phase: 'idle' }, storage: storageStatus(getStorage(), s), chunkMove: moveStatus(engine, s), travel: travelStatus(engine), positionProof: positionProof(engine, s),
       quarry: q?.jobId ? { jobId: text(q.jobId), state: text(q.state), userRunIntent: text(q.userRunIntent), pauseReason: text(q.pauseReason), persistence: q.persistence ?? null, currentY: q.currentY ?? null } : null }
   }
   function checkSession (input) {

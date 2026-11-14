@@ -353,9 +353,11 @@ function currentNote(){const now=Date.now();for(const k of Object.keys(controlNo
 const activityIcons={busy:'↻',waiting:'↻',error:'!',paused:'❚❚',done:'✓',idle:'•',offline:'—'};
 function controlActivity(){
  const c=controlLive;if(!c)return null;
- const st=obj(c.storage),lo=obj(c.loadout),mv=obj(c.chunkMove);
+ const st=obj(c.storage),lo=obj(c.loadout),mv=obj(c.chunkMove),tr=obj(c.travel),to=obj(tr.destination);
+ const trip=[num(tr.remaining)!==null?'残り '+fmt(num(tr.remaining))+'m':null,num(to.x)!==null&&num(to.z)!==null?'目的地 X '+to.x+' Z '+to.z:null].filter(Boolean).join(' · ')||null;
  if(st.busy===true){const moved=num(st.transferredStacks)??0,total=moved+(num(st.remainingStacks)??0);return{kind:'busy',label:'ラージチェストへ収納中',detail:total?moved+' / '+total+' スタック':null,code:null};}
  if(lo.busy===true)return{kind:'busy',label:'デバッグチェストを設置中',detail:txt(lo.step,null),code:null};
+ if(tr.busy===true&&obj(snapshot?.activity).kind!=='busy')return{kind:'busy',label:tr.phase==='waiting'?'長距離移動: 一時待機中':'長距離移動中',detail:trip,code:null};
  if(mv.busy===true)return{kind:'busy',label:'移動中',detail:{planning:'経路を計画中',moving:'歩行中',verifying:'位置を確認中'}[mv.phase]??null,code:null};
  if(st.phase==='failed')return{kind:'error',label:'ラージチェストへの収納が未完了',detail:clean(st.error?.message||'')||null,code:txt(st.error?.code,null)};
  if(lo.phase==='failed')return{kind:'error',label:'デバッグチェストの設置が未完了',detail:clean(lo.error?.message||'')||null,code:txt(lo.error?.code,null)};

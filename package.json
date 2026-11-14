@@ -16,6 +16,7 @@
     "dashboard": "node --env-file-if-exists=.env scripts/dashboard.js",
     "test:review": "node scripts/review-tests.js",
     "benchmark:combat": "node scripts/benchmark-combat-search.js",
+    "benchmark:world": "node scripts/benchmark-world.js",
     "test:compare": "node scripts/compare-tests.js",
     "loadout:reset": "node --env-file-if-exists=.env scripts/reset-loadout.js",
     "test:loadout": "node --test --test-concurrency=2 test/loadout-*.test.js"
