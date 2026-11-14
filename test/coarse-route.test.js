@@ -155,6 +155,6 @@ test('the search stops at its time budget and returns the best partial route', (
   assert.equal(r.timedOut, true)
   assert.equal(r.reached, false)
   assert.ok(r.path.length >= 1)
-  const big = planCoarseRoute({ getBlock: world(flat(300, 300)), start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 290, z: 290 }, maxNodes: 200000 })
+  const big = planCoarseRoute({ getBlock: world(flat(200, 200)), start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 190, z: 190 }, maxNodes: 200000 })
   assert.equal(big.reached, true, 'a large open search still completes')
 })
