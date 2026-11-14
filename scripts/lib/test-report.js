@@ -45,13 +45,22 @@ function parseTap (text, { root = '' } = {}) {
     const failureType = field('failureType'), code = field('code')
     failures.push({ name, file, failureType, code, key: JSON.stringify([file, name, failureType, code]) })
   }
+  // A test file whose process ends early leaves tests that started ("# Subtest")
+  // without any result line. They are neither passes nor failures of this run.
+  const started = new Map(), reported = new Map()
+  const bump = (map, name) => map.set(name, (map.get(name) ?? 0) + 1)
+  for (const line of lines) {
+    const begin = /^# Subtest: (.*)$/.exec(line), result = begin ? null : /^(?:not ok|ok) \d+ - (.*?)(?: # (?:SKIP|TODO)\b.*)?$/.exec(line)
+    if (begin) bump(started, normalize(begin[1], root)); else if (result) bump(reported, normalize(result[1], root))
+  }
+  const unreported = [...started].filter(([name, count]) => count > (reported.get(name) ?? 0)).map(([name]) => name)
   const counts = {}
   for (const line of lines) {
     const match = /^# (tests|pass|fail|cancelled|skipped|todo) (\d+)\s*$/.exec(line)
     if (match) counts[match[1]] = Number(match[2])
   }
   if (!Number.isSafeInteger(counts.tests) || !Number.isSafeInteger(counts.fail) || !Number.isSafeInteger(counts.pass) || !/^1\.\.\d+\s*$/m.test(text)) throw new Error('Test report is incomplete; baseline comparison is not valid')
-  return { counts, failures }
+  return { counts, failures, unreported, reported: [...reported.keys()] }
 }
 function compareReports (baseline, current) {
   const allowance = new Map()
@@ -64,4 +73,17 @@ function compareReports (baseline, current) {
   }
   return { baseline: baseline.counts, current: current.counts, introduced, removedFailureCount: [...allowance.values()].reduce((sum, count) => sum + count, 0) }
 }
-module.exports = { parseTap, compareReports }
+// Files of new failures for which the baseline run recorded no result at all
+// (neither pass nor failure). When a baseline test file ends early, every test
+// after that point is missing; the baseline is silent about them, so those
+// files need another baseline run before a failure there can be called new.
+function baselineGaps (baseline, introduced) {
+  const known = new Set(baseline.reported ?? [])
+  return [...new Set(introduced.filter(item => !known.has(item.name) && /^test\/.+\.[cm]?js$/.test(item.file)).map(item => item.file))].sort()
+}
+// Adds the failures of a second run of some files to a report of the whole suite.
+function withRerun (report, rerun, files) {
+  const again = new Set(files)
+  return { ...report, failures: [...report.failures.filter(item => !again.has(item.file)), ...rerun.failures] }
+}
+module.exports = { parseTap, compareReports, baselineGaps, withRerun }

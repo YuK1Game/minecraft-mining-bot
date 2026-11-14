@@ -6,18 +6,18 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { spawn, execFileSync } = require('node:child_process')
-const { createWriteStream } = require('node:fs')
+const { createWriteStream, existsSync } = require('node:fs')
 const { finished } = require('node:stream/promises')
-const { parseTap, compareReports } = require('./lib/test-report')
+const { parseTap, compareReports, baselineGaps, withRerun } = require('./lib/test-report')
 const root = path.resolve(__dirname, '..')
 // Both runs use the same settings, so the comparison stays like for like.
 const CONCURRENCY = Math.max(2, Math.min(8, os.availableParallelism()))
 const SUITE_LIMIT_MS = 25 * 60 * 1000
-async function runSuite (directory, filename) {
+async function runSuite (directory, filename, files = []) {
   const output = createWriteStream(filename, { flags: 'w' })
   // Failed legacy tests can leave intervals/polling alive. Preserve their
   // reported failures and timeouts, then exit after all test results exist.
-  const child = spawn(process.execPath, ['--test', '--test-force-exit', `--test-concurrency=${CONCURRENCY}`, '--test-timeout=30000', '--test-reporter=tap'], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(process.execPath, ['--test', '--test-force-exit', `--test-concurrency=${CONCURRENCY}`, '--test-timeout=30000', '--test-reporter=tap', ...files], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] })
   child.stdout.pipe(output, { end: false }); child.stderr.pipe(output, { end: false })
   let expired = false
   const timeout = setTimeout(() => { expired = true; child.kill('SIGTERM') }, SUITE_LIMIT_MS)
@@ -43,9 +43,19 @@ async function main () {
     execFileSync('git', ['worktree', 'add', '--detach', worktree, base], { cwd: root, stdio: 'inherit' }); attached = true
     await fs.symlink(path.join(root, 'node_modules'), path.join(worktree, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir')
     console.log(`Full suite baseline: ${base}; Node ${process.version}`)
-    const baseline = await runSuite(worktree, path.join(reports, 'baseline.tap'))
+    let baseline = await runSuite(worktree, path.join(reports, 'baseline.tap'))
     const current = await runSuite(root, path.join(reports, 'current.tap'))
-    const comparison = { base, node: process.version, ...compareReports(baseline, current) }
+    // 2026-11-14: a baseline test file ended early, eight of its long-failing
+    // tests had no result, and the same failures in the current run were
+    // counted as new. A file with such a gap is run once more on the baseline
+    // alone; a file the baseline does not have keeps its failures as new.
+    const rerunFiles = baselineGaps(baseline, compareReports(baseline, current).introduced).filter(file => existsSync(path.join(worktree, file)))
+    if (rerunFiles.length) {
+      console.warn(`Baseline recorded no result for tests in ${rerunFiles.length} file(s); running them again on the baseline: ${rerunFiles.join(', ')}`)
+      baseline = withRerun(baseline, await runSuite(worktree, path.join(reports, 'baseline-rerun.tap'), rerunFiles), rerunFiles)
+    }
+    const comparison = { base, node: process.version, ...compareReports(baseline, current), baselineRerunFiles: rerunFiles, currentUnreported: current.unreported }
+    if (current.unreported.length) console.warn(`Current run recorded no result for ${current.unreported.length} started test(s); a failure among them would not be seen: ${current.unreported.slice(0, 10).join(' | ')}`)
     await fs.writeFile(path.join(reports, 'comparison.json'), JSON.stringify(comparison, null, 2) + '\n')
     console.log(JSON.stringify(comparison, null, 2))
     if (baseline.failures.length) console.warn(`Known baseline failures: ${baseline.failures.length}. A green regression comparison is NOT a fully passing legacy suite.`)

@@ -23,3 +23,28 @@ test('review: duplicate failures are compared as a multiset, not silently collap
   const parsed = parseTap(report('/tmp/base'), { root: '/tmp/base' })
   assert.equal(compareReports(parsed, { ...parsed, failures: [...parsed.failures, ...parsed.failures] }).introduced.length, 1)
 })
+// CI 2026-11-14: a baseline test file ended after its twelfth test. The later
+// tests, failing for days, had no baseline result and were counted as new.
+test('review: a failure the baseline has no result for sends its file to a baseline rerun, and the rerun settles it', () => {
+  const { baselineGaps, withRerun } = require('../scripts/lib/test-report')
+  const fail = (n, name, file) => `# Subtest: ${name}\nnot ok ${n} - ${name}\n  ---\n  location: '/r/${file}:${n}:1'\n  failureType: 'testCodeFailure'\n  code: 'ERR_ASSERTION'\n  ...\n`
+  const pass = (n, name) => `# Subtest: ${name}\nok ${n} - ${name}\n  ---\n  duration_ms: 1\n  ...\n`
+  const tail = n => `1..${n}\n# tests ${n}\n# pass 0\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n`
+  const parse = text => parseTap('TAP version 13\n' + text, { root: '/r' })
+  // Baseline: the file stopped inside "second"; "third" never started.
+  const baseline = parse(fail(1, 'first', 'test/cut.test.js') + '# Subtest: second\n' + pass(2, 'elsewhere') + tail(2))
+  const current = parse(fail(1, 'first', 'test/cut.test.js') + fail(2, 'second', 'test/cut.test.js') + fail(3, 'third', 'test/cut.test.js') + pass(4, 'elsewhere') + fail(5, 'really new', 'test/other.test.js') + tail(5))
+  assert.deepEqual(baseline.unreported, ['second'])
+  assert.deepEqual(current.unreported, [])
+  const introduced = compareReports(baseline, current).introduced
+  assert.deepEqual(introduced.map(item => item.name), ['second', 'third', 'really new'])
+  assert.deepEqual(baselineGaps(baseline, introduced), ['test/cut.test.js', 'test/other.test.js'])
+  // The rerun of the cut file shows its tests failed before as well.
+  const rerun = parse(fail(1, 'first', 'test/cut.test.js') + fail(2, 'second', 'test/cut.test.js') + fail(3, 'third', 'test/cut.test.js') + tail(3))
+  const settled = compareReports(withRerun(baseline, rerun, ['test/cut.test.js']), current)
+  assert.deepEqual(settled.introduced.map(item => item.name), ['really new'], 'a test that fails only now is still new')
+  // A test that passed in the baseline and fails now is never sent to a rerun.
+  const passed = parse(pass(1, 'first') + tail(1)), broken = parse(fail(1, 'first', 'test/cut.test.js') + tail(1))
+  assert.deepEqual(baselineGaps(passed, compareReports(passed, broken).introduced), [])
+  assert.equal(compareReports(passed, broken).introduced.length, 1)
+})
