@@ -5330,6 +5330,7 @@ function createRuntime (host) {
     if (reason === 'ダメージを検知しました。' && !disposed && !disposing) {
       const damage = bindRecentDamage({ ...receiptState, lifecycle: { phase: receiptState.dead ? 'dead' : 'alive', deathId: actualLifeId(), dead: receiptState.dead === true } })
       if (damage) host.shared.recentDamageNoPrimary = damage
+      host.shared.travelLastDamageAt = Date.now()
     }
     const keepUserCombat = !disposing && !disposed && reason === 'ダメージを検知しました。' && receiptState.phase === 'spawned' && !receiptState.dead && !receiptState.isDead && receiptState.health > 0 && (userBehaviorLease?.kind === 'combat' || userBehaviorSnapshot().claim?.kind === 'combat')
     if (keepUserCombat && userBehaviorLease?.ready) {
@@ -7929,11 +7930,50 @@ function createRuntime (host) {
     // Food (2026-11-14): below hunger 18 natural healing stops; eat, or hunt
     // within 24 m by the food step of the preparation gatherer (no wood).
     const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : null
+    // Shooters (live 16:22: a pillager shot the bot from 20 to 0 while the trip
+    // kept trying legs): retreat out of range first.
+    try { if (await travelShooterRetreat(signal)) return { hold: false } } catch {}
     if (hunger !== null && hunger < 18) { try { await operations.quarry.prepGather({ logs: 0, maxMs: 90000 }) } catch {} }
     // The boat was lost (coordinator 2026-11-14): within the preparation
     // allowance, with trees near, gather a few logs and craft a boat again.
     try { await travelMakeBoat(signal) } catch (error) { host.log(`長距離移動: ボートを作れませんでした: ${String(error.message ?? error).slice(0, 100)}`) }
     return { hold: false }
+  }
+  // Retreat from shooters during long travel: a shooter within 20 m and a hit
+  // in the last 5 s (or the shooter within 10 m) moves the bot 5-12 m straight
+  // away by the ordinary movement (sprinting when hunger allows).
+  async function travelShooterRetreat (signal) {
+    const SHOOT = require('./learning-health').SHOOTING
+    const p = working().position; if (!p) return false
+    const feet = { x: p.x, y: p.y - 1.62, z: p.z }
+    const sh = allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && SHOOT.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 20)
+    if (!sh.length) return false
+    const nearest = Math.min(...sh.map(a => Math.hypot(a.position.x - feet.x, a.position.z - feet.z)))
+    const hurt = Date.now() - (host.shared.travelLastDamageAt ?? 0) < 5000
+    if (!hurt && nearest > 10) return false
+    let ax = 0, az = 0
+    for (const a of sh) { const dx = feet.x - a.position.x, dz = feet.z - a.position.z, d = Math.max(0.5, Math.hypot(dx, dz)); ax += dx / d; az += dz / d }
+    const base = Math.atan2(az, ax)
+    const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : 0
+    const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16, sprint: hunger > 6 }
+    const until = Date.now() + 1500
+    for (const d of [12, 8, 5]) for (const deg of [0, 30, -30, 60, -60, 90, -90]) {
+      if (signal?.aborted || Date.now() > until) return false
+      const ang = base + deg * Math.PI / 180
+      const x = Math.floor(feet.x + Math.cos(ang) * d) + 0.5, z = Math.floor(feet.z + Math.sin(ang) * d) + 0.5
+      for (const dy of [0, 1, -1, 2, -2]) {
+        const t = { x, y: Math.round(feet.y) + dy, z }
+        let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
+        await new Promise(resolve => setImmediate(resolve))
+        if (pv?.ready !== true) continue
+        try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { return false }
+        host.log(`長距離移動: 射撃する敵（${sh.map(a => String(a.entityType ?? a.name).replace('minecraft:', '')).join('・')}、${Math.round(nearest)}m）から離れます`)
+        const stop = Date.now() + 8000
+        while (Date.now() < stop) { const m = movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await new Promise(r => setTimeout(r, 200)) }
+        return true
+      }
+    }
+    return false
   }
   async function travelMakeBoat (signal) {
     const items = () => working().inventory?.items ?? []
@@ -7979,7 +8019,9 @@ function createRuntime (host) {
     if (raw().phase !== 'spawned' || quarryJob?.holdsWork() || longTravel?.status?.().busy) return
     if (!host.shared.longTravelResume && !travelFileChecked) {
       travelFileChecked = true
-      try { const doc = JSON.parse(await require('node:fs/promises').readFile(longTravelFile(), 'utf8')); if (['moving', 'cancelled'].includes(doc?.phase) && doc.destination && Date.now() - Date.parse(doc.savedAt) < 900000) host.shared.longTravelResume = { destination: { x: doc.destination.x, z: doc.destination.z }, at: Date.now() } } catch {}
+      try { const doc = JSON.parse(await require('node:fs/promises').readFile(longTravelFile(), 'utf8')); // Only the same Realm and profile the trip was saved for (live 16:13: a test
+      // runtime resumed the live trip from the shared file and never exited).
+      if (['moving', 'cancelled'].includes(doc?.phase) && doc.realmId != null && doc.realmId === String(raw().realm?.id ?? '') && doc.profile === (raw().profile ?? null) && doc.destination && Date.now() - Date.parse(doc.savedAt) < 900000) host.shared.longTravelResume = { destination: { x: doc.destination.x, z: doc.destination.z }, at: Date.now() } } catch {}
     }
     const r = host.shared.longTravelResume
     if (!r) { if (travelFileChecked) clearInterval(travelResumeTimer); return }
@@ -8142,7 +8184,7 @@ function createRuntime (host) {
           if (Date.now() > until) { try { movement?.stop?.('timeout') } catch {} return { ok: false, code: 'POINT_WALK_TIMEOUT' } }
         }
       },
-      save: async doc => { const fsp = require('node:fs/promises'), file = longTravelFile(); await fsp.mkdir(require('node:path').dirname(file), { recursive: true }); await fsp.writeFile(file + '.tmp', JSON.stringify(doc, null, 2)); await fsp.rename(file + '.tmp', file) },
+      save: async doc => { doc = { ...doc, realmId: raw().realm?.id == null ? null : String(raw().realm.id), profile: raw().profile ?? null }; const fsp = require('node:fs/promises'), file = longTravelFile(); await fsp.mkdir(require('node:path').dirname(file), { recursive: true }); await fsp.writeFile(file + '.tmp', JSON.stringify(doc, null, 2)); await fsp.rename(file + '.tmp', file) },
       log: message => host.log(message)
     })
     return longTravel
