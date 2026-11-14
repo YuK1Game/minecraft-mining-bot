@@ -6,7 +6,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createLongTravel } = require('../src/long-travel')
 
-function fixture ({ blocked = () => false, damagedOnce = false } = {}) {
+function fixture ({ blocked = () => false, damagedOnce = false, stopWhenBlocked = false } = {}) {
   const state = { phase: 'spawned', health: 20, position: { x: 0.5, y: 65.62, z: 0.5 } }
   const legs = [], saves = []
   let busy = false, last = null, damaged = !damagedOnce
@@ -25,7 +25,7 @@ function fixture ({ blocked = () => false, damagedOnce = false } = {}) {
     cancel: async () => {}
   }
   const logs = []
-  const travel = createLongTravel({ getState: () => state, chunkTravel, save: async doc => saves.push(doc), log: m => logs.push(m), sleep: () => new Promise(r => setImmediate(r)), damagePauseMs: 0, pollMs: 1 })
+  const travel = createLongTravel({ getState: () => state, chunkTravel, save: async doc => saves.push(doc), log: m => logs.push(m), sleep: () => new Promise(r => setImmediate(r)), damagePauseMs: 0, pollMs: 1, stopWhenBlocked })
   return { state, legs, saves, logs, travel }
 }
 async function finish (f, ms = 5000) {
@@ -53,8 +53,8 @@ test('a blocked direction is passed by turning aside', async () => {
   assert.ok(f.legs.some(a => a.z1 !== 0))
 })
 
-test('when no direction can be walked it stops with the reason', async () => {
-  const f = fixture({ blocked: () => true })
+test('with stopWhenBlocked, no walkable direction stops with the reason', async () => {
+  const f = fixture({ blocked: () => true, stopWhenBlocked: true })
   f.travel.start({ destination: { x: 500, z: 500 } })
   const s = await finish(f)
   assert.equal(s.phase, 'stopped'); assert.equal(s.reason, 'LONG_TRAVEL_BLOCKED')
@@ -114,9 +114,21 @@ test('chunk fallbacks are capped per pass', async () => {
   const { createLongTravel } = require('../src/long-travel')
   const state = { phase: 'spawned', health: 20, position: { x: 0, y: 65.62, z: 0 } }
   let starts = 0
-  const lt = createLongTravel({ getState: () => state, chunkTravel: { start: async () => { starts++ }, status: () => ({ busy: false, phase: 'failed', error: { code: 'CHUNK_TRAVEL_NO_ROUTE' } }) }, findPoint: async () => null, walkTo: async () => ({ ok: false }), log: () => {}, save: async () => {}, pollMs: 2, maxFailuresInRow: 1 })
+  const lt = createLongTravel({ getState: () => state, chunkTravel: { start: async () => { starts++ }, status: () => ({ busy: false, phase: 'failed', error: { code: 'CHUNK_TRAVEL_NO_ROUTE' } }) }, findPoint: async () => null, walkTo: async () => ({ ok: false }), log: () => {}, save: async () => {}, pollMs: 2, maxFailuresInRow: 1, stopWhenBlocked: true })
   lt.start({ destination: { x: 500, z: 0 } })
   const until = Date.now() + 3000
   while (Date.now() < until && lt.status().busy) await new Promise(r => setTimeout(r, 5))
   assert.equal(starts, 3, 'three chunk tries, then the pass ends')
+})
+
+// Coordinator 2026-11-14: by default the trip never stops by itself; a blocked
+// pass backs off and tries again.
+test('by default a blocked trip backs off and keeps trying', async () => {
+  const f = fixture({ blocked: () => true })
+  f.travel.start({ destination: { x: 500, z: 500 } })
+  const until = Date.now() + 1500
+  while (Date.now() < until && !f.logs.some(m => /もう一度試します/.test(m))) await new Promise(r => setTimeout(r, 5))
+  assert.ok(f.logs.some(m => /もう一度試します/.test(m)))
+  assert.equal(f.travel.status().busy, true)
+  await f.travel.cancel()
 })

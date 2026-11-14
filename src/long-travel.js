@@ -34,7 +34,7 @@ const reasons = {
 }
 
 function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, inventoryReady = null, beforeLeg = null, record = null, onSurface = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
-  legM = LEG_M, arriveM = 20, chunkTries = 3, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 25000, pollMs = 250 } = {}) {
+  legM = LEG_M, arriveM = 20, chunkTries = 3, stopWhenBlocked = false, blockedBackoffMs = 10000, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 25000, pollMs = 250 } = {}) {
   if (typeof getState !== 'function' || typeof chunkTravel?.start !== 'function' || typeof chunkTravel?.status !== 'function') throw new TypeError('Long travel needs getState and chunk travel')
   let run = null, task = null
   const status = () => run ? copy({ timing: run.timing ?? {}, busy: !!task, phase: run.phase, destination: run.destination, remaining: run.remaining, legs: run.legs, failures: run.failures, reason: run.reason, message: run.message, startedAt: run.startedAt, lastLegAt: run.lastLegAt })
@@ -168,12 +168,20 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
         run.failures++
         run.reason = last?.code ?? null
         say(`区間を進めませんでした（${last?.code ?? '不明'}${last?.message ? `: ${String(last.message).slice(0, 80)}` : ''}）。${run.failures}回目`)
-        if (run.failures >= maxFailuresInRow) throw fail('LONG_TRAVEL_BLOCKED', `${reasons.LONG_TRAVEL_BLOCKED}（最後の理由: ${last?.code ?? '不明'}）`)
+        if (run.failures >= maxFailuresInRow) {
+          if (stopWhenBlocked) throw fail('LONG_TRAVEL_BLOCKED', `${reasons.LONG_TRAVEL_BLOCKED}（最後の理由: ${last?.code ?? '不明'}）`)
+          // Coordinator 2026-11-14: the trip does not stop by itself; it backs off
+          // and tries again (the terrain and the threats change meanwhile).
+          say(`${reasons.LONG_TRAVEL_BLOCKED}。${blockedBackoffMs / 1000}秒後にもう一度試します（最後の理由: ${last?.code ?? '不明'}）`)
+          run.failures = 0
+          await timedSleep('backoff', blockedBackoffMs)
+          continue
+        }
         await timedSleep('backoff', 1500)
       }
       // Progress guard: the received position must keep getting closer.
       const here = after ? Math.round(horizontal(after, run.destination) / 8) : null
-      if (here != null && here === stuckAt) { if (++stuckCount >= 12) throw fail('LONG_TRAVEL_NO_PROGRESS') } else { stuckAt = here; stuckCount = 0 }
+      if (here != null && here === stuckAt) { if (++stuckCount >= 12) { if (stopWhenBlocked) throw fail('LONG_TRAVEL_NO_PROGRESS'); say(`${reasons.LONG_TRAVEL_NO_PROGRESS}。${blockedBackoffMs / 1000}秒後にもう一度試します`); stuckCount = 0; await timedSleep('backoff', blockedBackoffMs) } } else { stuckAt = here; stuckCount = 0 }
     }
     throw fail('LONG_TRAVEL_CANCELLED')
   }
