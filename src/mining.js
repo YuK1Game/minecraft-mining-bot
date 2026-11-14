@@ -38,6 +38,9 @@ function targetList (targets) {
       const rt = position.requiredTool
       if (rt != null && (rt.kind !== 'pickaxe' || !Number.isSafeInteger(rt.tier) || rt.tier < 1 || rt.tier > 4 || !Number.isSafeInteger(rt.reserve) || rt.reserve < 1)) throw new Error('Owned-shulker pickaxe requirement is invalid')
       Object.assign(target, { accessPreparation: 'owned_shulker', expectedName: position.expectedName, ownershipKey: position.ownershipKey, expectedRuntimeId: position.expectedRuntimeId ?? null, ...(rt ? { requiredTool: { kind: 'pickaxe', tier: rt.tier, reserve: rt.reserve } } : {}) })
+    } else if (position.accessPreparation === 'travel_down') {
+      // Long travel only: the block directly under the feet (checked in validate).
+      Object.assign(target, { accessPreparation: 'travel_down' })
     } else if (position.accessPreparation === 'pillar_descent') {
       // Descending the bot's own dirt pillar one block at a time (2026-11-10):
       // only a received dirt block directly under the feet, with a received
@@ -77,7 +80,7 @@ function pickTier (state) {
   return { wooden_pickaxe: 1, golden_pickaxe: 1, stone_pickaxe: 2, iron_pickaxe: 3, diamond_pickaxe: 4, netherite_pickaxe: 4 }[name] ?? 0
 }
 
-function createMining ({ getState, world, getInput, verifyOwnedBed = null, verifyOwnedShulker = null, getRawItem = null, isProtected = () => false, now = Date.now, blockTimeoutMs = 15000, logAllowance = () => false }) {
+function createMining ({ getState, world, getInput, verifyOwnedBed = null, verifyOwnedShulker = null, getRawItem = null, isProtected = () => false, now = Date.now, blockTimeoutMs = 15000, logAllowance = () => false, travelDownAllowance = () => false }) {
   if (getRawItem !== null && typeof getRawItem !== 'function' || typeof isProtected !== 'function') throw new Error('Clearance inventory/protection readers must be functions')
   if (verifyOwnedBed !== null && typeof verifyOwnedBed !== 'function') throw new Error('Owned-bed verification must be an explicit callback')
   if (verifyOwnedShulker !== null && typeof verifyOwnedShulker !== 'function') throw new Error('Owned-shulker verification must be an explicit callback')
@@ -175,13 +178,22 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
       if (here?.known !== true || here.name !== target.expectedName || target.expectedRuntimeId != null && here.runtimeId !== target.expectedRuntimeId) throw new Error('Pillar descent needs received dirt under the feet')
       if (below?.known !== true || below.boundingBox !== 'block' || AIR.has(blockName(below)) || HAZARDS.test(blockName(below))) throw new Error('Pillar descent needs a received solid block right below the dirt')
       if (![{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }].every(d => dry({ x: target.x + d.x, y: target.y, z: target.z + d.z }) && dry({ x: target.x + d.x, y: feet.y, z: target.z + d.z }))) throw new Error('Pillar descent needs received dry surroundings')
+    } else if (target.accessPreparation === 'travel_down') {
+      // Long travel only (2026-11-14, coordinator): the block right under the
+      // feet, to get down from a canopy or to dig the night pit. The runtime
+      // checks the fall onto received ground before asking.
+      if (target.x !== feet.x || target.z !== feet.z || target.y !== feet.y - 1) throw new Error('Travel descent mines only the block directly under the feet')
+      if (!(() => { try { return travelDownAllowance() === true } catch { return false } })()) throw new Error('Travel descent is allowed only during long travel')
     } else if (target.x === feet.x && target.z === feet.z && target.y <= feet.y) throw new Error('自分の足元は掘れません。')
     const block = world.getBlock(target.x, target.y, target.z)
     if (!block.known) throw new Error('対象ブロックをまだ読み取れていません。')
     const harvestRule = quarryRule(block.name)
     // 2026-11-14 user decision (relay): logs may be cut only to prepare a long trip, about 10, starting empty-handed. Leaves stay off, the quarry rule stays.
     const logAllowed = harvestRule.reason === 'WOOD_HARVEST_DISABLED' && /_log$|_stem$/.test(block.name ?? '') && (() => { try { return logAllowance() === true } catch { return false } })()
-    if (['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(harvestRule.reason) && !logAllowed) throw Object.assign(new Error(harvestRule.reason), { code: harvestRule.reason })
+    // Leaves only under the feet during long travel (coordinator 2026-11-14:
+    // getting down is not harvesting; the quarry never handles leaves).
+    const leafDown = target.accessPreparation === 'travel_down' && harvestRule.reason === 'LEAF_HARVEST_DISABLED' && /leaves$/.test(block.name ?? '')
+    if (['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(harvestRule.reason) && !logAllowed && !leafDown) throw Object.assign(new Error(harvestRule.reason), { code: harvestRule.reason })
     const name = blockName(block)
     if (target.accessPreparation === 'tree_access' && (!isDryAccessPlant(block) || block.name !== target.expectedName)) throw new Error('準備採掘の植物が変更されたか、乾いた未保護の植物ではありません。')
     const ownedBed = target.accessPreparation === 'owned_bed' && name === 'bed' && block.name === target.expectedName && typeof verifyOwnedBed === 'function' && verifyOwnedBed(state, target, block) === true
@@ -212,7 +224,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
       }
     }
     if (fluidRoof) validateFluidRoofContext(target, state, block)
-    if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !logAllowed) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
+    if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !logAllowed && !leafDown) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
     if (clearance && (block.name !== 'minecraft:stone' || block.runtimeId !== target.expectedRuntimeId || block.protected === true || block.protectionSource || block.natural === false || isProtected(target, state, block))) throw new Error('Stone clearance target changed or is protected')
     if (!clearance && !quarry && PICK.has(name) && pickTier(state) < PICK.get(name)) throw new Error(`適切なツルハシの装備を確認できません: ${name}`)
     if (block.extra?.some(layer => !AIR.has(blockName(layer)))) throw new Error('対象に水などの追加レイヤーがあります。')

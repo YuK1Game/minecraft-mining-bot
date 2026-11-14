@@ -850,7 +850,7 @@ function createRuntime (host) {
   // fight that interrupted it, so it is recorded on its own.
   const food = createFood({ client: host.client, getState: () => { const state = working(); return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: foodKnownLife() } } }, crafting, getInput: () => input, equip: (slot, options) => inventory.equipForFood(slot, options), allocateLegacyId: () => host.allocate('interaction'), canEmergencyEat: canEmergencyEatHere, onUncertain: details => { host.shared.foodUncertain = { ...details, at: new Date().toISOString() }; try { host.log(`食事の結果が未確認です（持ち物全体は不明扱いにしません）: ${String(details?.reason ?? '').slice(0, 80)}`) } catch {} }, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
   // Bare-hand deepslate takes about 15 s (2026-11-14 cave exit): 30 s per block.
-  const mining = createMining({ blockTimeoutMs: 30000, logAllowance: () => longTravelLogAllowance(), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true, verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true })
+  const mining = createMining({ blockTimeoutMs: 30000, logAllowance: () => longTravelLogAllowance(), travelDownAllowance: () => Date.now() < (host.shared.travelDownUntil ?? 0), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true, verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true })
   const interactions = createInteractions({ client: host.client, getState: () => ({ ...working(), lifecycle: { deathId: actualLifeId() } }), world: host.world, crafting, getInput: () => input, version: host.meta.version, onInventory, onUncertain, allocateLegacyId: () => host.allocate('interaction') })
 
   function commitChestMainDelta (delta) {
@@ -5635,7 +5635,7 @@ function createRuntime (host) {
           }
           // 2. logs
           const logs = count(LOGS)
-          if (logs >= logTarget) { say(`原木 ${logs} 本を持っています`); return { done: true, logs, food: count(FOOD), hunger: hunger() } }
+          if (logs >= logTarget) { if (logTarget > 0) say(`原木 ${logs} 本を持っています`); return { done: true, logs, food: count(FOOD), hunger: hunger() } }
           if (logsTried > 40) break
           const feet = feetOf(), known = []
           for (let dx = -24; dx <= 24; dx++) for (let dz = -24; dz <= 24; dz++) for (let dy = -6; dy <= 12; dy++) {
@@ -5660,6 +5660,42 @@ function createRuntime (host) {
       },
       // Read-only request: the terrain above the bot (its chunk and the eight
       // around it) up to y=120, to find the way back to open sky from a cave.
+      // Pick up received item drops near a point by ordinary walking (2026-11-14:
+      // the preparation items dropped at a death). Success is the received
+      // inventory growing; the drop vanishing alone is not counted.
+      pickupNear: async (input = {}) => {
+        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
+        const center = input.center, radius = Math.min(32, input.radius ?? 16), maxMs = Math.min(600000, input.maxMs ?? 180000), started = Date.now()
+        if (!center || ![center.x, center.z].every(Number.isFinite)) throw new Error('center {x, z} を指定してください。')
+        const sleep = ms => new Promise(r => setTimeout(r, ms))
+        const feetOf = () => { const q = working().position; return q ? { x: q.x, y: q.y - 1.62, z: q.z } : null }
+        const total = () => (working().inventory?.items ?? []).reduce((n, i) => n + (i.count ?? 0), 0)
+        const before = total(), skip = new Set()
+        const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
+        while (Date.now() - started < maxMs) {
+          const here = feetOf(); if (!here) { await sleep(500); continue }
+          const drop = allActors().filter(a => a?.kind === 'item' && a.position && !skip.has(String(a.runtimeId)) && Math.hypot(a.position.x - center.x, a.position.z - center.z) <= radius).sort((a, b) => Math.hypot(a.position.x - here.x, a.position.z - here.z) - Math.hypot(b.position.x - here.x, b.position.z - here.z))[0]
+          if (!drop) break
+          const t = { x: Math.floor(drop.position.x) + 0.5, y: Math.floor(drop.position.y + 0.01), z: Math.floor(drop.position.z) + 0.5 }
+          let moved = false
+          for (const dy of [0, 1, -1]) {
+            let pv = null; try { motionOrigin = working(); pv = movement?.preview({ ...t, y: t.y + dy }, opts) } catch {}
+            if (pv?.ready !== true) continue
+            try { requireIdle({ inventoryRequired: false }); startMotion('navigation', { ...t, y: t.y + dy }, opts); moved = true } catch {}
+            break
+          }
+          if (!moved) { skip.add(String(drop.runtimeId)); continue }
+          const until = Date.now() + 20000
+          while (Date.now() < until) { const m = movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await sleep(200) }
+          await sleep(600)
+          if (allActors().some(a => String(a.runtimeId) === String(drop.runtimeId))) skip.add(String(drop.runtimeId))
+        }
+        const gained = total() - before
+        host.log(`拾得: 受信した持ち物が ${gained} 個増えました`)
+        return { gained, items: total(), skipped: skip.size }
+      },
+      // One canopy-escape pass outside a trip (same rules as during long travel).
+      leafEscape: async () => { if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。'); if (longTravel?.status?.().busy) throw new Error('長距離移動の途中です。'); return travelLeafEscape(null) },
       // Read-only: why the empty-handed preparation flag is on or off.
       prepCheck: () => {
         const cheap = require('./learning-health').cheapItem, out = { allowance: longTravelLogAllowance(), flag: emptyHandedPrep(), blocking: [] }
@@ -5674,7 +5710,8 @@ function createRuntime (host) {
         const st = working(); if (!st.position) throw new Error('位置が不明です。')
         const cx = Math.floor(st.position.x / 16), cz = Math.floor(st.position.z / 16), y = Math.floor(st.position.y - 1.62)
         const results = []
-        for (const [bottom, top] of [[Math.max(-60, y - 4), Math.min(110, y + 60)], [Math.min(110, y + 60), 120]]) {
+        // Live 13:58: a canopy over unreceived terrain (y48-63) looked like a deep hole; the request also covers 24 below.
+        for (const [bottom, top] of [[Math.max(-60, y - 24), Math.min(110, y + 60)], [Math.min(110, y + 60), 120]]) {
           if (bottom >= top) continue
           results.push(await requestQuarryTerrain({ config: { target: { chunks: [{ x: cx, z: cz }] } }, yTop: top, yBottom: bottom }, {}))
         }
@@ -7711,7 +7748,8 @@ function createRuntime (host) {
     const isAir = c => { const b = host.world.getBlock(c.x, c.y, c.z); return b?.known === true && /^minecraft:(?:air|cave_air)$/.test(b.name ?? '') }
     for (const cell of plan.dig) {
       if (!isAir(cell)) {
-        try { operations.mining.start([cell]) } catch (error) { return { ok: false, reason: `DIG_REFUSED:${String(error.message ?? error).slice(0, 60)}` } }
+        host.shared.travelDownUntil = Date.now() + 40000
+        try { operations.mining.start([{ ...cell, accessPreparation: 'travel_down' }]) } catch (error) { return { ok: false, reason: `DIG_REFUSED:${String(error.message ?? error).slice(0, 60)}` } }
         if (!(await wait(() => isAir(cell), 35000))) return { ok: false, reason: 'DIG_UNCONFIRMED' }
       }
       if (!(await wait(() => { const f = feet(); return !!f && f.y <= cell.y + 0.05 }, 5000))) return { ok: false, reason: 'FALL_UNCONFIRMED' }
@@ -7725,6 +7763,102 @@ function createRuntime (host) {
     try { await operations.interactions.placeBlock({ position: plan.cover, slot: item.slot }) } catch (error) { return { ok: false, reason: `COVER_REFUSED:${String(error.message ?? error).slice(0, 60)}` } }
     const covered = await wait(() => { const b = host.world.getBlock(plan.cover.x, plan.cover.y, plan.cover.z); return b?.known === true && b.boundingBox === 'block' }, 5000)
     return covered ? { ok: true, cover: plan.cover } : { ok: false, reason: 'COVER_UNCONFIRMED' }
+  }
+  // Getting down from a canopy during long travel (coordinator 2026-11-14,
+  // choice A): only the leaves directly under the feet are broken by the
+  // ordinary mining; nothing is picked up on purpose. The spot is chosen on
+  // received terrain: every cell down to received solid ground, and the fall
+  // damage (each air run minus three) leaves at least six health.
+  async function travelLeafEscape (signal) {
+    const sleep = ms => new Promise(r => setTimeout(r, ms))
+    const feetOf = () => { const q = working().position; return q ? { x: q.x, y: q.y - 1.62, z: q.z } : null }
+    const at = (x, y, z) => host.world.getBlock(x, y, z)
+    const leaf = b => b?.known === true && /leaves$/.test(b.name ?? '')
+    const f0 = feetOf(); if (!f0) return { attempted: false }
+    // Live 14:09: after one leaf the bot landed on a branch (log) over a ravine;
+    // a canopy branch counts as canopy too (only leaves are ever broken).
+    // Every block under the 0.6-wide footprint (live 14:17: the bot stood on the
+    // leaf next to its own column).
+    const canopyBlock = b => leaf(b) || b?.known === true && /_log$/.test(b.name ?? '')
+    const under = []
+    for (const ox of [-0.3, 0.3]) for (const oz of [-0.3, 0.3]) { const b = at(Math.floor(f0.x + ox), Math.round(f0.y) - 1, Math.floor(f0.z + oz)); if (b?.boundingBox === 'block' || b?.known !== true) under.push(b) }
+    if (!under.length || !under.every(canopyBlock)) return { attempted: false }
+    const descent = (x, sy, z) => {
+      let damage = 0, run = 0
+      for (let y = sy - 1; y >= sy - 30; y--) {
+        const b = at(x, y, z)
+        if (b?.known !== true) return null
+        if (leaf(b)) { damage += Math.max(0, run - 3); run = 0; continue }
+        if (/^minecraft:(?:air|cave_air)$/.test(b.name ?? '') || b.boundingBox === 'empty' && !/water|lava|fire/.test(b.name ?? '')) { run++; continue }
+        if (b.boundingBox !== 'block' || /water|lava|fire|magma|cactus|powder_snow|_log$/.test(b.name ?? '')) return null // a branch is not ground (live 14:13)
+        return { damage: damage + Math.max(0, run - 3), ground: y }
+      }
+      return null
+    }
+    const health = working().health ?? 0
+    const cands = []
+    for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) {
+      const x = Math.floor(f0.x) + dx, z = Math.floor(f0.z) + dz
+      for (const sy of [Math.round(f0.y), Math.round(f0.y) - 1, Math.round(f0.y) + 1, Math.round(f0.y) - 2, Math.round(f0.y) + 2]) {
+        if (!leaf(at(x, sy - 1, z)) || at(x, sy, z)?.boundingBox !== 'empty' || at(x, sy + 1, z)?.boundingBox !== 'empty') continue
+        const d = descent(x, sy, z)
+        if (d && health - d.damage >= 6) cands.push({ x, y: sy, z, ...d, dist: Math.hypot(dx, dz) })
+      }
+    }
+    cands.sort((a, b) => a.damage - b.damage || a.dist - b.dist)
+    if (!cands.length) return { attempted: true, ok: false, reason: '受信した地面まで安全に降りられる場所がありません' }
+    for (const c of cands.slice(0, 8)) {
+      if (signal?.aborted) return { attempted: true, ok: false, reason: 'cancelled' }
+      const here = feetOf()
+      if (Math.floor(here.x) !== c.x || Math.floor(here.z) !== c.z || Math.round(here.y) !== c.y) {
+        const t = { x: c.x + 0.5, y: c.y, z: c.z + 0.5 }, opts = { allowWater: false, allowLowHealth: true, maxDistance: 16 }
+        let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
+        if (pv?.ready !== true) continue
+        try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { continue }
+        const until = Date.now() + 20000
+        while (Date.now() < until) { const m = movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await sleep(200) }
+        const f = feetOf(); if (!f || Math.floor(f.x) !== c.x || Math.floor(f.z) !== c.z) continue
+      }
+      host.log(`長距離移動: 葉の上から降ります (${c.x},${c.y},${c.z}) 地面 y${c.ground}・落下の見込み ${c.damage}`)
+      for (let i = 0; i < 30 && !signal?.aborted; i++) {
+        const f = feetOf(); if (!f) return { attempted: true, ok: false, reason: '位置が不明' }
+        const cell = { x: Math.floor(f.x), y: Math.round(f.y) - 1, z: Math.floor(f.z) }
+        if (!leaf(at(cell.x, cell.y, cell.z))) return { attempted: true, ok: true }
+        host.shared.travelDownUntil = Date.now() + 40000
+        try { operations.mining.start([{ ...cell, accessPreparation: 'travel_down' }]) } catch (error) { return { attempted: true, ok: false, reason: `葉を壊せません: ${String(error.message ?? error).slice(0, 80)}` } }
+        const until = Date.now() + 15000
+        while (Date.now() < until && leaf(at(cell.x, cell.y, cell.z))) await sleep(150)
+        if (leaf(at(cell.x, cell.y, cell.z))) return { attempted: true, ok: false, reason: '葉の採掘を確認できません' }
+        // Wait for the received position to settle after the fall.
+        let last = null, still = 0
+        for (let k = 0; k < 40 && still < 4; k++) { await sleep(150); const q = feetOf(); if (q && last && Math.abs(q.y - last.y) < 0.01) still++; else still = 0; last = q }
+      }
+      return { attempted: true, ok: false, reason: '降り切れませんでした' }
+    }
+    // No descent spot is reachable in one walk (live 14:11, a leaf pocket on a
+    // branch): take one accepted step on the canopy toward the best spot; the
+    // next pass tries again from there.
+    const best = cands[0], here = feetOf()
+    const steps = []
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) for (const dy of [0, 1, -1, 2]) {
+      const x = Math.floor(here.x) + dx, z = Math.floor(here.z) + dz, y = Math.round(here.y) + dy
+      if (!dx && !dz) continue
+      const floor = at(x, y - 1, z)
+      if (!(leaf(floor) || floor?.known === true && /_log$/.test(floor.name ?? '')) || at(x, y, z)?.boundingBox !== 'empty' || at(x, y + 1, z)?.boundingBox !== 'empty') continue
+      const gain = Math.hypot(best.x - Math.floor(here.x), best.z - Math.floor(here.z)) - Math.hypot(best.x - x, best.z - z)
+      if (gain > 0.5) steps.push({ x, y, z, gain })
+    }
+    steps.sort((a, b) => b.gain - a.gain)
+    for (const st of steps.slice(0, 10)) {
+      const t = { x: st.x + 0.5, y: st.y, z: st.z + 0.5 }, opts = { allowWater: false, allowLowHealth: true, maxDistance: 16 }
+      let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
+      if (pv?.ready !== true) continue
+      try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { continue }
+      const until = Date.now() + 10000
+      while (Date.now() < until) { const m = movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await sleep(200) }
+      return { attempted: true, ok: false, reason: `葉の上を降りる場所 (${best.x},${best.z}) へ1歩進みました` }
+    }
+    return { attempted: true, ok: false, reason: '降りる場所へ歩けません' }
   }
   async function travelBeforeLeg (signal) {
     const NS = require('./night-stop')
@@ -7759,6 +7893,17 @@ function createRuntime (host) {
     if (hunger !== null && hunger < 18) { try { await operations.quarry.prepGather({ logs: 0, maxMs: 90000 }) } catch {} }
     return { hold: false }
   }
+  // Resume a trip that the previous code was running when it was reloaded
+  // (bounded: within ten minutes, once, after the bot is spawned and idle).
+  const travelResumeTimer = setInterval(() => {
+    if (disposed || disposing) { clearInterval(travelResumeTimer); return }
+    const r = host.shared.longTravelResume
+    if (!r) { clearInterval(travelResumeTimer); return }
+    if (Date.now() - r.at > 600000) { host.shared.longTravelResume = null; return }
+    if (raw().phase !== 'spawned' || quarryJob?.holdsWork() || longTravel?.status?.().busy) return
+    host.shared.longTravelResume = null
+    Promise.resolve().then(() => operations.quarry.travelTo({ destination: r.destination })).then(() => host.log(`長距離移動: 行動コードの反映後に移動を再開しました（目的地 ${r.destination.x}, ${r.destination.z}）`), error => host.log(`長距離移動: 反映後の再開に失敗しました: ${String(error.message ?? error).slice(0, 100)}`))
+  }, 2000)
   function ensureLongTravel () {
     if (longTravel) return longTravel
     longTravel = require('./long-travel').createLongTravel({
@@ -7795,7 +7940,20 @@ function createRuntime (host) {
         // Follow the coarse wide-area route first (2026-11-14): a point some
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
-          const route = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: host.shared.longTravelBadCells ??= new Set() })
+          const planRoute = () => require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: host.shared.longTravelBadCells ??= new Set() })
+          let route = planRoute()
+          // Live 2026-11-14 13:35: on a hilltop the terrain above y80 was not
+          // received, so no column counted as open sky and the route closed in
+          // (97 nodes, no frontier). Request the terrain above once per spot
+          // and plan again; unreceived terrain still never counts as open.
+          if (!route.ready && !route.frontier.length) {
+            const key = `${Math.floor(feet.x / 16)},${Math.floor(feet.z / 16)}`
+            const asked = host.shared.longTravelSkyAsked ??= new Map()
+            if (Date.now() - (asked.get(key) ?? 0) > 120000) {
+              asked.set(key, Date.now())
+              try { await operations.quarry.requestTerrainAbove(); await new Promise(r => setTimeout(r, 1500)); route = planRoute(); host.log(`長距離移動: 頭上の地形を要求しました（経路 ${route.ready ? 'あり' : 'なし'}）`) } catch {}
+            }
+          }
           // A carved step ahead: walk to the cell before it first, then dig and step.
           const firstDig = route.ready ? route.path.findIndex(p => p.dig) : -1
           if (firstDig > 0 && firstDig <= 12) {
@@ -7828,6 +7986,9 @@ function createRuntime (host) {
           }
           await new Promise(resolve => setImmediate(resolve))
         }
+        // Stranded on a canopy (coordinator 2026-11-14, choice A): break only the
+        // leaves under the feet at the best reachable spot, then plan again.
+        try { const r = await travelLeafEscape(signal); if (r.attempted) host.log(`長距離移動: 葉の上から降ります: ${r.ok ? '地面に降りました' : r.reason}`) } catch {}
         return null
       },
       walkTo: async (target, { signal } = {}) => {
@@ -8005,6 +8166,9 @@ function createRuntime (host) {
       await depotFlush
       await depotPrebuild?.drain()
       await shoreMemory?.flush().catch(error => { host.shared.shoreMemoryError = String(error.message).slice(0, 160) })
+      // Live 2026-11-14 13:30: a reload stopped the trip and the bot stood idle
+      // until a creeper killed it. A trip running at reload resumes in the new code.
+      try { const t = longTravel?.status?.(); if (t?.busy && t.destination) host.shared.longTravelResume = { destination: { x: t.destination.x, z: t.destination.z }, at: Date.now() } } catch {}
       try { longTravel?.cancel('RELOAD') } catch {}
       inputStream?.stop()
       disposed = true
