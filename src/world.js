@@ -129,19 +129,29 @@ function createWorld ({ version = '1.26.60', registry, maxSections = DEFAULT_MAX
     attempt.failures = Math.min(attempt.failures + 1, 4)
     attempt.retryAfter = Date.now() + Math.min(30000, 5000 * 2 ** (attempt.failures - 1))
   }
+  // getBlock runs tens of thousands of times per route search or quarry plan.
+  // A runtime ID describes the same block until the next start_game, so its
+  // description is built once and shared; it is frozen so a caller that tried
+  // to change one would fail loudly instead of changing every later read.
+  const resolved = new Map()
+  let lastSection = null, lastX = 0, lastY = 0, lastZ = 0
   function resolve (runtimeId) {
+    const cached = resolved.get(runtimeId)
+    if (cached) return cached
     const entry = registry.blocksByRuntimeId?.[runtimeId] ?? registry.blocksByRuntimeId?.[runtimeId | 0]
     if (!entry) return null
     const blockState = registry.blockStates?.[entry.stateId]
     if (!blockState) return null
-    return {
+    const block = Object.freeze({
       name: blockState.name.startsWith('minecraft:') ? blockState.name : `minecraft:${blockState.name}`,
       runtimeId: runtimeId >>> 0,
-      properties: Object.fromEntries(Object.entries(blockState.states ?? {}).map(([name, value]) => [name, value?.value ?? value])),
+      properties: Object.freeze(Object.fromEntries(Object.entries(blockState.states ?? {}).map(([name, value]) => [name, value?.value ?? value]))),
       boundingBox: entry.boundingBox ?? null,
       hardness: entry.hardness ?? null,
       diggable: entry.diggable ?? false
-    }
+    })
+    resolved.set(runtimeId, block)
+    return block
   }
   function findAir () {
     for (const [runtimeId, entry] of Object.entries(registry.blocksByRuntimeId ?? {})) {
@@ -185,7 +195,10 @@ function createWorld ({ version = '1.26.60', registry, maxSections = DEFAULT_MAX
     // Any applied world packet may change received blocks; derived caches key
     // on this revision so they never outlive a block change.
     if (WORLD_PACKETS.has(name)) revision++
+    // Sections are only added, replaced or removed from here.
+    lastSection = null
     if (name === 'start_game') {
+      resolved.clear()
       sections.clear()
       columns.clear()
       pending.clear()
@@ -270,14 +283,21 @@ function createWorld ({ version = '1.26.60', registry, maxSections = DEFAULT_MAX
   function getBlock (x, y, z) {
     const position = { x, y, z }
     const unknown = (reason, runtimeId = null) => ({ known: false, position, name: null, runtimeId, properties: null, reason })
-    if (![x, y, z].every(Number.isSafeInteger)) return unknown('invalid_position')
+    if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y) || !Number.isSafeInteger(z)) return unknown('invalid_position')
     if (!initialized) return unknown(mappingIssue ?? 'world_not_initialized')
-    const section = sections.get(key(Math.floor(x / 16), Math.floor(y / 16), Math.floor(z / 16)))
+    const sx = Math.floor(x / 16), sy = Math.floor(y / 16), sz = Math.floor(z / 16)
+    let section = lastSection
+    if (!section || sx !== lastX || sy !== lastY || sz !== lastZ) {
+      section = sections.get(key(sx, sy, sz))
+      // Only a received section is remembered: a miss is looked up again.
+      if (section?.complete) { lastSection = section; lastX = sx; lastY = sy; lastZ = sz }
+    }
     if (!section?.complete) return unknown('subchunk_not_received')
     const index = ((x & 15) << 8) | ((z & 15) << 4) | (y & 15)
-    const updates = section.updates.get(index)
-    const layers = []
-    for (let layer = 0; layer < Math.max(2, section.layers.length); layer++) {
+    const updates = section.updates.size ? section.updates.get(index) : undefined
+    const count = Math.max(2, section.layers.length)
+    let first = null, extra = null
+    for (let layer = 0; layer < count; layer++) {
       let runtimeId = updates?.get(layer)
       const storage = section.layers[layer]
       if (runtimeId === undefined) {
@@ -292,9 +312,10 @@ function createWorld ({ version = '1.26.60', registry, maxSections = DEFAULT_MAX
       if (runtimeId == null) return unknown('unknown_palette_entry')
       const block = resolve(runtimeId)
       if (!block) return unknown('unknown_runtime_id', runtimeId >>> 0)
-      layers.push(block)
+      if (layer === 0) first = block
+      else if (block.name !== 'minecraft:air') (extra ??= []).push({ ...block })
     }
-    return { known: true, position, ...layers[0], extra: layers.slice(1).filter(block => block.name !== 'minecraft:air') }
+    return { known: true, position, name: first.name, runtimeId: first.runtimeId, properties: first.properties, boundingBox: first.boundingBox, hardness: first.hardness, diggable: first.diggable, extra: extra ?? [] }
   }
   function getArea (center, radius = 1) {
     if (!center || !['x', 'y', 'z'].every(axis => Number.isSafeInteger(center[axis]))) throw new Error('center must contain integer block coordinates')
