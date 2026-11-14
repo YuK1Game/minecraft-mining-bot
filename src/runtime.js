@@ -1984,7 +1984,7 @@ function createRuntime (host) {
         if (approach.ready) return { type: 'return_shelter', stage: 'safety', reason: '作業を中断し、確認済みの安全な拠点へ戻って入口を閉じます。' }
         if (safeOutside && !learningLocalWork) return { type: 'wait', stage: 'safety', code: 'shelter_approach_unsafe', reason: '拠点の接近先に敵か未確認の状況があるため、現在地で通常の保護を保ち、食料調達と安全な接近先の次の観測を待ちます。' }
       }
-      if (state.health > 0 && state.health <= 6 && threats.threats.length) return { type: 'avoid_threat', emergency: true, stage: 'safety', reason: '体力が少ないため、既知の陸上経路で敵から離れます。', threat: threats.threats[0] }
+      if (state.health > 0 && state.health <= 6 && threats.threats.length && state.emptyHandedPrep !== true) return { type: 'avoid_threat', emergency: true, stage: 'safety', reason: '体力が少ないため、既知の陸上経路で敵から離れます。', threat: threats.threats[0] }
       if (state.health > 0 && state.health < 20 && safeOutside) {
         const item = items.find(item => food.preview({ slot: item.slot }).ready)
         if (item) return { type: 'eat', stage: 'safety', slot: item.slot, reason: '持ち物の食料を食べて回復を優先します。' }
@@ -5413,9 +5413,13 @@ function createRuntime (host) {
     let previous={...initial.position}
     return {...options,continueAfterReplay:options.continueAfterReplay??true,beforeInput:frame=>{
       const current=lightweightUserState();current.lifecycle={...current.lifecycle,deathId:movementKnownLife()};const p=frame?.packetPosition,n=frame?.predictedState
-      if(disposed||disposing||movement!==controller||inputHistoryGeneration!==generation||portableMovementSerial!==serial||userBehaviorForceRevision!==force||controller.snapshot().phase!=='moving'||JSON.stringify(continuationScope(current))!==JSON.stringify(scope)||current.health<initial.health||current.entityStats?.unknownPositions!==0||!p||!n?.position||!['x','y','z'].every(k=>Number.isFinite(p[k])&&Number.isFinite(n.position[k]))||Math.hypot(p.x-n.position.x,p.y-n.position.y-1.62,p.z-n.position.z)>1e-4||n.isInLava)return false
+      if(disposed||disposing||movement!==controller||inputHistoryGeneration!==generation||portableMovementSerial!==serial||userBehaviorForceRevision!==force||controller.snapshot().phase!=='moving'||JSON.stringify(continuationScope(current))!==JSON.stringify(scope)||current.emptyHandedPrep!==true&&(current.health<initial.health||current.entityStats?.unknownPositions!==0)||!p||!n?.position||!['x','y','z'].every(k=>Number.isFinite(p[k])&&Number.isFinite(n.position[k]))||Math.hypot(p.x-n.position.x,p.y-n.position.y-1.62,p.z-n.position.z)>1e-4||n.isInLava)return false
       const risk=evaluateThreats(current,current.entities,{observationRadius:32})
-      if (combatAware) {
+      // Empty-handed long-trip preparation (2026-11-14 decision): nothing can be
+      // lost, so hostiles near the water do not hold the bot in place (live
+      // 10:19: a drowned kept every swim out of the spawn hollow refused).
+      if (current.emptyHandedPrep === true) {}
+      else if (combatAware) {
         if (!chunkTravelThreatsClear({ state: current, previous, next: p, risk, attackExposure: combatAttackExposure })) return false
       } else {
         if(risk.requiresObservation||risk.threats.length)return false
@@ -5519,7 +5523,8 @@ function createRuntime (host) {
         if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
         const logCount = Math.max(1, Math.min(10, Number.isInteger(input.logCount) ? input.logCount : 10))
         host.shared.woodHarvestAllowance = { purpose: 'long_travel_prep', logCount, startedAt: Date.now(), expiresAt: Date.now() + 30 * 60000 }
-        host.log(`長距離移動の準備: 原木を ${logCount} 本まで集めます（30分以内・原木のみ）`)
+        host.log(`長距離移動の準備: 原木を ${logCount} 本まで集めます（30分以内・原木のみ）${input.gather === false ? '（許可のみ。採取は後で）' : ''}`)
+        if (input.gather === false) return { allowance: structuredClone(host.shared.woodHarvestAllowance) }
         return autonomy.start({ objective: 'long_travel_prep', logCount })
       },
       endLongTravelPrep: () => { host.shared.woodHarvestAllowance = null; return autonomy.stop('長距離移動の準備を終了しました。') },
@@ -7518,6 +7523,46 @@ function createRuntime (host) {
       chunkTravel: { start: input => ensureChunkTravel().start(input), status: () => ensureChunkTravel().status(), cancel: reason => cancelChunkMovement(reason ?? 'LONG_TRAVEL') },
       // Only a read request; the chunk travel itself uses received terrain only.
       requestTerrain: async (area, { signal } = {}) => { const st = quarryState(); const y = Math.floor((st.position?.y ?? 65) - 1.62); return requestQuarryTerrain({ config: { target: { chunks: [{ x: area.x1, z: area.z1 }] } }, yTop: Math.min(300, y + 12), yBottom: Math.max(-60, y - 12) }, { signal }) },
+      terrainRevision: () => host.world.revision?.() ?? null,
+      // Point legs: a walkable received point toward the destination (distance,
+      // angle and height samples), previewed by the ordinary movement planner.
+      findPoint: async (feet, destination, { signal } = {}) => {
+        const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
+        const here = Math.hypot(destination.x - feet.x, destination.z - feet.z)
+        const heading = Math.atan2(destination.z - feet.z, destination.x - feet.x)
+        for (const d of [14, 10, 6]) for (const deg of [0, 25, -25, 50, -50, 75, -75, 100, -100]) {
+          if (signal?.aborted) return null
+          const ang = heading + deg * Math.PI / 180
+          const x = Math.floor(feet.x + Math.cos(ang) * Math.min(d, here)) + 0.5, z = Math.floor(feet.z + Math.sin(ang) * Math.min(d, here)) + 0.5
+          if (Math.hypot(destination.x - x, destination.z - z) > here - 3) continue
+          for (const dy of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+            const target = { x, y: Math.floor(feet.y + 0.001) + dy, z }
+            let preview = null
+            try { motionOrigin = working(); preview = movement?.preview(target, opts) } catch { preview = null }
+            if (preview?.ready === true) return target
+          }
+          await new Promise(resolve => setImmediate(resolve))
+        }
+        return null
+      },
+      walkTo: async (target, { signal } = {}) => {
+        try { requireIdle({ inventoryRequired: false }) } catch (error) { return { ok: false, code: 'CHUNK_TRAVEL_BUSY', message: String(error.message ?? error).slice(0, 120) } }
+        const startHealth = working().health
+        try { startMotion('navigation', target, { allowWater: true, allowLowHealth: true, maxDistance: 16 }) } catch (error) { return { ok: false, code: 'POINT_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
+        const until = Date.now() + 60000
+        for (;;) {
+          await new Promise(resolve => setTimeout(resolve, 200))
+          if (signal?.aborted) { try { movement?.stop?.('LONG_TRAVEL_CANCELLED') } catch {} return { ok: false, code: 'LONG_TRAVEL_CANCELLED' } }
+          const st = working(), m = movement?.snapshot() ?? {}
+          if (st.health < startHealth && st.emptyHandedPrep !== true) { try { movement?.stop?.('damage') } catch {} return { ok: false, code: 'CHUNK_TRAVEL_DAMAGED' } }
+          if (['failed', 'stopped', 'replan_required'].includes(m.phase)) return { ok: false, code: m.phase === 'replan_required' || /replan|correction/i.test(String(m.reason ?? '')) ? 'POINT_REPLAN' : 'POINT_WALK_FAILED', message: String(m.reason ?? m.phase).slice(0, 120) }
+          if (['completed', 'idle', 'awaiting_server_confirmation'].includes(m.phase) && m.running !== true) {
+            const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }
+            return Math.hypot(feet.x - target.x, feet.z - target.z) <= 1.2 && Math.abs(feet.y - target.y) <= 1.6 ? { ok: true } : { ok: false, code: 'POINT_ENDED_SHORT' }
+          }
+          if (Date.now() > until) { try { movement?.stop?.('timeout') } catch {} return { ok: false, code: 'POINT_WALK_TIMEOUT' } }
+        }
+      },
       save: async doc => { const fsp = require('node:fs/promises'), file = longTravelFile(); await fsp.mkdir(require('node:path').dirname(file), { recursive: true }); await fsp.writeFile(file + '.tmp', JSON.stringify(doc, null, 2)); await fsp.rename(file + '.tmp', file) },
       log: message => host.log(message)
     })

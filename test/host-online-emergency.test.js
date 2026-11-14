@@ -174,3 +174,11 @@ test('a confirmed death is respawned even without the protection or auto intent;
   g.health(0)
   assert.equal(g.scheduled.length, 0)
 })
+
+// Live 2026-11-14 10:21: one automatic respawn timed out and the dead bot was
+// never respawned again. The same death is retried (3 more times, 5 s apart).
+test('a failed automatic respawn of the same death is retried a bounded number of times', () => {
+  const source = fs.readFileSync(require.resolve('../src/host'), 'utf8')
+  assert.match(source, /retries\.set\(key, count\)/)
+  assert.match(source, /if \(count <= 3\) setTimeout\(\(\) => \{ if \(automaticKey === key && !isStopping\(\)\) \{ automaticKey = null; observe\(\) \} \}, 5000\)/)
+})

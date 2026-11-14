@@ -33,7 +33,7 @@ const reasons = {
   LONG_TRAVEL_NO_PROGRESS: '同じ場所から先へ進めていません'
 }
 
-function createLongTravel ({ getState, chunkTravel, requestTerrain = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
   legM = LEG_M, arriveM = 20, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 200000, pollMs = 250 } = {}) {
   if (typeof getState !== 'function' || typeof chunkTravel?.start !== 'function' || typeof chunkTravel?.status !== 'function') throw new TypeError('Long travel needs getState and chunk travel')
   let run = null, task = null
@@ -58,6 +58,14 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, save 
   }
   async function leg (area, signal) {
     if (typeof requestTerrain === 'function') { try { await requestTerrain(area, { signal }) } catch {} }
+    // Live 2026-11-14 09:46: terrain arriving during route planning changed the
+    // world revision and every plan aborted (NAVIGATION_CONTEXT_CHANGED). Wait
+    // until the received terrain stops changing (bounded) before planning.
+    if (typeof terrainRevision === 'function') {
+      const until = now() + 6000
+      let last = terrainRevision(), stableSince = now()
+      while (now() < until && now() - stableSince < 800) { await sleep(150); if (signal.aborted) break; const r = terrainRevision(); if (r !== last) { last = r; stableSince = now() } }
+    }
     try { await chunkTravel.start({ area }) } catch (error) { return { ok: false, code: error.code ?? 'CHUNK_TRAVEL_START_FAILED', message: String(error.message ?? error).slice(0, 160) } }
     const s = await waitChunkTravel(signal)
     if (s.phase === 'arrived' && s.serverConfirmed === true) return { ok: true }
@@ -74,10 +82,27 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, save 
       run.phase = 'moving'
       const tried = new Set()
       let moved = false, last = null
-      for (const angle of ANGLES) {
-        const area = chunkAhead(feet, run.destination, angle, legM)
+      // Rough terrain (live 2026-11-14 09:53: a ravine by the water) needs
+      // shorter legs: each direction is tried at full and then half length.
+      const tries = ANGLES.flatMap(angle => [[angle, legM], [angle, Math.max(12, Math.round(legM / 2))]])
+      // Point legs first (live 2026-11-14 09:58: whole target chunks had no known
+      // footing while nearer points toward the destination were walkable): the
+      // runtime finds a walkable received point toward the destination and walks
+      // there by the ordinary movement; arrival is the received position.
+      if (typeof findPoint === 'function' && typeof walkTo === 'function') {
+        let point = null
+        try { point = await findPoint(feet, run.destination, { signal }) } catch {}
+        if (!point) say("歩ける中継点が見つかりません"); else {
+          const result = await walkTo(point, { signal })
+          if (signal.aborted) throw fail('LONG_TRAVEL_CANCELLED')
+          if (result?.ok) moved = true
+          else { last = result ?? { ok: false, code: 'POINT_WALK_FAILED' }; say(`中継点 (${point.x},${point.y},${point.z}) へ歩けませんでした（${last.code}${last.message ? ': ' + last.message : ''}）`) }
+        }
+      }
+      if (!moved && last?.code !== 'POINT_REPLAN') for (const [angle, length] of tries) {
+        const area = chunkAhead(feet, run.destination, angle, length)
         const key = `${area.x1},${area.z1}`
-        if (tried.has(key) || area.x1 === Math.floor(feet.x / 16) && area.z1 === Math.floor(feet.z / 16) && run.remaining > legM) continue
+        if (tried.has(key) || area.x1 === Math.floor(feet.x / 16) && area.z1 === Math.floor(feet.z / 16) && run.remaining > length) continue
         tried.add(key)
         const result = await leg(area, signal)
         if (signal.aborted) throw fail('LONG_TRAVEL_CANCELLED')
@@ -89,7 +114,9 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, save 
       const after = feetOf(getState())
       // Damage, combat holding control or a changed connection is not a
       // blocked direction: wait and try again without counting it.
-      const soft = !moved && ['CHUNK_TRAVEL_DAMAGED', 'CHUNK_TRAVEL_BUSY', 'CHUNK_TRAVEL_CONTEXT_CHANGED'].includes(last?.code)
+      // A server position correction mid-walk (water) only needs a new plan from
+      // the corrected position (live 2026-11-14 10:35).
+      const soft = !moved && ['CHUNK_TRAVEL_DAMAGED', 'CHUNK_TRAVEL_BUSY', 'CHUNK_TRAVEL_CONTEXT_CHANGED', 'POINT_REPLAN'].includes(last?.code)
       if (soft) { run.reason = last.code; continue }
       if (moved) {
         run.legs++; run.failures = 0; run.lastLegAt = new Date(now()).toISOString()
