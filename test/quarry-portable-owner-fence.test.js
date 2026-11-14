@@ -162,7 +162,7 @@ test('losing the connection generation or control lease vetoes cancellation even
   assert.equal(calls, 0)
 })
 
-const runtimeSource = fs.readFileSync(require.resolve('../src/runtime'), 'utf8').replace(/\r\n/g, '\n')
+const runtimeSource = require('./helpers/runtime-source').runtimeSource().replace(/\r\n/g, '\n')
 function sliceHook (start, end) {
   const at = runtimeSource.indexOf(start), until = runtimeSource.indexOf(end, at + start.length)
   assert.ok(at >= 0 && until > at, 'production runtime hook must be present')

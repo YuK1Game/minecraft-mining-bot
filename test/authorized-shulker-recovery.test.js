@@ -183,7 +183,7 @@ test('resumption after received air waits for a uniquely matching new main item 
 
 const path = require('node:path')
 const runtimeDir = path.dirname(require.resolve('../src/runtime'))
-const runtime = require('node:fs').readFileSync(require.resolve('../src/runtime'),'utf8').replace(/\r\n/g,'\n')
+const runtime = require('./helpers/runtime-source').runtimeSource().replace(/\r\n/g,'\n')
 function excerpt (from, to) {
   const i=runtime.indexOf(from), end=runtime.indexOf(to,i+from.length)
   assert.ok(i>=0&&end>i,'runtime recovery hooks must remain present')
@@ -213,7 +213,7 @@ test('runtime accepts only authorized directory IDs, rejects stale loads during 
   const idleGuard=runtime.split('\n').find(line=>line.includes('if (!ownedCall && manualShulkerTask)'))
   assert.ok(idleGuard)
   const moduleBody=excerpt('  function manualShulkerFile (id)', '  function getManualShulkerRecovery')
-  const run=excerpt('  function runManualShulkerRecovery ()', '  function quarryDir ()')
+  const run=excerpt('  function runManualShulkerRecovery ()', '  // This part lives in quarry-runtime.js.')
   const group=excerpt('    shulkerRecovery: {','    quarry: {')
   const ops=Function('require','__dirname','controller',`
     let manualShulkerDocument=null,manualShulkerTask=null,manualShulkerAbort=null,manualShulkerMiningSerial=null,manualShulkerLoadSequence=0,quarryPorts={}
