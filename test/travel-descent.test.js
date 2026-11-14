@@ -58,7 +58,7 @@ test('the runtime grants travel descent briefly, checks the fall on received gro
   assert.match(retreat, /if \(!hurt && nearest > 16\) return false/)
   assert.match(retreat, /if \(low && !covered\(t\)/)
   assert.match(src, /const group = shooters\.filter\(o => Math\.hypot\(o\.x - q\.x, o\.z - q\.z\) <= 16\)\.length >= 3/)
-  assert.match(src, /if \(!route\.ready\) \{ const stairs = planRoute\(\{ faceStairs: true/)
+  assert.match(src, /if \(!route\.ready\) \{ const stairs = await planRoute\(\{ faceStairs: true/)
   assert.match(src, /process\.env\.NODE_TEST_CONTEXT\) travelFileChecked = true/, 'a test runner never resumes the live trip')
   assert.doesNotMatch(retreat, /command_request/)
 })
