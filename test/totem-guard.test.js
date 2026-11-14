@@ -78,3 +78,15 @@ test('empty-handed preparation lowers the working minimum to zero; anything else
   assert.match(source, /if \(!longTravelLogAllowance\(\)\) return false/)
   assert.match(source, /slot\.received === true && slot\.raw && \(slot\.raw\.network_id === 0 \|\| slot\.raw\.count === 0\)/)
 })
+
+// Coordinator 2026-11-14: the empty-handed exceptions end as soon as anything is
+// in hand. They all key on state.emptyHandedPrep, which the runtime derives only
+// from every received slot being empty while the preparation allowance holds.
+test('every empty-handed exception keys on the derived flag, and one item ends it', () => {
+  const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const derive = source.slice(source.indexOf('  function emptyHandedPrep () {'), source.indexOf('  function longTravelLogAllowance () {'))
+  assert.match(derive, /for \(const \[container, size\] of \[\['main', 36\], \['armor', 4\], \['offhand', 1\]\]\)/)
+  assert.match(derive, /v\.slots\.every\(slot => slot\.received === true && slot\.raw && \(slot\.raw\.network_id === 0 \|\| slot\.raw\.count === 0\)\)/)
+  for (const pattern of [/state\.emptyHandedPrep !== true\) return \{ type: 'avoid_threat'/, /if \(current\.emptyHandedPrep === true\) \{\}/, /current\.emptyHandedPrep!==true&&\(current\.health<initial\.health/, /st\.emptyHandedPrep !== true\) \{ try \{ movement\?\.stop\?\.\('damage'\)/]) assert.match(source, pattern)
+  assert.equal(resourceMinHealth({ phase: 'spawned', health: 3, emptyHandedPrep: false }), 6, 'with an item in hand the ordinary minimum applies')
+})
