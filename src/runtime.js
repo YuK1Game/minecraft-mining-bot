@@ -7528,6 +7528,8 @@ function createRuntime (host) {
       // angle and height samples), previewed by the ordinary movement planner.
       findPoint: async (feet, destination, { signal } = {}) => {
         const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
+        const st0 = working(), fleeing = st0.emptyHandedPrep === true
+        const shooters = fleeing ? allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && require('./learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).map(a => a.position) : []
         const here = Math.hypot(destination.x - feet.x, destination.z - feet.z)
         const heading = Math.atan2(destination.z - feet.z, destination.x - feet.x)
         for (const d of [14, 10, 6]) for (const deg of [0, 25, -25, 50, -50, 75, -75, 100, -100]) {
@@ -7535,6 +7537,9 @@ function createRuntime (host) {
           const ang = heading + deg * Math.PI / 180
           const x = Math.floor(feet.x + Math.cos(ang) * Math.min(d, here)) + 0.5, z = Math.floor(feet.z + Math.sin(ang) * Math.min(d, here)) + 0.5
           if (Math.hypot(destination.x - x, destination.z - z) > here - 3) continue
+          // Empty-handed (decision C, 2026-11-14): never toward a shooting enemy;
+          // the first walkable point that does not bring one closer wins.
+          if (fleeing && shooters.some(q => Math.hypot(q.x - x, q.z - z) < Math.hypot(q.x - feet.x, q.z - feet.z))) continue
           for (const dy of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
             const target = { x, y: Math.floor(feet.y + 0.001) + dy, z }
             let preview = null
@@ -7548,7 +7553,10 @@ function createRuntime (host) {
       walkTo: async (target, { signal } = {}) => {
         try { requireIdle({ inventoryRequired: false }) } catch (error) { return { ok: false, code: 'CHUNK_TRAVEL_BUSY', message: String(error.message ?? error).slice(0, 120) } }
         const startHealth = working().health
-        try { startMotion('navigation', target, { allowWater: true, allowLowHealth: true, maxDistance: 16 }) } catch (error) { return { ok: false, code: 'POINT_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
+        // Empty-handed: sprint out of range while hunger allows it (> 6).
+        const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : v?.value
+        const sprint = working().emptyHandedPrep === true && Number.isFinite(hunger) && hunger > 6
+        try { startMotion('navigation', target, { allowWater: true, allowLowHealth: true, maxDistance: 16, ...(sprint ? { sprint: true } : {}) }) } catch (error) { return { ok: false, code: 'POINT_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
         const until = Date.now() + 60000
         for (;;) {
           await new Promise(resolve => setTimeout(resolve, 200))

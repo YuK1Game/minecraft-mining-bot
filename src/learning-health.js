@@ -29,4 +29,4 @@ function emptyHandedTargetAllowed (state, target) {
   if (!p || !q) return false
   return Math.hypot(p.x - q.x, p.y - 1.62 - q.y, p.z - q.z) <= 3
 }
-module.exports = { resourceMinHealth, totemGuarded, emptyHandedPrep, emptyHandedTargetAllowed }
+module.exports = { resourceMinHealth, totemGuarded, emptyHandedPrep, emptyHandedTargetAllowed, SHOOTING }
