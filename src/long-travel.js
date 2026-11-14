@@ -33,7 +33,7 @@ const reasons = {
   LONG_TRAVEL_NO_PROGRESS: '同じ場所から先へ進めていません'
 }
 
-function createLongTravel ({ getState, chunkTravel, requestTerrain = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
   legM = LEG_M, arriveM = 20, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 200000, pollMs = 250 } = {}) {
   if (typeof getState !== 'function' || typeof chunkTravel?.start !== 'function' || typeof chunkTravel?.status !== 'function') throw new TypeError('Long travel needs getState and chunk travel')
   let run = null, task = null
@@ -58,6 +58,14 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, save 
   }
   async function leg (area, signal) {
     if (typeof requestTerrain === 'function') { try { await requestTerrain(area, { signal }) } catch {} }
+    // Live 2026-11-14 09:46: terrain arriving during route planning changed the
+    // world revision and every plan aborted (NAVIGATION_CONTEXT_CHANGED). Wait
+    // until the received terrain stops changing (bounded) before planning.
+    if (typeof terrainRevision === 'function') {
+      const until = now() + 6000
+      let last = terrainRevision(), stableSince = now()
+      while (now() < until && now() - stableSince < 800) { await sleep(150); if (signal.aborted) break; const r = terrainRevision(); if (r !== last) { last = r; stableSince = now() } }
+    }
     try { await chunkTravel.start({ area }) } catch (error) { return { ok: false, code: error.code ?? 'CHUNK_TRAVEL_START_FAILED', message: String(error.message ?? error).slice(0, 160) } }
     const s = await waitChunkTravel(signal)
     if (s.phase === 'arrived' && s.serverConfirmed === true) return { ok: true }

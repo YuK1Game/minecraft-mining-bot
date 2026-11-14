@@ -1984,7 +1984,7 @@ function createRuntime (host) {
         if (approach.ready) return { type: 'return_shelter', stage: 'safety', reason: '作業を中断し、確認済みの安全な拠点へ戻って入口を閉じます。' }
         if (safeOutside && !learningLocalWork) return { type: 'wait', stage: 'safety', code: 'shelter_approach_unsafe', reason: '拠点の接近先に敵か未確認の状況があるため、現在地で通常の保護を保ち、食料調達と安全な接近先の次の観測を待ちます。' }
       }
-      if (state.health > 0 && state.health <= 6 && threats.threats.length) return { type: 'avoid_threat', emergency: true, stage: 'safety', reason: '体力が少ないため、既知の陸上経路で敵から離れます。', threat: threats.threats[0] }
+      if (state.health > 0 && state.health <= 6 && threats.threats.length && state.emptyHandedPrep !== true) return { type: 'avoid_threat', emergency: true, stage: 'safety', reason: '体力が少ないため、既知の陸上経路で敵から離れます。', threat: threats.threats[0] }
       if (state.health > 0 && state.health < 20 && safeOutside) {
         const item = items.find(item => food.preview({ slot: item.slot }).ready)
         if (item) return { type: 'eat', stage: 'safety', slot: item.slot, reason: '持ち物の食料を食べて回復を優先します。' }
@@ -7518,6 +7518,7 @@ function createRuntime (host) {
       chunkTravel: { start: input => ensureChunkTravel().start(input), status: () => ensureChunkTravel().status(), cancel: reason => cancelChunkMovement(reason ?? 'LONG_TRAVEL') },
       // Only a read request; the chunk travel itself uses received terrain only.
       requestTerrain: async (area, { signal } = {}) => { const st = quarryState(); const y = Math.floor((st.position?.y ?? 65) - 1.62); return requestQuarryTerrain({ config: { target: { chunks: [{ x: area.x1, z: area.z1 }] } }, yTop: Math.min(300, y + 12), yBottom: Math.max(-60, y - 12) }, { signal }) },
+      terrainRevision: () => host.world.revision?.() ?? null,
       save: async doc => { const fsp = require('node:fs/promises'), file = longTravelFile(); await fsp.mkdir(require('node:path').dirname(file), { recursive: true }); await fsp.writeFile(file + '.tmp', JSON.stringify(doc, null, 2)); await fsp.rename(file + '.tmp', file) },
       log: message => host.log(message)
     })
