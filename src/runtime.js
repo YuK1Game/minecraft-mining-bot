@@ -7545,8 +7545,15 @@ function createRuntime (host) {
         // Follow the coarse wide-area route first (2026-11-14): a point some
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
-          const route = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000 })
-          if (route.ready) for (const ahead of [12, 9, 6, 4]) {
+          const route = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true })
+          // A carved step ahead: walk to the cell before it first, then dig and step.
+          const firstDig = route.ready ? route.path.findIndex(p => p.dig) : -1
+          if (firstDig > 0 && firstDig <= 12) {
+            const before = route.path[firstDig - 1], step = route.path[firstDig]
+            if (Math.hypot(before.x - feet.x, before.z - feet.z) > 1.2 || Math.abs(before.y - feet.y) > 0.6) { let pv = null; try { motionOrigin = working(); pv = movement?.preview({ x: before.x, y: before.y, z: before.z }, opts) } catch {} if (pv?.ready === true) return { x: before.x, y: before.y, z: before.z } }
+            else return { x: step.x, y: step.y, z: step.z, dig: step.dig }
+          }
+          if (route.ready) for (const ahead of [12, 9, 6, 4].map(a => firstDig > 0 ? Math.min(a, firstDig - 1) : a)) {
             const p = route.path[Math.min(ahead, route.path.length - 1)]
             if (!p || Math.hypot(p.x - feet.x, p.z - feet.z) < 2) continue
             if (fleeing && shooters.some(q => Math.hypot(q.x - p.x, q.z - p.z) < Math.min(6, Math.hypot(q.x - feet.x, q.z - feet.z)))) continue
@@ -7575,6 +7582,23 @@ function createRuntime (host) {
       },
       walkTo: async (target, { signal } = {}) => {
         try { requireIdle({ inventoryRequired: false }) } catch (error) { return { ok: false, code: 'CHUNK_TRAVEL_BUSY', message: String(error.message ?? error).slice(0, 120) } }
+        // Carved step (2026-11-14): each cell by the ordinary mining, confirmed
+        // by received air, before stepping up.
+        if (Array.isArray(target.dig) && target.dig.length) {
+          for (const cell of target.dig) {
+            const air = () => { const b = host.world.getBlock(cell.x, cell.y, cell.z); return b?.known === true && /^minecraft:(?:air|cave_air)$/.test(b.name ?? '') }
+            if (air()) continue
+            host.log(`長距離移動: 段を掘ります (${cell.x},${cell.y},${cell.z}) ${String(cell.name ?? '').replace('minecraft:', '')}`)
+            try { operations.mining.start([{ x: cell.x, y: cell.y, z: cell.z }]) } catch (error) { return { ok: false, code: 'DIG_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
+            const until = Date.now() + 30000
+            while (!air()) {
+              if (signal?.aborted) { try { operations.mining.stop?.('LONG_TRAVEL_CANCELLED') } catch {} return { ok: false, code: 'LONG_TRAVEL_CANCELLED' } }
+              if (Date.now() > until) return { ok: false, code: 'DIG_TIMEOUT', message: `(${cell.x},${cell.y},${cell.z})` }
+              await new Promise(resolve => setTimeout(resolve, 250))
+            }
+          }
+          try { requireIdle({ inventoryRequired: false }) } catch (error) { return { ok: false, code: 'CHUNK_TRAVEL_BUSY', message: String(error.message ?? error).slice(0, 120) } }
+        }
         const startHealth = working().health
         // Empty-handed: sprint out of range while hunger allows it (> 6).
         const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : v?.value

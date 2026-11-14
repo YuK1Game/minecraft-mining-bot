@@ -46,7 +46,10 @@ function createSurface (getBlock, { minY = -60, maxY = 300 } = {}) {
   return { stands, clear: () => cache.clear() }
 }
 
-function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12 }) {
+// Blocks that ordinary bare-hand or tool mining may carve for a step.
+const NOT_DIGGABLE = /bedrock|obsidian|barrier|command|structure|reinforced|end_portal|spawner|chest|shulker|barrel|furnace|bed$|_bed$|door|log|leaves|wood|planks/
+const SOFT = /dirt|grass_block|gravel|sand|clay|snow|mud|podzol|mycelium|farmland/
+function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false }) {
   const surface = createSurface(getBlock)
   const sx = Math.floor(start.x), sz = Math.floor(start.z), sy = Math.round(start.y)
   const gx = Math.floor(goal.x), gz = Math.floor(goal.z)
@@ -54,7 +57,7 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   const key = (x, y, z) => `${x},${y},${z}`
   const open = [{ x: sx, y: sy, z: sz, g: 0, f: h(sx, sz) }]
   const best = new Map([[key(sx, sy, sz), 0]])
-  const parent = new Map()
+  const parent = new Map(), digOf = new Map()
   const frontier = new Set()
   let closest = { x: sx, y: sy, z: sz, d: h(sx, sz) }, expanded = 0
   const pop = () => { let i = 0; for (let j = 1; j < open.length; j++) if (open[j].f < open[i].f) i = j; return open.splice(i, 1)[0] }
@@ -68,6 +71,22 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
       if (Math.hypot(x - sx, z - sz) > maxRadius) continue
       const col = surface.stands(x, z, n.y - 3, n.y + 1)
       if (col.unknown && !col.stands.length) { frontier.add(`${x},${z}`); continue }
+      // A step carved up a wall (2026-11-14): straight moves only, one block up,
+      // the two cells of the new step solid and diggable, its floor received
+      // solid, the cell above it open (never a tunnel), and the own head cell
+      // open or diggable. Mining cost grows with hardness.
+      if (allowDig && !col.stands.length && !(dx && dz)) {
+        const b = (yy, xx = x, zz = z) => getBlock(xx, yy, zz)
+        const floor = b(n.y), c1 = b(n.y + 1), c2 = b(n.y + 2), sky = b(n.y + 3), head = b(n.y + 2, n.x, n.z)
+        const solid = v => v?.known === true && v.boundingBox === 'block' && !NOT_DIGGABLE.test(v.name ?? '') && !HAZARD.test(v.name ?? '') && !WATER.test(v.name ?? '')
+        const isOpen = v => classify(v) === 'pass'
+        if (solid(floor) && solid(c1) && (solid(c2) || isOpen(c2)) && isOpen(sky) && (isOpen(head) || solid(head))) {
+          const cells = [{ x, y: n.y + 1, z, v: c1 }, { x, y: n.y + 2, z, v: c2 }, { x: n.x, y: n.y + 2, z: n.z, v: head }].filter(c => solid(c.v)).map(c => ({ x: c.x, y: c.y, z: c.z, name: c.v.name }))
+          const g = n.g + 1 + cells.reduce((t, c) => t + (SOFT.test(c.name) ? 2 : 6), 0)
+          const k = key(x, n.y + 1, z)
+          if (g < (best.get(k) ?? Infinity)) { best.set(k, g); parent.set(k, key(n.x, n.y, n.z)); digOf.set(k, cells); open.push({ x, y: n.y + 1, z, g, f: g + h(x, z) }) }
+        }
+      }
       for (const s of col.stands) {
         const dy = s.y - n.y
         if (dy > 1 || dy < -3) continue
@@ -86,7 +105,7 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   }
   const path = []
   let k = key(closest.x, closest.y, closest.z)
-  while (k) { const [x, y, z] = k.split(',').map(Number); path.push({ x: x + 0.5, y, z: z + 0.5 }); k = parent.get(k) }
+  while (k) { const [x, y, z] = k.split(',').map(Number); const dig = digOf.get(k); path.push({ x: x + 0.5, y, z: z + 0.5, ...(dig ? { dig } : {}) }); k = parent.get(k) }
   path.reverse()
   return { ready: path.length > 1, reached: closest.d <= arriveM, path, remaining: Math.round(closest.d), expanded, frontier: [...frontier].slice(0, 64).map(s => { const [x, z] = s.split(',').map(Number); return { x, z } }) }
 }

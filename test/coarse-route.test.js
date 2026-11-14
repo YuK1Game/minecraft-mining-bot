@@ -47,3 +47,22 @@ test('shallow water is crossed at a higher cost than land', () => {
   assert.equal(r.reached, true)
   assert.ok(r.path.some(p => Math.floor(p.z) !== 1), 'land around the water is preferred while it exists')
 })
+
+test('with digging allowed, a wall with no gap gets carved steps; never a tunnel', () => {
+  const rows = flat(30, 5)
+  for (let z = 0; z < 5; z++) { rows[z][15] = 64; rows[z][16] = 64; rows[z][17] = 64 }
+  const without = planCoarseRoute({ getBlock: world(rows), start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 27, z: 2 } })
+  assert.equal(without.reached, false)
+  const r = planCoarseRoute({ getBlock: world(rows), start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 27, z: 2 }, allowDig: true })
+  assert.equal(r.reached, true)
+  const dug = r.path.filter(p => p.dig)
+  assert.ok(dug.length >= 1)
+  for (const p of dug) for (const c of p.dig) assert.ok(c.y <= p.y + 1, 'only the step cells are carved')
+})
+
+test('digging never opens a cell under a covered ceiling (no tunnels)', () => {
+  const rows = flat(30, 5), get = world(rows)
+  for (let z = 0; z < 5; z++) rows[z][15] = 70 // a tall cliff: the cell above a carved step is not open
+  const r = planCoarseRoute({ getBlock: get, start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 27, z: 2 }, allowDig: true })
+  assert.equal(r.reached, false)
+})
