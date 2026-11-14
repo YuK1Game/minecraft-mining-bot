@@ -5516,6 +5516,15 @@ function createRuntime (host) {
         return ensureLongTravel().start({ destination: { x: d.x, y: d.y, z: d.z }, resume })
       },
       travelStatus: () => longTravel?.status() ?? { busy: false, phase: 'idle' },
+      // Read-only: the coarse wide-area route over the received terrain.
+      coarseRoutePreview: (input = {}) => {
+        const d = input.destination, st = working()
+        if (!d || ![d.x, d.z].every(Number.isFinite) || !st.position) throw new Error('目的地 {x, z} を指定してください。')
+        const started = Date.now()
+        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, goal: d, maxNodes: Math.min(120000, input.maxNodes ?? 60000) })
+        const step = Math.max(1, Math.floor(r.path.length / 20))
+        return { ready: r.ready, reached: r.reached, remaining: r.remaining, expanded: r.expanded, ms: Date.now() - started, length: r.path.length, sample: r.path.filter((_, i) => i % step === 0 || i === r.path.length - 1), frontier: r.frontier.slice(0, 8) }
+      },
       // Preparation for a long trip from empty hands: about 10 logs by the
       // existing tree work (logs only), then planks/table/tools by the existing
       // crafting. The allowance expires after 30 minutes.
@@ -7524,6 +7533,7 @@ function createRuntime (host) {
       // Only a read request; the chunk travel itself uses received terrain only.
       requestTerrain: async (area, { signal } = {}) => { const st = quarryState(); const y = Math.floor((st.position?.y ?? 65) - 1.62); return requestQuarryTerrain({ config: { target: { chunks: [{ x: area.x1, z: area.z1 }] } }, yTop: Math.min(300, y + 12), yBottom: Math.max(-60, y - 12) }, { signal }) },
       terrainRevision: () => host.world.revision?.() ?? null,
+      inventoryReady: () => { try { return inventoryStore.missing().length === 0 } catch { return false } },
       // Point legs: a walkable received point toward the destination (distance,
       // angle and height samples), previewed by the ordinary movement planner.
       findPoint: async (feet, destination, { signal } = {}) => {
@@ -7532,6 +7542,26 @@ function createRuntime (host) {
         const shooters = fleeing ? allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && require('./learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).map(a => a.position) : []
         const here = Math.hypot(destination.x - feet.x, destination.z - feet.z)
         const heading = Math.atan2(destination.z - feet.z, destination.x - feet.x)
+        // Follow the coarse wide-area route first (2026-11-14): a point some
+        // nodes ahead on it that the ordinary local planner can walk to.
+        try {
+          const route = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true })
+          // A carved step ahead: walk to the cell before it first, then dig and step.
+          const firstDig = route.ready ? route.path.findIndex(p => p.dig) : -1
+          if (firstDig > 0 && firstDig <= 12) {
+            const before = route.path[firstDig - 1], step = route.path[firstDig]
+            if (Math.hypot(before.x - feet.x, before.z - feet.z) > 1.2 || Math.abs(before.y - feet.y) > 0.6) { let pv = null; try { motionOrigin = working(); pv = movement?.preview({ x: before.x, y: before.y, z: before.z }, opts) } catch {} if (pv?.ready === true) return { x: before.x, y: before.y, z: before.z } }
+            else return { x: step.x, y: step.y, z: step.z, dig: step.dig }
+          }
+          if (route.ready) for (const ahead of [12, 9, 6, 4].map(a => firstDig > 0 ? Math.min(a, firstDig - 1) : a)) {
+            const p = route.path[Math.min(ahead, route.path.length - 1)]
+            if (!p || Math.hypot(p.x - feet.x, p.z - feet.z) < 2) continue
+            if (fleeing && shooters.some(q => Math.hypot(q.x - p.x, q.z - p.z) < Math.min(6, Math.hypot(q.x - feet.x, q.z - feet.z)))) continue
+            let preview = null
+            try { motionOrigin = working(); preview = movement?.preview({ x: p.x, y: p.y, z: p.z }, opts) } catch { preview = null }
+            if (preview?.ready === true) return { x: p.x, y: p.y, z: p.z }
+          }
+        } catch {}
         for (const d of [14, 10, 6]) for (const deg of [0, 25, -25, 50, -50, 75, -75, 100, -100]) {
           if (signal?.aborted) return null
           const ang = heading + deg * Math.PI / 180
@@ -7552,6 +7582,23 @@ function createRuntime (host) {
       },
       walkTo: async (target, { signal } = {}) => {
         try { requireIdle({ inventoryRequired: false }) } catch (error) { return { ok: false, code: 'CHUNK_TRAVEL_BUSY', message: String(error.message ?? error).slice(0, 120) } }
+        // Carved step (2026-11-14): each cell by the ordinary mining, confirmed
+        // by received air, before stepping up.
+        if (Array.isArray(target.dig) && target.dig.length) {
+          for (const cell of target.dig) {
+            const air = () => { const b = host.world.getBlock(cell.x, cell.y, cell.z); return b?.known === true && /^minecraft:(?:air|cave_air)$/.test(b.name ?? '') }
+            if (air()) continue
+            host.log(`長距離移動: 段を掘ります (${cell.x},${cell.y},${cell.z}) ${String(cell.name ?? '').replace('minecraft:', '')}`)
+            try { operations.mining.start([{ x: cell.x, y: cell.y, z: cell.z }]) } catch (error) { return { ok: false, code: 'DIG_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
+            const until = Date.now() + 30000
+            while (!air()) {
+              if (signal?.aborted) { try { operations.mining.stop?.('LONG_TRAVEL_CANCELLED') } catch {} return { ok: false, code: 'LONG_TRAVEL_CANCELLED' } }
+              if (Date.now() > until) return { ok: false, code: 'DIG_TIMEOUT', message: `(${cell.x},${cell.y},${cell.z})` }
+              await new Promise(resolve => setTimeout(resolve, 250))
+            }
+          }
+          try { requireIdle({ inventoryRequired: false }) } catch (error) { return { ok: false, code: 'CHUNK_TRAVEL_BUSY', message: String(error.message ?? error).slice(0, 120) } }
+        }
         const startHealth = working().health
         // Empty-handed: sprint out of range while hunger allows it (> 6).
         const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : v?.value
