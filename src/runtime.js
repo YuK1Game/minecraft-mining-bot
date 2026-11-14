@@ -8331,9 +8331,12 @@ function createRuntime (host) {
           const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.2), fz = Math.floor(feet.z)
           if (/water/.test(cellAt(fx, fy, fz)?.name ?? '') || /water/.test(cellAt(fx, fy - 1, fz)?.name ?? '')) {
             const ledges = []
-            for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (const dy of [1, 0]) ledges.push({ x: fx + dx + 0.5, y: fy + dy, z: fz + dz + 0.5 })
-            ledges.sort((a, b) => Math.hypot(destination.x - a.x, destination.z - a.z) - Math.hypot(destination.x - b.x, destination.z - b.z))
-            for (const l of ledges) { let pv = null; try { motionOrigin = working(); pv = movement?.preview(l, { ...opts, maxDistance: 4, waterExit: true }) } catch {} if (pv?.ready === true) return { ...l, waterExit: true } }
+            // Within five blocks (live 20:00: open water, shore three blocks away);
+            // nearest first, then toward the destination.
+            for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) if ((dx || dz) && Math.hypot(dx, dz) <= 5.5) for (const dy of [1, 0]) { const c = cellAt(fx + dx, fy + dy - 1, fz + dz), here = cellAt(fx + dx, fy + dy, fz + dz); if (c?.known === true && c.boundingBox === 'block' && !/water/.test(c.name ?? '') && here?.known === true && here.boundingBox === 'empty' && !/water/.test(here.name ?? '')) ledges.push({ x: fx + dx + 0.5, y: fy + dy, z: fz + dz + 0.5 }) }
+            ledges.sort((a, b) => Math.hypot(a.x - feet.x, a.z - feet.z) - Math.hypot(b.x - feet.x, b.z - feet.z) || Math.hypot(destination.x - a.x, destination.z - a.z) - Math.hypot(destination.x - b.x, destination.z - b.z))
+            ledges.splice(12)
+            for (const l of ledges) { let pv = null; try { motionOrigin = working(); pv = movement?.preview(l, { ...opts, maxDistance: 8, waterExit: true }) } catch {} if (pv?.ready === true) return { ...l, waterExit: true } }
           }
         }
         // Follow the coarse wide-area route first (2026-11-14): a point some
