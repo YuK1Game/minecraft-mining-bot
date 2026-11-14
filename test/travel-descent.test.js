@@ -103,3 +103,12 @@ test('the supply-box step keeps ownership, the combat hold and the received chec
   assert.match(src, /if \(!hold && host\.shared\.travelShulkerHold\) hold = host\.shared\.travelShulkerHold/)
   assert.match(src, /rec\.life !== actualLifeId\(\)/)
 })
+
+// Live 2026-11-14 22:24: the fallback chunk moves and relay points ignored the
+// danger zones and walked the bot into the pillager zone; pillager zones are 120 m.
+test('danger zones also bind the fallback chunk moves and relay points; pillager zones are 120 m', () => {
+  const src = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  assert.match(src, /if \(inDangerZone\(cx, cz\) && !\(p && inDangerZone\(p\.x, p\.z\)\)\) throw/)
+  assert.match(src, /if \(inDangerZone\(x, z\) && !inDangerZone\(feet\.x, feet\.z\)\) continue/)
+  assert.match(src, /r: \/pillager\|vindicator\|evoker\/\.test\(kind\) \? 120 : 48/)
+})

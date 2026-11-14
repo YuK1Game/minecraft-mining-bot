@@ -8118,12 +8118,18 @@ function createRuntime (host) {
   const dangerFile = () => require('node:path').resolve(__dirname, '..', '.local', 'long-travel', 'danger.json')
   function travelDangerZones () {
     if (!host.shared.travelDangerZones) { try { host.shared.travelDangerZones = JSON.parse(require('node:fs').readFileSync(dangerFile(), 'utf8')) } catch { host.shared.travelDangerZones = [] } }
+    // Live 22:24: the bot died a third time beside the pillager zone; an outpost
+    // and its patrols reach farther than 48 m. Pillager zones count 120 m.
+    for (const z of host.shared.travelDangerZones) if (/pillager|vindicator|evoker/.test(z.kind ?? '') && z.r < 120) z.r = 120
     return host.shared.travelDangerZones
   }
+  // Inside a remembered danger zone (live 22:24: the fallback chunk moves and
+  // relay points ignored the zones and walked the bot into one).
+  function inDangerZone (x, z) { return travelDangerZones().some(zone => Math.hypot(zone.x - x, zone.z - z) < zone.r) }
   function travelAddDangerZone (p, kind) {
     const zones = travelDangerZones()
     if (zones.some(z => Math.hypot(z.x - p.x, z.z - p.z) < 24)) return
-    zones.push({ x: Math.round(p.x), z: Math.round(p.z), r: 48, kind, at: new Date().toISOString() })
+    zones.push({ x: Math.round(p.x), z: Math.round(p.z), r: /pillager|vindicator|evoker/.test(kind) ? 120 : 48, kind, at: new Date().toISOString() })
     host.log(`長距離移動: 危険地帯を記録しました (${Math.round(p.x)}, ${Math.round(p.z)}) ${kind.replace('minecraft:', '')}・半径48m`)
     try { require('node:fs').mkdirSync(require('node:path').dirname(dangerFile()), { recursive: true }); require('node:fs').writeFileSync(dangerFile(), JSON.stringify(zones, null, 2)) } catch {}
   }
@@ -8137,6 +8143,9 @@ function createRuntime (host) {
     const hurt = Date.now() - (host.shared.travelLastDamageAt ?? 0) < 5000
     // Before the shooter's range (coordinator 2026-11-14): within 16 m, or hit.
     if (!hurt && nearest > 16) return false
+    // Live 22:22: five skeletons at 1-2 m while the bot (diamond sword) kept trying
+    // to walk away in water. Within 4 m an armed bot leaves it to combat.
+    if (nearest < 4 && (working().inventory?.items ?? []).some(i => /_sword$|_axe$/.test(i.name ?? ''))) return false
     const low = (working().health ?? 20) < 10
     if (hurt) for (const a of sh.filter(o => Math.hypot(o.position.x - feet.x, o.position.z - feet.z) <= 24)) travelAddDangerZone(a.position, String(a.entityType ?? a.name ?? ''))
     // Below half health, prefer a spot no shooter can see (a solid received block
@@ -8382,7 +8391,7 @@ function createRuntime (host) {
       getState: quarryState,
       // One line per pass (coordinator 2026-11-14: measure distance per hour and where the time goes).
       record: async entry => { const f = require('node:path').resolve(__dirname, '..', '.local', 'long-travel', 'legs.jsonl'); await require('node:fs/promises').mkdir(require('node:path').dirname(f), { recursive: true }); await require('node:fs/promises').appendFile(f, JSON.stringify(entry) + '\n') },
-      chunkTravel: { start: input => ensureChunkTravel().start(input), status: () => ensureChunkTravel().status(), cancel: reason => cancelChunkMovement(reason ?? 'LONG_TRAVEL') },
+      chunkTravel: { start: input => { const a = input?.area; if (a && Number.isFinite(a.x1) && Number.isFinite(a.z1)) { const cx = a.x1 * 16 + 8, cz = a.z1 * 16 + 8, p = quarryState().position; if (inDangerZone(cx, cz) && !(p && inDangerZone(p.x, p.z))) throw Object.assign(new Error('危険地帯の中のチャンクへは移動しません'), { code: 'CHUNK_TRAVEL_DANGER_ZONE' }) } return ensureChunkTravel().start(input) }, status: () => ensureChunkTravel().status(), cancel: reason => cancelChunkMovement(reason ?? 'LONG_TRAVEL') },
       // Only a read request; the chunk travel itself uses received terrain only.
       requestTerrain: async (area, { signal } = {}) => { const st = quarryState(); const y = Math.floor((st.position?.y ?? 65) - 1.62); return requestQuarryTerrain({ config: { target: { chunks: [{ x: area.x1, z: area.z1 }] } }, yTop: Math.min(300, y + 12), yBottom: Math.max(-60, y - 12) }, { signal }) },
       terrainRevision: () => host.world.revision?.() ?? null,
@@ -8495,6 +8504,7 @@ function createRuntime (host) {
           const ang = heading + deg * Math.PI / 180
           const x = Math.floor(feet.x + Math.cos(ang) * Math.min(d, here)) + 0.5, z = Math.floor(feet.z + Math.sin(ang) * Math.min(d, here)) + 0.5
           if (Math.hypot(destination.x - x, destination.z - z) > here - 3) continue
+          if (inDangerZone(x, z) && !inDangerZone(feet.x, feet.z)) continue
           // Empty-handed (decision C, 2026-11-14): never toward a shooting enemy;
           // the first walkable point that does not bring one closer wins.
           if (fleeing && shooters.some(q => Math.hypot(q.x - x, q.z - z) < Math.hypot(q.x - feet.x, q.z - feet.z))) continue
