@@ -5708,7 +5708,8 @@ function createRuntime (host) {
         const st = working(); if (!st.position) throw new Error('位置が不明です。')
         const cx = Math.floor(st.position.x / 16), cz = Math.floor(st.position.z / 16), y = Math.floor(st.position.y - 1.62)
         const results = []
-        for (const [bottom, top] of [[Math.max(-60, y - 4), Math.min(110, y + 60)], [Math.min(110, y + 60), 120]]) {
+        // Live 13:58: a canopy over unreceived terrain (y48-63) looked like a deep hole; the request also covers 24 below.
+        for (const [bottom, top] of [[Math.max(-60, y - 24), Math.min(110, y + 60)], [Math.min(110, y + 60), 120]]) {
           if (bottom >= top) continue
           results.push(await requestQuarryTerrain({ config: { target: { chunks: [{ x: cx, z: cz }] } }, yTop: top, yBottom: bottom }, {}))
         }
