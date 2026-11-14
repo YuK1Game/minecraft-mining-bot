@@ -8332,7 +8332,7 @@ function createRuntime (host) {
             // Live 14:35: stone was refused with the wooden pickaxe in the bag.
             // Hold the best received pickaxe (stone-like) or shovel (soft) first.
             try { await travelHoldTool(cell.name) } catch {}
-            try { operations.mining.start([{ x: cell.x, y: cell.y, z: cell.z }]) } catch (error) { return { ok: false, code: 'DIG_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
+            try { operations.mining.start([{ x: cell.x, y: cell.y, z: cell.z }]) } catch (error) { (host.shared.longTravelBadCells ??= new Set()).add(`${cell.x},${cell.z}`); return { ok: false, code: 'DIG_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
             const until = Date.now() + 30000
             while (!air()) {
               if (signal?.aborted) { try { operations.mining.stop?.('LONG_TRAVEL_CANCELLED') } catch {} return { ok: false, code: 'LONG_TRAVEL_CANCELLED' } }
