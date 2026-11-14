@@ -33,11 +33,11 @@ const reasons = {
   LONG_TRAVEL_NO_PROGRESS: '同じ場所から先へ進めていません'
 }
 
-function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, inventoryReady = null, beforeLeg = null, onSurface = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
-  legM = LEG_M, arriveM = 20, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 45000, pollMs = 250 } = {}) {
+function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, inventoryReady = null, beforeLeg = null, record = null, onSurface = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  legM = LEG_M, arriveM = 20, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 25000, pollMs = 250 } = {}) {
   if (typeof getState !== 'function' || typeof chunkTravel?.start !== 'function' || typeof chunkTravel?.status !== 'function') throw new TypeError('Long travel needs getState and chunk travel')
   let run = null, task = null
-  const status = () => run ? copy({ busy: !!task, phase: run.phase, destination: run.destination, remaining: run.remaining, legs: run.legs, failures: run.failures, reason: run.reason, message: run.message, startedAt: run.startedAt, lastLegAt: run.lastLegAt })
+  const status = () => run ? copy({ timing: run.timing ?? {}, busy: !!task, phase: run.phase, destination: run.destination, remaining: run.remaining, legs: run.legs, failures: run.failures, reason: run.reason, message: run.message, startedAt: run.startedAt, lastLegAt: run.lastLegAt })
     : { busy: false, phase: 'idle', destination: null, remaining: null, legs: 0, failures: 0, reason: null, message: null }
   const say = text => { run.message = text; try { log(`長距離移動: ${text}`) } catch {} }
   function chunkAhead (feet, destination, angleDeg, distanceM) {
@@ -71,11 +71,16 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
     if (s.phase === 'arrived' && s.serverConfirmed === true) return { ok: true }
     return { ok: false, code: s.error?.code ?? s.phase ?? 'CHUNK_TRAVEL_FAILED', message: s.error?.message ?? null }
   }
+  // Where the time goes (coordinator 2026-11-14): every pass is split into
+  // waiting / hold (night, food) / plan / walk / walk_fail / chunk / chunk_fail /
+  // backoff, kept in run.timing (ms) and saved with the trip.
+  const add = (cat, ms) => { run.timing ??= {}; run.timing[cat] = (run.timing[cat] ?? 0) + Math.max(0, ms) }
+  const timedSleep = async (cat, ms) => { const t = now(); await sleep(ms); add(cat, now() - t) }
   async function loop (signal) {
     let stuckAt = null, stuckCount = 0, lastLife = null
     while (!signal.aborted) {
       const state = getState(), feet = feetOf(state)
-      if (state?.phase !== 'spawned' || state.dead || !feet || !(state.health > 0)) { run.phase = 'waiting'; await sleep(1000); continue }
+      if (state?.phase !== 'spawned' || state.dead || !feet || !(state.health > 0)) { run.phase = 'waiting'; await timedSleep('waiting', 1000); continue }
       // Deaths during one trip (decision 2026-11-14): five are continued after
       // the normal respawn; the sixth stops the trip with the reason.
       const life = state.lifecycle?.deathId ?? null
@@ -83,19 +88,23 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
       lastLife = life
       // After a respawn the armour/offhand arrive a little later; the empty-hand
       // judgement (and its exceptions) waits for the complete received inventory.
-      if (typeof inventoryReady === 'function' && inventoryReady() !== true) { run.phase = 'waiting'; await sleep(500); continue }
+      if (typeof inventoryReady === 'function' && inventoryReady() !== true) { run.phase = 'waiting'; await timedSleep('waiting', 500); continue }
       // Between legs (2026-11-14): the runtime may eat/hunt or stop for the night
       // (received clock). A hold keeps the trip paused without counting a failure.
       if (typeof beforeLeg === 'function') {
         let r = null
+        const t0 = now()
         try { r = await beforeLeg({ signal }) } catch (error) { r = { hold: true, phase: 'waiting', message: `区間の前の処理に失敗しました: ${String(error.message ?? error).slice(0, 100)}`, waitMs: 5000 } }
+        add(r?.hold ? `hold_${r.phase ?? 'waiting'}` : 'food', now() - t0)
         if (signal.aborted) continue
-        if (r?.hold) { run.phase = r.phase ?? 'waiting'; if (r.message && r.message !== run.message) say(r.message); await sleep(r.waitMs ?? 1000); continue }
+        if (r?.hold) { run.phase = r.phase ?? 'waiting'; if (r.message && r.message !== run.message) say(r.message); await timedSleep(`hold_${r.phase ?? 'waiting'}`, r.waitMs ?? 1000); continue }
       }
       run.remaining = Math.round(horizontal(feet, run.destination))
       if (run.remaining <= arriveM && (typeof onSurface !== 'function' || onSurface(feet) === true)) { run.phase = 'arrived'; run.reason = 'LONG_TRAVEL_ARRIVED'; say(`${reasons.LONG_TRAVEL_ARRIVED}（残り ${run.remaining}m・${run.legs}区間）`); await persist(); return }
       if (run.legs >= maxLegs) throw fail('LONG_TRAVEL_LEG_LIMIT')
       run.phase = 'moving'
+      const passStart = now(), remainingBefore = run.remaining, fromFeet = { x: Math.round(feet.x), y: Math.round(feet.y), z: Math.round(feet.z) }
+      let via = null
       const tried = new Set()
       let moved = false, last = null
       // Rough terrain (live 2026-11-14 09:53: a ravine by the water) needs
@@ -107,9 +116,14 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
       // there by the ordinary movement; arrival is the received position.
       if (typeof findPoint === 'function' && typeof walkTo === 'function') {
         let point = null
+        const tp = now()
         try { point = await findPoint(feet, run.destination, { signal }) } catch {}
+        add('plan', now() - tp)
         if (!point) say("歩ける中継点が見つかりません"); else {
+          const tw = now()
           const result = await walkTo(point, { signal })
+          add(result?.ok ? 'walk' : 'walk_fail', now() - tw)
+          via = 'point'
           if (signal.aborted) throw fail('LONG_TRAVEL_CANCELLED')
           if (result?.ok) moved = true
           else { last = result ?? { ok: false, code: 'POINT_WALK_FAILED' }; say(`中継点 (${point.x},${point.y},${point.z}) へ歩けませんでした（${last.code}${last.message ? ': ' + last.message : ''}）`) }
@@ -120,14 +134,19 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
         const key = `${area.x1},${area.z1}`
         if (tried.has(key) || area.x1 === Math.floor(feet.x / 16) && area.z1 === Math.floor(feet.z / 16) && run.remaining > length) continue
         tried.add(key)
+        const tl = now()
         const result = await leg(area, signal)
+        add(result.ok ? 'chunk' : 'chunk_fail', now() - tl)
+        via = 'chunk'
         if (signal.aborted) throw fail('LONG_TRAVEL_CANCELLED')
         if (result.ok) { moved = true; break }
         last = result
-        if (result.code === 'CHUNK_TRAVEL_DAMAGED') { say(`被弾したため一時停止し、${damagePauseMs / 1000}秒後に続けます`); await sleep(damagePauseMs); break }
-        if (result.code === 'CHUNK_TRAVEL_BUSY' || result.code === 'CHUNK_TRAVEL_CONTEXT_CHANGED') { await sleep(2000); break }
+        if (result.code === 'CHUNK_TRAVEL_DAMAGED') { say(`被弾したため一時停止し、${damagePauseMs / 1000}秒後に続けます`); await timedSleep('backoff', damagePauseMs); break }
+        if (result.code === 'CHUNK_TRAVEL_BUSY' || result.code === 'CHUNK_TRAVEL_CONTEXT_CHANGED') { await timedSleep('backoff', 2000); break }
       }
       const after = feetOf(getState())
+      // One line per pass: times, received positions and the distance left.
+      try { await record?.({ start: new Date(passStart).toISOString(), end: new Date(now()).toISOString(), ms: now() - passStart, via, moved, code: moved ? null : last?.code ?? null, from: fromFeet, to: after ? { x: Math.round(after.x), y: Math.round(after.y), z: Math.round(after.z) } : null, remainingBefore, remainingAfter: after ? Math.round(horizontal(after, run.destination)) : null }) } catch {}
       // Damage, combat holding control or a changed connection is not a
       // blocked direction: wait and try again without counting it.
       // A server position correction mid-walk (water) only needs a new plan from
@@ -145,7 +164,7 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
         run.reason = last?.code ?? null
         say(`区間を進めませんでした（${last?.code ?? '不明'}${last?.message ? `: ${String(last.message).slice(0, 80)}` : ''}）。${run.failures}回目`)
         if (run.failures >= maxFailuresInRow) throw fail('LONG_TRAVEL_BLOCKED', `${reasons.LONG_TRAVEL_BLOCKED}（最後の理由: ${last?.code ?? '不明'}）`)
-        await sleep(1500)
+        await timedSleep('backoff', 1500)
       }
       // Progress guard: the received position must keep getting closer.
       const here = after ? Math.round(horizontal(after, run.destination) / 8) : null
@@ -153,13 +172,13 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
     }
     throw fail('LONG_TRAVEL_CANCELLED')
   }
-  async function persist () { try { await save(copy({ destination: run.destination, legs: run.legs, remaining: run.remaining, lastPosition: run.lastPosition ?? null, phase: run.phase, reason: run.reason, startedAt: run.startedAt, savedAt: new Date(now()).toISOString() })) } catch {} }
+  async function persist () { try { await save(copy({ destination: run.destination, legs: run.legs, remaining: run.remaining, lastPosition: run.lastPosition ?? null, phase: run.phase, reason: run.reason, startedAt: run.startedAt, timing: run.timing ?? {}, savedAt: new Date(now()).toISOString() })) } catch {} }
   function start ({ destination, resume = null } = {}) {
     if (task) throw fail('LONG_TRAVEL_BUSY', reasons.LONG_TRAVEL_BUSY)
     if (!finite(destination)) throw fail('LONG_TRAVEL_DESTINATION_INVALID', '目的地の座標が不正です')
     const controller = new AbortController()
     run = { destination: { x: destination.x, y: Number.isFinite(destination.y) ? destination.y : null, z: destination.z }, legs: resume?.legs ?? 0, failures: 0, remaining: null, phase: 'starting', reason: null, message: null,
-      startedAt: resume?.startedAt ?? new Date(now()).toISOString(), lastLegAt: null, controller }
+      startedAt: resume?.startedAt ?? new Date(now()).toISOString(), lastLegAt: null, controller, timing: { ...(resume?.timing ?? {}) } }
     say(`出発: 目的地 (${Math.round(destination.x)}, ${Math.round(destination.z)})${resume ? `（${run.legs}区間目から再開）` : ''}`)
     task = loop(controller.signal).catch(async error => {
       run.phase = error.code === 'LONG_TRAVEL_CANCELLED' ? 'cancelled' : 'stopped'

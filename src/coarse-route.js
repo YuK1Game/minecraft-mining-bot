@@ -66,7 +66,7 @@ function createHeap () {
     }
   }
 }
-function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3, blocked = null, surfaceOnly = false, maxMs = Infinity, now = Date.now }) {
+function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3, blocked = null, surfaceOnly = false, maxMs = Infinity, now = Date.now, faceStairs = false }) {
   // Live 2026-11-14 12:13: the route led down into a cave to y-33. With
   // surfaceOnly a stand must see the sky (nothing solid above but leaves/logs
   // within 40 blocks); covered stands cost five times and may only be entered
@@ -128,7 +128,7 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
         const floor = b(n.y), c1 = b(n.y + 1), c2 = b(n.y + 2), sky = b(n.y + 3), head = b(n.y + 2, n.x, n.z)
         const solid = v => v?.known === true && v.boundingBox === 'block' && !NOT_DIGGABLE.test(v.name ?? '') && !HAZARD.test(v.name ?? '') && !WATER.test(v.name ?? '')
         const isOpen = v => classify(v) === 'pass'
-        if (solid(floor) && solid(c1) && (solid(c2) || isOpen(c2)) && (isOpen(sky) || openFace(x, n.y + 2, z, dx, dz)) && (isOpen(head) || solid(head))) {
+        if (solid(floor) && solid(c1) && (solid(c2) || isOpen(c2)) && (isOpen(sky) || faceStairs && openFace(x, n.y + 2, z, dx, dz)) && (isOpen(head) || solid(head))) {
           const cells = [{ x, y: n.y + 1, z, v: c1 }, { x, y: n.y + 2, z, v: c2 }, { x: n.x, y: n.y + 2, z: n.z, v: head }].filter(c => solid(c.v)).map(c => ({ x: c.x, y: c.y, z: c.z, name: c.v.name }))
           const g = n.g + 1 + cells.reduce((t, c) => t + (SOFT.test(c.name) ? 2 : 6), 0)
           const k = key(x, n.y + 1, z)
@@ -140,7 +140,9 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
       // the head while stepping) received and diggable or open, at least one to
       // dig, a received solid floor below, no liquid beside any carved cell, and
       // everything above the step open to the sky: a trench, never a tunnel.
-      if (allowDig && !(dx && dz) && !onLeaves(n)) {
+      // Coordinator 2026-11-14: long travel goes around ravines instead; the
+      // carved descent stays available behind faceStairs.
+      if (faceStairs && allowDig && !(dx && dz) && !onLeaves(n)) {
         const b = yy => getBlock(x, yy, z)
         const floor = b(n.y - 2), cells = [n.y + 1, n.y, n.y - 1].map(yy => ({ y: yy, v: b(yy) }))
         const diggable = v => v?.known === true && v.boundingBox === 'block' && !NOT_DIGGABLE.test(v.name ?? '') && !HAZARD.test(v.name ?? '') && !WATER.test(v.name ?? '')

@@ -7933,6 +7933,8 @@ function createRuntime (host) {
     if (longTravel) return longTravel
     longTravel = require('./long-travel').createLongTravel({
       getState: quarryState,
+      // One line per pass (coordinator 2026-11-14: measure distance per hour and where the time goes).
+      record: async entry => { const f = require('node:path').resolve(__dirname, '..', '.local', 'long-travel', 'legs.jsonl'); await require('node:fs/promises').mkdir(require('node:path').dirname(f), { recursive: true }); await require('node:fs/promises').appendFile(f, JSON.stringify(entry) + '\n') },
       chunkTravel: { start: input => ensureChunkTravel().start(input), status: () => ensureChunkTravel().status(), cancel: reason => cancelChunkMovement(reason ?? 'LONG_TRAVEL') },
       // Only a read request; the chunk travel itself uses received terrain only.
       requestTerrain: async (area, { signal } = {}) => { const st = quarryState(); const y = Math.floor((st.position?.y ?? 65) - 1.62); return requestQuarryTerrain({ config: { target: { chunks: [{ x: area.x1, z: area.z1 }] } }, yTop: Math.min(300, y + 12), yBottom: Math.max(-60, y - 12) }, { signal }) },
@@ -7967,6 +7969,23 @@ function createRuntime (host) {
         try {
           const planRoute = () => require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, maxMs: 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: host.shared.longTravelBadCells ??= new Set() })
           let route = planRoute()
+          // Going around (coordinator 2026-11-14): when the route does not reach
+          // the goal, request the received-terrain frontier closest to the
+          // destination (up to three chunks, each at most every two minutes) and
+          // plan again; the best reachable point toward the goal is used.
+          if (!route.reached && route.frontier.length) {
+            const asked = host.shared.longTravelFrontierAsked ??= new Map()
+            const chunks = [...new Map(route.frontier.map(f => [`${Math.floor(f.x / 16)},${Math.floor(f.z / 16)}`, f])).values()]
+              .sort((a, b) => Math.hypot(destination.x - a.x, destination.z - a.z) - Math.hypot(destination.x - b.x, destination.z - b.z))
+              .filter(f => Date.now() - (asked.get(`${Math.floor(f.x / 16)},${Math.floor(f.z / 16)}`) ?? 0) > 120000).slice(0, 3)
+            if (chunks.length) {
+              const y = Math.floor(feet.y)
+              for (const f of chunks) asked.set(`${Math.floor(f.x / 16)},${Math.floor(f.z / 16)}`, Date.now())
+              try { await requestQuarryTerrain({ config: { target: { chunks: chunks.map(f => ({ x: Math.floor(f.x / 16), z: Math.floor(f.z / 16) })) } }, yTop: Math.min(150, y + 40), yBottom: Math.max(-60, y - 24) }, {}) } catch {}
+              await new Promise(r => setTimeout(r, 800))
+              route = planRoute()
+            }
+          }
           // Live 2026-11-14 13:35: on a hilltop the terrain above y80 was not
           // received, so no column counted as open sky and the route closed in
           // (97 nodes, no frontier). Request the terrain above once per spot
