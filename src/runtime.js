@@ -7545,7 +7545,7 @@ function createRuntime (host) {
         // Follow the coarse wide-area route first (2026-11-14): a point some
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
-          const route = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true, maxDrop: 1 })
+          const route = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true, maxDrop: 1, blocked: host.shared.longTravelBadCells ??= new Set() })
           // A carved step ahead: walk to the cell before it first, then dig and step.
           const firstDig = route.ready ? route.path.findIndex(p => p.dig) : -1
           if (firstDig > 0 && firstDig <= 12) {
@@ -7610,6 +7610,7 @@ function createRuntime (host) {
           if (signal?.aborted) { try { movement?.stop?.('LONG_TRAVEL_CANCELLED') } catch {} return { ok: false, code: 'LONG_TRAVEL_CANCELLED' } }
           const st = working(), m = movement?.snapshot() ?? {}
           if (st.health < startHealth && st.emptyHandedPrep !== true) { try { movement?.stop?.('damage') } catch {} return { ok: false, code: 'CHUNK_TRAVEL_DAMAGED' } }
+          if (['failed', 'stopped'].includes(m.phase) && !/replan|correction/i.test(String(m.reason ?? ''))) { const bad = host.shared.longTravelBadCells ??= new Set(); bad.add(`${Math.floor(target.x)},${Math.floor(target.z)}`); if (bad.size > 2000) bad.delete(bad.values().next().value) }
           if (['failed', 'stopped', 'replan_required'].includes(m.phase)) return { ok: false, code: m.phase === 'replan_required' || /replan|correction/i.test(String(m.reason ?? '')) ? 'POINT_REPLAN' : 'POINT_WALK_FAILED', message: String(m.reason ?? m.phase).slice(0, 120) }
           if (['completed', 'idle', 'awaiting_server_confirmation'].includes(m.phase) && m.running !== true) {
             const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }

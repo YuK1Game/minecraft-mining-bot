@@ -49,7 +49,7 @@ function createSurface (getBlock, { minY = -60, maxY = 300 } = {}) {
 // Blocks that ordinary bare-hand or tool mining may carve for a step.
 const NOT_DIGGABLE = /bedrock|obsidian|barrier|command|structure|reinforced|end_portal|spawner|chest|shulker|barrel|furnace|bed$|_bed$|door|log|leaves|wood|planks/
 const SOFT = /dirt|grass_block|gravel|sand|clay|snow|mud|podzol|mycelium|farmland/
-function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3 }) {
+function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3, blocked = null }) {
   const surface = createSurface(getBlock)
   const sx = Math.floor(start.x), sz = Math.floor(start.z), sy = Math.round(start.y)
   const gx = Math.floor(goal.x), gz = Math.floor(goal.z)
@@ -69,6 +69,8 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
       const x = n.x + dx, z = n.z + dz
       if (Math.hypot(x - sx, z - sz) > maxRadius) continue
+      // Columns the local walk already failed to reach (2026-11-14) are avoided.
+      if (blocked?.has?.(`${x},${z}`)) continue
       const col = surface.stands(x, z, n.y - 3, n.y + 1)
       if (col.unknown && !col.stands.length) { frontier.add(`${x},${z}`); continue }
       // A step carved up a wall (2026-11-14): straight moves only, one block up,
