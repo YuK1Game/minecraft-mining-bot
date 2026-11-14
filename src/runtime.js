@@ -8117,7 +8117,7 @@ function createRuntime (host) {
           { const bad = host.shared.longTravelBadCells; if (!route.ready && bad?.size) { host.log(`長距離移動: 歩けなかった列の記録（${bad.size}件）を消して計画し直します`); bad.clear(); route = planRoute() } }
           // No reachable point is closer (coordinator 2026-11-14, a 20 m cliff at
           // 16:51): stairs cut into a face may be used, never a tunnel.
-          if (!route.ready) { const stairs = planRoute({ faceStairs: true, maxMs: 800 }); if (stairs.ready) { host.log('長距離移動: 近づける場所がないため、壁面の階段で進みます'); route = stairs } }
+          if (!route.ready) { const stairs = planRoute({ faceStairs: true, maxMs: 1500 }); if (stairs.ready) { host.log('長距離移動: 近づける場所がないため、壁面の階段で進みます'); route = stairs } }
           // Going around (coordinator 2026-11-14): when the route does not reach
           // the goal, request the received-terrain frontier closest to the
           // destination (up to three chunks, each at most every two minutes) and
