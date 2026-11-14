@@ -5521,7 +5521,7 @@ function createRuntime (host) {
         const d = input.destination, st = working()
         if (!d || ![d.x, d.z].every(Number.isFinite) || !st.position) throw new Error('目的地 {x, z} を指定してください。')
         const started = Date.now()
-        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, goal: d, maxNodes: Math.min(120000, input.maxNodes ?? 60000), allowDig: input.allowDig === true, maxDrop: Number.isInteger(input.maxDrop) ? input.maxDrop : 3 })
+        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, goal: d, maxNodes: Math.min(120000, input.maxNodes ?? 60000), allowDig: input.allowDig === true, surfaceOnly: input.surfaceOnly === true, maxDrop: Number.isInteger(input.maxDrop) ? input.maxDrop : 3 })
         const step = Math.max(1, Math.floor(r.path.length / 20))
         return { ready: r.ready, reached: r.reached, remaining: r.remaining, expanded: r.expanded, ms: Date.now() - started, length: r.path.length, sample: r.path.filter((_, i) => i % step === 0 || i === r.path.length - 1), frontier: r.frontier.slice(0, 8) }
       },
@@ -7534,6 +7534,8 @@ function createRuntime (host) {
       requestTerrain: async (area, { signal } = {}) => { const st = quarryState(); const y = Math.floor((st.position?.y ?? 65) - 1.62); return requestQuarryTerrain({ config: { target: { chunks: [{ x: area.x1, z: area.z1 }] } }, yTop: Math.min(300, y + 12), yBottom: Math.max(-60, y - 12) }, { signal }) },
       terrainRevision: () => host.world.revision?.() ?? null,
       inventoryReady: () => { try { return inventoryStore.missing().length === 0 } catch { return false } },
+      // Arrival counts only under open sky (live 12:13: 'arrived' in a cave at y-33).
+      onSurface: feet => { const x = Math.floor(feet.x), z = Math.floor(feet.z), y = Math.floor(feet.y + 0.2); for (let yy = y + 2; yy < y + 40; yy++) { const b = host.world.getBlock(x, yy, z); if (!b || b.known !== true) return false; if (b.boundingBox === 'block' && !/leaves|log|wood/.test(b.name ?? '')) return false } return true },
       // Point legs: a walkable received point toward the destination (distance,
       // angle and height samples), previewed by the ordinary movement planner.
       findPoint: async (feet, destination, { signal } = {}) => {
@@ -7542,10 +7544,22 @@ function createRuntime (host) {
         const shooters = fleeing ? allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && require('./learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).map(a => a.position) : []
         const here = Math.hypot(destination.x - feet.x, destination.z - feet.z)
         const heading = Math.atan2(destination.z - feet.z, destination.x - feet.x)
+        // Starting in water (live 2026-11-14: the respawn point is a pool), climb
+        // onto an adjacent received ledge first with the water exit move.
+        {
+          const cellAt = (x, y, z) => host.world.getBlock(x, y, z)
+          const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.2), fz = Math.floor(feet.z)
+          if (/water/.test(cellAt(fx, fy, fz)?.name ?? '') || /water/.test(cellAt(fx, fy - 1, fz)?.name ?? '')) {
+            const ledges = []
+            for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (const dy of [1, 0]) ledges.push({ x: fx + dx + 0.5, y: fy + dy, z: fz + dz + 0.5 })
+            ledges.sort((a, b) => Math.hypot(destination.x - a.x, destination.z - a.z) - Math.hypot(destination.x - b.x, destination.z - b.z))
+            for (const l of ledges) { let pv = null; try { motionOrigin = working(); pv = movement?.preview(l, { ...opts, maxDistance: 4, waterExit: true }) } catch {} if (pv?.ready === true) return { ...l, waterExit: true } }
+          }
+        }
         // Follow the coarse wide-area route first (2026-11-14): a point some
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
-          const route = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true, maxDrop: 1, blocked: host.shared.longTravelBadCells ??= new Set() })
+          const route = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: host.shared.longTravelBadCells ??= new Set() })
           // A carved step ahead: walk to the cell before it first, then dig and step.
           const firstDig = route.ready ? route.path.findIndex(p => p.dig) : -1
           if (firstDig > 0 && firstDig <= 12) {
@@ -7603,15 +7617,15 @@ function createRuntime (host) {
         // Empty-handed: sprint out of range while hunger allows it (> 6).
         const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : v?.value
         const sprint = working().emptyHandedPrep === true && Number.isFinite(hunger) && hunger > 6
-        try { startMotion('navigation', target, { allowWater: true, allowLowHealth: true, maxDistance: 16, ...(sprint ? { sprint: true } : {}) }) } catch (error) { return { ok: false, code: 'POINT_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
+        try { startMotion('navigation', { x: target.x, y: target.y, z: target.z }, { allowWater: true, allowLowHealth: true, maxDistance: target.waterExit ? 4 : 16, ...(target.waterExit ? { waterExit: true } : sprint ? { sprint: true } : {}) }) } catch (error) { return { ok: false, code: 'POINT_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
         const until = Date.now() + 60000
         for (;;) {
           await new Promise(resolve => setTimeout(resolve, 200))
           if (signal?.aborted) { try { movement?.stop?.('LONG_TRAVEL_CANCELLED') } catch {} return { ok: false, code: 'LONG_TRAVEL_CANCELLED' } }
           const st = working(), m = movement?.snapshot() ?? {}
           if (st.health < startHealth && st.emptyHandedPrep !== true) { try { movement?.stop?.('damage') } catch {} return { ok: false, code: 'CHUNK_TRAVEL_DAMAGED' } }
-          if (['failed', 'stopped'].includes(m.phase) && !/replan|correction/i.test(String(m.reason ?? ''))) { const bad = host.shared.longTravelBadCells ??= new Set(); bad.add(`${Math.floor(target.x)},${Math.floor(target.z)}`); if (bad.size > 2000) bad.delete(bad.values().next().value) }
-          if (['failed', 'stopped', 'replan_required'].includes(m.phase)) return { ok: false, code: m.phase === 'replan_required' || /replan|correction/i.test(String(m.reason ?? '')) ? 'POINT_REPLAN' : 'POINT_WALK_FAILED', message: String(m.reason ?? m.phase).slice(0, 120) }
+          if (['failed', 'stopped'].includes(m.phase) && !/replan|correction|stalled|ticks were missed/i.test(String(m.reason ?? ''))) { const bad = host.shared.longTravelBadCells ??= new Set(); bad.add(`${Math.floor(target.x)},${Math.floor(target.z)}`); if (bad.size > 2000) bad.delete(bad.values().next().value) }
+          if (['failed', 'stopped', 'replan_required'].includes(m.phase)) return { ok: false, code: m.phase === 'replan_required' || /replan|correction|stalled|ticks were missed/i.test(String(m.reason ?? '')) ? 'POINT_REPLAN' : 'POINT_WALK_FAILED', message: String(m.reason ?? m.phase).slice(0, 120) }
           if (['completed', 'idle', 'awaiting_server_confirmation'].includes(m.phase) && m.running !== true) {
             const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }
             return Math.hypot(feet.x - target.x, feet.z - target.z) <= 1.2 && Math.abs(feet.y - target.y) <= 1.6 ? { ok: true } : { ok: false, code: 'POINT_ENDED_SHORT' }

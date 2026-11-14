@@ -33,7 +33,7 @@ const reasons = {
   LONG_TRAVEL_NO_PROGRESS: '同じ場所から先へ進めていません'
 }
 
-function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, inventoryReady = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, inventoryReady = null, onSurface = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
   legM = LEG_M, arriveM = 20, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 45000, pollMs = 250 } = {}) {
   if (typeof getState !== 'function' || typeof chunkTravel?.start !== 'function' || typeof chunkTravel?.status !== 'function') throw new TypeError('Long travel needs getState and chunk travel')
   let run = null, task = null
@@ -85,7 +85,7 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
       // judgement (and its exceptions) waits for the complete received inventory.
       if (typeof inventoryReady === 'function' && inventoryReady() !== true) { run.phase = 'waiting'; await sleep(500); continue }
       run.remaining = Math.round(horizontal(feet, run.destination))
-      if (run.remaining <= arriveM) { run.phase = 'arrived'; run.reason = 'LONG_TRAVEL_ARRIVED'; say(`${reasons.LONG_TRAVEL_ARRIVED}（残り ${run.remaining}m・${run.legs}区間）`); await persist(); return }
+      if (run.remaining <= arriveM && (typeof onSurface !== 'function' || onSurface(feet) === true)) { run.phase = 'arrived'; run.reason = 'LONG_TRAVEL_ARRIVED'; say(`${reasons.LONG_TRAVEL_ARRIVED}（残り ${run.remaining}m・${run.legs}区間）`); await persist(); return }
       if (run.legs >= maxLegs) throw fail('LONG_TRAVEL_LEG_LIMIT')
       run.phase = 'moving'
       const tried = new Set()
