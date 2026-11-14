@@ -23,4 +23,14 @@ function createEventLoopStallWatch ({ intervalMs = 100, thresholdMs = 200, minRe
   function stop () { if (timer) { clearTimer(timer); timer = null } }
   return { start, stop, check, stats: () => ({ ...stats }) }
 }
-module.exports = { createEventLoopStallWatch }
+// What the bot was doing, for the report: the quarry state, a running long
+// trip and the behaviour that owns the controls (combat, sleeping). Live
+// 2026-11-14: every stall during a trip was logged as 作業=null.
+function describeWork ({ quarry = null, travel = null, behavior = null } = {}) {
+  const doing = {}
+  if (quarry) { doing.quarry = quarry.state ?? null; doing.layer = quarry.currentY ?? null }
+  if (travel?.busy === true) { doing.travel = travel.phase ?? null; doing.leg = travel.legs ?? null }
+  if (typeof behavior === 'string' && behavior) doing.behavior = behavior
+  return Object.keys(doing).length ? doing : null
+}
+module.exports = { createEventLoopStallWatch, describeWork }
