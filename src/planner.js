@@ -331,6 +331,11 @@ function nextBootstrapAction (snapshot, observations = {}, options = {}) {
   const neededPlanks = (tableOwned ? 0 : 4) + (counts.sticks >= 2 ? 0 : 2) + 3
   if (counts.planks < neededPlanks) {
     const log = items.filter(item => amount(item.count) && isLog(nameOf(item.name))).sort((a, b) => (a.slot ?? 99) - (b.slot ?? 99))[0]
+    // Long-trip preparation only (2026-11-14 decision): logs from observed trees.
+    if (!log && options.allowLogs === true) {
+      const trees = known.filter(block => isLog(nameOf(block.name)) && block.protected !== true)
+      return chooseResource(trees, 'logs', Math.max(1, (options.logCount ?? 10) - counts.logs))
+    }
     if (!log) return result('wait', 'materials', '手持ちの木材が不足しています。木の採取や探索は行いません。', { code: 'wood_harvest_disabled', missingMaterials: { planks: neededPlanks - counts.planks }, woodCollectionDisabled: true })
     const times = Math.min(amount(log.count), 16, Math.ceil((neededPlanks - counts.planks) / 4))
     return craft(`${nameOf(log.name).slice(0, -4)}_planks`, times, 'planks')

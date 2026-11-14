@@ -849,7 +849,8 @@ function createRuntime (host) {
   // or not). Marking the whole inventory unknown disabled every attack in the
   // fight that interrupted it, so it is recorded on its own.
   const food = createFood({ client: host.client, getState: () => { const state = working(); return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: foodKnownLife() } } }, crafting, getInput: () => input, equip: (slot, options) => inventory.equipForFood(slot, options), allocateLegacyId: () => host.allocate('interaction'), canEmergencyEat: canEmergencyEatHere, onUncertain: details => { host.shared.foodUncertain = { ...details, at: new Date().toISOString() }; try { host.log(`食事の結果が未確認です（持ち物全体は不明扱いにしません）: ${String(details?.reason ?? '').slice(0, 80)}`) } catch {} }, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
-  const mining = createMining({ logAllowance: () => longTravelLogAllowance(), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true, verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true })
+  // Bare-hand deepslate takes about 15 s (2026-11-14 cave exit): 30 s per block.
+  const mining = createMining({ blockTimeoutMs: 30000, logAllowance: () => longTravelLogAllowance(), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true, verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true })
   const interactions = createInteractions({ client: host.client, getState: () => ({ ...working(), lifecycle: { deathId: actualLifeId() } }), world: host.world, crafting, getInput: () => input, version: host.meta.version, onInventory, onUncertain, allocateLegacyId: () => host.allocate('interaction') })
 
   function commitChestMainDelta (delta) {
@@ -1934,6 +1935,8 @@ function createRuntime (host) {
       const localFirstWeapon = learningLocalWork && inventoryReady && !items.length && scopeReady && !nutritionSword(state) && !(canForage && (foragePreview.kind === 'drop' || hungerKnown && hunger <= 17))
       const priority = host.shared.startupPriority = { policy: state.threatPolicy, health: state.health, receivedHunger: hungerKnown ? hunger : null, foodReserveDeferred, receivedReserveCount, distantFoodDeferred, sourceDistance, bodyProof: localWork.bodyProof, localWorkEligible: learningLocalWork, actualDanger: threats.threats.length, unknown: threats.requiresObservation || state.entityStats?.unknownPositions > threats.unknownPositions.length, foodReady: { owned: null, source: foragePreview?.ready === true, sourceEligible: canForage, sourceKind: foragePreview?.kind ?? null }, hasSword: nutritionSword(state), firstSwordPlan: null, deferOptionalShelter: learningLocalWork }
       const firstWeapon = () => {
+        // Long-trip preparation gathers logs by the base plan first (2026-11-14).
+        if (longTravelLogAllowance()) return null
         const decision = nextSurvivalAction(state, observations, { firstWoodenSwordOnly: true }) ?? foodWait()
         priority.firstSwordPlan = { type: decision.type, code: decision.code ?? null, reason: String(decision.reason ?? '').slice(0, 80) }
         return decision
@@ -2007,6 +2010,9 @@ function createRuntime (host) {
       return null
     },
     planAction: (state, observations, options) => {
+      // Long-trip preparation (2026-11-14 decision): the base wood path (logs,
+      // planks, table, wooden pickaxe) instead of the survival/diamond plans.
+      if (options?.allowLogs === true) return require('./planner').nextBootstrapAction(state, observations, options)
       const localWork = localLearningWork(state)
       const nightShelter=readyNightSoilShelter(state,observations)
       const survivalOptions = localWork.eligible && !nightShelter ? { ...options, deferOptionalShelter: true } : options
@@ -5516,6 +5522,53 @@ function createRuntime (host) {
         return ensureLongTravel().start({ destination: { x: d.x, y: d.y, z: d.z }, resume })
       },
       travelStatus: () => longTravel?.status() ?? { busy: false, phase: 'idle' },
+      // Last resort out of a cave (2026-11-14, decision relay): a staircase dug
+      // up by ordinary mining until the stand sees the sky. Each step clears the
+      // two cells ahead one block up and the cell over the head, then steps up.
+      // Never under lava/water/gravel/sand; bounded per block and in total.
+      digUp: async (input = {}) => {
+        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
+        const maxMs = Math.min(45 * 60000, input.maxMs ?? 30 * 60000), started = Date.now()
+        const get = (x, y, z) => host.world.getBlock(x, y, z)
+        const nm = b => String(b?.name ?? '')
+        const air = b => b?.known === true && (b.boundingBox === 'empty' || /^minecraft:(?:air|cave_air)$/.test(nm(b))) && !/water|lava/.test(nm(b))
+        const solid = b => b?.known === true && b.boundingBox === 'block' && !/water|lava/.test(nm(b))
+        const danger = b => !b || b.known !== true || /lava|water|gravel|sand|bedrock|obsidian/.test(nm(b))
+        const skyOpen = (x, y, z) => { for (let yy = y + 2; yy < 320; yy++) { const b = get(x, yy, z); if (!b || b.known !== true) { if (yy >= 128) return true; return false } if (b.boundingBox === 'block' && !/leaves|log|wood/.test(nm(b))) return false } return true }
+        const mineCell = async c => {
+          if (air(get(c.x, c.y, c.z))) return true
+          operations.mining.start([{ x: c.x, y: c.y, z: c.z }])
+          const until = Date.now() + 35000
+          while (!air(get(c.x, c.y, c.z))) { if (Date.now() > until) return false; await new Promise(r => setTimeout(r, 250)) }
+          return true
+        }
+        let steps = 0
+        const prefer = input.heading ?? null
+        while (Date.now() - started < maxMs) {
+          const st = working(); if (!st.position || st.dead) { await new Promise(r => setTimeout(r, 1000)); continue }
+          const fx = Math.floor(st.position.x), fy = Math.floor(st.position.y - 1.62 + 0.2), fz = Math.floor(st.position.z)
+          if (skyOpen(fx, fy, fz)) { host.log(`地上へ出ました: (${fx},${fy},${fz})・${steps}段`); return { surfaced: true, steps, position: { x: fx, y: fy, z: fz } } }
+          const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+          if (prefer) dirs.sort((a, b) => (b[0] * prefer.x + b[1] * prefer.z) - (a[0] * prefer.x + a[1] * prefer.z))
+          let done = false
+          for (const [dx, dz] of dirs) {
+            const nx = fx + dx, nz = fz + dz, floor = get(nx, fy, nz)
+            const cells = [{ x: fx, y: fy + 2, z: fz }, { x: nx, y: fy + 1, z: nz }, { x: nx, y: fy + 2, z: nz }]
+            if (!solid(floor)) continue
+            if (cells.some(c => danger(get(c.x, c.y, c.z)) && !air(get(c.x, c.y, c.z))) || danger(get(nx, fy + 3, nz)) && !air(get(nx, fy + 3, nz)) || danger(get(fx, fy + 3, fz)) && !air(get(fx, fy + 3, fz))) continue
+            let ok = true
+            for (const c of cells) { if (!(await mineCell(c))) { ok = false; break } }
+            if (!ok) continue
+            try { startMotion('navigation', { x: nx + 0.5, y: fy + 1, z: nz + 0.5 }, { allowLowHealth: true, maxDistance: 3 }) } catch {}
+            const until = Date.now() + 6000
+            while (Date.now() < until) { await new Promise(r => setTimeout(r, 250)); const p = working().position; if (p && Math.floor(p.x) === nx && Math.floor(p.z) === nz && Math.abs(p.y - 1.62 - (fy + 1)) < 0.6) break }
+            const p = working().position
+            if (p && Math.floor(p.x) === nx && Math.floor(p.z) === nz) { steps++; if (steps % 5 === 1) host.log(`掘り上がり: ${steps}段目 (${nx},${fy + 1},${nz})`); done = true; break }
+          }
+          if (!done) { host.log('掘り上がり: どの方向にも段を作れませんでした'); return { surfaced: false, steps, reason: 'NO_STEP' } }
+        }
+        return { surfaced: false, steps, reason: 'TIME_LIMIT' }
+      },
       // Read-only request: the terrain above the bot (its chunk and the eight
       // around it) up to y=120, to find the way back to open sky from a cave.
       requestTerrainAbove: async () => {

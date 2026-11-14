@@ -410,7 +410,7 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
         else if (threatEvaluation.requiresObservation) decision = { type: 'wait', stage: 'safety', reason: '周囲のキャラクターやBotの位置情報が不足しているため、作業前に追加の観測を待ちます。', code: 'threat_observation_required', unknownPositions: serial(threatEvaluation.unknownPositions), hostUnknownPositionCount: threatEvaluation.hostUnknownPositionCount ?? 0, observationRadius: 32 }
         // Long-trip preparation ends once the logs are actually in hand.
         else if (options.objective === 'long_travel_prep' && status.progress.milestones?.logs) decision = { type: 'stop', stage: 'done', reason: `長距離移動の準備: 原木 ${status.progress.logsCollected} 本を集めました。` }
-        else decision = planAction(state, { ...observations, progress: { ...observations.progress, ...serial(status.progress) } }, { logCount: status.goal.logs, stoneCount: status.goal.stone, minHealth: resourceMinHealth(state, options.minHealth), ...(options.objective === 'diamond' ? { objective: 'diamond', diamondCount: status.goal.diamond } : {}) })
+        else decision = planAction(state, { ...observations, progress: { ...observations.progress, ...serial(status.progress) } }, { logCount: status.goal.logs, stoneCount: status.goal.stone, minHealth: resourceMinHealth(state, options.minHealth), ...(options.objective === 'long_travel_prep' ? { allowLogs: true } : {}), ...(options.objective === 'diamond' ? { objective: 'diamond', diamondCount: status.goal.diamond } : {}) })
       }
       if (options.objective === 'diamond') {
         // A replaceable resource planner may finish a wood/stone subgoal. Only
