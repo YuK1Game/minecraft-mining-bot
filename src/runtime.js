@@ -8137,6 +8137,9 @@ function createRuntime (host) {
     const hurt = Date.now() - (host.shared.travelLastDamageAt ?? 0) < 5000
     // Before the shooter's range (coordinator 2026-11-14): within 16 m, or hit.
     if (!hurt && nearest > 16) return false
+    // Live 22:22: five skeletons at 1-2 m while the bot (diamond sword) kept trying
+    // to walk away in water. Within 4 m an armed bot leaves it to combat.
+    if (nearest < 4 && (working().inventory?.items ?? []).some(i => /_sword$|_axe$/.test(i.name ?? ''))) return false
     const low = (working().health ?? 20) < 10
     if (hurt) for (const a of sh.filter(o => Math.hypot(o.position.x - feet.x, o.position.z - feet.z) <= 24)) travelAddDangerZone(a.position, String(a.entityType ?? a.name ?? ''))
     // Below half health, prefer a spot no shooter can see (a solid received block
