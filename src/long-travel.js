@@ -33,7 +33,7 @@ const reasons = {
   LONG_TRAVEL_NO_PROGRESS: '同じ場所から先へ進めていません'
 }
 
-function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, inventoryReady = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
   legM = LEG_M, arriveM = 20, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 200000, pollMs = 250 } = {}) {
   if (typeof getState !== 'function' || typeof chunkTravel?.start !== 'function' || typeof chunkTravel?.status !== 'function') throw new TypeError('Long travel needs getState and chunk travel')
   let run = null, task = null
@@ -81,6 +81,9 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
       const life = state.lifecycle?.deathId ?? null
       if (lastLife !== null && life !== null && life !== lastLife) { run.deaths = (run.deaths ?? 0) + 1; say(`死亡しました（${run.deaths}回目）。リスポーンのあと続けます`); if (run.deaths > 5) throw fail('LONG_TRAVEL_DEATH_LIMIT', '死亡が5回を超えたため停止しました') }
       lastLife = life
+      // After a respawn the armour/offhand arrive a little later; the empty-hand
+      // judgement (and its exceptions) waits for the complete received inventory.
+      if (typeof inventoryReady === 'function' && inventoryReady() !== true) { run.phase = 'waiting'; await sleep(500); continue }
       run.remaining = Math.round(horizontal(feet, run.destination))
       if (run.remaining <= arriveM) { run.phase = 'arrived'; run.reason = 'LONG_TRAVEL_ARRIVED'; say(`${reasons.LONG_TRAVEL_ARRIVED}（残り ${run.remaining}m・${run.legs}区間）`); await persist(); return }
       if (run.legs >= maxLegs) throw fail('LONG_TRAVEL_LEG_LIMIT')

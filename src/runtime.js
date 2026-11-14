@@ -5516,6 +5516,15 @@ function createRuntime (host) {
         return ensureLongTravel().start({ destination: { x: d.x, y: d.y, z: d.z }, resume })
       },
       travelStatus: () => longTravel?.status() ?? { busy: false, phase: 'idle' },
+      // Read-only: the coarse wide-area route over the received terrain.
+      coarseRoutePreview: (input = {}) => {
+        const d = input.destination, st = working()
+        if (!d || ![d.x, d.z].every(Number.isFinite) || !st.position) throw new Error('目的地 {x, z} を指定してください。')
+        const started = Date.now()
+        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, goal: d, maxNodes: Math.min(120000, input.maxNodes ?? 60000) })
+        const step = Math.max(1, Math.floor(r.path.length / 20))
+        return { ready: r.ready, reached: r.reached, remaining: r.remaining, expanded: r.expanded, ms: Date.now() - started, length: r.path.length, sample: r.path.filter((_, i) => i % step === 0 || i === r.path.length - 1), frontier: r.frontier.slice(0, 8) }
+      },
       // Preparation for a long trip from empty hands: about 10 logs by the
       // existing tree work (logs only), then planks/table/tools by the existing
       // crafting. The allowance expires after 30 minutes.
@@ -7524,6 +7533,7 @@ function createRuntime (host) {
       // Only a read request; the chunk travel itself uses received terrain only.
       requestTerrain: async (area, { signal } = {}) => { const st = quarryState(); const y = Math.floor((st.position?.y ?? 65) - 1.62); return requestQuarryTerrain({ config: { target: { chunks: [{ x: area.x1, z: area.z1 }] } }, yTop: Math.min(300, y + 12), yBottom: Math.max(-60, y - 12) }, { signal }) },
       terrainRevision: () => host.world.revision?.() ?? null,
+      inventoryReady: () => { try { return inventoryStore.missing().length === 0 } catch { return false } },
       // Point legs: a walkable received point toward the destination (distance,
       // angle and height samples), previewed by the ordinary movement planner.
       findPoint: async (feet, destination, { signal } = {}) => {
@@ -7532,6 +7542,19 @@ function createRuntime (host) {
         const shooters = fleeing ? allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && require('./learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).map(a => a.position) : []
         const here = Math.hypot(destination.x - feet.x, destination.z - feet.z)
         const heading = Math.atan2(destination.z - feet.z, destination.x - feet.x)
+        // Follow the coarse wide-area route first (2026-11-14): a point some
+        // nodes ahead on it that the ordinary local planner can walk to.
+        try {
+          const route = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000 })
+          if (route.ready) for (const ahead of [12, 9, 6, 4]) {
+            const p = route.path[Math.min(ahead, route.path.length - 1)]
+            if (!p || Math.hypot(p.x - feet.x, p.z - feet.z) < 2) continue
+            if (fleeing && shooters.some(q => Math.hypot(q.x - p.x, q.z - p.z) < Math.min(6, Math.hypot(q.x - feet.x, q.z - feet.z)))) continue
+            let preview = null
+            try { motionOrigin = working(); preview = movement?.preview({ x: p.x, y: p.y, z: p.z }, opts) } catch { preview = null }
+            if (preview?.ready === true) return { x: p.x, y: p.y, z: p.z }
+          }
+        } catch {}
         for (const d of [14, 10, 6]) for (const deg of [0, 25, -25, 50, -50, 75, -75, 100, -100]) {
           if (signal?.aborted) return null
           const ang = heading + deg * Math.PI / 180
