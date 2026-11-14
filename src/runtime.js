@@ -463,6 +463,8 @@ function createRuntime (host) {
     const state = host.getState()
     state.totemGuard = offhandTotem()
     state.emptyHandedPrep = emptyHandedPrep()
+    // Raw chicken below hunger 18 when nothing else edible is held (coordinator 2026-11-14).
+    try { const hv = host.shared.vitals?.hunger, hu = Number.isFinite(hv) ? hv : Number.isFinite(hv?.value) ? hv.value : null; state.rawChickenAllowed = hu !== null && hu < 18 && !(state.inventory?.items ?? []).some(i => i.count > 0 && /^minecraft:(?:cooked_[a-z_]+|bread|apple|carrot|potato|baked_potato|beetroot|melon_slice|sweet_berries|glow_berries|dried_kelp|cookie|pumpkin_pie|golden_carrot|golden_apple)$/.test(i.name ?? '')) } catch { state.rawChickenAllowed = false }
     if (readDurability) {
       // Older connected hosts omit stack IDs from their public inventory.
       // Fill only missing fields from the matching received crafting inventory;
@@ -6927,7 +6929,7 @@ function createRuntime (host) {
   // Never throws out of the timer: a fault only logs (a timer error ends the process).
   idleEat.timer = setInterval(() => { idleEatTick().catch(error => { idleEat.busy = false; try { host.log(`待機中の食事の確認に失敗: ${String(error?.message ?? error).slice(0, 120)}`) } catch {} }) }, 5000)
   idleEat.timer.unref?.()
-  function quarryCanSelectTarget (target, state, info = {}) { if (!require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
+  function quarryCanSelectTarget (target, state, info = {}) { if (!require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; if (longTravel?.status?.().busy && /witch/.test(String(target?.entityType ?? target?.name ?? ''))) return { allowed: false, reason: 'TRAVEL_AVOID_WITCH' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
   function quarryCanContinue (target, state, info = {}) { if (!require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canContinue(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true, retreating: info.retreating === true || quarryRetreatDepth > 0 }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
   function quarryState () {
     const state = lightweightUserState()
@@ -7918,7 +7920,44 @@ function createRuntime (host) {
     // within 24 m by the food step of the preparation gatherer (no wood).
     const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : null
     if (hunger !== null && hunger < 18) { try { await operations.quarry.prepGather({ logs: 0, maxMs: 90000 }) } catch {} }
+    // The boat was lost (coordinator 2026-11-14): within the preparation
+    // allowance, with trees near, gather a few logs and craft a boat again.
+    try { await travelMakeBoat(signal) } catch (error) { host.log(`長距離移動: ボートを作れませんでした: ${String(error.message ?? error).slice(0, 100)}`) }
     return { hold: false }
+  }
+  async function travelMakeBoat (signal) {
+    const items = () => working().inventory?.items ?? []
+    if (items().some(i => /_boat$/.test(i.name ?? '') && i.count > 0)) return { ok: true, have: true }
+    if (!longTravelLogAllowance()) return { ok: false, reason: 'NO_ALLOWANCE' }
+    const now = Date.now(), memo = host.shared.travelBoatMemo ??= { lastTry: 0 }
+    if (now - memo.lastTry < 300000) return { ok: false, reason: 'RECENT' }
+    memo.lastTry = now
+    const LOGS = /^minecraft:([a-z_]+)_log$/
+    const logs = () => items().filter(i => LOGS.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
+    if (logs() < 3) { await operations.quarry.prepGather({ logs: 3, maxMs: 120000 }) }
+    if (signal?.aborted || logs() < 3) return { ok: false, reason: 'NO_LOGS' }
+    const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
+    const wood = LOGS.exec(log.name)[1]
+    host.log(`長距離移動: ボートを作ります（${wood}）`)
+    await crafting.openInventory()
+    try { await crafting.craft(`minecraft:${wood}_planks`, { times: 3 }); await crafting.craft('minecraft:crafting_table', { times: 1 }) } finally { try { crafting.closeContainer() } catch {} }
+    const table = items().find(i => i.name === 'minecraft:crafting_table' && i.slot <= 8) ?? items().find(i => i.name === 'minecraft:crafting_table')
+    if (!table) return { ok: false, reason: 'NO_TABLE' }
+    if (table.slot > 8) await operations.inventory.equip(table.slot)
+    const t = items().find(i => i.name === 'minecraft:crafting_table' && i.slot <= 8)
+    const p = working().position, fx = Math.floor(p.x), fy = Math.round(p.y - 1.62), fz = Math.floor(p.z)
+    let placed = null
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+      const pos = { x: fx + dx, y: fy, z: fz + dz }, at = host.world.getBlock(pos.x, pos.y, pos.z), below = host.world.getBlock(pos.x, pos.y - 1, pos.z)
+      if (at?.known !== true || !/^minecraft:air$/.test(at.name ?? '') || below?.known !== true || below.boundingBox !== 'block') continue
+      try { await interactions.placeCraftingTable({ position: pos, slot: t.slot }); placed = pos; break } catch {}
+    }
+    if (!placed) return { ok: false, reason: 'TABLE_NOT_PLACED' }
+    await interactions.openCraftingTable(placed)
+    try { await crafting.craft(`minecraft:${wood}_boat`, { times: 1 }) } finally { try { crafting.closeContainer() } catch {} }
+    const ok = items().some(i => /_boat$/.test(i.name ?? '') && i.count > 0)
+    host.log(`長距離移動: ボート${ok ? 'を作りました（受信した持ち物で確認）' : 'を確認できません'}`)
+    return { ok }
   }
   // Resume a trip that the previous code was running when it was reloaded
   // (bounded: within ten minutes, once, after the bot is spawned and idle).
@@ -7959,7 +7998,8 @@ function createRuntime (host) {
       beforeLeg: async ({ signal } = {}) => travelBeforeLeg(signal),
       findPoint: async (feet, destination, { signal } = {}) => {
         const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
-        const st0 = working(), fleeing = st0.emptyHandedPrep === true
+        // Shooters (witches included) are avoided on every long trip (coordinator 2026-11-14).
+        const st0 = working(), fleeing = true
         const shooters = fleeing ? allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && require('./learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).map(a => a.position) : []
         const here = Math.hypot(destination.x - feet.x, destination.z - feet.z)
         const heading = Math.atan2(destination.z - feet.z, destination.x - feet.x)

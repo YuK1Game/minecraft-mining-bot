@@ -92,9 +92,31 @@ test('a trip continues through five deaths and stops at the sixth', async () => 
   assert.ok(logs.some(m => /死亡しました（5回目）/.test(m)))
 })
 
-test('sprinting and the shooter-avoiding point choice apply only while empty-handed', () => {
+// Sprinting stays empty-handed only; shooters (witches included) are avoided on
+// every long trip and a witch is never chosen as a target while travelling
+// (coordinator 2026-11-14, after a witch killed the bot at 15:23).
+test('sprinting applies only while empty-handed; shooters are avoided on every trip', () => {
   const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
   assert.match(source, /const sprint = working\(\)\.emptyHandedPrep === true && Number\.isFinite\(hunger\) && hunger > 6/)
-  assert.match(source, /fleeing = st0\.emptyHandedPrep === true/)
+  assert.match(source, /const st0 = working\(\), fleeing = true/)
   assert.match(source, /if \(fleeing && shooters\.some\(/)
+  assert.match(source, /longTravel\?\.status\?\.\(\)\.busy && \/witch\/\.test\(/)
+})
+
+test('raw chicken is food below hunger 18 when nothing else edible is held', () => {
+  const { isSupportedFood } = require('../src/food')
+  const st = { phase: 'spawned', health: 20, threatPolicy: 'balanced_mining' }
+  assert.equal(isSupportedFood('minecraft:chicken', st), false)
+  assert.equal(isSupportedFood('minecraft:chicken', { ...st, rawChickenAllowed: true }), true)
+})
+
+test('chunk fallbacks are capped per pass', async () => {
+  const { createLongTravel } = require('../src/long-travel')
+  const state = { phase: 'spawned', health: 20, position: { x: 0, y: 65.62, z: 0 } }
+  let starts = 0
+  const lt = createLongTravel({ getState: () => state, chunkTravel: { start: async () => { starts++ }, status: () => ({ busy: false, phase: 'failed', error: { code: 'CHUNK_TRAVEL_NO_ROUTE' } }) }, findPoint: async () => null, walkTo: async () => ({ ok: false }), log: () => {}, save: async () => {}, pollMs: 2, maxFailuresInRow: 1 })
+  lt.start({ destination: { x: 500, z: 0 } })
+  const until = Date.now() + 3000
+  while (Date.now() < until && lt.status().busy) await new Promise(r => setTimeout(r, 5))
+  assert.equal(starts, 3, 'three chunk tries, then the pass ends')
 })

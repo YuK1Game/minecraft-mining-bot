@@ -34,7 +34,7 @@ const reasons = {
 }
 
 function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, inventoryReady = null, beforeLeg = null, record = null, onSurface = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
-  legM = LEG_M, arriveM = 20, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 25000, pollMs = 250 } = {}) {
+  legM = LEG_M, arriveM = 20, chunkTries = 3, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 25000, pollMs = 250 } = {}) {
   if (typeof getState !== 'function' || typeof chunkTravel?.start !== 'function' || typeof chunkTravel?.status !== 'function') throw new TypeError('Long travel needs getState and chunk travel')
   let run = null, task = null
   const status = () => run ? copy({ timing: run.timing ?? {}, busy: !!task, phase: run.phase, destination: run.destination, remaining: run.remaining, legs: run.legs, failures: run.failures, reason: run.reason, message: run.message, startedAt: run.startedAt, lastLegAt: run.lastLegAt })
@@ -129,11 +129,16 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
           else { last = result ?? { ok: false, code: 'POINT_WALK_FAILED' }; say(`中継点 (${point.x},${point.y},${point.z}) へ歩けませんでした（${last.code}${last.message ? ': ' + last.message : ''}）`) }
         }
       }
+      // Coordinator 2026-11-14: chunk fallbacks took 21.7 of 60 minutes; at most
+      // chunkTries of them per pass, then back to the relay-point search.
+      let chunkTried = 0
       if (!moved && last?.code !== 'POINT_REPLAN') for (const [angle, length] of tries) {
+        if (chunkTried >= chunkTries) break
         const area = chunkAhead(feet, run.destination, angle, length)
         const key = `${area.x1},${area.z1}`
         if (tried.has(key) || area.x1 === Math.floor(feet.x / 16) && area.z1 === Math.floor(feet.z / 16) && run.remaining > length) continue
         tried.add(key)
+        chunkTried++
         const tl = now()
         const result = await leg(area, signal)
         add(result.ok ? 'chunk' : 'chunk_fail', now() - tl)
