@@ -96,7 +96,7 @@ test('a trip continues through five deaths and stops at the sixth', async () => 
 // every long trip and a witch is never chosen as a target while travelling
 // (coordinator 2026-11-14, after a witch killed the bot at 15:23).
 test('sprinting applies only while empty-handed; shooters are avoided on every trip', () => {
-  const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const source = require('./helpers/runtime-source').runtimeSource()
   assert.match(source, /const sprint = working\(\)\.emptyHandedPrep === true && Number\.isFinite\(hunger\) && hunger > 6/)
   assert.match(source, /const st0 = working\(\), fleeing = true/)
   assert.match(source, /if \(fleeing && shooters\.some\(/)

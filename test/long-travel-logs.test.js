@@ -35,7 +35,7 @@ test('leaves stay refused even with the allowance', t => {
 })
 
 test('the allowance is scoped: purpose, 30-minute expiry, never while quarry work runs; at most 10 logs', () => {
-  const runtime = fs.readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const runtime = require('./helpers/runtime-source').runtimeSource()
   assert.match(runtime, /a\.purpose === 'long_travel_prep' && Date\.now\(\) < a\.expiresAt && !quarryJob\?\.holdsWork\(\)/)
   assert.match(runtime, /Math\.max\(1, Math\.min\(10,/)
   const runner = fs.readFileSync(require.resolve('../src/runner'), 'utf8')

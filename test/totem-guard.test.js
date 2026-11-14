@@ -60,7 +60,7 @@ test('a consumed totem empties the trusted offhand at once', () => {
   assert.ok(store.raw('offhand', 0), 'a received totem is trusted')
   store.forget('offhand', 0, 'totem_consumed')
   assert.equal(store.raw('offhand', 0), null, 'after consumption the offhand is unreceived, not a totem')
-  const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const source = require('./helpers/runtime-source').runtimeSource()
   assert.match(source, /consume_totem' \|\| packet\.event_id === 65/)
   assert.match(source, /inventoryStore\.forget\('offhand', 0, 'totem_consumed'\)/)
   assert.match(source, /totemConsumedAt\) && !\(Date\.parse\(info\?\.at/)
@@ -74,7 +74,7 @@ test('empty-handed preparation lowers the working minimum to zero; anything else
   assert.equal(resourceMinHealth({ ...alive, emptyHandedPrep: true }), 0)
   assert.equal(resourceMinHealth({ ...alive, emptyHandedPrep: false }), 6)
   assert.equal(emptyHandedPrep({ ...alive, emptyHandedPrep: true, dead: true }), false)
-  const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const source = require('./helpers/runtime-source').runtimeSource()
   assert.match(source, /if \(!longTravelLogAllowance\(\)\) return false/)
   assert.match(source, /slot\.received === true && slot\.raw && \(slot\.raw\.network_id === 0 \|\| slot\.raw\.count === 0 \|\| container === 'main' && cheap\(/)
 })
@@ -83,7 +83,7 @@ test('empty-handed preparation lowers the working minimum to zero; anything else
 // in hand. They all key on state.emptyHandedPrep, which the runtime derives only
 // from every received slot being empty while the preparation allowance holds.
 test('every empty-handed exception keys on the derived flag, and one item ends it', () => {
-  const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const source = require('./helpers/runtime-source').runtimeSource()
   const derive = source.slice(source.indexOf('  function emptyHandedPrep () {'), source.indexOf('  function longTravelLogAllowance () {'))
   assert.match(derive, /for \(const \[container, size\] of \[\['main', 36\], \['armor', 4\], \['offhand', 1\]\]\)/)
   assert.match(derive, /slot\.received === true && slot\.raw && \(slot\.raw\.network_id === 0 \|\| slot\.raw\.count === 0 \|\| container === 'main' && cheap\(/)
@@ -103,7 +103,7 @@ test('empty-handed preparation avoids shooters and engages only a non-shooter wi
   assert.equal(emptyHandedTargetAllowed(bot, at('zombie', 6)), false)
   // A weapon in hand, or the allowance gone, clears the flag: normal combat.
   assert.equal(emptyHandedTargetAllowed({ ...bot, emptyHandedPrep: false }, at('skeleton', 12)), true)
-  const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const source = require('./helpers/runtime-source').runtimeSource()
   // Drowned on land are the one exception (coordinator 2026-11-14).
   assert.match(source, /function quarryCanSelectTarget \(target, state, info = \{\}\) \{ if \(!drownedOnLand\(target, state\) && !require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
   assert.match(source, /function quarryCanContinue \(target, state, info = \{\}\) \{ if \(!require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)

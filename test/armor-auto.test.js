@@ -50,7 +50,7 @@ test('an empty received offhand takes a totem, else a shield; a held offhand or 
 })
 
 test('the runtime equips in every state at safe points, between long-trip legs, and never in the final chest store', () => {
-  const src = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const src = require('./helpers/runtime-source').runtimeSource()
   const gate = src.slice(src.indexOf('  function armorAutoAllowed () {'), src.indexOf('  function maybeEquipArmor () {'))
   assert.match(gate, /if \(longTravel\?\.status\?\.\(\)\.busy\) return false/)
   assert.match(gate, /if \(!quarryJob\?\.holdsWork\(\)\) return true/)

@@ -42,7 +42,7 @@ test('the night pit mines the block under the feet as travel descent', t => {
 })
 
 test('the runtime grants travel descent briefly, checks the fall on received ground, and resumes a trip after a reload', () => {
-  const src = fs.readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const src = require('./helpers/runtime-source').runtimeSource()
   assert.match(src, /travelDownAllowance: \(\) => Date\.now\(\) < \(host\.shared\.travelDownUntil \?\? 0\)/)
   const esc = src.slice(src.indexOf('  async function travelLeafEscape (signal) {'), src.indexOf('  async function travelBeforeLeg (signal) {'))
   assert.match(esc, /if \(b\?\.known !== true\) return null/, 'unreceived cells below refuse the spot')
@@ -66,7 +66,7 @@ test('the runtime grants travel descent briefly, checks the fall on received gro
 // Coordinator 2026-11-14: drowned are fought on land as melee enemies; water is
 // avoided by the route; a kit is gathered before the trip.
 test('drowned are fought on land, never from the water; the route prices water higher; the kit is made from received items', () => {
-  const src = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const src = require('./helpers/runtime-source').runtimeSource()
   assert.match(src, /function drownedOnLand \(target, state\) \{ return \/drowned\/\.test\(String\(target\?\.entityType \?\? target\?\.name \?\? ''\)\) && state\?\.isInWater !== true/)
   assert.match(src, /if \(!drownedOnLand\(target, state\) && !require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
   const route = require('node:fs').readFileSync(require.resolve('../src/coarse-route'), 'utf8')
@@ -82,7 +82,7 @@ test('drowned are fought on land, never from the water; the route prices water h
 // hostile was listed; they now use the chunk-move admission rule (attack access
 // along the step), as chunk travel already does.
 test('long-trip walks use the combat-aware water frame guard', () => {
-  const src = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const src = require('./helpers/runtime-source').runtimeSource()
   assert.match(src, /preparedPortableOptions = normalWaterMovementOptions\(portableMovementOptions\(target, options\), \{ combatAware: !!longTravel\?\.status\?\.\(\)\.busy \}\)/)
   const guard = src.slice(src.indexOf('  function normalWaterMovementOptions ('), src.indexOf('  function startMotion ('))
   assert.match(guard, /else if \(combatAware\) \{\s+if \(!chunkTravelThreatsClear\(/)
@@ -92,7 +92,7 @@ test('long-trip walks use the combat-aware water frame guard', () => {
 // trip; the box is broken only under this placement's own record, combat waits
 // from the break until it is back, and it goes back into the home chest.
 test('the supply-box step keeps ownership, the combat hold and the received checks', () => {
-  const src = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const src = require('./helpers/runtime-source').runtimeSource()
   const step = src.slice(src.indexOf('  async function travelSupplyBoxTake ('), src.indexOf('  async function travelMakeBoat (signal) {'))
   assert.match(step, /if \(armorThreatNear\(\)\) throw/)
   assert.match(step, /accessPreparation: 'owned_shulker', expectedName: boxName, ownershipKey: host\.shared\.travelShulker\.key/)
@@ -107,7 +107,7 @@ test('the supply-box step keeps ownership, the combat hold and the received chec
 // Live 2026-11-14 22:24: the fallback chunk moves and relay points ignored the
 // danger zones and walked the bot into the pillager zone; pillager zones are 120 m.
 test('danger zones also bind the fallback chunk moves and relay points; pillager zones are 120 m', () => {
-  const src = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const src = require('./helpers/runtime-source').runtimeSource()
   assert.match(src, /if \(inDangerZone\(cx, cz\) && !\(p && inDangerZone\(p\.x, p\.z\)\)\) throw/)
   assert.match(src, /if \(inDangerZone\(x, z\) && !inDangerZone\(feet\.x, feet\.z\)\) continue/)
   assert.match(src, /r: \/pillager\|vindicator\|evoker\/\.test\(kind\) \? 120 : 48/)

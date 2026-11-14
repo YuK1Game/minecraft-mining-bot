@@ -71,7 +71,7 @@ test('a hold from the between-legs hook pauses the trip without a leg or a failu
 })
 
 test('the runtime wires the night stop and food between legs to the received clock only', () => {
-  const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const source = require('./helpers/runtime-source').runtimeSource()
   assert.match(source, /beforeLeg: async \(\{ signal \} = \{\}\) => travelBeforeLeg\(signal\)/)
   const hook = source.slice(source.indexOf('  async function travelBeforeLeg (signal) {'), source.indexOf('  function ensureLongTravel () {'))
   assert.match(hook, /NS\.dayPhase\(travelClock\(\)\)/)
