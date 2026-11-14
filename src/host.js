@@ -130,7 +130,7 @@ function createOnlineEmergencyHandler ({ getState, getShared, getCurrent, getLif
 // previously stopped. All callers share the normal lifecycle handshake; no
 // health, destination or successful recovery is synthesized here.
 function createDeathRespawnReflex ({ getState, getShared, getLifecycle, getCurrent, isStopping = () => false, schedule = setImmediate, report = () => {} }) {
-  const inFlight = new Map()
+  const inFlight = new Map(), retries = new Map()
   let automaticKey = null
   const scope = state => JSON.stringify([state.connectionId ?? null, state.startedAt ?? null, String(state.runtimeEntityId ?? '')])
   function request (options = {}) {
@@ -170,6 +170,11 @@ function createDeathRespawnReflex ({ getState, getShared, getLifecycle, getCurre
       }, error => {
         Object.assign(receipt, { phase: 'failed', reason: errorText(error), serverConfirmed: false })
         report(receipt)
+        // Live 2026-11-14 10:21: one respawn timed out and the bot stayed dead.
+        // The same death is tried again (3 more times, 5 s apart).
+        const count = (retries.get(key) ?? 0) + 1
+        retries.set(key, count)
+        if (count <= 3) setTimeout(() => { if (automaticKey === key && !isStopping()) { automaticKey = null; observe() } }, 5000).unref?.()
       })
     })
     return true

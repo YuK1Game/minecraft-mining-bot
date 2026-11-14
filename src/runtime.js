@@ -5415,7 +5415,11 @@ function createRuntime (host) {
       const current=lightweightUserState();current.lifecycle={...current.lifecycle,deathId:movementKnownLife()};const p=frame?.packetPosition,n=frame?.predictedState
       if(disposed||disposing||movement!==controller||inputHistoryGeneration!==generation||portableMovementSerial!==serial||userBehaviorForceRevision!==force||controller.snapshot().phase!=='moving'||JSON.stringify(continuationScope(current))!==JSON.stringify(scope)||current.health<initial.health||current.entityStats?.unknownPositions!==0||!p||!n?.position||!['x','y','z'].every(k=>Number.isFinite(p[k])&&Number.isFinite(n.position[k]))||Math.hypot(p.x-n.position.x,p.y-n.position.y-1.62,p.z-n.position.z)>1e-4||n.isInLava)return false
       const risk=evaluateThreats(current,current.entities,{observationRadius:32})
-      if (combatAware) {
+      // Empty-handed long-trip preparation (2026-11-14 decision): nothing can be
+      // lost, so hostiles near the water do not hold the bot in place (live
+      // 10:19: a drowned kept every swim out of the spawn hollow refused).
+      if (current.emptyHandedPrep === true) {}
+      else if (combatAware) {
         if (!chunkTravelThreatsClear({ state: current, previous, next: p, risk, attackExposure: combatAttackExposure })) return false
       } else {
         if(risk.requiresObservation||risk.threats.length)return false
@@ -5519,7 +5523,8 @@ function createRuntime (host) {
         if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
         const logCount = Math.max(1, Math.min(10, Number.isInteger(input.logCount) ? input.logCount : 10))
         host.shared.woodHarvestAllowance = { purpose: 'long_travel_prep', logCount, startedAt: Date.now(), expiresAt: Date.now() + 30 * 60000 }
-        host.log(`長距離移動の準備: 原木を ${logCount} 本まで集めます（30分以内・原木のみ）`)
+        host.log(`長距離移動の準備: 原木を ${logCount} 本まで集めます（30分以内・原木のみ）${input.gather === false ? '（許可のみ。採取は後で）' : ''}`)
+        if (input.gather === false) return { allowance: structuredClone(host.shared.woodHarvestAllowance) }
         return autonomy.start({ objective: 'long_travel_prep', logCount })
       },
       endLongTravelPrep: () => { host.shared.woodHarvestAllowance = null; return autonomy.stop('長距離移動の準備を終了しました。') },
