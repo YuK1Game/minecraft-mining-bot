@@ -5796,7 +5796,20 @@ function createRuntime (host) {
           if (missing().includes('food')) await operations.quarry.prepGather({ logs: 0, food: foodWanted, maxMs: 180000 })
           if (missing().includes('logs')) await operations.quarry.prepGather({ logs: Math.min(10, count(LOGS0) + Math.ceil((planksNeeded() - woodHeld()) / 4)), maxMs: 180000 })
           if (!missing().length || round === 6) break
-          const ang = round * Math.PI / 3, dest = { x: Math.round(origin.x + Math.cos(ang) * 48), z: Math.round(origin.z + Math.sin(ang) * 48) }
+          const ang = round * Math.PI / 3
+          let dest = { x: Math.round(origin.x + Math.cos(ang) * 48), z: Math.round(origin.z + Math.sin(ang) * 48) }
+          // Logs missing (live 19:46: six rounds found none while trees were
+          // known to the west): head for the nearest received log within 64 m.
+          if (missing().includes('logs')) {
+            const here = working().position, hx = Math.floor(here.x), hy = Math.floor(here.y - 1.62), hz = Math.floor(here.z)
+            let best = null
+            for (let dx = -64; dx <= 64; dx += 2) for (let dz = -64; dz <= 64; dz += 2) {
+              const d = Math.hypot(dx, dz); if (d < 20 || best && d >= best.d) continue
+              for (let dy = -8; dy <= 16; dy++) { const b = host.world.getBlock(hx + dx, hy + dy, hz + dz); if (b?.known === true && LOGS0.test(b.name ?? '')) { best = { x: hx + dx, z: hz + dz, d }; break } }
+              if ((dz & 15) === 0) await new Promise(resolve => setImmediate(resolve))
+            }
+            if (best) dest = { x: best.x, z: best.z }
+          }
           say(`まだ足りません（${missing().join('・')}）。(${dest.x}, ${dest.z}) へ探しに行きます`)
           try { await operations.quarry.travelTo({ destination: dest }) } catch {}
           const until = Date.now() + 180000
