@@ -172,7 +172,7 @@ function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 
         }
         const covered = surfaceOnly && !sky(x, s.y, z)
         if (covered && dy < 0) continue
-        const g = n.g + (dx && dz ? 1.414 : 1) * (s.water ? 3 : 1) * (covered ? 5 : 1) + (dy > 0 ? 0.5 : 0)
+        const g = n.g + (dx && dz ? 1.414 : 1) * (s.water ? 10 : 1) /* coordinator 2026-11-14: keep out of water where possible */ * (covered ? 5 : 1) + (dy > 0 ? 0.5 : 0)
         const k = key(x, s.y, z)
         if (g >= (best.get(k) ?? Infinity)) continue
         best.set(k, g); parent.set(k, key(n.x, n.y, n.z))
