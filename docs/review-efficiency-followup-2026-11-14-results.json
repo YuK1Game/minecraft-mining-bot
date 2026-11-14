@@ -1,0 +1,982 @@
+{
+  "schemaVersion": 1,
+  "recordedAtJst": "2026-11-14T10:04:56.258605+09:00",
+  "repository": "YuK1Game/minecraft-mining-bot",
+  "pullRequest": 76,
+  "sourceCommit": "e480146b92d018ee593617e3a7d3eaea1f1c3172",
+  "testedLocalCommit": "523d64747fe71cd48e59e240a0971c2f85af65de",
+  "sourceTree": "e6660a5719e8e1b10d0c474d47c8139871363da1",
+  "base": "a03f328778f2201cd19dfcfd8092454144605626",
+  "local": {
+    "node": "v24.22.1",
+    "gateStartedAt": "2026-11-14T09:39:04.111+09:00",
+    "gateEndedAt": "2026-11-14T10:01:19.615+09:00",
+    "syntax": {
+      "files": 702,
+      "dashboardScripts": 1,
+      "passed": true
+    },
+    "safety": {
+      "tests": 1423,
+      "pass": 1373,
+      "fail": 49,
+      "cancelled": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    "safetyFailuresNotPresentInFinalBaseline": [],
+    "fullComparison": {
+      "base": "a03f328778f2201cd19dfcfd8092454144605626",
+      "head": "523d64747fe71cd48e59e240a0971c2f85af65de",
+      "node": "v24.22.1",
+      "baseline": {
+        "tests": 5346,
+        "pass": 4832,
+        "fail": 509,
+        "cancelled": 3,
+        "skipped": 2,
+        "todo": 0
+      },
+      "current": {
+        "tests": 5404,
+        "pass": 4986,
+        "fail": 413,
+        "cancelled": 3,
+        "skipped": 2,
+        "todo": 0
+      },
+      "introduced": [],
+      "removedFailureCount": 96
+    },
+    "sourceBranchRestored": true,
+    "safetyFailureSignatures": [
+      {
+        "name": "a verified placement is published without storage credit, work restart or mutation of the blocked record",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"a verified placement is published without storage credit, work restart or mutation of the blocked record\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "manual user pause",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"manual user pause\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "not fully paused",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"not fully paused\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "no pending cargo",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"no pending cargo\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "capacity-batch operation",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"capacity-batch operation\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "supply operation",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"supply operation\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "a different stop reason",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"a different stop reason\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "a different paused operation",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"a different paused operation\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "a replaced checkpoint",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"a replaced checkpoint\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "no matching blocked record",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"no matching blocked record\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "an interrupted rather than blocked record",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"an interrupted rather than blocked record\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "a different recorded checkpoint",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"a different recorded checkpoint\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "manual pause, replaced checkpoints and unrelated error records never reach the adapter",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "subtestsFailed",
+        "code": "ERR_TEST_FAILURE",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"manual pause, replaced checkpoints and unrelated error records never reach the adapter\",\"subtestsFailed\",\"ERR_TEST_FAILURE\"]"
+      },
+      {
+        "name": "connection",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"connection\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "life",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"life\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "dimension",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"dimension\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "combat",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"combat\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "current life, connection and combat gates reject read-only repair without changing ownership records",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "subtestsFailed",
+        "code": "ERR_TEST_FAILURE",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"current life, connection and combat gates reject read-only repair without changing ownership records\",\"subtestsFailed\",\"ERR_TEST_FAILURE\"]"
+      },
+      {
+        "name": "plan",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"plan\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "deposits",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"deposits\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "source",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"source\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "positions",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"positions\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "stand",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"stand\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "scope",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"scope\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "operation",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"operation\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "identity",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"identity\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "recovered",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"recovered\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "extra_asset",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"extra_asset\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "wrong_position",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"wrong_position\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "wrong_block_name",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"wrong_block_name\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "negative_runtime",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"negative_runtime\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "oversized_runtime",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"oversized_runtime\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "sent_only",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"sent_only\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "wrong_reconciliation",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"wrong_reconciliation\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "fabricated_acknowledgement",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"fabricated_acknowledgement\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "staged proposals cannot change cargo, plans or evidence scope, or invent transfers or invalid blocks",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "subtestsFailed",
+        "code": "ERR_TEST_FAILURE",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"staged proposals cannot change cargo, plans or evidence scope, or invent transfers or invalid blocks\",\"subtestsFailed\",\"ERR_TEST_FAILURE\"]"
+      },
+      {
+        "name": "adapter rejects after its proposal",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"adapter rejects after its proposal\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "no checkpoint proposal",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"no checkpoint proposal\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "returned proof differs",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"returned proof differs\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "returned checkpoint differs",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"returned checkpoint differs\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "claims an acknowledged server response",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"claims an acknowledged server response\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "a late refusal, altered returned proof or missing checkpoint callback cannot publish a proposal",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "subtestsFailed",
+        "code": "ERR_TEST_FAILURE",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"a late refusal, altered returned proof or missing checkpoint callback cannot publish a proposal\",\"subtestsFailed\",\"ERR_TEST_FAILURE\"]"
+      },
+      {
+        "name": "life",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"life\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "combat",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"combat\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "the reconciliation lock blocks concurrent resume and rejects life or combat changes during the await",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "subtestsFailed",
+        "code": "ERR_TEST_FAILURE",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"the reconciliation lock blocks concurrent resume and rejects life or combat changes during the await\",\"subtestsFailed\",\"ERR_TEST_FAILURE\"]"
+      },
+      {
+        "name": "manual pause during the read-only await wins without publishing the old result",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"manual pause during the read-only await wins without publishing the old result\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "a late checkpoint callback cannot mutate a reloaded job even with the same operation ID",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"a late checkpoint callback cannot mutate a reloaded job even with the same operation ID\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "save failure restores the original checkpoint, pause result and saved time and remains retryable",
+        "file": "test/quarry-observed-placement-job.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/quarry-observed-placement-job.test.js\",\"save failure restores the original checkpoint, pause result and saved time and remains retryable\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      },
+      {
+        "name": "review: lower search never skips oak_leaves to select a cave beneath",
+        "file": "test/review-exit-landing.test.js",
+        "failureType": "testCodeFailure",
+        "code": "ERR_ASSERTION",
+        "key": "[\"test/review-exit-landing.test.js\",\"review: lower search never skips oak_leaves to select a cave beneath\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+      }
+    ],
+    "rawFiles": {
+      "test-results/efficiency-followup-final/gates.json": {
+        "bytes": 414377,
+        "sha256": "05627ae9ef2e23ffa23989111fd5846caa732956bbd01c3a8ef37b380ca90310"
+      },
+      "test-results/efficiency-followup-final/syntax.tap": {
+        "bytes": 236,
+        "sha256": "f05623cf2e3b74299753e94f6c802f0d0d9b4574eece71bec23e026e166bf04a"
+      },
+      "test-results/efficiency-followup-final/safety.tap": {
+        "bytes": 391540,
+        "sha256": "56853cf818adf7a060b7b3c1dfbc0110213db5903d02ad90ac42cc0bafcc035c"
+      },
+      "test-results/efficiency-followup-final/current.tap": {
+        "bytes": 1713045,
+        "sha256": "7e03b521051e580231652285d41e82bd1aa9faca1aabb4a742a12270558f304b"
+      },
+      "test-results/efficiency-followup-final/baseline.tap": {
+        "bytes": 1797132,
+        "sha256": "18f6243ca303e0ccd279beab8a8825ff3c936968556d13daeee2ba9b0336bd53"
+      },
+      "test-results/efficiency-followup-final/comparison.json": {
+        "bytes": 435,
+        "sha256": "e70a809b40f5bc73f19739206f7a4e18977774b67d710192e98725cd85165050"
+      },
+      "test-results/efficiency-followup/comparison.json": {
+        "bytes": 4847,
+        "sha256": "40eb6150bdff0f0b205c68075c5f478e5a04ddf100f6a1b54bdd844eca24c431"
+      },
+      "test-results/efficiency-followup/current.tap": {
+        "bytes": 1718125,
+        "sha256": "75232598397eb1c6beddd65f5ab2e6116ff934a92646281ed361ab7cd211414b"
+      },
+      "test-results/efficiency-followup/baseline.tap": {
+        "bytes": 1795353,
+        "sha256": "a3969561179954bda3fe114a25485770350e261943ea591e35380a64b12ca27d"
+      }
+    }
+  },
+  "firstCompleteComparison": {
+    "sourceCommit": "9cc8d03f769baf5c90523345e17d2262b2575f26",
+    "testedLocalCommit": "b558cc14516337777fd5d2edd03acbc50c1a4e1e",
+    "comparison": {
+      "base": "a03f328778f2201cd19dfcfd8092454144605626",
+      "head": "b558cc14516337777fd5d2edd03acbc50c1a4e1e",
+      "node": "v24.22.1",
+      "baseline": {
+        "tests": 5346,
+        "pass": 4832,
+        "fail": 509,
+        "cancelled": 3,
+        "skipped": 2,
+        "todo": 0
+      },
+      "current": {
+        "tests": 5370,
+        "pass": 4934,
+        "fail": 430,
+        "cancelled": 4,
+        "skipped": 2,
+        "todo": 0
+      },
+      "introduced": [
+        {
+          "name": "a closer water pursuer permits handoff with current eligibility and bounded cumulative clearance loss",
+          "file": "test/idle-safety.test.js",
+          "failureType": "testCodeFailure",
+          "code": "ERR_ASSERTION",
+          "key": "[\"test/idle-safety.test.js\",\"a closer water pursuer permits handoff with current eligibility and bounded cumulative clearance loss\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+        },
+        {
+          "name": "full chest: the bot adds a chest beside it (from carried wood) and keeps depositing",
+          "file": "test/quarry-job.test.js",
+          "failureType": "testTimeoutFailure",
+          "code": "ERR_TEST_FAILURE",
+          "key": "[\"test/quarry-job.test.js\",\"full chest: the bot adds a chest beside it (from carried wood) and keeps depositing\",\"testTimeoutFailure\",\"ERR_TEST_FAILURE\"]"
+        },
+        {
+          "name": "urgent real-map pursuit selects stronger native jump before a tiny ordinary partial with continuous real input",
+          "file": "test/runtime-close-creeper-choice.test.js",
+          "failureType": "testCodeFailure",
+          "code": "ERR_ASSERTION",
+          "key": "[\"test/runtime-close-creeper-choice.test.js\",\"urgent real-map pursuit selects stronger native jump before a tiny ordinary partial with continuous real input\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+        },
+        {
+          "name": "captured Runtime promotes a bounded adjacent-cell recenter and hands it to the native Guard",
+          "file": "test/runtime-knockback-recenter.test.js",
+          "failureType": "testCodeFailure",
+          "code": "ERR_ASSERTION",
+          "key": "[\"test/runtime-knockback-recenter.test.js\",\"captured Runtime promotes a bounded adjacent-cell recenter and hands it to the native Guard\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+        },
+        {
+          "name": "Runtime attempts at most two bounded recenter choices when every movement preview is unavailable",
+          "file": "test/runtime-knockback-recenter.test.js",
+          "failureType": "testCodeFailure",
+          "code": "ERR_ASSERTION",
+          "key": "[\"test/runtime-knockback-recenter.test.js\",\"Runtime attempts at most two bounded recenter choices when every movement preview is unavailable\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+        },
+        {
+          "name": "native Guard rejects support that becomes unknown after Runtime rehearses the real recenter",
+          "file": "test/runtime-knockback-recenter.test.js",
+          "failureType": "testCodeFailure",
+          "code": "ERR_ASSERTION",
+          "key": "[\"test/runtime-knockback-recenter.test.js\",\"native Guard rejects support that becomes unknown after Runtime rehearses the real recenter\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+        },
+        {
+          "name": "captured HP9 two-skeleton partial shore restores a full dry Native landing before main origin rejection",
+          "file": "test/runtime-learning-shore.test.js",
+          "failureType": "testCodeFailure",
+          "code": "ERR_ASSERTION",
+          "key": "[\"test/runtime-learning-shore.test.js\",\"captured HP9 two-skeleton partial shore restores a full dry Native landing before main origin rejection\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+        },
+        {
+          "name": "remembered north shore changes a safe water retreat from the default east heading",
+          "file": "test/runtime-shore-ranking.test.js",
+          "failureType": "testCodeFailure",
+          "code": "ERR_ASSERTION",
+          "key": "[\"test/runtime-shore-ranking.test.js\",\"remembered north shore changes a safe water retreat from the default east heading\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+        },
+        {
+          "name": "shore ranking still preserves the full avoidance corridor of an outside hostile",
+          "file": "test/runtime-shore-ranking.test.js",
+          "failureType": "testCodeFailure",
+          "code": "ERR_ASSERTION",
+          "key": "[\"test/runtime-shore-ranking.test.js\",\"shore ranking still preserves the full avoidance corridor of an outside hostile\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+        },
+        {
+          "name": "surface corridor accepts a vertical bob while horizontal route and breathable water remain valid",
+          "file": "test/runtime-water-corridor.test.js",
+          "failureType": "testCodeFailure",
+          "code": "ERR_ASSERTION",
+          "key": "[\"test/runtime-water-corridor.test.js\",\"surface corridor accepts a vertical bob while horizontal route and breathable water remain valid\",\"testCodeFailure\",\"ERR_ASSERTION\"]"
+        }
+      ],
+      "removedFailureCount": 88
+    },
+    "outcome": "10 strict differences investigated before second source freeze"
+  },
+  "ci": {
+    "sourceCommit": "e480146b92d018ee593617e3a7d3eaea1f1c3172",
+    "node": "v24.22.2",
+    "pullRequest": {
+      "number": 76,
+      "runId": 43536477076,
+      "sourceBase": "6f06d9487927850905eb07c162d24d1d755fa96d",
+      "testedMergeCommit": "4c9d6690866fd448af3aef32ea44185982f5f392",
+      "fullJobId": 132266621607,
+      "fullResult": "pending",
+      "safety": [
+        {
+          "jobId": 132266621276,
+          "counts": {
+            "tests": 1423,
+            "pass": 1373,
+            "fail": 49,
+            "cancelled": 0,
+            "skipped": 1,
+            "todo": 0
+          },
+          "node": "v24.22.2"
+        },
+        {
+          "jobId": 132266621561,
+          "counts": {
+            "tests": 1423,
+            "pass": 1373,
+            "fail": 49,
+            "cancelled": 0,
+            "skipped": 1,
+            "todo": 0
+          },
+          "node": "v24.22.2"
+        }
+      ],
+      "fullConclusion": null,
+      "limitation": "Current-main integration comparison is still running; do not treat it as passed."
+    },
+    "push": {
+      "runId": 43535722732,
+      "fullJobId": 132264122278,
+      "expectedBase": "9cc8d03f769baf5c90523345e17d2262b2575f26",
+      "fullResult": "completed",
+      "safety": [
+        {
+          "jobId": 132264121972,
+          "counts": {
+            "tests": 1423,
+            "pass": 1373,
+            "fail": 49,
+            "cancelled": 0,
+            "skipped": 1,
+            "todo": 0
+          },
+          "node": "v24.22.2"
+        },
+        {
+          "jobId": 132264122336,
+          "counts": {
+            "tests": 1423,
+            "pass": 1373,
+            "fail": 49,
+            "cancelled": 0,
+            "skipped": 1,
+            "todo": 0
+          },
+          "node": "v24.22.2"
+        }
+      ],
+      "fullConclusion": "success",
+      "comparison": {
+        "base": "9cc8d03f769baf5c90523345e17d2262b2575f26",
+        "node": "v24.22.2",
+        "baseline": {
+          "tests": 5482,
+          "pass": 5036,
+          "fail": 441,
+          "cancelled": 3,
+          "skipped": 2,
+          "todo": 0
+        },
+        "current": {
+          "tests": 5484,
+          "pass": 5052,
+          "fail": 427,
+          "cancelled": 3,
+          "skipped": 2,
+          "todo": 0
+        },
+        "introduced": [],
+        "removedFailureCount": 14
+      },
+      "artifacts": [
+        {
+          "id": 14089937496,
+          "name": "complete-suite-comparison",
+          "size": 575504,
+          "digest": "sha256:9e7866f23b5de394824e9dc6ea5fc31f58e8a84c8898de42f37b83f427d8b6ff",
+          "expiresAt": "2026-11-28T00:55:08Z"
+        }
+      ]
+    },
+    "safetyFailureNames": [
+      "a different paused operation",
+      "a different recorded checkpoint",
+      "a different stop reason",
+      "a late checkpoint callback cannot mutate a reloaded job even with the same operation ID",
+      "a late refusal, altered returned proof or missing checkpoint callback cannot publish a proposal",
+      "a replaced checkpoint",
+      "a verified placement is published without storage credit, work restart or mutation of the blocked record",
+      "adapter rejects after its proposal",
+      "an interrupted rather than blocked record",
+      "capacity-batch operation",
+      "claims an acknowledged server response",
+      "combat",
+      "combat",
+      "connection",
+      "current life, connection and combat gates reject read-only repair without changing ownership records",
+      "deposits",
+      "dimension",
+      "extra_asset",
+      "fabricated_acknowledgement",
+      "identity",
+      "life",
+      "life",
+      "manual pause during the read-only await wins without publishing the old result",
+      "manual pause, replaced checkpoints and unrelated error records never reach the adapter",
+      "manual user pause",
+      "negative_runtime",
+      "no checkpoint proposal",
+      "no matching blocked record",
+      "no pending cargo",
+      "not fully paused",
+      "operation",
+      "oversized_runtime",
+      "plan",
+      "positions",
+      "recovered",
+      "returned checkpoint differs",
+      "returned proof differs",
+      "review: lower search never skips oak_leaves to select a cave beneath",
+      "save failure restores the original checkpoint, pause result and saved time and remains retryable",
+      "scope",
+      "sent_only",
+      "source",
+      "staged proposals cannot change cargo, plans or evidence scope, or invent transfers or invalid blocks",
+      "stand",
+      "supply operation",
+      "the reconciliation lock blocks concurrent resume and rejects life or combat changes during the await",
+      "wrong_block_name",
+      "wrong_position",
+      "wrong_reconciliation"
+    ],
+    "allFourSafetyJobFailureNamesEqual": true,
+    "previousSource": {
+      "sourceCommit": "9cc8d03f769baf5c90523345e17d2262b2575f26",
+      "pullRequest": 72,
+      "fullRunId": 43530748452,
+      "fullJobId": 132247511900,
+      "result": "incomplete baseline TAP; no completed comparison",
+      "baselineArtifactId": 14086709206,
+      "focusedRunId": 43530748501,
+      "focusedJobId": 132247510960,
+      "focused": {
+        "tests": 122,
+        "pass": 122,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "focusedScope": "Earlier source 9cc; not a focused-suite run on final e480"
+    },
+    "observedAtJst": "2026-11-14T10:04:03+09:00"
+  },
+  "application": {
+    "priorPrMerged": {
+      "number": 72,
+      "mergedAtJst": "2026-11-14T09:13:15+09:00",
+      "head": "9cc8d03f769baf5c90523345e17d2262b2575f26",
+      "mergeCommit": "a46dd4668c98d42b7f6891eea51e04be0cf0b388",
+      "performedByThisTask": false
+    },
+    "followupPrSnapshot": {
+      "number": 76,
+      "url": "https://github.com/YuK1Game/minecraft-mining-bot/pull/76",
+      "state": "open",
+      "draft": true,
+      "head": "e480146b92d018ee593617e3a7d3eaea1f1c3172",
+      "base": "6f06d9487927850905eb07c162d24d1d755fa96d",
+      "mergeable": true,
+      "mergeableState": "unstable",
+      "merged_at": null,
+      "observedAtJst": "2026-11-14T10:00:08+09:00"
+    },
+    "liveBotApplication": "unconfirmed",
+    "botRestartPerformed": false,
+    "liveRealmTested": false,
+    "entitiesClassificationRequiresFullRestart": true
+  },
+  "metrics": {
+    "scope": "Offline diagnostic fixtures, not production speed/CPU claims",
+    "pairedSafetyActorFilterCalls": {
+      "before": 239,
+      "after": 153
+    },
+    "finalCloseCreeperRun": {
+      "maximumInputQueueGapMs": 144,
+      "inputErrors": 0,
+      "maximumQueueGapThresholdMs": 200,
+      "observedCandidates": 5,
+      "observedJumpFrames": 14,
+      "driveTicks": 9
+    },
+    "outerTapCaptureRegression": {
+      "oldCapturedBytes": 475716,
+      "newCapturedBytes": 526041,
+      "oldComplete": false,
+      "newComplete": true,
+      "tests": 2,
+      "pass": 1,
+      "fail": 1
+    }
+  },
+  "timing": {
+    "cutoffJst": "2026-11-14T10:04:56.258605+09:00",
+    "startJst": "2026-11-14T08:33:01+09:00",
+    "wallSeconds": 5515.258605,
+    "parallelPhaseSeconds": {
+      "investigation": 1678.69789,
+      "implementation": 574.046177,
+      "test": 3158.309123,
+      "waiting": 221.04,
+      "mixed": 5128.324415000001,
+      "total": 10760.417605
+    },
+    "rootPhaseSeconds": {
+      "investigation": 568.61989,
+      "implementation": 326.453177,
+      "test": 331.09912299999996,
+      "waiting": 0.0,
+      "mixed": 4289.086415000001,
+      "total": 5515.258605000001
+    },
+    "rootIntervals": [
+      {
+        "recordedPhase": "investigation",
+        "category": "investigation",
+        "startedAt": "2026-11-14T08:33:01+09:00",
+        "endedAt": "2026-11-14T08:42:29.619890+09:00",
+        "seconds": 568.61989,
+        "derivedFromRecordedTimestamps": true,
+        "note": "Reproductions assigned; bounded mismatch proved by actual Runtime memory patch. Independent review favors explicit safety view/raw catalogue pair without caches; baseline/main restored and merged."
+      },
+      {
+        "recordedPhase": "implementation",
+        "category": "mixed",
+        "startedAt": "2026-11-14T08:42:29.619890+09:00",
+        "endedAt": "2026-11-14T08:49:23.975988+09:00",
+        "seconds": 414.356098,
+        "derivedFromRecordedTimestamps": false,
+        "note": "Shared safety observation and bounded partial-origin handoff implemented; both target integration files and added safety boundaries pass. Independent final review pending."
+      },
+      {
+        "recordedPhase": "test",
+        "category": "test",
+        "startedAt": "2026-11-14T08:49:23.975988+09:00",
+        "endedAt": "2026-11-14T08:51:06.343617+09:00",
+        "seconds": 102.367629,
+        "derivedFromRecordedTimestamps": false,
+        "note": "Threat/work-clearance checks 48/48. Independent review found a concrete synchronous abort boundary in the new fallback; full gates have not started."
+      },
+      {
+        "recordedPhase": "implementation",
+        "category": "implementation",
+        "startedAt": "2026-11-14T08:51:06.343617+09:00",
+        "endedAt": "2026-11-14T08:53:29.611925+09:00",
+        "seconds": 143.268308,
+        "derivedFromRecordedTimestamps": false,
+        "note": "Red regression confirmed 1 movement start after parent deadline abort. Added post-observation signal recheck, matching ordinary ensure semantics. Single-checkout final runner prepared."
+      },
+      {
+        "recordedPhase": "test",
+        "category": "test",
+        "startedAt": "2026-11-14T08:53:29.611925+09:00",
+        "endedAt": "2026-11-14T08:55:12.968530+09:00",
+        "seconds": 103.356605,
+        "derivedFromRecordedTimestamps": false,
+        "note": "Ledge13/13green; source frozen atb558cc1. Final gates started08:54:15JST and continue in background."
+      },
+      {
+        "recordedPhase": "implementation",
+        "category": "implementation",
+        "startedAt": "2026-11-14T08:55:12.968530+09:00",
+        "endedAt": "2026-11-14T08:56:47.580693+09:00",
+        "seconds": 94.612163,
+        "derivedFromRecordedTimestamps": false,
+        "note": "Published same source tree1cefba2 as9cc8d03 on PR72 with maina03 parent. Updated PR with confirmed83/83 related tests and pending final gates. Automated gates ran concurrently; no live operation."
+      },
+      {
+        "recordedPhase": "test",
+        "category": "mixed",
+        "startedAt": "2026-11-14T08:56:47.580693+09:00",
+        "endedAt": "2026-11-14T09:25:02.048361+09:00",
+        "seconds": 1694.467668,
+        "derivedFromRecordedTimestamps": false,
+        "note": "Both full suites completed: strict10 signatures. Eight were earlier baseline failures, two reproduced as test-timer/timeout nondeterminism. Investigation and verification mixed after full completion, not estimated apart. Real fallback unsupported-result reason overwrite identified."
+      },
+      {
+        "recordedPhase": "implementation",
+        "category": "mixed",
+        "startedAt": "2026-11-14T09:25:02.048361+09:00",
+        "endedAt": "2026-11-14T09:37:24.951002+09:00",
+        "seconds": 742.902641,
+        "derivedFromRecordedTimestamps": false,
+        "note": "Preserved unsupported fallback diagnostics; shared one synchronous attack view without mutating raw replan state; preserved actually closing ground threats behind cover; direct-FD outer TAP capture. Fixture corrections retained original behavioural assertions."
+      },
+      {
+        "recordedPhase": "test",
+        "category": "test",
+        "startedAt": "2026-11-14T09:37:24.951002+09:00",
+        "endedAt": "2026-11-14T09:39:30.325891+09:00",
+        "seconds": 125.374889,
+        "derivedFromRecordedTimestamps": false,
+        "note": "Original bounded22 and ledge13 pass on final source; dedicated actual ground-threat3 and output-capture4 pass. Source frozen at523d647. Final gates started09:39:04JST."
+      },
+      {
+        "recordedPhase": "implementation",
+        "category": "implementation",
+        "startedAt": "2026-11-14T09:39:30.325891+09:00",
+        "endedAt": "2026-11-14T09:40:58.898597+09:00",
+        "seconds": 88.572706,
+        "derivedFromRecordedTimestamps": false,
+        "note": "Published final frozen source as e480146 on PR72; tree e6660a5 matches local523d647. Updated interim PR evidence; final gates continue concurrently."
+      },
+      {
+        "recordedPhase": "test",
+        "category": "mixed",
+        "startedAt": "2026-11-14T09:40:58.898597+09:00",
+        "endedAt": "2026-11-14T09:58:02.937878+09:00",
+        "seconds": 1024.039281,
+        "derivedFromRecordedTimestamps": false,
+        "note": "Final current full suite finished; final baseline still running. Final-source push CI strict comparison passed with zero introduced signatures. This interval also includes discovery that PR72 had been merged externally, creation of follow-up draft PR76, CI evidence collection, and report template preparation; mixed work is not partitioned by estimation."
+      },
+      {
+        "recordedPhase": "implementation",
+        "category": "mixed",
+        "startedAt": "2026-11-14T09:58:02.937878+09:00",
+        "endedAt": "2026-11-14T10:04:56.258605+09:00",
+        "seconds": 413.320727,
+        "derivedFromRecordedTimestamps": false,
+        "note": "Final report/evidence preparation and completed final local/CI result review; mixed interval, not partitioned. Documentation publication after this cutoff is excluded."
+      }
+    ],
+    "otherAgents": {
+      "agents": [
+        {
+          "name": "bounded",
+          "intervals": 34,
+          "investigation": 144.072,
+          "implementation": 51.816,
+          "test": 1847.704,
+          "waiting": 49.056,
+          "mixed": 83.488,
+          "total": 2176.136,
+          "unmeasuredGapsSeconds": 1460.126
+        },
+        {
+          "name": "ledge",
+          "intervals": 30,
+          "investigation": 363.421,
+          "implementation": 176.202,
+          "test": 924.654,
+          "waiting": 171.984,
+          "mixed": 273.576,
+          "total": 1909.837,
+          "unmeasuredGapsSeconds": 1619.008
+        },
+        {
+          "name": "observation-review",
+          "intervals": 8,
+          "investigation": 602.585,
+          "implementation": 19.575,
+          "test": 54.852,
+          "waiting": 0,
+          "mixed": 482.174,
+          "total": 1159.186,
+          "unmeasuredGapsSeconds": 2430.038
+        }
+      ],
+      "total": {
+        "investigation": 1110.078,
+        "implementation": 247.593,
+        "test": 2827.21,
+        "waiting": 221.04,
+        "mixed": 839.238,
+        "total": 5245.159
+      },
+      "method": "Only completed paired intervals; recorded elapsed values counted once; five explicitly mixed intervals kept whole. Gaps are unmeasured, not inferred as waiting. Root excluded.",
+      "mixedIntervals": [
+        {
+          "agent": "bounded",
+          "phase": "implementation",
+          "seconds": 83.488,
+          "reason": "probe execution/comparison and permanent regression test creation"
+        },
+        {
+          "agent": "ledge",
+          "phase": "test",
+          "seconds": 172.661,
+          "reason": "test execution, two loader-anchor edits and tracing"
+        },
+        {
+          "agent": "ledge",
+          "phase": "implementation",
+          "seconds": 100.914,
+          "reason": "implementation and memory-fallback test execution/review"
+        },
+        {
+          "agent": "observation-review",
+          "phase": "comparison_triage",
+          "seconds": 323.222,
+          "reason": "diagnosis, diagnostic preload authoring, seven targeted executions"
+        },
+        {
+          "agent": "observation-review",
+          "phase": "closing_actor_boundary",
+          "seconds": 158.952,
+          "reason": "boundary diagnosis, regression authoring and red execution"
+        }
+      ]
+    },
+    "qualifications": [
+      "Recorded elapsed intervals, not CPU time; parallel totals differ from wall elapsed",
+      "Explicit mixed intervals are not estimated apart",
+      "First root investigation elapsed derived from its recorded start and end timestamps",
+      "Unrecorded gaps and work before first timing entry are not estimated",
+      "Documentation publication and final response after cutoff are excluded"
+    ]
+  },
+  "limitations": [
+    "Existing failures and cancellations remain; zero introduced signatures is not an all-green suite",
+    "Local baseline is fixed a03; push CI baseline is 9cc; PR CI baseline is its recorded main commit",
+    "Direct file descriptors fix the outer capture path only; separate Node internal reporting loss was observed under extreme diagnostics",
+    "Live Realm CPU, memory, tick performance and long-running behavior have not been measured",
+    "The prior PR was merged by another operation during this task; live application state is unknown"
+  ]
+}

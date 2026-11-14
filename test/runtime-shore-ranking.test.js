@@ -10,6 +10,7 @@ const Module = require('node:module')
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createShoreLandmarks } = require('../src/shore-landmarks')
+const { createCombatExposure } = require('../src/combat-exposure')
 const fixtureFile = path.resolve(__dirname, 'runtime-idle-escape.test.js')
 let fixtureSource = fs.readFileSync(fixtureFile, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 const seam = 'const runtimeSource = originalRuntime'
@@ -36,9 +37,17 @@ function setup (t, { memory = true, mode = 'known', outsideEnemy = false } = {})
   const feet = { x: 0.5, y: 62.48, z: 0.5 }
   f.raw.predicted = { position: { ...f.raw.position }, feetPosition: { ...feet }, velocity: { x: 0, y: 0, z: 0 }, physicsState: { position: { ...feet }, velocity: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, gameMode: 'survival', onGround: false, isInWater: true, isInLava: false, controls: {} } }
   f.raw.health = 20; f.raw.inventory.items = [{ slot: 0, name: 'minecraft:rotten_flesh', count: 1 }]; f.raw.heldItem = structuredClone(f.raw.inventory.items[0]); f.raw.rawSelectedSlot = 0
-  f.actors.splice(0, f.actors.length, { ...f.enemy(), runtimeId: '9', uniqueId: '9', entityType: 'minecraft:creeper', primed: false, charged: false, position: { x: -6.5, y: 62, z: 0.5 } })
-  if (outsideEnemy) f.actors.push({ ...f.enemy(), runtimeId: '10', uniqueId: '10', entityType: 'minecraft:creeper', primed: false, charged: false, position: { x: 0.5, y: 62, z: -9.5 } })
+  // The received pursuers are at the surface, with a current visible attack
+  // path. A submerged, unrecognised actor must not request this retreat.
+  f.actors.splice(0, f.actors.length, { ...f.enemy(), runtimeId: '9', uniqueId: '9', entityType: 'minecraft:creeper', primed: false, charged: false, position: { x: -6.5, y: 63, z: 0.5 } })
+  if (outsideEnemy) f.actors.push({ ...f.enemy(), runtimeId: '10', uniqueId: '10', entityType: 'minecraft:creeper', primed: false, charged: false, position: { x: 0.5, y: 63, z: -9.5 } })
   f.host.world.getBlock = waterWorld(mode).getBlock
+  const exposure = createCombatExposure({ world: f.host.world, entities: f.host.entities, scopeOf: () => 'shore-ranking-fixture' })
+  for (const actor of f.actors) {
+    const observed = exposure.evaluate(actor, f.host.getState())
+    assert.equal(observed.evidence.sight, true)
+    assert.equal(observed.intercept, true, JSON.stringify(observed))
+  }
   if (memory) {
     const landmarks = createShoreLandmarks({ workspaceRoot: path.resolve(__dirname, '..'), clock: () => 1000 })
     landmarks.rememberSurvey({ profile: 'bot', realmId: '42', dimension: 'overworld' }, { observationOnly: true, origin: { x: 0.5, y: 64.1, z: 0.5 }, radius: 8, knownCandidateCount: 1, candidates: [{ x: 0.5, y: 63, z: -7.5, distance: 8, floor: 'minecraft:stone' }] })
