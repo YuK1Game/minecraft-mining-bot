@@ -307,7 +307,7 @@ function createActualQueuedWireClock ({ client, shared, getState }) {
 }
 
 function createRuntime (host) {
-  host.registerPacketEvents?.(['set_time', 'sync_world_clocks', 'completed_using_item', 'set_entity_motion', 'motion_prediction_hints', 'inventory_transaction', 'update_abilities', 'update_adventure_settings', 'animate', 'set_health', 'mob_effect'])
+  host.registerPacketEvents?.(['set_spawn_position', 'set_time', 'sync_world_clocks', 'completed_using_item', 'set_entity_motion', 'motion_prediction_hints', 'inventory_transaction', 'update_abilities', 'update_adventure_settings', 'animate', 'set_health', 'mob_effect'])
   let inventoryLifeReceiptTask = null
   let foodBaselineRefreshTask = null
   const inventoryResyncClient = host.client
@@ -852,7 +852,7 @@ function createRuntime (host) {
   // fight that interrupted it, so it is recorded on its own.
   const food = createFood({ client: host.client, getState: () => { const state = working(); return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: foodKnownLife() } } }, crafting, getInput: () => input, equip: (slot, options) => inventory.equipForFood(slot, options), allocateLegacyId: () => host.allocate('interaction'), canEmergencyEat: canEmergencyEatHere, onUncertain: details => { host.shared.foodUncertain = { ...details, at: new Date().toISOString() }; try { host.log(`食事の結果が未確認です（持ち物全体は不明扱いにしません）: ${String(details?.reason ?? '').slice(0, 80)}`) } catch {} }, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
   // Bare-hand deepslate takes about 15 s (2026-11-14 cave exit): 30 s per block.
-  const mining = createMining({ blockTimeoutMs: 30000, logAllowance: () => longTravelLogAllowance(), travelDownAllowance: () => Date.now() < (host.shared.travelDownUntil ?? 0), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true, verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true })
+  const mining = createMining({ blockTimeoutMs: 30000, logAllowance: () => longTravelLogAllowance(), travelDownAllowance: () => Date.now() < (host.shared.travelDownUntil ?? 0), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true || travelBedOwns(target, block), verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true })
   const interactions = createInteractions({ client: host.client, getState: () => ({ ...working(), lifecycle: { deathId: actualLifeId() } }), world: host.world, crafting, getInput: () => input, version: host.meta.version, onInventory, onUncertain, allocateLegacyId: () => host.allocate('interaction') })
 
   function commitChestMainDelta (delta) {
@@ -5222,6 +5222,8 @@ function createRuntime (host) {
       host.shared.inventoryEvents.push(event)
       if (host.shared.inventoryEvents.length > 120) host.shared.inventoryEvents.splice(0, host.shared.inventoryEvents.length - 120)
     }
+    // The server's own spawn-point record (a bed used on a long trip is confirmed by it).
+    if (name === 'set_spawn_position') host.shared.lastSpawnSet = { type: packet.spawn_type ?? null, position: packet.player_position ?? packet.world_position ?? null, dimension: packet.dimension ?? null, at: Date.now() }
     if (name === 'set_time' && Number.isSafeInteger(packet.time)) host.shared.worldTime = { ticks: packet.time, dayTime: ((packet.time % 24000) + 24000) % 24000, observedAt: new Date().toISOString(), source: 'server_set_time' }
     if (name === 'sync_world_clocks') {
       host.shared.worldClocks ??= {}
@@ -5637,6 +5639,7 @@ function createRuntime (host) {
           await sleep(800)
         }
         let hunts = 0, logsTried = 0, eatRefused = false, rottenTried = false
+        const woolTarget = Math.max(0, Math.min(3, input.wool ?? 0)), WOOL = /^minecraft:[a-z_]*wool$/
         const skipLog = new Set() // logs that could not be reached or mined are not tried again
         while (Date.now() - started < maxMs) {
           const st = working(); if (!st.position || st.dead) { await sleep(1000); continue }
@@ -5657,6 +5660,21 @@ function createRuntime (host) {
                 await pickup(animal.position)
               }
               if (count(FOOD) > before) say(`食料を得ました（${count(FOOD)}個）`)
+              continue
+            }
+          }
+          // 1b. wool from sheep for a respawn bed (coordinator 2026-11-14)
+          if (woolTarget && count(WOOL) < woolTarget && hunts < 12) {
+            const feet = feetOf()
+            const sheep = allActors().filter(a => a?.kind === 'mob' && a.hostile === false && a.entityType === 'minecraft:sheep' && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
+            if (sheep) {
+              hunts++
+              const before = count(WOOL)
+              if (await walkNear(sheep.position, [1])) {
+                for (let hit = 0; hit < 6; hit++) { try { await combat.animalAttack(sheep.runtimeId, {}) } catch { break } await sleep(500); if (!allActors().some(a => String(a.runtimeId) === String(sheep.runtimeId) && a.alive !== false)) break }
+                await pickup(sheep.position)
+              }
+              if (count(WOOL) > before) say(`羊毛を得ました（${count(WOOL)}個）`)
               continue
             }
           }
@@ -7919,6 +7937,20 @@ function createRuntime (host) {
     const night = host.shared.travelNight ??= { cover: null, pitTried: 0 }
     const phase = NS.dayPhase(travelClock())
     if (!phase.known) return { hold: true, phase: 'clock_wait', message: '時刻を受信していないため、受信を待ちます', waitMs: 2000 }
+    // Resting (live 18:24: skeleton hits piled up to 1 HP and a creeper finished
+    // it): below half health with hunger 18 or more the bot heals in the covered
+    // pit and leaves it at 18 health (or by night's end when the pit is a night pit).
+    const hpNow = working().health ?? 20, hv0 = host.shared.vitals?.hunger, hunger0 = Number.isFinite(hv0) ? hv0 : Number.isFinite(hv0?.value) ? hv0.value : null
+    // A rest pit at dusk simply becomes the night pit.
+    if (night.cover && night.reason === 'rest' && phase.shelter) night.reason = 'night'
+    const resting = night.reason === 'rest'
+    if (night.cover && resting && (hpNow >= 18 || hunger0 !== null && hunger0 < 18)) phase.resume = true
+    if (night.cover && resting && !phase.resume) return { hold: true, phase: 'rest', message: `体力回復のため穴の中で待ちます（HP ${Math.round(hpNow)}）`, waitMs: 5000 }
+    if (!night.cover && !phase.shelter && hpNow < 10 && hunger0 !== null && hunger0 >= 18 && Date.now() - (night.restTriedAt ?? 0) > 60000) {
+      night.restTriedAt = Date.now()
+      const r = await travelNightPit(signal)
+      if (r.ok) { night.cover = r.cover; night.reason = 'rest'; host.log(`長距離移動: HP ${Math.round(hpNow)} のため、ふたをした穴で回復を待ちます`); return { hold: true, phase: 'rest', message: '体力回復のため穴の中で待ちます', waitMs: 5000 } }
+    }
     if (phase.resume && night.cover) {
       const c = night.cover
       const air = () => { const v = host.world.getBlock(c.x, c.y, c.z); return v?.known === true && /^minecraft:(?:air|cave_air)$/.test(v.name ?? '') }
@@ -7928,14 +7960,14 @@ function createRuntime (host) {
         while (Date.now() < until && !signal?.aborted && !air()) await new Promise(r => setTimeout(r, 200))
         if (!air()) return { hold: true, phase: 'morning', message: '朝です。ふたの採掘を確認できません', waitMs: 3000 }
       }
-      night.cover = null; night.pitTried = 0
-      host.log(`長距離移動: 朝になりました（時刻 ${phase.dayTime}）。穴を出て移動を続けます`)
+      host.log(resting ? `長距離移動: 回復しました（HP ${Math.round(hpNow)}）。穴を出て移動を続けます` : `長距離移動: 朝になりました（時刻 ${phase.dayTime}）。穴を出て移動を続けます`)
+      night.cover = null; night.pitTried = 0; night.reason = null
     }
     if (phase.shelter) {
       if (!night.cover && night.pitTried < 3) {
         night.pitTried++
         const r = await travelNightPit(signal)
-        if (r.ok) night.cover = r.cover
+        if (r.ok) { night.cover = r.cover; night.reason = 'night' }
         else return { hold: true, phase: 'night', message: `夕方です（時刻 ${phase.dayTime}）。ここに夜の穴を作れません: ${r.reason}`, waitMs: 3000 }
       }
       return { hold: true, phase: 'night', message: night.cover ? `夜のため、ふたをした穴の中で朝まで待ちます（時刻 ${phase.dayTime}）` : `夜です（時刻 ${phase.dayTime}）。穴を作れなかったため、その場で朝まで待ちます`, waitMs: 5000 }
@@ -7953,6 +7985,7 @@ function createRuntime (host) {
     if (hunger !== null && hunger < 18) { try { await operations.quarry.prepGather({ logs: 0, maxMs: 90000 }) } catch {} }
     // The boat was lost (coordinator 2026-11-14): within the preparation
     // allowance, with trees near, gather a few logs and craft a boat again.
+    try { await travelRespawnBed(signal) } catch (error) { host.log(`長距離移動: ベッドでのリスポーン地点の設定に失敗しました: ${String(error.message ?? error).slice(0, 100)}`) }
     try { await travelMakeBoat(signal) } catch (error) { host.log(`長距離移動: ボートを作れませんでした: ${String(error.message ?? error).slice(0, 100)}`) }
     return { hold: false }
   }
@@ -8010,6 +8043,92 @@ function createRuntime (host) {
       }
     }
     return false
+  }
+  // Respawn point on a long trip (coordinator 2026-11-14: every death sent the
+  // bot back to the world spawn, about 1,000 m). A bed is crafted from three
+  // wool and planks, placed, used (a day use only sets the spawn point), the new
+  // spawn point is confirmed by the server's set_spawn_position, and the bed is
+  // mined back under this trip's own placement record. No command is used.
+  function travelBedOwns (target, block) {
+    const rec = host.shared.travelBed
+    if (!rec || target?.ownershipKey !== rec.key || block?.name !== 'minecraft:bed' || rec.life !== actualLifeId()) return false
+    return [rec.foot, rec.head].some(p => p && p.x === target.x && p.y === target.y && p.z === target.z)
+  }
+  async function travelRespawnBed (signal) {
+    const items = () => working().inventory?.items ?? []
+    const st = working(); if (!st.position) return { ok: false }
+    const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }
+    const spawn = host.shared.travelSpawn ?? { x: -8, z: 14 }
+    if (Math.hypot(feet.x - spawn.x, feet.z - spawn.z) < 300) return { ok: false, reason: 'NEAR_SPAWN' }
+    const memo = host.shared.travelBedMemo ??= { lastTry: 0 }
+    if (Date.now() - memo.lastTry < 120000) return { ok: false, reason: 'RECENT' }
+    if (nearestHostileDistance() < 16) return { ok: false, reason: 'HOSTILE_NEAR' }
+    memo.lastTry = Date.now()
+    const bed = () => items().find(i => i.name === 'minecraft:bed' && i.count > 0)
+    const WOOL = /^minecraft:[a-z_]*wool$/
+    const wool = () => items().filter(i => WOOL.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
+    if (!bed()) {
+      if (wool() < 3) { await operations.quarry.prepGather({ logs: 0, wool: 3, maxMs: 120000 }); if (wool() < 3) return { ok: false, reason: 'NO_WOOL' } }
+      const LOGS = /^minecraft:([a-z_]+)_log$/, PLANKS = /^minecraft:([a-z_]+)_planks$/
+      const planks = () => items().filter(i => PLANKS.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
+      const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
+      if (planks() < 7 && !log) return { ok: false, reason: 'NO_WOOD' }
+      host.log('長距離移動: ベッドを作ります')
+      await crafting.openInventory()
+      try { if (planks() < 7) await crafting.craft(`minecraft:${LOGS.exec(log.name)[1]}_planks`, { times: Math.min(log.count, 2) }); await crafting.craft('minecraft:crafting_table', { times: 1 }) } finally { try { crafting.closeContainer() } catch {} }
+      const placed = await travelPlaceTable()
+      if (!placed) return { ok: false, reason: 'TABLE_NOT_PLACED' }
+      await interactions.openCraftingTable(placed)
+      try { await crafting.craft('minecraft:bed', { times: 1 }) } finally { try { crafting.closeContainer() } catch {} }
+      if (!bed()) return { ok: false, reason: 'BED_NOT_CRAFTED' }
+    }
+    // Place: a foot cell beside the bot with its head cell, both received air on solid ground.
+    let item = bed(); if (item.slot > 8) { await operations.inventory.equip(item.slot); item = items().find(i => i.name === 'minecraft:bed' && i.slot <= 8) }
+    if (!item) return { ok: false, reason: 'BED_NOT_IN_HOTBAR' }
+    const fx = Math.floor(feet.x), fy = Math.round(feet.y), fz = Math.floor(feet.z)
+    let foot = null
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [0, 2], [-2, 0], [0, -2]]) {
+      const pos = { x: fx + dx, y: fy, z: fz + dz }
+      try { requireIdle({ inventoryRequired: false }); await interactions.placeBed({ position: pos, slot: item.slot }); foot = pos; break } catch {}
+    }
+    if (!foot) return { ok: false, reason: 'BED_NOT_PLACED' }
+    const isBed = p => host.world.getBlock(p.x, p.y, p.z)?.name === 'minecraft:bed'
+    const head = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ x: foot.x + dx, y: foot.y, z: foot.z + dz })).find(isBed) ?? null
+    if (!isBed(foot)) return { ok: false, reason: 'BED_PLACEMENT_UNCONFIRMED' }
+    host.shared.travelBed = { key: `travel_bed:${Date.now()}`, foot, head, life: actualLifeId() }
+    const t0 = Date.now()
+    try { requireIdle({ inventoryRequired: false }); await interactions.useBed(foot) } catch {}
+    const until = Date.now() + 6000
+    while (Date.now() < until && !(host.shared.lastSpawnSet?.at > t0)) await new Promise(r => setTimeout(r, 200))
+    const set = host.shared.lastSpawnSet
+    const confirmed = set?.at > t0 && set.position && Math.hypot(set.position.x - foot.x, set.position.z - foot.z) <= 3
+    if (confirmed) { host.shared.travelSpawn = { x: foot.x, z: foot.z, at: new Date().toISOString() }; host.log(`長距離移動: リスポーン地点を (${foot.x}, ${foot.y}, ${foot.z}) に設定しました（サーバーの通知で確認）`) }
+    else host.log(`長距離移動: ベッドに触れましたが、リスポーン地点の設定を確認できません${set?.at > t0 ? `（通知 ${JSON.stringify(set.position)}）` : ''}`)
+    // Take the bed back under this trip's own placement record.
+    try { if (working().sleeping) await interactions.wakeBed?.(foot) } catch {}
+    try {
+      requireIdle({ inventoryRequired: false })
+      operations.mining.start([{ ...foot, accessPreparation: 'owned_bed', expectedName: 'minecraft:bed', ownershipKey: host.shared.travelBed.key }])
+      const mineUntil = Date.now() + 15000
+      while (Date.now() < mineUntil && isBed(foot)) await new Promise(r => setTimeout(r, 200))
+      if (!isBed(foot)) await operations.quarry.pickupNear({ center: foot, radius: 5, maxMs: 15000 })
+    } catch (error) { host.log(`長距離移動: ベッドを回収できません: ${String(error.message ?? error).slice(0, 80)}`) }
+    host.log(`長距離移動: ベッド${bed() ? 'を回収しました（受信した持ち物で確認）' : 'の回収を確認できません'}`)
+    return { ok: confirmed, recovered: !!bed() }
+  }
+  async function travelPlaceTable () {
+    const items = () => working().inventory?.items ?? []
+    let t = items().find(i => i.name === 'minecraft:crafting_table')
+    if (!t) return null
+    if (t.slot > 8) { await operations.inventory.equip(t.slot); t = items().find(i => i.name === 'minecraft:crafting_table' && i.slot <= 8) }
+    if (!t) return null
+    const p = working().position, fx = Math.floor(p.x), fy = Math.round(p.y - 1.62), fz = Math.floor(p.z)
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+      const pos = { x: fx + dx, y: fy, z: fz + dz }, at = host.world.getBlock(pos.x, pos.y, pos.z), below = host.world.getBlock(pos.x, pos.y - 1, pos.z)
+      if (at?.known !== true || at.name !== 'minecraft:air' || below?.known !== true || below.boundingBox !== 'block') continue
+      try { await interactions.placeCraftingTable({ position: pos, slot: t.slot }); return pos } catch {}
+    }
+    return null
   }
   async function travelMakeBoat (signal) {
     const items = () => working().inventory?.items ?? []
