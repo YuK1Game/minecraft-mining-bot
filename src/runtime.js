@@ -5738,7 +5738,13 @@ function createRuntime (host) {
         return autonomy.start({ objective: 'long_travel_prep', logCount })
       },
       endLongTravelPrep: () => { host.shared.woodHarvestAllowance = null; return autonomy.stop('長距離移動の準備を終了しました。') },
-      cancelTravel: () => longTravel?.cancel('MANUAL_STOP') ?? { busy: false, phase: 'idle' },
+      cancelTravel: async () => {
+        const result = await (longTravel?.cancel('MANUAL_STOP') ?? { busy: false, phase: 'idle' })
+        // A manual stop is saved, so a reconnect or restart does not resume it.
+        try { const f = longTravelFile(), fsp = require('node:fs/promises'); const doc = JSON.parse(await fsp.readFile(f, 'utf8')); doc.phase = 'stopped'; doc.reason = 'MANUAL_STOP'; doc.savedAt = new Date().toISOString(); await fsp.writeFile(f, JSON.stringify(doc, null, 2)) } catch {}
+        host.shared.longTravelResume = null
+        return result
+      },
       cancelChunkMove: operationId => {
         if (!operationId || chunkTravel?.status().operationId !== operationId) throw Object.assign(new Error('移動操作が変わりました。状態を更新してください。'), { code: 'STALE_CHUNK_MOVE' })
         return cancelChunkMovement('MANUAL_STOP')
@@ -7906,10 +7912,18 @@ function createRuntime (host) {
   }
   // Resume a trip that the previous code was running when it was reloaded
   // (bounded: within ten minutes, once, after the bot is spawned and idle).
-  const travelResumeTimer = setInterval(() => {
+  // Live 14:42: a reconnect also stopped the trip; the saved trip file (phase
+  // still moving, saved within 15 minutes, not stopped by hand) resumes it too.
+  let travelFileChecked = false
+  const travelResumeTimer = setInterval(async () => {
     if (disposed || disposing) { clearInterval(travelResumeTimer); return }
+    if (raw().phase !== 'spawned' || quarryJob?.holdsWork() || longTravel?.status?.().busy) return
+    if (!host.shared.longTravelResume && !travelFileChecked) {
+      travelFileChecked = true
+      try { const doc = JSON.parse(await require('node:fs/promises').readFile(longTravelFile(), 'utf8')); if (doc?.phase === 'moving' && doc.destination && Date.now() - Date.parse(doc.savedAt) < 900000) host.shared.longTravelResume = { destination: { x: doc.destination.x, z: doc.destination.z }, at: Date.now() } } catch {}
+    }
     const r = host.shared.longTravelResume
-    if (!r) { clearInterval(travelResumeTimer); return }
+    if (!r) { if (travelFileChecked) clearInterval(travelResumeTimer); return }
     if (Date.now() - r.at > 600000) { host.shared.longTravelResume = null; return }
     if (raw().phase !== 'spawned' || quarryJob?.holdsWork() || longTravel?.status?.().busy) return
     host.shared.longTravelResume = null
