@@ -4,6 +4,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
+const { createSnapshotReader } = require('../src/runtime-observation-views')
+const { inventoryRefreshDelay, refreshInventoryWithRetry } = require('../src/inventory-refresh')
 
 const source = fs.readFileSync(require.resolve('../src/runtime'), 'utf8')
 const section = (from, to) => {
@@ -27,6 +29,10 @@ function fixture ({ remaining = 2, lastRequestedAt = null, onDelay = null } = {}
     quarryState: () => structuredClone(state), working: () => structuredClone(state), raw: () => structuredClone(state),
     userScope: s => JSON.stringify([s.profile, s.realm.id, s.connectionId, s.startedAt, s.dimension, s.runtimeEntityId, s.lifecycle.deathId]),
     userBehaviorSnapshot: () => ({}), userBehaviorOwns: () => false, motionActive: () => context.motion,
+    createSnapshotReader, inventoryRefreshDelay,
+    chestStatus: () => context.chest.snapshot(),
+    resetHeld: () => false, chunkMoveHeld: () => false, chunkMoveDepth: 0,
+    manualChestStorage: null, manualShulkerTask: null, quarryPlacementPreparation: null,
     input: { stats: () => ({ running: false }) }, autonomy: { snapshot: () => ({ actionActive: false }) },
     idleSafety: busy(), excavation: busy(), tunneling: busy(), recovery: busy(), foraging: busy(), surfaceReturn: busy(), shelter: busy(), hut: busy(), guardRoute: busy(),
     mining: { snapshot: () => ({ phase: 'idle' }) }, walker: { snapshot: () => ({ phase: 'idle' }) },
@@ -44,6 +50,7 @@ function fixture ({ remaining = 2, lastRequestedAt = null, onDelay = null } = {}
     },
     armor: { preview: () => true, equipBest: async () => { armorEquips++; return [] } }
   }
+  context.refreshInventoryWithRetry = options => refreshInventoryWithRetry({ ...options, now: () => clock, sleep: ms => new Promise(resolve => context.setTimeout(resolve, ms)) })
   context.own = fn => async (...args) => { context.ownedCall++; try { return await fn(...args) } finally { context.ownedCall-- } }
   context.adapter = { resyncInventory: async ({ signal }) => {
     assert.equal(context.ownedCall, 0)
@@ -53,7 +60,7 @@ function fixture ({ remaining = 2, lastRequestedAt = null, onDelay = null } = {}
     state.inventory.items[0].durabilityRemaining = 1
     return true
   } }
-  const code = section('  function requireIdle (', '  function inventoryLifeBaseKey') + section('  function inventoryResyncIdle ()', '  function inventoryResyncSuccessKey') + section('  function nearestHostileDistance ()', '  function maybeResyncInventory') + '\nthis.ports = {\n' + section('      prepareMining: async (tool, { signal } = {}) => {', '      // Fresh inventory + selected slot') + '\n};'
+  const code = section('  function requireIdle (', '  function inventoryLifeBaseKey') + section('  function inventoryResyncIdle (', '  function inventoryResyncSuccessKey') + section('  function inventoryResyncDelay ()', '  function requestInventoryResync (') + section('  function nearestHostileDistance ()', '  function maybeResyncInventory') + '\nthis.ports = {\n' + section('      prepareMining: async (tool, { signal } = {}) => {', '      // Fresh inventory + selected slot') + '\n};'
   vm.runInNewContext(code, context, { filename: 'actual-runtime-terminal-ports.js' })
   return { context, state, actors, events, tool: { kind: 'pickaxe', name: 'minecraft:diamond_pickaxe', slot: 0, remaining, reserve: 1 }, fresh: () => fresh, equips: () => equips, armorEquips: () => armorEquips, time: () => clock, advance: ms => { clock += ms } }
 }

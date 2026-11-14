@@ -1,25 +1,19 @@
 'use strict'
 
 const { profileOf, engagementAllowed } = require('./combat-profiles')
+const { mobType } = require('./mob-catalog')
 
 // Interception policy distances, NOT server-AI target or perception receipts:
 // melee12: threats.js; creeper16: quarry bridge; archers18: healthy ranged
 // policy; pillager16: existing target-radius basis; other ranged24: quarry;
 // flying32: existing nearby/phantom policy and coordinator observation range.
-const ARCHERS = new Set(['skeleton', 'stray', 'bogged', 'parched'].map(n => `minecraft:${n}`))
-const FLYING = new Set(['phantom', 'vex', 'ghast', 'blaze'].map(n => `minecraft:${n}`))
-const RANGED = new Set(['witch', 'pillager', 'breeze', 'shulker', 'guardian', 'drowned', 'evocation_illager', 'evoker', 'piglin', 'llama', 'trader_llama'].map(n => `minecraft:${n}`))
 const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]) && Math.abs(p[k]) <= 30000000)
 const typeOf = target => typeof target === 'string' ? target : target?.entityType ?? target?.name
 const tri = evidence => evidence === true ? true : evidence === false ? false : null
 
 function recognitionRadius (target) {
-  const type = typeOf(target)
-  if (!profileOf(type)) return null
-  if (type === 'minecraft:creeper' || type === 'minecraft:pillager' || type === 'minecraft:guardian') return 16
-  if (ARCHERS.has(type) || type === 'minecraft:witch') return 18
-  if (FLYING.has(type)) return 32
-  return RANGED.has(type) ? 24 : 12
+  const entry = mobType(typeOf(target))
+  return entry?.combat ? entry.recognitionRadius : null
 }
 
 // entities.motion velocity is blocks per50ms tick. Require its actual sample
@@ -35,8 +29,8 @@ function observedClosing (motion, target, feet) {
 
 function evaluateCombatThreat ({ target, state, routeToBot = null, sight = null, motion = null, provoked = false } = {}) {
   const type = typeOf(target), radius = recognitionRadius(target)
-  const ranged = ARCHERS.has(type) || RANGED.has(type), flying = FLYING.has(type)
-  const accessKind = flying ? 'flight_sight_proxy' : ranged ? 'projectile_sight' : 'enemy_walk_route'
+  const accessKind = mobType(type)?.attackAccess ?? 'enemy_walk_route'
+  const ranged = accessKind === 'projectile_sight', flying = accessKind === 'flight_sight_proxy'
   const evidence = { routeToBot: tri(routeToBot), sight: tri(sight), provoked: provoked === true, primed: type === 'minecraft:creeper' && target?.primed === true, closing: false, radialPerTick: null }
   const base = { intercept: false, unknown: false, distance: null, recognitionRadius: radius, accessKind, access: null, awareness: 'not_confirmed', safety: 'not_assessed', evidence }
   const decline = (reason, unknown = false) => ({ ...base, reason, unknown })

@@ -170,7 +170,7 @@ function sliceHook (start, end) {
 }
 // Evaluate the production ports with isolated controller instances. Keeping
 // the open and cancel closures together is essential: they share the proof.
-function windowHooks () {
+function windowHooks ({ metadata = false } = {}) {
   const context = { generation: {}, revision: 1, scope: 'life-0', jobId: 'job', operationId: 'job:storage:42' }
   const owners = createActionOwnerTracker({ isCurrent: o => o.context.revision === context.revision && o.context.generation === context.generation && o.context.scope === context.scope })
   let window = null, open = null, closeCount = 0, resolveOpen
@@ -178,21 +178,37 @@ function windowHooks () {
   const chest = { open: () => new Promise(resolve => { resolveOpen = resolve }), cancel () {}, rawItem () {}, snapshot: () => ({ busy: false, window }) }
   const interactions = { openWorkbench () {}, openChest () {}, cancel () {}, snapshot: () => ({ pendingOperation: null }) }
   const crafting = { closeContainer () { if (open) closeCount++; open = null }, snapshot: () => ({ openContainer: open }) }
+  const metadataReads = { chest: 0, crafting: 0 }
+  if (metadata) {
+    chest.status = () => { metadataReads.chest++; return { busy: false, window } }
+    crafting.status = () => { metadataReads.crafting++; return { openContainer: open } }
+  }
+  const chestStatus = () => typeof chest.status === 'function' ? chest.status() : chest.snapshot()
+  const craftStatus = () => typeof crafting.status === 'function' ? crafting.status() : crafting.snapshot()
   const track = runtimeSource.split(/\r?\n/).filter(l => /^  portableActionOwners\.track\((chest|interactions),/.test(l)).join('\n')
   const container = sliceHook('    let portableOwnedWindow = null', '    function getSupplies')
   const cleanup = sliceHook('        cancelAction: (kind, reason, owner)', '\n        }\n') + '\n        }'
-  const hook = Function('portableActionOwners','chest','interactions','crafting','own','requireIdle','canonicalWindowId','sameWindowId',
-    track + '\n' + container + '\nreturn {open:containerPorts.open,' + cleanup + '}')(owners, chest, interactions, crafting, fn => fn, () => {}, canonicalWindowId, sameWindowId)
+  const hook = Function('portableActionOwners','chest','interactions','crafting','own','requireIdle','canonicalWindowId','sameWindowId','chestStatus','craftStatus',
+    track + '\n' + container + '\nreturn {open:containerPorts.open,' + cleanup + '}')(owners, chest, interactions, crafting, fn => fn, () => {}, canonicalWindowId, sameWindowId, chestStatus, craftStatus)
   function setWindow (id = 16, type = 'container', epoch = 1, craftId = id, block = position) {
     window = { id, epoch, position: { ...block } }; open = { id: craftId, type, coordinates: { ...block } }
   }
   const openOwner = owners.createOwner({ ...context })
-  return { context, owners, hook, chest, interactions, setWindow, openOwner, position,
+  return { context, owners, hook, chest, interactions, setWindow, openOwner, position, metadataReads,
     begin: () => owners.run(openOwner, () => hook.open(position, 0, { expectedSlots: 27 })),
     receive: (confirmed = true, windowId = 16) => resolveOpen({ windowId, serverConfirmed: confirmed }),
     cancel: owner => hook.cancelAction('chest', 'late storage abort', owner ?? owners.createOwner({ ...context })),
     closes: () => closeCount }
 }
+
+test('portable window cancellation uses the metadata APIs when available', async () => {
+  const f = windowHooks({ metadata: true }), pending = f.begin()
+  f.setWindow(); f.receive(); await pending
+  f.cancel()
+  assert.equal(f.closes(), 1)
+  assert.ok(f.metadataReads.chest > 0)
+  assert.ok(f.metadataReads.crafting > 0)
+})
 
 test('only a positively received portable window for the same operation may be closed by its later cancellation', async t => {
   for (const mode of ['normal', 'prior_controller_cancel', 'other_workbench', 'reused_id', 'generation', 'revision', 'life', 'other_op', 'unconfirmed', 'replaced_during_open']) await t.test(mode, async () => {

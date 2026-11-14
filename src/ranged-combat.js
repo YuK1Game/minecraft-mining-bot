@@ -12,7 +12,7 @@ const STRAFING_ARCHERS = new Set(['minecraft:skeleton', 'minecraft:stray', 'mine
 // The server never echoes our own cancel-slot switch, so this bound is what
 // actually ends a cleanup; the next draw re-sends the bow selection anyway.
 const CLEANUP_SETTLE_MAX_MS = 250
-const HOSTILES = new Set(['zombie', 'zombie_villager', 'zombie_villager_v2', 'husk', 'drowned', 'skeleton', 'stray', 'bogged', 'wither_skeleton', 'creeper', 'spider', 'cave_spider', 'witch', 'slime', 'magma_cube', 'silverfish', 'endermite', 'blaze', 'ghast', 'guardian', 'elder_guardian', 'phantom', 'pillager', 'vindicator', 'evocation_illager', 'ravager', 'vex', 'piglin_brute', 'hoglin', 'zoglin', 'breeze'].map(name => `minecraft:${name}`))
+const { isAttackableHostileType } = require('./mob-catalog')
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const copy = value => structuredClone(value)
 const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]) && Math.abs(p[k]) <= 30000001)
@@ -182,7 +182,7 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
     const s = inventory(); const all = entities.snapshot({ kind: 'all' })
     if (id(runtimeId) === null) throw failure('Valid target runtime ID required', 'INVALID_TARGET')
     const target = all.find(e => id(e.runtimeId) === id(runtimeId))
-    if (!target || target.kind !== 'mob' || target.hostile !== true || !HOSTILES.has(target.entityType) || target.alive !== true || target.positionKnown !== true || !finite(target.position) || target.dimension !== s.state.dimension || id(target.uniqueId, true) === null || id(target.runtimeId) === String(s.state.runtimeEntityId)) throw failure('Only an identified live hostile mob may be targeted', 'INVALID_TARGET')
+    if (!target || target.kind !== 'mob' || target.hostile !== true || !isAttackableHostileType(target.entityType) || target.alive !== true || target.positionKnown !== true || !finite(target.position) || target.dimension !== s.state.dimension || id(target.uniqueId, true) === null || id(target.runtimeId) === String(s.state.runtimeEntityId)) throw failure('Only an identified live hostile mob may be targeted', 'INVALID_TARGET')
     if (expected && (target.runtimeId !== expected.runtimeId || id(target.uniqueId, true) !== id(expected.uniqueId, true) || target.entityType !== expected.entityType)) throw failure('Target runtime/unique identity changed', 'TARGET_CHANGED')
     const aim = bowAim(s.state.position, target)
     if (aim.distance <= minDistance || aim.distance > maxDistance || Math.abs(aim.pitch) > 80) throw failure('Target must remain beyond melee reach and within the bow sight range', 'RANGE')
@@ -394,7 +394,7 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
   function retargetCandidate (r) {
     try {
       const s = session(false), all = entities.snapshot({ kind: 'all' })
-      const options = all.filter(e => e.runtimeId !== r.target.runtimeId && e.kind === 'mob' && e.hostile === true && e.alive === true && e.positionKnown === true && HOSTILES.has(e.entityType) && finite(e.position) && e.dimension === s.state.dimension)
+      const options = all.filter(e => e.runtimeId !== r.target.runtimeId && e.kind === 'mob' && e.hostile === true && e.alive === true && e.positionKnown === true && isAttackableHostileType(e.entityType) && finite(e.position) && e.dimension === s.state.dimension)
         .map(e => ({ e, d: distance(s.state.position, e.position) })).filter(({ e, d }) => d > 6 && d <= maxDistance && (e.entityType !== 'minecraft:creeper' || d >= 8)).sort((a, b) => a.d - b.d)
       for (const { e } of options.slice(0, 4)) { try { const p = plan(e.runtimeId); if (p?.aim) return copy(p.target) } catch { /* not shootable now */ } }
     } catch { /* no candidate */ }

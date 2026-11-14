@@ -3,8 +3,15 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const root=process.env.ARCHER_FLOOR_ROOT??process.cwd(),sourceFile=process.env.ARCHER_FLOOR_THREATS_SOURCE??path.join(root,'src/threats.js'),source=fs.readFileSync(sourceFile,'utf8')
 const {evaluateThreats}=require(path.join(root,'src/threats')),{createAutonomy}=require(path.join(root,'src/autonomy')),{annotateTerrainThreats,terrainOcclusionApplies}=require(path.join(root,'src/terrain-threats'))
 const counterfactual=new Module(path.join(root,'src/threats.js'),module);counterfactual.filename=path.join(root,'src/threats.js');counterfactual.paths=Module._nodeModulePaths(path.join(root,'src'))
-assert.equal(source.split('LEARNING_ARCHER.has(type) ? 18 : ').length,2)
-counterfactual._compile(source.replace('LEARNING_ARCHER.has(type) ? 18 : ',''),counterfactual.filename)
+// Reproduce the former ten-block learning decision through the real evaluator:
+// assign archers to its ordinary ranged learning class in this isolated load.
+// The immutable production catalogue and all actual-caller assertions stay intact.
+const nativeRequire=Module.createRequire(counterfactual.filename),catalogue=nativeRequire('./mob-catalog')
+counterfactual.require=id=>id==='./mob-catalog'?{...catalogue,mobType:type=>{
+ const entry=catalogue.mobType(type)
+ return entry?.learning==='archer'?{...entry,learning:'ranged'}:entry
+}}:nativeRequire(id)
+counterfactual._compile(source,counterfactual.filename)
 const state=(health=20)=>({phase:'spawned',profile:'bot',realm:{id:'21225335'},connectionId:'controlled-archer-policy',startedAt:'controlled',runtimeEntityId:'1',dimension:'overworld',lifecycle:{deathId:1,dead:false},threatPolicy:'online_learning',health,position:{x:0,y:64,z:0},inventory:{known:true,items:[]},entityStats:{unknownPositions:0},idleProtection:{running:true,wanted:true,busy:false,phase:'observing'}})
 const actor=(name='skeleton',distance=14.815,extra={})=>({runtimeId:'9',uniqueId:'90',kind:'mob',entityType:`minecraft:${name}`,alive:true,positionKnown:true,dimension:'overworld',position:{x:distance,y:64,z:0},...extra})
 const entry=(s,a,options)=>{const e=evaluateThreats(s,[a],options);return [...e.threats,...e.outsideDanger,...e.suppressedByTerrain,...e.unknownPositions][0]}
