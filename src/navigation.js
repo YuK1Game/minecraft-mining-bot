@@ -3,6 +3,7 @@
 const { createPhysics } = require('./physics')
 const { knownSurfaceBody } = require('./low-health-water')
 const { planBoundedJump, createBoundedJumpStepper } = require('./bounded-jump')
+const { planWaterExit, createWaterExitStepper } = require('./water-exit')
 
 const HALF_WIDTH = 0.3
 const HEIGHT = 1.8
@@ -259,7 +260,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     return true
   }
 
-  function * planWithoutCache (initialState, target, { maxDistance = 12, maxExpanded = 1500, avoidance = [], directFlat = false, directSurface = false, exactGoal = false, partialDrop = false, partialRecenter = false, controlledDrop = false, shoreRecenter = false, stablePartialOrigin = false, boundedJump = null } = {}, control = null) {
+  function * planWithoutCache (initialState, target, { maxDistance = 12, maxExpanded = 1500, avoidance = [], directFlat = false, directSurface = false, exactGoal = false, partialDrop = false, partialRecenter = false, controlledDrop = false, shoreRecenter = false, stablePartialOrigin = false, boundedJump = null, waterExit = false } = {}, control = null) {
     const planningStarted = planningDistanceLimit > 24 && !control ? performance.now() : null
     const unknown = new Map()
     const empty = reason => ({ ready: false, reason, waypoints: [], unknownFrontier: [...unknown.values()].slice(0, 32), predictionOnly: true, serverConfirmed: false })
@@ -285,6 +286,11 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
       return true
     }
     const origin = copy(initialState.position)
+    // A held forward+jump tape from water onto an adjacent received ledge (2026-11-14).
+    if (waterExit === true) {
+      if (!allowWater) return empty('Water exit needs allowWater')
+      return { ...planWaterExit({ physics, initial: initialState, target }), avoidance: circles }
+    }
     if (boundedJump !== null) {
       if (allowWater || directSurface || partialDrop || partialRecenter || controlledDrop || shoreRecenter || !stablePartialOrigin) return empty('Bounded jump needs an explicit dry stable-origin policy')
       const route = planBoundedJump({ physics, initial: initialState, descriptor: boundedJump, target, originSafe: state => verifyOrigin(state, { stablePartialOrigin: true }), landingSafe: state => verifyOrigin(state), edgeSafe: (from, to) => policyEdge(from, to, true) })
@@ -671,6 +677,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     if (route?.planningOnly) throw new Error('A planning-only route requires a fresh ordinary short preview')
     if (!route?.ready || !Array.isArray(route.waypoints) || !finite(initialState?.position)) throw new Error('A valid navigation plan and physics state are required')
     if (typeof sprint !== 'boolean') throw new Error('sprint must be an explicit boolean')
+    if (route.waterExit) return createWaterExitStepper({ route, initial: initialState, physics })
     if (route.boundedJump) {
       if (!sprint || !Array.isArray(route.jumpFrames) || route.jumpFrames.length > Math.min(maxTicks, 40)) throw new Error('Bounded jump needs its explicit proven sprint tape')
       const frameSafe = (from, to) => {
