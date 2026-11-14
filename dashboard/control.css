@@ -218,6 +218,7 @@ body.v2 .log-time{font-size:14px;color:var(--ink)}
 body.v2 .log-kind{justify-self:start;min-width:84px;text-align:center;padding:0 10px;border-radius:999px;font-size:13px;font-weight:700;background:#e3e6e3;color:#3d4a40}
 body.v2 .log-kind.quarry{background:#cfeac4;color:#1f5d2a}body.v2 .log-kind.combat{background:#ffe6b8;color:#7d5306}body.v2 .log-kind.error{background:#fbd0d2;color:#a8141c}
 body.v2 .log-line{white-space:normal;border-left:0}body.v2 .log-line:nth-child(even){background:none}body.v2 .log-text{min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}body.v2 .log-line.error .log-text{color:#a8141c}
+body.v2 .log-repeat{margin-left:8px;padding:0 8px;border-radius:999px;background:#e3e6e3;color:#3d4a40;font-size:12px;font-weight:700;white-space:nowrap}body.v2 .log-repeat[hidden]{display:none}
 body.v2 #log-placeholder{padding:10px 28px;margin:0}
 body.v2 .page-footer{display:none}
 
