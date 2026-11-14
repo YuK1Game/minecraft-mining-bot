@@ -7939,6 +7939,7 @@ function createRuntime (host) {
     host.shared.longTravelResume = null
     Promise.resolve().then(() => operations.quarry.travelTo({ destination: r.destination })).then(() => host.log(`長距離移動: 行動コードの反映後に移動を再開しました（目的地 ${r.destination.x}, ${r.destination.z}）`), error => host.log(`長距離移動: 反映後の再開に失敗しました: ${String(error.message ?? error).slice(0, 100)}`))
   }, 2000)
+  travelResumeTimer.unref?.() // never keeps a process (or a test) alive
   function ensureLongTravel () {
     if (longTravel) return longTravel
     longTravel = require('./long-travel').createLongTravel({
