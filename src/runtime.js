@@ -6701,8 +6701,8 @@ function createRuntime (host) {
   // Never throws out of the timer: a fault only logs (a timer error ends the process).
   idleEat.timer = setInterval(() => { idleEatTick().catch(error => { idleEat.busy = false; try { host.log(`待機中の食事の確認に失敗: ${String(error?.message ?? error).slice(0, 120)}`) } catch {} }) }, 5000)
   idleEat.timer.unref?.()
-  function quarryCanSelectTarget (target, state, info = {}) { const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
-  function quarryCanContinue (target, state, info = {}) { const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canContinue(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true, retreating: info.retreating === true || quarryRetreatDepth > 0 }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
+  function quarryCanSelectTarget (target, state, info = {}) { if (!require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
+  function quarryCanContinue (target, state, info = {}) { if (!require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canContinue(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true, retreating: info.retreating === true || quarryRetreatDepth > 0 }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
   function quarryState () {
     const state = lightweightUserState()
     const hunger = host.shared.vitals?.hunger
