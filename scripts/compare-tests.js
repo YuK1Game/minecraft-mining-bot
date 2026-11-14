@@ -8,7 +8,7 @@ const path = require('node:path')
 const { spawn, execFileSync } = require('node:child_process')
 const { createWriteStream, existsSync } = require('node:fs')
 const { finished } = require('node:stream/promises')
-const { parseTap, compareReports, baselineGaps, withRerun } = require('./lib/test-report')
+const { parseTap, compareReports, baselineGaps, withRerun, confirmedByRerun } = require('./lib/test-report')
 const root = path.resolve(__dirname, '..')
 // Both runs use the same settings, so the comparison stays like for like.
 const CONCURRENCY = Math.max(2, Math.min(8, os.availableParallelism()))
@@ -54,7 +54,17 @@ async function main () {
       console.warn(`Baseline recorded no result for tests in ${rerunFiles.length} file(s); running them again on the baseline: ${rerunFiles.join(', ')}`)
       baseline = withRerun(baseline, await runSuite(worktree, path.join(reports, 'baseline-rerun.tap'), rerunFiles), rerunFiles)
     }
-    const comparison = { base, node: process.version, ...compareReports(baseline, current), baselineRerunFiles: rerunFiles, currentUnreported: current.unreported }
+    const comparison = { base, node: process.version, ...compareReports(baseline, current), baselineRerunFiles: rerunFiles, currentUnreported: current.unreported, passedWhenRunAgain: [] }
+    // 2026-11-15: one timing-sensitive test failed under four workers in the
+    // current run only and turned the gate red; it passes when run alone. A
+    // new failure is confirmed by running its file once more on the current
+    // code: a test that fails again, or has no result there, stays new.
+    const suspectFiles = [...new Set(comparison.introduced.map(item => item.file).filter(file => /^test\/.+\.[cm]?js$/.test(file) && existsSync(path.join(root, file))))].sort()
+    if (suspectFiles.length) {
+      console.warn(`Running ${suspectFiles.length} file(s) with new failures once more on the current code: ${suspectFiles.join(', ')}`)
+      const settled = confirmedByRerun(comparison.introduced, await runSuite(root, path.join(reports, 'current-rerun.tap'), suspectFiles))
+      comparison.introduced = settled.confirmed; comparison.passedWhenRunAgain = settled.passed
+    }
     if (current.unreported.length) console.warn(`Current run recorded no result for ${current.unreported.length} started test(s); a failure among them would not be seen: ${current.unreported.slice(0, 10).join(' | ')}`)
     await fs.writeFile(path.join(reports, 'comparison.json'), JSON.stringify(comparison, null, 2) + '\n')
     console.log(JSON.stringify(comparison, null, 2))

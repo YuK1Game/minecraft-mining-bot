@@ -86,4 +86,13 @@ function withRerun (report, rerun, files) {
   const again = new Set(files)
   return { ...report, failures: [...report.failures.filter(item => !again.has(item.file)), ...rerun.failures] }
 }
-module.exports = { parseTap, compareReports, baselineGaps, withRerun }
+// Splits new failures by a second run of their files on the current code. Only
+// a test that has a result there and did not fail is taken off the list; one
+// that fails again, or has no result in the second run, stays a new failure.
+function confirmedByRerun (introduced, rerun) {
+  const ran = new Set(rerun.reported ?? []), failed = new Set(rerun.failures.map(item => JSON.stringify([item.file, item.name])))
+  const confirmed = [], passed = []
+  for (const item of introduced) (ran.has(item.name) && !failed.has(JSON.stringify([item.file, item.name])) ? passed : confirmed).push(item)
+  return { confirmed, passed }
+}
+module.exports = { parseTap, compareReports, baselineGaps, withRerun, confirmedByRerun }
