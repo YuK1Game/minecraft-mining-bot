@@ -1,0 +1,11 @@
+{
+    "note":  "Bytes without carriage returns at 2026-11-15. npm run check reports growth beyond these. Lower a value after moving code out; do not raise one to fit new code.",
+    "files":  {
+                  "src/runtime.js":  843885,
+                  "src/quarry-job.js":  370106,
+                  "src/idle-safety.js":  160710,
+                  "src/quarry-portable-storage.js":  150373,
+                  "src/runner.js":  109253,
+                  "dashboard/index.html":  94716
+              }
+}
