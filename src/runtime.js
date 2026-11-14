@@ -5778,9 +5778,26 @@ function createRuntime (host) {
         const count = re => items().filter(i => re.test(i.name ?? '')).reduce((n, i) => n + (i.count ?? 0), 0)
         if (!longTravelLogAllowance()) await operations.quarry.prepareLongTravel({ logCount: 10, gather: false })
         const has = re => count(re) > 0
-        if (!has(/^minecraft:bed$/) && count(/wool$/) < 3) await operations.quarry.prepGather({ logs: 0, wool: 3, maxMs: Math.min(900000, input.woolMs ?? 600000) })
-        await operations.quarry.prepGather({ logs: 0, food: Math.max(5, Math.min(10, input.food ?? 6)), maxMs: Math.min(900000, input.foodMs ?? 600000) })
-        await operations.quarry.prepGather({ logs: 4, maxMs: 600000 })
+        const foodWanted = Math.max(5, Math.min(10, input.food ?? 6))
+        const FOODS = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/
+        const LOGS0 = /^minecraft:[a-z_]+_(?:log|stem)$/
+        const missing = () => [!has(/^minecraft:bed$/) && count(/wool$/) < 3 ? 'wool' : null, count(FOODS) < foodWanted ? 'food' : null, count(LOGS0) < 4 && !has(/_sword$/) ? 'logs' : null].filter(Boolean)
+        // Live 18:52: right after a reconnect nothing was in sight and the kit
+        // ended at once. Gather, and while something is missing walk about 48 m
+        // to another spot (six rounds, turning 60 degrees) and gather again.
+        const origin = working().position ? { x: working().position.x, z: working().position.z } : null
+        for (let round = 0; round < 7 && origin; round++) {
+          if (missing().includes('wool')) await operations.quarry.prepGather({ logs: 0, wool: 3, maxMs: 120000 })
+          if (missing().includes('food')) await operations.quarry.prepGather({ logs: 0, food: foodWanted, maxMs: 180000 })
+          if (missing().includes('logs')) await operations.quarry.prepGather({ logs: 4, maxMs: 180000 })
+          if (!missing().length || round === 6) break
+          const ang = round * Math.PI / 3, dest = { x: Math.round(origin.x + Math.cos(ang) * 48), z: Math.round(origin.z + Math.sin(ang) * 48) }
+          say(`まだ足りません（${missing().join('・')}）。(${dest.x}, ${dest.z}) へ探しに行きます`)
+          try { await operations.quarry.travelTo({ destination: dest }) } catch {}
+          const until = Date.now() + 180000
+          while (Date.now() < until && longTravel?.status?.().busy) await new Promise(r => setTimeout(r, 1000))
+          if (longTravel?.status?.().busy) { try { await longTravel.cancel('KIT_EXPLORE') } catch {} }
+        }
         const LOGS = /^minecraft:([a-z_]+)_log$/, PLANKS = /^minecraft:([a-z_]+)_planks$/
         const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
         const made = []
@@ -5803,7 +5820,7 @@ function createRuntime (host) {
           }
         }
         const kit = { bed: count(/^minecraft:bed$/), sword: count(/_sword$/), food: items().filter(i => /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/.test(i.name ?? '')).reduce((n, i) => n + i.count, 0), boat: count(/_boat$/), wool: count(/wool$/) }
-        say(`揃いました: ベッド ${kit.bed}・剣 ${kit.sword}・食料 ${kit.food}・ボート ${kit.boat}（受信した持ち物で確認、作ったもの: ${made.join('・') || 'なし'}）`)
+        say(`${missing().length ? `足りないもの: ${missing().join('・')}。` : '揃いました。'}ベッド ${kit.bed}・剣 ${kit.sword}・食料 ${kit.food}・ボート ${kit.boat}（受信した持ち物で確認、作ったもの: ${made.join('・') || 'なし'}）`)
         return { made, kit }
       },
       // Read-only: why the empty-handed preparation flag is on or off.
