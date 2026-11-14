@@ -164,6 +164,11 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
           // Diagonal: both side columns must be walkable at the same height.
           const a = surface.stands(n.x + dx, n.z, Math.min(n.y, s.y) - 1, Math.max(n.y, s.y) + 1).stands, b = surface.stands(n.x, n.z + dz, Math.min(n.y, s.y) - 1, Math.max(n.y, s.y) + 1).stands
           if (!a.length || !b.length) continue
+          // Live 16:08: the body passes the two corner cells; both must be open at
+          // every height between the two feet levels and the head above them.
+          let clear = true
+          for (let yy = Math.min(n.y, s.y); yy <= Math.max(n.y, s.y) + 1 && clear; yy++) for (const [cx, cz] of [[n.x + dx, n.z], [n.x, n.z + dz]]) if (classify(getBlock(cx, yy, cz)) !== 'pass') { clear = false; break }
+          if (!clear) continue
         }
         const covered = surfaceOnly && !sky(x, s.y, z)
         if (covered && dy < 0) continue

@@ -158,3 +158,16 @@ test('the search stops at its time budget and returns the best partial route', (
   const big = planCoarseRoute({ getBlock: world(flat(200, 200)), start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 190, z: 190 }, maxNodes: 200000 })
   assert.equal(big.reached, true, 'a large open search still completes')
 })
+
+// Live 2026-11-14 16:08: a diagonal step clipped a solid corner block and the
+// local planner refused it every time.
+test('a diagonal step never clips a solid corner cell', () => {
+  const rows = flat(10, 10), base = world(rows)
+  const get = (x, y, z) => (x === 5 && z === 4 && y === 63) ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : base(x, y, z)
+  const r = planCoarseRoute({ getBlock: get, start: { x: 4.5, y: 63, z: 4.5 }, goal: { x: 8, z: 1 } })
+  assert.equal(r.reached, true)
+  for (let i = 1; i < r.path.length; i++) {
+    const a = r.path[i - 1], b = r.path[i], dx = Math.floor(b.x) - Math.floor(a.x), dz = Math.floor(b.z) - Math.floor(a.z)
+    if (dx && dz) for (const [cx, cz] of [[Math.floor(a.x) + dx, Math.floor(a.z)], [Math.floor(a.x), Math.floor(a.z) + dz]]) assert.notEqual(get(cx, 63, cz).boundingBox, 'block')
+  }
+})

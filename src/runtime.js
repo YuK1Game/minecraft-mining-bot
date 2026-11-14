@@ -5708,6 +5708,16 @@ function createRuntime (host) {
       },
       // One canopy-escape pass outside a trip (same rules as during long travel).
       leafEscape: async () => { if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。'); if (longTravel?.status?.().busy) throw new Error('長距離移動の途中です。'); return travelLeafEscape(null) },
+      // Read-only: the route the trip itself would plan from here (same options).
+      travelDebug: (input = {}) => {
+        const st = working(); if (!st.position) throw new Error('位置が不明です。')
+        const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, d = input.destination ?? { x: 1968, z: -2041 }
+        const bad = host.shared.longTravelBadCells
+        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: d, maxNodes: 60000, maxMs: 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: bad ?? new Set() })
+        const firstDig = r.ready ? r.path.findIndex(q => q.dig) : -1
+        const previews = [12, 9, 6, 4, 3, 2, 1].map(a => { const q = r.path[Math.min(firstDig > 0 ? Math.min(a, firstDig - 1) : a, r.path.length - 1)]; if (!q) return null; let pv = null; try { motionOrigin = working(); pv = movement?.preview({ x: q.x, y: q.y, z: q.z }, { allowWater: true, allowLowHealth: true, maxDistance: 16 }) } catch (e) { pv = { ready: false, reason: e.message } } return { a, q, ready: pv?.ready === true, reason: pv?.reason ?? null } })
+        return { bad: bad?.size ?? 0, ready: r.ready, reached: r.reached, timedOut: r.timedOut, expanded: r.expanded, length: r.path.length, firstDig, firstSteps: r.path.slice(0, 6), previews }
+      },
       // Read-only: why the empty-handed preparation flag is on or off.
       prepCheck: () => {
         const cheap = require('./learning-health').cheapItem, out = { allowance: longTravelLogAllowance(), flag: emptyHandedPrep(), blocking: [] }
@@ -8020,6 +8030,10 @@ function createRuntime (host) {
         try {
           const planRoute = () => require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, maxMs: 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: host.shared.longTravelBadCells ??= new Set() })
           let route = planRoute()
+          // Live 16:05: columns marked after failed walks fenced the bot in (the
+          // same route without them existed). When they leave no route at all,
+          // they are forgotten and the plan is made again.
+          { const bad = host.shared.longTravelBadCells; if (!route.ready && bad?.size) { host.log(`長距離移動: 歩けなかった列の記録（${bad.size}件）を消して計画し直します`); bad.clear(); route = planRoute() } }
           // Going around (coordinator 2026-11-14): when the route does not reach
           // the goal, request the received-terrain frontier closest to the
           // destination (up to three chunks, each at most every two minutes) and
@@ -8056,9 +8070,9 @@ function createRuntime (host) {
             if (Math.hypot(before.x - feet.x, before.z - feet.z) > 1.2 || Math.abs(before.y - feet.y) > 0.6) { let pv = null; try { motionOrigin = working(); pv = movement?.preview({ x: before.x, y: before.y, z: before.z }, opts) } catch {} if (pv?.ready === true) return { x: before.x, y: before.y, z: before.z } }
             else return { x: step.x, y: step.y, z: step.z, dig: step.dig }
           }
-          if (route.ready) for (const ahead of [12, 9, 6, 4].map(a => firstDig > 0 ? Math.min(a, firstDig - 1) : a)) {
+          if (route.ready) for (const ahead of [12, 9, 6, 4, 3, 2, 1].map(a => firstDig > 0 ? Math.min(a, firstDig - 1) : a)) {
             const p = route.path[Math.min(ahead, route.path.length - 1)]
-            if (!p || Math.hypot(p.x - feet.x, p.z - feet.z) < 2) continue
+            if (!p || Math.hypot(p.x - feet.x, p.z - feet.z) < 0.8) continue // a one-node step counts (live 16:06: only it was walkable)
             if (fleeing && shooters.some(q => Math.hypot(q.x - p.x, q.z - p.z) < Math.min(6, Math.hypot(q.x - feet.x, q.z - feet.z)))) continue
             let preview = null
             try { motionOrigin = working(); preview = movement?.preview({ x: p.x, y: p.y, z: p.z }, opts) } catch { preview = null }
