@@ -5694,6 +5694,8 @@ function createRuntime (host) {
         host.log(`拾得: 受信した持ち物が ${gained} 個増えました`)
         return { gained, items: total(), skipped: skip.size }
       },
+      // One canopy-escape pass outside a trip (same rules as during long travel).
+      leafEscape: async () => { if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。'); if (longTravel?.status?.().busy) throw new Error('長距離移動の途中です。'); return travelLeafEscape(null) },
       // Read-only: why the empty-handed preparation flag is on or off.
       prepCheck: () => {
         const cheap = require('./learning-health').cheapItem, out = { allowance: longTravelLogAllowance(), flag: emptyHandedPrep(), blocking: [] }
@@ -7773,7 +7775,14 @@ function createRuntime (host) {
     const at = (x, y, z) => host.world.getBlock(x, y, z)
     const leaf = b => b?.known === true && /leaves$/.test(b.name ?? '')
     const f0 = feetOf(); if (!f0) return { attempted: false }
-    if (!leaf(at(Math.floor(f0.x), Math.round(f0.y) - 1, Math.floor(f0.z)))) return { attempted: false }
+    // Live 14:09: after one leaf the bot landed on a branch (log) over a ravine;
+    // a canopy branch counts as canopy too (only leaves are ever broken).
+    // Every block under the 0.6-wide footprint (live 14:17: the bot stood on the
+    // leaf next to its own column).
+    const canopyBlock = b => leaf(b) || b?.known === true && /_log$/.test(b.name ?? '')
+    const under = []
+    for (const ox of [-0.3, 0.3]) for (const oz of [-0.3, 0.3]) { const b = at(Math.floor(f0.x + ox), Math.round(f0.y) - 1, Math.floor(f0.z + oz)); if (b?.boundingBox === 'block' || b?.known !== true) under.push(b) }
+    if (!under.length || !under.every(canopyBlock)) return { attempted: false }
     const descent = (x, sy, z) => {
       let damage = 0, run = 0
       for (let y = sy - 1; y >= sy - 30; y--) {
@@ -7781,7 +7790,7 @@ function createRuntime (host) {
         if (b?.known !== true) return null
         if (leaf(b)) { damage += Math.max(0, run - 3); run = 0; continue }
         if (/^minecraft:(?:air|cave_air)$/.test(b.name ?? '') || b.boundingBox === 'empty' && !/water|lava|fire/.test(b.name ?? '')) { run++; continue }
-        if (b.boundingBox !== 'block' || /water|lava|fire|magma|cactus|powder_snow/.test(b.name ?? '')) return null
+        if (b.boundingBox !== 'block' || /water|lava|fire|magma|cactus|powder_snow|_log$/.test(b.name ?? '')) return null // a branch is not ground (live 14:13)
         return { damage: damage + Math.max(0, run - 3), ground: y }
       }
       return null
@@ -7790,7 +7799,7 @@ function createRuntime (host) {
     const cands = []
     for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) {
       const x = Math.floor(f0.x) + dx, z = Math.floor(f0.z) + dz
-      for (const sy of [Math.round(f0.y), Math.round(f0.y) - 1, Math.round(f0.y) + 1, Math.round(f0.y) - 2]) {
+      for (const sy of [Math.round(f0.y), Math.round(f0.y) - 1, Math.round(f0.y) + 1, Math.round(f0.y) - 2, Math.round(f0.y) + 2]) {
         if (!leaf(at(x, sy - 1, z)) || at(x, sy, z)?.boundingBox !== 'empty' || at(x, sy + 1, z)?.boundingBox !== 'empty') continue
         const d = descent(x, sy, z)
         if (d && health - d.damage >= 6) cands.push({ x, y: sy, z, ...d, dist: Math.hypot(dx, dz) })
@@ -7825,6 +7834,29 @@ function createRuntime (host) {
         for (let k = 0; k < 40 && still < 4; k++) { await sleep(150); const q = feetOf(); if (q && last && Math.abs(q.y - last.y) < 0.01) still++; else still = 0; last = q }
       }
       return { attempted: true, ok: false, reason: '降り切れませんでした' }
+    }
+    // No descent spot is reachable in one walk (live 14:11, a leaf pocket on a
+    // branch): take one accepted step on the canopy toward the best spot; the
+    // next pass tries again from there.
+    const best = cands[0], here = feetOf()
+    const steps = []
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) for (const dy of [0, 1, -1, 2]) {
+      const x = Math.floor(here.x) + dx, z = Math.floor(here.z) + dz, y = Math.round(here.y) + dy
+      if (!dx && !dz) continue
+      const floor = at(x, y - 1, z)
+      if (!(leaf(floor) || floor?.known === true && /_log$/.test(floor.name ?? '')) || at(x, y, z)?.boundingBox !== 'empty' || at(x, y + 1, z)?.boundingBox !== 'empty') continue
+      const gain = Math.hypot(best.x - Math.floor(here.x), best.z - Math.floor(here.z)) - Math.hypot(best.x - x, best.z - z)
+      if (gain > 0.5) steps.push({ x, y, z, gain })
+    }
+    steps.sort((a, b) => b.gain - a.gain)
+    for (const st of steps.slice(0, 10)) {
+      const t = { x: st.x + 0.5, y: st.y, z: st.z + 0.5 }, opts = { allowWater: false, allowLowHealth: true, maxDistance: 16 }
+      let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
+      if (pv?.ready !== true) continue
+      try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { continue }
+      const until = Date.now() + 10000
+      while (Date.now() < until) { const m = movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await sleep(200) }
+      return { attempted: true, ok: false, reason: `葉の上を降りる場所 (${best.x},${best.z}) へ1歩進みました` }
     }
     return { attempted: true, ok: false, reason: '降りる場所へ歩けません' }
   }
