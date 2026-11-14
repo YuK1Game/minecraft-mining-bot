@@ -72,10 +72,15 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
     return { ok: false, code: s.error?.code ?? s.phase ?? 'CHUNK_TRAVEL_FAILED', message: s.error?.message ?? null }
   }
   async function loop (signal) {
-    let stuckAt = null, stuckCount = 0
+    let stuckAt = null, stuckCount = 0, lastLife = null
     while (!signal.aborted) {
       const state = getState(), feet = feetOf(state)
       if (state?.phase !== 'spawned' || state.dead || !feet || !(state.health > 0)) { run.phase = 'waiting'; await sleep(1000); continue }
+      // Deaths during one trip (decision 2026-11-14): five are continued after
+      // the normal respawn; the sixth stops the trip with the reason.
+      const life = state.lifecycle?.deathId ?? null
+      if (lastLife !== null && life !== null && life !== lastLife) { run.deaths = (run.deaths ?? 0) + 1; say(`死亡しました（${run.deaths}回目）。リスポーンのあと続けます`); if (run.deaths > 5) throw fail('LONG_TRAVEL_DEATH_LIMIT', '死亡が5回を超えたため停止しました') }
+      lastLife = life
       run.remaining = Math.round(horizontal(feet, run.destination))
       if (run.remaining <= arriveM) { run.phase = 'arrived'; run.reason = 'LONG_TRAVEL_ARRIVED'; say(`${reasons.LONG_TRAVEL_ARRIVED}（残り ${run.remaining}m・${run.legs}区間）`); await persist(); return }
       if (run.legs >= maxLegs) throw fail('LONG_TRAVEL_LEG_LIMIT')

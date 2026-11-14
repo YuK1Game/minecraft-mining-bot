@@ -75,3 +75,26 @@ test('a saved trip continues its leg count', async () => {
   const s = await finish(f)
   assert.ok(s.legs > 7)
 })
+
+// Decision 2026-11-14 (C): deaths during one trip continue after the normal
+// respawn up to five; the sixth stops with the reason.
+test('a trip continues through five deaths and stops at the sixth', async () => {
+  const state = { phase: 'spawned', health: 20, position: { x: 0.5, y: 65.62, z: 0.5 }, lifecycle: { deathId: 0 } }
+  let legs = 0
+  const chunkTravel = { async start () { legs++; state.lifecycle.deathId++; return {} }, status: () => ({ phase: 'failed', busy: false, error: { code: 'CHUNK_TRAVEL_DAMAGED' } }), cancel: async () => {} }
+  const logs = []
+  const travel = createLongTravel({ getState: () => state, chunkTravel, log: m => logs.push(m), sleep: () => new Promise(r => setImmediate(r)), damagePauseMs: 0, pollMs: 1 })
+  travel.start({ destination: { x: 500, z: 0 } })
+  const until = Date.now() + 5000
+  while (travel.status().busy && Date.now() < until) await new Promise(r => setTimeout(r, 2))
+  const s = travel.status()
+  assert.equal(s.reason, 'LONG_TRAVEL_DEATH_LIMIT', JSON.stringify(s))
+  assert.ok(logs.some(m => /死亡しました（5回目）/.test(m)))
+})
+
+test('sprinting and the shooter-avoiding point choice apply only while empty-handed', () => {
+  const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  assert.match(source, /const sprint = working\(\)\.emptyHandedPrep === true && Number\.isFinite\(hunger\) && hunger > 6/)
+  assert.match(source, /fleeing = st0\.emptyHandedPrep === true/)
+  assert.match(source, /if \(fleeing && shooters\.some\(/)
+})
