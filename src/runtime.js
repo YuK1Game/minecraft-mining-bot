@@ -5599,8 +5599,14 @@ function createRuntime (host) {
           const cands = []
           for (const r of radii) for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) if (Math.max(Math.abs(dx), Math.abs(dz)) === r) for (const dy of [0, -1, 1, -2, 2]) cands.push({ x: Math.floor(pos.x) + dx + 0.5, y: Math.floor(pos.y) + dy, z: Math.floor(pos.z) + dz + 0.5 })
           cands.sort((a, b) => Math.hypot(a.x - here.x, a.z - here.z) - Math.hypot(b.x - here.x, b.z - here.z))
+          // Live 15:14: forty back-to-back previews stalled the event loop for 24 s
+          // and the server closed the connection. Yield after each preview and
+          // stop planning after two seconds.
+          const planUntil = Date.now() + 2000
           for (const t of cands.slice(0, 40)) {
+            if (Date.now() > planUntil) return false
             let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
+            await new Promise(resolve => setImmediate(resolve))
             if (pv?.ready !== true) continue
             try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { return false }
             await wait(() => { const m = movement?.snapshot() ?? {}; return !['moving', 'settling'].includes(m.phase) }, 20000)
