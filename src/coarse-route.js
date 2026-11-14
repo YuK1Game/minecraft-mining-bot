@@ -25,7 +25,7 @@ function classify (b) {
   return b.boundingBox === 'block' ? 'solid' : 'other'
 }
 
-function createSurface (getBlock, { minY = -60, maxY = 300 } = {}) {
+function createSurface (getBlock, { minY = -60, maxY = 300, leafFloor = false } = {}) {
   const cache = new Map()
   // Standing heights of a column inside [lo, hi]: feet y with a solid (or water
   // surface) below and two passable received cells. 'unknown' when any scanned
@@ -39,7 +39,7 @@ function createSurface (getBlock, { minY = -60, maxY = 300 } = {}) {
     for (let y = hi; y >= lo; y--) {
       const here = classify(getBlock(x, y, z)), below = classify(getBlock(x, y - 1, z))
       if ([above1, here, below].includes('unknown')) unknown = true
-      if (here === 'pass' && above1 === 'pass' && (below === 'solid' || below === 'water')) out.push({ y, water: below === 'water' })
+      if (here === 'pass' && above1 === 'pass' && (below === 'solid' || below === 'water' || leafFloor && below === 'leaves')) out.push({ y, water: below === 'water', leaves: below === 'leaves' })
       above2 = above1; above1 = here
     }
     const value = { stands: out, unknown }
@@ -61,6 +61,9 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   const skyCache = new Map()
   const sky = (x, y, z) => { const k = `${x},${y},${z}`; if (skyCache.has(k)) return skyCache.get(k); let open = true; for (let yy = y + 2; yy < 320; yy++) { const b = getBlock(x, yy, z); if (!b || b.known !== true) { if (yy >= 128) break; open = false; break } if (b.boundingBox === 'block' && !/leaves|log|wood/.test(b.name ?? '')) { open = false; break } } skyCache.set(k, open); return open }
   const surface = createSurface(getBlock)
+  // A bot already on a canopy may keep walking on leaves until it can get down;
+  // a route on the ground never climbs onto leaves.
+  const leafSurface = createSurface(getBlock, { leafFloor: true })
   const onLeaves = n => classify(getBlock(n.x, n.y - 1, n.z)) === 'leaves'
   const sx = Math.floor(start.x), sz = Math.floor(start.z), sy = Math.round(start.y)
   const gx = Math.floor(goal.x), gz = Math.floor(goal.z)
@@ -86,7 +89,7 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
       if (Math.hypot(x - sx, z - sz) > maxRadius) continue
       // Columns the local walk already failed to reach (2026-11-14) are avoided.
       if (blocked?.has?.(`${x},${z}`)) continue
-      const col = surface.stands(x, z, n.y - (onLeaves(n) ? Math.max(maxDrop, 4) : 3), n.y + 1)
+      const col = (onLeaves(n) ? leafSurface : surface).stands(x, z, n.y - (onLeaves(n) ? Math.max(maxDrop, 4) : 3), n.y + 1)
       if (col.unknown && !col.stands.length) { frontier.add(`${x},${z}`); continue }
       // A step carved up a wall (2026-11-14): straight moves only, one block up,
       // the two cells of the new step solid and diggable, its floor received

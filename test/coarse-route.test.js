@@ -88,5 +88,21 @@ test('leaves are never a floor; a bot on a canopy is routed down to the ground',
   const top = planCoarseRoute({ getBlock: canopy, start: { x: 11.5, y: 67, z: 2.5 }, goal: { x: 27, z: 2 }, maxDrop: 1 })
   assert.equal(top.reached, true)
   assert.equal(top.path[top.path.length - 1].y, 63, 'from the canopy the route gets down')
-  assert.ok(top.path.slice(1).every(p => p.y === 63))
+  const down = top.path.findIndex(p => p.y === 63)
+  assert.ok(down > 0 && top.path.slice(down).every(p => p.y === 63), 'once down it stays on the ground')
+})
+
+// Live 2026-11-14 13:55: on a leaf edge over a deep hole no ground was within
+// four; the route walks along the canopy until it can get down.
+test('from a canopy over a deep hole the route walks the leaves to where it can get down', () => {
+  const rows = flat(30, 5)
+  for (let x = 4; x <= 12; x++) for (let z = 0; z < 5; z++) rows[z][x] = 50 // a deep hole
+  const base = world(rows)
+  const canopy = (x, y, z) => (x >= 6 && x <= 16 && y === 66) ? { known: true, name: 'minecraft:oak_leaves', boundingBox: 'block' } : base(x, y, z)
+  const r = planCoarseRoute({ getBlock: canopy, start: { x: 7.5, y: 67, z: 2.5 }, goal: { x: 27, z: 2 }, maxDrop: 1 })
+  assert.equal(r.reached, true)
+  assert.equal(r.path[r.path.length - 1].y, 63)
+  const firstGround = r.path.findIndex(p => p.y === 63)
+  assert.ok(r.path.slice(0, firstGround).every(p => p.y === 67), 'on the leaves until the drop to the ground')
+  assert.ok(r.path.slice(firstGround).every(p => p.y === 63), 'never back onto the leaves')
 })
