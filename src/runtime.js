@@ -5498,7 +5498,10 @@ function createRuntime (host) {
             if (controllerGuard && controllerGuard(frame) === false) return false
             return ordinaryGuard ? ordinaryGuard(frame) !== false : true
           } }
-        } else preparedPortableOptions = normalWaterMovementOptions(portableMovementOptions(target, options))
+        // Long-trip walks use the chunk-move admission rule for water frames (live
+        // 2026-11-14: any listed hostile, e.g. a drowned in the lake, rejected every
+        // swim frame and the bot stayed in the water for hours).
+        } else preparedPortableOptions = normalWaterMovementOptions(portableMovementOptions(target, options), { combatAware: !!longTravel?.status?.().busy })
         portableMovementOwner = options?._portableMovementLease ?? null
         if (portableMovementLease?.id === portableMovementOwner) { portableMovementLease.startedMovement = movement; portableMovementLease.startedSerial = portableMovementSerial }
         try { result = movement.start(target, preparedPortableOptions) } finally { phase('movementStart') }
