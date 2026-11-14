@@ -242,7 +242,7 @@ function movementProgressScope (state) {
   return JSON.stringify([state.profile, String(state.realm.id), state.dimension, state.connectionId, state.startedAt, String(state.runtimeEntityId), state.uniqueEntityId == null ? null : String(state.uniqueEntityId), life])
 }
 
-function makeActions ({ request, refreshState, getState, observe, getLastObservation = () => null, previewCache = new Map(), verifyPosition, recordWorkingPosition = () => {}, recordEquipmentRequest = () => {}, onProgress = () => {}, pollIntervalMs = 150, timeoutMs = 20000, delay = (milliseconds, signal) => sleep(milliseconds, undefined, { signal }), now = Date.now, exploration }) {
+function makeActions ({ request, refreshState, getState, observe, getLastObservation = () => null, previewCache = new Map(), verifyPosition, recordWorkingPosition = () => {}, recordEquipmentRequest = () => {}, onProgress = () => {}, pollIntervalMs = 150, timeoutMs = 20000, delay = (milliseconds, signal) => sleep(milliseconds, undefined, { signal }), now = Date.now, exploration, logAllowance = () => false }) {
   const explorer = exploration ?? createExploration({ clock: now })
   const accessPreparations = new Map()
   let active = null
@@ -281,7 +281,10 @@ function makeActions ({ request, refreshState, getState, observe, getLastObserva
       const harvestResource = ['logs', 'wood', 'leaf', 'leaves'].includes(decision.resource)
       const harvesting = type === 'gather_logs' || harvestResource && ['scan_blocks', 'explore', 'move_to', 'collect_drops', 'clear_access'].includes(type) || decision.accessPreparation?.kind === 'clear_tree_access'
       const treeDrops = type === 'collect_drops' && Array.isArray(decision.targets) && decision.targets.some(target => ['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(harvestRule(target?.name).reason))
-      if (harvesting || treeDrops) throw new RunnerError('木・葉の採取は無効です。必要な材料は補給してください。', 'WOOD_LEAF_HARVEST_DISABLED')
+      // 2026-11-14 user decision (relay): logs may be cut only to prepare a long trip, about 10, starting empty-handed. Leaves stay off, the quarry rule stays.
+      const leafWork = ['leaf', 'leaves'].includes(decision.resource) || decision.accessPreparation?.kind === 'clear_tree_access' || type === 'collect_drops' && Array.isArray(decision.targets) && decision.targets.some(target => harvestRule(target?.name).reason === 'LEAF_HARVEST_DISABLED')
+      const allowed = !leafWork && (() => { try { return logAllowance() === true } catch { return false } })()
+      if ((harvesting || treeDrops) && !allowed) throw new RunnerError('木・葉の採取は無効です。必要な材料は補給してください。', 'WOOD_LEAF_HARVEST_DISABLED')
       if (active) throw new RunnerError('Another autonomous action is still running', 'ACTION_BUSY')
       const controller = new AbortController()
       const signal = context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal
@@ -1252,7 +1255,7 @@ function makeActions ({ request, refreshState, getState, observe, getLastObserva
   return actions
 }
 
-function createRunner ({ request: suppliedRequest, baseUrl, verifyPosition, onProgress = () => {}, scanRadius = 12, below = 3, above = 12, concurrency = 4, pollIntervalMs = 150, timeoutMs = 20000, delay, now, readSupportBlock = null } = {}) {
+function createRunner ({ request: suppliedRequest, baseUrl, verifyPosition, onProgress = () => {}, scanRadius = 12, below = 3, above = 12, concurrency = 4, pollIntervalMs = 150, timeoutMs = 20000, delay, now, readSupportBlock = null, logAllowance = () => false } = {}) {
   const request = suppliedRequest ?? createHttpClient({ baseUrl })
   let cached = null
   let prediction = null
@@ -1298,7 +1301,7 @@ function createRunner ({ request: suppliedRequest, baseUrl, verifyPosition, onPr
   }
   const observer = createObserver({ request, refreshState, getState, previewCache, scanRadius, below, above, concurrency })
   const actions = makeActions({
-    request, refreshState, getState, observe: observer.observe, getLastObservation: observer.getLastObservation, previewCache, exploration, verifyPosition, onProgress, pollIntervalMs, timeoutMs, ...(delay ? { delay } : {}), ...(now ? { now } : {}),
+    request, refreshState, getState, observe: observer.observe, getLastObservation: observer.getLastObservation, previewCache, exploration, verifyPosition, onProgress, pollIntervalMs, timeoutMs, ...(delay ? { delay } : {}), ...(now ? { now } : {}), logAllowance,
     recordWorkingPosition: value => {
       if (!cached || !finite(value.position)) return
       const state = value.state ?? cached

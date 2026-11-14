@@ -77,7 +77,7 @@ function pickTier (state) {
   return { wooden_pickaxe: 1, golden_pickaxe: 1, stone_pickaxe: 2, iron_pickaxe: 3, diamond_pickaxe: 4, netherite_pickaxe: 4 }[name] ?? 0
 }
 
-function createMining ({ getState, world, getInput, verifyOwnedBed = null, verifyOwnedShulker = null, getRawItem = null, isProtected = () => false, now = Date.now, blockTimeoutMs = 15000 }) {
+function createMining ({ getState, world, getInput, verifyOwnedBed = null, verifyOwnedShulker = null, getRawItem = null, isProtected = () => false, now = Date.now, blockTimeoutMs = 15000, logAllowance = () => false }) {
   if (getRawItem !== null && typeof getRawItem !== 'function' || typeof isProtected !== 'function') throw new Error('Clearance inventory/protection readers must be functions')
   if (verifyOwnedBed !== null && typeof verifyOwnedBed !== 'function') throw new Error('Owned-bed verification must be an explicit callback')
   if (verifyOwnedShulker !== null && typeof verifyOwnedShulker !== 'function') throw new Error('Owned-shulker verification must be an explicit callback')
@@ -179,7 +179,9 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     const block = world.getBlock(target.x, target.y, target.z)
     if (!block.known) throw new Error('対象ブロックをまだ読み取れていません。')
     const harvestRule = quarryRule(block.name)
-    if (['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(harvestRule.reason)) throw Object.assign(new Error(harvestRule.reason), { code: harvestRule.reason })
+    // 2026-11-14 user decision (relay): logs may be cut only to prepare a long trip, about 10, starting empty-handed. Leaves stay off, the quarry rule stays.
+    const logAllowed = harvestRule.reason === 'WOOD_HARVEST_DISABLED' && /_log$|_stem$/.test(block.name ?? '') && (() => { try { return logAllowance() === true } catch { return false } })()
+    if (['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(harvestRule.reason) && !logAllowed) throw Object.assign(new Error(harvestRule.reason), { code: harvestRule.reason })
     const name = blockName(block)
     if (target.accessPreparation === 'tree_access' && (!isDryAccessPlant(block) || block.name !== target.expectedName)) throw new Error('準備採掘の植物が変更されたか、乾いた未保護の植物ではありません。')
     const ownedBed = target.accessPreparation === 'owned_bed' && name === 'bed' && block.name === target.expectedName && typeof verifyOwnedBed === 'function' && verifyOwnedBed(state, target, block) === true

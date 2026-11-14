@@ -846,7 +846,7 @@ function createRuntime (host) {
   // or not). Marking the whole inventory unknown disabled every attack in the
   // fight that interrupted it, so it is recorded on its own.
   const food = createFood({ client: host.client, getState: () => { const state = working(); return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: foodKnownLife() } } }, crafting, getInput: () => input, equip: (slot, options) => inventory.equipForFood(slot, options), allocateLegacyId: () => host.allocate('interaction'), canEmergencyEat: canEmergencyEatHere, onUncertain: details => { host.shared.foodUncertain = { ...details, at: new Date().toISOString() }; try { host.log(`食事の結果が未確認です（持ち物全体は不明扱いにしません）: ${String(details?.reason ?? '').slice(0, 80)}`) } catch {} }, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
-  const mining = createMining({ getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true, verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true })
+  const mining = createMining({ logAllowance: () => longTravelLogAllowance(), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true, verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true })
   const interactions = createInteractions({ client: host.client, getState: () => ({ ...working(), lifecycle: { deathId: actualLifeId() } }), world: host.world, crafting, getInput: () => input, version: host.meta.version, onInventory, onUncertain, allocateLegacyId: () => host.allocate('interaction') })
 
   function commitChestMainDelta (delta) {
@@ -1280,7 +1280,14 @@ function createRuntime (host) {
     if(!actualScope || !expectedScope || JSON.stringify(actualScope)!==JSON.stringify(expectedScope) || current.health<expected.health || !position || !['x','y','z'].every(k=>Number.isSafeInteger(position[k]) && Math.abs(position[k])<=30000000))return {known:false,position}
     return planningWorld.getBlock(position.x,position.y,position.z)
   }
+  // Logs only for a long trip's preparation (scoped, bounded, never while
+  // quarry work runs). 2026-11-14 user decision (relay): logs may be cut only to prepare a long trip, about 10, starting empty-handed. Leaves stay off, the quarry rule stays.
+  function longTravelLogAllowance () {
+    const a = host.shared.woodHarvestAllowance
+    return !!a && a.purpose === 'long_travel_prep' && Date.now() < a.expiresAt && !quarryJob?.holdsWork()
+  }
   const runner = createRunner({
+    logAllowance: () => longTravelLogAllowance(),
     baseUrl: host.apiUrl,
     readSupportBlock:readExplorerSupportBlock,
     request: (method, pathname, body, options) => {
@@ -5470,6 +5477,17 @@ function createRuntime (host) {
         return ensureLongTravel().start({ destination: { x: d.x, y: d.y, z: d.z }, resume })
       },
       travelStatus: () => longTravel?.status() ?? { busy: false, phase: 'idle' },
+      // Preparation for a long trip from empty hands: about 10 logs by the
+      // existing tree work (logs only), then planks/table/tools by the existing
+      // crafting. The allowance expires after 30 minutes.
+      prepareLongTravel: (input = {}) => {
+        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
+        const logCount = Math.max(1, Math.min(10, Number.isInteger(input.logCount) ? input.logCount : 10))
+        host.shared.woodHarvestAllowance = { purpose: 'long_travel_prep', logCount, startedAt: Date.now(), expiresAt: Date.now() + 30 * 60000 }
+        host.log(`長距離移動の準備: 原木を ${logCount} 本まで集めます（30分以内・原木のみ）`)
+        return autonomy.start({ objective: 'long_travel_prep', logCount })
+      },
+      endLongTravelPrep: () => { host.shared.woodHarvestAllowance = null; return autonomy.stop('長距離移動の準備を終了しました。') },
       cancelTravel: () => longTravel?.cancel('MANUAL_STOP') ?? { busy: false, phase: 'idle' },
       cancelChunkMove: operationId => {
         if (!operationId || chunkTravel?.status().operationId !== operationId) throw Object.assign(new Error('移動操作が変わりました。状態を更新してください。'), { code: 'STALE_CHUNK_MOVE' })
