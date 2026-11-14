@@ -5516,6 +5516,18 @@ function createRuntime (host) {
         return ensureLongTravel().start({ destination: { x: d.x, y: d.y, z: d.z }, resume })
       },
       travelStatus: () => longTravel?.status() ?? { busy: false, phase: 'idle' },
+      // Read-only request: the terrain above the bot (its chunk and the eight
+      // around it) up to y=120, to find the way back to open sky from a cave.
+      requestTerrainAbove: async () => {
+        const st = working(); if (!st.position) throw new Error('位置が不明です。')
+        const cx = Math.floor(st.position.x / 16), cz = Math.floor(st.position.z / 16), y = Math.floor(st.position.y - 1.62)
+        const results = []
+        for (const [bottom, top] of [[Math.max(-60, y - 4), Math.min(110, y + 60)], [Math.min(110, y + 60), 120]]) {
+          if (bottom >= top) continue
+          results.push(await requestQuarryTerrain({ config: { target: { chunks: [{ x: cx, z: cz }] } }, yTop: top, yBottom: bottom }, {}))
+        }
+        return results.map(r => ({ requested: r.requested, packets: r.packets, reason: r.reason ?? null }))
+      },
       // Read-only: the coarse wide-area route over the received terrain.
       coarseRoutePreview: (input = {}) => {
         const d = input.destination, st = working()
@@ -5523,7 +5535,7 @@ function createRuntime (host) {
         const started = Date.now()
         const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, goal: d, maxNodes: Math.min(120000, input.maxNodes ?? 60000), allowDig: input.allowDig === true, surfaceOnly: input.surfaceOnly === true, maxDrop: Number.isInteger(input.maxDrop) ? input.maxDrop : 3 })
         const step = Math.max(1, Math.floor(r.path.length / 20))
-        return { ready: r.ready, reached: r.reached, remaining: r.remaining, expanded: r.expanded, ms: Date.now() - started, length: r.path.length, sample: r.path.filter((_, i) => i % step === 0 || i === r.path.length - 1), frontier: r.frontier.slice(0, 8) }
+        return { ready: r.ready, reached: r.reached, surfaced: r.surfaced === true, remaining: r.remaining, expanded: r.expanded, ms: Date.now() - started, length: r.path.length, sample: r.path.filter((_, i) => i % step === 0 || i === r.path.length - 1), frontier: r.frontier.slice(0, 8) }
       },
       // Preparation for a long trip from empty hands: about 10 logs by the
       // existing tree work (logs only), then planks/table/tools by the existing
@@ -7535,7 +7547,7 @@ function createRuntime (host) {
       terrainRevision: () => host.world.revision?.() ?? null,
       inventoryReady: () => { try { return inventoryStore.missing().length === 0 } catch { return false } },
       // Arrival counts only under open sky (live 12:13: 'arrived' in a cave at y-33).
-      onSurface: feet => { const x = Math.floor(feet.x), z = Math.floor(feet.z), y = Math.floor(feet.y + 0.2); for (let yy = y + 2; yy < y + 40; yy++) { const b = host.world.getBlock(x, yy, z); if (!b || b.known !== true) return false; if (b.boundingBox === 'block' && !/leaves|log|wood/.test(b.name ?? '')) return false } return true },
+      onSurface: feet => { const x = Math.floor(feet.x), z = Math.floor(feet.z), y = Math.floor(feet.y + 0.2); for (let yy = y + 2; yy < 320; yy++) { const b = host.world.getBlock(x, yy, z); if (!b || b.known !== true) { if (yy >= 128) return true; return false } if (b.boundingBox === 'block' && !/leaves|log|wood/.test(b.name ?? '')) return false } return true },
       // Point legs: a walkable received point toward the destination (distance,
       // angle and height samples), previewed by the ordinary movement planner.
       findPoint: async (feet, destination, { signal } = {}) => {

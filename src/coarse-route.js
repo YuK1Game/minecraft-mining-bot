@@ -56,7 +56,7 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   // upward or level, so an underground start climbs back out; the goal counts
   // only on a sky-open stand.
   const skyCache = new Map()
-  const sky = (x, y, z) => { const k = `${x},${y},${z}`; if (skyCache.has(k)) return skyCache.get(k); let open = true; for (let yy = y + 2; yy < y + 40; yy++) { const b = getBlock(x, yy, z); if (!b || b.known !== true) { open = false; break } if (b.boundingBox === 'block' && !/leaves|log|wood/.test(b.name ?? '')) { open = false; break } } skyCache.set(k, open); return open }
+  const sky = (x, y, z) => { const k = `${x},${y},${z}`; if (skyCache.has(k)) return skyCache.get(k); let open = true; for (let yy = y + 2; yy < 320; yy++) { const b = getBlock(x, yy, z); if (!b || b.known !== true) { if (yy >= 128) break; open = false; break } if (b.boundingBox === 'block' && !/leaves|log|wood/.test(b.name ?? '')) { open = false; break } } skyCache.set(k, open); return open }
   const surface = createSurface(getBlock)
   const sx = Math.floor(start.x), sz = Math.floor(start.z), sy = Math.round(start.y)
   const gx = Math.floor(goal.x), gz = Math.floor(goal.z)
@@ -66,13 +66,17 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   const best = new Map([[key(sx, sy, sz), 0]])
   const parent = new Map(), digOf = new Map()
   const frontier = new Set()
-  let closest = { x: sx, y: sy, z: sz, d: h(sx, sz) }, expanded = 0
+  let closest = { x: sx, y: sy, z: sz, d: h(sx, sz) }, expanded = 0, reached = false, surfaced = false
+  // Underground start (live 12:13, cave at y-33): the nearest open-sky stand is
+  // the first goal; the trip continues from there.
+  const startCovered = surfaceOnly && !sky(sx, sy, sz)
   const pop = () => { let i = 0; for (let j = 1; j < open.length; j++) if (open[j].f < open[i].f) i = j; return open.splice(i, 1)[0] }
   while (open.length && expanded < maxNodes) {
     const n = pop(); expanded++
     const d = h(n.x, n.z)
-    if (d < closest.d) closest = { x: n.x, y: n.y, z: n.z, d }
-    if (d <= arriveM && (!surfaceOnly || sky(n.x, n.y, n.z))) { closest = { x: n.x, y: n.y, z: n.z, d }; break }
+    if (d < closest.d && (!surfaceOnly || !startCovered && sky(n.x, n.y, n.z) || startCovered)) closest = { x: n.x, y: n.y, z: n.z, d }
+    if (startCovered && expanded > 1 && sky(n.x, n.y, n.z)) { closest = { x: n.x, y: n.y, z: n.z, d }; surfaced = true; break }
+    if (d <= arriveM && (!surfaceOnly || sky(n.x, n.y, n.z))) { closest = { x: n.x, y: n.y, z: n.z, d }; reached = true; break }
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
       const x = n.x + dx, z = n.z + dz
       if (Math.hypot(x - sx, z - sz) > maxRadius) continue
@@ -118,7 +122,7 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   let k = key(closest.x, closest.y, closest.z)
   while (k) { const [x, y, z] = k.split(',').map(Number); const dig = digOf.get(k); path.push({ x: x + 0.5, y, z: z + 0.5, ...(dig ? { dig } : {}) }); k = parent.get(k) }
   path.reverse()
-  return { ready: path.length > 1, reached: closest.d <= arriveM, path, remaining: Math.round(closest.d), expanded, frontier: [...frontier].slice(0, 64).map(s => { const [x, z] = s.split(',').map(Number); return { x, z } }) }
+  return { ready: path.length > 1, reached, surfaced, path, remaining: Math.round(closest.d), expanded, frontier: [...frontier].slice(0, 64).map(s => { const [x, z] = s.split(',').map(Number); return { x, z } }) }
 }
 
 module.exports = { planCoarseRoute, createSurface, classify }
