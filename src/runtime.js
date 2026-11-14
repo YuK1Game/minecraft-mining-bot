@@ -7942,6 +7942,18 @@ function createRuntime (host) {
   // Retreat from shooters during long travel: a shooter within 20 m and a hit
   // in the last 5 s (or the shooter within 10 m) moves the bot 5-12 m straight
   // away by the ordinary movement (sprinting when hunger allows).
+  const dangerFile = () => require('node:path').resolve(__dirname, '..', '.local', 'long-travel', 'danger.json')
+  function travelDangerZones () {
+    if (!host.shared.travelDangerZones) { try { host.shared.travelDangerZones = JSON.parse(require('node:fs').readFileSync(dangerFile(), 'utf8')) } catch { host.shared.travelDangerZones = [] } }
+    return host.shared.travelDangerZones
+  }
+  function travelAddDangerZone (p, kind) {
+    const zones = travelDangerZones()
+    if (zones.some(z => Math.hypot(z.x - p.x, z.z - p.z) < 24)) return
+    zones.push({ x: Math.round(p.x), z: Math.round(p.z), r: 48, kind, at: new Date().toISOString() })
+    host.log(`長距離移動: 危険地帯を記録しました (${Math.round(p.x)}, ${Math.round(p.z)}) ${kind.replace('minecraft:', '')}・半径48m`)
+    try { require('node:fs').mkdirSync(require('node:path').dirname(dangerFile()), { recursive: true }); require('node:fs').writeFileSync(dangerFile(), JSON.stringify(zones, null, 2)) } catch {}
+  }
   async function travelShooterRetreat (signal) {
     const SHOOT = require('./learning-health').SHOOTING
     const p = working().position; if (!p) return false
@@ -7953,6 +7965,7 @@ function createRuntime (host) {
     // Before the shooter's range (coordinator 2026-11-14): within 16 m, or hit.
     if (!hurt && nearest > 16) return false
     const low = (working().health ?? 20) < 10
+    if (hurt) for (const a of sh.filter(o => Math.hypot(o.position.x - feet.x, o.position.z - feet.z) <= 24)) travelAddDangerZone(a.position, String(a.entityType ?? a.name ?? ''))
     // Below half health, prefer a spot no shooter can see (a solid received block
     // on the line between eyes).
     const covered = t => sh.every(a => { const sx = a.position.x, sy = a.position.y + 1.5, sz = a.position.z, tx = t.x, ty = t.y + 1.6, tz = t.z, n = Math.ceil(Math.hypot(tx - sx, ty - sy, tz - sz) * 2); for (let i = 1; i < n; i++) { const f = i / n, b = host.world.getBlock(Math.floor(sx + (tx - sx) * f), Math.floor(sy + (ty - sy) * f), Math.floor(sz + (tz - sz) * f)); if (b?.known === true && b.boundingBox === 'block') return true } return false })
@@ -8065,6 +8078,14 @@ function createRuntime (host) {
         // 32 m around a group of three or more (an outpost), never closer than
         // the bot already is, so the route bends away before the shooter's range.
         const avoidCols = new Set()
+        // Remembered danger zones (live 16:22 and 17:18: pillagers near
+        // (540..590, -750) killed the bot twice): 48 m around where a shooter
+        // hit the bot, kept on disk; never closer than the bot already is.
+        for (const zone of travelDangerZones()) {
+          const r = Math.min(zone.r, Math.hypot(zone.x - feet.x, zone.z - feet.z) - 2)
+          if (r <= 1 || Math.hypot(zone.x - feet.x, zone.z - feet.z) > 320) continue
+          for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) for (let dz = -Math.ceil(r); dz <= Math.ceil(r); dz++) if (dx * dx + dz * dz <= r * r) avoidCols.add(`${Math.floor(zone.x) + dx},${Math.floor(zone.z) + dz}`)
+        }
         for (const q of shooters) {
           const group = shooters.filter(o => Math.hypot(o.x - q.x, o.z - q.z) <= 16).length >= 3
           const r = Math.min(group ? 32 : 20, Math.hypot(q.x - feet.x, q.z - feet.z) - 2)
