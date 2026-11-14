@@ -408,6 +408,8 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
         if (Number.isFinite(state.health) && state.health <= resourceMinHealth(state, options.minHealth)) decision = { type: 'stop', stage: 'safety', reason: '体力が少ないため自律作業を停止します。', code: 'low_health' }
         else if (threat) decision = { type: 'avoid_threat', stage: 'safety', reason: threat.reason, threat }
         else if (threatEvaluation.requiresObservation) decision = { type: 'wait', stage: 'safety', reason: '周囲のキャラクターやBotの位置情報が不足しているため、作業前に追加の観測を待ちます。', code: 'threat_observation_required', unknownPositions: serial(threatEvaluation.unknownPositions), hostUnknownPositionCount: threatEvaluation.hostUnknownPositionCount ?? 0, observationRadius: 32 }
+        // Long-trip preparation ends once the logs are actually in hand.
+        else if (options.objective === 'long_travel_prep' && status.progress.milestones?.logs) decision = { type: 'stop', stage: 'done', reason: `長距離移動の準備: 原木 ${status.progress.logsCollected} 本を集めました。` }
         else decision = planAction(state, { ...observations, progress: { ...observations.progress, ...serial(status.progress) } }, { logCount: status.goal.logs, stoneCount: status.goal.stone, minHealth: resourceMinHealth(state, options.minHealth), ...(options.objective === 'diamond' ? { objective: 'diamond', diamondCount: status.goal.diamond } : {}) })
       }
       if (options.objective === 'diamond') {
@@ -614,7 +616,8 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
     if (running || inFlight) throw new Error('すでに実行中、または前の処理の停止完了を待っています。')
     const seed = serial(configuration.progress ?? {})
     options = {
-      objective: configuration.objective === 'diamond' || Object.hasOwn(configuration, 'diamondCount') ? 'diamond' : 'bootstrap',
+      objective: configuration.objective === 'long_travel_prep' ? 'long_travel_prep' : configuration.objective === 'diamond' || Object.hasOwn(configuration, 'diamondCount') ? 'diamond' : 'bootstrap',
+      logCount: configuration.objective === 'long_travel_prep' ? positive(configuration.logCount, 10, 10) : 0,
       diamondCount: positive(configuration.diamondCount, 1),
       maxRetries: Number.isInteger(configuration.maxRetries) && configuration.maxRetries >= 0 && configuration.maxRetries <= 10 ? configuration.maxRetries : 2,
       actionTimeoutMs: positive(configuration.actionTimeoutMs, 30000, 300000),
@@ -634,7 +637,7 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
     failures.clear(); noProgress.clear(); waitKey = null; waits = 0; nightWaitDeadline = null
     status = {
       phase: 'running', running: true, busy: false, actionActive: false, runId,
-      goal: { logs: 0, stone: positive(configuration.stoneCount, 16, 2304), ...(options.objective === 'diamond' ? { diamond: options.diamondCount } : {}) },
+      goal: { logs: options.objective === 'long_travel_prep' ? options.logCount : 0, stone: positive(configuration.stoneCount, 16, 2304), ...(options.objective === 'diamond' ? { diamond: options.diamondCount } : {}) },
       reason: '最新の状態を観測して次の作業を決めます。', startedAt: new Date().toISOString(), startedAtMs: Date.now(),
       lastDecision: null, lastActionResult: null, requiredCapability: null, lastError: null, lastSafetyInterrupt: null,
       progress: { logsCollected: amount(seed.logsCollected), stoneCollected: amount(seed.stoneCollected), observations: 0, decisions: 0, actionsReturned: 0, failures: 0, safetyInterruptions: amount(seed.safetyInterruptions), consecutiveSafetyInterruptions: 0, explorations: amount(seed.explorations), learningExplorationBudget: mergeExplorationBudget(seed.learningExplorationBudget), explorationAttempts: Math.max(amount(seed.explorationAttempts), amount(seed.explorations)), excludedResources: normalizeExcludedResources(seed.excludedResources), emptyProspects: normalizeEmptyProspects(seed.emptyProspects), excludedDropIds: [...new Set((Array.isArray(seed.excludedDropIds) ? seed.excludedDropIds : []).filter(value => value != null && String(value).length > 0).map(String))], inventory: seed.inventory ?? null, milestones: { ...seed.milestones } }, trace: []
