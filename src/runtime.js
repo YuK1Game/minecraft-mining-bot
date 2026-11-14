@@ -5413,7 +5413,7 @@ function createRuntime (host) {
     let previous={...initial.position}
     return {...options,continueAfterReplay:options.continueAfterReplay??true,beforeInput:frame=>{
       const current=lightweightUserState();current.lifecycle={...current.lifecycle,deathId:movementKnownLife()};const p=frame?.packetPosition,n=frame?.predictedState
-      if(disposed||disposing||movement!==controller||inputHistoryGeneration!==generation||portableMovementSerial!==serial||userBehaviorForceRevision!==force||controller.snapshot().phase!=='moving'||JSON.stringify(continuationScope(current))!==JSON.stringify(scope)||current.health<initial.health||current.entityStats?.unknownPositions!==0||!p||!n?.position||!['x','y','z'].every(k=>Number.isFinite(p[k])&&Number.isFinite(n.position[k]))||Math.hypot(p.x-n.position.x,p.y-n.position.y-1.62,p.z-n.position.z)>1e-4||n.isInLava)return false
+      if(disposed||disposing||movement!==controller||inputHistoryGeneration!==generation||portableMovementSerial!==serial||userBehaviorForceRevision!==force||controller.snapshot().phase!=='moving'||JSON.stringify(continuationScope(current))!==JSON.stringify(scope)||current.emptyHandedPrep!==true&&(current.health<initial.health||current.entityStats?.unknownPositions!==0)||!p||!n?.position||!['x','y','z'].every(k=>Number.isFinite(p[k])&&Number.isFinite(n.position[k]))||Math.hypot(p.x-n.position.x,p.y-n.position.y-1.62,p.z-n.position.z)>1e-4||n.isInLava)return false
       const risk=evaluateThreats(current,current.entities,{observationRadius:32})
       // Empty-handed long-trip preparation (2026-11-14 decision): nothing can be
       // lost, so hostiles near the water do not hold the bot in place (live
@@ -7554,7 +7554,7 @@ function createRuntime (host) {
           await new Promise(resolve => setTimeout(resolve, 200))
           if (signal?.aborted) { try { movement?.stop?.('LONG_TRAVEL_CANCELLED') } catch {} return { ok: false, code: 'LONG_TRAVEL_CANCELLED' } }
           const st = working(), m = movement?.snapshot() ?? {}
-          if (st.health < startHealth) { try { movement?.stop?.('damage') } catch {} return { ok: false, code: 'CHUNK_TRAVEL_DAMAGED' } }
+          if (st.health < startHealth && st.emptyHandedPrep !== true) { try { movement?.stop?.('damage') } catch {} return { ok: false, code: 'CHUNK_TRAVEL_DAMAGED' } }
           if (['failed', 'stopped', 'replan_required'].includes(m.phase)) return { ok: false, code: 'POINT_WALK_FAILED', message: String(m.reason ?? m.phase).slice(0, 120) }
           if (['completed', 'idle', 'awaiting_server_confirmation'].includes(m.phase) && m.running !== true) {
             const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }
