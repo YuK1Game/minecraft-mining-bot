@@ -85,5 +85,21 @@ test('long-trip walks use the combat-aware water frame guard', () => {
   const src = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
   assert.match(src, /preparedPortableOptions = normalWaterMovementOptions\(portableMovementOptions\(target, options\), \{ combatAware: !!longTravel\?\.status\?\.\(\)\.busy \}\)/)
   const guard = src.slice(src.indexOf('  function normalWaterMovementOptions ('), src.indexOf('  function startMotion ('))
-  assert.match(guard, /else if \(combatAware\) \{\n\s+if \(!chunkTravelThreatsClear\(/)
+  assert.match(guard, /else if \(combatAware\) \{\s+if \(!chunkTravelThreatsClear\(/)
+})
+
+// Coordinator 2026-11-14: a few totems and a tool from a supply box before the
+// trip; the box is broken only under this placement's own record, combat waits
+// from the break until it is back, and it goes back into the home chest.
+test('the supply-box step keeps ownership, the combat hold and the received checks', () => {
+  const src = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const step = src.slice(src.indexOf('  async function travelSupplyBoxTake ('), src.indexOf('  async function travelMakeBoat (signal) {'))
+  assert.match(step, /if \(armorThreatNear\(\)\) throw/)
+  assert.match(step, /accessPreparation: 'owned_shulker', expectedName: boxName, ownershipKey: host\.shared\.travelShulker\.key/)
+  assert.match(step, /host\.shared\.travelShulkerHold = \{/)
+  assert.match(step, /finally \{ host\.shared\.travelShulkerHold = null \}/)
+  assert.match(step, /depositItem\(\{ sourceSlot: back\.slot, count: 1, chestSlot, expectedName: boxName \}\)/)
+  assert.doesNotMatch(step, /command_request|\/give|\/clear/)
+  assert.match(src, /if \(!hold && host\.shared\.travelShulkerHold\) hold = host\.shared\.travelShulkerHold/)
+  assert.match(src, /rec\.life !== actualLifeId\(\)/)
 })

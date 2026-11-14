@@ -852,7 +852,7 @@ function createRuntime (host) {
   // fight that interrupted it, so it is recorded on its own.
   const food = createFood({ client: host.client, getState: () => { const state = working(); return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: foodKnownLife() } } }, crafting, getInput: () => input, equip: (slot, options) => inventory.equipForFood(slot, options), allocateLegacyId: () => host.allocate('interaction'), canEmergencyEat: canEmergencyEatHere, onUncertain: details => { host.shared.foodUncertain = { ...details, at: new Date().toISOString() }; try { host.log(`食事の結果が未確認です（持ち物全体は不明扱いにしません）: ${String(details?.reason ?? '').slice(0, 80)}`) } catch {} }, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
   // Bare-hand deepslate takes about 15 s (2026-11-14 cave exit): 30 s per block.
-  const mining = createMining({ blockTimeoutMs: 30000, logAllowance: () => longTravelLogAllowance(), travelDownAllowance: () => Date.now() < (host.shared.travelDownUntil ?? 0), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true || travelBedOwns(target, block), verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true })
+  const mining = createMining({ blockTimeoutMs: 30000, logAllowance: () => longTravelLogAllowance(), travelDownAllowance: () => Date.now() < (host.shared.travelDownUntil ?? 0), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true || travelBedOwns(target, block), verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true || travelShulkerOwns(target, block) })
   const interactions = createInteractions({ client: host.client, getState: () => ({ ...working(), lifecycle: { deathId: actualLifeId() } }), world: host.world, crafting, getInput: () => input, version: host.meta.version, onInventory, onUncertain, allocateLegacyId: () => host.allocate('interaction') })
 
   function commitChestMainDelta (delta) {
@@ -5858,6 +5858,14 @@ function createRuntime (host) {
       },
       // Read-only: each gate of the automatic armour step.
       armorCheck: () => { const g = {}; for (const [k, f] of Object.entries({ resetHeld: () => resetHeld(), manualChest: () => !!manualChestStorage?.isBusy(), chunkMoveHeld: () => chunkMoveHeld(), placementPrep: () => !!quarryPlacementPreparation, surfaceOwner: () => !!host.shared.quarrySurfaceStorageOwner, allowed: () => armorAutoAllowed(), task: () => !!armorTask, workFree: () => armorWorkFree(), nearest: () => nearestHostileDistance(), preview: () => armor.preview(), snapshot: () => armor.snapshot() })) { try { g[k] = f() } catch (e) { g[k] = 'ERR ' + String(e.message ?? e).slice(0, 80) } } return g },
+      // Take a few items out of a supply box kept in the home chest
+      // (coordinator 2026-11-14: totems and a pickaxe/shovel before the trip).
+      // The box is withdrawn, placed beside the bot by ordinary placement,
+      // opened, the items withdrawn, the box broken under this placement's own
+      // record (combat waits from the break until the box is back in the
+      // received inventory) and returned to the chest. Never with a reachable
+      // enemy near. Every step is the received inventory or block.
+      supplyBoxTake: async (input = {}) => travelSupplyBoxTake(input),
       // Read-only: why the empty-handed preparation flag is on or off.
       prepCheck: () => {
         const cheap = require('./learning-health').cheapItem, out = { allowance: longTravelLogAllowance(), flag: emptyHandedPrep(), blocking: [] }
@@ -7044,6 +7052,8 @@ function createRuntime (host) {
   function quarryShulkerHold (target, state) {
     let hold = null
     try { hold = quarryJob?.shulkerHold?.() ?? null } catch {}
+    // The trip's own supply box between breaking and recovery (same rule as the quarry).
+    if (!hold && host.shared.travelShulkerHold) hold = host.shared.travelShulkerHold
     if (!hold) { shulkerHoldLog.health = null; shulkerHoldLog.key = null; return null }
     const hp = Number(state?.health)
     if (Number.isFinite(hp) && Number.isFinite(shulkerHoldLog.health) && hp < shulkerHoldLog.health) host.log(`露天掘り: 箱の作業中に被弾 HP ${shulkerHoldLog.health}→${hp} (${hold.operationId} ${hold.stage})。戦闘は箱の回収の確定まで保留`)
@@ -8242,6 +8252,71 @@ function createRuntime (host) {
       try { await interactions.placeCraftingTable({ position: pos, slot: t.slot }); return pos } catch {}
     }
     return null
+  }
+  function travelShulkerOwns (target, block) {
+    const rec = host.shared.travelShulker
+    if (!rec || target?.ownershipKey !== rec.key || rec.life !== actualLifeId()) return false
+    if (!(target.x === rec.position.x && target.y === rec.position.y && target.z === rec.position.z)) return false
+    return !block || block.name === rec.name || /^minecraft:(?:air|cave_air)$/.test(block.name ?? '')
+  }
+  async function travelSupplyBoxTake ({ chest: home, chestSlot, boxName, take = [] } = {}) {
+    if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
+    if (longTravel?.status?.().busy) throw new Error('長距離移動の途中です。')
+    if (armorThreatNear()) throw new Error('攻撃が届く敵が近くにいます。')
+    const say = m => host.log(`補給箱: ${m}`)
+    const items = () => working().inventory?.items ?? []
+    const sleep = ms => new Promise(r => setTimeout(r, ms))
+    const wait = async (fn, ms) => { const until = Date.now() + ms; while (Date.now() < until) { if (fn()) return true; await sleep(200) } return fn() }
+    const isAir = p => { const b = host.world.getBlock(p.x, p.y, p.z); return b?.known === true && /^minecraft:(?:air|cave_air)$/.test(b.name ?? '') }
+    // 1. the box out of the home chest
+    await operations.chest.open(home)
+    await operations.chest.withdrawItem({ chestSlot, count: 1, expectedName: boxName })
+    try { crafting.closeContainer() } catch {}
+    let box = items().find(i => i.name === boxName)
+    if (!box) throw new Error('箱を持ち物で確認できません。')
+    if (box.slot > 8) { await operations.inventory.equip(box.slot); box = items().find(i => i.name === boxName && i.slot <= 8) }
+    if (!box) throw new Error('箱をホットバーへ移せません。')
+    // 2. place it beside the bot (not on the chest cells)
+    const p = working().position, fx = Math.floor(p.x), fy = Math.round(p.y - 1.62), fz = Math.floor(p.z)
+    let at = null
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      const pos = { x: fx + dx, y: fy, z: fz + dz }, below = host.world.getBlock(pos.x, pos.y - 1, pos.z), above = host.world.getBlock(pos.x, pos.y + 1, pos.z)
+      if (!isAir(pos) || below?.known !== true || below.boundingBox !== 'block' || /chest|shulker/.test(below.name ?? '') || !isAir({ x: pos.x, y: pos.y + 1, z: pos.z }) || above?.known !== true) continue
+      try { await operations.interactions.placeBlock({ position: pos, slot: box.slot }); if (await wait(() => host.world.getBlock(pos.x, pos.y, pos.z)?.name === boxName, 3000)) { at = pos; break } } catch {}
+    }
+    if (!at) throw new Error('箱を置けません（置いた箱を受信できません）。')
+    host.shared.travelShulker = { key: `travel_box:${Date.now()}`, position: at, name: boxName, life: actualLifeId() }
+    say(`${boxName.replace('minecraft:', '')} を (${at.x}, ${at.y}, ${at.z}) に置きました`)
+    // 3. open it and take the items
+    const got = {}
+    await operations.chest.open(at)
+    const snap = operations.chest.snapshot(), slots = Array.isArray(snap.slots) ? snap.slots : []
+    for (const want of take) {
+      let left = want.count
+      for (const sl of slots.filter(s => s?.name === want.name && s.count > 0)) {
+        if (left <= 0) break
+        const n = Math.min(left, sl.count)
+        try { await operations.chest.withdrawItem({ chestSlot: sl.slot, count: n, expectedName: want.name }); left -= n; got[want.name] = (got[want.name] ?? 0) + n } catch (error) { say(`取り出せません: ${String(error.message ?? error).slice(0, 60)}`); break }
+      }
+    }
+    try { crafting.closeContainer() } catch {}
+    // 4. break it under this placement's record and recover it
+    host.shared.travelShulkerHold = { operationId: host.shared.travelShulker.key, stage: 'break_to_recover' }
+    try {
+      operations.mining.start([{ ...at, accessPreparation: 'owned_shulker', expectedName: boxName, ownershipKey: host.shared.travelShulker.key }])
+      if (!(await wait(() => isAir(at), 20000))) throw new Error('箱の破壊を受信できません。')
+      const before = items().filter(i => i.name === boxName).length
+      for (let i = 0; i < 3 && items().filter(x => x.name === boxName).length <= before - 0 && !items().some(x => x.name === boxName); i++) await operations.quarry.pickupNear({ center: at, radius: 4, maxMs: 10000 })
+      if (!(await wait(() => items().some(x => x.name === boxName), 5000))) throw new Error('箱の回収を受信した持ち物で確認できません。')
+    } finally { host.shared.travelShulkerHold = null }
+    // 5. back into the home chest
+    await operations.chest.open(home)
+    const back = items().find(i => i.name === boxName)
+    await operations.chest.depositItem({ sourceSlot: back.slot, count: 1, chestSlot, expectedName: boxName })
+    try { crafting.closeContainer() } catch {}
+    host.shared.travelShulker = null
+    say(`取り出したもの: ${Object.entries(got).map(([k, v]) => `${k.replace('minecraft:', '')}×${v}`).join('・') || 'なし'}。箱はチェストへ戻しました（受信した持ち物で確認）`)
+    return { ok: true, got }
   }
   async function travelMakeBoat (signal) {
     const items = () => working().inventory?.items ?? []
