@@ -6,19 +6,20 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { spawn, execFileSync } = require('node:child_process')
-const { createWriteStream } = require('node:fs')
-const { finished } = require('node:stream/promises')
 const { parseTap, compareReports } = require('./lib/test-report')
 const root = path.resolve(__dirname, '..')
 async function runSuite (directory, filename) {
-  const output = createWriteStream(filename, { flags: 'w' })
-  // Failed legacy tests can leave intervals/polling alive. Preserve their
-  // reported failures and timeouts, then exit after all test results exist.
-  const child = spawn(process.execPath, ['--test', '--test-force-exit', '--test-concurrency=2', '--test-timeout=30000', '--test-reporter=tap'], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] })
-  child.stdout.pipe(output, { end: false }); child.stderr.pipe(output, { end: false })
-  const timeout = setTimeout(() => child.kill('SIGTERM'), 12 * 60 * 1000)
-  let code
-  try { code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', (value, signal) => signal ? reject(new Error(`Test suite terminated: ${signal}`)) : resolve(value)) }) } finally { clearTimeout(timeout); output.end(); await finished(output) }
+  // A forced exit can discard pending writes to the parent process's pipe.
+  // Let the child write directly to the output file instead.
+  const output = await fs.open(filename, 'w')
+  let timeout, code
+  try {
+    // Legacy cases can retain polling handles after reporting. Keep their
+    // failures/timeouts visible and reject incomplete top-level TAP below.
+    const child = spawn(process.execPath, ['--test', '--test-force-exit', '--test-concurrency=2', '--test-timeout=30000', '--test-reporter=tap'], { cwd: directory, stdio: ['ignore', output.fd, output.fd] })
+    timeout = setTimeout(() => child.kill('SIGTERM'), 12 * 60 * 1000)
+    code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', (value, signal) => signal ? reject(new Error(`Test suite terminated: ${signal}`)) : resolve(value)) })
+  } finally { clearTimeout(timeout); await output.close() }
   const report = parseTap(await fs.readFile(filename, 'utf8'), { root: directory })
   if (![0, 1].includes(code) || code !== 0 && report.failures.length === 0) throw new Error(`Test process failed without an attributable test failure (${code})`)
   return report

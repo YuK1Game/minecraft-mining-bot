@@ -724,6 +724,9 @@ test('a handed-off water episode must independently earn progress before another
 })
 
 test('a closer water pursuer permits handoff with current eligibility and bounded cumulative clearance loss', async t => {
+  // This case drives the fake clock and explicit ticks; an automatic tick
+  // must not overwrite the handoff phase before its assertions run.
+  t.mock.timers.enable({ apis: ['setInterval'] })
   for (const mode of ['safe', 'stationary', 'approaching', 'small_total_gain', 'below_floor', 'identity', 'primed', 'stale']) {
     let attempts = 0
     const originClearance = mode === 'below_floor' ? 3.8 : mode === 'small_total_gain' ? 6.1 : 5.4

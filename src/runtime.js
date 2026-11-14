@@ -2277,9 +2277,12 @@ function createRuntime (host) {
     const routeScope = state => ({ profile: state.profile, realmId: state.realm?.id == null ? null : String(state.realm.id), dimension: state.dimension })
     const sameRouteScope = (a, b) => a?.profile != null && a.profile === b?.profile && a.realmId != null && String(a.realmId) === String(b?.realmId) && a.dimension === b?.dimension
     let inspectIdleEscape = null
-    const routeState = () => {
+    const readRouteState = () => {
       requireGeneration()
-      const state = { ...observedState(), entityStats: host.entities.stats?.(), hut: host.shared.hutMemo?.site ? generationHut.snapshot() : null, shelter: host.shared.shelterMemo?.site ? generationShelter.snapshot() : null, food: food.snapshot(), vitals: structuredClone(host.shared.vitals ?? {}), crafting: crafting.snapshot(), movement: generationMovement.snapshot() }
+      return { ...observedState(), entityStats: host.entities.stats?.(), hut: host.shared.hutMemo?.site ? generationHut.snapshot() : null, shelter: host.shared.shelterMemo?.site ? generationShelter.snapshot() : null, food: food.snapshot(), vitals: structuredClone(host.shared.vitals ?? {}), crafting: crafting.snapshot(), movement: generationMovement.snapshot() }
+    }
+    const routeState = () => {
+      const state = readRouteState()
       inspectIdleEscape?.(state)
       return state
     }
@@ -2524,6 +2527,8 @@ function createRuntime (host) {
       return actors.filter(actor => {
         if (actor.hostile !== true || actor.alive === false || actor.primed === true) return true
         const exposure = combatAttackExposure(actor, state)
+        // A closing ground actor with a proven route can attack around cover.
+        if (exposure.intercept === true) return true
         // A forbidden combat profile (boss/avoid-only) is still dangerous.
         // Only current, known attack-access/recognition negatives suppress it.
         if (exposure.reason === 'PROFILE_DISALLOWS_ENGAGEMENT') return true
@@ -2533,11 +2538,15 @@ function createRuntime (host) {
     }
     const safetyObservation = () => {
       requireSafety()
-      const state = { ...routeState(), loading: !host.shared.loadingScreenEnded, loadingScreenEnded: host.shared.loadingScreenEnded === true, world: host.world.stats(), totemGuard: offhandTotem() }
+      const observed = readRouteState()
+      const actors = safetyActors(observed)
+      inspectIdleEscape?.(observed, actors)
+      // Inspect may retain its raw state for a replan. Project a separate view
+      // and share this synchronous observation's actor evaluation exactly once.
+      const state = { ...observed, entities: actors, loading: !host.shared.loadingScreenEnded, loadingScreenEnded: host.shared.loadingScreenEnded === true, world: host.world.stats(), totemGuard: offhandTotem() }
       // Keep both views from this one observation. A currently occluded actor
       // still has an identity and position that bound an active retreat.
-      const observedEntities = state.entities
-      state.entities = safetyActors(state)
+      const observedEntities = observed.entities
       recentUserSafetyObservation = { state, at: Date.now(), scope: userScope(state) }
       return { state, observedEntities }
     }
@@ -3345,8 +3354,7 @@ function createRuntime (host) {
           const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
           const feet = state => ({ ...state.position, y: state.position.y - 1.62 })
           const eye = point => ({ ...point, y: point.y + 1.62 })
-          const assessEnemies = state => {
-            const actors = safetyActors(state, state.entities ?? [])
+          const assessEnemies = (state, actors = state.entities ?? []) => {
             const canonical = evaluateThreats(state, actors, { observationRadius: 32 })
             if (canonical.requiresObservation || state.entityStats?.unknownPositions > canonical.unknownPositions.length) throw new Error('Idle escape actor positions are unknown')
             const retained = resolveWorkActors(state, canonical, retainedActors)
@@ -3377,7 +3385,7 @@ function createRuntime (host) {
           let remainingJumpTrace = null; let remainingJumpIndex = 0
           let remainingConstrained = false
           let dropTrace = null; let dropTraceIndex = 0; let dropCircles = null; let shallowWaterRun = false; let shallowWaterCheck = null; let shallowSurfaceY = null; let briefSubmerge = false; let submergedSince = null; let lowHealthSurfaceRun = false; let lowHealthSurfaceOrigin = null
-          const inspect = state => {
+          const inspect = (state, observedActors) => {
             if (signal.aborted) return
             const startedAt = performance.now()
             try {
@@ -3385,7 +3393,7 @@ function createRuntime (host) {
               if (state.dead || !(state.health > 0)) throw new Error('Idle escape stopped on death or unknown health')
               if (state.health < initial.health - 1e-6) throw new Error('Idle escape stopped on observed damage')
               if (Date.now() >= deadline) throw new Error('Idle escape four-second deadline exceeded')
-              const current = assessEnemies(state)
+              const current = assessEnemies(state, observedActors ?? safetyActors(state, state.entities ?? []))
               const changed = current.threats.filter(actor => {
                 const previous = ids.get(actor.runtimeId) ?? outsideTracked.get(actor.runtimeId)
                 const entity = state.entities.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
@@ -4300,7 +4308,9 @@ function createRuntime (host) {
             if (boundedJumpAttempted) return { supported: true, arrived: false, escaped: false, partialEscape: false, code: 'NO_SAFE_RETREAT', reason: 'no_known_away_route', movementStarts: episodeMovementStarts, safe: false, diagnostics }
             // Keep the original deadline and live guards active while a partial origin recenters.
             if (partialOrigin && episodeMovementStarts === 0 && partialEscapeAction && Date.now() < deadline) {
-              return await partialEscapeAction({ ...context, signal })
+              const partialResult = await partialEscapeAction({ ...context, signal })
+              if (signal.aborted) throw signal.reason
+              if (partialResult?.supported === true) return partialResult
             }
             return { supported: false, reason: 'no_known_away_route', diagnostics }
             }

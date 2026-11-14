@@ -331,7 +331,9 @@ test('live case: digging by hand with an empty hotbar swaps in a stack from the 
   assert.ok(s.ledger.minedBlocks > 0)
 })
 
-test('full chest: the bot adds a chest beside it (from carried wood) and keeps depositing', async () => {
+// This scenario takes 25–27s alone and reached 37.6s during the full comparison.
+// Match runUntilStopped's existing 60s budget without changing the scenario.
+test('full chest: the bot adds a chest beside it (from carried wood) and keeps depositing', { timeout: 60000 }, async () => {
   const sim = setup({ stoneTop: 62, top: 62, chestSlots: 1 })
   sim.give('diamond_pickaxe'); sim.give('bread', 5); sim.give('oak_log', 4)
   for (let i = 0; i < 26; i++) sim.give('andesite', 64)

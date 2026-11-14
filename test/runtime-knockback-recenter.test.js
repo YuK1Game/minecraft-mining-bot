@@ -11,6 +11,7 @@ const Module = require('node:module')
 const capture = require('./fixtures/post-grass-runtime-recenter.json')
 const { createNavigator } = require('../src/navigation')
 const { evaluateThreats } = require('../src/threats')
+const combatExposure = require('../src/combat-exposure')
 const file = path.resolve(__dirname, 'runtime-idle-escape.test.js')
 let setup = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 // The old shared harness omitted this production movement option. Forward it
@@ -34,7 +35,18 @@ function segmentDistance (p, a, b) {
   return distance(p, { x: a.x + d.x * t, y: a.y + d.y * t, z: a.z + d.z * t })
 }
 
-function capturedRuntime (t, { beforeHandoff = null } = {}) {
+function capturedRuntime (t, { beforeHandoff = null, attackAccess = 'unknown' } = {}) {
+  // These recenter cases deliberately leave attack access unconfirmed while
+  // exercising native Runtime/Nav/physics/Guard selection and collision checks.
+  // Captured cells, positions, policy radii and assertions remain unchanged;
+  // the real-exposure case below separately verifies the capture's known cover.
+  if (attackAccess === 'unknown') {
+    const createExposure = combatExposure.createCombatExposure
+    t.mock.method(combatExposure, 'createCombatExposure', options => ({
+      ...createExposure(options),
+      evaluate: () => ({ unknown: true, intercept: false, reason: 'ATTACK_ACCESS_UNKNOWN', evidence: { sight: null, routeToBot: null } })
+    }))
+  } else assert.equal(attackAccess, 'current')
   const f = prepare(t, { realGuard: true, realPhysics: true, preserveTerrainEvidence: true })
   f.raw.health = capture.health
   f.raw.position = structuredClone(capture.rawServerPosition)
@@ -55,6 +67,24 @@ function capturedRuntime (t, { beforeHandoff = null } = {}) {
   }
   return { ...f, blocks, handoffs }
 }
+
+test('current attack exposure keeps the captured occluded archer out of the recenter handoff', async t => {
+  // Unlike the isolated recenter cases, use the actual received-terrain
+  // exposure implementation here: known cover must not initiate a retreat.
+  const f = capturedRuntime(t, { attackAccess: 'current' })
+  const state = f.safeties[0].options.getState()
+  const archer = f.actors.find(actor => actor.runtimeId === '20')
+  const exposure = combatExposure.createCombatExposure({ world: f.host.world, entities: f.host.entities, scopeOf: () => 'captured-current-exposure' }).evaluate(archer, state)
+  assert.equal(exposure.unknown, false)
+  assert.equal(exposure.evidence.sight, false)
+  assert.equal(exposure.reason, 'PROJECTILE_SIGHT_BLOCKED')
+  assert.equal(evaluateThreats(state, state.entities, { observationRadius: 32 }).threats.length, 0)
+  const result = await f.safeties[0].options.escape(context(f))
+  assert.equal(result.supported, false)
+  assert.deepEqual(f.handoffs, [])
+  assert.deepEqual(f.movements[0].starts, [])
+  assert.deepEqual(f.packets, [])
+})
 
 test('captured Runtime promotes a bounded adjacent-cell recenter and hands it to the native Guard', async t => {
   const f = capturedRuntime(t)
