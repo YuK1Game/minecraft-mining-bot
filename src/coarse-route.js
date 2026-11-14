@@ -66,7 +66,7 @@ function createHeap () {
     }
   }
 }
-function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3, blocked = null, surfaceOnly = false, maxMs = Infinity, now = Date.now, faceStairs = false }) {
+function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3, blocked = null, surfaceOnly = false, maxMs = Infinity, now = Date.now, faceStairs = false }) {
   // Live 2026-11-14 12:13: the route led down into a cave to y-33. With
   // surfaceOnly a stand must see the sky (nothing solid above but leaves/logs
   // within 40 blocks); covered stands cost five times and may only be entered
@@ -106,7 +106,7 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   const deadline = now() + maxMs
   let timedOut = false
   while (open.length && expanded < maxNodes) {
-    if ((expanded & 255) === 0 && now() > deadline) { timedOut = true; break }
+    if ((expanded & 255) === 0) { if (now() > deadline) { timedOut = true; break } yield expanded }
     const n = pop(); expanded++
     const d = h(n.x, n.z)
     if (d < closest.d && (!surfaceOnly || !startCovered && sky(n.x, n.y, n.z) || startCovered)) closest = { x: n.x, y: n.y, z: n.z, d }
@@ -187,4 +187,24 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   return { ready: path.length > 1, reached, surfaced, timedOut, path, remaining: Math.round(closest.d), expanded, frontier: [...frontier].slice(0, 64).map(s => { const [x, z] = s.split(',').map(Number); return { x, z } }) }
 }
 
-module.exports = { planCoarseRoute, createSurface, classify }
+// Synchronous: runs the search to its end (the time budget still applies).
+function planCoarseRoute (options) {
+  const it = coarseSearch(options)
+  for (;;) { const r = it.next(); if (r.done) return r.value }
+}
+// Live 2026-11-14 17:37: a 400-1500 ms budget cut the search short and the
+// partial path led back into the forest every pass. The asynchronous search
+// yields to the event loop every sliceMs, so a long search (maxMs, seconds)
+// never stalls the connection.
+async function planCoarseRouteAsync (options = {}) {
+  const sliceMs = options.sliceMs ?? 30, now = options.now ?? Date.now
+  const it = coarseSearch(options)
+  let slice = now()
+  for (;;) {
+    const r = it.next()
+    if (r.done) return r.value
+    if (now() - slice >= sliceMs) { await new Promise(resolve => setImmediate(resolve)); slice = now() }
+  }
+}
+
+module.exports = { planCoarseRoute, planCoarseRouteAsync, createSurface, classify }
