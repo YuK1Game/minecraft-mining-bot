@@ -45,9 +45,17 @@ test('an unknown or blocked head room above the ledge is refused (unknown is nev
   assert.match(planWaterExit({ physics: physics({ solidHead: true }), initial, target }).reason, /received and passable/)
 })
 
-test('only from water and only to an adjacent ledge', () => {
+test('only from water and only to a ledge within six blocks', () => {
   assert.match(planWaterExit({ physics: physics(), initial: { ...initial, isInWater: false, position: { x: -14.7, y: 61, z: 14.7 } }, target }).reason, /only in water/)
-  assert.match(planWaterExit({ physics: physics(), initial, target: { x: -14.5, y: 59, z: 19.5 } }).reason, /adjacent ledge/)
+  assert.match(planWaterExit({ physics: physics(), initial, target: { x: -14.5, y: 59, z: 23.5 } }).reason, /within six blocks/)
+})
+
+// Live 2026-11-14 20:00: in a lake the shore was three blocks away.
+test('a swim of a few blocks toward a received ledge is planned and ends standing on it', () => {
+  const start = { ...initial, position: { x: -14.7, y: 58.1, z: 11.7 } }
+  const route = planWaterExit({ physics: physics(), initial: start, target })
+  assert.equal(route.ready, true, route.reason)
+  assert.equal(route.exitFrames.at(-1).state.position.y, 59)
 })
 
 test('the stepper keeps the same input through a server correction and stops on the ledge', () => {

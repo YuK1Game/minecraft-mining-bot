@@ -13,7 +13,10 @@
 
 const copy = value => structuredClone(value)
 const point = value => ({ x: value.x, y: value.y, z: value.z })
-const MAX_TICKS = 40
+// Live 2026-11-14 20:00: in a lake the shore was three blocks away and no
+// adjacent ledge existed; the tape may swim up to six blocks toward a ledge.
+const MAX_TICKS = 120
+const MAX_REACH = 6
 const HAZARD = /lava|fire|magma|cactus|campfire|powder_snow|cobweb|wither_rose|dripstone/
 
 function ledgeCellsKnown (physics, cell) {
@@ -37,7 +40,7 @@ function planWaterExit ({ physics, initial, target }) {
   if (!target || ![target.x, target.y, target.z].every(Number.isFinite)) return empty('Water exit needs an exact ledge cell')
   const cell = { x: Math.floor(target.x), y: Math.round(target.y), z: Math.floor(target.z) }
   const feet = initial.position
-  if (Math.hypot(cell.x + 0.5 - feet.x, cell.z + 0.5 - feet.z) > 1.8 || cell.y - feet.y > 1.6 || cell.y - feet.y < -0.6) return empty('Water exit reaches only an adjacent ledge one block up')
+  if (Math.hypot(cell.x + 0.5 - feet.x, cell.z + 0.5 - feet.z) > MAX_REACH || cell.y - feet.y > 1.6 || cell.y - feet.y < -0.6) return empty('Water exit reaches only a ledge within six blocks, at most one block up')
   if (!ledgeCellsKnown(physics, cell)) return empty('Water exit ledge, its floor and head room must be received and passable')
   const yaw = Math.atan2(-(cell.x + 0.5 - feet.x), cell.z + 0.5 - feet.z) * 180 / Math.PI
   let predicted = copy(initial)
@@ -54,14 +57,14 @@ function planWaterExit ({ physics, initial, target }) {
       }
     }
   } catch (error) { return empty(`Water exit terrain is unknown or unsupported: ${error.message}`) }
-  return empty('Water exit tape did not stand on the ledge within forty ticks')
+  return empty('Water exit tape did not stand on the ledge within its tick bound')
 }
 
 // Forward+jump stay held every tick until the prediction stands on the ledge
 // (bounded). A server correction re-seeds the prediction and the same input
 // continues (Bedrock lifts the swimmer while it presses the ledge); the
 // received position decides arrival.
-function createWaterExitStepper ({ route, initial, physics, maxTicks = 60 }) {
+function createWaterExitStepper ({ route, initial, physics, maxTicks = 160 }) {
   let predicted = copy(initial); let index = 0; let phase = 'moving'; let reason = null
   const target = route.waypoints[0].position
   const cell = { x: Math.floor(target.x), y: Math.round(target.y), z: Math.floor(target.z) }

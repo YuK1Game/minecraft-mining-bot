@@ -5781,17 +5781,36 @@ function createRuntime (host) {
         const foodWanted = Math.max(5, Math.min(10, input.food ?? 6))
         const FOODS = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/
         const LOGS0 = /^minecraft:[a-z_]+_(?:log|stem)$/
-        const missing = () => [!has(/^minecraft:bed$/) && count(/wool$/) < 3 ? 'wool' : null, count(FOODS) < foodWanted ? 'food' : null, count(LOGS0) < 4 && !has(/_sword$/) ? 'logs' : null].filter(Boolean)
+        // Planks the remaining items need (live 19:25: the last logs went into the
+        // sword and boat and the bed was never crafted): table 4, sticks 2,
+        // sword 2, bed 3, boat 5.
+        const planksNeeded = () => (has(/^minecraft:crafting_table$/) ? 0 : 4) + (has(/_sword$/) ? 0 : 2 + (has(/^minecraft:stick$/) ? 0 : 2)) + (has(/^minecraft:bed$/) ? 0 : 3) + (has(/_boat$/) ? 0 : 5)
+        const woodHeld = () => count(/^minecraft:[a-z_]+_planks$/) + count(LOGS0) * 4
+        const missing = () => [!has(/^minecraft:bed$/) && count(/wool$/) < 3 ? 'wool' : null, count(FOODS) < foodWanted ? 'food' : null, woodHeld() < planksNeeded() ? 'logs' : null].filter(Boolean)
         // Live 18:52: right after a reconnect nothing was in sight and the kit
         // ended at once. Gather, and while something is missing walk about 48 m
         // to another spot (six rounds, turning 60 degrees) and gather again.
         const origin = working().position ? { x: working().position.x, z: working().position.z } : null
         for (let round = 0; round < 7 && origin; round++) {
+          if (!longTravelLogAllowance()) await operations.quarry.prepareLongTravel({ logCount: 10, gather: false }) // live 20:01: the 30-minute allowance ran out mid-kit
           if (missing().includes('wool')) await operations.quarry.prepGather({ logs: 0, wool: 3, maxMs: 120000 })
           if (missing().includes('food')) await operations.quarry.prepGather({ logs: 0, food: foodWanted, maxMs: 180000 })
-          if (missing().includes('logs')) await operations.quarry.prepGather({ logs: 4, maxMs: 180000 })
+          if (missing().includes('logs')) await operations.quarry.prepGather({ logs: Math.min(10, count(LOGS0) + Math.ceil((planksNeeded() - woodHeld()) / 4)), maxMs: 180000 })
           if (!missing().length || round === 6) break
-          const ang = round * Math.PI / 3, dest = { x: Math.round(origin.x + Math.cos(ang) * 48), z: Math.round(origin.z + Math.sin(ang) * 48) }
+          const ang = round * Math.PI / 3
+          let dest = { x: Math.round(origin.x + Math.cos(ang) * 48), z: Math.round(origin.z + Math.sin(ang) * 48) }
+          // Logs missing (live 19:46: six rounds found none while trees were
+          // known to the west): head for the nearest received log within 64 m.
+          if (missing().includes('logs')) {
+            const here = working().position, hx = Math.floor(here.x), hy = Math.floor(here.y - 1.62), hz = Math.floor(here.z)
+            let best = null
+            for (let dx = -64; dx <= 64; dx += 2) for (let dz = -64; dz <= 64; dz += 2) {
+              const d = Math.hypot(dx, dz); if (d < 20 || best && d >= best.d) continue
+              for (let dy = -8; dy <= 16; dy++) { const b = host.world.getBlock(hx + dx, hy + dy, hz + dz); if (b?.known === true && LOGS0.test(b.name ?? '')) { best = { x: hx + dx, z: hz + dz, d }; break } }
+              if ((dz & 15) === 0) await new Promise(resolve => setImmediate(resolve))
+            }
+            if (best) dest = { x: best.x, z: best.z }
+          }
           say(`まだ足りません（${missing().join('・')}）。(${dest.x}, ${dest.z}) へ探しに行きます`)
           try { await operations.quarry.travelTo({ destination: dest }) } catch {}
           const until = Date.now() + 180000
@@ -5801,11 +5820,10 @@ function createRuntime (host) {
         const LOGS = /^minecraft:([a-z_]+)_log$/, PLANKS = /^minecraft:([a-z_]+)_planks$/
         const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
         const made = []
-        if (log) {
-          const wood = LOGS.exec(log.name)[1]
+        if (log || count(PLANKS) >= 4) {
           await crafting.openInventory()
           try {
-            await crafting.craft(`minecraft:${wood}_planks`, { times: Math.min(4, log.count) }); made.push('planks')
+            if (log) { await crafting.craft(`minecraft:${LOGS.exec(log.name)[1]}_planks`, { times: log.count }); made.push('planks') }
             if (!has(/^minecraft:stick$/)) { await crafting.craft('minecraft:stick', { times: 1 }); made.push('stick') }
             if (!has(/^minecraft:crafting_table$/)) { await crafting.craft('minecraft:crafting_table', { times: 1 }); made.push('table') }
           } finally { try { crafting.closeContainer() } catch {} }
@@ -5819,6 +5837,7 @@ function createRuntime (host) {
             } finally { try { crafting.closeContainer() } catch {} }
           }
         }
+        if (longTravel?.status?.().busy) { try { await longTravel.cancel('KIT_DONE') } catch {} }
         const kit = { bed: count(/^minecraft:bed$/), sword: count(/_sword$/), food: items().filter(i => /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/.test(i.name ?? '')).reduce((n, i) => n + i.count, 0), boat: count(/_boat$/), wool: count(/wool$/) }
         say(`${missing().length ? `足りないもの: ${missing().join('・')}。` : '揃いました。'}ベッド ${kit.bed}・剣 ${kit.sword}・食料 ${kit.food}・ボート ${kit.boat}（受信した持ち物で確認、作ったもの: ${made.join('・') || 'なし'}）`)
         return { made, kit }
@@ -5878,6 +5897,9 @@ function createRuntime (host) {
       },
       chunkMoveStatus: () => chunkTravel?.status() ?? { available: true, busy: false, phase: 'idle', operationId: null, serverConfirmed: false },
       controlPosition: () => controlLocation.snapshot(),
+      // Read-only: prove the bot's present position to the server (the same
+      // /testfor volume query chunk travel uses), so the dashboard can act here.
+      proveControlPosition: async () => { const st = working(); if (!st.position) throw new Error('位置が不明です。'); return controlLocation.confirm({ x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, { radius: 0.2 }) },
       confirmControlPosition: (area, options) => controlLocation.confirm(null, { ...options, area: normalizeChunkArea(area), radius: 0.12, operationId: 'dashboard_area_position' }),
       plan: config => {
         if (!quarryJob?.holdsWork()) requireIdle()
@@ -8312,9 +8334,12 @@ function createRuntime (host) {
           const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.2), fz = Math.floor(feet.z)
           if (/water/.test(cellAt(fx, fy, fz)?.name ?? '') || /water/.test(cellAt(fx, fy - 1, fz)?.name ?? '')) {
             const ledges = []
-            for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (const dy of [1, 0]) ledges.push({ x: fx + dx + 0.5, y: fy + dy, z: fz + dz + 0.5 })
-            ledges.sort((a, b) => Math.hypot(destination.x - a.x, destination.z - a.z) - Math.hypot(destination.x - b.x, destination.z - b.z))
-            for (const l of ledges) { let pv = null; try { motionOrigin = working(); pv = movement?.preview(l, { ...opts, maxDistance: 4, waterExit: true }) } catch {} if (pv?.ready === true) return { ...l, waterExit: true } }
+            // Within five blocks (live 20:00: open water, shore three blocks away);
+            // nearest first, then toward the destination.
+            for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) if ((dx || dz) && Math.hypot(dx, dz) <= 5.5) for (const dy of [1, 0]) { const c = cellAt(fx + dx, fy + dy - 1, fz + dz), here = cellAt(fx + dx, fy + dy, fz + dz); if (c?.known === true && c.boundingBox === 'block' && !/water/.test(c.name ?? '') && here?.known === true && here.boundingBox === 'empty' && !/water/.test(here.name ?? '')) ledges.push({ x: fx + dx + 0.5, y: fy + dy, z: fz + dz + 0.5 }) }
+            ledges.sort((a, b) => Math.hypot(a.x - feet.x, a.z - feet.z) - Math.hypot(b.x - feet.x, b.z - feet.z) || Math.hypot(destination.x - a.x, destination.z - a.z) - Math.hypot(destination.x - b.x, destination.z - b.z))
+            ledges.splice(12)
+            for (const l of ledges) { let pv = null; try { motionOrigin = working(); pv = movement?.preview(l, { ...opts, maxDistance: 8, waterExit: true }) } catch {} if (pv?.ready === true) return { ...l, waterExit: true } }
           }
         }
         // Follow the coarse wide-area route first (2026-11-14): a point some
