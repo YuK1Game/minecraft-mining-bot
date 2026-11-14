@@ -7920,7 +7920,7 @@ function createRuntime (host) {
     if (raw().phase !== 'spawned' || quarryJob?.holdsWork() || longTravel?.status?.().busy) return
     if (!host.shared.longTravelResume && !travelFileChecked) {
       travelFileChecked = true
-      try { const doc = JSON.parse(await require('node:fs/promises').readFile(longTravelFile(), 'utf8')); if (doc?.phase === 'moving' && doc.destination && Date.now() - Date.parse(doc.savedAt) < 900000) host.shared.longTravelResume = { destination: { x: doc.destination.x, z: doc.destination.z }, at: Date.now() } } catch {}
+      try { const doc = JSON.parse(await require('node:fs/promises').readFile(longTravelFile(), 'utf8')); if (['moving', 'cancelled'].includes(doc?.phase) && doc.destination && Date.now() - Date.parse(doc.savedAt) < 900000) host.shared.longTravelResume = { destination: { x: doc.destination.x, z: doc.destination.z }, at: Date.now() } } catch {}
     }
     const r = host.shared.longTravelResume
     if (!r) { if (travelFileChecked) clearInterval(travelResumeTimer); return }

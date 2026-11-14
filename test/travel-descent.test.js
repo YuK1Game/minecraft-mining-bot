@@ -51,6 +51,6 @@ test('the runtime grants travel descent briefly, checks the fall on received gro
   assert.doesNotMatch(esc, /pickup|command_request/)
   assert.match(src, /host\.shared\.longTravelResume = \{ destination:/)
   assert.match(src, /operations\.quarry\.travelTo\(\{ destination: r\.destination \}\)/)
-  assert.match(src, /doc\?\.phase === 'moving' && doc\.destination && Date\.now\(\) - Date\.parse\(doc\.savedAt\) < 900000/, 'a reconnect resumes a recent moving trip')
+  assert.match(src, /\['moving', 'cancelled'\]\.includes\(doc\?\.phase\) && doc\.destination && Date\.now\(\) - Date\.parse\(doc\.savedAt\) < 900000/, 'a reconnect resumes a recent trip that was moving or cancelled by a reload')
   assert.match(src, /doc\.phase = 'stopped'; doc\.reason = 'MANUAL_STOP'/, 'a manual stop is never resumed')
 })
