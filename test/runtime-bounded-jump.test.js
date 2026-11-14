@@ -6,11 +6,12 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
+const { createCombatExposure } = require('../src/combat-exposure')
 const capture = require('./fixtures/bounded-jump-partial-ledge.json')
 const copy = value => structuredClone(value)
 const harnessFile = path.resolve(__dirname, 'runtime-idle-safety.test.js')
 let source = fs.readFileSync(harnessFile, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
-source = source.replace('{ realSafety = false, wanted = false }', "{ realSafety = false, wanted = false, mode = 'future_floor' }")
+source = source.replace('{ realSafety = false, wanted = false }', "{ realSafety = false, wanted = false, mode = 'future_floor', beforeContinuation = null }")
 source = source.replace('  const calls = [];', `  t.mock.timers.enable({ apis: ['setInterval'] })
   let elapsed = 0, postJump = false
   const epoch = Date.parse(jumpCapture.observedAt)
@@ -48,6 +49,7 @@ source = source.slice(0, inputStart) + `
       value.escape = async (nodes, settings) => {
         const call = { nodes: copy(nodes), boundedJump: copy(settings.boundedJump ?? null), timeoutMs: settings.timeoutMs, maxMovementStarts: settings.maxMovementStarts }
         guardCalls.push(call)
+        if (guardCalls.length === 2) beforeContinuation?.({ host, actors, blocks, raw, records })
         const result = await escape(nodes, settings); guardResults.push(copy(result))
         call.queuedFramesAtReturn = records.length
         if (settings.boundedJump && result.arrived) {
@@ -83,9 +85,9 @@ source = source.replace('return { runtime, create, host, raw, shared,', 'return 
 const loaded = { exports: {} }
 new vm.Script('(function(require,module,__filename,__dirname,jumpCapture){' + source + '\nmodule.exports={fixture};})', { filename: harnessFile }).runInThisContext()(Module.createRequire(harnessFile), loaded, harnessFile, path.dirname(harnessFile), capture)
 
-function fixture (t, mode = 'future_floor') {
+function fixture (t, mode = 'future_floor', options = {}) {
   t.mock.method(globalThis, 'fetch', () => assert.fail('Bounded Runtime regression must remain offline'))
-  const f = loaded.exports.fixture(t, { mode })
+  const f = loaded.exports.fixture(t, { mode, ...options })
   f.runtime.resumeRequested(); for (let tick = 0; tick < 8; tick++) f.advance(50)
   if (mode === 'unknown_head' || mode === 'liquid') for (let x = -15; x <= -5; x++) for (let z = 27; z <= 39; z++) f.blocks.set(`${x},70,${z}`, mode === 'unknown_head' ? { known: false } : { known: true, name: 'minecraft:water', position: { x, y: 70, z }, properties: { liquid_depth: 0 }, extra: [] })
   return f
@@ -192,6 +194,7 @@ test('ordinary pursuit at one and two metres per second preserves the real captu
     const f = fixture(t, mode)
     let result, error
     try { result = await f.safeties[0].options.escape(context()) } catch (caught) { error = caught.message }
+    assert.equal(error, undefined, JSON.stringify({ mode, error, calls: f.guardCalls, guards: f.guardResults.map(value => ({ code: value.code, reason: value.reason, remaining: value.remainingRouteRejection, arrived: value.arrived })) }))
     assert.equal(f.guardResults[0]?.arrived, true, JSON.stringify({ mode, error, result, calls: f.guardCalls, guards: f.guardResults.map(value => ({ code: value.code, reason: value.reason, remaining: value.remainingRouteRejection, arrived: value.arrived })) }))
     assert.equal(f.guardCalls.filter(call => call.boundedJump).length, 1)
     assert.ok(f.guardCalls.length >= 2)
@@ -210,5 +213,57 @@ test('ordinary pursuit at one and two metres per second preserves the real captu
       }
       previous = frame.packetPosition
     }
+  })
+})
+
+test('a previously blocked archer is checked again after planning when its sight becomes visible or unknown', async t => {
+  for (const nextSight of ['visible', 'unknown']) await t.test(nextSight, async t => {
+    let framesBeforeChange = null
+    const f = fixture(t, 'smooth_005', { beforeContinuation: ({ host, actors, blocks, records }) => {
+      const current = host.getState(), archer = actors.find(actor => actor.runtimeId === '2')
+      const exposure = createCombatExposure({ world: host.world, entities: host.entities, scopeOf: () => 'controlled-current-observation' })
+      assert.equal(exposure.evaluate(archer, current).evidence.sight, false, 'the selected route initially had received cover')
+      const from = current.position, to = { ...archer.position, y: archer.position.y + 0.9 }
+      const steps = Math.ceil(Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z) / 0.25)
+      // Change received cells on this ray after the real route preview. Keep
+      // the nearby movement terrain intact; distant cover is now open/unknown.
+      for (let i = 1; i < steps; i++) {
+        const p = Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, Math.floor(from[axis] + (to[axis] - from[axis]) * i / steps)]))
+        if (Math.hypot(p.x + 0.5 - from.x, p.z + 0.5 - from.z) < 3) continue
+        blocks.set(`${p.x},${p.y},${p.z}`, nextSight === 'visible' ? { known: true, name: 'minecraft:air', boundingBox: 'empty', position: p, properties: {}, extra: [] } : { known: false, position: p })
+      }
+      assert.equal(exposure.evaluate(archer, current).evidence.sight, nextSight === 'visible' ? true : null)
+      framesBeforeChange = records.length
+    } })
+    await assert.rejects(f.safeties[0].options.escape(context()), /Idle escape remaining path danger changed/)
+    assert.ok(framesBeforeChange > 0, 'the first real jump completed before the changed receipt')
+    assert.equal(f.guardResults[0].arrived, true)
+    assert.equal(f.guardResults[1].arrived, false)
+    assert.equal(f.records.length, framesBeforeChange, 'a changed attack path cannot queue another movement frame')
+    assert.equal(f.guardCalls.filter(call => call.boundedJump).length, 1)
+    assert.equal(f.records.filter(frame => frame.controls.jump).length, 1)
+  })
+})
+
+test('continuation never inherits a completed jump across lost identity, scope, life or actor position', async t => {
+  for (const change of ['uid', 'scope', 'death', 'unknown_actor']) await t.test(change, async t => {
+    let framesBeforeChange = null
+    const f = fixture(t, 'smooth_005', { beforeContinuation: ({ actors, raw, records }) => {
+      framesBeforeChange = records.length
+      const pursuer = actors.find(actor => actor.runtimeId === '10')
+      if (change === 'uid') pursuer.uniqueId = '-999999'
+      if (change === 'scope') raw.connectionId = 'another-connection'
+      if (change === 'death') { raw.dead = true; raw.health = 0 }
+      if (change === 'unknown_actor') { pursuer.positionKnown = false; pursuer.position = null }
+    } })
+    let result
+    try { result = await f.safeties[0].options.escape(context()) } catch { /* fail-closed is expected */ }
+    assert.ok(framesBeforeChange > 0, 'the original jump was genuinely queued')
+    assert.equal(f.guardResults[0].arrived, true)
+    assert.equal(f.records.length, framesBeforeChange, change)
+    assert.notEqual(result?.escaped, true, change)
+    assert.notEqual(result?.serverConfirmed, true, change)
+    assert.equal(f.guardCalls.filter(call => call.boundedJump).length, 1)
+    assert.equal(f.records.filter(frame => frame.controls.jump).length, 1)
   })
 })

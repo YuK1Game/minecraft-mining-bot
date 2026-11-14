@@ -2,6 +2,7 @@
 
 const { terrainOcclusionApplies } = require('./terrain-threats')
 const { knownUnreachable, MELEE_REACH } = require('./threat-reachability')
+const { mobType, COMBAT_PROFILES } = require('./mob-catalog')
 
 // These are avoidance-policy radii, not claims about an entity's current target
 // or guaranteed projectile limits. Values deliberately include observation and
@@ -10,32 +11,23 @@ const SOURCE = 'https://raw.githubusercontent.com/Mojang/bedrock-samples/main/be
 const profile = (radius, severity, category, file, basis) => Object.freeze({ radius, severity, category, evidenceUrl: `${SOURCE}${file}.json`, basis })
 const MELEE = profile(12, 2, 'melee', 'zombie', '近接回避用の12ブロック方針。zombieの索敵within_radius=25/max_dist=35とは別の値。')
 const SKELETON = profile(24, 3, 'ranged', 'skeleton', 'サンプルの遠隔attack_range.max=15に観測・退避の余裕9を加えた方針。')
-const POLICIES = new Map()
-// Explicit early-learning decision thresholds. These accept actual exposure
-// and possible deaths; they are NOT vanilla attack ranges or safe distances.
-const LEARNING_MELEE = new Set(['zombie', 'zombie_villager', 'zombie_villager_v2', 'husk', 'spider'].map(type => `minecraft:${type}`))
-const LEARNING_RANGED = new Set(['skeleton', 'stray', 'bogged', 'pillager', 'witch', 'drowned'].map(type => `minecraft:${type}`))
-// Skeleton-family archers retain the existing 18-block ranged policy (sample
-// attack range 15 plus 3 for observation/retreat), including while learning.
-const LEARNING_ARCHER = new Set(['skeleton', 'stray', 'bogged'].map(type => `minecraft:${type}`))
-for (const type of [
-  'zombie', 'zombie_villager', 'zombie_villager_v2', 'husk', 'wither_skeleton',
-  'spider', 'cave_spider', 'slime', 'magma_cube', 'silverfish', 'endermite',
-  'vindicator', 'ravager', 'vex', 'piglin_brute', 'hoglin', 'zoglin', 'creaking'
-]) POLICIES.set(`minecraft:${type}`, MELEE)
-for (const type of ['skeleton', 'stray', 'bogged']) POLICIES.set(`minecraft:${type}`, SKELETON)
-POLICIES.set('minecraft:creeper', profile(8, 5, 'explosive', 'creeper', 'swell開始2.5/停止6に対して、停止距離の外側へ余裕2を取る方針。'))
-POLICIES.set('minecraft:witch', profile(20, 3, 'ranged', 'witch', 'サンプルのattack_radius=10に退避の余裕10を加えた方針。'))
-POLICIES.set('minecraft:pillager', profile(24, 3, 'ranged', 'pillager', 'attack_radius=8、索敵within_radius=16を踏まえ余裕8を取る方針。'))
-POLICIES.set('minecraft:drowned', profile(24, 3, 'ranged_possible', 'drowned', '低体力・標準設定では標的選択max_dist=20に余裕4を取る保守的方針。通常の射撃開始range上限は10。武器の有無は推測しない。'))
-POLICIES.set('minecraft:breeze', profile(32, 3, 'ranged', 'breeze', 'attack_range.max=16、target within_radius=24に余裕8を取る方針。'))
-POLICIES.set('minecraft:blaze', profile(56, 3, 'ranged', 'blaze', 'サンプルのattack_range.max=48に余裕8を取る方針。'))
-POLICIES.set('minecraft:ghast', profile(72, 4, 'ranged', 'ghast', 'サンプルのattack_radius=64に余裕8を取る方針。'))
-POLICIES.set('minecraft:guardian', profile(16, 3, 'ranged', 'guardian', 'サンプルのtarget max_dist=8に余裕8を取る方針。'))
-POLICIES.set('minecraft:elder_guardian', profile(24, 4, 'ranged', 'guardian', 'guardian系の保守的回避方針。エルダー固有効果の上限距離を表す値ではない。'))
-POLICIES.set('minecraft:evocation_illager', profile(28, 4, 'ranged', 'evocation_illager', 'サンプルのtarget max_dist=20に余裕8を取る方針。'))
-POLICIES.set('minecraft:phantom', profile(32, 3, 'flying', 'phantom', '索敵within_radius/max_dist=64の飛行モブに対する近傍退避方針。索敵範囲全体ではない。'))
-for (const type of ['warden', 'wither', 'ender_dragon']) POLICIES.set(`minecraft:${type}`, profile(32, 5, 'boss', type, '未装備Botは交戦せず、観測時に退避する32ブロック方針。全攻撃の上限距離ではない。'))
+const POLICIES = new Map([['melee', MELEE], ['archer', SKELETON]])
+// Policy values remain local; the shared catalogue assigns each species to
+// one avoidance class and separately records its early-learning class.
+POLICIES.set('creeper', profile(8, 5, 'explosive', 'creeper', 'swell開始2.5/停止6に対して、停止距離の外側へ余裕2を取る方針。'))
+POLICIES.set('witch', profile(20, 3, 'ranged', 'witch', 'サンプルのattack_radius=10に退避の余裕10を加えた方針。'))
+POLICIES.set('pillager', profile(24, 3, 'ranged', 'pillager', 'attack_radius=8、索敵within_radius=16を踏まえ余裕8を取る方針。'))
+POLICIES.set('drowned', profile(24, 3, 'ranged_possible', 'drowned', '低体力・標準設定では標的選択max_dist=20に余裕4を取る保守的方針。通常の射撃開始range上限は10。武器の有無は推測しない。'))
+POLICIES.set('breeze', profile(32, 3, 'ranged', 'breeze', 'attack_range.max=16、target within_radius=24に余裕8を取る方針。'))
+POLICIES.set('blaze', profile(56, 3, 'ranged', 'blaze', 'サンプルのattack_range.max=48に余裕8を取る方針。'))
+POLICIES.set('ghast', profile(72, 4, 'ranged', 'ghast', 'サンプルのattack_radius=64に余裕8を取る方針。'))
+POLICIES.set('guardian', profile(16, 3, 'ranged', 'guardian', 'サンプルのtarget max_dist=8に余裕8を取る方針。'))
+POLICIES.set('elder_guardian', profile(24, 4, 'ranged', 'guardian', 'guardian系の保守的回避方針。エルダー固有効果の上限距離を表す値ではない。'))
+POLICIES.set('evocation_illager', profile(28, 4, 'ranged', 'evocation_illager', 'サンプルのtarget max_dist=20に余裕8を取る方針。'))
+POLICIES.set('phantom', profile(32, 3, 'flying', 'phantom', '索敵within_radius/max_dist=64の飛行モブに対する近傍退避方針。索敵範囲全体ではない。'))
+for (const type of Object.keys(COMBAT_PROFILES)) if (mobType(type).avoidance === 'boss') POLICIES.set(type, profile(32, 5, 'boss', type.replace('minecraft:', ''), '未装備Botは交戦せず、観測時に退避する32ブロック方針。全攻撃の上限距離ではない。'))
+
+POLICIES.set('shulker', profile(24, 3, 'ranged', 'shulker', '戦闘モードと共通の24ブロック迎撃方針。実際の投射物の到達距離を表す値ではない。'))
 
 const finitePosition = value => value && ['x', 'y', 'z'].every(axis => Number.isFinite(value[axis]))
 const dimensionName = value => ['overworld', 'nether', 'end'][value] ?? value ?? null
@@ -53,7 +45,8 @@ function nonCombatRole (entity, type) {
 function selectedPolicy (entity) {
   const type = identifier(entity)
   if (nonCombatRole(entity, type)) return null
-  const base = POLICIES.get(type)
+  const category = mobType(type)?.avoidance
+  const base = POLICIES.get(category === 'boss' ? type : category)
   if (!base) return null
   if (type === 'minecraft:creeper') {
     const event = entity?.lastEvent?.event
@@ -102,12 +95,13 @@ function evaluateThreats (state, entities, { extraMargin = 0, observationRadius 
       if (!point) unknownPositions.push({ ...entry, reason: 'actorの位置が不明なため近接関係を評価できません。敵や安全のどちらとも断定しません。' })
       continue
     }
+    const learning = mobType(type)?.learning
     const learningOnline = state?.threatPolicy === 'online_learning' && Number.isFinite(state.health) && state.health > 0 && !state.dead && !state.isDead && !state.lifecycle?.dead
     const healthyMining = learningOnline || state?.threatPolicy === 'balanced_mining' && Number.isFinite(state.health) && state.health >= 14
     const rangedEscapeHealth = learningOnline || state?.threatPolicy === 'balanced_mining' && Number.isFinite(state.health) && state.health >= 12
-    const balancedRadius = learningOnline && type === 'minecraft:witch' ? 14 : healthyMining && type === 'minecraft:drowned' ? 14 : rangedEscapeHealth && ['minecraft:skeleton', 'minecraft:stray', 'minecraft:bogged'].includes(type) ? 18 : null
+    const balancedRadius = learningOnline && type === 'minecraft:witch' ? 14 : healthyMining && type === 'minecraft:drowned' ? 14 : rangedEscapeHealth && learning === 'archer' ? 18 : null
     const legacyRadius = (balancedRadius ?? policy.radius) + extraMargin
-    const learningRadius = learningOnline ? LEARNING_ARCHER.has(type) ? 18 : LEARNING_MELEE.has(type) ? 5 : LEARNING_RANGED.has(type) ? 10 : null : null
+    const learningRadius = learningOnline ? learning === 'archer' ? 18 : learning === 'melee' ? 5 : learning === 'ranged' ? 10 : null : null
     const radius = (learningRadius ?? balancedRadius ?? policy.radius) + extraMargin
     const acceptedRisk = learningRadius !== null && radius < legacyRadius
     const riskMetadata = acceptedRisk ? { riskAccepted: true, legacyRadius } : {}
@@ -122,7 +116,7 @@ function evaluateThreats (state, entities, { extraMargin = 0, observationRadius 
     const balancedBasis = learningOnline
       ? type === 'minecraft:drowned' ? '接続維持・通常リスポーンで学習する方針。射撃開始range10に余裕4を取る14ブロックを生存中は維持し、武器不明でも遠隔攻撃を想定する。' : type === 'minecraft:witch' ? '接続維持・通常リスポーンで学習する方針。通常attack_radius10に余裕4を取る14ブロックを生存中は維持する。' : '接続維持・通常リスポーンで学習する方針。通常遠隔attack range15に余裕3を取る18ブロックを生存中は維持する。'
       : type === 'minecraft:drowned' ? '体力14以上ではv1.26.60.5の射撃開始range10に余裕4を取る14ブロック方針。標的選択距離20と区別し、武器不明でも遠隔攻撃を想定する。' : '体力12以上では通常遠隔attack range15に余裕3を取る18ブロック方針。体力低下時は24へ戻す。'
-    const learningBasis = acceptedRisk ? `通常プレイを続ける初期学習の許容リスクとして、退避判断を従来${legacyRadius - extraMargin}から${learningRadius}ブロックへ変更。実際の攻撃・索敵範囲ではなく、${learningRadius}ブロックを超えても${LEARNING_RANGED.has(type) ? '矢・投射物や' : ''}追跡・被弾があり得る。位置不明や実際の被ダメージ、UID・地形・操作所有権の検証は緩和しない。` : null
+    const learningBasis = acceptedRisk ? `通常プレイを続ける初期学習の許容リスクとして、退避判断を従来${legacyRadius - extraMargin}から${learningRadius}ブロックへ変更。実際の攻撃・索敵範囲ではなく、${learningRadius}ブロックを超えても${(learning === 'ranged' || learning === 'archer') ? '矢・投射物や' : ''}追跡・被弾があり得る。位置不明や実際の被ダメージ、UID・地形・操作所有権の検証は緩和しない。` : null
     const entry = { ...observed, classification: 'known_hostile', hostile: true, dangerous: observed.distance <= radius, dangerRadius: radius, ...riskMetadata, category: policy.category, score: observed.distance <= radius ? score : 0, reason: `${type}を${observed.distance.toFixed(2)}ブロックで観測。${acceptedRisk ? '許容リスクの退避判断' : '回避方針'}${radius}ブロック${observed.distance <= radius ? '以内のため作業より退避を優先します。' : 'の外側ですが、追跡や飛来物がない保証ではありません。'}`, policyBasis: learningBasis ?? (balancedRadius != null ? balancedBasis : policy.basis), evidenceUrl: type === 'minecraft:drowned' ? 'https://raw.githubusercontent.com/Mojang/bedrock-samples/15701fa9c13923f12662984c32c124327e40e3d3/behavior_pack/entities/drowned.json' : policy.evidenceUrl }
     if (entry.dangerous && terrainOcclusionApplies(state, entity, { now, maxAgeMs: maxTerrainAgeMs })) {
       suppressedByTerrain.push({ ...entry, dangerous: false, score: 0, occludedNow: true, terrainOcclusion: structuredClone(entity.terrainOcclusion), reason: '大きな高度差と最新の既知地形で、全body raysに3ブロック以上の連続した通常固体を確認したため、この位置では退避開始を抑制します。接近・地形変化・時間経過のたびに再評価し、安全や将来の到達不能を保証しません。' })

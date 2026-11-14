@@ -10,6 +10,7 @@ const { isShulkerBox, isShulkerBlock, sameWindowId, canonicalWindowId, storageCo
 const { readShulkerContents, readContainerContents, compareShulkerContents, diagnoseShulkerContents } = require('./shulker-contents')
 const { canSeePlacementFloor } = require('./interaction-sight')
 const { plainAir, clearableSitePlant, passableSiteBody, describeBlock, supportIssue, placementSupportOk } = require('./storage-site-terrain')
+const { createOperationScope } = require('./operation-scope')
 // The mining precondition refuses to break while the feet stand on these
 // (src/mining.js HAZARDS); a storage stand must not, or its box cannot be
 // recovered (live 2026-11-13 01:28, storage:237 on gravel).
@@ -54,6 +55,17 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
   if ((captureActionOwner !== null || runActionOwned !== null) && (typeof captureActionOwner !== 'function' || typeof runActionOwned !== 'function')) throw new Error('Portable cancellation ownership needs both capture and execution ports')
   if ((getPath !== null || travel !== null) && (typeof getPath !== 'function' || typeof travel !== 'function')) throw new Error('Portable path and travel guards must be supplied together')
   let active = null
+  const actionScope = (request, signal, guard, reason) => createOperationScope({
+    signal, guard,
+    captureOwner: kind => captureActionOwner?.(kind, { jobId: request.jobId, operationId: request.operationId }) ?? null,
+    runOwned: runActionOwned,
+    cancelOwned: (kind, owner) => {
+      try { Promise.resolve(cancelAction(kind, reason, owner)).catch(() => {}) } finally {
+        if (kind === 'mining') stopMining(reason, owner)
+      }
+    },
+    abortError: () => failure('STORAGE_ABORTED')
+  })
   const read = p => getBlock(p.x, p.y, p.z)
   const air = p => plainAir(read(p))
   // The stand body uses the same rule as site planning (air or an observed,
@@ -258,7 +270,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     const bottom = actor.kind === 'player' || actor.self ? actor.position.y - 1.62 : actor.position.y
     return Math.abs(actor.position.x - (p.x + 0.5)) < 0.81 && Math.abs(actor.position.z - (p.z + 0.5)) < 0.81 && bottom < p.y + 2 && bottom + 1.8 > p.y
   }
-  function cellIssue (p, state, allowed, ownPositions = [], preparation = null) {
+  function cellIssue (p, state, allowed, ownPositions = [], preparation = null, observation = null) {
     if (!point(p) || allowed(p) !== true) return { cause: 'PLACEMENT_NOT_PERMITTED', position: p, part: 'box' }
     for (const position of [p, { ...p, y: p.y + 1 }]) {
       const block = read(position)
@@ -267,7 +279,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     const floor = supportIssue(read, p)
     if (floor) return floor
     if (overlaps(p, { self: true, position: state.position })) return { cause: 'SELF_OCCUPIES_BOX', position: p, part: 'box' }
-    const actors = getEntities()
+    const actors = observation ? observation.actors : getEntities()
     if (!Array.isArray(actors)) return { cause: 'ENTITIES_UNOBSERVED', position: p, part: 'box' }
     if (actors.some(actor => ['mob', 'player'].includes(actor.kind) && actor.alive !== false && String(actor.runtimeId) !== String(state.runtimeEntityId) && (actor.positionKnown === false || overlaps(p, actor)))) return { cause: 'ENTITY_OCCUPIES_OR_UNOBSERVED', position: p, part: 'box' }
     for (const [dx, dz] of DIRECTIONS) {
@@ -292,16 +304,18 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
     // exactStand is a read-only proposal; route and arrival are checked separately.
     const stands = exactStand ? [copy(exactStand)] : []
     if (!exactStand) for (const dy of [0, 1, -1, 2, -2]) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) if (Math.hypot(dx, dz) <= 3) stands.push({ x: origin.x + dx, y: y + dy, z: origin.z + dz })
-    const nearbyActors = kind === 'shulker' ? getEntities() : null, drops = new Map()
+    // This planner never awaits. Share its observation across candidate cells;
+    // execution still reads new entities after movement and before placement.
+    const observation = { actors: getEntities() }, actors = observation.actors, nearbyActors = kind === 'shulker' ? actors : null, drops = new Map()
     // Live 2026-11-12 21:12: chickens wandered onto the chosen box cell. A cell
     // with a received live mob within 1.5 blocks is used only when no other
     // site is available.
-    const liveMobs = (Array.isArray(nearbyActors) ? nearbyActors : getEntities() ?? []).filter(a => a?.kind === 'mob' && a.alive !== false && a.position && finite(a.position))
+    const liveMobs = (Array.isArray(actors) ? actors : []).filter(a => a?.kind === 'mob' && a.alive !== false && a.position && finite(a.position))
     const mobNear = cells => cells.some(p => liveMobs.some(a => Math.hypot(a.position.x - (p.x + 0.5), a.position.z - (p.z + 0.5)) <= 1.5 && Math.abs(a.position.y - p.y) <= 2))
     let mobFallback = null, dropFallback = null
     // Live 2026-11-12 21:52: loose drops lay on the refused box cell. A cell
     // with a received drop on it is tried after clean cells.
-    const liveDrops = (Array.isArray(nearbyActors) ? nearbyActors : getEntities() ?? []).filter(a => a?.kind === 'item' && a.alive !== false && a.position && finite(a.position))
+    const liveDrops = (Array.isArray(actors) ? actors : []).filter(a => a?.kind === 'item' && a.alive !== false && a.position && finite(a.position))
     const dropOn = cells => cells.some(p => liveDrops.some(a => a.position.x >= p.x - 0.2 && a.position.x <= p.x + 1.2 && a.position.z >= p.z - 0.2 && a.position.z <= p.z + 1.2 && a.position.y >= p.y - 0.5 && a.position.y <= p.y + 1.5))
     const dropCount = p => { const k = key(p); if (!drops.has(k)) drops.set(k, looseDropsNear(p, nearbyActors)); return drops.get(k) }
     stands.sort((a, b) => dropCount(a) - dropCount(b) || Math.hypot(a.x - origin.x, a.y - origin.y, a.z - origin.z) - Math.hypot(b.x - origin.x, b.y - origin.y, b.z - origin.z))
@@ -317,6 +331,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       // belongs at that proposed stand, not at the previous pickup position.
       // Actual placement rechecks the live position after verified movement.
       const proposedState = samePoint(stand, origin) ? state : { ...state, position: eye }
+      let routeChecked = false
       // Retain the preferred two-cell gap, but a one-cell gap is also within
       // reach and outside the player's hitbox on small/uneven work platforms.
       for (const distance of kind === 'shulker' ? [2, 1] : [2]) for (const [dx, dz] of DIRECTIONS) for (const side of kind === 'double_chest' ? [1, -1] : [1]) {
@@ -331,7 +346,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
           return true
         } : null
         if (positions.some(p => rejected.has(key(p)))) { reject({ cause: 'PREVIOUSLY_REJECTED_SITE', position: first }); continue }
-        const issue = positions.map(p => cellIssue(p, proposedState, allowed, [], prepare)).find(Boolean)
+        const issue = positions.map(p => cellIssue(p, proposedState, allowed, [], prepare, observation)).find(Boolean)
         if (issue) { reject(issue); continue }
         // Live 2026-11-13 00:17: the placement preview refused a chosen box cell
         // whose floor was not ordinary ground. Choosing a site (not checking one
@@ -343,8 +358,9 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
         if (positions.some(p => Math.hypot(p.x + 0.5 - eye.x, p.y - eye.y, p.z + 0.5 - eye.z) > 4.5)) { reject({ cause: 'BOX_OUT_OF_REACH', position: first }); continue }
         if (!positions.every(p => canSeePlacementFloor(read, eye, p, { plannedClearance: prepare }))) { reject({ cause: 'PLACEMENT_SIGHT_BLOCKED', position: first }); continue }
         if (positions.length === 2 && (!heading(eye, first) || heading(eye, first) !== heading(eye, positions[1]))) continue
-        if (previewMove && !exactStand) {
+        if (previewMove && !exactStand && !routeChecked) {
           try { if (previewMove(copy(stand))?.ready !== true) { reject({ cause: 'NATIVE_ROUTE_UNAVAILABLE', position: stand }); continue nextStand } } catch { reject({ cause: 'NATIVE_ROUTE_UNAVAILABLE', position: stand }); continue nextStand }
+          routeChecked = true
         }
         const site = { stand, positions, ...(pending.size ? { preparation: [...pending.values()].sort((a, b) => Math.hypot(a.x + 0.5 - eye.x, a.y + 0.5 - eye.y, a.z + 0.5 - eye.z) - Math.hypot(b.x + 0.5 - eye.x, b.y + 0.5 - eye.y, b.z + 0.5 - eye.z)), requiresPreparation: true } : {}) }
         if (mobNear(positions)) { mobFallback ??= site; continue }
@@ -371,17 +387,11 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
 
   async function storeCarried (request, { signal, onCheckpoint, canPlace = () => true, capacityWork = null } = {}) {
     if (active) return { status: 'blocked', reason: 'STORAGE_BUSY', serverConfirmed: false, deposited: [], checkpoint: copy(request?.checkpoint ?? null) }
-    let cp = null, action = null, windowEvidence = null
+    let cp = null, windowEvidence = null
     const run = active = { checkpoint: null }
     const guard = () => { if (signal?.aborted) throw failure('STORAGE_ABORTED'); return observe(cp) }
     const save = async () => { if (typeof onCheckpoint !== 'function') throw failure('STORAGE_PERSISTENCE_REQUIRED'); try { await onCheckpoint(copy(cp)) } catch (error) { throw failure('STORAGE_PERSISTENCE_FAILED', error.message) } }
-    const cancel = () => { if (!action) return; const { kind, owner } = action; try { Promise.resolve(cancelAction(kind, 'Portable storage interrupted', owner)).catch(() => {}) } catch {} ; if (kind === 'mining') { try { stopMining('Portable storage interrupted', owner) } catch {} } }
-    const perform = async (kind, fn) => {
-      guard(); const currentAction = { kind, owner: captureActionOwner?.(kind, { jobId: request.jobId, operationId: request.operationId }) ?? null }; action = currentAction
-      let aborted
-      const stopped = new Promise((resolve, reject) => { aborted = () => reject(failure('STORAGE_ABORTED')); signal?.addEventListener('abort', aborted, { once: true }) })
-      try { return await Promise.race([Promise.resolve().then(() => { guard(); return runActionOwned ? runActionOwned(currentAction.owner, () => fn(currentAction.owner)) : fn(currentAction.owner) }), stopped]) } finally { signal?.removeEventListener('abort', aborted); if (action === currentAction) action = null }
-    }
+    const actions = actionScope(request, signal, guard, 'Portable storage interrupted'), { perform } = actions
     const moveToCell = async (target, suppliedPath = null, beforeMove = null) => {
       if (!getPath) return perform('movement', () => { beforeMove?.(); return moveTo(copy(target), { signal, ...(suppliedPath ? { path: copy(suppliedPath) } : {}) }) })
       const current = guard(), origin = { x: Math.floor(current.state.position.x), y: Math.floor(current.state.position.y - 1.62 + 0.001), z: Math.floor(current.state.position.z) }
@@ -519,7 +529,6 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       if (open && cp.windowId != null && (!windowEvidence || !isDeepStrictEqual(readWindowEvidence(current), windowEvidence))) throw failure('STORAGE_WINDOW_CHANGED')
       if (open) { crafting.closeContainer(); windowEvidence = null }
     }
-    signal?.addEventListener('abort', cancel, { once: true })
     try {
       if (signal?.aborted) throw failure('STORAGE_ABORTED')
       const pendingPlacement = request?.checkpoint?.kind === 'shulker' && request.checkpoint.intent?.type === 'place'
@@ -1177,7 +1186,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       cp.stage = 'completed'; await save(); guard()
       return result(cp.full ? 'full' : 'completed')
     } catch (error) {
-      cancel()
+      actions.cancel()
       let details = error.details
       if (cp?.kind === 'shulker' && cp.expectedContents && Array.isArray(cp.recoveryBaseline) && cp.placed?.length === 1 && ['STORAGE_RECOVERY_UNCONFIRMED', 'STORAGE_PICKUP_STAND_UNKNOWN'].includes(error.code)) {
         try {
@@ -1190,7 +1199,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       }
       return { ...result('blocked', error.code ?? String(error.message ?? error)), ...(details ? { details: copy(details) } : {}) }
     } finally {
-      signal?.removeEventListener('abort', cancel)
+      actions.dispose()
       if (active === run) active = null
     }
   }
@@ -1208,13 +1217,8 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       if (chest.snapshot().busy || chest.snapshot().pendingRequestId != null || interactions.snapshot?.().pendingOperation != null) throw failure('STORAGE_PRIOR_ACTION_PENDING')
       return frame
     }
-    const perform = async fn => {
-      guard()
-      let abort
-      const interrupted = new Promise((resolve, reject) => { abort = () => reject(failure('STORAGE_ABORTED')); signal?.addEventListener('abort', abort, { once: true }) })
-      try { return await Promise.race([Promise.resolve().then(() => { guard(); return operationOwner ? runActionOwned(operationOwner, fn) : fn() }), interrupted]) }
-      finally { signal?.removeEventListener('abort', abort) }
-    }
+    const actions = createOperationScope({ signal, guard, captureOwner: () => operationOwner, runOwned: runActionOwned, abortError: () => failure('STORAGE_ABORTED') })
+    const perform = fn => actions.perform('reconcile', fn)
     try {
       const cp = original, intent = cp?.intent, pin = cp?.placementSourcePin, audits = cp?.currentPlacementReconciliations ?? []
       if (request?.manual !== true || !cp || cp.version !== 1 || cp.jobId !== request.jobId || cp.operationId !== request.operationId || cp.kind !== 'shulker' || cp.purpose != null ||
@@ -1274,7 +1278,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       await onCheckpoint(copy(staged)); inspect(main)
       return { status: 'reconciled', currentStateConfirmed: true, serverConfirmed: false, checkpoint: staged, proof }
     } catch (error) { return blocked(error.code ?? String(error.message ?? error)) }
-    finally { if (active === run) active = null }
+    finally { actions.dispose(); if (active === run) active = null }
   }
   async function reconcileObservedPlacement (request, { signal, onCheckpoint } = {}) {
     const original = copy(request?.checkpoint ?? null)
@@ -1287,17 +1291,7 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       if (operationOwner) runActionOwned(operationOwner, () => {})
       return inventoryRequired ? observe(original) : placementContext(original)
     }
-    const perform = async (kind, fn) => {
-      guard()
-      const owner = captureActionOwner?.(kind, { jobId: original.jobId, operationId: original.operationId }) ?? null
-      let abort
-      const aborted = new Promise((resolve, reject) => {
-        abort = () => { try { cancelAction(kind, 'Observed placement reconciliation interrupted', owner) } catch {} reject(failure('STORAGE_ABORTED')) }
-        signal?.addEventListener('abort', abort, { once: true })
-      })
-      try { return await Promise.race([Promise.resolve().then(() => { guard(); return runActionOwned ? runActionOwned(owner, fn) : fn() }), aborted]) }
-      finally { signal?.removeEventListener('abort', abort) }
-    }
+    const actions = actionScope(original, signal, guard, 'Observed placement reconciliation interrupted'), { perform } = actions
     try {
       const cp = original, intent = cp?.intent, pin = cp?.placementSourcePin, evidence = request?.placementEvidence, record = request?.recordedFailure
       if (!cp || cp.version !== 1 || cp.jobId !== request.jobId || cp.operationId !== request.operationId || request.selection?.kind !== 'shulker' || request.selection.key !== cp.selectionKey || cp.kind !== 'shulker' || cp.purpose != null || cp.stage !== 'placing' || !Array.isArray(cp.placed) || cp.placed.length || !Array.isArray(cp.deposited) || cp.deposited.length || !Array.isArray(cp.plan) || !cp.plan.length || cp.plan.some(entry => entry.transferred !== 0) || cp.positions?.length !== 1 || !point(cp.positions[0]) || !point(cp.stand) || intent?.type !== 'place' || intent.notSent === true || !samePoint(intent.position, cp.positions[0]) || !Number.isInteger(intent.slot) || intent.slot < 0 || intent.slot > 8 || !isShulkerBlock(intent.name) || typeof intent.source !== 'string' || typeof pin?.source !== 'string' || pin.slot !== intent.slot || pin.selectionKey !== cp.selectionKey || typeof onCheckpoint !== 'function' || typeof refreshInventory !== 'function') return blocked('STORAGE_PLACEMENT_HISTORY_INVALID')
@@ -1356,35 +1350,20 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       inspect()
       return { status: 'reconciled', placementConfirmed: true, serverConfirmed: false, checkpoint: staged, proof }
     } catch (error) { return blocked(error.code ?? String(error.message ?? error)) }
-    finally { if (active === run) active = null }
+    finally { actions.dispose(); if (active === run) active = null }
   }
   async function reconcileRejectedDeposit (request, { signal, onCheckpoint } = {}) {
     const original = copy(request?.checkpoint ?? null)
     const blocked = reason => ({ status: 'blocked', reason, serverConfirmed: false, checkpoint: copy(original) })
     if (active) return blocked('STORAGE_BUSY')
     const run = active = { checkpoint: original }
-    let action = null
     let operationOwner = null
     const guard = () => {
       if (signal?.aborted) throw failure('STORAGE_ABORTED')
       if (operationOwner) runActionOwned(operationOwner, () => {})
       return observe(original)
     }
-    const perform = async (kind, fn) => {
-      guard()
-      const current = { kind, owner: captureActionOwner?.(kind, { jobId: original.jobId, operationId: original.operationId }) ?? null }
-      action = current
-      let onAbort
-      const aborted = new Promise((resolve, reject) => {
-        onAbort = () => {
-          try { cancelAction(kind, 'Source rejection reconciliation interrupted', current.owner) } catch {}
-          reject(failure('STORAGE_ABORTED'))
-        }
-        signal?.addEventListener('abort', onAbort, { once: true })
-      })
-      try { return await Promise.race([Promise.resolve().then(() => { guard(); return runActionOwned ? runActionOwned(current.owner, fn) : fn() }), aborted]) }
-      finally { signal?.removeEventListener('abort', onAbort); if (action === current) action = null }
-    }
+    const actions = actionScope(original, signal, guard, 'Source rejection reconciliation interrupted'), { perform } = actions
     try {
       if (!original || original.version !== 1 || original.jobId !== request.jobId || original.operationId !== request.operationId || original.selectionKey !== request.selection?.key || request.selection?.kind !== 'shulker' || typeof onCheckpoint !== 'function' || typeof refreshInventory !== 'function') return blocked('STORAGE_SOURCE_REJECTION_INVALID')
       const proof = request.rejectionProof ?? original.intent?.rejectionProof
@@ -1414,9 +1393,9 @@ function createQuarryPortableStorage ({ getState, getBlock, crafting, chest, int
       guard()
       return { status: 'reconciled', notApplied: true, serverConfirmed: false, checkpoint: staged, proof: copy(reconciliation) }
     } catch (error) {
-      if (action) { try { cancelAction(action.kind, 'Source rejection reconciliation failed', action.owner) } catch {} }
+      actions.cancel()
       return blocked(error.code ?? String(error.message ?? error))
-    } finally { if (active === run) active = null }
+    } finally { actions.dispose(); if (active === run) active = null }
     function closeContainerForReconciliation () { guard(); crafting.closeContainer() }
   }
   async function reconcileUnsentPlacement (request, { signal, onCheckpoint, canPlace = () => false } = {}) {

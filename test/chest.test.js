@@ -382,6 +382,70 @@ function actualBdsReplay ({ timeoutMs = 100, applyDelta = true } = {}) {
   return { state, sent, deltas, uncertainties, crafting, chest, baseline, observe, deposit, actualSlot, actualAck }
 }
 
+test('lightweight chest state avoids recipe and slot views through actual BDS transfer receipts', async () => {
+  const f = actualBdsReplay()
+  const { slots, ...expected } = f.chest.snapshot()
+  const fullSnapshot = f.crafting.snapshot
+  let fullReads = 0, slotRows = 0
+  f.crafting.snapshot = () => { fullReads++; return fullSnapshot() }
+  // The old fallback demonstrates the prior cost without changing the fixture.
+  const read = () => typeof f.chest.status === 'function' ? f.chest.status() : f.chest.snapshot()
+  for (let i = 0; i < 100; i++) {
+    const current = read()
+    slotRows += current.slots?.length ?? 0
+    const { slots: ignored, ...metadata } = current
+    assert.deepEqual(metadata, expected)
+  }
+  assert.equal(fullReads, 0, 'busy/window reads must not build the crafting recipe view')
+  assert.equal(slotRows, 0, 'busy/window reads must not enumerate storage slots')
+  assert.equal(f.sent.length, 0, 'observation does not send a game operation')
+  const transferring = f.deposit()
+  assert.equal(read().busy, true)
+  assert.equal(read().pendingRequestId, bds.request.packet.requests[0].request_id)
+  f.observe('inventory_slot', f.actualSlot())
+  assert.equal(read().busy, true, 'a container delta alone cannot complete the transfer')
+  f.observe('item_stack_response', f.actualAck())
+  const result = await transferring
+  assert.equal(result.serverConfirmed, true)
+  const current = read()
+  assert.equal(current.busy, false)
+  assert.equal(current.pendingRequestId, null)
+  assert.equal(current.lastResult.serverConfirmed, true)
+  assert.equal(current.contentsKnown, true)
+  assert.equal(fullReads, 0, 'transfer validation also uses the lightweight crafting state')
+  assert.equal(f.sent.length, 1)
+  const view = f.chest.snapshot()
+  assert.equal(view.slots.length, slots.length)
+  const { slots: finalSlots, ...finalMetadata } = view
+  assert.deepEqual(current, finalMetadata)
+})
+
+test('lightweight chest state preserves partial, stale and detached metadata with legacy crafting adapters', () => {
+  const f = fixture()
+  const check = () => {
+    const { slots, ...metadata } = f.chest.snapshot()
+    assert.deepEqual(f.chest.status(), metadata)
+    assert.equal(Object.hasOwn(f.chest.status(), 'slots'), false)
+    return slots
+  }
+  check()
+  const exposed = f.chest.status()
+  exposed.window.position.x = 999
+  exposed.window.scope.life = 99
+  assert.equal(f.chest.status().window.position.x, target.x)
+  assert.equal(f.chest.status().window.scope.life, 0)
+  f.chestSlot(1, { network_id: 402, count: -1 })
+  const partial = check()
+  assert.equal(f.chest.status().contentsKnown, false)
+  assert.equal(partial[0].known, true, 'a different malformed slot does not erase received slots')
+  assert.equal(partial[1].known, false)
+  f.state.lifecycle.deathId++
+  const stale = check()
+  assert.equal(f.chest.status().contentsKnown, false)
+  assert.equal(f.chest.status().needsOpen, true)
+  assert.ok(stale.every(slot => !slot.known))
+})
+
 test('actual owned vanilla BDS trace reconciles ONLY acknowledged main slot after real chest descriptor, then normal reopen agrees', async () => {
   const f = actualBdsReplay()
   const before = structuredClone(f.baseline)

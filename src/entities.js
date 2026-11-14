@@ -2,25 +2,7 @@
 
 const { performance } = require('node:perf_hooks')
 
-// An explicit potential-hostile list, never inferred from usernames, numeric
-// actor IDs or another edition's registry. Some listed mobs can be neutral in
-// particular conditions; keeping their type visible allows conservative avoidance.
-const HOSTILES = new Set([
-  'zombie', 'zombie_villager', 'zombie_villager_v2', 'husk', 'drowned',
-  'skeleton', 'stray', 'bogged', 'wither_skeleton', 'creeper', 'spider', 'cave_spider',
-  'witch', 'slime', 'magma_cube', 'silverfish', 'endermite', 'blaze', 'ghast',
-  'guardian', 'elder_guardian', 'phantom', 'pillager', 'vindicator', 'evocation_illager',
-  'ravager', 'vex', 'piglin_brute', 'hoglin', 'zoglin', 'warden', 'breeze', 'creaking',
-  'wither', 'ender_dragon'
-].map(name => `minecraft:${name}`))
-const MOBS = new Set([...HOSTILES, ...[
-  'cow', 'pig', 'sheep', 'chicken', 'rabbit', 'horse', 'donkey', 'mule', 'llama',
-  'trader_llama', 'camel', 'goat', 'mooshroom', 'cat', 'ocelot', 'wolf', 'fox',
-  'polar_bear', 'panda', 'bee', 'bat', 'parrot', 'allay', 'axolotl', 'dolphin',
-  'turtle', 'squid', 'glow_squid', 'cod', 'salmon', 'tropicalfish', 'pufferfish',
-  'villager', 'villager_v2', 'wandering_trader', 'iron_golem', 'snow_golem',
-  'enderman', 'piglin', 'zombie_pigman', 'strider', 'frog', 'tadpole', 'sniffer', 'armadillo'
-].map(name => `minecraft:${name}`)])
+const { isKnownMobType, isPotentialHostileType } = require('./mob-catalog')
 
 function normalizeId (value, signed = false) {
   if (typeof value === 'number') {
@@ -170,8 +152,8 @@ function createEntities ({ limit = 512, selfRuntimeId = null, clock = () => new 
     forget(runtimeId)
     const entity = {
       runtimeId, uniqueId, kind, entityType: type, dimension, ordinal: ++sequence,
-      hostile: kind !== 'player' && HOSTILES.has(type),
-      hostility: kind === 'player' || kind === 'item' ? 'not_hostile' : HOSTILES.has(type) ? 'hostile' : 'unclassified',
+      hostile: kind !== 'player' && isPotentialHostileType(type),
+      hostility: kind === 'player' || kind === 'item' ? 'not_hostile' : isPotentialHostileType(type) ? 'hostile' : 'unclassified',
       username: kind === 'player' && typeof packet.username === 'string' ? packet.username : null,
       networkId: kind === 'item' ? packet.item?.network_id ?? null : null,
       count: kind === 'item' ? packet.item?.count ?? null : null,
@@ -217,7 +199,7 @@ function createEntities ({ limit = 512, selfRuntimeId = null, clock = () => new 
       remember(packet, 'player', 'minecraft:player', packet.runtime_id, packet.unique_id)
     } else if (name === 'add_entity') {
       const type = entityName(packet.entity_type)
-      const kind = type === 'minecraft:player' ? 'player' : MOBS.has(type) ? 'mob' : 'entity'
+      const kind = type === 'minecraft:player' ? 'player' : isKnownMobType(type) ? 'mob' : 'entity'
       remember(packet, kind, type, packet.runtime_id, packet.unique_id)
     } else if (name === 'move_entity') {
       movement(packet.runtime_entity_id, packet.position, name)

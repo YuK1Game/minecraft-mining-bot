@@ -177,6 +177,34 @@ test('a refresh cooldown is respected once before exact timeout reconciliation',
  assert.equal(refreshes,2);assert.equal(waited,20000)
  assert.equal(f.transfers.length,34)
 })
+test('real withdrawal reconciliation waits only the remaining cooldown and requires the fresh receipt',async()=>{
+ const f=fixture();timeoutAfterFirstTransfer(f)
+ let clock=10000,lastRequestedAt=0,refreshes=0,sends=0,waited=0,receiveMain=null,completed=false
+ f.ports.now=()=>clock
+ f.ports.getRefreshDelay=()=>Math.max(0,20000-(clock-lastRequestedAt))
+ f.ports.sleep=async ms=>{assert.ok(ms>0&&ms<=100);waited+=ms;clock+=ms}
+ f.ports.resync=async()=>{
+  refreshes++
+  const retryAfterMs=f.ports.getRefreshDelay()
+  if(retryAfterMs>0)throw Object.assign(new Error('cooldown'),{code:'RESYNC_RATE_LIMIT',retryAfterMs})
+  lastRequestedAt=clock;sends++
+  return new Promise(resolve=>{receiveMain=()=>{f.state.inventory.known=true;f.state.inventory.uncertain=false;resolve(true)}})
+ }
+ const operation=createQuarryV22ChestWork(f.ports).withdrawAll(requestFor(f),f.options).then(result=>{completed=true;return result})
+ await new Promise(resolve=>setImmediate(resolve))
+ assert.equal(typeof receiveMain,'function','refresh reaches the server after the finite wait')
+ assert.equal(completed,false,'sending the refresh cannot confirm the prior withdrawal')
+ assert.equal(f.transfers.length,1,'unconfirmed inventory prevents further transfers')
+ receiveMain()
+ const result=await operation
+ assert.equal(result.status,'completed',JSON.stringify(result))
+ assert.equal(waited,10000,'the prior ten seconds of cooldown are not waited twice')
+ assert.equal(clock,20000)
+ assert.equal(refreshes,1,'the hook avoids an already-known rejected attempt')
+ assert.equal(sends,1)
+ assert.equal(f.transfers.length,34,'the reconciled first withdrawal is not resent')
+ assert.equal(result.checkpoint.receipts[0].kind,'reconciled_withdraw')
+})
 test('cooldown recovery stops on abort or a changed life and keeps the pending intent',async()=>{
  for(const interruption of ['abort','life']) {
   const f=fixture();timeoutAfterFirstTransfer(f)

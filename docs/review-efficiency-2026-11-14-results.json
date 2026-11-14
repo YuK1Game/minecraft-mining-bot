@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "recordedAtJst": "2026-11-14T03:21:21+09:00",
+  "repository": "YuK1Game/minecraft-mining-bot",
+  "pullRequest": 72,
+  "base": "83d3a7895c04cc47858870050a7187480e17002b",
+  "sourceCommit": "0fe492b012affc0b010c0910c10e0aad2161d522",
+  "testedLocalCommit": "00b4f45f29feed0a0e4cc73ef3b6d0593127ed92",
+  "sourceTree": "335aad32988223d36accd8e981a301d917edeeed",
+  "local": {
+    "node": "v24.22.1",
+    "syntax": {
+      "files": 697,
+      "dashboardScripts": 1,
+      "passed": true
+    },
+    "review": {
+      "tests": 1417,
+      "pass": 1367,
+      "fail": 49,
+      "cancelled": 0,
+      "skipped": 1
+    },
+    "currentFull": {
+      "tests": 5376,
+      "pass": 4929,
+      "fail": 441,
+      "cancelled": 4,
+      "skipped": 2
+    },
+    "baselineFinalCompletion": "unconfirmed after environment became unavailable",
+    "sourceBranchRestoration": "unconfirmed; code was already preserved in GitHub"
+  },
+  "ci": {
+    "runId": 43478302209,
+    "fullJobId": 132067895579,
+    "fullConclusion": "failure",
+    "comparison": {
+      "base": "83d3a7895c04cc47858870050a7187480e17002b",
+      "node": "v24.22.2",
+      "baseline": {
+        "tests": 5409,
+        "pass": 4874,
+        "fail": 530,
+        "cancelled": 3,
+        "skipped": 2,
+        "todo": 0
+      },
+      "current": {
+        "tests": 5456,
+        "pass": 4994,
+        "fail": 456,
+        "cancelled": 4,
+        "skipped": 2,
+        "todo": 0
+      },
+      "introduced": [
+        {
+          "name": "smooth_005",
+          "file": "test/runtime-bounded-jump.test.js",
+          "failureType": "testCodeFailure",
+          "code": "ERR_TEST_FAILURE",
+          "key": "[\"test/runtime-bounded-jump.test.js\",\"smooth_005\",\"testCodeFailure\",\"ERR_TEST_FAILURE\"]"
+        },
+        {
+          "name": "smooth_010",
+          "file": "test/runtime-bounded-jump.test.js",
+          "failureType": "testCodeFailure",
+          "code": "ERR_TEST_FAILURE",
+          "key": "[\"test/runtime-bounded-jump.test.js\",\"smooth_010\",\"testCodeFailure\",\"ERR_TEST_FAILURE\"]"
+        },
+        {
+          "name": "a healthy unarmed respawn can leave the observed ledge while moving away from the zombie",
+          "file": "test/runtime-idle-escape.test.js",
+          "failureType": "testCodeFailure",
+          "code": "ERR_TEST_FAILURE",
+          "key": "[\"test/runtime-idle-escape.test.js\",\"a healthy unarmed respawn can leave the observed ledge while moving away from the zombie\",\"testCodeFailure\",\"ERR_TEST_FAILURE\"]"
+        },
+        {
+          "name": "the real supervisor selects the healthy unarmed respawn ledge retreat",
+          "file": "test/runtime-idle-escape.test.js",
+          "failureType": "testTimeoutFailure",
+          "code": "ERR_TEST_FAILURE",
+          "key": "[\"test/runtime-idle-escape.test.js\",\"the real supervisor selects the healthy unarmed respawn ledge retreat\",\"testTimeoutFailure\",\"ERR_TEST_FAILURE\"]"
+        }
+      ],
+      "removedFailureCount": 77
+    },
+    "ubuntuSafetyJob": 132067894811,
+    "windowsSafetyJob": 132067895377,
+    "safety": {
+      "tests": 1417,
+      "pass": 1367,
+      "fail": 49,
+      "cancelled": 0,
+      "skipped": 1,
+      "sameFailureNamesAcrossOperatingSystems": true
+    },
+    "focused": {
+      "runId": 43478302355,
+      "jobId": 132067894706,
+      "tests": 122,
+      "pass": 122,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "artifacts": [
+      {
+        "id": 14064678763,
+        "name": "complete-suite-comparison",
+        "digest": "sha256:9a469b245313678947fad13f7f4d0522c013f493af1869a3477a0f9da1534edb",
+        "expires_at": "2026-11-27T18:19:55Z"
+      }
+    ]
+  },
+  "metrics": {
+    "context": "Offline actual-module integration fixtures; call counts, not live Realm CPU or tick-time measurements",
+    "storagePreview": {
+      "before": 232,
+      "after": 29
+    },
+    "storageEntities": {
+      "before": 233,
+      "after": 1
+    },
+    "chestFullPer100CanReload": {
+      "before": 100,
+      "after": 0
+    },
+    "craftFullPer100CanReload": {
+      "before": 100,
+      "after": 0
+    },
+    "combatPer100CanReload": {
+      "before": 300,
+      "after": 100
+    },
+    "blockReadsForTwoSameTenMetreSightChecks": {
+      "before": 80,
+      "after": 40
+    }
+  },
+  "timing": {
+    "cutoffJst": "2026-11-14T03:21:21+09:00",
+    "startJst": "2026-11-14T02:01:49.764073+09:00",
+    "wallSeconds": 4771.23592710495,
+    "parallelPhaseSeconds": {
+      "investigation": 1406.961702,
+      "implementation": 1584.889591,
+      "test": 4477.002697079272
+    },
+    "parallelTotalSeconds": 7468.853990079273,
+    "supplementalRootEvents": [
+      {
+        "phase": "test",
+        "event": "end",
+        "at": "2026-11-14T03:20:13+09:00",
+        "startedAt": "2026-11-14T02:58:23.137090+09:00",
+        "seconds": 1309.8629100322723,
+        "note": "CI result obtained after local environment loss; original local JSONL could not be closed."
+      },
+      {
+        "phase": "implementation",
+        "event": "end",
+        "at": "2026-11-14T03:21:21+09:00",
+        "startedAt": "2026-11-14T03:20:13+09:00",
+        "seconds": 68,
+        "note": "Finalize documentation and evidence before publication."
+      }
+    ],
+    "unmeasured": [
+      "Preparation before timer start",
+      "Additional report-review agent phase has a start record but no end; not estimated",
+      "Publication and final response after cutoff"
+    ],
+    "qualifications": [
+      "Parallel totals are not wall elapsed or CPU time",
+      "Some short related tests were included in root implementation phases; not estimated separately",
+      "Final test phase includes waits and concurrent PR/document preparation"
+    ]
+  },
+  "application": {
+    "mergedToMain": false,
+    "liveRealmTested": false,
+    "botRestartPerformed": false,
+    "entitiesChangeRequiresRestart": true
+  },
+  "limitations": [
+    "Strict failure-signature comparison remains failed for four route/escape cases",
+    "The four cases were already failing under an earlier baseline; full causal explanation of supervisor timeout remains unconfirmed",
+    "Source code unchanged after environment outage; this evidence and report are documentation only"
+  ]
+}

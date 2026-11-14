@@ -44,13 +44,14 @@ function createFurnace ({ client, getState, crafting, allocateRequestId, onInven
   let observationSource = null
   let inventoryUncertain = false
 
+  const craftingStatus = () => typeof crafting.status === 'function' ? crafting.status() : crafting.snapshot()
   function rawItem (slot) { return slots.has(slot) ? copy(slots.get(slot)) : null }
   function itemName (raw) { return empty(raw) ? null : names.get(raw?.network_id) ?? null }
   function session ({ inventoryRequired = true } = {}) {
     const state = getState()
     if (state.dead || state.isDead || state.phase !== 'spawned' || !Number.isFinite(state.health) || state.health <= resourceMinHealth(state)) throw new Error('生存・接続・十分な体力を確認してからかまどを操作してください。')
     if (state.gameMode !== 'survival' && state.gameMode !== 0) throw new Error('かまど操作はサバイバル専用です。')
-    const observed = crafting.snapshot()
+    const observed = craftingStatus()
     if (observed.authority !== true || inventoryRequired && (observed.inventoryKnown !== true || state.inventory?.known === false || inventoryUncertain)) throw new Error('サーバー権威の持ち物の取得が必要です。')
     if (observed.pendingRequestId != null) throw new Error('クラフト結果を待ってからかまどを操作してください。')
     if (!window || !contentsKnown || ![0, 1, 2].every(slot => validRaw(slots.get(slot)))) throw new Error('かまどを開き、サーバーから3スロットの実データを受信してください。')
@@ -254,7 +255,7 @@ function createFurnace ({ client, getState, crafting, allocateRequestId, onInven
     observeOutput()
   }
   function snapshot () {
-    const open = crafting.snapshot().openContainer
+    const open = craftingStatus().openContainer
     const matchesOpen = window && windowId(open?.id) === window.id && ['furnace', 2].includes(open?.type)
     return { version, window: copy(window), contentsKnown, inventoryUncertain, needsOpen: !window || !contentsKnown || !matchesOpen, busy: transfer !== null, pendingRequestId: transfer?.id ?? null, waitingOutput: waiting !== null, observationSource,
       slots: [0, 1, 2].map(slot => { const raw = slots.get(slot); return { slot, role: ROLES[slot], known: validRaw(raw), name: raw ? itemName(raw) : null, count: raw?.count ?? null, stackId: raw?.has_stack_id ? raw.stack_id : null } }),

@@ -216,10 +216,11 @@ function transferFixture ({ role = 'dirt', sourceCount = 64, stock = 0, policy =
     return result
   }
   const chest = { snapshot: window, rawItem: slot => structuredClone(slots[slot]), close: () => {}, open: async () => { if (mode !== 'stale_open') epoch++; return { serverConfirmed: true, confirmedBy: 'server_container_open_and_full_content' } }, withdrawItem: options => move('withdraw', options), depositItem: options => move('return', options) }
-  const controller = createQuarrySupplies({ getState: () => state, crafting, chest, refreshInventory: async () => { logs.push({ fresh: true }); if (mode === 'life_change') state.lifecycle.deathId++; return fresh }, getPortable: () => null })
+  const ports = { getState: () => state, crafting, chest, refreshInventory: async () => { logs.push({ fresh: true }); if (mode === 'life_change') state.lifecycle.deathId++; return fresh }, getPortable: () => null }
+  const controller = createQuarrySupplies(ports)
   const request = { jobId: 'supplies', operationId: 'supplies:food:1', supply: { binding: { role, itemName, key: 'test' }, policy } }
   const run = (checkpoint = null, extra = {}) => controller.workWithContainer({ request, position, checkpoint }, { onCheckpoint: async cp => { saves++; if (saves === failSave) throw new Error('controlled persistence failure'); docs.push(structuredClone(cp)) }, ...extra })
-  return { controller, request, main, slots, logs, docs, state, crafting, chest, run, setMode: value => { mode = value }, setFresh: value => { fresh = value }, failSave: at => { failSave = at }, setSaves: value => { saves = value } }
+  return { controller, request, position, ports, main, slots, logs, docs, state, crafting, chest, run, setMode: value => { mode = value }, setFresh: value => { fresh = value }, failSave: at => { failSave = at }, setSaves: value => { saves = value } }
 }
 
 test('real supply withdrawal with v22 full policy receives the ordinary full dirt reserve and exact totem count', async () => {
@@ -294,6 +295,52 @@ test('a fresh exact applied delta is credited once without sending the withdrawa
   assert.equal(result.checkpoint.reconciliation.outcome, 'applied')
   assert.equal(result.withdrawn.reduce((sum, row) => sum + row.count, 0), 5)
   assert.equal(f.logs.filter(row => row.direction === 'withdraw').length, 1)
+})
+
+test('supply reconciliation waits the remaining cooldown through lightweight chest state and keeps exact receipt proof', async () => {
+  const f = transferFixture({ role: 'food', policy: { keepFood: 5 } })
+  f.setMode('applied'); const blocked = await f.run(); f.setMode(null)
+  let clock = 10000, waited = 0, refreshes = 0, stateReads = 0, snapshotReads = 0
+  const originalRefresh = f.ports.refreshInventory, originalState = f.chest.snapshot
+  f.chest.status = () => { stateReads++; return originalState() }
+  f.chest.snapshot = () => { snapshotReads++; return originalState() }
+  f.ports.now = () => clock
+  f.ports.getRefreshDelay = () => Math.max(0, 20000 - clock)
+  f.ports.sleep = async ms => { assert.ok(ms > 0 && ms <= 100); waited += ms; clock += ms }
+  f.ports.refreshInventory = async options => { refreshes++; assert.equal(clock, 20000); return originalRefresh(options) }
+  const result = await createQuarrySupplies(f.ports).workWithContainer({ request: f.request, position: f.position, checkpoint: blocked.checkpoint }, { onCheckpoint: async cp => f.docs.push(cp) })
+  assert.equal(result.status, 'completed', result.reason)
+  assert.equal(waited, 10000); assert.equal(refreshes, 1)
+  assert.equal(snapshotReads, 0, 'cooldown polling does not build any chest slots')
+  assert.ok(stateReads >= 100)
+  assert.equal(result.checkpoint.reconciliation.outcome, 'applied')
+  assert.equal(result.withdrawn.reduce((sum, row) => sum + row.count, 0), 5)
+  assert.equal(f.logs.filter(row => row.direction === 'withdraw').length, 1)
+})
+
+test('supply cooldown checks cancellation and scope before sending another refresh', async () => {
+  for (const changed of ['abort', 'life', 'connectionId', 'startedAt', 'runtimeEntityId', 'dimension', 'dead']) {
+    const f = transferFixture({ role: 'food', policy: { keepFood: 5 } })
+    f.setMode('applied'); const blocked = await f.run(); f.setMode(null)
+    let waited = 0, refreshes = 0
+    const abort = new AbortController()
+    f.ports.getRefreshDelay = () => 10000
+    f.ports.sleep = async ms => {
+      waited += ms
+      if (changed === 'abort') abort.abort(Object.assign(new Error('cancelled'), { code: 'ABORTED' }))
+      else if (changed === 'life') f.state.lifecycle.deathId++
+      else if (changed === 'dead') f.state.lifecycle.dead = true
+      else f.state[changed] += '-changed'
+    }
+    f.ports.refreshInventory = async () => { refreshes++; return true }
+    const result = await createQuarrySupplies(f.ports).workWithContainer({ request: f.request, position: f.position, checkpoint: blocked.checkpoint }, { onCheckpoint: async () => {}, signal: abort.signal })
+    assert.equal(result.status, 'blocked', changed)
+    assert.equal(waited, 100, changed)
+    assert.equal(refreshes, 0, changed)
+    assert.ok(result.checkpoint.intent, changed)
+    assert.equal(result.withdrawn.length, 0, changed)
+    assert.equal(f.logs.filter(row => row.direction === 'withdraw').length, 1, changed)
+  }
 })
 
 test('ambiguous IDs, failed refresh, stale reopen and life changes preserve pending intent without duplicate credit', async t => {

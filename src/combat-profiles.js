@@ -8,33 +8,10 @@
 // shooter/summoner > ordinary attack > collection / original task. Ordinary
 // attacks never override an emergency escape; unknown observations are never
 // treated as safe.
-const WHEN_NEEDED = 'when_needed_and_safe'
-const SELF_DEFENSE = 'self_defense_only'
+const { WHEN_NEEDED, SELF_DEFENSE, COMBAT_PROFILES: PROFILES } = require('./mob-catalog')
 const NEVER = new Set(['do_not_engage', 'dedicated_prepared_mission', 'dedicated_verified_bedrock_mission', 'prepared_expedition_only', 'hazard_avoidance_only', 'avoid_or_special_objective'])
 // Only after this individual actually attacked the bot (or is confirmed hostile).
 const PROVOKED = new Set([SELF_DEFENSE, 'avoid_unless_hostile_or_objective', 'self_defense_or_explicit_objective', 'avoid_unless_hostile_or_prepared_objective'])
-
-const PROFILES = {}
-const set = (engagement, routine, names) => { for (const name of names) PROFILES[`minecraft:${name}`] = Object.freeze({ engagement, routine }) }
-set(WHEN_NEEDED, 'melee_kite', ['zombie', 'zombie_villager', 'zombie_villager_v2', 'husk', 'spider', 'breeze'])
-set(WHEN_NEEDED, 'underwater_cover', ['drowned', 'guardian', 'zombie_nautilus'])
-set(WHEN_NEEDED, 'ranged_cover', ['skeleton', 'stray', 'bogged', 'parched', 'witch', 'pillager', 'blaze'])
-set(WHEN_NEEDED, 'special_objective', ['creeper', 'shulker'])
-set(WHEN_NEEDED, 'fast_small_intercept', ['cave_spider', 'silverfish', 'endermite'])
-set(WHEN_NEEDED, 'split_cleanup', ['slime', 'magma_cube'])
-set(WHEN_NEEDED, 'aerial_intercept', ['phantom', 'vex', 'ghast'])
-set(WHEN_NEEDED, 'ranged_terrain_isolation', ['vindicator', 'ravager', 'wither_skeleton', 'hoglin', 'zoglin', 'piglin_brute', 'camel_husk', 'zombie_horse'])
-set(WHEN_NEEDED, 'summon_source_focus', ['evocation_illager'])
-set('prepared_expedition_only', 'avoid', ['elder_guardian'])
-set('avoid_unless_hostile_or_objective', 'melee_kite', ['piglin'])
-set('self_defense_or_explicit_objective', 'melee_kite', ['zombie_pigman', 'zombified_piglin'])
-set('avoid_unless_hostile_or_prepared_objective', 'no_ranged_no_gaze', ['enderman'])
-set('dedicated_prepared_mission', 'avoid', ['ender_dragon'])
-set('dedicated_verified_bedrock_mission', 'avoid', ['wither'])
-set('do_not_engage', 'avoid', ['warden'])
-set('avoid_or_special_objective', 'avoid', ['creaking'])
-set('hazard_avoidance_only', 'avoid', ['sulfur_cube'])
-set(SELF_DEFENSE, 'melee_kite', ['iron_golem', 'wolf', 'bee', 'polar_bear', 'llama', 'trader_llama', 'dolphin', 'panda', 'goat', 'nautilus'])
 
 // HP hysteresis (fractions of max health): below RETREAT no new engagement
 // except an in-reach counterattack; engagement resumes only at RESUME or more.
