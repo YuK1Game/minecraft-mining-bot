@@ -6,9 +6,14 @@
 // offhand slot only), health alone stops no work. A used totem empties the
 // offhand and the ordinary minimum applies again.
 const totemGuarded = state => state?.totemGuard === true && state.phase === 'spawned' && Number.isFinite(state.health) && state.health > 0 && !state.dead && !state.isDead && !state.lifecycle?.dead && !state.spawnPending
+// 2026-11-14 user decision (relay): while the long-trip preparation allowance
+// is active and the server-received inventory (main 36, armour, offhand) is
+// entirely empty, nothing can be lost; gathering and hunting may start at low
+// health (a death respawns with full health). One item in hand ends it.
+const emptyHandedPrep = state => state?.emptyHandedPrep === true && state.phase === 'spawned' && Number.isFinite(state.health) && state.health > 0 && !state.dead && !state.isDead && !state.lifecycle?.dead && !state.spawnPending
 function resourceMinHealth (state, legacy = 6) {
-  if (totemGuarded(state)) return 0
+  if (totemGuarded(state) || emptyHandedPrep(state)) return 0
   return state?.threatPolicy === 'online_learning' && state.phase === 'spawned' && Number.isFinite(state.health) && state.health > 0 && !state.dead && !state.isDead && !state.lifecycle?.dead && !state.spawnPending ? 0 : legacy
 }
 
-module.exports = { resourceMinHealth, totemGuarded }
+module.exports = { resourceMinHealth, totemGuarded, emptyHandedPrep }
