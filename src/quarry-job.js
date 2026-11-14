@@ -3918,10 +3918,12 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   async function reconcileObservedStoragePlacement () {
     if (!job || worker || job.state !== 'PAUSED' || job.userRunIntent !== 'running' || typeof adapter.reconcileObservedPlacement !== 'function') throw new Error('Observed placement reconciliation requires a drained error-paused running intent')
     const owner = job, active = job.portableStorage, generation = epoch, intent = job.userRunIntent
-    const reason = 'サーバーから設置・使用の完了を確認できませんでした。'
-    if (!active?.checkpoint || active.purpose != null || active.selection?.kind !== 'shulker' || active.checkpoint.stage !== 'placing' || active.checkpoint.intent?.type !== 'place' || job.supplyRestock || job.pauseReason !== 'CARRIED_STORAGE_BLOCKED' || job.pauseDetails?.operationId !== active.operationId || job.pauseDetails?.reason !== reason) throw new Error('No matching timed-out cargo placement is recorded')
+    // The storage runner reports a sent-but-unconfirmed placement as RECONCILE_REQUIRED
+    // since 2026-11-12; records saved before that carry the timeout text.
+    const reasons = ['サーバーから設置・使用の完了を確認できませんでした。', 'STORAGE_PLACEMENT_RECONCILE_REQUIRED']
+    if (!active?.checkpoint || active.purpose != null || active.selection?.kind !== 'shulker' || active.checkpoint.stage !== 'placing' || active.checkpoint.intent?.type !== 'place' || job.supplyRestock || job.pauseReason !== 'CARRIED_STORAGE_BLOCKED' || job.pauseDetails?.operationId !== active.operationId || !reasons.includes(job.pauseDetails?.reason)) throw new Error('No matching timed-out cargo placement is recorded')
     const before = copy(active.checkpoint)
-    const record = job.actions.findLast(action => action.type === 'carried_storage' && action.operationId === active.operationId && action.status === 'blocked' && action.result?.status === 'blocked' && action.result.reason === reason)
+    const record = job.actions.findLast(action => action.type === 'carried_storage' && action.operationId === active.operationId && action.status === 'blocked' && action.result?.status === 'blocked' && action.result.reason === job.pauseDetails.reason)
     if (!record || !isDeepStrictEqual(record.result.checkpoint, before)) throw new Error('Timed-out placement record differs from its pending checkpoint')
     const prior = { pauseReason: job.pauseReason, pauseDetails: copy(job.pauseDetails), result: copy(job.result), savedAt: job.savedAt }
     const owns = () => {

@@ -12,7 +12,7 @@ const { createQuarryPortableStorage } = require('../src/quarry-portable-storage'
 const { createSim } = require('./helpers/quarry-sim')
 const copy = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`
-const TIMEOUT = 'サーバーから設置・使用の完了を確認できませんでした。'
+const TIMEOUT = 'STORAGE_PLACEMENT_RECONCILE_REQUIRED'
 
 function loadModule (filename, source) {
   const loaded = new Module(filename, module)

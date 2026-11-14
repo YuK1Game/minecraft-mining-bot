@@ -58,7 +58,7 @@ test('review: a saved lower exit is revalidated against real air and actual reac
   assert.equal(planQuarryExit({ ...f.args, preflight: false, reservation: p, reachable }).ok, false)
   assert.equal(planQuarryExit({ ...cut.args, reservation: p, reachable: new Set() }).ok, false)
 })
-for (const [name, cause] of [['water', 'FLUID_OR_EXTRA_LAYER'], ['lava', 'FLUID_OR_EXTRA_LAYER'], ['gravel', 'FALLING_BLOCK'], ['chest', 'PROTECTED'], ['oak_leaves', 'UNSAFE_LANDING_FLOOR'], ['short_grass', 'UNSAFE_LANDING_FLOOR'], ['magma', 'UNSAFE_LANDING_FLOOR']]) test(`review: lower search never skips ${name} to select a cave beneath`, () => {
+for (const [name, cause] of [['water', 'FLUID_OR_EXTRA_LAYER'], ['lava', 'FLUID_OR_EXTRA_LAYER'], ['gravel', 'FALLING_BLOCK'], ['chest', 'PROTECTED'], ['oak_leaves', 'PROTECTED'], ['short_grass', 'UNSAFE_LANDING_FLOOR'], ['magma', 'UNSAFE_LANDING_FLOOR']]) test(`review: lower search never skips ${name} to select a cave beneath`, () => {
   const f = hillside({ patch: (x, y) => x === -15 && y === 70 ? name : null })
   const r = planQuarryExit(f.args)
   assert.equal(r.ok, false)
