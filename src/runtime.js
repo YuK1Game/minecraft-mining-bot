@@ -5635,7 +5635,7 @@ function createRuntime (host) {
           }
           // 2. logs
           const logs = count(LOGS)
-          if (logs >= logTarget) { say(`原木 ${logs} 本を持っています`); return { done: true, logs, food: count(FOOD), hunger: hunger() } }
+          if (logs >= logTarget) { if (logTarget > 0) say(`原木 ${logs} 本を持っています`); return { done: true, logs, food: count(FOOD), hunger: hunger() } }
           if (logsTried > 40) break
           const feet = feetOf(), known = []
           for (let dx = -24; dx <= 24; dx++) for (let dz = -24; dz <= 24; dz++) for (let dy = -6; dy <= 12; dy++) {
@@ -5660,6 +5660,40 @@ function createRuntime (host) {
       },
       // Read-only request: the terrain above the bot (its chunk and the eight
       // around it) up to y=120, to find the way back to open sky from a cave.
+      // Pick up received item drops near a point by ordinary walking (2026-11-14:
+      // the preparation items dropped at a death). Success is the received
+      // inventory growing; the drop vanishing alone is not counted.
+      pickupNear: async (input = {}) => {
+        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
+        const center = input.center, radius = Math.min(32, input.radius ?? 16), maxMs = Math.min(600000, input.maxMs ?? 180000), started = Date.now()
+        if (!center || ![center.x, center.z].every(Number.isFinite)) throw new Error('center {x, z} を指定してください。')
+        const sleep = ms => new Promise(r => setTimeout(r, ms))
+        const feetOf = () => { const q = working().position; return q ? { x: q.x, y: q.y - 1.62, z: q.z } : null }
+        const total = () => (working().inventory?.items ?? []).reduce((n, i) => n + (i.count ?? 0), 0)
+        const before = total(), skip = new Set()
+        const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
+        while (Date.now() - started < maxMs) {
+          const here = feetOf(); if (!here) { await sleep(500); continue }
+          const drop = allActors().filter(a => a?.kind === 'item' && a.position && !skip.has(String(a.runtimeId)) && Math.hypot(a.position.x - center.x, a.position.z - center.z) <= radius).sort((a, b) => Math.hypot(a.position.x - here.x, a.position.z - here.z) - Math.hypot(b.position.x - here.x, b.position.z - here.z))[0]
+          if (!drop) break
+          const t = { x: Math.floor(drop.position.x) + 0.5, y: Math.floor(drop.position.y + 0.01), z: Math.floor(drop.position.z) + 0.5 }
+          let moved = false
+          for (const dy of [0, 1, -1]) {
+            let pv = null; try { motionOrigin = working(); pv = movement?.preview({ ...t, y: t.y + dy }, opts) } catch {}
+            if (pv?.ready !== true) continue
+            try { requireIdle({ inventoryRequired: false }); startMotion('navigation', { ...t, y: t.y + dy }, opts); moved = true } catch {}
+            break
+          }
+          if (!moved) { skip.add(String(drop.runtimeId)); continue }
+          const until = Date.now() + 20000
+          while (Date.now() < until) { const m = movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await sleep(200) }
+          await sleep(600)
+          if (allActors().some(a => String(a.runtimeId) === String(drop.runtimeId))) skip.add(String(drop.runtimeId))
+        }
+        const gained = total() - before
+        host.log(`拾得: 受信した持ち物が ${gained} 個増えました`)
+        return { gained, items: total(), skipped: skip.size }
+      },
       // Read-only: why the empty-handed preparation flag is on or off.
       prepCheck: () => {
         const cheap = require('./learning-health').cheapItem, out = { allowance: longTravelLogAllowance(), flag: emptyHandedPrep(), blocking: [] }
