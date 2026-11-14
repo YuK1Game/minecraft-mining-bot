@@ -5792,6 +5792,7 @@ function createRuntime (host) {
         // to another spot (six rounds, turning 60 degrees) and gather again.
         const origin = working().position ? { x: working().position.x, z: working().position.z } : null
         for (let round = 0; round < 7 && origin; round++) {
+          if (!longTravelLogAllowance()) await operations.quarry.prepareLongTravel({ logCount: 10, gather: false }) // live 20:01: the 30-minute allowance ran out mid-kit
           if (missing().includes('wool')) await operations.quarry.prepGather({ logs: 0, wool: 3, maxMs: 120000 })
           if (missing().includes('food')) await operations.quarry.prepGather({ logs: 0, food: foodWanted, maxMs: 180000 })
           if (missing().includes('logs')) await operations.quarry.prepGather({ logs: Math.min(10, count(LOGS0) + Math.ceil((planksNeeded() - woodHeld()) / 4)), maxMs: 180000 })
