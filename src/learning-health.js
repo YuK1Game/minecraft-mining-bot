@@ -16,4 +16,17 @@ function resourceMinHealth (state, legacy = 6) {
   return state?.threatPolicy === 'online_learning' && state.phase === 'spawned' && Number.isFinite(state.health) && state.health > 0 && !state.dead && !state.isDead && !state.lifecycle?.dead && !state.spawnPending ? 0 : legacy
 }
 
-module.exports = { resourceMinHealth, totemGuarded, emptyHandedPrep }
+// 2026-11-14 decision (relay): during empty-handed long-trip preparation the
+// bot does not close in on shooting enemies (live 11:02: a skeleton killed the
+// bare-handed bot right after every respawn); only a non-shooting enemy within
+// 3 m that can hit it may be struck. Anything in hand restores normal combat.
+const SHOOTING = /^minecraft:(?:skeleton|stray|bogged|pillager|witch|blaze|ghast|evoker|illusioner|breeze|drowned|shulker|llama|trader_llama)$/
+function emptyHandedTargetAllowed (state, target) {
+  if (!emptyHandedPrep(state)) return true
+  const name = String(target?.entityType ?? target?.name ?? '')
+  if (SHOOTING.test(name)) return false
+  const p = state?.position, q = target?.position
+  if (!p || !q) return false
+  return Math.hypot(p.x - q.x, p.y - 1.62 - q.y, p.z - q.z) <= 3
+}
+module.exports = { resourceMinHealth, totemGuarded, emptyHandedPrep, emptyHandedTargetAllowed }

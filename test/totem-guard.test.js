@@ -90,3 +90,20 @@ test('every empty-handed exception keys on the derived flag, and one item ends i
   for (const pattern of [/state\.emptyHandedPrep !== true\) return \{ type: 'avoid_threat'/, /if \(current\.emptyHandedPrep === true\) \{\}/, /current\.emptyHandedPrep!==true&&\(current\.health<initial\.health/, /st\.emptyHandedPrep !== true\) \{ try \{ movement\?\.stop\?\.\('damage'\)/]) assert.match(source, pattern)
   assert.equal(resourceMinHealth({ phase: 'spawned', health: 3, emptyHandedPrep: false }), 6, 'with an item in hand the ordinary minimum applies')
 })
+
+// 2026-11-14 decision B (relay): during empty-handed preparation the bot does not
+// fight shooters and strikes only a close non-shooter; any item ends it.
+test('empty-handed preparation avoids shooters and engages only a non-shooter within 3 m', () => {
+  const { emptyHandedTargetAllowed } = require('../src/learning-health')
+  const bot = { phase: 'spawned', health: 20, emptyHandedPrep: true, position: { x: 0, y: 65.62, z: 0 } }
+  const at = (name, x) => ({ entityType: `minecraft:${name}`, position: { x, y: 64, z: 0 } })
+  assert.equal(emptyHandedTargetAllowed(bot, at('skeleton', 2)), false)
+  assert.equal(emptyHandedTargetAllowed(bot, at('drowned', 2)), false)
+  assert.equal(emptyHandedTargetAllowed(bot, at('zombie', 2.5)), true)
+  assert.equal(emptyHandedTargetAllowed(bot, at('zombie', 6)), false)
+  // A weapon in hand, or the allowance gone, clears the flag: normal combat.
+  assert.equal(emptyHandedTargetAllowed({ ...bot, emptyHandedPrep: false }, at('skeleton', 12)), true)
+  const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  assert.match(source, /function quarryCanSelectTarget \(target, state, info = \{\}\) \{ if \(!require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
+  assert.match(source, /function quarryCanContinue \(target, state, info = \{\}\) \{ if \(!require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
+})
