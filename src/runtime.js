@@ -5714,7 +5714,7 @@ function createRuntime (host) {
         const st = working(); if (!st.position) throw new Error('位置が不明です。')
         const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, d = input.destination ?? { x: 1968, z: -2041 }
         const bad = host.shared.longTravelBadCells
-        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: d, maxNodes: 60000, maxMs: 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: bad ?? new Set() })
+        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: d, maxNodes: 60000, maxMs: input.maxMs ?? 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: bad ?? new Set(), faceStairs: input.faceStairs === true })
         const firstDig = r.ready ? r.path.findIndex(q => q.dig) : -1
         const previews = [12, 9, 6, 4, 3, 2, 1].map(a => { const q = r.path[Math.min(firstDig > 0 ? Math.min(a, firstDig - 1) : a, r.path.length - 1)]; if (!q) return null; let pv = null; try { motionOrigin = working(); pv = movement?.preview({ x: q.x, y: q.y, z: q.z }, { allowWater: true, allowLowHealth: true, maxDistance: 16 }) } catch (e) { pv = { ready: false, reason: e.message } } return { a, q, ready: pv?.ready === true, reason: pv?.reason ?? null } })
         return { bad: bad?.size ?? 0, ready: r.ready, reached: r.reached, timedOut: r.timedOut, expanded: r.expanded, length: r.path.length, firstDig, firstSteps: r.path.slice(0, 6), previews }
@@ -8109,15 +8109,15 @@ function createRuntime (host) {
         // Follow the coarse wide-area route first (2026-11-14): a point some
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
-          const planRoute = (extra = {}) => { const bad = host.shared.longTravelBadCells ??= new Set(); const blocked = avoidCols.size ? { has: k => bad.has(k) || avoidCols.has(k) } : bad; return require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, maxMs: 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked, ...extra }) }
-          let route = planRoute()
+          const planRoute = (extra = {}) => { const bad = host.shared.longTravelBadCells ??= new Set(); const blocked = avoidCols.size ? { has: k => bad.has(k) || avoidCols.has(k) } : bad; return require('./coarse-route').planCoarseRouteAsync({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 200000, maxMs: 6000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked, ...extra }) }
+          let route = await planRoute()
           // Live 16:05: columns marked after failed walks fenced the bot in (the
           // same route without them existed). When they leave no route at all,
           // they are forgotten and the plan is made again.
-          { const bad = host.shared.longTravelBadCells; if (!route.ready && bad?.size) { host.log(`長距離移動: 歩けなかった列の記録（${bad.size}件）を消して計画し直します`); bad.clear(); route = planRoute() } }
+          { const bad = host.shared.longTravelBadCells; if (!route.ready && bad?.size) { host.log(`長距離移動: 歩けなかった列の記録（${bad.size}件）を消して計画し直します`); bad.clear(); route = await planRoute() } }
           // No reachable point is closer (coordinator 2026-11-14, a 20 m cliff at
           // 16:51): stairs cut into a face may be used, never a tunnel.
-          if (!route.ready) { const stairs = planRoute({ faceStairs: true, maxMs: 1500 }); if (stairs.ready) { host.log('長距離移動: 近づける場所がないため、壁面の階段で進みます'); route = stairs } }
+          if (!route.ready) { const stairs = await planRoute({ faceStairs: true, maxMs: 8000 }); if (stairs.ready) { host.log('長距離移動: 近づける場所がないため、壁面の階段で進みます'); route = stairs } }
           // Going around (coordinator 2026-11-14): when the route does not reach
           // the goal, request the received-terrain frontier closest to the
           // destination (up to three chunks, each at most every two minutes) and
@@ -8132,7 +8132,7 @@ function createRuntime (host) {
               for (const f of chunks) asked.set(`${Math.floor(f.x / 16)},${Math.floor(f.z / 16)}`, Date.now())
               try { await requestQuarryTerrain({ config: { target: { chunks: chunks.map(f => ({ x: Math.floor(f.x / 16), z: Math.floor(f.z / 16) })) } }, yTop: Math.min(150, y + 40), yBottom: Math.max(-60, y - 24) }, {}) } catch {}
               await new Promise(r => setTimeout(r, 800))
-              route = planRoute()
+              route = await planRoute()
             }
           }
           // Live 2026-11-14 13:35: on a hilltop the terrain above y80 was not
@@ -8144,7 +8144,7 @@ function createRuntime (host) {
             const asked = host.shared.longTravelSkyAsked ??= new Map()
             if (Date.now() - (asked.get(key) ?? 0) > 120000) {
               asked.set(key, Date.now())
-              try { await operations.quarry.requestTerrainAbove(); await new Promise(r => setTimeout(r, 1500)); route = planRoute(); host.log(`長距離移動: 頭上の地形を要求しました（経路 ${route.ready ? 'あり' : 'なし'}）`) } catch {}
+              try { await operations.quarry.requestTerrainAbove(); await new Promise(r => setTimeout(r, 1500)); route = await planRoute(); host.log(`長距離移動: 頭上の地形を要求しました（経路 ${route.ready ? 'あり' : 'なし'}）`) } catch {}
             }
           }
           // A carved step ahead: walk to the cell before it first, then dig and step.

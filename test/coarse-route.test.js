@@ -171,3 +171,19 @@ test('a diagonal step never clips a solid corner cell', () => {
     if (dx && dz) for (const [cx, cz] of [[Math.floor(a.x) + dx, Math.floor(a.z)], [Math.floor(a.x), Math.floor(a.z) + dz]]) assert.notEqual(get(cx, 63, cz).boundingBox, 'block')
   }
 })
+
+// Live 2026-11-14 17:37: a short budget cut the search and the partial path led
+// back every pass. The asynchronous search yields between slices and finishes.
+test('the asynchronous search yields to the event loop and returns the same route', async () => {
+  const { planCoarseRouteAsync } = require('../src/coarse-route')
+  const rows = flat(200, 200), get = world(rows)
+  let ticks = 0, running = true, t = 0
+  const spin = () => { if (!running) return; ticks++; setImmediate(spin) }
+  setImmediate(spin)
+  const a = await planCoarseRouteAsync({ getBlock: get, start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 190, z: 190 }, maxNodes: 200000, sliceMs: 2, now: () => (t += 1) })
+  running = false
+  const b = planCoarseRoute({ getBlock: get, start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 190, z: 190 }, maxNodes: 200000 })
+  assert.equal(a.reached, true)
+  assert.equal(a.path.length, b.path.length)
+  assert.ok(ticks > 0, 'other work ran during the search')
+})
