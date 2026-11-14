@@ -514,7 +514,9 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       if (p.ready === true) lease.poseWaits = 0
       if (g.mode === 'melee' && p.ready === true) lease.forceApproach = false
       if (!controller || p.ready !== true || lease.forceApproach) {
-        combatLog(lease, `戦闘接近: target=${String(lease.target.entityType).replace('minecraft:', '')} distance=${g.distance.toFixed(1)}m mode=${g.mode ?? '-'} preview=${p.code ?? (p.ready ? 'ready' : '?')}${lease.forceApproach ? ' forced' : ''}`)
+        // At most every 3 s per target unless the preview code changes (it filled half the log at 50 ms).
+        const approachCode = p.code ?? (p.ready ? 'ready' : '?')
+        if (approachCode !== lease.approachLogCode || Date.now() - (lease.approachLogAt ?? 0) >= 3000) { lease.approachLogCode = approachCode; lease.approachLogAt = Date.now(); combatLog(lease, `戦闘接近: target=${String(lease.target.entityType).replace('minecraft:', '')} distance=${g.distance.toFixed(1)}m mode=${g.mode ?? '-'} preview=${p.code ?? (p.ready ? 'ready' : '?')}${lease.forceApproach ? ' forced' : ''}`) }
         const outcome = await approachOnce(lease, g, p)
         lease.forceApproach = false
         if (outcome) return { outcome: await withCreeperRetreat(lease, outcome) }

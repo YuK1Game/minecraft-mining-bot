@@ -7083,9 +7083,11 @@ function createRuntime (host) {
     let s = null
     try { s = working() } catch { return }
     if (s?.phase !== 'spawned' || s.dead || s.isDead || !(s.health > 0) || s.inventory?.known !== true) return
-    if (!(s.inventory.items ?? []).some(i => i.count > 0 && require('./quarry-inventory').isFood(i.name))) { idleEat.toFull = false; return }
+    // Rotten flesh is the last resort below 18 when nothing else is edible (2026-11-15: HP 8.5, hunger 9, no natural healing).
+    const hasFood = (s.inventory.items ?? []).some(i => i.count > 0 && require('./quarry-inventory').isFood(i.name)), hasRotten = (s.inventory.items ?? []).some(i => i.count > 0 && i.name === 'minecraft:rotten_flesh')
+    if (!hasFood && !(hasRotten && hunger < 18)) { idleEat.toFull = false; return }
     idleEat.busy = true
-    try { await operations.food.eat({}); host.log(`待機中の食事: 満腹度 ${hunger} → 食事しました`) } catch (error) {
+    try { await operations.food.eat(hasFood ? {} : { allowEmergencyRotten: true }); host.log(`待機中の食事: 満腹度 ${hunger} → 食事しました`) } catch (error) {
       if (Date.now() - idleEat.refusedAt > 60000) { idleEat.refusedAt = Date.now(); host.log(`待機中の食事を見送り: 満腹度 ${hunger} (${String(error.message ?? error).slice(0, 80)})`) }
     } finally { idleEat.busy = false }
   }
