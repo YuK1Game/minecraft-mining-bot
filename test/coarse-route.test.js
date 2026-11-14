@@ -75,3 +75,18 @@ test('drops are bounded by maxDrop (the local planner refuses three-block drops)
   const shallow = planCoarseRoute({ getBlock: world(rows), start: { x: 2.5, y: 63, z: 1.5 }, goal: { x: 18, z: 1 }, maxDrop: 1 })
   assert.equal(shallow.reached, false)
 })
+
+// Live 2026-11-14 13:47: the route crossed a tree canopy on its leaves and the
+// bot was stranded at y80. Leaves are no floor; from a canopy the way down may
+// drop up to four.
+test('leaves are never a floor; a bot on a canopy is routed down to the ground', () => {
+  const base = world(flat(30, 5))
+  const canopy = (x, y, z) => (x >= 8 && x <= 14 && y === 66) ? { known: true, name: 'minecraft:oak_leaves', boundingBox: 'block' } : base(x, y, z)
+  const r = planCoarseRoute({ getBlock: canopy, start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 27, z: 2 } })
+  assert.equal(r.reached, true)
+  assert.ok(r.path.every(p => p.y === 63), 'the route stays on the ground under the canopy')
+  const top = planCoarseRoute({ getBlock: canopy, start: { x: 11.5, y: 67, z: 2.5 }, goal: { x: 27, z: 2 }, maxDrop: 1 })
+  assert.equal(top.reached, true)
+  assert.equal(top.path[top.path.length - 1].y, 63, 'from the canopy the route gets down')
+  assert.ok(top.path.slice(1).every(p => p.y === 63))
+})

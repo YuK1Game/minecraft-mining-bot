@@ -7829,7 +7829,20 @@ function createRuntime (host) {
         // Follow the coarse wide-area route first (2026-11-14): a point some
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
-          const route = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: host.shared.longTravelBadCells ??= new Set() })
+          const planRoute = () => require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: host.shared.longTravelBadCells ??= new Set() })
+          let route = planRoute()
+          // Live 2026-11-14 13:35: on a hilltop the terrain above y80 was not
+          // received, so no column counted as open sky and the route closed in
+          // (97 nodes, no frontier). Request the terrain above once per spot
+          // and plan again; unreceived terrain still never counts as open.
+          if (!route.ready && !route.frontier.length) {
+            const key = `${Math.floor(feet.x / 16)},${Math.floor(feet.z / 16)}`
+            const asked = host.shared.longTravelSkyAsked ??= new Map()
+            if (Date.now() - (asked.get(key) ?? 0) > 120000) {
+              asked.set(key, Date.now())
+              try { await operations.quarry.requestTerrainAbove(); await new Promise(r => setTimeout(r, 1500)); route = planRoute(); host.log(`長距離移動: 頭上の地形を要求しました（経路 ${route.ready ? 'あり' : 'なし'}）`) } catch {}
+            }
+          }
           // A carved step ahead: walk to the cell before it first, then dig and step.
           const firstDig = route.ready ? route.path.findIndex(p => p.dig) : -1
           if (firstDig > 0 && firstDig <= 12) {
