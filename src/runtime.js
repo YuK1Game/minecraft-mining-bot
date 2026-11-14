@@ -5459,6 +5459,18 @@ function createRuntime (host) {
     },
     quarry: {
       moveToChunk: input => ensureChunkTravel().start({ area: normalizeChunkArea(input?.area) }),
+      // Long-distance travel (2026-11-14): repeated chunk-travel legs toward a far
+      // destination; never while quarry work runs. Continues saved progress.
+      travelTo: async input => {
+        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
+        const d = input?.destination
+        if (!d || ![d.x, d.z].every(Number.isFinite)) throw new Error('目的地 {x, z} を指定してください。')
+        let resume = null
+        try { const prior = JSON.parse(await require('node:fs/promises').readFile(longTravelFile(), 'utf8')); if (prior?.destination && Math.hypot(prior.destination.x - d.x, prior.destination.z - d.z) < 1 && prior.phase !== 'arrived') resume = prior } catch {}
+        return ensureLongTravel().start({ destination: { x: d.x, y: d.y, z: d.z }, resume })
+      },
+      travelStatus: () => longTravel?.status() ?? { busy: false, phase: 'idle' },
+      cancelTravel: () => longTravel?.cancel('MANUAL_STOP') ?? { busy: false, phase: 'idle' },
       cancelChunkMove: operationId => {
         if (!operationId || chunkTravel?.status().operationId !== operationId) throw Object.assign(new Error('移動操作が変わりました。状態を更新してください。'), { code: 'STALE_CHUNK_MOVE' })
         return cancelChunkMovement('MANUAL_STOP')
@@ -7442,6 +7454,20 @@ function createRuntime (host) {
     return reconcileMoveOrigin({ state: quarryState(), confirm: (feet, options) => confirmQuarryPosition(feet, options), discardPrediction: discardWorkingPrediction,
       hasSupport: feet => idlePhysics ? idlePhysics.withWorld(host.world, { allowWater: true }).hasSupport(feet) : true, log: message => host.log(message) })
   }
+  let longTravel = null
+  const longTravelFile = () => require('node:path').resolve(__dirname, '..', '.local', 'long-travel', 'current.json')
+  function ensureLongTravel () {
+    if (longTravel) return longTravel
+    longTravel = require('./long-travel').createLongTravel({
+      getState: quarryState,
+      chunkTravel: { start: input => ensureChunkTravel().start(input), status: () => ensureChunkTravel().status(), cancel: reason => cancelChunkMovement(reason ?? 'LONG_TRAVEL') },
+      // Only a read request; the chunk travel itself uses received terrain only.
+      requestTerrain: async (area, { signal } = {}) => { const st = quarryState(); const y = Math.floor((st.position?.y ?? 65) - 1.62); return requestQuarryTerrain({ config: { target: { chunks: [{ x: area.x1, z: area.z1 }] } }, yTop: Math.min(300, y + 12), yBottom: Math.max(-60, y - 12) }, { signal }) },
+      save: async doc => { const fsp = require('node:fs/promises'), file = longTravelFile(); await fsp.mkdir(require('node:path').dirname(file), { recursive: true }); await fsp.writeFile(file + '.tmp', JSON.stringify(doc, null, 2)); await fsp.rename(file + '.tmp', file) },
+      log: message => host.log(message)
+    })
+    return longTravel
+  }
   function ensureChunkTravel () {
     if (chunkTravel) return chunkTravel
     let planner = null
@@ -7570,6 +7596,7 @@ function createRuntime (host) {
       await depotFlush
       await depotPrebuild?.drain()
       await shoreMemory?.flush().catch(error => { host.shared.shoreMemoryError = String(error.message).slice(0, 160) })
+      try { longTravel?.cancel('RELOAD') } catch {}
       inputStream?.stop()
       disposed = true
     }
