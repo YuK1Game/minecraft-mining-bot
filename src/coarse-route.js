@@ -49,7 +49,7 @@ function createSurface (getBlock, { minY = -60, maxY = 300 } = {}) {
 // Blocks that ordinary bare-hand or tool mining may carve for a step.
 const NOT_DIGGABLE = /bedrock|obsidian|barrier|command|structure|reinforced|end_portal|spawner|chest|shulker|barrel|furnace|bed$|_bed$|door|log|leaves|wood|planks/
 const SOFT = /dirt|grass_block|gravel|sand|clay|snow|mud|podzol|mycelium|farmland/
-function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false }) {
+function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3 }) {
   const surface = createSurface(getBlock)
   const sx = Math.floor(start.x), sz = Math.floor(start.z), sy = Math.round(start.y)
   const gx = Math.floor(goal.x), gz = Math.floor(goal.z)
@@ -89,7 +89,7 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
       }
       for (const s of col.stands) {
         const dy = s.y - n.y
-        if (dy > 1 || dy < -3) continue
+        if (dy > 1 || dy < -maxDrop) continue
         if (dx && dz) {
           // Diagonal: both side columns must be walkable at the same height.
           const a = surface.stands(n.x + dx, n.z, Math.min(n.y, s.y) - 1, Math.max(n.y, s.y) + 1).stands, b = surface.stands(n.x, n.z + dz, Math.min(n.y, s.y) - 1, Math.max(n.y, s.y) + 1).stands

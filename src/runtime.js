@@ -5521,7 +5521,7 @@ function createRuntime (host) {
         const d = input.destination, st = working()
         if (!d || ![d.x, d.z].every(Number.isFinite) || !st.position) throw new Error('目的地 {x, z} を指定してください。')
         const started = Date.now()
-        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, goal: d, maxNodes: Math.min(120000, input.maxNodes ?? 60000) })
+        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, goal: d, maxNodes: Math.min(120000, input.maxNodes ?? 60000), allowDig: input.allowDig === true, maxDrop: Number.isInteger(input.maxDrop) ? input.maxDrop : 3 })
         const step = Math.max(1, Math.floor(r.path.length / 20))
         return { ready: r.ready, reached: r.reached, remaining: r.remaining, expanded: r.expanded, ms: Date.now() - started, length: r.path.length, sample: r.path.filter((_, i) => i % step === 0 || i === r.path.length - 1), frontier: r.frontier.slice(0, 8) }
       },
@@ -7545,7 +7545,7 @@ function createRuntime (host) {
         // Follow the coarse wide-area route first (2026-11-14): a point some
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
-          const route = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true })
+          const route = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true, maxDrop: 1 })
           // A carved step ahead: walk to the cell before it first, then dig and step.
           const firstDig = route.ready ? route.path.findIndex(p => p.dig) : -1
           if (firstDig > 0 && firstDig <= 12) {
