@@ -5781,7 +5781,12 @@ function createRuntime (host) {
         const foodWanted = Math.max(5, Math.min(10, input.food ?? 6))
         const FOODS = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/
         const LOGS0 = /^minecraft:[a-z_]+_(?:log|stem)$/
-        const missing = () => [!has(/^minecraft:bed$/) && count(/wool$/) < 3 ? 'wool' : null, count(FOODS) < foodWanted ? 'food' : null, count(LOGS0) < 4 && !has(/_sword$/) ? 'logs' : null].filter(Boolean)
+        // Planks the remaining items need (live 19:25: the last logs went into the
+        // sword and boat and the bed was never crafted): table 4, sticks 2,
+        // sword 2, bed 3, boat 5.
+        const planksNeeded = () => (has(/^minecraft:crafting_table$/) ? 0 : 4) + (has(/_sword$/) ? 0 : 2 + (has(/^minecraft:stick$/) ? 0 : 2)) + (has(/^minecraft:bed$/) ? 0 : 3) + (has(/_boat$/) ? 0 : 5)
+        const woodHeld = () => count(/^minecraft:[a-z_]+_planks$/) + count(LOGS0) * 4
+        const missing = () => [!has(/^minecraft:bed$/) && count(/wool$/) < 3 ? 'wool' : null, count(FOODS) < foodWanted ? 'food' : null, woodHeld() < planksNeeded() ? 'logs' : null].filter(Boolean)
         // Live 18:52: right after a reconnect nothing was in sight and the kit
         // ended at once. Gather, and while something is missing walk about 48 m
         // to another spot (six rounds, turning 60 degrees) and gather again.
@@ -5789,7 +5794,7 @@ function createRuntime (host) {
         for (let round = 0; round < 7 && origin; round++) {
           if (missing().includes('wool')) await operations.quarry.prepGather({ logs: 0, wool: 3, maxMs: 120000 })
           if (missing().includes('food')) await operations.quarry.prepGather({ logs: 0, food: foodWanted, maxMs: 180000 })
-          if (missing().includes('logs')) await operations.quarry.prepGather({ logs: 4, maxMs: 180000 })
+          if (missing().includes('logs')) await operations.quarry.prepGather({ logs: Math.min(10, count(LOGS0) + Math.ceil((planksNeeded() - woodHeld()) / 4)), maxMs: 180000 })
           if (!missing().length || round === 6) break
           const ang = round * Math.PI / 3, dest = { x: Math.round(origin.x + Math.cos(ang) * 48), z: Math.round(origin.z + Math.sin(ang) * 48) }
           say(`まだ足りません（${missing().join('・')}）。(${dest.x}, ${dest.z}) へ探しに行きます`)
@@ -5801,11 +5806,10 @@ function createRuntime (host) {
         const LOGS = /^minecraft:([a-z_]+)_log$/, PLANKS = /^minecraft:([a-z_]+)_planks$/
         const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
         const made = []
-        if (log) {
-          const wood = LOGS.exec(log.name)[1]
+        if (log || count(PLANKS) >= 4) {
           await crafting.openInventory()
           try {
-            await crafting.craft(`minecraft:${wood}_planks`, { times: Math.min(4, log.count) }); made.push('planks')
+            if (log) { await crafting.craft(`minecraft:${LOGS.exec(log.name)[1]}_planks`, { times: log.count }); made.push('planks') }
             if (!has(/^minecraft:stick$/)) { await crafting.craft('minecraft:stick', { times: 1 }); made.push('stick') }
             if (!has(/^minecraft:crafting_table$/)) { await crafting.craft('minecraft:crafting_table', { times: 1 }); made.push('table') }
           } finally { try { crafting.closeContainer() } catch {} }
@@ -5819,6 +5823,7 @@ function createRuntime (host) {
             } finally { try { crafting.closeContainer() } catch {} }
           }
         }
+        if (longTravel?.status?.().busy) { try { await longTravel.cancel('KIT_DONE') } catch {} }
         const kit = { bed: count(/^minecraft:bed$/), sword: count(/_sword$/), food: items().filter(i => /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/.test(i.name ?? '')).reduce((n, i) => n + i.count, 0), boat: count(/_boat$/), wool: count(/wool$/) }
         say(`${missing().length ? `足りないもの: ${missing().join('・')}。` : '揃いました。'}ベッド ${kit.bed}・剣 ${kit.sword}・食料 ${kit.food}・ボート ${kit.boat}（受信した持ち物で確認、作ったもの: ${made.join('・') || 'なし'}）`)
         return { made, kit }
