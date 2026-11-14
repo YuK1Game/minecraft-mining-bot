@@ -60,11 +60,18 @@ test('with digging allowed, a wall with no gap gets carved steps; never a tunnel
   for (const p of dug) for (const c of p.dig) assert.ok(c.y <= p.y + 1, 'only the step cells are carved')
 })
 
-test('digging never opens a cell under a covered ceiling (no tunnels)', () => {
+test('a cliff is climbed by a stair cut into its face, never by a tunnel', () => {
   const rows = flat(30, 5), get = world(rows)
-  for (let z = 0; z < 5; z++) rows[z][15] = 70 // a tall cliff: the cell above a carved step is not open
+  for (let z = 0; z < 5; z++) { rows[z][15] = 70; rows[z][16] = 70; rows[z][17] = 70 }
   const r = planCoarseRoute({ getBlock: get, start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 27, z: 2 }, allowDig: true })
-  assert.equal(r.reached, false)
+  assert.equal(r.reached, true)
+  for (let i = 1; i < r.path.length; i++) {
+    const p = r.path[i]; if (!p.dig) continue
+    const q = r.path[i - 1], x = Math.floor(p.x), z = Math.floor(p.z), dx = x - Math.floor(q.x), dz = z - Math.floor(q.z)
+    const faces = [[dz, dx], [-dz, -dx], [-dx, -dz]].some(([ox, oz]) => [p.y, p.y + 1].some(y => get(x + ox, y, z + oz).boundingBox === 'empty'))
+    const above = get(x, p.y + 2, z).boundingBox === 'empty' || p.dig.some(d => d.y === p.y + 2)
+    assert.ok(faces || above, `step ${i} at ${x},${p.y},${z} would be a tunnel`)
+  }
 })
 
 test('drops are bounded by maxDrop (the local planner refuses three-block drops)', () => {
@@ -105,4 +112,37 @@ test('from a canopy over a deep hole the route walks the leaves to where it can 
   const firstGround = r.path.findIndex(p => p.y === 63)
   assert.ok(r.path.slice(0, firstGround).every(p => p.y === 67), 'on the leaves until the drop to the ground')
   assert.ok(r.path.slice(firstGround).every(p => p.y === 63), 'never back onto the leaves')
+})
+
+// 2026-11-14: a steep ravine (floor 12 below) between the bot and the goal.
+// Without digging there is no way; with digging the route carves a trench down
+// (never a tunnel) and steps back up the far wall.
+test('a ravine is crossed by carved steps down and up, each open to the sky', () => {
+  const rows = flat(40, 5)
+  for (let x = 15; x <= 18; x++) for (let z = 0; z < 5; z++) rows[z][x] = 50
+  const get = world(rows)
+  assert.equal(planCoarseRoute({ getBlock: get, start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 36, z: 2 }, maxDrop: 1, surfaceOnly: true }).reached, false)
+  const r = planCoarseRoute({ getBlock: get, start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 36, z: 2 }, maxDrop: 1, surfaceOnly: true, allowDig: true, maxNodes: 200000 })
+  assert.equal(r.reached, true)
+  assert.ok(r.path.some(p => p.y < 63), 'it goes down into the ravine')
+  for (let i = 1; i < r.path.length; i++) assert.ok(Math.abs(r.path[i].y - r.path[i - 1].y) <= 1, 'one block per step')
+  // Every carved step is a trench or cut into the ravine face: the cell beside
+  // its head (across the move) is open air, or nothing solid is above it.
+  for (let i = 1; i < r.path.length; i++) {
+    const p = r.path[i]; if (!p.dig) continue
+    const q = r.path[i - 1], x = Math.floor(p.x), z = Math.floor(p.z), dx = x - Math.floor(q.x), dz = z - Math.floor(q.z), head = p.y + 1
+    const up = p.y > q.y, headY = up ? p.y + 1 : p.y + 1
+    const side = [[dz, dx], [-dz, -dx], [-dx, -dz]].some(([ox, oz]) => get(x + ox, headY, z + oz).boundingBox === 'empty' || get(x + ox, head + (up ? 0 : -1), z + oz).boundingBox === 'empty')
+    let open = true; for (let y = p.y + 2; y <= 70; y++) if (get(x, y, z).boundingBox !== 'empty' && !p.dig.some(d => d.y === y)) open = false
+    assert.ok(side || open, `step ${i} at ${x},${p.y},${z} is neither open above nor cut into a face`)
+  }
+})
+
+test('no step is carved next to water', () => {
+  const rows = flat(30, 5)
+  for (let x = 12; x <= 14; x++) for (let z = 0; z < 5; z++) rows[z][x] = 50
+  const base = world(rows)
+  const wet = (x, y, z) => (y >= 55 && y <= 63 && x === 11 && z !== 2) ? { known: true, name: 'minecraft:water', boundingBox: 'empty' } : base(x, y, z)
+  const r = planCoarseRoute({ getBlock: wet, start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 27, z: 2 }, maxDrop: 1, surfaceOnly: true, allowDig: true, maxNodes: 200000 })
+  for (const p of r.path.filter(q => q.dig)) for (const c of p.dig) for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) assert.doesNotMatch(wet(c.x + ox, c.y, c.z + oz).name ?? '', /water/)
 })

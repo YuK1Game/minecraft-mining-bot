@@ -65,6 +65,11 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   // a route on the ground never climbs onto leaves.
   const leafSurface = createSurface(getBlock, { leafFloor: true })
   const onLeaves = n => classify(getBlock(n.x, n.y - 1, n.z)) === 'leaves'
+  // A carved step may also be cut into the face of a wall (2026-11-14, a ravine):
+  // the cell beside its head, perpendicular to the move, is open with the sky
+  // above it. A notch through a wall (both sides closed) never qualifies.
+  // The side the step comes from also counts (a notch one block deep into a face).
+  const openFace = (x, headY, z, dx, dz) => [[dz, dx], [-dz, -dx], [-dx, -dz]].some(([ox, oz]) => classify(getBlock(x + ox, headY, z + oz)) === 'pass' && sky(x + ox, headY - 2, z + oz))
   const sx = Math.floor(start.x), sz = Math.floor(start.z), sy = Math.round(start.y)
   const gx = Math.floor(goal.x), gz = Math.floor(goal.z)
   const h = (x, z) => Math.hypot(gx - x, gz - z)
@@ -100,11 +105,31 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
         const floor = b(n.y), c1 = b(n.y + 1), c2 = b(n.y + 2), sky = b(n.y + 3), head = b(n.y + 2, n.x, n.z)
         const solid = v => v?.known === true && v.boundingBox === 'block' && !NOT_DIGGABLE.test(v.name ?? '') && !HAZARD.test(v.name ?? '') && !WATER.test(v.name ?? '')
         const isOpen = v => classify(v) === 'pass'
-        if (solid(floor) && solid(c1) && (solid(c2) || isOpen(c2)) && isOpen(sky) && (isOpen(head) || solid(head))) {
+        if (solid(floor) && solid(c1) && (solid(c2) || isOpen(c2)) && (isOpen(sky) || openFace(x, n.y + 2, z, dx, dz)) && (isOpen(head) || solid(head))) {
           const cells = [{ x, y: n.y + 1, z, v: c1 }, { x, y: n.y + 2, z, v: c2 }, { x: n.x, y: n.y + 2, z: n.z, v: head }].filter(c => solid(c.v)).map(c => ({ x: c.x, y: c.y, z: c.z, name: c.v.name }))
           const g = n.g + 1 + cells.reduce((t, c) => t + (SOFT.test(c.name) ? 2 : 6), 0)
           const k = key(x, n.y + 1, z)
           if (g < (best.get(k) ?? Infinity)) { best.set(k, g); parent.set(k, key(n.x, n.y, n.z)); digOf.set(k, cells); open.push({ x, y: n.y + 1, z, g, f: g + h(x, z) }) }
+        }
+      }
+      // A step carved down (2026-11-14, a ravine on the way): straight moves
+      // only, one block down; the three cells of the step (new feet, new head,
+      // the head while stepping) received and diggable or open, at least one to
+      // dig, a received solid floor below, no liquid beside any carved cell, and
+      // everything above the step open to the sky: a trench, never a tunnel.
+      if (allowDig && !(dx && dz) && !onLeaves(n)) {
+        const b = yy => getBlock(x, yy, z)
+        const floor = b(n.y - 2), cells = [n.y + 1, n.y, n.y - 1].map(yy => ({ y: yy, v: b(yy) }))
+        const diggable = v => v?.known === true && v.boundingBox === 'block' && !NOT_DIGGABLE.test(v.name ?? '') && !HAZARD.test(v.name ?? '') && !WATER.test(v.name ?? '')
+        const dry = (xx, yy, zz) => { const v = getBlock(xx, yy, zz); return v?.known === true && !WATER.test(v.name ?? '') && !/lava/.test(v.name ?? '') }
+        const floorOk = floor?.known === true && floor.boundingBox === 'block' && !HAZARD.test(floor.name ?? '') && !WATER.test(floor.name ?? '') && !/leaves/.test(floor.name ?? '')
+        const cellsOk = cells.every(c => diggable(c.v) || classify(c.v) === 'pass') && cells.some(c => diggable(c.v))
+        const dryOk = cellsOk && cells.filter(c => diggable(c.v)).every(c => [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([ox, oz]) => dry(x + ox, c.y, z + oz)))
+        if (floorOk && cellsOk && dryOk && (sky(x, n.y, z) || openFace(x, n.y, z, dx, dz))) {
+          const dig = cells.filter(c => diggable(c.v)).map(c => ({ x, y: c.y, z, name: c.v.name }))
+          const g = n.g + 1 + dig.reduce((t, c) => t + (SOFT.test(c.name) ? 2 : 6), 0)
+          const k = key(x, n.y - 1, z)
+          if (g < (best.get(k) ?? Infinity)) { best.set(k, g); parent.set(k, key(n.x, n.y, n.z)); digOf.set(k, dig); open.push({ x, y: n.y - 1, z, g, f: g + h(x, z) }) }
         }
       }
       for (const s of col.stands) {
