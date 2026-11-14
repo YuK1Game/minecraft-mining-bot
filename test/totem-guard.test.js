@@ -65,3 +65,16 @@ test('a consumed totem empties the trusted offhand at once', () => {
   assert.match(source, /inventoryStore\.forget\('offhand', 0, 'totem_consumed'\)/)
   assert.match(source, /totemConsumedAt\) && !\(Date\.parse\(info\?\.at/)
 })
+
+// 2026-11-14 user decision (relay): with the long-trip preparation allowance and
+// a server-confirmed empty inventory, gathering may start at low health.
+test('empty-handed preparation lowers the working minimum to zero; anything else keeps it', () => {
+  const { emptyHandedPrep } = require('../src/learning-health')
+  const alive = { phase: 'spawned', health: 3, threatPolicy: 'balanced_mining' }
+  assert.equal(resourceMinHealth({ ...alive, emptyHandedPrep: true }), 0)
+  assert.equal(resourceMinHealth({ ...alive, emptyHandedPrep: false }), 6)
+  assert.equal(emptyHandedPrep({ ...alive, emptyHandedPrep: true, dead: true }), false)
+  const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  assert.match(source, /if \(!longTravelLogAllowance\(\)\) return false/)
+  assert.match(source, /slot\.received === true && slot\.raw && \(slot\.raw\.network_id === 0 \|\| slot\.raw\.count === 0\)/)
+})

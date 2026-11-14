@@ -462,6 +462,7 @@ function createRuntime (host) {
   const working = () => {
     const state = host.getState()
     state.totemGuard = offhandTotem()
+    state.emptyHandedPrep = emptyHandedPrep()
     if (readDurability) {
       // Older connected hosts omit stack IDs from their public inventory.
       // Fill only missing fields from the matching received crafting inventory;
@@ -1288,6 +1289,18 @@ function createRuntime (host) {
   }
   // Logs only for a long trip's preparation (scoped, bounded, never while
   // quarry work runs). 2026-11-14 user decision (relay): logs may be cut only to prepare a long trip, about 10, starting empty-handed. Leaves stay off, the quarry rule stays.
+  // Empty hands, confirmed slot by slot from the server (never an unreceived
+  // slot), while the long-trip preparation allowance is active.
+  function emptyHandedPrep () {
+    try {
+      if (!longTravelLogAllowance()) return false
+      for (const [container, size] of [['main', 36], ['armor', 4], ['offhand', 1]]) {
+        const v = inventoryStore.view(container)
+        if (v.known !== true || v.slots.length !== size || !v.slots.every(slot => slot.received === true && slot.raw && (slot.raw.network_id === 0 || slot.raw.count === 0))) return false
+      }
+      return true
+    } catch { return false }
+  }
   function longTravelLogAllowance () {
     const a = host.shared.woodHarvestAllowance
     return !!a && a.purpose === 'long_travel_prep' && Date.now() < a.expiresAt && !quarryJob?.holdsWork()
