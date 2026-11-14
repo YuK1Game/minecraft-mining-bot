@@ -5897,6 +5897,9 @@ function createRuntime (host) {
       },
       chunkMoveStatus: () => chunkTravel?.status() ?? { available: true, busy: false, phase: 'idle', operationId: null, serverConfirmed: false },
       controlPosition: () => controlLocation.snapshot(),
+      // Read-only: prove the bot's present position to the server (the same
+      // /testfor volume query chunk travel uses), so the dashboard can act here.
+      proveControlPosition: async () => { const st = working(); if (!st.position) throw new Error('位置が不明です。'); return controlLocation.confirm({ x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, { radius: 0.2 }) },
       confirmControlPosition: (area, options) => controlLocation.confirm(null, { ...options, area: normalizeChunkArea(area), radius: 0.12, operationId: 'dashboard_area_position' }),
       plan: config => {
         if (!quarryJob?.holdsWork()) requireIdle()
