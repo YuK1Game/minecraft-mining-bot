@@ -7950,7 +7950,12 @@ function createRuntime (host) {
     if (!sh.length) return false
     const nearest = Math.min(...sh.map(a => Math.hypot(a.position.x - feet.x, a.position.z - feet.z)))
     const hurt = Date.now() - (host.shared.travelLastDamageAt ?? 0) < 5000
-    if (!hurt && nearest > 10) return false
+    // Before the shooter's range (coordinator 2026-11-14): within 16 m, or hit.
+    if (!hurt && nearest > 16) return false
+    const low = (working().health ?? 20) < 10
+    // Below half health, prefer a spot no shooter can see (a solid received block
+    // on the line between eyes).
+    const covered = t => sh.every(a => { const sx = a.position.x, sy = a.position.y + 1.5, sz = a.position.z, tx = t.x, ty = t.y + 1.6, tz = t.z, n = Math.ceil(Math.hypot(tx - sx, ty - sy, tz - sz) * 2); for (let i = 1; i < n; i++) { const f = i / n, b = host.world.getBlock(Math.floor(sx + (tx - sx) * f), Math.floor(sy + (ty - sy) * f), Math.floor(sz + (tz - sz) * f)); if (b?.known === true && b.boundingBox === 'block') return true } return false })
     let ax = 0, az = 0
     for (const a of sh) { const dx = feet.x - a.position.x, dz = feet.z - a.position.z, d = Math.max(0.5, Math.hypot(dx, dz)); ax += dx / d; az += dz / d }
     const base = Math.atan2(az, ax)
@@ -7966,6 +7971,7 @@ function createRuntime (host) {
         let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
         await new Promise(resolve => setImmediate(resolve))
         if (pv?.ready !== true) continue
+        if (low && !covered(t) && Date.now() < until - 700) continue
         try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { return false }
         host.log(`長距離移動: 射撃する敵（${sh.map(a => String(a.entityType ?? a.name).replace('minecraft:', '')).join('・')}、${Math.round(nearest)}m）から離れます`)
         const stop = Date.now() + 8000
@@ -8017,6 +8023,8 @@ function createRuntime (host) {
   const travelResumeTimer = setInterval(async () => {
     if (disposed || disposing) { clearInterval(travelResumeTimer); return }
     if (raw().phase !== 'spawned' || quarryJob?.holdsWork() || longTravel?.status?.().busy) return
+    // Never inside a node --test child (live 17:10: a test scene with the live Realm id resumed the real trip and hung the comparison).
+    if (!host.shared.longTravelResume && !travelFileChecked && process.env.NODE_TEST_CONTEXT) travelFileChecked = true
     if (!host.shared.longTravelResume && !travelFileChecked) {
       travelFileChecked = true
       try { const doc = JSON.parse(await require('node:fs/promises').readFile(longTravelFile(), 'utf8')); // Only the same Realm and profile the trip was saved for (live 16:13: a test
@@ -8052,7 +8060,17 @@ function createRuntime (host) {
         const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
         // Shooters (witches included) are avoided on every long trip (coordinator 2026-11-14).
         const st0 = working(), fleeing = true
-        const shooters = fleeing ? allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && require('./learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).map(a => a.position) : []
+        const shooters = fleeing ? allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && require('./learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 48).map(a => a.position) : []
+        // Avoid zones (coordinator 2026-11-14): 20 m around a received shooter,
+        // 32 m around a group of three or more (an outpost), never closer than
+        // the bot already is, so the route bends away before the shooter's range.
+        const avoidCols = new Set()
+        for (const q of shooters) {
+          const group = shooters.filter(o => Math.hypot(o.x - q.x, o.z - q.z) <= 16).length >= 3
+          const r = Math.min(group ? 32 : 20, Math.hypot(q.x - feet.x, q.z - feet.z) - 2)
+          if (r <= 1) continue
+          for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) for (let dz = -Math.ceil(r); dz <= Math.ceil(r); dz++) if (dx * dx + dz * dz <= r * r) avoidCols.add(`${Math.floor(q.x) + dx},${Math.floor(q.z) + dz}`)
+        }
         const here = Math.hypot(destination.x - feet.x, destination.z - feet.z)
         const heading = Math.atan2(destination.z - feet.z, destination.x - feet.x)
         // Starting in water (live 2026-11-14: the respawn point is a pool), climb
@@ -8070,12 +8088,15 @@ function createRuntime (host) {
         // Follow the coarse wide-area route first (2026-11-14): a point some
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
-          const planRoute = () => require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, maxMs: 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: host.shared.longTravelBadCells ??= new Set() })
+          const planRoute = (extra = {}) => { const bad = host.shared.longTravelBadCells ??= new Set(); const blocked = avoidCols.size ? { has: k => bad.has(k) || avoidCols.has(k) } : bad; return require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, maxMs: 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked, ...extra }) }
           let route = planRoute()
           // Live 16:05: columns marked after failed walks fenced the bot in (the
           // same route without them existed). When they leave no route at all,
           // they are forgotten and the plan is made again.
           { const bad = host.shared.longTravelBadCells; if (!route.ready && bad?.size) { host.log(`長距離移動: 歩けなかった列の記録（${bad.size}件）を消して計画し直します`); bad.clear(); route = planRoute() } }
+          // No reachable point is closer (coordinator 2026-11-14, a 20 m cliff at
+          // 16:51): stairs cut into a face may be used, never a tunnel.
+          if (!route.ready) { const stairs = planRoute({ faceStairs: true, maxMs: 800 }); if (stairs.ready) { host.log('長距離移動: 近づける場所がないため、壁面の階段で進みます'); route = stairs } }
           // Going around (coordinator 2026-11-14): when the route does not reach
           // the goal, request the received-terrain frontier closest to the
           // destination (up to three chunks, each at most every two minutes) and
