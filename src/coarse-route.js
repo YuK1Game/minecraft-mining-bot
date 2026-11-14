@@ -49,7 +49,14 @@ function createSurface (getBlock, { minY = -60, maxY = 300 } = {}) {
 // Blocks that ordinary bare-hand or tool mining may carve for a step.
 const NOT_DIGGABLE = /bedrock|obsidian|barrier|command|structure|reinforced|end_portal|spawner|chest|shulker|barrel|furnace|bed$|_bed$|door|log|leaves|wood|planks/
 const SOFT = /dirt|grass_block|gravel|sand|clay|snow|mud|podzol|mycelium|farmland/
-function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false }) {
+function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3, blocked = null, surfaceOnly = false }) {
+  // Live 2026-11-14 12:13: the route led down into a cave to y-33. With
+  // surfaceOnly a stand must see the sky (nothing solid above but leaves/logs
+  // within 40 blocks); covered stands cost five times and may only be entered
+  // upward or level, so an underground start climbs back out; the goal counts
+  // only on a sky-open stand.
+  const skyCache = new Map()
+  const sky = (x, y, z) => { const k = `${x},${y},${z}`; if (skyCache.has(k)) return skyCache.get(k); let open = true; for (let yy = y + 2; yy < 320; yy++) { const b = getBlock(x, yy, z); if (!b || b.known !== true) { if (yy >= 128) break; open = false; break } if (b.boundingBox === 'block' && !/leaves|log|wood/.test(b.name ?? '')) { open = false; break } } skyCache.set(k, open); return open }
   const surface = createSurface(getBlock)
   const sx = Math.floor(start.x), sz = Math.floor(start.z), sy = Math.round(start.y)
   const gx = Math.floor(goal.x), gz = Math.floor(goal.z)
@@ -59,16 +66,22 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   const best = new Map([[key(sx, sy, sz), 0]])
   const parent = new Map(), digOf = new Map()
   const frontier = new Set()
-  let closest = { x: sx, y: sy, z: sz, d: h(sx, sz) }, expanded = 0
+  let closest = { x: sx, y: sy, z: sz, d: h(sx, sz) }, expanded = 0, reached = false, surfaced = false
+  // Underground start (live 12:13, cave at y-33): the nearest open-sky stand is
+  // the first goal; the trip continues from there.
+  const startCovered = surfaceOnly && !sky(sx, sy, sz)
   const pop = () => { let i = 0; for (let j = 1; j < open.length; j++) if (open[j].f < open[i].f) i = j; return open.splice(i, 1)[0] }
   while (open.length && expanded < maxNodes) {
     const n = pop(); expanded++
     const d = h(n.x, n.z)
-    if (d < closest.d) closest = { x: n.x, y: n.y, z: n.z, d }
-    if (d <= arriveM) { closest = { x: n.x, y: n.y, z: n.z, d }; break }
+    if (d < closest.d && (!surfaceOnly || !startCovered && sky(n.x, n.y, n.z) || startCovered)) closest = { x: n.x, y: n.y, z: n.z, d }
+    if (startCovered && expanded > 1 && sky(n.x, n.y, n.z)) { closest = { x: n.x, y: n.y, z: n.z, d }; surfaced = true; break }
+    if (d <= arriveM && (!surfaceOnly || sky(n.x, n.y, n.z))) { closest = { x: n.x, y: n.y, z: n.z, d }; reached = true; break }
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
       const x = n.x + dx, z = n.z + dz
       if (Math.hypot(x - sx, z - sz) > maxRadius) continue
+      // Columns the local walk already failed to reach (2026-11-14) are avoided.
+      if (blocked?.has?.(`${x},${z}`)) continue
       const col = surface.stands(x, z, n.y - 3, n.y + 1)
       if (col.unknown && !col.stands.length) { frontier.add(`${x},${z}`); continue }
       // A step carved up a wall (2026-11-14): straight moves only, one block up,
@@ -89,13 +102,15 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
       }
       for (const s of col.stands) {
         const dy = s.y - n.y
-        if (dy > 1 || dy < -3) continue
+        if (dy > 1 || dy < -maxDrop) continue
         if (dx && dz) {
           // Diagonal: both side columns must be walkable at the same height.
           const a = surface.stands(n.x + dx, n.z, Math.min(n.y, s.y) - 1, Math.max(n.y, s.y) + 1).stands, b = surface.stands(n.x, n.z + dz, Math.min(n.y, s.y) - 1, Math.max(n.y, s.y) + 1).stands
           if (!a.length || !b.length) continue
         }
-        const g = n.g + (dx && dz ? 1.414 : 1) * (s.water ? 3 : 1) + (dy > 0 ? 0.5 : 0)
+        const covered = surfaceOnly && !sky(x, s.y, z)
+        if (covered && dy < 0) continue
+        const g = n.g + (dx && dz ? 1.414 : 1) * (s.water ? 3 : 1) * (covered ? 5 : 1) + (dy > 0 ? 0.5 : 0)
         const k = key(x, s.y, z)
         if (g >= (best.get(k) ?? Infinity)) continue
         best.set(k, g); parent.set(k, key(n.x, n.y, n.z))
@@ -107,7 +122,7 @@ function planCoarseRoute ({ getBlock, start, goal, maxNodes = 60000, maxRadius =
   let k = key(closest.x, closest.y, closest.z)
   while (k) { const [x, y, z] = k.split(',').map(Number); const dig = digOf.get(k); path.push({ x: x + 0.5, y, z: z + 0.5, ...(dig ? { dig } : {}) }); k = parent.get(k) }
   path.reverse()
-  return { ready: path.length > 1, reached: closest.d <= arriveM, path, remaining: Math.round(closest.d), expanded, frontier: [...frontier].slice(0, 64).map(s => { const [x, z] = s.split(',').map(Number); return { x, z } }) }
+  return { ready: path.length > 1, reached, surfaced, path, remaining: Math.round(closest.d), expanded, frontier: [...frontier].slice(0, 64).map(s => { const [x, z] = s.split(',').map(Number); return { x, z } }) }
 }
 
 module.exports = { planCoarseRoute, createSurface, classify }

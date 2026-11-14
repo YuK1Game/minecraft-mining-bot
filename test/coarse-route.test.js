@@ -66,3 +66,12 @@ test('digging never opens a cell under a covered ceiling (no tunnels)', () => {
   const r = planCoarseRoute({ getBlock: get, start: { x: 2.5, y: 63, z: 2.5 }, goal: { x: 27, z: 2 }, allowDig: true })
   assert.equal(r.reached, false)
 })
+
+test('drops are bounded by maxDrop (the local planner refuses three-block drops)', () => {
+  const rows = flat(20, 3)
+  for (let x = 6; x < 20; x++) for (let z = 0; z < 3; z++) rows[z][x] = 59 // a three-block step down
+  const deep = planCoarseRoute({ getBlock: world(rows), start: { x: 2.5, y: 63, z: 1.5 }, goal: { x: 18, z: 1 } })
+  assert.equal(deep.reached, true)
+  const shallow = planCoarseRoute({ getBlock: world(rows), start: { x: 2.5, y: 63, z: 1.5 }, goal: { x: 18, z: 1 }, maxDrop: 1 })
+  assert.equal(shallow.reached, false)
+})

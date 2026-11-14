@@ -212,7 +212,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
       }
     }
     if (fluidRoof) validateFluidRoofContext(target, state, block)
-    if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
+    if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !logAllowed) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
     if (clearance && (block.name !== 'minecraft:stone' || block.runtimeId !== target.expectedRuntimeId || block.protected === true || block.protectionSource || block.natural === false || isProtected(target, state, block))) throw new Error('Stone clearance target changed or is protected')
     if (!clearance && !quarry && PICK.has(name) && pickTier(state) < PICK.get(name)) throw new Error(`適切なツルハシの装備を確認できません: ${name}`)
     if (block.extra?.some(layer => !AIR.has(blockName(layer)))) throw new Error('対象に水などの追加レイヤーがあります。')
