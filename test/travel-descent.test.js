@@ -62,3 +62,18 @@ test('the runtime grants travel descent briefly, checks the fall on received gro
   assert.match(src, /process\.env\.NODE_TEST_CONTEXT\) travelFileChecked = true/, 'a test runner never resumes the live trip')
   assert.doesNotMatch(retreat, /command_request/)
 })
+
+// Coordinator 2026-11-14: drowned are fought on land as melee enemies; water is
+// avoided by the route; a kit is gathered before the trip.
+test('drowned are fought on land, never from the water; the route prices water higher; the kit is made from received items', () => {
+  const src = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  assert.match(src, /function drownedOnLand \(target, state\) \{ return \/drowned\/\.test\(String\(target\?\.entityType \?\? target\?\.name \?\? ''\)\) && state\?\.isInWater !== true/)
+  assert.match(src, /if \(!drownedOnLand\(target, state\) && !require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
+  const route = require('node:fs').readFileSync(require.resolve('../src/coarse-route'), 'utf8')
+  assert.match(route, /\(s\.water \? 10 : 1\)/)
+  const kit = src.slice(src.indexOf('      prepKit: async (input = {}) => {'), src.indexOf('      // Read-only: why the empty-handed preparation flag is on or off.'))
+  assert.match(kit, /wool: 3/)
+  assert.match(kit, /wooden_sword/)
+  assert.match(kit, /minecraft:bed/)
+  assert.doesNotMatch(kit, /command_request|\/give/)
+})

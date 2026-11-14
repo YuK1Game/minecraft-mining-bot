@@ -5640,6 +5640,7 @@ function createRuntime (host) {
         }
         let hunts = 0, logsTried = 0, eatRefused = false, rottenTried = false
         const woolTarget = Math.max(0, Math.min(3, input.wool ?? 0)), WOOL = /^minecraft:[a-z_]*wool$/
+        const foodTarget = Math.max(0, Math.min(16, input.food ?? 0))
         const skipLog = new Set() // logs that could not be reached or mined are not tried again
         while (Date.now() - started < maxMs) {
           const st = working(); if (!st.position || st.dead) { await sleep(1000); continue }
@@ -5653,6 +5654,21 @@ function createRuntime (host) {
             const feet = feetOf()
             const animal = allActors().filter(a => a?.kind === 'mob' && a.hostile === false && /^minecraft:(?:cow|pig|sheep|chicken)$/.test(a.entityType ?? '') && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
             if (animal && hunts < 12) {
+              hunts++
+              const before = count(FOOD)
+              if (await walkNear(animal.position, [1])) {
+                for (let hit = 0; hit < 6; hit++) { try { await combat.animalAttack(animal.runtimeId, {}) } catch { break } await sleep(500); if (!allActors().some(a => String(a.runtimeId) === String(animal.runtimeId) && a.alive !== false)) break }
+                await pickup(animal.position)
+              }
+              if (count(FOOD) > before) say(`食料を得ました（${count(FOOD)}個）`)
+              continue
+            }
+          }
+          // 1a. a food stock before a long trip (coordinator 2026-11-14: 5-10)
+          if (foodTarget && count(FOOD) < foodTarget && hunts < 24) {
+            const feet = feetOf()
+            const animal = allActors().filter(a => a?.kind === 'mob' && a.hostile === false && /^minecraft:(?:cow|pig|sheep|chicken|rabbit)$/.test(a.entityType ?? '') && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 32).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
+            if (animal) {
               hunts++
               const before = count(FOOD)
               if (await walkNear(animal.position, [1])) {
@@ -5750,6 +5766,62 @@ function createRuntime (host) {
         const firstDig = r.ready ? r.path.findIndex(q => q.dig) : -1
         const previews = [12, 9, 6, 4, 3, 2, 1].map(a => { const q = r.path[Math.min(firstDig > 0 ? Math.min(a, firstDig - 1) : a, r.path.length - 1)]; if (!q) return null; let pv = null; try { motionOrigin = working(); pv = movement?.preview({ x: q.x, y: q.y, z: q.z }, { allowWater: true, allowLowHealth: true, maxDistance: 16 }) } catch (e) { pv = { ready: false, reason: e.message } } return { a, q, ready: pv?.ready === true, reason: pv?.reason ?? null } })
         return { bad: bad?.size ?? 0, ready: r.ready, reached: r.reached, timedOut: r.timedOut, expanded: r.expanded, length: r.path.length, firstDig, firstSteps: r.path.slice(0, 6), previews }
+      },
+      // Kit before a long trip (coordinator 2026-11-14, after three deaths near
+      // spawn): wool for a bed, a food stock, logs; then planks, sticks, a table,
+      // a wooden sword, a bed and a boat. Results are the received inventory.
+      prepKit: async (input = {}) => {
+        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
+        if (longTravel?.status?.().busy) throw new Error('長距離移動の途中です。')
+        const say = m => host.log(`長距離移動の準備: ${m}`)
+        const items = () => working().inventory?.items ?? []
+        const count = re => items().filter(i => re.test(i.name ?? '')).reduce((n, i) => n + (i.count ?? 0), 0)
+        if (!longTravelLogAllowance()) await operations.quarry.prepareLongTravel({ logCount: 10, gather: false })
+        const has = re => count(re) > 0
+        const foodWanted = Math.max(5, Math.min(10, input.food ?? 6))
+        const FOODS = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/
+        const LOGS0 = /^minecraft:[a-z_]+_(?:log|stem)$/
+        const missing = () => [!has(/^minecraft:bed$/) && count(/wool$/) < 3 ? 'wool' : null, count(FOODS) < foodWanted ? 'food' : null, count(LOGS0) < 4 && !has(/_sword$/) ? 'logs' : null].filter(Boolean)
+        // Live 18:52: right after a reconnect nothing was in sight and the kit
+        // ended at once. Gather, and while something is missing walk about 48 m
+        // to another spot (six rounds, turning 60 degrees) and gather again.
+        const origin = working().position ? { x: working().position.x, z: working().position.z } : null
+        for (let round = 0; round < 7 && origin; round++) {
+          if (missing().includes('wool')) await operations.quarry.prepGather({ logs: 0, wool: 3, maxMs: 120000 })
+          if (missing().includes('food')) await operations.quarry.prepGather({ logs: 0, food: foodWanted, maxMs: 180000 })
+          if (missing().includes('logs')) await operations.quarry.prepGather({ logs: 4, maxMs: 180000 })
+          if (!missing().length || round === 6) break
+          const ang = round * Math.PI / 3, dest = { x: Math.round(origin.x + Math.cos(ang) * 48), z: Math.round(origin.z + Math.sin(ang) * 48) }
+          say(`まだ足りません（${missing().join('・')}）。(${dest.x}, ${dest.z}) へ探しに行きます`)
+          try { await operations.quarry.travelTo({ destination: dest }) } catch {}
+          const until = Date.now() + 180000
+          while (Date.now() < until && longTravel?.status?.().busy) await new Promise(r => setTimeout(r, 1000))
+          if (longTravel?.status?.().busy) { try { await longTravel.cancel('KIT_EXPLORE') } catch {} }
+        }
+        const LOGS = /^minecraft:([a-z_]+)_log$/, PLANKS = /^minecraft:([a-z_]+)_planks$/
+        const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
+        const made = []
+        if (log) {
+          const wood = LOGS.exec(log.name)[1]
+          await crafting.openInventory()
+          try {
+            await crafting.craft(`minecraft:${wood}_planks`, { times: Math.min(4, log.count) }); made.push('planks')
+            if (!has(/^minecraft:stick$/)) { await crafting.craft('minecraft:stick', { times: 1 }); made.push('stick') }
+            if (!has(/^minecraft:crafting_table$/)) { await crafting.craft('minecraft:crafting_table', { times: 1 }); made.push('table') }
+          } finally { try { crafting.closeContainer() } catch {} }
+          const table = await travelPlaceTable()
+          if (table) {
+            await interactions.openCraftingTable(table)
+            try {
+              if (!has(/_sword$/)) { await crafting.craft('minecraft:wooden_sword', { times: 1 }); made.push('wooden_sword') }
+              if (!has(/^minecraft:bed$/) && count(/wool$/) >= 3) { try { await crafting.craft('minecraft:bed', { times: 1 }); made.push('bed') } catch (e) { say(`ベッドを作れません: ${String(e.message ?? e).slice(0, 60)}`) } }
+              if (!has(/_boat$/)) { const p = items().find(i => PLANKS.test(i.name ?? '') && i.count >= 5); if (p) { try { await crafting.craft(`minecraft:${PLANKS.exec(p.name)[1]}_boat`, { times: 1 }); made.push('boat') } catch {} } }
+            } finally { try { crafting.closeContainer() } catch {} }
+          }
+        }
+        const kit = { bed: count(/^minecraft:bed$/), sword: count(/_sword$/), food: items().filter(i => /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/.test(i.name ?? '')).reduce((n, i) => n + i.count, 0), boat: count(/_boat$/), wool: count(/wool$/) }
+        say(`${missing().length ? `足りないもの: ${missing().join('・')}。` : '揃いました。'}ベッド ${kit.bed}・剣 ${kit.sword}・食料 ${kit.food}・ボート ${kit.boat}（受信した持ち物で確認、作ったもの: ${made.join('・') || 'なし'}）`)
+        return { made, kit }
       },
       // Read-only: why the empty-handed preparation flag is on or off.
       prepCheck: () => {
@@ -6972,7 +7044,10 @@ function createRuntime (host) {
   // Never throws out of the timer: a fault only logs (a timer error ends the process).
   idleEat.timer = setInterval(() => { idleEatTick().catch(error => { idleEat.busy = false; try { host.log(`待機中の食事の確認に失敗: ${String(error?.message ?? error).slice(0, 120)}`) } catch {} }) }, 5000)
   idleEat.timer.unref?.()
-  function quarryCanSelectTarget (target, state, info = {}) { if (!require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; if (longTravel?.status?.().busy && /witch/.test(String(target?.entityType ?? target?.name ?? ''))) return { allowed: false, reason: 'TRAVEL_AVOID_WITCH' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
+  // Drowned are fought as melee enemies on land (coordinator 2026-11-14: a drowned
+  // killed the bot at 18:48 while it would not fight back); never from the water.
+  function drownedOnLand (target, state) { return /drowned/.test(String(target?.entityType ?? target?.name ?? '')) && state?.isInWater !== true && state?.phase === 'spawned' }
+  function quarryCanSelectTarget (target, state, info = {}) { if (!drownedOnLand(target, state) && !require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; if (longTravel?.status?.().busy && /witch/.test(String(target?.entityType ?? target?.name ?? ''))) return { allowed: false, reason: 'TRAVEL_AVOID_WITCH' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
   function quarryCanContinue (target, state, info = {}) { if (!require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canContinue(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true, retreating: info.retreating === true || quarryRetreatDepth > 0 }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
   function quarryState () {
     const state = lightweightUserState()
@@ -8008,7 +8083,7 @@ function createRuntime (host) {
     const SHOOT = require('./learning-health').SHOOTING
     const p = working().position; if (!p) return false
     const feet = { x: p.x, y: p.y - 1.62, z: p.z }
-    const sh = allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && SHOOT.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 20)
+    const sh = allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && SHOOT.test(String(a.entityType ?? a.name ?? '')) && !/drowned/.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 20)
     if (!sh.length) return false
     const nearest = Math.min(...sh.map(a => Math.hypot(a.position.x - feet.x, a.position.z - feet.z)))
     const hurt = Date.now() - (host.shared.travelLastDamageAt ?? 0) < 5000
@@ -8209,7 +8284,7 @@ function createRuntime (host) {
         const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
         // Shooters (witches included) are avoided on every long trip (coordinator 2026-11-14).
         const st0 = working(), fleeing = true
-        const shooters = fleeing ? allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && require('./learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 48).map(a => a.position) : []
+        const shooters = fleeing ? allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && require('./learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && !/drowned/.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 48).map(a => a.position) : []
         // Avoid zones (coordinator 2026-11-14): 20 m around a received shooter,
         // 32 m around a group of three or more (an outpost), never closer than
         // the bot already is, so the route bends away before the shooter's range.
@@ -8332,7 +8407,7 @@ function createRuntime (host) {
             // Live 14:35: stone was refused with the wooden pickaxe in the bag.
             // Hold the best received pickaxe (stone-like) or shovel (soft) first.
             try { await travelHoldTool(cell.name) } catch {}
-            try { operations.mining.start([{ x: cell.x, y: cell.y, z: cell.z }]) } catch (error) { return { ok: false, code: 'DIG_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
+            try { operations.mining.start([{ x: cell.x, y: cell.y, z: cell.z }]) } catch (error) { (host.shared.longTravelBadCells ??= new Set()).add(`${cell.x},${cell.z}`); return { ok: false, code: 'DIG_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
             const until = Date.now() + 30000
             while (!air()) {
               if (signal?.aborted) { try { operations.mining.stop?.('LONG_TRAVEL_CANCELLED') } catch {} return { ok: false, code: 'LONG_TRAVEL_CANCELLED' } }

@@ -104,7 +104,8 @@ test('empty-handed preparation avoids shooters and engages only a non-shooter wi
   // A weapon in hand, or the allowance gone, clears the flag: normal combat.
   assert.equal(emptyHandedTargetAllowed({ ...bot, emptyHandedPrep: false }, at('skeleton', 12)), true)
   const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
-  assert.match(source, /function quarryCanSelectTarget \(target, state, info = \{\}\) \{ if \(!require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
+  // Drowned on land are the one exception (coordinator 2026-11-14).
+  assert.match(source, /function quarryCanSelectTarget \(target, state, info = \{\}\) \{ if \(!drownedOnLand\(target, state\) && !require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
   assert.match(source, /function quarryCanContinue \(target, state, info = \{\}\) \{ if \(!require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
 })
 
