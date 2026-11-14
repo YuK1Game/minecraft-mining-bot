@@ -25,8 +25,8 @@ function fixture ({ otherTree = true, stairs = false } = {}) {
   if (stairs) { put(0, 1, 1, 'stone'); put(1, 1, 1, 'stone'); put(1, 2, 1, 'stone') }
   const state = { phase: 'spawned', gameMode: 'survival', health: 20, dimension: 'overworld', position: { x: 0.5, y: 2.62, z: 0.5 }, positionSource: 'start_game', inventory: { known: true, items: [] }, capabilities: { mining: true, movement: true, scan_blocks: true }, world: { initialized: true, loadedSections: 1 } }
   const world = { getBlock: (x, y, z) => blocks.get(`${x},${y},${z}`) ?? { known: false, position: { x, y, z } } }
-  const next = () => nextBootstrapAction(state, { blocks: [...blocks.values()], radius: 14, worldLoaded: true })
-  const mining = createMining({ getState: () => state, world, getInput: () => ({}) })
+  const next = () => nextBootstrapAction(state, { blocks: [...blocks.values()], radius: 14, worldLoaded: true }, { allowLogs: true, logCount: 3 })
+  const mining = createMining({ getState: () => state, world, getInput: () => ({}), logAllowance: () => true })
   return { blocks, put, key, state, world, next, mining }
 }
 

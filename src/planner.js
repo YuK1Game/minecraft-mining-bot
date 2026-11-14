@@ -3,7 +3,7 @@
 const { resourceMinHealth } = require('./learning-health')
 const { selectStarterGearDrop } = require('./starter-gear')
 
-const { planTreeAccess, placementTopVisible, planPlacementAccess } = require('./action-access')
+const { placementTopVisible, planPlacementAccess } = require('./action-access')
 
 // Pure bootstrap decisions. This module never sends packets, changes inventory,
 // reads files, or treats a proposed action as completed. The executor must still
@@ -271,18 +271,9 @@ function nextBootstrapAction (snapshot, observations = {}, options = {}) {
       const selected = approaches[0]
       return requireCapability('move', result('move_to', resource, '位置が少しずれても採取できる地面の位置へ近づきます。', { target: { ...selected.stand.target }, resourceTarget: { ...selected.block.position }, block: fullName(selected.block.name), resource, ...metadata, stance: { positionTolerance: 0.25, testedPoints: selected.stand.samples.length, centerDistance: distance(selected.stand.eye, selected.block.position), worstDistance: Math.max(...selected.stand.samples.map(point => distance(point, selected.block.position))) }, requiresLivePreview: true }))
     }
-    if (resource === 'logs' && capability('break_block') && capability('move')) {
-      const preparations = candidates.flatMap(block => standPoints.flatMap(stand => {
-        if (stand.target.y > eye.y - 1.62 + 0.05 && !logStandConnected(stand)) return []
-        if (distance(stand.eye, block.position) > reach - 0.5) return []
-        const accessPreparation = planTreeAccess({ state: snapshot, observedState: observations.state, tree: block, standpoint: stand.target, getBlock, reach })
-        return accessPreparation ? [{ block, stand, accessPreparation }] : []
-      })).sort((a, b) => a.stand.cost - b.stand.cost || distance(eye, a.block.position) - distance(eye, b.block.position) || orderPosition(a.block, b.block))
-      if (preparations.length) {
-        const selected = preparations[0]
-        return result('move_to', resource, '確認した自然木へ手が届く足場から、視線を遮る乾いた植物を一つだけ片付けます。', { target: { ...selected.stand.target }, resourceTarget: { ...selected.block.position }, block: fullName(selected.block.name), resource, ...metadata, accessPreparation: selected.accessPreparation, stance: { positionTolerance: 0.25, testedPoints: selected.stand.samples.length }, requiresLivePreview: true })
-      }
-    }
+    // A tree reachable only by clearing leaf litter or vines is left alone: the
+    // runner refuses that work (leaves and litter are never taken), so proposing
+    // it only produced an action that always failed.
     return scan(resource, '既知の通常の地面から採取できる対象がないため、地形を追加で調べます。')
   }
   const collectDrops = (matches, stage, count) => {
@@ -332,9 +323,19 @@ function nextBootstrapAction (snapshot, observations = {}, options = {}) {
   if (counts.planks < neededPlanks) {
     const log = items.filter(item => amount(item.count) && isLog(nameOf(item.name))).sort((a, b) => (a.slot ?? 99) - (b.slot ?? 99))[0]
     // Long-trip preparation only (2026-11-14 decision): logs from observed trees.
+    // Only a natural tree counts (trunk with matching leaves, lowest layer
+    // first), as before the wood exclusion: any known log would also take the
+    // logs of a player's building on a shared Realm.
     if (!log && options.allowLogs === true) {
-      const trees = known.filter(block => isLog(nameOf(block.name)) && block.protected !== true)
-      return chooseResource(trees, 'logs', Math.max(1, (options.logCount ?? 10) - counts.logs))
+      const needed = Math.max(1, (options.logCount ?? 10) - counts.logs)
+      // A log already on the ground is picked up before another tree is cut.
+      const droppedLogs = collectDrops(isLog, 'logs', needed)
+      if (droppedLogs) return droppedLogs
+      const natural = naturalLogCandidates(known.filter(block => isLog(nameOf(block.name))), getBlock)
+      const selected = chooseResource(natural, 'logs', needed)
+      const resourceTarget = selected.type === 'gather_logs' ? selected.target : selected.type === 'move_to' ? selected.resourceTarget : null
+      if (resourceTarget) selected.treeEvidence = natural.find(candidate => key(candidate.position) === key(resourceTarget))?.evidence
+      return selected
     }
     if (!log) return result('wait', 'materials', '手持ちの木材が不足しています。木の採取や探索は行いません。', { code: 'wood_harvest_disabled', missingMaterials: { planks: neededPlanks - counts.planks }, woodCollectionDisabled: true })
     const times = Math.min(amount(log.count), 16, Math.ceil((neededPlanks - counts.planks) / 4))

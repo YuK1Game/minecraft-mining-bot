@@ -103,7 +103,8 @@
 src/            Bot 本体（約110モジュール）
   main.js         エントリポイント
   host.js         接続・認証・ターミナルコマンド（/status /auto /stop /reload /quit /quarry）。変更時は再起動が必要
-  runtime.js      ホットリロードされる行動の中心（約840KB。これ以上育てない）
+  runtime.js      ホットリロードされる行動の中心（約770KB。これ以上育てない）
+  long-travel-runtime.js  長距離移動の配線（2026-11-15 に runtime.js から移動。runtime の変数は `rt.<名前>`、モジュールは `rt.require(...)` で使う）
   api.js          ローカル HTTP API
   quarry-*.js     露天掘りモード（region / rules / inventory / planner / combat-bridge / job / runtime-adapter / cli）
 scripts/        keep-alive.js（再接続監視）、dashboard.js（:3001）、check.js（構文確認）
@@ -144,7 +145,7 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 - **サーバー由来の情報だけを成果とする**: 入力の送信、時間経過、プレビューの成功、予測位置への到着、ドロップの消滅だけで成功扱いにしない。回収・クラフトは実際の持ち物の変化、採掘は受信した空気、設置はブロック更新と消費の両方で確認する。露天掘りの表示用集計や予測だけでジョブ完了とせず、受信した地形・実際の持ち物変化によるジョブの確認結果を使う。旧ダイヤ目標を扱う場合も、完了判定はサーバーから届いた持ち物にダイヤがある時だけ。
 - **未知を安全と見なさない**: 未受信の地形・未確認の持ち物・一覧にない敵は安全側に倒す。
 - **再起動が必要な変更を明示する**: `host.js`、`entities.js` など接続側で読み込むモジュール、認証・通信、依存、`.env` の変更はホットリロードされない。ユーザーに再起動が必要と伝える。
-- **大きいファイルを育てない**（2026-11-15 品質改善の方針。読みやすさ・保守性のため）: `src/runtime.js`・`src/quarry-job.js`・`src/idle-safety.js`・`src/quarry-portable-storage.js`・`src/runner.js`・`dashboard/index.html` には新しい機能の処理を書き足さない。新しい機能は専用のモジュール（例: `src/long-travel.js`）に置き、大きいファイルには呼び出しの1〜数行だけを足す。`npm run check` が基準（`scripts/size-budget.json`）からの増加を「サイズ超過」として表示する。処理を外へ出したら基準値を下げる。新しい処理を入れるために基準値を上げない。
+- **大きいファイルを育てない**（2026-11-15 品質改善の方針。読みやすさ・保守性のため）: `src/runtime.js`・`src/quarry-job.js`・`src/idle-safety.js`・`src/quarry-portable-storage.js`・`src/runner.js`・`dashboard/index.html` には新しい機能の処理を書き足さない。新しい機能は専用のモジュール（例: `src/long-travel.js`）に置き、大きいファイルには呼び出しの1〜数行だけを足す。`npm run check` が基準（`scripts/size-budget.json`）からの増加を「サイズ超過」として表示する。処理を外へ出したら基準値を下げる。新しい処理を入れるために基準値を上げない。`runtime.js` のまとまった処理を外へ出すときは `node scripts/extract-runtime-block.js <開始行> <終了行> <モジュール名> <関数名> <変数名>` を使う（構文解析に基づく機械的な移し替え。`--apply` なしでは一時フォルダに出力するだけ）。`runtime.js` のソース文字列を照合するテストは `test/helpers/runtime-source.js` の `runtimeSource()` を読む。
 - **同じ種類の不具合を個別の条件分岐で直し続けない**（同上）: 同じ機能で3件目の個別修正になる前に、共通の原因（判定の持ち方・状態の出どころ・部品の境界）を確かめ、部品として直す。個別の対処を足した場合は、その場所と理由をコミットメッセージに残す。
 - **変更前の状態は Git で残す**（2026-11-13 ユーザー方針）: `backup/` フォルダへのファイルコピーはしない。既存コードを変える前に作業ブランチを切るかコミットしておき、戻す必要があれば Git の履歴から戻す。
 - **秘密情報**: `.auth/`、`.env` は読まない・出力しない・コミットしない。リポジトリは公開です。
