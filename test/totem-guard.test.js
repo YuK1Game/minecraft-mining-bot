@@ -76,7 +76,7 @@ test('empty-handed preparation lowers the working minimum to zero; anything else
   assert.equal(emptyHandedPrep({ ...alive, emptyHandedPrep: true, dead: true }), false)
   const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
   assert.match(source, /if \(!longTravelLogAllowance\(\)\) return false/)
-  assert.match(source, /slot\.received === true && slot\.raw && \(slot\.raw\.network_id === 0 \|\| slot\.raw\.count === 0\)/)
+  assert.match(source, /slot\.received === true && slot\.raw && \(slot\.raw\.network_id === 0 \|\| slot\.raw\.count === 0 \|\| container === 'main' && cheap\(/)
 })
 
 // Coordinator 2026-11-14: the empty-handed exceptions end as soon as anything is
@@ -86,7 +86,7 @@ test('every empty-handed exception keys on the derived flag, and one item ends i
   const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
   const derive = source.slice(source.indexOf('  function emptyHandedPrep () {'), source.indexOf('  function longTravelLogAllowance () {'))
   assert.match(derive, /for \(const \[container, size\] of \[\['main', 36\], \['armor', 4\], \['offhand', 1\]\]\)/)
-  assert.match(derive, /v\.slots\.every\(slot => slot\.received === true && slot\.raw && \(slot\.raw\.network_id === 0 \|\| slot\.raw\.count === 0\)\)/)
+  assert.match(derive, /slot\.received === true && slot\.raw && \(slot\.raw\.network_id === 0 \|\| slot\.raw\.count === 0 \|\| container === 'main' && cheap\(/)
   for (const pattern of [/state\.emptyHandedPrep !== true\) return \{ type: 'avoid_threat'/, /if \(current\.emptyHandedPrep === true\) \{\}/, /current\.emptyHandedPrep!==true&&\(current\.health<initial\.health/, /st\.emptyHandedPrep !== true\) \{ try \{ movement\?\.stop\?\.\('damage'\)/]) assert.match(source, pattern)
   assert.equal(resourceMinHealth({ phase: 'spawned', health: 3, emptyHandedPrep: false }), 6, 'with an item in hand the ordinary minimum applies')
 })
@@ -106,4 +106,12 @@ test('empty-handed preparation avoids shooters and engages only a non-shooter wi
   const source = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
   assert.match(source, /function quarryCanSelectTarget \(target, state, info = \{\}\) \{ if \(!require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
   assert.match(source, /function quarryCanContinue \(target, state, info = \{\}\) \{ if \(!require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
+})
+
+// Decision a (2026-11-14): only a fixed list of cheap regatherable items still
+// counts as nothing to lose; anything else restores the ordinary judgements.
+test('the cheap-item list is fixed: gathered materials and food yes, valuables no', () => {
+  const { cheapItem } = require('../src/learning-health')
+  for (const name of ['dirt', 'cobblestone', 'gravel', 'oak_log', 'spruce_planks', 'stick', 'crafting_table', 'wooden_pickaxe', 'beef', 'cooked_porkchop', 'wheat_seeds']) assert.equal(cheapItem('minecraft:' + name), true, name)
+  for (const name of ['purple_shulker_box', 'diamond_pickaxe', 'iron_pickaxe', 'stone_pickaxe', 'totem_of_undying', 'diamond_helmet', 'leather_chestplate', 'bow', 'arrow', 'torch', 'coal']) assert.equal(cheapItem('minecraft:' + name), false, name)
 })

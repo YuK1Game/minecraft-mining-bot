@@ -29,4 +29,10 @@ function emptyHandedTargetAllowed (state, target) {
   if (!p || !q) return false
   return Math.hypot(p.x - q.x, p.y - 1.62 - q.y, p.z - q.z) <= 3
 }
-module.exports = { resourceMinHealth, totemGuarded, emptyHandedPrep, emptyHandedTargetAllowed, SHOOTING }
+// Cheap, quickly regathered items that still count as "nothing to lose" during
+// long-trip preparation (2026-11-14 decision a): dirt, cobblestone, gravel,
+// logs, planks, sticks, a crafting table, wooden tools, plain food and seeds.
+// Anything else (shulkers, armour, totems, iron or better tools...) does not.
+const CHEAP = /^minecraft:(?:dirt|coarse_dirt|cobblestone|cobbled_deepslate|gravel|sand|[a-z_]+_log|[a-z_]+_planks|stick|crafting_table|wooden_(?:sword|pickaxe|axe|shovel|hoe)|(?:cooked_)?(?:beef|porkchop|chicken|mutton|rabbit|cod|salmon)|bread|apple|carrot|potato|baked_potato|beetroot|rotten_flesh|wheat_seeds|beetroot_seeds|pumpkin_seeds|melon_seeds|wheat|feather|leather|string|bone|flint|oak_sapling|spruce_sapling|birch_sapling|jungle_sapling|acacia_sapling|dark_oak_sapling)$/
+const cheapItem = name => CHEAP.test(String(name ?? ''))
+module.exports = { resourceMinHealth, totemGuarded, emptyHandedPrep, emptyHandedTargetAllowed, SHOOTING, cheapItem }

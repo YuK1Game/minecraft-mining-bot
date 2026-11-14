@@ -1295,9 +1295,12 @@ function createRuntime (host) {
   function emptyHandedPrep () {
     try {
       if (!longTravelLogAllowance()) return false
+      // Main slots may hold only cheap regatherable items (decision a, 2026-11-14);
+      // armour and offhand stay empty.
+      const cheap = require('./learning-health').cheapItem
       for (const [container, size] of [['main', 36], ['armor', 4], ['offhand', 1]]) {
         const v = inventoryStore.view(container)
-        if (v.known !== true || v.slots.length !== size || !v.slots.every(slot => slot.received === true && slot.raw && (slot.raw.network_id === 0 || slot.raw.count === 0))) return false
+        if (v.known !== true || v.slots.length !== size || !v.slots.every(slot => slot.received === true && slot.raw && (slot.raw.network_id === 0 || slot.raw.count === 0 || container === 'main' && cheap(crafting.itemNameOf(slot.raw.network_id))))) return false
       }
       return true
     } catch { return false }
