@@ -5613,13 +5613,17 @@ function createRuntime (host) {
           for (const d of drops.slice(0, 4)) await walkNear(d.position, [0, 1])
           await sleep(800)
         }
-        let hunts = 0, logsTried = 0
+        let hunts = 0, logsTried = 0, eatRefused = false, rottenTried = false
         const skipLog = new Set() // logs that could not be reached or mined are not tried again
         while (Date.now() - started < maxMs) {
           const st = working(); if (!st.position || st.dead) { await sleep(1000); continue }
           // 1. food first while hunger is below 18
           if ((hunger() ?? 20) < 18) {
-            if (count(FOOD) > 0) { try { await operations.food.eat({}); say(`食べました（満腹度 ${hunger()}）`) } catch (e) { say(`食事を見送り: ${String(e.message ?? e).slice(0, 60)}`); await sleep(2000) } continue }
+            // Live 15:04: a raw chicken matched FOOD but the eat check refused it
+            // and the step looped. One refusal ends eating here (emergency rotten
+            // flesh is tried once); the step goes on to hunting.
+            if (!eatRefused && count(FOOD) > 0) { try { await operations.food.eat({}); say(`食べました（満腹度 ${hunger()}）`); continue } catch (e) { eatRefused = true; say(`食事を見送り: ${String(e.message ?? e).slice(0, 60)}`) } }
+            if (!rottenTried && count(/^minecraft:rotten_flesh$/) > 0) { rottenTried = true; try { await operations.food.eat({ allowEmergencyRotten: true }); say(`非常食として腐った肉を食べました（満腹度 ${hunger()}）`); continue } catch {} }
             const feet = feetOf()
             const animal = allActors().filter(a => a?.kind === 'mob' && a.hostile === false && /^minecraft:(?:cow|pig|sheep|chicken)$/.test(a.entityType ?? '') && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
             if (animal && hunts < 12) {
