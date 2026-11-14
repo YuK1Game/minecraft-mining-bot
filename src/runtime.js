@@ -7937,6 +7937,20 @@ function createRuntime (host) {
     const night = host.shared.travelNight ??= { cover: null, pitTried: 0 }
     const phase = NS.dayPhase(travelClock())
     if (!phase.known) return { hold: true, phase: 'clock_wait', message: '時刻を受信していないため、受信を待ちます', waitMs: 2000 }
+    // Resting (live 18:24: skeleton hits piled up to 1 HP and a creeper finished
+    // it): below half health with hunger 18 or more the bot heals in the covered
+    // pit and leaves it at 18 health (or by night's end when the pit is a night pit).
+    const hpNow = working().health ?? 20, hv0 = host.shared.vitals?.hunger, hunger0 = Number.isFinite(hv0) ? hv0 : Number.isFinite(hv0?.value) ? hv0.value : null
+    // A rest pit at dusk simply becomes the night pit.
+    if (night.cover && night.reason === 'rest' && phase.shelter) night.reason = 'night'
+    const resting = night.reason === 'rest'
+    if (night.cover && resting && (hpNow >= 18 || hunger0 !== null && hunger0 < 18)) phase.resume = true
+    if (night.cover && resting && !phase.resume) return { hold: true, phase: 'rest', message: `体力回復のため穴の中で待ちます（HP ${Math.round(hpNow)}）`, waitMs: 5000 }
+    if (!night.cover && !phase.shelter && hpNow < 10 && hunger0 !== null && hunger0 >= 18 && Date.now() - (night.restTriedAt ?? 0) > 60000) {
+      night.restTriedAt = Date.now()
+      const r = await travelNightPit(signal)
+      if (r.ok) { night.cover = r.cover; night.reason = 'rest'; host.log(`長距離移動: HP ${Math.round(hpNow)} のため、ふたをした穴で回復を待ちます`); return { hold: true, phase: 'rest', message: '体力回復のため穴の中で待ちます', waitMs: 5000 } }
+    }
     if (phase.resume && night.cover) {
       const c = night.cover
       const air = () => { const v = host.world.getBlock(c.x, c.y, c.z); return v?.known === true && /^minecraft:(?:air|cave_air)$/.test(v.name ?? '') }
@@ -7946,14 +7960,14 @@ function createRuntime (host) {
         while (Date.now() < until && !signal?.aborted && !air()) await new Promise(r => setTimeout(r, 200))
         if (!air()) return { hold: true, phase: 'morning', message: '朝です。ふたの採掘を確認できません', waitMs: 3000 }
       }
-      night.cover = null; night.pitTried = 0
-      host.log(`長距離移動: 朝になりました（時刻 ${phase.dayTime}）。穴を出て移動を続けます`)
+      host.log(resting ? `長距離移動: 回復しました（HP ${Math.round(hpNow)}）。穴を出て移動を続けます` : `長距離移動: 朝になりました（時刻 ${phase.dayTime}）。穴を出て移動を続けます`)
+      night.cover = null; night.pitTried = 0; night.reason = null
     }
     if (phase.shelter) {
       if (!night.cover && night.pitTried < 3) {
         night.pitTried++
         const r = await travelNightPit(signal)
-        if (r.ok) night.cover = r.cover
+        if (r.ok) { night.cover = r.cover; night.reason = 'night' }
         else return { hold: true, phase: 'night', message: `夕方です（時刻 ${phase.dayTime}）。ここに夜の穴を作れません: ${r.reason}`, waitMs: 3000 }
       }
       return { hold: true, phase: 'night', message: night.cover ? `夜のため、ふたをした穴の中で朝まで待ちます（時刻 ${phase.dayTime}）` : `夜です（時刻 ${phase.dayTime}）。穴を作れなかったため、その場で朝まで待ちます`, waitMs: 5000 }
