@@ -135,7 +135,11 @@ function createDashboardManager ({ workspaceRoot, apiPort, defaultProfile = 'mai
       spawned.once('close', code => {
         if (child !== spawned) return
         child = null; childId = null; phase = 'offline'; auth = null; realms = []
-        if (code && !closing && !stopped && lastRealm) { autoConnect = null; scheduleReconnect(code); return }
+        // Live 2026-11-15 08:29: the server closed the connection and the bot
+        // process ended with code 0 (the host never saw the close), so nothing
+        // reconnected. Any exit the dashboard did not ask for reconnects, within
+        // the same limits; only a disconnect or stop from the dashboard does not.
+        if (!closing && !stopped && lastRealm) { autoConnect = null; scheduleReconnect(code ?? 0); return }
         if (code && !closing) message ??= 'Botが終了しました。ターミナルのエラーを確認してください。'
         if (!code) { lastRealm = null; reconnectStreak = 0 }
       })
