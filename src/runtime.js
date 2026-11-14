@@ -5579,8 +5579,10 @@ function createRuntime (host) {
       // still avoided by the combat rules for empty hands.
       prepGather: async (input = {}) => {
         if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
-        if (!longTravelLogAllowance()) throw new Error('先に prepareLongTravel({gather:false}) で準備の許可を出してください。')
-        const started = Date.now(), maxMs = Math.min(40 * 60000, input.maxMs ?? 20 * 60000), logTarget = Math.max(1, Math.min(10, input.logs ?? 10))
+        const logTarget = Math.max(0, Math.min(10, input.logs ?? 10))
+        // logs: 0 is the food step alone (eat, or hunt within 24 m); no wood is taken.
+        if (logTarget > 0 && !longTravelLogAllowance()) throw new Error('先に prepareLongTravel({gather:false}) で準備の許可を出してください。')
+        const started = Date.now(), maxMs = Math.min(40 * 60000, input.maxMs ?? 20 * 60000)
         const say = m => host.log(`長距離移動の準備: ${m}`)
         const items = () => working().inventory?.items ?? []
         const count = re => items().filter(i => re.test(i.name ?? '')).reduce((n, i) => n + (i.count ?? 0), 0)
@@ -7687,6 +7689,76 @@ function createRuntime (host) {
   }
   let longTravel = null
   const longTravelFile = () => require('node:path').resolve(__dirname, '..', '.local', 'long-travel', 'current.json')
+  // Received overworld clock only (sync_world_clocks, else set_time).
+  function travelClock () {
+    const clock = Object.values(host.shared.worldClocks ?? {}).find(c => c?.name === 'minecraft:overworld' && c.source === 'server_sync_world_clocks' && Number.isSafeInteger(c.time))
+    if (clock) return { time: clock.time, source: clock.source }
+    const fallback = host.shared.worldTime
+    return raw().dimension === 'overworld' && fallback?.source === 'server_set_time' && Number.isSafeInteger(fallback.ticks) ? { time: fallback.ticks, source: fallback.source } : { time: null, source: 'unknown' }
+  }
+  // Night stop (coordinator 2026-11-14: the day/night cycle is expected to run):
+  // at dusk dig a three-deep pit at the feet by the ordinary mining, cover it
+  // with an ordinary placement and wait for morning; each step is confirmed by
+  // received terrain. In the morning the cover is mined and the trip climbs out
+  // by its covered-start route (carved steps).
+  async function travelNightPit (signal) {
+    const NS = require('./night-stop')
+    const sleep = ms => new Promise(r => setTimeout(r, ms))
+    const wait = async (fn, ms) => { const until = Date.now() + ms; while (Date.now() < until) { if (signal?.aborted) return false; if (fn()) return true; await sleep(200) } return fn() }
+    const feet = () => { const p = working().position; return p ? { x: p.x, y: p.y - 1.62, z: p.z } : null }
+    const plan = NS.planPit((x, y, z) => host.world.getBlock(x, y, z), feet())
+    if (!plan.ready) return { ok: false, reason: plan.reason + (plan.name ? `:${plan.name}` : '') }
+    const isAir = c => { const b = host.world.getBlock(c.x, c.y, c.z); return b?.known === true && /^minecraft:(?:air|cave_air)$/.test(b.name ?? '') }
+    for (const cell of plan.dig) {
+      if (!isAir(cell)) {
+        try { operations.mining.start([cell]) } catch (error) { return { ok: false, reason: `DIG_REFUSED:${String(error.message ?? error).slice(0, 60)}` } }
+        if (!(await wait(() => isAir(cell), 35000))) return { ok: false, reason: 'DIG_UNCONFIRMED' }
+      }
+      if (!(await wait(() => { const f = feet(); return !!f && f.y <= cell.y + 0.05 }, 5000))) return { ok: false, reason: 'FALL_UNCONFIRMED' }
+    }
+    const PLACEABLE = /^minecraft:(?:dirt|coarse_dirt|cobblestone|cobbled_deepslate|stone|andesite|diorite|granite|deepslate|netherrack)$/
+    const items = () => working().inventory?.items ?? []
+    let item = items().find(i => PLACEABLE.test(i.name ?? '') && i.count > 0 && i.slot <= 8) ?? items().find(i => PLACEABLE.test(i.name ?? '') && i.count > 0)
+    if (!item) return { ok: false, reason: 'NO_COVER_BLOCK' }
+    if (item.slot > 8) { try { await operations.inventory.equip(item.slot) } catch {} item = items().find(i => PLACEABLE.test(i.name ?? '') && i.count > 0 && i.slot <= 8) }
+    if (!item) return { ok: false, reason: 'COVER_NOT_IN_HOTBAR' }
+    try { await operations.interactions.placeBlock({ position: plan.cover, slot: item.slot }) } catch (error) { return { ok: false, reason: `COVER_REFUSED:${String(error.message ?? error).slice(0, 60)}` } }
+    const covered = await wait(() => { const b = host.world.getBlock(plan.cover.x, plan.cover.y, plan.cover.z); return b?.known === true && b.boundingBox === 'block' }, 5000)
+    return covered ? { ok: true, cover: plan.cover } : { ok: false, reason: 'COVER_UNCONFIRMED' }
+  }
+  async function travelBeforeLeg (signal) {
+    const NS = require('./night-stop')
+    const night = host.shared.travelNight ??= { cover: null, pitTried: 0 }
+    const phase = NS.dayPhase(travelClock())
+    if (!phase.known) return { hold: true, phase: 'clock_wait', message: '時刻を受信していないため、受信を待ちます', waitMs: 2000 }
+    if (phase.resume && night.cover) {
+      const c = night.cover
+      const air = () => { const v = host.world.getBlock(c.x, c.y, c.z); return v?.known === true && /^minecraft:(?:air|cave_air)$/.test(v.name ?? '') }
+      if (!air()) {
+        try { operations.mining.start([c]) } catch (error) { return { hold: true, phase: 'morning', message: `朝です。穴のふたを掘れません: ${String(error.message ?? error).slice(0, 60)}`, waitMs: 3000 } }
+        const until = Date.now() + 35000
+        while (Date.now() < until && !signal?.aborted && !air()) await new Promise(r => setTimeout(r, 200))
+        if (!air()) return { hold: true, phase: 'morning', message: '朝です。ふたの採掘を確認できません', waitMs: 3000 }
+      }
+      night.cover = null; night.pitTried = 0
+      host.log(`長距離移動: 朝になりました（時刻 ${phase.dayTime}）。穴を出て移動を続けます`)
+    }
+    if (phase.shelter) {
+      if (!night.cover && night.pitTried < 3) {
+        night.pitTried++
+        const r = await travelNightPit(signal)
+        if (r.ok) night.cover = r.cover
+        else return { hold: true, phase: 'night', message: `夕方です（時刻 ${phase.dayTime}）。ここに夜の穴を作れません: ${r.reason}`, waitMs: 3000 }
+      }
+      return { hold: true, phase: 'night', message: night.cover ? `夜のため、ふたをした穴の中で朝まで待ちます（時刻 ${phase.dayTime}）` : `夜です（時刻 ${phase.dayTime}）。穴を作れなかったため、その場で朝まで待ちます`, waitMs: 5000 }
+    }
+    night.pitTried = 0
+    // Food (2026-11-14): below hunger 18 natural healing stops; eat, or hunt
+    // within 24 m by the food step of the preparation gatherer (no wood).
+    const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : null
+    if (hunger !== null && hunger < 18) { try { await operations.quarry.prepGather({ logs: 0, maxMs: 90000 }) } catch {} }
+    return { hold: false }
+  }
   function ensureLongTravel () {
     if (longTravel) return longTravel
     longTravel = require('./long-travel').createLongTravel({
@@ -7700,6 +7772,8 @@ function createRuntime (host) {
       onSurface: feet => { const x = Math.floor(feet.x), z = Math.floor(feet.z), y = Math.floor(feet.y + 0.2); for (let yy = y + 2; yy < 320; yy++) { const b = host.world.getBlock(x, yy, z); if (!b || b.known !== true) { if (yy >= 128) return true; return false } if (b.boundingBox === 'block' && !/leaves|log|wood/.test(b.name ?? '')) return false } return true },
       // Point legs: a walkable received point toward the destination (distance,
       // angle and height samples), previewed by the ordinary movement planner.
+      // Between legs (2026-11-14): the night stop by the received clock, then food.
+      beforeLeg: async ({ signal } = {}) => travelBeforeLeg(signal),
       findPoint: async (feet, destination, { signal } = {}) => {
         const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
         const st0 = working(), fleeing = st0.emptyHandedPrep === true

@@ -33,7 +33,7 @@ const reasons = {
   LONG_TRAVEL_NO_PROGRESS: '同じ場所から先へ進めていません'
 }
 
-function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, inventoryReady = null, onSurface = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, inventoryReady = null, beforeLeg = null, onSurface = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
   legM = LEG_M, arriveM = 20, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 45000, pollMs = 250 } = {}) {
   if (typeof getState !== 'function' || typeof chunkTravel?.start !== 'function' || typeof chunkTravel?.status !== 'function') throw new TypeError('Long travel needs getState and chunk travel')
   let run = null, task = null
@@ -84,6 +84,14 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
       // After a respawn the armour/offhand arrive a little later; the empty-hand
       // judgement (and its exceptions) waits for the complete received inventory.
       if (typeof inventoryReady === 'function' && inventoryReady() !== true) { run.phase = 'waiting'; await sleep(500); continue }
+      // Between legs (2026-11-14): the runtime may eat/hunt or stop for the night
+      // (received clock). A hold keeps the trip paused without counting a failure.
+      if (typeof beforeLeg === 'function') {
+        let r = null
+        try { r = await beforeLeg({ signal }) } catch (error) { r = { hold: true, phase: 'waiting', message: `区間の前の処理に失敗しました: ${String(error.message ?? error).slice(0, 100)}`, waitMs: 5000 } }
+        if (signal.aborted) continue
+        if (r?.hold) { run.phase = r.phase ?? 'waiting'; if (r.message && r.message !== run.message) say(r.message); await sleep(r.waitMs ?? 1000); continue }
+      }
       run.remaining = Math.round(horizontal(feet, run.destination))
       if (run.remaining <= arriveM && (typeof onSurface !== 'function' || onSurface(feet) === true)) { run.phase = 'arrived'; run.reason = 'LONG_TRAVEL_ARRIVED'; say(`${reasons.LONG_TRAVEL_ARRIVED}（残り ${run.remaining}m・${run.legs}区間）`); await persist(); return }
       if (run.legs >= maxLegs) throw fail('LONG_TRAVEL_LEG_LIMIT')
