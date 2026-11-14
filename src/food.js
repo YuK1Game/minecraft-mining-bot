@@ -45,7 +45,9 @@ function chickenRisk () {
 }
 const isSupportedFood = (name, state = null) => {
   const normalized = String(name).includes(':') ? name : `minecraft:${name}`
-  return FOODS.has(normalized) || normalized === 'minecraft:chicken' && resourceMinHealth(state) === 0 && chickenRisk() !== null
+  // Coordinator 2026-11-14: raw chicken is edible on Bedrock (only a chance of
+  // the hunger effect); the runtime allows it below hunger 18 with no other food.
+  return FOODS.has(normalized) || normalized === 'minecraft:chicken' && (resourceMinHealth(state) === 0 || state?.rawChickenAllowed === true) && chickenRisk() !== null
 }
 const nutritionCache = new Map()
 function foodNutrition (name, state = null) {

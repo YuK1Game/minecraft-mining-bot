@@ -463,6 +463,8 @@ function createRuntime (host) {
     const state = host.getState()
     state.totemGuard = offhandTotem()
     state.emptyHandedPrep = emptyHandedPrep()
+    // Raw chicken below hunger 18 when nothing else edible is held (coordinator 2026-11-14).
+    try { const hv = host.shared.vitals?.hunger, hu = Number.isFinite(hv) ? hv : Number.isFinite(hv?.value) ? hv.value : null; state.rawChickenAllowed = hu !== null && hu < 18 && !(state.inventory?.items ?? []).some(i => i.count > 0 && /^minecraft:(?:cooked_[a-z_]+|bread|apple|carrot|potato|baked_potato|beetroot|melon_slice|sweet_berries|glow_berries|dried_kelp|cookie|pumpkin_pie|golden_carrot|golden_apple)$/.test(i.name ?? '')) } catch { state.rawChickenAllowed = false }
     if (readDurability) {
       // Older connected hosts omit stack IDs from their public inventory.
       // Fill only missing fields from the matching received crafting inventory;
@@ -5328,6 +5330,7 @@ function createRuntime (host) {
     if (reason === 'ダメージを検知しました。' && !disposed && !disposing) {
       const damage = bindRecentDamage({ ...receiptState, lifecycle: { phase: receiptState.dead ? 'dead' : 'alive', deathId: actualLifeId(), dead: receiptState.dead === true } })
       if (damage) host.shared.recentDamageNoPrimary = damage
+      host.shared.travelLastDamageAt = Date.now()
     }
     const keepUserCombat = !disposing && !disposed && reason === 'ダメージを検知しました。' && receiptState.phase === 'spawned' && !receiptState.dead && !receiptState.isDead && receiptState.health > 0 && (userBehaviorLease?.kind === 'combat' || userBehaviorSnapshot().claim?.kind === 'combat')
     if (keepUserCombat && userBehaviorLease?.ready) {
@@ -5599,8 +5602,14 @@ function createRuntime (host) {
           const cands = []
           for (const r of radii) for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) if (Math.max(Math.abs(dx), Math.abs(dz)) === r) for (const dy of [0, -1, 1, -2, 2]) cands.push({ x: Math.floor(pos.x) + dx + 0.5, y: Math.floor(pos.y) + dy, z: Math.floor(pos.z) + dz + 0.5 })
           cands.sort((a, b) => Math.hypot(a.x - here.x, a.z - here.z) - Math.hypot(b.x - here.x, b.z - here.z))
+          // Live 15:14: forty back-to-back previews stalled the event loop for 24 s
+          // and the server closed the connection. Yield after each preview and
+          // stop planning after two seconds.
+          const planUntil = Date.now() + 2000
           for (const t of cands.slice(0, 40)) {
+            if (Date.now() > planUntil) return false
             let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
+            await new Promise(resolve => setImmediate(resolve))
             if (pv?.ready !== true) continue
             try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { return false }
             await wait(() => { const m = movement?.snapshot() ?? {}; return !['moving', 'settling'].includes(m.phase) }, 20000)
@@ -5613,13 +5622,17 @@ function createRuntime (host) {
           for (const d of drops.slice(0, 4)) await walkNear(d.position, [0, 1])
           await sleep(800)
         }
-        let hunts = 0, logsTried = 0
+        let hunts = 0, logsTried = 0, eatRefused = false, rottenTried = false
         const skipLog = new Set() // logs that could not be reached or mined are not tried again
         while (Date.now() - started < maxMs) {
           const st = working(); if (!st.position || st.dead) { await sleep(1000); continue }
           // 1. food first while hunger is below 18
           if ((hunger() ?? 20) < 18) {
-            if (count(FOOD) > 0) { try { await operations.food.eat({}); say(`食べました（満腹度 ${hunger()}）`) } catch (e) { say(`食事を見送り: ${String(e.message ?? e).slice(0, 60)}`); await sleep(2000) } continue }
+            // Live 15:04: a raw chicken matched FOOD but the eat check refused it
+            // and the step looped. One refusal ends eating here (emergency rotten
+            // flesh is tried once); the step goes on to hunting.
+            if (!eatRefused && count(FOOD) > 0) { try { await operations.food.eat({}); say(`食べました（満腹度 ${hunger()}）`); continue } catch (e) { eatRefused = true; say(`食事を見送り: ${String(e.message ?? e).slice(0, 60)}`) } }
+            if (!rottenTried && count(/^minecraft:rotten_flesh$/) > 0) { rottenTried = true; try { await operations.food.eat({ allowEmergencyRotten: true }); say(`非常食として腐った肉を食べました（満腹度 ${hunger()}）`); continue } catch {} }
             const feet = feetOf()
             const animal = allActors().filter(a => a?.kind === 'mob' && a.hostile === false && /^minecraft:(?:cow|pig|sheep|chicken)$/.test(a.entityType ?? '') && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
             if (animal && hunts < 12) {
@@ -5696,6 +5709,16 @@ function createRuntime (host) {
       },
       // One canopy-escape pass outside a trip (same rules as during long travel).
       leafEscape: async () => { if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。'); if (longTravel?.status?.().busy) throw new Error('長距離移動の途中です。'); return travelLeafEscape(null) },
+      // Read-only: the route the trip itself would plan from here (same options).
+      travelDebug: (input = {}) => {
+        const st = working(); if (!st.position) throw new Error('位置が不明です。')
+        const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, d = input.destination ?? { x: 1968, z: -2041 }
+        const bad = host.shared.longTravelBadCells
+        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: d, maxNodes: 60000, maxMs: 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: bad ?? new Set() })
+        const firstDig = r.ready ? r.path.findIndex(q => q.dig) : -1
+        const previews = [12, 9, 6, 4, 3, 2, 1].map(a => { const q = r.path[Math.min(firstDig > 0 ? Math.min(a, firstDig - 1) : a, r.path.length - 1)]; if (!q) return null; let pv = null; try { motionOrigin = working(); pv = movement?.preview({ x: q.x, y: q.y, z: q.z }, { allowWater: true, allowLowHealth: true, maxDistance: 16 }) } catch (e) { pv = { ready: false, reason: e.message } } return { a, q, ready: pv?.ready === true, reason: pv?.reason ?? null } })
+        return { bad: bad?.size ?? 0, ready: r.ready, reached: r.reached, timedOut: r.timedOut, expanded: r.expanded, length: r.path.length, firstDig, firstSteps: r.path.slice(0, 6), previews }
+      },
       // Read-only: why the empty-handed preparation flag is on or off.
       prepCheck: () => {
         const cheap = require('./learning-health').cheapItem, out = { allowance: longTravelLogAllowance(), flag: emptyHandedPrep(), blocking: [] }
@@ -5738,7 +5761,13 @@ function createRuntime (host) {
         return autonomy.start({ objective: 'long_travel_prep', logCount })
       },
       endLongTravelPrep: () => { host.shared.woodHarvestAllowance = null; return autonomy.stop('長距離移動の準備を終了しました。') },
-      cancelTravel: () => longTravel?.cancel('MANUAL_STOP') ?? { busy: false, phase: 'idle' },
+      cancelTravel: async () => {
+        const result = await (longTravel?.cancel('MANUAL_STOP') ?? { busy: false, phase: 'idle' })
+        // A manual stop is saved, so a reconnect or restart does not resume it.
+        try { const f = longTravelFile(), fsp = require('node:fs/promises'); const doc = JSON.parse(await fsp.readFile(f, 'utf8')); doc.phase = 'stopped'; doc.reason = 'MANUAL_STOP'; doc.savedAt = new Date().toISOString(); await fsp.writeFile(f, JSON.stringify(doc, null, 2)) } catch {}
+        host.shared.longTravelResume = null
+        return result
+      },
       cancelChunkMove: operationId => {
         if (!operationId || chunkTravel?.status().operationId !== operationId) throw Object.assign(new Error('移動操作が変わりました。状態を更新してください。'), { code: 'STALE_CHUNK_MOVE' })
         return cancelChunkMovement('MANUAL_STOP')
@@ -6911,7 +6940,7 @@ function createRuntime (host) {
   // Never throws out of the timer: a fault only logs (a timer error ends the process).
   idleEat.timer = setInterval(() => { idleEatTick().catch(error => { idleEat.busy = false; try { host.log(`待機中の食事の確認に失敗: ${String(error?.message ?? error).slice(0, 120)}`) } catch {} }) }, 5000)
   idleEat.timer.unref?.()
-  function quarryCanSelectTarget (target, state, info = {}) { if (!require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
+  function quarryCanSelectTarget (target, state, info = {}) { if (!require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; if (longTravel?.status?.().busy && /witch/.test(String(target?.entityType ?? target?.name ?? ''))) return { allowed: false, reason: 'TRAVEL_AVOID_WITCH' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
   function quarryCanContinue (target, state, info = {}) { if (!require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canContinue(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true, retreating: info.retreating === true || quarryRetreatDepth > 0 }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
   function quarryState () {
     const state = lightweightUserState()
@@ -7769,6 +7798,17 @@ function createRuntime (host) {
   // ordinary mining; nothing is picked up on purpose. The spot is chosen on
   // received terrain: every cell down to received solid ground, and the fall
   // damage (each air run minus three) leaves at least six health.
+  async function travelHoldTool (blockName) {
+    const soft = /dirt|grass_block|gravel|sand|clay|snow|mud|podzol|mycelium|farmland|soul_soil/.test(String(blockName ?? ''))
+    const kind = soft ? 'shovel' : 'pickaxe'
+    const tier = n => ['wooden', 'golden', 'stone', 'iron', 'diamond', 'netherite'].findIndex(t => n.startsWith(`minecraft:${t}_`))
+    const items = working().inventory?.items ?? []
+    const tool = items.filter(i => i.count > 0 && i.slot < 36 && new RegExp(`_${kind}$`).test(i.name ?? '')).sort((a, b) => tier(b.name) - tier(a.name))[0]
+    if (!tool) return false
+    if (working().heldItem?.name === tool.name) return true
+    await inventory.equipForMining(tool.slot)
+    return true
+  }
   async function travelLeafEscape (signal) {
     const sleep = ms => new Promise(r => setTimeout(r, ms))
     const feetOf = () => { const q = working().position; return q ? { x: q.x, y: q.y - 1.62, z: q.z } : null }
@@ -7890,24 +7930,121 @@ function createRuntime (host) {
     // Food (2026-11-14): below hunger 18 natural healing stops; eat, or hunt
     // within 24 m by the food step of the preparation gatherer (no wood).
     const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : null
+    // Shooters (live 16:22: a pillager shot the bot from 20 to 0 while the trip
+    // kept trying legs): retreat out of range first.
+    try { if (await travelShooterRetreat(signal)) return { hold: false } } catch {}
     if (hunger !== null && hunger < 18) { try { await operations.quarry.prepGather({ logs: 0, maxMs: 90000 }) } catch {} }
+    // The boat was lost (coordinator 2026-11-14): within the preparation
+    // allowance, with trees near, gather a few logs and craft a boat again.
+    try { await travelMakeBoat(signal) } catch (error) { host.log(`長距離移動: ボートを作れませんでした: ${String(error.message ?? error).slice(0, 100)}`) }
     return { hold: false }
+  }
+  // Retreat from shooters during long travel: a shooter within 20 m and a hit
+  // in the last 5 s (or the shooter within 10 m) moves the bot 5-12 m straight
+  // away by the ordinary movement (sprinting when hunger allows).
+  async function travelShooterRetreat (signal) {
+    const SHOOT = require('./learning-health').SHOOTING
+    const p = working().position; if (!p) return false
+    const feet = { x: p.x, y: p.y - 1.62, z: p.z }
+    const sh = allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && SHOOT.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 20)
+    if (!sh.length) return false
+    const nearest = Math.min(...sh.map(a => Math.hypot(a.position.x - feet.x, a.position.z - feet.z)))
+    const hurt = Date.now() - (host.shared.travelLastDamageAt ?? 0) < 5000
+    // Before the shooter's range (coordinator 2026-11-14): within 16 m, or hit.
+    if (!hurt && nearest > 16) return false
+    const low = (working().health ?? 20) < 10
+    // Below half health, prefer a spot no shooter can see (a solid received block
+    // on the line between eyes).
+    const covered = t => sh.every(a => { const sx = a.position.x, sy = a.position.y + 1.5, sz = a.position.z, tx = t.x, ty = t.y + 1.6, tz = t.z, n = Math.ceil(Math.hypot(tx - sx, ty - sy, tz - sz) * 2); for (let i = 1; i < n; i++) { const f = i / n, b = host.world.getBlock(Math.floor(sx + (tx - sx) * f), Math.floor(sy + (ty - sy) * f), Math.floor(sz + (tz - sz) * f)); if (b?.known === true && b.boundingBox === 'block') return true } return false })
+    let ax = 0, az = 0
+    for (const a of sh) { const dx = feet.x - a.position.x, dz = feet.z - a.position.z, d = Math.max(0.5, Math.hypot(dx, dz)); ax += dx / d; az += dz / d }
+    const base = Math.atan2(az, ax)
+    const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : 0
+    const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16, sprint: hunger > 6 }
+    const until = Date.now() + 1500
+    for (const d of [12, 8, 5]) for (const deg of [0, 30, -30, 60, -60, 90, -90]) {
+      if (signal?.aborted || Date.now() > until) return false
+      const ang = base + deg * Math.PI / 180
+      const x = Math.floor(feet.x + Math.cos(ang) * d) + 0.5, z = Math.floor(feet.z + Math.sin(ang) * d) + 0.5
+      for (const dy of [0, 1, -1, 2, -2]) {
+        const t = { x, y: Math.round(feet.y) + dy, z }
+        let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
+        await new Promise(resolve => setImmediate(resolve))
+        if (pv?.ready !== true) continue
+        if (low && !covered(t) && Date.now() < until - 700) continue
+        try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { return false }
+        host.log(`長距離移動: 射撃する敵（${sh.map(a => String(a.entityType ?? a.name).replace('minecraft:', '')).join('・')}、${Math.round(nearest)}m）から離れます`)
+        const stop = Date.now() + 8000
+        while (Date.now() < stop) { const m = movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await new Promise(r => setTimeout(r, 200)) }
+        return true
+      }
+    }
+    return false
+  }
+  async function travelMakeBoat (signal) {
+    const items = () => working().inventory?.items ?? []
+    if (items().some(i => /_boat$/.test(i.name ?? '') && i.count > 0)) return { ok: true, have: true }
+    if (!longTravelLogAllowance()) return { ok: false, reason: 'NO_ALLOWANCE' }
+    const now = Date.now(), memo = host.shared.travelBoatMemo ??= { lastTry: 0 }
+    if (now - memo.lastTry < 300000) return { ok: false, reason: 'RECENT' }
+    memo.lastTry = now
+    const LOGS = /^minecraft:([a-z_]+)_log$/
+    const logs = () => items().filter(i => LOGS.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
+    if (logs() < 3) { await operations.quarry.prepGather({ logs: 3, maxMs: 120000 }) }
+    if (signal?.aborted || logs() < 3) return { ok: false, reason: 'NO_LOGS' }
+    const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
+    const wood = LOGS.exec(log.name)[1]
+    host.log(`長距離移動: ボートを作ります（${wood}）`)
+    await crafting.openInventory()
+    try { await crafting.craft(`minecraft:${wood}_planks`, { times: 3 }); await crafting.craft('minecraft:crafting_table', { times: 1 }) } finally { try { crafting.closeContainer() } catch {} }
+    const table = items().find(i => i.name === 'minecraft:crafting_table' && i.slot <= 8) ?? items().find(i => i.name === 'minecraft:crafting_table')
+    if (!table) return { ok: false, reason: 'NO_TABLE' }
+    if (table.slot > 8) await operations.inventory.equip(table.slot)
+    const t = items().find(i => i.name === 'minecraft:crafting_table' && i.slot <= 8)
+    const p = working().position, fx = Math.floor(p.x), fy = Math.round(p.y - 1.62), fz = Math.floor(p.z)
+    let placed = null
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+      const pos = { x: fx + dx, y: fy, z: fz + dz }, at = host.world.getBlock(pos.x, pos.y, pos.z), below = host.world.getBlock(pos.x, pos.y - 1, pos.z)
+      if (at?.known !== true || !/^minecraft:air$/.test(at.name ?? '') || below?.known !== true || below.boundingBox !== 'block') continue
+      try { await interactions.placeCraftingTable({ position: pos, slot: t.slot }); placed = pos; break } catch {}
+    }
+    if (!placed) return { ok: false, reason: 'TABLE_NOT_PLACED' }
+    await interactions.openCraftingTable(placed)
+    try { await crafting.craft(`minecraft:${wood}_boat`, { times: 1 }) } finally { try { crafting.closeContainer() } catch {} }
+    const ok = items().some(i => /_boat$/.test(i.name ?? '') && i.count > 0)
+    host.log(`長距離移動: ボート${ok ? 'を作りました（受信した持ち物で確認）' : 'を確認できません'}`)
+    return { ok }
   }
   // Resume a trip that the previous code was running when it was reloaded
   // (bounded: within ten minutes, once, after the bot is spawned and idle).
-  const travelResumeTimer = setInterval(() => {
+  // Live 14:42: a reconnect also stopped the trip; the saved trip file (phase
+  // still moving, saved within 15 minutes, not stopped by hand) resumes it too.
+  let travelFileChecked = false
+  const travelResumeTimer = setInterval(async () => {
     if (disposed || disposing) { clearInterval(travelResumeTimer); return }
+    if (raw().phase !== 'spawned' || quarryJob?.holdsWork() || longTravel?.status?.().busy) return
+    // Never inside a node --test child (live 17:10: a test scene with the live Realm id resumed the real trip and hung the comparison).
+    if (!host.shared.longTravelResume && !travelFileChecked && process.env.NODE_TEST_CONTEXT) travelFileChecked = true
+    if (!host.shared.longTravelResume && !travelFileChecked) {
+      travelFileChecked = true
+      try { const doc = JSON.parse(await require('node:fs/promises').readFile(longTravelFile(), 'utf8')); // Only the same Realm and profile the trip was saved for (live 16:13: a test
+      // runtime resumed the live trip from the shared file and never exited).
+      if (['moving', 'cancelled'].includes(doc?.phase) && doc.realmId != null && doc.realmId === String(raw().realm?.id ?? '') && doc.profile === (raw().profile ?? null) && doc.destination && Date.now() - Date.parse(doc.savedAt) < 900000) host.shared.longTravelResume = { destination: { x: doc.destination.x, z: doc.destination.z }, at: Date.now() } } catch {}
+    }
     const r = host.shared.longTravelResume
-    if (!r) { clearInterval(travelResumeTimer); return }
+    if (!r) { if (travelFileChecked) clearInterval(travelResumeTimer); return }
     if (Date.now() - r.at > 600000) { host.shared.longTravelResume = null; return }
     if (raw().phase !== 'spawned' || quarryJob?.holdsWork() || longTravel?.status?.().busy) return
     host.shared.longTravelResume = null
     Promise.resolve().then(() => operations.quarry.travelTo({ destination: r.destination })).then(() => host.log(`長距離移動: 行動コードの反映後に移動を再開しました（目的地 ${r.destination.x}, ${r.destination.z}）`), error => host.log(`長距離移動: 反映後の再開に失敗しました: ${String(error.message ?? error).slice(0, 100)}`))
   }, 2000)
+  travelResumeTimer.unref?.() // never keeps a process (or a test) alive
   function ensureLongTravel () {
     if (longTravel) return longTravel
     longTravel = require('./long-travel').createLongTravel({
       getState: quarryState,
+      // One line per pass (coordinator 2026-11-14: measure distance per hour and where the time goes).
+      record: async entry => { const f = require('node:path').resolve(__dirname, '..', '.local', 'long-travel', 'legs.jsonl'); await require('node:fs/promises').mkdir(require('node:path').dirname(f), { recursive: true }); await require('node:fs/promises').appendFile(f, JSON.stringify(entry) + '\n') },
       chunkTravel: { start: input => ensureChunkTravel().start(input), status: () => ensureChunkTravel().status(), cancel: reason => cancelChunkMovement(reason ?? 'LONG_TRAVEL') },
       // Only a read request; the chunk travel itself uses received terrain only.
       requestTerrain: async (area, { signal } = {}) => { const st = quarryState(); const y = Math.floor((st.position?.y ?? 65) - 1.62); return requestQuarryTerrain({ config: { target: { chunks: [{ x: area.x1, z: area.z1 }] } }, yTop: Math.min(300, y + 12), yBottom: Math.max(-60, y - 12) }, { signal }) },
@@ -7921,8 +8058,19 @@ function createRuntime (host) {
       beforeLeg: async ({ signal } = {}) => travelBeforeLeg(signal),
       findPoint: async (feet, destination, { signal } = {}) => {
         const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
-        const st0 = working(), fleeing = st0.emptyHandedPrep === true
-        const shooters = fleeing ? allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && require('./learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).map(a => a.position) : []
+        // Shooters (witches included) are avoided on every long trip (coordinator 2026-11-14).
+        const st0 = working(), fleeing = true
+        const shooters = fleeing ? allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && require('./learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 48).map(a => a.position) : []
+        // Avoid zones (coordinator 2026-11-14): 20 m around a received shooter,
+        // 32 m around a group of three or more (an outpost), never closer than
+        // the bot already is, so the route bends away before the shooter's range.
+        const avoidCols = new Set()
+        for (const q of shooters) {
+          const group = shooters.filter(o => Math.hypot(o.x - q.x, o.z - q.z) <= 16).length >= 3
+          const r = Math.min(group ? 32 : 20, Math.hypot(q.x - feet.x, q.z - feet.z) - 2)
+          if (r <= 1) continue
+          for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) for (let dz = -Math.ceil(r); dz <= Math.ceil(r); dz++) if (dx * dx + dz * dz <= r * r) avoidCols.add(`${Math.floor(q.x) + dx},${Math.floor(q.z) + dz}`)
+        }
         const here = Math.hypot(destination.x - feet.x, destination.z - feet.z)
         const heading = Math.atan2(destination.z - feet.z, destination.x - feet.x)
         // Starting in water (live 2026-11-14: the respawn point is a pool), climb
@@ -7940,8 +8088,32 @@ function createRuntime (host) {
         // Follow the coarse wide-area route first (2026-11-14): a point some
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
-          const planRoute = () => require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: host.shared.longTravelBadCells ??= new Set() })
+          const planRoute = (extra = {}) => { const bad = host.shared.longTravelBadCells ??= new Set(); const blocked = avoidCols.size ? { has: k => bad.has(k) || avoidCols.has(k) } : bad; return require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 60000, maxMs: 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked, ...extra }) }
           let route = planRoute()
+          // Live 16:05: columns marked after failed walks fenced the bot in (the
+          // same route without them existed). When they leave no route at all,
+          // they are forgotten and the plan is made again.
+          { const bad = host.shared.longTravelBadCells; if (!route.ready && bad?.size) { host.log(`長距離移動: 歩けなかった列の記録（${bad.size}件）を消して計画し直します`); bad.clear(); route = planRoute() } }
+          // No reachable point is closer (coordinator 2026-11-14, a 20 m cliff at
+          // 16:51): stairs cut into a face may be used, never a tunnel.
+          if (!route.ready) { const stairs = planRoute({ faceStairs: true, maxMs: 800 }); if (stairs.ready) { host.log('長距離移動: 近づける場所がないため、壁面の階段で進みます'); route = stairs } }
+          // Going around (coordinator 2026-11-14): when the route does not reach
+          // the goal, request the received-terrain frontier closest to the
+          // destination (up to three chunks, each at most every two minutes) and
+          // plan again; the best reachable point toward the goal is used.
+          if (!route.reached && route.frontier.length) {
+            const asked = host.shared.longTravelFrontierAsked ??= new Map()
+            const chunks = [...new Map(route.frontier.map(f => [`${Math.floor(f.x / 16)},${Math.floor(f.z / 16)}`, f])).values()]
+              .sort((a, b) => Math.hypot(destination.x - a.x, destination.z - a.z) - Math.hypot(destination.x - b.x, destination.z - b.z))
+              .filter(f => Date.now() - (asked.get(`${Math.floor(f.x / 16)},${Math.floor(f.z / 16)}`) ?? 0) > 120000).slice(0, 3)
+            if (chunks.length) {
+              const y = Math.floor(feet.y)
+              for (const f of chunks) asked.set(`${Math.floor(f.x / 16)},${Math.floor(f.z / 16)}`, Date.now())
+              try { await requestQuarryTerrain({ config: { target: { chunks: chunks.map(f => ({ x: Math.floor(f.x / 16), z: Math.floor(f.z / 16) })) } }, yTop: Math.min(150, y + 40), yBottom: Math.max(-60, y - 24) }, {}) } catch {}
+              await new Promise(r => setTimeout(r, 800))
+              route = planRoute()
+            }
+          }
           // Live 2026-11-14 13:35: on a hilltop the terrain above y80 was not
           // received, so no column counted as open sky and the route closed in
           // (97 nodes, no frontier). Request the terrain above once per spot
@@ -7961,9 +8133,9 @@ function createRuntime (host) {
             if (Math.hypot(before.x - feet.x, before.z - feet.z) > 1.2 || Math.abs(before.y - feet.y) > 0.6) { let pv = null; try { motionOrigin = working(); pv = movement?.preview({ x: before.x, y: before.y, z: before.z }, opts) } catch {} if (pv?.ready === true) return { x: before.x, y: before.y, z: before.z } }
             else return { x: step.x, y: step.y, z: step.z, dig: step.dig }
           }
-          if (route.ready) for (const ahead of [12, 9, 6, 4].map(a => firstDig > 0 ? Math.min(a, firstDig - 1) : a)) {
+          if (route.ready) for (const ahead of [12, 9, 6, 4, 3, 2, 1].map(a => firstDig > 0 ? Math.min(a, firstDig - 1) : a)) {
             const p = route.path[Math.min(ahead, route.path.length - 1)]
-            if (!p || Math.hypot(p.x - feet.x, p.z - feet.z) < 2) continue
+            if (!p || Math.hypot(p.x - feet.x, p.z - feet.z) < 0.8) continue // a one-node step counts (live 16:06: only it was walkable)
             if (fleeing && shooters.some(q => Math.hypot(q.x - p.x, q.z - p.z) < Math.min(6, Math.hypot(q.x - feet.x, q.z - feet.z)))) continue
             let preview = null
             try { motionOrigin = working(); preview = movement?.preview({ x: p.x, y: p.y, z: p.z }, opts) } catch { preview = null }
@@ -8000,6 +8172,9 @@ function createRuntime (host) {
             const air = () => { const b = host.world.getBlock(cell.x, cell.y, cell.z); return b?.known === true && /^minecraft:(?:air|cave_air)$/.test(b.name ?? '') }
             if (air()) continue
             host.log(`長距離移動: 段を掘ります (${cell.x},${cell.y},${cell.z}) ${String(cell.name ?? '').replace('minecraft:', '')}`)
+            // Live 14:35: stone was refused with the wooden pickaxe in the bag.
+            // Hold the best received pickaxe (stone-like) or shovel (soft) first.
+            try { await travelHoldTool(cell.name) } catch {}
             try { operations.mining.start([{ x: cell.x, y: cell.y, z: cell.z }]) } catch (error) { return { ok: false, code: 'DIG_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
             const until = Date.now() + 30000
             while (!air()) {
@@ -8030,7 +8205,7 @@ function createRuntime (host) {
           if (Date.now() > until) { try { movement?.stop?.('timeout') } catch {} return { ok: false, code: 'POINT_WALK_TIMEOUT' } }
         }
       },
-      save: async doc => { const fsp = require('node:fs/promises'), file = longTravelFile(); await fsp.mkdir(require('node:path').dirname(file), { recursive: true }); await fsp.writeFile(file + '.tmp', JSON.stringify(doc, null, 2)); await fsp.rename(file + '.tmp', file) },
+      save: async doc => { doc = { ...doc, realmId: raw().realm?.id == null ? null : String(raw().realm.id), profile: raw().profile ?? null }; const fsp = require('node:fs/promises'), file = longTravelFile(); await fsp.mkdir(require('node:path').dirname(file), { recursive: true }); await fsp.writeFile(file + '.tmp', JSON.stringify(doc, null, 2)); await fsp.rename(file + '.tmp', file) },
       log: message => host.log(message)
     })
     return longTravel
