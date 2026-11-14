@@ -5658,6 +5658,16 @@ function createRuntime (host) {
       },
       // Read-only request: the terrain above the bot (its chunk and the eight
       // around it) up to y=120, to find the way back to open sky from a cave.
+      // Read-only: why the empty-handed preparation flag is on or off.
+      prepCheck: () => {
+        const cheap = require('./learning-health').cheapItem, out = { allowance: longTravelLogAllowance(), flag: emptyHandedPrep(), blocking: [] }
+        for (const [container, size] of [['main', 36], ['armor', 4], ['offhand', 1]]) {
+          const v = inventoryStore.view(container)
+          if (v.known !== true || v.slots.length !== size) { out.blocking.push({ container, known: v.known, size: v.slots.length }); continue }
+          v.slots.forEach((slot, i) => { const name = slot.raw ? crafting.itemNameOf(slot.raw.network_id) : null; if (!(slot.received === true && slot.raw && (slot.raw.network_id === 0 || slot.raw.count === 0 || container === 'main' && cheap(name)))) out.blocking.push({ container, slot: i, received: slot.received, name, id: slot.raw?.network_id }) })
+        }
+        return out
+      },
       requestTerrainAbove: async () => {
         const st = working(); if (!st.position) throw new Error('位置が不明です。')
         const cx = Math.floor(st.position.x / 16), cz = Math.floor(st.position.z / 16), y = Math.floor(st.position.y - 1.62)

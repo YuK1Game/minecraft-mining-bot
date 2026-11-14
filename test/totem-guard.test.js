@@ -112,6 +112,6 @@ test('empty-handed preparation avoids shooters and engages only a non-shooter wi
 // counts as nothing to lose; anything else restores the ordinary judgements.
 test('the cheap-item list is fixed: gathered materials and food yes, valuables no', () => {
   const { cheapItem } = require('../src/learning-health')
-  for (const name of ['dirt', 'leaf_litter', 'cobblestone', 'gravel', 'oak_log', 'spruce_planks', 'stick', 'crafting_table', 'wooden_pickaxe', 'beef', 'cooked_porkchop', 'wheat_seeds']) assert.equal(cheapItem('minecraft:' + name), true, name)
+  for (const name of ['dirt', 'leaf_litter', 'oak_boat', 'cobblestone', 'gravel', 'oak_log', 'spruce_planks', 'stick', 'crafting_table', 'wooden_pickaxe', 'beef', 'cooked_porkchop', 'wheat_seeds']) assert.equal(cheapItem('minecraft:' + name), true, name)
   for (const name of ['purple_shulker_box', 'diamond_pickaxe', 'iron_pickaxe', 'stone_pickaxe', 'totem_of_undying', 'diamond_helmet', 'leather_chestplate', 'bow', 'arrow', 'torch', 'coal']) assert.equal(cheapItem('minecraft:' + name), false, name)
 })
