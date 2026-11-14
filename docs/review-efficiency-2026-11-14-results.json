@@ -190,5 +190,12 @@
     "Strict failure-signature comparison remains failed for four route/escape cases",
     "The four cases were already failing under an earlier baseline; full causal explanation of supervisor timeout remains unconfirmed",
     "Source code unchanged after environment outage; this evidence and report are documentation only"
-  ]
+  ],
+  "followUp": {
+    "report": "review-efficiency-followup-2026-11-14.md",
+    "results": "review-efficiency-followup-2026-11-14-results.json",
+    "pullRequest": 76,
+    "sourceCommit": "e480146b92d018ee593617e3a7d3eaea1f1c3172",
+    "note": "Historical record above is unchanged; see follow-up for later fixes, comparisons and merge state."
+  }
 }
