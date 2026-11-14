@@ -7555,7 +7555,7 @@ function createRuntime (host) {
           if (signal?.aborted) { try { movement?.stop?.('LONG_TRAVEL_CANCELLED') } catch {} return { ok: false, code: 'LONG_TRAVEL_CANCELLED' } }
           const st = working(), m = movement?.snapshot() ?? {}
           if (st.health < startHealth && st.emptyHandedPrep !== true) { try { movement?.stop?.('damage') } catch {} return { ok: false, code: 'CHUNK_TRAVEL_DAMAGED' } }
-          if (['failed', 'stopped', 'replan_required'].includes(m.phase)) return { ok: false, code: 'POINT_WALK_FAILED', message: String(m.reason ?? m.phase).slice(0, 120) }
+          if (['failed', 'stopped', 'replan_required'].includes(m.phase)) return { ok: false, code: m.phase === 'replan_required' || /replan|correction/i.test(String(m.reason ?? '')) ? 'POINT_REPLAN' : 'POINT_WALK_FAILED', message: String(m.reason ?? m.phase).slice(0, 120) }
           if (['completed', 'idle', 'awaiting_server_confirmation'].includes(m.phase) && m.running !== true) {
             const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }
             return Math.hypot(feet.x - target.x, feet.z - target.z) <= 1.2 && Math.abs(feet.y - target.y) <= 1.6 ? { ok: true } : { ok: false, code: 'POINT_ENDED_SHORT' }

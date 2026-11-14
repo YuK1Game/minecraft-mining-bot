@@ -99,7 +99,7 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
           else { last = result ?? { ok: false, code: 'POINT_WALK_FAILED' }; say(`中継点 (${point.x},${point.y},${point.z}) へ歩けませんでした（${last.code}${last.message ? ': ' + last.message : ''}）`) }
         }
       }
-      if (!moved) for (const [angle, length] of tries) {
+      if (!moved && last?.code !== 'POINT_REPLAN') for (const [angle, length] of tries) {
         const area = chunkAhead(feet, run.destination, angle, length)
         const key = `${area.x1},${area.z1}`
         if (tried.has(key) || area.x1 === Math.floor(feet.x / 16) && area.z1 === Math.floor(feet.z / 16) && run.remaining > length) continue
@@ -114,7 +114,9 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
       const after = feetOf(getState())
       // Damage, combat holding control or a changed connection is not a
       // blocked direction: wait and try again without counting it.
-      const soft = !moved && ['CHUNK_TRAVEL_DAMAGED', 'CHUNK_TRAVEL_BUSY', 'CHUNK_TRAVEL_CONTEXT_CHANGED'].includes(last?.code)
+      // A server position correction mid-walk (water) only needs a new plan from
+      // the corrected position (live 2026-11-14 10:35).
+      const soft = !moved && ['CHUNK_TRAVEL_DAMAGED', 'CHUNK_TRAVEL_BUSY', 'CHUNK_TRAVEL_CONTEXT_CHANGED', 'POINT_REPLAN'].includes(last?.code)
       if (soft) { run.reason = last.code; continue }
       if (moved) {
         run.legs++; run.failures = 0; run.lastLegAt = new Date(now()).toISOString()
