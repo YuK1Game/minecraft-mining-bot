@@ -244,6 +244,7 @@ function createAutonomyRuntime (rt) {
     },
     planAction: (state, observations, options) => {
       // Player mode: drops that cannot be picked up are not offered to the plan.
+      const allDrops = observations?.drops
       { const drops = rt.require('./modes/player-drops'), shared = rt.host.shared; drops.noteFailedDrops({ mode: shared.botMode, shared, progress: shared.autonomyProgress, drops: observations?.drops }); observations = drops.withCollectableDrops({ mode: shared.botMode, shared, state, observations, getBlock: (x, y, z) => rt.planningWorld.getBlock(x, y, z), log: text => rt.host.log(text) }) }
       // Long-trip preparation (2026-11-14 decision): the base wood path (logs,
       // planks, table, wooden pickaxe) instead of the survival/diamond plans.
@@ -255,7 +256,9 @@ function createAutonomyRuntime (rt) {
       if(nightShelter)return nightShelter
       const plannedDiamond = rt.nextDiamondAction(state, observations, options)
       // Player mode: an ore (coal, iron, diamond) that the pickaxe reaches now comes before a tunnel to an enclosed one.
-      const diamond = rt.require('./modes/player-ore').reachableOre({ mode: rt.host.shared.botMode, state, decision: plannedDiamond, observations, preview: targets => rt.mining.preview(targets), guarded: point => { const block = rt.planningWorld.getBlock(point.x, point.y, point.z); return block?.protected === true || !!block?.protectionSource } }) ?? plannedDiamond
+      // Player mode: a wanted item one dig away (the stone over a step down) gets its way opened first.
+      const dropWay = rt.require('./modes/player-drop-access').openWayToDrop({ mode: rt.host.shared.botMode, shared: rt.host.shared, state, decision: plannedDiamond, drops: allDrops, getBlock: (x, y, z) => rt.planningWorld.getBlock(x, y, z), preview: targets => rt.mining.preview(targets), log: text => rt.host.log(text) })
+      const diamond = dropWay ?? rt.require('./modes/player-ore').reachableOre({ mode: rt.host.shared.botMode, state, decision: plannedDiamond, observations, preview: targets => rt.mining.preview(targets), guarded: point => { const block = rt.planningWorld.getBlock(point.x, point.y, point.z); return block?.protected === true || !!block?.protectionSource } }) ?? plannedDiamond
       const direct = rt.immediateDiamond(state, diamond, targets => rt.mining.preview(targets))
       const chosen = direct ? { ...diamond, type: 'mine_ore', stage: 'diamond', reason: '確認済みの採掘面に直接届くダイヤ鉱石を採ります。', resourceTarget: diamond.target, requiresLivePreview: true } : rt.nextSurvivalAction(state, observations, survivalOptions) ?? diamond
       const current = rt.raw()
