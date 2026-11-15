@@ -208,6 +208,8 @@ Object.assign(activityReasons, {
 })
 const reasonLabel = code => activityReasons[code] ?? null
 
+const { modeState, playerActivity } = require('./player-activity')
+
 function activityOf (base) {
   const q = base.quarry
   if (base.stale || !base.apiAvailable) return { kind: 'offline', label: 'Botに接続していません', detail: null, code: null }
@@ -216,6 +218,8 @@ function activityOf (base) {
   const behavior = base.behavior?.activeKind
   if (behavior === 'combat' && !['COMBAT', 'SUSPEND_FOR_COMBAT'].includes(q?.state)) return { kind: 'busy', label: '戦闘中', detail: null, code: null }
   if (behavior === 'sleeping') return { kind: 'busy', label: 'ベッドで就寝中', detail: null, code: null }
+  const player = playerActivity(base.mode)
+  if (player) return player
   // Waiting always says what for (2026-11-14 user request).
   if (!q || !q.jobId) return { kind: 'idle', label: '待機中: 露天掘りのジョブなし', detail: null, code: null }
   if (q.state === 'IDLE') return { kind: 'idle', label: '待機中: 計画の確認と開始待ち', detail: null, code: null }
@@ -261,7 +265,7 @@ function decorate (base) {
   const waiting = !base.online || !q || !q.loaded || ['IDLE', 'STOPPING', 'PAUSED', 'DISCONNECTED', 'UNKNOWN'].includes(q.state)
   const title = q ? completed ? q.result.type === 'COMPLETED_WITH_EXCEPTIONS' ? '露天掘り完了（保留箇所あり）' : '露天掘り完了' : labels[q.state] ?? '露天掘りの状態を確認中' : '露天掘りの計画を待っています'
   const detail = base.stale ? '最終確認時の情報です。現在の状態は未確認です。' : (q?.persistence?.status === 'failed' ? '状態保存に失敗しています。自動再開は禁止されています。' : q?.draining && q?.state === 'PAUSED' ? '入力は停止済みです。処理と保存の完了を確認しています。' : null) ?? q?.pauseReason ?? q?.egress?.reason ?? q?.error ?? (q?.currentY != null ? `作業層 Y ${q.currentY}` : 'サーバーから確認できた情報を表示します。')
-  return { ...base, activity: activityOf(base), goal: 'quarry', work: { title, detail, state: base.stale ? 'waiting' : completed ? 'complete' : waiting ? 'waiting' : q.state === 'FINISHED' ? 'stopped' : 'running', updatedAt: base.observedAt, next: null }, milestones: [], recentEvents: q?.events ?? [] }
+  return { ...base, activity: activityOf(base), goal: base.mode?.mode === 'player' ? 'player' : 'quarry', work: { title, detail, state: base.stale ? 'waiting' : completed ? 'complete' : waiting ? 'waiting' : q.state === 'FINISHED' ? 'stopped' : 'running', updatedAt: base.observedAt, next: null }, milestones: [], recentEvents: q?.events ?? [] }
 }
 
 function sanitizeStatus (raw, { observedAt = new Date().toISOString(), checkedAt = observedAt, apiAvailable = true } = {}) {
@@ -275,14 +279,14 @@ function sanitizeStatus (raw, { observedAt = new Date().toISOString(), checkedAt
   const position = eye ? { x: eye.x, y: eye.y - EYE_HEIGHT, z: eye.z, source, confirmed: raw.positionServerConfirmed !== false && serverPositionSources.has(source) } : null
   const hungerEntry = raw.vitals?.hunger ?? raw.food?.hunger ?? raw.hunger
   const hunger = hungerEntry?.source === 'client_prediction' ? null : number(typeof hungerEntry === 'object' ? hungerEntry?.value : hungerEntry, 0, 20)
-  return decorate({ version: 1, apiAvailable: apiAvailable === true, online: apiAvailable === true && alive, stale: apiAvailable !== true, checkedAt: timestamp(checkedAt), observedAt: timestamp(observedAt), phase: apiAvailable !== true ? 'offline' : actualPhase === 'spawned' && (health === 0 || raw.dead || raw.isDead || raw.lifecycle?.dead) ? 'dead' : actualPhase, playerName: text(raw.playerName, 80), realmName: text(raw.realm?.name ?? raw.realmName, 160), health, hunger, position, inventoryKnown, inventory: inventoryItems(raw.inventory?.items, inventoryKnown), inventoryDetails: inventoryDetails(raw.inventoryDetails, inventoryKnown), quarry: quarryState(raw.quarry), behavior: behaviorState(raw.userBehaviors), connectionId: text(raw.connectionId, 80) })
+  return decorate({ version: 1, apiAvailable: apiAvailable === true, online: apiAvailable === true && alive, stale: apiAvailable !== true, checkedAt: timestamp(checkedAt), observedAt: timestamp(observedAt), phase: apiAvailable !== true ? 'offline' : actualPhase === 'spawned' && (health === 0 || raw.dead || raw.isDead || raw.lifecycle?.dead) ? 'dead' : actualPhase, playerName: text(raw.playerName, 80), realmName: text(raw.realm?.name ?? raw.realmName, 160), health, hunger, position, inventoryKnown, inventory: inventoryItems(raw.inventory?.items, inventoryKnown), inventoryDetails: inventoryDetails(raw.inventoryDetails, inventoryKnown), quarry: quarryState(raw.quarry), behavior: behaviorState(raw.userBehaviors), mode: modeState(raw.mode), connectionId: text(raw.connectionId, 80) })
 }
 
 function sanitizeCachedStatus (input, { checkedAt = new Date().toISOString(), apiAvailable = false } = {}) {
   if (!input || input.version !== 1 || !timestamp(input.observedAt)) return null
   const inventoryKnown = input.inventoryKnown === true && Array.isArray(input.inventory)
   const cachedPosition = point(input.position)
-  return decorate({ version: 1, apiAvailable: apiAvailable === true, online: apiAvailable === true && input.online === true, stale: apiAvailable !== true, checkedAt: timestamp(checkedAt), observedAt: timestamp(input.observedAt), phase: apiAvailable === true ? text(input.phase, 64) ?? 'unknown' : 'offline', playerName: text(input.playerName, 80), realmName: text(input.realmName, 160), health: number(input.health), hunger: number(input.hunger, 0, 20), position: cachedPosition ? { ...cachedPosition, source: text(input.position.source, 80) ?? 'unknown', confirmed: input.position.confirmed === true } : null, inventoryKnown, inventory: inventoryItems(input.inventory, inventoryKnown, true), inventoryDetails: inventoryDetails(input.inventoryDetails, inventoryKnown), quarry: quarryState(input.quarry), behavior: behaviorState(input.behavior), connectionId: text(input.connectionId, 80) })
+  return decorate({ version: 1, apiAvailable: apiAvailable === true, online: apiAvailable === true && input.online === true, stale: apiAvailable !== true, checkedAt: timestamp(checkedAt), observedAt: timestamp(input.observedAt), phase: apiAvailable === true ? text(input.phase, 64) ?? 'unknown' : 'offline', playerName: text(input.playerName, 80), realmName: text(input.realmName, 160), health: number(input.health), hunger: number(input.hunger, 0, 20), position: cachedPosition ? { ...cachedPosition, source: text(input.position.source, 80) ?? 'unknown', confirmed: input.position.confirmed === true } : null, inventoryKnown, inventory: inventoryItems(input.inventory, inventoryKnown, true), inventoryDetails: inventoryDetails(input.inventoryDetails, inventoryKnown), quarry: quarryState(input.quarry), behavior: behaviorState(input.behavior), mode: modeState(input.mode), connectionId: text(input.connectionId, 80) })
 }
 
 module.exports = { sanitizeStatus, sanitizeCachedStatus, sanitizeMission, itemLabel }

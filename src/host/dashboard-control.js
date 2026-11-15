@@ -61,7 +61,17 @@ function storagePreview (value) {
     resume: value.resume === true, stacks: { main: stacks.main, armor: stacks.armor, offhand: stacks.offhand, total: stacks.total },
     target: { position: point(value.target?.position), realm: text(value.target?.realm), player: text(value.target?.player), dimension: text(value.target?.dimension) } }
 }
-function createDashboardControl ({ getState, getQuarry, getReset = () => null, getStorage = () => null, getGeneration = () => 0, disconnect, now = Date.now, uuid = randomUUID }) {
+const modeCommands = ['setMode', 'playerStart', 'playerStop']
+// Only fixed fields of the mode status reach the browser.
+function modeStatus (mode) {
+  let value = null
+  try { value = mode?.status() ?? null } catch { /* An unavailable status shows no mode. */ }
+  if (!value) return null
+  const player = value.player ?? {}
+  return { current: text(value.mode), player: { running: player.running === true, phase: text(player.phase), reason: text(player.reason), known: player.known === true, current: player.current == null ? null : text(player.current),
+    stages: (Array.isArray(player.stages) ? player.stages : []).slice(0, 12).map(stage => ({ id: text(stage.id), label: text(stage.label), implemented: stage.implemented === true, reached: stage.reached === true })) } }
+}
+function createDashboardControl ({ getState, getQuarry, getReset = () => null, getStorage = () => null, getMode = () => null, getGeneration = () => 0, disconnect, now = Date.now, uuid = randomUUID }) {
   let receipt = null, resetReceipt = null, revision = 0, busy = 0
   const invalidate = () => { receipt = null; resetReceipt = null; revision++ }
   const areaOf = value => { try { return normalizeChunkArea(value) } catch { throw error('INVALID_INPUT', '移動・初期チェストのチャンク範囲が不正です。', 400) } }
@@ -155,6 +165,7 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
       session: scope(s), profile: text(s?.profile), realm: s?.realm ? { id: String(s.realm.id), name: text(s.realm.name) } : null, dimension: text(s?.dimension), position,
       chunk: position ? { x: Math.floor(position.x / 16), z: Math.floor(position.z / 16) } : null,
       busy: busy > 0, loadout: getReset()?.status() ?? { busy: false, phase: 'idle' }, storage: storageStatus(getStorage(), s), chunkMove: moveStatus(engine, s), travel: travelStatus(engine), positionProof: positionProof(engine, s),
+      mode: modeStatus(getMode()),
       quarry: q?.jobId ? { jobId: text(q.jobId), state: text(q.state), userRunIntent: text(q.userRunIntent), pauseReason: text(q.pauseReason), persistence: q.persistence ?? null, currentY: q.currentY ?? null } : null }
   }
   function checkSession (input) {
@@ -162,12 +173,27 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
     if (!current || input.session !== current) throw error('STALE_SESSION', '接続先または生存状態が変わりました。状態を更新して操作してください。')
   }
   async function execute (input) {
-    object(input, input?.command === 'moveToChunk' ? ['command', 'session', 'area'] : input?.command === 'cancelChunkMove' ? ['command', 'session', 'operationId'] : input?.command === 'resetPreview' ? ['command', 'session', 'area'] : input?.command === 'resetStart' ? ['command', 'session', 'resetToken', 'confirm', 'area'] : input?.command === 'resetCancel' ? ['command', 'session'] : storageCommands.includes(input?.command)
+    object(input, input?.command === 'setMode' ? ['command', 'session', 'mode'] : ['playerStart', 'playerStop'].includes(input?.command) ? ['command', 'session'] : input?.command === 'moveToChunk' ? ['command', 'session', 'area'] : input?.command === 'cancelChunkMove' ? ['command', 'session', 'operationId'] : input?.command === 'resetPreview' ? ['command', 'session', 'area'] : input?.command === 'resetStart' ? ['command', 'session', 'resetToken', 'confirm', 'area'] : input?.command === 'resetCancel' ? ['command', 'session'] : storageCommands.includes(input?.command)
       ? ['command', 'session', 'operationId', 'storageToken', 'confirm']
       : ['command', 'session', 'config', 'planToken', 'jobId', 'resetToken', 'confirm'])
-    if (!['plan', 'start', 'pause', 'resume', 'emergencyStop', 'cancel', 'disconnect', 'resetPreview', 'resetStart', 'resetCancel', 'moveToChunk', 'cancelChunkMove', ...storageCommands].includes(input.command)) throw error('INVALID_COMMAND', 'この操作は管理画面に公開されていません。', 400)
+    if (!['plan', 'start', 'pause', 'resume', 'emergencyStop', 'cancel', 'disconnect', 'resetPreview', 'resetStart', 'resetCancel', 'moveToChunk', 'cancelChunkMove', ...modeCommands, ...storageCommands].includes(input.command)) throw error('INVALID_COMMAND', 'この操作は管理画面に公開されていません。', 400)
     checkSession(input)
     const reset = getReset(), storage = getStorage(), storing = storage?.status().busy === true
+    if (modeCommands.includes(input.command)) {
+      invalidate()
+      const mode = getMode()
+      if (!mode) throw error('MODE_UNAVAILABLE', 'Bot本体のモード切替が未反映です。')
+      if (input.command === 'playerStop') { await mode.stopPlayer('管理画面から停止しました。'); return { state: snapshot() } }
+      if (busy) throw error('CONTROL_BUSY', '前の操作の終了を待っています。')
+      if (input.command === 'setMode') {
+        if (typeof input.mode !== 'string') throw error('INVALID_INPUT', 'モードが不正です。', 400)
+        mode.set(input.mode)
+        return { state: snapshot() }
+      }
+      if (!storageReady(getState())) throw error('NOT_READY', '参加位置・体力の受信を待っています。')
+      mode.startPlayer()
+      return { state: snapshot() }
+    }
     const movement = getQuarry(), moving = moveStatus(movement, getState())
     if (['moveToChunk', 'cancelChunkMove'].includes(input.command)) {
       invalidate()

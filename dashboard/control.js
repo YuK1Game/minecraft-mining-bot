@@ -254,6 +254,7 @@
     })
   })
   $('start').addEventListener('click', () => {
+    if (globalThis.botMode?.run('start')) return
     if (!plan) return
     const p = plan
     plan = null; $('plan-results').hidden = true
@@ -261,6 +262,7 @@
   })
   for (const [button, command, label] of [['pause', 'pause', '一時停止'], ['resume', 'resume', '再開'], ['cancel', 'cancel', 'キャンセル']]) {
     $(button).addEventListener('click', () => {
+      if (globalThis.botMode?.run(button)) return
       if (button === 'cancel' && !confirm(`現在のジョブを${label}しますか？`)) return
       plan = null; $('plan-results').hidden = true
       act('action', 'quarry', { command, session: current?.live?.session, jobId: current?.live?.quarry?.jobId ?? null }, () => message('action', ''))
@@ -486,6 +488,9 @@
   setInterval(poll, 2000)
   setInterval(() => { if ((plan?.planToken || resetPreview || storagePreview) && !document.hidden) render() }, 1000)
   document.addEventListener('visibilitychange', () => { if (!document.hidden) void poll() })
+  // The mode switch (露天掘り｜プレイヤー) lives in mode.js and uses this small surface.
+  window.botControl = { act, session: () => current?.live?.session ?? null, idle: () => !busy && !!token }
+  for (const [tag, attributes] of [['link', { rel: 'stylesheet', href: '/mode.css' }], ['script', { src: '/mode.js' }]]) document.head.append(Object.assign(document.createElement(tag), attributes))
   // The control panel stays open: its heading is not a toggle.
   const panel = document.getElementById('control')
   panel.querySelector('summary').addEventListener('click', event => event.preventDefault())
