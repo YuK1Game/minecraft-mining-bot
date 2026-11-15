@@ -6,12 +6,13 @@ const { withPlayerTree, treePlanInput, logsLeft, MISS_LIMIT } = require('../src/
 
 // A flat field with one oak of `height` logs at (4, 1..height, 0) and, further
 // away, a second oak. The Bot starts empty-handed at (0, 1, 0).
-function field ({ height = 5, second = true } = {}) {
+function field ({ height = 5, second = true, litter = false } = {}) {
   const blocks = new Map()
   const put = (x, y, z, name) => blocks.set(`${x},${y},${z}`, { known: true, name: `minecraft:${name}`, position: { x, y, z }, boundingBox: name === 'air' ? 'empty' : 'block', extra: [], properties: {} })
   for (let x = -3; x <= 14; x++) for (let y = -1; y <= 14; y++) for (let z = -4; z <= 4; z++) put(x, y, z, y <= 0 ? 'dirt' : 'air')
   const tree = (x, logs) => { for (let y = 1; y <= logs; y++) put(x, y, 0, 'oak_log'); put(x, logs + 1, 0, 'oak_leaves'); put(x + 1, logs, 0, 'oak_leaves') }
   tree(4, height)
+  if (litter) for (let x = 2; x <= 6; x++) for (let z = -2; z <= 2; z++) if (x !== 4 || z) blocks.set(`${x},1,${z}`, { known: true, name: 'minecraft:leaf_litter', position: { x, y: 1, z }, boundingBox: 'empty', extra: [], properties: {} })
   if (second) tree(11, 4)
   const state = { phase: 'spawned', gameMode: 'survival', health: 20, position: { x: 0.5, y: 2.62, z: 0.5 }, inventory: { known: true, items: [] }, capabilities: { mining: true, movement: true, scan_blocks: true, collect_drops: true, craft: true }, world: { initialized: true, loadedSections: 1 } }
   const shared = { botMode: 'player' }, lines = [], cut = []
@@ -92,4 +93,11 @@ test('a tree left far behind is dropped', () => {
   assert.equal(decision.type, 'craft')
   assert.equal(shared.playerTree, undefined)
   assert.equal(MISS_LIMIT, 6)
+})
+
+test('a trunk ringed by leaf litter is cut from its root log up, not from the second log', () => {
+  const f = field({ height: 5, second: false, litter: true })
+  for (let step = 0; step < 40; step++) { const decision = f.next(); if (!f.shared.playerTree && f.cut.length) break; if (!f.apply(decision)) break }
+  assert.deepEqual(f.cut.map(point => point.y), [1, 2, 3, 4, 5])
+  assert.ok(f.lines.some(line => line.includes('木を1本伐り終えました（原木 5 個）')))
 })

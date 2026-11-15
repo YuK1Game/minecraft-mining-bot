@@ -63,11 +63,15 @@ test('more than four intervening plants cannot authorize a clearing sequence', (
 // in front of a tree, an action the runner always refuses; it now looks for
 // another tree instead, and the runner's refusal is kept as the second guard.
 test('a tree behind leaf litter or a vine is not approached by clearing the plant, even with the log allowance', () => {
-  for (const name of ['minecraft:leaf_litter', 'minecraft:vine']) {
-    const action = fixture(name).decision()
-    assert.equal(action.accessPreparation, undefined, name)
-    assert.equal(action.type, 'scan_blocks', name)
-  }
+  const vine = fixture('minecraft:vine').decision()
+  assert.equal(vine.accessPreparation, undefined)
+  assert.equal(vine.type, 'scan_blocks')
+  // Leaf litter is a carpet without collision: it is not in the way at all,
+  // so the tree is worked on as it stands and nothing is cleared (2026-11-15).
+  const litter = fixture('minecraft:leaf_litter').decision()
+  assert.equal(litter.accessPreparation, undefined)
+  assert.ok(['gather_logs', 'move_to'].includes(litter.type), litter.type)
+  assert.equal(litter.resource ?? litter.stage, 'logs')
 })
 
 test('the runner refuses a clearing action before any request, with or without the log allowance', async () => {

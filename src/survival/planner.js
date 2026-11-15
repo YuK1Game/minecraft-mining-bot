@@ -10,7 +10,13 @@ const { placementTopVisible, planPlacementAccess } = require('../actions/action-
 // validate its live mining/movement/crafting preview immediately before acting.
 const WOODS = new Set(['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'poplar'])
 const AIR = new Set(['air', 'cave_air', 'void_air'])
-const WALK_THROUGH = new Set([...AIR, 'short_grass', 'fern', 'deadbush'])
+// Leaf litter is a thin carpet with no collision: the body walks through it
+// and a mining ray passes over it, as everywhere else in the Bot (navigation,
+// runner, foraging). Without it a trunk ringed by litter could not be stood
+// beside or aimed at from the ground (live 2026-11-15 22:55 JST: trunks were
+// cut from the second log up and the root log stayed).
+const WALK_THROUGH = new Set([...AIR, 'short_grass', 'fern', 'deadbush', 'leaf_litter'])
+const SEE_THROUGH = new Set([...AIR, 'leaf_litter'])
 const STONE = new Set(['stone', 'deepslate'])
 const STONE_ITEMS = new Set(['cobblestone', 'cobbled_deepslate'])
 const SOLID_SUPPORT = new Set(['grass_block', 'dirt', 'coarse_dirt', 'rooted_dirt', 'stone', 'cobblestone', 'deepslate', 'andesite', 'diorite', 'granite'])
@@ -178,7 +184,7 @@ function nextBootstrapAction (snapshot, observations = {}, options = {}) {
     const step = Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, Math.sign(direction[axis])]))
     const delta = Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, direction[axis] === 0 ? Infinity : Math.abs(1 / direction[axis])]))
     const crossing = Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, direction[axis] === 0 ? Infinity : ((step[axis] > 0 ? cell[axis] + 1 : cell[axis]) - from[axis]) / direction[axis]]))
-    const clearCell = point => key(point) === key(target) || AIR.has(nameOf(getBlock(point)?.name))
+    const clearCell = point => key(point) === key(target) || SEE_THROUGH.has(nameOf(getBlock(point)?.name))
     // Visit every intersected voxel, including edge/corner-touching neighbours.
     // Fixed 0.1-block sampling can skip the thin intersection that appears when
     // a real player stops a few centimetres off the ideal centre point.
