@@ -20,6 +20,7 @@
 | 可読性 | `src/quarry/quarry-job.js` は 4,655行（374KB）→ 3,628行（273KB）。収納・補給・脱出と最終確認・設置の照合を4つのモジュールへ移した。計画と採掘の中心は残している | 移した部分を戻すと分割前のソースと完全に一致 |
 | 可読性 | `src` を役割ごとのディレクトリ（host / runtime / common / combat / movement / travel / inventory / actions / safety / quarry / loadout / survival）へ分けた。直下は `main.js` と `runtime.js` だけ | `AGENTS.md` のディレクトリ構成 |
 | 可読性 | `src/safety/idle-safety.js` は 157KB → 41KB（退避・保護を別モジュールへ）、`src/quarry/storage/quarry-portable-storage.js` は 147KB → 49KB（収納の実行・設置の照合を別モジュールへ）、`src/survival/runner.js` は 107KB → 63KB（移動・採掘・回収を別モジュールへ） | 関連テストの結果が分割前と同じ |
+| 可読性 | 800〜1,000行あった3つの関数を段階ごとのモジュールへ分けた。シュルカー収納の実行 `storeCarried` は9段階（`src/quarry/storage/store/`）、待機保護の退避 `escapeOrStop` は12段階（`src/safety/escape/`）、退避ポート `escape` は6段階（`src/runtime/idle-escape/`）。元の関数は段階を順に呼ぶ 60〜100行になり、各段階は 30〜240行。`scripts/extract-stage.js` による機械的な移し替えで、動作は変えていない | 段階を元の位置へ戻したソースが分割前と一致（差は再代入される変数の宣言の書き方だけ）。全件テストの結果が分割前と同じ。`test/extract-stage.test.js` |
 | 保守性 | 構文確認は約1秒。大きいファイルの増加を `npm run check` が表示する。`runtime.js` の分割は `scripts/extract-runtime-block.js` で機械的に行える | `scripts/size-budget.json` |
 | 性能 | 地形参照（`world.getBlock`）は1回 約1,500ns → 120〜200ns（合成データ）。処理の停止の記録に作業名が出る | `npm run benchmark:world` |
 | 使いやすさ | 画面の「今していること」に長距離移動を表示。ログ欄は時刻を表示し、同じ行の繰り返しをまとめる。未使用のスタイル定義 252件を削除 | `test/dashboard-*.test.js` |
@@ -30,8 +31,8 @@
 | --- | --- | --- | --- |
 | 1 | 移した部分と元のクロージャーの間のやり取り（アクセサの一覧）を減らす | 可読性・保守性 | いまは機械的に移しただけで、各モジュールが元の変数を 25〜140個使う。話題ごとに必要な値を引数や小さなオブジェクトにまとめ、単体でテストできる形にする。アクセサの一覧がそのまま依存の一覧になっている |
 | 2 | 全件テストの失敗 約300件の整理 | 信頼性 | 「木・葉を採らない」方針が原因と分かるものが約70件残る。内訳: 露天掘りの容量バッチのテスト 19件（対象ブロックが葉のまま。現在の仕様で掘れるブロックへ置き換える）、旧サバイバルの計画が原木採取を返すことを期待するテスト約30件（`survival-planner`・`diamond-*`・`autonomy` など。現在は「待つ」が正しい）、ほか葉・落ち葉を対象にしたもの。実行側（runner）のテストは許可つきに直した。ほかの原因: `runtime.js` のソースの一部を切り出して実行する形で以前からずれているテスト、負荷で結果が変わる水辺の退避テスト |
-| 3 | `src/runtime/idle-safety-runtime.js`（222KB）の中の設定表を話題ごとに分ける | 可読性 | 表の4項目で全体の約75%を占める: `escape`（約1,030行の1関数）、`partialEscape`、`onEmergencyStop`、`clearEscape`。`escape` は 4 の2つと同じく段階に分ける対象 |
-| 4 | 1つの関数が大きすぎる箇所を段階に分ける: `src/safety/idle-safety-escape.js` の `escapeOrStop`（約800行、うち再試行のループが約570行）、`src/quarry/storage/quarry-portable-store.js` の `storeCarried`（約800行）、`src/quarry/quarry-job.js` の計画・採掘部分 | 可読性・保守性 | ファイルは役割ごとに分かれたが、この2つは1つの非同期関数のままで、機械的な移し替えでは分けられない（途中の await・return が多い）。段階ごとの入力と結果を決めてから分ける。実Realm での確認が必要 |
+| 3 | `src/runtime/idle-safety-runtime.js`（130KB）の設定表の残り: `partialEscape`（約210行）、`onEmergencyStop`（約120行）、`clearEscape`（約110行） | 可読性 | `escape` は段階に分けた。残りは同じ道具（`scripts/extract-stage.js`）で分けられる |
+| 4 | 段階どうしが共有する変数を減らす。`src/quarry/quarry-job.js` の計画・採掘部分を分ける | 可読性・保守性 | 段階は元の関数の変数を共有オブジェクト経由で読み書きしている（退避は約150個）。1 と同じ課題で、段階ごとの入力と結果を値として受け渡す形にすると単体でテストできる。挙動に関わるため実Realm での確認が必要 |
 | 5 | 長距離移動の「詰まった場所ごとの修正」を、危険地帯・水場・夜間を1つの経路評価で扱う形にまとめる | 保守性・信頼性 | 配線は `src/runtime/long-travel-runtime.js` にまとまっている |
 | 6 | 行動ごとの監視タイマー（約35か所）を共通の中断判定にする | 信頼性 | 死亡・再接続時の扱いをそろえる |
 | 7 | 旧サバイバル（小屋・ダイヤ計画）を分けるか外すかを決める | 可読性 | 2 と合わせて判断 |
