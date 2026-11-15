@@ -62,6 +62,8 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     return !!at && Math.hypot(target.x - at.x, target.z - at.z) <= 12
   }
   const canMine = cell => { try { return operations.mining.preview([cell])?.ready === true } catch { return false } }
+  // Why the mining preview refuses a cell, for the log.
+  const reason = cell => { try { const preview = operations.mining.preview([cell]); return preview?.ready === true ? null : String(preview?.errors?.[0] ?? preview?.error ?? '').slice(0, 160) || null } catch (error) { return String(error?.message ?? error).slice(0, 160) } }
   async function mine (cell) {
     if (air(cell)) return true
     if (!await begin(() => operations.mining.start([cell]))) return false
@@ -87,7 +89,22 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     try { await operations.interactions.placeBlock({ position: cell, slot: item.slot }) } catch { return false }
     return until(() => { const found = block(cell.x, cell.y, cell.z); return found?.known === true && found.boundingBox === 'block' }, 5000)
   }
-  return { feet: getFeet, block, dirt, walk, approach, canMine, mine, descend, pillar, place, why: () => why }
+  // The pickaxe with the most uses left into the hand (the pillar step leaves
+  // dirt there; real Realm 2026-11-16 06:41 JST: stone overhead was refused
+  // with a sword in hand, 「適切なツルハシの装備を確認できません」).
+  async function pick () {
+    const picks = () => (getInventory()?.items ?? []).filter(item => /_pickaxe$/.test(item?.name ?? '') && item.count > 0 && item.durabilityKnown === true && item.durabilityRemaining > 2).sort((a, b) => b.durabilityRemaining - a.durabilityRemaining)
+    let item = picks()[0]
+    if (!item) return false
+    try {
+      if (item.slot > 8) { await operations.inventory.equip(item.slot); item = picks().find(found => found.slot <= 8) }
+      if (!item) return false
+      await operations.interactions.equip(item.slot)
+    } catch (error) { return refused(error) }
+    await sleep(250)
+    return true
+  }
+  return { feet: getFeet, block, dirt, walk, approach, canMine, mine, descend, pillar, place, pick, reason, why: () => why }
 }
 
 module.exports = { createScaffoldPorts }

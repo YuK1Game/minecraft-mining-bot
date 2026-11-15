@@ -35,7 +35,7 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
     }
     return 'open'
   }
-  let steps = 0, top = null, reason = null
+  let steps = 0, top = null, reason = null, detail = null
   if (above(Math.floor(start.y + 0.001)) !== 'cover') return { ok: false, reason: 'NOT_UNDER_COVER', steps }
   await walk({ x: column.x + 0.5, y: Math.floor(start.y + 0.001), z: column.z + 0.5 })
   while (!reason && !aborted()) {
@@ -50,7 +50,7 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
       if (isAir(found)) continue
       if (found?.known !== true) { reason = 'UNKNOWN_ABOVE'; break }
       if (LEAVES.test(found.name ?? '')) { reason = 'LEAVES_ABOVE'; break }
-      if (!canMine(cell)) { reason = 'CANNOT_MINE'; break }
+      if (!canMine(cell) && !(await ports.pick?.() && canMine(cell))) { reason = 'CANNOT_MINE'; detail = ports.reason?.(cell) ?? null; break }
       if (!await mine(cell)) { reason = 'MINE_FAILED'; break }
       if (found.boundingBox === 'block') top = Math.max(top ?? y, y)
     }
@@ -63,7 +63,7 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
     steps++
   }
   if (aborted() && !reason) reason = 'INTERRUPTED'
-  const detail = reason ? ports.why?.() ?? null : null
+  if (reason) detail ??= ports.why?.() ?? null
   log(reason ? `プレイヤーモード: 真上へ掘る途中で止まりました（${steps}段、${reason}${detail ? `、${detail}` : ''}）` : `プレイヤーモード: 真上へ${steps}段のぼって地上へ出ました（土の柱は残します）`)
   return { ok: !reason, reason, steps, detail }
 }
