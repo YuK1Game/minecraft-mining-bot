@@ -57,3 +57,16 @@ test('does nothing under the open sky', async () => {
   assert.equal(result.reason, 'NOT_UNDER_COVER')
   assert.deepEqual(sim.calls, [])
 })
+
+test('takes the pickaxe into the hand when the preview refuses with another item held', async () => {
+  const sim = world({ feetY: 62, surface: 64 })
+  let held = 'sword', picked = 0
+  const can = sim.ports.canMine, pillar = sim.ports.pillar
+  sim.ports.canMine = cell => held === 'pickaxe' && can(cell)
+  sim.ports.pick = async () => { picked++; held = 'pickaxe'; return true }
+  sim.ports.pillar = async (...args) => { held = 'dirt'; return pillar(...args) } // the step leaves dirt in the hand
+  const result = await climbOut({ ports: sim.ports, sleep: async () => {} })
+  assert.equal(result.ok, true)
+  assert.equal(sim.at.y, 65)
+  assert.equal(picked, 1) // only the first round has blocks to mine: 64 and nothing above
+})
