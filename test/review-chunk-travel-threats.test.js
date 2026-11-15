@@ -128,3 +128,13 @@ for (const group of ['threats', 'suppressedByTerrain', 'unreachable']) test(`far
 for (const verdict of [{ intercept: false, unknown: true }, { intercept: false, unknown: true, distance: 50, recognitionRadius: '12' }, { intercept: false, unknown: true, distance: 12, recognitionRadius: 12 }, { intercept: true, unknown: false, distance: 50, recognitionRadius: 12 }]) test(`a far malformed or recognized attack ${JSON.stringify(verdict)} still stops`, () => {
   assert.equal(fixture(actor('zombie', 50)).clear({ attackExposure: () => verdict }), false)
 })
+
+test('a creeper that has not moved for minutes lets the Bot walk inside its circle, but not into its fuse range', () => {
+  const old = new Date(Date.now() - 51 * 60 * 1000).toISOString()
+  const still = fixture(actor('creeper', 7.78, { positionUpdatedAt: old }))
+  assert.equal(still.risk.threats.length, 0); assert.equal(still.risk.unreachable[0]?.standingStill, true)
+  assert.equal(still.clear(), true)
+  assert.equal(still.clear({ previous: point(3), next: point(3.5) }), false, 'a step that ends 4.28 m from it')
+  const moving = fixture(actor('creeper', 7.78, { positionUpdatedAt: new Date().toISOString() }))
+  assert.equal(moving.clear(), false)
+})

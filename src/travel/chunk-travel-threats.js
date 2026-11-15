@@ -16,6 +16,8 @@ function segmentDistance (point, from, to) {
 // This is only the private chunk-move admission rule. Attack access and its
 // profiles remain the existing combat evaluator; creeper blast margins remain
 // the existing distance corridor even when a walk route or sight is blocked.
+const STILL_CREEPER_RADIUS = 4.5
+
 function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure } = {}) {
   try {
     if (!finite(state?.position) || !finite(previous) || !finite(next) || !Array.isArray(state.entities) || state.entities.length > 1024 || typeof state.dimension !== 'string' || typeof attackExposure !== 'function' ||
@@ -46,7 +48,12 @@ function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure 
       if (!actual || pins.has(runtimeId) || !Number.isFinite(entry.dangerRadius) || entry.dangerRadius <= 0) return false
       pins.set(runtimeId, actual); checkedEntries.push(entry)
       if (entry.name === 'minecraft:creeper') {
-        if (group === 'threats' || entry.dangerous === true || segmentDistance(actual.position, previous, next) < entry.dangerRadius - 1e-4) return false
+        // A creeper that has stood in one place for minutes (threats.js,
+        // standingStill) only closes the cells where it could start its fuse;
+        // inside its full circle the Bot may walk away (real Realm 2026-11-15:
+        // every step 7.8 m from such a creeper was refused).
+        const radius = entry.standingStill === true ? Math.min(entry.dangerRadius, STILL_CREEPER_RADIUS) : entry.dangerRadius
+        if (group === 'threats' || entry.dangerous === true || segmentDistance(actual.position, previous, next) < radius - 1e-4) return false
       } else entries.push({ entry, group })
     }
     const positions = [state.position]
