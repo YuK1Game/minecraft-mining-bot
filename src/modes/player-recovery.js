@@ -98,10 +98,15 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
     log(`プレイヤーモード: ${reason}`)
     try { await travel.to({ destination }) } catch (error) { log(`プレイヤーモード: 移動を始められません ${text(error?.message)}`) }
     const until = now() + TRIP_MS
-    while (live(token) && now() < until && travel.status()?.busy) await sleep(1000)
+    // A death moves the Bot to its spawn point: the search goes on from there,
+    // never back across the map to the old destination (live 2026-11-15 21:44
+    // JST: after a respawn the walk went on toward a point 14 km away).
+    const lost = () => { const at = getPosition(); return !!at && Math.hypot(at.x - destination.x, at.z - destination.z) > SCAN_M * 3 }
+    while (live(token) && now() < until && travel.status()?.busy && !lost()) await sleep(1000)
+    if (lost()) { log('プレイヤーモード: 目的地から大きく離れたため、この移動をやめて今の場所から探し直します'); heading = null; visited = [] }
     // A walk that got nowhere (a cliff, water, no route): try the next direction.
     const reached = getPosition()
-    if (!tree && reached && Math.hypot(reached.x - from.x, reached.z - from.z) < STEP_M / 4) heading += Math.PI / 3
+    if (!tree && heading !== null && reached && Math.hypot(reached.x - from.x, reached.z - from.z) < STEP_M / 4) heading += Math.PI / 3
     // The trip dug a night or rest pit: the shelter keeps the Bot there and plays on afterwards.
     if (held()) return live(token)
     if (travel.status()?.busy) { try { await travel.cancel() } catch {} }

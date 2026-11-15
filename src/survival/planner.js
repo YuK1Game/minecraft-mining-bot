@@ -331,8 +331,12 @@ function nextBootstrapAction (snapshot, observations = {}, options = {}) {
       // A log already on the ground is picked up before another tree is cut.
       const droppedLogs = collectDrops(isLog, 'logs', needed)
       if (droppedLogs) return droppedLogs
-      const natural = naturalLogCandidates(known.filter(block => isLog(nameOf(block.name))), getBlock)
-      const selected = chooseResource(natural, 'logs', needed)
+      // Player mode finishing one tree hands in that tree's logs (options.logCandidates:
+      // candidate sets in order of preference); otherwise any natural tree.
+      const knownLogs = known.filter(block => isLog(nameOf(block.name)))
+      const candidateSets = typeof options.logCandidates === 'function' ? options.logCandidates(knownLogs) : [naturalLogCandidates(knownLogs, getBlock)]
+      let natural = [], selected = null
+      for (natural of candidateSets) { selected = chooseResource(natural, 'logs', needed); if (selected.type !== 'scan_blocks') break }
       const resourceTarget = selected.type === 'gather_logs' ? selected.target : selected.type === 'move_to' ? selected.resourceTarget : null
       if (resourceTarget) selected.treeEvidence = natural.find(candidate => key(candidate.position) === key(resourceTarget))?.evidence
       return selected

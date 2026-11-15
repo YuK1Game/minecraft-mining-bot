@@ -29,11 +29,16 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active || flee.status().active ? { running: true } : agentStatus(),
     isBusy: () => runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld()
   })
+  // Where the Bot is: the working position. The last received position can be
+  // minutes old on this Realm (live 2026-11-15 21:24-21:42 JST: every walk
+  // looked like "got nowhere", so the search turned 60 degrees each time and
+  // circled a hexagon around the stale point).
+  const where = () => { const position = runtime.position?.(); return position && [position.x, position.y, position.z].every(Number.isFinite) ? position : runtime.raw().position ?? null }
   const recovery = createPlayerRecovery({
     getMode: control.get, shared, log, disposed, held: () => !!shared.travelNight?.cover,
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason) },
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
-    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getPosition: () => runtime.raw().position ?? null
+    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getPosition: where
   })
   shared.onAutonomyProgress = snapshot => recovery.onProgress(snapshot)
   const air = cell => { const block = runtime.host().world.getBlock(cell.x, cell.y, cell.z); return block?.known === true && /^minecraft:(?:air|cave_air)$/.test(block.name ?? '') }
@@ -56,7 +61,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed,
     agent: { stop: reason => agent.stop(reason), running: () => agentStatus().running === true },
     travel: { status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
-    getState: () => { const state = runtime.raw(); return { health: state.health, position: state.position, inventory: shared.inventoryUncertain ? null : state.inventory, totem: () => runtime.totem() } },
+    getState: () => { const state = runtime.raw(); return { health: state.health, position: where(), inventory: shared.inventoryUncertain ? null : state.inventory, totem: () => runtime.totem() } },
     hostiles: () => runtime.hostiles(), retreat: () => runtime.travel().retreatFromHostiles()
   })
   const fleeTimer = setInterval(() => { if (disposed()) clearInterval(fleeTimer); else void flee.tick().catch(() => {}) }, 500)
