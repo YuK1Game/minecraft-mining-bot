@@ -22,7 +22,8 @@ const TRIP_MS = 240000
 const STEP_M = 96
 const GRASS = /^(?:minecraft:)?grass_block$/
 const SCAN_M = 128 // about the terrain a Realm sends around the Bot
-const PAUSES_MS = [30000, 60000, 120000, 300000, 600000]
+// At most two minutes (user 2026-11-15 22:50 JST: 「６００秒長すぎない？」).
+const PAUSES_MS = [30000, 60000, 120000]
 const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 200)
 
 // Nearest received log block between `min` and `radius` metres. Unreceived
@@ -70,7 +71,7 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
     for (let attempt = 0; live(token); attempt++) {
       try {
         await agent.start(options)
-        if (shared.autoOptions) delete shared.autoOptions.freshExploration
+        if (shared.autoOptions) { delete shared.autoOptions.freshExploration; delete shared.autoOptions.freshExclusions }
         return true
       } catch (error) {
         reason = `再開を待っています: ${text(error?.message)}`
@@ -98,10 +99,15 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
     log(`プレイヤーモード: ${reason}`)
     try { await travel.to({ destination }) } catch (error) { log(`プレイヤーモード: 移動を始められません ${text(error?.message)}`) }
     const until = now() + TRIP_MS
-    while (live(token) && now() < until && travel.status()?.busy) await sleep(1000)
+    // A death moves the Bot to its spawn point: the search goes on from there,
+    // never back across the map to the old destination (live 2026-11-15 21:44
+    // JST: after a respawn the walk went on toward a point 14 km away).
+    const lost = () => { const at = getPosition(); return !!at && Math.hypot(at.x - destination.x, at.z - destination.z) > SCAN_M * 3 }
+    while (live(token) && now() < until && travel.status()?.busy && !lost()) await sleep(1000)
+    if (lost()) { log('プレイヤーモード: 目的地から大きく離れたため、この移動をやめて今の場所から探し直します'); heading = null; visited = [] }
     // A walk that got nowhere (a cliff, water, no route): try the next direction.
     const reached = getPosition()
-    if (!tree && reached && Math.hypot(reached.x - from.x, reached.z - from.z) < STEP_M / 4) heading += Math.PI / 3
+    if (!tree && heading !== null && reached && Math.hypot(reached.x - from.x, reached.z - from.z) < STEP_M / 4) heading += Math.PI / 3
     // The trip dug a night or rest pit: the shelter keeps the Bot there and plays on afterwards.
     if (held()) return live(token)
     if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
@@ -121,6 +127,17 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
       // In a pit the trip dug, the shelter holds the Bot and plays on afterwards.
       if (!live(token) || held()) return false
       return restart(token, { ...agent.objective, freshExploration: true })
+    }
+    // The list of unreachable candidates filled up (live 2026-11-15 22:01 JST: a
+    // cobblestone drop in a hole under the feet; every retry ten minutes later
+    // met the same full list and stopped within ten seconds). Start again soon
+    // with an empty list: what is still out of reach is excluded again, the
+    // rest of the list is free for other stone and drops.
+    if (snapshot.stopCode === 'exclusion_limit') {
+      reason = `${why} ${Math.round(PAUSES_MS[0] / 1000)}秒後に、除外した候補を忘れてやり直します。`
+      log(`プレイヤーモード: ${Math.round(PAUSES_MS[0] / 1000)}秒後に、除外した候補を忘れてやり直します`)
+      if (!await wait(token, PAUSES_MS[0])) return false
+      return restart(token, { ...agent.objective, freshExclusions: true })
     }
     // A search only rests between sets of walks; other stops wait longer each time.
     const pause = search ? PAUSES_MS[0] : PAUSES_MS[Math.min(pauses++, PAUSES_MS.length - 1)]

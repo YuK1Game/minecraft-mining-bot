@@ -9,7 +9,7 @@ const { playerStages } = require('./player-stages')
 const OBJECTIVE = Object.freeze({ objective: 'diamond', diamondCount: 1 })
 const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 240)
 
-function createPlayerMode ({ getMode, agent, safety, recovery = null, shelter = null, flee = null, shared = {}, getInventory = () => null, log = () => {} }) {
+function createPlayerMode ({ getMode, agent, safety, recovery = null, shelter = null, flee = null, scaffold = null, shared = {}, getInventory = () => null, log = () => {} }) {
   // Kept outside this runtime so a hot reload does not forget that the player is playing.
   const want = value => { shared.playerWanted = value }
   function start () {
@@ -39,6 +39,8 @@ function createPlayerMode ({ getMode, agent, safety, recovery = null, shelter = 
     if (fleeing.active) return { wanted, running: true, phase: 'fleeing', reason: text(fleeing.reason), ...playerStages(getInventory()) }
     const sheltering = shelter?.status() ?? { active: false }
     if (sheltering.active) return { wanted, running: true, phase: 'sheltering', reason: text(sheltering.reason), ...playerStages(getInventory()) }
+    const scaffolding = scaffold?.status() ?? { active: false }
+    if (scaffolding.active) return { wanted, running: true, phase: 'working', reason: text(scaffolding.reason), ...playerStages(getInventory()) }
     const recovering = recovery?.status() ?? { active: false }
     if (recovering.active) return { wanted, running: true, phase: 'recovering', reason: text(recovering.reason), ...playerStages(getInventory()) }
     // A run whose current decision is a wait is waiting, whatever its phase says between ticks.

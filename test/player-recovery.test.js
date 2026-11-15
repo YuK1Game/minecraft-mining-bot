@@ -150,3 +150,38 @@ test('keepPlaying: wanted but idle for ten seconds starts again; a user stop, a 
   assert.equal(recovery.keepPlaying({ running: false }), false)
   assert.equal(f.calls.length, 0)
 })
+
+test('a respawn far from the destination ends the walk and the search starts over from there', async () => {
+  const calls = [], logs = [], shared = { autoWanted: true, autoOptions: {} }, position = { x: 0.5, y: 65.62, z: 0.5 }
+  let busy = false, clock = 0
+  const recovery = createPlayerRecovery({
+    getMode: () => 'player', shared, log: line => logs.push(line),
+    agent: { objective: {}, stop: () => {}, start: async () => { calls.push('start') } },
+    travel: { to: async input => { calls.push({ travel: input.destination }); busy = true; Object.assign(position, { x: -5000, z: -5000 }) }, status: () => ({ busy }), cancel: async () => { busy = false; calls.push('cancel') } },
+    getBlock: () => ({ known: false }), getPosition: () => ({ ...position }),
+    sleep: async ms => { clock += ms; await new Promise(resolve => setTimeout(resolve, 1)) }, now: () => clock
+  })
+  recovery.onProgress(blocked()); await settle(recovery)
+  assert.deepEqual(calls, [{ travel: { x: 97, z: 1 } }, 'cancel', 'start'])
+  assert.match(logs.join('\n'), /目的地から大きく離れた/)
+  assert.ok(clock < 5000, 'did not wait out the trip')
+})
+
+test('mode runtime reads the working position for the search and the retreat, not the last received one', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/modes/mode-runtime.js'), 'utf8')
+  assert.match(source, /getPosition: where\b/)
+  assert.match(source, /position: where\(\)/)
+  assert.doesNotMatch(source, /getPosition: \(\) => runtime\.raw\(\)\.position/)
+})
+
+test('a full list of unreachable candidates: restart after 30 s with an empty list, not every ten minutes with the same one', async () => {
+  const f = fixture()
+  f.recovery.onProgress(blocked({ stopCode: 'exclusion_limit', reason: '到達できない候補の除外数が上限に達したため、自律作業を停止しました。', lastDecision: { type: 'collect_drops', stage: 'stone' } }))
+  await settle(f.recovery)
+  assert.deepEqual(f.calls, [{ start: { objective: 'diamond', diamondCount: 1, freshExclusions: true } }])
+  assert.ok(f.clock() >= 30000 && f.clock() < 40000, `waited ${f.clock()}`)
+  assert.equal(f.shared.autoOptions.freshExclusions, undefined)
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/survival/autonomy.js'), 'utf8')
+  assert.match(source, /'exclusion_limit'\)/)
+  assert.match(source, /freshExclusions === true\) \{ seed\.excludedResources = \[\]; seed\.excludedDropIds = \[\] \}/)
+})

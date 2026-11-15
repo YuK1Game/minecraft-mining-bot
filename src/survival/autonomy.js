@@ -359,7 +359,7 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
     }
     if (after === before) return false
     if (after > options.maxExcludedTargets) {
-      finish('blocked', '到達できない候補の除外数が上限に達したため、自律作業を停止しました。')
+      finish('blocked', '到達できない候補の除外数が上限に達したため、自律作業を停止しました。', 'exclusion_limit')
       return true
     }
     status.progress.excludedResources = mergedResources
@@ -617,6 +617,8 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
     if (running || inFlight) throw new Error('すでに実行中、または前の処理の停止完了を待っています。')
     const seed = serial(configuration.progress ?? {})
     // A far move made the old exploration count meaningless (player mode recovery).
+    // The list of unreachable candidates was full (player mode recovery): start with an empty one.
+    if (configuration.freshExclusions === true) { seed.excludedResources = []; seed.excludedDropIds = [] }
     if (configuration.freshExploration === true) { rememberedExplorationBudget = null; seed.explorations = 0; seed.explorationAttempts = 0; seed.learningExplorationBudget = null }
     options = {
       objective: configuration.objective === 'long_travel_prep' ? 'long_travel_prep' : configuration.objective === 'diamond' || Object.hasOwn(configuration, 'diamondCount') ? 'diamond' : 'bootstrap',
