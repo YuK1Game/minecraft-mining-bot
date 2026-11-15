@@ -6,7 +6,7 @@
                   "src/safety/idle-safety.js":  160755,
                   "src/runtime/idle-safety-runtime.js":  224814,
                   "src/quarry/storage/quarry-portable-storage.js":  150451,
-                  "src/survival/runner.js":  109312,
+                  "src/survival/runner.js":  63525,
                   "dashboard/index.html":  81075
               }
 }
