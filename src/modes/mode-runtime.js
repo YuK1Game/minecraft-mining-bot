@@ -15,7 +15,12 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const shared = runtime.host().shared, file = modeFile(root), log = text => runtime.host().log(text)
   // First runtime of this process: `npm run auto` means player mode, otherwise the saved choice.
   if (!isMode(shared.botMode)) shared.botMode = shared.autoWanted === true ? 'player' : loadModeSync(file)
-  const quarry = operations.quarry, agent = operations.agent
+  const quarry = operations.quarry
+  // The modes start and stop the autonomy through these. Anyone else (the /stop
+  // and /agent commands, the local API) goes through operations.agent, where a
+  // stop also means "the player stops playing".
+  const inner = operations.agent, agent = { start: options => inner.start(options), stop: reason => inner.stop(reason) }
+  operations.agent = { ...inner, start: options => { if (control.get() === 'player') shared.playerWanted = true; return inner.start(options) }, stop: reason => { shared.playerWanted = false; recovery.cancel(); return inner.stop(reason) } }
   const agentStatus = () => runtime.autonomy()?.snapshot() ?? { running: false }
   const disposed = () => runtime.disposed?.() === true
   const control = createModeControl({
@@ -47,7 +52,11 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     }
   })
   // The shelter is checked every two seconds; a reloaded runtime's timer ends itself.
-  const timer = setInterval(() => { if (disposed()) clearInterval(timer); else void shelter.tick() }, 2000)
+  const timer = setInterval(() => {
+    if (disposed()) return clearInterval(timer)
+    void shelter.tick()
+    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active }) } catch { /* The next tick retries. */ }
+  }, 2000)
   timer.unref?.()
   // The previous runtime was reloaded in the middle of a recovery: play on.
   if (shared.playerRecovering === true) { shared.playerRecovering = false; if (control.get() === 'player') shared.autoWanted = true }
