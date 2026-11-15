@@ -39,7 +39,7 @@ function fixture (t, { factory = createRunner, mode = null, acknowledge = true }
     const physical = physics.step({ ...state.predicted.physicsState, ...rotation }, {}), position = physics.toServerPosition(physical)
     return { position, delta: physical.velocity, physicsState: physical, controls: physical.controls, commitPrediction: () => publish({ position, feetPosition: physical.position, velocity: physical.velocity, onGround: physical.onGround, physicsState: physical }) }
   } })
-  const mining = createMining({ getState: () => state, world, getInput: () => input, now: () => base + time })
+  const mining = createMining({ getState: () => state, world, getInput: () => input, now: () => base + time, logAllowance: () => true })
   t.after(() => { mining.stop(); input.stop(); movement.stop() })
   const request = async (method, endpoint, body) => {
     calls.push({ method, endpoint, body: copy(body) })

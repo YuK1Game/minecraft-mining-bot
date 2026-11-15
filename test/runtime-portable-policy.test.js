@@ -24,7 +24,7 @@ function harness (t) {
     return real.start(target, { ...options, ...(options.beforeInput ? { beforeInput: frame => { lastFrame = copy(frame); return options.beforeInput(frame) } } : {}) })
   }, drain: async () => { drained++; if (drainGate) await drainGate.promise } }
   t.after(() => real.stop('fixture cleanup'))
-  const source = fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? path.join(__dirname, '../src/runtime.js'), 'utf8'), begin = source.indexOf('  function portablePolicyError ('), end = source.indexOf('  function portableState ()', begin)
+  const source = require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE).split('\r\n').join('\n'), begin = source.indexOf('  function portablePolicyError ('), end = source.indexOf('  function portableState ()', begin)
   const motionStart = source.indexOf('  function startMotion ('), motionEnd = source.indexOf('\n  const operations = {', motionStart)
   const previewLine = source.split('\n').find(line => line.includes('preview: (target, options) => {') && line.includes('portableMovementOptions') && line.includes('movement?.preview'))
   const ownedLine = source.split('\n').find(line => line.includes('const ownedMovement = {') && line.includes('tagPortableOwnedMove'))
