@@ -34,8 +34,30 @@ test('plan: the pillar stands where the trunk stood and is as high as the top lo
   const f = field({ height: 9 })
   assert.deepEqual(scaffoldPlan({ tree: f.tree, block: f.block }), { ready: true, column: { x: 0, z: 0 }, ground: 1, top: 9, left: 3, steps: 3 })
   assert.equal(scaffoldPlan({ tree: field({ height: 30, cut: 6 }).tree, block: field({ height: 30, cut: 6 }).block }).steps, MAX_STEPS)
-  f.put(0, 0, 0, 'air')
+  for (let y = 0; y >= -3; y--) f.put(0, y, 0, 'air')
   assert.equal(scaffoldPlan({ tree: f.tree, block: f.block }).reason, 'TRUNK_FLOOR_UNCONFIRMED')
+})
+
+test('a tree first seen after its root was cut: the pillar starts on the real ground, not in the air', async () => {
+  const f = field({ height: 9, dirt: 8 })
+  f.tree.logs = f.tree.logs.filter(point => point.y >= 7)
+  assert.equal(scaffoldPlan({ tree: f.tree, block: f.block }).ground, 1)
+  const result = await runScaffold({ tree: f.tree, record: { holes: [], placed: 0 }, ports: f.ports })
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.deepEqual(f.calls.find(call => call[0] === 'walk'), ['walk', 0.5, 1, 0.5])
+  assert.equal(f.feet.y, 1)
+})
+
+test('a root log still standing under a gap is cut from beside the trunk before the Bot stands there', async () => {
+  const f = field({ height: 9, dirt: 8, reach: 3 })
+  f.put(0, 1, 0, 'oak_log')
+  f.feet.x = 5.5
+  const result = await runScaffold({ tree: f.tree, record: { holes: [], placed: 0 }, ports: f.ports })
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.equal(result.cut, 4)
+  const calls = f.calls.map(call => call.join(','))
+  assert.ok(calls.indexOf('mine,0,1,0') > calls.indexOf('walk,1.5,1,0.5') && calls.indexOf('mine,0,1,0') < calls.indexOf('walk,0.5,1,0.5'), calls.join(' '))
+  for (let y = 1; y <= 9; y++) assert.equal(f.block(0, y, 0).name, 'minecraft:air')
 })
 
 test('with no dirt in hand: digs it beside the tree, cuts every log from the pillar, takes the pillar down and fills the ground again', async () => {

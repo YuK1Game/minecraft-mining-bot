@@ -14,8 +14,10 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   const stacks = () => (getInventory()?.items ?? []).filter(item => item?.name === DIRT && item.count > 0)
   const dirt = () => getInventory()?.known === true ? stacks().reduce((sum, item) => sum + item.count, 0) : 0
 
+  let why = null // the last refusal, for the log
+  const refused = error => { why = String(error?.code ?? error?.message ?? error); return false }
   async function walk (target) {
-    try { operations.movement.start(target, { maxDistance: 16 }) } catch { return false }
+    try { operations.movement.start(target, { maxDistance: 16 }) } catch (error) { return refused(error) }
     await sleep(300)
     await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 12000)
     const at = getFeet()
@@ -24,7 +26,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   const canMine = cell => { try { return operations.mining.preview([cell])?.ready === true } catch { return false } }
   async function mine (cell) {
     if (air(cell)) return true
-    try { operations.mining.start([cell]) } catch { return false }
+    try { operations.mining.start([cell]) } catch (error) { return refused(error) }
     return until(() => air(cell), 35000)
   }
   // The pillar block under the feet: received air there, then the feet one lower.
@@ -47,7 +49,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     try { await operations.interactions.placeBlock({ position: cell, slot: item.slot }) } catch { return false }
     return until(() => { const found = block(cell.x, cell.y, cell.z); return found?.known === true && found.boundingBox === 'block' }, 5000)
   }
-  return { feet: getFeet, block, dirt, walk, canMine, mine, descend, pillar, place }
+  return { feet: getFeet, block, dirt, walk, canMine, mine, descend, pillar, place, why: () => why }
 }
 
 module.exports = { createScaffoldPorts }

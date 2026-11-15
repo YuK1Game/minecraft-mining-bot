@@ -22,15 +22,27 @@ const SOIL = /^minecraft:(?:dirt|grass_block)$/
 const key = point => `${point.x},${point.y},${point.z}`
 const isAir = block => block?.known === true && AIR.test(block.name ?? '')
 const isSolid = block => block?.known === true && block.boundingBox === 'block' && !AIR.test(block.name ?? '')
+const isLog = block => block?.known === true && /_(?:log|stem)$/.test(block.name ?? '')
+const isFloor = block => isSolid(block) && !isLog(block)
+const MAX_DROP = 6 // how far below the lowest recorded log the real ground may be
 
 // Where the pillar goes and how high. Pure; `block(x, y, z)` reads received terrain.
 function scaffoldPlan ({ tree, block }) {
   if (!Array.isArray(tree?.logs) || !tree.logs.length) return { ready: false, reason: 'NO_TREE' }
   const base = tree.logs.reduce((low, point) => point.y < low.y ? point : low)
-  const column = { x: base.x, z: base.z }, ground = base.y
+  const column = { x: base.x, z: base.z }
   const left = logsLeft(tree, point => block(point.x, point.y, point.z))
   if (!left.length) return { ready: false, reason: 'NO_LOGS_LEFT' }
-  if (!isSolid(block(column.x, ground - 1, column.z))) return { ready: false, reason: 'TRUNK_FLOOR_UNCONFIRMED' }
+  // The ground is the first received floor under the trunk, not the lowest
+  // recorded log: a tree first seen after its root was cut hangs in the air
+  // (real Realm 2026-11-15: the Bot was sent to stand in mid-air).
+  let ground = base.y
+  for (let i = 0; i < MAX_DROP && !isFloor(block(column.x, ground - 1, column.z)); i++) {
+    const under = block(column.x, ground - 1, column.z)
+    if (under?.known !== true || (!isAir(under) && !isLog(under))) return { ready: false, reason: 'TRUNK_FLOOR_UNCONFIRMED' }
+    ground--
+  }
+  if (!isFloor(block(column.x, ground - 1, column.z))) return { ready: false, reason: 'TRUNK_FLOOR_UNCONFIRMED' }
   const top = Math.max(...left.map(point => point.y))
   return { ready: true, column, ground, top, left: left.length, steps: Math.max(1, Math.min(MAX_STEPS, top - REACH_UP - ground)) }
 }
@@ -83,7 +95,16 @@ async function runScaffold ({ tree, record, ports, aborted = () => false, log = 
       await walk({ x: spot.x + 0.5, y: spot.y, z: spot.z + 0.5 })
       for (let i = 0; i < 20 && dirt() <= before && !aborted(); i++) await ports.sleep(200)
     }
+    // Logs still standing where the Bot has to stand (the root, cut around
+    // but not through) are cut from beside the trunk first.
+    const inWay = () => [ground, ground + 1].map(y => ({ x: column.x, y, z: column.z })).filter(cell => isLog(block(cell.x, cell.y, cell.z)))
+    for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (!inWay().length || aborted()) break
+      if ((dx || dz) && !inWay().some(canMine)) await walk({ x: column.x + dx + 0.5, y: ground, z: column.z + dz + 0.5 })
+      for (const cell of inWay()) if (canMine(cell) && await mine(cell)) cut++
+    }
     if (dirt() < 1) reason = 'NO_DIRT'
+    else if (inWay().length) reason = 'TRUNK_BLOCKED'
     else { await walk(centre); if (!inColumn()) reason = 'TRUNK_NOT_REACHED' }
   }
 
@@ -111,7 +132,7 @@ async function runScaffold ({ tree, record, ports, aborted = () => false, log = 
 
   const cleaned = await cleanScaffold({ record, ports, log })
   const leftNow = standing().length
-  return { ok: leftNow === 0, reason: leftNow === 0 ? null : reason ?? 'LOGS_OUT_OF_REACH', cut, left: leftNow, cleaned }
+  return { ok: leftNow === 0, reason: leftNow === 0 ? null : reason ?? 'LOGS_OUT_OF_REACH', cut, left: leftNow, cleaned, detail: leftNow === 0 ? null : ports.why?.() ?? null }
 }
 
 // Down the pillar from under the feet, then the dirt back into the spots it
@@ -142,7 +163,7 @@ async function cleanScaffold ({ record, ports }) {
   return record.placed === 0 && record.holes.length === 0
 }
 
-const REASONS = { NO_DIRT: '足場にする土を用意できません', TRUNK_NOT_REACHED: '幹のあった場所に立てません', TOO_HIGH: `足場は${MAX_STEPS}段までです`, NO_HEADROOM: '頭の上が空いていません', INTERRUPTED: '中断しました', LOGS_OUT_OF_REACH: '足場からも届きません', TRUNK_FLOOR_UNCONFIRMED: '幹の下の地面を確認できません' }
+const REASONS = { NO_DIRT: '足場にする土を用意できません', TRUNK_NOT_REACHED: '幹のあった場所に立てません', TRUNK_BLOCKED: '幹の根元の原木を伐れません', TOO_HIGH: `足場は${MAX_STEPS}段までです`, NO_HEADROOM: '頭の上が空いていません', INTERRUPTED: '中断しました', LOGS_OUT_OF_REACH: '足場からも届きません', TRUNK_FLOOR_UNCONFIRMED: '幹の下の地面を確認できません' }
 
 // Runs the job when the tree plan asks for it (tree.needsScaffold), with the
 // autonomy stopped, and plays on afterwards.
@@ -168,7 +189,7 @@ function createPlayerScaffold ({ getMode, shared, agent, ports, blocked = () => 
         log(`プレイヤーモード: 地面から届かない原木のために足場を積みます`)
         const result = await runScaffold({ tree, record, ports: all, aborted: () => !live() || blocked(), log })
         Object.assign(tree, { needsScaffold: false, scaffolded: true, misses: 0, progressAt: now() })
-        log(result.ok ? `プレイヤーモード: 足場から原木 ${result.cut} 個を伐り、木を伐り終えました` : `プレイヤーモード: 足場から原木 ${result.cut} 個を伐りました。${result.left ?? '?'} 個は残ります（${REASONS[result.reason] ?? String(result.reason).slice(0, 80)}）`)
+        log(result.ok ? `プレイヤーモード: 足場から原木 ${result.cut} 個を伐り、木を伐り終えました` : `プレイヤーモード: 足場から原木 ${result.cut} 個を伐りました。${result.left ?? '?'} 個は残ります（${REASONS[result.reason] ?? String(result.reason).slice(0, 80)}${result.detail ? `: ${String(result.detail).slice(0, 80)}` : ''}）`)
         if (result.cleaned === false) { shared.playerScaffoldDebt = { column: record.column, ground: record.ground, holes: record.holes, placed: record.placed, tries: 0, triedAt: now() }; log(`プレイヤーモード: 足場の片付けが残りました（柱 ${record.placed} 段・穴 ${record.holes.length} か所）。あとでやり直します`) } else if (result.cleaned) log('プレイヤーモード: 足場のブロックを回収しました')
       } else {
         debt.tries = (debt.tries ?? 0) + 1; debt.triedAt = now()
