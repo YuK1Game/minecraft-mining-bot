@@ -29,7 +29,7 @@ source = source.replace('runtime_entity_id: 1n, player_position:', 'runtime_enti
 source = source.replace("positionSource: 'client_prediction' } : {})", "positionSource: 'client_prediction', positionServerConfirmed: false, positionUpdatedAt: shared.prediction.updatedAt } : {})")
 source = source.replace('setPrediction: p => { shared.prediction = structuredClone(p) }', "setPrediction: p => { shared.prediction = { ...structuredClone(p), source: 'client_prediction', serverConfirmed: false, updatedAt: new Date(Date.now()).toISOString() } }")
 source = source.replace("  const filename = path.resolve(__dirname, '../src/runtime.js'), loaded = new Module(filename, module)", "  host.world.getBlock = testHooks.read;\n  const filename = path.resolve(__dirname, '../src/runtime.js'), loaded = new Module(filename, module)")
-source = source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", "loaded._compile(testHooks.instrument(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8')), filename)")
+source = source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", "loaded._compile(testHooks.instrument(process.env.RUNTIME_TEST_SOURCE ? fs.readFileSync(process.env.RUNTIME_TEST_SOURCE, 'utf8') : require('./helpers/runtime-source').runtimeSource()), filename)")
 source += '\nmodule.exports = { scene, setHooks: value => { testHooks = value } }'
 const loaded = { exports: {} }
 new vm.Script(Module.wrap(source), { filename }).runInThisContext()(loaded.exports, Module.createRequire(filename), loaded, filename, path.dirname(filename))

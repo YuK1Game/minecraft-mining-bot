@@ -14,7 +14,7 @@ function fixture (t, { mode = 'normal', watchHook = null, observationHook = null
     './terrain-threats': { ...nativeRequire('./terrain-threats'), annotateTerrainThreats: (...args) => { if (observationHook?.active) { observationHook.reads++; const end = performance.now() + observationHook.ms; while (performance.now() < end) {} }; return nativeRequire('./terrain-threats').annotateTerrainThreats(...args) } },
     './threats': { ...nativeRequire('./threats'), evaluateThreats: (...args) => { if (watchHook?.active) watchHook.assessments++; return nativeRequire('./threats').evaluateThreats(...args) } },
     './guarded-route': { createGuardedRoute: options => ({ snapshot: () => ({ busy: false }), stop: async () => {}, escape: async (nodes, bounds) => { guardCalls.push({ nodes, bounds }); return { ok: false, arrived: false, escaped: false, movementStarts: 0, code: 'SUPPORT_UNKNOWN', serverConfirmed: false } } }) },`)
-  source = source.replace("fs.readFileSync(filename, 'utf8')", "runtimeForTest(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'))")
+  source = source.replace("fs.readFileSync(filename, 'utf8')", "runtimeForTest(process.env.RUNTIME_TEST_SOURCE ? fs.readFileSync(process.env.RUNTIME_TEST_SOURCE, 'utf8') : require('./helpers/runtime-source').runtimeSource())")
   source = source.replace('  const target = { exports: {} };', "  overrides['./movement'] = { createMovement: options => nativeRequire('./movement').createMovement(options) }\n  const target = { exports: {} };")
   source = source.replace('return { runtime, create, host, raw, shared,', 'return { guardCalls, runtime, create, host, raw, shared,')
   const loaded = { exports: {} }

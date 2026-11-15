@@ -16,7 +16,7 @@
 | 分野 | 内容 | 主なファイル |
 | --- | --- | --- |
 | 接続・認証 | Microsoft 認証（`.auth/` にキャッシュ）、Realm 一覧・選択、異常終了時の自動再接続（指数バックオフ、10分で最大5回） | `src/host.js`, `src/realms.js`, `scripts/keep-alive.js` |
-| ホットリロード | 行動コード保存で自動反映。構文・初期化エラー時は旧コードを維持。クラフト・設置中は安全な切替点まで待つ | `src/hotreload.js`, `src/lifecycle.js` |
+| ホットリロード | 行動コード保存で自動反映。構文・初期化エラー時は旧コードを維持。クラフト・設置中は安全な切替点まで待つ。削除・改名したモジュールは監視から外し、スポーン後に初めて読み込まれたモジュールも保存時に反映する（2026-11-15。`hotreload.js` の変更は Bot の再起動後に有効） | `src/hotreload.js`, `src/lifecycle.js` |
 | 観測 | エンティティ・敵・地形（サブチャンク）・持ち物・体力/空腹の受信。未受信ブロック（`known:false`）を空気扱いしない | `src/entities.js`, `src/threats.js`, `src/world.js`, `src/inventory.js` |
 | 持ち物の一元記録 | メイン36・防具4・オフハンド・カーソルを1つの記録（`host.shared.inventoryStore`）に枠ごとの受信元・リビジョン付きで保持。クラフト・防具・画面・採掘ゲートは全てここを読む。未受信の枠は空ではなく「?」。待機中は未受信枠を `inventory_mismatch` で自動再取得 | `src/inventory-store.js`, `src/inventory-inspection.js` |
 | 移動 | 経路探索、物理予測（実験的 Bedrock 版 prismarine-physics）、段差・ジャンプ、水際、警戒付き経路移動と退避 | `src/navigation.js`, `src/movement.js`, `src/physics.js`, `src/guarded-route.js`, `src/escape-policy.js` |
@@ -103,8 +103,11 @@
 src/            Bot 本体（約110モジュール）
   main.js         エントリポイント
   host.js         接続・認証・ターミナルコマンド（/status /auto /stop /reload /quit /quarry）。変更時は再起動が必要
-  runtime.js      ホットリロードされる行動の中心（約770KB。これ以上育てない）
-  long-travel-runtime.js  長距離移動の配線（2026-11-15 に runtime.js から移動。runtime の変数は `rt.<名前>`、モジュールは `rt.require(...)` で使う）
+  runtime.js      ホットリロードされる行動の中心（約460KB・5,000行。これ以上育てない）
+  long-travel-runtime.js / quarry-runtime.js / idle-safety-runtime.js / user-control-runtime.js
+                  2026-11-15 に runtime.js から移した配線（長距離移動／露天掘り／待機保護の補助と設定表／操作権・戦闘）。
+                  runtime の変数は `rt.<名前>`、モジュールは `rt.require(...)` で使う。別の runtime の変数を使うときは、
+                  runtime.js 側でそのモジュールを生成している箇所にアクセサを1行足す
   api.js          ローカル HTTP API
   quarry-*.js     露天掘りモード（region / rules / inventory / planner / combat-bridge / job / runtime-adapter / cli）
 scripts/        keep-alive.js（再接続監視）、dashboard.js（:3001）、check.js（構文確認）
@@ -145,7 +148,7 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 - **サーバー由来の情報だけを成果とする**: 入力の送信、時間経過、プレビューの成功、予測位置への到着、ドロップの消滅だけで成功扱いにしない。回収・クラフトは実際の持ち物の変化、採掘は受信した空気、設置はブロック更新と消費の両方で確認する。露天掘りの表示用集計や予測だけでジョブ完了とせず、受信した地形・実際の持ち物変化によるジョブの確認結果を使う。旧ダイヤ目標を扱う場合も、完了判定はサーバーから届いた持ち物にダイヤがある時だけ。
 - **未知を安全と見なさない**: 未受信の地形・未確認の持ち物・一覧にない敵は安全側に倒す。
 - **再起動が必要な変更を明示する**: `host.js`、`entities.js` など接続側で読み込むモジュール、認証・通信、依存、`.env` の変更はホットリロードされない。ユーザーに再起動が必要と伝える。
-- **大きいファイルを育てない**（2026-11-15 品質改善の方針。読みやすさ・保守性のため）: `src/runtime.js`・`src/quarry-job.js`・`src/idle-safety.js`・`src/quarry-portable-storage.js`・`src/runner.js`・`dashboard/index.html` には新しい機能の処理を書き足さない。新しい機能は専用のモジュール（例: `src/long-travel.js`）に置き、大きいファイルには呼び出しの1〜数行だけを足す。`npm run check` が基準（`scripts/size-budget.json`）からの増加を「サイズ超過」として表示する。処理を外へ出したら基準値を下げる。新しい処理を入れるために基準値を上げない。`runtime.js` のまとまった処理を外へ出すときは `node scripts/extract-runtime-block.js <開始行> <終了行> <モジュール名> <関数名> <変数名>` を使う（構文解析に基づく機械的な移し替え。`--apply` なしでは一時フォルダに出力するだけ）。`runtime.js` のソース文字列を照合するテストは `test/helpers/runtime-source.js` の `runtimeSource()` を読む。
+- **大きいファイルを育てない**（2026-11-15 品質改善の方針。読みやすさ・保守性のため）: `src/runtime.js`・`src/quarry-job.js`・`src/idle-safety.js`・`src/quarry-portable-storage.js`・`src/runner.js`・`dashboard/index.html` には新しい機能の処理を書き足さない。新しい機能は専用のモジュール（例: `src/long-travel.js`）に置き、大きいファイルには呼び出しの1〜数行だけを足す。`npm run check` が基準（`scripts/size-budget.json`）からの増加を「サイズ超過」として表示する。処理を外へ出したら基準値を下げる。新しい処理を入れるために基準値を上げない。`runtime.js` のまとまった処理を外へ出すときは `node scripts/extract-runtime-block.js <開始行> <終了行> <モジュール名> <関数名> <変数名>` を使う（構文解析に基づく機械的な移し替え。`--apply` なしでは一時フォルダに出力するだけ）。`runtime.js` のソース文字列を照合・切り出し・加工するテストは `test/helpers/runtime-source.js` の `runtimeSource()` を読む（移した部分を元の位置へ戻した1ファイル分のテキストを返す。分割前のソースと一致することを確認済み）。
 - **同じ種類の不具合を個別の条件分岐で直し続けない**（同上）: 同じ機能で3件目の個別修正になる前に、共通の原因（判定の持ち方・状態の出どころ・部品の境界）を確かめ、部品として直す。個別の対処を足した場合は、その場所と理由をコミットメッセージに残す。
 - **変更前の状態は Git で残す**（2026-11-13 ユーザー方針）: `backup/` フォルダへのファイルコピーはしない。既存コードを変える前に作業ブランチを切るかコミットしておき、戻す必要があれば Git の履歴から戻す。
 - **秘密情報**: `.auth/`、`.env` は読まない・出力しない・コミットしない。リポジトリは公開です。

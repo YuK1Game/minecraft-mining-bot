@@ -8,7 +8,7 @@ const vm = require('node:vm')
 const { createAutonomy } = require('../src/autonomy')
 const { createIdleSafety } = require('../src/idle-safety')
 
-const runtimeSource = fs.readFileSync(path.join(__dirname, '../src/runtime.js'), 'utf8')
+const runtimeSource = require('./helpers/runtime-source').runtimeSource()
 const safetyStart = runtimeSource.indexOf('    function safetyIdle (context = {}) {')
 const safetyEnd = runtimeSource.indexOf('    function verifyStrikeBody ', safetyStart)
 assert.ok(safetyStart >= 0 && safetyEnd > safetyStart)

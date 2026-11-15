@@ -16,7 +16,7 @@ const seam = 'const runtimeSource = originalRuntime'
 const marker = '  function shoreScore (state, from, target) {'
 const injected = marker + '\n    if (host.shared.shoreScoreProbe) return host.shared.shoreScoreProbe(state, from, target)'
 assert.equal(fixtureSource.split(seam).length, 2)
-fixtureSource = fixtureSource.replace(seam, `const runtimeSource = originalRuntime.replace(${JSON.stringify(marker)}, ${JSON.stringify(injected)})`)
+fixtureSource = fixtureSource.replace(seam, `const runtimeSource = require("./helpers/runtime-source").runtimeSource().replace(${JSON.stringify(marker)}, ${JSON.stringify(injected)})`)
 const target = { exports: {} }
 const load = new vm.Script('(function(require,module,__filename,__dirname){' + fixtureSource + ';module.exports={prepare,context};})', { filename: fixtureFile }).runInThisContext()
 load(Module.createRequire(fixtureFile), target, fixtureFile, path.dirname(fixtureFile))

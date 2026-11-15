@@ -20,7 +20,7 @@ source = source.replace(/^  const mockAutonomy = .+$/m, '  const mockAutonomy = 
 source = source.replace(/^    '\.\/physics': .+$/m, "    './physics': { createPhysics: options => hooks.physics(options) }, './navigation': { createNavigator: options => hooks.navigator(options) }, './movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },")
 source = source.replace(/^    '\.\/input': .+$/m, "    './input': { createInput: options => { wireInputOptions.push(options); return hooks.input(options) } },")
 source = source.replace(/^    '\.\/input-history': .+$/m, "    './input-history': { createInputHistory },")
-source = source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", "loaded._compile(hooks.instrument(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8')), filename)")
+source = source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", "loaded._compile(hooks.instrument(process.env.RUNTIME_TEST_SOURCE ? fs.readFileSync(process.env.RUNTIME_TEST_SOURCE, 'utf8') : require('./helpers/runtime-source').runtimeSource()), filename)")
 source = source.replace("    './input-history': { createInputHistory },", "    './input-history': { createInputHistory: hooks.history },")
 source += '\nmodule.exports={scene,setHooks:value=>{hooks=value}}'
 const loaded = { exports: {} }

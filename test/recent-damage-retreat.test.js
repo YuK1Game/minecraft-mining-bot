@@ -44,7 +44,7 @@ test('the actual old no-primary branch rejects the fully supported captured orig
   assert.equal(evaluated.threats.length, 0)
   assert.equal(evaluated.outsideDanger.length, 14)
   assert.equal(nav.verifyOrigin(initial), true)
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/runtime.js'), 'utf8')
+  const source = require('./helpers/runtime-source').runtimeSource()
   const marker = '            if (!primary || !alreadyShallow && !fullOrigin && !partialOrigin) {'
   const start = source.indexOf(marker), end = source.indexOf('            const urgentCreeper', start)
   assert.ok(start >= 0 && end > start, 'Execute the preserved real Runtime gate, not a restated predicate')
