@@ -31,7 +31,7 @@ function createRunnerMining (rt) {
     const page = await rt.request('GET', '/blocks?x=' + center.x + '&y=' + center.y + '&z=' + center.z + '&radius=3', undefined, { signal: context.signal })
     check(await rt.read(context.signal))
     const blocks = page?.blocks ?? [], map = new Map(blocks.filter(block => rt.finite(block.position)).map(block => [rt.positionKey(block.position), block]))
-    const solid = block => block?.known === true && block.boundingBox === 'block' && !block.extra?.length && /^(?:minecraft:)(?:grass_block|dirt|coarse_dirt|rooted_dirt|stone|cobblestone|deepslate|cobbled_deepslate|andesite|diorite|granite|tuff|calcite|(?:oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|poplar)_(?:planks|log))$/.test(block.name)
+    const solid = block => block?.known === true && block.boundingBox === 'block' && !block.extra?.length && (/^(?:minecraft:)(?:grass_block|dirt|coarse_dirt|rooted_dirt|stone|cobblestone|deepslate|cobbled_deepslate|andesite|diorite|granite|tuff|calcite|(?:oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|poplar)_(?:planks|log))$/.test(block.name) || require('../common/standing-ground').isOreGround(block.name))
     let supportArea = 0
     for (let x = Math.floor(origin.position.x - 0.3 + 1e-6); x <= Math.floor(origin.position.x + 0.3 - 1e-6); x++) for (let z = Math.floor(origin.position.z - 0.3 + 1e-6); z <= Math.floor(origin.position.z + 0.3 - 1e-6); z++) {
       const floor = map.get(rt.positionKey({ x, y: center.y - 1, z }))

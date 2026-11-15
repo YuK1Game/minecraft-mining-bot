@@ -24,3 +24,14 @@ test('a block may be placed on an ore floor, not on gravel', () => {
   assert.equal(placementSupportOk({ known: true, name: 'minecraft:gravel', boundingBox: 'block' }), false)
   assert.equal(placementSupportOk({ known: false, name: 'minecraft:coal_ore', boundingBox: 'block' }), false)
 })
+
+test('a crafting table on an ore floor has a stance to open it from', () => {
+  const { planStationAccess } = require('../src/actions/action-access')
+  const blocks = []
+  for (let x = -3; x <= 3; x++) for (let z = -3; z <= 3; z++) {
+    blocks.push({ known: true, name: 'minecraft:coal_ore', boundingBox: 'block', position: { x, y: 60, z } })
+    for (const y of [61, 62, 63]) blocks.push({ known: true, name: x === 2 && z === 0 && y === 61 ? 'minecraft:crafting_table' : 'minecraft:air', boundingBox: x === 2 && z === 0 && y === 61 ? 'block' : 'empty', position: { x, y, z } })
+  }
+  const access = planStationAccess({ state: { position: { x: -2.5, y: 62.62, z: -2.5 } }, target: { x: 2, y: 61, z: 0 }, blocks })
+  assert.ok(access.ready === true || access.standpoint, access.reason)
+})
