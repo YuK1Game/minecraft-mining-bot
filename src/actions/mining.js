@@ -18,6 +18,7 @@ const PICK = new Map([
 ])
 const HAZARDS = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|dragon_egg|scaffolding)/
 const QUARRY_HAZARDS = /(?:water|lava|bubble_column)/
+const FALLING_BELOW = /(?:sand$|gravel$|concrete_powder$)/
 const { blockRule: quarryRule, toolOf: quarryTool } = require('../quarry/quarry-rules')
 const blockName = block => String(block?.name ?? '').replace(/^minecraft:/, '')
 const { pointKey: key } = require('../common/vec3')
@@ -237,6 +238,11 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
       // Quarry: falling neighbours are ordered by the planner (top-down); fluids
       // and unknown cells still stop the dig.
       const hazards = quarry ? QUARRY_HAZARDS : HAZARDS
+      // A falling block directly below the target stays where it is when the
+      // target goes: nothing falls into the hole (real Realm 2026-11-16: two
+      // diamond ores with visible top faces were refused for the gravel under
+      // them, 13 stops in three hours). Beside or above it still denies.
+      if (!quarry && offset.y === -1 && offset.x === 0 && offset.z === 0 && FALLING_BELOW.test(blockName(neighbour)) && !neighbour.extra?.some(layer => !AIR.has(blockName(layer)))) continue
       if (hazards.test(blockName(neighbour)) || neighbour.extra?.some(layer => hazards.test(blockName(layer)))) {
         throw new Error('対象の隣に液体・落下ブロックなどがあります。')
       }
