@@ -80,6 +80,9 @@ async function runScaffold ({ tree, record, ports, aborted = () => false, log = 
   const standing = () => logsLeft(tree, point => block(point.x, point.y, point.z))
   let cut = 0, reason = null
 
+  // The tree can be up to 48 m away when the plan hands it over: go there first.
+  { const at = feet(); if (at && Math.hypot(at.x - centre.x, at.z - centre.z) > 12 && !(await ports.approach?.(centre))) return { ok: false, reason: 'TREE_TOO_FAR', cut: 0, left: plan.left, cleaned: null, detail: ports.why?.() ?? null } }
+
   // Dirt for the pillar: what is held, else from the ground beside the tree.
   if (!(inColumn() && level() > ground)) {
     const tried = new Set()
@@ -163,7 +166,7 @@ async function cleanScaffold ({ record, ports }) {
   return record.placed === 0 && record.holes.length === 0
 }
 
-const REASONS = { NO_DIRT: '足場にする土を用意できません', TRUNK_NOT_REACHED: '幹のあった場所に立てません', TRUNK_BLOCKED: '幹の根元の原木を伐れません', TOO_HIGH: `足場は${MAX_STEPS}段までです`, NO_HEADROOM: '頭の上が空いていません', INTERRUPTED: '中断しました', LOGS_OUT_OF_REACH: '足場からも届きません', TRUNK_FLOOR_UNCONFIRMED: '幹の下の地面を確認できません' }
+const REASONS = { NO_DIRT: '足場にする土を用意できません', TRUNK_NOT_REACHED: '幹のあった場所に立てません', TRUNK_BLOCKED: '幹の根元の原木を伐れません', TREE_TOO_FAR: '木のそばまで歩けません', TOO_HIGH: `足場は${MAX_STEPS}段までです`, NO_HEADROOM: '頭の上が空いていません', INTERRUPTED: '中断しました', LOGS_OUT_OF_REACH: '足場からも届きません', TRUNK_FLOOR_UNCONFIRMED: '幹の下の地面を確認できません' }
 
 // Runs the job when the tree plan asks for it (tree.needsScaffold), with the
 // autonomy stopped, and plays on afterwards.
