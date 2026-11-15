@@ -5,11 +5,12 @@ const { nextDiamondAction } = require('../src/survival/diamond-planner')
 
 // Live 2026-11-16 04:08 JST: the Bot stood in a dug pocket in stone with one
 // open cell beside it and held a furnace it could not place anywhere.
-function plan (z, extraAir = []) {
+function plan (z, extraAir = [], carve = () => {}) {
   const key = p => `${p.x},${p.y},${p.z}`, blocks = new Map()
   const set = (p, name) => blocks.set(key(p), { known: true, position: { ...p }, name: 'minecraft:' + name, runtimeId: 1, boundingBox: name === 'air' ? 'empty' : 'block', properties: {}, extra: [] })
   for (let x = -5; x <= 5; x++) for (let y = 62; y <= 68; y++) for (let zz = -5; zz <= 5; zz++) set({ x, y, z: zz }, 'stone')
   for (const cell of [{ x: 0, z: 0 }, { x: 0, z: -1 }, ...extraAir]) for (const y of [65, 66]) set({ x: cell.x, y, z: cell.z }, 'air')
+  carve(set)
   const state = { phase: 'spawned', gameMode: 'survival', health: 20, dimension: 'overworld', position: { x: 0.5, y: 66.62, z }, rawServerPosition: { x: 0.5, y: 66.62, z }, runtimeEntityId: '273', equipmentServerConfirmed: true, selectedSlot: 0, rawSelectedSlot: 0 }
   state.inventory = { known: true, items: [{ slot: 0, name: 'minecraft:stone_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 100 }, { slot: 1, name: 'minecraft:furnace', count: 1 }] }
   state.heldItem = { ...state.inventory.items[0] }
@@ -31,4 +32,11 @@ test('a roomier cell is preferred over the cell beside the body', () => {
   const action = plan(0.6, [{ x: 0, z: -2 }])
   assert.equal(action.type, 'place_furnace')
   assert.deepEqual(action.target, { x: 0, y: 65, z: -2 })
+})
+
+test('on a dug stair with no cell at the feet level the next step down takes the furnace', () => {
+  // Stair: the body cell (0,65..66,0); the step ahead is one lower: (0,64..66,-1).
+  const action = plan(0.5, [], set => { for (const y of [65, 66]) set({ x: 0, y, z: -1 }, 'stone'); for (const y of [64, 65, 66]) set({ x: 0, y, z: -1 }, 'air') })
+  assert.equal(action.type, 'place_furnace')
+  assert.deepEqual(action.target, { x: 0, y: 64, z: -1 })
 })
