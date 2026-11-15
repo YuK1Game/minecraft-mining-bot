@@ -190,10 +190,11 @@ function nextDiamondAction (state, observations = {}, options = {}) {
     const activeWork = place => kind === 'furnace' && (nameOf(place.name) === 'lit_furnace' || knownContents(place) && (furnace.slots ?? []).some(slot => slot?.known === true && slot.count > 0 && ['raw_iron', 'iron_ore', 'deepslate_iron_ore', 'iron_ingot'].includes(nameOf(slot.name))))
     // A station far from here (the surface table or furnace while working deep
     // underground) is not walked back to when a new one can be made from what
-    // is held. A furnace with iron work in it is never abandoned.
+    // is held; the same for one whose standing place had no route (excluded).
+    // A furnace with iron work in it is never abandoned.
     const holds = name => items.some(item => amount(item.count) && nameOf(item.name) === name)
     const spare = kind === 'table' ? counts.planks >= 4 || holds('crafting_table') || items.some(item => amount(item.count) && isLog(nameOf(item.name))) : holds('furnace') || counts.stone >= 8
-    const near = block => !spare || activeWork(block) || distance(state.position, block.position) <= FAR_STATION
+    const near = block => !spare || activeWork(block) || distance(state.position, block.position) <= FAR_STATION && !excluded(kind === 'table' ? 'crafting_table' : 'furnace', block.position)
     const seen = new Set()
     for (const block of candidates.filter(near).sort((a, b) => Number(activeWork(b)) - Number(activeWork(a)) || distance(state.position, a.position) - distance(state.position, b.position))) {
       if (seen.has(key(block.position))) continue

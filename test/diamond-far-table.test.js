@@ -7,7 +7,7 @@ const { supplyScope } = require('../src/survival/supply-return')
 const key = p => `${p.x},${p.y},${p.z}`
 // The bot stands on a small floor; the table is known only through the page
 // read around a remembered station (as when it stands far above the tunnel).
-function plan (table, inventory, furnace = null) {
+function plan (table, inventory, furnace = null, progress = {}) {
   const state = { phase: 'spawned', gameMode: 'survival', health: 20, dimension: 'overworld', profile: 'bot', realm: { id: 1 }, connectionId: 'c1', startedAt: 1, lifecycle: { deathId: 0 }, position: { x: 0.5, y: 6.62, z: 0.5 }, rawServerPosition: { x: 0.5, y: 6.62, z: 0.5 }, runtimeEntityId: '273', equipmentServerConfirmed: true, selectedSlot: 0, rawSelectedSlot: 0 }
   state.inventory = { known: true, items: inventory.map(([name, count], slot) => ({ slot, name: 'minecraft:' + name, count, ...(name.endsWith('_pickaxe') ? { durabilityKnown: true, durabilityRemaining: 100 } : {}) })) }
   state.heldItem = { ...state.inventory.items[0] }
@@ -23,7 +23,7 @@ function plan (table, inventory, furnace = null) {
     cells.set(key(at), block(at, name))
     return { position: { ...at }, block: cells.get(key(at)), blocks: [...cells.values()], scope: supplyScope(state), readAt: Date.now(), source: 'current_world_read' }
   }
-  const observations = { blocks: near, stationPages: { ...(furnace ? { furnace: pageOf(furnace, 'furnace') } : {}), craftingTable: { position: { ...table }, block: page.get(key(table)), blocks: [...page.values()], scope: supplyScope(state), readAt: Date.now(), source: 'current_world_read' } }, capabilities: { move: true, movement: true, craft: true, equip: true, place_block: true, place_furnace: true, open_furnace: true, furnace: true, use_table: true, scan_blocks: true }, crafting: { previews: {} }, drops: [], ores: { coal: [], iron: [], diamond: [] } }
+  const observations = { blocks: near, stationPages: { ...(furnace ? { furnace: pageOf(furnace, 'furnace') } : {}), craftingTable: { position: { ...table }, block: page.get(key(table)), blocks: [...page.values()], scope: supplyScope(state), readAt: Date.now(), source: 'current_world_read' } }, capabilities: { move: true, movement: true, craft: true, equip: true, place_block: true, place_furnace: true, open_furnace: true, furnace: true, use_table: true, scan_blocks: true }, crafting: { previews: {} }, progress, drops: [], ores: { coal: [], iron: [], diamond: [] } }
   return nextDiamondAction(state, observations)
 }
 const SURFACE = { x: 3, y: 70, z: 2 }
@@ -64,4 +64,10 @@ test('without a furnace or stone for one the remembered furnace stays the statio
   const action = plan(NEAR_TABLE, [['stone_pickaxe', 1], ['raw_iron', 3]], FAR_FURNACE)
   assert.notEqual(action.type, 'place_furnace')
   assert.notEqual(action.stage, 'cobblestone_for_furnace')
+})
+
+test('a near table whose standing place had no route is replaced while wood is held', () => {
+  const table = { x: 9, y: 5, z: 0 }, progress = { excludedResources: [{ resource: 'crafting_table', position: table }] }
+  assert.equal(plan(table, [...tools, ['oak_log', 2]], null, progress).output, 'minecraft:oak_planks')
+  assert.equal(key(plan(table, tools, null, progress).stationTarget), key(table))
 })

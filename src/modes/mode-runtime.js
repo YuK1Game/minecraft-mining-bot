@@ -13,11 +13,14 @@ const { createPlayerShelter } = require('./player-shelter')
 const { createPlayerFlee } = require('./player-flee')
 const { createPlayerScaffold } = require('./player-scaffold')
 const { createScaffoldPorts } = require('./player-scaffold-ports')
+const { playFile, createPlayerResume } = require('./player-resume')
 
 function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
   const shared = runtime.host().shared, file = modeFile(root), log = text => runtime.host().log(text)
   // First runtime of this process: `npm run auto` means player mode, otherwise the saved choice.
   if (!isMode(shared.botMode)) shared.botMode = shared.autoWanted === true ? 'player' : loadModeSync(file)
+  const resume = createPlayerResume({ file: playFile(root), shared, getMode: () => shared.botMode, log })
+  resume.restore()
   const quarry = operations.quarry
   // The modes start and stop the autonomy through these. Anyone else (the /stop
   // and /agent commands, the local API) goes through operations.agent, where a
@@ -82,6 +85,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // The shelter is checked every two seconds; a reloaded runtime's timer ends itself.
   const timer = setInterval(() => {
     if (disposed()) return clearInterval(timer)
+    void resume.note()
     void shelter.tick()
     void scaffold.tick().catch(() => {})
     try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active || flee.status().active || scaffold.status().active }) } catch { /* The next tick retries. */ }
