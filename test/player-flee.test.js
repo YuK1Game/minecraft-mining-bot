@@ -78,6 +78,5 @@ test('the flee ends after twenty seconds', async () => {
 
 test('the combat work guard stands down while the flee flag is live', () => {
   const source = runtimeSource()
-  assert.match(source, /quarryCanSelectTarget \(target, state, info = \{\}\) \{ if \(playerFleeing\(\)\) return \{ allowed: false, reason: 'PLAYER_FLEE' \}/)
-  assert.match(source, /quarryCanContinue \(target, state, info = \{\}\) \{ if \(playerFleeing\(\)\) return \{ allowed: false, reason: 'PLAYER_FLEE' \}/)
+  assert.equal(source.match(/reason: 'EMPTY_HANDED_AVOID' \}; if \(playerFleeing\(\)\) return \{ allowed: false, reason: 'PLAYER_FLEE' \}/g)?.length, 2)
 })
