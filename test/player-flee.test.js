@@ -18,13 +18,41 @@ test('flee is wanted only when badly hurt, with a hostile near and no totem', ()
   assert.equal(fleeWanted({ health: 5, hostiles: [zombie(4)], position: null }), null)
 })
 
+const creeper = x => ({ entityType: 'minecraft:creeper', hostile: true, position: { x, y: 64, z: 0 } })
+
+test('with no weapon: a creeper within 8 m at any health, any hostile at health 10 or less', () => {
+  const { unarmed } = require('../src/modes/player-flee')
+  assert.equal(unarmed(null), true)
+  assert.equal(unarmed({ items: [{ name: 'minecraft:oak_log', count: 3 }, { name: 'minecraft:wooden_pickaxe', count: 1 }] }), true)
+  assert.equal(unarmed({ items: [{ name: 'minecraft:wooden_sword', count: 1 }] }), false)
+  assert.equal(unarmed({ items: [{ name: 'minecraft:bow', count: 1 }] }), false)
+  assert.equal(fleeWanted({ health: 20, weaponless: true, hostiles: [creeper(7)], position: here })?.name, 'creeper')
+  assert.equal(fleeWanted({ health: 20, weaponless: true, hostiles: [creeper(9), zombie(3)], position: here }), null)
+  assert.equal(fleeWanted({ health: 20, weaponless: false, hostiles: [creeper(4)], position: here }), null)
+  assert.equal(fleeWanted({ health: 10, weaponless: true, hostiles: [zombie(11)], position: here })?.name, 'zombie')
+  assert.equal(fleeWanted({ health: 10, weaponless: false, hostiles: [zombie(4)], position: here }), null)
+  let asked = 0
+  assert.equal(fleeWanted({ health: 20, weaponless: true, totem: () => { asked++; return true }, hostiles: [creeper(4)], position: here }), null)
+  assert.equal(fleeWanted({ health: 20, weaponless: true, totem: () => { asked++; return true }, hostiles: [], position: here }), null)
+  assert.equal(asked, 1)
+})
+
+test('a trip in progress is cancelled before the first step', async () => {
+  const s = scene({ health: 20, retreat: s => { s.position.x -= 12; return true } })
+  s.enemies = [creeper(5)]
+  assert.equal(await s.flee.tick(), true)
+  assert.deepEqual(s.travel, ['cancel'])
+  assert.match(s.logs[0], /武器がないため敵から離れます/)
+})
+
 function scene ({ mode = 'player', wanted = true, health = 5, retreat } = {}) {
-  const s = { shared: { playerWanted: wanted }, clock: 0, enemies: [zombie(4)], stops: [], logs: [], flags: [], running: true, position: { ...here } }
+  const s = { shared: { playerWanted: wanted }, clock: 0, enemies: [zombie(4)], stops: [], logs: [], flags: [], running: true, position: { ...here }, travel: [], travelBusy: true, inventory: health > 8 ? { items: [] } : { items: [{ name: 'minecraft:wooden_sword', count: 1 }] } }
   s.flee = createPlayerFlee({
     getMode: () => mode, shared: s.shared, log: text => s.logs.push(text), now: () => s.clock,
     sleep: async ms => { s.clock += ms },
     agent: { running: () => s.running, stop: reason => { s.running = false; s.stops.push(reason) } },
-    getState: () => ({ health, position: s.position, totem: false }),
+    getState: () => ({ health, position: s.position, totem: false, inventory: s.inventory }),
+    travel: { status: () => ({ busy: s.travelBusy }), cancel: async () => { s.travel.push('cancel'); s.travelBusy = false } },
     hostiles: () => s.enemies,
     retreat: async () => { s.flags.push(s.shared.playerFlee?.until > s.clock); s.clock += 1000; return retreat(s) }
   })
