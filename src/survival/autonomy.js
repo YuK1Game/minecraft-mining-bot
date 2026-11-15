@@ -202,8 +202,9 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
     const limit = options?.traceLimit ?? 50
     if (status.trace.length > limit) status.trace.splice(0, status.trace.length - limit)
   }
-  function finish (phase, reason) {
+  function finish (phase, reason, code = null) {
     running = false
+    status.stopCode = code
     clearTimeout(timer); timer = null
     status.phase = phase
     status.running = false
@@ -510,7 +511,7 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
         const plannedLife = knownExplorationLife(state), currentLife = knownExplorationLife(dispatchState)
         if (plannedLife && currentLife && (plannedLife.scope !== currentLife.scope || plannedLife.deathId !== currentLife.deathId)) { status.phase = 'waiting'; status.reason = '生存状態が変わったため、新しい生活の現在地から探索を判断し直します。'; await notify('progress', snapshot(), signal); return snapshot() }
         if ((explorationLifeBudget?.attempts ?? status.progress.explorationAttempts) >= options.maxExplorations) {
-          finish('blocked', '探索回数の上限に達したため、自律作業を停止しました。')
+          finish('blocked', '探索回数の上限に達したため、自律作業を停止しました。', 'exploration_limit')
           await notify('progress', snapshot(), signal)
           return snapshot()
         }
@@ -615,6 +616,8 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
   function start (configuration = {}) {
     if (running || inFlight) throw new Error('すでに実行中、または前の処理の停止完了を待っています。')
     const seed = serial(configuration.progress ?? {})
+    // A far move made the old exploration count meaningless (player mode recovery).
+    if (configuration.freshExploration === true) { rememberedExplorationBudget = null; seed.explorations = 0; seed.explorationAttempts = 0; seed.learningExplorationBudget = null }
     options = {
       objective: configuration.objective === 'long_travel_prep' ? 'long_travel_prep' : configuration.objective === 'diamond' || Object.hasOwn(configuration, 'diamondCount') ? 'diamond' : 'bootstrap',
       logCount: configuration.objective === 'long_travel_prep' ? positive(configuration.logCount, 10, 10) : 0,

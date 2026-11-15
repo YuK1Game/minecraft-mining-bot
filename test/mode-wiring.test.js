@@ -11,7 +11,7 @@ function runtime ({ auto = false } = {}) {
   const calls = [], root = fs.mkdtempSync(path.join(os.tmpdir(), 'mode-rt-'))
   let job = null, running = false
   const operations = {
-    quarry: { status: () => job, start: () => { calls.push('quarry.start'); job = { jobId: 'q', state: 'MINE' } }, resume: () => { calls.push('quarry.resume'); job.state = 'MINE' }, pause: () => { job.state = 'PAUSED' } },
+    quarry: { travelStatus: () => ({ busy: false }), status: () => job, start: () => { calls.push('quarry.start'); job = { jobId: 'q', state: 'MINE' } }, resume: () => { calls.push('quarry.resume'); job.state = 'MINE' }, pause: () => { job.state = 'PAUSED' } },
     agent: { start: options => { calls.push('agent.start:' + options.objective); running = true }, stop: () => { calls.push('agent.stop'); running = false } },
     safety: { start: () => calls.push('safety.start') }
   }
@@ -79,4 +79,18 @@ test('activity band: player mode says what it is doing; quarry mode leaves the q
   assert.equal(modeState({ mode: 'other' }), null)
   assert.deepEqual(playerActivity(modeState({ mode: 'player', player: { running: false, current: 'stone', stages } })), { kind: 'idle', label: '待機中: プレイヤーモードの開始待ち', detail: '目標: 石の道具', code: null })
   assert.equal(playerActivity(modeState({ mode: 'player', player: { running: true, phase: 'acting', reason: '木を集めています。', stages } })).detail, '木を集めています。')
+})
+
+test('runtime wiring: a blocked player run is taken over by recovery, shown as playing, and stop ends it', async () => {
+  const f = runtime(), shared = f.rt.host().shared
+  f.mode.set('player'); f.mode.startPlayer(); shared.autoWanted = true
+  assert.equal(typeof shared.onAutonomyProgress, 'function')
+  shared.onAutonomyProgress({ running: false, phase: 'failed', reason: '進展がないため停止しました。', progress: {} })
+  assert.equal(shared.autoWanted, false)
+  const status = f.mode.status().player
+  assert.equal(status.running, true); assert.equal(status.phase, 'recovering'); assert.match(status.reason, /進展がない/)
+  assert.throws(() => f.mode.set('quarry'), { code: 'PLAYER_RUNNING' })
+  await f.mode.stopPlayer()
+  assert.equal(shared.playerRecovering, false)
+  assert.notEqual(f.mode.status().player.phase, 'recovering')
 })

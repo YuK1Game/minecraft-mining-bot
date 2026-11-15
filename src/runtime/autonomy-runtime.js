@@ -273,6 +273,7 @@ function createAutonomyRuntime (rt) {
     onProgress: progress => {
       rt.host.shared.autonomyProgress = progress.progress
       rt.host.noteProgress(progress)
+      rt.host.shared.onAutonomyProgress?.(progress)
     }
   })
   return {
