@@ -35,7 +35,9 @@ function createPlayerMode ({ getMode, agent, safety, recovery = null, getInvento
     // While recovery owns the pause or the far move, the player is still playing.
     const recovering = recovery?.status() ?? { active: false }
     if (recovering.active) return { wanted, running: true, phase: 'recovering', reason: text(recovering.reason), ...playerStages(getInventory()) }
-    return { wanted, running: value.running === true, phase: text(value.phase), reason: text(value.reason), ...playerStages(getInventory()) }
+    // A run whose current decision is a wait is waiting, whatever its phase says between ticks.
+    const phase = value.running === true && value.lastDecision?.type === 'wait' ? 'waiting' : value.phase
+    return { wanted, running: value.running === true, phase: text(phase), reason: text(value.reason), ...playerStages(getInventory()) }
   }
   return { start, stop, status }
 }
