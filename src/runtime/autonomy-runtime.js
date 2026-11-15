@@ -255,7 +255,7 @@ function createAutonomyRuntime (rt) {
       if(nightShelter)return nightShelter
       const plannedDiamond = rt.nextDiamondAction(state, observations, options)
       // Player mode: an ore (coal, iron, diamond) that the pickaxe reaches now comes before a tunnel to an enclosed one.
-      const diamond = rt.require('./modes/player-ore').reachableOre({ mode: rt.host.shared.botMode, state, decision: plannedDiamond, observations, preview: targets => rt.mining.preview(targets) }) ?? plannedDiamond
+      const diamond = rt.require('./modes/player-ore').reachableOre({ mode: rt.host.shared.botMode, state, decision: plannedDiamond, observations, preview: targets => rt.mining.preview(targets), guarded: point => { const block = rt.planningWorld.getBlock(point.x, point.y, point.z); return block?.protected === true || !!block?.protectionSource } }) ?? plannedDiamond
       const direct = rt.immediateDiamond(state, diamond, targets => rt.mining.preview(targets))
       const chosen = direct ? { ...diamond, type: 'mine_ore', stage: 'diamond', reason: '確認済みの採掘面に直接届くダイヤ鉱石を採ります。', resourceTarget: diamond.target, requiresLivePreview: true } : rt.nextSurvivalAction(state, observations, survivalOptions) ?? diamond
       const current = rt.raw()

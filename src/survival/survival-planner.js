@@ -10,7 +10,7 @@ const { planStationAccess, placementTopVisible, planPlacementAccess } = require(
 const WOODS = new Set(['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'poplar'])
 const STONE = new Set(['cobblestone', 'cobbled_deepslate'])
 const SWORDS = new Set(['stone_sword', 'iron_sword', 'diamond_sword', 'netherite_sword'])
-const SUPPORT = new Set(['grass_block', 'dirt', 'coarse_dirt', 'rooted_dirt', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'granite', 'diorite', 'andesite', 'tuff', 'calcite'])
+const SUPPORT = new Set(require('../common/standing-ground').STANDING_GROUND)
 const AIR = new Set(['air', 'cave_air', 'void_air'])
 const HAZARD = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|fire|cactus|magma|scaffolding)/
 const nameOf = value => String(value ?? '').replace(/^minecraft:/, '')
