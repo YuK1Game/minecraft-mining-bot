@@ -10,6 +10,7 @@ const { createModeControl } = require('./mode-control')
 const { createPlayerMode, OBJECTIVE } = require('./player-mode')
 const { createPlayerRecovery } = require('./player-recovery')
 const { createPlayerShelter } = require('./player-shelter')
+const { createPlayerFlee } = require('./player-flee')
 
 function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
   const shared = runtime.host().shared, file = modeFile(root), log = text => runtime.host().log(text)
@@ -25,7 +26,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const disposed = () => runtime.disposed?.() === true
   const control = createModeControl({
     shared, save: mode => saveMode(file, mode), log,
-    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active ? { running: true } : agentStatus(),
+    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active || flee.status().active ? { running: true } : agentStatus(),
     isBusy: () => runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld()
   })
   const recovery = createPlayerRecovery({
@@ -51,17 +52,25 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       return air(cover)
     }
   })
+  const flee = createPlayerFlee({
+    getMode: control.get, shared, log, disposed,
+    agent: { stop: reason => agent.stop(reason), running: () => agentStatus().running === true },
+    getState: () => { const state = runtime.raw(); return { health: state.health, position: state.position, totem: state.health <= 8 && runtime.totem() } },
+    hostiles: () => runtime.hostiles(), retreat: () => runtime.travel().retreatFromHostiles()
+  })
+  const fleeTimer = setInterval(() => { if (disposed()) clearInterval(fleeTimer); else void flee.tick().catch(() => {}) }, 500)
+  fleeTimer.unref?.()
   // The shelter is checked every two seconds; a reloaded runtime's timer ends itself.
   const timer = setInterval(() => {
     if (disposed()) return clearInterval(timer)
     void shelter.tick()
-    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active }) } catch { /* The next tick retries. */ }
+    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active || flee.status().active }) } catch { /* The next tick retries. */ }
   }, 2000)
   timer.unref?.()
   // The previous runtime was reloaded in the middle of a recovery: play on.
   if (shared.playerRecovering === true) { shared.playerRecovering = false; if (control.get() === 'player') shared.autoWanted = true }
   const player = createPlayerMode({
-    getMode: control.get, log, safety: operations.safety, recovery, shelter, shared,
+    getMode: control.get, log, safety: operations.safety, recovery, shelter, flee, shared,
     agent: { start: options => agent.start(options), stop: reason => agent.stop(reason), snapshot: agentStatus },
     getInventory: () => shared.inventoryUncertain ? null : runtime.raw().inventory
   })

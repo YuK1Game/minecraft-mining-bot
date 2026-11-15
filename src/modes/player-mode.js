@@ -9,7 +9,7 @@ const { playerStages } = require('./player-stages')
 const OBJECTIVE = Object.freeze({ objective: 'diamond', diamondCount: 1 })
 const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 240)
 
-function createPlayerMode ({ getMode, agent, safety, recovery = null, shelter = null, shared = {}, getInventory = () => null, log = () => {} }) {
+function createPlayerMode ({ getMode, agent, safety, recovery = null, shelter = null, flee = null, shared = {}, getInventory = () => null, log = () => {} }) {
   // Kept outside this runtime so a hot reload does not forget that the player is playing.
   const want = value => { shared.playerWanted = value }
   function start () {
@@ -35,6 +35,8 @@ function createPlayerMode ({ getMode, agent, safety, recovery = null, shelter = 
     const value = agent.snapshot?.() ?? {}
     // While recovery owns the pause or the far move, the player is still playing.
     const wanted = shared.playerWanted === true
+    const fleeing = flee?.status() ?? { active: false }
+    if (fleeing.active) return { wanted, running: true, phase: 'fleeing', reason: text(fleeing.reason), ...playerStages(getInventory()) }
     const sheltering = shelter?.status() ?? { active: false }
     if (sheltering.active) return { wanted, running: true, phase: 'sheltering', reason: text(sheltering.reason), ...playerStages(getInventory()) }
     const recovering = recovery?.status() ?? { active: false }
