@@ -6,6 +6,10 @@
 const { blockRule, nameOf, AIR } = require('../quarry-rules')
 const PLANTS = new Set(['short_grass', 'tallgrass', 'fern', 'dead_bush', 'deadbush', 'dandelion', 'poppy', 'blue_orchid', 'allium', 'azure_bluet', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'oxeye_daisy', 'cornflower', 'lily_of_the_valley', 'brown_mushroom', 'red_mushroom', 'short_dry_grass'])
 const FALLING_FLOORS = new Set(['sand', 'red_sand', 'gravel'])
+// Badlands ground. The quarry rules do not list it, so every stand there was
+// refused and a Bot that respawned in the badlands could not walk at all
+// (live 2026-11-15 19:08-19:22 JST, 383 CHUNK_TRAVEL_NO_KNOWN_STAND).
+const TERRACOTTA = /^(?:hardened_clay|[a-z_]+_terracotta)$/
 const PARTIAL_OR_HARMFUL = /^(?:mud|farmland|grass_path|dirt_path|soul_sand|snow|magma|bamboo)$/
 const known = b => b?.known === true && typeof b.name === 'string'
 const plainAir = b => known(b) && AIR.has(nameOf(b)) && !b.extra?.length
@@ -26,7 +30,7 @@ function supportIssue (read, feet) {
     const name = nameOf(b), rule = blockRule(b.name)
     if (FALLING_FLOORS.has(name)) continue
     if (PARTIAL_OR_HARMFUL.test(name) || rule.gravity || rule.plant || rule.leaves) return issue('SUPPORT_UNSAFE')
-    if (name === 'bedrock' || /_planks$/.test(name) || rule.kind === 'dig' && !/_log$|_wood$|_stem$|_hyphae$|_roots$/.test(name)) return null
+    if (name === 'bedrock' || /_planks$/.test(name) || TERRACOTTA.test(name) || rule.kind === 'dig' && !/_log$|_wood$|_stem$|_hyphae$|_roots$/.test(name)) return null
     return issue('SUPPORT_UNSUPPORTED')
   }
   return { cause: 'SUPPORT_DEPTH_LIMIT', position: { ...feet, y: feet.y - 8 }, part: 'support' }
