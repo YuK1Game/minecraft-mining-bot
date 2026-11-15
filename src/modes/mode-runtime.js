@@ -20,7 +20,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // The modes start and stop the autonomy through these. Anyone else (the /stop
   // and /agent commands, the local API) goes through operations.agent, where a
   // stop also means "the player stops playing".
-  const inner = operations.agent, agent = { start: options => inner.start(options), stop: reason => inner.stop(reason) }
+  const inner = operations.agent, agent = { start: options => { if (flee.status().active) throw Error('敵から離れている間は始めません。'); return inner.start(options) }, stop: reason => inner.stop(reason) }
   operations.agent = { ...inner, start: options => { if (control.get() === 'player') shared.playerWanted = true; return inner.start(options) }, stop: reason => { shared.playerWanted = false; recovery.cancel(); return inner.stop(reason) } }
   const agentStatus = () => runtime.autonomy()?.snapshot() ?? { running: false }
   const disposed = () => runtime.disposed?.() === true
@@ -55,7 +55,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const flee = createPlayerFlee({
     getMode: control.get, shared, log, disposed,
     agent: { stop: reason => agent.stop(reason), running: () => agentStatus().running === true },
-    getState: () => { const state = runtime.raw(); return { health: state.health, position: state.position, totem: state.health <= 8 && runtime.totem() } },
+    travel: { status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
+    getState: () => { const state = runtime.raw(); return { health: state.health, position: state.position, inventory: shared.inventoryUncertain ? null : state.inventory, totem: () => runtime.totem() } },
     hostiles: () => runtime.hostiles(), retreat: () => runtime.travel().retreatFromHostiles()
   })
   const fleeTimer = setInterval(() => { if (disposed()) clearInterval(fleeTimer); else void flee.tick().catch(() => {}) }, 500)
