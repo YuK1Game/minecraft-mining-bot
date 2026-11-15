@@ -245,16 +245,20 @@ function nextDiamondAction (state, observations = {}, options = {}) {
   function placement (kind, inventoryItem) {
     const supplied = observations.placements?.[kind] ?? (kind === 'crafting_table' ? observations.tablePlacement : observations.furnacePlacement)
     const feet = { x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62 + 0.001), z: Math.floor(state.position.z) }
+    // A cell closer than 1.3 m is used only when the body stands wholly outside
+    // it, and only after every roomier cell (a dug pocket has no other cell).
+    const beside = point => Math.hypot(point.x + 0.5 - state.position.x, point.z + 0.5 - state.position.z) < 1.3
+    const clearOfBody = point => Math.max(Math.abs(point.x + 0.5 - state.position.x), Math.abs(point.z + 0.5 - state.position.z)) >= 0.85
     const geometry = input => {
       const point = input?.position
       const block = integer(point) ? readBlock(point) : null
       if (block?.known !== true || !integer(point) || !AIR.has(nameOf(block.name)) || point.y !== feet.y || block.protected || block.protectionSource || block.natural === false || block.extra?.length || distance(state.position, point) > 4) return false
-      if (Math.hypot(point.x + 0.5 - state.position.x, point.z + 0.5 - state.position.z) < 1.3) return false
+      if (beside(point) && !clearOfBody(point)) return false
       const below = readBlock({ ...point, y: point.y - 1 })
       return below?.known === true && SUPPORT.has(nameOf(below.name)) && below.boundingBox !== 'empty' && !below.extra?.length && ADJACENT.every(offset => { const neighbour = readBlock({ x: point.x + offset.x, y: point.y + offset.y, z: point.z + offset.z }); return neighbour?.known === true && !HAZARD.test(nameOf(neighbour.name)) && !neighbour.extra?.length })
     }
     const suppliedBlock = supplied?.ready === true && integer(supplied.position) ? readBlock(supplied.position) : null
-    const candidates = known.filter(geometry).sort((a, b) => distance(state.position, a.position) - distance(state.position, b.position))
+    const candidates = known.filter(geometry).sort((a, b) => Number(beside(a.position)) - Number(beside(b.position)) || distance(state.position, a.position) - distance(state.position, b.position))
     const visible = block => placementTopVisible({ state, target: block.position, getBlock: readBlock })
     const target = geometry(suppliedBlock) && visible(suppliedBlock) ? suppliedBlock.position : candidates.find(visible)?.position
     if (!target) {
