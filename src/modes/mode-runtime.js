@@ -7,7 +7,8 @@ const path = require('node:path')
 const { isMode, startRefusal } = require('./bot-mode')
 const { modeFile, loadModeSync, saveMode } = require('./mode-store')
 const { createModeControl } = require('./mode-control')
-const { createPlayerMode } = require('./player-mode')
+const { createPlayerMode, OBJECTIVE } = require('./player-mode')
+const { createPlayerRecovery } = require('./player-recovery')
 
 function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
   const shared = runtime.host().shared, file = modeFile(root), log = text => runtime.host().log(text)
@@ -17,11 +18,20 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const agentStatus = () => runtime.autonomy()?.snapshot() ?? { running: false }
   const control = createModeControl({
     shared, save: mode => saveMode(file, mode), log,
-    getQuarryStatus: () => quarry.status(), getAgentStatus: agentStatus,
+    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active ? { running: true } : agentStatus(),
     isBusy: () => runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld()
   })
+  const recovery = createPlayerRecovery({
+    getMode: control.get, shared, log, disposed: () => runtime.disposed?.() === true,
+    agent: { objective: OBJECTIVE, start: options => agent.start(options) },
+    travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
+    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getPosition: () => runtime.raw().position ?? null
+  })
+  shared.onAutonomyProgress = snapshot => recovery.onProgress(snapshot)
+  // The previous runtime was reloaded in the middle of a recovery: play on.
+  if (shared.playerRecovering === true) { shared.playerRecovering = false; if (control.get() === 'player') shared.autoWanted = true }
   const player = createPlayerMode({
-    getMode: control.get, log, safety: operations.safety,
+    getMode: control.get, log, safety: operations.safety, recovery,
     agent: { start: options => agent.start(options), stop: reason => agent.stop(reason), snapshot: agentStatus },
     getInventory: () => shared.inventoryUncertain ? null : runtime.raw().inventory
   })

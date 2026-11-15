@@ -861,7 +861,7 @@ function createRuntimeOperations (rt) {
       tick: () => { if (rt.chunkMoveHeld()) throw Object.assign(new Error('Botの移動が終わるまで待ってください。'), { code: 'CHUNK_MOVE_BUSY' }); if (rt.manualChestStorage?.isBusy()) throw Object.assign(new Error('ラージチェストへの収納操作中です。'), { code: 'STORAGE_BUSY' }); if (rt.resetHeld()) throw Object.assign(new Error('初期アイテムのリセット処理中です。'), { code: 'RESET_BUSY' }); return rt.autonomy.tick() }
     }
   }
-  rt.require('./modes/mode-runtime').attachModeOperations(operations, { host: () => rt.host, autonomy: () => rt.autonomy, manualChestStorage: () => rt.manualChestStorage, chunkMoveHeld: () => rt.chunkMoveHeld(), resetHeld: () => rt.resetHeld(), raw: () => rt.raw() })
+  rt.require('./modes/mode-runtime').attachModeOperations(operations, { host: () => rt.host, autonomy: () => rt.autonomy, manualChestStorage: () => rt.manualChestStorage, chunkMoveHeld: () => rt.chunkMoveHeld(), resetHeld: () => rt.resetHeld(), raw: () => rt.raw(), disposed: () => !!rt.disposed || !!rt.disposing })
   return {
     get operations () { return operations }
   }

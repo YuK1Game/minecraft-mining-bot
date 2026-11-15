@@ -9,12 +9,13 @@ const { playerStages } = require('./player-stages')
 const OBJECTIVE = Object.freeze({ objective: 'diamond', diamondCount: 1 })
 const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 240)
 
-function createPlayerMode ({ getMode, agent, safety, getInventory = () => null, log = () => {} }) {
+function createPlayerMode ({ getMode, agent, safety, recovery = null, getInventory = () => null, log = () => {} }) {
   let wanted = false
   function start () {
     const refused = startRefusal(getMode(), 'player')
     if (refused) throw Object.assign(new Error(refused.message), { code: refused.code })
     wanted = true
+    recovery?.cancel()
     // Idle protection belongs to player mode: a waiting player defends, eats and retreats.
     safety.start()
     const result = agent.start({ ...OBJECTIVE })
@@ -24,12 +25,16 @@ function createPlayerMode ({ getMode, agent, safety, getInventory = () => null, 
   }
   async function stop (reason = 'プレイヤーモードを停止しました。') {
     wanted = false
+    recovery?.cancel()
     agent.stop(reason)
     log('プレイヤーモード: 停止')
     return status()
   }
   function status () {
     const value = agent.snapshot?.() ?? {}
+    // While recovery owns the pause or the far move, the player is still playing.
+    const recovering = recovery?.status() ?? { active: false }
+    if (recovering.active) return { wanted, running: true, phase: 'recovering', reason: text(recovering.reason), ...playerStages(getInventory()) }
     return { wanted, running: value.running === true, phase: text(value.phase), reason: text(value.reason), ...playerStages(getInventory()) }
   }
   return { start, stop, status }
