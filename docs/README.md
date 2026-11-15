@@ -25,6 +25,7 @@
 | [review-efficiency.md](review-efficiency.md) | 実装の共通化・重複処理削減の記録（検証結果は [review-efficiency-results.json](review-efficiency-results.json)） |
 | [handoff.md](handoff.md) | 作業の引き継ぎ資料（その時点の状態と残課題） |
 | [quarry-start-handoff.md](quarry-start-handoff.md) | 露天掘り開始の実行引継ぎと、その後の追記 |
+| [player-roadmap.md](player-roadmap.md) | プレイヤーモードのロードマップ（エンダードラゴン討伐までの段階と、松明での湧き潰しなど全段階に共通の決まり） |
 
 ## 参考資料
 
