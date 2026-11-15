@@ -26,7 +26,7 @@ const LIMIT = 12
 const whole = point => !!point && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]))
 const same = (a, b) => ['x', 'y', 'z'].every(axis => a[axis] === b[axis])
 
-function reachableOre ({ mode, state, decision, observations, preview }) {
+function reachableOre ({ mode, state, decision, observations, preview, guarded }) {
   const kind = Object.hasOwn(ORES, decision?.resource ?? '') ? ORES[decision.resource] : null
   if (normalizeMode(mode) !== 'player' || !kind || !TYPES.includes(decision.type) || typeof preview !== 'function') return null
   const ORE = kind.name
@@ -38,9 +38,13 @@ function reachableOre ({ mode, state, decision, observations, preview }) {
       return result?.ready === true && result.targets?.length === 1 && ORE.test(result.targets[0].name ?? '') && same(result.targets[0].position ?? {}, ore.position)
     } catch { return false }
   }
+  // An ore the mining entry refuses (the floor of the walked tunnel, a work
+  // site) is left out: the preview accepts it, the dig is then refused, and
+  // the run stopped five times on the same floor ore (2026-11-16 05:00 JST).
+  const kept = point => { try { return typeof guarded === 'function' && guarded(point) === true } catch { return true } }
   const far = ore => Math.hypot(ore.position.x + 0.5 - eye.x, ore.position.y + 0.5 - eye.y, ore.position.z + 0.5 - eye.z)
   const ores = (Array.isArray(observations?.blocks) ? observations.blocks : [])
-    .filter(block => block?.known === true && ORE.test(block.name ?? '') && whole(block.position) && far(block) <= REACH)
+    .filter(block => block?.known === true && ORE.test(block.name ?? '') && whole(block.position) && far(block) <= REACH && !kept(block.position))
     .sort((a, b) => far(a) - far(b)).slice(0, LIMIT)
   const ore = ores.find(accepts)
   if (!ore) return null

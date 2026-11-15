@@ -50,3 +50,15 @@ test('coal below the feet is mined when the plan tunnels or explores for coal', 
     assert.equal(decision.attempt, undefined)
   }
 })
+
+test('an ore the mining entry keeps (the floor of the walked tunnel) is left out', () => {
+  const coal = (x, y, z) => ({ known: true, name: 'minecraft:coal_ore', position: { x, y, z } })
+  const vein = [coal(-4917, 61, -4953), coal(-4917, 61, -4952)]
+  const at = { position: { x: -4916.5, y: 64.62, z: -4953.55 } }
+  const live = targets => ({ ready: true, targets: [{ name: 'minecraft:coal_ore', position: { ...targets[0] } }] })
+  const planned = { type: 'tunnel', stage: 'coal', resource: 'coal', target: { x: -4917, y: 62, z: -4951 } }
+  const floor = point => point.z === -4953
+  assert.deepEqual(reachableOre({ mode: 'player', state: at, decision: planned, observations: { blocks: vein }, preview: live, guarded: floor }).target, { x: -4917, y: 61, z: -4952 })
+  assert.equal(reachableOre({ mode: 'player', state: at, decision: planned, observations: { blocks: vein }, preview: live, guarded: () => true }), null)
+  assert.equal(reachableOre({ mode: 'player', state: at, decision: planned, observations: { blocks: vein }, preview: live, guarded: () => { throw new Error('unknown scope') } }), null)
+})

@@ -2,7 +2,7 @@
 
 // Pure endpoint selection over received observations. A target is not a path:
 // the runner must still ask the live movement planner before sending inputs.
-const SUPPORT = new Set(['grass_block', 'dirt', 'coarse_dirt', 'rooted_dirt', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite'])
+const SUPPORT = new Set(require('../common/standing-ground').STANDING_GROUND)
 const AIR = new Set(['air', 'cave_air', 'void_air'])
 const FALLING = new Set(['sand','red_sand','gravel'])
 const HAZARD = /(?:water|lava|fire|cactus|magma|campfire|sweet_berry_bush|powder_snow|cobweb|wither_rose|pointed_dripstone|sand$|gravel$|concrete_powder$|anvil$)/

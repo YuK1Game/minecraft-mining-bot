@@ -81,7 +81,7 @@ function pickupStandpoints (state, item, observations) {
   observations ??= {}
   const blocks = observations?.blocks ?? []
   const map = new Map(blocks.filter(block => finite(block.position)).map(block => [positionKey(block.position), block]))
-  const supportNames = new Set(['grass_block', 'dirt', 'coarse_dirt', 'rooted_dirt', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite'].map(nameOf))
+  const supportNames = new Set(require('../common/standing-ground').STANDING_GROUND.map(nameOf))
   const hazard = /(?:water|lava|fire|cactus|magma|campfire|sweet_berry_bush|powder_snow|cobweb|wither_rose|pointed_dripstone|sand$|gravel$|concrete_powder$|anvil$)/
   function safeFootprint (point) {
     // Match navigation's standing player: half width .3, height 1.8. Checking

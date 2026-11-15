@@ -6,7 +6,7 @@ const integer = p => finite(p) && ['x', 'y', 'z'].every(k => Number.isSafeIntege
 const { pointKey: key } = require('../common/vec3')
 const name = b => String(b?.name ?? '').replace(/^minecraft:/, '')
 const copy = v => structuredClone(v)
-const SUPPORT = new Set(['stone', 'deepslate', 'cobblestone', 'cobbled_deepslate', 'dirt', 'grass_block', 'coarse_dirt', 'rooted_dirt', 'granite', 'diorite', 'andesite', 'tuff', 'calcite'])
+const SUPPORT = new Set(require('../common/standing-ground').STANDING_GROUND)
 const AIR = new Set(['air', 'cave_air', 'void_air', 'short_grass', 'fern', 'leaf_litter', 'torch'])
 const clear = b => b?.known === true && !b.extra?.length && AIR.has(name(b)) && (['air', 'cave_air', 'void_air'].includes(name(b)) || b.boundingBox === 'empty')
 
