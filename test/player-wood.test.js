@@ -47,3 +47,29 @@ test('logs may be cut in player mode, or in quarry mode only under the unexpired
   assert.equal(logsAllowed({ botMode: 'quarry', woodHarvestAllowance: { purpose: 'long_travel_prep', expiresAt: 2000 } }, 3000), false)
   assert.equal(logsAllowed({ botMode: 'quarry', woodHarvestAllowance: { purpose: 'other', expiresAt: 2000 } }, 1000), false)
 })
+
+test('a log already on the ground is picked up instead of waiting beside it (live 2026-11-15 17:40 JST)', () => {
+  const { state, observations } = emptyHandedByATree()
+  const { woodPlanInput } = require('../src/modes/player-wood')
+  observations.drops = [{ known: true, name: 'minecraft:acacia_log', count: 1, entityId: '77', position: { x: 1.2, y: 65.1, z: 1.4 } }]
+  const waiting = nextSurvivalAction(state, observations, { firstWoodenSwordOnly: true })
+  const plan = () => { const wood = woodPlanInput(state, {}); return nextBootstrapAction(wood.state, observations, wood.options) }
+  const work = withPlayerWood({ mode: 'player', decision: waiting, planLogs: plan })
+  assert.equal(work.type, 'collect_drops')
+  assert.equal(work.targets[0].entityId, '77')
+})
+
+test('with a pickaxe and stone in hand the wood plan still goes for logs; its own waits pass with their reason', () => {
+  const { state, observations } = emptyHandedByATree()
+  const { woodPlanInput } = require('../src/modes/player-wood')
+  state.inventory.items = [{ name: 'minecraft:wooden_pickaxe', count: 1, slot: 0 }, { name: 'minecraft:cobblestone', count: 20, slot: 1 }]
+  const wood = woodPlanInput(state, { diamondCount: 1 })
+  const work = nextBootstrapAction(wood.state, observations, wood.options)
+  assert.ok(work.type === 'gather_logs' || work.resource === 'logs', JSON.stringify(work).slice(0, 200))
+  assert.equal(state.inventory.items.length, 2, 'the real state is untouched')
+  const wait = { type: 'wait', code: 'wood_harvest_disabled' }, busy = { type: 'wait', code: 'task_in_progress', reason: '進行中の処理の結果を待ちます。' }
+  assert.equal(withPlayerWood({ mode: 'player', decision: wait, planLogs: () => busy }), busy)
+  const logged = []
+  assert.equal(withPlayerWood({ mode: 'player', decision: wait, planLogs: () => { throw new Error('boom') }, log: line => logged.push(line) }), wait)
+  assert.match(logged[0], /boom/)
+})
