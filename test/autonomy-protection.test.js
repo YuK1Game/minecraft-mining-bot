@@ -196,3 +196,28 @@ test('an emergency scheduled after a decision still prevents concrete dispatch',
   assert.deepEqual(f.calls, { resource: 1, safety: 0, probe: 0, respawn: 0 })
   noResourcePenalty(f.agent)
 })
+
+test('with threatWaitMs a hostile that only stands near holds the work for that long, then the autonomy moves on', async t => {
+  const state = { phase: 'spawned', health: 20, lifecycle: { dead: false }, inventory: { known: true, items: [] }, entities: [nearbyZombie()], position: { x: 0, y: 64, z: 0 }, idleProtection: { running: true, wanted: true, busy: false, phase: 'observing' }, capabilities: { probe: true } }
+  const calls = []
+  const make = () => createAutonomy({ getState: () => structuredClone(state), intervalMs: 60000, observe: () => ({}), observeSafety: () => ({}), planAction: () => ({ type: 'probe', reason: 'test' }), actions: { probe: () => { calls.push('probe'); return { ok: true, phase: 'completed' } }, avoid_threat: () => { calls.push('avoid'); return { ok: true, phase: 'completed' } } } })
+  const forever = make(); t.after(() => forever.stop())
+  forever.start({ objective: 'diamond' })
+  for (let n = 0; n < 5; n++) { await forever.tick(); await new Promise(resolve => setTimeout(resolve, 15)) }
+  assert.deepEqual(calls, [], 'without the option the wait has no end')
+  const agent = make(); t.after(() => agent.stop())
+  agent.start({ objective: 'diamond', threatWaitMs: 40 })
+  await agent.tick()
+  assert.equal(agent.snapshot().phase, 'waiting')
+  assert.deepEqual(calls, [])
+  await new Promise(resolve => setTimeout(resolve, 60))
+  await agent.tick()
+  assert.deepEqual(calls, ['avoid'], 'after the wait it steps away from the hostile instead of standing')
+  assert.ok(agent.snapshot().trace.some(entry => entry.event === 'threat_wait_over'))
+  state.idleProtection.busy = true
+  await agent.tick()
+  assert.deepEqual(calls, ['avoid'], 'protection that is really busy still owns the Bot')
+  state.idleProtection.busy = false; state.entities = []
+  await agent.tick()
+  assert.deepEqual(calls, ['avoid', 'probe'])
+})
