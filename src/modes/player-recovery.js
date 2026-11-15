@@ -22,7 +22,8 @@ const TRIP_MS = 240000
 const STEP_M = 96
 const GRASS = /^(?:minecraft:)?grass_block$/
 const SCAN_M = 128 // about the terrain a Realm sends around the Bot
-const PAUSES_MS = [30000, 60000, 120000, 300000, 600000]
+// At most two minutes (user 2026-11-15 22:50 JST: 「６００秒長すぎない？」).
+const PAUSES_MS = [30000, 60000, 120000]
 const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 200)
 
 // Nearest received log block between `min` and `radius` metres. Unreceived
