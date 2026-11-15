@@ -15,8 +15,9 @@ function runtime ({ auto = false } = {}) {
     agent: { start: options => { calls.push('agent.start:' + options.objective); running = true }, stop: () => { calls.push('agent.stop'); running = false } },
     safety: { start: () => calls.push('safety.start') }
   }
-  const rt = { host: { shared: { autoWanted: auto }, log: () => {} }, autonomy: { snapshot: () => ({ running, phase: running ? 'working' : 'idle', reason: '' }) },
-    chunkMoveHeld: () => false, resetHeld: () => false, manualChestStorage: null, raw: () => ({ inventory: { known: true, items: [] } }) }
+  const host = { shared: { autoWanted: auto }, log: () => {} }
+  const rt = { host: () => host, autonomy: () => ({ snapshot: () => ({ running, phase: running ? 'working' : 'idle', reason: '' }) }),
+    chunkMoveHeld: () => false, resetHeld: () => false, manualChestStorage: () => null, raw: () => ({ inventory: { known: true, items: [] } }) }
   return { operations, rt, calls, root, mode: attachModeOperations(operations, rt, { root }) }
 }
 
@@ -29,7 +30,7 @@ test('runtime wiring: quarry work refuses in player mode and player work refuses
   f.operations.quarry.pause()
   f.mode.set('player')
   assert.throws(() => f.operations.quarry.resume(), { code: 'MODE_MISMATCH' })
-  assert.equal(f.rt.host.shared.quarryRestoreDisabled, true)
+  assert.equal(f.rt.host().shared.quarryRestoreDisabled, true)
   assert.equal(f.mode.startPlayer().running, true)
   assert.throws(() => f.mode.set('quarry'), { code: 'PLAYER_RUNNING' })
   await f.mode.stopPlayer()
@@ -43,7 +44,7 @@ test('runtime wiring: the saved mode is used by the next process; npm run auto m
   f.mode.set('player')
   await new Promise(resolve => setTimeout(resolve, 50))
   const operations = { quarry: { status: () => null, start () {}, resume () {} }, agent: { start () {}, stop () {} }, safety: { start () {} } }
-  assert.equal(attachModeOperations(operations, { ...f.rt, host: { shared: {}, log: () => {} } }, { root: f.root }).get(), 'player')
+  assert.equal(attachModeOperations(operations, { ...f.rt, host: () => ({ shared: {}, log: () => {} }) }, { root: f.root }).get(), 'player')
   assert.equal(runtime({ auto: true }).mode.get(), 'player')
 })
 

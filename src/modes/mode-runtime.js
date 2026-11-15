@@ -1,29 +1,29 @@
 'use strict'
 
 // Wires the modes into the runtime's operations: adds operations.mode and makes
-// a quarry start or resume refuse while player mode is selected. `rt` is the
-// accessor object runtime-operations.js receives from runtime.js.
+// a quarry start or resume refuse while player mode is selected. `runtime` holds
+// functions that read the runtime's current bindings (host, autonomy, holds).
 const path = require('node:path')
 const { isMode, startRefusal } = require('./bot-mode')
 const { modeFile, loadModeSync, saveMode } = require('./mode-store')
 const { createModeControl } = require('./mode-control')
 const { createPlayerMode } = require('./player-mode')
 
-function attachModeOperations (operations, rt, { root = path.resolve(__dirname, '..', '..') } = {}) {
-  const shared = rt.host.shared, file = modeFile(root), log = text => rt.host.log(text)
+function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
+  const shared = runtime.host().shared, file = modeFile(root), log = text => runtime.host().log(text)
   // First runtime of this process: `npm run auto` means player mode, otherwise the saved choice.
   if (!isMode(shared.botMode)) shared.botMode = shared.autoWanted === true ? 'player' : loadModeSync(file)
   const quarry = operations.quarry, agent = operations.agent
-  const agentStatus = () => rt.autonomy?.snapshot() ?? { running: false }
+  const agentStatus = () => runtime.autonomy()?.snapshot() ?? { running: false }
   const control = createModeControl({
     shared, save: mode => saveMode(file, mode), log,
     getQuarryStatus: () => quarry.status(), getAgentStatus: agentStatus,
-    isBusy: () => rt.chunkMoveHeld() || rt.manualChestStorage?.isBusy() === true || rt.resetHeld()
+    isBusy: () => runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld()
   })
   const player = createPlayerMode({
     getMode: control.get, log, safety: operations.safety,
     agent: { start: options => agent.start(options), stop: reason => agent.stop(reason), snapshot: agentStatus },
-    getInventory: () => shared.inventoryUncertain ? null : rt.raw().inventory
+    getInventory: () => shared.inventoryUncertain ? null : runtime.raw().inventory
   })
   for (const name of ['start', 'resume']) {
     const inner = quarry[name]
