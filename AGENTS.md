@@ -108,6 +108,7 @@ src/            Bot 本体（約190モジュール。2026-11-15 に役割ごと�
                   world.js・entities.js（受信した地形とエンティティ）、dashboard-control.js、realms.js ほか
   runtime/        runtime.js から移した部分（long-travel-runtime / quarry-runtime / idle-safety-runtime /
                   user-control-runtime / runtime-operations / autonomy-runtime）と診断。
+                  idle-escape/ は待機保護の退避ポート（idle-safety-runtime.js の escape）の段階。
                   元のクロージャーの変数は `rt.<名前>`、モジュールは `rt.require(...)`（runtime.js から見たパス）、
                   `.local` などのパスは `rt.__dirname` で使う。別の変数を使うときは、runtime.js 側でそのモジュールを
                   生成している箇所にアクセサを1行足す
@@ -118,11 +119,11 @@ src/            Bot 本体（約190モジュール。2026-11-15 に役割ごと�
   inventory/      持ち物の記録と検査（inventory-store ほか）、コンテナ・耐久・装備の読み取り
   actions/        ゲームへの操作（mining、interactions、crafting、furnace、chest、food、armor、portable-bed）
   safety/         待機保護（idle-safety）、復帰（recovery）、退避、learning-health
-                  idle-safety.js は監視と判定、退避の実行は idle-safety-escape.js、自衛は idle-safety-protect.js
+                  idle-safety.js は監視と判定、退避の実行は idle-safety-escape.js（段階は escape/）、自衛は idle-safety-protect.js
   quarry/         露天掘り。quarry-job.js は状態機械（計画・採掘・回収・設置）で、収納は quarry-job-storage.js、
                   補給は quarry-job-restock.js、脱出・最終確認は quarry-job-egress.js、設置の照合は quarry-job-reconcile.js
     storage/        シュルカー収納・補給箱・設置の照合記録。quarry-portable-storage.js は計画と状態、
-                    収納の実行は quarry-portable-store.js、設置の照合は quarry-portable-reconcile.js
+                    収納の実行は quarry-portable-store.js（段階は store/）、設置の照合は quarry-portable-reconcile.js
     exit/           脱出列の計画、土柱、脱出の実行
   loadout/        初期セットのリセット、v2.2 の受領、ラージチェストへの手動全収納、シュルカーの手動回復
   survival/       旧サバイバル（autonomy、planner、runner、小屋・避難所・保管庫、狩り、ダイヤ計画）。
@@ -165,7 +166,7 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 - **サーバー由来の情報だけを成果とする**: 入力の送信、時間経過、プレビューの成功、予測位置への到着、ドロップの消滅だけで成功扱いにしない。回収・クラフトは実際の持ち物の変化、採掘は受信した空気、設置はブロック更新と消費の両方で確認する。露天掘りの表示用集計や予測だけでジョブ完了とせず、受信した地形・実際の持ち物変化によるジョブの確認結果を使う。旧ダイヤ目標を扱う場合も、完了判定はサーバーから届いた持ち物にダイヤがある時だけ。
 - **未知を安全と見なさない**: 未受信の地形・未確認の持ち物・一覧にない敵は安全側に倒す。
 - **再起動が必要な変更を明示する**: `src/host/` 以下（`host.js`、`entities.js` など接続側で読み込むモジュール）、認証・通信、依存、`.env` の変更はホットリロードされない。ユーザーに再起動が必要と伝える。
-- **大きいファイルを育てない**（2026-11-15 品質改善の方針。読みやすさ・保守性のため）: `src/runtime.js`・`src/quarry/quarry-job.js`・`src/safety/idle-safety.js`・`src/quarry/storage/quarry-portable-storage.js`・`src/survival/runner.js`・`src/safety/idle-safety-escape.js`・`src/quarry/storage/quarry-portable-store.js`・`dashboard/index.html` には新しい機能の処理を書き足さない。新しい機能は専用のモジュール（例: `src/travel/long-travel.js`）に置き、大きいファイルには呼び出しの1〜数行だけを足す。`npm run check` が基準（`scripts/size-budget.json`）からの増加を「サイズ超過」として表示する。処理を外へ出したら基準値を下げる。新しい処理を入れるために基準値を上げない。`runtime.js` のまとまった処理を外へ出すときは `node scripts/extract-runtime-block.js <開始行> <終了行> <モジュール名> <関数名> <変数名> [--file=src/…] [--dir=runtime]` を使う（構文解析に基づく機械的な移し替え。`--apply` なしでは一時フォルダに出力するだけ）。`runtime.js` のソース文字列を照合・切り出し・加工するテストは `test/helpers/runtime-source.js` の `runtimeSource()` を読む（移した部分を元の位置へ戻した1ファイル分のテキストを返す。分割前のソースと一致することを確認済み）。
+- **大きいファイルを育てない**（2026-11-15 品質改善の方針。読みやすさ・保守性のため）: `src/runtime.js`・`src/quarry/quarry-job.js`・`src/safety/idle-safety.js`・`src/quarry/storage/quarry-portable-storage.js`・`src/survival/runner.js`・`src/safety/idle-safety-escape.js`・`src/quarry/storage/quarry-portable-store.js`・`dashboard/index.html` には新しい機能の処理を書き足さない。新しい機能は専用のモジュール（例: `src/travel/long-travel.js`）に置き、大きいファイルには呼び出しの1〜数行だけを足す。`npm run check` が基準（`scripts/size-budget.json`）からの増加を「サイズ超過」として表示する。処理を外へ出したら基準値を下げる。新しい処理を入れるために基準値を上げない。`runtime.js` のまとまった処理を外へ出すときは `node scripts/extract-runtime-block.js <開始行> <終了行> <モジュール名> <関数名> <変数名> [--file=src/…] [--dir=runtime]` を使う（構文解析に基づく機械的な移し替え。`--apply` なしでは一時フォルダに出力するだけ）。1つの関数の途中（await・return・ループの break/continue を含む一連の文）を段階として別モジュールへ出すときは `node scripts/extract-stage.js <開始行> <終了行> <モジュール名> <関数名> --file=src/… [--dir=…] [--as=st]` を使い、同じ関数の段階を出し終えたら `node scripts/extract-stage.js --merge --file=src/…` で呼び出し側の共有オブジェクトを1つにまとめる。段階は元の関数の変数を `st.<名前>` で読み書きする。長い関数に処理を足すときは、該当する段階のモジュールに足すか新しい段階を作る。`runtime.js` のソース文字列を照合・切り出し・加工するテストは `test/helpers/runtime-source.js` の `runtimeSource()` を読む（移した部分を元の位置へ戻した1ファイル分のテキストを返す。分割前のソースと一致することを確認済み）。
 - **同じ種類の不具合を個別の条件分岐で直し続けない**（同上）: 同じ機能で3件目の個別修正になる前に、共通の原因（判定の持ち方・状態の出どころ・部品の境界）を確かめ、部品として直す。個別の対処を足した場合は、その場所と理由をコミットメッセージに残す。
 - **ドキュメントのファイル名に日付を付けない**（2026-11-15 ユーザー指示「ファイル名の日付は廃止して、gitで差分を管理できるため」）: `docs/` の資料は内容を表す名前にし、更新するときは同じファイルを書き換える。以前の内容は Git の履歴で確認する。新しい資料を足したら `docs/README.md` の一覧にも1行足す。
 - **変更前の状態は Git で残す**（2026-11-13 ユーザー方針）: `backup/` フォルダへのファイルコピーはしない。既存コードを変える前に作業ブランチを切るかコミットしておき、戻す必要があれば Git の履歴から戻す。
