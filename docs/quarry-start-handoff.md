@@ -176,7 +176,7 @@
 - GitHubのUbuntu/Windows安全回帰・戦闘性能チェック成功。
 - 全件比較CIは失敗。baselineは255失敗・2キャンセル、currentは260失敗・2キャンセル。追加5件は未変更の `test/runtime-idle-escape.test.js` にある。不安定テストのあるファイルと一致するが、全件成功や差分なしとは扱わない。
 
-参照: `docs/handoff-20261111.md`、`src/runtime.js` の loadout/quarry/chest/movement、`src/quarry-v22-reset.js`、`src/dashboard-control.js`。
+参照: `docs/handoff.md`、`src/runtime.js` の loadout/quarry/chest/movement、`src/quarry-v22-reset.js`、`src/dashboard-control.js`。
 
 
 ## 2026-11-12 自動収納の停止修正

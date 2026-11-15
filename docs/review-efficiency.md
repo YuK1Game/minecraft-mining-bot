@@ -71,7 +71,7 @@
 
 CIでは両版を同じNode v24.22.2と依存で比較した。失敗件数の減少を、そのまま修正した不具合数とはしていない。ローカルとCIではNodeのpatch versionや実行環境が異なり、総テスト数も異なるため別々に掲載している。
 
-証跡: [全件比較・安全回帰のCI](https://github.com/YuK1Game/minecraft-mining-bot/actions/runs/43478302209)、[重点検証のCI](https://github.com/YuK1Game/minecraft-mining-bot/actions/runs/43478302355)、[機械可読の検証記録](review-efficiency-2026-11-14-results.json)。全件CIのcomplete-suite-comparison artifactには元のTAPと比較JSONが保存されている。
+証跡: [全件比較・安全回帰のCI](https://github.com/YuK1Game/minecraft-mining-bot/actions/runs/43478302209)、[重点検証のCI](https://github.com/YuK1Game/minecraft-mining-bot/actions/runs/43478302355)、[機械可読の検証記録](review-efficiency-results.json)。全件CIのcomplete-suite-comparison artifactには元のTAPと比較JSONが保存されている。
 
 ### 実行条件と実行環境の中断
 
