@@ -39,7 +39,7 @@ function supportIssue (read, feet) {
 // directly below a placed block must be received, a full block without extra
 // layers, not a liquid or falling block, and ordinary ground or planks.
 const PLACEMENT_HAZARD = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|scaffolding)/
-const PLACEMENT_GROUND = new Set(['dirt', 'grass_block', 'coarse_dirt', 'rooted_dirt', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', 'bedrock'].map(name => `minecraft:${name}`))
+const PLACEMENT_GROUND = new Set([...require('../../common/standing-ground').STANDING_GROUND, 'bedrock'].map(name => `minecraft:${name}`))
 const PLACEMENT_PLANKS = new Set(['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'poplar', 'bamboo', 'crimson', 'warped'].map(wood => `minecraft:${wood}_planks`))
 const placementSupportOk = b => b?.known === true && b.boundingBox === 'block' && typeof b.name === 'string' && !PLACEMENT_HAZARD.test(b.name) && !b.extra?.length && (PLACEMENT_GROUND.has(b.name) || PLACEMENT_PLANKS.has(b.name))
 module.exports = { plainAir, clearableSitePlant, passableSiteBody, describeBlock, supportIssue, placementSupportOk }
