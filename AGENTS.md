@@ -216,6 +216,7 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 - 切替は管理画面のコントロール見出しの「露天掘り｜プレイヤー」か、ターミナルの `/mode quarry|player`。**切替だけでは作業を開始・取り消ししない**。もう一方の作業（露天掘りジョブの実行、プレイヤーの実行、移動・収納・初期セット操作）が止まっている時だけ切り替えられる。一時停止中の露天掘りジョブは残り、露天掘りへ戻せば再開できる。
 - 露天掘りの開始・再開はプレイヤーモードでは `MODE_MISMATCH` で拒否する。プレイヤーの開始（管理画面の「プレイ開始」、`/auto`）は露天掘りモードでは拒否する。プレイヤーモードでは保存済みジョブの自動復元・自動再開をしない。
 - プレイヤーモードの中身は現在、旧サバイバル自律実行（目標 `diamond`）＋待機保護の有効化。木の採取・チェスト・拠点づくりはこのモードの作業で、露天掘りモードの決まり（木を採らない・シュルカー専用）は変えない。戦闘モードは両方で共通。
+- **プレイヤーモードでは原木を採る**（`src/modes/player-wood.js`）。採掘・自律実行の原木の許可（`logAllowance`）はプレイヤーモードの間は常に有効で、旧サバイバル計画が返す「木材不足で待機」（`wood_harvest_disabled`）は、基本計画の原木採取（自然の木だけ、下の段から）に置き換える。葉はどちらのモードでも採らない。露天掘りモードでは従来どおり長距離移動の準備の許可（約10本・30分）だけ。露天掘りの作業中は常に無効。
 - 目標の段階（木の道具 → 石の道具 → 鉄の道具 → ダイヤ → ネザー → エンド）は `src/modes/player-stages.js`。到達は**サーバーから受信した持ち物**だけで判定し、未受信なら未到達。ネザー・エンドは道筋として表示するだけで未実装（`implemented: false`）。新しい段階の処理は `src/modes/` か専用モジュールに置く。
 - 主なファイル: `src/modes/bot-mode.js`（モード名と切替・開始の規則）、`mode-store.js`（保存）、`mode-control.js`（切替の適用）、`player-mode.js`（開始・停止）、`mode-runtime.js`（`operations.mode` の配線。`runtime-operations.js` から1行で呼ぶ）、`dashboard/mode.js`・`mode.css`（切替と段階表示）、`scripts/lib/player-activity.js`（「今していること」欄の文言）。
 - 管理画面からは `setMode`・`playerStart`・`playerStop` の固定コマンドだけを通す（`/api/control/mode`）。テストは `test/bot-mode.test.js`、`test/mode-wiring.test.js`。`host.js`・`dashboard-control.js`・`scripts/` の変更があるため、反映には Bot 本体と管理画面の再起動が必要。

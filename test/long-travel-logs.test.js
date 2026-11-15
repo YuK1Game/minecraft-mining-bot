@@ -36,7 +36,11 @@ test('leaves stay refused even with the allowance', t => {
 
 test('the allowance is scoped: purpose, 30-minute expiry, never while quarry work runs; at most 10 logs', () => {
   const runtime = require('./helpers/runtime-source').runtimeSource()
-  assert.match(runtime, /a\.purpose === 'long_travel_prep' && Date\.now\(\) < a\.expiresAt && !quarryJob\?\.holdsWork\(\)/)
+  assert.match(runtime, /return !quarryJob\?\.holdsWork\(\) && require\('\.\/modes\/player-wood'\)\.logsAllowed\(host\.shared\)/)
+  const { logsAllowed } = require('../src/modes/player-wood')
+  assert.equal(logsAllowed({ woodHarvestAllowance: { purpose: 'long_travel_prep', expiresAt: 30 * 60000 } }, 30 * 60000 - 1), true)
+  assert.equal(logsAllowed({ woodHarvestAllowance: { purpose: 'long_travel_prep', expiresAt: 30 * 60000 } }, 30 * 60000), false)
+  assert.equal(logsAllowed({ woodHarvestAllowance: { purpose: 'other', expiresAt: 30 * 60000 } }, 0), false)
   assert.match(runtime, /Math\.max\(1, Math\.min\(10,/)
   const runner = fs.readFileSync(require.resolve('../src/survival/runner'), 'utf8')
   assert.match(runner, /const allowed = !leafWork &&/)
