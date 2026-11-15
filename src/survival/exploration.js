@@ -145,7 +145,7 @@ function rankRetreatTargets (state, observations = {}, threats = [], { limit = 2
   const enemies = threats.filter(threat => threat.hostile !== false && threat.alive !== false && finite(threat.position))
   if (!finite(state?.position) || !enemies.length) return []
   const currentNearest = Math.min(...enemies.map(enemy => spatial(state.position, enemy.position)))
-  return knownStandpoints(state, observations, { minDistance: 3, maxDistance: 6, maxHeightDelta: 3, limit: 1000 })
+  const ranked = knownStandpoints(state, observations, { minDistance: 3, maxDistance: 6, maxHeightDelta: 3, limit: 1000 })
     .map(candidate => {
       const eye = { ...candidate.position, y: candidate.position.y + 1.62 }
       const nearest = Math.min(...enemies.map(enemy => spatial(eye, enemy.position)))
@@ -153,7 +153,23 @@ function rankRetreatTargets (state, observations = {}, threats = [], { limit = 2
     })
     .filter(candidate => candidate.threatDistanceGain >= 0.5)
     .sort((a, b) => b.score - a.score || b.distance - a.distance || a.position.x - b.position.x || a.position.z - b.position.z)
-    .slice(0, Math.min(20, Number.isInteger(limit) && limit > 0 ? limit : 20))
+  // The best of every direction first, then the next best of each: the top
+  // of the list alone can lie in one direction that has no route (real Realm
+  // 2026-11-15: all twenty candidates were straight away from a creeper where
+  // no route existed, while the ground to the side was walkable).
+  const sectors = new Map()
+  for (const candidate of ranked) {
+    const sector = Math.floor((Math.atan2(candidate.position.z - state.position.z, candidate.position.x - state.position.x) + Math.PI) / (Math.PI / 6)) % 12
+    if (!sectors.has(sector)) sectors.set(sector, [])
+    sectors.get(sector).push(candidate)
+  }
+  const spread = []
+  for (let round = 0; spread.length < ranked.length; round++) {
+    const row = [...sectors.values()].map(list => list[round]).filter(Boolean)
+    if (!row.length) break
+    spread.push(...row.sort((a, b) => b.score - a.score))
+  }
+  return spread.slice(0, Math.min(20, Number.isInteger(limit) && limit > 0 ? limit : 20))
 }
 
 function createExploration ({ historyLimit = 80, historyTtlMs = 600000, clock = Date.now, readSupportBlock = null } = {}) {
