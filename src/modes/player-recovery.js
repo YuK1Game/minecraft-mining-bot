@@ -65,7 +65,7 @@ function farTarget (snapshot, position) {
 
 const seeksWood = snapshot => snapshot?.lastDecision?.type === 'explore' && snapshot.lastDecision.resource === 'logs'
 
-function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
   let run = null, trips = 0, pauses = 0, heading = null, logsSeen = 0, reason = null, visited = []
   const live = token => run === token && !disposed() && normalizeMode(getMode()) === 'player'
 
@@ -108,6 +108,15 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
     const destination = goal ? { x: goal.x, z: goal.z } : under ? surfaceAhead(position, tree, heading) : tree ? { x: tree.x, z: tree.z } : aheadPoint(position, heading)
     if (tree && !under) visited = [...visited.slice(-15), destination]
     reason = under ? `地下にいるため、先に地上へ出ます（(${destination.x}, ${destination.z}) の方向）。` : goal ? `次の作業の場所 (${destination.x}, ${destination.z}) が遠いため、そこへ移動しています。` : tree ? `木が見える (${destination.x}, ${destination.z}) へ移動しています。` : `近くに${wood ? '木' : '資源'}が見つからないため、(${destination.x}, ${destination.z}) へ移動して探します。`
+    // No walk leads out of a closed tunnel: straight up first (player-climb.js); the walk below is the fallback.
+    if (under && climb) {
+      reason = '地下にいるため、真上へ掘って地上へ出ます。'
+      log(`プレイヤーモード: ${reason}`)
+      let out = null
+      try { out = await climb(() => !live(token)) } catch (error) { log(`プレイヤーモード: 真上へ掘れません ${text(error?.message)}`) }
+      if (out?.ok || !live(token)) return live(token)
+      reason = `地下にいるため、先に地上へ出ます（(${destination.x}, ${destination.z}) の方向）。`
+    }
     log(`プレイヤーモード: ${reason}`)
     try { await travel.to({ destination }) } catch (error) { log(`プレイヤーモード: 移動を始められません ${text(error?.message)}`) }
     const until = now() + TRIP_MS
