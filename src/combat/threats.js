@@ -63,6 +63,15 @@ function safeId (value) {
 }
 
 const STALE_ACTOR_MS = 5 * 60 * 1000
+const STILL_ACTOR_MS = 5 * 60 * 1000
+const STILL_MIN_DISTANCE = 4.5 // nearer than this a creeper can start its fuse
+function standingStill (entity, type, learning, distance) {
+  if (!(distance > STILL_MIN_DISTANCE) || learning === 'archer' || learning === 'ranged' || type === 'minecraft:witch') return false
+  if (entity.primed === true || entity.ignited === true) return false
+  const moved = typeof entity.positionUpdatedAt === 'string' ? Date.parse(entity.positionUpdatedAt) : NaN
+  const hurt = typeof entity.hurtAt === 'string' ? Date.parse(entity.hurtAt) : NaN
+  return Number.isFinite(moved) && Date.now() - moved > STILL_ACTOR_MS && !(Number.isFinite(hurt) && Date.now() - hurt < STILL_ACTOR_MS)
+}
 
 function evaluateThreats (state, entities, { extraMargin = 0, observationRadius = null, maxEntities = 1024, now = Date.now, maxTerrainAgeMs = 1500 } = {}) {
   if (!Number.isFinite(extraMargin) || extraMargin < 0 || extraMargin > 16 || !Number.isInteger(maxEntities) || maxEntities < 1 || maxEntities > 4096) throw new Error('危険評価の余裕距離・観測上限が不正です。')
@@ -136,6 +145,13 @@ function evaluateThreats (state, entities, { extraMargin = 0, observationRadius 
       // every avoidance list (a bot inside its circle could otherwise never
       // move). Outside hostiles keep their ordinary avoidance corridor.
       unreachable.push({ ...entry, dangerous: false, score: 0, unreachableNow: true, reason: `${type}への移動ルートを現在の位置から算出できないため、戦闘・退避・回避をせず通常作業（探索）を続けます。移動・地形変化のたびに再評価します。` })
+    } else if (entry.dangerous && standingStill(entity, type, learning, observed.distance)) {
+      // A melee mob or creeper whose position has not changed for minutes and
+      // that is out of its own reach is not coming (real Realm 2026-11-15: a
+      // creeper 7.8 m away, alive, position unchanged for 51 minutes, held
+      // all work and every route inside its circle). One received step makes
+      // it a threat again.
+      unreachable.push({ ...entry, dangerous: false, score: 0, standingStill: true, positionUpdatedAt: entity.positionUpdatedAt, reason: `${type}は${Math.round(STILL_ACTOR_MS / 60000)}分以上その場から動いていないため、作業の中断・退避の対象にしません。動いた時は通常の評価に戻します。` })
     } else if (entry.dangerous) threats.push(entry)
     else outsideDanger.push(entry)
   }
