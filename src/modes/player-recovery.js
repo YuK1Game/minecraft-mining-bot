@@ -18,6 +18,7 @@ const { normalizeMode } = require('./bot-mode')
 
 const LOG = /^(?:minecraft:)?[a-z_]+_(?:log|stem)$/
 const TRIP_LIMIT = 8
+const { underCover, surfaceAhead } = require('./player-surface')
 const TRIP_MS = 240000
 const STEP_M = 96
 const GRASS = /^(?:minecraft:)?grass_block$/
@@ -102,9 +103,11 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
       if (!live(token)) return false
       heading = grass ? Math.atan2(grass.z - Math.floor(position.z), grass.x - Math.floor(position.x)) : 0
     }
-    const destination = goal ? { x: goal.x, z: goal.z } : tree ? { x: tree.x, z: tree.z } : aheadPoint(position, heading)
-    if (tree) visited = [...visited.slice(-15), destination]
-    reason = goal ? `次の作業の場所 (${destination.x}, ${destination.z}) が遠いため、そこへ移動しています。` : tree ? `木が見える (${destination.x}, ${destination.z}) へ移動しています。` : `近くに${wood ? '木' : '資源'}が見つからないため、(${destination.x}, ${destination.z}) へ移動して探します。`
+    // From a tunnel the trees stand overhead: first out to the open sky (player-surface.js).
+    const under = !goal && wood && underCover(getBlock, position)
+    const destination = goal ? { x: goal.x, z: goal.z } : under ? surfaceAhead(position, tree, heading) : tree ? { x: tree.x, z: tree.z } : aheadPoint(position, heading)
+    if (tree && !under) visited = [...visited.slice(-15), destination]
+    reason = under ? `地下にいるため、先に地上へ出ます（(${destination.x}, ${destination.z}) の方向）。` : goal ? `次の作業の場所 (${destination.x}, ${destination.z}) が遠いため、そこへ移動しています。` : tree ? `木が見える (${destination.x}, ${destination.z}) へ移動しています。` : `近くに${wood ? '木' : '資源'}が見つからないため、(${destination.x}, ${destination.z}) へ移動して探します。`
     log(`プレイヤーモード: ${reason}`)
     try { await travel.to({ destination }) } catch (error) { log(`プレイヤーモード: 移動を始められません ${text(error?.message)}`) }
     const until = now() + TRIP_MS
@@ -112,11 +115,11 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
     // never back across the map to the old destination (live 2026-11-15 21:44
     // JST: after a respawn the walk went on toward a point 14 km away).
     const lost = () => { const at = getPosition(); return !!at && Math.hypot(at.x - destination.x, at.z - destination.z) > SCAN_M * 3 }
-    while (live(token) && now() < until && travel.status()?.busy && !lost()) await sleep(1000)
+    while (live(token) && now() < until && travel.status()?.busy && !lost() && !(under && !underCover(getBlock, getPosition()))) await sleep(1000)
     if (lost() && !goal) { log('プレイヤーモード: 目的地から大きく離れたため、この移動をやめて今の場所から探し直します'); heading = null; visited = [] }
     // A walk that got nowhere (a cliff, water, no route): try the next direction.
     const reached = getPosition()
-    if (!goal && !tree && heading !== null && reached && Math.hypot(reached.x - from.x, reached.z - from.z) < STEP_M / 4) heading += Math.PI / 3
+    if (!goal && !tree && !under && heading !== null && reached && Math.hypot(reached.x - from.x, reached.z - from.z) < STEP_M / 4) heading += Math.PI / 3
     // The trip dug a night or rest pit: the shelter keeps the Bot there and plays on afterwards.
     if (held()) return live(token)
     if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
