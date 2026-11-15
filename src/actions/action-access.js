@@ -160,13 +160,22 @@ function planPlacementAccess ({ state, targets = [], blocks = [], getBlock, maxD
     for (let x = Math.floor(position.x - 0.3 + 1e-6); x <= Math.floor(position.x + 0.3 - 1e-6); x++) for (let z = Math.floor(position.z - 0.3 + 1e-6); z <= Math.floor(position.z + 0.3 - 1e-6); z++) if (!support(getBlock({ x, y: position.y - 1, z })) || !open(getBlock({ x, y: position.y, z })) || !open(getBlock({ x, y: position.y + 1, z }))) return false
     return true
   }
+  // Body cells that are received solid blocks: nobody can stand there.
+  const walled = position => {
+    for (let x = Math.floor(position.x - 0.3 + 1e-6); x <= Math.floor(position.x + 0.3 - 1e-6); x++) for (let z = Math.floor(position.z - 0.3 + 1e-6); z <= Math.floor(position.z + 0.3 - 1e-6); z++) for (const y of [position.y, position.y + 1]) { const block = getBlock({ x, y, z }); if (block?.known === true && block.boundingBox === 'block') return true }
+    return false
+  }
   const feet = { ...state.position, y: state.position.y - 1.62 }
   const cost = p => Math.hypot(p.x - feet.x, p.z - feet.z) + Math.abs(p.y - feet.y) * 2
   const stances = blocks.filter(support).map(block => ({ x: block.position.x + 0.5, y: block.position.y + 1, z: block.position.z + 0.5 })).filter(p => Math.hypot(p.x - feet.x, p.y - feet.y, p.z - feet.z) <= maxDistance && Math.hypot(p.x - feet.x, p.y - feet.y, p.z - feet.z) > 0.4 && standing(p)).sort((a, b) => cost(a) - cost(b) || a.x - b.x || a.y - b.y || a.z - b.z)
-  for (const standpoint of stances) for (const target of targets) {
+  // First every tolerance offset must be standable. Only when no stance passes
+  // that: an offset whose body would be inside a wall cannot be stood at (a
+  // one-wide corridor), so it is not a position to prove; every offset the
+  // body fits at still needs its floor and the view.
+  for (const confined of [false, true]) for (const standpoint of stances) for (const target of targets) {
     const block = getBlock(target)
     if (!same(target, target) || block?.known !== true || !AIR.has(block.name) || block.extra?.length || block.protected === true || block.protectionSource || block.natural === false || Math.hypot(standpoint.x - target.x - 0.5, standpoint.z - target.z - 0.5) < 1.55) continue
-    const views = OFFSETS.map(offset => ({ x: standpoint.x + offset.x, y: standpoint.y + 1.62, z: standpoint.z + offset.z }))
+    const views = OFFSETS.map(offset => ({ x: standpoint.x + offset.x, y: standpoint.y + 1.62, z: standpoint.z + offset.z })).filter((position, index) => !confined || index === 0 || !walled({ ...position, y: standpoint.y }))
     if (!views.every(position => standing({ ...position, y: standpoint.y }) && placementTopVisible({ state: { position }, target, getBlock, maxReach: 4.3 }))) continue
     return { target: { ...target }, standpoint, testedPoints: views.length, positionTolerance: 0.25 }
   }
