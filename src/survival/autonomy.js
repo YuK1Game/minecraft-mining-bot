@@ -68,6 +68,9 @@ function observedDiamonds (state) {
 const messageOf = error => String(error?.message ?? error).replace(/Bearer\s+\S+/gi, 'Bearer [redacted]').replace(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g, '[redacted]').slice(0, 500)
 const entityIdOf = value => value?.entityId ?? value?.runtimeEntityId ?? value?.runtimeId ?? value?.id
 const ORE_RESOURCES = new Set(['coal', 'iron', 'diamond'])
+// A placed table or furnace whose standing place has no route: the planner
+// makes a new one from held materials instead of stopping on the old one.
+const STATION_RESOURCES = ['crafting_table', 'furnace']
 const resourceScope = state => state && typeof state.profile === 'string' && state.realm?.id != null && typeof state.dimension === 'string' && typeof state.connectionId === 'string'
   ? JSON.stringify([state.profile, String(state.realm.id), state.dimension, state.connectionId, String(state.runtimeEntityId ?? '')]) : null
 const blockIdentity = value => value && ['x', 'y', 'z'].every(axis => Number.isFinite(value[axis])) ? { x: Math.floor(value.x), y: Math.floor(value.y), z: Math.floor(value.z) } : undefined
@@ -80,7 +83,7 @@ function normalizeExcludedResources (values) {
   for (const value of Array.isArray(values) ? values : []) {
     const point = value?.position ?? value?.target ?? value
     if (!point || !['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]))) continue
-    const resource = ['logs', 'stone', 'coal', 'iron', 'diamond'].includes(value.resource) ? value.resource : null
+    const resource = ['logs', 'stone', 'coal', 'iron', 'diamond', ...STATION_RESOURCES].includes(value.resource) ? value.resource : null
     const scope = typeof value.scope === 'string' && value.scope.length > 0 && value.scope.length <= 512 ? value.scope : null
     if (ORE_RESOURCES.has(resource) && !scope) continue
     const record = { resource, position: { x: point.x, y: point.y, z: point.z }, ...(scope ? { scope } : {}) }
@@ -352,6 +355,7 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
       const point = decision.resourceTarget ?? (['gather_logs', 'mine_stone'].includes(decision.type) ? decision.target : decision.near)
       const resource = decision.resource ?? decision.stage
       if (['logs', 'stone'].includes(resource) && point && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]))) resources.push({ resource, position: { x: point.x, y: point.y, z: point.z } })
+      if (decision.type === 'move_to' && STATION_RESOURCES.includes(resource) && decision.stationTarget && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(decision.stationTarget[axis]))) resources.push({ resource, position: { x: decision.stationTarget.x, y: decision.stationTarget.y, z: decision.stationTarget.z } })
       const orePoint = decision.resourceTarget ?? decision.target ?? decision.near
       const scope = resourceScope(actionState)
       if (ORE_RESOURCES.has(resource) && ['mine_ore', 'tunnel', 'move_to'].includes(decision.type) && scope && scope === resourceScope(currentState) && orePoint && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(orePoint[axis]))) resources.push({ resource, position: { x: orePoint.x, y: orePoint.y, z: orePoint.z }, scope })
