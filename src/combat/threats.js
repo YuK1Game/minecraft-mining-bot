@@ -62,6 +62,8 @@ function safeId (value) {
   return typeof value === 'string' && /^-?\d+$/.test(value) ? value : null
 }
 
+const STALE_ACTOR_MS = 5 * 60 * 1000
+
 function evaluateThreats (state, entities, { extraMargin = 0, observationRadius = null, maxEntities = 1024, now = Date.now, maxTerrainAgeMs = 1500 } = {}) {
   if (!Number.isFinite(extraMargin) || extraMargin < 0 || extraMargin > 16 || !Number.isInteger(maxEntities) || maxEntities < 1 || maxEntities > 4096) throw new Error('危険評価の余裕距離・観測上限が不正です。')
   if (typeof now !== 'function' || !Number.isFinite(maxTerrainAgeMs) || maxTerrainAgeMs < 0 || maxTerrainAgeMs > 3000) throw new Error('地形遮蔽の観測時刻・有効期限が不正です。')
@@ -87,6 +89,13 @@ function evaluateThreats (state, entities, { extraMargin = 0, observationRadius 
     const observed = { entityId: runtimeId, runtimeId, name: type, kind: role ?? entity?.kind ?? 'entity', position: point, positionKnown: point !== null, distance: Number.isFinite(measured) ? measured : null }
     if (runtimeId !== null && runtimeId === ownId) { ignored.push({ ...observed, reason: 'self' }); continue }
     if (entity?.alive === false || entity?.dead === true || entity?.health === 0) { ignored.push({ ...observed, reason: 'dead' }); continue }
+    // Nothing at all received about this actor for minutes: a living mob near
+    // the Bot turns its head or steps within seconds, so this record is a
+    // leftover (real Realm 2026-11-15: a creeper record 7.8 m away, last
+    // received 45 minutes before, held all work). Any new packet about it
+    // makes it current again.
+    const lastHeard = typeof entity?.updatedAt === 'string' ? Date.parse(entity.updatedAt) : NaN
+    if (Number.isFinite(lastHeard) && Date.now() - lastHeard > STALE_ACTOR_MS) { ignored.push({ ...observed, reason: 'stale', lastHeardAt: entity.updatedAt }); continue }
     if (state?.dimension != null && entity?.dimension != null && dimensionName(state.dimension) !== dimensionName(entity.dimension)) { ignored.push({ ...observed, reason: 'different_dimension' }); continue }
     const policy = selectedPolicy(entity)
     if (!policy) {
