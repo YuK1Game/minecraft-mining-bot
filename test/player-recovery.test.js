@@ -1,19 +1,19 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createPlayerRecovery, nearestKnownLog, ringPoint } = require('../src/modes/player-recovery')
+const { createPlayerRecovery, nearestKnownLog, aheadPoint } = require('../src/modes/player-recovery')
 const { createAutonomy } = require('../src/survival/autonomy')
 const { playerActivity, modeState } = require('../scripts/lib/player-activity')
 
-function fixture ({ blocks = {}, mode = 'player' } = {}) {
-  const calls = [], shared = { autoWanted: true, autoOptions: {} }, logs = []
+function fixture ({ blocks = {}, mode = 'player', walks = false } = {}) {
+  const calls = [], shared = { autoWanted: true, autoOptions: {} }, logs = [], position = { x: 0.5, y: 65.62, z: 0.5 }
   let busy = false, clock = 0
   const recovery = createPlayerRecovery({
     getMode: () => mode, shared, log: line => logs.push(line),
     agent: { objective: { objective: 'diamond', diamondCount: 1 }, stop: reason => { calls.push('stop'); shared.autoWanted = false }, start: async options => { calls.push({ start: options }); shared.autoWanted = true; shared.autoOptions = { ...options } } },
-    travel: { to: async input => { calls.push({ travel: input.destination }); busy = true; setTimeout(() => { busy = false }, 5) }, status: () => ({ busy }), cancel: async () => { busy = false; calls.push('cancel') } },
+    travel: { to: async input => { calls.push({ travel: input.destination }); if (walks) Object.assign(position, { x: input.destination.x + 0.5, z: input.destination.z + 0.5 }); busy = true; setTimeout(() => { busy = false }, 5) }, status: () => ({ busy }), cancel: async () => { busy = false; calls.push('cancel') } },
     getBlock: (x, y, z) => blocks[`${x},${y},${z}`] ?? { known: false },
-    getPosition: () => ({ x: 0.5, y: 65.62, z: 0.5 }),
+    getPosition: () => ({ ...position }),
     sleep: async ms => { clock += ms; await new Promise(resolve => setTimeout(resolve, 1)) }, now: () => clock
   })
   return { recovery, shared, calls, logs, clock: () => clock }
@@ -33,13 +33,24 @@ test('exploration limit: no instant restart; walks to a received log and starts 
   assert.match(f.logs.join('\n'), /探索回数の上限/)
 })
 
-test('no tree in the received terrain: goes to the next ring point, a different one each time', async () => {
+test('no tree in the received terrain: keeps walking 96 m the same way, away from the start', async () => {
+  const f = fixture({ walks: true })
+  for (let i = 0; i < 3; i++) { f.recovery.onProgress(blocked()); await settle(f.recovery) }
+  assert.deepEqual(f.calls.filter(call => call.travel).map(call => call.travel), [{ x: 97, z: 1 }, { x: 194, z: 2 }, { x: 291, z: 3 }])
+})
+
+test('a walk that got nowhere turns the search 60 degrees', async () => {
   const f = fixture()
   f.recovery.onProgress(blocked()); await settle(f.recovery)
   f.recovery.onProgress(blocked()); await settle(f.recovery)
-  const trips = f.calls.filter(call => call.travel).map(call => call.travel)
-  assert.deepEqual(trips, [ringPoint({ x: 0.5, z: 0.5 }, 1), ringPoint({ x: 0.5, z: 0.5 }, 2)])
-  assert.notDeepEqual(trips[0], trips[1])
+  const here = { x: 0.5, z: 0.5 }
+  assert.deepEqual(f.calls.filter(call => call.travel).map(call => call.travel), [aheadPoint(here, 0), aheadPoint(here, Math.PI / 3)])
+})
+
+test('the search starts toward the nearest received grass', async () => {
+  const f = fixture({ walks: true, blocks: { '0,60,-40': { known: true, name: 'minecraft:grass_block' } } })
+  f.recovery.onProgress(blocked()); await settle(f.recovery)
+  assert.deepEqual(f.calls[0], { travel: { x: 1, z: -95 } })
 })
 
 test('other stops restart after a pause, not at once; stop cancels the wait', async () => {
@@ -70,7 +81,7 @@ test('wood needed and none near: the search is taken over at once; a tree that d
   await settle(f.recovery)
   f.recovery.onProgress(seeking); await settle(f.recovery)
   f.recovery.onProgress(seeking); await settle(f.recovery)
-  assert.deepEqual(f.calls.filter(call => call.travel).map(call => call.travel), [{ x: 10, z: 0 }, { x: 0, z: 60 }, ringPoint({ x: 0.5, z: 0.5 }, 3)])
+  assert.deepEqual(f.calls.filter(call => call.travel).map(call => call.travel), [{ x: 10, z: 0 }, { x: 0, z: 60 }, aheadPoint({ x: 0.5, z: 0.5 }, 0)])
   assert.equal(f.calls[0], 'stop')
   assert.deepEqual(f.calls[2], { start: { objective: 'diamond', diamondCount: 1, freshExploration: true } })
 })

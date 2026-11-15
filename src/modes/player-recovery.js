@@ -5,9 +5,13 @@
 // exploration limit ended the run and the runtime restarted it every 0.4 s).
 // - Wood is needed and none is near (the plan says "explore for logs"), or the
 //   exploration limit ended the run: walk to the nearest log in the received
-//   terrain; with none received, walk to the next point of a ring and look
-//   there (user 2026-11-15 17:15 JST: 「読み込みチャンクの一番近い木に向かえ、
+//   terrain; with none received, walk 96 m straight ahead and look there
+//   (user 2026-11-15 17:15 JST: 「読み込みチャンクの一番近い木に向かえ、
 //   なければ適当に歩いて木を探せ」). Then start with a fresh exploration budget.
+//   The heading is kept from walk to walk and turns 60 degrees only when a walk
+//   got nowhere: points on a ring around the start kept the Bot within 150 m
+//   of a badlands spawn for 25 minutes (live 2026-11-15 20:21-20:46 JST). It
+//   starts toward the nearest received grass, where trees are likelier.
 // - Anything else: start again after a growing pause.
 // The reason is logged and shown as the player status while this owns the wait.
 const { normalizeMode } = require('./bot-mode')
@@ -15,7 +19,8 @@ const { normalizeMode } = require('./bot-mode')
 const LOG = /^(?:minecraft:)?[a-z_]+_(?:log|stem)$/
 const TRIP_LIMIT = 8
 const TRIP_MS = 240000
-const RING_M = 96
+const STEP_M = 96
+const GRASS = /^(?:minecraft:)?grass_block$/
 const SCAN_M = 128 // about the terrain a Realm sends around the Bot
 const PAUSES_MS = [30000, 60000, 120000, 300000, 600000]
 const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 200)
@@ -23,7 +28,7 @@ const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 2
 // Nearest received log block between `min` and `radius` metres. Unreceived
 // terrain is skipped, never read as "no tree". `avoid` holds trees already
 // walked to that did not end the search.
-async function nearestKnownLog ({ getBlock, position, radius = SCAN_M, min = 6, step = 2, avoid = [], pause = () => new Promise(resolve => setImmediate(resolve)) }) {
+async function nearestKnownLog ({ getBlock, position, radius = SCAN_M, min = 6, step = 2, avoid = [], match = LOG, below = 8, pause = () => new Promise(resolve => setImmediate(resolve)) }) {
   if (!position || ![position.x, position.y, position.z].every(Number.isFinite)) return null
   const hx = Math.floor(position.x), hy = Math.floor(position.y - 1.62), hz = Math.floor(position.z)
   let best = null
@@ -32,9 +37,9 @@ async function nearestKnownLog ({ getBlock, position, radius = SCAN_M, min = 6, 
       const distance = Math.hypot(dx, dz)
       if (distance < min || distance > radius || best && distance >= best.distance) continue
       if (avoid.some(point => Math.hypot(point.x - hx - dx, point.z - hz - dz) < 8)) continue
-      for (let dy = -8; dy <= 24; dy++) {
+      for (let dy = -below; dy <= 24; dy++) {
         const block = getBlock(hx + dx, hy + dy, hz + dz)
-        if (block?.known === true && LOG.test(block.name ?? '')) { best = { x: hx + dx, z: hz + dz, distance }; break }
+        if (block?.known === true && match.test(block.name ?? '')) { best = { x: hx + dx, z: hz + dz, distance }; break }
       }
     }
     await pause()
@@ -42,16 +47,15 @@ async function nearestKnownLog ({ getBlock, position, radius = SCAN_M, min = 6, 
   return best
 }
 
-// Trip n (1-based) from the anchor: six directions at 96 m, then 192 m.
-function ringPoint (anchor, trip) {
-  const angle = (trip - 1) * Math.PI / 3, radius = RING_M * Math.ceil(trip / 6)
-  return { x: Math.round(anchor.x + Math.cos(angle) * radius), z: Math.round(anchor.z + Math.sin(angle) * radius) }
+// 96 m from where the Bot stands, along the search heading (radians, 0 = +x).
+function aheadPoint (position, heading) {
+  return { x: Math.round(position.x + Math.cos(heading) * STEP_M), z: Math.round(position.z + Math.sin(heading) * STEP_M) }
 }
 
 const seeksWood = snapshot => snapshot?.lastDecision?.type === 'explore' && snapshot.lastDecision.resource === 'logs'
 
 function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
-  let run = null, trips = 0, pauses = 0, anchor = null, logsSeen = 0, reason = null, visited = []
+  let run = null, trips = 0, pauses = 0, heading = null, logsSeen = 0, reason = null, visited = []
   const live = token => run === token && !disposed() && normalizeMode(getMode()) === 'player'
 
   async function wait (token, ms) {
@@ -80,17 +84,24 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
   async function trip (token, snapshot) {
     const position = getPosition()
     if (!position) return false
-    anchor ??= { x: position.x, z: position.z }
-    const wood = seeksWood(snapshot)
+    const wood = seeksWood(snapshot), from = { x: position.x, z: position.z }
     const tree = wood ? await nearestKnownLog({ getBlock, position, avoid: visited }) : null
     if (!live(token)) return false
-    const destination = tree ? { x: tree.x, z: tree.z } : ringPoint(anchor, trips)
+    if (!tree && heading === null) {
+      const grass = await nearestKnownLog({ getBlock, position, match: GRASS, min: 16, step: 4, below: 24 })
+      if (!live(token)) return false
+      heading = grass ? Math.atan2(grass.z - Math.floor(position.z), grass.x - Math.floor(position.x)) : 0
+    }
+    const destination = tree ? { x: tree.x, z: tree.z } : aheadPoint(position, heading)
     if (tree) visited = [...visited.slice(-15), destination]
     reason = tree ? `木が見える (${destination.x}, ${destination.z}) へ移動しています。` : `近くに${wood ? '木' : '資源'}が見つからないため、(${destination.x}, ${destination.z}) へ移動して探します。`
     log(`プレイヤーモード: ${reason}`)
     try { await travel.to({ destination }) } catch (error) { log(`プレイヤーモード: 移動を始められません ${text(error?.message)}`) }
     const until = now() + TRIP_MS
     while (live(token) && now() < until && travel.status()?.busy) await sleep(1000)
+    // A walk that got nowhere (a cliff, water, no route): try the next direction.
+    const reached = getPosition()
+    if (!tree && reached && Math.hypot(reached.x - from.x, reached.z - from.z) < STEP_M / 4) heading += Math.PI / 3
     // The trip dug a night or rest pit: the shelter keeps the Bot there and plays on afterwards.
     if (held()) return live(token)
     if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
@@ -101,7 +112,7 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
     const why = text(snapshot.reason), search = snapshot.running === true || snapshot.stopCode === 'exploration_limit'
     if (snapshot.running === true) { try { agent.stop('木を探して移動します。') } catch {} } else log(`プレイヤーモード: 自律作業が止まりました（${why}）`)
     const logs = snapshot.progress?.logsCollected ?? 0
-    if (logs > logsSeen) { trips = 0; anchor = null; visited = [] }
+    if (logs > logsSeen) { trips = 0; heading = null; visited = [] }
     logsSeen = logs
     if (now() - (snapshot.startedAtMs ?? now()) > 600000) pauses = 0
     if (search && trips < TRIP_LIMIT) {
@@ -111,10 +122,11 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
       if (!live(token) || held()) return false
       return restart(token, { ...agent.objective, freshExploration: true })
     }
-    const pause = PAUSES_MS[Math.min(pauses++, PAUSES_MS.length - 1)]
+    // A search only rests between sets of walks; other stops wait longer each time.
+    const pause = search ? PAUSES_MS[0] : PAUSES_MS[Math.min(pauses++, PAUSES_MS.length - 1)]
     reason = `${why} ${Math.round(pause / 1000)}秒後にやり直します。`
     log(`プレイヤーモード: ${Math.round(pause / 1000)}秒後にやり直します`)
-    if (search) { trips = 0; anchor = null; visited = [] }
+    if (search) { trips = 0; visited = [] }
     if (!await wait(token, pause)) return false
     return restart(token, { ...agent.objective, ...(search ? { freshExploration: true } : {}) })
   }
@@ -157,7 +169,7 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
 
   function cancel () {
     const active = run !== null
-    run = null; reason = null; trips = 0; pauses = 0; anchor = null; visited = []
+    run = null; reason = null; trips = 0; pauses = 0; heading = null; visited = []
     shared.playerRecovering = false
     if (active && travel.status()?.busy) void Promise.resolve().then(() => travel.cancel()).catch(() => {})
     return active
@@ -166,4 +178,4 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
   return { onProgress, keepPlaying, cancel, status: () => ({ active: run !== null, reason }) }
 }
 
-module.exports = { createPlayerRecovery, nearestKnownLog, ringPoint, TRIP_LIMIT }
+module.exports = { createPlayerRecovery, nearestKnownLog, aheadPoint, TRIP_LIMIT }
