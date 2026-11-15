@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const root=path.resolve(process.env.DROWNED_STEP_ROOT??process.cwd()),canonical=path.join(root,'src/safety/protective-drowned-step.js'),source=process.env.DROWNED_STEP_SOURCE??(fs.existsSync(canonical)?canonical:path.join(root,'.local/staged/protective-drowned-step/src/safety/protective-drowned-step.js')),m=new Module(canonical,module)
+const root=path.resolve(process.env.DROWNED_STEP_ROOT??process.cwd()),canonical=path.join(root,'src/safety/protective-drowned-step.js'),source=process.env.DROWNED_STEP_SOURCE??(fs.existsSync(canonical)?canonical:path.join(root,'.local/staged/protective-drowned-step/src/protective-drowned-step.js')),m=new Module(canonical,module)
 m.filename=canonical;m.paths=Module._nodeModulePaths(path.join(root,'src'));m._compile(fs.readFileSync(source,'utf8'),canonical)
 const {planProtectiveDrownedStep,planProtectiveDrownedStepAsync,drownedStepThreatAllowed,drownedStepEquipmentKey,protectiveDrownedStepTargetAllowed,protectiveDrownedStepCurrent}=m.exports
 const {evaluateThreats}=require(path.join(root,'src/combat/threats'))

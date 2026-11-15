@@ -18,9 +18,9 @@ const prepared = createPhysics({ world, version: '1.26.60', allowWater: true })
 
 const filename = path.join(__dirname, 'runtime-user-behaviors.test.js')
 let source = 'let testHooks;\n' + fs.readFileSync(filename, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
-source = source.replace(/^    '\.\/physics': .+$/m, "    './movement/physics': { createPhysics: options => testHooks.physics(options) }, './movement/navigation': { createNavigator: options => testHooks.navigator(options) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },")
-source = source.replace(/^    '\.\/input': .+$/m, "    './movement/input': { createInput: options => { wireInputOptions.push(options); return testHooks.input(options) } },")
-source = source.replace(/^    '\.\/input-history': .+$/m, "    './movement/input-history': { createInputHistory: options => testHooks.history(options) },")
+source = source.replace(/^    '\.\/movement\/physics': .+$/m, "    './movement/physics': { createPhysics: options => testHooks.physics(options) }, './movement/navigation': { createNavigator: options => testHooks.navigator(options) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },")
+source = source.replace(/^    '\.\/movement\/input': .+$/m, "    './movement/input': { createInput: options => { wireInputOptions.push(options); return testHooks.input(options) } },")
+source = source.replace(/^    '\.\/movement\/input-history': .+$/m, "    './movement/input-history': { createInputHistory: options => testHooks.history(options) },")
 source = source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", "loaded._compile(testHooks.instrument(process.env.RUNTIME_TEST_SOURCE ? fs.readFileSync(process.env.RUNTIME_TEST_SOURCE, 'utf8') : require('./helpers/runtime-source').runtimeSource()), filename)")
 source += '\nmodule.exports = { scene, setHooks: value => { testHooks = value } }'
 const loaded = { exports: {} }

@@ -1,7 +1,7 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
 const root=path.resolve(process.env.DEPOT_ACCESS_ROOT??process.cwd()),src=p=>path.join(root,'src',p)
-const {createDepotStorageWork}=require(src('depot-storage-work')),{createInteractions}=require(src('interactions')),{planDepotStorageAccess,selectDepotTableCell}=require(src('depot-storage-access'))
+const {createDepotStorageWork}=require(src('survival/depot-storage-work')),{createInteractions}=require(src('actions/interactions')),{planDepotStorageAccess,selectDepotTableCell}=require(src('survival/depot-storage-access'))
 const fixtureFile=path.join(root,'test/depot-storage-work.test.js'),m=new Module(fixtureFile,module);m.filename=fixtureFile;m.paths=Module._nodeModulePaths(path.dirname(fixtureFile))
 m._compile(fs.readFileSync(fixtureFile,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]+'\nmodule.exports=fixture;',fixtureFile)
 const fixture=m.exports,runtime=require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE)

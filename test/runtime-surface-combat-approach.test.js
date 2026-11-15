@@ -31,7 +31,7 @@ function loadModule (filename, source, overrides) {
 function facadeFactory (hooks) {
   const filename = path.resolve(__dirname, '../src/combat/user-behaviors.js')
   return loadModule(filename, fs.readFileSync(filename, 'utf8'), {
-    './combat/melee-combat': { createMeleeCombat: options => {
+    './melee-combat': { createMeleeCombat: options => {
       const melee = createMeleeCombat(options); hooks.melee = melee
       return { ...melee, engage: async (id, options) => {
         hooks.meleeCalls.push({ id, preview: melee.preview(id) })
@@ -43,7 +43,7 @@ function facadeFactory (hooks) {
         return result
       } }
     } },
-    './combat/combat-coordinator': { createCombatCoordinator: options => { hooks.coordinator = createCombatCoordinator(options); return hooks.coordinator } }
+    './combat-coordinator': { createCombatCoordinator: options => { hooks.coordinator = createCombatCoordinator(options); return hooks.coordinator } }
   }).createUserBehaviors
 }
 
@@ -53,9 +53,9 @@ sceneSource = 'let testHooks;\n' + sceneSource
 sceneSource = sceneSource.replace('  const actors = []', '  Object.assign(raw, structuredClone(testHooks.initialRaw));\n  const actors = structuredClone(testHooks.actors)')
 sceneSource = sceneSource.replace('  const facadeState =', '  shared.deathRespawn = { deathId: 246 }; shared.prediction = structuredClone(testHooks.initialPrediction);\n  const facadeState =')
 sceneSource = sceneSource.replace('  const overrides = {', "  const overrides = {\n    'node:timers/promises': { ...require('node:timers/promises'), setTimeout: (ms, value, options) => testHooks.wait(ms, options?.signal) },")
-sceneSource = sceneSource.replace(/^    '\.\/physics': .+$/m, "    './movement/physics': { createPhysics: options => testHooks.physics(options) }, './movement/navigation': { createNavigator: options => testHooks.navigator(options) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); Object.assign(mockMovement, testHooks.movement(options)); return mockMovement } },")
-sceneSource = sceneSource.replace(/^    '\.\/input': .+$/m, "    './movement/input': { createInput: options => { wireInputOptions.push(options); return testHooks.input(options) } },")
-sceneSource = sceneSource.replace(/^    '\.\/user-behaviors': .+$/m, "    './combat/user-behaviors': { createUserBehaviors: options => { facadeOptions = options; const actual = testHooks.facade(options); return { ...actual, tick: () => Promise.resolve(actual.snapshot()) } } }")
+sceneSource = sceneSource.replace(/^    '\.\/movement\/physics': .+$/m, "    './movement/physics': { createPhysics: options => testHooks.physics(options) }, './movement/navigation': { createNavigator: options => testHooks.navigator(options) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); Object.assign(mockMovement, testHooks.movement(options)); return mockMovement } },")
+sceneSource = sceneSource.replace(/^    '\.\/movement\/input': .+$/m, "    './movement/input': { createInput: options => { wireInputOptions.push(options); return testHooks.input(options) } },")
+sceneSource = sceneSource.replace(/^    '\.\/combat\/user-behaviors': .+$/m, "    './combat/user-behaviors': { createUserBehaviors: options => { facadeOptions = options; const actual = testHooks.facade(options); return { ...actual, tick: () => Promise.resolve(actual.snapshot()) } } }")
 sceneSource += '\nmodule.exports = { scene, setHooks: value => { testHooks = value } }'
 const scenes = loadModule(sceneFile, sceneSource, {})
 

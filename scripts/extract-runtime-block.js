@@ -5,7 +5,7 @@
 // long-travel-runtime.js and the other *-runtime.js parts were produced this
 // way (2026-11-15).
 //
-//   node scripts/extract-runtime-block.js <startLine> <endLine> <module> <factory> <instance> [--file=src/x.js] [--apply]
+//   node scripts/extract-runtime-block.js <startLine> <endLine> <module> <factory> <instance> [--file=src/x.js] [--dir=sub] [--apply]
 //   e.g. 7911 8625 long-travel-runtime createLongTravelRuntime travelRuntime
 //
 // From the syntax tree (the TypeScript compiler that ships in node_modules as a
@@ -14,8 +14,11 @@
 //   becomes rt.<name>; the source file passes one accessor per such binding,
 //   with a setter where it can be assigned, so every read and write still
 //   reaches the closure's own variable at that moment;
-// - `require` in the range becomes rt.require, the source file's own require,
-//   so hot reload tracking and test overrides of modules keep working;
+// - `require`, `__dirname` and `__filename` in the range become rt.require and so
+//   on, the source file's own, so module paths, hot reload tracking and test
+//   overrides of modules keep working wherever the new module is put;
+// - --dir=runtime writes the module to that directory below the source file
+//   (parts of src/runtime.js live in src/runtime/);
 // - a function the range declares and other code of the file calls stays callable
 //   through a hoisted one-line wrapper; a value it declares is read (and, where
 //   outside code assigns to it, written) as <instance>.<name>.
@@ -34,6 +37,8 @@ if (!Number.isInteger(a) || !Number.isInteger(b) || a < 1 || b < a || ![moduleNa
   console.error('usage: node scripts/extract-runtime-block.js <startLine> <endLine> <module> <factory> <instance> [--file=src/x.js] [--apply]'); process.exit(2)
 }
 const apply = process.argv.includes('--apply')
+const subdirectory = process.argv.find(argument => argument.startsWith('--dir='))?.slice('--dir='.length) ?? ''
+if (!/^(?:[a-z][\w-]*(?:\/[a-z][\w-]*)*)?$/.test(subdirectory)) { console.error('--dir must be a relative directory below the source file, e.g. --dir=runtime'); process.exit(2) }
 const text = fs.readFileSync(file, 'utf8'), nl = text.includes('\r\n') ? '\r\n' : '\n'
 const program = ts.createProgram([file], { allowJs: true, checkJs: false, noEmit: true, target: ts.ScriptTarget.ESNext, noResolve: true, types: [], lib: [] })
 const sf = program.getSourceFile(file), checker = program.getTypeChecker()
@@ -74,7 +79,7 @@ function visit (node) {
       const shorthand = ts.isShorthandPropertyAssignment(p)
       const symbol = shorthand ? checker.getShorthandAssignmentValueSymbol(p) : checker.getSymbolAtLocation(node)
       const declaration = symbol?.declarations?.[0]
-      if (!declaration && node.text === 'require' && inside(node)) { bindings.set('require', bindings.get('require') ?? { write: false }); inner.push({ pos: node.getStart(sf), end: node.getEnd(), text: 'rt.require' }) }
+      if (!declaration && ['require', '__dirname', '__filename'].includes(node.text) && inside(node)) { bindings.set(node.text, bindings.get(node.text) ?? { write: false }); inner.push({ pos: node.getStart(sf), end: node.getEnd(), text: `rt.${node.text}` }) }
       if (declaration && declaration.getSourceFile() === sf) {
         const declaredIn = inside(declaration), usedIn = inside(node)
         if (usedIn && !declaredIn) {
@@ -120,14 +125,16 @@ const wiring = [
   `${pad}// This part lives in ${moduleName}.js. It reads and writes these bindings of`,
   `${pad}// this closure through accessors, so each use sees the current value exactly`,
   `${pad}// as the code did when it was written here.`,
-  `${pad}const ${instance} = require('./${moduleName}').${factory}({`,
+  `${pad}const ${instance} = require('./${subdirectory ? subdirectory + '/' : ''}${moduleName}').${factory}({`,
   ...names.map(([name, entry]) => `${pad}  get ${name} () { return ${name} },${entry.write ? ` set ${name} (value) { ${name} = value },` : ''}`).map((line, i, all) => i === all.length - 1 ? line.replace(/,$/, '') : line),
   `${pad}})`,
   ...back.filter(([, kind]) => kind === 'function').map(([name]) => `${pad}function ${name} (...args) { return ${instance}.${name}(...args) }`), ''
 ].join(nl)
 const runtimeText = splice(text.slice(0, from), 0, outer.filter(edit => edit.pos < from)) + wiring + splice(text.slice(to), to, outer.filter(edit => edit.pos >= to))
 const out = apply ? path.dirname(file) : fs.mkdtempSync(path.join(os.tmpdir(), 'extract-runtime-block-'))
-if (apply && fs.existsSync(path.join(out, `${moduleName}.js`))) throw new Error(`${moduleName}.js already exists`)
-fs.writeFileSync(path.join(out, `${moduleName}.js`), moduleText)
+const moduleFile = path.join(out, apply ? subdirectory : '', `${moduleName}.js`)
+if (apply && fs.existsSync(moduleFile)) throw new Error(`${path.relative(root, moduleFile)} already exists`)
+fs.mkdirSync(path.dirname(moduleFile), { recursive: true })
+fs.writeFileSync(moduleFile, moduleText)
 fs.writeFileSync(path.join(out, sourceName), runtimeText)
 console.log(JSON.stringify({ written: out, statements: covered.length, bindings: names.length, assigned: names.filter(([, entry]) => entry.write).map(([name]) => name), returned: back, edits: { inside: inner.length, outside: outer.length }, runtimeBytes: { before: text.length, after: runtimeText.length }, moduleBytes: moduleText.length }, null, 1))

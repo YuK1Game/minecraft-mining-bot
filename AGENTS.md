@@ -20,13 +20,13 @@
 | 観測 | エンティティ・敵・地形（サブチャンク）・持ち物・体力/空腹の受信。未受信ブロック（`known:false`）を空気扱いしない | `src/host/entities.js`, `src/combat/threats.js`, `src/host/world.js`, `src/inventory/inventory.js` |
 | 持ち物の一元記録 | メイン36・防具4・オフハンド・カーソルを1つの記録（`host.shared.inventoryStore`）に枠ごとの受信元・リビジョン付きで保持。クラフト・防具・画面・採掘ゲートは全てここを読む。未受信の枠は空ではなく「?」。待機中は未受信枠を `inventory_mismatch` で自動再取得 | `src/inventory/inventory-store.js`, `src/inventory/inventory-inspection.js` |
 | 移動 | 経路探索、物理予測（実験的 Bedrock 版 prismarine-physics）、段差・ジャンプ、水際、警戒付き経路移動と退避 | `src/movement/navigation.js`, `src/movement/movement.js`, `src/movement/physics.js`, `src/movement/guarded-route.js`, `src/movement/escape-policy.js` |
-| 拠点 | 斜面の避難所、平地の土小屋（土17個）の建築・閉鎖・退出・帰還、保管庫（チェスト）の建設と収納 | `src/survival/shelter*.js`, `src/survival/hut*.js`, `src/depot-*.js`, `src/actions/chest.js` |
+| 拠点 | 斜面の避難所、平地の土小屋（土17個）の建築・閉鎖・退出・帰還、保管庫（チェスト）の建設と収納 | `src/survival/shelter*.js`, `src/survival/hut*.js`, `src/survival/depot-*.js`, `src/actions/chest.js` |
 | クラフト・精錬 | 板材・作業台・棒・木剣・石剣・ツルハシ類、かまどでの精錬（鉄のツルハシまで確認済み） | `src/actions/crafting.js`, `src/actions/furnace.js`, `src/survival/starter-gear.js` |
-| 採掘・探索 | 1回最大8ブロックの採掘、隣接セル掘削、トンネル、鉱石探索、ダイヤ計画 | `src/actions/mining.js`, `src/survival/excavation.js`, `src/survival/tunneling.js`, `src/survival/prospecting.js`, `src/diamond-*.js` |
+| 採掘・探索 | 1回最大8ブロックの採掘、隣接セル掘削、トンネル、鉱石探索、ダイヤ計画 | `src/actions/mining.js`, `src/survival/excavation.js`, `src/survival/tunneling.js`, `src/survival/prospecting.js`, `src/survival/diamond-*.js` |
 | 食料・生存 | 動物の狩りと回収、食事、待機保護（自衛・小屋閉鎖・退避・非常停止）、低体力時の水場退避、正規リスポーン | `src/survival/foraging.js`, `src/actions/food.js`, `src/safety/idle-safety.js`, `src/safety/recovery.js` |
 | 旧サバイバル自律実行 | 旧目標（`diamond` など）に向けた計画と工程選択、失敗キャッシュ、進捗記録の保存・復元。露天掘りとは別経路 | `src/survival/autonomy.js`, `src/survival/planner.js`, `src/survival/survival-planner.js`, `src/survival/mission-memory.js`, `src/survival/mission-journal.js` |
 | **戦闘モード** | 下記参照 | `src/combat/combat-coordinator.js` ほか |
-| **露天掘りモード** | 下記参照 | `src/quarry-*.js` |
+| **露天掘りモード** | 下記参照 | `src/quarry/` |
 | ローカル API | `127.0.0.1:3000`。`/status`、`/agent/start|stop|tick`、移動・採掘・クラフト・戦闘、`POST /action`（group/method/args） | `src/host/api.js` |
 | ダッシュボード | `127.0.0.1:3001`。露天掘り・所持品・装備・シュルカー内容・耐久度・エンチャント・ライブログ（JST）を統合。接続・Realm選択・チャンク計画/開始/停止は限定操作APIを使用。旧 `/logs` はログ欄へ移動 | `scripts/dashboard.js`, `scripts/lib/dashboard-control.js`, `src/host/dashboard-control.js`, `src/host/dashboard-session.js`, `dashboard/index.html`, `dashboard/control.js` |
 
@@ -100,19 +100,30 @@
 ## ディレクトリ構成
 
 ```
-src/            Bot 本体（約110モジュール）
-  main.js         エントリポイント
-  host.js         接続・認証・ターミナルコマンド（/status /auto /stop /reload /quit /quarry）。変更時は再起動が必要
-  runtime.js      ホットリロードされる行動の中心（約380KB・4,100行。これ以上育てない）
-  long-travel-runtime.js / quarry-runtime.js / idle-safety-runtime.js / user-control-runtime.js /
-  runtime-operations.js / autonomy-runtime.js
-                  2026-11-15 に runtime.js から移した部分（長距離移動／露天掘り／待機保護の補助と設定表／操作権・戦闘／
-                  API の操作一覧／旧自律実行の配線）。元のクロージャーの変数は `rt.<名前>`、モジュールは `rt.require(...)` で使う。
-                  別の変数を使うときは、runtime.js 側でそのモジュールを生成している箇所にアクセサを1行足す
-  api.js          ローカル HTTP API
-  quarry-*.js     露天掘りモード（region / rules / inventory / planner / combat-bridge / job / runtime-adapter / cli）
-  quarry-job.js   露天掘りの状態機械（計画・採掘・回収・設置）。収納は quarry-job-storage.js、補給は quarry-job-restock.js、
-                  脱出・最終確認は quarry-job-egress.js、設置の照合は quarry-job-reconcile.js（2026-11-15 に同じ方法で移動）
+src/            Bot 本体（約190モジュール。2026-11-15 に役割ごとのディレクトリへ分けた。直下に置くのは次の2つだけ）
+  main.js         プロセスの入口
+  runtime.js      ホットリロードされる行動の入口（約370KB・4,100行。これ以上育てない）
+  host/           接続側。ここを変えたら Bot の再起動が必要（ホットリロードの対象外）。
+                  host.js（接続・認証・ターミナルコマンド）、api.js（ローカル HTTP API）、hotreload.js、lifecycle.js、
+                  world.js・entities.js（受信した地形とエンティティ）、dashboard-control.js、realms.js ほか
+  runtime/        runtime.js から移した部分（long-travel-runtime / quarry-runtime / idle-safety-runtime /
+                  user-control-runtime / runtime-operations / autonomy-runtime）と診断。
+                  元のクロージャーの変数は `rt.<名前>`、モジュールは `rt.require(...)`（runtime.js から見たパス）、
+                  `.local` などのパスは `rt.__dirname` で使う。別の変数を使うときは、runtime.js 側でそのモジュールを
+                  生成している箇所にアクセサを1行足す
+  common/         小さな共通部品（vec3、durable-json、chunk-area、life-identity、operation-scope、action-owner-tracker）
+  combat/         戦闘モード、敵の評価（threats、mob-catalog、threat-reachability）、剣・弓、user-behaviors
+  movement/       入力、物理予測、経路探索、警戒付き移動、水辺、サーバー位置の照合
+  travel/         長距離移動（long-travel、coarse-route、chunk-travel、night-stop）
+  inventory/      持ち物の記録と検査（inventory-store ほか）、コンテナ・耐久・装備の読み取り
+  actions/        ゲームへの操作（mining、interactions、crafting、furnace、chest、food、armor、portable-bed）
+  safety/         待機保護（idle-safety）、復帰（recovery）、退避、learning-health
+  quarry/         露天掘り。quarry-job.js は状態機械（計画・採掘・回収・設置）で、収納は quarry-job-storage.js、
+                  補給は quarry-job-restock.js、脱出・最終確認は quarry-job-egress.js、設置の照合は quarry-job-reconcile.js
+    storage/        シュルカー収納・補給箱・設置の照合記録
+    exit/           脱出列の計画、土柱、脱出の実行
+  loadout/        初期セットのリセット、v2.2 の受領、ラージチェストへの手動全収納、シュルカーの手動回復
+  survival/       旧サバイバル（autonomy、planner、runner、小屋・避難所・保管庫、狩り、ダイヤ計画）
 scripts/        keep-alive.js（再接続監視）、dashboard.js（:3001）、check.js（構文確認）
 dashboard/      ダッシュボード HTML
 test/           node --test のテスト。fixtures/ に BDS 実測データ（数MB 級）、helpers/quarry-sim.js
@@ -150,7 +161,7 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 - **接続と作業を維持する**: 利用者から切断の指示がない限り、修正・調査のためにBotをオフラインへ戻さない。行動コードは接続を保ったホットリロードで反映し、収納・回収の安全な切替点を待つ。実際の停止理由を確認して復旧し、未確認の成果を作って再開しない。
 - **サーバー由来の情報だけを成果とする**: 入力の送信、時間経過、プレビューの成功、予測位置への到着、ドロップの消滅だけで成功扱いにしない。回収・クラフトは実際の持ち物の変化、採掘は受信した空気、設置はブロック更新と消費の両方で確認する。露天掘りの表示用集計や予測だけでジョブ完了とせず、受信した地形・実際の持ち物変化によるジョブの確認結果を使う。旧ダイヤ目標を扱う場合も、完了判定はサーバーから届いた持ち物にダイヤがある時だけ。
 - **未知を安全と見なさない**: 未受信の地形・未確認の持ち物・一覧にない敵は安全側に倒す。
-- **再起動が必要な変更を明示する**: `host.js`、`entities.js` など接続側で読み込むモジュール、認証・通信、依存、`.env` の変更はホットリロードされない。ユーザーに再起動が必要と伝える。
+- **再起動が必要な変更を明示する**: `src/host/` 以下（`host.js`、`entities.js` など接続側で読み込むモジュール）、認証・通信、依存、`.env` の変更はホットリロードされない。ユーザーに再起動が必要と伝える。
 - **大きいファイルを育てない**（2026-11-15 品質改善の方針。読みやすさ・保守性のため）: `src/runtime.js`・`src/quarry/quarry-job.js`・`src/safety/idle-safety.js`・`src/quarry/storage/quarry-portable-storage.js`・`src/survival/runner.js`・`dashboard/index.html` には新しい機能の処理を書き足さない。新しい機能は専用のモジュール（例: `src/travel/long-travel.js`）に置き、大きいファイルには呼び出しの1〜数行だけを足す。`npm run check` が基準（`scripts/size-budget.json`）からの増加を「サイズ超過」として表示する。処理を外へ出したら基準値を下げる。新しい処理を入れるために基準値を上げない。`runtime.js` のまとまった処理を外へ出すときは `node scripts/extract-runtime-block.js <開始行> <終了行> <モジュール名> <関数名> <変数名>` を使う（構文解析に基づく機械的な移し替え。`--apply` なしでは一時フォルダに出力するだけ）。`runtime.js` のソース文字列を照合・切り出し・加工するテストは `test/helpers/runtime-source.js` の `runtimeSource()` を読む（移した部分を元の位置へ戻した1ファイル分のテキストを返す。分割前のソースと一致することを確認済み）。
 - **同じ種類の不具合を個別の条件分岐で直し続けない**（同上）: 同じ機能で3件目の個別修正になる前に、共通の原因（判定の持ち方・状態の出どころ・部品の境界）を確かめ、部品として直す。個別の対処を足した場合は、その場所と理由をコミットメッセージに残す。
 - **ドキュメントのファイル名に日付を付けない**（2026-11-15 ユーザー指示「ファイル名の日付は廃止して、gitで差分を管理できるため」）: `docs/` の資料は内容を表す名前にし、更新するときは同じファイルを書き換える。以前の内容は Git の履歴で確認する。新しい資料を足したら `docs/README.md` の一覧にも1行足す。

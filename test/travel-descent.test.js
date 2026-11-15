@@ -68,7 +68,7 @@ test('the runtime grants travel descent briefly, checks the fall on received gro
 test('drowned are fought on land, never from the water; the route prices water higher; the kit is made from received items', () => {
   const src = require('./helpers/runtime-source').runtimeSource()
   assert.match(src, /function drownedOnLand \(target, state\) \{ return \/drowned\/\.test\(String\(target\?\.entityType \?\? target\?\.name \?\? ''\)\) && state\?\.isInWater !== true/)
-  assert.match(src, /if \(!drownedOnLand\(target, state\) && !require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
+  assert.match(src, /if \(!drownedOnLand\(target, state\) && !require\('\.\/safety\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
   const route = require('node:fs').readFileSync(require.resolve('../src/travel/coarse-route'), 'utf8')
   assert.match(route, /\(s\.water \? 10 : 1\)/)
   const kit = src.slice(src.indexOf('      prepKit: async (input = {}) => {'), src.indexOf('      // Read-only: why the empty-handed preparation flag is on or off.'))

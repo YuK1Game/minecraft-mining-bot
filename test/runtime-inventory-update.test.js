@@ -63,9 +63,10 @@ function fixture (t, { slotCount = 36 } = {}) {
     const nativeRequire = Module.createRequire(filename)
     const services = {}
     const overrides = {}
-    for (const [moduleName, factoryName] of [['crafting', 'createCrafting'], ['inventory', 'createInventory'], ['furnace', 'createFurnace'], ['food', 'createFood'], ['interactions', 'createInteractions']]) {
-      const native = nativeRequire(`./${moduleName}`)
-      overrides[`./${moduleName}`] = { ...native, [factoryName]: options => {
+    for (let [moduleName, factoryName] of [['actions/crafting', 'createCrafting'], ['inventory/inventory', 'createInventory'], ['actions/furnace', 'createFurnace'], ['actions/food', 'createFood'], ['actions/interactions', 'createInteractions']]) {
+      const modulePath = moduleName; moduleName = modulePath.split('/').pop()
+      const native = nativeRequire(`./${modulePath}`)
+      overrides[`./${modulePath}`] = { ...native, [factoryName]: options => {
         const original = native[factoryName](options)
         const proxy = { ...original, applyPacket: (name, packet) => { notifications.push({ generation: contexts.length, module: moduleName, name, packet: structuredClone(packet) }); original.applyPacket(name, packet) } }
         services[moduleName] = proxy

@@ -17,9 +17,9 @@ const filename = path.join(__dirname, 'runtime-user-behaviors.test.js')
 let source = 'let hooks;\n' + fs.readFileSync(filename, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 source = source.replace('  const overrides = {', "  const overrides = {\n    './survival/depot-mission': { createDepotMission: () => hooks.parent },")
 source = source.replace(/^  const mockAutonomy = .+$/m, '  const mockAutonomy = hooks.autonomy')
-source = source.replace(/^    '\.\/physics': .+$/m, "    './movement/physics': { createPhysics: options => hooks.physics(options) }, './movement/navigation': { createNavigator: options => hooks.navigator(options) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },")
-source = source.replace(/^    '\.\/input': .+$/m, "    './movement/input': { createInput: options => { wireInputOptions.push(options); return hooks.input(options) } },")
-source = source.replace(/^    '\.\/input-history': .+$/m, "    './movement/input-history': { createInputHistory },")
+source = source.replace(/^    '\.\/movement\/physics': .+$/m, "    './movement/physics': { createPhysics: options => hooks.physics(options) }, './movement/navigation': { createNavigator: options => hooks.navigator(options) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },")
+source = source.replace(/^    '\.\/movement\/input': .+$/m, "    './movement/input': { createInput: options => { wireInputOptions.push(options); return hooks.input(options) } },")
+source = source.replace(/^    '\.\/movement\/input-history': .+$/m, "    './movement/input-history': { createInputHistory },")
 source = source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", "loaded._compile(hooks.instrument(process.env.RUNTIME_TEST_SOURCE ? fs.readFileSync(process.env.RUNTIME_TEST_SOURCE, 'utf8') : require('./helpers/runtime-source').runtimeSource()), filename)")
 source = source.replace("    './movement/input-history': { createInputHistory },", "    './movement/input-history': { createInputHistory: hooks.history },")
 source += '\nmodule.exports={scene,setHooks:value=>{hooks=value}}'

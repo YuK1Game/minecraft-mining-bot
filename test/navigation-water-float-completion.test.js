@@ -31,7 +31,7 @@ function fixture (t, { legacy = false, maxTicks = 40, afterQueue = null } = {}) 
     const navigator = source.createNavigator(options)
     return { ...navigator, plan: (...args) => { const route = navigator.plan(...args); activeRoute = route; return route } }
   } }
-  const { createMovement } = compiled(movementFile, movementSource, { './movement/navigation': navigation })
+  const { createMovement } = compiled(movementFile, movementSource, { './navigation': navigation })
   const movement = createMovement({ world, waterPhysics: physics, getState: () => copy(state), version: '1.26.60', startGame: { current_tick: 1000n }, startGameReceivedAt: 0, clock: () => elapsed,
     client: { queue: (name, packet) => { assert.equal(name, 'player_auth_input'); packets.push({ name, packet: copy(packet) }); return { tick: packet.tick } } },
     onQueuedFrame: frame => records.push(copy(frame)), onPrediction: value => { predictions.push(copy(value)); afterQueue?.({ records, predictions, changes, route: activeRoute }) }

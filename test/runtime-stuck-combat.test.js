@@ -7,7 +7,7 @@ const filename = path.resolve(__dirname, 'runtime-user-behaviors.test.js'), load
 loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
 let source = fs.readFileSync(filename, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 source = source.replace("  let worldReads = 0,", "  let safetyOptions = null; const safetyStatus = { running: true, busy: false, phase: 'emergency_retry', lastResult: { action: 'escape', reason: 'no_known_away_route' } };\n  let worldReads = 0,")
-source = source.replace(/^    '\.\/idle-safety': .+$/m, "    './safety/idle-safety': { createIdleSafety: options => { safetyOptions = options; return { snapshot: () => structuredClone(safetyStatus), start: () => { safetyStatus.running = true }, stop: async () => { safetyStatus.running = false }, drain: async () => {}, requestWorkClearance: () => ({ pending: false }) } } },")
+source = source.replace(/^    '\.\/safety\/idle-safety': .+$/m, "    './safety/idle-safety': { createIdleSafety: options => { safetyOptions = options; return { snapshot: () => structuredClone(safetyStatus), start: () => { safetyStatus.running = true }, stop: async () => { safetyStatus.running = false }, drain: async () => {}, requestWorkClearance: () => ({ pending: false }) } } },")
 source = source.replace('return { runtime, host, raw,', 'return { safetyStatus, getSafetyOptions: () => safetyOptions, runtime, host, raw,')
 loaded._compile(source + '\nmodule.exports = { scene };', filename)
 const { scene } = loaded.exports

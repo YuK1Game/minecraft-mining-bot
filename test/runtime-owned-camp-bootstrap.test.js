@@ -10,7 +10,7 @@ function load (filename, source) { const m = new Module(filename, module); m.fil
 for(const stocked of [false,true])test('real Runtime: '+(stocked?'actual log stock admits bounded Native home prefix':'empty life keeps Legacy resource search and does not probe home'), async t => {
   const fixtures = path.join(root, 'test/runtime-depot-resource-scope.test.js')
   const { hostScene, seed } = load(fixtures, fs.readFileSync(fixtures, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0] + '\nmodule.exports={hostScene,seed};')
-  const helper = load(path.join(root, 'src/survival/owned-camp-bootstrap.js'), fs.readFileSync(process.env.HOME_BOOTSTRAP_TEST_SOURCE??(fs.existsSync(path.join(root,'src/survival/owned-camp-bootstrap.js'))?path.join(root,'src/survival/owned-camp-bootstrap.js'):path.join(root,'.local/staged/owned-camp-bootstrap/src/survival/owned-camp-bootstrap.js')), 'utf8'))
+  const helper = load(path.join(root, 'src/survival/owned-camp-bootstrap.js'), fs.readFileSync(process.env.HOME_BOOTSTRAP_TEST_SOURCE??(fs.existsSync(path.join(root,'src/survival/owned-camp-bootstrap.js'))?path.join(root,'src/survival/owned-camp-bootstrap.js'):path.join(root,'.local/staged/owned-camp-bootstrap/src/owned-camp-bootstrap.js')), 'utf8'))
   const state = copy(seed.state)
   Object.assign(state, { position: { x: .5, y: 66.62, z: .5 }, positionSource: 'server_post_move', positionUpdatedAt: new Date().toISOString(), lifecycle: { phase: 'alive', deathId: 1 }, health: 20, gameMode: 'survival', inventory: { known: true, items: stocked ? [{slot:0,name:'minecraft:oak_log',count:1}] : [] }, heldItem: null, selectedSlot: 0, rawSelectedSlot: 0, entities: [], entityStats: { unknownPositions: 0 } })
   delete state.predicted
