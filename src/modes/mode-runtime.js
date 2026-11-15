@@ -69,7 +69,17 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       return climbOut({ ports: hands, log, aborted: () => aborted() || flee.status().active || shelter.status().active })
     }
   })
-  shared.onAutonomyProgress = snapshot => recovery.onProgress(snapshot)
+  // The runtime restarts a finished run from shared.autoOptions without passing
+  // through the starts above (real Realm 2026-11-16 08:11-08:34 JST: with one
+  // diamond held, 3,510 runs started and completed at once): the goal there is
+  // kept current, with every progress snapshot and every two seconds.
+  const keepAim = () => {
+    const options = shared.autoOptions
+    if (control.get() !== 'player' || options?.objective !== 'diamond') return
+    const next = aimed(options).diamondCount
+    if (Number.isSafeInteger(next) && next !== options.diamondCount) options.diamondCount = next
+  }
+  shared.onAutonomyProgress = snapshot => { keepAim(); return recovery.onProgress(snapshot) }
   const air = cell => { const block = runtime.host().world.getBlock(cell.x, cell.y, cell.z); return block?.known === true && /^minecraft:(?:air|cave_air)$/.test(block.name ?? '') }
   const hunger = () => { const value = shared.vitals?.hunger; return Number.isFinite(value) ? value : Number.isFinite(value?.value) ? value.value : null }
   const shelter = createPlayerShelter({
@@ -115,6 +125,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const timer = setInterval(() => {
     if (disposed()) return clearInterval(timer)
     void resume.note()
+    keepAim()
     void shelter.tick()
     void scaffold.tick().catch(() => {})
     void torch.tick().catch(() => {})
