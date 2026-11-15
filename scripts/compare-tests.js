@@ -13,7 +13,17 @@ const root = path.resolve(__dirname, '..')
 // Both runs use the same settings, so the comparison stays like for like.
 const CONCURRENCY = Math.max(2, Math.min(8, os.availableParallelism()))
 const SUITE_LIMIT_MS = 25 * 60 * 1000
+// 2026-11-15: a run on CI ended normally but its report had no totals (the
+// forced exit after the last test can cut the reporter's final output). Such
+// a run says nothing, so it is repeated once before the comparison gives up.
 async function runSuite (directory, filename, files = []) {
+  try { return await runSuiteOnce(directory, filename, files) } catch (error) {
+    if (!/Test report is incomplete/.test(String(error?.message))) throw error
+    console.warn(`The report ${path.basename(filename)} has no totals; running that suite once more`)
+    return runSuiteOnce(directory, filename, files)
+  }
+}
+async function runSuiteOnce (directory, filename, files = []) {
   const output = createWriteStream(filename, { flags: 'w' })
   // Failed legacy tests can leave intervals/polling alive. Preserve their
   // reported failures and timeouts, then exit after all test results exist.
