@@ -191,3 +191,12 @@ test('review: proposed clearance targets pass the real mining controller and sti
   assert.equal(actions.filter(a => a[0] === 'start_break').length, proposal.preparation.length)
   assert.equal(f.preview(f.stand, { canPlace: () => true }).ready, true)
 })
+
+test('terracotta is a stable floor, also under red sand', () => {
+  const { supportIssue } = require('../src/quarry/storage/storage-site-terrain')
+  const column = names => ({ x, y, z }) => { const name = names[63 - y]; return name ? { known: true, name: `minecraft:${name}`, boundingBox: 'block' } : { known: false } }
+  assert.equal(supportIssue(column(['hardened_clay']), { x: 0, y: 64, z: 0 }), null)
+  assert.equal(supportIssue(column(['orange_terracotta']), { x: 0, y: 64, z: 0 }), null)
+  assert.equal(supportIssue(column(['red_sand', 'red_sand', 'white_terracotta']), { x: 0, y: 64, z: 0 }), null)
+  assert.equal(supportIssue(column(['red_sand']), { x: 0, y: 64, z: 0 })?.cause, 'SUPPORT_UNKNOWN')
+})
