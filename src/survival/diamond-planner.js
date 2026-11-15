@@ -169,7 +169,14 @@ function nextDiamondAction (state, observations = {}, options = {}) {
     const cost = p => Math.hypot(p.x - feet.x, p.z - feet.z) + Math.abs(p.y - feet.y) * 2
     const stances = stationBlocks.filter(support).map(block => ({ x: block.position.x + 0.5, y: block.position.y + 1, z: block.position.z + 0.5 })).filter(p => Math.hypot(p.x - feet.x, p.y - feet.y, p.z - feet.z) > 0.4 && distance({ ...p, y: p.y + 1.62 }, target) <= 4.1 && standing(p)).sort((a, b) => cost(a) - cost(b))
     const offsets = [{ x: 0, z: 0 }, { x: 0.25, z: 0 }, { x: -0.25, z: 0 }, { x: 0, z: 0.25 }, { x: 0, z: -0.25 }, { x: 0.2, z: 0.2 }, { x: 0.2, z: -0.2 }, { x: -0.2, z: 0.2 }, { x: -0.2, z: -0.2 }]
-    for (const standpoint of stances) if (offsets.every(offset => { const feet = { x: standpoint.x + offset.x, y: standpoint.y, z: standpoint.z + offset.z }; return standing(feet) && visible({ ...feet, y: feet.y + 1.62 }, 4.3) })) return { ready: false, standpoint, testedPoints: offsets.length }
+    // In a corridor one block wide the shifted positions put the body into
+    // the wall: when no stance passes every shift, those are left out (the
+    // centre is always tested; a shift over a missing floor still refuses).
+    const walled = p => { for (let x = Math.floor(p.x - 0.3 + 1e-6); x <= Math.floor(p.x + 0.3 - 1e-6); x++) for (let z = Math.floor(p.z - 0.3 + 1e-6); z <= Math.floor(p.z + 0.3 - 1e-6); z++) for (const up of [0, 1]) { const block = readStation({ x, y: Math.round(p.y) + up, z }); if (block?.known === true && block.boundingBox === 'block') return true } return false }
+    for (const confined of [false, true]) for (const standpoint of stances) {
+      const tested = offsets.map(offset => ({ x: standpoint.x + offset.x, y: standpoint.y, z: standpoint.z + offset.z })).filter((feet, index) => index === 0 || !confined || !walled(feet))
+      if (tested.every(feet => standing(feet) && visible({ ...feet, y: feet.y + 1.62 }, 4.3))) return { ready: false, standpoint, testedPoints: tested.length }
+    }
     return { ready: false, reason: 'no_known_station_stance' }
   }
   function station (kind) {
@@ -196,7 +203,8 @@ function nextDiamondAction (state, observations = {}, options = {}) {
     const spare = kind === 'table' ? counts.planks >= 4 || holds('crafting_table') || items.some(item => amount(item.count) && isLog(nameOf(item.name))) : holds('furnace') || counts.stone >= 8
     const near = block => !spare || activeWork(block) || distance(state.position, block.position) <= FAR_STATION && !excluded(kind === 'table' ? 'crafting_table' : 'furnace', block.position)
     const seen = new Set()
-    for (const block of candidates.filter(near).sort((a, b) => Number(activeWork(b)) - Number(activeWork(a)) || distance(state.position, a.position) - distance(state.position, b.position))) {
+    const shut = block => Number(excluded(kind === 'table' ? 'crafting_table' : 'furnace', block.position))
+    for (const block of candidates.filter(near).sort((a, b) => Number(activeWork(b)) - Number(activeWork(a)) || shut(a) - shut(b) || distance(state.position, a.position) - distance(state.position, b.position))) {
       if (seen.has(key(block.position))) continue
       seen.add(key(block.position))
       const access = openWindow(block) ? { ready: true, source: 'known_same_open_furnace' } : kind === 'table' ? planStationAccess({ state, observedState: observations.state ?? state, target: block.position, blocks: stationBlocks, getBlock: readStation }) : furnaceAccess(block.position, stationBlocks, readStation)

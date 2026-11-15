@@ -9,4 +9,8 @@
 const ORE_GROUND = ['coal', 'iron', 'copper', 'gold', 'lapis', 'redstone', 'diamond', 'emerald'].flatMap(name => [`${name}_ore`, `deepslate_${name}_ore`])
 const STANDING_GROUND = Object.freeze(['grass_block', 'dirt', 'coarse_dirt', 'rooted_dirt', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', ...ORE_GROUND])
 
-module.exports = { STANDING_GROUND, ORE_GROUND }
+const ORE_NAME = /^(?:minecraft:)?(?:deepslate_)?(?:coal|iron|copper|gold|lapis|redstone|diamond|emerald)_ore$/
+// For the modules that test ground by a pattern of their own (with planks, logs, stations).
+const isOreGround = name => ORE_NAME.test(String(name ?? ''))
+
+module.exports = { STANDING_GROUND, ORE_GROUND, isOreGround }

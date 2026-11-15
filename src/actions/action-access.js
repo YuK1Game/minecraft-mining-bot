@@ -154,7 +154,7 @@ function placementTopVisible ({ state, target, getBlock, maxReach = 4.5 }) {
 // or placement receipt, and it never treats foliage as a transparent ray.
 function planPlacementAccess ({ state, targets = [], blocks = [], getBlock, maxDistance = 4 }) {
   if (!finite(state?.position) || !Array.isArray(targets) || !Array.isArray(blocks) || typeof getBlock !== 'function' || !Number.isFinite(maxDistance) || maxDistance <= 0 || maxDistance > 4) return null
-  const support = block => block?.known === true && same(block.position, block.position) && block.boundingBox === 'block' && !block.extra?.length && /^(?:minecraft:)(?:grass_block|dirt|coarse_dirt|rooted_dirt|stone|cobblestone|deepslate|cobbled_deepslate|andesite|diorite|granite|tuff|calcite|(?:oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|poplar)_planks)$/.test(block.name)
+  const support = block => block?.known === true && same(block.position, block.position) && block.boundingBox === 'block' && !block.extra?.length && (/^(?:minecraft:)(?:grass_block|dirt|coarse_dirt|rooted_dirt|stone|cobblestone|deepslate|cobbled_deepslate|andesite|diorite|granite|tuff|calcite|(?:oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|poplar)_planks)$/.test(block.name) || require('../common/standing-ground').isOreGround(block.name))
   const open = block => block?.known === true && !block.extra?.length && (AIR.has(block.name) || ['minecraft:short_grass', 'minecraft:fern', 'minecraft:leaf_litter', 'minecraft:torch'].includes(block.name) && block.boundingBox === 'empty')
   const standing = position => {
     for (let x = Math.floor(position.x - 0.3 + 1e-6); x <= Math.floor(position.x + 0.3 - 1e-6); x++) for (let z = Math.floor(position.z - 0.3 + 1e-6); z <= Math.floor(position.z + 0.3 - 1e-6); z++) if (!support(getBlock({ x, y: position.y - 1, z })) || !open(getBlock({ x, y: position.y, z })) || !open(getBlock({ x, y: position.y + 1, z }))) return false
@@ -192,7 +192,7 @@ function planStationAccess ({ state, observedState = state, target, blocks = [],
   const table = read(target)
   if (table?.known !== true || table.name !== 'minecraft:crafting_table' || table.protected === true || table.usable === false || table.extra?.length) return invalid('station_not_known')
   const world = { getBlock: (x, y, z) => read({ x, y, z }) }
-  const support = block => block?.known === true && block.boundingBox === 'block' && !block.extra?.length && /^(?:minecraft:)(?:grass_block|dirt|coarse_dirt|rooted_dirt|stone|cobblestone|deepslate|cobbled_deepslate|andesite|diorite|granite|tuff|calcite|crafting_table|furnace|(?:oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|poplar)_(?:planks|log))$/.test(block.name)
+  const support = block => block?.known === true && block.boundingBox === 'block' && !block.extra?.length && (/^(?:minecraft:)(?:grass_block|dirt|coarse_dirt|rooted_dirt|stone|cobblestone|deepslate|cobbled_deepslate|andesite|diorite|granite|tuff|calcite|crafting_table|furnace|(?:oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|poplar)_(?:planks|log))$/.test(block.name) || require('../common/standing-ground').isOreGround(block.name))
   const open = block => block?.known === true && !block.extra?.length && (AIR.has(block.name) || ['minecraft:short_grass', 'minecraft:fern', 'minecraft:leaf_litter', 'minecraft:torch'].includes(block.name) && block.boundingBox === 'empty')
   const standing = position => {
     const y = Math.round(position.y)
