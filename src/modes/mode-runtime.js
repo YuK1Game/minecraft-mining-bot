@@ -14,6 +14,8 @@ const { createPlayerFlee } = require('./player-flee')
 const { createPlayerScaffold } = require('./player-scaffold')
 const { createScaffoldPorts } = require('./player-scaffold-ports')
 const { climbOut } = require('./player-climb')
+const { createPlayerTorch } = require('./player-torch')
+const { createTorchPorts } = require('./player-torch-ports')
 const { playFile, createPlayerResume } = require('./player-resume')
 
 function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
@@ -33,7 +35,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const idle = () => { const value = agentStatus(); return value.running !== true && value.busy !== true && value.actionActive !== true }
   const control = createModeControl({
     shared, save: mode => saveMode(file, mode), log,
-    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active || flee.status().active || scaffold.status().active ? { running: true } : agentStatus(),
+    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active || flee.status().active || scaffold.status().active || torch.status().active ? { running: true } : agentStatus(),
     isBusy: () => runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld()
   })
   // Where the Bot is: the working position. The last received position can be
@@ -88,6 +90,15 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || quarry.travelStatus().busy === true,
     ports: hands
   })
+  // Underground, a torch every eight blocks (player-torch.js).
+  const feetNow = () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
+  const torch = createPlayerTorch({
+    getMode: control.get, shared, log, disposed, getFeet: feetNow,
+    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
+    agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agentStatus().running === true, settled: idle },
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || scaffold.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12,
+    hands: createTorchPorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
+  })
   const fleeTimer = setInterval(() => { if (disposed()) clearInterval(fleeTimer); else void flee.tick().catch(() => {}) }, 500)
   fleeTimer.unref?.()
   // The shelter is checked every two seconds; a reloaded runtime's timer ends itself.
@@ -96,13 +107,14 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     void resume.note()
     void shelter.tick()
     void scaffold.tick().catch(() => {})
-    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active || flee.status().active || scaffold.status().active }) } catch { /* The next tick retries. */ }
+    void torch.tick().catch(() => {})
+    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active || flee.status().active || scaffold.status().active || torch.status().active }) } catch { /* The next tick retries. */ }
   }, 2000)
   timer.unref?.()
   // The previous runtime was reloaded in the middle of a recovery: play on.
   if (shared.playerRecovering === true) { shared.playerRecovering = false; if (control.get() === 'player') shared.autoWanted = true }
   const player = createPlayerMode({
-    getMode: control.get, log, safety: operations.safety, recovery, shelter, flee, scaffold, shared,
+    getMode: control.get, log, safety: operations.safety, recovery, shelter, flee, scaffold: { status: () => torch.status().active ? torch.status() : scaffold.status() }, shared,
     agent: { start: options => agent.start(options), stop: reason => agent.stop(reason), snapshot: agentStatus },
     getInventory: () => shared.inventoryUncertain ? null : runtime.raw().inventory
   })
