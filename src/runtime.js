@@ -1333,8 +1333,7 @@ function createRuntime (host) {
     } catch { return false }
   }
   function longTravelLogAllowance () {
-    const a = host.shared.woodHarvestAllowance
-    return !!a && a.purpose === 'long_travel_prep' && Date.now() < a.expiresAt && !quarryJob?.holdsWork()
+    return !quarryJob?.holdsWork() && require('./modes/player-wood').logsAllowed(host.shared)
   }
   const runner = createRunner({
     logAllowance: () => longTravelLogAllowance(),

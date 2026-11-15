@@ -266,7 +266,8 @@ function createAutonomyRuntime (rt) {
       }
       const decision = sameScope ? rt.selectReadyOreTunnel(state, reachable, observations, options, { readBlock: target => rt.planningWorld.getBlock(target.x, target.y, target.z), previewTunnel: (target, limits) => rt.tunneling?.preview(target, limits), previewMining: targets => rt.mining.preview(targets), isCurrent: routeCurrent }) : reachable
       if (rt.host.shared.startupPriority && String(decision.preparation ?? '').startsWith('wooden_sword')) rt.host.shared.startupPriority.firstSwordPlan = { type: decision.type, code: decision.code ?? null, reason: String(decision.reason ?? '').slice(0, 80) }
-      return decision.type === 'move_to' && decision.resourceTarget ? rt.useCurrentAccess(decision, rt.mining.preview([decision.resourceTarget])) : decision
+      const planned = decision.type === 'move_to' && decision.resourceTarget ? rt.useCurrentAccess(decision, rt.mining.preview([decision.resourceTarget])) : decision
+      return rt.require('./modes/player-wood').withPlayerWood({ mode: rt.host.shared.botMode, decision: planned, planLogs: () => rt.require('./survival/planner').nextBootstrapAction(state, observations, { ...options, allowLogs: true, logCount: 10 }) })
     },
     onDecision: decision => rt.host.log(`次の行動: ${decision.reason}`),
     onProgress: progress => {
