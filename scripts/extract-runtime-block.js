@@ -1,33 +1,37 @@
 'use strict'
 
-// Moves a run of whole statements out of the closure in src/runtime.js into a
-// module of its own without changing what the code does. long-travel-runtime.js
-// was produced this way (2026-11-15).
+// Moves a run of whole statements out of a large closure (src/runtime.js by
+// default) into a module of its own without changing what the code does.
+// long-travel-runtime.js and the other *-runtime.js parts were produced this
+// way (2026-11-15).
 //
-//   node scripts/extract-runtime-block.js <startLine> <endLine> <module> <factory> <instance> [--apply]
+//   node scripts/extract-runtime-block.js <startLine> <endLine> <module> <factory> <instance> [--file=src/x.js] [--apply]
 //   e.g. 7911 8625 long-travel-runtime createLongTravelRuntime travelRuntime
 //
 // From the syntax tree (the TypeScript compiler that ships in node_modules as a
 // dependency of a dependency; nothing is installed for this):
 // - an identifier in the range that resolves to a binding declared outside it
-//   becomes rt.<name>; runtime.js passes one accessor per such binding, with a
-//   setter where the range assigns to it, so every read and write still reaches
-//   the runtime's own variable at that moment;
-// - `require` in the range becomes rt.require, the runtime's own require, so
-//   hot reload tracking and test overrides of modules keep working;
-// - a function the range declares and other runtime code calls stays callable
+//   becomes rt.<name>; the source file passes one accessor per such binding,
+//   with a setter where it can be assigned, so every read and write still
+//   reaches the closure's own variable at that moment;
+// - `require` in the range becomes rt.require, the source file's own require,
+//   so hot reload tracking and test overrides of modules keep working;
+// - a function the range declares and other code of the file calls stays callable
 //   through a hoisted one-line wrapper; a value it declares is read (and, where
 //   outside code assigns to it, written) as <instance>.<name>.
 // Without --apply nothing is written to src/; both results go to the system
 // temp folder and the summary is printed. Afterwards: npm run check, the tests
 // of that feature, npm run test:review and a full-suite failure comparison, and
-// lower src/runtime.js in scripts/size-budget.json.
+// lower the file's value in scripts/size-budget.json.
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path')
 const ts = require('typescript')
-const root = path.resolve(__dirname, '..'), file = path.join(root, 'src', 'runtime.js').replaceAll('\\', '/')
+const root = path.resolve(__dirname, '..')
+const fileOption = process.argv.find(argument => argument.startsWith('--file='))?.slice('--file='.length) ?? 'src/runtime.js'
+const file = path.resolve(root, fileOption).replaceAll('\\', '/'), sourceName = path.basename(file)
+if (!file.startsWith(path.join(root, 'src').replaceAll('\\', '/') + '/') || !fs.existsSync(file)) { console.error('--file must name an existing file under src/'); process.exit(2) }
 const [a, b] = [Number(process.argv[2]), Number(process.argv[3])], [moduleName, factory, instance] = process.argv.slice(4, 7)
 if (!Number.isInteger(a) || !Number.isInteger(b) || a < 1 || b < a || ![moduleName, factory, instance].every(name => /^[A-Za-z][\w-]*$/.test(name ?? ''))) {
-  console.error('usage: node scripts/extract-runtime-block.js <startLine> <endLine> <module> <factory> <instance> [--apply]'); process.exit(2)
+  console.error('usage: node scripts/extract-runtime-block.js <startLine> <endLine> <module> <factory> <instance> [--file=src/x.js] [--apply]'); process.exit(2)
 }
 const apply = process.argv.includes('--apply')
 const text = fs.readFileSync(file, 'utf8'), nl = text.includes('\r\n') ? '\r\n' : '\n'
@@ -62,6 +66,9 @@ function refuseControlFlow (node, depth, plain) {
 function visit (node) {
   if (ts.isIdentifier(node)) {
     const p = node.parent
+    // The moved code reaches its old closure through `rt`; a binding of that
+    // name inside the range, or one outside that the range uses, would shadow it.
+    if (node.text === 'rt' && inside(node) && !(ts.isPropertyAccessExpression(p) && p.name === node) && !(ts.isPropertyAssignment(p) && p.name === node)) throw new Error(`The range already uses the name rt at line ${sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1}`)
     const isName = (ts.isPropertyAccessExpression(p) && p.name === node) || (ts.isPropertyAssignment(p) && p.name === node) || (ts.isMethodDeclaration(p) && p.name === node) || (ts.isBindingElement(p) && p.propertyName === node)
     if (!isName) {
       const shorthand = ts.isShorthandPropertyAssignment(p)
@@ -98,10 +105,10 @@ const splice = (source, base, edits) => edits.sort((x, y) => y.pos - x.pos).redu
 const names = [...bindings].sort((x, y) => x[0].localeCompare(y[0])), back = [...returned]
 const moduleText = [
   "'use strict'", '',
-  `// Moved out of runtime.js unchanged by scripts/extract-runtime-block.js.`,
-  '// `rt` exposes the runtime closure bindings this code uses; each read or write',
-  "// of rt.<name> reads or writes the runtime's own variable at that moment.",
-  "// Modules are loaded through rt.require, the runtime's own require.", '',
+  `// Moved out of ${sourceName} unchanged by scripts/extract-runtime-block.js.`,
+  '// `rt` exposes the bindings of that closure this code uses; each read or write',
+  "// of rt.<name> reads or writes the closure's own variable at that moment.",
+  `// Modules are loaded through rt.require, the require of ${sourceName}.`, '',
   `function ${factory} (rt) {`,
   splice(text.slice(from, to), from, inner).replace(/(\r?\n)+$/, ''),
   '  return {',
@@ -119,7 +126,8 @@ const wiring = [
   ...back.filter(([, kind]) => kind === 'function').map(([name]) => `${pad}function ${name} (...args) { return ${instance}.${name}(...args) }`), ''
 ].join(nl)
 const runtimeText = splice(text.slice(0, from), 0, outer.filter(edit => edit.pos < from)) + wiring + splice(text.slice(to), to, outer.filter(edit => edit.pos >= to))
-const out = apply ? path.join(root, 'src') : fs.mkdtempSync(path.join(os.tmpdir(), 'extract-runtime-block-'))
+const out = apply ? path.dirname(file) : fs.mkdtempSync(path.join(os.tmpdir(), 'extract-runtime-block-'))
+if (apply && fs.existsSync(path.join(out, `${moduleName}.js`))) throw new Error(`${moduleName}.js already exists`)
 fs.writeFileSync(path.join(out, `${moduleName}.js`), moduleText)
-fs.writeFileSync(path.join(out, 'runtime.js'), runtimeText)
+fs.writeFileSync(path.join(out, sourceName), runtimeText)
 console.log(JSON.stringify({ written: out, statements: covered.length, bindings: names.length, assigned: names.filter(([, entry]) => entry.write).map(([name]) => name), returned: back, edits: { inside: inner.length, outside: outer.length }, runtimeBytes: { before: text.length, after: runtimeText.length }, moduleBytes: moduleText.length }, null, 1))

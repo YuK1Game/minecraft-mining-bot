@@ -26,8 +26,9 @@ function movedBody (name, factory) {
     .replace(/\brt\./g, '')
 }
 
-function runtimeSource () {
-  let text = fs.readFileSync(path.join(src, 'runtime.js'), 'utf8').replace(/\r\n/g, '\n')
+// The same for any source file that had parts moved out (quarry-job.js).
+function flattenedSource (name) {
+  let text = fs.readFileSync(path.join(src, name), 'utf8').replace(/\r\n/g, '\n')
   const instances = []
   for (let match; (match = WIRING.exec(text));) {
     instances.push(match[3])
@@ -37,4 +38,6 @@ function runtimeSource () {
   return text
 }
 
-module.exports = { runtimeSource }
+const runtimeSource = () => flattenedSource('runtime.js')
+
+module.exports = { runtimeSource, flattenedSource }

@@ -2271,217 +2271,69 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return { ok: false, details: { cause: 'ENTRY_MOVE_FAILED', candidates: stands.length, tried } }
   }
 
-  async function approachSupplySite (myEpoch, active) {
-    // An existing child owns a physical location and possibly an uncertain
-    // placement/transfer. Its normal recovery must run before any relocation.
-    if (active.checkpoint?.child) return true
-    const blocked = async (reason, details = {}) => {
-      // Live 2026-11-13 03:14: the stored server position (an old correction)
-      // and the working position disagreed and the approach found "no known
-      // safe support". Ask the server about both once; use only a confirmed one.
-      if (/no known safe support/.test(String(details.cause ?? '') + ' ' + String(details.error ?? '')) && !active.originWitnessTried && typeof adapter.confirmPosition === 'function') {
-        active.originWitnessTried = true
-        const s = adapter.getState(), feet = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k])) ? { x: Math.round(p.x * 100) / 100, y: Math.round((p.y - 1.62) * 1000) / 1000, z: Math.round(p.z * 100) / 100 } : null
-        const working = feet(s?.position), received = feet(s?.rawServerPosition)
-        const apart = working && received ? Math.hypot(working.x - received.x, working.z - received.z) : 0
-        if (apart >= 0.3 && Number.isInteger(working.y) && Number.isInteger(received.y)) {
-          const ask = async p => { try { return (await call(myEpoch, 'confirm_position', signal => adapter.confirmPosition(p, { signal, radius: 0.3, operationId: `${active.operationId}:origin` })))?.serverConfirmed === true } catch (error) { if (error instanceof QuarryInterrupt) throw error; return false } }
-          const workingOk = await ask(working), receivedOk = await ask(received)
-          note('position_disagreement', { operationId: active.operationId, working, received, apart: Math.round(apart * 100) / 100, positionSource: s?.positionSource ?? null, receivedAt: s?.rawServerPositionUpdatedAt ?? null, correction: copy(s?.lastServerCorrection ?? null), workingOk, receivedOk })
-          if (workingOk !== receivedOk) {
-            if (receivedOk && typeof adapter.discardPrediction === 'function') adapter.discardPrediction('supply approach: the received position was confirmed')
-            await save('position_disagreement_resolved')
-            setState('RESTOCK'); return false
-          }
-        }
-      }
-      job.lastSupplyResult = { operationId: active.operationId, status: 'blocked', reason, serverConfirmed: false, withdrawn: copy(active.checkpoint?.withdrawn ?? []), returned: copy(active.checkpoint?.returned ?? []) }
-      note('supply_site_blocked', { reason, cause: details.cause ?? null, position: details.position ?? null, block: details.block ?? null, counts: details.counts ?? null })
-      await finish('PAUSED', 'SUPPLY_RESTOCK_BLOCKED', { pauseDetails: { reason, ...copy(details), operationId: active.operationId } })
-      return false
-    }
-    const state = guard(myEpoch)
-    if (!items(state)) return blocked('SUPPLY_INVENTORY_UNKNOWN')
-    if (active.checkpoint && !isDeepStrictEqual(active.checkpoint.scope, supplyScope(state))) return blocked('SUPPLY_SCOPE_CHANGED')
-    if (typeof adapter.previewSupplySite !== 'function') return blocked('SUPPLY_APPROACH_UNSUPPORTED')
-    const approachFrom = from => planSupplyApproach({ origin: from, regions, planner, canPlace: supplyCanPlace, initialStation: initialSupplyStation(),
-      previewSite: stand => adapter.previewSupplySite(stand, { canPlace: supplyCanPlace, canClear: supplyCanClear }),
-      previewRoute: typeof adapter.previewStorage === 'function' ? (site, path) => call(myEpoch, 'preview_supply_route', signal => adapter.previewStorage({ stand: site.stand, position: site.positions[0] }, { signal, path, travel: p => permits(regions, 'travel', p).allowed })) : null,
-      guard: () => { const current = guard(myEpoch); if (!samePoint(feetCell(current), from)) throw new QuarryInterrupt('SUPPLY_APPROACH_ORIGIN_CHANGED') } })
-    guard(myEpoch)
-    let origin = feetCell(guard(myEpoch))
-    let selected = await approachFrom(origin)
-    guard(myEpoch)
-    // Started outside the quarry columns: from out there only the chunk's edge
-    // cells are reachable (live 2026-11-09: 26 wall cells, all rejected). Walk
-    // to the nearest reachable stand inside the columns and search from there.
-    // Placement rules are unchanged: boxes still go only inside the chunk.
-    if (!selected.ready && selected.reason === 'STORAGE_SITE_UNOBSERVED' && !regions.columns.has(origin.x + ',' + origin.z)) {
-      const entered = await enterQuarryForSupply(myEpoch, origin)
-      if (!entered.ok) return blocked('SUPPLY_ENTRY_UNREACHABLE', { origin, firstReason: selected.reason, ...entered.details })
-      note('supply_entered', { from: origin, to: entered.stand })
-      origin = feetCell(guard(myEpoch))
-      selected = await approachFrom(origin)
-    }
-    if (!selected.ready) return blocked(selected.reason, { ...selected.details, origin })
-    active.approach = { phase: 'planned', origin, stand: copy(selected.site.stand), positions: copy(selected.site.positions), pathLength: selected.path.length, predictionOnly: true }
-    await save('supply_approach_intent')
-    if (!samePoint(origin, selected.site.stand)) {
-      note('supply_approach', { from: origin, to: selected.site.stand, steps: selected.path.length - 1 })
-      active.approach.phase = 'moving'
-      try { await moveToStance(myEpoch, selected.site.stand) } catch (error) {
-        if (error instanceof QuarryInterrupt) throw error
-        guard(myEpoch)
-        return blocked('SUPPLY_APPROACH_MOVE_FAILED', { target: selected.site.stand, error: String(error.message ?? error).slice(0, 120) })
-      }
-    }
-    const arrived = feetCell(guard(myEpoch))
-    if (!samePoint(arrived, selected.site.stand)) return blocked('SUPPLY_APPROACH_ARRIVAL_UNCONFIRMED', { target: selected.site.stand, position: arrived })
-    // Prepare only the explicitly proposed, dry, non-colliding plants. This
-    // does not authorize excavation outside the quarry or mark cells as air.
-    const preparation = selected.site.preparation ?? []
-    if (!Array.isArray(preparation) || preparation.length > 4) return blocked('SUPPLY_SITE_PREPARATION_INVALID')
-    for (const target of preparation) {
-      const current = guard(myEpoch), block = adapter.getBlock(target.x, target.y, target.z)
-      if (!samePoint(feetCell(current), arrived)) return blocked('SUPPLY_SITE_CHANGED', { position: target, cause: 'PREPARATION_ORIGIN_CHANGED' })
-      if (plainAir(block)) continue
-      if (samePoint(target, arrived) || !supplyCanClear(target) || !clearableSitePlant(block) || block.name !== target.expectedName || (target.expectedRuntimeId != null && block.runtimeId !== target.expectedRuntimeId)) return blocked('SUPPLY_SITE_CHANGED', { position: target, cause: 'PREPARATION_BLOCK_CHANGED', block: block?.name ?? null })
-      const rule = blockRule(block.name), drops = (rule.drops ?? []).map(name => ({ name: `minecraft:${name}`, count: rule.maxDrop ?? 1 }))
-      if (!canAccept(items(current), drops, { minFreeSlots: 1 })) return blocked('SUPPLY_SITE_PREPARATION_CAPACITY', { position: target })
-      await equipTool(myEpoch, { kind: 'hand' })
-      const action = recordAction({ type: 'supply_site_clear', position: target, expectedName: target.expectedName })
-      await save('supply_site_clear_intent')
-      guard(myEpoch)
-      if (!supplyCanClear(target) || !samePoint(feetCell(adapter.getState()), arrived)) return blocked('SUPPLY_SITE_CHANGED', { position: target })
-      note('supply_site_prepare', { position: target, block: target.expectedName })
-      try { await call(myEpoch, 'supply_site_clear', signal => adapter.mine([{ ...target, accessPreparation: 'quarry', requiredTool: null }], { signal })) } catch (error) {
-        if (error instanceof QuarryInterrupt) throw error
-        guard(myEpoch)
-        action.status = 'unconfirmed'
-        return blocked('SUPPLY_SITE_PREPARATION_FAILED', { position: target, error: String(error.message ?? error).slice(0, 120) })
-      }
-      guard(myEpoch)
-      if (!plainAir(adapter.getBlock(target.x, target.y, target.z))) return blocked('SUPPLY_SITE_PREPARATION_UNCONFIRMED', { position: target })
-      action.status = 'confirmed'; action.confirmedBy = 'received_air'
-      observeInventory('SUPPLY_SITE_PREPARE')
-      await save('supply_site_cleared')
-    }
-    if (!samePoint(feetCell(guard(myEpoch)), arrived)) return blocked('SUPPLY_SITE_CHANGED', { position: arrived, cause: 'PREPARATION_ORIGIN_CHANGED' })
-    const refreshed = adapter.previewSupplySite(arrived, { canPlace: supplyCanPlace })
-    if (refreshed?.ready !== true || !samePoint(refreshed.stand, arrived) || !refreshed.positions?.length || !refreshed.positions.every(supplyCanPlace)) return blocked('SUPPLY_SITE_CHANGED', { position: arrived, cause: refreshed?.reason ?? 'UNCONFIRMED' })
-    // This is a walking/terrain observation, not a successful box transfer.
-    active.approach = { ...active.approach, phase: 'arrived', positions: copy(refreshed.positions) }
-    note('supply_arrived', { stand: arrived, box: refreshed.positions[0] })
-    await save('supply_approach_arrived')
-    return true
-  }
-  async function restock (myEpoch, resumeTo = 'SURVEY', force = false) {
-    const bindings = job.config.inventory.supplyBoxes
-    if (!bindings?.length && !job.supplyRestock) return false
-    if (job.portableStorage) return false
-    if (!validSupplyBindings(bindings) || typeof adapter.restockSupplies !== 'function') { await finish('PAUSED', 'SUPPLY_UNSUPPORTED'); return true }
-    const inventory = items(guard(myEpoch)), equipmentView = adapter.equipmentView?.()
-    const policy = { ...job.config.inventory, tools: job.config.tools,
-      ...(v22SupplyLayout(job.config) ? { totemNeeded: equipmentView?.offhand?.known === true && equipmentView.offhand.slots?.[0]?.empty === true } : {}),
-      ...(deferredExitSupplies() ? { deferExitSupplies: true, exitPreparing: job.egressPreparation === true,
-        exitDirtTarget: job.egressPreparation === true ? exitDirtGoal() : 64, ...(workDirtOnDemand() ? { workDirtTarget: job.dirtDemand === true ? WORK_DIRT_DEMAND : 0 } : {}) } : {}),
-      ...(job.miningExhausted ? { miningExhausted: copy(job.miningExhausted) } : {}),
-      ...(fourLayerStorage() ? { keepExitDirt: 0, keepSealBlocks: 64,
-        exitPreparing: job.egressPreparation === true, exitDirtTarget: job.egressPreparation === true ? Math.max(192, job.config.inventory.keepExitDirt ?? 0) : 64,
-        totemNeeded: equipmentView?.offhand?.known === true && equipmentView.offhand.slots?.[0]?.empty === true,
-        shovelExhausted: job.shovelSupplyExhausted === true } : {})
-    }
-    if (!inventory && !job.supplyRestock) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
-    const need = supplyNeeds(inventory ?? [], policy)
-    const shortage = Object.values(need.required).some(Boolean)
-    if (!job.supplyRestock && !(shortage || force && need.returns.length)) return false
-    if (!job.supplyRestock) { job.supplySequence = (job.supplySequence ?? 0) + 1; job.supplyRestock = { operationId: `${job.config.jobId}:supplies:${job.supplySequence}`, checkpoint: null, resumeTo } }
-    const owner = job, active = job.supplyRestock
-    await rescopeBoxAfterReconnect(active?.checkpoint?.child, active?.checkpoint, 'supply', active?.operationId)
-    // A box whose window was closed under the operation is opened again by the
-    // ordinary operation instead of stopping STORAGE_WINDOW_CHANGED again.
-    { const ch = active?.checkpoint?.child
-      if (job.lastSupplyResult?.operationId === active?.operationId && job.lastSupplyResult?.reason === 'STORAGE_WINDOW_CHANGED' && ch?.kind === 'shulker' && ch.stage === 'depositing' && ch.opened === true && ch.intent == null && !ch.supplyCheckpoint?.intent) {
-        ch.stage = 'placed'; ch.opened = false; ch.windowId = null; job.lastSupplyResult = { ...job.lastSupplyResult, reason: 'STORAGE_WINDOW_REOPEN' }
-        note('supply_box_reopen', { operationId: active.operationId }); await save('supply_box_reopen')
-      } }
-    await refreshSupplyBindingKeys(active)
-    if (!(await approachSupplySite(myEpoch, active))) return true
-    guard(myEpoch)
-    setState('RESTOCK'); await save('supply_intent')
-    const supplyPreFingerprint = supplyFingerprint(active.checkpoint), supplyPreTotals = JSON.stringify([...totals(items(guard(myEpoch)) ?? [])].sort())
-    const response = await call(myEpoch, 'restock_supplies', signal => adapter.restockSupplies({ jobId: job.config.jobId, operationId: active.operationId, bindings: copy(bindings), policy: copy(policy), checkpoint: copy(active.checkpoint), canPlace: supplyCanPlace }, { signal, onCheckpoint: async checkpoint => {
-      if (job !== owner || job.supplyRestock !== active || checkpoint?.jobId !== owner.config.jobId || checkpoint?.operationId !== active.operationId) throw new Error('Supply checkpoint belongs to another operation')
-      active.checkpoint = copy(checkpoint); await save('supply_checkpoint')
-    } }))
-    guard(myEpoch)
-    job.lastSupplyResult = { operationId: active.operationId, status: response?.status ?? 'blocked', reason: response?.reason ?? null, serverConfirmed: response?.serverConfirmed === true, withdrawn: copy(response?.withdrawn ?? []), returned: copy(response?.returned ?? []) }
-    if (response?.status !== 'completed' && SUPPLY_ROOM_REASONS.has(response?.reason) && await makeSupplyRoom(myEpoch, active)) { setState('RESTOCK'); await save('supply_room_retry'); return true }
-    // Right after placements the received inventory is briefly uncertain (live
-    // 2026-11-14 03:32 SUPPLY_SCOPE_UNKNOWN): resync and retry (3 at most).
-    if (response?.status !== 'completed' && response?.reason === 'SUPPLY_SCOPE_UNKNOWN' && (active.scopeUnknownRetries ?? 0) < 3) {
-      active.scopeUnknownRetries = (active.scopeUnknownRetries ?? 0) + 1
-      note('supply_scope_unknown_retry', { attempt: active.scopeUnknownRetries })
-      if (typeof adapter.resyncInventory === 'function') { try { await call(myEpoch, 'resync', signal => adapter.resyncInventory({ signal })) } catch (error) { if (error instanceof QuarryInterrupt) throw error } }
-      const until = now() + 1500
-      while (now() < until) { await sleep(100); guard(myEpoch) }
-      await save('supply_scope_unknown_retry'); setState('RESTOCK'); return true
-    }
-    // Live 2026-11-13 13:53 (supplies:13): the walk to the supply stand timed out
-    // before anything was placed; like storage, it is a site re-selection.
-    if (response?.status !== 'completed' && (SUPPLY_SITE_REASONS.has(response?.reason) || response?.reason === 'quarry move: timed out') && supplyUntouched(response?.checkpoint) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
-      active.siteRetries = (active.siteRetries ?? 0) + 1
-      const issue = response.checkpoint?.child?.siteIssue ?? null
-      note('supply_site_retry', { reason: response.reason, attempt: active.siteRetries, issue: copy(issue), mobOverlap: /^ENTIT/.test(issue?.cause ?? ''), waits: (response.checkpoint?.child?.siteWaits ?? []).length, site: copy(active.approach ?? null) })
-      active.checkpoint = null; active.approach = null
-      await save('supply_site_retry')
-      const until = now() + SUPPLY_SITE_RETRY_WAIT_MS
-      while (now() < until) { await sleep(100); guard(myEpoch) }
-      setState('RESTOCK'); return true
-    }
-    // Live 2026-11-13 01:06: the supply box drop vanished before its pickup was
-    // confirmed (supplies:6) and a manual resume confirmed the recovery from the
-    // received inventory. Run that same saved operation again at once (twice at
-    // most), as for carried storage; anything unconfirmed still pauses below.
-    if (response?.status !== 'completed' && ['STORAGE_PICKUP_ITEM_CHANGED', 'STORAGE_PICKUP_ENTITY_BASELINE_CHANGED'].includes(response?.reason) && (response?.checkpoint?.child ?? active.checkpoint?.child)?.placed?.length === 1 && (active.pickupItemRechecks ?? 0) < 2) {
-      active.pickupItemRechecks = (active.pickupItemRechecks ?? 0) + 1
-      note('supply_pickup_recheck', { operationId: active.operationId, reason: response.reason, attempt: active.pickupItemRechecks, stage: (response?.checkpoint?.child ?? active.checkpoint?.child)?.stage ?? null })
-      await save('supply_pickup_recheck')
-      setState('RESTOCK'); return true
-    }
-    if (fourLayerStorage() && response?.reason === 'SUPPLY_EXHAUSTED' && active.checkpoint?.bindings?.[active.checkpoint.index]?.role === 'shovel') {
-      job.shovelSupplyExhausted = true
-      job.miningExhausted = null
-      job.miningExhaustedTried = false
-      job.supplyRestock = null
-      await save('shovel_supply_exhausted')
-      setState('SURVEY')
-      return true
-    }
-    // Same transient refusal rule as carried storage (2026-11-13).
-    if (response?.status === 'blocked' && transientReason(response.reason) && (active.transientRetries ?? 0) < TRANSIENT_RETRIES) {
-      const fresh = items(guard(myEpoch)), cp = active.checkpoint
-      if (fresh && supplyFingerprint(cp) === supplyPreFingerprint && JSON.stringify([...totals(fresh)].sort()) === supplyPreTotals) {
-        active.transientRetries = (active.transientRetries ?? 0) + 1
-        const untouched = supplyUntouched(cp)
-        note('supply_transient_retry', { operationId: active.operationId, attempt: active.transientRetries, reason: String(response.reason).slice(0, 160), newSite: untouched })
-        if (untouched) { active.checkpoint = null; active.approach = null }
-        await save('supply_transient_retry')
-        const until = now() + TRANSIENT_WAIT_MS
-        while (now() < until) { await sleep(100); guard(myEpoch) }
-        setState('RESTOCK'); return true
-      }
-    }
-    if (response?.status !== 'completed' || response.serverConfirmed !== true || !validSupplyBindings(response.bindings)) { await finish('PAUSED', 'SUPPLY_RESTOCK_BLOCKED', { pauseDetails: { reason: response?.reason ?? 'UNCONFIRMED', operationId: active.operationId } }); return true }
-    job.config.inventory.supplyBoxes = copy(response.bindings)
-    job.supplyReceipts ??= []
-    if (!job.supplyReceipts.some(receipt => receipt.operationId === active.operationId)) job.supplyReceipts.push({ operationId: active.operationId, at: new Date(now()).toISOString(), withdrawn: copy(response.withdrawn ?? []), returned: copy(response.returned ?? []) })
-    note('supplies_restocked', { withdrawn: response.withdrawn, returned: response.returned })
-    job.supplyRestock = null; lastInventory = totals(items(adapter.getState()) ?? [])
-    clearWorkDeferred([...TOOL_WAIT]); job.miningEquipmentPending = true
-    await save('supply_completed'); setState(active.resumeTo ?? resumeTo)
-    return true
-  }
+  // This part lives in quarry-job-restock.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const jobRestock = require('./quarry-job-restock').createQuarryJobRestock({
+    get adapter () { return adapter }, set adapter (value) { adapter = value },
+    get blockRule () { return blockRule },
+    get call () { return call },
+    get canAccept () { return canAccept },
+    get clearableSitePlant () { return clearableSitePlant },
+    get clearWorkDeferred () { return clearWorkDeferred },
+    get copy () { return copy },
+    get deferredExitSupplies () { return deferredExitSupplies },
+    get enterQuarryForSupply () { return enterQuarryForSupply },
+    get equipTool () { return equipTool },
+    get exitDirtGoal () { return exitDirtGoal },
+    get feetCell () { return feetCell },
+    get finish () { return finish },
+    get fourLayerStorage () { return fourLayerStorage },
+    get guard () { return guard },
+    get initialSupplyStation () { return initialSupplyStation },
+    get isDeepStrictEqual () { return isDeepStrictEqual },
+    get items () { return items },
+    get job () { return job }, set job (value) { job = value },
+    get lastInventory () { return lastInventory }, set lastInventory (value) { lastInventory = value },
+    get makeSupplyRoom () { return makeSupplyRoom },
+    get moveToStance () { return moveToStance },
+    get note () { return note },
+    get now () { return now }, set now (value) { now = value },
+    get observeInventory () { return observeInventory },
+    get permits () { return permits },
+    get plainAir () { return plainAir },
+    get planner () { return planner }, set planner (value) { planner = value },
+    get planSupplyApproach () { return planSupplyApproach },
+    get QuarryInterrupt () { return QuarryInterrupt },
+    get recordAction () { return recordAction },
+    get refreshSupplyBindingKeys () { return refreshSupplyBindingKeys },
+    get regions () { return regions }, set regions (value) { regions = value },
+    get rescopeBoxAfterReconnect () { return rescopeBoxAfterReconnect },
+    get samePoint () { return samePoint },
+    get save () { return save },
+    get setState () { return setState },
+    get sleep () { return sleep }, set sleep (value) { sleep = value },
+    get SUPPLY_ROOM_REASONS () { return SUPPLY_ROOM_REASONS },
+    get SUPPLY_SITE_REASONS () { return SUPPLY_SITE_REASONS },
+    get SUPPLY_SITE_RETRIES () { return SUPPLY_SITE_RETRIES },
+    get SUPPLY_SITE_RETRY_WAIT_MS () { return SUPPLY_SITE_RETRY_WAIT_MS },
+    get supplyCanClear () { return supplyCanClear },
+    get supplyCanPlace () { return supplyCanPlace },
+    get supplyFingerprint () { return supplyFingerprint },
+    get supplyNeeds () { return supplyNeeds },
+    get supplyScope () { return supplyScope },
+    get supplyUntouched () { return supplyUntouched },
+    get TOOL_WAIT () { return TOOL_WAIT },
+    get totals () { return totals },
+    get TRANSIENT_RETRIES () { return TRANSIENT_RETRIES },
+    get TRANSIENT_WAIT_MS () { return TRANSIENT_WAIT_MS },
+    get transientReason () { return transientReason },
+    get v22SupplyLayout () { return v22SupplyLayout },
+    get validSupplyBindings () { return validSupplyBindings },
+    get WORK_DIRT_DEMAND () { return WORK_DIRT_DEMAND },
+    get workDirtOnDemand () { return workDirtOnDemand }
+  })
+  function restock (...args) { return jobRestock.restock(...args) }
   // A box operation left with its box placed when only the connection
   // changed (live 2026-11-14 02:50: server-side disconnect; supplies:18 then
   // stopped SUPPLY_SCOPE_CHANGED). Continued on the new connection when: no
@@ -2672,579 +2524,92 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return true
   }
 
-  async function storeCarried (myEpoch, why, depositLimit = null, capacityDecision = null) {
-    const state = guard(myEpoch); const inv = items(state)
-    if (!inv) {
-      const owner = job, active = job.portableStorage, checkpoint = active?.checkpoint
-      if (!active) { await sleep(300); return true }
-      const pendingPlacement = samePendingStoragePlacement(checkpoint, state)
-      if ((sameOwnedStorageBox(checkpoint, state) || pendingPlacement) && typeof adapter.resyncInventory === 'function' && await reserveStorageRecovery(myEpoch, owner, active, checkpoint, pendingPlacement ? 'STORAGE_PLACEMENT_INVENTORY_WAIT' : 'STORAGE_INVENTORY_WAIT')) {
-        try { await call(myEpoch, 'storage_inventory_observe', signal => adapter.resyncInventory({ signal })) } catch (error) {
-          if (error instanceof QuarryInterrupt) throw error
-          note('storage_inventory_refresh_failed', { error: String(error.message ?? error).slice(0, 160) })
-        }
-        const fresh = requireStorageOwner(myEpoch, owner, active, checkpoint)
-        if (sameOwnedStorageBox(checkpoint, fresh) || samePendingStoragePlacement(checkpoint, fresh)) { setState('RETURN'); await sleep(500); requireStorageOwner(myEpoch, owner, active, checkpoint); return true }
-      }
-      await finish('PAUSED', 'CARRIED_STORAGE_BLOCKED', { pauseDetails: { reason: 'STORAGE_INVENTORY_UNKNOWN', operationId: active.operationId, kind: active.selection?.kind ?? null } })
-      return true
-    }
-    const feet = feetCell(state), head = { ...feet, y: feet.y + 1 }
-    if (!permits(regions, 'travel', feet).allowed || !permits(regions, 'travel', head).allowed) {
-      if (Array.isArray(job.config.permissions.travelRegion)) { await finish('PAUSED', 'OUTSIDE_TRAVEL_REGION', { pauseDetails: { feet, head, phase: 'carried_storage' } }); return true }
-      // Storage recovery may follow a combat escape. Rebuild only automatic
-      // travel permissions; keep every mining exclusion and earned depth.
-      rebuildPlanner(); note('storage_travel_rebound', { feet })
-    }
-    const capacity = !!capacityDecision || job.portableStorage?.purpose === 'capacity_batch'
-    const deposits = capacity ? [] : job.portableStorage?.depositLimit ?? depositLimit ?? keepPlan(inv, inventoryPolicy()).deposits
-    if (!job.portableStorage && !deposits.length && !capacity) return false
-    if (typeof adapter.storeCarried !== 'function') {
-      if (job.portableStorage) { await finish('PAUSED', 'CARRIED_STORAGE_UNAVAILABLE'); return true }
-      return false
-    }
-    // Live 2026-11-13 00:17: after a site re-selection the same box had moved
-    // to the hotbar (equipped for the refused attempt) and the stale source
-    // slot paused the retry (STORAGE_SOURCE_CHANGED). Before anything is
-    // placed, follow the same received stack to its current slot.
-    if (job.portableStorage && !job.portableStorage.checkpoint && job.portableStorage.selection?.kind === 'shulker' && job.portableStorage.selection.sources?.length === 1) {
-      const sel = job.portableStorage.selection, src = sel.sources[0]
-      const same = inv.filter(i => i.count === 1 && isShulkerBox(i.name) && carriedContainerKey(i) === sel.key && (src.stackId == null || i.stackId === src.stackId))
-      if (same.length === 1 && same[0].slot !== src.slot) {
-        note('storage_source_slot_refreshed', { operationId: job.portableStorage.operationId, from: src.slot, to: same[0].slot })
-        job.portableStorage.selection = { ...sel, sources: [{ ...src, slot: same[0].slot }] }
-      }
-    }
-    const selection = job.portableStorage?.selection ?? cargoSelection(inv, { excludedShulkerKeys: [...(job.exhaustedShulkerKeys ?? []), ...storageSupplyExclusions(job.config.inventory.supplyBoxes)] })
-    if (!selection) return false
-    if (shulkerOnly && selection.kind !== 'shulker') throw new QuarryInterrupt('LEGACY_CHEST_STORAGE')
-    if (capacity && selection.kind !== 'shulker') return false
-    const markerDirt = capacity && job.config.exit?.mode === 'adjacent_pillar'
-    const markerReserve = job.config.initialLoadout === 'v22' && deferredExitSupplies() && !job.egressPreparation ? 0 : Math.max(192, job.config.inventory.keepExitDirt ?? 192)
-    if (!job.portableStorage && markerDirt && dirtCount(inv) <= markerReserve) { await finish('PAUSED', 'CAPACITY_MARKER_MATERIAL_MISSING'); return true }
-    if (!job.portableStorage) {
-      job.portableStorageSequence = (job.portableStorageSequence ?? 0) + 1
-      job.portableStorage = { operationId: `${job.config.jobId}:storage:${job.portableStorageSequence}`, selection: copy(selection), checkpoint: null, why, ...(depositLimit ? { depositLimit: copy(depositLimit) } : {}), ...(capacity ? { purpose: 'capacity_batch', capacityBatch: { decision: copy(capacityDecision), beforePlacementItems: copy(inv), inventoryPolicy: copy(inventoryPolicy()), markerDirt } } : {}) }
-      await save('carried_storage_intent')
-    }
-    await rescopeBoxAfterReconnect(job.portableStorage?.checkpoint, null, 'cargo', job.portableStorage?.operationId)
-    const owner = job; const active = job.portableStorage
-    const rec = recordAction({ type: 'carried_storage', operationId: active.operationId, kind: selection.kind, why: active.why })
-    setState(why === 'manual' ? 'PORTABLE_STORAGE' : 'DEPOSIT')
-    const callState = guard(myEpoch), startSequence = adapter.userControlInterruption?.()?.sequence ?? 0, startedAt = now()
-    const preFingerprint = storageFingerprint(active.checkpoint), preTotals = JSON.stringify([...totals(items(callState) ?? [])].sort())
-    let checkpointOpen = true, checkpointTail = Promise.resolve(), checkpointFailure = null, callbackCount = 0
-    const commitCheckpoint = async checkpoint => {
-      if (job !== owner || job.portableStorage !== active || checkpoint?.operationId !== active.operationId || checkpoint?.jobId !== owner.config.jobId || checkpoint?.kind !== selection.kind) throw new Error('Carried storage checkpoint belongs to another operation')
-      const priorCheckpoint = active.checkpoint
-      active.checkpoint = copy(checkpoint)
-      if (selection.kind !== 'shulker') {
-        const placed = (checkpoint.placed ?? []).filter(c => c.name === 'minecraft:chest' && storagePoint(c.position)).map(c => c.position)
-        if (placed.length) protectStorageCells(placed, checkpoint.stand)
-      }
-      // Delayed confirmed receipts may still be saved after a manual stop, but
-      // can never overwrite a replacement job or a later storage operation.
-      try { await save('carried_storage_checkpoint') } catch (error) { active.checkpoint = priorCheckpoint; throw error }
-    }
-    const onCheckpoint = checkpoint => {
-      if (!checkpointOpen) return Promise.reject(new Error('STORAGE_STALE_CHECKPOINT'))
-      callbackCount++
-      const captured = copy(checkpoint)
-      const pending = checkpointTail.then(() => commitCheckpoint(captured))
-      checkpointTail = pending.catch(error => { checkpointFailure ??= error })
-      return pending
-    }
-    const combatEvidence = () => {
-      const s = adapter.getState(), evidence = adapter.userControlInterruption?.()
-      if (!job.config.quarryCombat.enabled || job !== owner || job.portableStorage !== active || epoch !== myEpoch || job.userRunIntent !== 'running' || !ACTIVE.has(job.state) || s?.phase !== 'spawned' || s.dead || s.isDead || s.lifecycle?.dead || !(s.health > 0) || scopeOf(s) !== scopeOf(callState) || lifeOf(s) !== lifeOf(callState)) return null
-      if (evidence?.preemptionStarted !== true || evidence.kind !== 'combat' || !Number.isSafeInteger(evidence.sequence) || evidence.sequence <= startSequence || evidence.jobId !== owner.config.jobId || evidence.operationId !== active.operationId || evidence.epoch !== myEpoch || evidence.scope !== scopeOf(callState) || evidence.life !== lifeOf(callState) || !Number.isFinite(evidence.claimedAt) || evidence.claimedAt < startedAt || evidence.claimedAt > now()) return null
-      return copy(evidence)
-    }
-    const storageCanPlace = p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 })
-    let result
-    try {
-      let callFailure = null
-      try { result = await call(myEpoch, 'carried_storage', async signal => {
-        try { return await adapter.storeCarried({ jobId: owner.config.jobId, operationId: active.operationId, selection: copy(selection), deposits, inventoryPolicy: copy(inventoryPolicy()), checkpoint: copy(active.checkpoint), ...(active.avoidPositions?.length && !active.checkpoint ? { avoidPositions: copy(active.avoidPositions) } : {}), ...(!capacity && active.why === 'full' && passivePickup() && fullOnlyStorage() ? { allowRecoverySpace: true, ...(Number.isSafeInteger(active.pickupSpaceRetries) && active.pickupSpaceRetries > 0 ? { recoverySpaceRounds: active.pickupSpaceRetries } : {}) } : {}), ...(capacity ? { purpose: 'capacity_batch', capacityBatch: copy(active.capacityBatch) } : {}) }, {
-        signal, onCheckpoint,
-        ...(capacity ? { capacityWork: (context, options) => capacityWork(myEpoch, context, options) } : {}),
-        canPlace: p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 })
-        }) } finally { checkpointOpen = false }
-      }, { drain: true }) } catch (error) { callFailure = error; result = error.drainedResult ?? null }
-      checkpointOpen = false
-      await checkpointTail
-      guard(myEpoch, { combat: false })
-      if (checkpointFailure) throw checkpointFailure
-      if (result?.checkpoint) {
-        if (callbackCount && !isDeepStrictEqual(result.checkpoint, active.checkpoint)) {
-          const fin = result.checkpoint ?? {}, saved = active.checkpoint ?? {}
-          note('storage_checkpoint_mismatch', { operationId: active.operationId, status: result.status, reason: result.reason, fields: [...new Set([...Object.keys(fin), ...Object.keys(saved)])].filter(k => !isDeepStrictEqual(fin[k], saved[k])).map(k => ({ field: k, saved: JSON.stringify(saved[k] ?? null).slice(0, 160), final: JSON.stringify(fin[k] ?? null).slice(0, 160) })) })
-          throw new Error('STORAGE_FINAL_CHECKPOINT_CHANGED')
-        }
-        if (!isDeepStrictEqual(result.checkpoint, active.checkpoint)) await commitCheckpoint(result.checkpoint)
-      }
-      guard(myEpoch, { combat: false })
-      const originalReason = result?.reason ?? callFailure?.drainedError?.message ?? callFailure?.message
-      const stopped = result?.details, mine = stopped?.mining, cp = active.checkpoint, owned = cp?.placed?.length === 1 ? cp.placed[0] : null, target = mine?.target
-      const ownedMiningStop = result?.status === 'blocked' && result.reason === 'STORAGE_BREAK_FAILED' && stopped?.kind === 'owned_shulker_mining_stop' && stopped.operationId === active.operationId && isDeepStrictEqual(stopped.scope, cp?.scope) && selection.kind === 'shulker' && cp?.stage === 'breaking' && cp.intent?.type === 'break' && owned?.confirmedBy === 'server_block_and_inventory' && samePoint(cp.intent.position, owned?.position) && mine?.phase === 'stopped' && mine.reason === 'user_behavior' && mine.operation === 'owned_shulker' && mine.completedCount === 0 && mine.remainingCount === 1 && target?.accessPreparation === 'owned_shulker' && target.ownershipKey === active.operationId && target.expectedName === owned.name && target.expectedRuntimeId === owned.runtimeId && samePoint(target, owned.position)
-      // A wrapped break error is safe to reclassify only with both the exact
-      // primitive stop and the same action's actual combat preemption receipt.
-      const miningPreemption = ownedMiningStop ? combatEvidence() : null
-      const cancelOnly = ['user_behavior', 'STORAGE_ABORTED', 'ABORTED'].includes(originalReason) || !!miningPreemption
-      const criticalResult = result?.status === 'blocked' && !cancelOnly
-      const criticalChildError = callFailure?.drainedError && !['user_behavior', 'STORAGE_ABORTED', 'ABORTED'].includes(callFailure.drainedError.code ?? callFailure.drainedError.message)
-      const successfulReturn = (['completed', 'full'].includes(result?.status) && result.serverConfirmed === true && (selection.kind !== 'shulker' || result.recovered === true)) || (result?.status === 'replan' && result.serverConfirmed === false && result.checkpoint?.stage === 'planned' && result.checkpoint.intent == null)
-      const liveOwnerLoss = successfulReturn && adapter.combatActive()
-      const evidence = !criticalResult && !criticalChildError && (cancelOnly || callFailure?.code === 'COMBAT' || liveOwnerLoss) ? miningPreemption ?? combatEvidence() : null
-      if (evidence) {
-        rec.status = 'interrupted'; rec.result = copy(result ?? { status: 'blocked', reason: originalReason, checkpoint: active.checkpoint })
-        note('storage_combat_interrupted', { operationId: active.operationId, originalReason: originalReason ?? 'COMBAT', ...(miningPreemption ? { miningReason: mine.reason } : {}), sequence: evidence.sequence })
-        suspendForCombat({ reason: 'storage_user_preemption', originalReason: originalReason ?? 'COMBAT', ...(miningPreemption ? { storageCause: copy(stopped) } : {}), operationId: active.operationId, combatEvidence: evidence })
-        return true
-      }
-      if (callFailure && !criticalResult) throw callFailure.drainedError ?? callFailure
-      if (!criticalResult) guard(myEpoch)
-      if (result?.status === 'replan' && result.serverConfirmed === false && ['STORAGE_STAND_RELOCATED', 'STORAGE_PLACEMENT_PREVIEW_REJECTED', 'STORAGE_PLACEMENT_NOT_SETTLED'].includes(result.reason) && result.checkpoint?.stage === 'planned' && result.checkpoint.intent == null && !result.checkpoint.placed?.length && await reserveStorageRecovery(myEpoch, owner, active, cp, result.reason)) {
-        rec.status = 'replanned'; rec.result = copy(result)
-        note('carried_storage_site_replanned', { operationId: active.operationId, rejected: result.checkpoint.rejectedPlacementSites?.length ?? 0 })
-        setState('RETURN'); return true
-      }
-      const openRetries = active.openRetries === undefined ? 0 : active.openRetries
-      const openRetryScope = storageScopeMatches(cp, callState)
-      const placementReason = result?.reason
-      const notSentPlacement = placementReason === 'STORAGE_PLACEMENT_NOT_SENT'
-      const observedPlacement = placementReason === 'STORAGE_PLACEMENT_RECONCILE_REQUIRED'
-      const reconcilePlacement = notSentPlacement ? adapter.reconcileCarriedPlacement : observedPlacement ? adapter.reconcileObservedPlacement : null
-      if (!callFailure && !capacity && result?.status === 'blocked' && typeof reconcilePlacement === 'function' && selection.kind === 'shulker' && cp?.purpose == null && cp.stage === 'placing' && cp.intent?.type === 'place' && cp.placed?.length === 0 && cp.positions?.length === 1 && samePoint(cp.intent.position, cp.positions[0]) && openRetryScope) {
-        rec.status = 'blocked'; rec.result = copy(result)
-        if (await reserveStorageRecovery(myEpoch, owner, active, cp, placementReason)) {
-          let staged = null, response = null
-          // Historical receive evidence is tied to the original action time.
-          // Reuse that exact record only when its entire pending CP matches;
-          // a later retry must never invent a new placement time or evidence.
-          const recordedFailure = observedPlacement ? job.actions.findLast(action => action !== rec && action.type === 'carried_storage' && action.operationId === active.operationId && action.status === 'blocked' && action.result?.status === 'blocked' && ['サーバーから設置・使用の完了を確認できませんでした。', 'プレイヤー位置・次元が変わりました。'].includes(action.result.reason) && isDeepStrictEqual(action.result.checkpoint, cp)) ?? rec : rec
-          const stableObserved = checkpoint => { const value = copy(checkpoint); for (const field of ['intent', 'stage', 'placed', 'windowId']) delete value[field]; return value }
-          try {
-            response = await call(myEpoch, 'storage_placement_reconcile', signal => reconcilePlacement({ jobId: owner.config.jobId, operationId: active.operationId, purpose: 'cargo', selection: copy(selection), checkpoint: copy(cp), reason: placementReason, recordedFailure: copy(recordedFailure) }, {
-              signal,
-              canPlace: p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 }),
-              onCheckpoint: async checkpoint => {
-                requireStorageOwner(myEpoch, owner, active, cp)
-                if (checkpoint?.jobId !== owner.config.jobId || checkpoint.operationId !== active.operationId || checkpoint.kind !== cp.kind || checkpoint.selectionKey !== cp.selectionKey || checkpoint.purpose != null || checkpoint.intent != null || !isDeepStrictEqual(checkpoint.scope, cp.scope) || !isDeepStrictEqual(checkpoint.plan, cp.plan) || !isDeepStrictEqual(checkpoint.deposited, cp.deposited) || !isDeepStrictEqual(checkpoint.sourceIdentities, cp.sourceIdentities)) throw new Error('STORAGE_RECONCILIATION_CHANGED_ASSETS')
-                if (notSentPlacement) {
-                  if (checkpoint.stage !== 'planned' || checkpoint.placed?.length !== 0 || !storagePoint(checkpoint.stand) || checkpoint.positions?.length !== 1 || !checkpoint.positions.every(storagePoint) || checkpoint.notSentPlacementProofs?.at(-1)?.notSent !== true) throw new Error('STORAGE_UNSENT_PROOF_REQUIRED')
-                } else {
-                  const placed = checkpoint.placed?.[0]
-                  if (checkpoint.stage !== 'placed' || checkpoint.placed?.length !== 1 || !samePoint(placed?.position, cp.intent.position) || placed.name !== cp.intent.name || placed.confirmedBy !== 'server_block_and_inventory' || !Number.isSafeInteger(placed.runtimeId) || placed.runtimeId < 0 || placed.runtimeId > 4294967295 || placed.placementReconciliation?.confirmedBy !== 'received_empty_source_main_and_fresh_exact_container' || !isDeepStrictEqual(stableObserved(checkpoint), stableObserved(cp))) throw new Error('STORAGE_PLACEMENT_RECONCILIATION_UNCONFIRMED')
-                }
-                staged = copy(checkpoint)
-              }
-            }), { drain: true })
-          } catch (error) {
-            if (error instanceof QuarryInterrupt) throw error
-            note('storage_placement_reconcile_failed', { reason: placementReason, error: String(error.message ?? error).slice(0, 160) })
-          }
-          requireStorageOwner(myEpoch, owner, active, cp)
-          if (response?.status === 'blocked') {
-            rec.recovery = { reason: placementReason, status: 'blocked', detail: response.reason ?? 'UNCONFIRMED' }
-            note('storage_placement_reconcile_blocked', { operationId: active.operationId, reason: placementReason, detail: rec.recovery.detail })
-            // Reconciliation only reads inventory and opens the same box. A
-            // receive timeout may retry the unchanged CP within its budget;
-            // missing ownership, send facts or contents never enter this list.
-            if (['STORAGE_INVENTORY_REFRESH_FAILED', 'STORAGE_FRESH_INVENTORY_REQUIRED', 'STORAGE_OPEN_UNCONFIRMED', 'STORAGE_CONTENTS_UNKNOWN', 'サーバーから設置・使用の完了を確認できませんでした。'].includes(response.reason)) {
-              setState('RETURN'); await sleep(500); requireStorageOwner(myEpoch, owner, active, cp); return true
-            }
-          }
-          const proof = notSentPlacement ? staged?.notSentPlacementProofs?.at(-1) : staged?.placed?.[0]?.placementReconciliation
-          if (response?.status === 'reconciled' && response.serverConfirmed === false && (notSentPlacement ? response.notSent === true : response.placementConfirmed === true) && staged && isDeepStrictEqual(response.checkpoint, staged) && isDeepStrictEqual(response.proof, proof)) {
-            active.checkpoint = staged
-            rec.status = 'reconciled'; rec.recovery = { reason: placementReason, notSent: notSentPlacement, placementConfirmed: observedPlacement }
-            try { await save('storage_placement_auto_reconciled') } catch (error) { active.checkpoint = cp; throw error }
-            requireStorageOwner(myEpoch, owner, active, staged)
-            note('storage_placement_auto_reconciled', { operationId: active.operationId, reason: placementReason, credited: 0 })
-            setState('RETURN'); return true
-          }
-        }
-      }
-      const receptionWait = ['STORAGE_CONTENTS_UNKNOWN', 'STORAGE_OPEN_UNCONFIRMED', 'STORAGE_INVENTORY_REFRESH_FAILED', 'STORAGE_FRESH_INVENTORY_REQUIRED'].includes(result?.reason)
-      if (!callFailure && !capacity && result?.status === 'blocked' && receptionWait && sameOwnedStorageBox(cp, guard(myEpoch)) && typeof adapter.resyncInventory === 'function') {
-        rec.status = 'blocked'; rec.result = copy(result)
-        if (await reserveStorageRecovery(myEpoch, owner, active, cp, result.reason)) {
-          try { await call(myEpoch, 'storage_reception_observe', signal => adapter.resyncInventory({ signal })) } catch (error) {
-            if (error instanceof QuarryInterrupt) throw error
-            note('storage_reception_refresh_failed', { error: String(error.message ?? error).slice(0, 160) })
-          }
-          const fresh = requireStorageOwner(myEpoch, owner, active, cp)
-          if (sameOwnedStorageBox(cp, fresh)) { setState('RETURN'); await sleep(500); requireStorageOwner(myEpoch, owner, active, cp); return true }
-        }
-      }
-      // Opening a confirmed, untouched box can be retried without replaying a
-      // placement or transfer. Preserve the failed attempt; the next normal
-      // storage call still requires a fresh GUI and exact contents evidence.
-      if (!callFailure && !capacity && selection.kind === 'shulker' && result?.status === 'blocked' && result.reason === 'サーバーから設置・使用の完了を確認できませんでした。' && result.serverConfirmed === false && result.recovered === false && Array.isArray(result.deposited) && result.deposited.length === 0 && cp?.kind === 'shulker' && cp.purpose == null && cp.stage === 'placed' && cp.intent == null && cp.recovered == null && cp.opened !== true && cp.windowId == null && cp.initialContents && cp.initialContentsVerified == null && cp.positions?.length === 1 && cp.placed?.length === 1 && owned?.confirmedBy === 'server_block_and_inventory' && samePoint(owned.position, cp.positions[0]) && Number.isSafeInteger(owned.runtimeId) && owned.runtimeId >= 0 && owned.runtimeId <= 4294967295 && Array.isArray(cp.deposited) && cp.deposited.length === 0 && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => Number.isSafeInteger(entry.count) && entry.count > 0 && entry.transferred === 0) && openRetryScope && Number.isSafeInteger(openRetries) && openRetries >= 0 && openRetries < 2 && await reserveStorageRecovery(myEpoch, owner, active, cp, 'STORAGE_OPEN_WAIT', 2)) {
-        guard(myEpoch)
-        active.openRetries = openRetries + 1
-        rec.status = 'blocked'; rec.result = copy(result)
-        await save('storage_open_retry_pending')
-        guard(myEpoch)
-        note('storage_open_retry', { operationId: active.operationId, attempt: active.openRetries })
-        setState('RETURN'); await sleep(200); return true
-      }
-      if (result?.status === 'blocked' && result.reason === 'STORAGE_SOURCE_REJECTED' && cp?.stage === 'depositing' && cp.intent?.type === 'deposit' && cp.intent.rejectionProof?.protocolStatusCode === 49 && openRetryScope && (active.sourceRejectionRetries ?? 0) < 2 && await reserveStorageRecovery(myEpoch, owner, active, cp, 'STORAGE_SOURCE_REJECTED', 2)) {
-        guard(myEpoch)
-        active.sourceRejectionRetries = (active.sourceRejectionRetries ?? 0) + 1
-        rec.status = 'interrupted'; rec.result = copy(result)
-        await save('storage_source_rejection_pending')
-        guard(myEpoch)
-        note('storage_source_rejection_retry', { operationId: active.operationId, attempt: active.sourceRejectionRetries, requestId: cp.intent.rejectionProof.requestId })
-        setState('RETURN'); await sleep(200); return true
-      }
-      const pickupRetries = active.pickupSpaceRetries === undefined ? 0 : active.pickupSpaceRetries
-      const pickupDrops = stopped?.nearbyDrops
-      // Pick up only the actual loose blockers while the confirmed owned box
-      // is still intact. Its normal reopen/packing path keeps every receipt
-      // and capacity guard; no missing entity is treated as a pickup receipt.
-      if (!callFailure && !capacity && passivePickup() && fullOnlyStorage() && active.why === 'full' && result?.status === 'blocked' && result.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED' && stopped?.kind === 'owned_box_pickup_capacity' && stopped.phase === 'before_packing' && cp?.kind === 'shulker' && cp.purpose == null && cp.stage === 'depositing' && cp.intent == null && cp.expectedContents == null && cp.full !== true && cp.recovered == null && cp.positions?.length === 1 && cp.placed?.length === 1 && owned?.confirmedBy === 'server_block_and_inventory' && samePoint(owned.position, cp.positions[0]) && Array.isArray(cp.plan) && cp.plan.length > 0 && cp.plan.every(entry => Number.isSafeInteger(entry.count) && entry.count > 0 && entry.transferred === entry.count) && openRetryScope && Number.isSafeInteger(pickupRetries) && pickupRetries >= 0 && pickupRetries < PICKUP_SPACE_ROUNDS && Array.isArray(pickupDrops) && pickupDrops.length > 0 && pickupDrops.length <= 16) {
-        const inventory = items(guard(myEpoch))
-        const allowedDrops = pickupDrops.filter(drop => typeof drop.runtimeId === 'string' && /^\d{1,20}$/.test(drop.runtimeId) && typeof drop.name === 'string' && !isShulkerBox(drop.name) && !['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(blockRule(drop.name).reason))
-        // Live 2026-11-12 22:30: collecting merge-only drops overflowed into a
-        // new stack and took the box's slot. Take only drops whose counts fit the
-        // received room of existing plain stacks.
-        // Live 2026-11-12 23:20: drops that need new stacks kept the box waiting
-        // for despawn (storage:79, five retries). Collect them into free slots,
-        // always keeping the box's one slot; the next run stores them in the same
-        // box with server-confirmed top-ups before the box is recovered.
-        const fitting = inventory ? dropsFittingStacks(inventory, allowedDrops, { keepFree: 1 }) : []
-        if (fitting.length < allowedDrops.length) note('storage_pickup_space_limited', { operationId: active.operationId, offered: allowedDrops.length, fitting: fitting.length })
-        const ids = [...new Set(fitting.map(drop => drop.runtimeId))]
-        if (inventory && freeSlots(inventory) > 0 && ids.length && await reserveStorageRecovery(myEpoch, owner, active, cp, 'STORAGE_PICKUP_CAPACITY_REQUIRED')) {
-          const baseline = totals(inventory), targetNames = new Set(fitting.map(drop => nameOf(drop.name)))
-          const requireOwner = () => {
-            const current = guard(myEpoch)
-            if (job !== owner || job.portableStorage !== active || active.checkpoint !== cp) throw new QuarryInterrupt('STORAGE_CHECKPOINT_CHANGED')
-            return current
-          }
-          active.pickupSpaceRetries = pickupRetries + 1
-          rec.status = 'blocked'; rec.result = copy(result)
-          await save('storage_pickup_space_pending')
-          requireOwner()
-          note('storage_pickup_space_collect', { operationId: active.operationId, attempt: active.pickupSpaceRetries, targets: ids.length })
-          await collect(myEpoch, 'storage_recovery_space', { onlyDropIds: ids })
-          let fresh = items(requireOwner())
-          const gains = () => fresh ? diff(baseline, totals(fresh)).filter(entry => entry.delta > 0 && targetNames.has(nameOf(entry.name))) : []
-          if (!gains().length && typeof adapter.resyncInventory === 'function') {
-            try { await call(myEpoch, 'storage_pickup_observe', signal => adapter.resyncInventory({ signal })) } catch (error) {
-              if (error instanceof QuarryInterrupt) throw error
-              note('storage_pickup_space_resync_failed', { error: String(error.message ?? error).slice(0, 160) })
-            }
-            fresh = items(requireOwner())
-          }
-          const received = gains()
-          if (received.length) {
-            active.pickupSpaceObservation = { attempt: active.pickupSpaceRetries, observedAt: new Date(now()).toISOString(), gains: copy(received) }
-            await save('storage_pickup_space_received')
-            requireOwner()
-            note('storage_pickup_space_received', { operationId: active.operationId, attempt: active.pickupSpaceRetries, gains: received })
-            setState('RETURN'); return true
-          }
-          note('storage_pickup_space_unconfirmed', { operationId: active.operationId, attempt: active.pickupSpaceRetries })
-        }
-      }
-      // Live 2026-11-12 23:55: a full box could not be recovered because a
-      // loose drop needed the one other slot. Place the next empty cargo box
-      // (held right after its server-confirmed placement) to free a slot,
-      // recover the full box, then continue the held box as the next storage.
-      if (!callFailure && !capacity && selection.kind === 'shulker' && result?.status === 'blocked' && result.reason === 'STORAGE_PICKUP_CAPACITY_REQUIRED' && result.details?.kind === 'owned_box_pickup_capacity' && active.checkpoint?.full === true && active.checkpoint.placed?.length === 1 && !job.pendingRelief && !active.reliefTried) {
-        const inv0 = items(guard(myEpoch))
-        const next = inv0 && cargoSelection(inv0, { excludedShulkerKeys: [...(job.exhaustedShulkerKeys ?? []), ...storageSupplyExclusions(job.config.inventory.supplyBoxes), active.selection?.key].filter(Boolean) })
-        if (next?.kind === 'shulker') {
-          active.reliefTried = true
-          job.portableStorageSequence = (job.portableStorageSequence ?? 0) + 1
-          job.pendingRelief = { operationId: owner.config.jobId + ':storage:' + job.portableStorageSequence, selection: copy(next), checkpoint: null, forOperationId: active.operationId }
-          await save('storage_relief_intent')
-          const relief = job.pendingRelief
-          let held = null, reliefError = null
-          try {
-            held = await call(myEpoch, 'carried_storage', signal => adapter.storeCarried({ jobId: owner.config.jobId, operationId: relief.operationId, selection: copy(next), deposits: [], inventoryPolicy: copy(inventoryPolicy()), checkpoint: null, avoidPositions: [copy(active.checkpoint.positions[0])], holdAfterPlacement: true }, {
-              signal, canPlace: storageCanPlace,
-              onCheckpoint: async checkpoint => { if (job !== owner || job.pendingRelief !== relief || checkpoint?.operationId !== relief.operationId) throw new Error('Relief checkpoint belongs to another operation'); relief.checkpoint = copy(checkpoint); await save('storage_relief_checkpoint') }
-            }))
-          } catch (error) { if (error instanceof QuarryInterrupt) throw error; reliefError = error }
-          const rcp = held?.checkpoint ?? relief.checkpoint
-          if (held?.status === 'held' && rcp?.stage === 'placed' && rcp.placed?.length === 1 && rcp.placed[0].confirmedBy === 'server_block_and_inventory') {
-            relief.checkpoint = copy(rcp)
-            note('storage_relief_placed', { operationId: active.operationId, relief: relief.operationId, position: copy(rcp.placed[0].position) })
-            rec.status = 'blocked'; rec.result = copy(result)
-            await save('storage_relief_placed')
-            setState('RETURN'); return true
-          }
-          if (rcp?.placed?.length) {
-            rec.status = 'blocked'; rec.result = copy(result)
-            await finish('PAUSED', 'CARRIED_STORAGE_BLOCKED', { pauseDetails: { reason: 'STORAGE_RELIEF_UNCONFIRMED', operationId: active.operationId, relief: relief.operationId, kind: selection.kind, error: String(reliefError?.message ?? held?.reason ?? '').slice(0, 160) } })
-            return true
-          }
-          note('storage_relief_skipped', { operationId: active.operationId, reason: String(reliefError?.message ?? held?.reason ?? 'not_held').slice(0, 160) })
-          job.pendingRelief = null
-          await save('storage_relief_skipped')
-        }
-      }
-      // Live 2026-11-12 22:19 and 22:57: the tracked box drop vanished before
-      // its pickup was confirmed, and a manual resume confirmed the recovery
-      // from the received inventory. Run that same saved operation again at
-      // once (twice at most); anything it cannot confirm still pauses below.
-      // Live 2026-11-12 23:02: the nearby item IDs changed between the baseline
-      // and the check just before the break was sent; the box stayed placed.
-      if (result?.status === 'blocked' && ['STORAGE_PICKUP_ITEM_CHANGED', 'STORAGE_PICKUP_ENTITY_BASELINE_CHANGED'].includes(result.reason) && selection.kind === 'shulker' && active.checkpoint?.kind === 'shulker' && active.checkpoint.placed?.length === 1 && (active.pickupItemRechecks ?? 0) < 2) {
-        active.pickupItemRechecks = (active.pickupItemRechecks ?? 0) + 1
-        note('storage_pickup_recheck', { operationId: active.operationId, attempt: active.pickupItemRechecks, stage: active.checkpoint.stage ?? null })
-        rec.status = 'blocked'; rec.result = copy(result)
-        await save('storage_pickup_recheck')
-        setState('RETURN'); return true
-      }
-      // Like supplies (live 2026-11-12 21:12, chickens on the box cell): a
-      // storage operation refused before anything was placed, deposited or
-      // moved starts over at a newly chosen site, up to three times.
-      // No site around the current stance: walk to a recent stand that held a
-      // box on this layer or near it, then choose again (bounded).
-      if (result?.status === 'blocked' && result.reason === 'STORAGE_SITE_UNOBSERVED' && supplyUntouched({ child: active.checkpoint }) && (active.siteRelocations ?? 0) < 2) {
-        const feet = feetCell(guard(myEpoch))
-        const options = (job.storageStands ?? []).slice().reverse().filter(p => posKey(p) !== posKey(feet) && Math.abs(p.y - feet.y) <= 2 && permits(regions, 'travel', p).allowed && !(active.relocationTried ?? []).includes(posKey(p)))
-        const target = options.find(p => planner.pathTo(feet, p))
-        if (target) {
-          active.siteRelocations = (active.siteRelocations ?? 0) + 1
-          active.relocationTried = [...(active.relocationTried ?? []), posKey(target)].slice(-8)
-          note('storage_site_relocate', { operationId: active.operationId, from: feet, to: target, attempt: active.siteRelocations })
-          rec.status = 'blocked'; rec.result = copy(result)
-          active.checkpoint = null
-          await save('storage_site_relocate')
-          await moveToStance(myEpoch, target)
-          setState('RETURN'); return true
-        }
-      }
-      if (!['completed', 'full'].includes(result?.status) && (STORAGE_SITE_RETRY_REASONS.has(result?.reason) || storageMoveTimedOut(result, active.checkpoint)) && supplyUntouched({ child: active.checkpoint }) && (active.siteRetries ?? 0) < SUPPLY_SITE_RETRIES) {
-        active.siteRetries = (active.siteRetries ?? 0) + 1
-        const refused = (active.checkpoint?.positions ?? []).filter(p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])))
-        active.avoidPositions = [...(active.avoidPositions ?? []), ...refused].slice(-12)
-        note('storage_site_retry', { operationId: active.operationId, reason: result.reason, attempt: active.siteRetries, issue: copy(active.checkpoint?.siteIssue ?? null), mobOverlap: /^ENTIT/.test(active.checkpoint?.siteIssue?.cause ?? ''), previewRejection: copy(active.checkpoint?.previewRejection ?? null), avoid: copy(refused) })
-        rec.status = 'blocked'; rec.result = copy(result)
-        active.checkpoint = null
-        await save('storage_site_retry')
-        const until = now() + SUPPLY_SITE_RETRY_WAIT_MS
-        while (now() < until) { await sleep(100); guard(myEpoch) }
-        setState('RETURN'); return true
-      }
-      if (!callFailure && result?.status === 'blocked' && transientReason(result.reason) && (active.transientRetries ?? 0) < TRANSIENT_RETRIES) {
-        const fresh = items(guard(myEpoch)), cp = active.checkpoint
-        const owned = cp?.placed?.length === 1 ? cp.placed[0] : null, block = owned ? adapter.getBlock(owned.position.x, owned.position.y, owned.position.z) : null
-        const unchanged = fresh && storageFingerprint(cp) === preFingerprint && JSON.stringify([...totals(fresh)].sort()) === preTotals && (!owned || block?.known === true && nameOf(block) === nameOf(owned.name))
-        if (unchanged) {
-          active.transientRetries = (active.transientRetries ?? 0) + 1
-          const untouched = !(cp?.placed ?? []).length && !(cp?.deposited ?? []).length && !cp?.intent
-          const refused = untouched ? (cp?.positions ?? []).filter(p => p && ['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k]))) : []
-          note('storage_transient_retry', { operationId: active.operationId, attempt: active.transientRetries, reason: String(result.reason).slice(0, 160), stage: cp?.stage ?? null, newSite: untouched })
-          rec.status = 'blocked'; rec.result = copy(result)
-          if (untouched) { active.avoidPositions = [...(active.avoidPositions ?? []), ...refused].slice(-12); active.checkpoint = null }
-          await save('storage_transient_retry')
-          const until = now() + TRANSIENT_WAIT_MS
-          while (now() < until) { await sleep(100); guard(myEpoch) }
-          setState('RETURN'); return true
-        }
-      }
-      if (!['completed', 'full'].includes(result?.status) || result.serverConfirmed !== true || selection.kind === 'shulker' && result.recovered !== true) {
-        rec.status = 'blocked'; rec.result = copy(result)
-        await finish('PAUSED', 'CARRIED_STORAGE_BLOCKED', { pauseDetails: { reason: result?.reason ?? 'UNCONFIRMED_RESULT', operationId: active.operationId, kind: selection.kind, ...(result?.details ? { details: copy(result.details) } : {}) } })
-        return true
-      }
-      if (selection.kind !== 'shulker') registerCarriedStorage(result.storage, active)
-      const receipts = job.carriedStorageReceipts ??= []
-      if (!receipts.includes(active.operationId)) {
-        for (const d of result.deposited ?? []) {
-          if (typeof d.name !== 'string' || !Number.isSafeInteger(d.count) || d.count < 1 || isShulkerBox(d.name)) throw new Error('Carried storage transfer receipt is invalid')
-          ledger.add('deposited', d.name, d.count)
-        }
-        receipts.push(active.operationId)
-        if (receipts.length > 128) receipts.splice(0, receipts.length - 128)
-      }
-      if (selection.kind === 'shulker' && result.status === 'full') {
-        if (!Array.isArray(result.exhaustedShulkerKeys) || !result.exhaustedShulkerKeys.length || !result.exhaustedShulkerKeys.every(k => typeof k === 'string' && k.length)) throw new Error('Recovered full shulker lacks its current inventory identity')
-        job.exhaustedShulkerKeys = [...new Set([...(job.exhaustedShulkerKeys ?? []), ...result.exhaustedShulkerKeys])].slice(-128)
-        const identities = (result.exhaustedShulkerIdentities ?? []).filter(k => typeof k === 'string' && /^[0-9a-f]{64}$/.test(k))
-        if (identities.length) job.exhaustedShulkerIdentities = [...new Set([...(job.exhaustedShulkerIdentities ?? []), ...identities])].slice(-128)
-      } else if (selection.kind !== 'shulker' && result.status === 'full') {
-        job.fullStorage = [...new Set([...(job.fullStorage ?? []), ...result.storage.map(st => posKey(st.position))])]
-      }
-      rec.status = 'confirmed'; rec.result = copy(result)
-      // Recent stands that really held a box: a fallback when no site is found
-      // around a cramped stance (live 2026-11-13 15:00, a chunk-edge pocket).
-      const okStand = result.checkpoint?.stand
-      if (okStand && ['x', 'y', 'z'].every(k => Number.isSafeInteger(okStand[k]))) job.storageStands = [...(job.storageStands ?? []).filter(p => posKey(p) !== posKey(okStand)), copy(okStand)].slice(-8)
-      job.portableStorage = null
-      // A held relief box continues as the next storage operation.
-      if (job.pendingRelief?.forOperationId === active.operationId && job.pendingRelief.checkpoint?.stage === 'placed') {
-        job.portableStorage = { operationId: job.pendingRelief.operationId, selection: copy(job.pendingRelief.selection), checkpoint: copy(job.pendingRelief.checkpoint), why: 'full' }
-        note('storage_relief_continue', { operationId: job.pendingRelief.operationId })
-        job.pendingRelief = null
-      }
-      rebuildPlanner()
-      const fresh = items(guard(myEpoch))
-      if (!fresh) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
-      lastInventory = totals(fresh)
-      await save('carried_storage_done')
-      note('carried_storage_done', { kind: selection.kind, status: result.status, operationId: active.operationId, deposited: (result.deposited ?? []).reduce((n, d) => n + d.count, 0) })
-      const remaining = keepPlan(fresh, inventoryPolicy()).deposits.length
-      if (remaining && result.status === 'completed' && !(result.deposited?.length)) {
-        await finish('PAUSED', 'CARRIED_STORAGE_NO_PROGRESS', { pauseDetails: { operationId: active.operationId, kind: selection.kind } })
-        return true
-      }
-      if (why === 'final') {
-        if (!remaining) setState('FINAL_CHECK', { finalDeposited: true })
-        else setState('RETURN')
-      } else if (!remaining && freeSlots(fresh) >= job.config.inventory.minFreeSlots) setState('SURVEY')
-      else setState('RETURN')
-      return true
-    } catch (error) {
-      if (error instanceof QuarryInterrupt) throw error
-      rec.status = 'failed'; rec.error = String(error.message ?? error)
-      await finish('PAUSED', 'CARRIED_STORAGE_FAILED', { pauseDetails: { operationId: active.operationId, kind: selection.kind, error: rec.error.slice(0, 200) } })
-      return true
-    } finally { checkpointOpen = false }
-  }
-
-  async function returnAndDeposit (myEpoch, why) {
-    if (!job.portableStorage && !job.supplyRestock) { await applyStorageConfiguration(); guard(myEpoch) }
-    // Re-evaluate actual room after safety travel or a completed box. Full-only
-    // never starts a new storage operation merely because RETURN was queued.
-    // The exit-dirt room deposit (2026-11-13 17:11) stores even with free slots:
-    // full-only would otherwise skip it and leave no room for the exit dirt.
-    if (fullOnlyStorage() && !job.portableStorage && !(why === 'final' && job.egressRoomForce === true)) {
-      const inventory = items(guard(myEpoch))
-      if (!inventory) throw new QuarryInterrupt('INVENTORY_UNKNOWN')
-      if (freeSlots(inventory) > 0) {
-        if (why === 'final') { recordFinalStorageSkip(inventory); setState('FINAL_CHECK') }
-        else setState(healthRatio(adapter.getState()) < job.config.safety.resumeHealthRatio ? 'RECOVER' : 'SURVEY')
-        return
-      }
-    }
-    if (await storeCarried(myEpoch, why)) return
-    if (shulkerOnly || !job.config.inventory.storage?.length) {
-      const inventory = items(guard(myEpoch)), free = inventory ? freeSlots(inventory) : null
-      // Passive pickup + full-only storage: once every carried storage box is
-      // full, the user's "dig through first" policy keeps mining; new drops are
-      // simply not picked up (natural pickup fails on a full bag) and are
-      // recorded, instead of pausing the job (live 2026-11-10 12:16).
-      const noBox = inventory && keepPlan(inventory, inventoryPolicy()).deposits.length && !cargoSelection(inventory, { excludedShulkerKeys: [...(job.exhaustedShulkerKeys ?? []), ...storageSupplyExclusions(job.config.inventory.supplyBoxes)] })
-      if (passivePickup() && fullOnlyStorage() && noBox) {
-        if (!job.storageExhausted) { job.storageExhausted = { at: new Date(now()).toISOString(), freeSlots: free }; note('storage_exhausted', { freeSlots: free }); await save('storage_exhausted') }
-        if (why === 'final') { recordFinalStorageSkip(inventory); setState('FINAL_CHECK') } else setState('SURVEY')
-        return
-      }
-      return finish('PAUSED', fourLayerStorage() ? 'CARGO_CAPACITY_EXHAUSTED' : 'WAITING_FOR_STORAGE', { pauseDetails: { reason: inventory && !keepPlan(inventory, inventoryPolicy()).deposits.length ? 'NO_DEPOSITABLE_ITEMS' : 'NO_CARRIED_STORAGE', freeSlots: free, minFreeSlots: job.config.inventory.minFreeSlots } })
-    }
-    let st = currentStorage()
-    if (!st) {
-      // Every chest is full: add one more and keep going.
-      const added = await expandStorage(myEpoch)
-      if (added.retry) { await sleep(100); return }
-      if (!added.ok) return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: 'all chests full', chests: (job.config.inventory.storage ?? []).length, addChest: added } })
-      st = added.storage
-    }
-    // A chest whose stand cannot be walked to right now is skipped like a full
-    // one (retried after the next resume) instead of failing the whole action.
-    try {
-      // First reject storage that cannot be walked to. A hostile around an old
-      // unreachable chest must not cost another 20-second wait per box.
-      await previewStorageRoute(myEpoch, st)
-      await waitForQuietStorage(myEpoch, st)
-      // Enemy motion or knockback during the wait invalidates the preview's
-      // origin; goToStorage always recomputes its ordinary path before moving.
-      await goToStorage(myEpoch, st)
-    } catch (error) {
-      guard(myEpoch)
-      if (storagePreviewBusy(error)) { await sleep(100); return }
-      if (error instanceof QuarryInterrupt && error.code !== 'STORAGE_UNREACHABLE') throw error
-      note('storage_unroutable', { position: st.position, error: String(error.message ?? error).slice(0, 160) })
-      job.fullStorage = [...new Set([...(job.fullStorage ?? []), posKey(st.position)])]
-      return
-    }
-    setState('DEPOSIT')
-    const s = guard(myEpoch)
-    const inv = items(s)
-    if (!inv) { await sleep(300); return }
-    const { deposits } = keepPlan(inv, inventoryPolicy())
-    if (!deposits.length) {
-      if (why === 'final') { setState('FINAL_CHECK', { finalDeposited: true }); return }
-      // Nothing to store but the bag is still too full: only kept items
-      // (tools, food, seal blocks, chest wood) remain, so wait for the user.
-      const free = freeSlots(inv)
-      if (free < job.config.inventory.minFreeSlots) return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: 'only kept items left', freeSlots: free, needFreeSlots: job.config.inventory.minFreeSlots } })
-      setState('SURVEY'); return
-    }
-    const rec = recordAction({ type: 'deposit', why, items: deposits, storage: copy(st.position) })
-    await save('deposit_intent')
-    let result
-    try { result = await call(myEpoch, 'deposit', signal => adapter.deposit([st], deposits, { signal })) } catch (error) {
-      if (error instanceof QuarryInterrupt) throw error
-      rec.status = 'failed'; rec.error = String(error.message ?? error)
-      job.depositFailures = (job.depositFailures ?? 0) + 1
-      if (job.depositFailures >= 3) return finish('PAUSED', 'DEPOSIT_FAILED', { pauseDetails: { error: rec.error } })
-      return
-    }
-    job.depositFailures = 0
-    // Only confirmed moves count (§11.2, T07, T17).
-    for (const d of result?.deposited ?? []) ledger.add('deposited', d.name, d.count)
-    rec.status = result?.full ? 'partial' : 'confirmed'; rec.result = copy(result)
-    lastInventory = totals(items(adapter.getState()) ?? [])
-    await save('deposited')
-    if (result?.full) {
-      // This chest is full; the rest goes to the next one (added if needed).
-      job.fullStorage = [...new Set([...(job.fullStorage ?? []), posKey(st.position)])]
-      note('storage_full', { position: st.position, deposited: (result.deposited ?? []).reduce((n, d) => n + d.count, 0) })
-      await save('storage_full')
-      if (keepPlan(items(adapter.getState()) ?? [], inventoryPolicy()).deposits.length) { setState('RETURN'); return }
-    }
-    if (why === 'final') { setState('FINAL_CHECK', { finalDeposited: true }); return }
-    await lightStorageArea(myEpoch)
-    setState('SURVEY')
-  }
-
-  // Light the chest area once (again when a chest was added): mobs that spawned
-  // around the chests caused most deaths on the surface. Normal crafting and
-  // placement only; every failure is logged and skipped, never a pause.
-  async function lightStorageArea (myEpoch) {
-    const list = (job.config.inventory.storage ?? []).map(st => st.position).filter(Boolean)
-    if (!list.length || typeof adapter.craftTorches !== 'function' || typeof adapter.placeTorch !== 'function') return
-    if (job.storageLitFor === list.length || now() - (job.lightAttemptAt ?? 0) < 600000) return
-    job.lightAttemptAt = now()
-    const nearTorch = (p, r) => { for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) for (let dy = -2; dy <= 2; dy++) { const b = adapter.getBlock(p.x + dx, p.y + dy, p.z + dz); if (b?.known && /torch|lantern/.test(nameOf(b))) return true } return false }
-    const cells = []
-    for (const c of list) {
-      for (const [dx, dz] of [[3, 0], [-3, 0], [0, 3], [0, -3], [3, 3], [-3, 3], [3, -3], [-3, -3]]) {
-        for (const dy of [0, 1, -1]) {
-          const p = { x: c.x + dx, y: c.y + dy, z: c.z + dz }
-          const at = adapter.getBlock(p.x, p.y, p.z); const below = adapter.getBlock(p.x, p.y - 1, p.z)
-          if (!(at?.known && AIR.has(nameOf(at)) && !(at.extra ?? []).length && below?.known && below.boundingBox === 'block' && !/chest|crafting_table|leaves|torch/.test(nameOf(below)))) continue
-          if (regions.columns.has(p.x + ',' + p.z) || cells.some(o => Math.hypot(o.x - p.x, o.z - p.z) < 4) || nearTorch(p, 3)) break
-          cells.push(p); break
-        }
-      }
-    }
-    if (!cells.length) { job.storageLitFor = list.length; return }
-    const crafted = await call(myEpoch, 'craft_torches', signal => adapter.craftTorches({ want: Math.min(8, cells.length), signal })).catch(error => { if (error instanceof QuarryInterrupt) throw error; return { ok: false, error: String(error.message ?? error).slice(0, 160) } })
-    note('torches_crafted', crafted ?? {})
-    if (!crafted?.torches) return
-    let placed = 0
-    for (const p of cells.slice(0, Math.min(8, crafted.torches))) {
-      const reach = planner.reachableFrom(feetCell(guard(myEpoch)))
-      const stand = [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2]].map(([dx, dz]) => ({ x: p.x + dx, y: p.y, z: p.z + dz })).find(c => planner.standable(c) && reach.has(c.x + ',' + c.y + ',' + c.z))
-      if (!stand) continue
-      try { await moveToStance(myEpoch, stand) } catch (error) { if (error instanceof QuarryInterrupt) throw error; continue }
-      const r = await call(myEpoch, 'place_torch', signal => adapter.placeTorch({ position: p, signal })).catch(error => { if (error instanceof QuarryInterrupt) throw error; return { ok: false, error: String(error.message ?? error).slice(0, 120) } })
-      if (r?.ok) placed++
-      else note('torch_failed', { position: p, ...(r ?? {}) })
-    }
-    note('storage_lit', { placed, cells: cells.length, chests: list.length })
-    if (placed) job.storageLitFor = list.length
-  }
+  // This part lives in quarry-job-storage.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const jobStorage = require('./quarry-job-storage').createQuarryJobStorage({
+    get ACTIVE () { return ACTIVE },
+    get adapter () { return adapter }, set adapter (value) { adapter = value },
+    get AIR () { return AIR },
+    get applyStorageConfiguration () { return applyStorageConfiguration },
+    get blockRule () { return blockRule },
+    get call () { return call },
+    get capacityWork () { return capacityWork },
+    get cargoSelection () { return cargoSelection },
+    get carriedContainerKey () { return carriedContainerKey },
+    get collect () { return collect },
+    get copy () { return copy },
+    get currentStorage () { return currentStorage },
+    get deferredExitSupplies () { return deferredExitSupplies },
+    get diff () { return diff },
+    get dirtCount () { return dirtCount },
+    get dropsFittingStacks () { return dropsFittingStacks },
+    get epoch () { return epoch }, set epoch (value) { epoch = value },
+    get expandStorage () { return expandStorage },
+    get feetCell () { return feetCell },
+    get finish () { return finish },
+    get fourLayerStorage () { return fourLayerStorage },
+    get freeSlots () { return freeSlots },
+    get fullOnlyStorage () { return fullOnlyStorage },
+    get goToStorage () { return goToStorage },
+    get guard () { return guard },
+    get healthRatio () { return healthRatio },
+    get inventoryPolicy () { return inventoryPolicy },
+    get isDeepStrictEqual () { return isDeepStrictEqual },
+    get isShulkerBox () { return isShulkerBox },
+    get items () { return items },
+    get job () { return job }, set job (value) { job = value },
+    get keepPlan () { return keepPlan },
+    get lastInventory () { return lastInventory }, set lastInventory (value) { lastInventory = value },
+    get ledger () { return ledger }, set ledger (value) { ledger = value },
+    get lifeOf () { return lifeOf },
+    get moveToStance () { return moveToStance },
+    get nameOf () { return nameOf },
+    get note () { return note },
+    get now () { return now }, set now (value) { now = value },
+    get passivePickup () { return passivePickup },
+    get permits () { return permits },
+    get PICKUP_SPACE_ROUNDS () { return PICKUP_SPACE_ROUNDS },
+    get planner () { return planner }, set planner (value) { planner = value },
+    get posKey () { return posKey },
+    get previewStorageRoute () { return previewStorageRoute },
+    get protectStorageCells () { return protectStorageCells },
+    get QuarryInterrupt () { return QuarryInterrupt },
+    get rebuildPlanner () { return rebuildPlanner },
+    get recordAction () { return recordAction },
+    get recordFinalStorageSkip () { return recordFinalStorageSkip },
+    get regions () { return regions }, set regions (value) { regions = value },
+    get registerCarriedStorage () { return registerCarriedStorage },
+    get requireStorageOwner () { return requireStorageOwner },
+    get rescopeBoxAfterReconnect () { return rescopeBoxAfterReconnect },
+    get reserveStorageRecovery () { return reserveStorageRecovery },
+    get sameOwnedStorageBox () { return sameOwnedStorageBox },
+    get samePendingStoragePlacement () { return samePendingStoragePlacement },
+    get samePoint () { return samePoint },
+    get save () { return save },
+    get scopeOf () { return scopeOf },
+    get setState () { return setState },
+    get shulkerOnly () { return shulkerOnly },
+    get sleep () { return sleep }, set sleep (value) { sleep = value },
+    get STORAGE_SITE_RETRY_REASONS () { return STORAGE_SITE_RETRY_REASONS },
+    get storageFingerprint () { return storageFingerprint },
+    get storageMoveTimedOut () { return storageMoveTimedOut },
+    get storagePoint () { return storagePoint },
+    get storagePreviewBusy () { return storagePreviewBusy },
+    get storageScopeMatches () { return storageScopeMatches },
+    get storageSupplyExclusions () { return storageSupplyExclusions },
+    get SUPPLY_SITE_RETRIES () { return SUPPLY_SITE_RETRIES },
+    get SUPPLY_SITE_RETRY_WAIT_MS () { return SUPPLY_SITE_RETRY_WAIT_MS },
+    get supplyUntouched () { return supplyUntouched },
+    get suspendForCombat () { return suspendForCombat },
+    get totals () { return totals },
+    get TRANSIENT_RETRIES () { return TRANSIENT_RETRIES },
+    get TRANSIENT_WAIT_MS () { return TRANSIENT_WAIT_MS },
+    get transientReason () { return transientReason },
+    get waitForQuietStorage () { return waitForQuietStorage }
+  })
+  function returnAndDeposit (...args) { return jobStorage.returnAndDeposit(...args) }
+  function storeCarried (...args) { return jobStorage.storeCarried(...args) }
 
   // A bounded read request can fill a reconnect's missing vertical sections.
   // Its send result is never evidence: callers re-read received blocks/counts.
@@ -3323,355 +2688,86 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return !(child.placed ?? []).length && !(child.deposited ?? []).length && !child.intent && !child.supplyCheckpoint?.intent && !(child.supplyCheckpoint?.withdrawn ?? []).length && !(child.supplyCheckpoint?.returned ?? []).length
   }
 
-  async function makeSupplyRoom (myEpoch, active) {
-    active.roomAttempts = (active.roomAttempts ?? 0) + 1
-    if (active.roomAttempts > SUPPLY_ROOM_MAX_ATTEMPTS || typeof adapter.place !== 'function' || typeof adapter.equip !== 'function') return false
-    let inventory = items(guard(myEpoch))
-    if (!inventory) return false
-    const roomPolicy = job.config.initialLoadout === 'v22' && deferredExitSupplies() ? inventoryPolicy() : job.config.inventory
-    const keepDirt = (roomPolicy?.keepExitDirt ?? 192) + (roomPolicy?.keepSealBlocks ?? 32)
-    const dirtTotal = inventory.filter(i => nameOf(i.name) === 'dirt' && i.slot >= 0 && i.slot < 36).reduce((n, i) => n + i.count, 0)
-    const pick = inventory.filter(i => Number.isInteger(i.slot) && i.slot >= 0 && i.slot < 36 && i.count > 0 && i.count <= SUPPLY_ROOM_MAX_BLOCKS && SEAL_MATERIALS.includes(nameOf(i.name)) && (nameOf(i.name) !== 'dirt' || dirtTotal - i.count >= keepDirt)).sort((a, b) => a.count - b.count || a.slot - b.slot)[0]
-    if (!pick) { note('supply_room_unavailable', {}); return false }
-    const material = nameOf(pick.name)
-    let slot = pick.slot
-    // A supply box left open by the blocked restock is closed first: the
-    // normal inventory refuses a hotbar move while a container is open.
-    adapter.closeContainer?.()
-    // The closed box is opened again by the ordinary operation (live 2026-11-14
-    // 03:36: the retry found the old window and stopped STORAGE_WINDOW_CHANGED).
-    const openChild = active.checkpoint?.child
-    if (openChild?.kind === 'shulker' && openChild.opened === true && openChild.intent == null && openChild.stage === 'depositing') { openChild.stage = 'placed'; openChild.opened = false; openChild.windowId = null; await save('supply_room_closed_box') }
-    if (slot > 8) {
-      await call(myEpoch, 'equip_seal', signal => adapter.equip(slot, { signal }))
-      inventory = items(guard(myEpoch))
-      const moved = inventory?.find(i => i.slot >= 0 && i.slot <= 8 && nameOf(i.name) === material && i.count === pick.count && (pick.stackId == null || i.stackId === pick.stackId))
-      if (!moved) return false
-      slot = moved.slot
-    }
-    const home = feetCell(guard(myEpoch))
-    // Only into dug cells of the excavated range, so the blocks are mined again.
-    if (home.y > job.yTop || home.y < regions.yBottom) return false
-    // Dug cells of this level that can take a block (received air over a
-    // received solid floor); a stack larger than these is not attempted.
-    const roomCells = () => {
-      const out = []
-      for (const column of regions.columns) {
-        const [x, z] = column.split(',').map(Number)
-        const b = adapter.getBlock(x, home.y, z), below = adapter.getBlock(x, home.y - 1, z)
-        if (b?.known === true && AIR.has(nameOf(b)) && !b.extra?.length && below?.known === true && below.boundingBox === 'block') out.push({ x, y: home.y, z })
-      }
-      return out
-    }
-    if (roomCells().length < pick.count + 2) { note('supply_room_unavailable', { reason: 'FEW_DUG_CELLS', count: pick.count }); return false }
-    let placed = 0, moved = false
-    for (let n = 0; n < pick.count; n++) {
-      inventory = items(guard(myEpoch))
-      const current = inventory?.find(i => i.slot === slot)
-      if (!current || nameOf(current.name) !== material || current.count < 1) break
-      const feet = feetCell(guard(myEpoch))
-      const cells = roomCells().filter(c => !(c.x === feet.x && c.z === feet.z) && !(c.x === home.x && c.z === home.z))
-      cells.sort((a, b) => Math.hypot(a.x - feet.x, a.z - feet.z) - Math.hypot(b.x - feet.x, b.z - feet.z))
-      // Prefer a placement from where the bot stands; otherwise walk to another
-      // stance of this level that can place one (the box is reached again after).
-      let decision = null, fallback = null
-      for (const p of cells.slice(0, 32)) {
-        const d = await planner.previewSealPlacement({ position: p, purpose: 'temporary', materialRequired: material, slot }, feet, inventory)
-        guard(myEpoch)
-        if (!d?.action || !d.stance) continue
-        if (d.stance.x === feet.x && d.stance.y === feet.y && d.stance.z === feet.z) { decision = d; break }
-        if (!fallback && d.stance.y === home.y && !(d.stance.x === home.x && d.stance.z === home.z)) fallback = d
-      }
-      if (!decision && fallback) {
-        try { await moveToStance(myEpoch, fallback.stance); moved = true } catch (error) { if (error instanceof QuarryInterrupt) throw error; break }
-        const at = feetCell(guard(myEpoch))
-        if (at.x !== fallback.stance.x || at.y !== fallback.stance.y || at.z !== fallback.stance.z) break
-        decision = await planner.previewSealPlacement({ position: fallback.position, purpose: 'temporary', materialRequired: material, slot }, at, items(guard(myEpoch)))
-        if (!decision?.action || !(decision.stance.x === at.x && decision.stance.y === at.y && decision.stance.z === at.z)) break
-      }
-      if (!decision) break
-      const rec = recordAction({ type: 'place', purpose: 'supply_room', position: decision.position, material: decision.material })
-      await save('supply_room_intent')
-      try {
-        await call(myEpoch, 'place', signal => adapter.place({ position: decision.position, slot: decision.slot, clicked: decision.clicked, face: decision.face, point: decision.point, expectedBlock: 'minecraft:' + material }, { signal }))
-      } catch (error) {
-        if (error instanceof QuarryInterrupt) throw error
-        rec.status = 'failed'; rec.error = String(error.message ?? error).slice(0, 200); break
-      }
-      const b = adapter.getBlock(decision.position.x, decision.position.y, decision.position.z)
-      const after = items(guard(myEpoch))?.find(i => i.slot === slot)
-      const left = after && nameOf(after.name) === material ? after.count : 0
-      if (!(b?.known === true && nameOf(b) === material) || left !== current.count - 1) { rec.status = 'unconfirmed'; break }
-      rec.status = 'confirmed'; rec.confirmedBy = 'server_block_and_inventory'
-      planner.recordPlacement(decision.position, 'temporary', decision.material)
-      countsRevision++; ledger.add('placedTemporary', decision.material); placed++
-    }
-    // Back to the supply stand the restock was using.
-    if (moved) { try { await moveToStance(myEpoch, home) } catch (error) { if (error instanceof QuarryInterrupt) throw error } }
-    const back = feetCell(guard(myEpoch))
-    const freed = !(items(guard(myEpoch)) ?? []).some(i => i.slot === slot && i.count > 0) && back.x === home.x && back.y === home.y && back.z === home.z
-    note('supply_room', { material, placed, freed, moved })
-    // Live 2026-11-14 03:32: each attempt placed a few blocks before an
-    // unconfirmed update; progress does not use up the bounded attempts.
-    if (placed > 0) active.roomAttempts = 0
-    await save('supply_room')
-    return freed
-  }
-
-  function terrainObserved (purpose) {
-    const observation = job.terrainObservation
-    if (observation?.purpose === purpose) { observation.waiting = false; observation.waitUntil = null; observation.phase = 'observed' }
-  }
-
-  async function finalCheck (myEpoch) {
-    guard(myEpoch)
-    if (!job.portableStorage && !job.supplyRestock) { await applyStorageConfiguration(); guard(myEpoch) }
-    if (passivePickup()) { observeInventory(job.state); observeDrops(); recordPassivePickup('final_check') }
-    if (job.fluidDrain) return observeFluidDrain(myEpoch)
-    if (job.surfaceReturnedAt) return finishAfterExit()
-    if (job.portableStorage) return returnAndDeposit(myEpoch, job.portableStorage.why ?? 'final')
-    const floorY = workFloorY()
-    keepEarlierLayers(floorY)
-    // Re-scan the whole range (§16.3): unknown never completes.
-    const counts = planner.counts(job.yTop)
-    job.finalCounts = counts
-    if (counts.unknown > 0) {
-      if (await requestTerrainObservation(myEpoch, 'final_check')) return
-      return finish('PAUSED', 'UNOBSERVED_CELLS', { pauseDetails: counts })
-    }
-    terrainObserved('final_check')
-    if (counts.remaining > 0) { job.cursorY = floorY; setState('SURVEY'); return }
-    if (!job.finalDeposited) {
-      const inventory = items(adapter.getState())
-      if (!inventory) return finish('PAUSED', 'INVENTORY_UNKNOWN')
-      if (!keepPlan(inventory, inventoryPolicy()).deposits.length) { job.finalDeposited = true; delete job.finalStorageSkipped }
-      else if (fullOnlyStorage() && (freeSlots(inventory) > 0 || job.storageExhausted)) recordFinalStorageSkip(inventory)
-      else if (hasStorageOption()) { await collect(myEpoch, 'final'); job.depositReason = 'final'; await returnAndDeposit(myEpoch, 'final'); return }
-      else return finish('PAUSED', 'WAITING_FOR_STORAGE', { pauseDetails: { reason: 'final deposits remain' } })
-    }
-    // UNREACHABLE is relative to where the bot stood; re-try from here a few
-    // times before treating those cells as exceptions.
-    // Same for cells put aside after transient mining refusals.
-    if (planner.deferredList().some(d => Number(d.position.split(',')[1]) <= floorY && TRANSIENT_DEFER.includes(d.reason)) && (job.unreachableRetries ?? 0) < 3) {
-      job.unreachableRetries = (job.unreachableRetries ?? 0) + 1
-      clearWorkDeferred(TRANSIENT_DEFER)
-      badStances.clear()
-      note('unreachable_retry', { attempt: job.unreachableRetries })
-      job.cursorY = floorY; setState('SURVEY'); return
-    }
-    // One last sweep for anything still lying in the area (drops that were
-    // unreachable earlier, items that fell later), then store it as well.
-    if (!job.finalSweepDone) {
-      job.finalSweepDone = true
-      const lying = adapter.entities().filter(e => e.kind === 'item' && e.position && permits(regions, 'travel', { x: Math.floor(e.position.x), y: Math.floor(e.position.y + 0.01), z: Math.floor(e.position.z) }).allowed).length
-      if (lying && !passivePickup()) {
-        note('final_sweep', { items: lying })
-        if (hasStorageOption()) job.finalDeposited = false
-        await collect(myEpoch, 'final_sweep')
-        if (job.state === 'PLAN') setState('FINAL_CHECK')
-        return
-      }
-    }
-    const exceptions = exceptionsList()
-    const byReason = {}
-    for (const e of exceptions) { const r = e.reason ?? e.kind; byReason[r] = (byReason[r] ?? 0) + 1 }
-    // Cells kept only for want of a usable tool are not exceptions to accept:
-    // the job waits for a tool and retries them on resume (§8.1).
-    const toolWait = exceptions.filter(e => TOOL_WAIT.has(e.reason))
-    if (toolWait.length) {
-      const needs = {}
-      for (const e of toolWait) { const n = e.needs ? `${e.needs.kind ?? e.needs}${e.needs.tier != null ? `:${e.needs.tier}` : ''}` : 'unknown'; needs[n] = (needs[n] ?? 0) + 1 }
-      return finish('PAUSED', 'WAITING_FOR_TOOL', { pauseDetails: { cells: toolWait.length, needs, byReason, examples: toolWait.slice(0, 10) } })
-    }
-    if (deferredExitSupplies() && job.config.exit?.mode === 'adjacent_pillar') {
-      // The dirt box keeps the exit reserve while the quarry is in progress.
-      // Withdraw only after all ordinary drops have reached the cargo boxes.
-      if (!job.egressPreparation) { job.egressPreparation = true; await save('egress_dirt_intent') }
-      const inv = items(guard(myEpoch))
-      if (!inv) return finish('PAUSED', 'INVENTORY_UNKNOWN')
-      if ((totals(inv).get('dirt') ?? 0) < exitDirtGoal()) {
-        // Make room first (2026-11-13): store what the exit does not need,
-        // then, if still short, withdraw the selected column's need plus 8.
-        job.egressRoom = true
-        // Version 2 (2026-11-13 17:11): the first version's room deposits were
-        // skipped by full-only storage; start the bounded attempts again.
-        if (job.egressRoomVersion !== 2) { job.egressRoomVersion = 2; job.egressRoomDeposits = 0; delete job.exitDirtLimit; delete job.egressRoomForce }
-        const room = egressDirtRoom(inv, { target: exitDirtGoal(), keepPolicy: inventoryPolicy(), storageAvailable: hasStorageOption(), depositAttempts: job.egressRoomDeposits ?? 0, planDirt: exitPlanDirt(myEpoch) })
-        if (room.action === 'deposit') {
-          job.egressRoomDeposits = (job.egressRoomDeposits ?? 0) + 1
-          note('egress_dirt_room_deposit', { attempt: job.egressRoomDeposits, deposits: room.deposits.length })
-          job.egressRoomForce = true
-          await save('egress_dirt_room'); job.finalDeposited = false
-          job.depositReason = 'final'; await returnAndDeposit(myEpoch, 'final'); return
-        }
-        delete job.egressRoomForce
-        if (room.limited && room.target !== job.exitDirtLimit) { job.exitDirtLimit = room.target; note('egress_dirt_limited', { target: room.target, short: room.short === true }); await save('egress_dirt_limited') }
-        await preferDirtSource(exitDirtGoal() - (totals(items(guard(myEpoch)) ?? []).get('dirt') ?? 0), 'egress_withdraw')
-        if (await restock(myEpoch, 'FINAL_CHECK', true)) return
-        return finish('PAUSED', 'EXIT_DIRT_WITHDRAW_BLOCKED')
-      }
-      if (!(await prepareExit(myEpoch))) return
-    }
-    if (job.config.exit?.mode === 'adjacent_pillar') {
-      job.miningCompletedAt ??= new Date(now()).toISOString()
-      await save('mining_completed')
-      setState('EGRESS'); return
-    }
-    if (exceptions.length && !job.acceptedExceptions) return finish('PAUSED', 'UNRESOLVED_EXCEPTIONS', { pauseDetails: { count: exceptions.length, byReason, exceptions: exceptions.slice(0, 50) } })
-    return finish(exceptions.length ? 'COMPLETED_WITH_EXCEPTIONS' : 'COMPLETED', null)
-  }
-  async function finishAfterExit () {
-    const exceptions = exceptionsList()
-    const byReason = {}
-    for (const e of exceptions) { const r = e.reason ?? e.kind; byReason[r] = (byReason[r] ?? 0) + 1 }
-    // After the mining, the final storage and the return to the surface, the
-    // remaining exceptions are accepted without waiting (opt-out per job).
-    if (exceptions.length && !job.acceptedExceptions && job.config.strategy?.autoAcceptFinalExceptions === true && job.surfaceReturnedAt) {
-      recordAcceptedExceptions(exceptions, byReason, 'auto')
-      job.acceptedExceptions = true
-      await save('exceptions_auto_accepted')
-      note('exceptions_auto_accepted', { count: exceptions.length, byReason })
-    }
-    if (exceptions.length && !job.acceptedExceptions) return finish('PAUSED', 'UNRESOLVED_EXCEPTIONS', { pauseDetails: { count: exceptions.length, byReason, exceptions: exceptions.slice(0, 50), miningCompleted: true, surfaceReturned: true } })
-    // v2.2 jobs (2026-11-13 user requests): after the return to the surface
-    // everything goes back to the registered chest by normal travel (cargo
-    // boxes, loose items, supply boxes, tools, weapons, worn armour, the totem
-    // and food), confirmed by received slots; FINISHED only after it.
-    // strategy.finalChestKeepGear keeps the gear with the bot instead.
-    const finalChestStore = job.config.strategy?.finalChestStore === true && job.config.initialLoadout === 'v22' && !!job.config.homeChest?.position && typeof adapter.finalChestDeposit === 'function'
-    if (fourLayerStorage() || finalChestStore) {
-      const home = job.config.homeChest, owner = job
-      if (!home?.position || !home.stand) return finish('PAUSED', 'FINAL_CHEST_UNKNOWN')
-      if (!job.finalChest) {
-        job.finalChest = { operationId: job.config.jobId + ':final_chest:1', checkpoint: null }
-        await save('final_chest_intent')
-      }
-      const active = job.finalChest
-      const myEpoch = epoch
-      const current = guard(myEpoch)
-      if (!samePoint(feetCell(current),home.stand)) await moveToStance(myEpoch,home.stand)
-      const result = await call(myEpoch,'final_chest',signal=>adapter.finalChestDeposit({
-        jobId:job.config.jobId,operationId:active.operationId,position:copy(home.position),
-        checkpoint:copy(active.checkpoint),...(!fourLayerStorage()&&job.config.strategy?.finalChestKeepGear===true?{keep:FINAL_CHEST_KEEP}:{})
-      },{signal,onCheckpoint:async cp=>{
-        if(job!==owner || job.finalChest!==active || cp.operationId!==active.operationId) throw new Error('FINAL_CHEST_STALE_CHECKPOINT')
-        active.checkpoint=copy(cp);await save('final_chest_checkpoint')
-      }}),{drain:true})
-      guard(myEpoch)
-      if(result?.status!=='completed' || result.serverConfirmed!==true) {
-        return finish('PAUSED',result?.reason??'FINAL_CHEST_UNCONFIRMED',{pauseDetails:{operationId:active.operationId}})
-      }
-      // Everything returned (2026-11-13 18:35: the user saw an offhand item on
-      // the bot after the storage): the inventory is fetched again from the
-      // server and the offhand and armour must be received empty before FINISHED.
-      if (job.config.strategy?.finalChestKeepGear !== true && !fourLayerStorage()) {
-        try { await call(myEpoch, 'resync', signal => adapter.resyncInventory?.({ signal })) } catch (error) { if (error instanceof QuarryInterrupt) throw error }
-        guard(myEpoch)
-        const details = adapter.inventoryDetails?.()
-        const emptySection = section => section?.known === true && Array.isArray(section.slots) && section.slots.every(slot => slot?.known === true && slot.empty === true)
-        if (!details || !emptySection(details.offhand) || !emptySection(details.armor) || !emptySection({ known: details.known, slots: details.slots })) return finish('PAUSED', 'FINAL_INVENTORY_UNCONFIRMED', { pauseDetails: { operationId: active.operationId, offhand: details?.offhand?.slots?.map(s => s?.name ?? null) ?? null, armor: details?.armor?.slots?.map(s => s?.name ?? null) ?? null } })
-      }
-      job.finalChestStoredAt=new Date(now()).toISOString()
-      await save('final_chest_verified')
-    }
-    await finish(exceptions.length ? 'COMPLETED_WITH_EXCEPTIONS' : 'COMPLETED', null)
-    // 2026-11-13 user request: once everything is back in the registered chest
-    // and the bag is received empty, the unarmed bot logs out normally (no
-    // automatic reconnect) instead of waiting to be killed on the surface.
-    if ((fourLayerStorage() || job?.finalChestStoredAt && job.config.strategy?.finalChestKeepGear !== true) && job?.state === 'FINISHED' && job.persistence?.status !== 'failed' && typeof adapter.logout === 'function') {
-      try { await adapter.logout() } catch (error) { note('logout_failed',{error:String(error.message??error).slice(0,200)}) }
-    }
-  }
-
-  async function egress (myEpoch) {
-    const s = guard(myEpoch)
-    if (job.surfaceReturnedAt) { setState('FINAL_CHECK'); return }
-    if (!job.miningCompletedAt || job.config.exit?.mode !== 'adjacent_pillar') return finish('PAUSED', 'EXIT_NOT_READY')
-    if (typeof adapter.egress !== 'function') return finish('PAUSED', 'EXIT_UNAVAILABLE')
-    if (!job.egress?.operationId) {
-      const read = planningBlocks(job.config); let unknownExitTerrain = false
-      const exitBlocks = (x, y, z) => { const b = read(x, y, z); if (b?.known !== true) unknownExitTerrain = true; return b }
-      const selected = planQuarryExit({ regions, yTop: job.yTop, feet: feetCell(s), getBlock: exitBlocks, inventory: items(s), policy: { ...job.config.tools, ...job.config.collection }, minFreeSlots: deferredExitSupplies() ? 0 : job.config.inventory.minFreeSlots, allowFullBag: deferredExitSupplies() || !!job.storageExhausted && passivePickup(), exit: job.config.exit, reservation: job.exitReservation?.plan ?? null, reachable: planner.reachableFrom(feetCell(s)) })
-      job.egress = { phase: selected.ok ? 'planned' : 'blocked', reason: selected.reason ?? null, plan: copy(selected.plan ?? null), operationId: null, checkpoint: null, scope: scopeOf(s), life: lifeOf(s) }
-      if (selected.plan) job.config.inventory.keepExitDirt = selected.plan.totalDirt
-      if (!selected.ok && selected.reason === 'EXIT_COLUMN_UNAVAILABLE' && unknownExitTerrain && await requestTerrainObservation(myEpoch, 'egress')) { job.egress.phase = 'planned'; job.egress.reason = 'EXIT_TERRAIN_PENDING'; return }
-      if (!unknownExitTerrain || selected.plan) terrainObserved('egress')
-      if (!selected.ok) return finish('PAUSED', selected.reason, { pauseDetails: copy(selected.details ?? null) })
-      job.egress.operationId = `${job.config.jobId}:egress:1`
-      await save('egress_intent')
-    }
-    const owner = job; const active = job.egress
-    // A new connection with the same life may continue the egress; the egress
-    // runtime rebinds only with a server-confirmed pose on the column.
-    let reconnect = false
-    if (active.scope !== scopeOf(s) && active.life === lifeOf(s) && active.checkpoint) { reconnect = true; active.scope = scopeOf(s); note('egress_reconnect', { operationId: active.operationId }) }
-    if (active.scope !== scopeOf(s) || active.life !== lifeOf(s)) return finish('PAUSED', 'EXIT_SCOPE_CHANGED', { pauseDetails: { operationId: active.operationId } })
-    // The native mover is bounded to 12m. Supply the ordinary walking graph's
-    // path so the adapter can split a far pit entrance into its existing short
-    // segments. A paused entry may resume elsewhere, so never reuse its origin.
-    if (!active.checkpoint || active.checkpoint.phase === 'entry') {
-      const from = feetCell(guard(myEpoch)), path = planner.pathTo(from, active.plan.entry)
-      if (!path) return finish('PAUSED', 'EXIT_ENTRY_UNREACHABLE', { pauseDetails: { from, entry: copy(active.plan.entry), operationId: active.operationId } })
-      active.plan.entryPath = copy(path)
-      await save('egress_entry_path')
-    }
-    const onCheckpoint = async checkpoint => {
-      if (job !== owner || job.egress !== active || checkpoint?.operationId !== active.operationId || checkpoint?.jobId !== owner.config.jobId) throw new Error('Exit checkpoint belongs to another operation')
-      active.checkpoint = copy(checkpoint)
-      await save('egress_checkpoint')
-    }
-    active.phase = 'running'; active.reason = null
-    const hpBefore = Number(guard(myEpoch).health), feetBefore = active.checkpoint?.confirmedFeetY ?? null
-    const rec = recordAction({ type: 'egress', operationId: active.operationId, column: active.plan.column })
-    const result = await call(myEpoch, 'egress', signal => adapter.egress({ jobId: owner.config.jobId, operationId: active.operationId, plan: copy(active.plan), checkpoint: copy(active.checkpoint), ...(reconnect ? { reconnect: true } : {}), ...(deferredExitSupplies() || job.storageExhausted && passivePickup() ? { allowFullInventory: true } : {}) }, { signal, onCheckpoint }))
-    guard(myEpoch)
-    if (result?.checkpoint) await onCheckpoint(result.checkpoint)
-    rec.result = egressActionResult(result)
-    if (result?.status !== 'completed' || result.serverConfirmed !== true || !active.checkpoint) {
-      const reason = /^(EXIT_|EGRESS_|ASCENT_)/.test(result?.reason ?? '') ? result.reason : 'EXIT_UNCONFIRMED'
-      // A combat claim that could do nothing (no target action: bow out of
-      // range, no melee stance) ends within moments and leaves HP unchanged
-      // (live 2026-11-10 13:43: a skeleton on a ledge 17 blocks above). The
-      // climb continues instead of pausing, like work continues for bow
-      // targets without a sight line. Real fights (damage, a longer
-      // engagement such as an approach or a creeper) still pause the exit.
-      if (/COMBAT_INTERRUPTED$/.test(reason)) {
-        if (active.checkpoint?.confirmedFeetY !== feetBefore) job.egressNoopCombat = 0
-        const started = now()
-        while (adapter.combatActive() && now() - started < EGRESS_NOOP_COMBAT_MS) { await sleep(100); guard(myEpoch) }
-        const after = guard(myEpoch)
-        if (!adapter.combatActive() && now() - started < EGRESS_NOOP_COMBAT_MS && Number(after.health) >= hpBefore && (job.egressNoopCombat ?? 0) < EGRESS_NOOP_COMBAT_RETRIES) {
-          job.egressNoopCombat = (job.egressNoopCombat ?? 0) + 1
-          rec.status = 'interrupted'; active.phase = 'planned'; active.reason = null
-          note('egress_noop_combat_continue', { count: job.egressNoopCombat, feetY: active.checkpoint?.confirmedFeetY ?? null })
-          await save('egress_noop_combat')
-          setState('EGRESS')
-          return
-        }
-      }
-      if (EGRESS_TRANSIENT.has(reason)) {
-        if (active.checkpoint?.confirmedFeetY !== feetBefore) job.egressTransient = 0
-        const after = guard(myEpoch)
-        if (Number(after.health) >= hpBefore && !adapter.combatActive() && (job.egressTransient ?? 0) < EGRESS_TRANSIENT_RETRIES) {
-          job.egressTransient = (job.egressTransient ?? 0) + 1
-          rec.status = 'interrupted'; active.phase = 'planned'; active.reason = null
-          note('egress_transient_retry', { reason, count: job.egressTransient, feetY: active.checkpoint?.confirmedFeetY ?? null })
-          await save('egress_transient_retry')
-          if (reason === 'ASCENT_INVENTORY_UNKNOWN' && typeof adapter.resyncInventory === 'function') { try { await adapter.resyncInventory() } catch {} ; guard(myEpoch) }
-          const until = now() + EGRESS_TRANSIENT_WAIT_MS
-          while (now() < until) { await sleep(100); guard(myEpoch) }
-          setState('EGRESS')
-          return
-        }
-      }
-      rec.status = 'blocked'; active.phase = 'blocked'; active.reason = reason
-      return finish('PAUSED', reason, { pauseDetails: { operationId: active.operationId, reason: result?.reason ?? null } })
-    }
-    rec.status = 'confirmed'; active.phase = 'completed'
-    job.surfaceReturnedAt = new Date(now()).toISOString()
-    await save('surface_returned')
-    setState('FINAL_CHECK')
-  }
+  // This part lives in quarry-job-egress.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const jobEgress = require('./quarry-job-egress').createQuarryJobEgress({
+    get adapter () { return adapter }, set adapter (value) { adapter = value },
+    get AIR () { return AIR },
+    get applyStorageConfiguration () { return applyStorageConfiguration },
+    get badStances () { return badStances },
+    get call () { return call },
+    get clearWorkDeferred () { return clearWorkDeferred },
+    get collect () { return collect },
+    get copy () { return copy },
+    get countsRevision () { return countsRevision }, set countsRevision (value) { countsRevision = value },
+    get deferredExitSupplies () { return deferredExitSupplies },
+    get EGRESS_NOOP_COMBAT_MS () { return EGRESS_NOOP_COMBAT_MS },
+    get EGRESS_NOOP_COMBAT_RETRIES () { return EGRESS_NOOP_COMBAT_RETRIES },
+    get EGRESS_TRANSIENT () { return EGRESS_TRANSIENT },
+    get EGRESS_TRANSIENT_RETRIES () { return EGRESS_TRANSIENT_RETRIES },
+    get EGRESS_TRANSIENT_WAIT_MS () { return EGRESS_TRANSIENT_WAIT_MS },
+    get egressActionResult () { return egressActionResult },
+    get egressDirtRoom () { return egressDirtRoom },
+    get epoch () { return epoch }, set epoch (value) { epoch = value },
+    get exceptionsList () { return exceptionsList },
+    get exitDirtGoal () { return exitDirtGoal },
+    get exitPlanDirt () { return exitPlanDirt },
+    get feetCell () { return feetCell },
+    get FINAL_CHEST_KEEP () { return FINAL_CHEST_KEEP },
+    get finish () { return finish },
+    get fourLayerStorage () { return fourLayerStorage },
+    get freeSlots () { return freeSlots },
+    get fullOnlyStorage () { return fullOnlyStorage },
+    get guard () { return guard },
+    get hasStorageOption () { return hasStorageOption },
+    get inventoryPolicy () { return inventoryPolicy },
+    get items () { return items },
+    get job () { return job }, set job (value) { job = value },
+    get keepEarlierLayers () { return keepEarlierLayers },
+    get keepPlan () { return keepPlan },
+    get ledger () { return ledger }, set ledger (value) { ledger = value },
+    get lifeOf () { return lifeOf },
+    get moveToStance () { return moveToStance },
+    get nameOf () { return nameOf },
+    get note () { return note },
+    get now () { return now }, set now (value) { now = value },
+    get observeDrops () { return observeDrops },
+    get observeFluidDrain () { return observeFluidDrain },
+    get observeInventory () { return observeInventory },
+    get passivePickup () { return passivePickup },
+    get permits () { return permits },
+    get planner () { return planner }, set planner (value) { planner = value },
+    get planningBlocks () { return planningBlocks },
+    get planQuarryExit () { return planQuarryExit },
+    get preferDirtSource () { return preferDirtSource },
+    get prepareExit () { return prepareExit },
+    get QuarryInterrupt () { return QuarryInterrupt },
+    get recordAcceptedExceptions () { return recordAcceptedExceptions },
+    get recordAction () { return recordAction },
+    get recordFinalStorageSkip () { return recordFinalStorageSkip },
+    get recordPassivePickup () { return recordPassivePickup },
+    get regions () { return regions }, set regions (value) { regions = value },
+    get requestTerrainObservation () { return requestTerrainObservation },
+    get restock () { return restock },
+    get returnAndDeposit () { return returnAndDeposit },
+    get samePoint () { return samePoint },
+    get save () { return save },
+    get scopeOf () { return scopeOf },
+    get SEAL_MATERIALS () { return SEAL_MATERIALS },
+    get setState () { return setState },
+    get sleep () { return sleep }, set sleep (value) { sleep = value },
+    get SUPPLY_ROOM_MAX_ATTEMPTS () { return SUPPLY_ROOM_MAX_ATTEMPTS },
+    get SUPPLY_ROOM_MAX_BLOCKS () { return SUPPLY_ROOM_MAX_BLOCKS },
+    get TOOL_WAIT () { return TOOL_WAIT },
+    get totals () { return totals },
+    get TRANSIENT_DEFER () { return TRANSIENT_DEFER },
+    get workFloorY () { return workFloorY }
+  })
+  function finalCheck (...args) { return jobEgress.finalCheck(...args) }
+  function egress (...args) { return jobEgress.egress(...args) }
+  function terrainObserved (...args) { return jobEgress.terrainObserved(...args) }
+  function makeSupplyRoom (...args) { return jobEgress.makeSupplyRoom(...args) }
 
   function exceptionsList () {
     const list = []
@@ -3915,163 +3011,40 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     await save('supplies_configured')
     return status()
   }
-  async function reconcileObservedStoragePlacement () {
-    if (!job || worker || job.state !== 'PAUSED' || job.userRunIntent !== 'running' || typeof adapter.reconcileObservedPlacement !== 'function') throw new Error('Observed placement reconciliation requires a drained error-paused running intent')
-    const owner = job, active = job.portableStorage, generation = epoch, intent = job.userRunIntent
-    // The storage runner reports a sent-but-unconfirmed placement as RECONCILE_REQUIRED
-    // since 2026-11-12; records saved before that carry the timeout text.
-    const reasons = ['サーバーから設置・使用の完了を確認できませんでした。', 'STORAGE_PLACEMENT_RECONCILE_REQUIRED']
-    if (!active?.checkpoint || active.purpose != null || active.selection?.kind !== 'shulker' || active.checkpoint.stage !== 'placing' || active.checkpoint.intent?.type !== 'place' || job.supplyRestock || job.pauseReason !== 'CARRIED_STORAGE_BLOCKED' || job.pauseDetails?.operationId !== active.operationId || !reasons.includes(job.pauseDetails?.reason)) throw new Error('No matching timed-out cargo placement is recorded')
-    const before = copy(active.checkpoint)
-    const record = job.actions.findLast(action => action.type === 'carried_storage' && action.operationId === active.operationId && action.status === 'blocked' && action.result?.status === 'blocked' && action.result.reason === job.pauseDetails.reason)
-    if (!record || !isDeepStrictEqual(record.result.checkpoint, before)) throw new Error('Timed-out placement record differs from its pending checkpoint')
-    const prior = { pauseReason: job.pauseReason, pauseDetails: copy(job.pauseDetails), result: copy(job.result), savedAt: job.savedAt }
-    const owns = () => {
-      const current = adapter.getState()
-      if (job !== owner || job.portableStorage !== active || epoch !== generation || job.state !== 'PAUSED' || job.userRunIntent !== intent || scopeOf(current) !== job.scope || lifeOf(current) !== job.life || adapter.combatActive()) throw new Error('Observed placement reconciliation was interrupted')
-    }
-    const unchanged = checkpoint => {
-      const stable = copy(checkpoint)
-      for (const key of ['intent', 'stage', 'placed', 'windowId']) delete stable[key]
-      return stable
-    }
-    let release, staged = null
-    const lock = new Promise(resolve => { release = resolve })
-    worker = lock; reconcilingCarriedPlacement = true
-    try {
-      owns()
-      const response = await adapter.reconcileObservedPlacement({ jobId: owner.config.jobId, operationId: active.operationId, selection: copy(active.selection), checkpoint: copy(before), recordedFailure: copy(record) }, {
-        onCheckpoint: async checkpoint => {
-          owns()
-          const placed = checkpoint?.placed?.[0]
-          if (checkpoint?.stage !== 'placed' || checkpoint.intent != null || checkpoint.placed?.length !== 1 || !isDeepStrictEqual(placed?.position, before.intent.position) || placed.name !== before.intent.name || placed.confirmedBy !== 'server_block_and_inventory' || !Number.isSafeInteger(placed.runtimeId) || placed.runtimeId < 0 || placed.runtimeId > 4294967295 || placed.placementReconciliation?.confirmedBy !== 'received_empty_source_main_and_fresh_exact_container' || placed.placementReconciliation.requestOutcome !== 'unacknowledged' || !isDeepStrictEqual(unchanged(checkpoint), unchanged(before))) throw new Error('Observed placement reconciliation changed assets or credited storage')
-          staged = copy(checkpoint)
-        }
-      })
-      owns()
-      if (response?.status !== 'reconciled' || response.placementConfirmed !== true || response.serverConfirmed !== false || !staged || !isDeepStrictEqual(staged, response.checkpoint) || !isDeepStrictEqual(staged.placed[0].placementReconciliation, response.proof)) return { ...status(), observedPlacementReconciliation: { status: 'blocked', reason: response?.reason ?? 'UNCONFIRMED' } }
-      active.checkpoint = copy(staged)
-      job.pauseReason = 'STORAGE_PLACEMENT_RECONCILED'; job.pauseDetails = { operationId: active.operationId, placementConfirmed: true, requestOutcome: 'unacknowledged' }; job.result = null
-      try { await save('storage_placement_reconciled') } catch (error) { active.checkpoint = before; Object.assign(job, prior); throw error }
-      note('storage_placement_reconciled', { operationId: active.operationId, credited: 0, confirmedBy: response.proof.confirmedBy })
-      return { ...status(), observedPlacementReconciliation: { status: 'reconciled', placementConfirmed: true, serverConfirmed: false, proof: copy(response.proof) } }
-    } finally { reconcilingCarriedPlacement = false; release(); if (worker === lock) worker = null }
-  }
-  async function reconcileRejectedStorage () {
-    if (!job || worker || job.state !== 'PAUSED' || job.userRunIntent !== 'running' || typeof adapter.reconcileRejectedDeposit !== 'function') throw new Error('Rejected storage reconciliation requires a drained error-paused running intent')
-    const owner = job, active = job.portableStorage, generation = epoch, intent = job.userRunIntent
-    if (!active?.checkpoint || active.purpose != null || active.selection?.kind !== 'shulker' || active.checkpoint.stage !== 'depositing' || active.checkpoint.intent?.type !== 'deposit' || job.supplyRestock || job.pauseReason !== 'CARRIED_STORAGE_BLOCKED' || job.pauseDetails?.operationId !== active.operationId) throw new Error('No matching rejected cargo transfer is recorded')
-    const before = copy(active.checkpoint)
-    const record = job.actions.findLast(action => action.type === 'carried_storage' && action.operationId === active.operationId && action.status === 'blocked' && action.result?.status === 'blocked' && ['サーバーがチェストへの移動を拒否しました。', 'STORAGE_SOURCE_REJECTED'].includes(action.result.reason))
-    if (!record || !isDeepStrictEqual(record.result.checkpoint, before)) throw new Error('Rejected storage record differs from its pending checkpoint')
-    const prior = { pauseReason: job.pauseReason, pauseDetails: copy(job.pauseDetails), result: copy(job.result) }
-    const owns = () => {
-      const current = adapter.getState()
-      if (job !== owner || job.portableStorage !== active || epoch !== generation || job.state !== 'PAUSED' || job.userRunIntent !== intent || scopeOf(current) !== job.scope || lifeOf(current) !== job.life || adapter.combatActive()) throw new Error('Rejected storage reconciliation was interrupted')
-    }
-    let release, staged = null
-    const lock = new Promise(resolve => { release = resolve })
-    worker = lock; reconcilingCarriedPlacement = true
-    try {
-      owns()
-      const response = await adapter.reconcileRejectedDeposit({ jobId: owner.config.jobId, operationId: active.operationId, selection: copy(active.selection), checkpoint: copy(before), recordedFailure: copy(record) }, {
-        onCheckpoint: async checkpoint => {
-          owns()
-          if (checkpoint?.jobId !== owner.config.jobId || checkpoint.operationId !== active.operationId || checkpoint.kind !== before.kind || checkpoint.selectionKey !== before.selectionKey || checkpoint.stage !== 'depositing' || checkpoint.intent != null || checkpoint.recovered != null || !isDeepStrictEqual(checkpoint.scope, before.scope) || !isDeepStrictEqual(checkpoint.positions, before.positions) || !isDeepStrictEqual(checkpoint.stand, before.stand) || !isDeepStrictEqual(checkpoint.plan, before.plan) || !isDeepStrictEqual(checkpoint.deposited, before.deposited) || !isDeepStrictEqual(checkpoint.placed, before.placed) || !isDeepStrictEqual(checkpoint.sourceIdentities, before.sourceIdentities)) throw new Error('Rejected storage reconciliation changed assets or credited a transfer')
-          staged = copy(checkpoint)
-        }
-      })
-      owns()
-      if (response?.status !== 'reconciled' || response.notApplied !== true || response.serverConfirmed !== false || !staged || !isDeepStrictEqual(staged, response.checkpoint)) return { ...status(), rejectedStorageReconciliation: { status: 'blocked', reason: response?.reason ?? 'UNCONFIRMED' } }
-      active.checkpoint = copy(staged)
-      job.pauseReason = 'STORAGE_REJECTION_RECONCILED'; job.pauseDetails = { operationId: active.operationId, notApplied: true }; job.result = null
-      try { await save('storage_source_rejection_reconciled') } catch (error) { active.checkpoint = before; Object.assign(job, prior); throw error }
-      note('storage_source_rejection_reconciled', { operationId: active.operationId, requestId: response.proof?.requestId, credited: 0 })
-      return { ...status(), rejectedStorageReconciliation: { status: 'reconciled', notApplied: true, serverConfirmed: false, proof: copy(response.proof) } }
-    } finally { reconcilingCarriedPlacement = false; release(); if (worker === lock) worker = null }
-  }
-  async function reconcileCarriedPlacement () {
-    if (!job || worker || job.state !== 'PAUSED' || typeof adapter.reconcileCarriedPlacement !== 'function') throw new Error('Cargo placement reconciliation requires a drained paused operation')
-    const owner = job, active = job.portableStorage, generation = epoch, intent = job.userRunIntent
-    const record = job.actions.findLast(action => action.type === 'carried_storage' && action.operationId === active?.operationId)
-    if (!active?.checkpoint || active.purpose != null || active.selection?.kind !== 'shulker' || job.supplyRestock || job.pauseReason !== 'CARRIED_STORAGE_BLOCKED' || job.pauseDetails?.operationId !== active.operationId || job.pauseDetails?.reason !== UNSENT_PLACE_REASON || record?.status !== 'blocked' || record.result?.status !== 'blocked' || record.result.reason !== UNSENT_PLACE_REASON || !isDeepStrictEqual(record.result.checkpoint, active.checkpoint)) throw new Error('The recorded before-begin cargo placement refusal is required')
-    const before = copy(active.checkpoint)
-    const priorStatus = { pauseReason: job.pauseReason, pauseDetails: copy(job.pauseDetails), result: copy(job.result), savedAt: job.savedAt }
-    const owns = () => { if (job !== owner || job.portableStorage !== active || epoch !== generation || job.state !== 'PAUSED' || job.userRunIntent !== intent) throw new Error('Cargo placement reconciliation was interrupted') }
-    let release, staged = null
-    const lock = new Promise(resolve => { release = resolve })
-    worker = lock; reconcilingCarriedPlacement = true
-    try {
-      const response = await adapter.reconcileCarriedPlacement({ jobId: job.config.jobId, operationId: active.operationId, purpose: 'cargo', selection: copy(active.selection), checkpoint: copy(before), reason: UNSENT_PLACE_REASON }, {
-        canPlace: p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 }),
-        onCheckpoint: async checkpoint => {
-          owns()
-          if (checkpoint?.jobId !== owner.config.jobId || checkpoint.operationId !== active.operationId || checkpoint.kind !== before.kind || checkpoint.selectionKey !== before.selectionKey || checkpoint.purpose != null || checkpoint.stage !== 'planned' || checkpoint.intent != null || !storagePoint(checkpoint.stand) || !Array.isArray(checkpoint.positions) || checkpoint.positions.length !== 1 || !checkpoint.positions.every(storagePoint) || !isDeepStrictEqual(checkpoint.scope, before.scope) || !isDeepStrictEqual(checkpoint.plan, before.plan) || !isDeepStrictEqual(checkpoint.deposited, before.deposited) || !isDeepStrictEqual(checkpoint.placed, before.placed) || !isDeepStrictEqual(checkpoint.sourceIdentities, before.sourceIdentities) || checkpoint.notSentPlacementProofs?.at(-1)?.notSent !== true) throw new Error('Cargo reconciliation changed the operation or transfer plan')
-          staged = copy(checkpoint)
-        }
-      })
-      owns()
-      if (response?.status !== 'reconciled' || response.notSent !== true || !staged || !isDeepStrictEqual(response.checkpoint, staged)) return { ...status(), carriedPlacementReconciliation: { status: 'blocked', reason: response?.reason ?? 'UNCONFIRMED' } }
-      active.checkpoint = copy(staged)
-      job.pauseReason = 'MANUAL_PAUSE'; job.pauseDetails = null; job.result = null
-      try { await save('cargo_placement_replanned') } catch (error) { active.checkpoint = before; Object.assign(job, priorStatus); throw error }
-      note('cargo_placement_not_sent', { operationId: active.operationId, proof: response.proof, nextSite: response.nextSite })
-      return { ...status(), carriedPlacementReconciliation: { status: 'reconciled', notSent: true, proof: copy(response.proof), nextSite: copy(response.nextSite) } }
-    } finally { reconcilingCarriedPlacement = false; release(); if (worker === lock) worker = null }
-  }
-  async function reconcileCurrentStoragePlacement () {
-    requireDrained()
-    if (!job || job.state !== 'PAUSED' || typeof adapter.reconcileCurrentPlacement !== 'function') throw new Error('Current storage reconciliation requires a drained paused operation')
-    if (job.persistence?.status === 'failed') throw new QuarryInterrupt('PERSISTENCE_FAILED')
-    const owner = job, active = job.portableStorage, generation = epoch, intent = job.userRunIntent
-    if (!active?.checkpoint || active.purpose != null || active.selection?.kind !== 'shulker' || job.supplyRestock || job.pauseReason !== 'CARRIED_STORAGE_BLOCKED' || job.pauseDetails?.operationId !== active.operationId) throw new Error('No matching paused cargo placement is recorded')
-    const before = copy(active.checkpoint), actions = job.actions.slice(), beforeCheckpoint = active.checkpoint
-    let expectedCheckpoint = beforeCheckpoint
-    if (!samePendingStoragePlacement(before, adapter.getState()) || before.plan.some(entry => !Number.isSafeInteger(entry.count) || entry.count < 1)) throw new Error('A current unresolved cargo placement is required')
-    const prior = { pauseReason: job.pauseReason, pauseDetails: copy(job.pauseDetails), result: copy(job.result), savedAt: job.savedAt }
-    const owns = () => {
-      const current = adapter.getState()
-      if (job !== owner || job.portableStorage !== active || active.checkpoint !== expectedCheckpoint || epoch !== generation || job.state !== 'PAUSED' || job.userRunIntent !== intent || job.persistence?.status === 'failed' || current?.phase !== 'spawned' || current.dead || current.isDead || current.lifecycle?.dead || !(current.health > 0) || !storageScopeMatches(before, current) || scopeOf(current) !== job.scope || lifeOf(current) !== job.life || adapter.combatActive() || job.actions.length !== actions.length || job.actions.some((action, index) => action !== actions[index])) throw new Error('Current storage reconciliation was interrupted')
-      assertJobWorld(job, current)
-    }
-    const stable = checkpoint => {
-      const value = copy(checkpoint)
-      for (const field of ['intent', 'stage', 'windowId', 'currentPlacementReconciliations']) delete value[field]
-      return value
-    }
-    const local = new AbortController()
-    let release, staged = null, watcher, outcome
-    const lock = new Promise(resolve => { release = resolve })
-    clearAutoResume()
-    worker = lock; reconcilingCarriedPlacement = true
-    try {
-      owns()
-      watcher = setInterval(() => { try { owns() } catch (error) { local.abort(error) } }, pollMs)
-      const response = await adapter.reconcileCurrentPlacement({ jobId: owner.config.jobId, operationId: active.operationId, purpose: 'cargo', selection: copy(active.selection), checkpoint: copy(before), manual: true }, {
-        signal: local.signal,
-        canPlace: p => storagePoint(p) && !(job.config.boundarySeal?.closeOpenings && regions.seal.columns.has(`${p.x},${p.z}`)) && permits(regions, 'travel', p).allowed && permits(regions, 'travel', { ...p, y: p.y + 1 }).allowed && !planner.isStairCell(p) && !planner.isStairCell({ ...p, y: p.y - 1 }),
-        onCheckpoint: async checkpoint => {
-          owns()
-          const previous = before.currentPlacementReconciliations ?? [], audits = checkpoint?.currentPlacementReconciliations, latest = audits?.at(-1)
-          const proof = latest?.proof, server = proof?.serverState
-          if (checkpoint?.jobId !== owner.config.jobId || checkpoint.operationId !== active.operationId || checkpoint.kind !== 'shulker' || checkpoint.stage !== 'planned' || checkpoint.intent != null || checkpoint.windowId != null || !storagePoint(checkpoint.stand) || checkpoint.positions?.length !== 1 || !checkpoint.positions.every(storagePoint) || !isDeepStrictEqual(stable(checkpoint), stable(before)) || !Array.isArray(previous) || !Array.isArray(audits) || audits.length !== previous.length + 1 || audits.length > 3 || !isDeepStrictEqual(audits.slice(0, -1), previous) || latest?.version !== 1 || !isDeepStrictEqual(latest.originalIntent, before.intent) || !isDeepStrictEqual(latest.originalFailure, before.intent.placementFailure ?? null) || proof?.kind !== 'current_state_placement_reconciliation' || proof.version !== 1 || proof.manual !== true || proof.requestOutcome !== 'unknown' || proof.notSent === true || proof.jobId !== owner.config.jobId || proof.operationId !== active.operationId || !isDeepStrictEqual(proof.scope, before.scope) || !samePoint(proof.position, before.intent.position) || proof.sourceSlot !== before.intent.slot || !Number.isSafeInteger(proof.sourceStackId) || proof.sourceStackId < 1 || typeof proof.sourceHash !== 'string' || !/^[a-f0-9]{64}$/.test(proof.sourceHash) || server?.serverConfirmed !== true || server.kind !== 'current_placement_state' || server.targetAir !== true || server.quiet !== true || server.jobId !== owner.config.jobId || server.operationId !== active.operationId || !isDeepStrictEqual(server.scope, before.scope) || !samePoint(server.position, before.intent.position)) throw new Error('Current storage reconciliation changed assets or history')
-          staged = copy(checkpoint)
-        }
-      })
-      owns()
-      const proof = staged?.currentPlacementReconciliations?.at(-1)?.proof
-      if (response?.status !== 'reconciled' || response.currentStateConfirmed !== true || response.serverConfirmed !== false || response.notSent === true || !staged || !isDeepStrictEqual(staged, response.checkpoint) || !isDeepStrictEqual(proof, response.proof)) outcome = { status: 'blocked', reason: response?.reason ?? 'UNCONFIRMED' }
-      else {
-        active.checkpoint = staged
-        expectedCheckpoint = staged
-        job.pauseReason = 'STORAGE_CURRENT_STATE_RECONCILED'; job.pauseDetails = { operationId: active.operationId, currentStateConfirmed: true, requestOutcome: 'unknown' }; job.result = null
-        try { await save('storage_current_state_reconciled') } catch (error) { active.checkpoint = beforeCheckpoint; expectedCheckpoint = beforeCheckpoint; Object.assign(job, prior); throw error }
-        note('storage_current_state_reconciled', { operationId: active.operationId, credited: 0, requestOutcome: 'unknown' })
-        outcome = { status: 'reconciled', currentStateConfirmed: true, serverConfirmed: false, requestOutcome: 'unknown', proof: copy(proof) }
-      }
-    } finally { clearInterval(watcher); reconcilingCarriedPlacement = false; release(); if (worker === lock) worker = null }
-    return { ...status(), currentStoragePlacementReconciliation: outcome }
-  }
+  // This part lives in quarry-job-reconcile.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const jobReconcile = require('./quarry-job-reconcile').createQuarryJobReconcile({
+    get adapter () { return adapter }, set adapter (value) { adapter = value },
+    get assertJobWorld () { return assertJobWorld },
+    get clearAutoResume () { return clearAutoResume },
+    get copy () { return copy },
+    get epoch () { return epoch }, set epoch (value) { epoch = value },
+    get isDeepStrictEqual () { return isDeepStrictEqual },
+    get job () { return job }, set job (value) { job = value },
+    get lifeOf () { return lifeOf },
+    get note () { return note },
+    get permits () { return permits },
+    get planner () { return planner }, set planner (value) { planner = value },
+    get pollMs () { return pollMs }, set pollMs (value) { pollMs = value },
+    get QuarryInterrupt () { return QuarryInterrupt },
+    get reconcilingCarriedPlacement () { return reconcilingCarriedPlacement }, set reconcilingCarriedPlacement (value) { reconcilingCarriedPlacement = value },
+    get regions () { return regions }, set regions (value) { regions = value },
+    get requireDrained () { return requireDrained },
+    get samePendingStoragePlacement () { return samePendingStoragePlacement },
+    get samePoint () { return samePoint },
+    get save () { return save },
+    get scopeOf () { return scopeOf },
+    get status () { return status },
+    get storagePoint () { return storagePoint },
+    get storageScopeMatches () { return storageScopeMatches },
+    get UNSENT_PLACE_REASON () { return UNSENT_PLACE_REASON },
+    get worker () { return worker }, set worker (value) { worker = value }
+  })
+  function reconcileCurrentStoragePlacement (...args) { return jobReconcile.reconcileCurrentStoragePlacement(...args) }
+  function reconcileCarriedPlacement (...args) { return jobReconcile.reconcileCarriedPlacement(...args) }
+  function reconcileObservedStoragePlacement (...args) { return jobReconcile.reconcileObservedStoragePlacement(...args) }
+  function reconcileRejectedStorage (...args) { return jobReconcile.reconcileRejectedStorage(...args) }
   async function reconcileSupplyPlacement () {
     if (!job || worker || job.state !== 'PAUSED' || typeof adapter.reconcileSupplyPlacement !== 'function') throw new Error('Placement reconciliation requires a drained paused supply operation')
     const owner = job, active = job.supplyRestock

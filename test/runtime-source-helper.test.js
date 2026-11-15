@@ -7,10 +7,12 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), Module = require('node:module')
-const { runtimeSource } = require('./helpers/runtime-source')
+const { runtimeSource, flattenedSource } = require('./helpers/runtime-source')
 const src = path.resolve(__dirname, '..', 'src')
-const runtime = fs.readFileSync(path.join(src, 'runtime.js'), 'utf8').replace(/\r\n/g, '\n')
-const wiring = [...runtime.matchAll(/^[ \t]*const (\w+) = require\('\.\/([\w-]+)'\)\.(\w+)\(\{\n[ \t]+get /gm)].map(match => ({ instance: match[1], module: match[2], factory: match[3] }))
+const read = name => fs.readFileSync(path.join(src, name), 'utf8').replace(/\r\n/g, '\n')
+const runtime = read('runtime.js')
+const wiringOf = text => [...text.matchAll(/^[ \t]*const (\w+) = require\('\.\/([\w-]+)'\)\.(\w+)\(\{\n[ \t]+get /gm)].map(match => ({ instance: match[1], module: match[2], factory: match[3] }))
+const wiring = wiringOf(runtime)
 
 test('every part moved out of runtime.js is put back, and the result is one valid source', () => {
   assert.ok(wiring.length >= 4, 'runtime.js creates its moved parts with accessor blocks')
@@ -28,6 +30,21 @@ test('every part moved out of runtime.js is put back, and the result is one vali
   assert.equal(/\brt\./.test(text), false, 'no rt.<name> is left')
   assert.doesNotThrow(() => new vm.Script(Module.wrap(text), { filename: 'runtime-flattened.js' }))
   assert.ok(text.length > runtime.length)
+})
+
+test('the parts moved out of quarry-job.js are put back the same way', () => {
+  const parts = wiringOf(read('quarry-job.js'))
+  assert.ok(parts.length >= 4, 'quarry-job.js creates its moved parts with accessor blocks')
+  const text = flattenedSource('quarry-job.js')
+  for (const part of parts) {
+    assert.equal(text.includes(`require('./${part.module}')`), false, `${part.module} is inlined`)
+    assert.equal(new RegExp(`\\b${part.instance}\\.`).test(text), false, `no ${part.instance}.<name> is left`)
+    const moved = read(`${part.module}.js`)
+    assert.ok(moved.includes(`function ${part.factory} (rt) {\n`) && moved.trimEnd().endsWith(`module.exports = { ${part.factory} }`), part.module)
+  }
+  assert.equal(/\brt\./.test(text), false, 'no rt.<name> is left')
+  assert.doesNotThrow(() => new vm.Script(Module.wrap(text), { filename: 'quarry-job-flattened.js' }))
+  for (const name of ['async function storeCarried (', 'async function egress (', 'async function restock (', 'async function reconcileObservedStoragePlacement (']) assert.ok(text.includes(name), name)
 })
 
 test('the moved modules keep the layout the helper and the extraction tool rely on', () => {
