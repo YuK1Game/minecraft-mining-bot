@@ -5,11 +5,11 @@ const { createPlayerRecovery, nearestKnownLog, aheadPoint } = require('../src/mo
 const { createAutonomy } = require('../src/survival/autonomy')
 const { playerActivity, modeState } = require('../scripts/lib/player-activity')
 
-function fixture ({ blocks = {}, mode = 'player', walks = false } = {}) {
+function fixture ({ blocks = {}, mode = 'player', walks = false, climb = null } = {}) {
   const calls = [], shared = { autoWanted: true, autoOptions: {} }, logs = [], position = { x: 0.5, y: 65.62, z: 0.5 }
   let busy = false, clock = 0
   const recovery = createPlayerRecovery({
-    getMode: () => mode, shared, log: line => logs.push(line),
+    getMode: () => mode, shared, log: line => logs.push(line), climb: climb && (async () => { calls.push('climb'); return climb }),
     agent: { objective: { objective: 'diamond', diamondCount: 1 }, stop: reason => { calls.push('stop'); shared.autoWanted = false }, start: async options => { calls.push({ start: options }); shared.autoWanted = true; shared.autoOptions = { ...options } } },
     travel: { to: async input => { calls.push({ travel: input.destination }); if (walks) Object.assign(position, { x: input.destination.x + 0.5, z: input.destination.z + 0.5 }); busy = true; setTimeout(() => { busy = false }, 5) }, status: () => ({ busy }), cancel: async () => { busy = false; calls.push('cancel') } },
     getBlock: (x, y, z) => blocks[`${x},${y},${z}`] ?? { known: false },
@@ -197,4 +197,16 @@ test('a stop whose work lies far away walks there first, then goes on; a near on
   await settle(near.recovery)
   assert.deepEqual(near.calls, [{ start: { objective: 'diamond', diamondCount: 1 } }])
   assert.ok(near.clock() >= 30000)
+})
+
+test('underground, a table that cannot be walked to: straight up, then on at once', async () => {
+  const roof = { '0,66,0': { known: true, name: 'minecraft:air', boundingBox: 'empty' }, '0,67,0': { known: true, name: 'minecraft:air', boundingBox: 'empty' }, '0,68,0': { known: true, name: 'minecraft:stone', boundingBox: 'block' } }
+  const stuck = { running: false, phase: 'failed', reason: '再試行の上限に達しました: No known safe standing position has a valid route', lastDecision: { type: 'move_to', stage: 'crafting_table', resource: 'crafting_table', target: { x: 2, y: 63, z: 2 } }, progress: {} }
+  const f = fixture({ blocks: roof, climb: { ok: true } })
+  f.recovery.onProgress(stuck); await settle(f.recovery)
+  assert.deepEqual(f.calls, ['climb', { start: { objective: 'diamond', diamondCount: 1 } }])
+  assert.equal(f.clock() < 5000, true, 'no pause before playing on')
+  const open = fixture({ climb: { ok: true } })
+  open.recovery.onProgress(stuck); await settle(open.recovery)
+  assert.equal(open.calls.includes('climb'), false, 'not under the open sky')
 })

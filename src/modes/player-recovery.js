@@ -63,6 +63,8 @@ function farTarget (snapshot, position) {
   return distance > 24 && distance <= 512 ? { x: Math.floor(point.x), z: Math.floor(point.z) } : null
 }
 
+// The stopped run was walking to a table or furnace.
+const stationMove = snapshot => snapshot?.lastDecision?.type === 'move_to' && ['crafting_table', 'table', 'furnace'].includes(snapshot.lastDecision.resource ?? snapshot.lastDecision.stage)
 const seeksWood = snapshot => snapshot?.lastDecision?.type === 'explore' && snapshot.lastDecision.resource === 'logs'
 
 function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
@@ -148,6 +150,20 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, h
       // In a pit the trip dug, the shelter holds the Bot and plays on afterwards.
       if (!live(token) || held()) return false
       return restart(token, { ...agent.objective, freshExploration: true })
+    }
+    // Underground, the table or furnace cannot be walked to and nothing held
+    // makes another (real Realm 2026-11-16 07:46-07:53 JST: at y 55 with raw
+    // iron and coal, three stops on the walled-in stations of an old tunnel
+    // while the usable ones stood on the surface 22 blocks up): straight up
+    // (player-climb.js); the stations and the trees are there.
+    if (!search && climb && stationMove(snapshot) && trips < TRIP_LIMIT && underCover(getBlock, getPosition())) {
+      trips++
+      reason = '作業台・かまどへ歩いて行けないため、真上へ掘って地上へ出ます。'
+      log(`プレイヤーモード: ${reason}`)
+      let out = null
+      try { out = await climb(() => !live(token)) } catch (error) { log(`プレイヤーモード: 真上へ掘れません ${text(error?.message)}`) }
+      if (!live(token) || held()) return false
+      if (out?.ok) return restart(token, { ...agent.objective })
     }
     // The work the plan asked for is far away (live 2026-11-15 23:00 JST: iron
     // ore 113 m off, "outside the bounded tunneling area", three stops in a
