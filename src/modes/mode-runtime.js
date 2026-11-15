@@ -13,6 +13,7 @@ const { createPlayerShelter } = require('./player-shelter')
 const { createPlayerFlee } = require('./player-flee')
 const { createPlayerScaffold } = require('./player-scaffold')
 const { createScaffoldPorts } = require('./player-scaffold-ports')
+const { climbOut } = require('./player-climb')
 const { playFile, createPlayerResume } = require('./player-resume')
 
 function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
@@ -29,6 +30,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   operations.agent = { ...inner, start: options => { if (control.get() === 'player') shared.playerWanted = true; return inner.start(options) }, stop: reason => { shared.playerWanted = false; recovery.cancel(); return inner.stop(reason) } }
   const agentStatus = () => runtime.autonomy()?.snapshot() ?? { running: false }
   const disposed = () => runtime.disposed?.() === true
+  const idle = () => { const value = agentStatus(); return value.running !== true && value.busy !== true && value.actionActive !== true }
   const control = createModeControl({
     shared, save: mode => saveMode(file, mode), log,
     getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active || flee.status().active || scaffold.status().active ? { running: true } : agentStatus(),
@@ -39,11 +41,21 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // looked like "got nowhere", so the search turned 60 degrees each time and
   // circled a hexagon around the stale point).
   const where = () => { const position = runtime.position?.(); return position && [position.x, position.y, position.z].every(Number.isFinite) ? position : runtime.raw().position ?? null }
+  // Ordinary walking, mining, placement and the pillar step, shared by the scaffold and the climb out of a tunnel.
+  const hands = createScaffoldPorts({
+    operations, disposed, pillarStep: (step, settings) => runtime.pillarStep(step, settings),
+    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getMotion: () => runtime.motion(),
+    getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
+  })
   const recovery = createPlayerRecovery({
     getMode: control.get, shared, log, disposed, held: () => !!shared.travelNight?.cover,
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason) },
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
-    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getPosition: where
+    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getPosition: where,
+    climb: async aborted => {
+      for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
+      return climbOut({ ports: hands, log, aborted: () => aborted() || flee.status().active || shelter.status().active })
+    }
   })
   shared.onAutonomyProgress = snapshot => recovery.onProgress(snapshot)
   const air = cell => { const block = runtime.host().world.getBlock(cell.x, cell.y, cell.z); return block?.known === true && /^minecraft:(?:air|cave_air)$/.test(block.name ?? '') }
@@ -74,11 +86,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed,
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: () => { const value = agentStatus(); return value.running !== true && value.busy !== true && value.actionActive !== true } },
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || quarry.travelStatus().busy === true,
-    ports: createScaffoldPorts({
-      operations, disposed, pillarStep: (step, settings) => runtime.pillarStep(step, settings),
-      getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getMotion: () => runtime.motion(),
-      getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
-    })
+    ports: hands
   })
   const fleeTimer = setInterval(() => { if (disposed()) clearInterval(fleeTimer); else void flee.tick().catch(() => {}) }, 500)
   fleeTimer.unref?.()
