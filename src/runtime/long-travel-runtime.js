@@ -730,6 +730,8 @@ function createLongTravelRuntime (rt) {
     get longTravelFile () { return longTravelFile },
     ensureLongTravel,
     travelLeafEscape,
+    travelNightPit,
+    travelClock,
     travelPlaceTable,
     travelSupplyBoxTake
   }

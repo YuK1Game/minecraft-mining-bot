@@ -9,6 +9,7 @@ const { modeFile, loadModeSync, saveMode } = require('./mode-store')
 const { createModeControl } = require('./mode-control')
 const { createPlayerMode, OBJECTIVE } = require('./player-mode')
 const { createPlayerRecovery } = require('./player-recovery')
+const { createPlayerShelter } = require('./player-shelter')
 
 function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
   const shared = runtime.host().shared, file = modeFile(root), log = text => runtime.host().log(text)
@@ -16,22 +17,42 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   if (!isMode(shared.botMode)) shared.botMode = shared.autoWanted === true ? 'player' : loadModeSync(file)
   const quarry = operations.quarry, agent = operations.agent
   const agentStatus = () => runtime.autonomy()?.snapshot() ?? { running: false }
+  const disposed = () => runtime.disposed?.() === true
   const control = createModeControl({
     shared, save: mode => saveMode(file, mode), log,
-    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active ? { running: true } : agentStatus(),
+    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active ? { running: true } : agentStatus(),
     isBusy: () => runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld()
   })
   const recovery = createPlayerRecovery({
-    getMode: control.get, shared, log, disposed: () => runtime.disposed?.() === true,
+    getMode: control.get, shared, log, disposed, held: () => !!shared.travelNight?.cover,
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason) },
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getPosition: () => runtime.raw().position ?? null
   })
   shared.onAutonomyProgress = snapshot => recovery.onProgress(snapshot)
+  const air = cell => { const block = runtime.host().world.getBlock(cell.x, cell.y, cell.z); return block?.known === true && /^minecraft:(?:air|cave_air)$/.test(block.name ?? '') }
+  const hunger = () => { const value = shared.vitals?.hunger; return Number.isFinite(value) ? value : Number.isFinite(value?.value) ? value.value : null }
+  const shelter = createPlayerShelter({
+    getMode: control.get, shared, log, disposed, recovery,
+    agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agentStatus().running === true, settled: () => { const value = agentStatus(); return value.running !== true && value.busy !== true && value.actionActive !== true } },
+    getClock: () => runtime.travel().travelClock(), getVitals: () => ({ health: runtime.raw().health, hunger: hunger() }),
+    hostileDistance: () => runtime.nearestHostile(), travelBusy: () => quarry.travelStatus().busy === true,
+    dig: () => runtime.travel().travelNightPit(),
+    // The cover is mined by the ordinary mining and counts once the received block is air.
+    uncover: async cover => {
+      if (air(cover)) return true
+      operations.mining.start([cover])
+      for (let i = 0; i < 175 && !air(cover) && !disposed(); i++) await new Promise(resolve => setTimeout(resolve, 200))
+      return air(cover)
+    }
+  })
+  // The shelter is checked every two seconds; a reloaded runtime's timer ends itself.
+  const timer = setInterval(() => { if (disposed()) clearInterval(timer); else void shelter.tick() }, 2000)
+  timer.unref?.()
   // The previous runtime was reloaded in the middle of a recovery: play on.
   if (shared.playerRecovering === true) { shared.playerRecovering = false; if (control.get() === 'player') shared.autoWanted = true }
   const player = createPlayerMode({
-    getMode: control.get, log, safety: operations.safety, recovery,
+    getMode: control.get, log, safety: operations.safety, recovery, shelter, shared,
     agent: { start: options => agent.start(options), stop: reason => agent.stop(reason), snapshot: agentStatus },
     getInventory: () => shared.inventoryUncertain ? null : runtime.raw().inventory
   })

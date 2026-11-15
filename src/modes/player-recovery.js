@@ -50,7 +50,7 @@ function ringPoint (anchor, trip) {
 
 const seeksWood = snapshot => snapshot?.lastDecision?.type === 'explore' && snapshot.lastDecision.resource === 'logs'
 
-function createPlayerRecovery ({ getMode, shared, agent, travel, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
   let run = null, trips = 0, pauses = 0, anchor = null, logsSeen = 0, reason = null, visited = []
   const live = token => run === token && !disposed() && normalizeMode(getMode()) === 'player'
 
@@ -88,6 +88,8 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, getBlock, getPo
     try { await travel.to({ destination }) } catch (error) { log(`プレイヤーモード: 移動を始められません ${text(error?.message)}`) }
     const until = now() + TRIP_MS
     while (live(token) && now() < until && travel.status()?.busy) await sleep(1000)
+    // The trip dug a night or rest pit: the shelter keeps the Bot there and plays on afterwards.
+    if (held()) return false
     if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
     return live(token)
   }
