@@ -88,7 +88,7 @@ test('Autonomy reobserves the same fixed goal after raw partial returns without 
 test('exploration remembers only each actual partial point and re-previews its original candidate on the next batch',async()=>{
  const f=moving({step:.6}),history=[];let candidates=0
  const exploration={remember:(s,p,data)=>history.push({position:copy(p),...copy(data)}),candidates:()=>{candidates++;return[{position:candidates===1?copy(GOAL):{x:-8.5,y:65,z:.5}}]}}
- const actions=makeActions({request:f.runner.request,refreshState:f.runner.refreshState,getState:f.runner.getState,observe:async()=>({blocks:[]}),exploration,now:()=>0,timeoutMs:100,pollIntervalMs:20,delay:async()=>{}})
+ const actions=makeActions({logAllowance:()=>true,request:f.runner.request,refreshState:f.runner.refreshState,getState:f.runner.getState,observe:async()=>({blocks:[]}),exploration,now:()=>0,timeoutMs:100,pollIntervalMs:20,delay:async()=>{}})
  const first=await actions.explore({resource:'stone',attempt:1},{observations:{blocks:[]}});assert.equal(first.partial,true);assert.equal(first.explored,false);assert.deepEqual(first.remainingTarget,GOAL)
  const firstVisit=history.find(h=>h.kind==='visited');assert.notEqual(firstVisit.position.x,GOAL.x);assert.equal(firstVisit.candidateReached,false)
  const second=await actions.explore({resource:'stone',attempt:2},{observations:{blocks:[]}});assert.equal(second.partial,true);assert.equal(candidates,1)
@@ -102,7 +102,7 @@ function parentScene () {
  for(let x=-7;x<=11;x++)for(let z=-7;z<=7;z++)for(let y=62;y<=68;y++){const name=y<65?'stone':'air';map.set(`${x},${y},${z}`,{known:true,position:{x,y,z},name:'minecraft:'+name,boundingBox:name==='air'?'empty':'block',properties:{},extra:[]})}
  const request=async(method,path,body)=>{calls.push({path,body:copy(body)});if(path==='/move/preview')return{ready:true};if(path==='/move/start'){attempts++;state.position.x+=.2;state.rawServerPosition=copy(state.position);state.rawServerPositionUpdatedAt=state.positionUpdatedAt=new Date(attempts).toISOString();state.movement={phase:'replan_required',reason:'server correction'};return copy(state.movement)}if(path==='/move/stop'){state.movement.phase='stopped';return copy(state.movement)}if(path.startsWith('/blocks?'))return{blocks:[...map.values()].map(copy)};if(path==='/mining/preview'||path==='/mining/start'||path==='/blocks/use')assert.fail('Parent must not mine or use a target after partial arrival');return{}}
  const observe=async()=>copy({state,blocks:[...map.values()],drops:state.droppedItems??[]})
- const actions=makeActions({request,refreshState:async()=>copy(state),getState:()=>copy(state),observe,now:()=>0,timeoutMs:100,pollIntervalMs:20,delay:async()=>{}})
+ const actions=makeActions({logAllowance:()=>true,request,refreshState:async()=>copy(state),getState:()=>copy(state),observe,now:()=>0,timeoutMs:100,pollIntervalMs:20,delay:async()=>{}})
  return{state,map,calls,actions,observe}
 }
 

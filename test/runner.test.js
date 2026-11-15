@@ -38,7 +38,9 @@ function fixture (handler = () => undefined, options = {}) {
     if (path === '/mining/stop') { state.mining.phase = 'stopped'; return { phase: 'stopped' } }
     return {}
   }
-  const runner = createRunner({ request, scanRadius: 1, below: 1, above: 3, pollIntervalMs: 20, timeoutMs: 100, delay: async milliseconds => { clock += milliseconds }, now: () => clock, ...options })
+  // Logs are only cut under the long-trip allowance (wood exclusion 2026-11-12,
+  // exception 2026-11-14); these tests exercise the runner with it granted.
+  const runner = createRunner({ request, scanRadius: 1, below: 1, above: 3, pollIntervalMs: 20, timeoutMs: 100, delay: async milliseconds => { clock += milliseconds }, now: () => clock, logAllowance: () => true, ...options })
   return { runner, state, calls, block }
 }
 
@@ -994,4 +996,11 @@ test('resource disappearance, replacement, unknown state and missing tools have 
     })
     await assert.rejects(runner.actions.move_to({ near: resourceTarget, range: 3, resource: scenario.resource ?? 'logs', block: scenario.block ?? 'minecraft:acacia_log' }), error => error.code === scenario.expected && error.resourceAccessReady === false)
   }
+})
+
+test('without the long-trip allowance the runner refuses to cut a log, before any request', async () => {
+  const calls = []
+  const runner = createRunner({ request: async (method, path) => { calls.push(path); return {} }, pollIntervalMs: 20, timeoutMs: 100 })
+  await assert.rejects(() => runner.actions.gather_logs({ type: 'gather_logs', resource: 'logs', target: { x: 2, y: 65, z: 0 }, block: 'minecraft:oak_log' }), error => error.code === 'WOOD_LEAF_HARVEST_DISABLED')
+  assert.deepEqual(calls, [])
 })

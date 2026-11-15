@@ -61,7 +61,7 @@ function fixture (t, { factory = createRunner, mode = null, acknowledge = true }
     if (endpoint === '/mining/stop') return mining.stop('Fixture stop')
     throw Error('Unexpected fixture call: ' + endpoint)
   }
-  const runnerOptions = { request, now: () => base + time, delay: async ms => { time += ms; t.mock.timers.tick(ms); await turn() }, timeoutMs: 1200, pollIntervalMs: 50, onProgress: p => progress.push(p) }
+  const runnerOptions = { logAllowance: () => true, request, now: () => base + time, delay: async ms => { time += ms; t.mock.timers.tick(ms); await turn() }, timeoutMs: 1200, pollIntervalMs: 50, onProgress: p => progress.push(p) }
   const runner = factory(runnerOptions)
   const action = { type: 'gather_logs', target: copy(captured.resourceTarget), block: captured.resourceBlock, count: 1 }
   return { state, calls, wire, progress, runner, runnerOptions, movement, mining, broken: () => broken, action }
