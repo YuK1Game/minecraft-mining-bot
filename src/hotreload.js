@@ -32,6 +32,8 @@ function createHotReloader ({ entry, watchFiles = [], createContext, onSwap = ()
   entry = validateFile(entry)
   const files = [...new Map([entry, ...watchFiles.map(validateFile)].map(file => [keyOf(file), file])).values()]
   const watched = new Set(files.map(keyOf))
+  const forgotten = new Set()
+  const lazy = new Set()
   const directories = [...new Set(files.map(file => path.dirname(file)))]
   const sourceRoot = path.dirname(entry)
   const watchedDirectories = new Set()
@@ -86,6 +88,38 @@ function createHotReloader ({ entry, watchFiles = [], createContext, onSwap = ()
       await guarded(() => new Promise(resolve => setTimeout(resolve, Math.min(pollMs, remaining))), signal, remaining)
     }
   }
+  // A watched module that was deleted or renamed is dropped from the watch
+  // list. Live 2026-11-15: one removed file made validateSyntax throw ENOENT on
+  // every later reload, so no new code could be loaded until a restart. If a
+  // remaining module still requires it, loading fails and the current runtime
+  // stays; if the name comes back, its directory event starts a reload and
+  // dependency discovery watches it again.
+  function forgetMissingFiles () {
+    for (let index = files.length - 1; index >= 0; index--) {
+      const file = files[index]
+      if (file === entry || fs.existsSync(file)) continue
+      files.splice(index, 1)
+      watched.delete(keyOf(file)); forgotten.add(keyOf(file))
+      delete require.cache[file]
+      for (const parent of Object.values(require.cache)) parent.children = parent.children.filter(child => keyOf(child.filename) !== keyOf(file))
+    }
+  }
+  // A behaviour module first required after the last reload (inside a function
+  // that runs on spawn, or an inline require) is in the module cache but not
+  // yet on the watch list, so saving it changed nothing until some other file
+  // was saved. Its directory event marks it here and the next reload adopts it.
+  function loadedUnwatched (file) {
+    if (watched.has(keyOf(file)) || !/\.(?:js|cjs)$/i.test(file) || STABLE_FILES.test(path.basename(file))) return false
+    const relative = path.relative(sourceRoot, file)
+    if (relative.startsWith('..') || path.isAbsolute(relative)) return false
+    return Object.keys(require.cache).some(name => keyOf(name) === keyOf(file))
+  }
+  function adoptLazyFiles () {
+    for (const file of [...lazy]) {
+      lazy.delete(file)
+      try { registerFile(file) } catch { /* Not a file this reloader may watch. */ }
+    }
+  }
   function validateSyntax () {
     for (const file of files) {
       // Check again after an editor's atomic replace, before reading content.
@@ -112,7 +146,7 @@ function createHotReloader ({ entry, watchFiles = [], createContext, onSwap = ()
     file = validateFile(file)
     if (watched.has(keyOf(file))) return false
     files.push(file)
-    watched.add(keyOf(file))
+    watched.add(keyOf(file)); forgotten.delete(keyOf(file))
     if (backup) {
       backup.entries.set(file, backup.originalModules.get(file))
       for (const [parent, children] of backup.originalChildren) {
@@ -179,6 +213,8 @@ function createHotReloader ({ entry, watchFiles = [], createContext, onSwap = ()
       // active instance is touched. Continued churn retains it after4 tries.
       for(let attempt=0;attempt<4;attempt++) {
         await safePoint(signal)
+        forgetMissingFiles()
+        adoptLazyFiles()
         if(maySkip() && sourcesUnchanged())return skipWatchReload(reason)
         validateSyntax()
         status.phase = 'loading'
@@ -262,6 +298,7 @@ function createHotReloader ({ entry, watchFiles = [], createContext, onSwap = ()
   function reloadInternal (reason, fromWatch = false) {
     if (inFlight) { if(!fromWatch && activeRequest)activeRequest.force=true;return inFlight }
     if (stopped) return Promise.reject(cancelled())
+    adoptLazyFiles()
     if(fromWatch && sourcesUnchanged())return Promise.resolve(skipWatchReload(reason))
     const request={fromWatch,force:!fromWatch};activeRequest=request
     controller = new AbortController()
@@ -288,7 +325,9 @@ function createHotReloader ({ entry, watchFiles = [], createContext, onSwap = ()
   function watchDirectory (directory) {
     if (!watchedDirectories.has(keyOf(directory))) {
       const watcher = fs.watch(directory, (event, filename) => {
-        if (filename == null || watched.has(keyOf(path.resolve(directory, String(filename))))) enqueueWatchReload()
+        const file = filename == null ? null : path.resolve(directory, String(filename))
+        if (file && loadedUnwatched(file)) lazy.add(file)
+        if (file == null || watched.has(keyOf(file)) || forgotten.has(keyOf(file)) || lazy.has(file)) enqueueWatchReload()
       })
       watcher.on('error', report)
       watchers.push(watcher)
