@@ -6,8 +6,8 @@ const fs = require('node:fs')
 const Module = require('node:module')
 const path = require('node:path')
 const { setTimeout: wait } = require('node:timers/promises')
-const { createChest } = require('../src/chest')
-const { createUserBehaviors } = require('../src/user-behaviors')
+const { createChest } = require('../src/actions/chest')
+const { createUserBehaviors } = require('../src/combat/user-behaviors')
 
 const file = require.resolve('./runtime-user-behaviors.test')
 const fixture = new Module(file,module)
@@ -35,8 +35,8 @@ function setup (t, { timeout=900 }={}) {
     }
   })
   const overrides={
-    './chest':{createChest:o=>{actualChest=createChest({...o,timeoutMs:timeout});return actualChest}},
-    './user-behaviors':{createUserBehaviors:o=>{
+    './actions/chest':{createChest:o=>{actualChest=createChest({...o,timeoutMs:timeout});return actualChest}},
+    './combat/user-behaviors':{createUserBehaviors:o=>{
       root=o
       const ranged=arm('ranged')
       const preview=ranged.preview

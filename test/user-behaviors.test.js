@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createUserBehaviors } = require('../src/user-behaviors')
+const { createUserBehaviors } = require('../src/combat/user-behaviors')
 const turn = () => new Promise(resolve => setImmediate(resolve))
 async function turns (count = 12) { for (let n = 0; n < count; n++) await turn() }
 function deferred () { let resolve; const promise = new Promise(yes => { resolve = yes }); return { promise, resolve } }

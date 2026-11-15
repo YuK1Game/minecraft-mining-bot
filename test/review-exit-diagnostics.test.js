@@ -1,8 +1,8 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { buildRegions } = require('../src/quarry-region')
-const { planQuarryExit } = require('../src/quarry-exit-plan')
+const { buildRegions } = require('../src/quarry/quarry-region')
+const { planQuarryExit } = require('../src/quarry/exit/quarry-exit-plan')
 function fixture (patch) {
   const regions = buildRegions({ target: { chunks: [{ x: 0, z: 2 }] }, yTop: 62, yBottom: -64 })
   const getBlock = (x, y, z) => {

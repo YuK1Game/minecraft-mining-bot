@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const {nextDiamondAction}=require('../src/diamond-planner'),{nextSurvivalAction}=require('../src/survival-planner'),{supplyScope}=require('../src/supply-return'),{resourceMinHealth}=require('../src/learning-health'),{evaluateThreats}=require('../src/threats'),{createDurabilityReader}=require('../src/durability'),{createDiamondActions}=require('../src/diamond-actions')
+const {nextDiamondAction}=require('../src/survival/diamond-planner'),{nextSurvivalAction}=require('../src/survival/survival-planner'),{supplyScope}=require('../src/survival/supply-return'),{resourceMinHealth}=require('../src/safety/learning-health'),{evaluateThreats}=require('../src/combat/threats'),{createDurabilityReader}=require('../src/inventory/durability'),{createDiamondActions}=require('../src/survival/diamond-actions')
 const copy=v=>structuredClone(v),key=p=>`${p.x},${p.y},${p.z}`
 function nativeFixture(t){
   const file=require.resolve('./tunneling-stone-access.test.js'),source=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0],m=new Module(file,module)

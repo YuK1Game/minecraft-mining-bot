@@ -1,8 +1,8 @@
 'use strict'
 const { test }=require('node:test'),assert=require('node:assert/strict')
 const fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const { makeActions }=require('../src/runner')
-const { createAutonomy }=require('../src/autonomy')
+const { makeActions }=require('../src/survival/runner')
+const { createAutonomy }=require('../src/survival/autonomy')
 const file=require.resolve('./runner.test.js'),loaded=new Module(file,module)
 loaded.filename=file;loaded.paths=Module._nodeModulePaths(path.dirname(file));loaded._compile(fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]+'\nmodule.exports={fixture};',file)
 const fixture=loaded.exports.fixture,copy=v=>structuredClone(v)

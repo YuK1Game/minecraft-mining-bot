@@ -4,9 +4,9 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setImmediate: nextTurn } = require('node:timers/promises')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { createFood, isSupportedFood } = require('../src/food')
-const { buildStationaryInput, createInput } = require('../src/input')
-const { createCrafting } = require('../src/crafting')
+const { createFood, isSupportedFood } = require('../src/actions/food')
+const { buildStationaryInput, createInput } = require('../src/movement/input')
+const { createCrafting } = require('../src/actions/crafting')
 
 const extra = { has_nbt: 'false', can_place_on: [], can_destroy: [] }
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: structuredClone(extra) })

@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createMovement, movementInput } = require('../src/movement')
-const { createPhysics } = require('../src/physics')
+const { createMovement, movementInput } = require('../src/movement/movement')
+const { createPhysics } = require('../src/movement/physics')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
 
 let preparedFixturePhysics = null

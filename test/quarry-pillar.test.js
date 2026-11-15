@@ -2,9 +2,9 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createPhysics } = require('../src/physics')
-const { createQuarryPillar, serverPose } = require('../src/quarry-pillar')
-const { createInteractions } = require('../src/interactions')
+const { createPhysics } = require('../src/movement/physics')
+const { createQuarryPillar, serverPose } = require('../src/quarry/exit/quarry-pillar')
+const { createInteractions } = require('../src/actions/interactions')
 
 function fixture ({ dirt = 64, extraDirt = 0, placement = 'both', position = true, delay = 50, interrupt = null, realPlacement = false, onEquip = null, oracle = null, staleRaw = false, clockStamp = false } = {}) {
   const blocks = new Map(), snapshots = [], placements = [], releases = []

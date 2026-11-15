@@ -1,7 +1,7 @@
 'use strict'
 const {test}=require('node:test'), assert=require('node:assert/strict')
-const {createQuarryV22Reset}=require('../src/quarry-v22-reset')
-const {allowed}=require('../src/loadout-command')
+const {createQuarryV22Reset}=require('../src/loadout/quarry-v22-reset')
+const {allowed}=require('../src/loadout/loadout-command')
 const missing=()=>({slot:0,known:true,empty:true,name:null,count:0})
 function fixture({x=8,nonempty=false,rejectCommand=true}={}){
  const state={phase:'spawned',profile:'bot',realm:{id:'42',name:'Test'},connectionId:'conn',startedAt:'2026-11-11T10:00:00Z',

@@ -1,10 +1,10 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryJob } = require('../src/quarry-job')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
-const { validateJobId, documentWorld, assertJobWorld } = require('../src/quarry-job-identity')
-const { selectRecoveryCandidate } = require('../src/quarry-recovery')
+const { validateJobId, documentWorld, assertJobWorld } = require('../src/quarry/quarry-job-identity')
+const { selectRecoveryCandidate } = require('../src/quarry/quarry-recovery')
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 function deferred () { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b }); return { promise, resolve, reject } }
 async function until (predicate, ms = 10000) { const end = Date.now() + ms; while (!predicate()) { if (Date.now() > end) throw new Error('condition timed out'); await delay(5) } }

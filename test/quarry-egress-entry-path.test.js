@@ -2,9 +2,9 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryJob } = require('../src/quarry-job')
-const { createQuarryEgressRuntime } = require('../src/quarry-egress-runtime')
-const { createQuarryRuntimeAdapter } = require('../src/quarry-runtime-adapter')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
+const { createQuarryEgressRuntime } = require('../src/quarry/exit/quarry-egress-runtime')
+const { createQuarryRuntimeAdapter } = require('../src/quarry/quarry-runtime-adapter')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
 async function until (predicate) {

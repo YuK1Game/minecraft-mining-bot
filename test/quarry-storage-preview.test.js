@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryRuntimeAdapter } = require('../src/quarry-runtime-adapter')
+const { createQuarryRuntimeAdapter } = require('../src/quarry/quarry-runtime-adapter')
 
 function fixture ({ ready = () => false } = {}) {
   const state = { position: { x: 0.5, y: 1.62, z: 0.5 } }

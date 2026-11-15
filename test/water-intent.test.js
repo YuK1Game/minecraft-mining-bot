@@ -3,8 +3,8 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('node:path'), fs = require('node:fs'), Module = require('node:module')
 const load = () => {
-  if (!process.env.RECOVERY_TEST_SOURCE) return require('../src/recovery')
-  const filename = path.resolve(__dirname, '../src/recovery.js'), m = new Module(filename, module)
+  if (!process.env.RECOVERY_TEST_SOURCE) return require('../src/safety/recovery')
+  const filename = path.resolve(__dirname, '../src/safety/recovery.js'), m = new Module(filename, module)
   m.filename = filename; m.paths = Module._nodeModulePaths(path.dirname(filename))
   m._compile(fs.readFileSync(path.resolve(process.env.RECOVERY_TEST_SOURCE), 'utf8'), filename)
   return m.exports

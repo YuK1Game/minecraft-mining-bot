@@ -1,10 +1,10 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createPhysics } = require('../src/physics')
-const { createNavigator } = require('../src/navigation')
-const { createMovement } = require('../src/movement')
-const { createGuardedRoute } = require('../src/guarded-route')
+const { createPhysics } = require('../src/movement/physics')
+const { createNavigator } = require('../src/movement/navigation')
+const { createMovement } = require('../src/movement/movement')
+const { createGuardedRoute } = require('../src/movement/guarded-route')
 const copy = value => structuredClone(value)
 const world = { getBlock: (x, y, z) => ({ known: true, name: y < 65 ? 'minecraft:stone' : 'minecraft:air', properties: {}, boundingBox: y < 65 ? 'block' : 'empty', extra: [] }) }
 const prepared = createPhysics({ world })

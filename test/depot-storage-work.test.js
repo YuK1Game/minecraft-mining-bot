@@ -1,7 +1,7 @@
 'use strict'
 const { test }=require('node:test'),assert=require('node:assert/strict')
-const {createDepotStorageWork}=require('../src/depot-storage-work')
-const {createCrafting}=require('../src/crafting'),{createChest}=require('../src/chest'),{createBaseContinuation,continuationScope}=require('../src/base-continuation')
+const {createDepotStorageWork}=require('../src/survival/depot-storage-work')
+const {createCrafting}=require('../src/actions/crafting'),{createChest}=require('../src/actions/chest'),{createBaseContinuation,continuationScope}=require('../src/survival/base-continuation')
 const air=()=>({network_id:0,count:0,metadata:0,has_stack_id:false,block_runtime_id:0,extra:{has_nbt:0,can_place_on:[],can_destroy:[]}})
 const raw=(id,count,stack)=>({...air(),network_id:id,count,has_stack_id:true,stack_id:stack})
 const ingredient=name=>({type:'valid',descriptor_type:'name',name,metadata:0,count:1}),board=()=>({type:'valid',descriptor_type:'item_tag',tag:'minecraft:planks',metadata:0,count:1})

@@ -2,8 +2,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createCombatCoordinator } = require(process.env.COMBAT_COORDINATOR_TEST_SOURCE ?? '../src/combat-coordinator')
-const { createQuarryCombatBridge } = require('../src/quarry-combat-bridge')
+const { createCombatCoordinator } = require(process.env.COMBAT_COORDINATOR_TEST_SOURCE ?? '../src/combat/combat-coordinator')
+const { createQuarryCombatBridge } = require('../src/quarry/quarry-combat-bridge')
 
 function deferred () { let resolve; let reject; const promise = new Promise((a, b) => { resolve = a; reject = b }); return { promise, resolve, reject } }
 function fixture ({ bow = false, targetX = 2.2, acquireHook = null, resumeHook = null, approachHook = null, meleeHook = null, rangedHook = null, sleepHook = null, drainHook = null, ...options } = {}) {

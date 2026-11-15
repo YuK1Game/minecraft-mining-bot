@@ -3,7 +3,7 @@
 // doubles. No Minecraft connection, operator command or user data is involved.
 const test = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm')
-const { createSnapshotReader } = require('../src/runtime-observation-views')
+const { createSnapshotReader } = require('../src/runtime/runtime-observation-views')
 const source = require('./helpers/runtime-source').runtimeSource()
 function section (name, next) {
   const start = source.indexOf('  function ' + name + ' ('), end = source.indexOf('  function ' + next + ' (', start)

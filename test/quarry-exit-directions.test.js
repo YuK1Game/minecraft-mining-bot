@@ -2,9 +2,9 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { defaults, createQuarryJob } = require('../src/quarry-job')
-const { buildRegions } = require('../src/quarry-region')
-const { normalizeExit, planQuarryExit, permitsExitAction } = require('../src/quarry-exit-plan')
+const { defaults, createQuarryJob } = require('../src/quarry/quarry-job')
+const { buildRegions } = require('../src/quarry/quarry-region')
+const { normalizeExit, planQuarryExit, permitsExitAction } = require('../src/quarry/exit/quarry-exit-plan')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
 function flatFixture () {

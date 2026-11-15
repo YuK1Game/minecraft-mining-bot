@@ -1,129 +1,129 @@
 'use strict'
 
-const { diagnoseStrikeBody } = require('./combat-body-diagnostic')
+const { diagnoseStrikeBody } = require('./combat/combat-body-diagnostic')
 
-const { createCombatExposure } = require('./combat-exposure')
-const { createQuarryStore } = require('./quarry-store')
-const { assertJobWorld } = require('./quarry-job-identity')
-const { RESUMABLE: QUARRY_AUTO_RESUMABLE, recoverable: recoverableQuarry, selectRecoveryCandidate, retryableRecoveryError } = require('./quarry-recovery')
+const { createCombatExposure } = require('./combat/combat-exposure')
+const { createQuarryStore } = require('./quarry/quarry-store')
+const { assertJobWorld } = require('./quarry/quarry-job-identity')
+const { RESUMABLE: QUARRY_AUTO_RESUMABLE, recoverable: recoverableQuarry, selectRecoveryCandidate, retryableRecoveryError } = require('./quarry/quarry-recovery')
 
-const { createActorReader, createSnapshotReader } = require('./runtime-observation-views')
-const { inventoryRefreshDelay, refreshInventoryWithRetry } = require('./inventory-refresh')
-const { profileCpu, measureSnapshots } = require('./runtime-diagnostics')
-const { createSightStanceSearch } = require('./sight-stance-search')
-const { createQuarryPortableStorage } = require('./quarry-portable-storage')
-const { createQuarrySupplies } = require('./quarry-supplies')
-const { createQuarryV22Equipment } = require('./quarry-v22-equipment')
-const { createQuarryV22ChestWork } = require('./quarry-v22-chest-work')
-const { createRuntimeV22ChestReset, receivedEquipmentView, jobPending } = require('./loadout-runtime-adapter')
-const { createInventoryStore } = require('./inventory-store')
-const { createEventLoopStallWatch, describeWork } = require('./event-loop-stall')
-const { currentLifeId } = require('./life-identity')
-const { createManualChestRuntime } = require('./manual-chest-runtime-adapter')
-const { createChunkTravel } = require('./chunk-travel')
-const { chunkTravelThreatsClear } = require('./chunk-travel-threats')
-const { createControlLocation } = require('./control-location')
-const { normalizeChunkArea } = require('./chunk-area')
-const { historicalSourceRejection } = require('./rejected-source-history')
-const { historicalEmptyPlacement } = require('./placement-source-history')
+const { createActorReader, createSnapshotReader } = require('./runtime/runtime-observation-views')
+const { inventoryRefreshDelay, refreshInventoryWithRetry } = require('./inventory/inventory-refresh')
+const { profileCpu, measureSnapshots } = require('./runtime/runtime-diagnostics')
+const { createSightStanceSearch } = require('./combat/sight-stance-search')
+const { createQuarryPortableStorage } = require('./quarry/storage/quarry-portable-storage')
+const { createQuarrySupplies } = require('./quarry/storage/quarry-supplies')
+const { createQuarryV22Equipment } = require('./loadout/quarry-v22-equipment')
+const { createQuarryV22ChestWork } = require('./loadout/quarry-v22-chest-work')
+const { createRuntimeV22ChestReset, receivedEquipmentView, jobPending } = require('./loadout/loadout-runtime-adapter')
+const { createInventoryStore } = require('./inventory/inventory-store')
+const { createEventLoopStallWatch, describeWork } = require('./runtime/event-loop-stall')
+const { currentLifeId } = require('./common/life-identity')
+const { createManualChestRuntime } = require('./loadout/manual-chest-runtime-adapter')
+const { createChunkTravel } = require('./travel/chunk-travel')
+const { chunkTravelThreatsClear } = require('./travel/chunk-travel-threats')
+const { createControlLocation } = require('./movement/control-location')
+const { normalizeChunkArea } = require('./common/chunk-area')
+const { historicalSourceRejection } = require('./quarry/storage/rejected-source-history')
+const { historicalEmptyPlacement } = require('./quarry/storage/placement-source-history')
 
-const { resourceMinHealth } = require('./learning-health')
+const { resourceMinHealth } = require('./safety/learning-health')
 
 const { setTimeout: delay } = require('node:timers/promises')
 // Reloadable behaviour only. The client, authentication, world observations,
 // inventory journal, IDs and predicted working pose are owned by the host.
-const { createInput } = require('./input')
-const { createInputHistory } = require('./input-history')
-const { createPhysics } = require('./physics')
-const { createWaterPreviewObserver } = require('./water-preview-observer')
-const { createMining } = require('./mining')
-const { canonicalWindowId, sameWindowId } = require('./container-types')
-const { createActionOwnerTracker } = require('./action-owner-tracker')
-const { defenseEnabled, createDefenseAnchor, defenseMovementAllowed } = require('./combat-defense-policy')
-const { evaluateCombatThreat } = require('./combat-threat-policy')
-const { proveGroundAccess } = require('./ground-access-proof')
-const { createQuarryJob } = require('./quarry-job')
-const { createQuarryRuntimeAdapter } = require('./quarry-runtime-adapter')
-const { createQuarryPillar } = require('./quarry-pillar')
-const { createQuarryEgressRuntime } = require('./quarry-egress-runtime')
-const { createServerPositionVerifier, observedScope } = require('./server-position-verifier')
-const { createStoragePlacementAudit } = require('./storage-placement-audit')
-const { createPlainsLocator } = require('./locate-plains')
-const { createQuarryTerrainRequester } = require('./quarry-terrain')
-const { permitsExitAction } = require('./quarry-exit-plan')
-const { blockRule: quarryBlockRule, selectTool: quarrySelectTool, nameOf: quarryNameOf } = require('./quarry-rules')
-const { createWalker } = require('./walking')
-const { createMovement } = require('./movement')
-const { createNavigator } = require('./navigation')
-const { surveyShore } = require('./shore-survey')
-const { createShoreLandmarks } = require('./shore-landmarks')
-const { createCrafting } = require('./crafting')
-const { createInteractions } = require('./interactions')
-const { createCombat } = require('./combat')
-const { createWaterCounterattack } = require('./water-counterattack')
-const { createInventory } = require('./inventory')
-const { createInventoryInspection } = require('./inventory-inspection')
-const { createArmor } = require('./armor')
+const { createInput } = require('./movement/input')
+const { createInputHistory } = require('./movement/input-history')
+const { createPhysics } = require('./movement/physics')
+const { createWaterPreviewObserver } = require('./movement/water-preview-observer')
+const { createMining } = require('./actions/mining')
+const { canonicalWindowId, sameWindowId } = require('./inventory/container-types')
+const { createActionOwnerTracker } = require('./common/action-owner-tracker')
+const { defenseEnabled, createDefenseAnchor, defenseMovementAllowed } = require('./combat/combat-defense-policy')
+const { evaluateCombatThreat } = require('./combat/combat-threat-policy')
+const { proveGroundAccess } = require('./movement/ground-access-proof')
+const { createQuarryJob } = require('./quarry/quarry-job')
+const { createQuarryRuntimeAdapter } = require('./quarry/quarry-runtime-adapter')
+const { createQuarryPillar } = require('./quarry/exit/quarry-pillar')
+const { createQuarryEgressRuntime } = require('./quarry/exit/quarry-egress-runtime')
+const { createServerPositionVerifier, observedScope } = require('./movement/server-position-verifier')
+const { createStoragePlacementAudit } = require('./quarry/storage/storage-placement-audit')
+const { createPlainsLocator } = require('./travel/locate-plains')
+const { createQuarryTerrainRequester } = require('./quarry/quarry-terrain')
+const { permitsExitAction } = require('./quarry/exit/quarry-exit-plan')
+const { blockRule: quarryBlockRule, selectTool: quarrySelectTool, nameOf: quarryNameOf } = require('./quarry/quarry-rules')
+const { createWalker } = require('./movement/walking')
+const { createMovement } = require('./movement/movement')
+const { createNavigator } = require('./movement/navigation')
+const { surveyShore } = require('./movement/shore-survey')
+const { createShoreLandmarks } = require('./movement/shore-landmarks')
+const { createCrafting } = require('./actions/crafting')
+const { createInteractions } = require('./actions/interactions')
+const { createCombat } = require('./combat/combat')
+const { createWaterCounterattack } = require('./combat/water-counterattack')
+const { createInventory } = require('./inventory/inventory')
+const { createInventoryInspection } = require('./inventory/inventory-inspection')
+const { createArmor } = require('./actions/armor')
 const { isDeepStrictEqual } = require('node:util')
-const { createUserBehaviors } = require('./user-behaviors')
-const { createFurnace } = require('./furnace')
-const { createChest } = require('./chest')
-const { createSurfaceReturn, returnScope } = require('./surface-return')
-const { bindRecentDamage, observeOwnDamageEffect, planRecentDamageRetreat, retreatFrameAllowed } = require('./recent-damage-retreat')
-const { createSelfResistance, createSelfSlowFalling, createSelfEffectEvents } = require('./self-resistance')
-const { createDepotMission } = require('./depot-mission')
-const { createDepotPrebuild, planPrebuildChestStance } = require('./depot-prebuild')
-const { createWorksiteCamp, createWorksiteCampPrebuild } = require('./worksite-camp')
-const { rankExplorationTargets } = require('./exploration')
-const { rankCampResourceTargets } = require('./camp-local-resource')
-const { planOwnedCampReturn } = require('./owned-camp-return')
-const { createOwnedCampBootstrap } = require('./owned-camp-bootstrap')
-const { createDepotStorageWork } = require('./depot-storage-work')
-const { planDepotStorageAccess, selectDepotTableCell } = require('./depot-storage-access')
-const { continuationScope } = require('./base-continuation')
-const { planContinuationResource } = require('./continuation-resource')
-const { createProspecting } = require('./prospecting')
-const { createExcavation } = require('./excavation')
-const { nextDiamondAction } = require('./diamond-planner')
-const { supplyScope, tableMaterialShortfall, updateStationCatalog, readStationPages, planSupplyReturn } = require('./supply-return')
-const { portableKit, reservedWorksiteCells, selectPortableWorksite, preparationTableTarget, portableFallbackStop, nextPortableStep, verifyPortableDeployment, portableSiteValid, useRays } = require('./portable-worksite')
-const { immediateDiamond } = require('./immediate-diamond')
-const { createDiamondActions } = require('./diamond-actions')
-const { createDurabilityReader } = require('./durability')
-const { createTunneling } = require('./tunneling')
-const { annotateTerrainThreats, terrainOcclusionApplies } = require('./terrain-threats')
-const { useCurrentAccess } = require('./action-access')
-const { createRecovery, planLearningShore, proveLearningShoreRoute } = require('./recovery')
-const { createFood, isSupportedFood } = require('./food')
-const { createForaging } = require('./foraging')
-const { normalizePlayerCorrection } = require('./server-physics')
-const { evaluateThreats } = require('./threats')
-const threatReachability = require('./threat-reachability')
-const { landEdgeRecenterTargets } = require('./edge-recenter')
+const { createUserBehaviors } = require('./combat/user-behaviors')
+const { createFurnace } = require('./actions/furnace')
+const { createChest } = require('./actions/chest')
+const { createSurfaceReturn, returnScope } = require('./survival/surface-return')
+const { bindRecentDamage, observeOwnDamageEffect, planRecentDamageRetreat, retreatFrameAllowed } = require('./safety/recent-damage-retreat')
+const { createSelfResistance, createSelfSlowFalling, createSelfEffectEvents } = require('./combat/self-resistance')
+const { createDepotMission } = require('./survival/depot-mission')
+const { createDepotPrebuild, planPrebuildChestStance } = require('./survival/depot-prebuild')
+const { createWorksiteCamp, createWorksiteCampPrebuild } = require('./survival/worksite-camp')
+const { rankExplorationTargets } = require('./survival/exploration')
+const { rankCampResourceTargets } = require('./survival/camp-local-resource')
+const { planOwnedCampReturn } = require('./survival/owned-camp-return')
+const { createOwnedCampBootstrap } = require('./survival/owned-camp-bootstrap')
+const { createDepotStorageWork } = require('./survival/depot-storage-work')
+const { planDepotStorageAccess, selectDepotTableCell } = require('./survival/depot-storage-access')
+const { continuationScope } = require('./survival/base-continuation')
+const { planContinuationResource } = require('./survival/continuation-resource')
+const { createProspecting } = require('./survival/prospecting')
+const { createExcavation } = require('./survival/excavation')
+const { nextDiamondAction } = require('./survival/diamond-planner')
+const { supplyScope, tableMaterialShortfall, updateStationCatalog, readStationPages, planSupplyReturn } = require('./survival/supply-return')
+const { portableKit, reservedWorksiteCells, selectPortableWorksite, preparationTableTarget, portableFallbackStop, nextPortableStep, verifyPortableDeployment, portableSiteValid, useRays } = require('./survival/portable-worksite')
+const { immediateDiamond } = require('./survival/immediate-diamond')
+const { createDiamondActions } = require('./survival/diamond-actions')
+const { createDurabilityReader } = require('./inventory/durability')
+const { createTunneling } = require('./survival/tunneling')
+const { annotateTerrainThreats, terrainOcclusionApplies } = require('./combat/terrain-threats')
+const { useCurrentAccess } = require('./actions/action-access')
+const { createRecovery, planLearningShore, proveLearningShoreRoute } = require('./safety/recovery')
+const { createFood, isSupportedFood } = require('./actions/food')
+const { createForaging } = require('./survival/foraging')
+const { normalizePlayerCorrection } = require('./movement/server-physics')
+const { evaluateThreats } = require('./combat/threats')
+const threatReachability = require('./combat/threat-reachability')
+const { landEdgeRecenterTargets } = require('./movement/edge-recenter')
 // melee_kite standpoint distances from the target after a hit.
 const KITE_RADII = [3.4, 3.2, 3.6]
 // Retreat directions relative to straight away from the target (radians).
 const KITE_ANGLES = [0, 35, -35, 70, -70].map(deg => deg * Math.PI / 180)
 // Up to 12 x 50ms waiting for a supported landing before a kite step.
 const KITE_LANDING_POLLS = 12
-const { constrainedSecondaryFloor, selectConstrainedPrimary, outsideSkeletonFloor, unarmedCreeperZombie: isUnarmedCreeperZombie, unarmedWaterZombie, unarmedCreeperDrowned, unarmedWaterDrowned, unarmedZombieFloor, outsideUnarmedSpiderFloor, activeUnarmedSpiderFloor } = require('./escape-policy')
-const { normalizeServerMotion } = require('./server-motion')
-const { createShelter } = require('./shelter')
-const { planShelter } = require('./shelter-planner')
-const { nextSurvivalAction } = require('./survival-planner')
-const { serverInventoryUpdate } = require('./inventory-updates')
-const { createHut } = require('./hut')
-const { planHut } = require('./hut-planner')
-const { createBaseProtection } = require('./base-protection')
-const { createGuardedRoute } = require('./guarded-route')
-const { createIdleSafety } = require('./idle-safety')
-const { knownSurfaceBody, lowHealthSurfaceEligible, proveLowHealthSurfaceRoute } = require('./low-health-water')
-const { WORK_MARGIN, captureWorkActors, resolveWorkActors, workEscapeEvaluation } = require('./work-clearance')
-const { planEmergencyLeafAsync, clearanceDistanceAllowed, clearanceEquipmentKey, clearanceTargetAllowed } = require('./emergency-leaf')
-const { planProtectiveDrownedStepAsync, drownedStepThreatAllowed, drownedStepEquipmentKey, protectiveDrownedStepCurrent, skeletonStepThreatAllowed, planProtectiveSkeletonStepAsync, protectiveSkeletonStepCurrent } = require('./protective-drowned-step')
-const { createMissionJournal } = require('./mission-journal')
-const { createAutonomy, verifiedCoveredRoom } = require('./autonomy')
-const { createRunner, createHttpClient } = require('./runner')
+const { constrainedSecondaryFloor, selectConstrainedPrimary, outsideSkeletonFloor, unarmedCreeperZombie: isUnarmedCreeperZombie, unarmedWaterZombie, unarmedCreeperDrowned, unarmedWaterDrowned, unarmedZombieFloor, outsideUnarmedSpiderFloor, activeUnarmedSpiderFloor } = require('./movement/escape-policy')
+const { normalizeServerMotion } = require('./movement/server-motion')
+const { createShelter } = require('./survival/shelter')
+const { planShelter } = require('./survival/shelter-planner')
+const { nextSurvivalAction } = require('./survival/survival-planner')
+const { serverInventoryUpdate } = require('./inventory/inventory-updates')
+const { createHut } = require('./survival/hut')
+const { planHut } = require('./survival/hut-planner')
+const { createBaseProtection } = require('./safety/base-protection')
+const { createGuardedRoute } = require('./movement/guarded-route')
+const { createIdleSafety } = require('./safety/idle-safety')
+const { knownSurfaceBody, lowHealthSurfaceEligible, proveLowHealthSurfaceRoute } = require('./movement/low-health-water')
+const { WORK_MARGIN, captureWorkActors, resolveWorkActors, workEscapeEvaluation } = require('./safety/work-clearance')
+const { planEmergencyLeafAsync, clearanceDistanceAllowed, clearanceEquipmentKey, clearanceTargetAllowed } = require('./safety/emergency-leaf')
+const { planProtectiveDrownedStepAsync, drownedStepThreatAllowed, drownedStepEquipmentKey, protectiveDrownedStepCurrent, skeletonStepThreatAllowed, planProtectiveSkeletonStepAsync, protectiveSkeletonStepCurrent } = require('./safety/protective-drowned-step')
+const { createMissionJournal } = require('./survival/mission-journal')
+const { createAutonomy, verifiedCoveredRoom } = require('./survival/autonomy')
+const { createRunner, createHttpClient } = require('./survival/runner')
 const RUNTIME_VERSION = '0.2.0-hot-reload'
 const USER_NAVIGATION_INTENT = Symbol.for('minecraft.bot.runtime.userNavigationIntent')
 
@@ -1324,7 +1324,7 @@ function createRuntime (host) {
       if (!longTravelLogAllowance()) return false
       // Main slots may hold only cheap regatherable items (decision a, 2026-11-14);
       // armour and offhand stay empty.
-      const cheap = require('./learning-health').cheapItem
+      const cheap = require('./safety/learning-health').cheapItem
       for (const [container, size] of [['main', 36], ['armor', 4], ['offhand', 1]]) {
         const v = inventoryStore.view(container)
         if (v.known !== true || v.slots.length !== size || !v.slots.every(slot => slot.received === true && slot.raw && (slot.raw.network_id === 0 || slot.raw.count === 0 || container === 'main' && cheap(crafting.itemNameOf(slot.raw.network_id))))) return false
@@ -1806,7 +1806,7 @@ function createRuntime (host) {
   // This part lives in autonomy-runtime.js. It reads and writes these bindings of
   // this closure through accessors, so each use sees the current value exactly
   // as the code did when it was written here.
-  const autonomyRuntime = require('./autonomy-runtime').createAutonomyRuntime({
+  const autonomyRuntime = require('./runtime/autonomy-runtime').createAutonomyRuntime({
     get activeBase () { return activeBase },
     get actualLifeId () { return actualLifeId },
     get applyStoneAccess () { return applyStoneAccess },
@@ -2307,7 +2307,7 @@ function createRuntime (host) {
     // This part lives in idle-safety-runtime.js. It reads and writes these bindings of
     // this closure through accessors, so each use sees the current value exactly
     // as the code did when it was written here.
-    const idleSafetyRuntime = require('./idle-safety-runtime').createIdleSafetyRuntime({
+    const idleSafetyRuntime = require('./runtime/idle-safety-runtime').createIdleSafetyRuntime({
       get activeUnarmedSpiderFloor () { return activeUnarmedSpiderFloor },
       get actualLifeId () { return actualLifeId },
       get autonomy () { return autonomyRuntime.autonomy },
@@ -2433,7 +2433,7 @@ function createRuntime (host) {
     // This part lives in user-control-runtime.js. It reads and writes these bindings of
     // this closure through accessors, so each use sees the current value exactly
     // as the code did when it was written here.
-    const userControl = require('./user-control-runtime').createUserControlRuntime({
+    const userControl = require('./runtime/user-control-runtime').createUserControlRuntime({
       get actualLifeId () { return actualLifeId },
       get allActors () { return allActors },
       get armor () { return armor },
@@ -2933,7 +2933,7 @@ function createRuntime (host) {
   // This part lives in runtime-operations.js. It reads and writes these bindings of
   // this closure through accessors, so each use sees the current value exactly
   // as the code did when it was written here.
-  const runtimeOperations = require('./runtime-operations').createRuntimeOperations({
+  const runtimeOperations = require('./runtime/runtime-operations').createRuntimeOperations({
     get activeBase () { return activeBase },
     get allActors () { return allActors },
     get armor () { return armor },
@@ -3580,7 +3580,7 @@ function createRuntime (host) {
     return require('node:path').resolve(__dirname, '..', '.local', 'shulker-recovery', `${id}.json`)
   }
   async function saveManualShulkerRecovery (document) {
-    const { validateRecoveryDocument } = require('./manual-shulker-recovery')
+    const { validateRecoveryDocument } = require('./loadout/manual-shulker-recovery')
     const doc = validateRecoveryDocument(document), file = manualShulkerFile(doc.id)
     if (!manualShulkerDocument || doc.id !== manualShulkerDocument.id || !isDeepStrictEqual(doc.position, manualShulkerDocument.position) || !isDeepStrictEqual(doc.world, manualShulkerDocument.world) || !isDeepStrictEqual(doc.expectedContents, manualShulkerDocument.expectedContents)) throw new Error('SHULKER_RECOVERY_DOCUMENT_CHANGED')
     const fs = require('node:fs/promises'), path = require('node:path'), tmp = `${file}.${process.pid}.tmp`
@@ -3592,7 +3592,7 @@ function createRuntime (host) {
   async function loadManualShulkerRecovery (id) {
     requireIdle({ inventoryRequired: false })
     const ticket = ++manualShulkerLoadSequence, generation = quarryPorts
-    const fs = require('node:fs/promises'), { validateRecoveryDocument } = require('./manual-shulker-recovery')
+    const fs = require('node:fs/promises'), { validateRecoveryDocument } = require('./loadout/manual-shulker-recovery')
     const file = manualShulkerFile(id), stat = await fs.stat(file)
     if (stat.size > 262144) throw new Error('SHULKER_RECOVERY_DOCUMENT_TOO_LARGE')
     const doc = validateRecoveryDocument(JSON.parse(await fs.readFile(file, 'utf8')))
@@ -3615,7 +3615,7 @@ function createRuntime (host) {
   }
   function getManualShulkerRecovery () {
     if (manualShulkerRecovery) return manualShulkerRecovery
-    const { createManualShulkerRecovery } = require('./manual-shulker-recovery')
+    const { createManualShulkerRecovery } = require('./loadout/manual-shulker-recovery')
     const live = () => { if (!quarryPorts) throw new Error('SHULKER_RECOVERY_MOTION_NOT_READY'); return quarryPorts }
     const own = fn => (...args) => live().own(fn)(...args)
     manualShulkerRecovery = createManualShulkerRecovery({
@@ -3717,7 +3717,8 @@ function createRuntime (host) {
   // This part lives in quarry-runtime.js. It reads and writes these bindings of
   // this closure through accessors, so each use sees the current value exactly
   // as the code did when it was written here.
-  const quarryRuntime = require('./quarry-runtime').createQuarryRuntime({
+  const quarryRuntime = require('./runtime/quarry-runtime').createQuarryRuntime({
+    get __dirname () { return __dirname },
     get armor () { return armor },
     get armorTask () { return armorTask },
     get assertJobWorld () { return assertJobWorld },
@@ -3975,14 +3976,15 @@ function createRuntime (host) {
   // move-origin.js): a stale or distant received position without support is
   // witnessed once before a route is planned.
   async function reconcilePlanningOrigin () {
-    const { reconcileMoveOrigin } = require('./move-origin')
+    const { reconcileMoveOrigin } = require('./movement/move-origin')
     return reconcileMoveOrigin({ state: quarryState(), confirm: (feet, options) => confirmQuarryPosition(feet, options), discardPrediction: discardWorkingPrediction,
       hasSupport: feet => idlePhysics ? idlePhysics.withWorld(host.world, { allowWater: true }).hasSupport(feet) : true, log: message => host.log(message) })
   }
   // Long-distance travel lives in long-travel-runtime.js. It reads and writes
   // these bindings of this closure through accessors, so each use sees the
   // current value exactly as the code did when it was written here.
-  const travelRuntime = require('./long-travel-runtime').createLongTravelRuntime({
+  const travelRuntime = require('./runtime/long-travel-runtime').createLongTravelRuntime({
+    get __dirname () { return __dirname },
     get actualLifeId () { return actualLifeId },
     get allActors () { return allActors },
     get armor () { return armor },

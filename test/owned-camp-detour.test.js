@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {planOwnedCampReturn}=require('../src/owned-camp-return'),{createNavigator}=require('../src/navigation'),{continuationScope}=require('../src/base-continuation')
+const {planOwnedCampReturn}=require('../src/survival/owned-camp-return'),{createNavigator}=require('../src/movement/navigation'),{continuationScope}=require('../src/survival/base-continuation')
 const copy=v=>structuredClone(v),key=p=>`${p.x},${p.y},${p.z}`
 function fixture(){
  const state={phase:'spawned',profile:'bot',realm:{id:'21225335'},connectionId:'CONTROLLED_DETOUR',startedAt:'2026-11-01T19:00:00Z',runtimeEntityId:'41',dimension:'overworld',lifecycle:{phase:'alive',deathId:1},health:20,food:{hunger:20},gameMode:'survival',threatPolicy:'online_learning',position:{x:.5,y:66.62,z:.5},positionUpdatedAt:1,predicted:{position:{x:.5,y:66.62,z:.5},physicsState:{position:{x:.5,y:65,z:.5},velocity:{x:0,y:-.0784000015258789,z:0},onGround:true,isInWater:false,isInLava:false}},positionSource:'client_prediction',inventory:{known:true,items:[{slot:0,name:'minecraft:oak_log',count:2}]},entities:[],entityStats:{unknownPositions:0}}

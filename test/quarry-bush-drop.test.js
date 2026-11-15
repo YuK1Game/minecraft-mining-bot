@@ -3,9 +3,9 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const live = require('./fixtures/quarry-bush-drop-stop-20261106.json')
-const { deriveDropGuarantee, checkDropGuarantees } = require('../src/quarry-drop-guarantee')
-const { fullDropBudget } = require('../src/quarry-capacity-batch')
-const { createQuarryJob } = require('../src/quarry-job')
+const { deriveDropGuarantee, checkDropGuarantees } = require('../src/quarry/quarry-drop-guarantee')
+const { fullDropBudget } = require('../src/quarry/storage/quarry-capacity-batch')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
 test('the received1.26.60 bush fixture agrees with the registry and a real non-tool hand has no drop or capacity charge', () => {

@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { buildTerrainThreatEvidence, annotateTerrainThreats, terrainOcclusionApplies } = require('../src/terrain-threats')
-const { evaluateThreats } = require('../src/threats')
+const { buildTerrainThreatEvidence, annotateTerrainThreats, terrainOcclusionApplies } = require('../src/combat/terrain-threats')
+const { evaluateThreats } = require('../src/combat/threats')
 
 function fixture ({ layers = [60, 61, 62], x = 0.5, z = 0.5 } = {}) {
   const state = { runtimeEntityId: '1', dimension: 'overworld', position: { x, y: 70, z } }

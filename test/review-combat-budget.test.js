@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createCombatSearchBudget } = require('../src/combat-search-budget')
+const { createCombatSearchBudget } = require('../src/combat/combat-search-budget')
 test('review: many enemies share one route-search budget and exhaustion stays unknown', () => {
   let now = 0
   const budget = createCombatSearchBudget({ clock: () => now })
@@ -27,7 +27,7 @@ test('review: thrown route queries still consume measured budget', () => {
 })
 
 test('review: extracted threat evaluation preserves known visible, blocked and unknown ranged sight', () => {
-  const { createCombatExposure } = require('../src/combat-exposure')
+  const { createCombatExposure } = require('../src/combat/combat-exposure')
   let terrain = 'air', motionReads = 0
   const world = { getBlock: () => terrain === 'unknown' ? { known: false } : { known: true, name: `minecraft:${terrain}`, boundingBox: terrain === 'air' ? 'empty' : 'block' }, revision: () => 1 }
   const exposure = createCombatExposure({ world, entities: { motion: () => { motionReads++; return null } }, scopeOf: () => 'same-life' })

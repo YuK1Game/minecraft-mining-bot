@@ -2,12 +2,12 @@
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createMovement } = require('../src/movement')
-const { createPhysics } = require('../src/physics')
-const { supplyScope } = require('../src/supply-return')
-const portable = require('../src/portable-worksite')
-const { evaluateThreats } = require('../src/threats')
-const { resourceMinHealth } = require('../src/learning-health')
+const { createMovement } = require('../src/movement/movement')
+const { createPhysics } = require('../src/movement/physics')
+const { supplyScope } = require('../src/survival/supply-return')
+const portable = require('../src/survival/portable-worksite')
+const { evaluateThreats } = require('../src/combat/threats')
+const { resourceMinHealth } = require('../src/safety/learning-health')
 const copy = v => structuredClone(v)
 function deferred () { let resolve; const promise = new Promise(r => { resolve = r }); return { promise, resolve } }
 function harness (t) {

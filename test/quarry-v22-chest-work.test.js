@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test'), assert = require('node:assert/strict')
-const { createQuarryV22ChestWork, buildStartupPlan } = require('../src/quarry-v22-chest-work')
-const { roles, singles } = require('../src/quarry-v22-loadout')
+const { createQuarryV22ChestWork, buildStartupPlan } = require('../src/loadout/quarry-v22-chest-work')
+const { roles, singles } = require('../src/loadout/quarry-v22-loadout')
 const empty = () => ({ network_id: 0, count: 0, has_stack_id: false, metadata: 0, extra: {has_nbt:'false'} })
 const names = new Map(), ids = new Map()
 function code(name) {if (!ids.has(name)){const n=ids.size+1;ids.set(name,n);names.set(n,name)}return ids.get(name)}
@@ -76,7 +76,7 @@ test('final chest deposit with a keep list stores only the rest and leaves equip
   const loaded=await f.controller.withdrawAll({jobId:'q',operationId:'start',position:f.pos},f.options)
   assert.equal(loaded.status,'completed')
   f.hand[0]=raw('minecraft:totem_of_undying',1,999)
-  const { FINAL_CHEST_KEEP } = require('../src/quarry-job')
+  const { FINAL_CHEST_KEEP } = require('../src/quarry/quarry-job')
   const keptName = n => FINAL_CHEST_KEEP.names.some(re => new RegExp(re).test(n.replace(/^minecraft:/, '')))
   const before = f.bag.filter(x => x.count).map(x => names.get(x.network_id))
   const result=await f.controller.depositAll({jobId:'q',operationId:'finish-keep',position:f.pos,keep:FINAL_CHEST_KEEP},f.options)

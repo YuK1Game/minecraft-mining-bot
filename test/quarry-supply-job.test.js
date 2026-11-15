@@ -2,10 +2,10 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryJob } = require('../src/quarry-job')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 const { supplySitePreview } = require('./helpers/supply-site-preview')
-const { supplyScope } = require('../src/quarry-supplies')
-const { carriedContainerKey } = require('../src/quarry-inventory')
+const { supplyScope } = require('../src/quarry/storage/quarry-supplies')
+const { carriedContainerKey } = require('../src/quarry/quarry-inventory')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
 function fixture () {

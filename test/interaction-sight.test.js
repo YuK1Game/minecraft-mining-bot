@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { canSeePlacementFloor, interactionSightError } = require('../src/interaction-sight')
+const { canSeePlacementFloor, interactionSightError } = require('../src/actions/interaction-sight')
 
 const air = { known: true, name: 'minecraft:air', extra: [], boundingBox: 'empty' }
 const dirt = { known: true, name: 'minecraft:dirt', extra: [], boundingBox: 'block' }

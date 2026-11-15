@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createHash } = require('node:crypto')
-const { createManualChestDeposit } = require('../src/manual-chest-deposit')
+const { createManualChestDeposit } = require('../src/loadout/manual-chest-deposit')
 const clone = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`
 const air = slot => ({ slot, known: true, empty: true, name: null, count: 0 })

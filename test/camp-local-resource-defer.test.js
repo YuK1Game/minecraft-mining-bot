@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const {createWorksiteCampPrebuild}=require('../src/worksite-camp'),{continuationScope}=require('../src/base-continuation')
+const {createWorksiteCampPrebuild}=require('../src/survival/worksite-camp'),{continuationScope}=require('../src/survival/base-continuation')
 const file=path.join(__dirname,'worksite-camp.test.js'),m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(fs.readFileSync(file,'utf8').split('\ntest(')[0]+'\nmodule.exports={fixture}',file)
 function scene(t,{code='PREBUILD_LOCAL_RESOURCE_ONLY'}={}){
  let now=1000,idle=true,dispatches=0,resumes=0,takeovers=0;const f=m.exports.fixture(),flags={parentEnabled:true,autoWanted:true,safetyWanted:true,userWanted:true},progress={explorations:19,logsCollected:0,excludedResources:[{x:90,y:65,z:0}]}

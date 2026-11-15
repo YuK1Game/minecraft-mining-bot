@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createRunner } = require('../src/runner')
+const { createRunner } = require('../src/survival/runner')
 
 // Fake worker only: no actual HTTP, game connection, authentication or cache.
 function fixture (handler = () => undefined) {

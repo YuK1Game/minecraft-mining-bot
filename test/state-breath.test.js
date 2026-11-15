@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createState } = require('../src/state')
+const { createState } = require('../src/host/state')
 
 test('tracks only received own-entity breath metadata and preserves partial updates', () => {
   let time = '2026-10-31T00:00:00.000Z'

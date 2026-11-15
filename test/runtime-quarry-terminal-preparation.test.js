@@ -4,8 +4,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
-const { createSnapshotReader } = require('../src/runtime-observation-views')
-const { inventoryRefreshDelay, refreshInventoryWithRetry } = require('../src/inventory-refresh')
+const { createSnapshotReader } = require('../src/runtime/runtime-observation-views')
+const { inventoryRefreshDelay, refreshInventoryWithRetry } = require('../src/inventory/inventory-refresh')
 
 const source = require('./helpers/runtime-source').runtimeSource()
 const section = (from, to) => {

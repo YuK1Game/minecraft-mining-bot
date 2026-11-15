@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
-const { nextDiamondAction } = require('../src/diamond-planner')
-const { supplyScope } = require('../src/supply-return')
+const { nextDiamondAction } = require('../src/survival/diamond-planner')
+const { supplyScope } = require('../src/survival/supply-return')
 const actual = require('./fixtures/material-flow239.json')
 const capabilities = { mining: true, movement: true, scan_blocks: true, craft: true, place_block: true, use_table: true, equip: true, collect_drops: true, prospect: true, tunnel: true, mine_ore: true, place_furnace: true, open_furnace: true, furnace: true }
 function fixture (tier = 'wooden_pickaxe') {

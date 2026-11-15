@@ -7,20 +7,20 @@ const path = require('node:path')
 const Module = require('node:module')
 const vm = require('node:vm')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createInput } = require('../src/input')
-const { createInputHistory } = require('../src/input-history')
-const { createPhysics } = require('../src/physics')
-const { createNavigator } = require('../src/navigation')
-const { createMeleeCombat } = require('../src/melee-combat')
+const { createInput } = require('../src/movement/input')
+const { createInputHistory } = require('../src/movement/input-history')
+const { createPhysics } = require('../src/movement/physics')
+const { createNavigator } = require('../src/movement/navigation')
+const { createMeleeCombat } = require('../src/combat/melee-combat')
 const copy = value => structuredClone(value)
 const world = { getBlock: (x, y, z) => ({ known: true, name: y < 65 ? 'minecraft:stone' : 'minecraft:air', position: { x, y, z }, properties: {}, extra: [], boundingBox: y < 65 ? 'block' : 'empty' }) }
 const prepared = createPhysics({ world, version: '1.26.60', allowWater: true })
 
 const filename = path.join(__dirname, 'runtime-user-behaviors.test.js')
 let source = 'let testHooks;\n' + fs.readFileSync(filename, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
-source = source.replace(/^    '\.\/physics': .+$/m, "    './physics': { createPhysics: options => testHooks.physics(options) }, './navigation': { createNavigator: options => testHooks.navigator(options) }, './movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },")
-source = source.replace(/^    '\.\/input': .+$/m, "    './input': { createInput: options => { wireInputOptions.push(options); return testHooks.input(options) } },")
-source = source.replace(/^    '\.\/input-history': .+$/m, "    './input-history': { createInputHistory: options => testHooks.history(options) },")
+source = source.replace(/^    '\.\/physics': .+$/m, "    './movement/physics': { createPhysics: options => testHooks.physics(options) }, './movement/navigation': { createNavigator: options => testHooks.navigator(options) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },")
+source = source.replace(/^    '\.\/input': .+$/m, "    './movement/input': { createInput: options => { wireInputOptions.push(options); return testHooks.input(options) } },")
+source = source.replace(/^    '\.\/input-history': .+$/m, "    './movement/input-history': { createInputHistory: options => testHooks.history(options) },")
 source = source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", "loaded._compile(testHooks.instrument(process.env.RUNTIME_TEST_SOURCE ? fs.readFileSync(process.env.RUNTIME_TEST_SOURCE, 'utf8') : require('./helpers/runtime-source').runtimeSource()), filename)")
 source += '\nmodule.exports = { scene, setHooks: value => { testHooks = value } }'
 const loaded = { exports: {} }

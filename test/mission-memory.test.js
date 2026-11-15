@@ -6,11 +6,11 @@ const fs = require('node:fs/promises')
 const path = require('node:path')
 const os = require('node:os')
 const { setTimeout: delay } = require('node:timers/promises')
-const { createMissionMemory } = require('../src/mission-memory')
-const { planShelter } = require('../src/shelter-planner')
-const { createShelter } = require('../src/shelter')
-const { planHut } = require('../src/hut-planner')
-const { createHut } = require('../src/hut')
+const { createMissionMemory } = require('../src/survival/mission-memory')
+const { planShelter } = require('../src/survival/shelter-planner')
+const { createShelter } = require('../src/survival/shelter')
+const { planHut } = require('../src/survival/hut-planner')
+const { createHut } = require('../src/survival/hut')
 
 const scope = { realmId: '21225335', profile: 'bot', dimension: 'overworld' }
 function memoFixture () {

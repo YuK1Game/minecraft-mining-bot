@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { selectCarriedStorage, carriedContainerIdentity, carriedContainerKey } = require('../src/quarry-inventory')
+const { selectCarriedStorage, carriedContainerIdentity, carriedContainerKey } = require('../src/quarry/quarry-inventory')
 
 // Live 2026-11-13: after a reconnect every carried box got a new stack ID, so
 // the stack-keyed "full" marks matched nothing and full boxes were placed,

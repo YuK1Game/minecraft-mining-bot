@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createNavigator } = require('../src/navigation')
+const { createNavigator } = require('../src/movement/navigation')
 
 function fixture () {
   const recorded = require('./fixtures/partial-creeper-recenter.json')

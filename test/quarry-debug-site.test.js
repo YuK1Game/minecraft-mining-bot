@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { findDebugChestSite, debugSiteReachable } = require('../src/quarry-debug-site')
+const { findDebugChestSite, debugSiteReachable } = require('../src/quarry/quarry-debug-site')
 const key = p => [p.x, p.y, p.z].join(',')
 const isAir = b => b.known === true && b.name === 'minecraft:air' && !b.extra?.length
 const isFloor = b => b.known === true && b.boundingBox === 'block' && !/water|lava|magma|fire|powder_snow|scaffolding|cactus/.test(b.name) && !b.extra?.length

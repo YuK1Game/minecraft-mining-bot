@@ -2,11 +2,11 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createRecovery } = require('../src/recovery')
-const { createPhysics } = require('../src/physics')
-const { createNavigator } = require('../src/navigation')
-const { createMovement } = require('../src/movement')
-const { evaluateThreats } = require('../src/threats')
+const { createRecovery } = require('../src/safety/recovery')
+const { createPhysics } = require('../src/movement/physics')
+const { createNavigator } = require('../src/movement/navigation')
+const { createMovement } = require('../src/movement/movement')
+const { evaluateThreats } = require('../src/combat/threats')
 const capture = require('./fixtures/recovery-mixed207.json')
 const copy = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`

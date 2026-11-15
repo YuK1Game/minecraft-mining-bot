@@ -2,8 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { planQuarryExit, permitsExitAction } = require('../src/quarry-exit-plan')
-const { buildRegions } = require('../src/quarry-region')
+const { planQuarryExit, permitsExitAction } = require('../src/quarry/exit/quarry-exit-plan')
+const { buildRegions } = require('../src/quarry/quarry-region')
 
 // 1.26.60 Realm, (-3,-13), 2026-11-06. Received east landing column:
 // (-31,93,-199) grass_block, then 226 consecutive air cells through Y319.

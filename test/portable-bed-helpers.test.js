@@ -1,8 +1,8 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createInteractions } = require('../src/interactions')
-const { createMining } = require('../src/mining')
+const { createInteractions } = require('../src/actions/interactions')
+const { createMining } = require('../src/actions/mining')
 
 function fixture (t) {
   const extra = { has_nbt: 'false', can_place_on: [], can_destroy: [] }

@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { normalizePlayerCorrection } = require('../src/server-physics')
+const { normalizePlayerCorrection } = require('../src/movement/server-physics')
 
 function correction (overrides = {}) {
   return { prediction_type: 'player', position: { x: -10.25, y: 70.62, z: 4.5 }, delta: { x: -0.12, y: 0.32, z: 0.07 }, rotation: { x: 0, z: 0 }, angular_velocity: undefined, on_ground: false, tick: 123n, ...overrides }

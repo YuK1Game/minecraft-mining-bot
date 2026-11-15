@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const {createPhysics}=require('../src/physics'),capture=require('./fixtures/navigation-origin-avoidance-tdz169.json'),copy=x=>structuredClone(x),navFile=path.resolve(__dirname,'../src/navigation.js'),moveFile=path.resolve(__dirname,'../src/movement.js')
+const {createPhysics}=require('../src/movement/physics'),capture=require('./fixtures/navigation-origin-avoidance-tdz169.json'),copy=x=>structuredClone(x),navFile=path.resolve(__dirname,'../src/movement/navigation.js'),moveFile=path.resolve(__dirname,'../src/movement/movement.js')
 const blocks=new Map(capture.blocks.map(b=>[`${b.position.x},${b.position.y},${b.position.z}`,b])),world={getBlock:(x,y,z)=>blocks.get(`${x},${y},${z}`)??{known:false,position:{x,y,z}}},physics=createPhysics({world,version:'1.26.60'})
 function scene(t,{old=false}={}){
  t.mock.timers.enable({apis:['setInterval']});let elapsed=0;const state=copy(capture.state),packets=[],frames=[],changes=new Map(),received={getBlock:(x,y,z)=>changes.get(`${x},${y},${z}`)??world.getBlock(x,y,z)},p=physics.withWorld(received)

@@ -6,7 +6,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createQuarryJob } = require('../src/quarry-job')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 const { createSim } = require('./helpers/quarry-sim')
 
 const file = require.resolve('./quarry-portable-storage.test')

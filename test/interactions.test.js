@@ -3,9 +3,9 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { createInteractions } = require('../src/interactions')
-const { buildStationaryInput, createInput } = require('../src/input')
-const { SHULKER_BLOCKS } = require('../src/container-types')
+const { createInteractions } = require('../src/actions/interactions')
+const { buildStationaryInput, createInput } = require('../src/movement/input')
+const { SHULKER_BLOCKS } = require('../src/inventory/container-types')
 
 const extra = { has_nbt: 'false', can_place_on: [], can_destroy: [] }
 const emptyItem = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra })

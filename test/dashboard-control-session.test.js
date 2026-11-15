@@ -2,7 +2,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
-const { createDashboardSession, CHANNEL, publicAuth, publicRealms } = require('../src/dashboard-session')
+const { createDashboardSession, CHANNEL, publicAuth, publicRealms } = require('../src/host/dashboard-session')
 const turn = () => new Promise(setImmediate)
 const realms = [{ id: 1, name: 'A', state: 'OPEN', accessToken: 'secret' }, { id: 2, name: 'B', state: 'CLOSED' }, { id: 3, name: 'C', state: 'OPEN', expired: true }]
 function fixture (t) {

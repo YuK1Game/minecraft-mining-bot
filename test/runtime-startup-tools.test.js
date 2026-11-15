@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { createAutonomy } = require('../src/autonomy'), { nextSurvivalAction } = require('../src/survival-planner')
+const { createAutonomy } = require('../src/survival/autonomy'), { nextSurvivalAction } = require('../src/survival/survival-planner')
 const filename = path.resolve(__dirname, 'runtime-local-work-priority.test.js'), loaded = new Module(filename, module)
 loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
 loaded._compile(fs.readFileSync(filename, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0] + '\nmodule.exports = { prepare };', filename)

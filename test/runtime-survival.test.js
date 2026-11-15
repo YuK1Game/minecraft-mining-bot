@@ -7,7 +7,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
 const { performance } = require('node:perf_hooks')
-const { createAutonomy } = require('../src/autonomy')
+const { createAutonomy } = require('../src/survival/autonomy')
 
 function deferred () { let resolve; const promise = new Promise(yes => { resolve = yes }); return { promise, resolve } }
 function loadRuntime (overrides) {
@@ -60,25 +60,25 @@ function fixture (t) {
   const forageExecutions = []
   const food = { applyPacket: () => {}, snapshot: () => ({ busy: false }), cancel: () => {}, preview: () => ({ ready: foodReady }), eat: async ({ slot }) => { events.push(`eat:${slot}`); return { phase: 'completed', serverConfirmed: true } } }
   const overrides = {
-    './crafting': { createCrafting: () => crafting }, './mining': { createMining: () => mining }, './inventory': { createInventory: () => inventory }, './interactions': { createInteractions: () => interactions },
-    './food': { createFood: () => food, isSupportedFood: name => ['minecraft:bread', 'minecraft:beef'].includes(name) },
-    './input': { createInput: () => ({ start: () => {}, stop: () => {}, release: () => {}, stats: () => ({ running: false }), lookAt: () => {}, sendAction: () => {}, sendTransaction: () => {} }) },
-    './movement': { createMovement: options => {
+    './actions/crafting': { createCrafting: () => crafting }, './actions/mining': { createMining: () => mining }, './inventory/inventory': { createInventory: () => inventory }, './actions/interactions': { createInteractions: () => interactions },
+    './actions/food': { createFood: () => food, isSupportedFood: name => ['minecraft:bread', 'minecraft:beef'].includes(name) },
+    './movement/input': { createInput: () => ({ start: () => {}, stop: () => {}, release: () => {}, stats: () => ({ running: false }), lookAt: () => {}, sendAction: () => {}, sendTransaction: () => {} }) },
+    './movement/movement': { createMovement: options => {
       const actor = { options, phase: 'idle', stops: 0 }; movements.push(actor)
       return { preview: () => ({ ready: true }), start: () => { events.push('move'); actor.phase = 'awaiting_server_confirmation'; return { phase: actor.phase } }, settle: () => ({}), stop: () => { actor.stops++; actor.phase = 'stopped'; return { phase: 'stopped' } }, applyPacket: () => {}, snapshot: () => ({ phase: actor.phase }) }
     } },
-    './combat': { createCombat: () => {
+    './combat/combat': { createCombat: () => {
       const actor = { attacks: [], cooldown: 0 }; combatActors.push(actor)
       return { applyPacket: () => {}, cancel: () => {}, drain: async () => {}, engage: async id => { events.push(`engage:${id}`, `attack:${id}`); actor.attacks.push(id); return { phase: 'observed', mode: 'engage', serverConfirmed: true, targetRuntimeId: id } }, preview: () => ({ ready: true }), previewEngage: () => ({ ready: engageReady }), previewHunt: () => ({ ready: false }), hunt: async () => ({}), attack: async id => { events.push(`attack:${id}`); actor.attacks.push(id); return { phase: 'observed', targetRuntimeId: id } }, defend: () => { throw new Error('Defense must attack the selected exact target') }, snapshot: () => ({ busy: false, defending: false, cooldownRemainingMs: actor.cooldown }) }
     } },
-    './recovery': { createRecovery: () => ({ preview: () => ({ ready: false, alreadyAshore: true }), execute: async () => ({}), stop: async () => ({}), snapshot: () => ({ busy: false }) }) },
-    './foraging': { createForaging: () => ({ preview: () => structuredClone(foragePreview), execute: async args => { forageExecutions.push(structuredClone(args)); events.push('forage'); return { phase: 'predicted', serverConfirmed: false, collected: false } }, stop: async () => ({}), snapshot: () => ({ busy: false }) }) },
-    './runner': {
+    './safety/recovery': { createRecovery: () => ({ preview: () => ({ ready: false, alreadyAshore: true }), execute: async () => ({}), stop: async () => ({}), snapshot: () => ({ busy: false }) }) },
+    './survival/foraging': { createForaging: () => ({ preview: () => structuredClone(foragePreview), execute: async args => { forageExecutions.push(structuredClone(args)); events.push('forage'); return { phase: 'predicted', serverConfirmed: false, collected: false } }, stop: async () => ({}), snapshot: () => ({ busy: false }) }) },
+    './survival/runner': {
       createHttpClient: () => () => { throw new Error('No HTTP request is allowed in these wiring tests') },
       createRunner: () => ({ request: () => { throw new Error('Unexpected HTTP request') }, refreshState: async () => host.getState(), getState: host.getState, observe: async () => ({ blocks: [], entities: actors, capabilities: {} }), actions: { avoid_threat: async () => { events.push('avoid'); return { phase: 'completed' } } } })
     },
-    './autonomy': { createAutonomy: options => { autonomous.push(options); return createAutonomy({ ...options, intervalMs: 60000 }) } },
-    './shelter': { createShelter: options => {
+    './survival/autonomy': { createAutonomy: options => { autonomous.push(options); return createAutonomy({ ...options, intervalMs: 60000 }) } },
+    './survival/shelter': { createShelter: options => {
       const actor = { options, state: { phase: 'idle', busy: false }, memory: structuredClone(options.memo), executions: [], leaves: [], pending: null }
       shelters.push(actor)
       const run = (method, args, context) => { actor.state.busy = true; actor.pending = deferred(); actor[method].push({ args, context }); return actor.pending.promise }

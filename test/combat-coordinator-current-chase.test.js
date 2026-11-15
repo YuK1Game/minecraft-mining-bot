@@ -6,7 +6,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createCombatCoordinator } = require('../src/combat-coordinator')
+const { createCombatCoordinator } = require('../src/combat/combat-coordinator')
 
 // These are actual received anchors in the preserved life293 event4/event5
 // captures. The intervening claim origins were not captured; tests below use
@@ -32,7 +32,7 @@ function fixtureFrom (basename) {
 
 const coordinatorFixture = fixtureFrom('combat-coordinator.test.js')
 const meleeFixture = fixtureFrom('melee-combat.test.js')
-const coordinatorFilename = require.resolve('../src/combat-coordinator')
+const coordinatorFilename = require.resolve('../src/combat/combat-coordinator')
 const currentSource = fs.readFileSync(coordinatorFilename, 'utf8')
 const currentGuard = 'if (distance(s.position, lease.origin) > maxChaseDistance)'
 const originalGuard = 'if (distance(s.position, lease.origin) > maxChaseDistance || finite(s.rawServerPosition) && distance(s.rawServerPosition, lease.rawOrigin) > maxChaseDistance)'

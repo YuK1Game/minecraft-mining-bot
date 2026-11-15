@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createProspecting } = require('../src/prospecting')
+const { createProspecting } = require('../src/survival/prospecting')
 
 test('prospecting sends only bounded read requests and records actual ores, preserving unknown blocks', async () => {
   const packets = []

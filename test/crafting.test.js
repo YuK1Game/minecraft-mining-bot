@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { createCrafting } = require('../src/crafting')
+const { createCrafting } = require('../src/actions/crafting')
 
 const extra = { has_nbt: 'false', can_place_on: [], can_destroy: [] }
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra })
@@ -218,7 +218,7 @@ test('received server closes update the matching local screen without sending or
 
 test('a fresh real runtime does not resurrect a client-closed cached GUI without a server echo', async t => {
   const { createRuntime } = require('../src/runtime')
-  const { createSessionCache } = require('../src/session-cache')
+  const { createSessionCache } = require('../src/host/session-cache')
   const cache = createSessionCache()
   const packets = []
   const lifecycle = []

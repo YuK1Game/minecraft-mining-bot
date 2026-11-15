@@ -1,9 +1,9 @@
 'use strict'
 // Offline authoritative-observation simulator. It never connects to Minecraft.
 // Tests can independently drop an acknowledgment or its inventory observation.
-const { createLoadoutReset } = require('../../src/loadout-reset')
-const { observedScope } = require('../../src/server-position-verifier')
-const { allowed } = require('../../src/loadout-command')
+const { createLoadoutReset } = require('../../src/loadout/loadout-reset')
+const { observedScope } = require('../../src/movement/server-position-verifier')
+const { allowed } = require('../../src/loadout/loadout-command')
 const assert = require('node:assert/strict')
 const copy = value => structuredClone(value)
 const empty = slot => ({ slot, known: true, empty: true, count: 0, name: null })

@@ -5,14 +5,14 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
-const actual = require('../src/manual-shulker-recovery')
-const { proveGroundAccess } = require('../src/ground-access-proof')
+const actual = require('../src/loadout/manual-shulker-recovery')
+const { proveGroundAccess } = require('../src/movement/ground-access-proof')
 
 function scene ({ type = 'minecraft:zombie', unknown = false, approachAtHand = false, stale = false, fault = null } = {}) {
   let actor, state, proofReads = 0, revision = 4
   const filename = require.resolve('./authorized-shulker-recovery.test'), loaded = new Module(filename, module)
   loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
-  loaded.require = name => name === '../src/manual-shulker-recovery' ? {
+  loaded.require = name => name === '../src/loadout/manual-shulker-recovery' ? {
     ...actual, createManualShulkerRecovery: ports => {
       const originalState = ports.getState, originalBlock = ports.getBlock
       ports.getState = () => ({ ...originalState(), worldRevision: revision })

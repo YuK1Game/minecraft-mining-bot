@@ -5,8 +5,8 @@
 // carried mode the work dirt and sticks are no longer held in hand.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { keepPlan } = require('../src/quarry-inventory')
-const { supplyNeeds } = require('../src/quarry-supplies')
+const { keepPlan } = require('../src/quarry/quarry-inventory')
+const { supplyNeeds } = require('../src/quarry/storage/quarry-supplies')
 
 const bag = [
   { slot: 0, name: 'minecraft:dirt', count: 64 },
@@ -36,7 +36,7 @@ test('v2.2 work dirt target: none is restocked by default; a seal demand asks fo
 })
 
 test('work dirt on demand is opt-in per job (strategy.dirtFromSupplyOnDemand) and configurable on an existing job', async () => {
-  const { createQuarryJob } = require('../src/quarry-job')
+  const { createQuarryJob } = require('../src/quarry/quarry-job')
   const { createSim, flatTerrain } = require('./helpers/quarry-sim')
   const sim = createSim({ loaded: { xMin: -6, xMax: 20, yMin: 50, yMax: 70, zMin: -6, zMax: 20 } })
   flatTerrain(sim, { x1: -6, x2: 20, z1: -6, z2: 20, bedrock: 50, stoneTop: 60, top: 62 })

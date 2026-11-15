@@ -12,6 +12,6 @@ test('idle eating takes rotten flesh only as the last resort below 18', () => {
 })
 
 test('the approach log is written at most every 3 s per target unless its code changes', () => {
-  const src = fs.readFileSync(require.resolve('../src/combat-coordinator'), 'utf8')
+  const src = fs.readFileSync(require.resolve('../src/combat/combat-coordinator'), 'utf8')
   assert.match(src, /if \(approachCode !== lease\.approachLogCode \|\| Date\.now\(\) - \(lease\.approachLogAt \?\? 0\) >= 3000\)/)
 })

@@ -1,8 +1,8 @@
 'use strict'
 // Controlled packet replay only. This does not represent Realm/BDS success.
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {createWorksiteCamp,createWorksiteCampPrebuild,planWorksiteCamp}=require('../src/worksite-camp')
-const {createCrafting}=require('../src/crafting'),{createInteractions}=require('../src/interactions'),{createInventory}=require('../src/inventory'),{createChest}=require('../src/chest'),{createDepotStorageWork}=require('../src/depot-storage-work'),{createBaseContinuation,continuationScope}=require('../src/base-continuation')
+const {createWorksiteCamp,createWorksiteCampPrebuild,planWorksiteCamp}=require('../src/survival/worksite-camp')
+const {createCrafting}=require('../src/actions/crafting'),{createInteractions}=require('../src/actions/interactions'),{createInventory}=require('../src/inventory/inventory'),{createChest}=require('../src/actions/chest'),{createDepotStorageWork}=require('../src/survival/depot-storage-work'),{createBaseContinuation,continuationScope}=require('../src/survival/base-continuation')
 const air=()=>({network_id:0,count:0,metadata:0,has_stack_id:false,block_runtime_id:0,extra:{has_nbt:false,can_place_on:[],can_destroy:[]}})
 const raw=(network_id,count,stack_id)=>({...air(),network_id,count,has_stack_id:true,stack_id})
 const names=new Map([[17,'minecraft:oak_log'],[29,'minecraft:oak_planks'],[31,'minecraft:crafting_table'],[32,'minecraft:chest'],[310,'minecraft:wooden_sword']])

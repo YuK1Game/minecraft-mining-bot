@@ -6,10 +6,10 @@ const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createUserBehaviors } = require('../src/user-behaviors')
-const { createFood } = require('../src/food')
-const { createArmor } = require('../src/armor')
-const worksite = require('../src/worksite-camp')
+const { createUserBehaviors } = require('../src/combat/user-behaviors')
+const { createFood } = require('../src/actions/food')
+const { createArmor } = require('../src/actions/armor')
+const worksite = require('../src/survival/worksite-camp')
 
 const file = require.resolve('./runtime-user-behaviors.test')
 const loaded = new Module(file, module)
@@ -46,8 +46,8 @@ function scene (t) {
     async execute(){events.push({kind:'bed'});if(flags.holdBed){flags.bedBusy=true;await bedRelease.promise;flags.bedBusy=false}return {sleeping:!!flags.sleeping}}
   }
   const modules={
-    './quarry-store': { createQuarryStore: options => require('../src/quarry-store').createQuarryStore({ ...options, directory }) },
-    './user-behaviors': { createUserBehaviors: o=>{
+    './quarry/quarry-store': { createQuarryStore: options => require('../src/quarry/quarry-store').createQuarryStore({ ...options, directory }) },
+    './combat/user-behaviors': { createUserBehaviors: o=>{
       options=o
       facade=createUserBehaviors({...o,controllers:{melee:attack('melee'),ranged:attack('ranged'),bed},
         acquireControl:async context=>{
@@ -57,7 +57,7 @@ function scene (t) {
         }})
       return facade
     } },
-    './food': { ...require('../src/food'),createFood: o=>{
+    './actions/food': { ...require('../src/actions/food'),createFood: o=>{
       const actual=createFood(o)
       const interrupted=reason=>{
         if(flags.meal){events.push({kind:'food_cancel',reason});flags.meal=false}
@@ -66,18 +66,18 @@ function scene (t) {
         cancel:reason=>{interrupted(reason);return actual.cancel(reason)},
         preemptForCombat:reason=>{interrupted(reason);return actual.preemptForCombat?.(reason)}}
     } },
-    './armor': { createArmor:o=>{
+    './actions/armor': { createArmor:o=>{
       const actual=createArmor(o)
       return {...actual, preview:()=>flags.armor||actual.preview(), equipBest:async()=>{
         if(flags.armor){events.push({kind:'armor_started'});await release.promise;return []}
         return actual.equipBest()
       }}
     } },
-    './worksite-camp': {...worksite,createWorksiteCampPrebuild: o=>{
+    './survival/worksite-camp': {...worksite,createWorksiteCampPrebuild: o=>{
       const actual=worksite.createWorksiteCampPrebuild(o)
       return {...actual,drain:async()=>{if(flags.prebuild){events.push({kind:'prebuild_draining'});await release.promise}return actual.drain()}}
     }},
-    './manual-shulker-recovery': {
+    './loadout/manual-shulker-recovery': {
       validateRecoveryDocument:d=>d,
       createManualShulkerRecovery:()=>({
         snapshot:()=>({busy:!!flags.recovering}),beforeInput:()=>true,

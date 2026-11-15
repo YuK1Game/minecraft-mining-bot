@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { nextDiamondAction } = require('../src/diamond-planner')
+const { nextDiamondAction } = require('../src/survival/diamond-planner')
 
 function fixture () {
   const state = { phase: 'spawned', version: '1.26.60', runtimeEntityId: '41', dimension: 'overworld', gameMode: 'survival', health: 20, dead: false, position: { x: 0.5, y: 66.62, z: 0.5 }, inventory: { known: true, items: [] }, heldItem: null, selectedSlot: 0, equipmentServerConfirmed: true, world: { initialized: true, loadedSections: 27, version: '1.26.60' }, capabilities: { mining: true, movement: true } }

@@ -8,7 +8,7 @@ const Module = require('node:module')
 const root = path.resolve(__dirname, '..')
 const runtimeFile = path.join(root, 'src/runtime.js')
 const runtimeText = require('./helpers/runtime-source').runtimeSource()
-const guardFile = path.join(root, 'src/guarded-route.js')
+const guardFile = path.join(root, 'src/movement/guarded-route.js')
 const guardSource = fs.readFileSync(guardFile, 'utf8').replace(/\r\n/g, '\n')
 const guardModule = { exports: {} }
 new vm.Script(Module.wrap(guardSource), { filename: guardFile }).runInThisContext()(guardModule.exports, Module.createRequire(guardFile), guardModule, guardFile, path.dirname(guardFile))
@@ -75,7 +75,7 @@ async function scenario ({ corrections = 1, mode = 'normal' } = {}) {
   }
   const getState = () => ({ ...f.getState(), hut: f.hut.snapshot(), crafting: { openContainer: null }, entities: [] })
   const requireGeneration = () => { if (!generation) throw Object.assign(new Error('Old motion generation'), { code: 'GENERATION_CHANGED' }) }
-  const environment = { requireGeneration, working: f.getState, routeScope, sameRouteScope: sameScope, generationPhysics: require('../src/physics').createPhysics({ world: f.world }), generationMovement: f.movement, motionOrigin: null }
+  const environment = { requireGeneration, working: f.getState, routeScope, sameRouteScope: sameScope, generationPhysics: require('../src/movement/physics').createPhysics({ world: f.world }), generationMovement: f.movement, motionOrigin: null }
   const verifyRouteStanding = vm.runInNewContext(`(${verifierSource})`, environment)
   const callbackEnvironment = {
     requireGeneration, routeState: getState, host: { shared: { hutMemo: f.hut.memo() } }, routeScope, sameRouteScope: sameScope, verifyRouteStanding,

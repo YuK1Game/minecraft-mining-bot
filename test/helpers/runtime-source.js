@@ -1,10 +1,10 @@
 'use strict'
 
 // Some tests assert on the runtime's source text, evaluate pieces of it, or
-// compile an instrumented copy. Parts of runtime.js (and quarry-job.js) now
-// live in modules of their own (scripts/extract-runtime-block.js): there each
-// use of a binding of the old closure is written rt.<name>, and the source file
-// reads their values back as <instance>.<name> behind a block of accessors.
+// compile an instrumented copy. Parts of runtime.js (and quarry-job.js) live in
+// modules of their own (scripts/extract-runtime-block.js): there each use of a
+// binding of the old closure is written rt.<name>, and the source file reads
+// their values back as <instance>.<name> behind a block of accessors.
 //
 // runtimeSource() undoes that move in text: every moved block is put back
 // where its accessor block stands, without the prefixes. The result is one
@@ -15,32 +15,46 @@ const fs = require('node:fs')
 const path = require('node:path')
 const src = path.resolve(__dirname, '..', '..', 'src')
 // Comment lines, the accessor block, then the one-line wrappers of a moved part.
-const WIRING = /((?:^[ \t]*\/\/[^\n]*\n){0,3})^([ \t]*)const (\w+) = require\('\.\/([\w-]+)'\)\.(\w+)\(\{\n(?:^\2  get [^\n]*\n)+^\2\}\)\n((?:^\2function \w+ \(\.\.\.args\) \{ return \3\.\w+\(\.\.\.args\) \}\n)*)/m
+const WIRING = /((?:^[ \t]*\/\/[^\n]*\n){0,3})^([ \t]*)const (\w+) = require\('(\.\.?\/[\w./-]+)'\)\.(\w+)\(\{\n(?:^\2  get [^\n]*\n)+^\2\}\)\n((?:^\2function \w+ \(\.\.\.args\) \{ return \3\.\w+\(\.\.\.args\) \}\n)*)/m
 const unix = text => text.split('\r\n').join('\n')
 
-function movedBody (name, factory) {
-  const text = unix(fs.readFileSync(path.join(src, `${name}.js`), 'utf8'))
+// Source files are addressed by base name; each name exists once under src/.
+function sourceFile (name) {
+  const found = []
+  ;(function walk (directory) {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isDirectory()) walk(path.join(directory, entry.name))
+      else if (entry.name === name) found.push(path.join(directory, entry.name))
+    }
+  })(src)
+  if (found.length !== 1) throw new Error(`${name} is ${found.length ? 'not unique' : 'missing'} under src/`)
+  return found[0]
+}
+
+function movedBody (file, factory) {
+  const text = unix(fs.readFileSync(file, 'utf8'))
   const start = text.indexOf(`function ${factory} (rt) {\n`), end = text.lastIndexOf('\n  return {\n')
-  if (start < 0 || end < start) throw new Error(`${name}.js does not have the layout written by extract-runtime-block.js`)
+  if (start < 0 || end < start) throw new Error(`${path.basename(file)} does not have the layout written by extract-runtime-block.js`)
   return text.slice(start + `function ${factory} (rt) {\n`.length, end + 1)
     .replace(/\b(\w+): rt\.\1(?=\s*[,}])/g, '$1') // a shorthand property the move had to spell out (not `name: rt.name.x`)
     .replace(/\brt\./g, '')
 }
 
-// Puts every moved part of a source text back in place.
-function flattenText (source) {
+// Puts every moved part of a source text back in place. `directory` is where
+// that source file lives; its parts are required relative to it.
+function flattenText (source, directory = src) {
   let text = unix(source)
   const instances = []
   for (let match; (match = WIRING.exec(text));) {
     instances.push(match[3])
-    text = text.slice(0, match.index) + movedBody(match[4], match[5]) + text.slice(match.index + match[0].length)
+    text = text.slice(0, match.index) + movedBody(path.resolve(directory, `${match[4]}.js`), match[5]) + text.slice(match.index + match[0].length)
   }
   if (instances.length) text = text.replace(new RegExp(`\\b(\\w+): (?:${instances.join('|')})\\.\\1(?=\\s*[,}])`, 'g'), '$1').replace(new RegExp(`\\b(?:${instances.join('|')})\\.(?=[A-Za-z_$])`, 'g'), '')
   return text
 }
-const flattenedSource = name => flattenText(fs.readFileSync(path.join(src, name), 'utf8'))
+function flattenedSource (name) { const file = sourceFile(name); return flattenText(fs.readFileSync(file, 'utf8'), path.dirname(file)) }
 const runtimeSource = () => flattenedSource('runtime.js')
 // For tests that accept a staged runtime file through an environment variable.
 const runtimeSourceOr = staged => staged ? fs.readFileSync(staged, 'utf8') : runtimeSource()
 
-module.exports = { runtimeSource, runtimeSourceOr, flattenedSource, flattenText }
+module.exports = { runtimeSource, runtimeSourceOr, flattenedSource, flattenText, sourceFile }

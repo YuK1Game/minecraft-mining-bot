@@ -6,7 +6,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm')
-const { createDashboardControl } = require('../src/dashboard-control')
+const { createDashboardControl } = require('../src/host/dashboard-control')
 const html = fs.readFileSync(path.resolve(__dirname, '../dashboard/index.html'), 'utf8')
 const line = start => { const found = html.split(/\r?\n/).find(text => text.startsWith(start)); assert.ok(found, 'page code exists: ' + start); return found }
 const body = (() => { const first = html.indexOf('function controlActivity(){'), last = html.indexOf('function noteActivity()', first); assert.ok(first >= 0 && last > first); return html.slice(first, last) })()

@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { resourceMinHealth } = require('../src/learning-health')
+const { resourceMinHealth } = require('../src/safety/learning-health')
 
 test('online learning resource threshold is explicit, alive, spawned and positive with legacy fallback unchanged', () => {
   const alive = { phase: 'spawned', threatPolicy: 'online_learning', health: 1 }

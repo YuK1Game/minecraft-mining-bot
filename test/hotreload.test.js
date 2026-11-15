@@ -6,7 +6,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { setTimeout: delay } = require('node:timers/promises')
-const { createHotReloader } = require('../src/hotreload')
+const { createHotReloader } = require('../src/host/hotreload')
 
 function workspace (t) {
   // Match the canonical paths used by the reloader (Windows may return an 8.3 TEMP alias).

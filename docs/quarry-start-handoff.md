@@ -45,14 +45,14 @@
 - 追加差分は `runtime-idle-escape.test.js` のdry spider detour2件とunarmed mixed dry2件。同じ現在fixtureで基準版/変更後を限定比較すると両方2成功・2失敗。spider2件は両方成功して全件時の失敗を再現せず、unarmed2件は両方 `Idle escape danger changed`。回帰なし・全件成功とは扱わない。記録は `test-results/storage-final-comparison.json` と `storage-final-paired-{baseline,current}.tap`。
 - その前の全件実行は、保存用backup内の古いテスト5件が混入した。バックアップはG側のbackupへ保持し、テストコピーを `.bak` として元名とSHA256の一覧を保存した。元ログは `test-results/storage-archive-discovery-run/` に保持し、以降の正式なテスト結果と区別する。
 - 稼働用G側はデバッグ初期化・その依存・UIを反映済み。本番側のstable Host/API/管理画面ルートとRuntime橋渡しは未反映で、収納ボタンは無効表示。専用経路を読み込むには管理画面とBotの1回の更新・再接続が必要なため、利用者の切断許可を得るまでは実施しない。画面記録は `.local/storage-buttons-staged-20261112.png`。
-- 切替時に `G:\Projects\MinecraftBot\src\host.js` を全体コピーしない。未公開のRealms再試行対応を保持し、createDashboardControl引数へ `getStorage: () => current()?.operations.storage` のhunkだけ追加する。その他の反映対象はsrc/dashboard-control.js、scripts/dashboard.js、scripts/lib/dashboard-control.js、src/runtime.js、新規manual-chest2モジュール。現在の管理画面が所有する子Botだけを停止対象にする。
+- 切替時に `G:\Projects\MinecraftBot\src\host.js` を全体コピーしない。未公開のRealms再試行対応を保持し、createDashboardControl引数へ `getStorage: () => current()?.operations.storage` のhunkだけ追加する。その他の反映対象はsrc/host/dashboard-control.js、scripts/dashboard.js、scripts/lib/dashboard-control.js、src/runtime.js、新規manual-chest2モジュール。現在の管理画面が所有する子Botだけを停止対象にする。
 - 10:44:27 JSTのサーバー切断後、10:45:48 JSTに再参加した記録を確認。現在の接続は `b100dfce-f365-4ca3-8413-b868e468bfca`。この作業から切断・初期化・全収納は送っていない。接続中、採掘未開始、携行アイテムを保持している。UI優先の方針もAGENTS.mdへ追記済み。
 
 ## 過去の追記（2026-11-12 10:02 JST、管理画面と計画確認）
 
 - 利用者の指定により「初期セット」を「デバッグチェスト設置」へ変更し、採掘エリアへ移動。進捗・エラー表示も同じ欄へ移した。「回収・収納」の選択欄と「シュルカー専用」の表示を削除。確認ダイアログの既存内容入れ替え警告と、期限・session・tokenの境界は維持した。
 - 削除した選択欄のJS参照も除去し、計画入力は回収方針を送らず既存サーバー既定値passive/fullを使用する。今回の表示変更だけで既存ジョブの方針は変更しない。
-- 「計画を確認」の `Cannot read properties of undefined (reading 'push')` は、補給箱のレイアウト不一致が原因。旧方式の候補に存在しないtotem、逆にv2.2の候補にないfoodを `found[role].push` へ追加していた。現在のレイアウトに含まれる役割だけを候補へ加える修正を `src/quarry-supplies.js` に入れた。
+- 「計画を確認」の `Cannot read properties of undefined (reading 'push')` は、補給箱のレイアウト不一致が原因。旧方式の候補に存在しないtotem、逆にv2.2の候補にないfoodを `found[role].push` へ追加していた。現在のレイアウトに含まれる役割だけを候補へ加える修正を `src/quarry/storage/quarry-supplies.js` に入れた。
 - 両方向の箱混在、必要な食料箱の不足、管理画面の矩形指定から実際の計画処理までの4回帰を追加。未修正コードでは4件とも同じpush例外で失敗し、修正後の関連55件は成功。管理画面38件、構文629ファイル＋ダッシュボード1スクリプト、安全回帰730件も成功した。今回の追修正では既存全件比較を再実行しておらず、後述する旧比較ゲートの未通過を成功へ置き換えない。
 - 同じ接続を保持したままホットリロードし、実画面でチャンク(125,125)・Y75→-59の「計画確認済み」を確認。未受信地形によるEXIT_PREFLIGHT_PROVISIONAL/CAVE_VOLUME_PROVISIONALの注意は残る。確認だけを行い、採掘・チェスト設置は実行していない。現在の計画はpassive/fullであり、v2.2 four_layersの新home/受領済みkit移行を検証したものではない。
 - 旧保存ジョブは保持。最新の確認画面は稼働用checkoutの `.local/dashboard-debug-chest-plan-fixed-20261112.png`。Botはspawned、現在の計画はIDLE、採掘数0。管理画面の開始確認tokenは120秒で失効するため、後の実行には改めて計画確認が必要。
@@ -113,7 +113,7 @@
 - 現ジョブは `quarry_b0914778-d19a-41a9-9f60-689c5c89dc0b`。対象 `(-6,-3)`、下端 `Y=-59`、`active/four_layers`。保存済み状態は `PAUSED`、採掘数0。
 - `loadout.checkpoint.index=1`。剣は両側照合で受領確認済み。弓はチェスト27→手持ち1の転送記録 `intent` が残っている。記録を消したり、弓を重複して引き出したりしない。
 - 保存済み受信イベントでは、弓の要求 `-5` は成功応答とチェスト側の空更新を受信。手持ちの詳細は後の全枠再同期で受信した。通常の `withdrawItem` が10秒で確認失敗になる原因と整合する。
-- `src/quarry-v22-chest-work.js` を修正。失敗後は実在庫の再受信とチェストの開き直しで数量・NBT・ブロックIDを照合し、適用済みの転送だけを進める。未変化・不一致・再受信失敗では記録を保持して停止する。20秒の再同期制限の待機は1回だけで、中断・死亡・接続変更を監視する。新しい回帰テスト12件成功。
+- `src/loadout/quarry-v22-chest-work.js` を修正。失敗後は実在庫の再受信とチェストの開き直しで数量・NBT・ブロックIDを照合し、適用済みの転送だけを進める。未変化・不一致・再受信失敗では記録を保持して停止する。20秒の再同期制限の待機は1回だけで、中断・死亡・接続変更を監視する。新しい回帰テスト12件成功。
 - v2.2関連・初期セット・Runtimeアダプター計148件成功。構文確認は627ファイル＋ダッシュボード内1スクリプト成功。安全回帰と全件比較は確認中（完了結果は下の旧記録と区別する）。
 - 管理画面は、正しいローカルHost/Originで `GET /` のトップページ遷移に限り cross-site を許可する修正を用意した。API・POST・iframe等の保護は維持。サーバーはホットリロード非対応のため、画面修正の反映は管理画面の再起動が必要。
 - 23:39:53、既存の起動ログに `Nginx proxy is restarting` と `Server closed connection: closed` が記録された。この作業では切断・プロセス停止・再起動を送っていない。
@@ -168,7 +168,7 @@
 
 ## 現行の管理画面との相違
 
-`src/dashboard-control.js` の計画は `passive/full` または `active/capacity` を明示生成するため、v2.2の `active/four_layers` をUIから選べない。上記の明示設定が必要。下端を浅くして開始条件を通す変更は行わない。
+`src/host/dashboard-control.js` の計画は `passive/full` または `active/capacity` を明示生成するため、v2.2の `active/four_layers` をUIから選べない。上記の明示設定が必要。下端を浅くして開始条件を通す変更は行わない。
 
 ## 検証結果
 
@@ -176,7 +176,7 @@
 - GitHubのUbuntu/Windows安全回帰・戦闘性能チェック成功。
 - 全件比較CIは失敗。baselineは255失敗・2キャンセル、currentは260失敗・2キャンセル。追加5件は未変更の `test/runtime-idle-escape.test.js` にある。不安定テストのあるファイルと一致するが、全件成功や差分なしとは扱わない。
 
-参照: `docs/handoff.md`、`src/runtime.js` の loadout/quarry/chest/movement、`src/quarry-v22-reset.js`、`src/dashboard-control.js`。
+参照: `docs/handoff.md`、`src/runtime.js` の loadout/quarry/chest/movement、`src/loadout/quarry-v22-reset.js`、`src/host/dashboard-control.js`。
 
 
 ## 2026-11-12 自動収納の停止修正

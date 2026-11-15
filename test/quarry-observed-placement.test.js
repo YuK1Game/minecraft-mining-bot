@@ -6,7 +6,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
 const { serialize } = require('node:v8')
-const { createQuarryPortableStorage } = require('../src/quarry-portable-storage')
+const { createQuarryPortableStorage } = require('../src/quarry/storage/quarry-portable-storage')
 const copy = value => structuredClone(value)
 const pack = value => serialize(value).toString('base64')
 const key = p => `${p.x},${p.y},${p.z}`

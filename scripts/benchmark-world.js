@@ -4,7 +4,7 @@
 // sections with the real block registry. Pass another world.js as the first
 // argument to time that copy instead (for before/after comparisons).
 const path = require('node:path')
-const { createWorld } = require(process.argv[2] ? path.resolve(process.argv[2]) : '../src/world')
+const { createWorld } = require(process.argv[2] ? path.resolve(process.argv[2]) : '../src/host/world')
 // The real registry only maps runtime IDs after a start_game from a server, so
 // the fixture uses 2,000 blocks shaped like its entries (three states each).
 const registry = { blocksByRuntimeId: {}, blockStates: [], handleStartGame () {} }

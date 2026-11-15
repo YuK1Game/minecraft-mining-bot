@@ -8,15 +8,15 @@ const file = path.resolve(__dirname, 'runtime-user-behaviors.test.js'), loaded =
 loaded.filename = file; loaded.paths = Module._nodeModulePaths(path.dirname(file))
 let prefix = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 prefix = prefix.replace("  t.mock.timers.enable({ apis: ['setInterval'] })", '  let foragingOptions, productionStream; const simulated = { physics: null, body: null, jumping: false, ticks: 0, correction: null, onGroundNeutral: 0, movement: { phase: \'idle\' }, starts: 0 };')
-prefix = prefix.replace("  loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", `  delete overrides['./physics']; delete overrides['./navigation']; delete overrides['./input-history']
+prefix = prefix.replace("  loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", `  delete overrides['./movement/physics']; delete overrides['./movement/navigation']; delete overrides['./movement/input-history']
   raw.position = { x: -22.208650588989258, y: 69.62, z: 40.36732864379883 }; raw.positionUpdatedAt = new Date(Date.now() - 2000).toISOString(); raw.positionSource = 'move_player'; raw.health = 20
   raw.breath = { current: 300, maximum: 300 }; shared.deathRespawn.deathId = 68; shared.userBehaviorsEnabled = false
   host.world.getBlock = (x,y,z) => ({ known: true, name: y < 68 ? 'minecraft:stone' : 'minecraft:air', position: {x,y,z}, properties: {}, extra: [], boundingBox: y < 68 ? 'block' : 'empty' })
   game.player_position = structuredClone(raw.position); cache.observe('start_game', game)
-  simulated.physics = Module.prototype.require.call(loaded, './physics').createPhysics({ world: host.world, version: '1.26.60', allowWater: false })
+  simulated.physics = Module.prototype.require.call(loaded, './movement/physics').createPhysics({ world: host.world, version: '1.26.60', allowWater: false })
   simulated.body = simulated.physics.fromServer(raw)
-  const actualInput = Module.prototype.require.call(loaded, './input')
-  overrides['./input'] = { ...actualInput, createInput: options => {
+  const actualInput = Module.prototype.require.call(loaded, './movement/input')
+  overrides['./movement/input'] = { ...actualInput, createInput: options => {
     productionStream = actualInput.createInput({ ...options, frameProvider: frame => {
       const controls = simulated.jumping && simulated.ticks === 0 ? { jump: true } : {}
       simulated.body = simulated.physics.step({ ...simulated.body, yaw: frame.rotation.yaw, pitch: frame.rotation.pitch }, controls)
@@ -28,8 +28,8 @@ prefix = prefix.replace("  loaded._compile(fs.readFileSync(process.env.RUNTIME_T
       return { position, delta: body.velocity, physicsState: body, predictedState: body, controls, inputFlags: controls.jump ? ['jumping', 'start_jumping', 'want_up'] : [], commitPrediction: () => host.setPrediction({ position, feetPosition: body.position, physicsState: body, onGround: body.onGround, velocity: body.velocity, source: 'client_prediction', serverConfirmed: false }) }
     } }); return productionStream
   } }
-  const actualForaging = Module.prototype.require.call(loaded, './foraging')
-  overrides['./foraging'] = { ...actualForaging, createForaging: options => {
+  const actualForaging = Module.prototype.require.call(loaded, './survival/foraging')
+  overrides['./survival/foraging'] = { ...actualForaging, createForaging: options => {
     foragingOptions = options
     return actualForaging.createForaging({ ...options, verifyQueuedLanding: request => simulated.verify ? simulated.verify(request, options.verifyQueuedLanding) : options.verifyQueuedLanding(request), movement: {
       preview: () => ({ ready: true }), start: () => { simulated.starts++; simulated.jumping = true; simulated.ticks = 0; simulated.onGroundNeutral = 0; simulated.movement = { phase: 'moving' }; return simulated.movement }, stop: () => { simulated.movement = { phase: 'stopped' } }

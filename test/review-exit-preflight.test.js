@@ -1,10 +1,10 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryJob } = require('../src/quarry-job')
-const { planQuarryExit } = require('../src/quarry-exit-plan')
-const { buildRegions, permits } = require('../src/quarry-region')
-const { miningUsesAfterExitReserve } = require('../src/quarry-exit-reserve')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
+const { planQuarryExit } = require('../src/quarry/exit/quarry-exit-plan')
+const { buildRegions, permits } = require('../src/quarry/quarry-region')
+const { miningUsesAfterExitReserve } = require('../src/quarry/exit/quarry-exit-reserve')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 function setup () {

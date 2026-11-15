@@ -3,14 +3,14 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createRecovery } = (() => {
-  if (!process.env.RECOVERY_TEST_SOURCE) return require('../src/recovery')
+  if (!process.env.RECOVERY_TEST_SOURCE) return require('../src/safety/recovery')
   const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-  const filename = path.resolve(__dirname, '../src/recovery.js'), loaded = new Module(filename, module)
+  const filename = path.resolve(__dirname, '../src/safety/recovery.js'), loaded = new Module(filename, module)
   loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
   loaded._compile(fs.readFileSync(path.resolve(process.env.RECOVERY_TEST_SOURCE), 'utf8'), filename)
   return loaded.exports
 })()
-const { createMovement } = require('../src/movement')
+const { createMovement } = require('../src/movement/movement')
 
 function fixture (options = {}) {
   let time = 0

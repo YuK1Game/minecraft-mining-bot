@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { validateV22Loadout, CARGO, roles, singles } = require('../src/quarry-v22-loadout')
+const { validateV22Loadout, CARGO, roles, singles } = require('../src/loadout/quarry-v22-loadout')
 const known = (name, count, rest = {}) => ({ known: true, name, count, empty: false, ...rest })
 const empty = () => ({ known: true, empty: true, count: 0 })
 function loadout () {

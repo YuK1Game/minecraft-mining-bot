@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createInput } = require('../src/input')
-const { createMovement } = require('../src/movement')
+const { createInput } = require('../src/movement/input')
+const { createMovement } = require('../src/movement/movement')
 
 const state = () => ({ phase: 'spawned', gameMode: 'survival', dimension: 'overworld', health: 12, runtimeEntityId: '1', positionUpdatedAt: 'raw', position: { x: 0.5, y: 66.62, z: 0.5 }, rotation: { yaw: -90, pitch: 0 } })
 const physical = () => ({ position: { x: 0.5, y: 65, z: 0.5 }, velocity: { x: 0, y: 0, z: 0 }, yaw: -90, pitch: 0, onGround: true, gameMode: 'survival', controls: { jump: false } })

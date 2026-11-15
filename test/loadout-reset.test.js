@@ -1,8 +1,8 @@
 'use strict'
 const test = require('node:test'), assert = require('node:assert/strict')
 const { fixture, empty } = require('./helpers/loadout-sim')
-const { manifest, summary } = require('../src/loadout-manifest')
-const { matches, inventoryFingerprint } = require('../src/loadout-reset')
+const { manifest, summary } = require('../src/loadout/loadout-manifest')
+const { matches, inventoryFingerprint } = require('../src/loadout/loadout-reset')
 const { randomUUID } = require('node:crypto')
 const confirm = (reset, p) => reset.start({ token: p.token, confirm: 'REPLACE_INITIAL_INVENTORY' })
 

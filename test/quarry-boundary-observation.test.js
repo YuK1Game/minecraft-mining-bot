@@ -2,7 +2,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { createQuarryJob } = require('../src/quarry-job')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 const file = path.resolve(__dirname, 'quarry-boundary-sources.test.js'), loaded = new Module(file, module)
 loaded.filename = file; loaded.paths = Module._nodeModulePaths(path.dirname(file))
 loaded._compile(fs.readFileSync(file, 'utf8').split('\ntest(')[0] + '\nmodule.exports={fixture}\n', file)

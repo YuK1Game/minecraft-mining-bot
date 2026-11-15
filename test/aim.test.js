@@ -3,8 +3,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setTimeout: delay } = require('node:timers/promises')
-const { selectVisibleBlockFace, traceBlockFace } = require('../src/aim')
-const { createMining } = require('../src/mining')
+const { selectVisibleBlockFace, traceBlockFace } = require('../src/combat/aim')
+const { createMining } = require('../src/actions/mining')
 
 function fixture () {
   const blocks = new Map()

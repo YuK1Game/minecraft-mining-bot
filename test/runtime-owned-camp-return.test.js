@@ -1,7 +1,7 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const {planOwnedCampReturn}=require('../src/owned-camp-return'),{evaluateThreats}=require('../src/threats'),{continuationScope}=require('../src/base-continuation')
-const {createNavigator}=require('../src/navigation')
+const {planOwnedCampReturn}=require('../src/survival/owned-camp-return'),{evaluateThreats}=require('../src/combat/threats'),{continuationScope}=require('../src/survival/base-continuation')
+const {createNavigator}=require('../src/movement/navigation')
 const fixtureFile=path.join(__dirname,'owned-camp-return.test.js'),fixtureModule=new Module(fixtureFile,module)
 fixtureModule.filename=fixtureFile;fixtureModule.paths=Module._nodeModulePaths(__dirname)
 fixtureModule._compile(fs.readFileSync(fixtureFile,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]+'\nmodule.exports=fixture;',fixtureFile)

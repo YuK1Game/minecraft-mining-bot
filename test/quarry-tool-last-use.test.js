@@ -2,10 +2,10 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryJob, defaults } = require('../src/quarry-job')
-const { buildRegions } = require('../src/quarry-region')
-const { blockRule, selectTool, reserveUses } = require('../src/quarry-rules')
-const { planQuarryExit } = require('../src/quarry-exit-plan')
+const { createQuarryJob, defaults } = require('../src/quarry/quarry-job')
+const { buildRegions } = require('../src/quarry/quarry-region')
+const { blockRule, selectTool, reserveUses } = require('../src/quarry/quarry-rules')
+const { planQuarryExit } = require('../src/quarry/exit/quarry-exit-plan')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
 function fixture ({ tool = 'diamond_pickaxe', remaining = 4, material = 'stone', others = true } = {}) {

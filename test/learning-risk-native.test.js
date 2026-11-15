@@ -1,8 +1,8 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createNavigator } = require('../src/navigation')
-const { evaluateThreats } = require('../src/threats')
+const { createNavigator } = require('../src/movement/navigation')
+const { evaluateThreats } = require('../src/combat/threats')
 const observed = require('./fixtures/learning-risk-shore-current.json')
 
 test('captured life66 old81tick path remains physical but now fails18m archer clearance before any execution', () => {

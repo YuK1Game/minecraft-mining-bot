@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createMining } = require('../src/mining')
-const { SHULKER_BLOCKS } = require('../src/container-types')
+const { createMining } = require('../src/actions/mining')
+const { SHULKER_BLOCKS } = require('../src/inventory/container-types')
 
 function fixture (t, { verify = null } = {}) {
   const state = { phase: 'spawned', profile: 'bot', realm: { id: '42' }, connectionId: 'connection', startedAt: '2026-11-05T01:30:00.000Z', runtimeEntityId: '41', dimension: 'overworld', lifecycle: { deathId: 3 }, gameMode: 'survival', position: { x: 0.5, y: 66.62, z: 0.5 }, health: 20, inventory: { known: true, items: [] }, selectedSlot: 0, heldItem: null }

@@ -3,7 +3,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
 const { createDashboardManager } = require('../scripts/lib/dashboard-control')
-const { CHANNEL } = require('../src/dashboard-session')
+const { CHANNEL } = require('../src/host/dashboard-session')
 
 // Live 2026-11-13 16:03: the server closed the connection of the dashboard's
 // bot and nothing reconnected it. Unexpected exits now reconnect to the same

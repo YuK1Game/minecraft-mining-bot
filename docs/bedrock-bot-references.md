@@ -22,7 +22,7 @@
   - [防衛](https://github.com/airscro/mineflayer-for-bedrock/blob/main/lib/plugins/guard.js): 敵の距離に基づく検知・対象選択が参考になる。一方、近くの敵を追跡して攻撃する単純な処理であり、クリーパーや複数の敵を含む現在の状況で安全とは未検証。
   - 実コードでは Realm 設定の引き渡しと現行サブチャンク要求がなく、移動入力の形式も現行版と一致しない。接続・移動部分を置き換える候補にはしない。検索に残る旧 torzodmc URL は確認時 404。
 - [TheNotEasy/mineflayer-bedrock-public の Bedrock ブランチ](https://github.com/TheNotEasy/mineflayer-bedrock-public/tree/8c731f53538068a136ea55d08b512ee5f55d7d26) は MIT。ただし master と Bedrock ブランチは別物。確認した対応上限は 1.21.80 で、採掘・クラフト・設置に未接続部分があるため、現行 Realm 用には導入しない。
-- [bottleofarts-dev/bedrock-bot](https://github.com/bottleofarts-dev/bedrock-bot) は統合版向けの採掘・戦闘 Bot。検出した敵の移動量が大きい場合に経路を再計算する [戦闘処理](https://github.com/bottleofarts-dev/bedrock-bot/blob/main/src/combat.js) が参考になる。装備や敵の状態の確認は現在の Bot の条件を維持する。
+- [bottleofarts-dev/bedrock-bot](https://github.com/bottleofarts-dev/bedrock-bot) は統合版向けの採掘・戦闘 Bot。検出した敵の移動量が大きい場合に経路を再計算する [戦闘処理](https://github.com/bottleofarts-dev/bedrock-bot/blob/main/src/combat/combat.js) が参考になる。装備や敵の状態の確認は現在の Bot の条件を維持する。
 - [miked06/baritone-bedrock](https://github.com/miked06/baritone-bedrock) は Windows 版統合版ゲーム内で動く実装。鉱石探索、適切な高度への下降、枝掘りなどの考え方が参考になる。DLL をゲームに注入する方式で対応バージョンも限定されており、独立アカウントで Realms に接続する現在の構成とは異なる。ライセンスは LGPL-3.0。
 
 ## 現在の実装への適用方針
@@ -34,8 +34,8 @@
 
 ## 照合からの反映
 
-- `src/input-replay.js` / `src/movement.js`: [Mojang の移動仕様](https://github.com/Mojang/bedrock-protocol-docs/blob/main/additional_docs/PlayerMovementOverview.md) に沿い、補正対象の入力時刻へ戻して送信済み入力を現在まで再現する。サーバー受信位置と予測位置は分離する。bedsim の状態再現処理とも照合し、自分のテレポート・リスポーン確定・次元変更・切断では停止中も履歴を破棄するよう補強。他プレイヤーの更新と通常の補正履歴は維持する。
-- `src/world.js`: 上記 Bedrock アダプターの地形受信処理と照合し、失敗応答を受信成功と扱わない。調査要求は未試行→最も古い試行の順に変更し、失敗時は 5・10・20・30 秒（上限）の待ち時間を設けた。近傍の移動用要求は従来の 5 秒周期を維持し、未受信の地形は未知のまま扱う。履歴は件数制限と次元変更時の初期化で制限する。外部コードの直接コピーはない。
+- `src/movement/input-replay.js` / `src/movement/movement.js`: [Mojang の移動仕様](https://github.com/Mojang/bedrock-protocol-docs/blob/main/additional_docs/PlayerMovementOverview.md) に沿い、補正対象の入力時刻へ戻して送信済み入力を現在まで再現する。サーバー受信位置と予測位置は分離する。bedsim の状態再現処理とも照合し、自分のテレポート・リスポーン確定・次元変更・切断では停止中も履歴を破棄するよう補強。他プレイヤーの更新と通常の補正履歴は維持する。
+- `src/host/world.js`: 上記 Bedrock アダプターの地形受信処理と照合し、失敗応答を受信成功と扱わない。調査要求は未試行→最も古い試行の順に変更し、失敗時は 5・10・20・30 秒（上限）の待ち時間を設けた。近傍の移動用要求は従来の 5 秒周期を維持し、未受信の地形は未知のまま扱う。履歴は件数制限と次元変更時の初期化で制限する。外部コードの直接コピーはない。
 - Java 版の通常 Mineflayer、Baritone、Voyager を統合版対応済みとして導入しない。統合版対応を名乗る Fork でも、対象ブランチ・ゲーム版・実コードを個別に確認する。
 
 ## Skeleton escape model — 2026-11-01

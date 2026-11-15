@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { surfaceShoreRoute } = require('../src/recovery')
+const { surfaceShoreRoute } = require('../src/safety/recovery')
 
 const block = (name, boundingBox) => ({ known: true, name: `minecraft:${name}`, boundingBox, extra: [] })
 const WATER = block('water', 'empty'), AIR = block('air', 'empty'), GRASS = block('grass_block', 'block'), STONE = block('stone', 'block')

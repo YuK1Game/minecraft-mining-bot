@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { nextBootstrapAction, inventoryCounts } = require('../src/planner')
+const { nextBootstrapAction, inventoryCounts } = require('../src/survival/planner')
 
 function fixture () {
   const snapshot = {

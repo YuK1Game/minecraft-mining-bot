@@ -2,9 +2,9 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createChunkTravel } = require('../src/chunk-travel')
-const { observedScope } = require('../src/server-position-verifier')
-const { originDisagreement, reconcileMoveOrigin, planningOrigin } = require('../src/move-origin')
+const { createChunkTravel } = require('../src/travel/chunk-travel')
+const { observedScope } = require('../src/movement/server-position-verifier')
+const { originDisagreement, reconcileMoveOrigin, planningOrigin } = require('../src/movement/move-origin')
 const { setImmediate: turn } = require('node:timers/promises')
 const copy = value => structuredClone(value)
 

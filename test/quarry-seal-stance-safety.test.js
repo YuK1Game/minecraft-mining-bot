@@ -2,9 +2,9 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryPlanner } = require('../src/quarry-planner')
-const { createQuarryJob } = require('../src/quarry-job')
-const { buildRegions } = require('../src/quarry-region')
+const { createQuarryPlanner } = require('../src/quarry/quarry-planner')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
+const { buildRegions } = require('../src/quarry/quarry-region')
 
 function fixture ({ floor = 'stone', below = 'stone' } = {}) {
   const blocks = new Map(), key = p => `${p.x},${p.y},${p.z}`

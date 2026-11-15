@@ -2,8 +2,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), Module = require('node:module')
-const activeNavigation = require('../src/navigation')
-const { createPhysics } = require('../src/physics')
+const activeNavigation = require('../src/movement/navigation')
+const { createPhysics } = require('../src/movement/physics')
 const capture = require('./fixtures/navigation-water-float254.json')
 const copy = value => structuredClone(value)
 const rows = new Map(capture.blocks.map(block => [Object.values(block.position).join(','), block]))
@@ -14,11 +14,11 @@ function compiled (filename, source, overrides = {}) {
   new vm.Script(Module.wrap(source), { filename }).runInThisContext()(target.exports, name => overrides[name] ?? nativeRequire(name), target, filename, path.dirname(filename))
   return target.exports
 }
-const navFile = path.resolve(__dirname, '../src/navigation.js'), navSource = fs.readFileSync(navFile, 'utf8')
+const navFile = path.resolve(__dirname, '../src/movement/navigation.js'), navSource = fs.readFileSync(navFile, 'utf8')
 const marker = 'else if (settled && !atTarget && !waterFloatCompletion)'
 assert.equal(navSource.split(marker).length, 2, 'The old-branch control removes only the terminal float suppression')
 const oldNavigation = compiled(navFile, navSource.replace(marker, 'else if (settled && !atTarget)'))
-const movementFile = path.resolve(__dirname, '../src/movement.js'), movementSource = fs.readFileSync(movementFile, 'utf8')
+const movementFile = path.resolve(__dirname, '../src/movement/movement.js'), movementSource = fs.readFileSync(movementFile, 'utf8')
 
 function fixture (t, { legacy = false, maxTicks = 40, afterQueue = null } = {}) {
   t.mock.timers.enable({ apis: ['setInterval'] })
@@ -31,7 +31,7 @@ function fixture (t, { legacy = false, maxTicks = 40, afterQueue = null } = {}) 
     const navigator = source.createNavigator(options)
     return { ...navigator, plan: (...args) => { const route = navigator.plan(...args); activeRoute = route; return route } }
   } }
-  const { createMovement } = compiled(movementFile, movementSource, { './navigation': navigation })
+  const { createMovement } = compiled(movementFile, movementSource, { './movement/navigation': navigation })
   const movement = createMovement({ world, waterPhysics: physics, getState: () => copy(state), version: '1.26.60', startGame: { current_tick: 1000n }, startGameReceivedAt: 0, clock: () => elapsed,
     client: { queue: (name, packet) => { assert.equal(name, 'player_auth_input'); packets.push({ name, packet: copy(packet) }); return { tick: packet.tick } } },
     onQueuedFrame: frame => records.push(copy(frame)), onPrediction: value => { predictions.push(copy(value)); afterQueue?.({ records, predictions, changes, route: activeRoute }) }

@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { createMovement } = require('../src/movement')
+const { createMovement } = require('../src/movement/movement')
 function loadFixture (file, name, extras = '') {
   const filename = path.resolve(__dirname, file + '.test.js'), loaded = new Module(filename, module)
   loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))

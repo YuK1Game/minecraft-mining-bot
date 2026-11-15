@@ -1,7 +1,7 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
 const {setImmediate:turn}=require('node:timers/promises')
-const {createCombatCoordinator}=require('../src/combat-coordinator')
+const {createCombatCoordinator}=require('../src/combat/combat-coordinator')
 
 function meleeFixture(options){
   // Reuse the established actual Melee/Physics/ordinary-input fixture, not a

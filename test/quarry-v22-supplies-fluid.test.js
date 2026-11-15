@@ -1,10 +1,10 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {supplyNeeds,V22_ROLES}=require('../src/quarry-supplies')
-const {selectTool,blockRule}=require('../src/quarry-rules')
-const {deriveDropGuarantee}=require('../src/quarry-drop-guarantee')
-const {buildRegions,permits}=require('../src/quarry-region')
-const {createQuarryPlanner}=require('../src/quarry-planner')
+const {supplyNeeds,V22_ROLES}=require('../src/quarry/storage/quarry-supplies')
+const {selectTool,blockRule}=require('../src/quarry/quarry-rules')
+const {deriveDropGuarantee}=require('../src/quarry/quarry-drop-guarantee')
+const {buildRegions,permits}=require('../src/quarry/quarry-region')
+const {createQuarryPlanner}=require('../src/quarry/quarry-planner')
 const pick={slot:0,name:'minecraft:diamond_pickaxe',count:1,durabilityKnown:true,durabilityRemaining:1000}
 const shovel={slot:1,name:'minecraft:diamond_shovel',count:1,durabilityKnown:true,durabilityRemaining:1000}
 const bread={slot:2,name:'minecraft:bread',count:64}

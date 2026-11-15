@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createPhysics } = require('../src/physics')
-const { createNavigator } = require('../src/navigation')
+const { createPhysics } = require('../src/movement/physics')
+const { createNavigator } = require('../src/movement/navigation')
 
 function block (name, properties = {}) { return { known: true, name: `minecraft:${name}`, properties, extra: [] } }
 function initial (physics, { x = 0.5, y = 65, z = 0.5, yaw = -90 } = {}) {

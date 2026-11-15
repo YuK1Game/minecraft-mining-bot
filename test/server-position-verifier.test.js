@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createServerPositionVerifier } = require('../src/server-position-verifier')
+const { createServerPositionVerifier } = require('../src/movement/server-position-verifier')
 
 const feet = { x: -48.5, y: -1, z: 36.5 }
 function fixture (options = {}) {

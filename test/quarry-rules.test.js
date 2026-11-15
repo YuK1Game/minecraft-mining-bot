@@ -1,8 +1,8 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { blockRule, selectTool, reserveUses } = require('../src/quarry-rules')
-const { canAccept, keepPlan } = require('../src/quarry-inventory')
+const { blockRule, selectTool, reserveUses } = require('../src/quarry/quarry-rules')
+const { canAccept, keepPlan } = require('../src/quarry/quarry-inventory')
 
 const tool = (slot, name, remaining, enchantments = []) => ({ slot, name: `minecraft:${name}`, count: 1, durabilityKnown: true, durabilityRemaining: remaining, enchantments })
 

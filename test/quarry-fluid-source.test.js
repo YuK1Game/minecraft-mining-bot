@@ -2,10 +2,10 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryPlanner } = require('../src/quarry-planner')
-const { createQuarryJob } = require('../src/quarry-job')
-const { createQuarryRuntimeAdapter } = require('../src/quarry-runtime-adapter')
-const { buildRegions } = require('../src/quarry-region')
+const { createQuarryPlanner } = require('../src/quarry/quarry-planner')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
+const { createQuarryRuntimeAdapter } = require('../src/quarry/quarry-runtime-adapter')
+const { buildRegions } = require('../src/quarry/quarry-region')
 
 function fixture ({ config = {}, travel = true } = {}) {
   const source = { x: 0, y: 60, z: 5 }, roof = { x: 0, y: 61, z: 5 }, feet = { x: -1, y: 62, z: 5 }

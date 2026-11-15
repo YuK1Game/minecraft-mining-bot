@@ -3,8 +3,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createQuarryPortableStorage } = require('../src/quarry-portable-storage')
-const { selectCarriedStorage, carriedContainerKey, carriedContainerIdentity } = require('../src/quarry-inventory')
+const { createQuarryPortableStorage } = require('../src/quarry/storage/quarry-portable-storage')
+const { selectCarriedStorage, carriedContainerKey, carriedContainerIdentity } = require('../src/quarry/quarry-inventory')
 
 const copy = value => structuredClone(value)
 const extra = () => ({ has_nbt: 'false', can_place_on: [], can_destroy: [] })
@@ -378,7 +378,7 @@ test('live case 2026-11-12: a box cell with a live mob next to it is passed over
 })
 
 test('live case 2026-11-12: a preview refused after placement preparation returns the saved checkpoint and keeps the refusal text', async () => {
-  const { observedScope } = require('../src/server-position-verifier')
+  const { observedScope } = require('../src/movement/server-position-verifier')
   const f = fixture('shulker')
   assert.ok(observedScope(f.getState()), 'fixture state has an observed scope')
   const controller = createQuarryPortableStorage({ ...f.dependencies,
@@ -455,7 +455,7 @@ test('live case 2026-11-13: a box cell whose floor the placement preview would r
   const planned = f.checkpoints.find(cp => cp.positions?.length)
   assert.ok(planned, 'a site was planned')
   assert.notDeepEqual(planned.positions[0], chosen, 'the ore-floored cell is passed over')
-  const { placementSupportOk } = require('../src/storage-site-terrain')
+  const { placementSupportOk } = require('../src/quarry/storage/storage-site-terrain')
   assert.equal(placementSupportOk({ known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] }), true)
   assert.equal(placementSupportOk({ known: true, name: 'minecraft:iron_ore', boundingBox: 'block', extra: [] }), false)
   assert.equal(placementSupportOk({ known: true, name: 'minecraft:gravel', boundingBox: 'block', extra: [] }), false)

@@ -1,5 +1,5 @@
 'use strict'
-const {test}=require('node:test'),assert=require('node:assert/strict'),{createDurabilityReader}=require('../src/durability'),fixture=require('./fixtures/actual-wooden-sword-damage10.json'),read=createDurabilityReader()
+const {test}=require('node:test'),assert=require('node:assert/strict'),{createDurabilityReader}=require('../src/inventory/durability'),fixture=require('./fixtures/actual-wooden-sword-damage10.json'),read=createDurabilityReader()
 test('Actual Realm wooden sword stack1721 Damage10 is parsed without changing the descriptor or raw receipt',()=>{
  const before=structuredClone(fixture),value=read(fixture.description,fixture.raw)
  assert.equal(value.durabilityKnown,true);assert.equal(value.stackId,1721);assert.equal(value.durabilityUsed,10);assert.equal(value.maxDurability,59);assert.equal(value.durabilityRemaining,49);assert.equal(value.durabilitySource,'server_item_nbt');assert.deepEqual(fixture,before)

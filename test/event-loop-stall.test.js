@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createEventLoopStallWatch } = require('../src/event-loop-stall')
+const { createEventLoopStallWatch } = require('../src/runtime/event-loop-stall')
 
 test('event-loop stalls are reported with context and rate limited', () => {
   let t = 0; const reports = []
@@ -20,7 +20,7 @@ test('event-loop stalls are reported with context and rate limited', () => {
 })
 
 test('the stall report names the quarry state, a running trip and the behaviour in control', () => {
-  const { describeWork } = require('../src/event-loop-stall')
+  const { describeWork } = require('../src/runtime/event-loop-stall')
   assert.equal(describeWork({}), null)
   assert.equal(describeWork({ quarry: null, travel: { busy: false, phase: 'arrived', legs: 9 }, behavior: null }), null)
   assert.deepEqual(describeWork({ quarry: { state: 'MINE', currentY: -12 } }), { quarry: 'MINE', layer: -12 })

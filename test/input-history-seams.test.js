@@ -2,10 +2,10 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createPhysics } = require('../src/physics')
-const { createInputHistory } = require('../src/input-history')
-const { createInput } = require('../src/input')
-const { createMovement } = require('../src/movement')
+const { createPhysics } = require('../src/movement/physics')
+const { createInputHistory } = require('../src/movement/input-history')
+const { createInput } = require('../src/movement/input')
+const { createMovement } = require('../src/movement/movement')
 
 const scope = { profile: 'player', realmId: 'realm', dimension: 'overworld', connectionId: 'connection', startedAt: 'life', runtimeEntityId: '1', generation: 1 }
 function fixture (t) {

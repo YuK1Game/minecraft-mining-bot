@@ -1,9 +1,9 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { nextDiamondAction } = require('../src/diamond-planner')
-const { createInteractions } = require('../src/interactions')
-const { placementTopVisible } = require('../src/action-access')
+const { nextDiamondAction } = require('../src/survival/diamond-planner')
+const { createInteractions } = require('../src/actions/interactions')
+const { placementTopVisible } = require('../src/actions/action-access')
 const copy = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`
 const empty = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })
@@ -45,7 +45,7 @@ test('captured leaf-litter furnace placement uses ordinary Native movement then 
   assert.equal(move.requiresReobservation, true); assert.equal(move.interactionTarget, undefined)
   assert.deepEqual(move.target, { x: -40.5, y: 70, z: 39.5 })
   t.mock.timers.enable({ apis: ['setInterval'] })
-  const { createPhysics } = require('../src/physics'), { createMovement } = require('../src/movement')
+  const { createPhysics } = require('../src/movement/physics'), { createMovement } = require('../src/movement/movement')
   const physics = createPhysics({ world: f.world, version: '1.26.60' })
   const origin = { ...copy(f.state), positionUpdatedAt: f.capture.observedAt, rawServerPositionUpdatedAt: f.capture.observedAt, rotation: { yaw: 0, pitch: 0 } }
   let time = 20000

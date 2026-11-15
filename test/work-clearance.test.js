@@ -6,10 +6,10 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
-const { evaluateThreats } = require('../src/threats')
-const { captureWorkActors, resolveWorkActors, workEscapeEvaluation } = require('../src/work-clearance')
-const { createIdleSafety } = require('../src/idle-safety')
-const { buildTerrainThreatEvidence } = require('../src/terrain-threats')
+const { evaluateThreats } = require('../src/combat/threats')
+const { captureWorkActors, resolveWorkActors, workEscapeEvaluation } = require('../src/safety/work-clearance')
+const { createIdleSafety } = require('../src/safety/idle-safety')
+const { buildTerrainThreatEvidence } = require('../src/combat/terrain-threats')
 
 // Reuse only the native fixtures. None of the large historical escape suite's
 // tests or fake IO run when this small regression suite is loaded.

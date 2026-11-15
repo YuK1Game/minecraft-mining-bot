@@ -16,13 +16,13 @@
 
 | 項目 | 主なファイル | 変更と保持した条件 |
 | --- | --- | --- |
-| 未知の到達判定 | [threat-reachability.js](../src/threat-reachability.js) | 身体・足場が未受信なら探索の不確実性を保持。到達可能はtrue、既知の遮断はfalse、不明はnull。既知の水が自分を支持する条件も維持 |
-| モブ定義 | [mob-catalog.js](../src/mob-catalog.js)、entities/threats/combat系 | 観測分類・危険評価・戦闘方針・攻撃経路・認識距離の元定義を集約。55種の既存戦闘プロファイルを維持し、shulkerの受信分類を接続。中立・未知の種別を自動で敵対扱いしない |
-| 射線の重複 | [combat-exposure.js](../src/combat-exposure.js)、[combat-coordinator.js](../src/combat-coordinator.js) | 同期判断1回の間だけ地形の射線読取を共有。所有権・HP・敵対性・移動状態などの判断結果は共有しない |
-| 収納地点の計画 | [quarry-portable-storage.js](../src/quarry-portable-storage.js) | 計画中のentity一覧を1回、移動プレビューを立ち位置ごとに1回取得。同じ候補選択を保ち、実行前には再確認 |
-| 入れ子操作の中断 | [operation-scope.js](../src/operation-scope.js) | 外側の採掘と内側の装備操作のpending frameを分ける。子の完了で外側の中断先を失わず、owner tokenが一致する操作だけを停止 |
-| 軽量な状態取得 | [chest.js](../src/chest.js)、[runtime-observation-views.js](../src/runtime-observation-views.js)、[runtime.js](../src/runtime.js)、[furnace.js](../src/furnace.js) | メタデータだけ必要な判定にstatusを使用。同じ判断内のcontroller snapshotは1回。内容・NBT・転送確認には完全なsnapshotを残す |
-| 再同期待機 | [inventory-refresh.js](../src/inventory-refresh.js)、quarry-supplies/v22-chest-work/Runtime | 共有の最終要求時刻から残り時間を求める。100ms刻みの中断・scope確認と、待機ループの45秒上限を共通化。ヘルパー1呼び出しあたりrate limitの再試行は最大1回 |
+| 未知の到達判定 | [threat-reachability.js](../src/combat/threat-reachability.js) | 身体・足場が未受信なら探索の不確実性を保持。到達可能はtrue、既知の遮断はfalse、不明はnull。既知の水が自分を支持する条件も維持 |
+| モブ定義 | [mob-catalog.js](../src/combat/mob-catalog.js)、entities/threats/combat系 | 観測分類・危険評価・戦闘方針・攻撃経路・認識距離の元定義を集約。55種の既存戦闘プロファイルを維持し、shulkerの受信分類を接続。中立・未知の種別を自動で敵対扱いしない |
+| 射線の重複 | [combat-exposure.js](../src/combat/combat-exposure.js)、[combat-coordinator.js](../src/combat/combat-coordinator.js) | 同期判断1回の間だけ地形の射線読取を共有。所有権・HP・敵対性・移動状態などの判断結果は共有しない |
+| 収納地点の計画 | [quarry-portable-storage.js](../src/quarry/storage/quarry-portable-storage.js) | 計画中のentity一覧を1回、移動プレビューを立ち位置ごとに1回取得。同じ候補選択を保ち、実行前には再確認 |
+| 入れ子操作の中断 | [operation-scope.js](../src/common/operation-scope.js) | 外側の採掘と内側の装備操作のpending frameを分ける。子の完了で外側の中断先を失わず、owner tokenが一致する操作だけを停止 |
+| 軽量な状態取得 | [chest.js](../src/actions/chest.js)、[runtime-observation-views.js](../src/runtime/runtime-observation-views.js)、[runtime.js](../src/runtime.js)、[furnace.js](../src/actions/furnace.js) | メタデータだけ必要な判定にstatusを使用。同じ判断内のcontroller snapshotは1回。内容・NBT・転送確認には完全なsnapshotを残す |
+| 再同期待機 | [inventory-refresh.js](../src/inventory/inventory-refresh.js)、quarry-supplies/v22-chest-work/Runtime | 共有の最終要求時刻から残り時間を求める。100ms刻みの中断・scope確認と、待機ループの45秒上限を共通化。ヘルパー1呼び出しあたりrate limitの再試行は最大1回 |
 
 ### 再利用の範囲
 

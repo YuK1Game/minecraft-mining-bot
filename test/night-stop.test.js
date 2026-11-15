@@ -4,8 +4,8 @@
 // morning in a covered pit. Judged only from the received clock.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { dayPhase, planPit } = require('../src/night-stop')
-const { createLongTravel } = require('../src/long-travel')
+const { dayPhase, planPit } = require('../src/travel/night-stop')
+const { createLongTravel } = require('../src/travel/long-travel')
 
 test('day phase comes only from a received server clock; unknown is not day', () => {
   assert.deepEqual(dayPhase({ time: null, source: 'unknown' }), { known: false, dayTime: null, shelter: false, resume: false })

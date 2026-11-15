@@ -1,10 +1,10 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const root=path.resolve(process.env.DROWNED_STEP_ROOT??process.cwd()),canonical=path.join(root,'src/protective-drowned-step.js'),source=process.env.DROWNED_STEP_SOURCE??(fs.existsSync(canonical)?canonical:path.join(root,'.local/staged/protective-drowned-step/src/protective-drowned-step.js')),m=new Module(canonical,module)
+const root=path.resolve(process.env.DROWNED_STEP_ROOT??process.cwd()),canonical=path.join(root,'src/safety/protective-drowned-step.js'),source=process.env.DROWNED_STEP_SOURCE??(fs.existsSync(canonical)?canonical:path.join(root,'.local/staged/protective-drowned-step/src/safety/protective-drowned-step.js')),m=new Module(canonical,module)
 m.filename=canonical;m.paths=Module._nodeModulePaths(path.join(root,'src'));m._compile(fs.readFileSync(source,'utf8'),canonical)
 const {planProtectiveDrownedStep,planProtectiveDrownedStepAsync,drownedStepThreatAllowed,drownedStepEquipmentKey,protectiveDrownedStepTargetAllowed,protectiveDrownedStepCurrent}=m.exports
-const {evaluateThreats}=require(path.join(root,'src/threats'))
-const {createNavigator}=require(path.join(root,'src/navigation'))
+const {evaluateThreats}=require(path.join(root,'src/combat/threats'))
+const {createNavigator}=require(path.join(root,'src/movement/navigation'))
 function fixture(){
  const changes=new Map(),key=(x,y,z)=>`${x},${y},${z}`
  const block=(x,y,z,name)=>({known:true,name:`minecraft:${name}`,position:{x,y,z},runtimeId:name==='air'?0:name==='oak_leaves'?500:name==='grass_block'?501:name==='dirt'?502:503,properties:name==='oak_leaves'?{persistent_bit:0,update_bit:1}:{},boundingBox:name==='air'?'empty':'block',hardness:name==='grass_block'||name==='dirt'?.5:.2,diggable:true,extra:[]})

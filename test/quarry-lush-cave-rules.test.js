@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { blockRule, setUnknownBlockDefault } = require('../src/quarry-rules')
+const { blockRule, setUnknownBlockDefault } = require('../src/quarry/quarry-rules')
 
 // Live 2026-11-13: 55 cells of a lush pocket (moss_block, cave_vines with and
 // without berries) stayed as UNKNOWN_BLOCK exceptions at the end of the job.

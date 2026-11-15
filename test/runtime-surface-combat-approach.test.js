@@ -3,12 +3,12 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module'), vm = require('node:vm')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createPhysics } = require('../src/physics')
-const { createNavigator } = require('../src/navigation')
-const { createMovement } = require('../src/movement')
-const { createInput } = require('../src/input')
-const { createMeleeCombat } = require('../src/melee-combat')
-const { createCombatCoordinator } = require('../src/combat-coordinator')
+const { createPhysics } = require('../src/movement/physics')
+const { createNavigator } = require('../src/movement/navigation')
+const { createMovement } = require('../src/movement/movement')
+const { createInput } = require('../src/movement/input')
+const { createMeleeCombat } = require('../src/combat/melee-combat')
+const { createCombatCoordinator } = require('../src/combat/combat-coordinator')
 const capture = require('./fixtures/runtime-surface-combat246.json')
 const copy = value => structuredClone(value)
 const eye = p => ({ ...p, y: p.y + 1.62 })
@@ -29,9 +29,9 @@ function loadModule (filename, source, overrides) {
   return loaded.exports
 }
 function facadeFactory (hooks) {
-  const filename = path.resolve(__dirname, '../src/user-behaviors.js')
+  const filename = path.resolve(__dirname, '../src/combat/user-behaviors.js')
   return loadModule(filename, fs.readFileSync(filename, 'utf8'), {
-    './melee-combat': { createMeleeCombat: options => {
+    './combat/melee-combat': { createMeleeCombat: options => {
       const melee = createMeleeCombat(options); hooks.melee = melee
       return { ...melee, engage: async (id, options) => {
         hooks.meleeCalls.push({ id, preview: melee.preview(id) })
@@ -43,7 +43,7 @@ function facadeFactory (hooks) {
         return result
       } }
     } },
-    './combat-coordinator': { createCombatCoordinator: options => { hooks.coordinator = createCombatCoordinator(options); return hooks.coordinator } }
+    './combat/combat-coordinator': { createCombatCoordinator: options => { hooks.coordinator = createCombatCoordinator(options); return hooks.coordinator } }
   }).createUserBehaviors
 }
 
@@ -53,9 +53,9 @@ sceneSource = 'let testHooks;\n' + sceneSource
 sceneSource = sceneSource.replace('  const actors = []', '  Object.assign(raw, structuredClone(testHooks.initialRaw));\n  const actors = structuredClone(testHooks.actors)')
 sceneSource = sceneSource.replace('  const facadeState =', '  shared.deathRespawn = { deathId: 246 }; shared.prediction = structuredClone(testHooks.initialPrediction);\n  const facadeState =')
 sceneSource = sceneSource.replace('  const overrides = {', "  const overrides = {\n    'node:timers/promises': { ...require('node:timers/promises'), setTimeout: (ms, value, options) => testHooks.wait(ms, options?.signal) },")
-sceneSource = sceneSource.replace(/^    '\.\/physics': .+$/m, "    './physics': { createPhysics: options => testHooks.physics(options) }, './navigation': { createNavigator: options => testHooks.navigator(options) }, './movement': { createMovement: options => { wireMovementOptions.push(options); Object.assign(mockMovement, testHooks.movement(options)); return mockMovement } },")
-sceneSource = sceneSource.replace(/^    '\.\/input': .+$/m, "    './input': { createInput: options => { wireInputOptions.push(options); return testHooks.input(options) } },")
-sceneSource = sceneSource.replace(/^    '\.\/user-behaviors': .+$/m, "    './user-behaviors': { createUserBehaviors: options => { facadeOptions = options; const actual = testHooks.facade(options); return { ...actual, tick: () => Promise.resolve(actual.snapshot()) } } }")
+sceneSource = sceneSource.replace(/^    '\.\/physics': .+$/m, "    './movement/physics': { createPhysics: options => testHooks.physics(options) }, './movement/navigation': { createNavigator: options => testHooks.navigator(options) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); Object.assign(mockMovement, testHooks.movement(options)); return mockMovement } },")
+sceneSource = sceneSource.replace(/^    '\.\/input': .+$/m, "    './movement/input': { createInput: options => { wireInputOptions.push(options); return testHooks.input(options) } },")
+sceneSource = sceneSource.replace(/^    '\.\/user-behaviors': .+$/m, "    './combat/user-behaviors': { createUserBehaviors: options => { facadeOptions = options; const actual = testHooks.facade(options); return { ...actual, tick: () => Promise.resolve(actual.snapshot()) } } }")
 sceneSource += '\nmodule.exports = { scene, setHooks: value => { testHooks = value } }'
 const scenes = loadModule(sceneFile, sceneSource, {})
 

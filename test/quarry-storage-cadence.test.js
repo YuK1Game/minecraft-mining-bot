@@ -11,8 +11,8 @@ const { setImmediate: turn } = require('node:timers/promises')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
 function jobFactory () {
-  if (!process.env.QUARRY_POLICY_TEST_SOURCE) return require('../src/quarry-job').createQuarryJob
-  const filename = require.resolve('../src/quarry-job'), loaded = new Module(filename, module)
+  if (!process.env.QUARRY_POLICY_TEST_SOURCE) return require('../src/quarry/quarry-job').createQuarryJob
+  const filename = require.resolve('../src/quarry/quarry-job'), loaded = new Module(filename, module)
   loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
   loaded._compile(fs.readFileSync(process.env.QUARRY_POLICY_TEST_SOURCE, 'utf8'), filename)
   return loaded.exports.createQuarryJob

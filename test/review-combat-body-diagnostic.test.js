@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { diagnoseStrikeBody } = require('../src/combat-body-diagnostic')
+const { diagnoseStrikeBody } = require('../src/combat/combat-body-diagnostic')
 const state = { position: { x: -3.5, y: 66.62, z: 16.5 }, physicsState: { onGround: true } }
 const air = () => ({ name: 'air', shapes: [] })
 const check = overrides => diagnoseStrikeBody({ state, observed: state, scopeMatches: true, blockAt: air, ...overrides })

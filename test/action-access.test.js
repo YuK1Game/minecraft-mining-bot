@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { useCurrentAccess } = require('../src/action-access')
+const { useCurrentAccess } = require('../src/actions/action-access')
 test('a natural tree approach advances to mining when the current visible face is actually accessible', () => {
   const target = { x: -45, y: 70, z: 54 }
   const decision = { type: 'move_to', resource: 'logs', block: 'minecraft:oak_log', resourceTarget: target, target: { x: -47.5, y: 69, z: 56.5 }, treeEvidence: { detection: 'connected_logs' } }

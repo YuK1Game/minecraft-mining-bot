@@ -2,9 +2,9 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createActorReader } = require('../src/runtime-observation-views')
-const { createEntities } = require('../src/entities')
-const { annotateTerrainThreats } = require('../src/terrain-threats')
+const { createActorReader } = require('../src/runtime/runtime-observation-views')
+const { createEntities } = require('../src/host/entities')
+const { annotateTerrainThreats } = require('../src/combat/terrain-threats')
 
 test('actor views reuse only a received revision while keeping positions and events independent', () => {
   const tracker = createEntities({ clock: () => 'received' })

@@ -1,10 +1,10 @@
 'use strict'
 const test = require('node:test'), assert = require('node:assert/strict')
-const { selectCarriedStorage } = require('../src/quarry-inventory')
-const { createQuarryJob } = require('../src/quarry-job')
-const { SUPPLY_NAMES, CARGO_NAME } = require('../src/loadout-manifest')
+const { selectCarriedStorage } = require('../src/quarry/quarry-inventory')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
+const { SUPPLY_NAMES, CARGO_NAME } = require('../src/loadout/loadout-manifest')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
-const { parseQuarryCommand } = require('../src/quarry-cli')
+const { parseQuarryCommand } = require('../src/host/quarry-cli')
 function fixture (storageMode = 'shulker') {
   const sim = createSim({ loaded: { xMin: -8, xMax: 23, yMin: 60, yMax: 68, zMin: -8, zMax: 23 } })
   flatTerrain(sim, { x1: -8, x2: 23, z1: -8, z2: 23, bedrock: 60, stoneTop: 61, top: 62 })

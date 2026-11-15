@@ -2,10 +2,10 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createTunneling } = require('../src/tunneling')
-const { createExcavation } = require('../src/excavation')
-const { createNavigator } = require('../src/navigation')
-const { selectVisibleBlockFace } = require('../src/aim')
+const { createTunneling } = require('../src/survival/tunneling')
+const { createExcavation } = require('../src/survival/excavation')
+const { createNavigator } = require('../src/movement/navigation')
+const { selectVisibleBlockFace } = require('../src/combat/aim')
 
 const key = point => `${point.x},${point.y},${point.z}`
 const point = (x, y, z) => ({ x, y, z })

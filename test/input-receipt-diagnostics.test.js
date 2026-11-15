@@ -1,14 +1,14 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { createInput } = require('../src/input')
-const { createMovement } = require('../src/movement')
-const { createPhysics } = require('../src/physics')
-const { createInputHistory } = require('../src/input-history')
+const { createInput } = require('../src/movement/input')
+const { createMovement } = require('../src/movement/movement')
+const { createPhysics } = require('../src/movement/physics')
+const { createInputHistory } = require('../src/movement/input-history')
 
 function hostQueue (client, initialTick = -1n) {
   // Actual production queue body, without requiring Host or starting a client.
-  const source = fs.readFileSync(path.resolve(__dirname, '../src/host.js'), 'utf8')
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/host/host.js'), 'utf8')
   const start = source.indexOf('  const connection = { queue (name, packet) {')
   const end = source.indexOf('  const respawnTerrainHandoff', start)
   assert.ok(start > 0 && end > start)
@@ -17,7 +17,7 @@ function hostQueue (client, initialTick = -1n) {
 
 function previousFactory () {
   if (!process.env.INPUT_BASELINE_SOURCE) return null
-  const file = path.resolve(__dirname, '../src/input.js'), loaded = new Module(file, module)
+  const file = path.resolve(__dirname, '../src/movement/input.js'), loaded = new Module(file, module)
   loaded.filename = file; loaded.paths = Module._nodeModulePaths(path.dirname(file)); loaded._compile(fs.readFileSync(process.env.INPUT_BASELINE_SOURCE, 'utf8'), file)
   return loaded.exports.createInput
 }

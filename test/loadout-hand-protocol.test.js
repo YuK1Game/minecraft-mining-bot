@@ -4,8 +4,8 @@
 const test = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs/promises'), os = require('node:os'), path = require('node:path')
 const { fixture } = require('./helpers/loadout-sim')
-const { createInventory } = require('../src/inventory')
-const { createRuntimeLoadoutReset } = require('../src/loadout-runtime-adapter')
+const { createInventory } = require('../src/inventory/inventory')
+const { createRuntimeLoadoutReset } = require('../src/loadout/loadout-runtime-adapter')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
 const mc = require('minecraft-data')('bedrock_1.26.60')
 

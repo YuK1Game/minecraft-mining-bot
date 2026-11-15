@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createEntities } = require('../src/entities')
+const { createEntities } = require('../src/host/entities')
 
 test('only an authoritative removal creates a bounded tombstone, cleared on reappearance or dimension change', () => {
   const tracker = createEntities({ limit: 2 })
@@ -27,7 +27,7 @@ test('metadata reports only changes that affect creeper danger', () => {
   assert.equal(tracker.applyPacket('set_entity_data', { runtime_entity_id: 30n, tick: 4n, metadata: [{ key: 'flags', value: { ignited: false, powered: true, charged: true } }] }).dangerChanged, true)
   assert.equal(tracker.applyPacket('set_entity_data', { runtime_entity_id: 999n, metadata: [] }).dangerChanged, false)
 })
-const { threatRadius } = require('../src/threats')
+const { threatRadius } = require('../src/combat/threats')
 
 test('dropped items use unique removal IDs, runtime movement IDs and current item names', () => {
   const tracker = createEntities()
@@ -230,7 +230,7 @@ test('64-bit IDs remain exact and unsafe numeric IDs never alias an existing act
 })
 
 test('version() changes whenever a packet or the self id is applied, so snapshots can be reused safely', () => {
-  const { createEntities } = require('../src/entities')
+  const { createEntities } = require('../src/host/entities')
   const e = createEntities()
   const v0 = e.version()
   e.applyPacket('remove_entity', { entity_id_self: 1n })

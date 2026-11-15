@@ -6,7 +6,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
-const { planHut } = require('../src/hut-planner')
+const { planHut } = require('../src/survival/hut-planner')
 const registry = require('prismarine-registry')('bedrock_1.26.60')
 const copy = value => structuredClone(value)
 function deferred () { let resolve; const promise = new Promise(r => { resolve = r }); return { promise, resolve } }
@@ -38,17 +38,17 @@ function fixture (t, { realRoute = false, realMovement = false, delayedCleanup =
   } }
   const host = { shared, world, meta: { version: '1.26.60', startGame: { current_tick: 1000n } }, apiUrl: 'http://127.0.0.1:49999', cache: { replay () {}, observe () {} }, client: { queue: (name, params) => packets.push({ name, params }) }, entities: { snapshot: () => copy(actors), nearby: () => [], stats: () => ({ unknownPositions: 0 }) }, getState: current, getServerState: () => copy(raw), allocate: () => -1, commitInventory () {}, setPrediction: prediction => { shared.prediction = { ...copy(prediction), updatedAt: ++stamp } }, setEquipmentPrediction () {}, setCapabilities () {}, log () {}, noteProgress: event => progresses.push(copy(event)) }
   const filename = path.resolve(__dirname, '../src/runtime.js'); const nativeRequire = Module.createRequire(filename)
-  const realCreateGuard = nativeRequire('./guarded-route').createGuardedRoute
+  const realCreateGuard = nativeRequire('./movement/guarded-route').createGuardedRoute
   const overridesModules = {
-    './crafting': { createCrafting: () => crafting }, './inventory': { createInventory: () => inventory },
-    './food': { createFood: () => ({ snapshot: () => ({ busy: false, hunger: 20 }), applyPacket () {}, cancel () {}, preview: () => ({ ready: false }) }), isSupportedFood: () => false },
-    './input': { createInput: () => { let running = false; return { start: () => { running = true }, stop: () => { running = false }, release () {}, stats: () => ({ running, sent: 0 }), lookAt () {}, sendAction () {}, sendTransaction () {} } } },
-    './combat': { createCombat: () => { const actor = { stops: [] }; combats.push(actor); return { snapshot: () => ({ busy: false, defending: false, engaging: false }), applyPacket () {}, previewEngage: () => ({ ready: false }), engage: async () => ({}), preview: () => ({ ready: false }), attack: async () => ({}), cancel: reason => actor.stops.push(reason), drain: async () => {} } } },
-    './hut': { createHut: options => {
+    './actions/crafting': { createCrafting: () => crafting }, './inventory/inventory': { createInventory: () => inventory },
+    './actions/food': { createFood: () => ({ snapshot: () => ({ busy: false, hunger: 20 }), applyPacket () {}, cancel () {}, preview: () => ({ ready: false }) }), isSupportedFood: () => false },
+    './movement/input': { createInput: () => { let running = false; return { start: () => { running = true }, stop: () => { running = false }, release () {}, stats: () => ({ running, sent: 0 }), lookAt () {}, sendAction () {}, sendTransaction () {} } } },
+    './combat/combat': { createCombat: () => { const actor = { stops: [] }; combats.push(actor); return { snapshot: () => ({ busy: false, defending: false, engaging: false }), applyPacket () {}, previewEngage: () => ({ ready: false }), engage: async () => ({}), preview: () => ({ ready: false }), attack: async () => ({}), cancel: reason => actor.stops.push(reason), drain: async () => {} } } },
+    './survival/hut': { createHut: options => {
       const actor = { options, calls: [], busy: false, memory: copy(options.memo), physical: { inside: false, closed: false, usable: false, serverConfirmed: false } }; huts.push(actor)
       return { memo: () => copy(actor.memory), restoreMemo: memo => { actor.memory = copy(memo) }, snapshot: () => ({ busy: actor.busy, ...copy(actor.physical) }), preview: () => ({ ready: true }), execute: async (args, context) => { actor.calls.push({ args, context }); actor.options.movement.preview({ x: 0.5, y: 65, z: 0.5 }); return { phase: 'completed' } }, leave: async () => ({}), stop: async () => ({ busy: false }) }
     } },
-    './guarded-route': { createGuardedRoute: options => {
+    './movement/guarded-route': { createGuardedRoute: options => {
       const actor = { options, busy: false, calls: [], stops: [], work: null }; guards.push(actor)
       if (realRoute) { const route = realCreateGuard(options); actor.route = route; return route }
       const snapshot = () => ({ phase: actor.busy ? 'moving' : 'idle', busy: actor.busy, safe: false })
@@ -56,7 +56,7 @@ function fixture (t, { realRoute = false, realMovement = false, delayedCleanup =
       return { execute: (nodes, bounds) => start('execute', nodes, bounds), returnRoute: (nodes, bounds) => start('returnRoute', nodes, bounds), escape: (nodes, bounds) => start('escape', nodes, bounds), snapshot, stop: reason => { actor.stops.push(reason); return gate.promise.then(() => { actor.busy = false; actor.work?.resolve({ ok: false, returned: false }); return snapshot() }) } }
     } }
   }
-  if (!realMovement) overridesModules['./movement'] = { createMovement: options => {
+  if (!realMovement) overridesModules['./movement/movement'] = { createMovement: options => {
     const actor = { options, phase: 'idle', stops: [], previews: [], starts: [] }; movements.push(actor)
     return { preview: (target, opts) => { actor.previews.push({ target: copy(target), opts }); return { ready: true, origin: { ...current().position, y: current().position.y - 1.62 }, waypoints: [{ position: copy(target), medium: 'land', action: 'walk' }] } }, start: (target, opts) => { actor.starts.push({ target: copy(target), opts }); actor.phase = 'awaiting_server_confirmation'; shared.prediction = { position: { ...copy(target), y: target.y + 1.62 }, updatedAt: ++stamp, physicsState: { onGround: true, velocity: { x: 0, y: -0.0784, z: 0 } } }; return { phase: actor.phase } }, settle: () => ({}), stop: reason => { actor.stops.push(reason); actor.phase = 'stopped'; return { phase: 'stopped' } }, applyPacket () {}, snapshot: () => ({ phase: actor.phase }) }
   } }

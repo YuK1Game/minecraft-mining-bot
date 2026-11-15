@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test'), assert = require('node:assert/strict')
-const { createInventory } = require('../src/inventory')
-const { createLoadoutCommand, allowed } = require('../src/loadout-command')
+const { createInventory } = require('../src/inventory/inventory')
+const { createLoadoutCommand, allowed } = require('../src/loadout/loadout-command')
 const { fixture, item } = require('./helpers/loadout-sim')
 const probe = name => `/testfor @s[hasitem={item=minecraft:${name},location=slot.weapon.mainhand,quantity=1}]`
 function inventoryFor (f, { dropSelections = 0 } = {}) {

@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createAutonomy } = require('../src/autonomy')
-const { nextDiamondAction } = require('../src/diamond-planner')
+const { createAutonomy } = require('../src/survival/autonomy')
+const { nextDiamondAction } = require('../src/survival/diamond-planner')
 
 function scene (hooks = {}) {
   const state = { phase: 'spawned', profile: 'bot', realm: { id: '42' }, connectionId: 'socket', runtimeEntityId: '41', dimension: 'overworld', health: 20, gameMode: 'survival', position: { x: 15.5, y: 65.62, z: 0.5 }, entities: [], inventory: { known: true, items: [{ name: 'minecraft:iron_pickaxe', slot: 0, count: 1, durabilityKnown: true, durabilityRemaining: 250 }] }, rawSelectedSlot: 0, selectedSlot: 0, heldItem: { name: 'minecraft:iron_pickaxe', slot: 0, count: 1 }, world: { initialized: true, loadedSections: 27 }, capabilities: { prospect: true, explore: true, mine_ore: true, tunnel: true } }

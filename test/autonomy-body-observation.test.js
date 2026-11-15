@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const {createAutonomy}=require('../src/autonomy'),{nextSurvivalAction}=require('../src/survival-planner'),{nextDiamondAction}=require('../src/diamond-planner'),{supplyScope}=require('../src/supply-return')
+const {createAutonomy}=require('../src/survival/autonomy'),{nextSurvivalAction}=require('../src/survival/survival-planner'),{nextDiamondAction}=require('../src/survival/diamond-planner'),{supplyScope}=require('../src/survival/supply-return')
 function fixture(t,{maxNoProgressActions=3}={}){
   const filename=require.resolve('./survival-planner.test.js'),source=fs.readFileSync(filename,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0],mod=new Module(filename,module)
   mod.filename=filename;mod.paths=Module._nodeModulePaths(path.dirname(filename));mod._compile(source+'\nmodule.exports={fixture}',filename)

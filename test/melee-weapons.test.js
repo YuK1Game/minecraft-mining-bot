@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { scoreMeleeWeapon, selectMeleeWeapon } = require('../src/melee-weapons')
+const { scoreMeleeWeapon, selectMeleeWeapon } = require('../src/combat/melee-weapons')
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, extra: { has_nbt: 'false' } })
 function item (name, enchantments = [], slot = 0) {
   const raw = { network_id: 300 + slot, count: 1, metadata: 0, has_stack_id: true, stack_id: 100 + slot, extra: { has_nbt: enchantments.length ? 'true' : 'false' } }

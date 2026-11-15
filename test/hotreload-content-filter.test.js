@@ -1,7 +1,7 @@
 'use strict'
 // Future stable-layer QA. All watched files are in owned OS.TEMP directories.
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),Module=require('node:module'),{setTimeout:delay}=require('node:timers/promises')
-const root=process.env.HOTRELOAD_TEST_ROOT??process.cwd(),canonical=path.join(root,'src/hotreload.js'),loaded=new Module(canonical,module)
+const root=process.env.HOTRELOAD_TEST_ROOT??process.cwd(),canonical=path.join(root,'src/host/hotreload.js'),loaded=new Module(canonical,module)
 loaded.filename=canonical;loaded.paths=Module._nodeModulePaths(path.dirname(canonical));loaded._compile(fs.readFileSync(process.env.HOTRELOAD_TEST_SOURCE??canonical,'utf8'),canonical)
 const {createHotReloader}=loaded.exports
 async function until(check,label='owned watcher condition',ms=1500){const end=Date.now()+ms;while(Date.now()<end){if(check())return;await delay(5)}assert.fail(label)}

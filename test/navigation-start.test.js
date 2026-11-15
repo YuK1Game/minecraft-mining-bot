@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createNavigator } = require('../src/navigation')
+const { createNavigator } = require('../src/movement/navigation')
 
 const block = name => ({ known: true, name: `minecraft:${name}`, properties: {}, extra: [] })
 function fixture ({ override = () => null, floor = 65, x = 0.05, z = 0.05 } = {}) {

@@ -5,11 +5,11 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createRangedCombat } = require('../src/ranged-combat')
-const { createCrafting } = require('../src/crafting')
-const { createEntities } = require('../src/entities')
-const { createState } = require('../src/state')
-const { createWorld } = require('../src/world')
+const { createRangedCombat } = require('../src/combat/ranged-combat')
+const { createCrafting } = require('../src/actions/crafting')
+const { createEntities } = require('../src/host/entities')
+const { createState } = require('../src/host/state')
+const { createWorld } = require('../src/host/world')
 const captured = require('./fixtures/bds-owned-bow-1.26.60.json')
 
 function revive (value) {

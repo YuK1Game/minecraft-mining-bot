@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const {createBaseContinuation,continuationScope}=require('../src/base-continuation'),{createSurfaceReturn,returnScope}=require('../src/surface-return'),{createPhysics}=require('../src/physics'),{campFloorMatches,planWorksiteCamp}=require('../src/worksite-camp')
+const {createBaseContinuation,continuationScope}=require('../src/survival/base-continuation'),{createSurfaceReturn,returnScope}=require('../src/survival/surface-return'),{createPhysics}=require('../src/movement/physics'),{campFloorMatches,planWorksiteCamp}=require('../src/survival/worksite-camp')
 const file=path.join(__dirname,'worksite-camp.test.js'),source=fs.readFileSync(file,'utf8').split('\ntest(')[0],m={exports:{}}
 new Function('exports','require','module','__filename','__dirname',source+'\nmodule.exports={fixture}')(m.exports,Module.createRequire(file),m,file,__dirname)
 const fixture=m.exports.fixture
@@ -9,7 +9,7 @@ function refresh(f,policy,{cursor=995,read=()=>f.state,world=f.world}={}){
  assert.ok(start>0&&end>start)
  const physics=createPhysics({world,version:'1.26.60'}),surfaceReturn=createSurfaceReturn({getState:read,world,physics,movement:{preview:()=>assert.fail('no move'),start:()=>assert.fail('no move'),stop:()=>{}},getMovement:()=>({running:false}),canAct:()=>true,clock:()=>1000})
  const host={shared:{depotSurfaceAnchor:f.surface()}}
- const knownLearningLocalBody=s=>{const p=physics.fromServer(s);return p.onGround===true&&!p.isInWater&&!p.isInLava&&require('../src/navigation').createNavigator({world,physics}).verifyOrigin(p)}
+ const knownLearningLocalBody=s=>{const p=physics.fromServer(s);return p.onGround===true&&!p.isInWater&&!p.isInLava&&require('../src/movement/navigation').createNavigator({world,physics}).verifyOrigin(p)}
  const run=new Function('lightweightUserState','continuationScope','returnScope','surfaceReturn','inputHistory','host','policy','knownLearningLocalBody',runtime.slice(start,end)+';return refreshDepotSurfacePolicy(policy)')
  return run(read,continuationScope,returnScope,surfaceReturn,{snapshot:()=>({cursor:{queuedAt:cursor}})},host,policy,knownLearningLocalBody)
 }

@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryJob } = require('../src/quarry-job')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
 function fixture ({ missingTarget = false, missingExit = false, receive = null, port = true } = {}) {

@@ -4,9 +4,9 @@
 // totem (state.totemGuard), health alone stops no work; without it, unchanged.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { resourceMinHealth, totemGuarded } = require('../src/learning-health')
+const { resourceMinHealth, totemGuarded } = require('../src/safety/learning-health')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
-const { createQuarryJob } = require('../src/quarry-job')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 
 test('the minimum working health is zero only while a received offhand totem is held and the bot is alive', () => {
   const alive = { phase: 'spawned', health: 4, threatPolicy: 'balanced_mining' }
@@ -53,7 +53,7 @@ test('quarry: HP 4/20 without a totem still retreats as before', async () => {
 // Live 2026-11-14 03:56:45: the totem fired (HP 1.19 -> 1) but the offhand
 // record kept it and the health protections stayed off until death at 04:00.
 test('a consumed totem empties the trusted offhand at once', () => {
-  const { createInventoryStore } = require('../src/inventory-store')
+  const { createInventoryStore } = require('../src/inventory/inventory-store')
   const store = createInventoryStore({ shared: {} })
   const totem = { network_id: 578, count: 1, metadata: 0, has_stack_id: true, stack_id: 7, block_runtime_id: 0, extra: { has_nbt: false, can_place_on: [], can_destroy: [] } }
   store.commit('offhand', 0, totem, 'server_inventory_slot')
@@ -69,7 +69,7 @@ test('a consumed totem empties the trusted offhand at once', () => {
 // 2026-11-14 user decision (relay): with the long-trip preparation allowance and
 // a server-confirmed empty inventory, gathering may start at low health.
 test('empty-handed preparation lowers the working minimum to zero; anything else keeps it', () => {
-  const { emptyHandedPrep } = require('../src/learning-health')
+  const { emptyHandedPrep } = require('../src/safety/learning-health')
   const alive = { phase: 'spawned', health: 3, threatPolicy: 'balanced_mining' }
   assert.equal(resourceMinHealth({ ...alive, emptyHandedPrep: true }), 0)
   assert.equal(resourceMinHealth({ ...alive, emptyHandedPrep: false }), 6)
@@ -94,7 +94,7 @@ test('every empty-handed exception keys on the derived flag, and one item ends i
 // 2026-11-14 decision B (relay): during empty-handed preparation the bot does not
 // fight shooters and strikes only a close non-shooter; any item ends it.
 test('empty-handed preparation avoids shooters and engages only a non-shooter within 3 m', () => {
-  const { emptyHandedTargetAllowed } = require('../src/learning-health')
+  const { emptyHandedTargetAllowed } = require('../src/safety/learning-health')
   const bot = { phase: 'spawned', health: 20, emptyHandedPrep: true, position: { x: 0, y: 65.62, z: 0 } }
   const at = (name, x) => ({ entityType: `minecraft:${name}`, position: { x, y: 64, z: 0 } })
   assert.equal(emptyHandedTargetAllowed(bot, at('skeleton', 2)), false)
@@ -112,7 +112,7 @@ test('empty-handed preparation avoids shooters and engages only a non-shooter wi
 // Decision a (2026-11-14): only a fixed list of cheap regatherable items still
 // counts as nothing to lose; anything else restores the ordinary judgements.
 test('the cheap-item list is fixed: gathered materials and food yes, valuables no', () => {
-  const { cheapItem } = require('../src/learning-health')
+  const { cheapItem } = require('../src/safety/learning-health')
   for (const name of ['dirt', 'leaf_litter', 'oak_boat', 'cobblestone', 'gravel', 'oak_log', 'spruce_planks', 'stick', 'crafting_table', 'wooden_pickaxe', 'beef', 'cooked_porkchop', 'wheat_seeds']) assert.equal(cheapItem('minecraft:' + name), true, name)
   for (const name of ['purple_shulker_box', 'diamond_pickaxe', 'iron_pickaxe', 'stone_pickaxe', 'totem_of_undying', 'diamond_helmet', 'leather_chestplate', 'bow', 'arrow', 'torch', 'coal']) assert.equal(cheapItem('minecraft:' + name), false, name)
 })

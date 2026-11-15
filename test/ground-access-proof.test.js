@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { proveGroundAccess, isCurrentBlockedGroundProof } = require('../src/ground-access-proof')
+const { proveGroundAccess, isCurrentBlockedGroundProof } = require('../src/movement/ground-access-proof')
 const copy = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`
 const air = () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] })

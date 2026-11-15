@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createGuardedRoute } = require('../src/guarded-route')
-const { createNavigator } = require('../src/navigation')
+const { createGuardedRoute } = require('../src/movement/guarded-route')
+const { createNavigator } = require('../src/movement/navigation')
 
 const copy = value => structuredClone(value)
 const separation = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)

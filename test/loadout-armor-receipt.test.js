@@ -1,8 +1,8 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createInventoryInspection } = require('../src/inventory-inspection')
-const { createInventoryStore } = require('../src/inventory-store')
+const { createInventoryInspection } = require('../src/inventory/inventory-inspection')
+const { createInventoryStore } = require('../src/inventory/inventory-store')
 const empty = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false })
 test('loadout-receipt: controller invalidation needs four fresh armor slots, not old complete coverage', () => {
   const inventoryStore = createInventoryStore({ shared: {} })

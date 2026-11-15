@@ -4,7 +4,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setTimeout: delay } = require('node:timers/promises')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { createFurnace } = require('../src/furnace')
+const { createFurnace } = require('../src/actions/furnace')
 
 const extra = { has_nbt: 'false', can_place_on: [], can_destroy: [] }
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: structuredClone(extra) })

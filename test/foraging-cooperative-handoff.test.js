@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const { setTimeout: sleep } = require('node:timers/promises')
-const { createForaging } = require('../src/foraging'), { createInput } = require('../src/input'), { createMovement } = require('../src/movement')
+const { createForaging } = require('../src/survival/foraging'), { createInput } = require('../src/movement/input'), { createMovement } = require('../src/movement/movement')
 
 function scene () {
   const state = { phase: 'spawned', profile: 'bot', realm: { id: '42' }, runtimeEntityId: '1', lifecycle: { deathId: 0 }, connectionId: 'same', startedAt: 'start', health: 20, gameMode: 'survival', dimension: 'overworld', position: { x: 0.5, y: 66.62, z: 0.5 }, rotation: { yaw: 0, pitch: 0 }, rawSelectedSlot: 0, positionUpdatedAt: 1, inventory: { known: true, items: [] } }

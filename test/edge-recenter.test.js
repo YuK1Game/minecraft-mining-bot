@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { landEdgeRecenterTargets, fullySupported } = require('../src/edge-recenter')
+const { landEdgeRecenterTargets, fullySupported } = require('../src/movement/edge-recenter')
 
 const STONE = { known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] }
 const AIR = { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }

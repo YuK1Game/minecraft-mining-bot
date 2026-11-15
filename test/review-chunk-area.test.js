@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { normalizeChunkArea, areaContainsFeet, chunkAreaKey } = require('../src/chunk-area')
+const { normalizeChunkArea, areaContainsFeet, chunkAreaKey } = require('../src/common/chunk-area')
 test('selected areas normalize reverse ranges without changing their chunks', () => {
   const a = { x1: -1, z1: 2, x2: -2, z2: 1 }
   assert.deepEqual(normalizeChunkArea(a), { x1: -2, z1: 1, x2: -1, z2: 2 })

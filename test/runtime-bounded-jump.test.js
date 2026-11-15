@@ -6,7 +6,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
-const { createCombatExposure } = require('../src/combat-exposure')
+const { createCombatExposure } = require('../src/combat/combat-exposure')
 const capture = require('./fixtures/bounded-jump-partial-ledge.json')
 const copy = value => structuredClone(value)
 const harnessFile = path.resolve(__dirname, 'runtime-idle-safety.test.js')
@@ -20,12 +20,12 @@ source = source.replace('  const calls = [];', `  t.mock.timers.enable({ apis: [
   const blocks = new Map(jumpCapture.blocks.map(block => [block.position.x + ',' + block.position.y + ',' + block.position.z, copy(block)]))
   const advance = ms => { elapsed += ms; t.mock.timers.tick(ms) }
   const calls = [];`)
-const inputStart = source.indexOf("    './input':")
-const combatStart = source.indexOf("    './combat':", inputStart)
+const inputStart = source.indexOf("    './movement/input':")
+const combatStart = source.indexOf("    './combat/combat':", inputStart)
 source = source.slice(0, inputStart) + `
-    './input': { createInput: options => { const value = nativeRequire('./input').createInput({ ...options, startGameReceivedAt: 0, clock: () => elapsed }); inputs.push(value); return value } },
-    './movement': { createMovement: options => {
-      const value = nativeRequire('./movement').createMovement({ ...options, startGameReceivedAt: 0, clock: () => elapsed,
+    './movement/input': { createInput: options => { const value = nativeRequire('./movement/input').createInput({ ...options, startGameReceivedAt: 0, clock: () => elapsed }); inputs.push(value); return value } },
+    './movement/movement': { createMovement: options => {
+      const value = nativeRequire('./movement/movement').createMovement({ ...options, startGameReceivedAt: 0, clock: () => elapsed,
         onQueuedFrame: frame => { records.push({ ...copy(frame), actorPositions: Object.fromEntries(actors.map(actor => [actor.runtimeId, copy(actor.position)])) }); options.onQueuedFrame(frame) },
         onPrediction: prediction => {
           options.onPrediction(prediction)
@@ -42,9 +42,9 @@ source = source.slice(0, inputStart) + `
       value.preview = (target, settings = {}) => { previews.push({ target: copy(target), boundedJump: copy(settings.boundedJump ?? null), postJump }); if (mode === 'second_jump' && postJump && !settings.boundedJump && target && Math.hypot(target.x - host.getState().position.x, target.z - host.getState().position.z) > 0.5) return { ready: false, reason: 'offline continuation deliberately unavailable' }; return preview(target, settings) }
       movements.push(value); return value
     } },
-    './input-history': { createInputHistory: options => { const value = nativeRequire('./input-history').createInputHistory(options); histories.push(value); return value } },
-    './guarded-route': { createGuardedRoute: options => {
-      const value = nativeRequire('./guarded-route').createGuardedRoute({ ...options, clock: Date.now, delay: async ms => advance(ms), pollMs: 50, operationTimeoutMs: 3000 })
+    './movement/input-history': { createInputHistory: options => { const value = nativeRequire('./movement/input-history').createInputHistory(options); histories.push(value); return value } },
+    './movement/guarded-route': { createGuardedRoute: options => {
+      const value = nativeRequire('./movement/guarded-route').createGuardedRoute({ ...options, clock: Date.now, delay: async ms => advance(ms), pollMs: 50, operationTimeoutMs: 3000 })
       const escape = value.escape
       value.escape = async (nodes, settings) => {
         const call = { nodes: copy(nodes), boundedJump: copy(settings.boundedJump ?? null), timeoutMs: settings.timeoutMs, maxMovementStarts: settings.maxMovementStarts }

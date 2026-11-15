@@ -4,7 +4,7 @@
 // damage, saving progress and stopping with a reason when blocked.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createLongTravel } = require('../src/long-travel')
+const { createLongTravel } = require('../src/travel/long-travel')
 
 function fixture ({ blocked = () => false, damagedOnce = false, stopWhenBlocked = false } = {}) {
   const state = { phase: 'spawned', health: 20, position: { x: 0.5, y: 65.62, z: 0.5 } }
@@ -104,14 +104,14 @@ test('sprinting applies only while empty-handed; shooters are avoided on every t
 })
 
 test('raw chicken is food below hunger 18 when nothing else edible is held', () => {
-  const { isSupportedFood } = require('../src/food')
+  const { isSupportedFood } = require('../src/actions/food')
   const st = { phase: 'spawned', health: 20, threatPolicy: 'balanced_mining' }
   assert.equal(isSupportedFood('minecraft:chicken', st), false)
   assert.equal(isSupportedFood('minecraft:chicken', { ...st, rawChickenAllowed: true }), true)
 })
 
 test('chunk fallbacks are capped per pass', async () => {
-  const { createLongTravel } = require('../src/long-travel')
+  const { createLongTravel } = require('../src/travel/long-travel')
   const state = { phase: 'spawned', health: 20, position: { x: 0, y: 65.62, z: 0 } }
   let starts = 0
   const lt = createLongTravel({ getState: () => state, chunkTravel: { start: async () => { starts++ }, status: () => ({ busy: false, phase: 'failed', error: { code: 'CHUNK_TRAVEL_NO_ROUTE' } }) }, findPoint: async () => null, walkTo: async () => ({ ok: false }), log: () => {}, save: async () => {}, pollMs: 2, maxFailuresInRow: 1, stopWhenBlocked: true })

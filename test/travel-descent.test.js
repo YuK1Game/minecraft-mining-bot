@@ -6,7 +6,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const { createMining } = require('../src/mining')
+const { createMining } = require('../src/actions/mining')
 
 function fixture (t, allowed, under = 'oak_leaves') {
   const state = { phase: 'spawned', profile: 'bot', realm: { id: '42' }, connectionId: 'connection', startedAt: '2026-11-05T01:30:00.000Z', runtimeEntityId: '41', dimension: 'overworld', lifecycle: { deathId: 3 }, gameMode: 'survival', health: 20, position: { x: 0.5, y: 81.62, z: 0.5 }, inventory: { known: true, items: [] }, onGround: true }
@@ -69,7 +69,7 @@ test('drowned are fought on land, never from the water; the route prices water h
   const src = require('./helpers/runtime-source').runtimeSource()
   assert.match(src, /function drownedOnLand \(target, state\) \{ return \/drowned\/\.test\(String\(target\?\.entityType \?\? target\?\.name \?\? ''\)\) && state\?\.isInWater !== true/)
   assert.match(src, /if \(!drownedOnLand\(target, state\) && !require\('\.\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
-  const route = require('node:fs').readFileSync(require.resolve('../src/coarse-route'), 'utf8')
+  const route = require('node:fs').readFileSync(require.resolve('../src/travel/coarse-route'), 'utf8')
   assert.match(route, /\(s\.water \? 10 : 1\)/)
   const kit = src.slice(src.indexOf('      prepKit: async (input = {}) => {'), src.indexOf('      // Read-only: why the empty-handed preparation flag is on or off.'))
   assert.match(kit, /wool: 3/)

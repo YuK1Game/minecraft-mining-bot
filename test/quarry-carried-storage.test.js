@@ -2,8 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { keepPlan, canAccept, maxStack, isShulkerBox, carriedContainerKey, selectCarriedStorage } = require('../src/quarry-inventory')
-const { createQuarryJob } = require('../src/quarry-job')
+const { keepPlan, canAccept, maxStack, isShulkerBox, carriedContainerKey, selectCarriedStorage } = require('../src/quarry/quarry-inventory')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
 test('all carried shulker variants stay in the inventory even when full', () => {

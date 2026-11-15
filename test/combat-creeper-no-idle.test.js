@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createCombatCoordinator } = require('../src/combat-coordinator')
+const { createCombatCoordinator } = require('../src/combat/combat-coordinator')
 
 function fixture ({ type = 'creeper', range = 3.2, bow = false, approach = null, meleeReady = null, rangedReady = false, rangedPreview = null, rangedPending = false, onSleep = null } = {}) {
   let time = 1000, pendingResolve = null, activeRanged = false

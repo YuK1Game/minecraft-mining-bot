@@ -2,9 +2,9 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createBaseProtection } = require('../src/base-protection')
-const { createNavigator } = require('../src/navigation')
-const { createTunneling } = require('../src/tunneling')
+const { createBaseProtection } = require('../src/safety/base-protection')
+const { createNavigator } = require('../src/movement/navigation')
+const { createTunneling } = require('../src/survival/tunneling')
 
 const key = p => `${p.x},${p.y},${p.z}`
 const point = (x, y, z) => ({ x, y, z })
@@ -175,7 +175,7 @@ test('real tunneling plans route around the protected base floor instead of trea
 })
 
 test('live case 2026-11-04: ordinary block reads never clone the state; only base candidate cells check the scope', () => {
-  const { createBaseProtection } = require('../src/base-protection')
+  const { createBaseProtection } = require('../src/safety/base-protection')
   let stateReads = 0
   const world = { getBlock: (x, y, z) => ({ known: true, position: { x, y, z }, name: 'minecraft:stone', boundingBox: 'block', extra: [] }) }
   const p = createBaseProtection({ world, getState: () => { stateReads++; return { profile: 'bot', realm: { id: '1' }, dimension: 'overworld' } }, getHutMemo: () => null, getShelterMemo: () => null, ownerProfile: 'bot' })

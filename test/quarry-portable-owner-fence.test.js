@@ -6,8 +6,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
 const { setImmediate: afterAbort } = require('node:timers/promises')
-const { createQuarryPortableStorage } = require('../src/quarry-portable-storage')
-const { canonicalWindowId, sameWindowId } = require('../src/container-types')
+const { createQuarryPortableStorage } = require('../src/quarry/storage/quarry-portable-storage')
+const { canonicalWindowId, sameWindowId } = require('../src/inventory/container-types')
 
 const file = require.resolve('./quarry-portable-storage.test')
 const loaded = new Module(file, module)
@@ -78,7 +78,7 @@ for (const kind of ['movement', 'mining']) {
   })
 }
 
-const { createActionOwnerTracker } = require('../src/action-owner-tracker')
+const { createActionOwnerTracker } = require('../src/common/action-owner-tracker')
 const movementFile = require.resolve('./movement.test')
 const movementSetup = new Module(movementFile, module)
 movementSetup.filename = movementFile

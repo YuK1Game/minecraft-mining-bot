@@ -3,9 +3,9 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { performance } = require('node:perf_hooks')
 const { setTimeout: delay } = require('node:timers/promises')
-const { createInput } = require('../src/input')
-const { createCombat } = require('../src/combat')
-const { createMeleeCombat } = require('../src/melee-combat')
+const { createInput } = require('../src/movement/input')
+const { createCombat } = require('../src/combat/combat')
+const { createMeleeCombat } = require('../src/combat/melee-combat')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
 
 function fixture (kind = 'legacy', { water = false, nativeFailure = false, fakeInput = false, fakeCounter = false } = {}) {

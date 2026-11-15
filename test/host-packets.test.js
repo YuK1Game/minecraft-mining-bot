@@ -3,9 +3,9 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
-const { createHostPacketEvents, createHostPacketReceiver, startupFuseDanger, createStartupFuseGuard, requestStartupTerrain } = require('../src/host')
-const { createState } = require('../src/state')
-const { createEntities } = require('../src/entities')
+const { createHostPacketEvents, createHostPacketReceiver, startupFuseDanger, createStartupFuseGuard, requestStartupTerrain } = require('../src/host/host')
+const { createState } = require('../src/host/state')
+const { createEntities } = require('../src/host/entities')
 
 function client () {
   const events = new EventEmitter()

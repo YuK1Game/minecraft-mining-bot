@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { lowHealthSurfaceEligible, proveLowHealthSurfaceRoute } = require('../src/low-health-water')
+const { lowHealthSurfaceEligible, proveLowHealthSurfaceRoute } = require('../src/movement/low-health-water')
 
 function fixture () {
   const physical = { position: { x: 0, y: 62.1, z: 0 }, velocity: { x: 0, y: 0.012, z: 0 }, isInWater: true, isInLava: false, onGround: false }

@@ -16,7 +16,7 @@ function load (filename, source, overrides = {}) {
   loaded._compile(source, filename)
   return loaded.exports
 }
-const source = require.resolve('../src/quarry-job')
+const source = require.resolve('../src/quarry/quarry-job')
 const { createQuarryJob } = process.env.STORAGE_OPEN_RETRY_JOB_TEST_SOURCE
   ? load(source, fs.readFileSync(process.env.STORAGE_OPEN_RETRY_JOB_TEST_SOURCE, 'utf8'))
   : require(source)

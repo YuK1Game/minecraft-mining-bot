@@ -9,7 +9,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
 const { performance } = require('node:perf_hooks')
-const { evaluateThreats } = require('../src/threats')
+const { evaluateThreats } = require('../src/combat/threats')
 const capture = require('./fixtures/queued-tail-soil.json')
 const copy = value => structuredClone(value)
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
@@ -21,22 +21,22 @@ let source = fs.readFileSync(harnessFile, 'utf8').replace(/\r\n/g, '\n').split('
 source = source.replace('  const calls = [];', '  const streams = [], motions = [], miners = [], histories = [], queuedFrames = [];\n  const calls = [];')
 source = source.replace('startGame: { current_tick: 1000n }', "startGame: { current_tick: 1000n, player_gamemode: 'survival', server_authoritative_block_breaking: true }, startGameReceivedAt: performance.now()")
 source = source.replace('return { runtime, create, host, raw, shared,', 'return { streams, motions, miners, histories, queuedFrames, runtime, create, host, raw, shared,')
-const inputStart = source.indexOf("    './input':")
-const combatStart = source.indexOf("    './combat':", inputStart)
+const inputStart = source.indexOf("    './movement/input':")
+const combatStart = source.indexOf("    './combat/combat':", inputStart)
 assert.ok(inputStart > 0 && combatStart > inputStart)
 source = source.slice(0, inputStart) + `
-    './input': { createInput: options => {
-      const actor = nativeRequire('./input').createInput({ ...options, onQueuedFrame: frame => { queuedFrames.push(copy(frame)); options.onQueuedFrame?.(frame) } })
+    './movement/input': { createInput: options => {
+      const actor = nativeRequire('./movement/input').createInput({ ...options, onQueuedFrame: frame => { queuedFrames.push(copy(frame)); options.onQueuedFrame?.(frame) } })
       streams.push(actor)
       return actor
     } },
-    './movement': { createMovement: options => {
-      const native = nativeRequire('./movement').createMovement({ ...options, onQueuedFrame: frame => { queuedFrames.push(copy(frame)); options.onQueuedFrame?.(frame) } })
+    './movement/movement': { createMovement: options => {
+      const native = nativeRequire('./movement/movement').createMovement({ ...options, onQueuedFrame: frame => { queuedFrames.push(copy(frame)); options.onQueuedFrame?.(frame) } })
       const actor = { native, starts: [], previews: [] }; motions.push(actor)
       return { ...native, start: (target, options) => { actor.starts.push({ target: copy(target), at: Date.now() }); return native.start(target, options) }, preview: (target, options) => { const result = native.preview(target, options); actor.previews.push({ target: copy(target), ready: result.ready }); return result } }
     } },
-    './mining': { createMining: options => { const actor = nativeRequire('./mining').createMining(options); miners.push(actor); return actor } },
-    './input-history': { createInputHistory: options => { const actor = nativeRequire('./input-history').createInputHistory(options); histories.push(actor); return actor } },
+    './actions/mining': { createMining: options => { const actor = nativeRequire('./actions/mining').createMining(options); miners.push(actor); return actor } },
+    './movement/input-history': { createInputHistory: options => { const actor = nativeRequire('./movement/input-history').createInputHistory(options); histories.push(actor); return actor } },
 ` + source.slice(combatStart)
 const target = { exports: {} }
 new vm.Script(Module.wrap(source + '\nmodule.exports = { fixture }'), { filename: harnessFile }).runInThisContext()(target.exports, Module.createRequire(harnessFile), target, harnessFile, path.dirname(harnessFile))

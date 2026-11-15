@@ -4,8 +4,8 @@
 // offhand takes a totem, else a shield; never during the quarry's final store.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createArmor, pieceRank } = require('../src/armor')
-const { createInventoryStore } = require('../src/inventory-store')
+const { createArmor, pieceRank } = require('../src/actions/armor')
+const { createInventoryStore } = require('../src/inventory/inventory-store')
 
 const IDS = { 1: 'minecraft:iron_chestplate', 2: 'minecraft:diamond_chestplate', 3: 'minecraft:totem_of_undying', 4: 'minecraft:shield', 5: 'minecraft:dirt' }
 const ID = Object.fromEntries(Object.entries(IDS).map(([k, v]) => [v, Number(k)]))

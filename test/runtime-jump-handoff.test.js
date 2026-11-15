@@ -21,9 +21,9 @@ source = source.replaceAll('epoch + elapsed', 'Date.now()')
 source = source.replace('postJump = true', 'postJump = true; await advance(50)')
 source = source.replace('  const calls = [];', '  const phases = [], inputSamples = [], inputErrors = []; let coldPhysics = 0, fixturePhysics = null\n  const calls = [];')
 source = source.replace('  const overrides = {', `  const overrides = {
-    './physics': { createPhysics: options => { coldPhysics++; fixturePhysics = nativeRequire('./physics').createPhysics(options); return fixturePhysics } },
-    './navigation': { createNavigator: options => {
-      const value = nativeRequire('./navigation').createNavigator(options), create = value.createStepper
+    './movement/physics': { createPhysics: options => { coldPhysics++; fixturePhysics = nativeRequire('./movement/physics').createPhysics(options); return fixturePhysics } },
+    './movement/navigation': { createNavigator: options => {
+      const value = nativeRequire('./movement/navigation').createNavigator(options), create = value.createStepper
       value.createStepper = (...args) => {
         const stepper = create(...args), next = stepper.next
         const profile = { kind: 'rehearsal', postJump, ms: 0, steps: 0, inputBefore: inputSamples.length, inputAfter: inputSamples.length }; phases.push(profile)
@@ -33,7 +33,7 @@ source = source.replace('  const overrides = {', `  const overrides = {
       }
       return value
     } },`)
-source = source.replace("const value = nativeRequire('./input').createInput({ ...options,", "const value = nativeRequire('./input').createInput({ ...options, onQueuedFrame: frame => { inputSamples.push({ at: frame.queuedAt, postJump }); options.onQueuedFrame(frame) }, onError: error => { inputErrors.push({ error: error.message, postJump }); options.onError(error) },")
+source = source.replace("const value = nativeRequire('./movement/input').createInput({ ...options,", "const value = nativeRequire('./movement/input').createInput({ ...options, onQueuedFrame: frame => { inputSamples.push({ at: frame.queuedAt, postJump }); options.onQueuedFrame(frame) }, onError: error => { inputErrors.push({ error: error.message, postJump }); options.onError(error) },")
 source = source.replace('return preview(target, settings)', `const started = performance.now(), count = inputSamples.length; try { return preview(target, settings) } finally { phases.push({ kind: 'movement_preview', postJump, ms: performance.now() - started, inputBefore: count, inputAfter: inputSamples.length }) }`)
 source = source.replace('postJump = true; await advance(50)', `postJump = true; await advance(50)
           for (let tries = 0; tries < 10 && !inputSamples.some(value => value.postJump); tries++) await advance(10)

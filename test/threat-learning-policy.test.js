@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { evaluateThreats } = require('../src/threats')
+const { evaluateThreats } = require('../src/combat/threats')
 
 const state = (health, policy = 'online_learning') => ({ health, threatPolicy: policy, position: { x: 0, y: 64, z: 0 }, dimension: 'overworld' })
 const actor = (name, x, extra = {}) => ({ runtimeId: '9', uniqueId: '90', entityType: `minecraft:${name}`, positionKnown: true, position: { x, y: 64, z: 0 }, dimension: 'overworld', ...extra })
@@ -77,7 +77,7 @@ test('a raw Skeleton at twelve metres is now a canonical threat while preserving
 })
 
 test('known twelve-metre Skeleton blocks wood work and an unknown position still requires observation', async t => {
-  const { createAutonomy } = require('../src/autonomy')
+  const { createAutonomy } = require('../src/survival/autonomy')
   for (const unknown of [false, true]) {
     const s = { ...state(7), phase:'spawned', profile:'bot', realm:{id:'21225335'}, connectionId:'fixture', startedAt:'fixture', runtimeEntityId:'1', inventory:{known:true,items:[]}, entities:[actor('skeleton',12,unknown?{positionKnown:false,position:null}:{})], idleProtection:{running:true,wanted:true,busy:false,phase:'observing'} }
     let woodActions = 0

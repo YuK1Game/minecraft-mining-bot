@@ -1,11 +1,11 @@
 'use strict'
 const test = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs/promises'), os = require('node:os'), path = require('node:path'), crypto = require('node:crypto')
-const { createInventoryInspection } = require('../src/inventory-inspection')
-const { createRuntimeLoadoutReset } = require('../src/loadout-runtime-adapter')
-const { matches, knownInventory } = require('../src/loadout-reset')
-const { manifest } = require('../src/loadout-manifest')
-const { discoverSupplyBindings } = require('../src/quarry-supplies')
+const { createInventoryInspection } = require('../src/inventory/inventory-inspection')
+const { createRuntimeLoadoutReset } = require('../src/loadout/loadout-runtime-adapter')
+const { matches, knownInventory } = require('../src/loadout/loadout-reset')
+const { manifest } = require('../src/loadout/loadout-manifest')
+const { discoverSupplyBindings } = require('../src/quarry/storage/quarry-supplies')
 const mc = require('minecraft-data')('bedrock_1.26.60')
 const t = (type, value) => ({ type, value })
 const empty = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: false, can_place_on: [], can_destroy: [] } })
@@ -105,7 +105,7 @@ test('loadout-runtime: actor cache is not required by debug reset', async t => {
 
 test('loadout-runtime: decoded Bedrock slot updates recover unobserved armor/offhand before normal reset work', async t => {
   const f = await bridge(t)
-  const { createArmor } = require('../src/armor')
+  const { createArmor } = require('../src/actions/armor')
   const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
   const serializer = createSerializer('1.26.60'), deserializer = createDeserializer('1.26.60')
   const armor = createArmor({ client: f.host.client, crafting: f.crafting, getState: () => f.state, store: f.armorStore })
@@ -165,7 +165,7 @@ test('loadout-runtime: decoded Bedrock slot updates recover unobserved armor/off
 })
 
 test('loadout-runtime: a cancelled job no longer blocks the v2.2 reset; a paused or running one with unfinished work still does', () => {
-  const { jobPending } = require('../src/loadout-runtime-adapter')
+  const { jobPending } = require('../src/loadout/loadout-runtime-adapter')
   const job = (state, doc = {}) => ({ status: () => ({ state }), document: () => ({ state, ...doc }), holdsWork: () => false })
   const restock = { supplyRestock: { operationId: 'op' } }
   assert.equal(jobPending(job('FINISHED', restock)), false, 'a cancelled job keeps its records but never resumes')

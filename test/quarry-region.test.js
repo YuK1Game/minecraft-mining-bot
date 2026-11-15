@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { chunkOf, chunkBounds, buildRegions, permits, serpentineLayer } = require('../src/quarry-region')
+const { chunkOf, chunkBounds, buildRegions, permits, serpentineLayer } = require('../src/quarry/quarry-region')
 
 test('T01 chunk conversion floors negative coordinates', () => {
   const expected = { '-17': -2, '-16': -1, '-1': -1, 0: 0, 15: 0, 16: 1 }

@@ -4,9 +4,9 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
 const { createInventory } = (() => {
-  if (!process.env.INVENTORY_TEST_SOURCE) return require('../src/inventory')
+  if (!process.env.INVENTORY_TEST_SOURCE) return require('../src/inventory/inventory')
   const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-  const filename = path.resolve(__dirname, '../src/inventory.js'), loaded = new Module(filename, module)
+  const filename = path.resolve(__dirname, '../src/inventory/inventory.js'), loaded = new Module(filename, module)
   loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
   loaded._compile(fs.readFileSync(path.resolve(process.env.INVENTORY_TEST_SOURCE), 'utf8'), filename)
   return loaded.exports
@@ -505,7 +505,7 @@ test('low-health food recovery opens the real inventory and waits for its server
   assert.equal(f.closes(), 1)
 })
 test('combat fast path selects a hotbar weapon with one mob_equipment and commits the selection; without the hook it swaps as before', async () => {
-  const { createInventory } = require('../src/inventory')
+  const { createInventory } = require('../src/inventory/inventory')
   const base = fixture({ open: false })
   const selections = []
   const packets = []

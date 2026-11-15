@@ -5,7 +5,7 @@ const net = require('node:net')
 const path = require('node:path')
 const { fork } = require('node:child_process')
 const { randomUUID } = require('node:crypto')
-const { CHANNEL, realmId, publicRealms } = require('../../src/dashboard-session')
+const { CHANNEL, realmId, publicRealms } = require('../../src/host/dashboard-session')
 const failure = (code, message, status = 409) => Object.assign(new Error(message), { code, status })
 const profileName = value => {
   if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value)) throw failure('INVALID_PROFILE', 'プロフィールは半角英数字・ハイフン・アンダースコアで指定してください。', 400)

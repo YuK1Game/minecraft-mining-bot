@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {createPhysics}=require('../src/physics'),{createNavigator}=require('../src/navigation'),{createRecovery}=require('../src/recovery')
+const {createPhysics}=require('../src/movement/physics'),{createNavigator}=require('../src/movement/navigation'),{createRecovery}=require('../src/safety/recovery')
 const fixtureData=require('./fixtures/firefly229.json'),observed=fixtureData.observed,saved=fixtureData.saved
 const baseline=fixtureData.baseline
 const registry=require('prismarine-registry')('bedrock_1.26.60')

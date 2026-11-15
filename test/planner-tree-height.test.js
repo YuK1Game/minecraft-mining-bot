@@ -4,15 +4,15 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
-const original = path.resolve(__dirname, '../src/planner.js')
+const original = path.resolve(__dirname, '../src/survival/planner.js')
 const loaded = new Module(original, module)
 loaded.filename = original
 loaded.paths = Module._nodeModulePaths(path.dirname(original))
 loaded._compile(fs.readFileSync(process.env.PLANNER_TEST_SOURCE ?? original, 'utf8'), original)
 const { nextBootstrapAction } = loaded.exports
-const { createMining } = require('../src/mining')
-const { createPhysics } = require('../src/physics')
-const { createNavigator } = require('../src/navigation')
+const { createMining } = require('../src/actions/mining')
+const { createPhysics } = require('../src/movement/physics')
+const { createNavigator } = require('../src/movement/navigation')
 
 function fixture ({ otherTree = true, stairs = false } = {}) {
   const blocks = new Map()

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const { Readable } = require('node:stream')
 const http = require('node:http')
 const { createDashboard } = require('../scripts/dashboard')
-const { createApi } = require('../src/api')
+const { createApi } = require('../src/host/api')
 const { requestControl } = require('../scripts/lib/dashboard-control')
 function fixture (t) {
   const calls = [], states = []

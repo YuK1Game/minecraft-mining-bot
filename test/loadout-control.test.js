@@ -1,11 +1,11 @@
 'use strict'
 const test = require('node:test'), assert = require('node:assert/strict')
-const { createDashboardControl } = require('../src/dashboard-control')
+const { createDashboardControl } = require('../src/host/dashboard-control')
 const { createDashboardManager } = require('../scripts/lib/dashboard-control')
 const { main } = require('../scripts/reset-loadout')
 const { fixture } = require('./helpers/loadout-sim')
-const { summary } = require('../src/quarry-v22-reset')
-const { observedScope } = require('../src/server-position-verifier')
+const { summary } = require('../src/loadout/quarry-v22-reset')
+const { observedScope } = require('../src/movement/server-position-verifier')
 const area = { x1: 0, z1: 0, x2: 0, z2: 0 }
 const scopedQuarry = state => ({ status: () => null, controlPosition: () => ({ confirmed: true, scope: observedScope(state),
   feet: { x: .5, y: 64, z: .5 }, radius: .2, generation: 1, source: 'server_position_volume', observedAt: 10000 }) })

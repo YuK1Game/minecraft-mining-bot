@@ -4,7 +4,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
 const { setImmediate: turn } = require('node:timers/promises')
-const { observedScope } = require('../src/server-position-verifier')
+const { observedScope } = require('../src/movement/server-position-verifier')
 const filename = require.resolve('./runtime-user-behaviors.test.js'), loaded = new Module(filename, module)
 loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
 loaded._compile(fs.readFileSync(filename, 'utf8').split('\ntest(')[0] + '\nmodule.exports = { scene }\n', filename)
@@ -32,10 +32,10 @@ function fixture (t, { combatExposure = null } = {}) {
     drain: () => { events.push(['drain']); return drain }
   }
   const f = scene(t, { runtimeOverrides: {
-    './chunk-travel': { createChunkTravel: options => { creations++; ports = options; return travel } },
-    './quarry-job': { createQuarryJob: () => { quarryCreations++; throw new Error('Chunk movement must not create a quarry job') } },
-    './movement': { createMovement: options => { nativeState = options.getState; return movement } },
-    ...(combatExposure ? { './combat-exposure': { createCombatExposure: () => ({ evaluate: combatExposure, sight: () => false, snapshot: () => ({}) }) } } : {})
+    './travel/chunk-travel': { createChunkTravel: options => { creations++; ports = options; return travel } },
+    './quarry/quarry-job': { createQuarryJob: () => { quarryCreations++; throw new Error('Chunk movement must not create a quarry job') } },
+    './movement/movement': { createMovement: options => { nativeState = options.getState; return movement } },
+    ...(combatExposure ? { './combat/combat-exposure': { createCombatExposure: () => ({ evaluate: combatExposure, sight: () => false, snapshot: () => ({}) }) } } : {})
   } })
   // The real Host supplies the current confirmed lifecycle independently of
   // the reloadable Runtime. Ordinary water-capable movement requires it.

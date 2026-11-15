@@ -1,8 +1,8 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const root=process.env.ARCHER_FLOOR_ROOT??process.cwd(),sourceFile=process.env.ARCHER_FLOOR_THREATS_SOURCE??path.join(root,'src/threats.js'),source=fs.readFileSync(sourceFile,'utf8')
-const {evaluateThreats}=require(path.join(root,'src/threats')),{createAutonomy}=require(path.join(root,'src/autonomy')),{annotateTerrainThreats,terrainOcclusionApplies}=require(path.join(root,'src/terrain-threats'))
-const counterfactual=new Module(path.join(root,'src/threats.js'),module);counterfactual.filename=path.join(root,'src/threats.js');counterfactual.paths=Module._nodeModulePaths(path.join(root,'src'))
+const root=process.env.ARCHER_FLOOR_ROOT??process.cwd(),sourceFile=process.env.ARCHER_FLOOR_THREATS_SOURCE??path.join(root,'src/combat/threats.js'),source=fs.readFileSync(sourceFile,'utf8')
+const {evaluateThreats}=require(path.join(root,'src/combat/threats')),{createAutonomy}=require(path.join(root,'src/survival/autonomy')),{annotateTerrainThreats,terrainOcclusionApplies}=require(path.join(root,'src/combat/terrain-threats'))
+const counterfactual=new Module(path.join(root,'src/combat/threats.js'),module);counterfactual.filename=path.join(root,'src/combat/threats.js');counterfactual.paths=Module._nodeModulePaths(path.join(root,'src'))
 // Reproduce the former ten-block learning decision through the real evaluator:
 // assign archers to its ordinary ranged learning class in this isolated load.
 // The immutable production catalogue and all actual-caller assertions stay intact.

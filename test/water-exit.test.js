@@ -4,7 +4,7 @@
 // ended in a replan after a server correction.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { planWaterExit, createWaterExitStepper } = require('../src/water-exit')
+const { planWaterExit, createWaterExitStepper } = require('../src/movement/water-exit')
 
 // A tiny physics stand-in: water at y<=58 in column z<=14; a stone ledge top at
 // y=59 for z>=15. Holding forward+jump rises 0.4/tick and moves +z 0.25/tick;

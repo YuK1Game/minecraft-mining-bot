@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const root=process.env.STABLE_SAND_ROOT??process.cwd(),{knownStandpoints,rankRetreatTargets,createExploration}=require(path.join(root,'src/exploration')),{createNavigator}=require(path.join(root,'src/navigation')),{continuationScope}=require(path.join(root,'src/base-continuation'))
+const root=process.env.STABLE_SAND_ROOT??process.cwd(),{knownStandpoints,rankRetreatTargets,createExploration}=require(path.join(root,'src/survival/exploration')),{createNavigator}=require(path.join(root,'src/movement/navigation')),{continuationScope}=require(path.join(root,'src/survival/base-continuation'))
 function fixture(name='sand',depth=3){
  const changes=new Map(),key=p=>`${p.x},${p.y},${p.z}`
  const block=(x,y,z,type)=>({known:true,position:{x,y,z},name:'minecraft:'+type,runtimeId:type==='air'?0:type==='stone'?1:type==='gravel'?2:type==='sand'?3:4,properties:{},extra:[],boundingBox:type==='air'?'empty':'block'})

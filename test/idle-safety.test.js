@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createIdleSafety } = require('../src/idle-safety')
+const { createIdleSafety } = require('../src/safety/idle-safety')
 
 function fixture (t, hooks = {}) {
   let time = 1000; let idle = true; let generation = true

@@ -2,9 +2,9 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { nextBootstrapAction } = require('../src/planner')
-const { makeActions } = require('../src/runner')
-const { planTreeAccess } = require('../src/action-access')
+const { nextBootstrapAction } = require('../src/survival/planner')
+const { makeActions } = require('../src/survival/runner')
+const { planTreeAccess } = require('../src/actions/action-access')
 const key = p => `${p.x},${p.y},${p.z}`
 
 function state () {

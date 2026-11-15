@@ -4,8 +4,8 @@
 // limits the job must respect: reach, held tool tier, standing support,
 // inventory capacity and own-footing protection. Not a physics simulation.
 
-const { blockRule, nameOf, toolOf, AIR } = require('../../src/quarry-rules')
-const { maxStack } = require('../../src/quarry-inventory')
+const { blockRule, nameOf, toolOf, AIR } = require('../../src/quarry/quarry-rules')
+const { maxStack } = require('../../src/quarry/quarry-inventory')
 
 const SOLID_EMPTY = /^(short_grass|tallgrass|fern|dandelion|poppy|torch|snow_layer|vine)$/
 

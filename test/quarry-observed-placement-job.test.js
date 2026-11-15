@@ -8,7 +8,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createQuarryPortableStorage } = require('../src/quarry-portable-storage')
+const { createQuarryPortableStorage } = require('../src/quarry/storage/quarry-portable-storage')
 const { createSim } = require('./helpers/quarry-sim')
 const copy = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`
@@ -23,7 +23,7 @@ function loadModule (filename, source) {
   loaded._compile(source, filename)
   return loaded.exports
 }
-const jobFile = require.resolve('../src/quarry-job')
+const jobFile = require.resolve('../src/quarry/quarry-job')
 const { createQuarryJob } = process.env.OBSERVED_PLACEMENT_JOB_TEST_SOURCE
   ? loadModule(jobFile, fs.readFileSync(process.env.OBSERVED_PLACEMENT_JOB_TEST_SOURCE, 'utf8'))
   : require(jobFile)

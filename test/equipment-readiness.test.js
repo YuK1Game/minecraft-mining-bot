@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { equipmentReady } = require('../src/equipment-readiness')
+const { equipmentReady } = require('../src/inventory/equipment-readiness')
 
 function fixture () {
   const item = { slot: 3, name: 'minecraft:bed', networkId: 421, count: 1, stackId: 82, metadata: 14 }

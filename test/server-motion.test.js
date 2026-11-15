@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { normalizeServerMotion } = require('../src/server-motion')
+const { normalizeServerMotion } = require('../src/movement/server-motion')
 
 const motion = (overrides = {}) => ({ runtime_entity_id: 494n, velocity: { x: 0.2, y: 0.35, z: -0.15 }, tick: 123n, ...overrides })
 const hints = (overrides = {}) => ({ entity_runtime_id: 494n, velocity: { x: -0.1, y: -0.0784, z: 0.05 }, on_ground: false, ...overrides })

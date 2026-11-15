@@ -2,7 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
 const file=path.join(__dirname,'runtime-yield-work.test.js'),m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file))
 let source=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]
-source=source.replace("const { createNavigator } = require('../src/navigation')", "const { createNavigator } = require('../src/navigation')\nconst { createMovement } = require('../src/movement')")
+source=source.replace("const { createNavigator } = require('../src/movement/navigation')", "const { createNavigator } = require('../src/movement/navigation')\nconst { createMovement } = require('../src/movement/movement')")
 source=source.replace('return mockMovement','return hooks.movement(options)')
 source=source.replace('loaded.exports.setHooks({ parent, history:', 'loaded.exports.setHooks({ parent, movement: options => createMovement({...options,clock:()=>elapsed}), history:')
 assert.ok(source.includes('return hooks.movement(options)'));m._compile(source+'\nmodule.exports={fixture}',file)

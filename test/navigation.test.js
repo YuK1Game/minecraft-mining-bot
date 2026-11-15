@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createNavigator } = require('../src/navigation')
+const { createNavigator } = require('../src/movement/navigation')
 
 const block = (name, properties = {}) => ({ known: true, name: `minecraft:${name}`, properties, extra: [] })
 function fixture (override = () => null, options = {}) {
@@ -82,7 +82,7 @@ test('an exact adjacent uphill landing still requires known clear support and re
 
 test('partial ledge descent pre-simulates a bounded known landing and all enemy distances', () => {
   const observed = require('./fixtures/partial-ledge-drop.json')
-  const { evaluateThreats } = require('../src/threats')
+  const { evaluateThreats } = require('../src/combat/threats')
   const state = { position: observed.position, health: 10, dimension: 'overworld', gameMode: 'survival', threatPolicy: 'balanced_mining', runtimeEntityId: 'self' }
   const threats = evaluateThreats(state, observed.enemies, { observationRadius: 32 })
   const primary = threats.threats.reduce((a, b) => a.distance < b.distance ? a : b)

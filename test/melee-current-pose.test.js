@@ -3,10 +3,10 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createPhysics } = require('../src/physics')
-const { createMovement } = require('../src/movement')
-const { createInput } = require('../src/input')
-const { createMeleeCombat } = require('../src/melee-combat')
+const { createPhysics } = require('../src/movement/physics')
+const { createMovement } = require('../src/movement/movement')
+const { createInput } = require('../src/movement/input')
+const { createMeleeCombat } = require('../src/combat/melee-combat')
 const recorded = require('./fixtures/melee-accepted-walk-anchor.json')
 const copy = value => structuredClone(value)
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })
@@ -63,7 +63,7 @@ test('actual accepted-walk model plus Runtime input adapter attacks current near
   const input = actualRuntimeInputWrapper(stream)
   const common = { client, getState: () => working, getRawState: () => raw, world, entities: { snapshot: () => [copy(target)] }, crafting, equip: async () => ({ serverConfirmed: true }), getInput: () => input, getMovement: undefined, now: () => time, wallNow: wall, sleep: async (ms, signal) => { if (signal?.aborted) throw Error('cancelled'); time += ms; t.mock.timers.tick(ms); await turn(); if (signal?.aborted) throw Error('cancelled') } }
   if (process.env.MELEE_BASELINE_SOURCE) {
-    const baselineFile = path.resolve(__dirname, '../src/melee-combat.js'), baseline = new Module(baselineFile, module)
+    const baselineFile = path.resolve(__dirname, '../src/combat/melee-combat.js'), baseline = new Module(baselineFile, module)
     baseline.filename = baselineFile; baseline.paths = Module._nodeModulePaths(path.dirname(baselineFile)); baseline._compile(fs.readFileSync(process.env.MELEE_BASELINE_SOURCE, 'utf8'), baselineFile)
     assert.equal(baseline.exports.createMeleeCombat(common).preview('70').code, 'OUT_OF_REACH', 'staging negative control is the actual previous controller')
   }

@@ -1,9 +1,9 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { planQuarryExit, permitsExitAction } = require('../src/quarry-exit-plan')
-const { buildRegions } = require('../src/quarry-region')
-const { createQuarryJob } = require('../src/quarry-job')
+const { planQuarryExit, permitsExitAction } = require('../src/quarry/exit/quarry-exit-plan')
+const { buildRegions } = require('../src/quarry/quarry-region')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 const { createSim } = require('./helpers/quarry-sim')
 
 // Synthetic received terrain, not a recording of the user's Realm.
@@ -159,7 +159,7 @@ test('review (2026-11-10): an ore in the exit shaft is dug with a pickaxe instea
   assert.equal(r.ok, true, JSON.stringify(r.reason))
   const ore = r.plan.shaftCells.find(c => /diamond_ore/.test(c.name))
   if (ore) assert.equal(ore.requiredTool?.kind, 'pickaxe')
-  const { exitDigRule } = require('../src/quarry-exit-plan')
+  const { exitDigRule } = require('../src/quarry/exit/quarry-exit-plan')
   assert.equal(exitDigRule('minecraft:diamond_ore').kind, 'dig')
   assert.equal(exitDigRule('minecraft:deepslate_iron_ore').tier, 2)
   assert.equal(exitDigRule('minecraft:ancient_debris').kind, 'dig', 'registered ancient debris is harvestable')

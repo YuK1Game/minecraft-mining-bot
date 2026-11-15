@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { selectAnimalTarget, excludedReason } = require('../src/quarry-animal-clear')
+const { selectAnimalTarget, excludedReason } = require('../src/quarry/quarry-animal-clear')
 
 const columns = new Set(); for (let x = 0; x < 16; x++) for (let z = 0; z < 16; z++) columns.add(`${x},${z}`)
 const state = { dimension: 'overworld', position: { x: 8.5, y: 21.62, z: 8.5 } }
@@ -60,7 +60,7 @@ test('a nearby hostile always comes first', () => {
 })
 
 test('animal clearing is a per-job setting, off by default', async () => {
-  const { createQuarryJob } = require('../src/quarry-job')
+  const { createQuarryJob } = require('../src/quarry/quarry-job')
   const { createSim, flatTerrain } = require('./helpers/quarry-sim')
   const sim = createSim({ loaded: { xMin: -6, xMax: 20, yMin: 50, yMax: 70, zMin: -6, zMax: 20 } })
   flatTerrain(sim, { x1: -6, x2: 20, z1: -6, z2: 20, bedrock: 50, stoneTop: 60, top: 62 })

@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createPortableBed, bedVisibleFace, BED_HEIGHT } = require('../src/portable-bed')
+const { createPortableBed, bedVisibleFace, BED_HEIGHT } = require('../src/actions/portable-bed')
 
 function fixture (options = {}) {
   let time = 1000, memory = null, actor, unsafe = false

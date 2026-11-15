@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {createBaseContinuation,continuationScope,rememberedBaseCandidates}=require('../src/base-continuation')
+const {createBaseContinuation,continuationScope,rememberedBaseCandidates}=require('../src/survival/base-continuation')
 const copy=v=>structuredClone(v),key=p=>`${p.x},${p.y},${p.z}`
 function fixture(memo=null){
   let time=1000

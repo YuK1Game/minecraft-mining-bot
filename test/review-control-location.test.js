@@ -1,8 +1,8 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createControlLocation } = require('../src/control-location')
-const { observedScope } = require('../src/server-position-verifier')
+const { createControlLocation } = require('../src/movement/control-location')
+const { observedScope } = require('../src/movement/server-position-verifier')
 const copy = value => structuredClone(value)
 function fixture () {
   let time = 1000, gen = 1, moving = false, queries = 0, respond = null

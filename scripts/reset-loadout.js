@@ -6,7 +6,7 @@
 const { createInterface } = require('node:readline/promises')
 const { setTimeout: delay } = require('node:timers/promises')
 const { requestControl } = require('./lib/dashboard-control')
-const { normalizeChunkArea, areaContainsFeet, chunkAreaKey } = require('../src/chunk-area')
+const { normalizeChunkArea, areaContainsFeet, chunkAreaKey } = require('../src/common/chunk-area')
 function currentChunkArea (state) {
   const proof = state?.positionProof, feet = proof?.feet
   const observedAt = typeof proof?.observedAt === 'number' ? proof.observedAt : Date.parse(proof?.observedAt)

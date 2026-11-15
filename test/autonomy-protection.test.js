@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createAutonomy } = require('../src/autonomy')
+const { createAutonomy } = require('../src/survival/autonomy')
 
 function scene (t, changeDuringObserve = false) {
   const state = { phase: 'spawned', health: 20, inventory: { known: true, items: [] }, entities: [], position: { x: 0, y: 64, z: 0 }, idleProtection: { running: true, busy: !changeDuringObserve }, capabilities: { probe: true } }

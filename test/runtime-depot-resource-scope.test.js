@@ -23,10 +23,10 @@ test('public depot mission reaches actual resource action with full captured Roo
  const actions=[],builderCalls=[]
  const runner={request:()=>{throw Error('No HTTP in controlled integration')},observe:async()=>({blocks,entities:[],worldLoaded:true,coverage:{expected:blocks.length,known:blocks.length,unknown:0},capabilities:{}}),getState:()=>structuredClone(state),refreshState:async()=>structuredClone(state),getLastObservation:()=>null,getExplorationSnapshot:()=>({})}
  runner.actions=Object.fromEntries(['gather_logs','move_to','explore','scan_blocks','mine_stone','craft','equip','tree_access','collect_drops'].map(type=>[type,async(d,c)=>{actions.push({type,decision:structuredClone(d),scope:structuredClone(c.state.lifecycle),state:structuredClone(c.state)});return{phase:'predicted',serverConfirmed:false,requiresObservation:true}}]))
- const nativeRunner=require('../src/runner')
- const nativeCamp=require('../src/worksite-camp')
+ const nativeRunner=require('../src/survival/runner')
+ const nativeCamp=require('../src/survival/worksite-camp')
  const builderStub={step:async()=>{builderCalls.push('FLOOR_CHANGED');return{code:'FLOOR_CHANGED'}},snapshot:()=>({busy:false}),protectedCells:()=>[],stop:()=>{}}
- const f=hostScene(t,workspaceRoot,{state,getBlock,overrides:{'./runner':{...nativeRunner,createRunner:()=>runner},'./depot-builder':{createDepotBuilder:()=>builderStub},'./fresh-depot-builder':{createFreshDepotBuilder:()=>builderStub},...(nativeCamp?{'./worksite-camp':{...nativeCamp,createWorksiteCamp:()=>builderStub}}:{})}})
+ const f=hostScene(t,workspaceRoot,{state,getBlock,overrides:{'./survival/runner':{...nativeRunner,createRunner:()=>runner},'./survival/depot-builder':{createDepotBuilder:()=>builderStub},'./survival/fresh-depot-builder':{createFreshDepotBuilder:()=>builderStub},...(nativeCamp?{'./survival/worksite-camp':{...nativeCamp,createWorksiteCamp:()=>builderStub}}:{})}})
  runtimeForCleanup=f.runtime
  const inventoryBefore=structuredClone(f.parsed.state.inventory)
  await f.runtime.resumeRequested()

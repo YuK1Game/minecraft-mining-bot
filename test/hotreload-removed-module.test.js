@@ -8,7 +8,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
-const { createHotReloader } = require('../src/hotreload')
+const { createHotReloader } = require('../src/host/hotreload')
 
 function workspace (t) {
   const directory = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'minecraftbot-hotreload-removed-')))

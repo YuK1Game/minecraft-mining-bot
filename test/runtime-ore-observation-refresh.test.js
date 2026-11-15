@@ -27,8 +27,8 @@ const fixtureFile = path.join(__dirname, 'runtime-survival.test.js')
 let fixtureSource = fs.readFileSync(fixtureFile, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 fixtureSource = 'let hooks;\n' + fixtureSource
 fixtureSource = fixtureSource.replace('  const overrides = {', `  const overrides = {
-    './diamond-planner': { nextDiamondAction: (...args) => hooks.diamond(...args) },
-    './survival-planner': { nextSurvivalAction: (...args) => hooks.survival(...args) },`)
+    './survival/diamond-planner': { nextDiamondAction: (...args) => hooks.diamond(...args) },
+    './survival/survival-planner': { nextSurvivalAction: (...args) => hooks.survival(...args) },`)
 const miningNeedle = 'const mining = { preview: () => ({ ready: true, targets: [] }),'
 assert.ok(fixtureSource.includes(miningNeedle))
 fixtureSource = fixtureSource.replace(miningNeedle, 'const mining = { preview: targets => { hooks.miningPreviews.push(structuredClone(targets)); return hooks.miningPreview(targets) },')

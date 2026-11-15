@@ -2,9 +2,9 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createNavigator } = require('../src/navigation')
-const { createMovement } = require('../src/movement')
-const { evaluateThreats } = require('../src/threats')
+const { createNavigator } = require('../src/movement/navigation')
+const { createMovement } = require('../src/movement/movement')
+const { evaluateThreats } = require('../src/combat/threats')
 const observed = require('./fixtures/land-stable-partial-origin.json')
 const copy = value => structuredClone(value)
 const eye = point => ({ ...point, y: point.y + 1.62 })

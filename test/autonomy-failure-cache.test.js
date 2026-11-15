@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {createAutonomy}=require('../src/autonomy'),{nextBootstrapAction}=require('../src/planner')
+const {createAutonomy}=require('../src/survival/autonomy'),{nextBootstrapAction}=require('../src/survival/planner')
 const sample=require('./fixtures/pickup262-failure-cache.json')
 const oldAbsent=['5356','5883','6433','7873','8242','8296','8566','9050','9329']
 function fixture(t,{mutateAfterThird=null,mutateInitial=null,progress=sample.progress}={}){

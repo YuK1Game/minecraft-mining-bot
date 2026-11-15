@@ -6,17 +6,17 @@ const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
 const vm = require('node:vm')
-const { createPhysics } = require('../src/physics')
-const { createNavigator } = require('../src/navigation')
-const { evaluateThreats } = require('../src/threats')
+const { createPhysics } = require('../src/movement/physics')
+const { createNavigator } = require('../src/movement/navigation')
+const { evaluateThreats } = require('../src/combat/threats')
 const copy = value => structuredClone(value)
 const prepared = createPhysics({ world: { getBlock: (x, y, z) => ({ known: true, name: y < 65 ? 'minecraft:stone' : 'minecraft:air', position: { x, y, z }, properties: {}, boundingBox: y < 65 ? 'block' : 'empty', extra: [] }) }, version: '1.26.60', allowWater: true })
 
 const filename = path.join(__dirname, 'runtime-user-behaviors.test.js')
 let source = fs.readFileSync(filename, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 source = 'let testHooks;\n' + source
-source = source.replace(/^    '\.\/physics': .+$/m, "    './physics': { createPhysics: options => testHooks.physics(options) }, './navigation': { createNavigator: options => testHooks.navigator(options) }, './movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },")
-source = source.replace(/^    '\.\/idle-safety': .+$/m, "    './idle-safety': { createIdleSafety: options => { testHooks.safetyOptions = options; return { snapshot: () => structuredClone(testHooks.protection), start: () => { testHooks.protection.running = true }, stop: async () => { testHooks.safetyStops++; testHooks.protection.running = false }, drain: async () => {}, requestWorkClearance: () => ({ pending: false }) } } },")
+source = source.replace(/^    '\.\/physics': .+$/m, "    './movement/physics': { createPhysics: options => testHooks.physics(options) }, './movement/navigation': { createNavigator: options => testHooks.navigator(options) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },")
+source = source.replace(/^    '\.\/idle-safety': .+$/m, "    './safety/idle-safety': { createIdleSafety: options => { testHooks.safetyOptions = options; return { snapshot: () => structuredClone(testHooks.protection), start: () => { testHooks.protection.running = true }, stop: async () => { testHooks.safetyStops++; testHooks.protection.running = false }, drain: async () => {}, requestWorkClearance: () => ({ pending: false }) } } },")
 source = source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", "loaded._compile(testHooks.instrument(process.env.RUNTIME_TEST_SOURCE ? fs.readFileSync(process.env.RUNTIME_TEST_SOURCE, 'utf8') : require('./helpers/runtime-source').runtimeSource()), filename)")
 source += '\nmodule.exports = { scene, setHooks: value => { testHooks = value } }'
 const loaded = { exports: {} }

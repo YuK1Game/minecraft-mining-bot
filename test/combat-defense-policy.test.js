@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { defenseEnabled, behaviorEnabled, createDefenseAnchor, defenseMovementAllowed, defenseTargetAllowed } = require('../src/combat-defense-policy')
+const { defenseEnabled, behaviorEnabled, createDefenseAnchor, defenseMovementAllowed, defenseTargetAllowed } = require('../src/combat/combat-defense-policy')
 
 const state = () => ({ phase: 'spawned', profile: 'bot', realm: { id: 'realm' }, connectionId: 'connection', startedAt: '2026-11-06T00:00:00.000Z', runtimeEntityId: '1', dimension: 'overworld', lifecycle: { deathId: 0 }, health: 20, gameMode: 'survival', position: { x: 0.5, y: 65.62, z: 0.5 } })
 const target = (x, z = 0.5) => ({ entityType: 'minecraft:zombie', position: { x, y: 64, z } })

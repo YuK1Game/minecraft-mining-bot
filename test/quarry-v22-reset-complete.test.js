@@ -1,8 +1,8 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {createQuarryV22Reset}=require('../src/quarry-v22-reset')
-const {observedScope}=require('../src/server-position-verifier')
-const {validateV22Loadout}=require('../src/quarry-v22-loadout')
+const {createQuarryV22Reset}=require('../src/loadout/quarry-v22-reset')
+const {observedScope}=require('../src/movement/server-position-verifier')
+const {validateV22Loadout}=require('../src/loadout/quarry-v22-loadout')
 const key=p=>[p.x,p.y,p.z].join(',')
 const empty=()=>({known:true,empty:true,name:null,count:0})
 const item=(name,count=1)=>({known:true,empty:false,name,count,metadata:0,container:/shulker_box$/.test(name)?{known:true,slots:Array(27).fill(null)}:null,enchantmentsKnown:true,enchantments:[]})

@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const p = require('../src/combat-profiles')
+const p = require('../src/combat/combat-profiles')
 
 test('53 enemy profiles from the design are present with their engagement policy', () => {
   assert.ok(Object.keys(p.PROFILES).length >= 53)
@@ -32,14 +32,14 @@ test('creeper is never chased: one in-reach hit, evade inside the shot distance,
   assert.ok(p.HP_RETREAT < p.HP_RESUME)
 })
 test('creeper shot band: 8m on level ground, 6.5m when it stands 1.5+ blocks above or below', () => {
-  const p = require('../src/combat-profiles')
+  const p = require('../src/combat/combat-profiles')
   assert.deepEqual(p.allowedModes('minecraft:creeper', { hasBow: true, distance: 7 }), ['evade'])
   assert.deepEqual(p.allowedModes('minecraft:creeper', { hasBow: true, distance: 7, elevated: true }), ['ranged'])
   assert.deepEqual(p.allowedModes('minecraft:creeper', { hasBow: true, distance: 6, elevated: true }), ['evade'])
 })
 
 test('live case 2026-11-05: a cornered creeper (no evade standpoint) is fought: knockback in reach, the bow beyond', () => {
-  const profiles = require('../src/combat-profiles')
+  const profiles = require('../src/combat/combat-profiles')
   assert.deepEqual(profiles.allowedModes('minecraft:creeper', { hasBow: true, distance: 5 }), ['evade'], 'not cornered: evade inside the shot distance')
   assert.deepEqual(profiles.allowedModes('minecraft:creeper', { hasBow: true, distance: 5, cornered: true }), ['ranged'])
   assert.deepEqual(profiles.allowedModes('minecraft:creeper', { hasBow: true, distance: 3.8, cornered: true }), ['melee', 'approach'])

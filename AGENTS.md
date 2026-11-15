@@ -8,47 +8,47 @@
 
 - 現在の目標: **指定範囲を上から1層ずつ露天掘りし、回収した資材を収納する**。ダイヤモンド取得は現在の目標ではありません。
 - 現状: 2026年11月4〜5日に実Realmで5,000ブロック以上の採掘を確認。ジョブ全体の完了は検証中です。旧サバイバル・ダイヤ計画の実装は残っていますが、統合ダッシュボードの目標表示には使いません。
-- 接続を保持したまま行動コードをホットリロードできる構成です（`src/host.js` が接続を持ち、`src/runtime.js` と行動モジュールを差し替える）。
+- 接続を保持したまま行動コードをホットリロードできる構成です（`src/host/host.js` が接続を持ち、`src/runtime.js` と行動モジュールを差し替える）。
 - 対象 Realm はサンドボックスで、Bot アカウントはオペレーター権限を持ち、常に昼に設定されています。デバッグ目的のゲーム内コマンド（`/summon`、`/give`、`/tp`、`/fill`、`/effect` など）は使用可。ただし露天掘りモードの本処理では、コマンドでのブロック削除・アイテム生成は禁止です。
 
 ## 対応している機能
 
 | 分野 | 内容 | 主なファイル |
 | --- | --- | --- |
-| 接続・認証 | Microsoft 認証（`.auth/` にキャッシュ）、Realm 一覧・選択、異常終了時の自動再接続（指数バックオフ、10分で最大5回） | `src/host.js`, `src/realms.js`, `scripts/keep-alive.js` |
-| ホットリロード | 行動コード保存で自動反映。構文・初期化エラー時は旧コードを維持。クラフト・設置中は安全な切替点まで待つ。削除・改名したモジュールは監視から外し、スポーン後に初めて読み込まれたモジュールも保存時に反映する（2026-11-15。`hotreload.js` の変更は Bot の再起動後に有効） | `src/hotreload.js`, `src/lifecycle.js` |
-| 観測 | エンティティ・敵・地形（サブチャンク）・持ち物・体力/空腹の受信。未受信ブロック（`known:false`）を空気扱いしない | `src/entities.js`, `src/threats.js`, `src/world.js`, `src/inventory.js` |
-| 持ち物の一元記録 | メイン36・防具4・オフハンド・カーソルを1つの記録（`host.shared.inventoryStore`）に枠ごとの受信元・リビジョン付きで保持。クラフト・防具・画面・採掘ゲートは全てここを読む。未受信の枠は空ではなく「?」。待機中は未受信枠を `inventory_mismatch` で自動再取得 | `src/inventory-store.js`, `src/inventory-inspection.js` |
-| 移動 | 経路探索、物理予測（実験的 Bedrock 版 prismarine-physics）、段差・ジャンプ、水際、警戒付き経路移動と退避 | `src/navigation.js`, `src/movement.js`, `src/physics.js`, `src/guarded-route.js`, `src/escape-policy.js` |
-| 拠点 | 斜面の避難所、平地の土小屋（土17個）の建築・閉鎖・退出・帰還、保管庫（チェスト）の建設と収納 | `src/shelter*.js`, `src/hut*.js`, `src/depot-*.js`, `src/chest.js` |
-| クラフト・精錬 | 板材・作業台・棒・木剣・石剣・ツルハシ類、かまどでの精錬（鉄のツルハシまで確認済み） | `src/crafting.js`, `src/furnace.js`, `src/starter-gear.js` |
-| 採掘・探索 | 1回最大8ブロックの採掘、隣接セル掘削、トンネル、鉱石探索、ダイヤ計画 | `src/mining.js`, `src/excavation.js`, `src/tunneling.js`, `src/prospecting.js`, `src/diamond-*.js` |
-| 食料・生存 | 動物の狩りと回収、食事、待機保護（自衛・小屋閉鎖・退避・非常停止）、低体力時の水場退避、正規リスポーン | `src/foraging.js`, `src/food.js`, `src/idle-safety.js`, `src/recovery.js` |
-| 旧サバイバル自律実行 | 旧目標（`diamond` など）に向けた計画と工程選択、失敗キャッシュ、進捗記録の保存・復元。露天掘りとは別経路 | `src/autonomy.js`, `src/planner.js`, `src/survival-planner.js`, `src/mission-memory.js`, `src/mission-journal.js` |
-| **戦闘モード** | 下記参照 | `src/combat-coordinator.js` ほか |
+| 接続・認証 | Microsoft 認証（`.auth/` にキャッシュ）、Realm 一覧・選択、異常終了時の自動再接続（指数バックオフ、10分で最大5回） | `src/host/host.js`, `src/host/realms.js`, `scripts/keep-alive.js` |
+| ホットリロード | 行動コード保存で自動反映。構文・初期化エラー時は旧コードを維持。クラフト・設置中は安全な切替点まで待つ。削除・改名したモジュールは監視から外し、スポーン後に初めて読み込まれたモジュールも保存時に反映する（2026-11-15。`hotreload.js` の変更は Bot の再起動後に有効） | `src/host/hotreload.js`, `src/host/lifecycle.js` |
+| 観測 | エンティティ・敵・地形（サブチャンク）・持ち物・体力/空腹の受信。未受信ブロック（`known:false`）を空気扱いしない | `src/host/entities.js`, `src/combat/threats.js`, `src/host/world.js`, `src/inventory/inventory.js` |
+| 持ち物の一元記録 | メイン36・防具4・オフハンド・カーソルを1つの記録（`host.shared.inventoryStore`）に枠ごとの受信元・リビジョン付きで保持。クラフト・防具・画面・採掘ゲートは全てここを読む。未受信の枠は空ではなく「?」。待機中は未受信枠を `inventory_mismatch` で自動再取得 | `src/inventory/inventory-store.js`, `src/inventory/inventory-inspection.js` |
+| 移動 | 経路探索、物理予測（実験的 Bedrock 版 prismarine-physics）、段差・ジャンプ、水際、警戒付き経路移動と退避 | `src/movement/navigation.js`, `src/movement/movement.js`, `src/movement/physics.js`, `src/movement/guarded-route.js`, `src/movement/escape-policy.js` |
+| 拠点 | 斜面の避難所、平地の土小屋（土17個）の建築・閉鎖・退出・帰還、保管庫（チェスト）の建設と収納 | `src/survival/shelter*.js`, `src/survival/hut*.js`, `src/depot-*.js`, `src/actions/chest.js` |
+| クラフト・精錬 | 板材・作業台・棒・木剣・石剣・ツルハシ類、かまどでの精錬（鉄のツルハシまで確認済み） | `src/actions/crafting.js`, `src/actions/furnace.js`, `src/survival/starter-gear.js` |
+| 採掘・探索 | 1回最大8ブロックの採掘、隣接セル掘削、トンネル、鉱石探索、ダイヤ計画 | `src/actions/mining.js`, `src/survival/excavation.js`, `src/survival/tunneling.js`, `src/survival/prospecting.js`, `src/diamond-*.js` |
+| 食料・生存 | 動物の狩りと回収、食事、待機保護（自衛・小屋閉鎖・退避・非常停止）、低体力時の水場退避、正規リスポーン | `src/survival/foraging.js`, `src/actions/food.js`, `src/safety/idle-safety.js`, `src/safety/recovery.js` |
+| 旧サバイバル自律実行 | 旧目標（`diamond` など）に向けた計画と工程選択、失敗キャッシュ、進捗記録の保存・復元。露天掘りとは別経路 | `src/survival/autonomy.js`, `src/survival/planner.js`, `src/survival/survival-planner.js`, `src/survival/mission-memory.js`, `src/survival/mission-journal.js` |
+| **戦闘モード** | 下記参照 | `src/combat/combat-coordinator.js` ほか |
 | **露天掘りモード** | 下記参照 | `src/quarry-*.js` |
-| ローカル API | `127.0.0.1:3000`。`/status`、`/agent/start|stop|tick`、移動・採掘・クラフト・戦闘、`POST /action`（group/method/args） | `src/api.js` |
-| ダッシュボード | `127.0.0.1:3001`。露天掘り・所持品・装備・シュルカー内容・耐久度・エンチャント・ライブログ（JST）を統合。接続・Realm選択・チャンク計画/開始/停止は限定操作APIを使用。旧 `/logs` はログ欄へ移動 | `scripts/dashboard.js`, `scripts/lib/dashboard-control.js`, `src/dashboard-control.js`, `src/dashboard-session.js`, `dashboard/index.html`, `dashboard/control.js` |
+| ローカル API | `127.0.0.1:3000`。`/status`、`/agent/start|stop|tick`、移動・採掘・クラフト・戦闘、`POST /action`（group/method/args） | `src/host/api.js` |
+| ダッシュボード | `127.0.0.1:3001`。露天掘り・所持品・装備・シュルカー内容・耐久度・エンチャント・ライブログ（JST）を統合。接続・Realm選択・チャンク計画/開始/停止は限定操作APIを使用。旧 `/logs` はログ欄へ移動 | `scripts/dashboard.js`, `scripts/lib/dashboard-control.js`, `src/host/dashboard-control.js`, `src/host/dashboard-session.js`, `dashboard/index.html`, `dashboard/control.js` |
 
 ### 戦闘モード
 
-接続中は既定で有効になる、リアルタイムの自律戦闘です。採掘の実行・一時停止とは独立して動きます。入口は `src/user-behaviors.js` → `src/combat-coordinator.js`（50ms ごとに判定）。詳細と数値は `docs/combat-mode-spec.md`。
+接続中は既定で有効になる、リアルタイムの自律戦闘です。採掘の実行・一時停止とは独立して動きます。入口は `src/combat/user-behaviors.js` → `src/combat/combat-coordinator.js`（50ms ごとに判定）。詳細と数値は `docs/combat-mode-spec.md`。
 
 - **接敵時は戦闘への移行を最優先**。採掘・収納・食事・回収・ベッド準備を中断し、片付け・保存処理・防具交換の完了を待たずに戦闘へ操作権を渡す。送信済みの持ち物操作は実受信で照合し、未確認の設置・収納・回収を成功扱いにしない。
   - **例外: 自分のシュルカー（貨物箱・補給箱）を壊してから手元に戻るまで**は戦闘へ移らない（2026-11-14 ユーザー指示「シュルカーボックスの設置中は戦闘優先していい、壊して手元に戻してる間はロストのリスクがあります」）。壊し始めてから、ドロップを拾い受信した持ち物で戻ったと確定するまで、露天掘りの作業中は戦闘の標的選択・継続を保留する（`quarry-job.js` の `shulkerHold`、`runtime.js` の `quarryShulkerHold`）。保留中の被弾と保留した敵はログに出す。確定したらすぐ通常どおり戦闘へ移る。設置・開く・出し入れの間は従来どおり戦闘を優先し、箱は置いたまま戦闘後に再開する。壊す前の「16m以内の敵を最大20秒待つ」は維持。
 - 迎撃対象は現在Botへ攻撃が届く敵に限定する。受信した接近・起爆準備や近距離の可視接触を認識の根拠にし、地上の敵は**敵からBotへの経路**、射撃・飛行敵は攻撃の射線を確認する。距離だけ、Botから敵への到達判定だけでは作業を中断しない。射線が通らない弓標的のための移動・反復探索はせず採掘を継続する。認識は観測に基づく推定で、敵AI内部の標的を取得したとは扱わない。
 - 露天掘りのエラー停止・手動一時停止でも防衛は維持する。戦闘だけで採掘・ベッド・自律作業を再開しない。作業停止中の通常追跡は固定した防衛地点から水平8m以内で、接敵時の戦闘移行自体はこの範囲を理由に拒否しない。
 
-- 32m 以内の敵対モブから、敵ごとのプロファイル（`src/combat-profiles.js`、53種）・経路（`src/threat-reachability.js`）・射線で標的を1体選ぶ。
-- **剣**（3.0m 以内）: クリティカルのジャンプは使わず連打（実測約180ms 間隔）。`src/melee-combat.js`, `src/melee-weapons.js`
-- **弓**（6〜32m）: 20tick で即発射・即次弾、偏差撃ち、射線確保の短距離移動。`src/ranged-combat.js`, `src/bow-ballistics.js`, `src/aim.js`
+- 32m 以内の敵対モブから、敵ごとのプロファイル（`src/combat/combat-profiles.js`、53種）・経路（`src/combat/threat-reachability.js`）・射線で標的を1体選ぶ。
+- **剣**（3.0m 以内）: クリティカルのジャンプは使わず連打（実測約180ms 間隔）。`src/combat/melee-combat.js`, `src/combat/melee-weapons.js`
+- **弓**（6〜32m）: 20tick で即発射・即次弾、偏差撃ち、射線確保の短距離移動。`src/combat/ranged-combat.js`, `src/combat/bow-ballistics.js`, `src/combat/aim.js`
 - **クリーパー**: 近ければ1回叩いて離脱、中距離は後退、8m 以上（段差時 6.5m）で射撃。近づかない。引き絞り中は5mまで撃ち切る。回避の逃げ先がない時は10秒間「追い詰められた」扱いで、3m以内は叩く・3〜4.5mは1歩近づいて叩く・それ以上は弓（`docs/combat-mode-spec.md` 4章）。
 - **不死のトーテム保持中は体力で止めない**（2026-11-14 ユーザー指示「クリーパーに爆破され落下しました。不死のトーテムを持っている限り死ぬことはないので、過剰な待機保護をやめてください」）: サーバーから受信したオフハンドにトーテムがある間（`state.totemGuard`、`learning-health.js` の `totemGuarded`）は、作業・移動の最低体力を0とし、露天掘りの HP70%/40% 退避と HP90% 回復待ち、戦闘の低体力撤退・離脱、待機保護の体力による回復待ちを行わない。戦闘は続ける。オフハンドが空・未受信なら従来どおり。
 - **満腹度18未満なら食べる**（2026-11-14 ユーザー指示「満腹度が一定以下になると体力を回復しなくなるので、満腹度が一定以下の場合は食事を取るようにしてください」。自然回復は満腹度18以上が必要）: 露天掘り中も待機中も、受信した満腹度が18未満で通常の食事を始め、20まで続ける。戦闘・箱の作業中は後回し。
 - **低体力**: HP40% 未満で撤退状態、60% で解除。6m 以内に2体以上かつ3m 以内に敵がいなければ離脱、それ以外は押し切る（ユーザー確認済みの方針）。
-- 防具の自動装備（`src/armor.js`）、食事との両立、待機保護との切替。
+- 防具の自動装備（`src/actions/armor.js`）、食事との両立、待機保護との切替。
 - ユーザーは「速く、積極的に戦う」挙動を望んでいます。判断を遅くする変更や、安易な撤退を増やす変更は避けてください。
-- 旧来の `src/combat.js` は自律実行の `defend`（剣）経路です。
+- 旧来の `src/combat/combat.js` は自律実行の `defend`（剣）経路です。
 - 戦闘が自分で接近・射線確保の移動をしている間は、被弾しても移動を止めない（`state.combatMotion`。低体力・死亡時の停止は維持）。毒などの継続ダメージで接近が毎回中断されないため。
 - 動く弓標的は、射線の判定が揺れても最大0.9秒・8回まで撃ち直しを続ける（SIGHT_STALE の猶予）。
 - 弓の引き絞り解除でホットバーを切り替えたときは、その選択をローカルにも記録する（サーバーは自分の mob_equipment を返さないため。ずれると「ツルハシ表示なのに素手速度」になる）。
@@ -90,7 +90,7 @@
 - 下端の採掘・最終回収・収納後、隣接チャンクの端にある安全な1列を選ぶ。新規ジョブの `exit.side` は既定 `auto` で東→西→北→南の順に優先し、各側最大16本を調べる。`east`・`west`・`north`・`south` は指定側に限定する。脱出のための範囲外掘削は採用した1列の頭上だけとし、通常採掘と土柱で地上の安全な足場へ戻る。
 - 最終確認または脱出列選定に必要な地形が未受信の間は、`subchunk_request` で読み込みを最大2回要求し、実際に届いた地形で再評価する。送信だけでは `known:true` と扱わない。脱出用の土を専用に保持し、列の選定前は192個が確保目安、選定後は必要段数＋予備8個を確保する。不足時は `EXIT_MATERIAL_MISSING` で停止する。
 - 各段の進捗は受信した土ブロック、所持数の1個減少、着地で確定する。`egress.miningCompleted` と `egress.surfaceReturned` を区別し、危険・未確認時は停止する。ジョブ終了時（採掘・最終収納・地上への脱出の完了後）に残った例外と、貨物シュルカーの紛失は自動で受諾する（2026-11-13 ユーザー指示「放置で完全に地上まで登るようにしたいので、確認待ちにさせないようにして」。新しいジョブの既定 `strategy.autoAcceptFinalExceptions` / `autoAcceptCargoLoss`、ジョブごとに無効化可）。受諾内容は `.local/quarry/` のジョブ記録とダッシュボードの「例外」「紛失」一覧に残す。貨物箱の紛失は最大60秒の探索後に受諾し、補給箱の紛失・1ジョブ3個目の紛失・残り容量不足・受信の食い違いでは停止する。それ以外の例外の受諾はユーザー操作に限る。
-- Realmから段ごとの位置更新が届かないときは、`src/server-position-verifier.js` がサンドボックスのオペレーター権限で `/testfor @s[x=...,y=...,z=...,r=0.12]` を照会する。同じ接続・次元・生存回で要求UUIDが一致した `command_output` の自己位置確認を段の証拠として別に保存し、受信した生の位置は上書きしない。本番の採掘・脱出は通常の採掘・ジャンプ・設置で行う。
+- Realmから段ごとの位置更新が届かないときは、`src/movement/server-position-verifier.js` がサンドボックスのオペレーター権限で `/testfor @s[x=...,y=...,z=...,r=0.12]` を照会する。同じ接続・次元・生存回で要求UUIDが一致した `command_output` の自己位置確認を段の証拠として別に保存し、受信した生の位置は上書きしない。本番の採掘・脱出は通常の採掘・ジャンプ・設置で行う。
 - 2026年11月5日、実Realmで土柱3段を連続検証し、各段のブロック更新・土1個消費・位置照会の成功を確認した。検証後にデバッグ用 `/tp` で元の位置へ戻し、土4個を通常採掘で回収して実在庫192個を確認した。
 - サーバーに持ち替えを拒否された・採掘が道具の想定より極端に遅い（SLOW_BREAK）時は、持ち物をサーバーから取り直す。
 - 死亡数には「一時停止中に再接続で life が変わった」記録（whilePaused）も含まれる。実際の死亡はリスポーンのログで確認する。
@@ -151,7 +151,7 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 - **サーバー由来の情報だけを成果とする**: 入力の送信、時間経過、プレビューの成功、予測位置への到着、ドロップの消滅だけで成功扱いにしない。回収・クラフトは実際の持ち物の変化、採掘は受信した空気、設置はブロック更新と消費の両方で確認する。露天掘りの表示用集計や予測だけでジョブ完了とせず、受信した地形・実際の持ち物変化によるジョブの確認結果を使う。旧ダイヤ目標を扱う場合も、完了判定はサーバーから届いた持ち物にダイヤがある時だけ。
 - **未知を安全と見なさない**: 未受信の地形・未確認の持ち物・一覧にない敵は安全側に倒す。
 - **再起動が必要な変更を明示する**: `host.js`、`entities.js` など接続側で読み込むモジュール、認証・通信、依存、`.env` の変更はホットリロードされない。ユーザーに再起動が必要と伝える。
-- **大きいファイルを育てない**（2026-11-15 品質改善の方針。読みやすさ・保守性のため）: `src/runtime.js`・`src/quarry-job.js`・`src/idle-safety.js`・`src/quarry-portable-storage.js`・`src/runner.js`・`dashboard/index.html` には新しい機能の処理を書き足さない。新しい機能は専用のモジュール（例: `src/long-travel.js`）に置き、大きいファイルには呼び出しの1〜数行だけを足す。`npm run check` が基準（`scripts/size-budget.json`）からの増加を「サイズ超過」として表示する。処理を外へ出したら基準値を下げる。新しい処理を入れるために基準値を上げない。`runtime.js` のまとまった処理を外へ出すときは `node scripts/extract-runtime-block.js <開始行> <終了行> <モジュール名> <関数名> <変数名>` を使う（構文解析に基づく機械的な移し替え。`--apply` なしでは一時フォルダに出力するだけ）。`runtime.js` のソース文字列を照合・切り出し・加工するテストは `test/helpers/runtime-source.js` の `runtimeSource()` を読む（移した部分を元の位置へ戻した1ファイル分のテキストを返す。分割前のソースと一致することを確認済み）。
+- **大きいファイルを育てない**（2026-11-15 品質改善の方針。読みやすさ・保守性のため）: `src/runtime.js`・`src/quarry/quarry-job.js`・`src/safety/idle-safety.js`・`src/quarry/storage/quarry-portable-storage.js`・`src/survival/runner.js`・`dashboard/index.html` には新しい機能の処理を書き足さない。新しい機能は専用のモジュール（例: `src/travel/long-travel.js`）に置き、大きいファイルには呼び出しの1〜数行だけを足す。`npm run check` が基準（`scripts/size-budget.json`）からの増加を「サイズ超過」として表示する。処理を外へ出したら基準値を下げる。新しい処理を入れるために基準値を上げない。`runtime.js` のまとまった処理を外へ出すときは `node scripts/extract-runtime-block.js <開始行> <終了行> <モジュール名> <関数名> <変数名>` を使う（構文解析に基づく機械的な移し替え。`--apply` なしでは一時フォルダに出力するだけ）。`runtime.js` のソース文字列を照合・切り出し・加工するテストは `test/helpers/runtime-source.js` の `runtimeSource()` を読む（移した部分を元の位置へ戻した1ファイル分のテキストを返す。分割前のソースと一致することを確認済み）。
 - **同じ種類の不具合を個別の条件分岐で直し続けない**（同上）: 同じ機能で3件目の個別修正になる前に、共通の原因（判定の持ち方・状態の出どころ・部品の境界）を確かめ、部品として直す。個別の対処を足した場合は、その場所と理由をコミットメッセージに残す。
 - **ドキュメントのファイル名に日付を付けない**（2026-11-15 ユーザー指示「ファイル名の日付は廃止して、gitで差分を管理できるため」）: `docs/` の資料は内容を表す名前にし、更新するときは同じファイルを書き換える。以前の内容は Git の履歴で確認する。新しい資料を足したら `docs/README.md` の一覧にも1行足す。
 - **変更前の状態は Git で残す**（2026-11-13 ユーザー方針）: `backup/` フォルダへのファイルコピーはしない。既存コードを変える前に作業ブランチを切るかコミットしておき、戻す必要があれば Git の履歴から戻す。
@@ -187,7 +187,7 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 - 本番Runtimeは `storageMode: 'shulker'` と portable storage の `shulkerOnly: true` を固定。旧チェスト記録は削除せず `LEGACY_CHEST_STORAGE` で停止。画面・CLI・汎用APIからチェスト代替を許可しない。
 - 「ラージチェストへ全収納」は、作業停止中の明示的な手動操作としてのみ使用する。採掘中の自動収納やチェスト代替へ流用せず、消去・生成・管理者コマンドは使用しない。未完了の移動記録は保持し、接続・生存回が変わった記録を自動再開しない。
 - 青・空色・黄・茶の補給4色は収納候補から除外。供給箱の受信識別子による除外も維持。
-- `src/loadout-manifest.js` の標準v1は、未確定だった数量・エンチャントの新規標準。過去の実在庫を復元したと主張しない。
+- `src/loadout/loadout-manifest.js` の標準v1は、未確定だった数量・エンチャントの新規標準。過去の実在庫を復元したと主張しない。
 - リセットは管理者の明示操作だけ。`@s` 固定コマンド境界、120秒一度限りの確認、同じ接続・次元・生存回・所持品・ジョブ・コード世代の条件を維持。実行中は他操作／自動復旧と排他。通常採掘から呼ばない。
 - `/clear`、配布、一時箱の設置は今回の初期化に限る。`.local/loadout-reset/` の記録と受信結果を確認し、途中失敗は完了扱いしない。未確認箱を自動削除しない。
 - 追加回帰は `test/loadout-*.test.js`、実Realm接続／初期化はテストで行わない。仕様・移行は `docs/loadout-reset.md`。Bot本体と管理画面の再起動が必要。

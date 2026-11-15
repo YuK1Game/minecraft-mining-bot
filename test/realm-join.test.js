@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { installRealmJoinHandling } = require('../src/realm-join')
+const { installRealmJoinHandling } = require('../src/host/realm-join')
 
 const URL = 'https://pocket.realms.minecraft.net/worlds/12345/join'
 function response (status, { retryAfter = null, type = 'application/json', data = { address: 'server:19132' } } = {}) {

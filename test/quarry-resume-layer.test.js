@@ -3,7 +3,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
-const { createQuarryJob } = require('../src/quarry-job')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 
 const BOX = { xMin: -6, xMax: 20, yMin: 50, yMax: 70, zMin: -6, zMax: 20 }
 const upper = { x: 7, y: 62, z: 7 }

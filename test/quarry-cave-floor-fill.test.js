@@ -4,8 +4,8 @@
 // filled with an ordinary block instead of writing the work off or stopping.
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryPlanner } = require('../src/quarry-planner')
-const { buildRegions } = require('../src/quarry-region')
+const { createQuarryPlanner } = require('../src/quarry/quarry-planner')
+const { buildRegions } = require('../src/quarry/quarry-region')
 
 test('a deep cave gap is bridged with a placed floor instead of deferring the far work as UNREACHABLE', async () => {
   // Floor strip at y=50 for x 0..3 and x 8..15 (z 0..2); between them a cave

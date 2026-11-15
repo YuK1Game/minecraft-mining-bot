@@ -1,9 +1,9 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { planQuarryExit, permitsExitAction } = require('../src/quarry-exit-plan')
-const { buildRegions, permits } = require('../src/quarry-region')
-const { createQuarryJob } = require('../src/quarry-job')
+const { planQuarryExit, permitsExitAction } = require('../src/quarry/exit/quarry-exit-plan')
+const { buildRegions, permits } = require('../src/quarry/quarry-region')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 const { createSim } = require('./helpers/quarry-sim')
 
 // Synthetic terrain: the quarry's tallest point and the adjacent ground are
@@ -147,7 +147,7 @@ test('review (2026-11-10): a job continuing under an open pit may land on the su
   assert.ok(planQuarryExit(f.args).details.attempts.every(a => a.cause === 'LANDING_TOO_HIGH'), 'the default rise still refuses')
   const r = planQuarryExit({ ...f.args, exit: { ...(f.args.exit ?? {}), landingRise: 160 } })
   assert.ok(!(r.details?.attempts ?? []).some(a => a.cause === 'LANDING_TOO_HIGH'), JSON.stringify(r.details).slice(0, 200))
-  const { normalizeExit } = require('../src/quarry-exit-plan')
+  const { normalizeExit } = require('../src/quarry/exit/quarry-exit-plan')
   assert.throws(() => normalizeExit({ landingRise: 10 }), /landing rise/)
   assert.equal(normalizeExit({}).landingRise, undefined)
 })

@@ -5,9 +5,9 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
-const { createShoreLandmarks } = require('../src/shore-landmarks')
-const { createMissionMemory } = require('../src/mission-memory')
-const { planHut } = require('../src/hut-planner')
+const { createShoreLandmarks } = require('../src/movement/shore-landmarks')
+const { createMissionMemory } = require('../src/survival/mission-memory')
+const { planHut } = require('../src/survival/hut-planner')
 
 const scope = { realmId: '21225335', profile: 'bot', dimension: 'overworld' }
 async function fixture (t) {

@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('node:path')
-const { summarizeCpuProfile, profileCpu, measureSnapshots } = require('../src/runtime-diagnostics')
+const { summarizeCpuProfile, profileCpu, measureSnapshots } = require('../src/runtime/runtime-diagnostics')
 
 const profile = () => ({ nodes: [
   { id: 1, callFrame: { functionName: 'read actors', url: 'file:///G:/Project/src/actor view.js', lineNumber: 4 } },

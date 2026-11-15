@@ -4,9 +4,9 @@
 // cave left the bot on an island of kept ore with no way down).
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryPlanner } = require('../src/quarry-planner')
-const { buildRegions } = require('../src/quarry-region')
-const { createQuarryJob } = require('../src/quarry-job')
+const { createQuarryPlanner } = require('../src/quarry/quarry-planner')
+const { buildRegions } = require('../src/quarry/quarry-region')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
 const bounds = { xMin: -6, xMax: 21, yMin: 50, yMax: 70, zMin: -6, zMax: 21 }

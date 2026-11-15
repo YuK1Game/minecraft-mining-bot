@@ -4,7 +4,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createQuarryRuntimeAdapter } = require('../src/quarry-runtime-adapter')
+const { createQuarryRuntimeAdapter } = require('../src/quarry/quarry-runtime-adapter')
 const filename = require.resolve('./runtime-user-behaviors.test.js'), loaded = new Module(filename, module)
 loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
 loaded._compile(fs.readFileSync(filename, 'utf8').split('\ntest(')[0] + '\nmodule.exports = { scene }\n', filename)
@@ -34,11 +34,11 @@ function fixture (t, { equipment = null } = {}) {
     return { status: 'completed', serverConfirmed: true }
   }
   const f = scene(t, { runtimeOverrides: {
-    ...(equipment ? { './quarry-v22-equipment': { createQuarryV22Equipment: () => equipment } } : {}),
-    './chest': { createChest: () => chest },
-    './armor': { createArmor: () => ({ preview: () => autoReady, equipBest: async () => { armorCalls++; return [] }, preemptForCombat: () => { preemptions++ }, applyPacket () {}, snapshot: () => ({ busy: false }) }) },
-    './quarry-v22-chest-work': { createQuarryV22ChestWork: ports => { surfacePorts = ports; return { withdrawAll: transfer('withdraw'), depositAll: transfer('deposit') } } },
-    './quarry-runtime-adapter': { createQuarryRuntimeAdapter: ports => {
+    ...(equipment ? { './loadout/quarry-v22-equipment': { createQuarryV22Equipment: () => equipment } } : {}),
+    './actions/chest': { createChest: () => chest },
+    './actions/armor': { createArmor: () => ({ preview: () => autoReady, equipBest: async () => { armorCalls++; return [] }, preemptForCombat: () => { preemptions++ }, applyPacket () {}, snapshot: () => ({ busy: false }) }) },
+    './loadout/quarry-v22-chest-work': { createQuarryV22ChestWork: ports => { surfacePorts = ports; return { withdrawAll: transfer('withdraw'), depositAll: transfer('deposit') } } },
+    './quarry/quarry-runtime-adapter': { createQuarryRuntimeAdapter: ports => {
       adapter = { ...createQuarryRuntimeAdapter(ports), resyncInventory: async ({ signal }) => {
         calls.push('resync'); reached.resolve()
         if (signal) signal.addEventListener('abort', () => gate.reject(signal.reason), { once: true })
@@ -47,7 +47,7 @@ function fixture (t, { equipment = null } = {}) {
       } }
       return adapter
     } },
-    './quarry-job': { createQuarryJob: () => ({ holdsWork: () => held, document: () => null, status: () => ({ state: held ? 'PREFLIGHT' : 'PAUSED' }),
+    './quarry/quarry-job': { createQuarryJob: () => ({ holdsWork: () => held, document: () => null, status: () => ({ state: held ? 'PREFLIGHT' : 'PAUSED' }),
       resume: async () => { held = true; try { return await adapter.loadoutWithdraw({}, { signal: f.signal.signal }) } finally { held = false } },
       storeCarriedNow: async () => { held = true; try { return await adapter.finalChestDeposit({}, { signal: f.signal.signal }) } finally { held = false } },
       pause: async () => { held = false }

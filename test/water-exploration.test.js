@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {createRunner}=require('../src/runner'),{waterExplorationAdmission,waterExplorationCandidates,validateWaterExplorationRoute}=require('../src/water-exploration'),{createNavigator}=require('../src/navigation'),{createPhysics}=require('../src/physics')
+const {createRunner}=require('../src/survival/runner'),{waterExplorationAdmission,waterExplorationCandidates,validateWaterExplorationRoute}=require('../src/movement/water-exploration'),{createNavigator}=require('../src/movement/navigation'),{createPhysics}=require('../src/movement/physics')
 const actual=require('./fixtures/actual-island139-water-exit.json'),copy=v=>structuredClone(v),key=p=>`${p.x},${p.y},${p.z}`
 function fixture(){const f=copy(actual),map=new Map(f.observations.blocks.map(b=>[key(b.position),b])),world={getBlock:(x,y,z)=>map.get(`${x},${y},${z}`)??{known:false}},physics=createPhysics({world,version:f.state.version,allowWater:true}),nav=createNavigator({world,version:f.state.version,allowWater:true,physics});return{...f,map,world,nav}}
 

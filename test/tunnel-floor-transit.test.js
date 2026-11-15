@@ -1,6 +1,6 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { knownStandpoints } = require('../src/exploration'), { createPhysics } = require('../src/physics'), { createNavigator } = require('../src/navigation'), { createMovement } = require('../src/movement')
+const { knownStandpoints } = require('../src/survival/exploration'), { createPhysics } = require('../src/movement/physics'), { createNavigator } = require('../src/movement/navigation'), { createMovement } = require('../src/movement/movement')
 const fixtureFile = path.resolve(__dirname, '../test/runner.test.js'), loaded = new Module(fixtureFile, module); loaded.filename = fixtureFile; loaded.paths = Module._nodeModulePaths(path.dirname(fixtureFile)); loaded._compile(fs.readFileSync(fixtureFile, 'utf8').split('\ntest(')[0] + '\nmodule.exports={fixture}\n', fixtureFile)
 const runnerFixture = loaded.exports.fixture
 function scene (source = 'tunnel_floor', invalid = null) {

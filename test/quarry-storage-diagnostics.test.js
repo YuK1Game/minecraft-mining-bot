@@ -5,8 +5,8 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
-const { diagnoseShulkerContents, compareShulkerContents } = require('../src/shulker-contents')
-const { createQuarryPortableStorage } = require('../src/quarry-portable-storage')
+const { diagnoseShulkerContents, compareShulkerContents } = require('../src/inventory/shulker-contents')
+const { createQuarryPortableStorage } = require('../src/quarry/storage/quarry-portable-storage')
 
 // Use the existing real-controller fixture without registering its tests.
 const file = require.resolve('./quarry-portable-storage.test')

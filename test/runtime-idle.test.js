@@ -4,7 +4,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { performance } = require('node:perf_hooks')
 const { createRuntime } = require('../src/runtime')
-const { createSessionCache } = require('../src/session-cache')
+const { createSessionCache } = require('../src/host/session-cache')
 
 const emptyItem = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })
 

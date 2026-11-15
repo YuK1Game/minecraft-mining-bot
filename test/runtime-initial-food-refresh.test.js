@@ -47,7 +47,7 @@ test('public depot food-health intent with real no-food-source preview dispatche
  runner.actions=Object.fromEntries(['explore','move_to','scan_blocks','gather_logs','craft','equip'].map(type=>[type,async(d,c)=>{actions.push({type,decision:structuredClone(d),state:structuredClone(c.state)});return{phase:'predicted',serverConfirmed:false,requiresObservation:true}}]))
  const workspaceRoot=await fsp.mkdtemp(path.join(os.tmpdir(),'food-depot-explore-'));let runtime
  t.after(async()=>{await runtime?.dispose('before_temp_cleanup');assert.ok(path.resolve(workspaceRoot).startsWith(path.join(os.tmpdir(),'food-depot-explore-')));await fsp.rm(workspaceRoot,{recursive:true,force:true})})
- const native=require('../src/runner'),f=m.exports.hostScene(t,workspaceRoot,{state,getBlock,overrides:{'./runner':{...native,createRunner:()=>runner}}});runtime=f.runtime
+ const native=require('../src/survival/runner'),f=m.exports.hostScene(t,workspaceRoot,{state,getBlock,overrides:{'./survival/runner':{...native,createRunner:()=>runner}}});runtime=f.runtime
  const before=structuredClone(f.parsed.state.inventory)
  await runtime.resumeRequested();await new Promise(r=>setTimeout(r,120));f.host.shared.autoWanted=true;await runtime.operations.depotMission.start();await runtime.operations.depotMission.tick()
  const result=runtime.operations.depotMission.snapshot()

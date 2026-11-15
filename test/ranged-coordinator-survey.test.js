@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module'),{setImmediate:turn}=require('node:timers/promises')
-const {createCombatCoordinator}=require('../src/combat-coordinator'),{createInput}=require('../src/input'),{createSerializer,createDeserializer}=require('bedrock-protocol/src/transforms/serializer')
+const {createCombatCoordinator}=require('../src/combat/combat-coordinator'),{createInput}=require('../src/movement/input'),{createSerializer,createDeserializer}=require('bedrock-protocol/src/transforms/serializer')
 function rangedFixture(options){const file=require.resolve('./ranged-combat.test.js'),m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]+'\nmodule.exports={fixture}',file);return m.exports.fixture(options)}
 function coupled(t,{blocked=false,afterAcquire=null,afterShot=null,legacy=false,stopAfterShot=true,arrows=3}={}){
   t.mock.timers.enable({apis:['setInterval']});let busy=true,enabled=true,time=1000,acquires=0,resumes=0,approaches=0,meleeCalls=0;const auth=[]

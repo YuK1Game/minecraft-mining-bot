@@ -1,9 +1,9 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createInputReplay } = require('../src/input-replay')
-const { normalizePlayerCorrection } = require('../src/server-physics')
-const { createPhysics } = require('../src/physics')
+const { createInputReplay } = require('../src/movement/input-replay')
+const { normalizePlayerCorrection } = require('../src/movement/server-physics')
+const { createPhysics } = require('../src/movement/physics')
 
 const scope = { connectionId: 'connection-a', dimension: 'overworld', runtimeEntityId: '1', movementEpoch: 0 }
 const state = (changes = {}) => ({ position: { x: 0, y: 65, z: 0 }, velocity: { x: 0, y: 0.2, z: 0 }, yaw: 0, pitch: 0, onGround: false, gameMode: 'survival', jumpTicks: 3, jumpQueued: false, controls: {}, effects: {}, attributes: {}, ...changes })

@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs/promises'), os = require('node:os'), path = require('node:path')
-const { createDepotMission } = require('../src/depot-mission')
+const { createDepotMission } = require('../src/survival/depot-mission')
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 async function fixture (dispatch) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minecraft-depot-mission-'))

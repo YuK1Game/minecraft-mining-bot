@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { historicalSourceRejection } = require('../src/rejected-source-history')
+const { historicalSourceRejection } = require('../src/quarry/storage/rejected-source-history')
 
 function scene () {
   const scope = { profile: 'bot', realmId: '1', dimension: 'overworld', connectionId: 'socket', startedAt: '2026-11-06T13:53:33.633Z', runtimeEntityId: '10', life: 0 }

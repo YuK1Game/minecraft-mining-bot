@@ -6,7 +6,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
-const { createAutonomy } = require('../src/autonomy')
+const { createAutonomy } = require('../src/survival/autonomy')
 const copy = value => structuredClone(value)
 const file = path.resolve(__dirname, 'hut.test.js')
 const source = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]

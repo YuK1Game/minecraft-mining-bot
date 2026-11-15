@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { evaluateCombatThreat, recognitionRadius } = require('../src/combat-threat-policy')
+const { evaluateCombatThreat, recognitionRadius } = require('../src/combat/combat-threat-policy')
 
 const state = () => ({ phase: 'spawned', health: 20, gameMode: 'survival', dimension: 'overworld', position: { x: 0, y: 65.62, z: 0 } })
 const mob = (entityType = 'minecraft:creeper', x = 10, extra = {}) => ({ entityType, kind: 'mob', hostile: true, alive: true, positionKnown: true, dimension: 'overworld', position: { x, y: 64, z: 0 }, ...extra })

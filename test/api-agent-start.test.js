@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createApi } = require('../src/api')
+const { createApi } = require('../src/host/api')
 
 test('agent start awaits asynchronous initialization and returns its real status or error', async t => {
   const api = createApi({ snapshot: () => ({}), disconnect: () => {}, agent: { start: async options => { if (options.fail) throw new Error('cannot start'); return { phase: 'running', goal: options.objective } } } })

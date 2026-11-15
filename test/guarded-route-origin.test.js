@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createGuardedRoute } = require('../src/guarded-route')
+const { createGuardedRoute } = require('../src/movement/guarded-route')
 
 function fixture ({ partial = false, correction = false, partialArrival = false, originHook = true } = {}) {
   let now = 1000; let stamp = 1000; let motion = { phase: 'idle' }

@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),Module=require('node:module')
-const {createIdleSafety}=require('../src/idle-safety'),{createAutonomy}=require('../src/autonomy'),{evaluateThreats}=require('../src/threats')
+const {createIdleSafety}=require('../src/safety/idle-safety'),{createAutonomy}=require('../src/survival/autonomy'),{evaluateThreats}=require('../src/combat/threats')
 function fixtureFrom(file,names){const p=path.join(__dirname,file),source=fs.readFileSync(p,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0],m={exports:{}};new vm.Script(Module.wrap(source+'\nmodule.exports={'+names+'}'),{filename:p}).runInThisContext()(m.exports,Module.createRequire(p),m,p,__dirname);return m.exports}
 const runnerFixture=fixtureFrom('runner.test.js','fixture').fixture
 const runtimeFixture=fixtureFrom('runtime-idle-safety.test.js','fixture').fixture

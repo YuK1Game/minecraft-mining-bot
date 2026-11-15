@@ -5,7 +5,7 @@ const { EventEmitter } = require('node:events')
 const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
-const { createLiveLog } = require('../src/live-log')
+const { createLiveLog } = require('../src/host/live-log')
 const { streamLog } = require('../scripts/lib/log-stream')
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 async function file (t) { const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'log-review-')); t.after(() => fs.rm(dir, { recursive: true, force: true })); return path.join(dir, 'bot.log') }

@@ -29,8 +29,8 @@ function prefixFixture (name, exports) {
   const filename = require.resolve(`./${name}`)
   return sourceModule(filename, fs.readFileSync(filename, 'utf8').split('\ntest(')[0] + `\nmodule.exports = ${exports}\n`)
 }
-const { createInteractions } = factory('interactions', 'PLACEMENT_INTERACTIONS_TEST_SOURCE')
-const { createQuarryPortableStorage } = factory('quarry-portable-storage', 'PLACEMENT_PORTABLE_TEST_SOURCE')
+const { createInteractions } = factory("actions/interactions", 'PLACEMENT_INTERACTIONS_TEST_SOURCE')
+const { createQuarryPortableStorage } = factory("quarry/storage/quarry-portable-storage", 'PLACEMENT_PORTABLE_TEST_SOURCE')
 
 test('real placement retains the actual consumed source observation when a pickup refills its slot before await resumes', async () => {
   const { fixture, emptyItem } = prefixFixture('interactions.test', '{ fixture, emptyItem }')

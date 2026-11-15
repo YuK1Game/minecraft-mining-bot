@@ -2,9 +2,9 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createHut } = require('../src/hut')
-const { createHutPlanner } = require('../src/hut-planner')
-const { createNavigator } = require('../src/navigation')
+const { createHut } = require('../src/survival/hut')
+const { createHutPlanner } = require('../src/survival/hut-planner')
+const { createNavigator } = require('../src/movement/navigation')
 
 const key = point => `${point.x},${point.y},${point.z}`
 const block = name => ({ known: true, name: `minecraft:${name}`, properties: {}, runtimeId: name === 'air' ? 0 : 1, boundingBox: name === 'air' ? 'empty' : 'block', extra: [] })

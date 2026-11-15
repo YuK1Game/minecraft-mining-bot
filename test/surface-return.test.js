@@ -1,8 +1,8 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { createPhysics } = require('../src/physics'), { createMovement } = require('../src/movement')
-const { createInput } = require('../src/input')
-const file = path.resolve(__dirname, '../src/surface-return.js'), loaded = new Module(file, module)
+const { createPhysics } = require('../src/movement/physics'), { createMovement } = require('../src/movement/movement')
+const { createInput } = require('../src/movement/input')
+const file = path.resolve(__dirname, '../src/survival/surface-return.js'), loaded = new Module(file, module)
 loaded.filename = file; loaded.paths = Module._nodeModulePaths(path.dirname(file)); loaded._compile(fs.readFileSync(process.env.SURFACE_RETURN_TEST_SOURCE ?? file, 'utf8'), file)
 const { createSurfaceReturn, planObservedGroundReturn, proveReturnCover, returnScope } = loaded.exports
 const capture = require('./fixtures/surface-return-0f5e.json'), copy = v => structuredClone(v), key = p => [p.x, p.y, p.z].join(',')

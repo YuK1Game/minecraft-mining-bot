@@ -1,7 +1,7 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {planDepotStorageAccess,selectDepotTableCell}=require('../src/depot-storage-access')
-const {createInteractions}=require('../src/interactions')
+const {planDepotStorageAccess,selectDepotTableCell}=require('../src/survival/depot-storage-access')
+const {createInteractions}=require('../src/actions/interactions')
 function fixture(){
  const state={phase:'spawned',profile:'bot',realm:{id:'21225335'},connectionId:'current',startedAt:'2026-11-01T14:00:00Z',runtimeEntityId:'41',dimension:'overworld',lifecycle:{phase:'alive',deathId:0},health:20,gameMode:'survival',position:{x:.5,y:68.62,z:.5},rawSelectedSlot:0,inventory:{known:true,items:[]},entities:[],entityStats:{unknownPositions:0}}
  const changes=new Map(),world={getBlock:(x,y,z)=>changes.get(`${x},${y},${z}`)??{known:true,name:y<=66?'minecraft:stone':'minecraft:air',position:{x,y,z},runtimeId:y<=66?1:0,boundingBox:y<=66?'block':'empty',extra:[],properties:{}}}

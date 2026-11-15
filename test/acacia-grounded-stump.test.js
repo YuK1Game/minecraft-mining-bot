@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {naturalLogCandidates,nextBootstrapAction}=require('../src/planner'),{nextSurvivalAction}=require('../src/survival-planner')
+const {naturalLogCandidates,nextBootstrapAction}=require('../src/survival/planner'),{nextSurvivalAction}=require('../src/survival/survival-planner')
 const received=require('./fixtures/acacia-grounded-stump-received.json'),key=p=>`${p.x},${p.y},${p.z}`,stump={x:-20,y:71,z:-12}
 function actual(){const blocks=structuredClone(received.blocks),map=new Map(blocks.map(b=>[key(b.position),b]));return{blocks,map,logs:blocks.filter(b=>b.name==='minecraft:acacia_log'),read:p=>map.get(key(p))}}
 test('actual cached supported Acacia stump and nonpersistent canopy are recognized, unsupported diagonal upper components remain excluded',()=>{

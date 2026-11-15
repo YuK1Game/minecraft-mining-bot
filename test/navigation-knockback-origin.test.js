@@ -2,9 +2,9 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createNavigator } = require('../src/navigation')
-const { createPhysics } = require('../src/physics')
-const { evaluateThreats } = require('../src/threats')
+const { createNavigator } = require('../src/movement/navigation')
+const { createPhysics } = require('../src/movement/physics')
+const { evaluateThreats } = require('../src/combat/threats')
 const capture = require('./fixtures/knockback-short-grass-origin.json')
 const registry = require('prismarine-registry')('bedrock_1.26.60')
 const block = (name, extra = []) => ({ known: true, name: `minecraft:${name}`, properties: {}, extra })

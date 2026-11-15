@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createRunner, createHttpClient } = require('../src/runner')
+const { createRunner, createHttpClient } = require('../src/survival/runner')
 
 function fixture (handler = () => undefined, options = {}) {
   let clock = 0

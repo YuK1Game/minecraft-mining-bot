@@ -2,10 +2,10 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createDashboardControl } = require('../src/dashboard-control')
+const { createDashboardControl } = require('../src/host/dashboard-control')
 const { createDashboardManager } = require('../scripts/lib/dashboard-control')
-const { observedScope } = require('../src/server-position-verifier')
-const { normalizeChunkArea } = require('../src/chunk-area')
+const { observedScope } = require('../src/movement/server-position-verifier')
+const { normalizeChunkArea } = require('../src/common/chunk-area')
 const area = { x1: 0, z1: 0, x2: 0, z2: 0 }
 const copy = value => structuredClone(value)
 

@@ -5,8 +5,8 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
-const { createInventoryInspection } = require('../src/inventory-inspection')
-const { receivedEquipmentView } = require('../src/loadout-runtime-adapter')
+const { createInventoryInspection } = require('../src/inventory/inventory-inspection')
+const { receivedEquipmentView } = require('../src/loadout/loadout-runtime-adapter')
 
 const copy = value => structuredClone(value)
 const tag = (type, value) => ({ type, value })
@@ -137,7 +137,7 @@ test('replay, synthetic windows and old connection receipts never prove equipmen
 })
 
 function captureAdapter ({ getJob, journalDirectory }) {
-  const filename = path.resolve(__dirname, '../src/loadout-runtime-adapter.js')
+  const filename = path.resolve(__dirname, '../src/loadout/loadout-runtime-adapter.js')
   const nativeRequire = Module.createRequire(filename)
   const loaded = new Module(filename, module)
   loaded.filename = filename
