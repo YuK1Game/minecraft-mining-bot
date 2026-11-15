@@ -194,6 +194,11 @@ function createDashboardManager ({ workspaceRoot, apiPort, defaultProfile = 'mai
       if (!['storagePreview', 'storageStart', 'storageCancel'].includes(input.command)) throw failure('INVALID_COMMAND', 'この操作は公開されていません。', 400)
       return requestBot({ apiPort, payload: input, timeoutMs: 30000 })
     }
+    if (route === 'mode') {
+      inputKeys(input, input?.command === 'setMode' ? ['command', 'session', 'mode'] : ['command', 'session'])
+      if (!['setMode', 'playerStart', 'playerStop'].includes(input.command)) throw failure('INVALID_COMMAND', 'この操作は公開されていません。', 400)
+      return requestBot({ apiPort, payload: input, timeoutMs: 30000 })
+    }
     if (route === 'quarry') {
       inputKeys(input, input?.command === 'moveToChunk' ? ['command', 'session', 'area'] : input?.command === 'cancelChunkMove' ? ['command', 'session', 'operationId'] : ['command', 'session', 'config', 'planToken', 'jobId'])
       if (!['plan', 'start', 'pause', 'resume', 'emergencyStop', 'cancel', 'moveToChunk', 'cancelChunkMove'].includes(input.command)) throw failure('INVALID_COMMAND', 'この操作は公開されていません。', 400)

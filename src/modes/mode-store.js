@@ -4,7 +4,7 @@
 // damaged file means the default mode, never an error at startup.
 const fs = require('node:fs')
 const path = require('node:path')
-const { writeDurableJson } = require('../durable-json')
+const { writeDurableJson } = require('../common/durable-json')
 const { DEFAULT_MODE, isMode } = require('./bot-mode')
 
 const modeFile = root => path.resolve(root, '.local', 'mode.json')

@@ -1,0 +1,17 @@
+/* Mode switch in the control heading and the player-mode stage list. */
+body.v2 .mode-switch{display:inline-flex;margin-left:auto;border:1px solid var(--edge);border-radius:999px;overflow:hidden;background:#fff}
+body.v2 .control-panel .mode-switch button{border:0;border-radius:0;min-height:30px;padding:3px 18px;font-size:14px;font-weight:700;color:var(--sub);background:#fff;cursor:pointer}
+body.v2 .control-panel .mode-switch button[aria-pressed=true]{background:var(--g);color:#fff}
+body.v2 .control-panel .mode-switch button:disabled{cursor:default;opacity:.55}
+body.v2 .control-panel .mode-switch button[aria-pressed=true]:disabled{opacity:1}
+#control[data-mode=player] .control-target>:not(.col-title):not(.mode-stages){display:none}
+.mode-stages{list-style:none;margin:6px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-content:center;gap:12px 26px;min-height:168px;counter-reset:stage}
+.mode-stages li{counter-increment:stage;display:inline-flex;align-items:center;gap:6px;padding:9px 12px;border:1px solid var(--edge);border-radius:10px;background:#fff;color:var(--sub);font-weight:700;font-size:14px;white-space:nowrap}
+.mode-stages li::before{content:counter(stage);display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#eef2ea;font-size:12px}
+.mode-stages li{position:relative}
+.mode-stages li:not(:nth-child(3n))::after{content:'→';position:absolute;right:-20px;color:var(--g);font-weight:700}
+.mode-stages li[data-state=done]{border-color:var(--g-line);color:var(--g-dark)}
+.mode-stages li[data-state=done]::before{content:'✓';background:var(--g);color:#fff}
+.mode-stages li[data-state=current]{background:var(--g);border-color:var(--g);color:#fff}
+.mode-stages li[data-state=current]::before{background:#fff;color:var(--g-dark)}
+.mode-stages li[data-state=later]{border-style:dashed;opacity:.6}

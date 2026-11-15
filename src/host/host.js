@@ -565,7 +565,7 @@ async function main () {
       const perfStart = process.env.MINECRAFT_CAPTURE_EMERGENCY === '1' ? performance.now() : null
       const working = workingSnapshot()
       const result = { ...working, ...current().snapshot(), world: world.stats(), lifecycle: lifecycle.stats(), onlineEmergency: structuredClone(shared.onlineEmergency ?? null), runtimeResumeError: structuredClone(shared.runtimeResumeError ?? null), deathRespawn: structuredClone(shared.deathRespawn ?? null), droppedItems: entities.snapshot(),
-        nearbyHostiles: working.position ? entities.nearby(working.position, { radius: 16, kind: 'hostile' }) : [], entityStats: entities.stats(), hotReload: reloader.snapshot(), sessionCache: cache.snapshot(), controlInfo }
+        nearbyHostiles: working.position ? entities.nearby(working.position, { radius: 16, kind: 'hostile' }) : [], entityStats: entities.stats(), hotReload: reloader.snapshot(), sessionCache: cache.snapshot(), controlInfo, mode: current().operations.mode?.status() ?? null }
       if (perfStart !== null) {
         shared.perfObservations ??= {}
         shared.perfObservations.fullSnapshotMs = Math.max(shared.perfObservations.fullSnapshotMs ?? 0, performance.now() - perfStart)
@@ -574,7 +574,7 @@ async function main () {
     }
     const dashboardControl = require('./dashboard-control').createDashboardControl({
       getState: () => { const observed = rawSnapshot(); return { ...observed, lifecycle: lifecycle.stats(), loadingScreenEnded: shared.loadingScreenEnded, inventory: shared.inventoryUncertain ? { ...observed.inventory, known: false, uncertain: true } : observed.inventory } },
-      getQuarry: () => current()?.operations.quarry, getReset: () => current()?.operations.loadout, getStorage: () => current()?.operations.storage, getGeneration: () => reloader.snapshot().generation, disconnect: () => stop()
+      getQuarry: () => current()?.operations.quarry, getReset: () => current()?.operations.loadout, getStorage: () => current()?.operations.storage, getMode: () => current()?.operations.mode, getGeneration: () => reloader.snapshot().generation, disconnect: () => stop()
     })
     api = createApi({ dashboardControl, snapshot: fullSnapshot, disconnect: () => stop(), lifecycle: { ...lifecycle, respawn: options => deathRespawn.request(options) },
       mining: invoke('mining'), walking: invoke('walking'), movement: invoke('movement'), crafting: invoke('crafting'), interactions: invoke('interactions'), combat: invoke('combat'), agent: invoke('agent'), reload: () => reloader.reload({ reason: 'api' }),
@@ -603,7 +603,8 @@ async function main () {
         if (command === '/quit') stop()
         else if (command === '/status') console.log(JSON.stringify(fullSnapshot(), null, 2))
         else if (command === '/stop') { current().operations.agent.stop('ターミナルから停止しました。'); void Promise.resolve(current().operations.quarry?.pause()).catch(() => {}) }
-        else if (command === '/auto') current().operations.agent.start({})
+        else if (command === '/auto') { try { current().operations.mode.startPlayer() } catch (error) { console.error(errorText(error)) } }
+        else if (command === '/mode' || command.startsWith('/mode ')) { try { const mode = current().operations.mode; const to = command.slice(5).trim(); console.log(JSON.stringify(to ? mode.set(to) : { mode: mode.get() })) } catch (error) { console.error(errorText(error)) } }
         else if (command === '/reload') void reloader.reload({ reason: 'terminal' }).catch(error => console.error(errorText(error)))
         else if (command === '/quarry' || command.startsWith('/quarry ')) {
           void (async () => {
