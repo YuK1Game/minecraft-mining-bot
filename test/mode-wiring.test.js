@@ -94,3 +94,15 @@ test('runtime wiring: a blocked player run is taken over by recovery, shown as p
   assert.equal(shared.playerRecovering, false)
   assert.notEqual(f.mode.status().player.phase, 'recovering')
 })
+
+test('runtime wiring: a stop from outside the modes (terminal /stop, local API) also ends the wish to play', async () => {
+  const f = runtime(), shared = f.rt.host().shared
+  f.mode.set('player'); f.mode.startPlayer()
+  assert.equal(shared.playerWanted, true)
+  f.operations.agent.stop('ターミナルから停止しました。')
+  assert.equal(shared.playerWanted, false)
+  f.operations.agent.start({ objective: 'diamond' })
+  assert.equal(shared.playerWanted, true)
+  await f.mode.stopPlayer()
+  assert.equal(f.mode.status().player.wanted, false)
+})

@@ -16,7 +16,7 @@ function playerActivity (mode) {
   if (mode?.mode !== 'player') return null
   const player = mode.player, stage = player.stages.find(item => item.id === player.current)
   const goal = stage ? `目標: ${stage.label}` : null
-  if (player.running) return { kind: 'busy', label: player.phase === 'waiting' ? 'プレイヤーモード: 待機中' : player.phase === 'recovering' ? 'プレイヤーモード: 立て直し中' : 'プレイヤーモード: 行動中', detail: player.reason ?? goal, code: null }
+  if (player.running) return { kind: 'busy', label: player.phase === 'waiting' ? 'プレイヤーモード: 待機中' : player.phase === 'recovering' ? 'プレイヤーモード: 立て直し中' : player.phase === 'sheltering' ? 'プレイヤーモード: 避難中' : player.phase === 'fleeing' ? 'プレイヤーモード: 退避中' : 'プレイヤーモード: 行動中', detail: player.reason ?? goal, code: null }
   if (player.phase === 'failed' || player.phase === 'blocked') return { kind: 'error', label: 'プレイヤーモード: 停止', detail: player.reason, code: null }
   return { kind: 'idle', label: '待機中: プレイヤーモードの開始待ち', detail: goal, code: null }
 }

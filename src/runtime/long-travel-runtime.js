@@ -248,8 +248,12 @@ function createLongTravelRuntime (rt) {
     if (nearest < 4 && (rt.working().inventory?.items ?? []).some(i => /_sword$|_axe$/.test(i.name ?? ''))) return false
     const low = (rt.working().health ?? 20) < 10
     if (hurt) for (const a of sh.filter(o => Math.hypot(o.position.x - feet.x, o.position.z - feet.z) <= 24)) travelAddDangerZone(a.position, String(a.entityType ?? a.name ?? ''))
-    // Below half health, prefer a spot no shooter can see (a solid received block
-    // on the line between eyes).
+    return retreatStep(sh, feet, { signal, low, label: `長距離移動: 射撃する敵（${sh.map(a => String(a.entityType ?? a.name).replace('minecraft:', '')).join('・')}、${Math.round(nearest)}m）から離れます` })
+  }
+  // One step (5-12 m) straight away from the given enemies by the ordinary
+  // movement, sprinting when hunger allows. With `low`, a spot none of them can
+  // see (a solid received block on the line between eyes) is preferred.
+  async function retreatStep (sh, feet, { signal = null, low = false, label = null } = {}) {
     const covered = t => sh.every(a => { const sx = a.position.x, sy = a.position.y + 1.5, sz = a.position.z, tx = t.x, ty = t.y + 1.6, tz = t.z, n = Math.ceil(Math.hypot(tx - sx, ty - sy, tz - sz) * 2); for (let i = 1; i < n; i++) { const f = i / n, b = rt.host.world.getBlock(Math.floor(sx + (tx - sx) * f), Math.floor(sy + (ty - sy) * f), Math.floor(sz + (tz - sz) * f)); if (b?.known === true && b.boundingBox === 'block') return true } return false })
     let ax = 0, az = 0
     for (const a of sh) { const dx = feet.x - a.position.x, dz = feet.z - a.position.z, d = Math.max(0.5, Math.hypot(dx, dz)); ax += dx / d; az += dz / d }
@@ -268,13 +272,21 @@ function createLongTravelRuntime (rt) {
         if (pv?.ready !== true) continue
         if (low && !covered(t) && Date.now() < until - 700) continue
         try { rt.requireIdle({ inventoryRequired: false }); rt.startMotion('navigation', t, opts) } catch { return false }
-        rt.host.log(`長距離移動: 射撃する敵（${sh.map(a => String(a.entityType ?? a.name).replace('minecraft:', '')).join('・')}、${Math.round(nearest)}m）から離れます`)
+        if (label) rt.host.log(label)
         const stop = Date.now() + 8000
         while (Date.now() < stop) { const m = rt.movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await new Promise(r => setTimeout(r, 200)) }
         return true
       }
     }
     return false
+  }
+  // Player mode's retreat when badly hurt: one such step away from every
+  // hostile within 16 m. Returns false when no step could start.
+  async function retreatFromHostiles (signal) {
+    const p = rt.working().position; if (!p) return false
+    const feet = { x: p.x, y: p.y - 1.62, z: p.z }
+    const near = rt.allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 16)
+    return near.length ? retreatStep(near, feet, { signal }) : false
   }
   // Respawn point on a long trip (coordinator 2026-11-14: every death sent the
   // bot back to the world spawn, about 1,000 m). A bed is crafted from three
@@ -730,6 +742,9 @@ function createLongTravelRuntime (rt) {
     get longTravelFile () { return longTravelFile },
     ensureLongTravel,
     travelLeafEscape,
+    travelNightPit,
+    retreatFromHostiles,
+    travelClock,
     travelPlaceTable,
     travelSupplyBoxTake
   }

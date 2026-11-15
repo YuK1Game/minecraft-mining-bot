@@ -9,12 +9,13 @@ const { playerStages } = require('./player-stages')
 const OBJECTIVE = Object.freeze({ objective: 'diamond', diamondCount: 1 })
 const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 240)
 
-function createPlayerMode ({ getMode, agent, safety, recovery = null, getInventory = () => null, log = () => {} }) {
-  let wanted = false
+function createPlayerMode ({ getMode, agent, safety, recovery = null, shelter = null, flee = null, shared = {}, getInventory = () => null, log = () => {} }) {
+  // Kept outside this runtime so a hot reload does not forget that the player is playing.
+  const want = value => { shared.playerWanted = value }
   function start () {
     const refused = startRefusal(getMode(), 'player')
     if (refused) throw Object.assign(new Error(refused.message), { code: refused.code })
-    wanted = true
+    want(true)
     recovery?.cancel()
     // Idle protection belongs to player mode: a waiting player defends, eats and retreats.
     safety.start()
@@ -24,7 +25,7 @@ function createPlayerMode ({ getMode, agent, safety, recovery = null, getInvento
     return status()
   }
   async function stop (reason = 'プレイヤーモードを停止しました。') {
-    wanted = false
+    want(false)
     recovery?.cancel()
     agent.stop(reason)
     log('プレイヤーモード: 停止')
@@ -33,6 +34,11 @@ function createPlayerMode ({ getMode, agent, safety, recovery = null, getInvento
   function status () {
     const value = agent.snapshot?.() ?? {}
     // While recovery owns the pause or the far move, the player is still playing.
+    const wanted = shared.playerWanted === true
+    const fleeing = flee?.status() ?? { active: false }
+    if (fleeing.active) return { wanted, running: true, phase: 'fleeing', reason: text(fleeing.reason), ...playerStages(getInventory()) }
+    const sheltering = shelter?.status() ?? { active: false }
+    if (sheltering.active) return { wanted, running: true, phase: 'sheltering', reason: text(sheltering.reason), ...playerStages(getInventory()) }
     const recovering = recovery?.status() ?? { active: false }
     if (recovering.active) return { wanted, running: true, phase: 'recovering', reason: text(recovering.reason), ...playerStages(getInventory()) }
     // A run whose current decision is a wait is waiting, whatever its phase says between ticks.

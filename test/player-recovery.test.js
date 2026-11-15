@@ -101,3 +101,41 @@ test('activity band: a blocked player shows the reason; recovery shows as its ow
   assert.deepEqual(playerActivity(modeState({ mode: 'player', player: { running: false, phase: 'blocked', reason: '理由', stages } })), { kind: 'error', label: 'プレイヤーモード: 停止', detail: '理由', code: null })
   assert.equal(playerActivity(modeState({ mode: 'player', player: { running: true, phase: 'recovering', reason: '移動', stages } })).label, 'プレイヤーモード: 立て直し中')
 })
+
+test('a restart that is refused keeps trying; it does not leave the player stopped', async () => {
+  const f = fixture()
+  let refusals = 3
+  const calls = []
+  const recovery = createPlayerRecovery({
+    getMode: () => 'player', shared: f.shared, log () {},
+    agent: { objective: { objective: 'diamond' }, start: async () => { if (refusals-- > 0) throw new Error('Botの移動が終わるまで待ってください。'); calls.push('start') }, stop () {} },
+    travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: () => ({ known: false }), getPosition: () => ({ x: 0, y: 65, z: 0 }), sleep: async () => {}, now: (() => { let t = 0; return () => (t += 1000) })()
+  })
+  recovery.onProgress(blocked()); await settle(recovery)
+  assert.deepEqual(calls, ['start'])
+})
+
+test('keepPlaying: wanted but idle for ten seconds starts again; a user stop, a rest or a running player does not', async () => {
+  const f = fixture()
+  let clock = 0
+  const calls = [], shared = { playerWanted: true, autoWanted: false }
+  const recovery = createPlayerRecovery({
+    getMode: () => 'player', shared, log () {}, now: () => clock,
+    agent: { objective: { objective: 'diamond' }, start: async options => calls.push(options.objective), stop () {} },
+    travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} }, getBlock: () => ({ known: false }), getPosition: () => null
+  })
+  assert.equal(recovery.keepPlaying({ running: false }), false)
+  clock = 9000; assert.equal(recovery.keepPlaying({ running: false }), false)
+  clock = 9500; assert.equal(recovery.keepPlaying({ running: true }), false, 'running resets the count')
+  clock = 12000; assert.equal(recovery.keepPlaying({ running: false }), false)
+  clock = 21000; assert.equal(recovery.keepPlaying({ running: false, resting: true }), false)
+  clock = 22000; assert.equal(recovery.keepPlaying({ running: false }), false)
+  clock = 33000; assert.equal(recovery.keepPlaying({ running: false }), true)
+  await settle(recovery)
+  assert.deepEqual(calls, ['diamond'])
+  shared.playerWanted = false; clock = 60000
+  assert.equal(recovery.keepPlaying({ running: false }), false); clock = 80000
+  assert.equal(recovery.keepPlaying({ running: false }), false)
+  assert.equal(f.calls.length, 0)
+})

@@ -50,7 +50,7 @@ function ringPoint (anchor, trip) {
 
 const seeksWood = snapshot => snapshot?.lastDecision?.type === 'explore' && snapshot.lastDecision.resource === 'logs'
 
-function createPlayerRecovery ({ getMode, shared, agent, travel, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
   let run = null, trips = 0, pauses = 0, anchor = null, logsSeen = 0, reason = null, visited = []
   const live = token => run === token && !disposed() && normalizeMode(getMode()) === 'player'
 
@@ -60,15 +60,18 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, getBlock, getPo
     return live(token)
   }
 
+  // Tries until it starts or this recovery is cancelled: giving up here left the
+  // player stopped for good (live 2026-11-15 18:23 JST, after a failed chunk move).
   async function restart (token, options) {
-    for (let attempt = 0; attempt < 10 && live(token); attempt++) {
+    for (let attempt = 0; live(token); attempt++) {
       try {
         await agent.start(options)
         if (shared.autoOptions) delete shared.autoOptions.freshExploration
         return true
       } catch (error) {
         reason = `再開を待っています: ${text(error?.message)}`
-        if (!await wait(token, 3000)) return false
+        if (attempt === 0) log(`プレイヤーモード: ${reason}`)
+        if (!await wait(token, attempt < 10 ? 3000 : 15000)) return false
       }
     }
     return false
@@ -88,6 +91,8 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, getBlock, getPo
     try { await travel.to({ destination }) } catch (error) { log(`プレイヤーモード: 移動を始められません ${text(error?.message)}`) }
     const until = now() + TRIP_MS
     while (live(token) && now() < until && travel.status()?.busy) await sleep(1000)
+    // The trip dug a night or rest pit: the shelter keeps the Bot there and plays on afterwards.
+    if (held()) return live(token)
     if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
     return live(token)
   }
@@ -101,8 +106,10 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, getBlock, getPo
     if (now() - (snapshot.startedAtMs ?? now()) > 600000) pauses = 0
     if (search && trips < TRIP_LIMIT) {
       trips++
-      if (await trip(token, snapshot)) return restart(token, { ...agent.objective, freshExploration: true })
-      return false
+      await trip(token, snapshot)
+      // In a pit the trip dug, the shelter holds the Bot and plays on afterwards.
+      if (!live(token) || held()) return false
+      return restart(token, { ...agent.objective, freshExploration: true })
     }
     const pause = PAUSES_MS[Math.min(pauses++, PAUSES_MS.length - 1)]
     reason = `${why} ${Math.round(pause / 1000)}秒後にやり直します。`
@@ -131,6 +138,23 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, getBlock, getPo
     return true
   }
 
+  // The player wants to play but nothing is running and nothing here owns the
+  // pause (a run ended 'stopped' by a failed action, a restart that never
+  // happened): after ten idle seconds, start again.
+  let idleSince = null
+  function keepPlaying ({ running, resting = false }) {
+    if (run || resting || running || shared.playerWanted !== true || shared.autoWanted === true || normalizeMode(getMode()) !== 'player' || disposed() || travel.status()?.busy) { idleSince = null; return false }
+    idleSince ??= now()
+    if (now() - idleSince < 10000) return false
+    idleSince = null
+    log('プレイヤーモード: 止まっていたので再開します')
+    shared.playerRecovering = true
+    const token = run = {}
+    reason = '再開しています。'
+    void restart(token, { ...agent.objective }).catch(() => {}).finally(() => { if (run === token) { run = null; reason = null; if (!disposed()) shared.playerRecovering = false } })
+    return true
+  }
+
   function cancel () {
     const active = run !== null
     run = null; reason = null; trips = 0; pauses = 0; anchor = null; visited = []
@@ -139,7 +163,7 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, getBlock, getPo
     return active
   }
 
-  return { onProgress, cancel, status: () => ({ active: run !== null, reason }) }
+  return { onProgress, keepPlaying, cancel, status: () => ({ active: run !== null, reason }) }
 }
 
 module.exports = { createPlayerRecovery, nearestKnownLog, ringPoint, TRIP_LIMIT }
