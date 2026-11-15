@@ -41,6 +41,8 @@ function verifiedCoveredRoom (state, current = observedThreats(state, {})) {
   }
   return true
 }
+// Why protection holds the living player's actions, or false. 'threat' means
+// only that a hostile is near: nothing is fighting, fleeing or being checked.
 function protectionOwnsLiving (state) {
   if (deadState(state)) return false
   const protection = state.idleProtection
@@ -56,7 +58,8 @@ function protectionOwnsLiving (state) {
   if (Number.isSafeInteger(state.entityStats?.unknownPositions) && state.entityStats.unknownPositions > 0) return true
   if (!Array.isArray(state.entities) && !Array.isArray(state.hostiles)) return false
   const current = observedThreats(state, {})
-  return current.requiresObservation || current.threats.length > 0 && !verifiedCoveredRoom(state, current)
+  if (current.requiresObservation) return true
+  return current.threats.length > 0 && !verifiedCoveredRoom(state, current) ? 'threat' : false
 }
 function observedDiamonds (state) {
   if (state.inventory?.known !== true || state.inventory.uncertain === true) return 0
@@ -187,13 +190,30 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
   let waitKey = null
   let waits = 0
   let nightWaitDeadline = null
+  let threatWaitSince = null
+  let threatWaitPassed = false
   const failures = new Map()
   const noProgress = new Map()
   let status = { phase: 'idle', running: false, busy: false, actionActive: false, goal: { logs: 0, stone: 16 }, reason: 'まだ開始していません。', lastDecision: null, lastActionResult: null, requiredCapability: null, lastError: null, lastSafetyInterrupt: null, progress: {}, trace: [] }
 
   function snapshot () { return serial(status) }
   function waitForProtection (state) {
-    if (!protectionOwnsLiving(state)) return false
+    const held = protectionOwnsLiving(state)
+    if (held !== 'threat') threatWaitSince = null
+    if (!held) return false
+    // A hostile that only stands near, with protection and combat both at
+    // rest, must not hold the work for ever (real Realm 2026-11-15: a creeper
+    // 7.8 m away that never came closer kept player mode waiting 17 minutes
+    // without a log line). Combat still takes over when the enemy engages.
+    if (held === 'threat' && options?.threatWaitMs > 0) {
+      threatWaitSince ??= Date.now()
+      if (Date.now() - threatWaitSince >= options.threatWaitMs) {
+        if (!threatWaitPassed) trace('threat_wait_over', '近くの敵が動かないため、作業を続けます。')
+        threatWaitPassed = true
+        return false
+      }
+    }
+    threatWaitPassed = false
     status.phase = 'waiting'; status.reason = '敵への対処と復帰先の確認が終わるのを待っています。'
     return true
   }
@@ -633,13 +653,14 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
       maxExcludedTargets: positive(configuration.maxExcludedTargets, 12, 64),
       maxRunMs: positive(configuration.maxRunMs, 900000, 43200000),
       traceLimit: positive(configuration.traceLimit, 50, 200),
+      threatWaitMs: Number.isFinite(configuration.threatWaitMs) && configuration.threatWaitMs > 0 ? Math.min(configuration.threatWaitMs, 600000) : 0,
       minHealth: Number.isFinite(configuration.minHealth) && configuration.minHealth >= 0 ? configuration.minHealth : 6
     }
     runId++
     controller = new AbortController()
     running = true
     previousCounts = seed.inventory ?? null
-    failures.clear(); noProgress.clear(); waitKey = null; waits = 0; nightWaitDeadline = null
+    failures.clear(); noProgress.clear(); waitKey = null; waits = 0; nightWaitDeadline = null; threatWaitSince = null; threatWaitPassed = false
     status = {
       phase: 'running', running: true, busy: false, actionActive: false, runId,
       goal: { logs: options.objective === 'long_travel_prep' ? options.logCount : 0, stone: positive(configuration.stoneCount, 16, 2304), ...(options.objective === 'diamond' ? { diamond: options.diamondCount } : {}) },
