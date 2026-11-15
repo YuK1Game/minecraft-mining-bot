@@ -185,3 +185,16 @@ test('a full list of unreachable candidates: restart after 30 s with an empty li
   assert.match(source, /'exclusion_limit'\)/)
   assert.match(source, /freshExclusions === true\) \{ seed\.excludedResources = \[\]; seed\.excludedDropIds = \[\] \}/)
 })
+
+test('a stop whose work lies far away walks there first, then goes on; a near one only pauses', async () => {
+  const far = fixture({ walks: true })
+  far.recovery.onProgress(blocked({ stopCode: null, reason: '再試行の上限に達しました: The ore lies outside the bounded tunneling area', lastDecision: { type: 'tunnel', resource: 'iron', target: { x: 85, y: 68, z: 75 } } }))
+  await settle(far.recovery)
+  assert.deepEqual(far.calls, [{ travel: { x: 85, z: 75 } }, { start: { objective: 'diamond', diamondCount: 1 } }])
+  assert.match(far.logs.join('\n'), /次の作業の場所 \(85, 75\) が遠いため/)
+  const near = fixture()
+  near.recovery.onProgress(blocked({ stopCode: null, lastDecision: { type: 'tunnel', resource: 'iron', target: { x: 10, y: 68, z: 5 } } }))
+  await settle(near.recovery)
+  assert.deepEqual(near.calls, [{ start: { objective: 'diamond', diamondCount: 1 } }])
+  assert.ok(near.clock() >= 30000)
+})

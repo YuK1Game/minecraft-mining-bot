@@ -53,6 +53,15 @@ function aheadPoint (position, heading) {
   return { x: Math.round(position.x + Math.cos(heading) * STEP_M), z: Math.round(position.z + Math.sin(heading) * STEP_M) }
 }
 
+// Where the stopped run's last decision wanted to work, when that is between
+// 24 m and 512 m from the Bot.
+function farTarget (snapshot, position) {
+  const point = snapshot?.lastDecision?.resourceTarget ?? snapshot?.lastDecision?.target
+  if (!position || !point || ![point.x, point.z].every(Number.isFinite)) return null
+  const distance = Math.hypot(point.x + 0.5 - position.x, point.z + 0.5 - position.z)
+  return distance > 24 && distance <= 512 ? { x: Math.floor(point.x), z: Math.floor(point.z) } : null
+}
+
 const seeksWood = snapshot => snapshot?.lastDecision?.type === 'explore' && snapshot.lastDecision.resource === 'logs'
 
 function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
@@ -82,20 +91,20 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
     return false
   }
 
-  async function trip (token, snapshot) {
+  async function trip (token, snapshot, goal = null) {
     const position = getPosition()
     if (!position) return false
     const wood = seeksWood(snapshot), from = { x: position.x, z: position.z }
-    const tree = wood ? await nearestKnownLog({ getBlock, position, avoid: visited }) : null
+    const tree = !goal && wood ? await nearestKnownLog({ getBlock, position, avoid: visited }) : null
     if (!live(token)) return false
-    if (!tree && heading === null) {
+    if (!goal && !tree && heading === null) {
       const grass = await nearestKnownLog({ getBlock, position, match: GRASS, min: 16, step: 4, below: 24 })
       if (!live(token)) return false
       heading = grass ? Math.atan2(grass.z - Math.floor(position.z), grass.x - Math.floor(position.x)) : 0
     }
-    const destination = tree ? { x: tree.x, z: tree.z } : aheadPoint(position, heading)
+    const destination = goal ? { x: goal.x, z: goal.z } : tree ? { x: tree.x, z: tree.z } : aheadPoint(position, heading)
     if (tree) visited = [...visited.slice(-15), destination]
-    reason = tree ? `木が見える (${destination.x}, ${destination.z}) へ移動しています。` : `近くに${wood ? '木' : '資源'}が見つからないため、(${destination.x}, ${destination.z}) へ移動して探します。`
+    reason = goal ? `次の作業の場所 (${destination.x}, ${destination.z}) が遠いため、そこへ移動しています。` : tree ? `木が見える (${destination.x}, ${destination.z}) へ移動しています。` : `近くに${wood ? '木' : '資源'}が見つからないため、(${destination.x}, ${destination.z}) へ移動して探します。`
     log(`プレイヤーモード: ${reason}`)
     try { await travel.to({ destination }) } catch (error) { log(`プレイヤーモード: 移動を始められません ${text(error?.message)}`) }
     const until = now() + TRIP_MS
@@ -104,10 +113,10 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
     // JST: after a respawn the walk went on toward a point 14 km away).
     const lost = () => { const at = getPosition(); return !!at && Math.hypot(at.x - destination.x, at.z - destination.z) > SCAN_M * 3 }
     while (live(token) && now() < until && travel.status()?.busy && !lost()) await sleep(1000)
-    if (lost()) { log('プレイヤーモード: 目的地から大きく離れたため、この移動をやめて今の場所から探し直します'); heading = null; visited = [] }
+    if (lost() && !goal) { log('プレイヤーモード: 目的地から大きく離れたため、この移動をやめて今の場所から探し直します'); heading = null; visited = [] }
     // A walk that got nowhere (a cliff, water, no route): try the next direction.
     const reached = getPosition()
-    if (!tree && heading !== null && reached && Math.hypot(reached.x - from.x, reached.z - from.z) < STEP_M / 4) heading += Math.PI / 3
+    if (!goal && !tree && heading !== null && reached && Math.hypot(reached.x - from.x, reached.z - from.z) < STEP_M / 4) heading += Math.PI / 3
     // The trip dug a night or rest pit: the shelter keeps the Bot there and plays on afterwards.
     if (held()) return live(token)
     if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
@@ -127,6 +136,17 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
       // In a pit the trip dug, the shelter holds the Bot and plays on afterwards.
       if (!live(token) || held()) return false
       return restart(token, { ...agent.objective, freshExploration: true })
+    }
+    // The work the plan asked for is far away (live 2026-11-15 23:00 JST: iron
+    // ore 113 m off, "outside the bounded tunneling area", three stops in a
+    // row): walk there first, then go on. Once there the distance is short, so
+    // the same place is not walked to twice.
+    const far = farTarget(snapshot, getPosition())
+    if (!search && far && trips < TRIP_LIMIT) {
+      trips++
+      await trip(token, snapshot, far)
+      if (!live(token) || held()) return false
+      return restart(token, { ...agent.objective })
     }
     // The list of unreachable candidates filled up (live 2026-11-15 22:01 JST: a
     // cobblestone drop in a hole under the feet; every retry ten minutes later
@@ -195,4 +215,4 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, held = () => fa
   return { onProgress, keepPlaying, cancel, status: () => ({ active: run !== null, reason }) }
 }
 
-module.exports = { createPlayerRecovery, nearestKnownLog, aheadPoint, TRIP_LIMIT }
+module.exports = { createPlayerRecovery, nearestKnownLog, aheadPoint, farTarget, TRIP_LIMIT }
