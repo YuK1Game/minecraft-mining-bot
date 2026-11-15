@@ -43,7 +43,9 @@ test('the moved modules keep the layout the helper and the extraction tool rely 
       const moved = read(`${part.module}.js`)
       assert.ok(moved.includes(`function ${part.factory} (rt) {\n`), part.module)
       assert.ok(moved.trimEnd().endsWith(`module.exports = { ${part.factory} }`), part.module)
-      assert.equal(/^const .* = require\(/m.test(moved), false, `${part.module} loads modules through rt.require so test overrides and hot reload apply`)
+      // The one exception: the stages of a function of this part (scripts/extract-stage.js), which belong to it.
+      const direct = [...moved.matchAll(/^const .* = require\('([^']+)'\)/gm)].filter(([, name]) => !read(`${path.basename(name)}.js`).includes('// A stage of '))
+      assert.deepEqual(direct.map(([line]) => line), [], `${part.module} loads modules through rt.require so test overrides and hot reload apply`)
       // A part may sit in another directory than its owner; paths it builds go through the owner's __dirname.
       assert.equal(/(?<!rt\.)__dirname/.test(moved), false, `${part.module} uses rt.__dirname`)
     }

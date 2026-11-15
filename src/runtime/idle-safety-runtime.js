@@ -5,6 +5,13 @@
 // of rt.<name> reads or writes the runtime's own variable at that moment.
 // Modules are loaded through rt.require, the runtime's own require.
 
+const { prepareEscapePort } = require('./idle-escape/escape-port-prepare')
+const { collectEscapeCandidates } = require('./idle-escape/escape-port-search')
+const { candidatePreviews } = require('./idle-escape/escape-port-previews')
+const { tryEscapeCandidates } = require('./idle-escape/escape-port-candidates')
+const { tryDetour } = require('./idle-escape/escape-port-detour')
+const { trySurfaceRetreat } = require('./idle-escape/escape-port-surface')
+
 function createIdleSafetyRuntime (rt) {
     const generationGuardRoute = rt.createGuardedRoute({
       getState: rt.routeState, movement: rt.routeMovement, getMovement: rt.own(() => rt.generationMovement.snapshot()), inventory: rt.routeInventory,
@@ -864,1006 +871,172 @@ function createIdleSafetyRuntime (rt) {
         if (!safetyIdle({ operationId: context.operationId, episodeActive: true, defenseEpisode: true })) return { supported: false, reason: 'foreign_actor' }
         if (rt.escapePaused()) return { supported: false, reason: 'escape_paused_no_route' }
         return rt.logEscapePhase(context, safetyOwn('escape', context, async () => {
-          const controller = new AbortController()
-          const signal = context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal
-          const inheritedFence = rt.preMovementFences.get(context)
-          const deadline = inheritedFence?.deadline ?? Date.now() + 4000
-          const surfaceTiming = rt.host.shared.lowHealthWaterTiming?.version === 'cooperative_surface_v1' ? rt.host.shared.lowHealthWaterTiming : (rt.host.shared.lowHealthWaterTiming = { version: 'cooperative_surface_v1', since: new Date().toISOString(), maxSlice: {}, lastSlice: null, recent: [] })
-          const surfaceMark = () => { const cursor = rt.generationHistory.snapshot().cursor; return { at: performance.now(), cursorAge: cursor ? Date.now() - cursor.queuedAt : null } }
-          const surfaceRecord = (phase, mark) => {
-            const ms = Math.round((performance.now() - mark.at) * 10) / 10
-            surfaceTiming.maxSlice[phase] = Math.max(surfaceTiming.maxSlice[phase] ?? 0, ms)
-            const cursor = rt.generationHistory.snapshot().cursor
-            surfaceTiming.lastSlice = { phase, ms, cursorBeforeMs: mark.cursorAge, cursorAfterMs: cursor ? Date.now() - cursor.queuedAt : null, owner: rt.inputOwner, at: new Date().toISOString() }
-            surfaceTiming.recent.push(surfaceTiming.lastSlice); if (surfaceTiming.recent.length > 16) surfaceTiming.recent.shift()
+          // The stages called in this block live in modules of their own (scripts/extract-stage.js).
+          // `vars` reads and writes this function's locals at the moment of use.
+          let timer, controller, deadline, watch, initial, fence, assessEnemies, awayFromActors, cellSafe, constrainedFloors, constrainedPrimary, diagnostics, distance, ensure, eye, feet, ids, signal, surfaceMark, surfaceRecord, surfaceTiming, unarmedMixed, yieldPlanning, jumpSearchDiagnostic, jumpSearchStartedAt, segmentDistance, outsideTracked, remainingConstrained, remainingJumpIndex, remainingJumpTrace, remainingTargets, retainedActors, dropCircles, dropTrace, dropTraceIndex, briefSubmerge, inspect, lowHealthSurfaceOrigin, lowHealthSurfaceRun, shallowSurfaceY, shallowWaterCheck, shallowWaterRun, submergedSince, surfaceTimed, pendingReplan, entityId, restartState, inspectPacket
+          const vars = {
+            get assessEnemies () { return assessEnemies }, set assessEnemies ($value) { assessEnemies = $value },
+            get awayFromActors () { return awayFromActors }, set awayFromActors ($value) { awayFromActors = $value },
+            get briefSubmerge () { return briefSubmerge }, set briefSubmerge ($value) { briefSubmerge = $value },
+            get cellSafe () { return cellSafe }, set cellSafe ($value) { cellSafe = $value },
+            get constrainedFloors () { return constrainedFloors }, set constrainedFloors ($value) { constrainedFloors = $value },
+            get constrainedPrimary () { return constrainedPrimary }, set constrainedPrimary ($value) { constrainedPrimary = $value },
+            get context () { return context }, set context ($value) { context = $value },
+            get controller () { return controller }, set controller ($value) { controller = $value },
+            get deadline () { return deadline }, set deadline ($value) { deadline = $value },
+            get diagnostics () { return diagnostics }, set diagnostics ($value) { diagnostics = $value },
+            get distance () { return distance }, set distance ($value) { distance = $value },
+            get dropCircles () { return dropCircles }, set dropCircles ($value) { dropCircles = $value },
+            get dropTrace () { return dropTrace }, set dropTrace ($value) { dropTrace = $value },
+            get dropTraceIndex () { return dropTraceIndex }, set dropTraceIndex ($value) { dropTraceIndex = $value },
+            get ensure () { return ensure }, set ensure ($value) { ensure = $value },
+            get entityId () { return entityId }, set entityId ($value) { entityId = $value },
+            get eye () { return eye }, set eye ($value) { eye = $value },
+            get feet () { return feet }, set feet ($value) { feet = $value },
+            get fence () { return fence }, set fence ($value) { fence = $value },
+            get ids () { return ids }, set ids ($value) { ids = $value },
+            get initial () { return initial }, set initial ($value) { initial = $value },
+            get inspect () { return inspect }, set inspect ($value) { inspect = $value },
+            get inspectPacket () { return inspectPacket }, set inspectPacket ($value) { inspectPacket = $value },
+            get jumpSearchDiagnostic () { return jumpSearchDiagnostic }, set jumpSearchDiagnostic ($value) { jumpSearchDiagnostic = $value },
+            get jumpSearchStartedAt () { return jumpSearchStartedAt }, set jumpSearchStartedAt ($value) { jumpSearchStartedAt = $value },
+            get lowHealthSurfaceOrigin () { return lowHealthSurfaceOrigin }, set lowHealthSurfaceOrigin ($value) { lowHealthSurfaceOrigin = $value },
+            get lowHealthSurfaceRun () { return lowHealthSurfaceRun }, set lowHealthSurfaceRun ($value) { lowHealthSurfaceRun = $value },
+            get outsideTracked () { return outsideTracked }, set outsideTracked ($value) { outsideTracked = $value },
+            get pendingReplan () { return pendingReplan }, set pendingReplan ($value) { pendingReplan = $value },
+            get remainingConstrained () { return remainingConstrained }, set remainingConstrained ($value) { remainingConstrained = $value },
+            get remainingJumpIndex () { return remainingJumpIndex }, set remainingJumpIndex ($value) { remainingJumpIndex = $value },
+            get remainingJumpTrace () { return remainingJumpTrace }, set remainingJumpTrace ($value) { remainingJumpTrace = $value },
+            get remainingTargets () { return remainingTargets }, set remainingTargets ($value) { remainingTargets = $value },
+            get requireSafety () { return requireSafety },
+            get restartState () { return restartState }, set restartState ($value) { restartState = $value },
+            get retainedActors () { return retainedActors }, set retainedActors ($value) { retainedActors = $value },
+            get safetyActors () { return safetyActors },
+            get safetyState () { return safetyState },
+            get segmentDistance () { return segmentDistance }, set segmentDistance ($value) { segmentDistance = $value },
+            get shallowSurfaceY () { return shallowSurfaceY }, set shallowSurfaceY ($value) { shallowSurfaceY = $value },
+            get shallowWaterCheck () { return shallowWaterCheck }, set shallowWaterCheck ($value) { shallowWaterCheck = $value },
+            get shallowWaterRun () { return shallowWaterRun }, set shallowWaterRun ($value) { shallowWaterRun = $value },
+            get signal () { return signal }, set signal ($value) { signal = $value },
+            get submergedSince () { return submergedSince }, set submergedSince ($value) { submergedSince = $value },
+            get surfaceMark () { return surfaceMark }, set surfaceMark ($value) { surfaceMark = $value },
+            get surfaceRecord () { return surfaceRecord }, set surfaceRecord ($value) { surfaceRecord = $value },
+            get surfaceTimed () { return surfaceTimed }, set surfaceTimed ($value) { surfaceTimed = $value },
+            get surfaceTiming () { return surfaceTiming }, set surfaceTiming ($value) { surfaceTiming = $value },
+            get timer () { return timer }, set timer ($value) { timer = $value },
+            get tryLearningShoreEscape () { return tryLearningShoreEscape },
+            get unarmedMixed () { return unarmedMixed }, set unarmedMixed ($value) { unarmedMixed = $value },
+            get verifyShallowWater () { return verifyShallowWater },
+            get watch () { return watch }, set watch ($value) { watch = $value },
+            get yieldPlanning () { return yieldPlanning }, set yieldPlanning ($value) { yieldPlanning = $value }
           }
-          const surfaceTimed = (phase, fn) => { const mark = surfaceMark(); try { return fn() } finally { surfaceRecord(phase, mark) } }
-          const initial = surfaceTimed('initialState', safetyState)
-          const learningShoreResult = await tryLearningShoreEscape(initial, { ...context, signal, movementBudget: Math.max(0, 5 - (inheritedFence?.starts ?? 0)), onMovementStart: () => { if (inheritedFence) inheritedFence.starts++ } }, deadline)
-          if (learningShoreResult) return learningShoreResult
-          const entityId = entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id)
-          const dimension = value => ['overworld', 'nether', 'end'][value] ?? value
-          const fence = inheritedFence ?? { deadline, createdAt: deadline - 4000, origin: initial, sent: initial.movement?.sent ?? 0, motionFrames: rt.queuedMotionFrames, unprovedFrames: rt.unprovedInputFrames, starts: 0, replans: 0, guardInvoked: false, identities: new Map((initial.entities ?? []).map(entity => [entityId(entity), { uniqueId: entity.uniqueId == null ? null : String(entity.uniqueId), name: entity.entityType ?? entity.name }])) }
-          let pendingReplan = null
-          const restartState = state => {
-            const origin = fence.origin
-            if (context.signal?.aborted || Date.now() >= fence.deadline || fence.replans >= 2 || fence.guardInvoked || fence.starts !== 0 || state.movement?.sent !== fence.sent || !['idle', 'stopped'].includes(state.movement?.phase) || rt.queuedMotionFrames !== fence.motionFrames || rt.unprovedInputFrames !== fence.unprovedFrames || rt.motionActive() || state.health !== origin.health || state.dead || state.phase !== 'spawned' || state.loading || state.inventory?.known !== true || state.inventory.uncertain) return false
-            if (!['profile', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId', 'rawServerPositionUpdatedAt'].every(key => state[key] === origin[key]) || String(state.realm?.id) !== String(origin.realm?.id) || ![state.position, state.rawServerPosition, origin.position, origin.rawServerPosition].every(point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))) || ['x', 'y', 'z'].some(axis => state.position[axis] !== origin.position[axis] || state.rawServerPosition[axis] !== origin.rawServerPosition[axis])) return false
-            const entities = state.entities ?? [], ids = new Set(), uniqueIds = new Set()
-            for (const entity of entities) {
-              const id = entityId(entity), uid = entity.uniqueId == null ? null : String(entity.uniqueId), old = fence.identities.get(id)
-              if (!uid || ids.has(id) || uniqueIds.has(uid) || entity.positionKnown === false || !entity.position || !['x', 'y', 'z'].every(axis => Number.isFinite(entity.position[axis])) || dimension(entity.dimension) !== dimension(state.dimension) || old && (uid !== old.uniqueId || (entity.entityType ?? entity.name) !== old.name) || !old && [...fence.identities.values()].some(value => value.uniqueId === uid)) return false
-              ids.add(id); uniqueIds.add(uid)
-            }
-            if ([...fence.identities].some(([id, old]) => !ids.has(id) && !(state.removedEntities ?? []).some(receipt => String(receipt.runtimeId) === id && String(receipt.uniqueId) === old.uniqueId && receipt.entityType === old.name && (typeof receipt.removedAt === 'number' ? receipt.removedAt : Date.parse(receipt.removedAt)) >= fence.createdAt))) return false
-            const observed = rt.evaluateThreats(state, entities, { observationRadius: 32 })
-            return !observed.requiresObservation && !(state.entityStats?.unknownPositions > observed.unknownPositions.length)
-          }
-          const jumpSearchDiagnostic = { candidates: 0, previews: 0, verified: 0, rejected: 0, hungerReady: null, elapsedMs: 0, maxSliceMs: 0, chosen: null, attempts: 0, reason: 'ordinary_planning', preMovementReplans: fence.replans, deadline }
-          rt.boundedJumpSearch = jumpSearchDiagnostic
-          let jumpSearchStartedAt = null
-          const retainedActors = [...new Map([...rt.captureWorkActors(initial, rt.evaluateThreats(initial, initial.entities, { observationRadius: 32 })), ...(context.retainedActors ?? [])].map(actor => [actor.runtimeId, actor])).values()]
-          const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
-          const feet = state => ({ ...state.position, y: state.position.y - 1.62 })
-          const eye = point => ({ ...point, y: point.y + 1.62 })
-          const assessEnemies = state => {
-            const actors = safetyActors(state, state.entities ?? [])
-            const canonical = rt.evaluateThreats(state, actors, { observationRadius: 32 })
-            if (canonical.requiresObservation || state.entityStats?.unknownPositions > canonical.unknownPositions.length) throw new Error('Idle escape actor positions are unknown')
-            const retained = rt.resolveWorkActors(state, canonical, retainedActors)
-            if (retained.invalid.length) throw new Error('Idle escape retained actor identity, policy or scope changed')
-            const value = rt.workEscapeEvaluation(canonical, retained.actors)
-            // Match Guard: actual threats keep their distance; an outside actor
-            // contributes its danger circle unless its current full proof applies.
-            const outside = value.outsideDanger.filter(actor => {
-              const entity = actors.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
-              return !entity || !rt.terrainOcclusionApplies(state, entity)
-            })
-            return { ...value, outside }
-          }
-          const baseline = assessEnemies(initial)
-          const unarmedMixed = rt.isUnarmedCreeperZombie(initial, baseline.threats) || verifyShallowWater(initial, { signal, allowDeepSurface: true }) && rt.isUnarmedCreeperZombie(initial, baseline.threats, { creeperMinimum: 4, zombieMinimum: baseline.threats.length === 2 && baseline.threats.some(value => value.name === 'minecraft:zombie') ? 9 : 9.5, allowSingle: true, allowCloseZombie: true })
-          const diagnostics = { visited: 0, candidates: 0, partials: 0, previews: 0, readyPreviews: 0, floorBlocked: 0, bodyBlocked: 0, terrainUnknown: 0, awayBlocked: 0, gainBlocked: 0 }
-          const known = [...baseline.threats, ...baseline.outside]
-          const ids = new Map(baseline.threats.map(actor => {
-            const entity = initial.entities.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
-            return [actor.runtimeId, { ...actor, uniqueId: entity?.uniqueId == null ? null : String(entity.uniqueId) }]
-          }))
-          const outsideTracked = new Map(baseline.outside.flatMap(actor => {
-            const entity = initial.entities.find(value => String(value.runtimeId ?? value.runtimeEntityId ?? value.entityId ?? value.id) === actor.runtimeId)
-            return (rt.outsideSkeletonFloor(actor) !== null || unarmedMixed && rt.outsideUnarmedSpiderFloor(actor) !== null) && entity?.uniqueId != null ? [[actor.runtimeId, { ...actor, uniqueId: String(entity.uniqueId) }]] : []
-          }))
-          const primary = baseline.threats.find(actor => actor.runtimeId === context.threats?.[0]?.runtimeId)
-          let remainingTargets = null
-          let remainingJumpTrace = null; let remainingJumpIndex = 0
-          let remainingConstrained = false
-          let dropTrace = null; let dropTraceIndex = 0; let dropCircles = null; let shallowWaterRun = false; let shallowWaterCheck = null; let shallowSurfaceY = null; let briefSubmerge = false; let submergedSince = null; let lowHealthSurfaceRun = false; let lowHealthSurfaceOrigin = null
-          const inspect = state => {
-            if (signal.aborted) return
-            const startedAt = performance.now()
-            try {
-              requireSafety()
-              if (state.dead || !(state.health > 0)) throw new Error('Idle escape stopped on death or unknown health')
-              if (state.health < initial.health - 1e-6) throw new Error('Idle escape stopped on observed damage')
-              if (Date.now() >= deadline) throw new Error('Idle escape four-second deadline exceeded')
-              const current = assessEnemies(state)
-              const changed = current.threats.filter(actor => {
-                const previous = ids.get(actor.runtimeId) ?? outsideTracked.get(actor.runtimeId)
-                const entity = state.entities.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
-                return !previous || actor.name !== previous.name || actor.dangerRadius > previous.dangerRadius || previous.uniqueId != null && String(entity?.uniqueId) !== previous.uniqueId
-              })
-              if (changed.length) {
-                const error = new Error('Idle escape danger changed')
-                const additions = changed.every(actor => !ids.has(actor.runtimeId) && !outsideTracked.has(actor.runtimeId) && !fence.identities.has(actor.runtimeId))
-                if (additions && restartState(state)) {
-                  const request = { state, operationId: context.operationId, deadline, movementStarts: fence.starts, replanCount: fence.replans + 1 }
-                  if (typeof context.onPreMovementReplan !== 'function' || context.onPreMovementReplan(request) === true) pendingReplan = { error, state }
-                }
-                throw error
-              }
-              if (dropTrace && dropCircles) {
-                if (lowHealthSurfaceRun && (!rt.lowHealthSurfaceEligible(state, [...current.threats, ...current.outside], rt.generationPhysics, { starting: false, surfaceY: shallowSurfaceY }) || Math.hypot(state.position.x - lowHealthSurfaceOrigin.x, state.position.z - lowHealthSurfaceOrigin.z) > 1.5)) throw new Error('Low-health surface body, breath, actor or distance changed')
-                const physical = state.predicted?.physicsState ?? state.physicsState
-                if (shallowWaterRun && (!state.position || !['x', 'y', 'z'].every(axis => Number.isFinite(state.position[axis])) || state.position.y - 1.62 < shallowSurfaceY - (briefSubmerge ? 1.85 : 1.60) || physical?.isInLava)) throw new Error('Shallow escape exceeded its known water depth')
-                if (shallowWaterRun && briefSubmerge) {
-                  if (state.position.y < shallowSurfaceY + 0.02) submergedSince ??= Date.now()
-                  else submergedSince = null
-                  if (submergedSince != null && Date.now() - submergedSince > 500) throw new Error('Surface recovery exceeded the bounded submersion time')
-                }
-                const actors = new Map([...current.threats, ...current.outside].map(actor => [actor.runtimeId, actor]))
-                // Surface buoyancy is checked against its own depth/headroom
-                // bounds above and below. It must not look like lateral
-                // departure from an otherwise unchanged swimming corridor.
-                const corridorDistance = point => shallowWaterRun ? Math.hypot(point.x - state.position.x, point.z - state.position.z) : distance(eye(point), state.position)
-                const nearest = dropTrace.reduce((best, point, index) => index < dropTraceIndex ? best : !best || corridorDistance(point) < best.distance ? { index, distance: corridorDistance(point) } : best, null)
-                if (!nearest || nearest.distance > 0.5) throw new Error('Controlled descent left its predicted corridor')
-                dropTraceIndex = nearest.index
-                const remaining = [state.position, ...dropTrace.slice(dropTraceIndex + 1).map(eye)]
-                if (shallowWaterRun && (!shallowWaterCheck || !shallowWaterCheck(feet(state)) || dropTrace.slice(dropTraceIndex + 1, dropTraceIndex + 6).some(point => !shallowWaterCheck(point)))) throw new Error('Shallow escape terrain or headroom changed')
-                if (current.outside.some(actor => !dropCircles.some(circle => circle.id === actor.runtimeId) && remaining.slice(1).some((point, index) => segmentDistance(actor.position, remaining[index], point) < actor.dangerRadius - 1e-4))) throw new Error('Controlled descent newly exposed actor intersects the remaining path')
-                for (const circle of dropCircles) {
-                  const actor = actors.get(circle.id)
-                  const entity = state.entities.find(value => String(value.runtimeId ?? value.runtimeEntityId ?? value.entityId ?? value.id) === circle.id)
-                  const unsafe = (reason, extra = {}) => Object.assign(new Error('Controlled descent actor or remaining path became unsafe'), { escapeDiagnostic: { reason, actorId: circle.id, actorName: actor?.name ?? null, ...extra } })
-                  // A death event is authoritative evidence that this exact
-                  // tracked actor no longer poses a collision threat. Missing,
-                  // replaced or merely out-of-range actors remain unknown.
-                  if (!actor && entity?.alive === false && String(entity.uniqueId) === circle.uniqueId && (entity.lastEvent?.event === 'death_animation' || entity.lastEvent?.event === 3)) continue
-                  // A server remove event for an actor that was already
-                  // outside the danger set means it is no longer tracked by
-                  // this client. Any later add or approach is checked again.
-                  const removed = !actor && !entity && !ids.has(circle.id) && (state.removedEntities ?? []).some(value => value.runtimeId === circle.id && value.uniqueId === circle.uniqueId)
-                  if (removed) continue
-                  if (!actor || String(entity?.uniqueId) !== circle.uniqueId || actor.dangerRadius > circle.radius) throw unsafe(!actor ? 'actor_unobserved' : String(entity?.uniqueId) !== circle.uniqueId ? 'identity_changed' : 'radius_increased')
-                  // A pursuer may close in while the player moves away. In
-                  // bounded surface water, recompute the remaining path from
-                  // the current actor pose, without crossing hard floors.
-                  const mobileWaterActor = shallowWaterRun && circle.horizontalMinimum != null
-                  const distanceFloor = mobileWaterActor ? Math.max(circle.hardEye, Math.min(circle.minDistance, actor.distance - 0.4)) : circle.minDistance
-                  if (actor.distance < (mobileWaterActor ? circle.hardEye : distanceFloor) - 1e-4) throw unsafe('actor_inside_floor', { distance: actor.distance, floor: mobileWaterActor ? circle.hardEye : distanceFloor })
-                  const pathDistance = remaining.slice(1).reduce((min, point, index) => Math.min(min, segmentDistance(actor.position, remaining[index], point)), Infinity)
-                  if (pathDistance < distanceFloor - 1e-4) throw unsafe('remaining_path_inside_floor', { distance: actor.distance, pathDistance, floor: distanceFloor })
-                  const horizontal = Math.hypot(actor.position.x - state.position.x, actor.position.z - state.position.z)
-                  const horizontalFloor = mobileWaterActor ? Math.max(circle.hardHorizontal, Math.min(circle.horizontalMinimum, horizontal - 0.05)) : circle.horizontalMinimum
-                  if (mobileWaterActor && (horizontal < circle.hardHorizontal || remaining.slice(1).some((point, index) => segmentDistance({ ...actor.position, y: 0 }, { ...remaining[index], y: 0 }, { ...point, y: 0 }) < horizontalFloor - 1e-4))) throw new Error('Shallow escape creeper horizontal distance became unsafe')
-                }
-              }
-              if (remainingJumpTrace) {
-                const currentFeet = feet(state)
-                const nearest = remainingJumpTrace.reduce((best, point, index) => index < remainingJumpIndex ? best : !best || distance(point, currentFeet) < best.distance ? { index, distance: distance(point, currentFeet) } : best, null)
-                if (!nearest || nearest.distance > 0.5) throw new Error('Idle bounded jump left its proven arc')
-                remainingJumpIndex = nearest.index
-                const points = [state.position, ...remainingJumpTrace.slice(remainingJumpIndex + 1).map(eye)]
-                if (current.outside.some(actor => points.slice(1).some((point, index) => segmentDistance(actor.position, points[index], point) < actor.dangerRadius - 1e-4))) throw new Error('Idle bounded jump remaining arc danger changed')
-              }
-              if (remainingTargets) {
-                const currentFeet = feet(state)
-                const physical = state.predicted?.physicsState ?? state.physicsState
-                if (physical?.onGround !== false) {
-                  const reached = remainingTargets.findLastIndex(point => Math.abs(currentFeet.y - point.y) <= 1e-4 && Math.hypot(currentFeet.x - point.x, currentFeet.z - point.z) <= 0.4)
-                  if (reached >= 0) remainingTargets.splice(0, reached + 1)
-                }
-                const points = [state.position, ...remainingTargets.map(eye)]
-                if (current.outside.some(actor => points.slice(1).some((point, index) => segmentDistance(actor.position, points[index], point) < (remainingConstrained ? constrainedFloors.get(actor.runtimeId) ?? actor.dangerRadius : actor.dangerRadius) - 1e-4))) throw new Error('Idle escape remaining path danger changed')
-              }
-            } catch (error) { controller.abort(error) } finally {
-              if (process.env.MINECRAFT_CAPTURE_EMERGENCY === '1') {
-                rt.host.shared.perfObservations ??= {}
-                rt.host.shared.perfObservations.escapeInspectMs = Math.max(rt.host.shared.perfObservations.escapeInspectMs ?? 0, performance.now() - startedAt)
-              }
-            }
-          }
-          // safetyState routes through inspectIdleEscape already; do not run
-          // the expensive terrain/actor inspection twice for the same read.
-          const ensure = () => surfaceTimed('ensure', () => { requireSafety(); if (signal.aborted) throw signal.reason; const observed = safetyState(); if (signal.aborted) throw signal.reason; return observed })
-          const yieldPlanning = async () => {
-            // Check ownership/abort cheaply before yielding. The one complete
-            // fresh observation after the timer turn still performs inspect.
-            requireSafety()
-            if (signal.aborted) throw signal.reason
-            rt.maintainIdle()
-            await new Promise(resolve => setImmediate(resolve))
-            const state = ensure()
-            rt.maintainIdle()
-            return state
-          }
-          const segmentDistance = (point, a, b) => {
-            const delta = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z }
-            const length = delta.x ** 2 + delta.y ** 2 + delta.z ** 2
-            const t = length ? Math.max(0, Math.min(1, ((point.x - a.x) * delta.x + (point.y - a.y) * delta.y + (point.z - a.z) * delta.z) / length)) : 0
-            return distance(point, { x: a.x + t * delta.x, y: a.y + t * delta.y, z: a.z + t * delta.z })
-          }
-          const constrainedPrimary = rt.selectConstrainedPrimary(baseline.threats, initial.health)
-          const constrainedFloors = new Map(baseline.threats.filter(actor => actor.runtimeId !== constrainedPrimary?.runtimeId).flatMap(actor => {
-            const floor = unarmedMixed && actor.name === 'minecraft:zombie' ? rt.unarmedZombieFloor(actor) : unarmedMixed && actor.name === 'minecraft:spider' ? rt.activeUnarmedSpiderFloor(actor) : rt.constrainedSecondaryFloor(actor, constrainedPrimary, baseline.threats, initial.health)
-            const observed = ids.get(actor.runtimeId)
-            return floor !== null && observed?.uniqueId != null ? [[actor.runtimeId, floor]] : []
-          }))
-          for (const actor of baseline.outside) if (outsideTracked.has(actor.runtimeId)) constrainedFloors.set(actor.runtimeId, (unarmedMixed ? rt.outsideUnarmedSpiderFloor(actor) : null) ?? rt.outsideSkeletonFloor(actor))
-          const awayFromActors = (from, to, actors = known, constrained = false) => {
-            const safe = actors.every(actor => segmentDistance(actor.position, eye(from), eye(to)) >= (constrained && constrainedFloors.has(actor.runtimeId) ? constrainedFloors.get(actor.runtimeId) : ids.has(actor.runtimeId) ? distance(actor.position, eye(from)) : actor.dangerRadius) - 1e-4)
-            if (!safe) diagnostics.awayBlocked++
-            return safe
-          }
-          const cellSafe = point => {
-            try {
-              const hazard = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush|concrete_powder$|anvil$)/
-              const cube = block => block.shapes.some(box => box.every((value, index) => value === [0, 0, 0, 1, 1, 1][index]))
-              // Reject an endpoint whose player footprint reaches into a
-              // neighbouring blocked cell, not just the centre column.
-              for (let x = Math.floor(point.x - 0.3 + 1e-4); x <= Math.floor(point.x + 0.3 - 1e-4); x++) for (let z = Math.floor(point.z - 0.3 + 1e-4); z <= Math.floor(point.z + 0.3 - 1e-4); z++) {
-                const floor = rt.generationPhysics.blockAt({ x, y: point.y - 1, z })
-                if (hazard.test(floor.name) || !cube(floor)) { diagnostics.floorBlocked++; return false }
-                if (/^(?:sand|red_sand|gravel)$/.test(floor.name)) {
-                  let stable = false
-                  for (let depth = 1; depth <= 8; depth++) {
-                    const below = rt.generationPhysics.blockAt({ x, y: point.y - 1 - depth, z })
-                    if (hazard.test(below.name) || !cube(below)) break
-                    if (!/^(?:sand|red_sand|gravel)$/.test(below.name)) { stable = true; break }
-                  }
-                  if (!stable) { diagnostics.floorBlocked++; return false }
-                }
-                for (const y of [point.y, point.y + 1]) { const body = rt.generationPhysics.blockAt({ x, y, z }); if (hazard.test(body.name) || body.shapes.length) { diagnostics.bodyBlocked++; return false } }
-              }
-              return true
-            } catch { diagnostics.terrainUnknown++; return false }
-          }
-          let timer; let watch
-          rt.inspectIdleEscape = inspect
-          const inspectPacket = () => { try { safetyState() } catch (error) { controller.abort(error) } }
-          rt.inspectIdleEscapePacket = inspectPacket
+          const prepareEscapePortResult = await prepareEscapePort(rt, vars)
+          if (prepareEscapePortResult && 'value' in prepareEscapePortResult) return prepareEscapePortResult.value
           try {
             timer = setTimeout(() => controller.abort(new Error('Idle escape four-second deadline')), Math.max(1, deadline - Date.now()))
             watch = setInterval(() => { try { safetyState() } catch (error) { controller.abort(error) } }, 25)
             let planningState = initial; let episodeMovementStarts = fence.starts; let boundedJumpAttempted = false; let lastBoundedPartial = null
             escapePlanning: while (true) {
-            ensure()
-            const initial = planningState
-            const baseline = assessEnemies(initial)
-            const known = [...baseline.threats, ...baseline.outside]
-            const primary = baseline.threats.find(actor => actor.runtimeId === context.threats?.[0]?.runtimeId) ?? baseline.threats[0]
-            const away = (from, to, actors = known, constrained = false) => awayFromActors(from, to, actors, constrained)
-            const origin = feet(initial)
-            const lowHealthSurfaceDiagnostic = { observedAt: new Date().toISOString(), health: initial.health, reason: 'not_checked', previews: 0, ready: 0, attempts: 0, maxSlice: surfaceTiming.maxSlice }
-            const receivedSurfaceOrigin = rt.lowHealthSurfaceEligible(initial, known, rt.generationPhysics, { diagnostic: lowHealthSurfaceDiagnostic })
-            rt.host.shared.lowHealthWaterDiagnostic = lowHealthSurfaceDiagnostic
-            const alreadyShallow = receivedSurfaceOrigin || verifyShallowWater(initial, { signal, allowDeepSurface: true })
-            const fullOrigin = alreadyShallow || await rt.verifyRouteStanding(initial, origin, { signal })
-            const partialOrigin = !fullOrigin && await rt.verifyRouteOrigin(initial, origin, { signal, stablePartialOrigin: true })
-            if (!primary && fullOrigin && !alreadyShallow) {
-              const retreat = await tryRecentDamageNoPrimary({ ...initial, lifecycle: { phase: 'alive', deathId: rt.actualLifeId(), dead: initial.dead === true } }, { ...context, signal, movementBudget: Math.max(0, 5 - episodeMovementStarts), onMovementStart: () => { episodeMovementStarts++; fence.starts = episodeMovementStarts } }, deadline)
-              if (retreat) return retreat
+            // The stages called in this block live in modules of their own (scripts/extract-stage.js).
+            // `vars2` reads and writes this function's locals at the moment of use.
+            let alreadyShallow, baseline, candidates, choices, initial, origin, partialOrigin, partials, primary, urgentCreeper, lastRejected, receivedSurfaceOrigin, sword, lowHealthSurfaceDiagnostic, escapeChoices, measuredJumpPreview, previewCandidate, allowBank, closeZombiePair, drownedWaterEscape, immediateShallowPair, lowHealthSurface, mixedWaterEscape, singleShallow, waterCreeperEyeFloor, waterCreeperHorizontalFloor, waterThreatAllowed
+            const vars2 = {
+              get allowBank () { return allowBank }, set allowBank ($value) { allowBank = $value },
+              get alreadyShallow () { return alreadyShallow }, set alreadyShallow ($value) { alreadyShallow = $value },
+              get assessEnemies () { return assessEnemies },
+              get awayFromActors () { return awayFromActors },
+              get baseline () { return baseline }, set baseline ($value) { baseline = $value },
+              get boundedJumpAttempted () { return boundedJumpAttempted }, set boundedJumpAttempted ($value) { boundedJumpAttempted = $value },
+              get briefSubmerge () { return briefSubmerge }, set briefSubmerge ($value) { briefSubmerge = $value },
+              get candidates () { return candidates }, set candidates ($value) { candidates = $value },
+              get cellSafe () { return cellSafe },
+              get choices () { return choices }, set choices ($value) { choices = $value },
+              get closeZombiePair () { return closeZombiePair }, set closeZombiePair ($value) { closeZombiePair = $value },
+              get constrainedFloors () { return constrainedFloors },
+              get constrainedPrimary () { return constrainedPrimary },
+              get context () { return context }, set context ($value) { context = $value },
+              get deadline () { return deadline },
+              get diagnostics () { return diagnostics },
+              get distance () { return distance },
+              get dropCircles () { return dropCircles }, set dropCircles ($value) { dropCircles = $value },
+              get dropTrace () { return dropTrace }, set dropTrace ($value) { dropTrace = $value },
+              get dropTraceIndex () { return dropTraceIndex }, set dropTraceIndex ($value) { dropTraceIndex = $value },
+              get drownedWaterEscape () { return drownedWaterEscape }, set drownedWaterEscape ($value) { drownedWaterEscape = $value },
+              get emergencyDropOp () { return emergencyDropOp }, set emergencyDropOp ($value) { emergencyDropOp = $value },
+              get ensure () { return ensure },
+              get episodeMovementStarts () { return episodeMovementStarts }, set episodeMovementStarts ($value) { episodeMovementStarts = $value },
+              get escapeChoices () { return escapeChoices }, set escapeChoices ($value) { escapeChoices = $value },
+              get eye () { return eye },
+              get feet () { return feet },
+              get fence () { return fence },
+              get generationGuardRoute () { return generationGuardRoute },
+              get ids () { return ids },
+              get immediateShallowPair () { return immediateShallowPair }, set immediateShallowPair ($value) { immediateShallowPair = $value },
+              get initial () { return initial }, set initial ($value) { initial = $value },
+              get inspect () { return inspect },
+              get jumpSearchDiagnostic () { return jumpSearchDiagnostic },
+              get jumpSearchStartedAt () { return jumpSearchStartedAt }, set jumpSearchStartedAt ($value) { jumpSearchStartedAt = $value },
+              get lastBoundedPartial () { return lastBoundedPartial }, set lastBoundedPartial ($value) { lastBoundedPartial = $value },
+              get lastRejected () { return lastRejected }, set lastRejected ($value) { lastRejected = $value },
+              get lowHealthSurface () { return lowHealthSurface }, set lowHealthSurface ($value) { lowHealthSurface = $value },
+              get lowHealthSurfaceDiagnostic () { return lowHealthSurfaceDiagnostic }, set lowHealthSurfaceDiagnostic ($value) { lowHealthSurfaceDiagnostic = $value },
+              get lowHealthSurfaceOrigin () { return lowHealthSurfaceOrigin }, set lowHealthSurfaceOrigin ($value) { lowHealthSurfaceOrigin = $value },
+              get lowHealthSurfaceRun () { return lowHealthSurfaceRun }, set lowHealthSurfaceRun ($value) { lowHealthSurfaceRun = $value },
+              get measuredJumpPreview () { return measuredJumpPreview }, set measuredJumpPreview ($value) { measuredJumpPreview = $value },
+              get mixedWaterEscape () { return mixedWaterEscape }, set mixedWaterEscape ($value) { mixedWaterEscape = $value },
+              get origin () { return origin }, set origin ($value) { origin = $value },
+              get outsideTracked () { return outsideTracked },
+              get partialEscapeAction () { return partialEscapeAction }, set partialEscapeAction ($value) { partialEscapeAction = $value },
+              get partialOrigin () { return partialOrigin }, set partialOrigin ($value) { partialOrigin = $value },
+              get partials () { return partials }, set partials ($value) { partials = $value },
+              get planningState () { return planningState }, set planningState ($value) { planningState = $value },
+              get previewCandidate () { return previewCandidate }, set previewCandidate ($value) { previewCandidate = $value },
+              get primary () { return primary }, set primary ($value) { primary = $value },
+              get receivedSurfaceOrigin () { return receivedSurfaceOrigin }, set receivedSurfaceOrigin ($value) { receivedSurfaceOrigin = $value },
+              get remainingConstrained () { return remainingConstrained }, set remainingConstrained ($value) { remainingConstrained = $value },
+              get remainingJumpIndex () { return remainingJumpIndex }, set remainingJumpIndex ($value) { remainingJumpIndex = $value },
+              get remainingJumpTrace () { return remainingJumpTrace }, set remainingJumpTrace ($value) { remainingJumpTrace = $value },
+              get remainingTargets () { return remainingTargets }, set remainingTargets ($value) { remainingTargets = $value },
+              get retainedActors () { return retainedActors },
+              get safetyCurrent () { return safetyCurrent },
+              get safetyState () { return safetyState },
+              get segmentDistance () { return segmentDistance },
+              get shallowSurfaceY () { return shallowSurfaceY }, set shallowSurfaceY ($value) { shallowSurfaceY = $value },
+              get shallowWaterCheck () { return shallowWaterCheck }, set shallowWaterCheck ($value) { shallowWaterCheck = $value },
+              get shallowWaterRun () { return shallowWaterRun }, set shallowWaterRun ($value) { shallowWaterRun = $value },
+              get shallowWaterTerrain () { return shallowWaterTerrain },
+              get signal () { return signal },
+              get singleShallow () { return singleShallow }, set singleShallow ($value) { singleShallow = $value },
+              get submergedSince () { return submergedSince }, set submergedSince ($value) { submergedSince = $value },
+              get surfaceMark () { return surfaceMark },
+              get surfaceRecord () { return surfaceRecord },
+              get surfaceTimed () { return surfaceTimed },
+              get surfaceTiming () { return surfaceTiming },
+              get sword () { return sword }, set sword ($value) { sword = $value },
+              get tryRecentDamageNoPrimary () { return tryRecentDamageNoPrimary },
+              get unarmedMixed () { return unarmedMixed },
+              get urgentCreeper () { return urgentCreeper }, set urgentCreeper ($value) { urgentCreeper = $value },
+              get verifyLedgeBody () { return verifyLedgeBody },
+              get verifyShallowWater () { return verifyShallowWater },
+              get waterCreeperEyeFloor () { return waterCreeperEyeFloor }, set waterCreeperEyeFloor ($value) { waterCreeperEyeFloor = $value },
+              get waterCreeperHorizontalFloor () { return waterCreeperHorizontalFloor }, set waterCreeperHorizontalFloor ($value) { waterCreeperHorizontalFloor = $value },
+              get waterThreatAllowed () { return waterThreatAllowed }, set waterThreatAllowed ($value) { waterThreatAllowed = $value },
+              get yieldPlanning () { return yieldPlanning }
             }
-            if (!primary || !alreadyShallow && !fullOrigin && !partialOrigin) {
-              const physical = initial.predicted?.physicsState ?? initial.physicsState
-              if (primary && rt.resourceMinHealth(initial) === 0 && partialEscapeAction && physical?.onGround === true && !physical.isInWater && !physical.isInLava && verifyLedgeBody(initial, { signal })) return partialEscapeAction({ ...context, signal })
-              return { supported: false, reason: 'no_known_escape_origin' }
-            }
-            const urgentCreeper = baseline.threats.length === 1 && primary.name === 'minecraft:creeper' && primary.distance < 4.5
-            const queue = alreadyShallow ? [] : [{ position: origin, depth: 0 }]; const visited = new Set(); const candidates = []; const partials = []; let planningChecks = 0
-            let planningSlice = surfaceMark()
-            const yieldCandidatePlanning = async (force = false) => {
-              if (!force && ++planningChecks % 64 !== 0 && performance.now() - planningSlice.at < 12) return
-              surfaceRecord('escapeCandidateSlice', planningSlice)
-              if (process.env.MINECRAFT_CAPTURE_EMERGENCY === '1') {
-                rt.host.shared.perfObservations ??= {}
-                rt.host.shared.perfObservations.escapePlanningMaxSliceMs = Math.max(rt.host.shared.perfObservations.escapePlanningMaxSliceMs ?? 0, surfaceTiming.lastSlice.ms)
-              }
-              await yieldPlanning()
-              planningSlice = surfaceMark()
-            }
-            for (let i = 0; i < queue.length && i < (urgentCreeper ? 24 : 256); i++) {
-              // Yield often enough for incoming actor, damage and abort
-              // packets while bounding the cost of the local BFS.
-              if ((i & 15) === 0) await yieldCandidatePlanning(true)
-              const node = queue[i]
-              if (node.depth >= (urgentCreeper ? 3 : 6)) continue
-              for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (const dy of [0, -1, 1]) {
-                await yieldCandidatePlanning()
-                const target = { x: Math.floor(node.position.x) + dx + 0.5, y: Math.round(node.position.y) + dy, z: Math.floor(node.position.z) + dz + 0.5 }
-                const key = [target.x, target.y, target.z].join(',')
-                if (visited.has(key) || !cellSafe(target) || !away(node.position, target)) continue
-                if (distance(primary.position, eye(target)) < distance(primary.position, eye(node.position)) + 0.25) { diagnostics.gainBlocked++; continue }
-                visited.add(key); queue.push({ position: target, depth: node.depth + 1 })
-                const gain = distance(primary.position, eye(target)) - primary.distance
-                if (gain >= 0.25) {
-                  const candidate = { target, depth: node.depth + 1, gain }
-                  if (known.every(actor => distance(actor.position, eye(target)) > actor.dangerRadius + 0.2)) candidates.push(candidate)
-                  else if (baseline.threats.every(actor => distance(actor.position, eye(target)) >= actor.distance + 0.15)) partials.push(candidate)
-                }
-              }
-            }
-            // Grid-only steps can be trapped between two hostile circles even
-            // when a diagonal path on the same known floor moves away from
-            // both. Try finite headings; Nav and Guard verify the full path.
-            for (let angle = 0; !alreadyShallow && angle < 32; angle += urgentCreeper ? 2 : 1) for (const length of urgentCreeper ? [0.75, 1, 1.5, 2] : [0.75, 1, 1.5, 2, 4, 6]) {
-              await yieldCandidatePlanning()
-              const theta = angle * Math.PI / 16
-              const target = { x: origin.x + Math.cos(theta) * length, y: origin.y, z: origin.z + Math.sin(theta) * length }
-              // A short diagonal can unlock the next safe segment between
-              // several threat circles. Guard still requires a 0.25 gain from
-              // the primary and validates the entire swept route.
-              const minimumGain = length < 2 ? 0.15 : 0.5
-              if (!cellSafe(target) || !away(origin, target)) continue
-              if (distance(primary.position, eye(target)) < primary.distance + 0.25 || !baseline.threats.every(actor => distance(actor.position, eye(target)) >= actor.distance + minimumGain)) { diagnostics.gainBlocked++; continue }
-              const candidate = { target, depth: Math.ceil(length), gain: distance(primary.position, eye(target)) - primary.distance }
-              if (known.every(actor => distance(actor.position, eye(target)) > actor.dangerRadius + 0.2)) candidates.push(candidate)
-              else partials.push(candidate)
-            }
-            // Small offsets within the adjacent cell matter when the opening
-            // is bordered by leaves or trunks; the body is wider than a point.
-            const originOffsets = partialOrigin ? [0, -0.15, 0.15, -0.25, 0.25] : [0, -0.15, 0.15]
-            const originDirections = partialOrigin ? [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] : [[1, 0], [-1, 0], [0, 1], [0, -1]]
-            for (const [dx, dz] of (alreadyShallow ? [] : originDirections)) for (const dy of (partialOrigin ? [0, -1] : [0])) for (const ox of originOffsets) for (const oz of originOffsets) {
-              await yieldCandidatePlanning()
-              if (!dx && !dz && dy) continue
-              const target = { x: Math.floor(origin.x) + dx + 0.5 + ox, y: Math.round(origin.y) + dy, z: Math.floor(origin.z) + dz + 0.5 + oz }
-              const gain = distance(primary.position, eye(target)) - primary.distance
-              if (distance(origin, target) > 2 || gain < 0.25 || !cellSafe(target) || !away(origin, target) || !baseline.threats.every(actor => distance(actor.position, eye(target)) >= actor.distance + 0.15)) continue
-              const boundedRecenter = partialOrigin && !dy && distance(origin, target) <= 1.2
-              const candidate = { target, depth: 1, gain, ...(boundedRecenter ? { recenter: true, recenterOffset: Math.abs(ox) + Math.abs(oz) } : {}) }
-              if (known.every(actor => distance(actor.position, eye(target)) > actor.dangerRadius + 0.2)) candidates.push(candidate)
-              else partials.push(candidate)
-            }
-            // Prefer useful pause clearance over the first point just outside
-            // a hostile radius. Every chosen route still uses the actual hard
-            // distance floors, complete body checks and the same deadline.
-            const pauseClearance = candidate => Math.min(...known.map(actor => distance(actor.position, eye(candidate.target)) - actor.dangerRadius - rt.WORK_MARGIN))
-            candidates.sort((a, b) => pauseClearance(b) - pauseClearance(a) || b.gain - a.gain || a.depth - b.depth)
-            partials.sort((a, b) => initial.health <= 6 ? a.depth - b.depth || b.gain - a.gain : b.gain - a.gain || a.depth - b.depth)
-            diagnostics.visited = visited.size; diagnostics.candidates = candidates.length; diagnostics.partials = partials.length
-            const choices = candidates.length ? [...candidates.slice(0, 6), ...partials.slice(0, 6)] : partials.slice(0, 12)
-            // A nearby creeper leaves little time for previews. Include one
-            // partial escape when available: a distant destination can fail
-            // even though a shorter, guarded move away is feasible. The
-            // supervisor can replan after that move from fresh observations.
-            if (!['confirmed_leaf_clearance', 'confirmed_soil_clearance', 'confirmed_drowned_step_clearance','confirmed_skeleton_step_clearance'].includes(context.reason) && baseline.threats.length === 1 && primary.name === 'minecraft:creeper' && primary.distance < 6.5) {
-              const shortPartial = partials.filter(candidate => primary.distance + candidate.gain < primary.dangerRadius - 0.1 && candidate.gain >= 0.5).sort((a, b) => distance(origin, a.target) - distance(origin, b.target) || b.gain - a.gain)[0]
-              const first = candidates[0] ?? shortPartial ?? partials[0]
-              const second = candidates[0] ? shortPartial ?? partials[0] ?? candidates[1] : partials.find(candidate => candidate !== first)
-              const next = [...partials, ...candidates].filter(candidate => candidate !== first && candidate !== second).sort((a, b) => distance(origin, a.target) - distance(origin, b.target))
-              choices.splice(0, choices.length, ...[first, second, ...next.slice(0, 2)].filter(Boolean))
-            }
-            // The leaf planner has already simulated a route through the
-            // intended opening. Recheck that exact point against the latest
-            // terrain and actors, then run the ordinary live preview and Guard.
-            const preferred = context.preferredTarget
-            if (['confirmed_leaf_clearance', 'confirmed_soil_clearance', 'confirmed_drowned_step_clearance','confirmed_skeleton_step_clearance'].includes(context.reason) && preferred && ['x', 'y', 'z'].every(axis => Number.isFinite(preferred[axis])) && distance(origin, preferred) <= 2 && Math.abs(preferred.y - origin.y - (['confirmed_soil_clearance','confirmed_drowned_step_clearance','confirmed_skeleton_step_clearance'].includes(context.reason) ? 1 : 0)) < 1e-4 && distance(primary.position, eye(preferred)) >= primary.distance + 0.25 && cellSafe(preferred) && away(origin, preferred)) choices.unshift({ target: { ...preferred }, depth: 1, gain: distance(primary.position, eye(preferred)) - primary.distance })
-            // If no route moves away from every current enemy, consider a
-            // single adjacent step that still moves away from the primary.
-            // Only identified distant secondary zombies, spiders or skeletons
-            // may lose up to 1.5 blocks, never below their fixed floors. The
-            // Guard independently enforces the same bounds on every segment.
-            const selected = initial.rawServerSelectedSlot ?? initial.rawSelectedSlot
-            const sword = initial.inventory?.known === true && !initial.inventory.uncertain && initial.equipmentServerConfirmed !== false && initial.inventory.items?.some(item => item.slot === selected && item.count === 1 && /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/.test(item.name) && initial.heldItem?.name === item.name && initial.heldItem?.count === 1)
-            if (initial.health > 6 && (sword || unarmedMixed) && baseline.threats.length > 1 && constrainedFloors.size && baseline.threats.every(actor => ids.get(actor.runtimeId)?.uniqueId != null)) {
-              const constrainedChoices = []
-              let checked = 0
-              for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) for (const dy of [0, -1, 1]) for (const ox of [0, -0.15, 0.15]) for (const oz of [0, -0.15, 0.15]) {
-                if (++checked % 12 === 0) await yieldPlanning()
-                const target = { x: Math.floor(origin.x) + dx + 0.5 + ox, y: Math.round(origin.y) + dy, z: Math.floor(origin.z) + dz + 0.5 + oz }
-                const gain = distance(constrainedPrimary.position, eye(target)) - constrainedPrimary.distance
-                if (distance(origin, target) > 2 || gain < 0.25 || !cellSafe(target) || !away(origin, target, known, true)) continue
-                constrainedChoices.push({ target, depth: 1, gain, constrained: true })
-              }
-              constrainedChoices.sort((a, b) => b.gain - a.gain)
-              choices.push(...constrainedChoices)
-            }
-            let lastRejected = null
-            const previewCandidate = async candidate => {
-              await yieldPlanning(); rt.motionOrigin = rt.working()
-              diagnostics.previews++
-              // The actor may have moved while the bounded search yielded.
-              // Use its newest received position for each live preview; the
-              // identity/radius check in ensure() still fences new dangers.
-              const previewState = safetyState(), current = assessEnemies(previewState)
-              let currentKnown = [...current.threats, ...current.outside]
-              const avoidance = currentKnown.map(actor => {
-                const minDistance = candidate.constrained && constrainedFloors.has(actor.runtimeId) ? constrainedFloors.get(actor.runtimeId) : ids.has(actor.runtimeId) ? actor.distance : actor.dangerRadius
-                // Guard uses this padding rule for its live movement preview.
-                // Checking with zero padding here could select a candidate the
-                // Guard immediately rejects, wasting the emergency deadline.
-                const padding = candidate.constrained ? 0 : Math.min(0.5, Math.max(0, distance(actor.position, eye(candidate.target)) - minDistance))
-                return { id: actor.runtimeId, position: { ...actor.position }, minDistance, padding }
-              })
-              const live = rt.generationMovement.preview(candidate.target, { emergency: true, allowWater: false, directFlat: true, exactGoal: true, stablePartialOrigin: true, maxDistance: 8, maxExpanded: 800, avoidance })
-              if (!live.ready || !Array.isArray(live.waypoints) || !live.waypoints.length || live.waypoints.length > 8) return null
-              const refreshed = await yieldPlanning()
-              if (distance(refreshed.position, previewState.position) > 0.05) return null
-              const refreshedActors = assessEnemies(refreshed)
-              currentKnown = [...refreshedActors.threats, ...refreshedActors.outside]
-              diagnostics.readyPreviews++
-              let previous = feet(safetyState()); let allowed = true
-              for (const [index, waypoint] of live.waypoints.entries()) {
-                const point = waypoint.position
-                const sameCellConnector = point && index === 0 && Math.floor(point.x) === Math.floor(previous.x) && Math.floor(point.z) === Math.floor(previous.z) && Math.abs(point.y - previous.y) <= 1e-4 && distance(point, previous) <= (partialOrigin && candidate.recenter ? 1.2 : 0.5)
-                const diagonalConnector = point && index === 0 && waypoint.action === 'walk' && Math.abs(point.y - previous.y) <= 1e-4 && Math.abs(Math.floor(point.x) - Math.floor(previous.x)) === 1 && Math.abs(Math.floor(point.z) - Math.floor(previous.z)) === 1 && distance(point, previous) <= 1.5 && Array.from({ length: Math.max(1, Math.ceil(distance(point, previous) / 0.1)) + 1 }, (_, i) => i / Math.max(1, Math.ceil(distance(point, previous) / 0.1))).every(ratio => cellSafe({ x: previous.x + (point.x - previous.x) * ratio, y: previous.y, z: previous.z + (point.z - previous.z) * ratio }))
-                const adjacent = point && (sameCellConnector || diagonalConnector || live.directFlat === true && live.waypoints.length === 1 && Math.abs(point.y - previous.y) <= 1e-4 && distance(point, previous) <= 6.1 || Math.abs(Math.floor(point.x) - Math.floor(previous.x)) + Math.abs(Math.floor(point.z) - Math.floor(previous.z)) === 1)
-                // A safe detour can turn slightly toward an actor after first
-                // increasing separation. Keep the fixed observed minimum for
-                // every segment, as the independent Guard also does.
-                const corridorSafe = point && currentKnown.every(actor => segmentDistance(actor.position, eye(previous), eye(point)) >= (candidate.constrained && constrainedFloors.has(actor.runtimeId) ? constrainedFloors.get(actor.runtimeId) : ids.has(actor.runtimeId) ? actor.distance : actor.dangerRadius) - 1e-4)
-                // The received feet position can be a few float32 microns
-                // above its block height; keep the same contact tolerance as
-                // navigation when checking a one-block elevation change.
-                if (!adjacent || waypoint.medium !== 'land' || !['walk', 'jump'].includes(waypoint.action) || Math.abs(point.y - previous.y) > 1.0001 || !cellSafe(point) || !corridorSafe) { allowed = false; break }
-                previous = point
-              }
-              if (!allowed || distance(previous, candidate.target) > 0.05 || candidate.constrained && live.waypoints.length !== 1) return null
-              // Rehearse descents and short multi-threat routes. A geometrical
-              // target can be reachable while the settled pose falls short of
-              // Guard's required gain or needs an unreceived lower block.
-              const descentState = safetyState()
-              const shortMultiThreat = baseline.threats.length > 1 && Math.hypot(candidate.target.x - descentState.position.x, candidate.target.z - descentState.position.z) <= 2.5
-              if (['confirmed_soil_clearance','confirmed_drowned_step_clearance','confirmed_skeleton_step_clearance'].includes(context.reason) || candidate.recenter || candidate.target.y < feet(descentState).y - 0.5 || shortMultiThreat) {
-                try {
-                  const navigator = rt.createNavigator({ world: rt.planningWorld, version: rt.host.meta.version, physics: rt.generationPlanningPhysics })
-                  const initialPhysics = navigator.physics.fromServer(descentState)
-                  const simulated = navigator.createStepper(live, initialPhysics, { maxTicks: 80, sprint: false })
-                  let last = descentState.position; let complete = false
-                  for (let tick = 0; tick < 80; tick++) {
-                    if (tick > 0 && tick % 4 === 0) {
-                      const current = await yieldPlanning()
-                      if (distance(current.position, descentState.position) > 0.05) return null
-                      const actors = assessEnemies(current)
-                      currentKnown = [...actors.threats, ...actors.outside]
-                    }
-                    const frame = simulated.next(); const point = eye(frame.predictedState.position)
-                    if (frame.predictedState.isInWater || frame.predictedState.isInLava || currentKnown.some(actor => segmentDistance(actor.position, last, point) < (candidate.constrained && constrainedFloors.has(actor.runtimeId) ? constrainedFloors.get(actor.runtimeId) : ids.has(actor.runtimeId) ? actor.distance : actor.dangerRadius) - 1e-4)) break
-                    last = point
-                    if (frame.phase === 'awaiting_server_confirmation') { complete = !['confirmed_soil_clearance','confirmed_drowned_step_clearance','confirmed_skeleton_step_clearance'].includes(context.reason) || navigator.verifyOrigin(frame.predictedState); break }
-                    if (frame.phase !== 'moving') break
-                  }
-                  const predictedPrimary = currentKnown.find(actor => actor.runtimeId === (candidate.constrained ? constrainedPrimary.runtimeId : primary.runtimeId))
-                  if (!complete || !predictedPrimary || distance(predictedPrimary.position, last) < distance(predictedPrimary.position, descentState.position) + 0.25) return null
-                } catch { return null }
-              }
-              return live
-            }
-            if (partialOrigin) {
-              // First restore a complete footprint within the current or an
-              // adjacent cell, using the same bounded partial-origin connector.
-              // A valid cell centre has more landing margin than an offset;
-              // prove at most two short choices before the ordinary gain list.
-              const recenters = [...candidates, ...partials].filter(candidate => candidate.recenter).sort((a, b) => a.recenterOffset - b.recenterOffset || distance(origin, a.target) - distance(origin, b.target) || b.gain - a.gain).slice(0, 2)
-              choices.splice(0, choices.length, ...recenters, ...choices.filter(candidate => !candidate.recenter))
-            }
-            const jumpHungerReady = state => {
-              const value = state.vitals?.hunger
-              const time = value => typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) : NaN
-              const observedAt = time(value?.observedAt), startedAt = time(state.startedAt)
-              const matchingScope = ['connectionId', 'startedAt', 'runtimeEntityId'].every(key => value?.[key] == null || String(value[key]) === String(state[key]))
-              return value?.source === 'server_attribute' && Number.isFinite(value.value) && value.value > 6 && value.value <= 20 && !!state.connectionId && Number.isFinite(startedAt) && matchingScope && Number.isFinite(observedAt) && observedAt <= Date.now() && observedAt >= startedAt
-            }
-            let jumpNavigator = null
-            const previewJump = candidate => {
-              const state = ensure()
-              jumpSearchDiagnostic.hungerReady = jumpHungerReady(state)
-              if (alreadyShallow || boundedJumpAttempted || !jumpSearchDiagnostic.hungerReady || !['profile', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId'].every(key => state[key] === initial[key]) || String(state.realm?.id) !== String(initial.realm?.id)) return null
-              const current = assessEnemies(state), actors = [...current.threats, ...current.outside]
-              const primary = current.threats.find(actor => actor.runtimeId === baseline.threats[0]?.runtimeId) ?? current.threats[0]
-              if (!primary) return null
-              const circles = target => actors.map(actor => {
-                const minDistance = ids.has(actor.runtimeId) ? actor.distance : actor.dangerRadius
-                return { id: actor.runtimeId, position: { ...actor.position }, minDistance, padding: target ? Math.min(0.5, Math.max(0, distance(actor.position, eye(target)) - minDistance)) : 0 }
-              })
-              try {
-                rt.motionOrigin = rt.working()
-                const settings = { emergency: true, sprint: true, allowWater: false, stablePartialOrigin: true, maxDistance: 8, boundedJump: candidate.boundedJump }
-                jumpSearchDiagnostic.previews++
-                const first = rt.generationMovement.preview(null, { ...settings, avoidance: circles(null) })
-                if (!first.ready || !first.boundedJump || !first.target) return null
-                jumpSearchDiagnostic.previews++
-                const live = rt.generationMovement.preview(first.target, { ...settings, avoidance: circles(first.target) })
-                if (!live.ready || !live.boundedJump || !live.target || !Array.isArray(live.predictedTrace) || !Array.isArray(live.neutralCoastTrace) || live.predictedTrace.length < 3 || live.predictedTrace.length > 41 || live.neutralCoastTrace.length < 3 || live.neutralCoastTrace.length > 41 || !(live.apexDrop < 3)) return null
-                const safeSegments = points => points.every(point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))) && points.slice(1).every((point, index) => actors.every(actor => segmentDistance(actor.position, eye(points[index]), eye(point)) >= (ids.has(actor.runtimeId) ? actor.distance : actor.dangerRadius) - 1e-4))
-                if (!safeSegments(live.predictedTrace) || !safeSegments(live.neutralCoastTrace) || distance(primary.position, eye(live.target)) < primary.distance + 0.25) return null
-                jumpNavigator ??= rt.createNavigator({ world: rt.planningWorld, version: rt.host.meta.version, physics: rt.generationPlanningPhysics })
-                const rehearsal = jumpNavigator.createStepper(live, rt.generationPlanningPhysics.fromServer(state), { maxTicks: 40, sprint: true })
-                let complete = false
-                for (let tick = 0; tick < 40; tick++) {
-                  const frame = rehearsal.next()
-                  if (frame.phase === 'awaiting_server_confirmation') { complete = frame.boundedJumpLanded === true && jumpNavigator.verifyOrigin(frame.predictedState); break }
-                  if (frame.phase !== 'moving') break
-                }
-                if (!complete) return null
-                candidate.target = { ...live.target }
-                candidate.gain = distance(primary.position, eye(live.target)) - primary.distance
-                candidate.pauseClearance = Math.min(...actors.map(actor => distance(actor.position, eye(live.target)) - actor.dangerRadius - rt.WORK_MARGIN))
-                return live
-              } catch { return null }
-            }
-            const measuredJumpPreview = candidate => {
-              const startedAt = performance.now()
-              jumpSearchDiagnostic.candidates++
-              try {
-                const preview = previewJump(candidate)
-                if (preview) jumpSearchDiagnostic.verified++
-                else jumpSearchDiagnostic.rejected++
-                return preview
-              } finally {
-                const endedAt = performance.now()
-                jumpSearchDiagnostic.maxSliceMs = Math.max(jumpSearchDiagnostic.maxSliceMs, Math.round((endedAt - startedAt) * 10) / 10)
-                if (jumpSearchStartedAt !== null) jumpSearchDiagnostic.elapsedMs = Math.round((endedAt - jumpSearchStartedAt) * 10) / 10
-              }
-            }
-            async function * escapeChoices () {
-              const tiny = choices[0]
-              const compareTiny = urgentCreeper && !['confirmed_leaf_clearance', 'confirmed_soil_clearance', 'confirmed_drowned_step_clearance','confirmed_skeleton_step_clearance'].includes(context.reason) && !alreadyShallow && !boundedJumpAttempted && tiny && Math.hypot(tiny.target.x - origin.x, tiny.target.z - origin.z) < 1
-              if (compareTiny) {
-                jumpSearchStartedAt = performance.now()
-                jumpSearchDiagnostic.reason = 'priority_search'
-                const yaw = -Math.atan2(origin.x - primary.position.x, origin.z - primary.position.z) * 180 / Math.PI
-                const center = ((Math.round(yaw / 11.25) % 32) + 32) % 32
-                const headings = [0, 1, -1, 2, -2, 3, -3].map(offset => (center + offset + 32) % 32)
-                priorityJump: for (const driveTicks of [9, 6, 3]) for (const heading of headings) {
-                  await yieldPlanning()
-                  jumpSearchDiagnostic.hungerReady = jumpHungerReady(ensure())
-                  if (!jumpSearchDiagnostic.hungerReady) { jumpSearchDiagnostic.reason = 'hunger_unready'; break priorityJump }
-                  diagnostics.boundedJumpPreviews = (diagnostics.boundedJumpPreviews ?? 0) + 1
-                  const candidate = { boundedJump: { heading, driveTicks }, constrained: false }
-                  if (!measuredJumpPreview(candidate)) continue
-                  const current = assessEnemies(ensure()), actors = [...current.threats, ...current.outside]
-                  const currentPrimary = current.threats.find(actor => actor.runtimeId === primary.runtimeId)
-                  const ordinaryGain = currentPrimary ? distance(currentPrimary.position, eye(tiny.target)) - currentPrimary.distance : Infinity
-                  const ordinaryClearance = Math.min(...actors.map(actor => distance(actor.position, eye(tiny.target)) - actor.dangerRadius - rt.WORK_MARGIN))
-                  if (candidate.gain <= ordinaryGain || candidate.pauseClearance <= ordinaryClearance) continue
-                  jumpSearchDiagnostic.reason = 'priority_ready'
-                  yield candidate
-                  break priorityJump
-                }
-                if (jumpSearchDiagnostic.reason === 'priority_search') jumpSearchDiagnostic.reason = 'no_stronger_arc'
-              }
-              for (const candidate of choices) yield candidate
-              if (compareTiny) return
-              if (alreadyShallow) { jumpSearchDiagnostic.reason = 'not_dry'; return }
-              if (boundedJumpAttempted) return
-              jumpSearchStartedAt = performance.now()
-              jumpSearchDiagnostic.reason = 'searching'
-              const jumps = []
-              // Prove a small useful-clearance shortlist before committing a
-              // tape. Longer drive can retain the same floors under pursuit.
-              jumpSearch: for (const driveTicks of [9, 6, 3]) for (let heading = 0; heading < 32; heading++) {
-                if (boundedJumpAttempted) return
-                await new Promise(resolve => setImmediate(resolve))
-                jumpSearchDiagnostic.hungerReady = jumpHungerReady(ensure())
-                if (!jumpSearchDiagnostic.hungerReady) { jumpSearchDiagnostic.reason = 'hunger_unready'; jumpSearchDiagnostic.elapsedMs = Math.round((performance.now() - jumpSearchStartedAt) * 10) / 10; return }
-                diagnostics.boundedJumpPreviews = (diagnostics.boundedJumpPreviews ?? 0) + 1
-                const candidate = { boundedJump: { heading, driveTicks }, constrained: false }
-                if (measuredJumpPreview(candidate)) {
-                  jumps.push(candidate)
-                  jumps.sort((a, b) => b.pauseClearance - a.pauseClearance || b.gain - a.gain)
-                  jumps.splice(3)
-                  if (jumps.length === 3) break jumpSearch
-                }
-              }
-              jumpSearchDiagnostic.reason = jumps.length ? 'shortlist_ready' : 'no_safe_arc'
-              for (const candidate of jumps) yield candidate
-            }
-            for await (const candidate of escapeChoices()) {
-              const live = candidate.boundedJump ? measuredJumpPreview(candidate) : await previewCandidate(candidate)
-              if (!live) { if (candidate.boundedJump) jumpSearchDiagnostic.reason = 'fresh_preview_rejected'; continue }
-              ensure()
-              remainingTargets = candidate.boundedJump ? null : live.waypoints.map(waypoint => ({ ...waypoint.position }))
-              remainingJumpTrace = candidate.boundedJump ? [...live.predictedTrace, ...live.neutralCoastTrace.slice(1)].map(point => ({ ...point })) : null
-              remainingJumpIndex = 0
-              remainingConstrained = candidate.constrained === true
-              const before = safetyState()
-              const historyBefore = rt.generationHistory.snapshot()
-              // Server corrections can legitimately require several restarts
-              // while the actor is already making guarded progress. The same
-              // four-second episode deadline and per-frame threat checks still
-              // bound the additional attempts.
-              const remainingStarts = 5 - episodeMovementStarts
-              if (remainingStarts < 1) return { supported: true, arrived: false, escaped: false, partialEscape: false, code: 'START_LIMIT', movementStarts: episodeMovementStarts, safe: false }
-              if (candidate.boundedJump) {
-                boundedJumpAttempted = true
-                jumpSearchDiagnostic.attempts++
-                jumpSearchDiagnostic.chosen = { heading: live.boundedJump.heading, driveTicks: live.boundedJump.driveTicks, flightTicks: live.jumpFrames.length, expectedGain: candidate.gain }
-                jumpSearchDiagnostic.reason = 'guard_attempt'
-              }
-              fence.guardInvoked = true
-              const nativeProgressLife = rt.actualLifeId()
-              const result = await generationGuardRoute.escape([{ ...candidate.target }], { signal, timeoutMs: Math.max(100, deadline - Date.now()), maxMovementStarts: remainingStarts, maxLegDistance: candidate.constrained ? 2 : 8, allowUnarmedBootstrap: !candidate.constrained || unarmedMixed, allowConstrainedEscape: candidate.constrained === true, maxBootstrapNodes: 4, maxBootstrapDistance: 10, retainedActors, ...(candidate.boundedJump ? { boundedJump: live.boundedJump } : {}) })
-              if (candidate.boundedJump) jumpSearchDiagnostic.reason = result.ok === true && result.arrived === true ? 'landed' : 'guard_rejected'
-              const consumedStarts = Number.isSafeInteger(result.movementStarts) && result.movementStarts > 0 ? result.movementStarts : 0
-              episodeMovementStarts += Math.min(remainingStarts, consumedStarts)
-              fence.starts = episodeMovementStarts
-              remainingTargets = null
-              remainingJumpTrace = null
-              remainingConstrained = false
-              ensure()
-              const after = safetyState(); const evaluation = rt.evaluateThreats(after, after.entities, { observationRadius: 32 })
-              if (candidate.boundedJump && result.ok === true && result.arrived === true && result.escaped === true && result.code == null && !result.routeInterruption && !result.routeRejection && !result.remainingRouteRejection) {
-                const queued = rt.generationHistory.snapshot().navigationQueued > historyBefore.navigationQueued
-                const sameScope = ['profile', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId'].every(key => before[key] === after[key]) && String(before.realm?.id) === String(after.realm?.id)
-                if (!queued || consumedStarts < 1 || !sameScope || after.health < before.health || !await rt.verifyRouteStanding(after, feet(after), { signal })) return { ...result, supported: true, arrived: false, escaped: false, partialEscape: false, code: 'ARRIVAL_UNCONFIRMED', movementStarts: episodeMovementStarts, safe: false }
-                const current = ensure()
-                if (!rt.verifyRouteStanding(current, feet(current), { signal })) return { ...result, supported: true, arrived: false, escaped: false, partialEscape: false, code: 'ARRIVAL_UNCONFIRMED', movementStarts: episodeMovementStarts, safe: false }
-                const workClearancePending = rt.resolveWorkActors(after, evaluation, retainedActors).actors.length > 0
-                lastBoundedPartial = { ...result, supported: true, movementStarts: episodeMovementStarts, escaped: result.riskRemains !== true && !evaluation.threats.length && !workClearancePending, partialEscape: evaluation.threats.length > 0 || workClearancePending, workClearancePending, returned: false, refugeConfirmed: false, safe: false }
-                if (!lastBoundedPartial.partialEscape || episodeMovementStarts >= 5) return lastBoundedPartial
-                planningState = await yieldPlanning()
-                continue escapePlanning
-              }
-              if (result.code === 'ESCAPE_PROGRESS_REPLAN') {
-                const progress = result.progressReplan
-                const previousEvaluation = rt.evaluateThreats(before, before.entities, { observationRadius: 32 })
-                const previousActors = new Map([...previousEvaluation.threats, ...previousEvaluation.outsideDanger, ...previousEvaluation.suppressedByTerrain].map(actor => [actor.runtimeId, actor]))
-                const sameActors = [...evaluation.threats, ...evaluation.outsideDanger, ...evaluation.suppressedByTerrain].every(actor => {
-                  const previous = previousActors.get(actor.runtimeId)
-                  const beforeEntity = before.entities.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
-                  const afterEntity = after.entities.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
-                  return previous && previous.name === actor.name && actor.dangerRadius <= previous.dangerRadius && (beforeEntity?.uniqueId == null || String(beforeEntity.uniqueId) === String(afterEntity?.uniqueId))
-                })
-                const stamp = value => typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) : NaN
-                const beforeStamp = stamp(before.rawServerPositionUpdatedAt ?? before.positionUpdatedAt)
-                const afterStamp = stamp(after.rawServerPositionUpdatedAt ?? after.positionUpdatedAt)
-                const proofStamp = stamp(progress?.authoritativeStamp)
-                const sameScope = ['profile', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId'].every(key => before[key] === after[key]) && String(before.realm?.id) === String(after.realm?.id)
-                if (progress?.kind === 'native_partial_landing') {
-                  const eligible = sameScope && sameActors && rt.actualLifeId() === nativeProgressLife && after.health === before.health && consumedStarts > 0 && result.ok === false && result.arrived === false && result.escaped === false && !result.routeInterruption && !result.routeRejection && !result.remainingRouteRejection && Number.isFinite(progress.primaryGain) && progress.primaryGain >= 0.1 && progress.primaryGain < 0.25 && Number.isFinite(progress.horizontalProgress) && progress.horizontalProgress >= 0.1 && /^\d+$/.test(String(progress.queuedTick)) && Number.isFinite(beforeStamp) && beforeStamp === afterStamp
-                  const expectedAnchor = historyBefore.anchorTick ?? (historyBefore.stationary?.neutralFrames >= 8 ? historyBefore.stationary.checkpointTick : null)
-                  let nativeBinding = null
-                  const bindNativeLanding = state => {
-                    if (!eligible || signal.aborted || rt.actualLifeId() !== nativeProgressLife || state.health !== before.health || ['profile', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId'].some(key => before[key] !== state[key]) || String(before.realm?.id) !== String(state.realm?.id) || stamp(state.rawServerPositionUpdatedAt ?? state.positionUpdatedAt) !== beforeStamp || !state.rawServerPosition || !before.rawServerPosition || distance(state.rawServerPosition, before.rawServerPosition) > 1e-4 || !progress.position || distance(state.position, progress.position) > 0.05) return false
-                    const evaluated = rt.evaluateThreats(state, state.entities, { observationRadius: 32 })
-                    if (evaluated.requiresObservation || state.entityStats?.unknownPositions > evaluated.unknownPositions.length || [...evaluated.threats, ...evaluated.outsideDanger, ...evaluated.suppressedByTerrain].some(actor => {
-                      const old = previousActors.get(actor.runtimeId), original = before.entities.find(value => String(value.runtimeId ?? value.entityId ?? value.runtimeEntityId ?? value.id) === actor.runtimeId), current = state.entities.find(value => String(value.runtimeId ?? value.entityId ?? value.runtimeEntityId ?? value.id) === actor.runtimeId)
-                      return !old || old.name !== actor.name || actor.dangerRadius > old.dangerRadius || original?.uniqueId == null || String(current?.uniqueId) !== String(original.uniqueId)
-                    })) return false
-                    const witness = rt.generationHistory.witness({ scope: rt.historyScope(state), health: state.health, position: state.position })
-                    if (!witness.ready || expectedAnchor == null || witness.anchorTick !== expectedAnchor || stamp(witness.anchor?.rawStamp) !== beforeStamp || witness.navigationQueued <= historyBefore.navigationQueued || witness.queuedTicks < 1 || !Array.isArray(witness.physicsTrace)) return false
-                    // The first real moving frame freezes an already queued
-                    // eight-neutral raw checkpoint. Retain that exact anchor
-                    // and lease; never create or refresh one for this handoff.
-                    if (historyBefore.anchorTick != null ? witness.anchor?.leaseAt !== historyBefore.leaseAt : witness.anchor?.kind !== 'stationary_raw_checkpoint' || witness.anchor?.derived !== true || witness.anchor?.checkpointTick !== expectedAnchor) return false
-                    if (nativeBinding && (witness.anchorTick !== nativeBinding.anchorTick || witness.anchor?.leaseAt !== nativeBinding.leaseAt)) return false
-                    const landingIndex = witness.physicsTrace.findIndex(frame => String(frame.tick) === String(progress.queuedTick))
-                    const landing = witness.physicsTrace[landingIndex]
-                    if (!landing || distance(landing.position, progress.position) > 1e-4 || landing.physicsState?.onGround !== true || landing.physicsState.isInWater || landing.physicsState.isInLava) return false
-                    const currentActors = assessEnemies(state), points = [...witness.physicsTrace.slice(landingIndex).map(frame => frame.position), state.position]
-                    for (const actor of [...currentActors.threats, ...currentActors.outside]) {
-                      const floor = constrainedFloors.get(actor.runtimeId) ?? (ids.has(actor.runtimeId) ? Math.min(ids.get(actor.runtimeId).distance, actor.distance) : actor.dangerRadius)
-                      for (let index = 1; index < points.length; index++) if (segmentDistance(actor.position, points[index - 1], points[index]) < floor - 1e-4) return false
-                    }
-                    nativeBinding ??= { anchorTick: witness.anchorTick, leaseAt: witness.anchor.leaseAt }
-                    return true
-                  }
-                  if (!bindNativeLanding(after) || episodeMovementStarts >= 5 || Date.now() >= deadline || !await rt.verifyRouteStanding(after, feet(after), { signal })) return { ...result, supported: true, arrived: false, escaped: false, partialEscape: false, movementStarts: episodeMovementStarts, safe: false }
-                  const current = await yieldPlanning()
-                  if (!bindNativeLanding(current) || Date.now() >= deadline || !await rt.verifyRouteStanding(current, feet(current), { signal })) return { ...result, supported: true, arrived: false, escaped: false, partialEscape: false, movementStarts: episodeMovementStarts, safe: false }
-                  planningState = current
-                  continue escapePlanning
-                }
-                if (progress?.kind === 'queued_prediction_tail') {
-                  const eligible = sameScope && sameActors && after.health === before.health && consumedStarts > 0 && result.ok === false && result.arrived === false && result.escaped === false && !result.routeInterruption && !result.routeRejection && !result.remainingRouteRejection && Number.isFinite(progress.horizontalProgress) && progress.horizontalProgress >= 0.25 && progress.targetOvershoot > 0 && Number.isFinite(beforeStamp) && Number.isFinite(afterStamp) && Number.isFinite(proofStamp) && afterStamp > beforeStamp && proofStamp === afterStamp
-                  const current = eligible && episodeMovementStarts < 5 && Date.now() < deadline ? await rt.verifyQueuedTailHandoff(result, after, { signal, operationId: context.operationId }) : null
-                  if (!current || Date.now() >= deadline) return { ...result, supported: true, arrived: false, escaped: false, partialEscape: false, movementStarts: episodeMovementStarts, safe: false }
-                  planningState = current
-                  continue escapePlanning
-                }
-                // Idle physics may coast after the Guard drains its sender.
-                // Bind the receipt to the unchanged authoritative position,
-                // then prove the current model's coherence and origin anew.
-                const sameReceipt = progress?.position && progress.authoritativePosition && after.rawServerPosition && distance(progress.position, progress.authoritativePosition) <= 0.05 && distance(progress.authoritativePosition, after.rawServerPosition) <= 0.05 && distance(after.position, after.rawServerPosition) <= 0.75
-                const freshProgress = sameScope && sameActors && after.health === before.health && consumedStarts > 0 && result.ok === false && result.arrived === false && result.escaped === false && distance(before.position, after.position) >= 0.25 && Number.isFinite(progress?.horizontalProgress) && progress.horizontalProgress >= 0.25 && progress.targetOvershoot > 0 && Number.isFinite(beforeStamp) && Number.isFinite(afterStamp) && Number.isFinite(proofStamp) && afterStamp > beforeStamp && proofStamp > beforeStamp && proofStamp <= afterStamp && sameReceipt
-                if (!freshProgress || episodeMovementStarts >= 5 || !await rt.verifyRouteOrigin(after, feet(after), { signal, stablePartialOrigin: true })) return { ...result, supported: true, arrived: false, escaped: false, partialEscape: false, movementStarts: episodeMovementStarts, safe: false }
-                // The Guard has drained its old sender. Discard every old
-                // candidate and sample this newly observed origin, while the
-                // same controller, deadline and start budget remain active.
-                planningState = after
-                continue escapePlanning
-              }
-              // A preliminary preview can differ from Guard's actor-aware
-              // preview. Try another known candidate only if no movement was
-              // started, the pose remains essentially unchanged and the
-              // enemy has not entered immediate reach.
-              const rejectedPreview = result.routeRejection?.reason === 'invalid_route' && result.routeRejection?.detail === 'preview_not_ready' && result.routeInterruption?.reason === 'No known route stays clear of the observed dangers'
-              if (!result.ok && result.movementStarts === 0 && (result.code === 'NO_SAFE_RETREAT' || result.routeInterruption?.code === 'NO_SAFE_RETREAT' || rejectedPreview) && distance(before.position, after.position) < 0.1 && evaluation.threats.every(actor => actor.distance > 3.5)) { lastRejected = result; continue }
-              const reached = result.escaped === true && result.arrived === true && !evaluation.requiresObservation
-              const workClearancePending = rt.resolveWorkActors(after, evaluation, retainedActors).actors.length > 0
-              const returned = { ...result, supported: true, movementStarts: episodeMovementStarts, constrainedEscape: candidate.constrained === true, constrainedPrimaryId: candidate.constrained ? constrainedPrimary.runtimeId : null, escaped: reached && result.riskRemains !== true && !evaluation.threats.length && !workClearancePending, partialEscape: reached && (evaluation.threats.length > 0 || workClearancePending) && evaluation.threats.every(actor => ids.has(actor.runtimeId) || candidate.constrained && outsideTracked.has(actor.runtimeId)), workClearancePending, returned: false, refugeConfirmed: false, safe: false }
-              if (boundedJumpAttempted && returned.partialEscape && result.ok === true && !result.routeInterruption && !result.routeRejection && !result.remainingRouteRejection) {
-                lastBoundedPartial = returned
-                const tracked = assessEnemies(after).threats
-                const legacyRecovered = tracked.every(actor => {
-                  const old = ids.get(actor.runtimeId)
-                  if (!old || old.name !== actor.name || actor.dangerRadius > old.dangerRadius || actor.distance < 3.5) return false
-                  if (['minecraft:zombie', 'minecraft:zombie_villager', 'minecraft:zombie_villager_v2', 'minecraft:husk'].includes(actor.name)) {
-                    const previous = before.entities.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
-                    const previousDistance = previous?.position ? distance(previous.position, before.position) : Infinity
-                    return actor.distance >= 4.5 && (actor.distance >= old.distance - 0.5 || actor.distance >= previousDistance - 0.6)
-                  }
-                  return actor.distance >= old.distance - 0.5
-                })
-                if (workClearancePending && !legacyRecovered && episodeMovementStarts < 5 && Date.now() < deadline && await rt.verifyRouteStanding(after, feet(after), { signal })) {
-                  const current = ensure()
-                  if (rt.verifyRouteStanding(current, feet(current), { signal })) { planningState = current; continue escapePlanning }
-                }
-              }
-              const witness = rt.generationHistory.witness({ scope: rt.historyScope(after), health: after.health, position: after.position })
-              if (returned.partialEscape && result.ok === true && result.arrived === true && result.escaped === true && result.code == null && !result.routeRejection && !result.remainingRouteRejection && !result.routeInterruption && consumedStarts > 0 && witness.ready === true && witness.navigationQueued > historyBefore.navigationQueued && witness.queuedTicks > 0 && after.health === before.health && distance(before.position, after.position) >= 0.1 && Date.now() <= deadline && await rt.verifyRouteStanding(after, feet(after), { signal })) {
-                rt.completedDryProofs.set(returned, { operationId: context.operationId, health: after.health, revision: witness.revision, anchorTick: witness.anchorTick, anchorKind: witness.anchor?.kind, checkpointTick: witness.anchor?.checkpointTick, leaseAt: witness.anchor?.leaseAt, navigationQueued: witness.navigationQueued, rawPosition: structuredClone(after.rawServerPosition), rawStamp: after.rawServerPositionUpdatedAt })
-                if (!await rt.verifyCompletedDryProgress(returned, after, { signal, operationId: context.operationId }) || Date.now() > deadline) rt.completedDryProofs.delete(returned)
-              }
-              return returned
-            }
+            const collectEscapeCandidatesResult = await collectEscapeCandidates(rt, vars2)
+            if (collectEscapeCandidatesResult && 'value' in collectEscapeCandidatesResult) return collectEscapeCandidatesResult.value
+            candidatePreviews(rt, vars2)
+            const tryEscapeCandidatesResult = await tryEscapeCandidates(rt, vars2)
+            if (tryEscapeCandidatesResult && 'value' in tryEscapeCandidatesResult) return tryEscapeCandidatesResult.value
+            if (tryEscapeCandidatesResult?.flow === 'continue escapePlanning') continue escapePlanning
             // When an ordinary escape is unavailable, a healthy unarmed bot
             // can use either a known short descent away from one drowned or a
             // short dry detour around water near one distant spider. Both use
             // fully simulated trajectories and monitor every known actor.
-            const drySpiderDetour = initial.health === 20 && baseline.threats.length >= 1 && baseline.threats.length <= 2 && baseline.threats.every(actor => actor.name === 'minecraft:spider' && actor.distance >= 9.5)
-            const drownedDrop = initial.health >= 18 && baseline.threats.length === 1 && primary.name === 'minecraft:drowned' && primary.distance >= 10.5
-            if (!alreadyShallow && !lastRejected && (drySpiderDetour || drownedDrop) && !sword && initial.inventory?.known === true && !initial.inventory.uncertain && ids.get(primary.runtimeId)?.uniqueId != null) {
-              const current = assessEnemies(safetyState())
-              const currentPrimary = current.threats.find(actor => actor.runtimeId === primary.runtimeId)
-              const actors = [...current.threats, ...current.outside]
-              if (currentPrimary && (drySpiderDetour ? current.threats.length === baseline.threats.length && current.threats.every(actor => ids.has(actor.runtimeId) && actor.name === 'minecraft:spider' && actor.distance >= 9.5) : current.threats.length === 1)) {
-                const circles = actors.map(actor => {
-                  const entity = initial.entities.find(value => String(value.runtimeId ?? value.runtimeEntityId ?? value.entityId ?? value.id) === actor.runtimeId)
-                  return { id: actor.runtimeId, uniqueId: entity?.uniqueId == null ? null : String(entity.uniqueId), radius: actor.dangerRadius, position: { ...actor.position }, minDistance: ids.has(actor.runtimeId) ? drySpiderDetour ? Math.max(9, actor.distance - 0.5) : actor.distance : actor.dangerRadius, padding: 0 }
-                })
-                if (circles.every(circle => circle.uniqueId != null)) {
-                  const targets = []
-                  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) for (const depth of (drySpiderDetour ? [0] : [2, 3])) for (const ox of (drySpiderDetour ? [0.25, 0.3, 0.35, 0.5, 0.65, 0.7, 0.75] : [0.3, 0.5, 0.7])) for (const oz of (drySpiderDetour ? [0.25, 0.3, 0.35, 0.5, 0.65, 0.7, 0.75] : [0.3, 0.5, 0.7])) {
-                    const target = { x: Math.floor(origin.x) + dx + ox, y: Math.round(origin.y) - depth, z: Math.floor(origin.z) + dz + oz }
-                    const gain = distance(currentPrimary.position, eye(target)) - currentPrimary.distance
-                    const length = Math.hypot(target.x - origin.x, target.z - origin.z)
-                    if (length <= (drySpiderDetour ? 1.25 : 1.5) && length >= 0.2 && gain >= (drySpiderDetour ? -0.5 : 0.5) && cellSafe(target)) targets.push({ target, gain, depth, length })
-                  }
-                  targets.sort((a, b) => a.depth - b.depth || (drySpiderDetour ? a.length - b.length || b.gain - a.gain : b.gain - a.gain))
-                  for (const candidate of targets.slice(0, 36)) {
-                    await new Promise(resolve => setImmediate(resolve)); ensure(); rt.motionOrigin = rt.working()
-                    const options = { emergency: true, allowWater: false, ...(drySpiderDetour ? { directFlat: true, exactGoal: true } : { controlledDrop: true }), maxDistance: 2, maxTicks: 80, avoidance: circles.map(({ id, position, minDistance, padding }) => ({ id, position, minDistance, padding })) }
-                    const preview = rt.generationMovement.preview(candidate.target, options)
-                    if (!preview.ready) continue
-                    let predictedTrace = preview.predictedTrace
-                    if (drySpiderDetour) {
-                      if (preview.directFlat !== true || preview.waypoints.length !== 1) continue
-                      try {
-                        const navigator = rt.createNavigator({ world: rt.planningWorld, version: rt.host.meta.version, physics: rt.generationPlanningPhysics })
-                        const stepper = navigator.createStepper(preview, navigator.physics.fromServer(safetyState()), { maxTicks: 80, sprint: false })
-                        const trace = [origin]; let complete = false
-                        for (let tick = 0; tick < 80; tick++) {
-                          const frame = stepper.next(); const next = frame.predictedState.position; const previous = trace.at(-1)
-                          if (frame.predictedState.onGround !== true || frame.predictedState.isInWater || frame.predictedState.isInLava || !cellSafe(next) || circles.some(circle => segmentDistance(circle.position, eye(previous), eye(next)) < circle.minDistance - 1e-4)) break
-                          trace.push({ ...next })
-                          if (frame.phase === 'awaiting_server_confirmation') { complete = true; break }
-                          if (frame.phase !== 'moving') break
-                        }
-                        if (!complete || trace.length < 3 || Math.hypot(trace.at(-1).x - origin.x, trace.at(-1).z - origin.z) < 0.15) continue
-                        predictedTrace = trace
-                      } catch { continue }
-                    } else if (preview.controlledDrop !== true) continue
-                    if (!Array.isArray(predictedTrace) || predictedTrace.length < 3) continue
-                    dropTrace = predictedTrace; dropCircles = circles; dropTraceIndex = 0; ensure()
-                    const stopDrop = () => { if (safetyCurrent()) rt.routeMovement.stop('Controlled descent interrupted') }
-                    signal.addEventListener('abort', stopDrop, { once: true })
-                    emergencyDropOp = context.operationId
-                    try {
-                      rt.routeMovement.start(candidate.target, options)
-                      while (true) {
-                        await rt.delay(50, undefined, { signal }); ensure()
-                        const state = safetyState(); const motion = rt.generationMovement.snapshot()
-                        if (['failed', 'stopped', 'replan_required'].includes(motion.phase)) return { supported: true, arrived: false, escaped: false, reason: 'no_known_away_route' }
-                        if (['awaiting_server_confirmation', 'completed', 'idle'].includes(motion.phase)) {
-                          if (!await rt.verifyRouteStanding(state, candidate.target, { signal })) return { supported: true, arrived: false, escaped: false, reason: 'no_known_escape_origin' }
-                          const after = assessEnemies(state)
-                          return { supported: true, arrived: true, escaped: after.threats.length === 0 && !after.requiresObservation, partialEscape: after.threats.length > 0 && !after.requiresObservation, serverConfirmed: false }
-                        }
-                      }
-                    } finally {
-                      signal.removeEventListener('abort', stopDrop)
-                      if (emergencyDropOp === context.operationId) emergencyDropOp = null
-                      if (safetyCurrent()) rt.routeMovement.stop('Controlled descent finished')
-                      dropTrace = null; dropCircles = null
-                    }
-                  }
-                }
-              }
-            }
-            // Last resort for a healthy player on a dry bank with a single
-            // ordinary creeper: cross only bounded, received surface water,
-            // keeping the head in air and every observed actor outside its
-            // fixed corridor. This is prediction, never a server confirmation.
-            const lowHealthSurface = receivedSurfaceOrigin
-            const tightShallowPair = alreadyShallow && baseline.threats.length === 2 && baseline.threats.every(value => value.name === 'minecraft:creeper' && value.dangerRadius === 8)
-            const immediateShallowPair = tightShallowPair && baseline.threats.some(value => Math.hypot(value.position.x - origin.x, value.position.z - origin.z) < 4.5)
-            const soloZombie = alreadyShallow && rt.unarmedWaterZombie(initial, baseline.threats)
-            const allowBank = soloZombie || alreadyShallow && baseline.threats.every(value => value.name === 'minecraft:creeper' && value.dangerRadius === 8 && value.distance >= 5.5 && Math.hypot(value.position.x - origin.x, value.position.z - origin.z) >= 5.5)
-            // A separately observed critical start can be just inside the
-            // ordinary 3.5-block horizontal guard. A local Bedrock 1.26.60
-            // trial with the same pair geometry showed an outward surface
-            // move while both actors moved. Keep this exception bounded to a
-            // full-health pair above a 3.25-block absolute horizontal floor;
-            // every subsequent packet still rechecks both actors and terrain.
-            const boundaryShallowPair = immediateShallowPair && baseline.threats.some(value => Math.hypot(value.position.x - origin.x, value.position.z - origin.z) < 3.5) && baseline.threats.every(value => Math.hypot(value.position.x - origin.x, value.position.z - origin.z) >= 3.25 && value.position.y <= origin.y + 1.5)
-            // If an unprimed pair is already close, require an almost
-            // non-approaching horizontal route and keep at least one block
-            // beyond the normal 2.5-block fuse trigger throughout the trace.
-            const singleShallow = alreadyShallow && baseline.threats.length === 1
-            const closeZombiePair = alreadyShallow && baseline.threats.length === 2 && baseline.threats.some(value => value.name === 'minecraft:creeper') && baseline.threats.some(value => value.name === 'minecraft:zombie')
-            const drownedWaterEscape = alreadyShallow && (rt.unarmedCreeperDrowned(initial, baseline.threats) || rt.unarmedWaterDrowned(initial, baseline.threats))
-            const mixedWaterEscape = soloZombie || drownedWaterEscape || rt.isUnarmedCreeperZombie(initial, baseline.threats, { creeperMinimum: singleShallow || closeZombiePair ? 4 : alreadyShallow ? 5 : 5.5, zombieMinimum: closeZombiePair ? 9 : 9.5, allowSingle: singleShallow, allowCloseZombie: closeZombiePair })
-            diagnostics.waterContext = { alreadyShallow, singleShallow, closeZombiePair, mixedWaterEscape, lowHealthSurface, threatCount: baseline.threats.length }
-            const waterCreeperEyeFloor = immediateShallowPair ? 3.5 : tightShallowPair ? 4.75 : mixedWaterEscape && (singleShallow || closeZombiePair) ? 3.5 : mixedWaterEscape && alreadyShallow ? 5 : 5.5
-            const waterCreeperHorizontalFloor = boundaryShallowPair ? 3.25 : immediateShallowPair ? 3.5 : tightShallowPair ? 4.5 : mixedWaterEscape && (singleShallow || closeZombiePair) ? 3.5 : mixedWaterEscape && alreadyShallow ? 5 : 5.5
-            const waterThreatAllowed = value => value.name === 'minecraft:creeper' && value.dangerRadius === 8 && value.distance >= waterCreeperEyeFloor || mixedWaterEscape && value.name === 'minecraft:zombie' && value.distance >= (closeZombiePair || soloZombie ? 9 : 9.5) || mixedWaterEscape && value.name === 'minecraft:spider' && value.distance >= 11.25 || drownedWaterEscape && value.name === 'minecraft:drowned' && value.distance >= 10.75
-            if ((!lastRejected || lowHealthSurface) && (initial.health === 20 || lowHealthSurface) && baseline.threats.length >= 1 && (lowHealthSurface || baseline.threats.length <= (alreadyShallow ? 2 : 1) || mixedWaterEscape) && baseline.threats.every(value => (lowHealthSurface || waterThreatAllowed(value)) && ids.get(value.runtimeId)?.uniqueId != null) && initial.inventory?.known === true && !initial.inventory.uncertain) {
-              const waterObserved = safetyState()
-              const current = assessEnemies(waterObserved)
-              const actor = current.threats.find(value => value.runtimeId === primary.runtimeId) ?? rt.selectConstrainedPrimary(current.threats, initial.health)
-              const actors = [...current.threats, ...current.outside]
-              const baselineActorsStillKnown = baseline.threats.every(previous => {
-                const observed = actors.find(value => value.runtimeId === previous.runtimeId)
-                const entity = waterObserved.entities.find(value => String(value.runtimeId ?? value.runtimeEntityId ?? value.entityId ?? value.id) === previous.runtimeId)
-                const known = ids.get(previous.runtimeId)
-                return observed && known?.uniqueId != null && String(entity?.uniqueId) === known.uniqueId && observed.name === previous.name && observed.dangerRadius <= previous.dangerRadius
-              })
-              if (actor && (lowHealthSurface || actor.distance >= waterCreeperEyeFloor) && baselineActorsStillKnown && current.threats.every(value => ids.has(value.runtimeId) && (lowHealthSurface || waterThreatAllowed(value))) && (!lowHealthSurface || rt.lowHealthSurfaceEligible(waterObserved, actors, rt.generationPhysics))) {
-                const circles = actors.map(value => {
-                  const entity = (lowHealthSurface ? waterObserved : initial).entities.find(item => String(item.runtimeId ?? item.runtimeEntityId ?? item.entityId ?? item.id) === value.runtimeId)
-                  if (lowHealthSurface) return { id: value.runtimeId, uniqueId: entity?.uniqueId == null ? null : String(entity.uniqueId), radius: value.dangerRadius, position: { ...value.position }, minDistance: ids.has(value.runtimeId) ? value.distance : value.dangerRadius, horizontalMinimum: null, padding: 0 }
-                  // Buoyancy changes eye height even while moving sideways.
-                  // Keep a separate, tighter horizontal floor so that a small
-                  // vertical bob cannot be mistaken for enemy approach.
-                  const mixedZombie = mixedWaterEscape && ids.has(value.runtimeId) && value.name === 'minecraft:zombie'
-                  const mixedSpider = mixedWaterEscape && ids.has(value.runtimeId) && value.name === 'minecraft:spider'
-                  const mixedDrowned = drownedWaterEscape && ids.has(value.runtimeId) && value.name === 'minecraft:drowned'
-                  const initialHorizontal = Math.hypot(value.position.x - origin.x, value.position.z - origin.z)
-                  const hardEye = mixedZombie ? 8.75 : mixedSpider ? 10.5 : mixedDrowned ? 10.25 : waterCreeperEyeFloor
-                  const hardHorizontal = mixedZombie ? 7.5 : mixedSpider ? 9.5 : mixedDrowned ? Math.max(0, initialHorizontal - 0.75) : waterCreeperHorizontalFloor
-                  // Vertical bob changes 3D separation without horizontal
-                  // approach. Drowned routes therefore use a fixed 3D floor
-                  // plus the independently checked outward horizontal path.
-                  const minimum = mixedZombie ? rt.unarmedZombieFloor(value) : mixedSpider ? rt.activeUnarmedSpiderFloor(value) : mixedDrowned ? hardEye : ids.has(value.runtimeId) ? alreadyShallow ? Math.max(hardEye, value.distance - 0.4) : value.distance : constrainedFloors.get(value.runtimeId) ?? value.dangerRadius
-                  return { id: value.runtimeId, uniqueId: entity?.uniqueId == null ? null : String(entity.uniqueId), radius: value.dangerRadius, position: { ...value.position }, minDistance: minimum, horizontalMinimum: ids.has(value.runtimeId) ? Math.max(hardHorizontal, initialHorizontal - (mixedDrowned ? 0.05 : mixedSpider ? 0.75 : immediateShallowPair ? 0.05 : alreadyShallow ? 0.35 : 0)) : null, hardEye, hardHorizontal, padding: 0 }
-                })
-                const surfaceY = alreadyShallow ? rt.generationPhysics.waterSurface(origin)?.surfaceY : Math.round(origin.y)
-                const initialVertical = (initial.predicted?.physicsState ?? initial.physicsState)?.velocity?.y
-                const mayBrieflySubmerge = alreadyShallow && initial.health === 20 && Number.isFinite(initialVertical) && initialVertical < 0 && initial.position.y - surfaceY < 0.5
-                const shallow = point => shallowWaterTerrain(point, surfaceY, { allowDeepSurface: alreadyShallow, allowBriefSubmerge: mayBrieflySubmerge }) && (!lowHealthSurface || rt.knownSurfaceBody(rt.generationPhysics, point, surfaceY))
-                if (circles.every(circle => circle.uniqueId != null && (circle.horizontalMinimum == null || Math.hypot(circle.position.x - origin.x, circle.position.z - origin.z) >= circle.horizontalMinimum)) && shallow(origin)) {
-                  const fastWater = alreadyShallow && mixedWaterEscape
-                  for (let phase = 0; phase < (fastWater ? 2 : 1); phase++) {
-                  const waterTargets = []
-                  function considerWaterTarget (target) {
-                    const length = Math.hypot(target.x - origin.x, target.z - origin.z)
-                    if (length < (lowHealthSurface ? 0.5 : mixedWaterEscape && alreadyShallow ? 0.5 : immediateShallowPair || mixedWaterEscape ? 1.5 : alreadyShallow ? 0.5 : 2) || length > (lowHealthSurface ? 1 : 4.5) || distance(actor.position, eye(target)) < actor.distance + (alreadyShallow ? 0.1 : 0.25) || circles.some(circle => distance(circle.position, eye(target)) < circle.minDistance - 1e-4) || drownedWaterEscape && current.threats.some(threat => threat.name === 'minecraft:drowned' && Math.hypot(threat.position.x - target.x, threat.position.z - target.z) < Math.hypot(threat.position.x - origin.x, threat.position.z - origin.z) + 0.25) || !shallow(target)) return
-                    let medium
-                    try {
-                      const below = rt.generationPhysics.blockAt({ x: target.x, y: surfaceY - 1, z: target.z })
-                      medium = ['water', 'flowing_water'].includes(below.name) ? 'water' : allowBank && rt.generationPhysics.hasSupport(target) ? 'land' : null
-                      if (!medium) return
-                    } catch { return }
-                    waterTargets.push({ target, length, medium })
-                  }
-                  if (lowHealthSurface) {
-                    let enumerationMark = surfaceMark()
-                    for (let heading = 0; heading < 32; heading++) {
-                      if (heading % 8 === 0) { if (heading) surfaceRecord('enumerationSlice', enumerationMark); await yieldPlanning(); enumerationMark = surfaceMark() }
-                      const theta = heading * Math.PI / 16
-                      for (const length of [1, 0.75]) considerWaterTarget({ x: origin.x + Math.cos(theta) * length, y: surfaceY, z: origin.z + Math.sin(theta) * length })
-                    }
-                    surfaceRecord('enumerationSlice', enumerationMark)
-                  } else if (fastWater && phase === 0) {
-                    const direction = { x: 0, z: 0 }
-                    for (const threat of current.threats) {
-                      const dx = origin.x - threat.position.x; const dz = origin.z - threat.position.z; const h = Math.hypot(dx, dz)
-                      if (!(h > 0)) continue
-                      const weight = threat.runtimeId === actor.runtimeId ? 1 : 0.4
-                      direction.x += weight * dx / h; direction.z += weight * dz / h
-                    }
-                    const angle = Math.atan2(direction.z, direction.x)
-                    for (const offset of [0, -Math.PI / 8, Math.PI / 8, -Math.PI / 4, Math.PI / 4]) for (const length of [0.75, 1, 1.5, 1.75, 2.5, 3.25]) {
-                      considerWaterTarget({ x: Math.round((origin.x + Math.cos(angle + offset) * length) * 4) / 4, y: surfaceY, z: Math.round((origin.z + Math.sin(angle + offset) * length) * 4) / 4 })
-                    }
-                    // A remembered shore is a direction only. Add headings
-                    // toward it, then run the same known-terrain and actor
-                    // checks used for every other candidate.
-                    if (rt.shoreScore(initial, origin, origin)) for (let heading = 0; heading < 16; heading++) for (const length of [0.75, 1.5, 2.5, 3.25]) {
-                      const theta = heading * Math.PI / 8
-                      considerWaterTarget({ x: Math.round((origin.x + Math.cos(theta) * length) * 4) / 4, y: surfaceY, z: Math.round((origin.z + Math.sin(theta) * length) * 4) / 4 })
-                    }
-                  } else {
-                    let checkedWaterTargets = 0
-                    for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) for (const ox of (alreadyShallow ? [0.25, 0.5, 0.75] : [0.5])) for (const oz of (alreadyShallow ? [0.25, 0.5, 0.75] : [0.5])) {
-                      if (++checkedWaterTargets % 64 === 0) { await new Promise(resolve => setImmediate(resolve)); ensure() }
-                      considerWaterTarget({ x: Math.floor(origin.x) + dx + ox, y: surfaceY, z: Math.floor(origin.z) + dz + oz })
-                    }
-                  }
-                  const rankingMark = surfaceMark()
-                  // An observed dry bank can end the slow water pursuit.
-                  // It is still subjected to the same full trajectory, body,
-                  // known terrain and hostile-distance checks as water.
-                  if ((singleShallow || closeZombiePair) && mixedWaterEscape) {
-                    // A nearby pursuer can make a bank-seeking sideways step
-                    // unsafe before it pays off. Prefer headings that point
-                    // away from the observed creeper; retain bank preference
-                    // only for routes with the same outward alignment.
-                    const dx = origin.x - actor.position.x; const dz = origin.z - actor.position.z
-                    const alignment = candidate => ((candidate.target.x - origin.x) * dx + (candidate.target.z - origin.z) * dz) / candidate.length
-                    waterTargets.sort((a, b) => alignment(b) - alignment(a) || Number(b.medium === 'land') - Number(a.medium === 'land') || a.length - b.length)
-                  } else waterTargets.sort((a, b) => Number(b.medium === 'land') - Number(a.medium === 'land') || a.length - b.length)
-                  if (rt.shoreScore(initial, origin, origin)) {
-                    for (const candidate of waterTargets) candidate.shoreProgress = rt.shoreScore(initial, origin, candidate.target)?.progress ?? -Infinity
-                    waterTargets.sort((a, b) => b.shoreProgress - a.shoreProgress || Number(b.medium === 'land') - Number(a.medium === 'land') || a.length - b.length)
-                  }
-                  if (lowHealthSurface) waterTargets.sort((a, b) => Math.min(...current.threats.map(value => distance(value.position, eye(b.target)) - value.distance)) - Math.min(...current.threats.map(value => distance(value.position, eye(a.target)) - value.distance)))
-                  if (lowHealthSurface) surfaceRecord('ranking', rankingMark)
-                  diagnostics.waterTargetCount = (diagnostics.waterTargetCount ?? 0) + waterTargets.length
-                  for (const candidate of waterTargets.slice(0, alreadyShallow ? 24 : 12)) {
-                    if (lowHealthSurface) await yieldPlanning()
-                    else { await new Promise(resolve => setImmediate(resolve)); ensure() }
-                    rt.motionOrigin = rt.working()
-                    const options = { emergency: true, allowWater: true, directSurface: candidate.medium === 'water', exactGoal: true, maxDistance: lowHealthSurface ? 2 : 6, maxExpanded: lowHealthSurface ? 32 : 1500, maxTicks: lowHealthSurface ? 40 : 80, avoidance: circles.map(({ id, position, minDistance, padding }) => ({ id, position, minDistance, padding })) }
-                    if (candidate.medium === 'water') {
-                      options.continueAfterReplay = true
-                      options.beforeInput = frame => {
-                        const observed = ensure()
-                        inspect({ ...observed, position: { ...frame.packetPosition }, predicted: { ...observed.predicted, position: { ...frame.packetPosition }, physicsState: structuredClone(frame.predictedState) }, physicsState: structuredClone(frame.predictedState) })
-                        if (signal.aborted) throw signal.reason ?? new Error('Shallow escape frame is no longer safe')
-                      }
-                    }
-                    if (lowHealthSurface) lowHealthSurfaceDiagnostic.previews++
-                    const preview = lowHealthSurface ? surfaceTimed('preview', () => rt.generationMovement.preview(candidate.target, options)) : rt.generationMovement.preview(candidate.target, options)
-                    if (!preview.ready || !preview.waypoints?.length || preview.waypoints.at(-1).medium !== candidate.medium) { if (lowHealthSurface) lowHealthSurfaceDiagnostic.reason = preview.reason ?? 'surface_preview_rejected'; continue }
-                    let trace; let complete = false
-                    try {
-                      if (lowHealthSurface) {
-                        // Preserve neutral input while yielding, then use the already
-                        // freshly checked pose instead of repeating a full actor read.
-                        const proofState = await yieldPlanning()
-                        const navigator = rt.createNavigator({ world: rt.planningWorld, version: rt.host.meta.version, allowWater: true, physics: rt.generationPhysics })
-                        const proof = surfaceTimed('nativeProof', () => rt.proveLowHealthSurfaceRoute({ navigator, initial: navigator.physics.fromServer(proofState), preview, circles, surfaceY, shallow }))
-                        if (!proof.ready) { lowHealthSurfaceDiagnostic.reason = proof.reason; continue }
-                        lowHealthSurfaceDiagnostic.ready++; lowHealthSurfaceDiagnostic.reason = 'native_surface_proven'; lowHealthSurfaceDiagnostic.ticks = proof.ticks
-                        trace = proof.trace; complete = true
-                      } else if (preview.directSurface === true && candidate.medium === 'water' && Array.isArray(preview.predictedTrace) && preview.predictedTrace.length >= 3 && preview.predictedTrace.length <= 81 && distance(preview.predictedTrace[0], origin) <= 0.05) {
-                        trace = preview.predictedTrace.map(point => ({ ...point }))
-                        complete = trace.every((next, index) => shallow(next) && (!index || circles.every(circle => !(circle.horizontalMinimum != null && segmentDistance({ ...circle.position, y: 0 }, { ...trace[index - 1], y: 0 }, { ...next, y: 0 }) < circle.horizontalMinimum) && segmentDistance(circle.position, eye(trace[index - 1]), eye(next)) >= circle.minDistance - 1e-4)))
-                      } else {
-                        // The shared water physics already reads the same live
-                        // block geometry; the planning overlay only adds
-                        // protection metadata, which physics does not use.
-                        // Rebuilding the registry for every candidate can let
-                        // a nearby pursuer close before movement starts.
-                        const navigator = rt.createNavigator({ world: rt.planningWorld, version: rt.host.meta.version, allowWater: true, physics: rt.generationPhysics })
-                        const stepper = navigator.createStepper(preview, navigator.physics.fromServer(safetyState()), { maxTicks: 80, sprint: false })
-                        trace = [origin]; let submergedTicks = 0
-                        for (let tick = 0; tick < 80; tick++) {
-                          const frame = stepper.next(); const next = frame.predictedState.position; const previous = trace.at(-1)
-                          submergedTicks = eye(next).y < surfaceY + 0.02 ? submergedTicks + 1 : 0
-                          const blocked = circles.find(circle => circle.horizontalMinimum != null && segmentDistance({ ...circle.position, y: 0 }, { ...previous, y: 0 }, { ...next, y: 0 }) < circle.horizontalMinimum || segmentDistance(circle.position, eye(previous), eye(next)) < circle.minDistance - 1e-4)
-                          if (frame.predictedState.isInLava || submergedTicks > 10 || !shallow(next) || blocked) {
-                            diagnostics.waterTraceRejection = { reason: frame.predictedState.isInLava ? 'lava' : blocked ? 'actor' : 'terrain', actorId: blocked?.id ?? null, tick, floor: blocked?.minDistance ?? null, initialDistance: blocked ? distance(blocked.position, eye(origin)) : null, position: { ...next }, surfaceY }
-                            break
-                          }
-                          trace.push({ ...next })
-                          if (frame.phase === 'awaiting_server_confirmation') { complete = candidate.medium === 'water' ? frame.predictedState.isInWater === true : frame.predictedState.onGround === true && frame.predictedState.isInWater !== true && rt.generationPhysics.hasSupport(next); break }
-                          if (frame.phase !== 'moving') break
-                        }
-                      }
-                    } catch { continue }
-                    if (!complete || trace.length < 3 || distance(actor.position, eye(trace.at(-1))) < actor.distance + (alreadyShallow ? 0.1 : 0.25) || drownedWaterEscape && current.threats.some(threat => threat.name === 'minecraft:drowned' && Math.hypot(threat.position.x - trace.at(-1).x, threat.position.z - trace.at(-1).z) < Math.hypot(threat.position.x - origin.x, threat.position.z - origin.z) + 0.25) || alreadyShallow && Math.hypot(actor.position.x - trace.at(-1).x, actor.position.z - trace.at(-1).z) < Math.hypot(actor.position.x - origin.x, actor.position.z - origin.z) + 0.2) continue
-                    lowHealthSurfaceRun = lowHealthSurface; lowHealthSurfaceOrigin = { ...origin }; dropTrace = trace; dropCircles = circles; dropTraceIndex = 0; shallowWaterCheck = shallow; shallowSurfaceY = surfaceY; shallowWaterRun = true; briefSubmerge = mayBrieflySubmerge; submergedSince = null; surfaceTimed('finalEnsure', ensure)
-                    const stopWater = () => { if (safetyCurrent()) rt.routeMovement.stop('Shallow escape interrupted') }
-                    signal.addEventListener('abort', stopWater, { once: true }); emergencyDropOp = context.operationId
-                    try {
-                      if (lowHealthSurface) { if (episodeMovementStarts >= 5) return { supported: false, reason: 'no_known_away_route', movementStarts: episodeMovementStarts }; episodeMovementStarts++; fence.starts = episodeMovementStarts; lowHealthSurfaceDiagnostic.attempts++; lowHealthSurfaceDiagnostic.reason = 'surface_start'; lowHealthSurfaceDiagnostic.target = { ...candidate.target } }
-                      surfaceTimed('senderStart', () => rt.routeMovement.start(candidate.target, options))
-                      while (true) {
-                        await rt.delay(50, undefined, { signal }); ensure()
-                        const state = safetyState(); const motion = rt.generationMovement.snapshot()
-                        if (motion.phase === 'replan_required') return { supported: true, arrived: false, escaped: false, code: 'SHALLOW_CORRECTION_REPLAN', reason: 'no_known_away_route', serverConfirmed: false }
-                        if (motion.phase === 'stopped' && motion.reason === 'サーバーから速度の変更を受信したため再計画します。') return { supported: true, arrived: false, escaped: false, code: 'SHALLOW_MOTION_REPLAN', reason: 'no_known_away_route', serverConfirmed: false }
-                        if (['failed', 'stopped'].includes(motion.phase)) return { supported: true, arrived: false, escaped: false, code: motion.phase === 'failed' ? 'SHALLOW_MOVEMENT_FAILED' : 'SHALLOW_MOVEMENT_STOPPED', reason: 'no_known_away_route', partialFailure: typeof motion.reason === 'string' ? motion.reason.slice(0, 200) : null }
-                        if (['awaiting_server_confirmation', 'completed', 'idle'].includes(motion.phase)) {
-                          const after = assessEnemies(state)
-                          const safeSurface = candidate.medium === 'water' ? shallowWaterTerrain(feet(state), surfaceY, { allowDeepSurface: true }) && (lowHealthSurface ? rt.knownSurfaceBody(rt.generationPhysics, feet(state), surfaceY) : (state.predicted?.physicsState ?? state.physicsState)?.isInWater === true) : await rt.verifyRouteStanding(state, candidate.target, { signal })
-                          return { supported: true, ...(lowHealthSurface ? { lowHealthSurface: true, movementStarts: episodeMovementStarts } : {}), arrived: safeSurface, escaped: safeSurface && after.threats.length === 0 && !after.requiresObservation, partialEscape: safeSurface && !after.requiresObservation && after.threats.length > 0 && after.threats.every(value => ids.has(value.runtimeId)), serverConfirmed: false }
-                        }
-                      }
-                    } finally {
-                      signal.removeEventListener('abort', stopWater)
-                      if (emergencyDropOp === context.operationId) emergencyDropOp = null
-                      if (safetyCurrent()) rt.routeMovement.stop('Shallow escape finished')
-                      dropTrace = null; dropCircles = null; shallowWaterRun = false; shallowWaterCheck = null; shallowSurfaceY = null; briefSubmerge = false; submergedSince = null; lowHealthSurfaceRun = false; lowHealthSurfaceOrigin = null
-                    }
-                  }
-                  }
-                }
-              }
-            }
-            if (lastRejected) return { ...lastRejected, supported: true, escaped: false, partialEscape: false, safe: false, diagnostics }
-            if (lastBoundedPartial) return { ...lastBoundedPartial, movementStarts: episodeMovementStarts, diagnostics }
-            if (boundedJumpAttempted) return { supported: true, arrived: false, escaped: false, partialEscape: false, code: 'NO_SAFE_RETREAT', reason: 'no_known_away_route', movementStarts: episodeMovementStarts, safe: false, diagnostics }
-            // Keep the original deadline and live guards active while a partial origin recenters.
-            if (partialOrigin && episodeMovementStarts === 0 && partialEscapeAction && Date.now() < deadline) {
-              return await partialEscapeAction({ ...context, signal })
-            }
-            return { supported: false, reason: 'no_known_away_route', diagnostics }
+            const tryDetourResult = await tryDetour(rt, vars2)
+            if (tryDetourResult && 'value' in tryDetourResult) return tryDetourResult.value
+            const trySurfaceRetreatResult = await trySurfaceRetreat(rt, vars2)
+            if (trySurfaceRetreatResult && 'value' in trySurfaceRetreatResult) return trySurfaceRetreatResult.value
             }
           } catch (error) {
             if (pendingReplan && controller.signal.reason === pendingReplan.error && !context.signal?.aborted) {

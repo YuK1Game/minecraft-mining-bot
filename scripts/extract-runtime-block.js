@@ -117,7 +117,7 @@ const moduleText = [
   `function ${factory} (rt) {`,
   splice(text.slice(from, to), from, inner).replace(/(\r?\n)+$/, ''),
   '  return {',
-  ...back.map(([name, kind], i) => `    ${kind === 'function' ? name : `get ${name} () { return ${name} }${kind === 'assigned' ? `, set ${name} (value) { ${name} = value }` : ''}`}${i < back.length - 1 ? ',' : ''}`),
+  ...back.map(([name, kind], i) => `    ${kind === 'function' ? name : `get ${name} () { return ${name} }${kind === 'assigned' ? `, set ${name} ($value) { ${name} = $value }` : ''}`}${i < back.length - 1 ? ',' : ''}`),
   '  }', '}', '',
   `module.exports = { ${factory} }`, ''
 ].join(nl)
@@ -126,7 +126,7 @@ const wiring = [
   `${pad}// this closure through accessors, so each use sees the current value exactly`,
   `${pad}// as the code did when it was written here.`,
   `${pad}const ${instance} = require('./${subdirectory ? subdirectory + '/' : ''}${moduleName}').${factory}({`,
-  ...names.map(([name, entry]) => `${pad}  get ${name} () { return ${name} },${entry.write ? ` set ${name} (value) { ${name} = value },` : ''}`).map((line, i, all) => i === all.length - 1 ? line.replace(/,$/, '') : line),
+  ...names.map(([name, entry]) => `${pad}  get ${name} () { return ${name} },${entry.write ? ` set ${name} ($value) { ${name} = $value },` : ''}`).map((line, i, all) => i === all.length - 1 ? line.replace(/,$/, '') : line),
   `${pad}})`,
   ...back.filter(([, kind]) => kind === 'function').map(([name]) => `${pad}function ${name} (...args) { return ${instance}.${name}(...args) }`), ''
 ].join(nl)
