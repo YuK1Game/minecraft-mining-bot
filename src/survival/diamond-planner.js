@@ -52,7 +52,7 @@ function bulkToolState (item) {
 // Decisions only: every expense, placement, dig and furnace transfer must be
 // revalidated and confirmed by the connection-owned executor. Subgoal completion
 // never substitutes for observing actual diamonds in the server inventory.
-const FAR_TABLE = 24
+const FAR_STATION = 24
 function nextDiamondAction (state, observations = {}, options = {}) {
   state = state ?? {}
   const goalCount = Number.isSafeInteger(options.diamondCount) && options.diamondCount > 0 ? options.diamondCount : 1
@@ -188,10 +188,12 @@ function nextDiamondAction (state, observations = {}, options = {}) {
     const knownContents = place => kind === 'furnace' && furnace.window && ['furnace', 2].includes(furnace.window.type) && integer(furnace.window.coordinates) && key(furnace.window.coordinates) === key(place.position) && furnace.contentsKnown === true && furnace.inventoryUncertain !== true
     const openWindow = place => knownContents(place) && furnace.needsOpen !== true
     const activeWork = place => kind === 'furnace' && (nameOf(place.name) === 'lit_furnace' || knownContents(place) && (furnace.slots ?? []).some(slot => slot?.known === true && slot.count > 0 && ['raw_iron', 'iron_ore', 'deepslate_iron_ore', 'iron_ingot'].includes(nameOf(slot.name))))
-    // A table far from here (the surface table while working deep underground)
-    // is not walked back to when a new one can be made from held wood.
-    const spare = kind === 'table' && (counts.planks >= 4 || items.some(item => amount(item.count) && (nameOf(item.name) === 'crafting_table' || isLog(nameOf(item.name)))))
-    const near = block => !spare || distance(state.position, block.position) <= FAR_TABLE
+    // A station far from here (the surface table or furnace while working deep
+    // underground) is not walked back to when a new one can be made from what
+    // is held. A furnace with iron work in it is never abandoned.
+    const holds = name => items.some(item => amount(item.count) && nameOf(item.name) === name)
+    const spare = kind === 'table' ? counts.planks >= 4 || holds('crafting_table') || items.some(item => amount(item.count) && isLog(nameOf(item.name))) : holds('furnace') || counts.stone >= 8
+    const near = block => !spare || activeWork(block) || distance(state.position, block.position) <= FAR_STATION
     const seen = new Set()
     for (const block of candidates.filter(near).sort((a, b) => Number(activeWork(b)) - Number(activeWork(a)) || distance(state.position, a.position) - distance(state.position, b.position))) {
       if (seen.has(key(block.position))) continue
