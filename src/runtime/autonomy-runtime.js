@@ -243,6 +243,8 @@ function createAutonomyRuntime (rt) {
       return null
     },
     planAction: (state, observations, options) => {
+      // Player mode: drops that cannot be picked up are not offered to the plan.
+      { const drops = rt.require('./modes/player-drops'), shared = rt.host.shared; drops.noteFailedDrops({ mode: shared.botMode, shared, progress: shared.autonomyProgress, drops: observations?.drops }); observations = drops.withCollectableDrops({ mode: shared.botMode, shared, state, observations, getBlock: (x, y, z) => rt.planningWorld.getBlock(x, y, z), log: text => rt.host.log(text) }) }
       // Long-trip preparation (2026-11-14 decision): the base wood path (logs,
       // planks, table, wooden pickaxe) instead of the survival/diamond plans.
       if (options?.allowLogs === true) return rt.require('./survival/planner').nextBootstrapAction(state, observations, options)
