@@ -94,13 +94,13 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   // with a sword in hand, 「適切なツルハシの装備を確認できません」).
   async function pick () {
     const picks = () => (getInventory()?.items ?? []).filter(item => /_pickaxe$/.test(item?.name ?? '') && item.count > 0 && item.durabilityKnown === true && item.durabilityRemaining > 2).sort((a, b) => b.durabilityRemaining - a.durabilityRemaining)
-    let item = picks()[0]
+    const item = picks()[0]
     if (!item) return false
-    try {
-      if (item.slot > 8) { await operations.inventory.equip(item.slot); item = picks().find(found => found.slot <= 8) }
-      if (!item) return false
-      await operations.interactions.equip(item.slot)
-    } catch (error) { return refused(error) }
+    // Through the inventory, into the slot the server has selected: a hotbar
+    // selection alone is not confirmed by this server, and the mining check
+    // then reads the old hand (real Realm 07:01 JST: refused with the wooden
+    // pickaxe selected).
+    try { if ((await operations.inventory.equip(item.slot))?.phase !== 'completed') return false } catch (error) { return refused(error) }
     await sleep(250)
     return true
   }
