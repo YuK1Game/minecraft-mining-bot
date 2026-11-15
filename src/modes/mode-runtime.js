@@ -16,6 +16,7 @@ const { createScaffoldPorts } = require('./player-scaffold-ports')
 const { climbOut } = require('./player-climb')
 const { createPlayerTorch } = require('./player-torch')
 const { createTorchPorts } = require('./player-torch-ports')
+const { nextObjective } = require('./player-goal')
 const { playFile, createPlayerResume } = require('./player-resume')
 
 function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
@@ -28,8 +29,17 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // The modes start and stop the autonomy through these. Anyone else (the /stop
   // and /agent commands, the local API) goes through operations.agent, where a
   // stop also means "the player stops playing".
-  const inner = operations.agent, agent = { start: options => { if (flee.status().active) throw Error('敵から離れている間は始めません。'); return inner.start(options) }, stop: reason => inner.stop(reason) }
-  operations.agent = { ...inner, start: options => { if (control.get() === 'player') shared.playerWanted = true; return inner.start(options) }, stop: reason => { shared.playerWanted = false; recovery.cancel(); return inner.stop(reason) } }
+  const inner = operations.agent, agent = { start: options => { if (flee.status().active) throw Error('敵から離れている間は始めません。'); return inner.start(aimed(options)) }, stop: reason => inner.stop(reason) }
+  // In player mode every start plays for the next goal (player-goal.js).
+  let aim = null
+  const aimed = options => {
+    if (control.get() !== 'player') return options
+    const next = nextObjective(options, shared.inventoryUncertain ? null : runtime.raw().inventory)
+    if (next?.diamondCount > 1 && next.diamondCount !== aim) log(`プレイヤーモード: 次の目標はダイヤモンド ${next.diamondCount} 個です`)
+    aim = next?.diamondCount ?? aim
+    return next
+  }
+  operations.agent = { ...inner, start: options => { if (control.get() === 'player') shared.playerWanted = true; return inner.start(aimed(options)) }, stop: reason => { shared.playerWanted = false; recovery.cancel(); return inner.stop(reason) } }
   const agentStatus = () => runtime.autonomy()?.snapshot() ?? { running: false }
   const disposed = () => runtime.disposed?.() === true
   const idle = () => { const value = agentStatus(); return value.running !== true && value.busy !== true && value.actionActive !== true }
