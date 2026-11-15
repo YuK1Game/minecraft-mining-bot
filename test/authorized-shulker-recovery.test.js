@@ -213,7 +213,7 @@ test('runtime accepts only authorized directory IDs, rejects stale loads during 
   const idleGuard=runtime.split('\n').find(line=>line.includes('if (!ownedCall && manualShulkerTask)'))
   assert.ok(idleGuard)
   const moduleBody=excerpt('  function manualShulkerFile (id)', '  function getManualShulkerRecovery')
-  const run=excerpt('  function runManualShulkerRecovery ()', '  // This part lives in quarry-runtime.js.')
+  const run=excerpt('  function runManualShulkerRecovery ()', '  function quarryDir ()')
   const group=excerpt('    shulkerRecovery: {','    quarry: {')
   const ops=Function('require','__dirname','controller',`
     let manualShulkerDocument=null,manualShulkerTask=null,manualShulkerAbort=null,manualShulkerMiningSerial=null,manualShulkerLoadSequence=0,quarryPorts={}
