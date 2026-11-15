@@ -4,7 +4,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
 const { setTimeout: delay, setImmediate: turn } = require('node:timers/promises')
-const { createAutonomy } = require('../src/autonomy')
+const { createAutonomy } = require('../src/survival/autonomy')
 
 function deferred () { let resolve; const promise = new Promise(yes => { resolve = yes }); return { promise, resolve } }
 async function until (condition) { for (let i = 0; i < 100 && !condition(); i++) await delay(1); assert.ok(condition(), 'bounded fixture condition') }
@@ -13,8 +13,8 @@ function scene (t) {
   const filename = require.resolve('./runtime-user-behaviors.test.js')
   let source = fs.readFileSync(filename, 'utf8').split("test('staged Runtime constructs")[0]
   source = source.replace(/  const mockAutonomy = .*\n/, '  let mockAutonomy\n')
-  const old = "'./autonomy': { ...actualAutonomy, createAutonomy: options => { autonomyOptions = options; return mockAutonomy } }"
-  const changed = `'./autonomy': { ...actualAutonomy, createAutonomy: options => {
+  const old = "'./survival/autonomy': { ...actualAutonomy, createAutonomy: options => { autonomyOptions = options; return mockAutonomy } }"
+  const changed = `'./survival/autonomy': { ...actualAutonomy, createAutonomy: options => {
     autonomyOptions = options
     const actor = actualAutonomy.createAutonomy({ ...options, intervalMs: 60000,
       getState: () => { shared.testStateCalls = (shared.testStateCalls ?? 0) + 1; return shared.testStateGate?.promise ?? raw },

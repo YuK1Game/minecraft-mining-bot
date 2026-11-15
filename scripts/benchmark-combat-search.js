@@ -2,8 +2,8 @@
 
 // No connection, credentials or Minecraft account: exercise real route search
 // against a bounded synthetic voxel world and print diagnostic timings.
-const { createCombatSearchBudget } = require('../src/combat-search-budget')
-const { seekCells } = require('../src/threat-reachability')
+const { createCombatSearchBudget } = require('../src/combat/combat-search-budget')
+const { seekCells } = require('../src/combat/threat-reachability')
 const world = {
   revision: () => 1,
   getBlock: (x, y, z) => ({ known: true, name: y < 0 || x === 5 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y < 0 || x === 5 ? 'block' : 'empty', extra: [] })

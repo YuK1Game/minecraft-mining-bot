@@ -6,8 +6,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
-const { nextDiamondAction } = require('../src/diamond-planner')
-const { createTunneling } = require('../src/tunneling')
+const { nextDiamondAction } = require('../src/survival/diamond-planner')
+const { createTunneling } = require('../src/survival/tunneling')
 const captured = require('./fixtures/diamond390-route-alternatives.json')
 const copy = value => structuredClone(value)
 const key = point => `${point.x},${point.y},${point.z}`
@@ -16,9 +16,9 @@ const fixtureFile = path.join(__dirname, 'runtime-survival.test.js')
 let fixtureSource = fs.readFileSync(fixtureFile, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 fixtureSource = 'let hooks;\n' + fixtureSource
 fixtureSource = fixtureSource.replace('  const overrides = {', `  const overrides = {
-    './diamond-planner': { nextDiamondAction: (...args) => { hooks.plannerCalls.push(structuredClone(args)); return hooks.diamond(...args) } },
-    './survival-planner': { nextSurvivalAction: (...args) => hooks.survival(...args) },
-    './tunneling': { createTunneling: () => ({ preview: (decision, options) => { hooks.routeCalls.push({ decision: structuredClone(decision), options: structuredClone(options) }); return hooks.routePreview(decision, options) }, execute: () => { throw new Error('No tunneling action in passive planning tests') }, stop: async () => ({}), snapshot: () => ({ phase: 'idle', busy: false }) }) },`)
+    './survival/diamond-planner': { nextDiamondAction: (...args) => { hooks.plannerCalls.push(structuredClone(args)); return hooks.diamond(...args) } },
+    './survival/survival-planner': { nextSurvivalAction: (...args) => hooks.survival(...args) },
+    './survival/tunneling': { createTunneling: () => ({ preview: (decision, options) => { hooks.routeCalls.push({ decision: structuredClone(decision), options: structuredClone(options) }); return hooks.routePreview(decision, options) }, execute: () => { throw new Error('No tunneling action in passive planning tests') }, stop: async () => ({}), snapshot: () => ({ phase: 'idle', busy: false }) }) },`)
 const miningNeedle = 'const mining = { preview: () => ({ ready: true, targets: [] }),'
 assert.ok(fixtureSource.includes(miningNeedle))
 fixtureSource = fixtureSource.replace(miningNeedle, 'const mining = { preview: targets => { hooks.miningCalls.push(structuredClone(targets)); return hooks.miningPreview(targets) },')

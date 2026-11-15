@@ -1,10 +1,10 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path')
-const { supplyScope, readStationPages, currentStationPage, planSupplyReturn } = require('../src/supply-return')
-const { nextDiamondAction } = require('../src/diamond-planner')
-const { createPhysics } = require('../src/physics')
-const { createNavigator } = require('../src/navigation')
+const { supplyScope, readStationPages, currentStationPage, planSupplyReturn } = require('../src/survival/supply-return')
+const { nextDiamondAction } = require('../src/survival/diamond-planner')
+const { createPhysics } = require('../src/movement/physics')
+const { createNavigator } = require('../src/movement/navigation')
 const capture = require('./fixtures/stone-kit176-supply.json')
 const copy = v => structuredClone(v), key = p => `${p.x},${p.y},${p.z}`
 function scene () {
@@ -100,11 +100,11 @@ test('productive iron preparation with a currently observed open furnace ignores
   assert.notEqual(action.supplyReturn, true); assert.notEqual(action.supplyReturnRequested, true)
 })
 test('Runtime observation validates the prefix against Native and never invents a route or replaces local blocks', async () => {
-  const f = scene(), file = process.env.RUNTIME_TEST_SOURCE ?? path.join(__dirname, '../src/runtime.js'), source = fs.readFileSync(file, 'utf8')
+  const f = scene(), source = require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE)
   const start = source.indexOf('  async function observeStationSupplies ('), end = source.indexOf('  const autonomy = createAutonomy({', start)
   assert.ok(start >= 0 && end > start)
   const host = { shared: { deathRespawn: { deathId: 176 }, stations: capture.stations }, entities: { snapshot: () => [], stats: () => ({ unknownPositions: 0 }) }, meta: { version: '1.26.60' } }
-  const make = preview => Function('host', 'working', 'planningWorld', 'readCurrentTunnelFloors', 'idlePhysics', 'createNavigator', 'evaluateThreats', 'nextDiamondAction', 'supplyScope', 'tableMaterialShortfall', 'readStationPages', 'planSupplyReturn', 'updateStationCatalog', source.slice(start, end) + '; return observeStationSupplies')(host, () => copy(f.state), f.world, () => f.floors, { withWorld: () => ({ fromServer: state => state }) }, () => ({ physics: { fromServer: state => state }, plan: () => copy(preview) }), () => ({ threats: [], outsideDanger: [], unknownPositions: [], requiresObservation: false }), nextDiamondAction, supplyScope, require('../src/supply-return').tableMaterialShortfall, readStationPages, planSupplyReturn, require('../src/supply-return').updateStationCatalog)
+  const make = preview => Function('host', 'working', 'planningWorld', 'readCurrentTunnelFloors', 'idlePhysics', 'createNavigator', 'evaluateThreats', 'nextDiamondAction', 'supplyScope', 'tableMaterialShortfall', 'readStationPages', 'planSupplyReturn', 'updateStationCatalog', source.slice(start, end) + '; return observeStationSupplies')(host, () => copy(f.state), f.world, () => f.floors, { withWorld: () => ({ fromServer: state => state }) }, () => ({ physics: { fromServer: state => state }, plan: () => copy(preview) }), () => ({ threats: [], outsideDanger: [], unknownPositions: [], requiresObservation: false }), nextDiamondAction, supplyScope, require('../src/survival/supply-return').tableMaterialShortfall, readStationPages, planSupplyReturn, require('../src/survival/supply-return').updateStationCatalog)
   const result = await make(capture.nativePreview)(f.observations, { goal: { diamond: 1 } })
   assert.equal(result.supplyReturn.ready, true); assert.equal(result.blocks.length, 10000)
   assert.deepEqual(result.blocks, f.observations.blocks); assert.equal(result.stationPages.furnace.block.name, 'minecraft:air')

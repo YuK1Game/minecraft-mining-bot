@@ -3,7 +3,7 @@
 // received positions and distance left) and where the time goes.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createLongTravel } = require('../src/long-travel')
+const { createLongTravel } = require('../src/travel/long-travel')
 
 test('every pass is recorded and its time is split by category', async () => {
   const state = { phase: 'spawned', health: 20, position: { x: 0, y: 65.62, z: 0 } }

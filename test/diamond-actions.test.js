@@ -3,8 +3,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setTimeout: delay } = require('node:timers/promises')
-const { createDiamondActions } = require('../src/diamond-actions')
-const { createRunner } = require('../src/runner')
+const { createDiamondActions } = require('../src/survival/diamond-actions')
+const { createRunner } = require('../src/survival/runner')
 
 const position = { x: 2, y: 65, z: 0 }
 const blockKey = point => `${point.x},${point.y},${point.z}`

@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { planEmergencyLeaf } = require('../src/emergency-leaf')
+const { planEmergencyLeaf } = require('../src/safety/emergency-leaf')
 
 function fixture () {
   const observed = require('./fixtures/creeper-route-close.json')

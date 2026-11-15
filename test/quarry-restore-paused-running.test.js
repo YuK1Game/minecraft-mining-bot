@@ -5,7 +5,7 @@
 // the user paused, stopped or finished is not.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { selectPausedRunningCandidate, selectRecoveryCandidate } = require('../src/quarry-recovery')
+const { selectPausedRunningCandidate, selectRecoveryCandidate } = require('../src/quarry/quarry-recovery')
 
 const state = { profile: 'bot', realm: { id: '21225335' }, dimension: 'overworld' }
 const now = Date.parse('2026-11-14T03:00:00Z')

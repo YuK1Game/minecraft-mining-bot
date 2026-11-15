@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createRespawnSwim } = require('../src/respawn-swim')
+const { createRespawnSwim } = require('../src/host/respawn-swim')
 
 function fixture (override = () => null) {
   const point = { x: 0.5, y: 98.62, z: 0.5 }

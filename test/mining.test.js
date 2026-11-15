@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setTimeout } = require('node:timers/promises')
-const { createMining } = require('../src/mining')
+const { createMining } = require('../src/actions/mining')
 
 function fixture () {
   const state = { phase: 'spawned', dimension: 'overworld', gameMode: 'survival', position: { x: 0.5, y: 66.62, z: 0.5 }, health: 20, inventory: { known: true, items: [] }, selectedSlot: null, heldItem: null }

@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryEgressRuntime } = require('../src/quarry-egress-runtime')
+const { createQuarryEgressRuntime } = require('../src/quarry/exit/quarry-egress-runtime')
 
 function fixture ({ dirt = 10, mineConfirmed = true, poseConfirmed = true, stepFailure = null, oracle = null } = {}) {
   const blocks = new Map(), moves = [], mines = [], steps = [], checkpoints = []

@@ -4,7 +4,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
 const { setImmediate: turn, setTimeout: delay } = require('node:timers/promises')
-const loadout = require('../src/loadout-runtime-adapter')
+const loadout = require('../src/loadout/loadout-runtime-adapter')
 
 // Reuse the bounded Host scene, but compile the actual Runtime with only its
 // storage bridge and unrelated movement/behavior dependencies substituted.
@@ -50,16 +50,16 @@ function fixture (t) {
   }
   function finish () { busy = false; mutationPending = false; equipmentPending = false; drained.resolve() }
   const f = scene(t, { runtimeOverrides: {
-    './manual-chest-runtime-adapter': { createManualChestRuntime: options => { creations++; ports = options; return bridge } },
-    './quarry-job': { createQuarryJob: () => { quarryCreations++; throw new Error('Manual storage must not construct a quarry') } },
-    './loadout-runtime-adapter': { ...loadout, createRuntimeV22ChestReset: options => ({
+    './loadout/manual-chest-runtime-adapter': { createManualChestRuntime: options => { creations++; ports = options; return bridge } },
+    './quarry/quarry-job': { createQuarryJob: () => { quarryCreations++; throw new Error('Manual storage must not construct a quarry') } },
+    './loadout/loadout-runtime-adapter': { ...loadout, createRuntimeV22ChestReset: options => ({
       prepare: () => { options.assertIdle(); events.push(['resetPrepare']); return {} },
       start: () => { options.assertIdle(); events.push(['resetStart']); return {} },
       status: () => ({ busy: false }), cancel () {}, drain: async () => {}
     }) },
-    './armor': { createArmor: () => ({ preview: () => autoArmorReady,
+    './actions/armor': { createArmor: () => ({ preview: () => autoArmorReady,
       equipBest: async () => { armorCalls++; return [] }, preemptForCombat: () => events.push(['armorPreempt']), applyPacket () {}, snapshot: () => ({ busy: false }) }) },
-    './input': { createInput: () => ({ stats: () => ({ running: inputRunning, tick: '1000', sent: 0, target: null }),
+    './movement/input': { createInput: () => ({ stats: () => ({ running: inputRunning, tick: '1000', sent: 0, target: null }),
       start: () => { inputRunning = true; events.push(['inputStart']) }, stop: () => { inputRunning = false; events.push(['inputStop']) },
       release () {}, lookAt () {}, sendAction: () => events.push(['combatInput']), sendTransaction () {} }) }
   } })

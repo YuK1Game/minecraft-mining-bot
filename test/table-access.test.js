@@ -1,10 +1,10 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { planStationAccess, treeAccessScope } = require('../src/action-access')
-const { nextSurvivalAction } = require('../src/survival-planner')
-const { createInteractions } = require('../src/interactions')
-const { createRunner } = require('../src/runner')
+const { planStationAccess, treeAccessScope } = require('../src/actions/action-access')
+const { nextSurvivalAction } = require('../src/survival/survival-planner')
+const { createInteractions } = require('../src/actions/interactions')
+const { createRunner } = require('../src/survival/runner')
 const captured = require('./fixtures/station-access-forest.json')
 const copy = value => structuredClone(value)
 const table = { x: -41, y: 70, z: 21 }

@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createInputHistory } = require('../src/input-history')
+const { createInputHistory } = require('../src/movement/input-history')
 
 const scope = { profile: 'player', realmId: 'realm', dimension: 'overworld', connectionId: 'connection', startedAt: 'life', runtimeEntityId: '1', generation: 1 }
 const state = (x = 0) => ({ position: { x, y: 65, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, onGround: true, gameMode: 'survival', controls: {}, effects: {}, attributes: {}, isInWater: false, isInLava: false })
@@ -97,7 +97,7 @@ test('damage including later healing, scope and movement state changes invalidat
 })
 
 test('production dry physics replays queued controls from the exact authoritative post-tick pose', () => {
-  const { createPhysics } = require('../src/physics')
+  const { createPhysics } = require('../src/movement/physics')
   const world = { getBlock: (x, y, z) => ({ known: true, position: { x, y, z }, name: y < 65 ? 'minecraft:stone' : 'minecraft:air', properties: {}, boundingBox: y < 65 ? 'block' : 'empty', extra: [] }) }
   const physics = createPhysics({ world })
   const history = createInputHistory({ physics, now: () => 1000 })

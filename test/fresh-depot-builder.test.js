@@ -4,7 +4,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const file=path.join(__dirname,'depot-builder.test.js'),loaded=new Module(file,module)
 loaded.filename=file;loaded.paths=Module._nodeModulePaths(path.dirname(file))
 let prefix=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]
-prefix=prefix.replace("const {createDepotBuilder}=require('../src/depot-builder')","const {createFreshDepotBuilder:createDepotBuilder}=require('../src/fresh-depot-builder')")
+prefix=prefix.replace("const {createDepotBuilder}=require('../src/survival/depot-builder')","const {createFreshDepotBuilder:createDepotBuilder}=require('../src/survival/fresh-depot-builder')")
 prefix=prefix.replace("[299,'minecraft:iron_pickaxe']","[299,'minecraft:iron_pickaxe'],[3,'minecraft:dirt']")
 prefix=prefix.replace('raws.set(0,raw(4,64,42))','raws.set(0,raw(4,64,42));raws.set(5,raw(3,10,43))')
 loaded._compile(prefix+'\nmodule.exports={fixture};',file)

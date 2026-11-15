@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createAutonomy } = require('../src/autonomy')
+const { createAutonomy } = require('../src/survival/autonomy')
 
 function fixture (t, { type = 'break_block', action = () => ({ phase: 'completed' }), pending = true, changeOnRequest = () => {} } = {}) {
   const state = { phase: 'spawned', health: 20, profile: 'bot', realm: { id: '1' }, dimension: 'overworld', connectionId: 'one', runtimeEntityId: '1', position: { x: 0.5, y: 65.62, z: 0.5 }, inventory: { known: true, items: [] }, entities: [], idleProtection: { wanted: true, running: true, busy: false, phase: 'observing' } }

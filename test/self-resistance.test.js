@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { createSelfResistance, createSelfSlowFalling, createSelfEffectEvents } = require('../src/self-resistance')
+const { createSelfResistance, createSelfSlowFalling, createSelfEffectEvents } = require('../src/combat/self-resistance')
 
 function fixture () {
   let time = 1000

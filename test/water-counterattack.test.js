@@ -1,8 +1,8 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createNavigator } = require('../src/navigation')
-const { createWaterCounterattack } = require('../src/water-counterattack')
+const { createNavigator } = require('../src/movement/navigation')
+const { createWaterCounterattack } = require('../src/combat/water-counterattack')
 const observed = require('./fixtures/realm-water-counterattack.json')
 
 function fixture (changes = {}) {

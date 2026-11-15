@@ -3,9 +3,9 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setImmediate: nextTurn } = require('node:timers/promises')
-const { createFood } = require('../src/food')
-const { createInventory } = require('../src/inventory')
-const { createCrafting } = require('../src/crafting')
+const { createFood } = require('../src/actions/food')
+const { createInventory } = require('../src/inventory/inventory')
+const { createCrafting } = require('../src/actions/crafting')
 
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })
 const item = (networkId, count, stackId) => ({ ...air(), network_id: networkId, count, has_stack_id: true, stack_id: stackId })

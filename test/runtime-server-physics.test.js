@@ -11,7 +11,7 @@ const { createRuntime } = (() => {
   loaded._compile(fs.readFileSync(path.resolve(process.env.RUNTIME_TEST_SOURCE), 'utf8'), filename)
   return loaded.exports
 })()
-const { createSessionCache } = require('../src/session-cache')
+const { createSessionCache } = require('../src/host/session-cache')
 
 const empty = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })
 function fixture (t) {

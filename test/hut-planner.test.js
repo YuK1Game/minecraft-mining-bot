@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createHutPlanner, planHut } = require('../src/hut-planner')
+const { createHutPlanner, planHut } = require('../src/survival/hut-planner')
 
 const key = point => `${point.x},${point.y},${point.z}`
 const block = name => ({ known: true, name: `minecraft:${name}`, boundingBox: name === 'air' ? 'empty' : 'block', runtimeId: name === 'air' ? 0 : 1, extra: [] })

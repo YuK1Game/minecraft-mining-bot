@@ -2,10 +2,10 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createInventoryStore } = require('../src/inventory-store')
-const { createInventoryInspection } = require('../src/inventory-inspection')
-const { createCrafting } = require('../src/crafting')
-const { createArmor } = require('../src/armor')
+const { createInventoryStore } = require('../src/inventory/inventory-store')
+const { createInventoryInspection } = require('../src/inventory/inventory-inspection')
+const { createCrafting } = require('../src/actions/crafting')
+const { createArmor } = require('../src/actions/armor')
 
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: false, can_place_on: [], can_destroy: [] } })
 const item = (id, count = 1, stack = id + 1000) => ({ ...air(), network_id: id, count, has_stack_id: true, stack_id: stack })

@@ -1,8 +1,8 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryJob } = require('../src/quarry-job')
-const { createQuarryEgressRuntime } = require('../src/quarry-egress-runtime')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
+const { createQuarryEgressRuntime } = require('../src/quarry/exit/quarry-egress-runtime')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
 // Controller integration with explicit simulated server receipts. This does

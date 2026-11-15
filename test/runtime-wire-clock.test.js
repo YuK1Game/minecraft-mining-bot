@@ -1,10 +1,10 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path')
-const { createInput } = require('../src/input')
-const { createMovement } = require('../src/movement')
-const { createInputHistory } = require('../src/input-history')
-const { createPhysics } = require('../src/physics')
+const { createInput } = require('../src/movement/input')
+const { createMovement } = require('../src/movement/movement')
+const { createInputHistory } = require('../src/movement/input-history')
+const { createPhysics } = require('../src/movement/physics')
 function factories () {
   const text = fs.readFileSync(path.resolve(__dirname, '../src/runtime.js'), 'utf8')
   const start = text.indexOf('function queuedWireConnection ('), end = text.indexOf('function createRuntime (host)', start)
@@ -14,7 +14,7 @@ function factories () {
   return factory
 }
 function hostQueue (client) {
-  const text = fs.readFileSync(path.resolve(__dirname, '../src/host.js'), 'utf8'), start = text.indexOf('  const connection = { queue (name, packet) {'), end = text.indexOf('  const respawnTerrainHandoff', start)
+  const text = fs.readFileSync(path.resolve(__dirname, '../src/host/host.js'), 'utf8'), start = text.indexOf('  const connection = { queue (name, packet) {'), end = text.indexOf('  const respawnTerrainHandoff', start)
   return new Function('client', `let stopping = false, lastInputTick = -1n;\n${text.slice(start, end)}\nreturn { client: connection, lastTick: () => lastInputTick }`)(client)
 }
 const state = () => ({ connectionId: 'connection', startedAt: '2026-11-01T00:00:00Z', runtimeEntityId: '1', dimension: 'overworld', lifecycle: { deathId: 0 }, phase: 'spawned', gameMode: 'survival', health: 12, position: { x: .5, y: 66.62, z: .5 }, rotation: { yaw: -90, pitch: 0 } })

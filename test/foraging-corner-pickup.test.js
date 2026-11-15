@@ -1,10 +1,10 @@
 'use strict'
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
 const fixture=require('./fixtures/foraging-received-corner-drops.json')
-function probe (blocks,source=fs.readFileSync(path.resolve(__dirname,'../src/foraging.js'),'utf8')) {
+function probe (blocks,source=fs.readFileSync(path.resolve(__dirname,'../src/survival/foraging.js'),'utf8')) {
  const needle='return { preview, execute, stop, snapshot }'
  assert.equal(source.split(needle).length,2,'Private test probe must match one controller return')
- const filename=path.resolve(process.cwd(),'src/foraging.js'),mod=new Module(filename,module);mod.filename=filename;mod.paths=Module._nodeModulePaths(path.dirname(filename));mod._compile(source.replace(needle,'return { preview, execute, stop, snapshot, candidateProbe: candidates, stanceProbe: safeStance }'),filename)
+ const filename=path.resolve(process.cwd(),'src/survival/foraging.js'),mod=new Module(filename,module);mod.filename=filename;mod.paths=Module._nodeModulePaths(path.dirname(filename));mod._compile(source.replace(needle,'return { preview, execute, stop, snapshot, candidateProbe: candidates, stanceProbe: safeStance }'),filename)
  const map=new Map(blocks.map(b=>[[b.position.x,b.position.y,b.position.z].join(','),b])),world={getBlock:(x,y,z)=>map.get([x,y,z].join(','))??{known:false,position:{x,y,z}}},never=()=>{throw Error('This offline candidate test must not execute an action')}
  return mod.exports.createForaging({getState:never,world,entities:{snapshot:never},movement:{preview:never,start:never,stop:never},getMovement:never,combat:{previewHunt:never,hunt:never,cancel:never}})
 }

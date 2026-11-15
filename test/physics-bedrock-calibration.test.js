@@ -1,6 +1,6 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
-const { createPhysics } = require('../src/physics')
+const { createPhysics } = require('../src/movement/physics')
 const measured = require('./fixtures/bedrock-ground-calibration-1.26.60.json')
 const world = { getBlock: (x,y,z) => ({ known: true, name: y < 100 ? 'minecraft:stone' : 'minecraft:air', properties: {}, extra: [] }) }
 function run (physics,sprint=false) {

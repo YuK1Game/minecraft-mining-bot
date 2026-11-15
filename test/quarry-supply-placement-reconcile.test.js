@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
-const { createQuarryPortableStorage, UNSENT_PLACE_REASON } = require('../src/quarry-portable-storage')
+const { createQuarryPortableStorage, UNSENT_PLACE_REASON } = require('../src/quarry/storage/quarry-portable-storage')
 
 function fixtureFrom (name) {
   const file = path.resolve(__dirname, name), loaded = new Module(file, module)

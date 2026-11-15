@@ -33,24 +33,24 @@ function fixture (t, { realSafety = false, wanted = false } = {}) {
   }, entities: { snapshot: () => copy(actors), nearby: () => [], stats: () => ({ unknownPositions: 0 }) }, cache: { replay () {}, observe () {} }, getState: () => copy(raw), getServerState: () => copy(raw), allocate: () => -1, commitInventory () {}, setPrediction () {}, setEquipmentPrediction () {}, setCapabilities () {}, log: message => logs.push(message), noteProgress: event => calls.push({ type: 'progress', event: copy(event) }) }
   const filename = path.resolve(__dirname, '../src/runtime.js'); const nativeRequire = Module.createRequire(filename)
   const overrides = {
-    './crafting': { createCrafting: () => crafting }, './inventory': { createInventory: () => inventory },
-    './food': { createFood: options => { foodOptions.push(options); return { snapshot: () => ({ busy: false }), applyPacket () {}, cancel () {}, preview: () => ({ ready: false }) } }, isSupportedFood: () => false },
-    './input': { createInput: () => { let running = false; return { start: () => { running = true }, stop: () => { running = false }, release () {}, stats: () => ({ running, sent: 0 }), lookAt () {}, sendAction () {}, sendTransaction () {} } } },
-    './movement': { createMovement: () => { const actor = { phase: 'idle' }; return { snapshot: () => ({ phase: actor.phase }), preview: target => ({ ready: true, waypoints: [{ position: copy(target), action: 'walk', medium: 'land' }] }), start: () => { actor.phase = 'moving'; return actor }, stop: () => { actor.phase = 'stopped' }, applyPacket () {}, settle: () => ({}) } } },
-    './combat': { createCombat: options => {
+    './actions/crafting': { createCrafting: () => crafting }, './inventory/inventory': { createInventory: () => inventory },
+    './actions/food': { createFood: options => { foodOptions.push(options); return { snapshot: () => ({ busy: false }), applyPacket () {}, cancel () {}, preview: () => ({ ready: false }) } }, isSupportedFood: () => false },
+    './movement/input': { createInput: () => { let running = false; return { start: () => { running = true }, stop: () => { running = false }, release () {}, stats: () => ({ running, sent: 0 }), lookAt () {}, sendAction () {}, sendTransaction () {} } } },
+    './movement/movement': { createMovement: () => { const actor = { phase: 'idle' }; return { snapshot: () => ({ phase: actor.phase }), preview: target => ({ ready: true, waypoints: [{ position: copy(target), action: 'walk', medium: 'land' }] }), start: () => { actor.phase = 'moving'; return actor }, stop: () => { actor.phase = 'stopped' }, applyPacket () {}, settle: () => ({}) } } },
+    './combat/combat': { createCombat: options => {
       const actor = { options, busy: false, engaging: false, calls: [], gate: null, cancel: [], previewReady: true }; combats.push(actor)
       return { snapshot: () => ({ busy: actor.busy, engaging: actor.engaging, defending: false }), applyPacket () {}, previewEngage: id => { actor.calls.push({ type: 'preview', id }); return { ready: actor.previewReady } }, preview: () => ({ ready: actor.strikeReady === true }), previewWaterCreeper: () => ({ ready: false }), waterCreeperAttack: async () => { throw new Error('Water counterattack is not enabled by this fixture') }, previewEmergency: (id, options) => { actor.calls.push({ type: 'emergency_preview', id, options }); return { ready: actor.emergencyReady === true, cooldownRemainingMs: 0 } }, emergencyAttack: async (id, options) => { actor.calls.push({ type: 'emergency_strike', id, options }); return { phase: 'observed', reaction: 'hurt_animation' } }, attack: async id => { actor.calls.push({ type: 'strike', id }); actors.splice(0); return { phase: 'observed' } }, engage: async (id, context) => {
         actor.calls.push({ type: 'engage', id, context }); actor.busy = actor.engaging = true
         try { if (actor.gate) return await actor.gate.promise; actors.splice(0); return { phase: 'observed', reaction: 'target_removed', serverConfirmed: true } } finally { actor.busy = actor.engaging = false }
       }, cancel: reason => { actor.cancel.push(reason); actor.gate?.resolve({ phase: 'cancelled' }); actor.busy = actor.engaging = false }, drain: async () => { if (actor.gate) await actor.gate.promise } }
     } },
-    './hut': { createHut: options => {
+    './survival/hut': { createHut: options => {
       const actor = { busy: false, physical: { inside: false, closed: false, usable: false, serverConfirmed: false }, options, calls: [], reconciliations: 0, stops: [], gate: null }; huts.push(actor)
       return { memo: () => copy(options.memo ?? null), snapshot: () => ({ busy: actor.busy, ...copy(actor.physical) }), preview: () => ({ ready: true }), restoreMemo () {}, reconcileEmptyPlacement: () => { actor.reconciliations++; return { action: 'abandon_empty_target', serverConfirmed: false } }, execute: async (args, context) => { actor.calls.push({ args, context }); actor.busy = true; try { if (actor.gate) await actor.gate.promise; return { phase: 'completed' } } finally { actor.busy = false } }, leave: async () => ({}), stop: async reason => { actor.stops.push(reason); actor.gate?.resolve(); actor.busy = false } }
     } },
-    './idle-safety': { createIdleSafety: options => {
+    './safety/idle-safety': { createIdleSafety: options => {
       const actor = { options, starts: [], stops: [], running: false, busy: false, gate: null }; safeties.push(actor)
-      if (realSafety) { actor.native = nativeRequire('./idle-safety').createIdleSafety(options); return actor.native }
+      if (realSafety) { actor.native = nativeRequire('./safety/idle-safety').createIdleSafety(options); return actor.native }
       return { start: bounds => { actor.starts.push(bounds); actor.running = true; return { running: true } }, snapshot: () => ({ running: actor.running, busy: actor.busy, phase: actor.running ? 'observing' : 'stopped' }), stop: async reason => { actor.stops.push(reason); actor.running = false; if (actor.gate) await actor.gate.promise; actor.busy = false }, drain: async () => { if (actor.gate) await actor.gate.promise }, tick: async () => ({}) }
     } }
   }

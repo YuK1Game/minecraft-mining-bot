@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createNavigator } = require('../src/navigation')
+const { createNavigator } = require('../src/movement/navigation')
 const block = (name, properties = {}) => ({ known: true, name: `minecraft:${name}`, properties, extra: [] })
 
 test('a swimmer reaches level shore before considering the neighbouring bank above the water surface', () => {

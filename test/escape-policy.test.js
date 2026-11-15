@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { constrainedSecondaryFloor, selectConstrainedPrimary, outsideSkeletonFloor, unarmedCreeperZombie, unarmedWaterZombie, unarmedCreeperDrowned, unarmedWaterDrowned } = require('../src/escape-policy')
+const { constrainedSecondaryFloor, selectConstrainedPrimary, outsideSkeletonFloor, unarmedCreeperZombie, unarmedWaterZombie, unarmedCreeperDrowned, unarmedWaterDrowned } = require('../src/movement/escape-policy')
 
 test('single-creeper shallow retreat requires explicit opt-in and observed safe identity', () => {
   const creeper = { runtimeId: '1', name: 'minecraft:creeper', dangerRadius: 8, distance: 5.3, position: { x: 5.3, y: 0, z: 0 } }

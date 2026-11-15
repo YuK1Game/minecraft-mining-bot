@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { keepPlan, spareArmorStackIds } = require('../src/quarry-inventory')
+const { keepPlan, spareArmorStackIds } = require('../src/quarry/quarry-inventory')
 
 // Live 2026-11-13: a copper helmet picked up from a mob was kept as gear while
 // a diamond helmet was worn, leaving one free bag slot and tiny deposits.

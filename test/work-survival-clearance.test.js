@@ -3,10 +3,10 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fixture = require('./fixtures/work-survival-life17.json')
-const { evaluateThreats } = require('../src/threats')
-const { WORK_MARGIN, workMargin, workScope, captureWorkActors, resolveWorkActors, workEscapeEvaluation } = require('../src/work-clearance')
-const { createIdleSafety } = require('../src/idle-safety')
-const { buildTerrainThreatEvidence } = require('../src/terrain-threats')
+const { evaluateThreats } = require('../src/combat/threats')
+const { WORK_MARGIN, workMargin, workScope, captureWorkActors, resolveWorkActors, workEscapeEvaluation } = require('../src/safety/work-clearance')
+const { createIdleSafety } = require('../src/safety/idle-safety')
+const { buildTerrainThreatEvidence } = require('../src/combat/terrain-threats')
 
 const sample = () => structuredClone(fixture.state)
 // Controlled outside variant retains the original historical actor fixture.

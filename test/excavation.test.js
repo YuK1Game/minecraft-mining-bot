@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createExcavation } = require('../src/excavation')
-const { createMovement } = require('../src/movement')
+const { createExcavation } = require('../src/survival/excavation')
+const { createMovement } = require('../src/movement/movement')
 
 function fixture (options = {}) {
   let time = 0

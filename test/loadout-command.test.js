@@ -1,6 +1,6 @@
 'use strict'
 const test = require('node:test'), assert = require('node:assert/strict')
-const { createLoadoutCommand, allowed } = require('../src/loadout-command')
+const { createLoadoutCommand, allowed } = require('../src/loadout/loadout-command')
 const { randomUUID } = require('node:crypto')
 const { fixture } = require('./helpers/loadout-sim')
 function commandFixture (options = {}) {

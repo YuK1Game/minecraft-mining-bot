@@ -4,7 +4,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
-const { createQuarryJob } = require('../src/quarry-job')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 
 const LOADED = { xMin: -12, xMax: 28, yMin: 50, yMax: 90, zMin: -12, zMax: 28 }
 async function run (food, { eatFoodLevel } = {}) {

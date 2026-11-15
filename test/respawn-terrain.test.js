@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createRespawnTerrainHandoff, respawnTerrainKnown, startupFuseDanger, createStartupFuseGuard } = require('../src/host')
+const { createRespawnTerrainHandoff, respawnTerrainKnown, startupFuseDanger, createStartupFuseGuard } = require('../src/host/host')
 
 function deferred () { let resolve; const promise = new Promise(r => { resolve = r }); return { promise, resolve } }
 const flush = () => new Promise(resolve => setImmediate(resolve))

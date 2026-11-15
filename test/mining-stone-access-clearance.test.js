@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {createMining}=require('../src/mining'),{createInput}=require('../src/input')
+const {createMining}=require('../src/actions/mining'),{createInput}=require('../src/movement/input')
 const {createSerializer,createDeserializer}=require('bedrock-protocol/src/transforms/serializer')
 const empty=()=>({network_id:0,count:0,metadata:0,has_stack_id:false,block_runtime_id:0})
 function fixture(){

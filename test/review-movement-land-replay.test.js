@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createMovement } = require('../src/movement')
+const { createMovement } = require('../src/movement/movement')
 
 // The real Native movement/replay fixture uses the same received-state shape
 // as movement-mixed-replan, with the water cells replaced by known dry ground.

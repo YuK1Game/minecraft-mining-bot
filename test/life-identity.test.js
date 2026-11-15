@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { currentLifeId } = require('../src/life-identity')
+const { currentLifeId } = require('../src/common/life-identity')
 
 test('the Host counter of the current connection is the life', () => {
   assert.equal(currentLifeId({ hostLife: { connectionId: 'c2', deathId: 0 }, connectionId: 'c2', respawnRecord: { deathId: 3 } }), 0)

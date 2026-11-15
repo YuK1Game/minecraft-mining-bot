@@ -2,12 +2,12 @@
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createMovement } = require('../src/movement')
-const { createPhysics } = require('../src/physics')
-const { supplyScope } = require('../src/supply-return')
-const portable = require('../src/portable-worksite')
-const { evaluateThreats } = require('../src/threats')
-const { resourceMinHealth } = require('../src/learning-health')
+const { createMovement } = require('../src/movement/movement')
+const { createPhysics } = require('../src/movement/physics')
+const { supplyScope } = require('../src/survival/supply-return')
+const portable = require('../src/survival/portable-worksite')
+const { evaluateThreats } = require('../src/combat/threats')
+const { resourceMinHealth } = require('../src/safety/learning-health')
 const copy = v => structuredClone(v)
 function deferred () { let resolve; const promise = new Promise(r => { resolve = r }); return { promise, resolve } }
 function harness (t) {
@@ -24,7 +24,7 @@ function harness (t) {
     return real.start(target, { ...options, ...(options.beforeInput ? { beforeInput: frame => { lastFrame = copy(frame); return options.beforeInput(frame) } } : {}) })
   }, drain: async () => { drained++; if (drainGate) await drainGate.promise } }
   t.after(() => real.stop('fixture cleanup'))
-  const source = fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? path.join(__dirname, '../src/runtime.js'), 'utf8'), begin = source.indexOf('  function portablePolicyError ('), end = source.indexOf('  function portableState ()', begin)
+  const source = require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE).split('\r\n').join('\n'), begin = source.indexOf('  function portablePolicyError ('), end = source.indexOf('  function portableState ()', begin)
   const motionStart = source.indexOf('  function startMotion ('), motionEnd = source.indexOf('\n  const operations = {', motionStart)
   const previewLine = source.split('\n').find(line => line.includes('preview: (target, options) => {') && line.includes('portableMovementOptions') && line.includes('movement?.preview'))
   const ownedLine = source.split('\n').find(line => line.includes('const ownedMovement = {') && line.includes('tagPortableOwnedMove'))

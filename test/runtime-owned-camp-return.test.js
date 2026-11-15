@@ -1,12 +1,12 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const {planOwnedCampReturn}=require('../src/owned-camp-return'),{evaluateThreats}=require('../src/threats'),{continuationScope}=require('../src/base-continuation')
-const {createNavigator}=require('../src/navigation')
+const {planOwnedCampReturn}=require('../src/survival/owned-camp-return'),{evaluateThreats}=require('../src/combat/threats'),{continuationScope}=require('../src/survival/base-continuation')
+const {createNavigator}=require('../src/movement/navigation')
 const fixtureFile=path.join(__dirname,'owned-camp-return.test.js'),fixtureModule=new Module(fixtureFile,module)
 fixtureModule.filename=fixtureFile;fixtureModule.paths=Module._nodeModulePaths(__dirname)
 fixtureModule._compile(fs.readFileSync(fixtureFile,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]+'\nmodule.exports=fixture;',fixtureFile)
 const fixture=fixtureModule.exports
-const runtime=fs.readFileSync(process.env.RUNTIME_TEST_SOURCE??path.join(__dirname,'../src/runtime.js'),'utf8'),start=runtime.indexOf('  async function approachOwnedCamp ('),end=runtime.indexOf('  const ownedCampBootstrap =',start)
+const runtime=require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE),start=runtime.indexOf('  async function approachOwnedCamp ('),end=runtime.indexOf('  const ownedCampBootstrap =',start)
 async function run(f,{idle=()=>true,onPreview=()=>{},onYield=()=>{}}={}){
  assert.ok(start>0&&end>start)
  const moves=[],scope=structuredClone(continuationScope(f.state)),before=structuredClone(f.state)

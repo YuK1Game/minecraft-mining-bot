@@ -3,7 +3,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
 const { createDashboardManager, profileName } = require('../scripts/lib/dashboard-control')
-const { CHANNEL } = require('../src/dashboard-session')
+const { CHANNEL } = require('../src/host/dashboard-session')
 function fixture (t, options = {}) {
   const spawns = [], children = [], requests = []
   const manager = createDashboardManager({ workspaceRoot: '/test/work', apiPort: 3000, occupied: async () => false,

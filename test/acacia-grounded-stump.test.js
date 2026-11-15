@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {naturalLogCandidates,nextBootstrapAction}=require('../src/planner'),{nextSurvivalAction}=require('../src/survival-planner')
+const {naturalLogCandidates,nextBootstrapAction}=require('../src/survival/planner'),{nextSurvivalAction}=require('../src/survival/survival-planner')
 const received=require('./fixtures/acacia-grounded-stump-received.json'),key=p=>`${p.x},${p.y},${p.z}`,stump={x:-20,y:71,z:-12}
 function actual(){const blocks=structuredClone(received.blocks),map=new Map(blocks.map(b=>[key(b.position),b]));return{blocks,map,logs:blocks.filter(b=>b.name==='minecraft:acacia_log'),read:p=>map.get(key(p))}}
 test('actual cached supported Acacia stump and nonpersistent canopy are recognized, unsupported diagonal upper components remain excluded',()=>{
@@ -19,7 +19,7 @@ test('stump exception rejects unknown/air/water/partial/protected/artificial soi
 })
 test('actual received tree has a direct low stump proposal from a CONTROLLED supported stance without promoting high detached logs or claiming harvest',()=>{
  const f=actual(),state={phase:'spawned',gameMode:'survival',health:20,profile:'bot',realm:{id:'21225335'},connectionId:'CONTROLLED',startedAt:'2026-11-01T18:00:00Z',runtimeEntityId:'1',dimension:'overworld',lifecycle:{phase:'alive',deathId:1},position:{x:-20.5,y:72.62,z:-11.5},inventory:{known:true,items:[]},capabilities:{movement:true,mining:true},entities:[],hostiles:[],world:{initialized:true,loadedSections:1}}
- const p=nextBootstrapAction(state,{blocks:f.blocks,capabilities:{move:true,mining:true,scan_blocks:true}},{logCount:2})
+ const p=nextBootstrapAction(state,{blocks:f.blocks,capabilities:{move:true,mining:true,scan_blocks:true}},{logCount:2,allowLogs:true})
  assert.equal(p.type,'gather_logs');assert.deepEqual(p.target,stump);assert.equal(p.treeEvidence.structure,'grounded_canopy_remnant');assert.deepEqual(state.inventory.items,[])
 })
 test('CONTROLLED same-ground two-stump Sword prerequisite flow requests real logs then recipe preview without material/arrival credit',()=>{
@@ -28,7 +28,8 @@ test('CONTROLLED same-ground two-stump Sword prerequisite flow requests real log
  for(const x of[2,5]){put(x,65,0,'acacia_log');put(x,67,1,'acacia_leaves',{persistent_bit:0})}
  const state={phase:'spawned',gameMode:'survival',health:20,position:{x:.5,y:66.62,z:.5},inventory:{known:true,items:[]},capabilities:{movement:true,mining:true},world:{initialized:true,loadedSections:1},entities:[],hostiles:[]},obs={blocks:[...map.values()],capabilities:{move:true,mining:true,scan_blocks:true,craft:true,use_table:true,place_block:true},crafting:{previews:{}}}
  const plan=()=>nextSurvivalAction(state,obs,{firstWoodenSwordOnly:true})
- const first=plan();assert.equal(first.type,'gather_logs');assert.equal(first.count,2);assert.deepEqual(first.target,{x:2,y:65,z:0});assert.equal(first.preparation,'wooden_sword')
+ // Wood exclusion (2026-11-12): the survival plan never cuts the stumps itself; it waits for supplied wood and still crafts from logs it holds.
+ const first=plan();assert.equal(first.type,'wait');assert.equal(first.code,'wood_harvest_disabled')
  state.inventory.items=[{slot:0,name:'minecraft:acacia_log',count:2}]
  const boards=plan();assert.equal(boards.type,'preview_craft');assert.equal(boards.output,'minecraft:acacia_planks');assert.equal(boards.times,2)
  assert.equal(state.inventory.items[0].count,2);assert.equal(boards.serverConfirmed,undefined)

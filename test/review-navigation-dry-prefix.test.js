@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
-const { createNavigator } = require('../src/navigation')
+const { createNavigator } = require('../src/movement/navigation')
 const copy = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`
 const capturedState = {"position":{"x":2041.378173828125,"y":64.62,"z":2019.3363037109375},"positionSource":"client_prediction","predicted":{"position":{"x":2041.378173828125,"y":64.62,"z":2019.3363037109375},"feetPosition":{"x":2041.378173828125,"y":63,"z":2019.3363037109375},"velocity":{"x":0,"y":-0.0784000015258789,"z":0},"onGround":true,"physicsState":{"position":{"x":2041.378173828125,"y":63,"z":2019.3363037109375},"velocity":{"x":0,"y":-0.0784000015258789,"z":0},"velocitySource":"client_prediction","yaw":-144.01719508520569,"pitch":4.027868131189962,"gameMode":"survival","onGround":true,"isInWater":false,"isInLava":false,"isInWeb":false,"isCollidedHorizontally":false,"isCollidedVertically":true,"jumpTicks":0,"jumpQueued":false,"controls":{"forward":false,"back":false,"left":false,"right":false,"jump":false,"sprint":false,"sneak":false},"effects":{},"attributes":{},"contactAdjustment":null,"horizontalContactAdjustment":null},"source":"client_prediction","serverConfirmed":false,"updatedAt":"2026-11-12T07:34:21.326Z"},"rotation":{"pitch":19.375640869140625,"yaw":-114.76792907714844},"gameMode":"survival"}
@@ -117,7 +117,7 @@ const observedBlocks = [
 ]
 
 function historicalNavigator () {
-  const file = path.resolve(__dirname, '../src/navigation.js'), source = fs.readFileSync(file, 'utf8')
+  const file = path.resolve(__dirname, '../src/movement/navigation.js'), source = fs.readFileSync(file, 'utf8')
   const binding = /^([ \t]*const nearDryPulse = )(?:!allowWater && )?/gm
   assert.equal([...source.matchAll(binding)].length, 1, 'the counterfactual changes only the water-capability gate')
   const loaded = new Module(file, module)

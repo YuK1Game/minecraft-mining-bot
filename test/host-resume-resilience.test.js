@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { resumeRuntimeSafely, createOnlineEmergencyHandler } = require('../src/host')
+const { resumeRuntimeSafely, createOnlineEmergencyHandler } = require('../src/host/host')
 
 test('reload resume synchronously throwing or asynchronously rejecting records bounded error and preserves transport', async () => {
   for (const asynchronous of [false, true]) {

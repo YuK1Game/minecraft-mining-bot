@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createPhysics } = require('../src/physics')
-const { createInputHistory } = require('../src/input-history')
+const { createPhysics } = require('../src/movement/physics')
+const { createInputHistory } = require('../src/movement/input-history')
 
 const scope = { profile: 'player', realmId: 'realm', dimension: 'overworld', connectionId: 'connection', startedAt: 'life', runtimeEntityId: '1', generation: 1 }
 function fixture ({ partial = false, observe = true } = {}) {

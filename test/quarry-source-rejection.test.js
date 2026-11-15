@@ -27,12 +27,12 @@ function prefix (name, exports, overrides) {
   const filename = require.resolve(`./${name}`)
   return sourceModule(filename, fs.readFileSync(filename, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0] + `\nmodule.exports = ${exports}\n`, overrides)
 }
-const { createChest } = factory('chest', 'SOURCE_REJECTION_CHEST_TEST_SOURCE')
-const { createQuarryPortableStorage } = factory('quarry-portable-storage', 'SOURCE_REJECTION_PORTABLE_TEST_SOURCE')
-const { createQuarryJob } = factory('quarry-job', 'SOURCE_REJECTION_JOB_TEST_SOURCE')
+const { createChest } = factory("actions/chest", 'SOURCE_REJECTION_CHEST_TEST_SOURCE')
+const { createQuarryPortableStorage } = factory("quarry/storage/quarry-portable-storage", 'SOURCE_REJECTION_PORTABLE_TEST_SOURCE')
+const { createQuarryJob } = factory("quarry/quarry-job", 'SOURCE_REJECTION_JOB_TEST_SOURCE')
 
 test('an actual matching numeric status49 preserves negative evidence without claiming a transfer', async () => {
-  const { fixture } = prefix('chest.test', '{ fixture }', { '../src/chest': { createChest } })
+  const { fixture } = prefix('chest.test', '{ fixture }', { '../src/actions/chest': { createChest } })
   const f = fixture(), before = copy(f.bag[14])
   const outcome = f.chest.depositItem({ sourceSlot: 14, chestSlot: 0, count: 1, expectedName: 'minecraft:diamond' }).then(() => null, error => error)
   f.ack(-501, 49)
@@ -53,7 +53,7 @@ test('an actual matching numeric status49 preserves negative evidence without cl
 })
 
 test('timeouts, unmatched requests, unknown and non49 responses never acquire source-rejection evidence', async t => {
-  const { fixture } = prefix('chest.test', '{ fixture }', { '../src/chest': { createChest } })
+  const { fixture } = prefix('chest.test', '{ fixture }', { '../src/actions/chest': { createChest } })
   for (const status of [1, 48, 50, '49', 'error']) await t.test(`status ${String(status)} (${typeof status})`, async () => {
     const f = fixture(), result = f.chest.depositDiamond({ sourceSlot: 14 }).then(() => null, error => error)
     f.ack(-501, status)

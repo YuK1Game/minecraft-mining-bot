@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createGuardedRoute } = require('../src/guarded-route')
-const { buildTerrainThreatEvidence } = require('../src/terrain-threats')
+const { createGuardedRoute } = require('../src/movement/guarded-route')
+const { buildTerrainThreatEvidence } = require('../src/combat/terrain-threats')
 
 const p = x => ({ x, y: 60, z: 0.5 })
 function fixture ({ onStart, onEquip, onEngage, onPreview, onReturned, onClose, onProgress, onState, timeout = 500, realDelay = false } = {}) {

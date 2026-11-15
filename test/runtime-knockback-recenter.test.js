@@ -9,8 +9,8 @@ const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
 const capture = require('./fixtures/post-grass-runtime-recenter.json')
-const { createNavigator } = require('../src/navigation')
-const { evaluateThreats } = require('../src/threats')
+const { createNavigator } = require('../src/movement/navigation')
+const { evaluateThreats } = require('../src/combat/threats')
 const file = path.resolve(__dirname, 'runtime-idle-escape.test.js')
 let setup = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 // The old shared harness omitted this production movement option. Forward it

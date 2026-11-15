@@ -3,8 +3,8 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { fixture } = require('./helpers/loadout-sim')
-const { knownInventory, matches } = require('../src/loadout-reset')
-const { manifest } = require('../src/loadout-manifest')
+const { knownInventory, matches } = require('../src/loadout/loadout-reset')
+const { manifest } = require('../src/loadout/loadout-manifest')
 const unknownSlot = slot => ({ slot, known: false, empty: false, name: null, count: null })
 const confirm = (f, p) => f.reset.start({ token: p.token, confirm: 'REPLACE_INITIAL_INVENTORY' })
 function unknown (view, part) {

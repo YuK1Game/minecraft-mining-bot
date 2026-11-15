@@ -1,6 +1,6 @@
 'use strict'
 const{test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),fsp=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),Module=require('node:module')
-const {createAutonomy}=require('../src/autonomy')
+const {createAutonomy}=require('../src/survival/autonomy')
 async function fixture(t,{known=true,stored=0}={}){
  const file=require.resolve('./runtime-depot-resource-scope.test.js'),m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));let source=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]
  source=source.replace("let runtimeSource=fs.readFileSync(filename,'utf8')","let runtimeSource=fs.readFileSync(process.env.RUNTIME_TEST_SOURCE??filename,'utf8')");m._compile(source+'\nmodule.exports={hostScene,seed};',file)
@@ -14,8 +14,8 @@ async function fixture(t,{known=true,stored=0}={}){
  const workspaceRoot=await fsp.mkdtemp(path.join(os.tmpdir(),'depot-reacquire-'));let runtime
  t.after(async()=>{await runtime?.dispose('test cleanup before temp journal removal');assert.ok(path.resolve(workspaceRoot).startsWith(path.join(os.tmpdir(),'depot-reacquire-')));await fsp.rm(workspaceRoot,{recursive:true,force:true})})
  if(stored){await fsp.mkdir(path.join(workspaceRoot,'.local'));const world=JSON.stringify([state.profile,String(state.realm.id),state.dimension]);await fsp.writeFile(path.join(workspaceRoot,'.local',`depot-${state.profile}-${state.realm.id}-${state.dimension}.json`),JSON.stringify({version:1,world,enabled:false,policy:{version:1,world,base:null,chest:null,deposited:stored,depositReceipt:null},extra:{}}))}
- const nativeRunner=require('../src/runner')
- const overrides={'./runner':{...nativeRunner,createRunner:()=>runner},'./autonomy':{createAutonomy:options=>{
+ const nativeRunner=require('../src/survival/runner')
+ const overrides={'./survival/runner':{...nativeRunner,createRunner:()=>runner},'./survival/autonomy':{createAutonomy:options=>{
   actor=createAutonomy({...options,intervalMs:60000})
   return {...actor,start:config=>{starts.push(structuredClone(config));return actor.start(config)}}
  }}}

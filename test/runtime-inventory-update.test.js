@@ -8,9 +8,9 @@ const vm = require('node:vm')
 const Module = require('node:module')
 const { EventEmitter } = require('node:events')
 const { performance } = require('node:perf_hooks')
-const { createState } = require('../src/state')
-const { createSessionCache } = require('../src/session-cache')
-const { createHostPacketEvents, createHostPacketReceiver } = require('../src/host')
+const { createState } = require('../src/host/state')
+const { createSessionCache } = require('../src/host/session-cache')
+const { createHostPacketEvents, createHostPacketReceiver } = require('../src/host/host')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
 
 const empty = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0 })
@@ -63,9 +63,10 @@ function fixture (t, { slotCount = 36 } = {}) {
     const nativeRequire = Module.createRequire(filename)
     const services = {}
     const overrides = {}
-    for (const [moduleName, factoryName] of [['crafting', 'createCrafting'], ['inventory', 'createInventory'], ['furnace', 'createFurnace'], ['food', 'createFood'], ['interactions', 'createInteractions']]) {
-      const native = nativeRequire(`./${moduleName}`)
-      overrides[`./${moduleName}`] = { ...native, [factoryName]: options => {
+    for (let [moduleName, factoryName] of [['actions/crafting', 'createCrafting'], ['inventory/inventory', 'createInventory'], ['actions/furnace', 'createFurnace'], ['actions/food', 'createFood'], ['actions/interactions', 'createInteractions']]) {
+      const modulePath = moduleName; moduleName = modulePath.split('/').pop()
+      const native = nativeRequire(`./${modulePath}`)
+      overrides[`./${modulePath}`] = { ...native, [factoryName]: options => {
         const original = native[factoryName](options)
         const proxy = { ...original, applyPacket: (name, packet) => { notifications.push({ generation: contexts.length, module: moduleName, name, packet: structuredClone(packet) }); original.applyPacket(name, packet) } }
         services[moduleName] = proxy

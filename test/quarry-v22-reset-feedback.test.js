@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
-const { createQuarryV22Reset } = require('../src/quarry-v22-reset')
-const { allowed, FAILURE_PROBE } = require('../src/loadout-command')
+const { createQuarryV22Reset } = require('../src/loadout/quarry-v22-reset')
+const { allowed, FAILURE_PROBE } = require('../src/loadout/loadout-command')
 const missing = () => ({ slot: 0, known: true, empty: true, name: null, count: 0 })
 
 // 2026-11-13: the realm runs with sendcommandfeedback=false (success replies

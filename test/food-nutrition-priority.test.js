@@ -11,7 +11,7 @@ loaded.filename = file
 loaded.paths = Module._nodeModulePaths(path.dirname(file))
 loaded._compile(fs.readFileSync(file, 'utf8').split('\ntest(')[0] + '\nmodule.exports = { fixture, item, air }\n', file)
 const { fixture, item, air } = loaded.exports
-const { keepPlan } = require('../src/quarry-inventory')
+const { keepPlan } = require('../src/quarry/quarry-inventory')
 
 function addFood (f, slot, name, count = 3) {
   const id = 400 + slot

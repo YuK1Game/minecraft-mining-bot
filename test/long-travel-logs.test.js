@@ -4,7 +4,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const { createMining } = require('../src/mining')
+const { createMining } = require('../src/actions/mining')
 
 function fixture (t, allowance) {
   const state = { phase: 'spawned', profile: 'bot', realm: { id: '42' }, connectionId: 'connection', startedAt: '2026-11-05T01:30:00.000Z', runtimeEntityId: '41', dimension: 'overworld', lifecycle: { deathId: 3 }, gameMode: 'survival', health: 20, position: { x: 0.5, y: 66.62, z: 0.5 }, inventory: { known: true, items: [] }, onGround: true }
@@ -35,9 +35,9 @@ test('leaves stay refused even with the allowance', t => {
 })
 
 test('the allowance is scoped: purpose, 30-minute expiry, never while quarry work runs; at most 10 logs', () => {
-  const runtime = fs.readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const runtime = require('./helpers/runtime-source').runtimeSource()
   assert.match(runtime, /a\.purpose === 'long_travel_prep' && Date\.now\(\) < a\.expiresAt && !quarryJob\?\.holdsWork\(\)/)
   assert.match(runtime, /Math\.max\(1, Math\.min\(10,/)
-  const runner = fs.readFileSync(require.resolve('../src/runner'), 'utf8')
+  const runner = fs.readFileSync(require.resolve('../src/survival/runner'), 'utf8')
   assert.match(runner, /const allowed = !leafWork &&/)
 })

@@ -7,7 +7,7 @@ loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(
 let source = fs.readFileSync(filename, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 const hook = "isSupportedFood: name => ['minecraft:bread', 'minecraft:beef'].includes(name)"
 assert.equal(source.split(hook).length, 2)
-source = source.replace(hook, "isSupportedFood: require('../src/food').isSupportedFood")
+source = source.replace(hook, "isSupportedFood: require('../src/actions/food').isSupportedFood")
 loaded._compile(source + '\nmodule.exports = { fixture };', filename)
 const { fixture } = loaded.exports
 

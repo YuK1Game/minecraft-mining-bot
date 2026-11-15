@@ -5,10 +5,10 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
-const { createChest } = require('../src/chest')
-const { createQuarryRuntimeAdapter } = require('../src/quarry-runtime-adapter')
-const { createCombatCoordinator } = require('../src/combat-coordinator')
-const { createCombatExposure } = require('../src/combat-exposure')
+const { createChest } = require('../src/actions/chest')
+const { createQuarryRuntimeAdapter } = require('../src/quarry/quarry-runtime-adapter')
+const { createCombatCoordinator } = require('../src/combat/combat-coordinator')
+const { createCombatExposure } = require('../src/combat/combat-exposure')
 const receivedInventory = require('./fixtures/inventory-resync-nonempty.json')
 
 // Reuse the real Runtime scene with controlled services, without running the
@@ -39,15 +39,15 @@ test('Runtime idle gates read lightweight chest metadata and each controller onc
     const craftSnapshot = crafting.snapshot
     crafting.status = () => ({ authority: true, inventoryKnown: true, pendingRequestId: null, openContainer: null })
     crafting.snapshot = () => { reads.craftingFull++; return craftSnapshot() }
-    overrides['./chest'] = { createChest: options => {
+    overrides['./actions/chest'] = { createChest: options => {
       const actual = createChest(options)
       return { ...actual,
         status: () => { reads.chestStatus++; return { ...actual.status(), busy: flags.chestBusy } },
         snapshot: () => { reads.chestFull++; return { ...actual.snapshot(), busy: flags.chestBusy } }
       }
     } }
-    const createCombat = overrides['./combat'].createCombat
-    overrides['./combat'] = { createCombat: options => {
+    const createCombat = overrides['./combat/combat'].createCombat
+    overrides['./combat/combat'] = { createCombat: options => {
       const actual = createCombat(options)
       return { ...actual, snapshot: () => { reads.combat++; return { ...actual.snapshot(), busy: flags.combatBusy } } }
     } }
@@ -101,15 +101,15 @@ test('Runtime connects the live cooldown and lightweight chest port to both supp
   t.mock.method(Date, 'now', () => now)
   const f = fixture(t, ({ overrides, host }) => {
     host.shared.inventoryResync = { lastRequestedAt: 90000 }
-    overrides['./quarry-runtime-adapter'] = { createQuarryRuntimeAdapter: options => {
+    overrides['./quarry/quarry-runtime-adapter'] = { createQuarryRuntimeAdapter: options => {
       ports = options
       return createQuarryRuntimeAdapter(options)
     } }
-    overrides['./quarry-supplies'] = { createQuarrySupplies: options => {
+    overrides['./quarry/storage/quarry-supplies'] = { createQuarrySupplies: options => {
       supplies = options
       return { discoverBindings: () => [], snapshot: () => ({ busy: false }) }
     } }
-    overrides['./quarry-v22-chest-work'] = { createQuarryV22ChestWork: options => {
+    overrides['./loadout/quarry-v22-chest-work'] = { createQuarryV22ChestWork: options => {
       surface = options
       return { withdrawAll: async () => ({ phase: 'inspected' }) }
     } }
@@ -135,7 +135,7 @@ test('Runtime quarry resync forwards rate limits immediately instead of polling 
   const f = fixture(t, ({ overrides, host }) => {
     host.client.queue = () => assert.fail('a cooldown cannot send a new inventory request')
     host.shared.inventoryResync = { lastRequestedAt: 90000 }
-    overrides['./quarry-runtime-adapter'] = { createQuarryRuntimeAdapter: options => {
+    overrides['./quarry/quarry-runtime-adapter'] = { createQuarryRuntimeAdapter: options => {
       ports = options
       return createQuarryRuntimeAdapter(options)
     } }
@@ -156,7 +156,7 @@ test('Runtime work guards and coordinator engagement share one sight read only i
     const getBlock = host.world.getBlock
     host.world.getBlock = (...args) => { reads++; return getBlock(...args) }
     host.world.revision = () => 1
-    overrides['./combat-exposure'] = { createCombatExposure: options => {
+    overrides['./combat/combat-exposure'] = { createCombatExposure: options => {
       const actual = createCombatExposure(options)
       return { ...actual,
         withDecision: work => { decisions++; return actual.withDecision(work) },
@@ -167,13 +167,13 @@ test('Runtime work guards and coordinator engagement share one sight read only i
         }
       }
     } }
-    overrides['./quarry-job'] = { createQuarryJob: () => ({
+    overrides['./quarry/quarry-job'] = { createQuarryJob: () => ({
       holdsWork: () => true, shulkerHold: () => null, document: () => null,
       status: () => ({ state: 'RUNNING' }), configureStorage: async () => ({}),
       pause: () => {}, drain: async () => {},
       bridge: { canSelectTarget: (_target, _state, evidence) => ({ allowed: evidence.intercept }), canContinue: () => ({ allowed: true }) }
     }) }
-    overrides['./user-behaviors'] = { createUserBehaviors: options => {
+    overrides['./combat/user-behaviors'] = { createUserBehaviors: options => {
       // Real coordinator and Runtime callbacks. Controllers decline the shot,
       // so this selection test never acquires controls or sends game input.
       const controller = { preview: () => ({ ready: false }), engage: async () => assert.fail('read-only selection'), cancel: () => {}, drain: async () => {}, snapshot: () => ({ busy: false }) }

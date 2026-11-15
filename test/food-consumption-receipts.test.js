@@ -2,7 +2,7 @@
 const { test } = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path')
 const { setImmediate: nextTurn } = require('node:timers/promises')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { createFood } = require('../src/food')
+const { createFood } = require('../src/actions/food')
 const serializer = createSerializer('1.26.60'), parser = createDeserializer('1.26.60')
 const wire = (name, params) => parser.parsePacketBuffer(serializer.createPacketBuffer({ name, params })).data.params
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })

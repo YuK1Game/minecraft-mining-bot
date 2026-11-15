@@ -2,8 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryPlanner } = require('../src/quarry-planner')
-const { buildRegions } = require('../src/quarry-region')
+const { createQuarryPlanner } = require('../src/quarry/quarry-planner')
+const { buildRegions } = require('../src/quarry/quarry-region')
 
 // Modeled on the live 2026-11-10 case: below the work layer is a deep cave
 // (known air), so stands exist only on the remaining rock of the work layer.
@@ -42,7 +42,7 @@ test('a batch never strands its stance on a pillar above the cave', async () => 
 })
 
 test('reopenWorkLayer is refused unless paused and needs a box at or above the new layer', async () => {
-  const { createQuarryJob } = require('../src/quarry-job')
+  const { createQuarryJob } = require('../src/quarry/quarry-job')
   const { createSim, flatTerrain } = require('./helpers/quarry-sim')
   const sim = createSim({ loaded: { xMin: -4, xMax: 20, yMin: 50, yMax: 70, zMin: -4, zMax: 20 } })
   flatTerrain(sim, { x1: -4, x2: 20, z1: -4, z2: 20, bedrock: 50, stoneTop: 61, top: 62 })
@@ -64,7 +64,7 @@ test('a large whole layer out of reach from a wider island is not written off ei
 })
 
 test('plan refuses a target with a large cave below the surface unless allowCaves is set', () => {
-  const { createQuarryJob } = require('../src/quarry-job')
+  const { createQuarryJob } = require('../src/quarry/quarry-job')
   const { createSim, flatTerrain } = require('./helpers/quarry-sim')
   const make = (cave) => {
     const sim = createSim({ loaded: { xMin: -4, xMax: 20, yMin: 50, yMax: 80, zMin: -4, zMax: 20 } })
@@ -86,8 +86,8 @@ test('plan refuses a target with a large cave below the surface unless allowCave
 
 test('an unreachable tree canopy above the bot is deferred, not a descent stop', async () => {
   // Leaves high above the stand on the top layer; the ground layer below is ordinary rock.
-  const { createQuarryPlanner } = require('../src/quarry-planner')
-  const { buildRegions } = require('../src/quarry-region')
+  const { createQuarryPlanner } = require('../src/quarry/quarry-planner')
+  const { buildRegions } = require('../src/quarry/quarry-region')
   const k = (x, y, z) => `${x},${y},${z}`
   const leaves = new Set(); for (let x = 0; x <= 15; x++) for (let z = 0; z <= 15; z++) leaves.add(k(x, 70, z))
   const read = (x, y, z) => {

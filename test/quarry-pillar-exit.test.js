@@ -2,11 +2,11 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryJob, defaults } = require('../src/quarry-job')
-const { createQuarryPlanner } = require('../src/quarry-planner')
-const { buildRegions } = require('../src/quarry-region')
-const { planQuarryExit, permitsExitAction } = require('../src/quarry-exit-plan')
-const { keepPlan, canAccept } = require('../src/quarry-inventory')
+const { createQuarryJob, defaults } = require('../src/quarry/quarry-job')
+const { createQuarryPlanner } = require('../src/quarry/quarry-planner')
+const { buildRegions } = require('../src/quarry/quarry-region')
+const { planQuarryExit, permitsExitAction } = require('../src/quarry/exit/quarry-exit-plan')
+const { keepPlan, canAccept } = require('../src/quarry/quarry-inventory')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
 function fixture () {

@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { makeActions } = require('../src/runner')
-const { soilCandidates } = require('../src/soil-gathering')
+const { makeActions } = require('../src/survival/runner')
+const { soilCandidates } = require('../src/survival/soil-gathering')
 const copy = value => structuredClone(value)
 const key = point => `${point.x},${point.y},${point.z}`
 const block = (x, y, z, name) => ({ known: true, position: { x, y, z }, name: `minecraft:${name}`, boundingBox: name === 'air' ? 'empty' : 'block', properties: {}, extra: [] })

@@ -2,8 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryPlanner } = require('../src/quarry-planner')
-const { buildRegions } = require('../src/quarry-region')
+const { createQuarryPlanner } = require('../src/quarry/quarry-planner')
+const { buildRegions } = require('../src/quarry/quarry-region')
 
 // A large water body just outside the chunk's east edge (x=16..19) touches the
 // edge column x=15 at y=59..61. It cannot be sealed from inside, so those edge

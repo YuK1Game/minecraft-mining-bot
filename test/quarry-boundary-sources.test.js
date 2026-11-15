@@ -2,10 +2,10 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryPlanner } = require('../src/quarry-planner')
-const { createQuarryJob } = require('../src/quarry-job')
-const { buildRegions, permits } = require('../src/quarry-region')
-const { keepPlan } = require('../src/quarry-inventory')
+const { createQuarryPlanner } = require('../src/quarry/quarry-planner')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
+const { buildRegions, permits } = require('../src/quarry/quarry-region')
+const { keepPlan } = require('../src/quarry/quarry-inventory')
 
 const boundarySeal = { enabled: true, horizontalMargin: 1, material: 'dirt', sourceOnly: true, closeOpenings: true }
 const k = p => `${p.x},${p.y},${p.z}`

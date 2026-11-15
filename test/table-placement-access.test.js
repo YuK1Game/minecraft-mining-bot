@@ -2,10 +2,10 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { placementTopVisible, planPlacementAccess } = require('../src/action-access')
-const { nextBootstrapAction } = require('../src/planner')
-const { nextSurvivalAction } = require('../src/survival-planner')
-const { createInteractions } = require('../src/interactions')
+const { placementTopVisible, planPlacementAccess } = require('../src/actions/action-access')
+const { nextBootstrapAction } = require('../src/survival/planner')
+const { nextSurvivalAction } = require('../src/survival/survival-planner')
+const { createInteractions } = require('../src/actions/interactions')
 
 const copy = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`
@@ -144,8 +144,8 @@ test('received leaf-litter capture moves to a full known stance then reobserves 
   assert.notDeepEqual(rejectedStance?.standpoint, bootstrap.target, 'missing foot support cannot authorize the old stance')
 
   t.mock.timers.enable({ apis: ['setInterval'] })
-  const { createPhysics } = require('../src/physics')
-  const { createMovement } = require('../src/movement')
+  const { createPhysics } = require('../src/movement/physics')
+  const { createMovement } = require('../src/movement/movement')
   const world = { getBlock: (x, y, z) => getBlock({ x, y, z }) }
   const physics = createPhysics({ world, version: '1.26.60' })
   const motionOrigin = { ...copy(state), positionUpdatedAt: captured.observedAt, rawServerPositionUpdatedAt: captured.observedAt, rotation: { yaw: 0, pitch: 0 } }

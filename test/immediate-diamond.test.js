@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { immediateDiamond } = require('../src/immediate-diamond')
+const { immediateDiamond } = require('../src/survival/immediate-diamond')
 
 test('prioritizes only a live-previewed reachable diamond with no nearby or unknown hostile', () => {
   const state = { health: 20, phase: 'spawned', position: { x: 0.5, y: 66.62, z: 0.5 }, dimension: 'overworld', inventory: { known: true, items: [] }, entities: [], entityStats: { unknownPositions: 0 } }

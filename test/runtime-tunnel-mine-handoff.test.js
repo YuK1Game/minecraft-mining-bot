@@ -6,7 +6,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
-const { resourceMinHealth } = require('../src/learning-health')
+const { resourceMinHealth } = require('../src/safety/learning-health')
 const copy = value => structuredClone(value)
 
 // Compact verbatim state/preview fields from the preserved 2026-11-01 05:51
@@ -31,8 +31,8 @@ const fixtureFile = path.resolve(__dirname, 'runtime-survival.test.js')
 let fixtureSource = fs.readFileSync(fixtureFile, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 fixtureSource = 'let testHooks;\n' + fixtureSource
 fixtureSource = fixtureSource.replace('  const overrides = {', `  const overrides = {
-    './diamond-planner': { nextDiamondAction: (...args) => testHooks.diamond(...args) },
-    './survival-planner': { nextSurvivalAction: (...args) => testHooks.survival(...args) },`)
+    './survival/diamond-planner': { nextDiamondAction: (...args) => testHooks.diamond(...args) },
+    './survival/survival-planner': { nextSurvivalAction: (...args) => testHooks.survival(...args) },`)
 const miningNeedle = 'const mining = { preview: () => ({ ready: true, targets: [] }),'
 assert.ok(fixtureSource.includes(miningNeedle))
 fixtureSource = fixtureSource.replace(miningNeedle, 'const mining = { preview: targets => { testHooks.previewCalls.push(structuredClone(targets)); return testHooks.preview(targets) },')

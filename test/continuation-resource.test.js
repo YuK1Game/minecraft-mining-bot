@@ -1,8 +1,8 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const {planContinuationResource}=require('../src/continuation-resource')
-const {nextDiamondAction}=require('../src/diamond-planner')
-const {continuationScope}=require('../src/base-continuation')
+const {planContinuationResource}=require('../src/survival/continuation-resource')
+const {nextDiamondAction}=require('../src/survival/diamond-planner')
+const {continuationScope}=require('../src/survival/base-continuation')
 const fixtureFile=path.resolve(__dirname,'diamond-planner.test.js'),loaded=new Module(fixtureFile,module)
 loaded.filename=fixtureFile;loaded.paths=Module._nodeModulePaths(path.dirname(fixtureFile));loaded._compile(fs.readFileSync(fixtureFile,'utf8').split('\ntest(')[0]+'\nmodule.exports={fixture};',fixtureFile)
 function fixture(){

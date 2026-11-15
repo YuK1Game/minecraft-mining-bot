@@ -4,7 +4,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setTimeout: delay } = require('node:timers/promises')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { createLifecycle } = require('../src/lifecycle')
+const { createLifecycle } = require('../src/host/lifecycle')
 
 function fixture (options = {}) {
   const state = { phase: 'spawned', health: 20, runtimeEntityId: '41', dimension: 'overworld', position: { x: -12.5, y: 70.62, z: 20.5 }, positionSource: 'start_game' }

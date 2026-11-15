@@ -3,9 +3,9 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
 const root=process.env.NIGHT_SHELTER_TEST_ROOT??process.cwd(),file=path.join(root,'test/runtime-user-behaviors.test.js')
 let fixtureSource=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]
-fixtureSource=fixtureSource.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)","let runtimeSource=fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename,'utf8');runtimeSource=runtimeSource.replace('  const operations = {','  const operations = {\\n    __testSoil:()=>shelter, __testHut:()=>hut, __testActiveBase:()=>activeBase(), __testNightReady:(state,observations)=>readyNightSoilShelter(state,observations),');loaded._compile(runtimeSource,filename)")
+fixtureSource=fixtureSource.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)","let runtimeSource=require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE);runtimeSource=runtimeSource.replace('  const operations = {','  const operations = {\\n    __testSoil:()=>shelter, __testHut:()=>hut, __testActiveBase:()=>activeBase(), __testNightReady:(state,observations)=>readyNightSoilShelter(state,observations),');loaded._compile(runtimeSource,filename)")
 const m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(fixtureSource+'\nmodule.exports={scene}',file)
-const {createNavigator}=require(path.join(root,'src/navigation'))
+const {createNavigator}=require(path.join(root,'src/movement/navigation'))
 function scene(t){
  const f=m.exports.scene(t,{nativeStanding:true}),changes=new Map()
  f.host.world.getBlock=(x,y,z)=>changes.get(`${x},${y},${z}`)??{known:true,position:{x,y,z},name:y<65?'minecraft:stone':x>=1&&x<=4&&z>=-2&&z<=2&&y<=67?(y===67?'minecraft:grass_block':'minecraft:dirt'):'minecraft:air',runtimeId:y<65?1:x>=1&&x<=4&&z>=-2&&z<=2&&y<=67?10:0,boundingBox:y<65||x>=1&&x<=4&&z>=-2&&z<=2&&y<=67?'block':'empty',properties:{},extra:[]}

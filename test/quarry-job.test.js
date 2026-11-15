@@ -2,7 +2,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
-const { createQuarryJob } = require('../src/quarry-job')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 
 const LOADED = { xMin: -12, xMax: 28, yMin: 50, yMax: 90, zMin: -12, zMax: 28 }
 function setup ({ stoneTop = 60, top = 62, chestSlots = 27 } = {}) {
@@ -625,7 +625,7 @@ test('live case 2026-11-10: passive full-only mining keeps digging once no stora
 })
 
 test('a plan without a bottom uses Y-59 by default (user request 2026-11-10)', () => {
-  const { defaults } = require('../src/quarry-job')
+  const { defaults } = require('../src/quarry/quarry-job')
   assert.equal(defaults({ jobId: 'd', target: { chunks: [{ x: 0, z: 0 }] } }).yBottom, -59)
   assert.equal(defaults({ jobId: 'd', target: { chunks: [{ x: 0, z: 0 }] }, yBottom: 'world_min' }).yBottom, 'world_min', 'an explicit choice is kept')
 })

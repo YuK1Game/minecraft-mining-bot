@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { threatRadius, evaluateThreats } = require('../src/threats')
+const { threatRadius, evaluateThreats } = require('../src/combat/threats')
 
 test('the explicit mining policy uses a smaller ranged margin only while health is high and restores the reserve when hurt', () => {
   const state = { position: { x: 0, y: 66, z: 0 }, health: 20, threatPolicy: 'balanced_mining' }

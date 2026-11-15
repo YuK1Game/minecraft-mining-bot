@@ -13,10 +13,10 @@ function fixture (t, mode = 'valid') {
   const starts = [], guardCalls = [], guardResults = [], histories = [], records = []
   const calls = [];`)
   source = source.replace('  const target = { exports: {} };', `
-  overrides['./input'] = { createInput: options => nativeRequire('./input').createInput({ ...options, startGameReceivedAt: 0, clock: () => elapsed }) }
-  overrides['./input-history'] = { createInputHistory: options => { const value = nativeRequire('./input-history').createInputHistory(options); histories.push(value); return value } }
-  overrides['./movement'] = { createMovement: options => {
-    const value = nativeRequire('./movement').createMovement({ ...options, startGameReceivedAt: 0, clock: () => elapsed, onQueuedFrame: frame => { records.push(copy(frame)); options.onQueuedFrame(frame) }, onPrediction: prediction => {
+  overrides['./movement/input'] = { createInput: options => nativeRequire('./movement/input').createInput({ ...options, startGameReceivedAt: 0, clock: () => elapsed }) }
+  overrides['./movement/input-history'] = { createInputHistory: options => { const value = nativeRequire('./movement/input-history').createInputHistory(options); histories.push(value); return value } }
+  overrides['./movement/movement'] = { createMovement: options => {
+    const value = nativeRequire('./movement/movement').createMovement({ ...options, startGameReceivedAt: 0, clock: () => elapsed, onQueuedFrame: frame => { records.push(copy(frame)); options.onQueuedFrame(frame) }, onPrediction: prediction => {
       options.onPrediction(prediction)
       if (starts.length >= 2 && mode === 'valid') actors[0].uniqueId = '-changed-after-second-start'
     } })
@@ -24,8 +24,8 @@ function fixture (t, mode = 'valid') {
     value.start = (target, settings) => { starts.push({ target: copy(target), settings, at: Date.now() }); return start(target, settings) }
     return value
   } }
-  overrides['./guarded-route'] = { createGuardedRoute: options => {
-    const value = nativeRequire('./guarded-route').createGuardedRoute({ ...options, clock: Date.now, delay: async ms => { advance(ms); await new Promise(resolve => setImmediate(resolve)) }, pollMs: 50, operationTimeoutMs: 1500 })
+  overrides['./movement/guarded-route'] = { createGuardedRoute: options => {
+    const value = nativeRequire('./movement/guarded-route').createGuardedRoute({ ...options, clock: Date.now, delay: async ms => { advance(ms); await new Promise(resolve => setImmediate(resolve)) }, pollMs: 50, operationTimeoutMs: 1500 })
     const escape = value.escape
     value.escape = async (targets, settings) => {
       guardCalls.push({ targets: copy(targets), settings: { timeoutMs: settings.timeoutMs, maxMovementStarts: settings.maxMovementStarts }, at: Date.now() })

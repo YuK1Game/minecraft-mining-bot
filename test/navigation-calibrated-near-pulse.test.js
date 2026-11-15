@@ -1,6 +1,6 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
-const { createNavigator } = require('../src/navigation')
+const { createNavigator } = require('../src/movement/navigation')
 const block = name => ({known:true,name:'minecraft:'+name,properties:{},extra:[]})
 function fixture () { let fault=null; const world={getBlock:(x,y,z)=>fault?.(x,y,z)??block(y<65?'stone':'air')}; const navigator=createNavigator({world}); const initial=navigator.physics.fromServer({position:{x:.491989135742188,y:66.62,z:.299997329711914},gameMode:'survival',rotation:{yaw:0,pitch:0}}); return {world,navigator,initial,setFault:fn=>{fault=fn}} }
 test('calibrated near initial waypoint progresses through a90degree turn with residual velocity and initial actor padding',()=>{

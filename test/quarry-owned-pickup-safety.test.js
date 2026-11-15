@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
-const { createQuarryPortableStorage } = require('../src/quarry-portable-storage')
+const { createQuarryPortableStorage } = require('../src/quarry/storage/quarry-portable-storage')
 const copy = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`
 const file = require.resolve('./quarry-portable-storage.test'), loaded = new Module(file, module)

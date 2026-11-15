@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {rankCampResourceTargets}=require('../src/camp-local-resource'),{rankExplorationTargets}=require('../src/exploration'),{createPhysics}=require('../src/physics'),{createNavigator}=require('../src/navigation')
+const {rankCampResourceTargets}=require('../src/survival/camp-local-resource'),{rankExplorationTargets}=require('../src/survival/exploration'),{createPhysics}=require('../src/movement/physics'),{createNavigator}=require('../src/movement/navigation')
 const actual=require('./fixtures/actual-life71-camp-local-blocks.json')
 const fixture=()=>structuredClone(actual),spatial=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b)
 const options=f=>({state:f.state,observations:{blocks:f.blocks,center:{x:Math.floor(f.state.position.x),z:Math.floor(f.state.position.z)},radius:8},surface:f.surface})

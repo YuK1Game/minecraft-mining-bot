@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {createRunner}=require('../src/runner'),{createCrafting}=require('../src/crafting')
+const {createRunner}=require('../src/survival/runner'),{createCrafting}=require('../src/actions/crafting')
 const B={x:-38,y:64,z:48},wrong={x:-36,y:68,z:50}
 const extra={has_nbt:'false',can_place_on:[],can_destroy:[]}
 const air=()=>({network_id:0,count:0,metadata:0,has_stack_id:false,block_runtime_id:0,extra})

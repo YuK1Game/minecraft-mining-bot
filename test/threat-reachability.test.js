@@ -1,8 +1,8 @@
 ﻿'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const reach = require('../src/threat-reachability')
-const { evaluateThreats } = require('../src/threats')
+const reach = require('../src/combat/threat-reachability')
+const { evaluateThreats } = require('../src/combat/threats')
 
 // Flat stone floor at y=63 with air above; `walls` adds solid cells.
 function world ({ walls = () => false, unknown = () => false } = {}) {
@@ -61,7 +61,7 @@ test('a creeper is never suppressed as unreachable: it keeps normal danger evalu
 })
 
 test('targeted seek reaches a hostile on open ground, reports false when walled off, null on budget', () => {
-  const { seekCells } = require('../src/threat-reachability')
+  const { seekCells } = require('../src/combat/threat-reachability')
   const flat = { getBlock: (x, y, z) => y < 64 ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : { known: true, name: 'minecraft:air', boundingBox: 'empty' } }
   assert.equal(seekCells(flat, { x: 0.5, y: 64, z: 0.5 }, { x: 20.5, y: 64, z: 3.5 }), true)
   // a pit: the bot stands at the bottom of a 3-deep shaft with no exit

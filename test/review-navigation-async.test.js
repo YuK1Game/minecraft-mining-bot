@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createNavigator } = require('../src/navigation')
+const { createNavigator } = require('../src/movement/navigation')
 const block = name => ({ known: true, name: `minecraft:${name}`, properties: {}, extra: [] })
 function fixture ({ trusted = true, override = () => null } = {}) {
   let revision = 0, reads = 0

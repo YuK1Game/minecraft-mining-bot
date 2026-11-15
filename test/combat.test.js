@@ -4,8 +4,8 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setTimeout: delay } = require('node:timers/promises')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { createEntities } = require('../src/entities')
-const { createCombat } = require('../src/combat')
+const { createEntities } = require('../src/host/entities')
+const { createCombat } = require('../src/combat/combat')
 
 function fixture (options = {}) {
   const state = { phase: 'spawned', gameMode: 'survival', runtimeEntityId: '1', dimension: 'overworld', health: 20, selectedSlot: 0, rawSelectedSlot: 0, rawServerSelectedSlot: 0, position: { x: 0.5, y: 66.62, z: 0.5 } }
@@ -1017,7 +1017,7 @@ test('engagement hit and real-time limits remain bounded even with a frozen obse
 
 function runtimeCombatFixture (t) {
   const { createRuntime } = require('../src/runtime')
-  const { createSessionCache } = require('../src/session-cache')
+  const { createSessionCache } = require('../src/host/session-cache')
   const f = armedFixture()
   const packets = []
   const lifecycle = []

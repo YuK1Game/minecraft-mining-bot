@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createSessionCache } = require('../src/session-cache')
+const { createSessionCache } = require('../src/host/session-cache')
 
 test('behaviour reload can replay current server recipes, stack IDs and open inventory without reconnecting', () => {
   const cache = createSessionCache()

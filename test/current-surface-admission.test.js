@@ -1,7 +1,7 @@
 'use strict'
 // Controlled Native simulation and real policy/controllers; no live arrival.
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const {createBaseContinuation}=require('../src/base-continuation'),{createPhysics}=require('../src/physics'),{createNavigator}=require('../src/navigation')
+const {createBaseContinuation}=require('../src/survival/base-continuation'),{createPhysics}=require('../src/movement/physics'),{createNavigator}=require('../src/movement/navigation')
 const file=path.join(__dirname,'camp-reload-revalidation.test.js'),m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(fs.readFileSync(file,'utf8').split('\ntest(')[0]+'\nmodule.exports={fixture,refresh,ownedTable}',file);const {fixture,refresh,ownedTable}=m.exports
 async function scene(t){
  t.mock.method(Date,'now',()=>1000)

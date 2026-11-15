@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createRunner } = require('../src/runner')
+const { createRunner } = require('../src/survival/runner')
 
 // Fake worker only: no actual HTTP, game connection, authentication or cache.
 function fixture (handler = () => undefined) {
@@ -27,7 +27,7 @@ function fixture (handler = () => undefined) {
     if (path === '/mining/stop') { state.mining.phase = 'stopped'; return state.mining }
     return {}
   }
-  const runner = createRunner({ request, timeoutMs: 100, pollIntervalMs: 20, delay: async milliseconds => { clock += milliseconds }, now: () => clock })
+  const runner = createRunner({ request, timeoutMs: 100, pollIntervalMs: 20, delay: async milliseconds => { clock += milliseconds }, now: () => clock, logAllowance: () => true })
   return { runner, state, calls, block }
 }
 

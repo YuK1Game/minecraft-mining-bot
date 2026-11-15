@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createSightStanceSearch } = require('../src/sight-stance-search')
+const { createSightStanceSearch } = require('../src/combat/sight-stance-search')
 
 function orderedCandidates (state, target, actors, velocity) {
   const feet = { x: state.position.x, y: Math.round(state.position.y - 1.62), z: state.position.z }

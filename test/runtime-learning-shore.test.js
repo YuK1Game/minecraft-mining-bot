@@ -2,7 +2,7 @@
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), Module = require('node:module')
 const capture = require('./fixtures/learning-shore-partial-origin.json')
-const { createNavigator } = require('../src/navigation'), { evaluateThreats } = require('../src/threats')
+const { createNavigator } = require('../src/movement/navigation'), { evaluateThreats } = require('../src/combat/threats')
 const file = path.resolve(__dirname, 'runtime-idle-escape.test.js')
 let setup = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 setup = setup.replace("fs.readFileSync(runtimeFile, 'utf8')", "fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? runtimeFile, 'utf8')")

@@ -4,7 +4,7 @@
 // 46 ms; the local 16-48 m searches had failed there.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { planCoarseRoute } = require('../src/coarse-route')
+const { planCoarseRoute } = require('../src/travel/coarse-route')
 
 // heights[z][x] = top solid y; 'W' = water surface at y 62; null = unreceived.
 function world (rows) {
@@ -175,7 +175,7 @@ test('a diagonal step never clips a solid corner cell', () => {
 // Live 2026-11-14 17:37: a short budget cut the search and the partial path led
 // back every pass. The asynchronous search yields between slices and finishes.
 test('the asynchronous search yields to the event loop and returns the same route', async () => {
-  const { planCoarseRouteAsync } = require('../src/coarse-route')
+  const { planCoarseRouteAsync } = require('../src/travel/coarse-route')
   const rows = flat(200, 200), get = world(rows)
   let ticks = 0, running = true, t = 0
   const spin = () => { if (!running) return; ticks++; setImmediate(spin) }

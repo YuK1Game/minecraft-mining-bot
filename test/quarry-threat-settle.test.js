@@ -1,7 +1,7 @@
 'use strict'
 const {test}=require('node:test')
 const assert=require('node:assert/strict')
-const {createQuarryCombatBridge}=require('../src/quarry-combat-bridge')
+const {createQuarryCombatBridge}=require('../src/quarry/quarry-combat-bridge')
 const state={position:{x:0.5,y:66.62,z:0.5},health:20,food:20}
 const enemy={kind:'mob',entityType:'minecraft:creeper',runtimeId:'10',uniqueId:'-10',hostile:true,alive:true,positionKnown:true,position:{x:7.5,y:65,z:0.5}}
 test('a real blocked non-intercepting enemy cannot hold quarry work in combat settle despite a walk route',()=>{

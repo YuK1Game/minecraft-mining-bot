@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { quarryConfig } = require('../src/dashboard-control')
+const { quarryConfig } = require('../src/host/dashboard-control')
 const filename = require.resolve('./runtime-user-behaviors.test.js'), loaded = new Module(filename, module)
 loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
 loaded._compile(fs.readFileSync(filename, 'utf8').split('\ntest(')[0] + '\nmodule.exports = { scene }\n', filename)
@@ -28,7 +28,7 @@ function fixture (t, { registered = true, actualGear = true, registration = {} }
   } }
   const f = scene(t, { runtimeOverrides: {
     'node:fs': runtimeFs,
-    './quarry-job': { createQuarryJob: options => {
+    './quarry/quarry-job': { createQuarryJob: options => {
       adapter = options.adapter
       return { holdsWork: () => false, status: () => document ? { state: 'IDLE', jobId: 'fixture-plan' } : null,
         document: () => document,

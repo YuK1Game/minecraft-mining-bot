@@ -1,9 +1,9 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { planQuarryExit, permitsExitAction } = require('../src/quarry-exit-plan')
-const { buildRegions, permits } = require('../src/quarry-region')
-const { createQuarryJob } = require('../src/quarry-job')
+const { planQuarryExit, permitsExitAction } = require('../src/quarry/exit/quarry-exit-plan')
+const { buildRegions, permits } = require('../src/quarry/quarry-region')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 const { createSim } = require('./helpers/quarry-sim')
 
 // Synthetic terrain: the quarry's tallest point and the adjacent ground are
@@ -58,7 +58,7 @@ test('review: a saved lower exit is revalidated against real air and actual reac
   assert.equal(planQuarryExit({ ...f.args, preflight: false, reservation: p, reachable }).ok, false)
   assert.equal(planQuarryExit({ ...cut.args, reservation: p, reachable: new Set() }).ok, false)
 })
-for (const [name, cause] of [['water', 'FLUID_OR_EXTRA_LAYER'], ['lava', 'FLUID_OR_EXTRA_LAYER'], ['gravel', 'FALLING_BLOCK'], ['chest', 'PROTECTED'], ['oak_leaves', 'UNSAFE_LANDING_FLOOR'], ['short_grass', 'UNSAFE_LANDING_FLOOR'], ['magma', 'UNSAFE_LANDING_FLOOR']]) test(`review: lower search never skips ${name} to select a cave beneath`, () => {
+for (const [name, cause] of [['water', 'FLUID_OR_EXTRA_LAYER'], ['lava', 'FLUID_OR_EXTRA_LAYER'], ['gravel', 'FALLING_BLOCK'], ['chest', 'PROTECTED'], ['oak_leaves', 'PROTECTED'], ['short_grass', 'UNSAFE_LANDING_FLOOR'], ['magma', 'UNSAFE_LANDING_FLOOR']]) test(`review: lower search never skips ${name} to select a cave beneath`, () => {
   const f = hillside({ patch: (x, y) => x === -15 && y === 70 ? name : null })
   const r = planQuarryExit(f.args)
   assert.equal(r.ok, false)
@@ -147,7 +147,7 @@ test('review (2026-11-10): a job continuing under an open pit may land on the su
   assert.ok(planQuarryExit(f.args).details.attempts.every(a => a.cause === 'LANDING_TOO_HIGH'), 'the default rise still refuses')
   const r = planQuarryExit({ ...f.args, exit: { ...(f.args.exit ?? {}), landingRise: 160 } })
   assert.ok(!(r.details?.attempts ?? []).some(a => a.cause === 'LANDING_TOO_HIGH'), JSON.stringify(r.details).slice(0, 200))
-  const { normalizeExit } = require('../src/quarry-exit-plan')
+  const { normalizeExit } = require('../src/quarry/exit/quarry-exit-plan')
   assert.throws(() => normalizeExit({ landingRise: 10 }), /landing rise/)
   assert.equal(normalizeExit({}).landingRise, undefined)
 })

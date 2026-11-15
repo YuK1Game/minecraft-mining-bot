@@ -2,9 +2,9 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryPlanner } = require('../src/quarry-planner')
-const { buildRegions } = require('../src/quarry-region')
-const { isGravityName } = require('../src/quarry-rules')
+const { createQuarryPlanner } = require('../src/quarry/quarry-planner')
+const { buildRegions } = require('../src/quarry/quarry-region')
+const { isGravityName } = require('../src/quarry/quarry-rules')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 
 function fixture (material, { safeFloor = true } = {}) {

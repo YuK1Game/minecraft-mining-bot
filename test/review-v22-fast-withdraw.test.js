@@ -4,11 +4,11 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
 const { isDeepStrictEqual } = require('node:util')
-const { createChest } = require('../src/chest')
-const { createArmor } = require('../src/armor')
-const { createInventoryInspection } = require('../src/inventory-inspection')
-const { createQuarryV22ChestWork } = require('../src/quarry-v22-chest-work')
-const { validateV22Loadout, singles } = require('../src/quarry-v22-loadout')
+const { createChest } = require('../src/actions/chest')
+const { createArmor } = require('../src/actions/armor')
+const { createInventoryInspection } = require('../src/inventory/inventory-inspection')
+const { createQuarryV22ChestWork } = require('../src/loadout/quarry-v22-chest-work')
+const { validateV22Loadout, singles } = require('../src/loadout/quarry-v22-loadout')
 const copy = value => structuredClone(value)
 const summary = result => JSON.stringify({ status: result.status, reason: result.reason, index: result.checkpoint?.index, phase: result.checkpoint?.phase, receipts: result.checkpoint?.receipts?.length })
 
@@ -24,7 +24,7 @@ const tag = (type, value) => ({ type, value })
 
 function fixture (t, { actualArmor = true } = {}) {
   let inventoryDelta, allocate, inspection, armor, processingArmorId = null, started = false
-  const chestHelpers = prefix('./chest.test.js', 'fixture, air', loaded => name => name === '../src/chest' ? { createChest: options => {
+  const chestHelpers = prefix('./chest.test.js', 'fixture, air', loaded => name => name === '../src/actions/chest' ? { createChest: options => {
     allocate = options.allocateRequestId
     inventoryDelta = delta => { options.onInventory(delta); inspection?.applyPacket('inventory_slot', delta) }
     return createChest({ ...options, onInventory: inventoryDelta })

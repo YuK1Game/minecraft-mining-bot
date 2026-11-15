@@ -3,11 +3,11 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { createNavigator } = require('../src/navigation')
-const { evaluateThreats } = require('../src/threats')
+const { createNavigator } = require('../src/movement/navigation')
+const { evaluateThreats } = require('../src/combat/threats')
 const sample = require('./fixtures/life149-flat-shore.json')
 function loadRecovery () {
-  const filename = require.resolve('../src/recovery'), loaded = new Module(filename, module)
+  const filename = require.resolve('../src/safety/recovery'), loaded = new Module(filename, module)
   loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
   loaded._compile(fs.readFileSync(process.env.RECOVERY_TEST_SOURCE ?? filename, 'utf8'), filename)
   return loaded.exports.createRecovery

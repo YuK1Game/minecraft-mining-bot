@@ -6,7 +6,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
-const { evaluateThreats } = require('../src/threats')
+const { evaluateThreats } = require('../src/combat/threats')
 
 // Reuse the existing cheap known-stone/real-Excavation fixture without running
 // its test registrations or changing any production dependency defaults.

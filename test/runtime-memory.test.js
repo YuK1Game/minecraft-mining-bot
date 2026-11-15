@@ -6,9 +6,9 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
-const { planHut } = require('../src/hut-planner')
-const { planShelter } = require('../src/shelter-planner')
-const { createSessionCache } = require('../src/session-cache')
+const { planHut } = require('../src/survival/hut-planner')
+const { planShelter } = require('../src/survival/shelter-planner')
+const { createSessionCache } = require('../src/host/session-cache')
 
 const scope = { profile: 'bot', realmId: '21225335', dimension: 'overworld' }
 const clone = value => structuredClone(value)
@@ -58,9 +58,9 @@ function fixture (t, { optedIn = true, load, save, existing, knownWorld = false 
   const filename = path.resolve(__dirname, '../src/runtime.js')
   const nativeRequire = Module.createRequire(filename)
   const target = { exports: {} }
-  const realHut = nativeRequire('./hut').createHut
+  const realHut = nativeRequire('./survival/hut').createHut
   const compile = new vm.Script(Module.wrap(fs.readFileSync(filename, 'utf8')), { filename }).runInThisContext()
-  compile(target.exports, name => name === './hut' ? { createHut: options => { callbacks.push(options.onProgress); return realHut(options) } } : nativeRequire(name), target, filename, path.dirname(filename))
+  compile(target.exports, name => name === './survival/hut' ? { createHut: options => { callbacks.push(options.onProgress); return realHut(options) } } : nativeRequire(name), target, filename, path.dirname(filename))
   const create = () => { const runtime = target.exports.createRuntime(host); instances.push(runtime); return runtime }
   const runtime = create()
   t.after(async () => { for (const instance of instances) await instance.dispose('test_cleanup') })

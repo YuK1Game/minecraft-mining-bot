@@ -1,10 +1,10 @@
 'use strict'
-// Pins the scalar ray walk in src/aim.js to the original object-based version:
+// Pins the scalar ray walk in src/combat/aim.js to the original object-based version:
 // identical faces, hit points and distances on random worlds, including rays
 // that run exactly along block edges.
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { selectVisibleBlockFace, traceBlockFace } = require('../src/aim')
+const { selectVisibleBlockFace, traceBlockFace } = require('../src/combat/aim')
 
 const AXES = ['x', 'y', 'z']
 const AIR = new Set(['air', 'cave_air', 'void_air'])
@@ -79,7 +79,7 @@ test('scalar ray walk matches the reference on random worlds and edge rays', () 
       if (!AXES.every(a => point[a] > target[a] && point[a] < target[a] + 1)) continue
       assert.deepEqual(traceBlockFace({ ...options, point }), referenceTrace(options, point))
       const expected = (() => {
-        // Reference face selection, same sampling as src/aim.js.
+        // Reference face selection, same sampling as src/combat/aim.js.
         const FACES = [{ axis: 'y', normal: -1, axes: ['x', 'z'] }, { axis: 'y', normal: 1, axes: ['x', 'z'] }, { axis: 'z', normal: -1, axes: ['x', 'y'] }, { axis: 'z', normal: 1, axes: ['x', 'y'] }, { axis: 'x', normal: -1, axes: ['y', 'z'] }, { axis: 'x', normal: 1, axes: ['y', 'z'] }]
         const clamp = v => Math.max(0.02, Math.min(0.98, v)); const out = []
         for (let face = 0; face < 6; face++) {

@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createForaging } = require('../src/foraging')
+const { createForaging } = require('../src/survival/foraging')
 
 const animal = (type, x, id = '2') => ({ runtimeId: id, kind: 'mob', entityType: `minecraft:${type}`, dimension: 'overworld', positionKnown: true, alive: true, hostile: false, position: { x, y: 65, z: 0.5 } })
 const drop = (x, id = '3') => ({ runtimeId: id, kind: 'item', name: 'minecraft:porkchop', count: 1, dimension: 'overworld', positionKnown: true, alive: true, position: { x, y: 65.125, z: 0.5 } })

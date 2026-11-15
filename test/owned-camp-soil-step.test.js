@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const {createPhysics}=require('../src/physics'),{createNavigator}=require('../src/navigation'),{createMining}=require('../src/mining')
+const {createPhysics}=require('../src/movement/physics'),{createNavigator}=require('../src/movement/navigation'),{createMining}=require('../src/actions/mining')
 const file=path.join(__dirname,'owned-camp-return.test.js'),m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(fs.readFileSync(file,'utf8').split('\ntest(')[0]+'\nmodule.exports={fixture}',file)
 const target=path.resolve(__dirname,'../src/owned-camp-soil-step.js'),loaded=new Module(target,module);loaded.filename=target;loaded.paths=Module._nodeModulePaths(path.dirname(target));loaded._compile(fs.readFileSync(process.env.SOIL_STEP_TEST_SOURCE??target,'utf8'),target);const {planOwnedCampSoilStep}=loaded.exports
 function scene(){const f=m.exports.fixture();for(let x=1;x<=8;x++)for(let z=-8;z<=8;z++)for(const [y,name]of [[65,'minecraft:stone'],[66,'minecraft:dirt'],[67,'minecraft:grass_block']])f.changes.set(`${x},${y},${z}`,{...f.block(x,y,z,name),diggable:true,natural:true,hardness:.5})

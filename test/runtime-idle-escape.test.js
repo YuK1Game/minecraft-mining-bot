@@ -7,8 +7,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
-const { evaluateThreats } = require('../src/threats')
-const { buildTerrainThreatEvidence, terrainOcclusionApplies } = require('../src/terrain-threats')
+const { evaluateThreats } = require('../src/combat/threats')
+const { buildTerrainThreatEvidence, terrainOcclusionApplies } = require('../src/combat/terrain-threats')
 const root = path.resolve(__dirname, '..')
 const runtimeFile = path.join(root, 'src/runtime.js')
 const originalRuntime = fs.readFileSync(runtimeFile, 'utf8').replace(/\r\n/g, '\n')
@@ -21,16 +21,16 @@ replace('{ realSafety = false, wanted = false }', '{ realSafety = false, wanted 
 replace('  const calls = [];', '  const guards = []; const movements = []; const autoProbe = { busy: false }\n  const calls = [];')
 replace("fs.readFileSync(filename, 'utf8')", 'runtimeSource')
 replace('return { runtime, create, host, raw, shared,', 'return { guards, movements, autoProbe, runtime, create, host, raw, shared,')
-replace('  const overrides = {', "  const overrides = {\n    './autonomy': { createAutonomy: options => { const actor = nativeRequire('./autonomy').createAutonomy(options); const snapshot = actor.snapshot; actor.snapshot = () => ({ ...snapshot(), busy: autoProbe.busy || snapshot().busy }); return actor } },\n    './terrain-threats': { ...nativeRequire('./terrain-threats'), annotateTerrainThreats: (state, actors, options) => preserveTerrainEvidence ? copy(actors) : nativeRequire('./terrain-threats').annotateTerrainThreats(state, actors, options) },")
-const movementStart = fixtureSource.indexOf("    './movement':")
-const movementEnd = fixtureSource.indexOf("    './combat':", movementStart)
+replace('  const overrides = {', "  const overrides = {\n    './survival/autonomy': { createAutonomy: options => { const actor = nativeRequire('./survival/autonomy').createAutonomy(options); const snapshot = actor.snapshot; actor.snapshot = () => ({ ...snapshot(), busy: autoProbe.busy || snapshot().busy }); return actor } },\n    './combat/terrain-threats': { ...nativeRequire('./combat/terrain-threats'), annotateTerrainThreats: (state, actors, options) => preserveTerrainEvidence ? copy(actors) : nativeRequire('./combat/terrain-threats').annotateTerrainThreats(state, actors, options) },")
+const movementStart = fixtureSource.indexOf("    './movement/movement':")
+const movementEnd = fixtureSource.indexOf("    './combat/combat':", movementStart)
 assert.ok(movementStart > 0 && movementEnd > movementStart)
 fixtureSource = fixtureSource.slice(0, movementStart) + `
-    './movement': { createMovement: () => {
+    './movement/movement': { createMovement: () => {
       const actor = { phase: 'idle', previews: [], starts: [], stops: [], frames: [], timer: null, previewHook: null }; movements.push(actor)
       if (realPhysics) {
         const navigators = new Map()
-        const getNavigator = enabled => { if (!navigators.has(enabled)) navigators.set(enabled, nativeRequire('./navigation').createNavigator({ world: host.world, allowWater: enabled })); return navigators.get(enabled) }
+        const getNavigator = enabled => { if (!navigators.has(enabled)) navigators.set(enabled, nativeRequire('./movement/navigation').createNavigator({ world: host.world, allowWater: enabled })); return navigators.get(enabled) }
         let navigator = getNavigator(false)
         let stepper = null
         const observed = host.getState
@@ -68,9 +68,9 @@ fixtureSource = fixtureSource.slice(0, movementStart) + `
         return { ready: true, origin: current, waypoints: points }
       }, start: target => { actor.starts.push(copy(target)); actor.phase = 'awaiting_server_confirmation'; raw.position = { ...copy(target), y: target.y + 1.62 }; raw.positionUpdatedAt = (raw.positionUpdatedAt ?? 0) + 1; raw.positionSource = 'client_prediction'; raw.predicted = { physicsState: { onGround: true, velocity: { x: 0, y: -0.0784, z: 0 } } }; return { phase: actor.phase } }, stop: reason => { actor.stops.push(reason); actor.phase = 'stopped' }, applyPacket () {}, settle: () => ({}) }
     } },
-    './guarded-route': { createGuardedRoute: options => {
+    './movement/guarded-route': { createGuardedRoute: options => {
       const actor = { options, busy: false, calls: [], stops: [], gate: null, stopGate: null, work: null }; guards.push(actor)
-      if (realGuard) { actor.native = nativeRequire('./guarded-route').createGuardedRoute(options); return actor.native }
+      if (realGuard) { actor.native = nativeRequire('./movement/guarded-route').createGuardedRoute(options); return actor.native }
       return { snapshot: () => ({ busy: actor.busy, phase: actor.busy ? 'escaping' : 'idle' }), escape: async (nodes, bounds) => {
         actor.busy = true; actor.calls.push({ nodes: copy(nodes), bounds })
         try {
@@ -833,7 +833,7 @@ test('real supervisor can clear and replan from the observed close creeper posit
   creeper.position = { x: -1.46529769897461, y: 70, z: -2.554996490478516 }
   const blocks = new Map(observed.blocks.map(b => [`${b.position.x},${b.position.y},${b.position.z}`, b]))
   f.host.world.getBlock = (x, y, z) => structuredClone(blocks.get(`${x},${y},${z}`) ?? { known: false })
-  const leafPlan = require('../src/emergency-leaf').planEmergencyLeaf({ state: f.safeties[0].options.getState(), world: f.host.world })
+  const leafPlan = require('../src/safety/emergency-leaf').planEmergencyLeaf({ state: f.safeties[0].options.getState(), world: f.host.world })
   assert.equal(leafPlan.ready, true)
   const supervisor = f.safeties[0].native
   f.runtime.operations.safety.start({ lowHealthRecoveryMs: 30000 })
@@ -885,7 +885,7 @@ test('the observed close creeper can be escaped from the already-cleared leaf op
   creeper.position = { x: -1.46529769897461, y: 70, z: -2.554996490478516 }
   const blocks = new Map(observed.blocks.map(b => [`${b.position.x},${b.position.y},${b.position.z}`, b]))
   f.host.world.getBlock = (x, y, z) => structuredClone(blocks.get(`${x},${y},${z}`) ?? { known: false })
-  const plan = require('../src/emergency-leaf').planEmergencyLeaf({ state: f.safeties[0].options.getState(), world: f.host.world })
+  const plan = require('../src/safety/emergency-leaf').planEmergencyLeaf({ state: f.safeties[0].options.getState(), world: f.host.world })
   assert.equal(plan.ready, true)
   blocks.set(`${plan.block.x},${plan.block.y},${plan.block.z}`, { known: true, name: 'minecraft:air', properties: {}, extra: [], position: plan.block, boundingBox: 'empty' })
   const result = await f.safeties[0].options.escape(context(f))
@@ -2781,7 +2781,7 @@ test('recorded water with a close creeper and a distant zombie can preview a gua
   const result = await f.safeties[0].options.escape(context(f))
   const state = f.safeties[0].options.getState()
   const threats = evaluateThreats(state, f.actors, { observationRadius: 32 }).threats
-  const eligible = require('../src/escape-policy').unarmedCreeperZombie(state, threats, { creeperMinimum: 4, allowCloseZombie: true })
+  const eligible = require('../src/movement/escape-policy').unarmedCreeperZombie(state, threats, { creeperMinimum: 4, allowCloseZombie: true })
   assert.equal(result.supported, true, JSON.stringify({ result, eligible, initialShallow, shallow: f.safeties[0].options.verifyShallowWater(state, {}), threats: threats.map(a => ({ name: a.name, distance: a.distance })), previews: f.movements[0].previews.map(p => ({ target: p.target, ready: p.route?.ready, reason: p.route?.reason, waypoints: p.route?.waypoints?.length, medium: p.route?.waypoints?.at(-1)?.medium })) }))
   assert.ok(f.movements[0].starts.some(start => start.options.allowWater === true))
 })

@@ -3,8 +3,8 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { getEventListeners } = require('node:events')
-const { createOperationScope } = require('../src/operation-scope')
-const { createActionOwnerTracker } = require('../src/action-owner-tracker')
+const { createOperationScope } = require('../src/common/operation-scope')
+const { createActionOwnerTracker } = require('../src/common/action-owner-tracker')
 
 test('aborting a pending child cancels both owned controllers once and fences later work', async () => {
   const abort = new AbortController(), owners = createActionOwnerTracker(), stopped = []

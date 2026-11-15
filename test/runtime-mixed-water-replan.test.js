@@ -8,8 +8,8 @@ function load (filename, text) { const m = new Module(filename, module); m.filen
 async function scene (t) {
   const file = path.join(root, 'test/runtime-depot-resource-scope.test.js')
   const { hostScene, seed } = load(file, fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0] + '\nmodule.exports={hostScene,seed};')
-  const movementSource = process.env.MIXED_MOVEMENT_TEST_SOURCE ?? (fs.existsSync(path.join(__dirname, '../src/movement.js')) ? path.join(__dirname, '../src/movement.js') : path.join(root, '.local/staged/mixed-water-correction-replan-r2/src/movement.js'))
-  const stagedMovement = load(path.join(root, 'src/movement.js'), fs.readFileSync(movementSource, 'utf8'))
+  const movementSource = process.env.MIXED_MOVEMENT_TEST_SOURCE ?? (fs.existsSync(path.join(__dirname, '../src/movement/movement.js')) ? path.join(__dirname, '../src/movement/movement.js') : path.join(root, '.local/staged/mixed-water-correction-replan-r2/src/movement.js'))
+  const stagedMovement = load(path.join(root, 'src/movement/movement.js'), fs.readFileSync(movementSource, 'utf8'))
   const state = copy(seed.state)
   Object.assign(state, { health: 20, position: { x: .5, y: 66.62, z: .5 }, positionSource: 'server_post_move', positionUpdatedAt: new Date().toISOString(), inventory: { known: true, items: [] }, heldItem: null, selectedSlot: 0, rawSelectedSlot: 0, lifecycle: { phase: 'alive', deathId: 1 }, rotation: { yaw: -90, pitch: 0 } })
   delete state.predicted
@@ -23,7 +23,7 @@ async function scene (t) {
   process.env.RUNTIME_TEST_SOURCE = process.env.MIXED_RUNTIME_TEST_SOURCE ?? path.join(__dirname, '../src/runtime.js')
   try {
     f = hostScene(t, workspaceRoot, { state, getBlock, overrides: {
-      './movement': { ...stagedMovement, createMovement: options => { movementOptions.push(options); const m = stagedMovement.createMovement(options); instances.push(m); return { ...m, start: (target, options) => { startOptions.push(options); return m.start(target, options) } } } },
+      './movement/movement': { ...stagedMovement, createMovement: options => { movementOptions.push(options); const m = stagedMovement.createMovement(options); instances.push(m); return { ...m, start: (target, options) => { startOptions.push(options); return m.start(target, options) } } } },
       './http-client': { createHttpClient: () => () => { throw Error('No HTTP in controlled Runtime mixed test') } }
     } })
   } finally { if (old == null) delete process.env.RUNTIME_TEST_SOURCE; else process.env.RUNTIME_TEST_SOURCE = old }

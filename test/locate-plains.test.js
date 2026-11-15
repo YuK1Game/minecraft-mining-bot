@@ -3,7 +3,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { createPlainsLocator } = require('../src/locate-plains')
+const { createPlainsLocator } = require('../src/travel/locate-plains')
 
 const encoder = createSerializer('1.26.60'), decoder = createDeserializer('1.26.60')
 const wire = (name, params) => decoder.parsePacketBuffer(encoder.createPacketBuffer({ name, params })).data.params

@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { completedFourLayerFloor, needsFourLayerCollection } = require('../src/quarry-four-layer')
+const { completedFourLayerFloor, needsFourLayerCollection } = require('../src/quarry/quarry-four-layer')
 
 test('Y75 starts with a four-layer sweep after 75..72, then every four levels', () => {
   assert.equal(completedFourLayerFloor(75, 75), null)

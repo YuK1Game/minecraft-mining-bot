@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createArmor, armorInfo } = require('../src/armor')
+const { createArmor, armorInfo } = require('../src/actions/armor')
 
 const NAMES = new Map([[1, 'minecraft:iron_chestplate'], [2, 'minecraft:leather_chestplate'], [3, 'minecraft:iron_sword'], [4, 'minecraft:diamond_helmet']])
 function fixture ({ inventory = [], respond = 'ok' } = {}) {
@@ -51,7 +51,7 @@ test('an accepted move commits the emptied source slot to the inventory model', 
   const commits = []
   const f = fixture({ inventory: [{ slot: 7, id: 1 }] })
   // rebuild with an onInventory hook
-  const { createArmor } = require('../src/armor')
+  const { createArmor } = require('../src/actions/armor')
   let armor; const sent = []
   const client = { queue: (name, params) => { sent.push(name); if (name === 'item_stack_request') { const r = params.requests[0]; queueMicrotask(() => armor.applyPacket('item_stack_response', { responses: [{ request_id: r.request_id, status: 'ok', containers: [] }] })) } } }
   armor = createArmor({ client, crafting: f.crafting, getState: () => ({ phase: 'spawned', health: 20, gameMode: 'survival', inventory: { known: true } }), allocateRequestId: () => -3, onInventory: p => commits.push(p) })

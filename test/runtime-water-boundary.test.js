@@ -13,7 +13,7 @@ let fixtureSource = fs.readFileSync(fixtureFile, 'utf8').replace(/\r\n/g, '\n').
 const gate = '              const waterObserved = safetyState()'
 const seam = 'const runtimeSource = originalRuntime'
 assert.equal(fixtureSource.split(seam).length, 2)
-fixtureSource = fixtureSource.replace(seam, `const runtimeSource = originalRuntime.replace(${JSON.stringify(gate)}, ${JSON.stringify('              host.shared.waterBoundaryProbe?.()\n' + gate)})`)
+fixtureSource = fixtureSource.replace(seam, `const runtimeSource = require("./helpers/runtime-source").runtimeSource().replace(${JSON.stringify(gate)}, ${JSON.stringify('              host.shared.waterBoundaryProbe?.()\n' + gate)})`)
 const target = { exports: {} }
 const load = new vm.Script('(function(require,module,__filename,__dirname){' + fixtureSource + ';module.exports={prepare,context};})', { filename: fixtureFile }).runInThisContext()
 load(Module.createRequire(fixtureFile), target, fixtureFile, path.dirname(fixtureFile))

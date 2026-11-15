@@ -1,6 +1,6 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
-const { scoreMeleeWeapon, selectMeleeWeapon } = require('../src/melee-weapons')
+const { scoreMeleeWeapon, selectMeleeWeapon } = require('../src/combat/melee-weapons')
 const proof = require('./fixtures/melee-tool-ground-damage.json')
 const copy = value => structuredClone(value)
 const rows = new Map(proof.rows.map(row => [row.item, row]))

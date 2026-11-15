@@ -8,9 +8,9 @@ const vm = require('node:vm')
 const Module = require('node:module')
 const { performance } = require('node:perf_hooks')
 const { setTimeout: sleep } = require('node:timers/promises')
-const { createState } = require('../src/state')
-const { createSessionCache } = require('../src/session-cache')
-const { createRecovery } = require('../src/recovery')
+const { createState } = require('../src/host/state')
+const { createSessionCache } = require('../src/host/session-cache')
+const { createRecovery } = require('../src/safety/recovery')
 
 function deferred () {
   let resolve
@@ -77,7 +77,7 @@ function fixture (t, { delayedStop = false } = {}) {
     allocate: () => -1, commitInventory: packet => parsed.applyPacket('inventory_content', packet), noteProgress: () => {}, log: () => {}
   }
   const overrides = {
-    './movement': {
+    './movement/movement': {
       createMovement: options => {
         const actor = { phase: 'idle', starts: [], stops: [], options }
         movements.push(actor)
@@ -90,7 +90,7 @@ function fixture (t, { delayedStop = false } = {}) {
         }
       }
     },
-    './recovery': {
+    './safety/recovery': {
       createRecovery: options => {
         // Retain the actual bounded supervisor/replanning implementation.
         const controller = createRecovery({ ...options, pollMs: 10 })

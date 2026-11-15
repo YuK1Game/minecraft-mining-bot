@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),Module=require('node:module')
-const {createIdleSafety}=require('../src/idle-safety'),{createAutonomy}=require('../src/autonomy'),{evaluateThreats}=require('../src/threats')
+const {createIdleSafety}=require('../src/safety/idle-safety'),{createAutonomy}=require('../src/survival/autonomy'),{evaluateThreats}=require('../src/combat/threats')
 function fixtureFrom(file,names){const p=path.join(__dirname,file),source=fs.readFileSync(p,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0],m={exports:{}};new vm.Script(Module.wrap(source+'\nmodule.exports={'+names+'}'),{filename:p}).runInThisContext()(m.exports,Module.createRequire(p),m,p,__dirname);return m.exports}
 const runnerFixture=fixtureFrom('runner.test.js','fixture').fixture
 const runtimeFixture=fixtureFrom('runtime-idle-safety.test.js','fixture').fixture
@@ -10,7 +10,7 @@ function controlled(t,{field='safety',inactive=false}={}){
  const f=runnerFixture(async({path,body,state})=>{
   if(path==='/move/preview')return{ready:true,waypoints:[{position:body.target,action:'walk',medium:'land'}]}
   if(path==='/move/start'){moving=true;state.movement={phase:'moving'};return state.movement}
-  if(path==='/status'&&moving&&!advanced){advanced=true;state.entities[0].position.x=13.5;await safety.tick();state[field]=safety.snapshot();if(inactive)state[field].running=false;state.movement={phase:'awaiting_server_confirmation',predictedPosition:{x:8.5,y:66.62,z:.5}}}
+  if(path==='/status'&&moving&&!advanced){advanced=true;state.entities[0].position.x=13.5;await safety.tick();state[field]=safety.snapshot();if(inactive){state[field].running=false;state.entities[0].position.x=18.6/* outside the archer radius (18): only the stopped record remains, not a current threat */};state.movement={phase:'awaiting_server_confirmation',predictedPosition:{x:8.5,y:66.62,z:.5}}}
  })
  Object.assign(f.state,{profile:'bot',realm:{id:'21225335'},connectionId:'CONTROLLED',startedAt:'2026-11-01T18:30:00Z',runtimeEntityId:'13639',lifecycle:{phase:'alive',deathId:95},threatPolicy:'online_learning',survivalWorkClearance:true,spawnRangedClearance:true,predicted:{physicsState:{onGround:true}},entityStats:{unknownPositions:0},entities:[{runtimeId:'17214',uniqueId:'-639950110137',entityType:'minecraft:skeleton',dimension:'overworld',alive:true,positionKnown:true,position:{x:18.6,y:66.62,z:.5}}]})
  safety=createIdleSafety({getState:()=>structuredClone(f.state),isIdle:()=>!moving,equipSword:()=>{},closeGui:()=>{},previewEngage:()=>({ready:false}),engage:()=>{},verifyBody:()=>true,supportsWorkClearance:true,escape:()=>assert.fail('Busy Runner must yield before protection moves'),onEmergencyStop:()=>assert.fail('No emergency mutation in this controlled witness'),intervalMs:1000,graceMs:0})

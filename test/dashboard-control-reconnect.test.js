@@ -3,7 +3,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
 const { createDashboardManager } = require('../scripts/lib/dashboard-control')
-const { CHANNEL } = require('../src/dashboard-session')
+const { CHANNEL } = require('../src/host/dashboard-session')
 
 // Live 2026-11-13 16:03: the server closed the connection of the dashboard's
 // bot and nothing reconnected it. Unexpected exits now reconnect to the same
@@ -61,7 +61,7 @@ test('backoff doubles and at most five reconnects run in ten minutes', async t =
   assert.match((await f.manager.snapshot()).message, /上限/)
 })
 
-test('a dashboard disconnect or a clean exit never reconnects', async t => {
+test('a dashboard disconnect never reconnects', async t => {
   const f = fixture(t)
   await f.connected()
   const s = await f.manager.snapshot()
@@ -69,8 +69,15 @@ test('a dashboard disconnect or a clean exit never reconnects', async t => {
   assert.equal(f.timers.filter(x => !x.cleared).length >= 0, true)
   assert.equal(await f.fire(), null)
   assert.equal(f.spawns.length, 1)
+})
+
+// Live 2026-11-15 08:29: the server closed the connection and the bot process
+// ended with code 0; nothing reconnected. An exit the dashboard did not ask
+// for reconnects whatever its code (same limits).
+test('an exit the dashboard did not ask for reconnects even with code 0', async t => {
+  const f = fixture(t)
   await f.connected()
   f.last().emit('close', 0)
-  assert.equal(await f.fire(), null)
+  assert.notEqual(await f.fire(), null, 'a reconnect is scheduled')
   assert.equal(f.spawns.length, 2)
 })

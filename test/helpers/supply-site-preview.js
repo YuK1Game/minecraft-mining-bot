@@ -1,5 +1,5 @@
 'use strict'
-const { createQuarryPortableStorage } = require('../../src/quarry-portable-storage')
+const { createQuarryPortableStorage } = require('../../src/quarry/storage/quarry-portable-storage')
 // Exercise the production terrain/entity checks without allowing this read-only
 // preview fixture to accidentally send, equip, place, open, or mine anything.
 function supplySitePreview ({ getState, getBlock, getEntities = () => [] }) {

@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const {nextDiamondAction}=require('../src/diamond-planner')
+const {nextDiamondAction}=require('../src/survival/diamond-planner')
 function load(name,exportName='fixture'){const file=require.resolve('./'+name+'.test.js'),m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]+'\nmodule.exports={'+exportName+'};',file);return m.exports[exportName]}
 const scene=load('survival-planner'),runtimeScene=load('runtime-survival')
 // Captured actual life121 identity/owned kit. Body and terrain below are

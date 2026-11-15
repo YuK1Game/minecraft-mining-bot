@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { INVENTORY_REFRESH_INTERVAL_MS, inventoryRefreshDelay, refreshInventoryWithRetry } = require('../src/inventory-refresh')
+const { INVENTORY_REFRESH_INTERVAL_MS, inventoryRefreshDelay, refreshInventoryWithRetry } = require('../src/inventory/inventory-refresh')
 
 test('inventory cooldown keeps its original interval and exposes clock rollback for bounded rejection', async () => {
   assert.equal(INVENTORY_REFRESH_INTERVAL_MS, 20000)

@@ -2,9 +2,9 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), Module = require('node:module')
-const { planOwnedCampReturn } = require('../src/owned-camp-return')
-const { createNavigator } = require('../src/navigation')
-const { createBaseContinuation, continuationScope } = require('../src/base-continuation')
+const { planOwnedCampReturn } = require('../src/survival/owned-camp-return')
+const { createNavigator } = require('../src/movement/navigation')
+const { createBaseContinuation, continuationScope } = require('../src/survival/base-continuation')
 const copy = v => structuredClone(v), key = p => `${p.x},${p.y},${p.z}`, finger = b => ({ name: b.name, runtimeId: b.runtimeId, properties: b.properties })
 function fixture () {
   const state = { phase: 'spawned', profile: 'bot', realm: { id: '21225335' }, connectionId: 'CONTROLLED', startedAt: '2026-11-01T17:00:00Z', runtimeEntityId: '41', dimension: 'overworld', lifecycle: { phase: 'alive', deathId: 1 }, health: 20, food: { hunger: 20 }, gameMode: 'survival', threatPolicy: 'online_learning', position: { x: .5, y: 66.62, z: .5 }, positionUpdatedAt: 1, predicted: { physicsState: { onGround: true, isInWater: false, isInLava: false } }, inventory: { known: true, items: [{ slot: 0, name: 'minecraft:diamond', count: 1, stackId: 3 }] }, entityStats: { unknownPositions: 0 }, entities: [], world: { initialized: true, loadedSections: 1 } }

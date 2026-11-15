@@ -4,7 +4,7 @@
 // overflowed into a new stack and took the slot the storage box needed.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { dropsFittingStacks, freeSlots } = require('../src/quarry-inventory')
+const { dropsFittingStacks, freeSlots } = require('../src/quarry/quarry-inventory')
 
 const stack = (slot, name, count) => ({ slot, name, count })
 const fullBag = rows => { const bag = rows.slice(); for (let slot = 0; slot < 36; slot++) if (!bag.some(i => i.slot === slot)) bag.push(stack(slot, 'minecraft:dirt', 64)); return bag }

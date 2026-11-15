@@ -4,8 +4,8 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createSessionCache } = require('../src/session-cache')
-const actualAutonomy = require('../src/autonomy')
+const { createSessionCache } = require('../src/host/session-cache')
+const actualAutonomy = require('../src/survival/autonomy')
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })
 
 function scene (t, { realFacade = false, nativeStanding = false, runtimeOverrides = {} } = {}) {
@@ -24,14 +24,14 @@ function scene (t, { realFacade = false, nativeStanding = false, runtimeOverride
   const mockAutonomy = { snapshot: () => ({ running: false, busy: false, actionActive: false }), start: () => { counters.autonomyStarts++; return mockAutonomy.snapshot() }, stop: () => mockAutonomy.snapshot(), tick: async () => mockAutonomy.snapshot() }
   const recovery = { snapshot: () => ({ phase: 'idle', busy: false }), preview: () => { recoverPreviews.sync++; return { ready: false } }, previewAsync: async () => { recoverPreviews.async++; return { ready: true, candidates: [], mode: 'destination' } }, execute: async () => {}, stop: async () => {} }
   const overrides = {
-    './physics': { createPhysics: options => physics(options.allowWater) }, './navigation': { createNavigator: options => ({ physics: options.physics ?? physics(true), verifyOrigin: () => true }) }, './movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },
-    './input-history': { createInputHistory: () => ({ snapshot: () => ({ revision: historyRevision, count: 0, latestTick: null, cursor: null }), invalidate: reason => { counters.invalidates.push(reason); historyRevision++ }, observeStationaryRaw () {}, recordQueued () {}, observeAnchor () {}, standingWitness: () => ({ ready: false }) }) },
-    './input': { createInput: options => { wireInputOptions.push(options); return { stats: () => ({ running, tick: String(tick), sent, target: null }), start: () => { running = true; sent++; tick++ }, stop: () => { running = false; counters.inputStops++ }, release: () => {}, lookAt: () => {}, sendAction: () => {}, sendTransaction: () => {} } } },
-    './idle-safety': { createIdleSafety: () => { let active = false; return { snapshot: () => ({ running: active, busy: false, phase: active ? 'observing' : 'stopped' }), start: () => { counters.idleStarts++; active = true }, stop: async () => { active = false }, drain: async () => {}, requestWorkClearance: () => ({ pending: false }) } } },
-    './autonomy': { ...actualAutonomy, createAutonomy: options => { autonomyOptions = options; return mockAutonomy } }, './recovery': { createRecovery: options => { recoveryOptions = options; return recovery } },
-    './user-behaviors': { createUserBehaviors: options => { facadeOptions = options; return realFacade ? require('../src/user-behaviors').createUserBehaviors(options) : facade } }
+    './movement/physics': { createPhysics: options => physics(options.allowWater) }, './movement/navigation': { createNavigator: options => ({ physics: options.physics ?? physics(true), verifyOrigin: () => true }) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },
+    './movement/input-history': { createInputHistory: () => ({ snapshot: () => ({ revision: historyRevision, count: 0, latestTick: null, cursor: null }), invalidate: reason => { counters.invalidates.push(reason); historyRevision++ }, observeStationaryRaw () {}, recordQueued () {}, observeAnchor () {}, standingWitness: () => ({ ready: false }) }) },
+    './movement/input': { createInput: options => { wireInputOptions.push(options); return { stats: () => ({ running, tick: String(tick), sent, target: null }), start: () => { running = true; sent++; tick++ }, stop: () => { running = false; counters.inputStops++ }, release: () => {}, lookAt: () => {}, sendAction: () => {}, sendTransaction: () => {} } } },
+    './safety/idle-safety': { createIdleSafety: () => { let active = false; return { snapshot: () => ({ running: active, busy: false, phase: active ? 'observing' : 'stopped' }), start: () => { counters.idleStarts++; active = true }, stop: async () => { active = false }, drain: async () => {}, requestWorkClearance: () => ({ pending: false }) } } },
+    './survival/autonomy': { ...actualAutonomy, createAutonomy: options => { autonomyOptions = options; return mockAutonomy } }, './safety/recovery': { createRecovery: options => { recoveryOptions = options; return recovery } },
+    './combat/user-behaviors': { createUserBehaviors: options => { facadeOptions = options; return realFacade ? require('../src/combat/user-behaviors').createUserBehaviors(options) : facade } }
   }
-  if (nativeStanding) { delete overrides['./physics']; delete overrides['./navigation'] }
+  if (nativeStanding) { delete overrides['./movement/physics']; delete overrides['./movement/navigation'] }
   Object.assign(overrides, runtimeOverrides)
   const game = { current_tick: 1000n, entity_id: 101n, runtime_entity_id: 1n, player_position: raw.position, player_gamemode: 'survival', world_gamemode: 'survival', server_authoritative_inventory: true, server_authoritative_block_breaking: true }
   const cache = createSessionCache(); cache.observe('start_game', game); cache.observe('item_registry', { itemstates: [{ runtime_id: 300, name: 'minecraft:stick' }] }); cache.observe('inventory_content', { window_id: 'inventory', input: Array.from({ length: 36 }, air) }); cache.observe('player_hotbar', { window_id: 'inventory', selected_slot: 0 })
@@ -103,7 +103,7 @@ test('manual armor equip refuses nearby hostiles and never credits a bare ACK wi
 })
 
 test('runtime shares observed portable-container ports for quarry supplies and keeps resync outside the action owner', async t => {
-  const { createQuarryRuntimeAdapter } = require('../src/quarry-runtime-adapter')
+  const { createQuarryRuntimeAdapter } = require('../src/quarry/quarry-runtime-adapter')
   const calls = [], signal = new AbortController().signal, checkpoint = async () => {}
   let held = false, busy = false, adapter
   const chest = { snapshot: () => ({ busy: false }), rawItem: slot => slot, applyPacket () {}, cancel () {}, depositDiamond () {},
@@ -112,24 +112,24 @@ test('runtime shares observed portable-container ports for quarry supplies and k
     depositItem (request) { calls.push(['deposit', request.sourceSlot]); return { serverConfirmed: true } }
   }
   const f = scene(t, { runtimeOverrides: {
-    './chest': { createChest: () => chest },
-    './quarry-runtime-adapter': { createQuarryRuntimeAdapter: ports => ({ ...createQuarryRuntimeAdapter(ports), resyncInventory: async options => {
+    './actions/chest': { createChest: () => chest },
+    './quarry/quarry-runtime-adapter': { createQuarryRuntimeAdapter: ports => ({ ...createQuarryRuntimeAdapter(ports), resyncInventory: async options => {
       assert.strictEqual(options.signal, signal)
       assert.throws(() => f.runtime.operations.chest.depositItem({ sourceSlot: 17 }), /露天掘りの作業中/)
       calls.push(['resync']); return true
     } }) },
-    './quarry-job': { createQuarryJob: options => {
+    './quarry/quarry-job': { createQuarryJob: options => {
       adapter = options.adapter
       return { holdsWork: () => held, document: () => null, status: () => ({ state: 'PAUSED' }),
         configureSupplies: () => adapter.discoverSupplies(),
         restockSuppliesNow: async () => { held = true; try { return await adapter.restockSupplies({ jobId: 'job', operationId: 'restock' }, { signal, onCheckpoint: checkpoint }) } finally { held = false } }
       }
     } },
-    './quarry-portable-storage': { createQuarryPortableStorage: ports => ({ storeCarried: async (request, options) => {
+    './quarry/storage/quarry-portable-storage': { createQuarryPortableStorage: ports => ({ storeCarried: async (request, options) => {
       assert.equal(request.operationId, 'restock'); assert.strictEqual(options.signal, signal)
       return ports.workWithContainer({ request, position: { x: 2, y: 65, z: 2 } }, options)
     } }) },
-    './quarry-supplies': { createQuarrySupplies: ports => ({
+    './quarry/storage/quarry-supplies': { createQuarrySupplies: ports => ({
       discoverBindings: () => { calls.push(['discover']); return { ok: true, bindings: ['fixture'] } },
       snapshot: () => ({ busy }), cancel: reason => calls.push(['cancel', reason]),
       run: async (request, options) => {

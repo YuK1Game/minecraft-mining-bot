@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createWorld, readRuntimeSection } = require('../src/world')
+const { createWorld, readRuntimeSection } = require('../src/host/world')
 
 function varint (number) {
   let value = ((number << 1) ^ (number >> 31)) >>> 0

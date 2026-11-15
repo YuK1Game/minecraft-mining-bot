@@ -10,7 +10,7 @@ const copy = value => structuredClone(value)
 
 function fixture (t) {
   const counts = { registries: 0, forbiddenRegistries: 0, active: false, navigators: [] }
-  const physicsFile = require.resolve('../src/physics')
+  const physicsFile = require.resolve('../src/movement/physics')
   const physicsRequire = Module.createRequire(physicsFile)
   const nativeRegistry = physicsRequire('prismarine-registry')
   const physicsModule = new Module(physicsFile, module)
@@ -21,7 +21,7 @@ function fixture (t) {
     return nativeRegistry(version)
   } : physicsRequire(id)
   physicsModule._compile(fs.readFileSync(physicsFile, 'utf8'), physicsFile)
-  const navigationFile = require.resolve('../src/navigation')
+  const navigationFile = require.resolve('../src/movement/navigation')
   const navigationModule = new Module(navigationFile, module)
   navigationModule.filename = navigationFile; navigationModule.paths = module.paths
   navigationModule.require = id => id === './physics' ? physicsModule.exports : Module.createRequire(navigationFile)(id)
@@ -32,10 +32,10 @@ function fixture (t) {
   let source = fs.readFileSync(harnessFile, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
   source = source.replace('  const calls = [];', '  const guards = [];\n  const calls = [];')
   source = source.replace('  const overrides = {', `  const overrides = {
-    './guarded-route': { createGuardedRoute: options => { const actor = { options, calls: [] }; guards.push(actor); return { snapshot: () => ({ busy: false }), stop: async () => {}, escape: async (nodes, bounds) => { actor.calls.push({ nodes, bounds }); await new Promise(resolve => setTimeout(resolve, 10)); return { ok: false, arrived: false, escaped: false, movementStarts: 0, code: 'SUPPORT_UNKNOWN', serverConfirmed: false } } } } },`)
+    './movement/guarded-route': { createGuardedRoute: options => { const actor = { options, calls: [] }; guards.push(actor); return { snapshot: () => ({ busy: false }), stop: async () => {}, escape: async (nodes, bounds) => { actor.calls.push({ nodes, bounds }); await new Promise(resolve => setTimeout(resolve, 10)); return { ok: false, arrived: false, escaped: false, movementStarts: 0, code: 'SUPPORT_UNKNOWN', serverConfirmed: false } } } } },`)
   source = source.replace('return { runtime, create, host, raw, shared,', 'return { guards, runtime, create, host, raw, shared,')
   const nativeRuntimeRequire = Module.createRequire(runtimeFile)
-  const runtimeRequire = id => id === './physics' ? physicsModule.exports : id === './navigation' ? {
+  const runtimeRequire = id => id === './movement/physics' ? physicsModule.exports : id === './movement/navigation' ? {
     ...navigationModule.exports,
     createNavigator: options => { counts.navigators.push({ active: counts.active, shared: !!options.physics }); return navigationModule.exports.createNavigator(options) }
   } : nativeRuntimeRequire(id)

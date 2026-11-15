@@ -2,10 +2,10 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { planEmergencyLeaf, clearanceHandKey, clearanceEquipmentKey } = require('../src/emergency-leaf')
-const { createNavigator } = require('../src/navigation')
-const { evaluateThreats } = require('../src/threats')
-const { createMining } = require('../src/mining')
+const { planEmergencyLeaf, clearanceHandKey, clearanceEquipmentKey } = require('../src/safety/emergency-leaf')
+const { createNavigator } = require('../src/movement/navigation')
+const { evaluateThreats } = require('../src/combat/threats')
+const { createMining } = require('../src/actions/mining')
 
 const key = point => `${point.x},${point.y},${point.z}`
 const upper = { x: -16, y: 68, z: 30 }

@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryRuntimeAdapter } = require('../src/quarry-runtime-adapter')
+const { createQuarryRuntimeAdapter } = require('../src/quarry/quarry-runtime-adapter')
 
 function fixture ({ preview, beforeStart, frame, travel = () => true } = {}) {
   const state = { position: { x: 0.5, y: 1.62, z: 0.5 } }
@@ -101,7 +101,7 @@ test('an explicitly invalid travel guard fails before native planning', async ()
 })
 
 test('the real native movement controller runs the supplied guard before player_auth_input queue', async t => {
-  const { createMovement } = require('../src/movement')
+  const { createMovement } = require('../src/movement/movement')
   const state = { phase: 'spawned', gameMode: 'survival', dimension: 'overworld', health: 20, runtimeEntityId: '41', positionUpdatedAt: 'server', position: { x: 0.5, y: 66.62, z: 0.5 }, rotation: { yaw: -90, pitch: 0 } }
   const world = { getBlock: (x, y, z) => ({ known: true, name: y < 65 ? 'minecraft:stone' : 'minecraft:air', properties: {}, extra: [] }) }
   const sent = []

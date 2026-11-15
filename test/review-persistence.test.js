@@ -4,9 +4,9 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const os = require('node:os')
-const { writeDurableJson } = require('../src/durable-json')
-const { createQuarryStore } = require('../src/quarry-store')
-const { selectRecoveryCandidate, retryableRecoveryError } = require('../src/quarry-recovery')
+const { writeDurableJson } = require('../src/common/durable-json')
+const { createQuarryStore } = require('../src/quarry/quarry-store')
+const { selectRecoveryCandidate, retryableRecoveryError } = require('../src/quarry/quarry-recovery')
 async function temporary (t) { const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'quarry-review-')); t.after(() => fs.rm(dir, { recursive: true, force: true })); return dir }
 function document (id = 'custom-id') { return { config: { jobId: id, dimension: 'overworld' }, world: { profile: 'bot', realmId: '1', dimension: 'overworld' }, instanceId: 'instance-a', state: 'MINE', userRunIntent: 'running', savedAt: new Date().toISOString() } }
 test('review: durable replacement syncs file before rename and directory afterwards', async t => {

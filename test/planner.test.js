@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { nextBootstrapAction, inventoryCounts } = require('../src/planner')
+const { nextBootstrapAction, inventoryCounts } = require('../src/survival/planner')
 
 function fixture () {
   const snapshot = {
@@ -20,7 +20,7 @@ function fixture () {
   const items = entries => { snapshot.inventory.items = entries.map(([name, count], slot) => ({ name: `minecraft:${name}`, count, slot })) }
   const refresh = () => { observations.blocks = [...map.values()] }
   const preview = (name, times = 1, ready = true, extra = {}) => { observations.crafting.previews[name] = { ready, output: { name: `minecraft:${name}`, count: times * (name.endsWith('_planks') || name === 'stick' ? 4 : 1) }, times, recipeNetworkId: 100, ...extra } }
-  return { snapshot, observations, set, refresh, items, preview, next: () => nextBootstrapAction(snapshot, observations) }
+  return { snapshot, observations, set, refresh, items, preview, next: () => nextBootstrapAction(snapshot, observations, { allowLogs: true, logCount: 3 }) }
 }
 
 test('online learning bootstrap at HP1 still requires a received natural tree and real inventory', () => {
@@ -442,7 +442,7 @@ function savedForestApproach () {
 test('saved forest approach does not repeat its almost-reached grazing stance and tolerates normal stop drift', () => {
   const f = savedForestApproach()
   assert.equal(f.observations.blocks.length, 2744)
-  const action = nextBootstrapAction(f.snapshot, f.observations)
+  const action = nextBootstrapAction(f.snapshot, f.observations, { allowLogs: true })
   assert.equal(action.type, 'move_to')
   assert.deepEqual(action.resourceTarget, { x: -8, y: 67, z: 33 })
   assert.notDeepEqual(action.target, { x: -10.5, y: 66, z: 30.5 })
@@ -453,9 +453,26 @@ test('saved forest approach does not repeat its almost-reached grazing stance an
   for (const [dx, dz] of offsets) {
     const actual = structuredClone(f.snapshot)
     actual.position = { x: action.target.x + dx, y: action.target.y + 1.62, z: action.target.z + dz }
-    const next = nextBootstrapAction(actual, f.observations)
+    const next = nextBootstrapAction(actual, f.observations, { allowLogs: true })
     assert.equal(next.type, 'gather_logs', 'a small normal stopping deviation must not trigger the same move again')
     assert.deepEqual(next.target, action.resourceTarget)
     assert.equal(next.treeEvidence.componentBottom, 67)
   }
+})
+
+// 2026-11-12 wood exclusion, 2026-11-14 long-trip exception: logs are planned
+// only under the trip allowance, and then only from a natural tree.
+test('without the long-trip allowance no log is planned; with it only a natural tree is, never a placed log', () => {
+  const f = fixture()
+  const off = nextBootstrapAction(f.snapshot, f.observations)
+  assert.equal(off.type, 'wait'); assert.equal(off.code, 'wood_harvest_disabled')
+  const on = nextBootstrapAction(f.snapshot, f.observations, { allowLogs: true })
+  assert.equal(on.type, 'gather_logs'); assert.equal(on.count, 10)
+  assert.equal(on.treeEvidence.species, 'oak'); assert.deepEqual(on.target, { x: 2, y: 65, z: 0 }, 'the lowest log of the trunk first')
+  // A wall of logs without leaves (a building) within reach is not a tree.
+  const built = fixture()
+  built.set(2, 69, 0, 'air'); for (let y = 65; y <= 68; y++) for (const z of [0, 1]) built.set(2, y, z, 'oak_log')
+  built.refresh()
+  const refused = nextBootstrapAction(built.snapshot, built.observations, { allowLogs: true })
+  assert.notEqual(refused.type, 'gather_logs'); assert.notEqual(refused.type, 'move_to')
 })

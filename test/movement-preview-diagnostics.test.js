@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createMovement } = require('../src/movement')
+const { createMovement } = require('../src/movement/movement')
 
 function fixture (readState) {
   const state = { phase: 'spawned', gameMode: 'survival', dimension: 'overworld', health: 20, position: { x: 0.5, y: 66.62, z: 0.5 }, rotation: { yaw: 0, pitch: 0 } }

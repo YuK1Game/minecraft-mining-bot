@@ -1,6 +1,6 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { selectStarterGearDrop, starterGearScope } = require('../src/starter-gear')
+const { selectStarterGearDrop, starterGearScope } = require('../src/survival/starter-gear')
 function fixtureFrom (name) { const file = path.resolve(__dirname, '../test', name + '.test.js'), loaded = new Module(file, module); loaded.filename = file; loaded.paths = Module._nodeModulePaths(path.dirname(file)); loaded._compile(fs.readFileSync(file, 'utf8').split('\ntest(')[0] + '\nmodule.exports={fixture}\n', file); return loaded.exports.fixture }
 const runnerFixture = fixtureFrom('runner'), survivalFixture = fixtureFrom('survival-planner'), plannerFixture = fixtureFrom('planner')
 function scope (state) { Object.assign(state, { profile: 'bot', realm: { id: '21225335' }, dimension: state.dimension ?? 'overworld', connectionId: 'gear-session', startedAt: 'gear-start', runtimeEntityId: '273', lifecycle: { dead: false, phase: 'alive', deathId: 3 } }); return state }

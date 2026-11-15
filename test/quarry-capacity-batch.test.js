@@ -2,8 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryCapacityBatch, fullDropBudget, chooseCapacityPrefix } = require('../src/quarry-capacity-batch')
-const { supplyScope } = require('../src/quarry-supplies')
+const { createQuarryCapacityBatch, fullDropBudget, chooseCapacityPrefix } = require('../src/quarry/storage/quarry-capacity-batch')
+const { supplyScope } = require('../src/quarry/storage/quarry-supplies')
 
 const cp = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`

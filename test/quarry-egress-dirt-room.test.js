@@ -6,7 +6,7 @@
 // stop at EXIT_DIRT_WITHDRAW_BLOCKED for want of room.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { egressDirtRoom, freeSlots } = require('../src/quarry-inventory')
+const { egressDirtRoom, freeSlots } = require('../src/quarry/quarry-inventory')
 
 const fixed = () => {
   const bag = []

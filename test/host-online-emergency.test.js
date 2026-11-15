@@ -3,8 +3,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const { createStartupFuseGuard, createOnlineEmergencyHandler, formatOnlineEmergency, createDeathRespawnReflex, createRespawnTerrainHandoff } = require('../src/host')
-const { createLifecycle } = require('../src/lifecycle')
+const { createStartupFuseGuard, createOnlineEmergencyHandler, formatOnlineEmergency, createDeathRespawnReflex, createRespawnTerrainHandoff } = require('../src/host/host')
+const { createLifecycle } = require('../src/host/lifecycle')
 
 const flush = () => new Promise(resolve => setImmediate(resolve))
 function deferred () { let resolve; const promise = new Promise(yes => { resolve = yes }); return { promise, resolve } }
@@ -155,7 +155,7 @@ test('a death during joining waits for spawn eligibility, and manual closure rev
 })
 
 test('CLI auto mode enables the same persistent protection intent without an external API race', () => {
-  const source = fs.readFileSync(require.resolve('../src/host'), 'utf8')
+  const source = fs.readFileSync(require.resolve('../src/host/host'), 'utf8')
   assert.match(source, /autoWanted: args\.includes\('--auto'\), safetyWanted: args\.includes\('--auto'\)/)
   assert.match(source, /onEmergency: onlineEmergency/)
   assert.doesNotMatch(source, /onDanger:.*stop\(0\)/)
@@ -178,7 +178,7 @@ test('a confirmed death is respawned even without the protection or auto intent;
 // Live 2026-11-14 10:21: one automatic respawn timed out and the dead bot was
 // never respawned again. The same death is retried (3 more times, 5 s apart).
 test('a failed automatic respawn of the same death is retried a bounded number of times', () => {
-  const source = fs.readFileSync(require.resolve('../src/host'), 'utf8')
+  const source = fs.readFileSync(require.resolve('../src/host/host'), 'utf8')
   assert.match(source, /retries\.set\(key, count\)/)
   assert.match(source, /if \(count <= 3\) setTimeout\(\(\) => \{ if \(automaticKey === key && !isStopping\(\)\) \{ automaticKey = null; observe\(\) \} \}, 5000\)/)
 })

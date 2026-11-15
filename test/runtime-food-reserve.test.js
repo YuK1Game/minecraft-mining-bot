@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { isSupportedFood } = require('../src/food')
+const { isSupportedFood } = require('../src/actions/food')
 function fixtureFrom (name) {
   const filename = require.resolve('./' + name + '.test.js'), loaded = new Module(filename, module)
   loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))

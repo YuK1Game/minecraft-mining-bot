@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
-const { createPhysics } = require('../src/physics'), { createMovement } = require('../src/movement'), { createNavigator } = require('../src/navigation')
-const { previewCriticalHop } = require('../src/critical-hop'), { descendingCriticalFrame } = require('../src/melee-combat')
+const { createPhysics } = require('../src/movement/physics'), { createMovement } = require('../src/movement/movement'), { createNavigator } = require('../src/movement/navigation')
+const { previewCriticalHop } = require('../src/movement/critical-hop'), { descendingCriticalFrame } = require('../src/combat/melee-combat')
 const captured = require('./fixtures/critical-real-descent.json')
 const world = { getBlock: (x, y, z) => ({ known: true, position: { x, y, z }, name: y < 65 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y < 65 ? 'block' : 'empty', extra: [], properties: {} }) }
 const physics = createPhysics({ world, version: '1.26.60' }), navigator = createNavigator({ world, version: '1.26.60', physics })

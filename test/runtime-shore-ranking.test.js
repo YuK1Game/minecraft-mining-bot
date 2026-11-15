@@ -9,14 +9,14 @@ const vm = require('node:vm')
 const Module = require('node:module')
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createShoreLandmarks } = require('../src/shore-landmarks')
+const { createShoreLandmarks } = require('../src/movement/shore-landmarks')
 const fixtureFile = path.resolve(__dirname, 'runtime-idle-escape.test.js')
 let fixtureSource = fs.readFileSync(fixtureFile, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 const seam = 'const runtimeSource = originalRuntime'
 const marker = '  function shoreScore (state, from, target) {'
 const injected = marker + '\n    if (host.shared.shoreScoreProbe) return host.shared.shoreScoreProbe(state, from, target)'
 assert.equal(fixtureSource.split(seam).length, 2)
-fixtureSource = fixtureSource.replace(seam, `const runtimeSource = originalRuntime.replace(${JSON.stringify(marker)}, ${JSON.stringify(injected)})`)
+fixtureSource = fixtureSource.replace(seam, `const runtimeSource = require("./helpers/runtime-source").runtimeSource().replace(${JSON.stringify(marker)}, ${JSON.stringify(injected)})`)
 const target = { exports: {} }
 const load = new vm.Script('(function(require,module,__filename,__dirname){' + fixtureSource + ';module.exports={prepare,context};})', { filename: fixtureFile }).runInThisContext()
 load(Module.createRequire(fixtureFile), target, fixtureFile, path.dirname(fixtureFile))

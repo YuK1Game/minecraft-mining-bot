@@ -9,7 +9,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createQuarryJob } = require('../src/quarry-job')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 
 // Reuse the open-retry fixture (a confirmed placed box in a paused job) with a scripted storeCarried.
 const file = path.resolve(__dirname, 'quarry-storage-open-retry.test.js'), loaded = new Module(file, module)

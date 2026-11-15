@@ -8,11 +8,14 @@ const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createQuarryPortableStorage } = require('../src/quarry-portable-storage')
+const { createQuarryPortableStorage } = require('../src/quarry/storage/quarry-portable-storage')
 const { createSim } = require('./helpers/quarry-sim')
 const copy = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`
-const TIMEOUT = 'サーバーから設置・使用の完了を確認できませんでした。'
+// The interaction layer still throws its timeout text; the storage runner
+// reports that sent-but-unconfirmed placement under this reason code.
+const TIMEOUT = 'STORAGE_PLACEMENT_RECONCILE_REQUIRED'
+const INTERACTION_TIMEOUT = 'サーバーから設置・使用の完了を確認できませんでした。'
 
 function loadModule (filename, source) {
   const loaded = new Module(filename, module)
@@ -20,7 +23,7 @@ function loadModule (filename, source) {
   loaded._compile(source, filename)
   return loaded.exports
 }
-const jobFile = require.resolve('../src/quarry-job')
+const jobFile = require.resolve('../src/quarry/quarry-job')
 const { createQuarryJob } = process.env.OBSERVED_PLACEMENT_JOB_TEST_SOURCE
   ? loadModule(jobFile, fs.readFileSync(process.env.OBSERVED_PLACEMENT_JOB_TEST_SOURCE, 'utf8'))
   : require(jobFile)
@@ -46,7 +49,7 @@ async function fixture ({ manual = false } = {}) {
     // A later natural pickup refills this slot; it does not erase the prior
     // received full-main observation containing the empty source slot.
     f.bag[options.slot] = item(4, 1, 70000)
-    throw Error(TIMEOUT)
+    throw Error(INTERACTION_TIMEOUT)
   } } })
   const failed = await runner.storeCarried(copy(f.request), { canPlace: () => true, onCheckpoint: async () => {} })
   assert.equal(failed.reason, TIMEOUT)

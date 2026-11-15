@@ -4,8 +4,8 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setTimeout: delay } = require('node:timers/promises')
 const { createRuntime } = require('../src/runtime')
-const { createSessionCache } = require('../src/session-cache')
-const { createEntities } = require('../src/entities')
+const { createSessionCache } = require('../src/host/session-cache')
+const { createEntities } = require('../src/host/entities')
 
 const copy = value => structuredClone(value)
 const DAMAGE_STOP = 'ダメージを検知しました。'

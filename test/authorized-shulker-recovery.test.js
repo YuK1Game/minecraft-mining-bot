@@ -2,8 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { readContainerContents, compareShulkerContents } = require('../src/shulker-contents')
-const { createRecoveryDocument, createManualShulkerRecovery } = require('../src/manual-shulker-recovery')
+const { readContainerContents, compareShulkerContents } = require('../src/inventory/shulker-contents')
+const { createRecoveryDocument, createManualShulkerRecovery } = require('../src/loadout/manual-shulker-recovery')
 
 const copy = value => structuredClone(value)
 const target = { x: -44, y: 89, z: -199 }
@@ -183,7 +183,7 @@ test('resumption after received air waits for a uniquely matching new main item 
 
 const path = require('node:path')
 const runtimeDir = path.dirname(require.resolve('../src/runtime'))
-const runtime = require('node:fs').readFileSync(require.resolve('../src/runtime'),'utf8').replace(/\r\n/g,'\n')
+const runtime = require('./helpers/runtime-source').runtimeSource().replace(/\r\n/g,'\n')
 function excerpt (from, to) {
   const i=runtime.indexOf(from), end=runtime.indexOf(to,i+from.length)
   assert.ok(i>=0&&end>i,'runtime recovery hooks must remain present')
@@ -204,7 +204,7 @@ test('runtime accepts only authorized directory IDs, rejects stale loads during 
       return JSON.stringify(baseDoc(id==='forged'?'another':id))
     }
   }
-  const fakeRequire=id=>id==='node:fs/promises'?fakeFs:id==='./manual-shulker-recovery'?require('../src/manual-shulker-recovery'):require(id)
+  const fakeRequire=id=>id==='node:fs/promises'?fakeFs:id==='./loadout/manual-shulker-recovery'?require('../src/loadout/manual-shulker-recovery'):require(id)
   const controller={
     snapshot:()=>({busy:!!finishRun}),
     run:(_doc,{signal})=>{runSignal=signal;return new Promise(resolve=>{finishRun=resolve})},

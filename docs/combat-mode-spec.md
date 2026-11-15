@@ -22,11 +22,11 @@
 
 | 段階 | 内容 | 主な実装 |
 |---|---|---|
-| 検知 | サーバーから届くエンティティ情報で、32m以内の敵対モブを把握する | `src/entities.js`, `src/threats.js` |
-| 候補の選別 | 敵ごとのプロファイル、HP、経路、射線から、いま戦う相手を1体選ぶ | `src/combat-coordinator.js`（`selectCandidate`） |
+| 検知 | サーバーから届くエンティティ情報で、32m以内の敵対モブを把握する | `src/host/entities.js`, `src/combat/threats.js` |
+| 候補の選別 | 敵ごとのプロファイル、HP、経路、射線から、いま戦う相手を1体選ぶ | `src/combat/combat-coordinator.js`（`selectCandidate`） |
 | 戦闘の開始 | 採掘・建築・食事などの作業を止め、入力と移動の制御権を取る | `src/runtime.js`（`acquireUserControl`） |
-| 戦い方の選択 | 剣・弓・接近・回避のどれかを、毎回の判定（50ms）で選び直す | `src/combat-coordinator.js`（`fight`） |
-| 攻撃 | 剣の連打、弓の引き絞りと発射 | `src/melee-combat.js`, `src/ranged-combat.js` |
+| 戦い方の選択 | 剣・弓・接近・回避のどれかを、毎回の判定（50ms）で選び直す | `src/combat/combat-coordinator.js`（`fight`） |
+| 攻撃 | 剣の連打、弓の引き絞りと発射 | `src/combat/melee-combat.js`, `src/combat/ranged-combat.js` |
 | 終了 | 撃破（サーバーの死亡通知で確認）、標的の消失、中断理由のいずれかで終了し、作業に戻る | 同上 |
 
 - 判断の周期は **50ms（1tick）**（`runtime.js` のタイマー、コーディネータの `pollMs = 50`）。
@@ -42,7 +42,7 @@
 - 距離が **32m以内**（`engageRadius`）。
 - プロファイル（2.3）で交戦が許可されている。
 - 歩いて近づくルートがある（3m以内の敵、およびクリーパーは不要。クリーパーは撃つだけで近づかないため）。
-  - ルートは、足元から半径32mの「立てるマス」の塗りつぶしで判定する（`src/threat-reachability.js`）。計算は1回15msまで。
+  - ルートは、足元から半径32mの「立てるマス」の塗りつぶしで判定する（`src/combat/threat-reachability.js`）。計算は1回15msまで。
   - 15msで終わらない起伏のある地形では、近い敵3体に向けた狙い撃ちの探索（各10ms）で補う。
   - 地形のマス判定は、地形が変わるまで使い回す（地形に関係するパケットを受けたときだけ作り直す）。
 
@@ -54,7 +54,7 @@
 
 同じ順位の中では近い順。同じ順位の相手を追っているあいだは、別の敵が **1.5m以上** 近くない限り標的を変えない（ヒステリシス）。
 
-### 2.3 敵ごとのプロファイル（`src/combat-profiles.js`）
+### 2.3 敵ごとのプロファイル（`src/combat/combat-profiles.js`）
 
 | 分類 | 対象の例 | 方針 |
 |---|---|---|
@@ -149,7 +149,7 @@ HP割合 = 現在HP ÷ 最大HP（通常20）。
 
 ---
 
-## 6. 防具（`src/armor.js`）
+## 6. 防具（`src/actions/armor.js`）
 - 持ち物の防具を部位（頭・胴・脚・足）ごとに比較し、防御力の高いものを着る。同じならタフネスの高いもの。
   - 例：ネザライト ＞ ダイヤ ＞ 鉄 ＞ 鎖 ＞ 金 ＞ 革。
 - 着るタイミング：

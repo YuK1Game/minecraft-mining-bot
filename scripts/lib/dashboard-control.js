@@ -5,7 +5,7 @@ const net = require('node:net')
 const path = require('node:path')
 const { fork } = require('node:child_process')
 const { randomUUID } = require('node:crypto')
-const { CHANNEL, realmId, publicRealms } = require('../../src/dashboard-session')
+const { CHANNEL, realmId, publicRealms } = require('../../src/host/dashboard-session')
 const failure = (code, message, status = 409) => Object.assign(new Error(message), { code, status })
 const profileName = value => {
   if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value)) throw failure('INVALID_PROFILE', 'プロフィールは半角英数字・ハイフン・アンダースコアで指定してください。', 400)
@@ -135,7 +135,11 @@ function createDashboardManager ({ workspaceRoot, apiPort, defaultProfile = 'mai
       spawned.once('close', code => {
         if (child !== spawned) return
         child = null; childId = null; phase = 'offline'; auth = null; realms = []
-        if (code && !closing && !stopped && lastRealm) { autoConnect = null; scheduleReconnect(code); return }
+        // Live 2026-11-15 08:29: the server closed the connection and the bot
+        // process ended with code 0 (the host never saw the close), so nothing
+        // reconnected. Any exit the dashboard did not ask for reconnects, within
+        // the same limits; only a disconnect or stop from the dashboard does not.
+        if (!closing && !stopped && lastRealm) { autoConnect = null; scheduleReconnect(code ?? 0); return }
         if (code && !closing) message ??= 'Botが終了しました。ターミナルのエラーを確認してください。'
         if (!code) { lastRealm = null; reconnectStreak = 0 }
       })

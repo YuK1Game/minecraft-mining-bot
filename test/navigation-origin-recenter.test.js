@@ -2,10 +2,10 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createNavigator } = require('../src/navigation')
-const { createPhysics } = require('../src/physics')
-const { createMovement } = require('../src/movement')
-const { createInputHistory } = require('../src/input-history')
+const { createNavigator } = require('../src/movement/navigation')
+const { createPhysics } = require('../src/movement/physics')
+const { createMovement } = require('../src/movement/movement')
+const { createInputHistory } = require('../src/movement/input-history')
 const capture = require('./fixtures/navigation-origin203.json')
 const copy = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`

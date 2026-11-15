@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { createAutonomy } = require('../src/autonomy')
+const { createAutonomy } = require('../src/survival/autonomy')
 function scene ({ policy = 'online_learning', life = 25, onDecision = () => {} } = {}) {
   const state = { phase: 'spawned', profile: 'bot', realm: { id: '42' }, connectionId: 'same', startedAt: 'start', runtimeEntityId: '1', dimension: 'overworld', health: 20, gameMode: 'survival', position: { x: 0.5, y: 66.62, z: 0.5 }, inventory: { known: true, items: [] }, entities: [], lifecycle: { deathId: life, phase: 'alive' }, threatPolicy: policy }
   let explored = 0, respawned = 0

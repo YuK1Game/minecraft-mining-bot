@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
-const { createQuarryPortableStorage } = require('../src/quarry-portable-storage')
+const { createQuarryPortableStorage } = require('../src/quarry/storage/quarry-portable-storage')
 
 // Exercise the real before-begin refusal and reconciliation from the sister
 // suite, rather than manufacturing a placement pin or claiming a receipt.

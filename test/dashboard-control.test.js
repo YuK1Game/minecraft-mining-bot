@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createDashboardControl, quarryConfig } = require('../src/dashboard-control')
+const { createDashboardControl, quarryConfig } = require('../src/host/dashboard-control')
 const state = () => ({ profile: 'bot', realm: { id: '42', name: 'Test Realm' }, dimension: 'overworld', connectionId: 'one', startedAt: '2026-11-07T00:00:00Z', lifecycle: { deathId: 0 }, phase: 'spawned', loadingScreenEnded: true, health: 20, inventory: { known: true }, position: { x: -16.01, y: 65.62, z: -0.01 } })
 function fixture () {
   const s = state(), calls = []; let config = null, job = null, now = 1000, generation = 1

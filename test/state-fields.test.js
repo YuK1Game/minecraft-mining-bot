@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createState } = require('../src/state')
+const { createState } = require('../src/host/state')
 
 test('selected state fields copy only requested own observations and never expose mutable state', () => {
   const store = createState('test', () => '2026-11-04T15:00:00.000Z')

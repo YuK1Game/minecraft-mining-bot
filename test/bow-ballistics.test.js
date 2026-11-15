@@ -1,8 +1,8 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { solveBowAim, trajectoryPoints, simulateArrow } = require('../src/bow-ballistics')
-const { createEntities } = require('../src/entities')
+const { solveBowAim, trajectoryPoints, simulateArrow } = require('../src/combat/bow-ballistics')
+const { createEntities } = require('../src/host/entities')
 
 const eye = { x: 0.5, y: 101.62, z: 0.5 }
 

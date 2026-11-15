@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { knownStandpoints, rankExplorationTargets, rankRetreatTargets, createExploration } = require('../src/exploration')
+const { knownStandpoints, rankExplorationTargets, rankRetreatTargets, createExploration } = require('../src/survival/exploration')
 
 function terrain ({ radius = 12, height = () => 64, unknown = () => false, replacement = () => null } = {}) {
   const blocks = []

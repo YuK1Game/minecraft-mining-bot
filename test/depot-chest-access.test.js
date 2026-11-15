@@ -1,16 +1,16 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
 const root=path.resolve(process.env.DEPOT_ACCESS_ROOT??process.cwd()),src=p=>path.join(root,'src',p)
-const {createDepotStorageWork}=require(src('depot-storage-work')),{createInteractions}=require(src('interactions')),{planDepotStorageAccess,selectDepotTableCell}=require(src('depot-storage-access'))
+const {createDepotStorageWork}=require(src('survival/depot-storage-work')),{createInteractions}=require(src('actions/interactions')),{planDepotStorageAccess,selectDepotTableCell}=require(src('survival/depot-storage-access'))
 const fixtureFile=path.join(root,'test/depot-storage-work.test.js'),m=new Module(fixtureFile,module);m.filename=fixtureFile;m.paths=Module._nodeModulePaths(path.dirname(fixtureFile))
 m._compile(fs.readFileSync(fixtureFile,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]+'\nmodule.exports=fixture;',fixtureFile)
-const fixture=m.exports,runtime=fs.readFileSync(process.env.RUNTIME_TEST_SOURCE??src('runtime.js'),'utf8')
+const fixture=m.exports,runtime=require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE)
 const start=runtime.indexOf("    if (['ensure_chest','deposit_diamond','observe_storage'].includes(intent.kind))"),end=runtime.indexOf("    if (intent.kind === 'work')",start)
-const baselineModule=new Module(src('depot-storage-work.js'),module);baselineModule.filename=src('depot-storage-work.js');baselineModule.paths=Module._nodeModulePaths(path.join(root,'src'))
-let oldSource=fs.readFileSync(src('depot-storage-work.js'),'utf8')
+const baselineModule=new Module(src('survival/depot-storage-work.js'),module);baselineModule.filename=src('survival/depot-storage-work.js');baselineModule.paths=Module._nodeModulePaths(path.join(root,'src'))
+let oldSource=fs.readFileSync(src('survival/depot-storage-work.js'),'utf8')
 const guardedOpen="        if (storage.needsOpen || !storage.contentsKnown || !equalPosition(storage.window?.position, options.storageCell) || !same(storage.window?.scope, scope)) {\n          if (open) return { kind: 'close_container' }\n          const access = interactions.previewOpenChest?.(options.storageCell)\n          if (access?.ready !== true) return { kind: 'need_access', position: copy(options.storageCell), errors: copy(access?.errors ?? ['Actual chest interaction preview is required']) }\n          return { kind: 'open_chest', position: copy(options.storageCell) }\n        }"
 if(oldSource.includes(guardedOpen))oldSource=oldSource.replace(guardedOpen,"        if (storage.needsOpen || !storage.contentsKnown || !equalPosition(storage.window?.position, options.storageCell) || !same(storage.window?.scope, scope)) return { kind: open ? 'close_container' : 'open_chest', position: copy(options.storageCell) }")
-baselineModule._compile(oldSource,src('depot-storage-work.js'))
+baselineModule._compile(oldSource,src('survival/depot-storage-work.js'))
 
 function scene(){
  const f=fixture(),target=f.options.storageCell,b={known:true,name:'minecraft:chest',position:target,runtimeId:1032,boundingBox:'block',shapes:[[.0625,0,.0625,.9375,.875,.9375]],properties:{},extra:[]}

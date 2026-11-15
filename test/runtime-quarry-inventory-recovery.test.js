@@ -4,8 +4,8 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
-const { createSnapshotReader } = require('../src/runtime-observation-views')
-const { inventoryRefreshDelay } = require('../src/inventory-refresh')
+const { createSnapshotReader } = require('../src/runtime/runtime-observation-views')
+const { inventoryRefreshDelay } = require('../src/inventory/inventory-refresh')
 
 const source = fs.readFileSync(require.resolve('../src/runtime'), 'utf8')
 function section (from, to) {

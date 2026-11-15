@@ -1,8 +1,8 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { lowHealthSurfaceEligible, proveLowHealthSurfaceRoute } = require('../src/low-health-water')
-const { createPhysics } = require('../src/physics')
+const { lowHealthSurfaceEligible, proveLowHealthSurfaceRoute } = require('../src/movement/low-health-water')
+const { createPhysics } = require('../src/movement/physics')
 const capture = require('./fixtures/learning-hp20-water.json')
 const filename = path.resolve(__dirname, 'low-health-water.test.js'), loaded = new Module(filename, module)
 loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))

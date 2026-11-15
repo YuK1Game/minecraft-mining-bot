@@ -1,5 +1,5 @@
 'use strict'
-const test=require('node:test'),assert=require('node:assert/strict'),{createWaterPreviewObserver}=require('../src/water-preview-observer')
+const test=require('node:test'),assert=require('node:assert/strict'),{createWaterPreviewObserver}=require('../src/movement/water-preview-observer')
 test('Records the actual existing state read only after preview returns, preserving object identity and arguments',()=>{
  let observer,reads=0,returned=false,published,originalCalls=0
  const state={profile:'synthetic_test',realm:{id:'fixture'},connectionId:'fixture',startedAt:'2026-01-01T00:00:00Z',runtimeEntityId:'1',dimension:'overworld',phase:'spawned',health:12,positionSource:'client_prediction',position:{x:1,y:64.62,z:1},predicted:{position:{x:1,y:64.62,z:1},physicsState:{position:{x:1,y:63,z:1},velocity:{x:0,y:0,z:0},onGround:false,isInWater:true}}},target={x:2,y:63,z:1},options={allowWater:true,directSurface:true},result={ready:true,directSurface:false,origin:{x:1,y:63,z:1},waypoints:[{position:target,medium:'water',action:'swim'}]}

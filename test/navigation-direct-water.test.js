@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createNavigator } = require('../src/navigation')
+const { createNavigator } = require('../src/movement/navigation')
 
 const block = (name, properties = {}) => ({ known: true, name: `minecraft:${name}`, properties, extra: [] })
 const target = { x: 3.5, y: 65, z: -1.5 }

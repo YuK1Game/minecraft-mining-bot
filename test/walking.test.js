@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createWalker } = require('../src/walking')
+const { createWalker } = require('../src/movement/walking')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
 
 function fixture () {

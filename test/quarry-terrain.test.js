@@ -1,8 +1,8 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createWorld } = require('../src/world')
-const { createQuarryTerrainRequester, buildQuarryTerrainPlan } = require('../src/quarry-terrain')
+const { createWorld } = require('../src/host/world')
+const { createQuarryTerrainRequester, buildQuarryTerrainPlan } = require('../src/quarry/quarry-terrain')
 
 const config = () => ({ dimension: 'overworld', target: { chunks: [{ x: -4, z: 2 }] }, worldMinY: -64, worldMaxY: 319, yBottom: -59 })
 function worldFixture () {

@@ -8,7 +8,7 @@ const Module = require('node:module')
 const rawBlock = (name, properties = {}, runtimeId = 123) => ({ known: true, name: `minecraft:${name}`, properties, runtimeId, extra: [] })
 
 function instrumentedPhysics () {
-  const filename = require.resolve('../src/physics')
+  const filename = require.resolve('../src/movement/physics')
   const realRegistryFactory = require('prismarine-registry')
   const realEngine = require('prismarine-physics')
   const counts = { registryFactories: 0, engines: 0, definitionStateReads: 0, blockDefinitions: new Map() }

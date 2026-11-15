@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { setImmediate: nextTurn } = require('node:timers/promises')
-const { createFood } = require('../src/food')
+const { createFood } = require('../src/actions/food')
 
 const at = '2026-11-01T04:21:47.000Z'
 const time = Date.parse(at)

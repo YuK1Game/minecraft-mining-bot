@@ -4,8 +4,8 @@
 // offhand takes a totem, else a shield; never during the quarry's final store.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createArmor, pieceRank } = require('../src/armor')
-const { createInventoryStore } = require('../src/inventory-store')
+const { createArmor, pieceRank } = require('../src/actions/armor')
+const { createInventoryStore } = require('../src/inventory/inventory-store')
 
 const IDS = { 1: 'minecraft:iron_chestplate', 2: 'minecraft:diamond_chestplate', 3: 'minecraft:totem_of_undying', 4: 'minecraft:shield', 5: 'minecraft:dirt' }
 const ID = Object.fromEntries(Object.entries(IDS).map(([k, v]) => [v, Number(k)]))
@@ -50,7 +50,7 @@ test('an empty received offhand takes a totem, else a shield; a held offhand or 
 })
 
 test('the runtime equips in every state at safe points, between long-trip legs, and never in the final chest store', () => {
-  const src = require('node:fs').readFileSync(require.resolve('../src/runtime'), 'utf8')
+  const src = require('./helpers/runtime-source').runtimeSource()
   const gate = src.slice(src.indexOf('  function armorAutoAllowed () {'), src.indexOf('  function maybeEquipArmor () {'))
   assert.match(gate, /if \(longTravel\?\.status\?\.\(\)\.busy\) return false/)
   assert.match(gate, /if \(!quarryJob\?\.holdsWork\(\)\) return true/)

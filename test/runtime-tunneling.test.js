@@ -7,8 +7,8 @@ const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
 const { performance } = require('node:perf_hooks')
-const { createState } = require('../src/state')
-const { createSessionCache } = require('../src/session-cache')
+const { createState } = require('../src/host/state')
+const { createSessionCache } = require('../src/host/session-cache')
 
 function deferred () {
   let resolve
@@ -87,17 +87,17 @@ function fixture (t, { delayedStop = false, probeInput = false } = {}) {
   let stopPromise = null
   let controllerStopFinished = false
   const overrides = {
-    './runner': {
-      ...require('../src/runner'),
-      createRunner: options => { observed.runner = options; return require('../src/runner').createRunner(options) }
+    './survival/runner': {
+      ...require('../src/survival/runner'),
+      createRunner: options => { observed.runner = options; return require('../src/survival/runner').createRunner(options) }
     },
-    './hut': {
-      createHut: options => { observed.hut = options; return require('../src/hut').createHut(options) }
+    './survival/hut': {
+      createHut: options => { observed.hut = options; return require('../src/survival/hut').createHut(options) }
     },
-    './shelter': {
-      createShelter: options => { observed.shelter = options; return require('../src/shelter').createShelter(options) }
+    './survival/shelter': {
+      createShelter: options => { observed.shelter = options; return require('../src/survival/shelter').createShelter(options) }
     },
-    './movement': {
+    './movement/movement': {
       createMovement: options => {
         const instance = { options, phase: 'idle', stops: 0 }
         observed.movements ??= []
@@ -112,7 +112,7 @@ function fixture (t, { delayedStop = false, probeInput = false } = {}) {
         }
       }
     },
-    './excavation': {
+    './survival/excavation': {
       createExcavation: options => {
         observed.excavation = options
         return {
@@ -123,7 +123,7 @@ function fixture (t, { delayedStop = false, probeInput = false } = {}) {
         }
       }
     },
-    './tunneling': {
+    './survival/tunneling': {
       createTunneling: options => {
         observed.tunneling = options
         return {
@@ -138,7 +138,7 @@ function fixture (t, { delayedStop = false, probeInput = false } = {}) {
       }
     }
   }
-  if (probeInput) overrides['./input'] = {
+  if (probeInput) overrides['./movement/input'] = {
     createInput: options => {
       const stream = { running: false, stops: 0, options }
       observed.streams ??= []
@@ -361,7 +361,7 @@ test('confirmed tunnel floors decorate both planning reads and resource selectio
   assert.equal(f.observed.hut.world.getBlock(floor.x, floor.y, floor.z).protected, undefined)
   const page = await f.observed.runner.request('GET', '/blocks?x=1&y=5&z=0&radius=3')
   assert.equal(page.blocks.find(b => b.position.x === 1 && b.position.y === 5 && b.position.z === 0).protectionSource, 'tunnel_floor')
-  const { nextBootstrapAction } = require('../src/planner')
+  const { nextBootstrapAction } = require('../src/survival/planner')
   const pointKey = p => `${p.x},${p.y},${p.z}`
   const candidates = page.blocks.map(b => b.name === 'minecraft:stone' && ![pointKey(floor), pointKey(alternative)].includes(pointKey(b.position)) ? { ...b, protected: true } : b)
   const item = { slot: 0, name: 'minecraft:stone_pickaxe', count: 1 }
@@ -372,7 +372,7 @@ test('confirmed tunnel floors decorate both planning reads and resource selectio
   const unprotected = candidates.map(b => pointKey(b.position) === pointKey(floor) ? { ...b, protected: false, protectionSource: undefined } : b)
   assert.deepEqual(nextBootstrapAction(state, { blocks: unprotected, capabilities }, options).target, floor, 'negative control reproduces selection of the forbidden return floor')
   const physics = f.observed.movements.at(-1).options.physics.withWorld(view)
-  const { createNavigator } = require('../src/navigation')
+  const { createNavigator } = require('../src/movement/navigation')
   const navigator = createNavigator({ world: view, physics, version: '1.26.60' }), initial = physics.fromServer(f.parsed.snapshot())
   assert.equal(navigator.verifyOrigin(initial), true)
   const route = navigator.plan(initial, { x: 2.5, y: 6, z: 0.5 }, { directFlat: true, exactGoal: true, maxDistance: 4 })

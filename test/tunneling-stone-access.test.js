@@ -2,12 +2,12 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createTunneling } = require('../src/tunneling')
-const { createExcavation } = require('../src/excavation')
-const { createMining } = require('../src/mining')
-const { createPhysics } = require('../src/physics')
-const { createNavigator } = require('../src/navigation')
-const { createMovement } = require('../src/movement')
+const { createTunneling } = require('../src/survival/tunneling')
+const { createExcavation } = require('../src/survival/excavation')
+const { createMining } = require('../src/actions/mining')
+const { createPhysics } = require('../src/movement/physics')
+const { createNavigator } = require('../src/movement/navigation')
+const { createMovement } = require('../src/movement/movement')
 
 const key = p => `${p.x},${p.y},${p.z}`
 const copy = v => structuredClone(v)

@@ -6,17 +6,17 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
-const { createIdleSafety } = require('../src/idle-safety')
+const { createIdleSafety } = require('../src/safety/idle-safety')
 const capture = require('./fixtures/completed-dry-input-anchor.json')
 const copy = value => structuredClone(value)
 const harnessFile = path.resolve(__dirname, 'runtime-idle-safety.test.js')
 let source = fs.readFileSync(harnessFile, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 source = source.replace('  const calls = [];', '  const histories = [], inputOptions = [], movementOptions = [], guards = [];\n  const calls = [];')
-source = source.replace("'./input': { createInput: () => {", "'./input': { createInput: options => { inputOptions.push(options);")
-source = source.replace("'./movement': { createMovement: () => {", "'./movement': { createMovement: options => { movementOptions.push(options);")
+source = source.replace("'./movement/input': { createInput: () => {", "'./movement/input': { createInput: options => { inputOptions.push(options);")
+source = source.replace("'./movement/movement': { createMovement: () => {", "'./movement/movement': { createMovement: options => { movementOptions.push(options);")
 source = source.replace('  const overrides = {', `  const overrides = {
-    './input-history': { createInputHistory: options => { const history = nativeRequire('./input-history').createInputHistory(options); histories.push({ history, physics: options.physics }); return history } },
-    './guarded-route': { createGuardedRoute: options => { const guard = { options, work: null }; guards.push(guard); return { snapshot: () => ({ busy: false }), stop: async () => {}, escape: (...args) => guard.work(...args) } } },`)
+    './movement/input-history': { createInputHistory: options => { const history = nativeRequire('./movement/input-history').createInputHistory(options); histories.push({ history, physics: options.physics }); return history } },
+    './movement/guarded-route': { createGuardedRoute: options => { const guard = { options, work: null }; guards.push(guard); return { snapshot: () => ({ busy: false }), stop: async () => {}, escape: (...args) => guard.work(...args) } } },`)
 source = source.replace('return { runtime, create, host, raw, shared,', 'return { histories, inputOptions, movementOptions, guards, runtime, create, host, raw, shared,')
 const target = { exports: {} }
 new vm.Script(Module.wrap(source + '\nmodule.exports = { fixture }'), { filename: harnessFile }).runInThisContext()(target.exports, Module.createRequire(harnessFile), target, harnessFile, path.dirname(harnessFile))

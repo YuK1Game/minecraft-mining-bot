@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createShelter } = require('../src/shelter')
-const { planShelter } = require('../src/shelter-planner')
+const { createShelter } = require('../src/survival/shelter')
+const { planShelter } = require('../src/survival/shelter-planner')
 
 const key = point => `${point.x},${point.y},${point.z}`
 const block = name => ({ known: true, name: `minecraft:${name}`, runtimeId: name === 'air' ? 0 : name === 'dirt' ? 10 : 20, boundingBox: name === 'air' ? 'empty' : 'block', extra: [] })

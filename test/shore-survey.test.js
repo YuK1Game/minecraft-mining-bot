@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { surveyShore } = require('../src/shore-survey')
+const { surveyShore } = require('../src/movement/shore-survey')
 
 test('shore survey reports only observed dry floors and remains observation-only', async () => {
   const world = { getBlock: (x, y, z) => {

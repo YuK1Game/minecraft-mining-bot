@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { deriveDropGuarantee, checkDropGuarantees } = require('../src/quarry-drop-guarantee')
+const { deriveDropGuarantee, checkDropGuarantees } = require('../src/quarry/quarry-drop-guarantee')
 
 const target = (name, x = 0, tool) => ({ name: 'minecraft:' + name, position: { x, y: 60, z: 0 }, runtimeId: 8, tool })
 const item = (name, count, slot = 0) => ({ name: 'minecraft:' + name, slot, count })

@@ -4,9 +4,9 @@ const assert = require('node:assert/strict')
 const { setImmediate: turn } = require('node:timers/promises')
 const { supplySitePreview } = require('./helpers/supply-site-preview')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
-const { createQuarryJob } = require('../src/quarry-job')
-const { carriedContainerKey } = require('../src/quarry-inventory')
-const { clearableSitePlant } = require('../src/storage-site-terrain')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
+const { carriedContainerKey } = require('../src/quarry/quarry-inventory')
+const { clearableSitePlant } = require('../src/quarry/storage/storage-site-terrain')
 const copy = value => structuredClone(value)
 function terrain (ground = 'grass_block') {
   const sim = createSim({ loaded: { xMin: -40, xMax: 6, yMin: 50, yMax: 90, zMin: 8, zMax: 40 } })
@@ -168,7 +168,7 @@ test('review: exhausted inventory capacity does not make room by untracked grass
 })
 
 test('review: proposed clearance targets pass the real mining controller and still need received air', async t => {
-  const { createMining } = require('../src/mining')
+  const { createMining } = require('../src/actions/mining')
   const f = terrain(); f.sim.setFeet(f.stand)
   f.sim.world.fill(-40, 65, 8, 6, 65, 40, 'short_grass')
   const proposal = f.preview(f.stand, { canPlace: () => true, canClear: () => true })

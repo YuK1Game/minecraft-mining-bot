@@ -2,8 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { toolOf } = require('../src/quarry-rules')
-const { surplusToolSlots } = require('../src/quarry-surplus-tools')
+const { toolOf } = require('../src/quarry/quarry-rules')
+const { surplusToolSlots } = require('../src/quarry/quarry-surplus-tools')
 
 function tool (name, slot, remaining, extra = {}) {
   const max = toolOf(name).maxDurability

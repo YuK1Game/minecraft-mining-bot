@@ -4,10 +4,10 @@
 // receipt, mined ore, inventory gain or proof of a current Realm route.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createTunneling } = require('../src/tunneling')
-const { createPhysics } = require('../src/physics')
-const { createNavigator } = require('../src/navigation')
-const { evaluateThreats } = require('../src/threats')
+const { createTunneling } = require('../src/survival/tunneling')
+const { createPhysics } = require('../src/movement/physics')
+const { createNavigator } = require('../src/movement/navigation')
+const { evaluateThreats } = require('../src/combat/threats')
 const copy = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`
 const knownBlock = (name, position) => ({ known: true, name: `minecraft:${name}`, position, runtimeId: name === 'air' ? 0 : 1, boundingBox: name === 'air' ? 'empty' : 'block', diggable: name !== 'air' && name !== 'bedrock', hardness: name === 'air' ? -1 : 1.5, properties: name === 'bedrock' ? { infiniburn_bit: 0 } : {}, extra: [] })

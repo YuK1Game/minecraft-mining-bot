@@ -1,8 +1,8 @@
 'use strict'
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path')
-const { supplyScope, stationWorldScope, updateStationCatalog, readStationPages, currentStationPage } = require('../src/supply-return')
-const { nextDiamondAction } = require('../src/diamond-planner')
+const { supplyScope, stationWorldScope, updateStationCatalog, readStationPages, currentStationPage } = require('../src/survival/supply-return')
+const { nextDiamondAction } = require('../src/survival/diamond-planner')
 const sample = require('./fixtures/station-window176.json'), copy = v => structuredClone(v), key = p => `${p.x},${p.y},${p.z}`
 function scene () {
   const decode = ids => ids.map(id => { const [x, y, z, type] = sample.cells[id]; return { ...copy(sample.templates[type]), position: { x, y, z } } })
@@ -83,9 +83,9 @@ test('exact face/standing visibility is still required for use; productive iron-
   assert.equal(mine.resource, 'diamond'); assert.notEqual(mine.supplyReturnRequested, true)
 })
 test('Runtime stores discovered coordinates only in catalog and keeps lower-window objective stable on next observation', async () => {
-  const f = scene(), source = fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? path.join(__dirname, '../src/runtime.js'), 'utf8'), start = source.indexOf('  async function observeStationSupplies ('), end = source.indexOf('  const autonomy = createAutonomy({', start)
+  const f = scene(), source = require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE), start = source.indexOf('  async function observeStationSupplies ('), end = source.indexOf('  const autonomy = createAutonomy({', start)
   const own = copy(sample.stations), host = { shared: { stations: own, deathRespawn: { deathId: 176 } }, entities: { snapshot: () => [], stats: () => ({ unknownPositions: 0 }) } }
-  const helper = Function('host', 'working', 'planningWorld', 'supplyScope', 'tableMaterialShortfall', 'updateStationCatalog', 'readStationPages', 'nextDiamondAction', 'readCurrentTunnelFloors', source.slice(start, end) + ';return observeStationSupplies')(host, () => copy(f.state), f.world, supplyScope, require('../src/supply-return').tableMaterialShortfall, updateStationCatalog, readStationPages, nextDiamondAction, () => assert.fail('productive ore does not request supply return'))
+  const helper = Function('host', 'working', 'planningWorld', 'supplyScope', 'tableMaterialShortfall', 'updateStationCatalog', 'readStationPages', 'nextDiamondAction', 'readCurrentTunnelFloors', source.slice(start, end) + ';return observeStationSupplies')(host, () => copy(f.state), f.world, supplyScope, require('../src/survival/supply-return').tableMaterialShortfall, updateStationCatalog, readStationPages, nextDiamondAction, () => assert.fail('productive ore does not request supply return'))
   const upper = await helper(f.observe(f.upper), {})
   const lower = await helper(f.observe(f.lower), {})
   assert.equal(nextDiamondAction(f.state, upper).resource, 'iron'); assert.equal(nextDiamondAction(f.state, lower).resource, 'iron')

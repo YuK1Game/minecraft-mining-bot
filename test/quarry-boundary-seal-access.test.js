@@ -2,8 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryPlanner } = require('../src/quarry-planner')
-const { buildRegions, permits } = require('../src/quarry-region')
+const { createQuarryPlanner } = require('../src/quarry/quarry-planner')
+const { buildRegions, permits } = require('../src/quarry/quarry-region')
 const copy = value => structuredClone(value)
 const key = p => `${p.x},${p.y},${p.z}`
 

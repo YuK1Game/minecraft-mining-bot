@@ -7,15 +7,15 @@ const file = path.resolve(__dirname, 'runtime-user-behaviors.test.js'), loaded =
 loaded.filename = file; loaded.paths = Module._nodeModulePaths(path.dirname(file))
 let prefix = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 prefix = prefix.replace("  t.mock.timers.enable({ apis: ['setInterval'] })", '  let safetyOptions, nativeMovement; const nativeStarts = []')
-prefix = prefix.replace("  loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", `  delete overrides['./physics']; delete overrides['./navigation']; delete overrides['./input']; delete overrides['./input-history']
-  const actualMovement = Module.prototype.require.call(loaded, './movement')
-  overrides['./movement'] = { ...actualMovement, createMovement: options => {
+prefix = prefix.replace("  loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", `  delete overrides['./movement/physics']; delete overrides['./movement/navigation']; delete overrides['./movement/input']; delete overrides['./movement/input-history']
+  const actualMovement = Module.prototype.require.call(loaded, './movement/movement')
+  overrides['./movement/movement'] = { ...actualMovement, createMovement: options => {
     nativeMovement = actualMovement.createMovement(options)
     return { ...nativeMovement, start: (target, bounds) => { nativeStarts.push({ target: structuredClone(target), bounds, wireIndex: wire.length }); return nativeMovement.start(target, bounds) } }
   } }
-  overrides['./idle-safety'] = { createIdleSafety: options => { safetyOptions = options; return { snapshot: () => ({ running: false, busy: false, phase: 'idle' }), start () {}, stop: async () => {}, drain: async () => {}, requestWorkClearance: () => ({ pending: false }) } } }
-  const actualRecovery = Module.prototype.require.call(loaded, './recovery')
-  overrides['./recovery'] = { ...actualRecovery, createRecovery: overrides['./recovery'].createRecovery, planLearningShore: async args => {
+  overrides['./safety/idle-safety'] = { createIdleSafety: options => { safetyOptions = options; return { snapshot: () => ({ running: false, busy: false, phase: 'idle' }), start () {}, stop: async () => {}, drain: async () => {}, requestWorkClearance: () => ({ pending: false }) } } }
+  const actualRecovery = Module.prototype.require.call(loaded, './safety/recovery')
+  overrides['./safety/recovery'] = { ...actualRecovery, createRecovery: overrides['./safety/recovery'].createRecovery, planLearningShore: async args => {
     const plan = await actualRecovery.planLearningShore(args)
     return plan.ready && shared.selectedShoreFixtureTarget ? actualRecovery.proveLearningShoreRoute({ ...args, target: shared.selectedShoreFixtureTarget, actorBindings: plan.actorBindings, originScope: plan.originScope }) : plan
   } }

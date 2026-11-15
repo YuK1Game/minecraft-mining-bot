@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { buildStationaryInput, createInput } = require('../src/input')
+const { buildStationaryInput, createInput } = require('../src/movement/input')
 
 function fixture (overrides = {}) {
   const state = { phase: 'spawned', position: { x: 1, y: 66.62, z: 1 }, rotation: { pitch: 0, yaw: 0 }, health: 20 }

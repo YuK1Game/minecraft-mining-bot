@@ -1,129 +1,129 @@
 'use strict'
 
-const { diagnoseStrikeBody } = require('./combat-body-diagnostic')
+const { diagnoseStrikeBody } = require('./combat/combat-body-diagnostic')
 
-const { createCombatExposure } = require('./combat-exposure')
-const { createQuarryStore } = require('./quarry-store')
-const { assertJobWorld } = require('./quarry-job-identity')
-const { RESUMABLE: QUARRY_AUTO_RESUMABLE, recoverable: recoverableQuarry, selectRecoveryCandidate, retryableRecoveryError } = require('./quarry-recovery')
+const { createCombatExposure } = require('./combat/combat-exposure')
+const { createQuarryStore } = require('./quarry/quarry-store')
+const { assertJobWorld } = require('./quarry/quarry-job-identity')
+const { RESUMABLE: QUARRY_AUTO_RESUMABLE, recoverable: recoverableQuarry, selectRecoveryCandidate, retryableRecoveryError } = require('./quarry/quarry-recovery')
 
-const { createActorReader, createSnapshotReader } = require('./runtime-observation-views')
-const { inventoryRefreshDelay, refreshInventoryWithRetry } = require('./inventory-refresh')
-const { profileCpu, measureSnapshots } = require('./runtime-diagnostics')
-const { createSightStanceSearch } = require('./sight-stance-search')
-const { createQuarryPortableStorage } = require('./quarry-portable-storage')
-const { createQuarrySupplies } = require('./quarry-supplies')
-const { createQuarryV22Equipment } = require('./quarry-v22-equipment')
-const { createQuarryV22ChestWork } = require('./quarry-v22-chest-work')
-const { createRuntimeV22ChestReset, receivedEquipmentView, jobPending } = require('./loadout-runtime-adapter')
-const { createInventoryStore } = require('./inventory-store')
-const { createEventLoopStallWatch } = require('./event-loop-stall')
-const { currentLifeId } = require('./life-identity')
-const { createManualChestRuntime } = require('./manual-chest-runtime-adapter')
-const { createChunkTravel } = require('./chunk-travel')
-const { chunkTravelThreatsClear } = require('./chunk-travel-threats')
-const { createControlLocation } = require('./control-location')
-const { normalizeChunkArea } = require('./chunk-area')
-const { historicalSourceRejection } = require('./rejected-source-history')
-const { historicalEmptyPlacement } = require('./placement-source-history')
+const { createActorReader, createSnapshotReader } = require('./runtime/runtime-observation-views')
+const { inventoryRefreshDelay, refreshInventoryWithRetry } = require('./inventory/inventory-refresh')
+const { profileCpu, measureSnapshots } = require('./runtime/runtime-diagnostics')
+const { createSightStanceSearch } = require('./combat/sight-stance-search')
+const { createQuarryPortableStorage } = require('./quarry/storage/quarry-portable-storage')
+const { createQuarrySupplies } = require('./quarry/storage/quarry-supplies')
+const { createQuarryV22Equipment } = require('./loadout/quarry-v22-equipment')
+const { createQuarryV22ChestWork } = require('./loadout/quarry-v22-chest-work')
+const { createRuntimeV22ChestReset, receivedEquipmentView, jobPending } = require('./loadout/loadout-runtime-adapter')
+const { createInventoryStore } = require('./inventory/inventory-store')
+const { createEventLoopStallWatch, describeWork } = require('./runtime/event-loop-stall')
+const { currentLifeId } = require('./common/life-identity')
+const { createManualChestRuntime } = require('./loadout/manual-chest-runtime-adapter')
+const { createChunkTravel } = require('./travel/chunk-travel')
+const { chunkTravelThreatsClear } = require('./travel/chunk-travel-threats')
+const { createControlLocation } = require('./movement/control-location')
+const { normalizeChunkArea } = require('./common/chunk-area')
+const { historicalSourceRejection } = require('./quarry/storage/rejected-source-history')
+const { historicalEmptyPlacement } = require('./quarry/storage/placement-source-history')
 
-const { resourceMinHealth } = require('./learning-health')
+const { resourceMinHealth } = require('./safety/learning-health')
 
 const { setTimeout: delay } = require('node:timers/promises')
 // Reloadable behaviour only. The client, authentication, world observations,
 // inventory journal, IDs and predicted working pose are owned by the host.
-const { createInput } = require('./input')
-const { createInputHistory } = require('./input-history')
-const { createPhysics } = require('./physics')
-const { createWaterPreviewObserver } = require('./water-preview-observer')
-const { createMining } = require('./mining')
-const { canonicalWindowId, sameWindowId } = require('./container-types')
-const { createActionOwnerTracker } = require('./action-owner-tracker')
-const { defenseEnabled, createDefenseAnchor, defenseMovementAllowed } = require('./combat-defense-policy')
-const { evaluateCombatThreat } = require('./combat-threat-policy')
-const { proveGroundAccess } = require('./ground-access-proof')
-const { createQuarryJob } = require('./quarry-job')
-const { createQuarryRuntimeAdapter } = require('./quarry-runtime-adapter')
-const { createQuarryPillar } = require('./quarry-pillar')
-const { createQuarryEgressRuntime } = require('./quarry-egress-runtime')
-const { createServerPositionVerifier, observedScope } = require('./server-position-verifier')
-const { createStoragePlacementAudit } = require('./storage-placement-audit')
-const { createPlainsLocator } = require('./locate-plains')
-const { createQuarryTerrainRequester } = require('./quarry-terrain')
-const { permitsExitAction } = require('./quarry-exit-plan')
-const { blockRule: quarryBlockRule, selectTool: quarrySelectTool, nameOf: quarryNameOf } = require('./quarry-rules')
-const { createWalker } = require('./walking')
-const { createMovement } = require('./movement')
-const { createNavigator } = require('./navigation')
-const { surveyShore } = require('./shore-survey')
-const { createShoreLandmarks } = require('./shore-landmarks')
-const { createCrafting } = require('./crafting')
-const { createInteractions } = require('./interactions')
-const { createCombat } = require('./combat')
-const { createWaterCounterattack } = require('./water-counterattack')
-const { createInventory } = require('./inventory')
-const { createInventoryInspection } = require('./inventory-inspection')
-const { createArmor } = require('./armor')
+const { createInput } = require('./movement/input')
+const { createInputHistory } = require('./movement/input-history')
+const { createPhysics } = require('./movement/physics')
+const { createWaterPreviewObserver } = require('./movement/water-preview-observer')
+const { createMining } = require('./actions/mining')
+const { canonicalWindowId, sameWindowId } = require('./inventory/container-types')
+const { createActionOwnerTracker } = require('./common/action-owner-tracker')
+const { defenseEnabled, createDefenseAnchor, defenseMovementAllowed } = require('./combat/combat-defense-policy')
+const { evaluateCombatThreat } = require('./combat/combat-threat-policy')
+const { proveGroundAccess } = require('./movement/ground-access-proof')
+const { createQuarryJob } = require('./quarry/quarry-job')
+const { createQuarryRuntimeAdapter } = require('./quarry/quarry-runtime-adapter')
+const { createQuarryPillar } = require('./quarry/exit/quarry-pillar')
+const { createQuarryEgressRuntime } = require('./quarry/exit/quarry-egress-runtime')
+const { createServerPositionVerifier, observedScope } = require('./movement/server-position-verifier')
+const { createStoragePlacementAudit } = require('./quarry/storage/storage-placement-audit')
+const { createPlainsLocator } = require('./travel/locate-plains')
+const { createQuarryTerrainRequester } = require('./quarry/quarry-terrain')
+const { permitsExitAction } = require('./quarry/exit/quarry-exit-plan')
+const { blockRule: quarryBlockRule, selectTool: quarrySelectTool, nameOf: quarryNameOf } = require('./quarry/quarry-rules')
+const { createWalker } = require('./movement/walking')
+const { createMovement } = require('./movement/movement')
+const { createNavigator } = require('./movement/navigation')
+const { surveyShore } = require('./movement/shore-survey')
+const { createShoreLandmarks } = require('./movement/shore-landmarks')
+const { createCrafting } = require('./actions/crafting')
+const { createInteractions } = require('./actions/interactions')
+const { createCombat } = require('./combat/combat')
+const { createWaterCounterattack } = require('./combat/water-counterattack')
+const { createInventory } = require('./inventory/inventory')
+const { createInventoryInspection } = require('./inventory/inventory-inspection')
+const { createArmor } = require('./actions/armor')
 const { isDeepStrictEqual } = require('node:util')
-const { createUserBehaviors } = require('./user-behaviors')
-const { createFurnace } = require('./furnace')
-const { createChest } = require('./chest')
-const { createSurfaceReturn, returnScope } = require('./surface-return')
-const { bindRecentDamage, observeOwnDamageEffect, planRecentDamageRetreat, retreatFrameAllowed } = require('./recent-damage-retreat')
-const { createSelfResistance, createSelfSlowFalling, createSelfEffectEvents } = require('./self-resistance')
-const { createDepotMission } = require('./depot-mission')
-const { createDepotPrebuild, planPrebuildChestStance } = require('./depot-prebuild')
-const { createWorksiteCamp, createWorksiteCampPrebuild } = require('./worksite-camp')
-const { rankExplorationTargets } = require('./exploration')
-const { rankCampResourceTargets } = require('./camp-local-resource')
-const { planOwnedCampReturn } = require('./owned-camp-return')
-const { createOwnedCampBootstrap } = require('./owned-camp-bootstrap')
-const { createDepotStorageWork } = require('./depot-storage-work')
-const { planDepotStorageAccess, selectDepotTableCell } = require('./depot-storage-access')
-const { continuationScope } = require('./base-continuation')
-const { planContinuationResource } = require('./continuation-resource')
-const { createProspecting } = require('./prospecting')
-const { createExcavation } = require('./excavation')
-const { nextDiamondAction } = require('./diamond-planner')
-const { supplyScope, tableMaterialShortfall, updateStationCatalog, readStationPages, planSupplyReturn } = require('./supply-return')
-const { portableKit, reservedWorksiteCells, selectPortableWorksite, preparationTableTarget, portableFallbackStop, nextPortableStep, verifyPortableDeployment, portableSiteValid, useRays } = require('./portable-worksite')
-const { immediateDiamond } = require('./immediate-diamond')
-const { createDiamondActions } = require('./diamond-actions')
-const { createDurabilityReader } = require('./durability')
-const { createTunneling } = require('./tunneling')
-const { annotateTerrainThreats, terrainOcclusionApplies } = require('./terrain-threats')
-const { useCurrentAccess } = require('./action-access')
-const { createRecovery, planLearningShore, proveLearningShoreRoute } = require('./recovery')
-const { createFood, isSupportedFood } = require('./food')
-const { createForaging } = require('./foraging')
-const { normalizePlayerCorrection } = require('./server-physics')
-const { evaluateThreats } = require('./threats')
-const threatReachability = require('./threat-reachability')
-const { landEdgeRecenterTargets } = require('./edge-recenter')
+const { createUserBehaviors } = require('./combat/user-behaviors')
+const { createFurnace } = require('./actions/furnace')
+const { createChest } = require('./actions/chest')
+const { createSurfaceReturn, returnScope } = require('./survival/surface-return')
+const { bindRecentDamage, observeOwnDamageEffect, planRecentDamageRetreat, retreatFrameAllowed } = require('./safety/recent-damage-retreat')
+const { createSelfResistance, createSelfSlowFalling, createSelfEffectEvents } = require('./combat/self-resistance')
+const { createDepotMission } = require('./survival/depot-mission')
+const { createDepotPrebuild, planPrebuildChestStance } = require('./survival/depot-prebuild')
+const { createWorksiteCamp, createWorksiteCampPrebuild } = require('./survival/worksite-camp')
+const { rankExplorationTargets } = require('./survival/exploration')
+const { rankCampResourceTargets } = require('./survival/camp-local-resource')
+const { planOwnedCampReturn } = require('./survival/owned-camp-return')
+const { createOwnedCampBootstrap } = require('./survival/owned-camp-bootstrap')
+const { createDepotStorageWork } = require('./survival/depot-storage-work')
+const { planDepotStorageAccess, selectDepotTableCell } = require('./survival/depot-storage-access')
+const { continuationScope } = require('./survival/base-continuation')
+const { planContinuationResource } = require('./survival/continuation-resource')
+const { createProspecting } = require('./survival/prospecting')
+const { createExcavation } = require('./survival/excavation')
+const { nextDiamondAction } = require('./survival/diamond-planner')
+const { supplyScope, tableMaterialShortfall, updateStationCatalog, readStationPages, planSupplyReturn } = require('./survival/supply-return')
+const { portableKit, reservedWorksiteCells, selectPortableWorksite, preparationTableTarget, portableFallbackStop, nextPortableStep, verifyPortableDeployment, portableSiteValid, useRays } = require('./survival/portable-worksite')
+const { immediateDiamond } = require('./survival/immediate-diamond')
+const { createDiamondActions } = require('./survival/diamond-actions')
+const { createDurabilityReader } = require('./inventory/durability')
+const { createTunneling } = require('./survival/tunneling')
+const { annotateTerrainThreats, terrainOcclusionApplies } = require('./combat/terrain-threats')
+const { useCurrentAccess } = require('./actions/action-access')
+const { createRecovery, planLearningShore, proveLearningShoreRoute } = require('./safety/recovery')
+const { createFood, isSupportedFood } = require('./actions/food')
+const { createForaging } = require('./survival/foraging')
+const { normalizePlayerCorrection } = require('./movement/server-physics')
+const { evaluateThreats } = require('./combat/threats')
+const threatReachability = require('./combat/threat-reachability')
+const { landEdgeRecenterTargets } = require('./movement/edge-recenter')
 // melee_kite standpoint distances from the target after a hit.
 const KITE_RADII = [3.4, 3.2, 3.6]
 // Retreat directions relative to straight away from the target (radians).
 const KITE_ANGLES = [0, 35, -35, 70, -70].map(deg => deg * Math.PI / 180)
 // Up to 12 x 50ms waiting for a supported landing before a kite step.
 const KITE_LANDING_POLLS = 12
-const { constrainedSecondaryFloor, selectConstrainedPrimary, outsideSkeletonFloor, unarmedCreeperZombie: isUnarmedCreeperZombie, unarmedWaterZombie, unarmedCreeperDrowned, unarmedWaterDrowned, unarmedZombieFloor, outsideUnarmedSpiderFloor, activeUnarmedSpiderFloor } = require('./escape-policy')
-const { normalizeServerMotion } = require('./server-motion')
-const { createShelter } = require('./shelter')
-const { planShelter } = require('./shelter-planner')
-const { nextSurvivalAction } = require('./survival-planner')
-const { serverInventoryUpdate } = require('./inventory-updates')
-const { createHut } = require('./hut')
-const { planHut } = require('./hut-planner')
-const { createBaseProtection } = require('./base-protection')
-const { createGuardedRoute } = require('./guarded-route')
-const { createIdleSafety } = require('./idle-safety')
-const { knownSurfaceBody, lowHealthSurfaceEligible, proveLowHealthSurfaceRoute } = require('./low-health-water')
-const { WORK_MARGIN, captureWorkActors, resolveWorkActors, workEscapeEvaluation } = require('./work-clearance')
-const { planEmergencyLeafAsync, clearanceDistanceAllowed, clearanceEquipmentKey, clearanceTargetAllowed } = require('./emergency-leaf')
-const { planProtectiveDrownedStepAsync, drownedStepThreatAllowed, drownedStepEquipmentKey, protectiveDrownedStepCurrent, skeletonStepThreatAllowed, planProtectiveSkeletonStepAsync, protectiveSkeletonStepCurrent } = require('./protective-drowned-step')
-const { createMissionJournal } = require('./mission-journal')
-const { createAutonomy, verifiedCoveredRoom } = require('./autonomy')
-const { createRunner, createHttpClient } = require('./runner')
+const { constrainedSecondaryFloor, selectConstrainedPrimary, outsideSkeletonFloor, unarmedCreeperZombie: isUnarmedCreeperZombie, unarmedWaterZombie, unarmedCreeperDrowned, unarmedWaterDrowned, unarmedZombieFloor, outsideUnarmedSpiderFloor, activeUnarmedSpiderFloor } = require('./movement/escape-policy')
+const { normalizeServerMotion } = require('./movement/server-motion')
+const { createShelter } = require('./survival/shelter')
+const { planShelter } = require('./survival/shelter-planner')
+const { nextSurvivalAction } = require('./survival/survival-planner')
+const { serverInventoryUpdate } = require('./inventory/inventory-updates')
+const { createHut } = require('./survival/hut')
+const { planHut } = require('./survival/hut-planner')
+const { createBaseProtection } = require('./safety/base-protection')
+const { createGuardedRoute } = require('./movement/guarded-route')
+const { createIdleSafety } = require('./safety/idle-safety')
+const { knownSurfaceBody, lowHealthSurfaceEligible, proveLowHealthSurfaceRoute } = require('./movement/low-health-water')
+const { WORK_MARGIN, captureWorkActors, resolveWorkActors, workEscapeEvaluation } = require('./safety/work-clearance')
+const { planEmergencyLeafAsync, clearanceDistanceAllowed, clearanceEquipmentKey, clearanceTargetAllowed } = require('./safety/emergency-leaf')
+const { planProtectiveDrownedStepAsync, drownedStepThreatAllowed, drownedStepEquipmentKey, protectiveDrownedStepCurrent, skeletonStepThreatAllowed, planProtectiveSkeletonStepAsync, protectiveSkeletonStepCurrent } = require('./safety/protective-drowned-step')
+const { createMissionJournal } = require('./survival/mission-journal')
+const { createAutonomy, verifiedCoveredRoom } = require('./survival/autonomy')
+const { createRunner, createHttpClient } = require('./survival/runner')
 const RUNTIME_VERSION = '0.2.0-hot-reload'
 const USER_NAVIGATION_INTENT = Symbol.for('minecraft.bot.runtime.userNavigationIntent')
 
@@ -603,7 +603,7 @@ function createRuntime (host) {
       const state = raw(), counts = sleepProducerCounts(), receipt = snapshot.bed?.sleepReceipt
       userBehaviorSleeping = true; userBehaviorWakePending = false; userBehaviorSleepStamp = state.positionUpdatedAt
       stopOrdinaryUserStream(); mining.stop('実際の睡眠中は通常入力を休止します。'); walker?.stop('server_sleep'); movement?.resetLifecycle?.('server_sleep')
-      autonomy.stop('user_behavior_sleep'); inputHistory?.invalidate('user_behavior_sleep'); stationaryRawPending = null; motionOrigin = null; host.shared.prediction = null; host.shared.motionSource = null
+      autonomyRuntime.autonomy.stop('user_behavior_sleep'); inputHistory?.invalidate('user_behavior_sleep'); stationaryRawPending = null; motionOrigin = null; host.shared.prediction = null; host.shared.motionSource = null
       const after = sleepProducerCounts()
       userBehaviorSleepWitness = receipt?.sleeping === true && ['own_server_metadata', 'own_server_wake_animation'].includes(receipt.source) && typeof receipt.scope === 'string' && Number.isSafeInteger(receipt.sequence) && state.position && state.positionUpdatedAt != null ? { scope: userScope(state), position: { ...state.position }, stamp: state.positionUpdatedAt, receiptScope: receipt.scope, sequence: receipt.sequence, counts: after, inputDuringStop: !counts || !after || ['stream', 'movement', 'walker'].some(k => counts[k] !== after[k]), forceRevision: userBehaviorForceRevision, stream: inputStream, movement, walker, history: inputHistory } : null
       const cleanup = Promise.resolve(idleSafety?.stop('server_sleep')).then(() => idleSafety?.drain()).catch(error => userBehaviorError(error, 'sleep_cleanup'))
@@ -628,7 +628,7 @@ function createRuntime (host) {
     if (!defenseEnabled(host.shared) && host.shared.userBehaviorsEnabled !== true && !userBehaviorLease && !userBehaviorSleeping && !userBehaviorSnapshot().sleeping) return
     let result
     try { result = userBehaviors.tick() } catch (error) { userBehaviorError(error, 'tick'); return }
-    const task = Promise.resolve(result).then(() => { synchronizeUserSleep(); if (!userBehaviorOwns() && host.shared.autoWanted && !autonomy.snapshot().running) return resumeRequested() }).catch(error => userBehaviorError(error, 'tick')).finally(() => { if (userBehaviorTickTask === task) userBehaviorTickTask = null })
+    const task = Promise.resolve(result).then(() => { synchronizeUserSleep(); if (!userBehaviorOwns() && host.shared.autoWanted && !autonomyRuntime.autonomy.snapshot().running) return resumeRequested() }).catch(error => userBehaviorError(error, 'tick')).finally(() => { if (userBehaviorTickTask === task) userBehaviorTickTask = null })
     userBehaviorTickTask = task
   }
   function observeStationaryRaw () {
@@ -890,12 +890,12 @@ function createRuntime (host) {
   portableActionOwners.track(mining, ['start', 'startAccessClearance'], { invalidate: ['stop'], isActive: c => c.snapshot().phase === 'mining' })
 
   async function executeSurfaceReturn (options = {}, context = {}) {
-    if (disposed || disposing || !surfaceReturn || surfaceReturnOwner || userBehaviorOwns() || autonomy.snapshot().actionActive) throw new Error('地上への移動処理が使用中です。')
+    if (disposed || disposing || !surfaceReturn || surfaceReturnOwner || userBehaviorOwns() || autonomyRuntime.autonomy.snapshot().actionActive) throw new Error('地上への移動処理が使用中です。')
     const lease = { serial: ++surfaceReturnSequence, scope: returnScope(lightweightUserState()), operationId: null }
     surfaceReturnOwner = lease
     try {
-      autonomy.stop('地上への帰路へ操作を引き継ぎます。')
-      await autonomy.tick()
+      autonomyRuntime.autonomy.stop('地上への帰路へ操作を引き継ぎます。')
+      await autonomyRuntime.autonomy.tick()
       await observeDepotSky(context.signal)
       const plan = await surfaceReturn.previewAsync(options)
       if (!plan.ready) return { phase: 'observing', busy: false, surfaceReached: false, code: plan.code, reason: plan.reason }
@@ -967,7 +967,7 @@ function createRuntime (host) {
     if (inputOwner === 'idle' && !ownedCall && !pendingStops.size && !motionActive() && idlePhysicsState.onGround === true && !idlePhysicsState.isInWater && !idlePhysicsState.isInLava && Math.hypot(idlePhysicsState.velocity.x, idlePhysicsState.velocity.z) < 0.006 && idlePhysicsState.velocity.y <= 0.05 && idlePhysicsState.velocity.y >= -0.12) {
       try {
         idleOriginNavigator ??= createNavigator({ world: planningWorld, version: host.meta.version, allowWater: true, physics: idlePhysics })
-        if (!idleOriginNavigator.verifyOrigin(idlePhysicsState) && !autonomy.snapshot().busy && !idleSafety?.snapshot().busy && !guardRoute?.snapshot().busy && !excavation?.snapshot().busy && !tunneling?.snapshot().busy && !recovery?.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !shelter?.snapshot().busy && !hut?.snapshot().busy && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging && !food.snapshot().busy && !(furnace.snapshot().busy || chestStatus().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation) {
+        if (!idleOriginNavigator.verifyOrigin(idlePhysicsState) && !autonomyRuntime.autonomy.snapshot().busy && !idleSafety?.snapshot().busy && !guardRoute?.snapshot().busy && !excavation?.snapshot().busy && !tunneling?.snapshot().busy && !recovery?.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !shelter?.snapshot().busy && !hut?.snapshot().busy && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging && !food.snapshot().busy && !(furnace.snapshot().busy || chestStatus().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation) {
           const observed = raw()
           const sameScope = ['profile', 'startedAt', 'connectionId', 'runtimeEntityId', 'dimension'].every(key => observed[key] != null && observed[key] === state[key]) && observed.realm?.id != null && String(observed.realm.id) === String(state.realm?.id)
           const sameRawPose = observed.position && state.rawServerPosition && ['x', 'y', 'z'].every(axis => Number.isFinite(observed.position[axis]) && observed.position[axis] === state.rawServerPosition[axis])
@@ -1134,7 +1134,7 @@ function createRuntime (host) {
       return
     }
     const behavior = userBehaviorSnapshot()
-    if (ownedCall || pendingStops.size || userBehaviorOwns() || userBehaviorTickTask || behavior.cleanupUnconfirmed || inputOwner === 'task' || motionActive() || input?.stats().running || autonomy.snapshot().actionActive || idleSafety?.snapshot().busy || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy || snapshot(mining).phase === 'mining' || walker?.snapshot().phase === 'walking' || snapshot(food).busy || snapshot(food).pendingRequestId != null || inventory.snapshot().busy || (snapshot(furnace).busy || chestStatus().busy) || snapshot(furnace).waitingOutput || interactions.snapshot().pendingOperation || snapshot(combat)?.busy || snapshot(combat)?.defending || snapshot(combat)?.engaging || host.shared.equipment != null || craftStatus().pendingRequestId != null) throw Object.assign(new Error('現在の操作が完了してから持ち物を再同期します。'), { code: 'BUSY' })
+    if (ownedCall || pendingStops.size || userBehaviorOwns() || userBehaviorTickTask || behavior.cleanupUnconfirmed || inputOwner === 'task' || motionActive() || input?.stats().running || autonomyRuntime.autonomy.snapshot().actionActive || idleSafety?.snapshot().busy || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy || snapshot(mining).phase === 'mining' || walker?.snapshot().phase === 'walking' || snapshot(food).busy || snapshot(food).pendingRequestId != null || inventory.snapshot().busy || (snapshot(furnace).busy || chestStatus().busy) || snapshot(furnace).waitingOutput || interactions.snapshot().pendingOperation || snapshot(combat)?.busy || snapshot(combat)?.defending || snapshot(combat)?.engaging || host.shared.equipment != null || craftStatus().pendingRequestId != null) throw Object.assign(new Error('現在の操作が完了してから持ち物を再同期します。'), { code: 'BUSY' })
   }
   function inventoryResyncSuccessKey (ledger, scopeKey) {
     const r = ledger?.lastRequest
@@ -1226,7 +1226,7 @@ function createRuntime (host) {
   // long trip (the trip equips between legs).
   let armorFinalMemo = { at: 0, value: false }
   function armorAutoAllowed () {
-    if (longTravel?.status?.().busy) return false
+    if (travelRuntime.longTravel?.status?.().busy) return false
     if (!quarryJob?.holdsWork()) return true
     if (!quarryCombatArmed) return false
     // The job copy is costly: read whether the final chest store began at most every 3 s.
@@ -1292,7 +1292,7 @@ function createRuntime (host) {
     const state = observedState()
     const prospect = prospecting.snapshot()
     const observedOres = prospect.phase === 'idle' ? host.shared.prospecting ?? prospect : prospect
-    return { ownedCampBootstrap: structuredClone(host.shared.ownedCampBootstrap ?? null), workHold: host.shared.legacyWorkHoldLease ? {leaseId:host.shared.legacyWorkHoldLease.id,scope:host.shared.legacyWorkHoldLease.scope,expiresAt:host.shared.legacyWorkHoldLease.expiresAt} : null, recentDamageRetreat: structuredClone(host.shared.recentDamageRetreatDiagnostic ?? null), survivalWorkClearance: state.survivalWorkClearance === true, spawnRangedClearance: state.spawnRangedClearance === true, depotPrebuild: depotPrebuild?.snapshot() ?? null, depotMission: depotMission?.snapshot() ?? null, surfaceReturn: surfaceReturn?.snapshot() ?? null, inventoryResync: structuredClone(host.shared.inventoryResync?.lastRequest ?? null), movementCalibration: structuredClone(movementCalibration), learningShoreEscape: structuredClone(host.shared.learningShoreEscape ?? null), startupPriority: structuredClone(host.shared.startupPriority ?? null), userBehaviors: userBehaviorSnapshot(), lowHealthWater: host.shared.lowHealthWaterDiagnostic ? { ...structuredClone(host.shared.lowHealthWaterDiagnostic), timing: structuredClone(host.shared.lowHealthWaterTiming ?? null) } : null, clearance: structuredClone(host.shared.clearanceDiagnostic ?? null), safety: safetySnapshot(), guardRoute: guardRouteSnapshot(), boundedJumpSearch: structuredClone(boundedJumpSearch), queuedPrediction: inputHistory?.snapshot() ?? null, queuedWireClock: structuredClone(actualWireClock.snapshot()), missionMemory: missionJournal.snapshot(), hut: hut?.snapshot() ?? null, shelter: activeBase()?.snapshot() ?? null, shelterKind: activeBase() === hut ? "hut" : "soil_hill", dayCycleStopTime: host.meta.startGame?.day_cycle_stop_time ?? null, worldClocks: structuredClone(host.shared.worldClocks ?? {}), lastServerMotion: structuredClone(host.shared.lastServerMotion ?? null), lastServerCorrection: structuredClone(host.shared.lastServerCorrection ?? null), worldTime: structuredClone(host.shared.worldTime ?? null), threatPolicy: state.threatPolicy, foraging: foraging?.snapshot() ?? null, food: food.snapshot(), vitals: structuredClone(host.shared.vitals ?? {}), recovery: recovery?.snapshot() ?? null, excavation: excavation?.snapshot() ?? null, quarry: quarrySnapshot(), tunneling: tunneling?.snapshot() ?? null, heldItem: state.heldItem, runtimeVersion: RUNTIME_VERSION, inventory: state.inventory, inventoryDetails: inventoryInspection.snapshot(state), inventoryStore: inventoryStore.snapshot(), inventoryConfidence: { known: !host.shared.inventoryUncertain, unresolved: host.shared.inventoryUncertain ?? null }, stations: structuredClone(host.shared.stations ?? {}), stationCatalog: structuredClone(host.shared.stationCatalog ?? null), portableWorksite: structuredClone(host.shared.portableWorksiteMemo ?? null), prospecting: observedOres, furnace: furnace.snapshot(), chest: chest.snapshot(), entities: state.entities, hostiles: state.hostiles, input: input?.stats() ?? null, mining: mining.snapshot(), walking: walker?.snapshot() ?? null, movement: movement ? { ...movement.snapshot(), runtimeHandoff: structuredClone(host.shared.movementHandoffTiming ?? null) } : null, crafting: crafting.snapshot(), inventoryActions: inventory.snapshot(), interactions: interactions.snapshot(), combat: combat?.snapshot() ?? null, agent: autonomy.snapshot(), idle: { owner: inputOwner, enabled: idleTimer !== null, error: host.shared.idleError ?? null, lastFailure: structuredClone(host.shared.lastInputFailure ?? null) } }
+    return { ownedCampBootstrap: structuredClone(host.shared.ownedCampBootstrap ?? null), workHold: host.shared.legacyWorkHoldLease ? {leaseId:host.shared.legacyWorkHoldLease.id,scope:host.shared.legacyWorkHoldLease.scope,expiresAt:host.shared.legacyWorkHoldLease.expiresAt} : null, recentDamageRetreat: structuredClone(host.shared.recentDamageRetreatDiagnostic ?? null), survivalWorkClearance: state.survivalWorkClearance === true, spawnRangedClearance: state.spawnRangedClearance === true, depotPrebuild: depotPrebuild?.snapshot() ?? null, depotMission: depotMission?.snapshot() ?? null, surfaceReturn: surfaceReturn?.snapshot() ?? null, inventoryResync: structuredClone(host.shared.inventoryResync?.lastRequest ?? null), movementCalibration: structuredClone(movementCalibration), learningShoreEscape: structuredClone(host.shared.learningShoreEscape ?? null), startupPriority: structuredClone(host.shared.startupPriority ?? null), userBehaviors: userBehaviorSnapshot(), lowHealthWater: host.shared.lowHealthWaterDiagnostic ? { ...structuredClone(host.shared.lowHealthWaterDiagnostic), timing: structuredClone(host.shared.lowHealthWaterTiming ?? null) } : null, clearance: structuredClone(host.shared.clearanceDiagnostic ?? null), safety: safetySnapshot(), guardRoute: guardRouteSnapshot(), boundedJumpSearch: structuredClone(boundedJumpSearch), queuedPrediction: inputHistory?.snapshot() ?? null, queuedWireClock: structuredClone(actualWireClock.snapshot()), missionMemory: missionJournal.snapshot(), hut: hut?.snapshot() ?? null, shelter: activeBase()?.snapshot() ?? null, shelterKind: activeBase() === hut ? "hut" : "soil_hill", dayCycleStopTime: host.meta.startGame?.day_cycle_stop_time ?? null, worldClocks: structuredClone(host.shared.worldClocks ?? {}), lastServerMotion: structuredClone(host.shared.lastServerMotion ?? null), lastServerCorrection: structuredClone(host.shared.lastServerCorrection ?? null), worldTime: structuredClone(host.shared.worldTime ?? null), threatPolicy: state.threatPolicy, foraging: foraging?.snapshot() ?? null, food: food.snapshot(), vitals: structuredClone(host.shared.vitals ?? {}), recovery: recovery?.snapshot() ?? null, excavation: excavation?.snapshot() ?? null, quarry: quarrySnapshot(), tunneling: tunneling?.snapshot() ?? null, heldItem: state.heldItem, runtimeVersion: RUNTIME_VERSION, inventory: state.inventory, inventoryDetails: inventoryInspection.snapshot(state), inventoryStore: inventoryStore.snapshot(), inventoryConfidence: { known: !host.shared.inventoryUncertain, unresolved: host.shared.inventoryUncertain ?? null }, stations: structuredClone(host.shared.stations ?? {}), stationCatalog: structuredClone(host.shared.stationCatalog ?? null), portableWorksite: structuredClone(host.shared.portableWorksiteMemo ?? null), prospecting: observedOres, furnace: furnace.snapshot(), chest: chest.snapshot(), entities: state.entities, hostiles: state.hostiles, input: input?.stats() ?? null, mining: mining.snapshot(), walking: walker?.snapshot() ?? null, movement: movement ? { ...movement.snapshot(), runtimeHandoff: structuredClone(host.shared.movementHandoffTiming ?? null) } : null, crafting: crafting.snapshot(), inventoryActions: inventory.snapshot(), interactions: interactions.snapshot(), combat: combat?.snapshot() ?? null, agent: autonomyRuntime.autonomy.snapshot(), idle: { owner: inputOwner, enabled: idleTimer !== null, error: host.shared.idleError ?? null, lastFailure: structuredClone(host.shared.lastInputFailure ?? null) } }
   }
   const http = createHttpClient({ baseUrl: host.apiUrl })
   function runnerFoodWalkBody (body) {
@@ -1324,7 +1324,7 @@ function createRuntime (host) {
       if (!longTravelLogAllowance()) return false
       // Main slots may hold only cheap regatherable items (decision a, 2026-11-14);
       // armour and offhand stay empty.
-      const cheap = require('./learning-health').cheapItem
+      const cheap = require('./safety/learning-health').cheapItem
       for (const [container, size] of [['main', 36], ['armor', 4], ['offhand', 1]]) {
         const v = inventoryStore.view(container)
         if (v.known !== true || v.slots.length !== size || !v.slots.every(slot => slot.received === true && slot.raw && (slot.raw.network_id === 0 || slot.raw.count === 0 || container === 'main' && cheap(crafting.itemNameOf(slot.raw.network_id))))) return false
@@ -1803,273 +1803,71 @@ function createRuntime (host) {
     }
     return { ...enriched, supplyReturn }
   }
-  const autonomy = createAutonomy({
-    requestWorkClearance: () => idleSafety?.requestWorkClearance?.() ?? { pending: false },
-    getState: () => {
-      const state = observedState(), knownLife = Number.isSafeInteger(host.shared.deathRespawn?.deathId) && host.shared.deathRespawn.deathId >= 0
-      const dead = state.dead === true || state.isDead === true || state.lifecycle?.dead === true || state.health === 0
-      return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: knownLife ? actualLifeId() : null, dead, phase: dead ? 'dead' : state.phase === 'spawned' && !state.spawnPending && state.health > 0 ? 'alive' : 'unknown' }, idleProtection: safetySnapshot(), shelter: activeBase()?.snapshot(), entityStats: host.entities.stats?.(), world: host.world.stats(), mining: mining.snapshot(), walking: walker?.snapshot(), movement: movement?.snapshot(), crafting: crafting.snapshot(), furnace: furnace.snapshot(), chest: chest.snapshot(), droppedItems: host.entities.snapshot() }
-    },
-    observe: async options => {
-      const observed = await runner.observe(options)
-      const scan = prospecting.snapshot()
-      const baseActor = activeBase()
-      let shelterMemo = baseActor?.memo()
-      let shelterPreview = baseActor?.preview({ radius: baseActor === hut ? 10 : 12 })
-      const boundaries = Object.values(shelterMemo?.site?.preserved ?? {}).flat()
-      if (shelterMemo && !shelterPreview?.ready && boundaries.some(item => { const p = item.position; if (!p) return false; const b = host.world.getBlock(p.x, p.y, p.z); return b.known && ['minecraft:air', 'minecraft:cave_air'].includes(b.name) })) {
-        shelterMemo = {}
-        shelterPreview = shelter?.preview({ radius: 12, memo: {} })
-      }
-      const supplied = await observeStationSupplies(observePortableWorksite({ ...observed, shelter: { status: baseActor?.snapshot(), preview: shelterPreview, memo: shelterMemo }, ores: (scan.phase === 'ready' ? scan : host.shared.prospecting)?.ores ?? {}, furnace: furnace.snapshot(), chest: chest.snapshot(), stations: structuredClone(host.shared.stations ?? {}), capabilities: { ...observed.capabilities, build_shelter: !!baseActor, leave_shelter: !!baseActor, move: !!movement, respawn: true, prospect: true, mine_ore: true, furnace: true, place_furnace: true, open_furnace: true, put_furnace_input: true, put_furnace_fuel: true, take_furnace_output: true, tunnel: !!tunneling } }), options)
-      return observeStoneAccess(supplied, options)
-    },
-    observeSafety: async ({ signal }) => {
-      const state = observedState()
-      if (signal.aborted) throw signal.reason
-      const center = { x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62 + 0.001), z: Math.floor(state.position.z) }
-      const blocks = []
-      for (let x = center.x - 8; x <= center.x + 8; x++) for (let y = center.y - 3; y <= center.y + 5; y++) for (let z = center.z - 8; z <= center.z + 8; z++) blocks.push(host.world.getBlock(x, y, z))
-      const evaluated = evaluateThreats(state, state.entities, { observationRadius: 32 })
-      return { state, center, radius: 8, blocks, entities: state.entities, threats: evaluated.threats, threatEvaluation: evaluated, capabilities: { move: true, explore: true, respawn: true } }
-    },
-    actions: continuationActions = { ...runner.actions, ...diamondActions,
-      tunnel: (decision, context) => decision.resource === 'stone' ? runStoneTunnel(decision, context) : diamondActions.tunnel(decision, context),
-      move_to: (decision, context) => decision.portableSiteId || decision.stage === 'portable_worksite' ? withPortableMovementLease(decision, context, 'move', signal => runner.actions.move_to(decision, { ...context, signal })) : runner.actions.move_to(decision, context),
-      excavate_worksite_step: (decision, context) => portablePrimitive(decision, context, 'excavate'),
-      place_worksite_block: (decision, context) => portablePrimitive(decision, context, 'place'),
-      equip: (decision, context) => {
-        if (decision.nutritionEquip !== true) return runner.actions.equip(decision, context)
-        requireIdle()
-        const state = observedState()
-        const { preview, window } = checkNutritionDispatch(state, decision, { allowSwordEquip: true })
-        const sword = state.inventory.items.find(item => item.slot === decision.slot && item.name === decision.item && item.count > 0 && /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/.test(item.name) && !(item.durabilityKnown === true && item.durabilityRemaining <= 0))
-        if (window !== 'night' || preview.kind !== 'prey' || !sword) { const error = new Error('夜の狩りに使う実際の剣と食料源を再確認します。'); error.code = 'STALE_OBSERVATION'; throw error }
-        return inventory.equip(sword.slot)
-      },
-      build_shelter: (decision, context) => { const actor = (decision.site?.type ?? decision.plan?.type) === 'soil_hut' ? hut : shelter; return executeShelterBatch(actor, { plan: decision.plan, site: decision.site ?? decision.plan, memo: decision.memo }, context) },
-      return_shelter: (decision, context) => executeShelterBatch(activeBase(), {}, context),
-      leave_shelter: (decision, context) => {
-        requireIdle()
-        if (decision.purpose === 'food') {
-          const state = observedState()
-          if (checkNutritionDispatch(state, decision).preview.ready !== true) {
-            const error = new Error('食料のために入口を開ける前に、目的地と周囲の安全を再確認します。'); error.code = 'STALE_OBSERVATION'; throw error
-          }
-        }
-        return activeBase().leave({}, { signal: context.signal })
-      },
-      defend: async (decision, context) => {
-        requireIdle()
-        const state = observedState()
-        const swordTier = name => ['wooden', 'stone', 'iron', 'diamond', 'netherite'].indexOf(/^minecraft:(\w+)_sword$/.exec(name)?.[1])
-        // Defend with the strongest usable sword (higher tier = higher Bedrock damage), not merely the first one listed.
-        const sword = state.inventory.items.filter(item => /^minecraft:(?:wooden|stone|iron|diamond|netherite)_sword$/.test(item.name) && item.count > 0 && !(item.durabilityKnown === true && item.durabilityRemaining <= 0)).sort((x, y) => swordTier(y.name) - swordTier(x.name) || x.slot - y.slot)[0]
-        if ((!sword && decision.purpose !== 'push_back') || state.inventory.known !== true || state.inventory.uncertain || state.health <= 10) throw new Error('十分な体力と確定した主手を確認してから自衛します。')
-        const stop = () => combat.cancel('自衛を中断しました。')
-        context.signal?.addEventListener('abort', stop, { once: true })
-        try {
-          const selected = state.rawSelectedSlot
-          if (sword && sword.slot !== selected) await inventory.equip(sword.slot)
-          crafting.closeContainer()
-          if (context.signal?.aborted) throw context.signal.reason
-          // Engagement eligibility also requires the confirmed equipped hand
-          // and a known actor identity, so recheck it after the real equip.
-          const result = sword && combat.previewEngage(decision.targetRuntimeId).ready ? await combat.engage(decision.targetRuntimeId, { durationMs: 6000, maxHits: 8, signal: context.signal }) : await combat.attack(decision.targetRuntimeId)
-          return { ok: true, phase: 'completed', attack: result, serverConfirmed: result.mode === 'engage' ? result.serverConfirmed : result.phase === 'observed', collected: false, enemyDefeated: null }
-        } catch (error) {
-          const current = working()
-          if (current.dead || current.health === 0) error.code = 'DEAD'
-          else if (current.health < state.health) error.code = 'TOOK_DAMAGE'
-          throw error
-        } finally { context.signal?.removeEventListener('abort', stop) }
-      },
-      recover: (decision, context) => { requireIdle({ inventoryRequired: false }); return recovery.execute({}, { signal: context.signal }) },
-      forage: (decision, context) => {
-        requireIdle()
-        const state = observedState()
-        const { preview, window } = checkNutritionDispatch(state, decision)
-        if (preview.code === 'FOOD_ALREADY_AVAILABLE') return { ok: true, phase: 'observed', foodAvailable: true, serverConfirmed: true, collected: false }
-        return foraging.execute(window === 'night' ? { targetRuntimeId: preview.target.runtimeId } : {}, { signal: context.signal })
-      },
-      eat: async (decision, context) => { requireIdle(); const stop = () => food.cancel('食事を中断しました。'); context.signal?.addEventListener('abort', stop, { once: true }); try { return await food.eat({ slot: decision.slot, ...(decision.allowEmergencyRotten === true ? { allowEmergencyRotten: true } : {}) }) } finally { context.signal?.removeEventListener('abort', stop) } }
-    },
-    planSafety: continuationSafety = function planSafety (state, observations = {}) {
-      if (disposed || disposing) return { type: 'wait', stage: 'safety', code: 'runtime_reloading', reason: '行動コードの更新完了を待ちます。' }
-      if (host.shared.respawnTerrain?.pending) return { type: 'wait', stage: 'safety', code: 'respawn_terrain_pending', reason: 'リスポーン先の地形と前の操作の終了を確認しています。' }
-      const physical = state.predicted?.physicsState ?? state.physicsState
-      const foot = state.position && { x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62), z: Math.floor(state.position.z) }
-      const cell = foot && host.world?.getBlock?.(foot.x, foot.y, foot.z)
-      const actuallyWet = physical?.isInWater === true || cell?.known === true && ['minecraft:water', 'minecraft:flowing_water'].includes(cell.name)
-      const cachedWater = Object.hasOwn(observations, 'userRecoveryPreview')
-      if (actuallyWet && typeof recovery?.previewAsync === 'function' && !cachedWater) return Promise.resolve(recovery.previewAsync()).then(escape => planSafety(state, { ...observations, userRecoveryPreview: escape }))
-      const escape = cachedWater ? observations.userRecoveryPreview : recovery?.preview()
-      if (escape?.requiresDedicatedRoute) return { type: 'wait', stage: 'safety', code: 'navigation_route_required', reason: '指定された立体的な目的地には別の確認済み経路が必要です。水面への到着とは扱いません。' }
-      if (escape?.ready && !escape.alreadyAshore) return { type: 'recover', stage: 'safety', reason: '水辺から確認済みの岸へ戻ることを優先します。' }
-      const threats = evaluateThreats(state, state.entities ?? state.hostiles ?? [], { observationRadius: 32 })
-      const base = activeBase()?.snapshot()
-      const underCover = base?.inside && base?.entranceClosed && base?.usable && base?.serverConfirmed
-      const melee = threats.threats.find(threat => threat.distance <= 4 && ['minecraft:zombie', 'minecraft:zombie_villager', 'minecraft:zombie_villager_v2', 'minecraft:husk', 'minecraft:spider', 'minecraft:cave_spider', 'minecraft:drowned'].includes(threat.name) && combat?.preview(threat.runtimeId).ready)
-      const inventoryReady = nutritionInventoryReady(state)
-      const learningAlive = resourceMinHealth(state) === 0
-      const nutritionHealthReady = state.health > resourceMinHealth(state)
-      const armed = inventoryReady && state.inventory.items.some(item => item.count > 0 && /^minecraft:(?:wooden|stone|iron|diamond|netherite)_sword$/.test(item.name))
-      const explosive = threats.threats.some(threat => threat.name === 'minecraft:creeper' && threat.distance <= 8)
-      const boss = threats.threats.some(threat => threat.category === 'boss' || ['minecraft:warden', 'minecraft:wither', 'minecraft:ender_dragon'].includes(threat.name))
-      const scope = JSON.stringify([state.profile ?? null, state.realm?.id == null ? null : String(state.realm.id), state.dimension ?? null, state.connectionId ?? null])
-      const scopeReady = typeof state.profile === 'string' && state.profile.length > 0 && state.realm?.id != null && ['overworld', 'nether', 'end'].includes(state.dimension)
-      const now = Date.now()
-      const clock = Object.values(host.shared.worldClocks ?? {}).find(clock => clock.name === 'minecraft:overworld')
-      const dayTime = Number.isSafeInteger(clock?.time) ? ((clock.time % 24000) + 24000) % 24000 : null
-      const knownDay = dayTime != null && dayTime >= 200 && dayTime < 12000
-      const knownNight = dayTime != null && !knownDay
-      const foodDay = knownDay && dayTime < 11400
-      const hungerValue = host.shared.vitals?.hunger
-      const hunger = typeof hungerValue === 'number' ? hungerValue : hungerValue?.source === 'client_prediction' ? null : hungerValue?.value
-      const hungerKnown = Number.isFinite(hunger) && hunger >= 0 && hunger <= 20
-      const items = inventoryReady ? state.inventory.items.filter(item => item.count > 0 && isSupportedFood(item.name, state)) : []
-      // Rotten flesh remains emergency food only. While already full and
-      // well-fed, its real reserve can defer optional stocking in explicit
-      // online learning; no eating, healing or healthy-food credit is granted.
-      const receivedReserveCount = inventoryReady ? Math.min(2304, state.inventory.items.reduce((sum, item) => sum + (item.name === 'minecraft:rotten_flesh' && Number.isSafeInteger(item.count) && item.count > 0 && item.count <= 64 ? item.count : 0), 0)) : null
-      const foodReserveDeferred = inventoryReady && !items.length && learningAlive && state.health === 20 && hungerValue?.source === 'server_attribute' && hungerKnown && hunger >= 18 && receivedReserveCount >= 2
-      const needsFood = inventoryReady && !items.length && (state.health > 14 || hungerKnown && hunger <= 17) && !foodReserveDeferred
-      const safeOutside = !threats.requiresObservation && !(state.entityStats?.unknownPositions > threats.unknownPositions.length) && !threats.threats.length && !boss
-      const foodWindow = foodDay ? 'day' : knownNight ? 'night' : null
-      const localWork = localLearningWork(state, threats, base)
-      const learningLocalWork = localWork.eligible
-      let task = host.shared.nutritionTask
-      const validTask = task && ['seeking_food', 'cooldown'].includes(task.phase) && Number.isFinite(task.expiresAt) && (task.phase === 'seeking_food' ? Number.isFinite(task.startedAt) && task.startedAt <= now && task.expiresAt <= task.startedAt + 180000 : Number.isFinite(task.retryAfter) && task.expiresAt === task.retryAfter)
-      if (task && (!validTask || !scopeReady || task.scope !== scope || items.length || !inventoryReady || !safeOutside || !foodWindow)) host.shared.nutritionTask = task = null
-      if (task?.phase === 'cooldown' && now >= task.retryAfter) host.shared.nutritionTask = task = null
-      if (task?.phase === 'seeking_food' && now >= task.expiresAt) {
-        host.shared.nutritionTask = task = { scope, phase: 'cooldown', retryAfter: now + 60000, expiresAt: now + 60000 }
-      }
-      const foragePreview = needsFood && scopeReady && nutritionHealthReady && safeOutside && foodWindow && task?.phase !== 'cooldown' ? foraging?.preview() : null
-      const sourcePosition = foragePreview?.target?.position
-      const sourceDistance = sourcePosition && state.position && ['x', 'y', 'z'].every(axis => Number.isFinite(sourcePosition[axis]) && Math.abs(sourcePosition[axis]) <= 30000000 && Number.isFinite(state.position[axis]) && Math.abs(state.position[axis]) <= 30000000) ? Math.hypot(sourcePosition.x - state.position.x, sourcePosition.y - state.position.y, sourcePosition.z - state.position.z) : null
-      const usableStonePick = inventoryReady && state.inventory.items.some(item => item.count === 1 && /^minecraft:(?:stone|copper|iron|diamond|netherite)_pickaxe$/.test(item.name) && !(item.durabilityKnown === true && item.durabilityRemaining <= 0))
-      // First obtain the basic stone kit while already full and well-fed.
-      // The distant source still exists; this defers only optional dispatch,
-      // never grants food/eating credit, and does not interrupt an owned hunt.
-      const stoneBootstrapVitals = learningAlive && inventoryReady && state.health === 20 && hungerValue?.source === 'server_attribute' && hungerKnown && hunger >= 18 && !usableStonePick
-      const localStarterVitals = learningLocalWork && inventoryReady && !items.length && !nutritionSword(state) && state.health >= 14 && hungerValue?.source === 'server_attribute' && hungerKnown && hunger >= 10 && scopeReady && safeOutside
-      const distantFoodDeferred = (stoneBootstrapVitals || localStarterVitals) && foragePreview?.ready === true && sourceDistance !== null && sourceDistance > 8
-      const canForage = nutritionSourceAllowed(state, foragePreview, foodWindow) && !distantFoodDeferred
-      if (task?.phase === 'seeking_food' && foodWindow === 'night' && !canForage) host.shared.nutritionTask = task = null
-      const seekingFood = task?.phase === 'seeking_food' && needsFood && nutritionHealthReady && safeOutside && canForage
-      // This exception returns only the existing bounded wooden-sword plan;
-      // it never releases the ordinary mining or diamond resource planner.
-      const firstWeaponVitals = inventoryReady && !items.length && (learningAlive || state.health >= 12) && hungerKnown && hunger >= 16 && scopeReady && !nutritionSword(state)
-      const prepareFirstWeapon = firstWeaponVitals && safeOutside && !(canForage && (learningAlive || foragePreview.kind === 'drop'))
-      const localFirstWeapon = learningLocalWork && inventoryReady && !items.length && scopeReady && !nutritionSword(state) && !(canForage && (foragePreview.kind === 'drop' || hungerKnown && hunger <= 17))
-      const priority = host.shared.startupPriority = { policy: state.threatPolicy, health: state.health, receivedHunger: hungerKnown ? hunger : null, foodReserveDeferred, receivedReserveCount, distantFoodDeferred, sourceDistance, bodyProof: localWork.bodyProof, localWorkEligible: learningLocalWork, actualDanger: threats.threats.length, unknown: threats.requiresObservation || state.entityStats?.unknownPositions > threats.unknownPositions.length, foodReady: { owned: null, source: foragePreview?.ready === true, sourceEligible: canForage, sourceKind: foragePreview?.kind ?? null }, hasSword: nutritionSword(state), firstSwordPlan: null, deferOptionalShelter: learningLocalWork }
-      const firstWeapon = () => {
-        // Long-trip preparation gathers logs by the base plan first (2026-11-14).
-        if (longTravelLogAllowance()) return null
-        const decision = nextSurvivalAction(state, observations, { firstWoodenSwordOnly: true }) ?? foodWait()
-        priority.firstSwordPlan = { type: decision.type, code: decision.code ?? null, reason: String(decision.reason ?? '').slice(0, 80) }
-        return decision
-      }
-      const foodPurpose = () => ({ purpose: 'food', nutritionScope: scope, nutritionWindow: foodWindow, ...(foodWindow === 'night' ? { nutritionTarget: nutritionTarget(foragePreview) } : {}) })
-      const beginFood = () => {
-        if (!seekingFood) host.shared.nutritionTask = { scope, phase: 'seeking_food', startedAt: now, expiresAt: now + 180000 }
-      }
-      const foodWait = () => ({ type: 'wait', stage: 'safety', code: task?.phase === 'cooldown' ? 'food_acquisition_cooldown' : 'food_source_required', reason: '回復と採掘に使う食料がありません。時間帯と装備に合う安全な食料源の観測を待ちます。' })
-      if (!underCover && state.health > 10 && melee && inventoryReady && !explosive && !boss && combat?.preview(melee.runtimeId).ready) {
-        if (combat.snapshot().cooldownRemainingMs > 0) return { type: 'wait', stage: 'safety', code: 'defense_cooldown', reason: '次の自衛の一撃まで待ちます。' }
-        return { type: 'defend', purpose: armed ? 'defense' : 'push_back', stage: 'safety', targetRuntimeId: melee.runtimeId, reason: armed ? '剣を使い、近づいた敵に自衛します。' : '近づいた敵を一撃で押し返し、退避や拠点を閉じる時間を作ります。' }
-      }
-      const emergencyMeal = inventoryReady && !items.length && hungerKnown && hunger < 18 ? food.preview({ allowEmergencyRotten: true }) : null
-      if (!boss && emergencyMeal?.ready === true && emergencyMeal.name === 'minecraft:rotten_flesh') return { type: 'eat', stage: 'safety', slot: emergencyMeal.slot, allowEmergencyRotten: true, reason: '対応食料がないため、確認済みの安全な場所で手持ちの腐った肉を1個食べて空腹を補います。' }
-      if (needsFood && !distantFoodDeferred && foodWindow === 'night' && safeOutside && foragePreview?.ready === true && foragePreview.kind === 'prey' && nutritionSword(state) && !nutritionSword(state, true)) {
-        const sword = state.inventory.items.find(item => Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && item.count > 0 && /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/.test(item.name) && !(item.durabilityKnown === true && item.durabilityRemaining <= 0))
-        if (sword) { beginFood(); return { type: 'equip', ...foodPurpose(), nutritionEquip: true, slot: sword.slot, item: sword.name, stage: 'safety', reason: '夜の確認済みの食料源へ向かう前に、実際の剣を装備して主手の確認を待ちます。' } }
-      }
-      if (underCover && !boss) {
-        const item = items.find(item => food.preview({ slot: item.slot }).ready)
-        if ((state.health < 20 || hungerKnown && hunger <= 17) && item) return { type: 'eat', stage: 'safety', slot: item.slot, reason: '入口を閉じた拠点で食事と回復を優先します。' }
-        if (needsFood && canForage && !prepareFirstWeapon) { host.shared.shelterNightWait = null; beginFood(); return { type: 'leave_shelter', ...foodPurpose(), stage: 'shelter', reason: '安全を確認した食料源へ向かうため、入口を開けます。' } }
-        if (knownNight) {
-          const cycle = Math.floor(clock.time / 24000) + (dayTime >= 12000 ? 1 : 0)
-          let waiting = host.shared.shelterNightWait
-          if (waiting?.scope !== scope || waiting.cycle !== cycle) {
-            const remaining = (200 - dayTime + 24000) % 24000
-            host.shared.shelterNightWait = waiting = { scope, cycle, until: now + Math.min(900000, remaining * 50 + 30000) }
-          }
-          return { type: 'wait', stage: 'safety', code: 'shelter_night', waitBudget: 'shelter_night', waitUntil: waiting.until, reason: '夜の間は入口を閉じた拠点で待機し、明るくなってから資材集めへ戻ります。' }
-        }
-        host.shared.shelterNightWait = null
-        if (needsFood && safeOutside && nutritionHealthReady) {
-          if (!prepareFirstWeapon) return foodWait()
-        }
-        if (state.health > 14 && !threats.requiresObservation && threats.threats.every(threat => threat.distance > 8)) return { type: 'leave_shelter', stage: 'shelter', reason: '拠点の入口に近い敵がいないため、入口を開けて資材準備へ戻ります。' }
-        return { type: 'wait', stage: 'safety', code: 'shelter_cover', reason: '入口を閉じた拠点の中で、敵の接近が収まるまで待ちます。' }
-      }
-      if (learningLocalWork && (state.health < 20 || hungerKnown && hunger <= 17)) {
-        const item = items.find(item => food.preview({ slot: item.slot }).ready)
-        priority.foodReady.owned = !!item
-        if (item) return { type: 'eat', stage: 'safety', slot: item.slot, reason: '確認済みの現在地で手持ちの食料を優先し、回復と空腹を補います。' }
-      }
-      const insideTarget = base?.memo?.site?.innerStandpoint ?? base?.memo?.site?.insideStandpoint
-      if (!learningLocalWork && !boss && base?.established && (!base.inside || !base.closed) && state.health > 6 && insideTarget && Math.hypot(state.position.x - insideTarget.x, state.position.y - 1.62 - insideTarget.y, state.position.z - insideTarget.z) <= 10 && (knownNight && !canForage || threats.threats.length || state.health < 14 && !canForage)) {
-        const approach = baseReturnApproach(state, base, host.entities.stats?.().unknownPositions)
-        if (approach.ready) return { type: 'return_shelter', stage: 'safety', reason: '作業を中断し、確認済みの安全な拠点へ戻って入口を閉じます。' }
-        if (safeOutside && !learningLocalWork) return { type: 'wait', stage: 'safety', code: 'shelter_approach_unsafe', reason: '拠点の接近先に敵か未確認の状況があるため、現在地で通常の保護を保ち、食料調達と安全な接近先の次の観測を待ちます。' }
-      }
-      if (state.health > 0 && state.health <= 6 && threats.threats.length && state.emptyHandedPrep !== true) return { type: 'avoid_threat', emergency: true, stage: 'safety', reason: '体力が少ないため、既知の陸上経路で敵から離れます。', threat: threats.threats[0] }
-      if (state.health > 0 && state.health < 20 && safeOutside) {
-        const item = items.find(item => food.preview({ slot: item.slot }).ready)
-        if (item) return { type: 'eat', stage: 'safety', slot: item.slot, reason: '持ち物の食料を食べて回復を優先します。' }
-      }
-      if (state.health === 20 && hungerKnown && hunger <= 17 && safeOutside) {
-        const item = items.find(item => food.preview({ slot: item.slot }).ready)
-        if (item) return { type: 'eat', stage: 'safety', slot: item.slot, reason: '体力が満タンでも空腹を補い、採掘前に食料を使います。' }
-      }
-      if (firstWeaponVitals && (threats.requiresObservation || state.entityStats?.unknownPositions > threats.unknownPositions.length)) return { type: 'wait', stage: 'safety', code: 'threat_observation_unknown', reason: '近くの状況が未確認のため、最初の剣の準備を始める前に観測を待ちます。' }
-      const nightShelter=readyNightSoilShelter(state,observations)
-      if(nightShelter){priority.deferOptionalShelter=false;return nightShelter}
-      if (localFirstWeapon || prepareFirstWeapon) return firstWeapon()
-      if (needsFood && nutritionHealthReady && safeOutside) {
-        if (canForage) { beginFood(); return { type: 'forage', ...foodPurpose(), stage: 'safety', reason: '採掘を休止し、確認済みの食料源から実際の食料を調達します。' } }
-        if (!learningAlive) return foodWait()
-      }
-      if (!learningAlive && state.health > 0 && state.health <= 6) {
-        return { type: 'wait', stage: 'safety', code: 'health_recovery', reason: '体力が少ないため採掘と遠出を休止します。手持ちの食料か安全な補給が必要です。' }
-      }
-      return null
-    },
-    planAction: (state, observations, options) => {
-      // Long-trip preparation (2026-11-14 decision): the base wood path (logs,
-      // planks, table, wooden pickaxe) instead of the survival/diamond plans.
-      if (options?.allowLogs === true) return require('./planner').nextBootstrapAction(state, observations, options)
-      const localWork = localLearningWork(state)
-      const nightShelter=readyNightSoilShelter(state,observations)
-      const survivalOptions = localWork.eligible && !nightShelter ? { ...options, deferOptionalShelter: true } : options
-      if (host.shared.startupPriority) Object.assign(host.shared.startupPriority, { bodyProof: localWork.bodyProof, localWorkEligible: localWork.eligible, deferOptionalShelter: localWork.eligible && !nightShelter })
-      if(nightShelter)return nightShelter
-      const diamond = nextDiamondAction(state, observations, options)
-      const direct = immediateDiamond(state, diamond, targets => mining.preview(targets))
-      const chosen = direct ? { ...diamond, type: 'mine_ore', stage: 'diamond', reason: '確認済みの採掘面に直接届くダイヤ鉱石を採ります。', resourceTarget: diamond.target, requiresLivePreview: true } : nextSurvivalAction(state, observations, survivalOptions) ?? diamond
-      const current = raw()
-      const sameScope = !disposed && !disposing && ['connectionId', 'startedAt', 'dimension', 'runtimeEntityId'].every(field => state[field] === current[field]) && state.profile === (current.profile ?? host.meta.profile) && String(state.realm?.id ?? '') === String(current.realm?.id ?? '') && Number.isSafeInteger(host.shared.deathRespawn?.deathId) && state.lifecycle?.deathId === actualLifeId()
-      const stone = sameScope && observations.stoneAccess?.ready === true ? applyStoneAccess(state, chosen, observations.stoneAccess) : null
-      const observedTunnel = sameScope ? normalizeUnobservedTunnel(chosen, target => planningWorld.getBlock(target.x, target.y, target.z)) : chosen
-      const reachable = stone ?? (sameScope ? normalizeReachableTunnel(state, observedTunnel, targets => mining.preview(targets)) : chosen)
-      const routeGeneration = inputHistoryGeneration
-      const routeCurrent = () => {
-        const actual = raw(), position = working().position
-        return sameScope && !disposed && !disposing && inputHistoryGeneration === routeGeneration && state.lifecycle?.deathId === actualLifeId() && state.health === actual.health && ['connectionId', 'startedAt', 'dimension', 'runtimeEntityId'].every(field => state[field] === actual[field]) && state.profile === (actual.profile ?? host.meta.profile) && String(state.realm?.id ?? '') === String(actual.realm?.id ?? '') && position && Math.hypot(position.x - state.position.x, position.y - state.position.y, position.z - state.position.z) <= 1e-4
-      }
-      const decision = sameScope ? selectReadyOreTunnel(state, reachable, observations, options, { readBlock: target => planningWorld.getBlock(target.x, target.y, target.z), previewTunnel: (target, limits) => tunneling?.preview(target, limits), previewMining: targets => mining.preview(targets), isCurrent: routeCurrent }) : reachable
-      if (host.shared.startupPriority && String(decision.preparation ?? '').startsWith('wooden_sword')) host.shared.startupPriority.firstSwordPlan = { type: decision.type, code: decision.code ?? null, reason: String(decision.reason ?? '').slice(0, 80) }
-      return decision.type === 'move_to' && decision.resourceTarget ? useCurrentAccess(decision, mining.preview([decision.resourceTarget])) : decision
-    },
-    onDecision: decision => host.log(`次の行動: ${decision.reason}`),
-    onProgress: progress => {
-      host.shared.autonomyProgress = progress.progress
-      host.noteProgress(progress)
-    }
+  // This part lives in autonomy-runtime.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const autonomyRuntime = require('./runtime/autonomy-runtime').createAutonomyRuntime({
+    get activeBase () { return activeBase },
+    get actualLifeId () { return actualLifeId },
+    get applyStoneAccess () { return applyStoneAccess },
+    get baseReturnApproach () { return baseReturnApproach },
+    get checkNutritionDispatch () { return checkNutritionDispatch },
+    get chest () { return chest },
+    get combat () { return combat }, set combat (value) { combat = value },
+    get continuationActions () { return continuationActions }, set continuationActions (value) { continuationActions = value },
+    get continuationSafety () { return continuationSafety }, set continuationSafety (value) { continuationSafety = value },
+    get crafting () { return crafting },
+    get createAutonomy () { return createAutonomy },
+    get diamondActions () { return diamondActions },
+    get disposed () { return disposed }, set disposed (value) { disposed = value },
+    get disposing () { return disposing }, set disposing (value) { disposing = value },
+    get evaluateThreats () { return evaluateThreats },
+    get executeShelterBatch () { return executeShelterBatch },
+    get food () { return food },
+    get foraging () { return foraging }, set foraging (value) { foraging = value },
+    get furnace () { return furnace },
+    get host () { return host }, set host (value) { host = value },
+    get hut () { return hut }, set hut (value) { hut = value },
+    get idleSafety () { return idleSafety }, set idleSafety (value) { idleSafety = value },
+    get immediateDiamond () { return immediateDiamond },
+    get inputHistoryGeneration () { return inputHistoryGeneration }, set inputHistoryGeneration (value) { inputHistoryGeneration = value },
+    get inventory () { return inventory },
+    get isSupportedFood () { return isSupportedFood },
+    get localLearningWork () { return localLearningWork },
+    get longTravelLogAllowance () { return longTravelLogAllowance },
+    get mining () { return mining },
+    get movement () { return movement }, set movement (value) { movement = value },
+    get nextDiamondAction () { return nextDiamondAction },
+    get nextSurvivalAction () { return nextSurvivalAction },
+    get normalizeReachableTunnel () { return normalizeReachableTunnel },
+    get normalizeUnobservedTunnel () { return normalizeUnobservedTunnel },
+    get nutritionInventoryReady () { return nutritionInventoryReady },
+    get nutritionSourceAllowed () { return nutritionSourceAllowed },
+    get nutritionSword () { return nutritionSword },
+    get nutritionTarget () { return nutritionTarget },
+    get observedState () { return observedState },
+    get observePortableWorksite () { return observePortableWorksite },
+    get observeStationSupplies () { return observeStationSupplies },
+    get observeStoneAccess () { return observeStoneAccess },
+    get planningWorld () { return planningWorld },
+    get portablePrimitive () { return portablePrimitive },
+    get prospecting () { return prospecting },
+    get raw () { return raw },
+    get readyNightSoilShelter () { return readyNightSoilShelter },
+    get recovery () { return recovery }, set recovery (value) { recovery = value },
+    get require () { return require },
+    get requireIdle () { return requireIdle },
+    get resourceMinHealth () { return resourceMinHealth },
+    get runner () { return runner },
+    get runStoneTunnel () { return runStoneTunnel },
+    get safetySnapshot () { return safetySnapshot },
+    get selectReadyOreTunnel () { return selectReadyOreTunnel },
+    get shelter () { return shelter }, set shelter (value) { shelter = value },
+    get tunneling () { return tunneling }, set tunneling (value) { tunneling = value },
+    get useCurrentAccess () { return useCurrentAccess },
+    get walker () { return walker }, set walker (value) { walker = value },
+    get withPortableMovementLease () { return withPortableMovementLease },
+    get working () { return working }
   })
 
   function initialiseMotion () {
@@ -2210,8 +2008,8 @@ function createRuntime (host) {
     }
     const backgroundInventory = { ...inventory, cancel: cancelBackgroundInventory }
     const generationMiningState = () => { requireGeneration(); return miningState() }
-    const ownedMining = { preview: own(targets => mining.preview(targets)), start: own(targets => operations.mining.start(targets)), stop: reason => { if (combatOwnsInput()) return mining.snapshot(); return currentGeneration() ? mining.stop(reason) : generationStream.stop() } }
-    const ownedMovement = { preview: own((target, options) => operations.movement.preview(target, tagPortableOwnedMove(target, options))), start: own((target, options) => startMotion('navigation', target, tagPortableOwnedMove(target, options))), stop: reason => { if (combatOwnsInput()) return generationMovement.snapshot(); return portableMovementLease?.kind === 'excavate' ? stopPortableMovement(portableMovementLease, reason) : generationMovement.stop(reason) } }
+    const ownedMining = { preview: own(targets => mining.preview(targets)), start: own(targets => runtimeOperations.operations.mining.start(targets)), stop: reason => { if (combatOwnsInput()) return mining.snapshot(); return currentGeneration() ? mining.stop(reason) : generationStream.stop() } }
+    const ownedMovement = { preview: own((target, options) => runtimeOperations.operations.movement.preview(target, tagPortableOwnedMove(target, options))), start: own((target, options) => startMotion('navigation', target, tagPortableOwnedMove(target, options))), stop: reason => { if (combatOwnsInput()) return generationMovement.snapshot(); return portableMovementLease?.kind === 'excavate' ? stopPortableMovement(portableMovementLease, reason) : generationMovement.stop(reason) } }
     const ownsPillarInput = (token, stream) => currentGeneration() && pillarInputToken === token && stream === generationInput && inputOwner === 'task' && !host.shared.respawnTerrain?.pending
     generationPillar = createQuarryPillar({
       getState: () => { requireGeneration(); return quarryState() },
@@ -2319,7 +2117,7 @@ function createRuntime (host) {
       } catch { return null }
     }
 
-    generationForaging = createForaging({ getState: () => { requireGeneration(); const state = observedState(); return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: Number.isSafeInteger(host.shared.deathRespawn?.deathId) ? actualLifeId() : null } } }, verifyQueuedLanding: verifyForagingQueuedLanding, world: host.world, entities: host.entities, movement: ownedMovement, getMovement: () => generationMovement.snapshot(), combat: { previewHunt: own(id => generationCombat.previewHunt(id)), hunt: own(id => operations.combat.hunt(id)), cancel: reason => generationCombat.cancel(reason) }, onProgress: data => { if (currentGeneration()) host.noteProgress(data) } })
+    generationForaging = createForaging({ getState: () => { requireGeneration(); const state = observedState(); return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: Number.isSafeInteger(host.shared.deathRespawn?.deathId) ? actualLifeId() : null } } }, verifyQueuedLanding: verifyForagingQueuedLanding, world: host.world, entities: host.entities, movement: ownedMovement, getMovement: () => generationMovement.snapshot(), combat: { previewHunt: own(id => generationCombat.previewHunt(id)), hunt: own(id => runtimeOperations.operations.combat.hunt(id)), cancel: reason => generationCombat.cancel(reason) }, onProgress: data => { if (currentGeneration()) host.noteProgress(data) } })
     foraging = generationForaging
     const generationSurfaceReturn = createSurfaceReturn({ getState: () => { requireGeneration(); return lightweightUserState() }, world: host.world, physics: generationPhysics, getQueuedCursor: () => actualWireClock.snapshot(), movement: { ...ownedMovement, drain: () => generationMovement.drain?.() }, getMovement: () => generationMovement.snapshot(), canAct: ({ operationId, scope }) => {
       if (!currentGeneration() || !surfaceReturnOwner || surfaceReturnOwner.scope !== scope || scope !== returnScope(lightweightUserState())) return false
@@ -2331,9 +2129,9 @@ function createRuntime (host) {
     depotBuilder = createWorksiteCamp({getState:prebuildState,world:host.world,crafting,interactions,inventory:backgroundInventory,movement:ownedMovement,getMovement:()=>generationMovement.snapshot(),getSurface:()=>host.shared.depotSurfaceAnchor,getDepotMemo:()=>depotMission?.extra().campBuilder ?? null,getQueuedCursor:()=>inputHistory?.snapshot().cursor,canAct:depotAdmission})
     depotStorage = createDepotStorageWork({ getState: () => lightweightUserState(), world: host.world, crafting, interactions, chest, inventory:backgroundInventory, validate: depotAdmission })
     const baseMovement = createBaseMovement({ movement: ownedMovement, getState: () => { requireGeneration(); return observedState() }, getUnknownPositionCount: () => host.entities.stats?.().unknownPositions })
-    const generationShelter = createShelter({ getState: () => { requireGeneration(); return observedState() }, world: host.world, planner: planShelter, mining: ownedMining, getMining: own(() => mining.snapshot()), movement: baseMovement, getMovement: () => generationMovement.snapshot(), inventory: { equip: own(slot => operations.inventory.equip(slot)) }, interactions: { previewPlace: own(data => interactions.previewPlace(data)), placeBlock: own(data => operations.interactions.placeBlock(data)) }, memo: host.shared.shelterMemo, maxTotalActions: 512, onProgress: data => { if (currentGeneration()) noteShelterProgress(data) } })
+    const generationShelter = createShelter({ getState: () => { requireGeneration(); return observedState() }, world: host.world, planner: planShelter, mining: ownedMining, getMining: own(() => mining.snapshot()), movement: baseMovement, getMovement: () => generationMovement.snapshot(), inventory: { equip: own(slot => runtimeOperations.operations.inventory.equip(slot)) }, interactions: { previewPlace: own(data => interactions.previewPlace(data)), placeBlock: own(data => runtimeOperations.operations.interactions.placeBlock(data)) }, memo: host.shared.shelterMemo, maxTotalActions: 512, onProgress: data => { if (currentGeneration()) noteShelterProgress(data) } })
     shelter = generationShelter
-    const generationHut = createHut({ getState: () => { requireGeneration(); return observedState() }, world: host.world, planner: planHut, mining: ownedMining, getMining: own(() => mining.snapshot()), movement: baseMovement, getMovement: () => generationMovement.snapshot(), inventory: { equip: own(slot => operations.inventory.equip(slot)), cancel: cancelBackgroundInventory }, interactions: { previewPlace: own(data => interactions.previewPlace(data)), placeBlock: own(data => operations.interactions.placeBlock(data)), cancel: reason => { if (!combatOwnsInput()) interactions.cancel(reason) } }, memo: host.shared.hutMemo, maxActions: 32, maxTotalActions: 512, onProgress: data => { if (currentGeneration()) noteHutProgress(data) } })
+    const generationHut = createHut({ getState: () => { requireGeneration(); return observedState() }, world: host.world, planner: planHut, mining: ownedMining, getMining: own(() => mining.snapshot()), movement: baseMovement, getMovement: () => generationMovement.snapshot(), inventory: { equip: own(slot => runtimeOperations.operations.inventory.equip(slot)), cancel: cancelBackgroundInventory }, interactions: { previewPlace: own(data => interactions.previewPlace(data)), placeBlock: own(data => runtimeOperations.operations.interactions.placeBlock(data)), cancel: reason => { if (!combatOwnsInput()) interactions.cancel(reason) } }, memo: host.shared.hutMemo, maxActions: 32, maxTotalActions: 512, onProgress: data => { if (currentGeneration()) noteHutProgress(data) } })
     hut = generationHut
     const routeScope = state => ({ profile: state.profile, realmId: state.realm?.id == null ? null : String(state.realm.id), dimension: state.dimension })
     const sameRouteScope = (a, b) => a?.profile != null && a.profile === b?.profile && a.realmId != null && String(a.realmId) === String(b?.realmId) && a.dimension === b?.dimension
@@ -2428,14 +2226,14 @@ function createRuntime (host) {
 
     function verifyQueuedTail (state, context) {
       try {
-        requireSafety()
+        idleSafetyRuntime.requireSafety()
         const current = working()
         if (!sameRouteScope(routeScope(state), routeScope(current)) || Math.hypot(current.position.x - state.position.x, current.position.y - state.position.y, current.position.z - state.position.z) > 0.05 || !context?.receiptKey || typeof context.validateTail !== 'function') return null
         const originMode = context.originMode === 'trajectory_landing' ? 'trajectory_landing' : 'target_landing'
         const witness = queuedTailWitness(state, originMode)
         const stamp = value => typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) : NaN
         if (!witness || !(stamp(witness.anchor.rawStamp) > stamp(context.previousPose?.stamp)) || originMode === 'target_landing' && (Math.hypot(state.rawServerPosition.x - context.target.x, state.rawServerPosition.z - context.target.z) > 0.4 || Math.abs(state.rawServerPosition.y - 1.62 - context.target.y) > 1e-4)) return null
-        queuedTailProofs.set(context.receiptKey, { operationId: owners.escape?.operationId ?? null, health: state.health, originMode, anchorTick: witness.anchorTick, rawPosition: structuredClone(state.rawServerPosition), rawStamp: state.rawServerPositionUpdatedAt, validateTail: context.validateTail })
+        queuedTailProofs.set(context.receiptKey, { operationId: idleSafetyRuntime.owners.escape?.operationId ?? null, health: state.health, originMode, anchorTick: witness.anchorTick, rawPosition: structuredClone(state.rawServerPosition), rawStamp: state.rawServerPositionUpdatedAt, validateTail: context.validateTail })
         return witness
       } catch { return null }
     }
@@ -2450,12 +2248,12 @@ function createRuntime (host) {
       }
       const origin = state => proof.originMode === 'trajectory_landing' ? verifyRouteOrigin(state, { ...state.position, y: state.position.y - 1.62 }, { signal, stablePartialOrigin: true }) : verifyRouteStanding(state, { ...state.position, y: state.position.y - 1.62 }, { signal })
       if (!coherent(observed) || !await origin(observed)) return false
-      const current = safetyState()
+      const current = idleSafetyRuntime.safetyState()
       return coherent(current) && origin(current) ? current : null
     }
 
     async function verifyCompletedDryProgress (result, observed, { signal, operationId } = {}) {
-      requireSafety()
+      idleSafetyRuntime.requireSafety()
       const proof = result && completedDryProofs.get(result)
       if (!proof || proof.operationId !== operationId || signal?.aborted) return false
       const coherent = state => {
@@ -2467,7 +2265,7 @@ function createRuntime (host) {
       if (!coherent(observed) || !await verifyRouteStanding(observed, { ...observed.position, y: observed.position.y - 1.62 }, { signal })) return false
       // Full received standing and the exact anchor must still hold after the
       // verifier yields. The caller separately pins/rechecks the actor roster.
-      const current = safetyState()
+      const current = idleSafetyRuntime.safetyState()
       return coherent(current) && Math.hypot(current.position.x - observed.position.x, current.position.y - observed.position.y, current.position.z - observed.position.z) <= 0.05 && verifyRouteStanding(current, { ...current.position, y: current.position.y - 1.62 }, { signal })
     }
 
@@ -2506,2644 +2304,241 @@ function createRuntime (host) {
       cancel: reason => { if (currentGeneration()) cancelBackgroundInventory(reason) }
     }
     const closeReturnedHut = own(context => host.shared.depotHutUpgraded === true ? {supported:false,serverConfirmed:false,reason:'OWNED_DEPOT_LAYOUT'} : generationHut.execute({}, { signal: context.signal }))
-    const generationGuardRoute = createGuardedRoute({
-      getState: routeState, movement: routeMovement, getMovement: own(() => generationMovement.snapshot()), inventory: routeInventory,
-      combat: { previewEngage: own(id => generationCombat.previewEngage(id)), engage: own((id, options) => generationCombat.engage(id, options)), preview: own(id => generationCombat.preview(id)), attack: own(id => generationCombat.attack(id)), cancel: reason => generationCombat.cancel(reason), drain: () => generationCombat.drain() },
-      verifyStanding: verifyRouteStanding,
-      verifyOrigin: verifyRouteOrigin,
-      verifyQueuedTail,
-      closeContainer: own(() => crafting.closeContainer()),
-      onReturned: async (returned, context) => {
-        requireGeneration()
-        if (context.signal?.aborted) throw context.signal.reason ?? new Error('小屋の再閉鎖を中断しました。')
-        const state = routeState(); const memo = host.shared.hutMemo; const site = memo?.site; const origin = context.visitedPrefix?.[0]
-        const finite = p => p && ['x', 'y', 'z'].every(axis => Number.isFinite(p[axis]))
-        if (site?.type !== 'soil_hut' || !finite(site.center) || !Number.isInteger(site.forward?.x) || !Number.isInteger(site.forward?.z) || Math.abs(site.forward.x) + Math.abs(site.forward.z) !== 1 || !finite(origin) || !sameRouteScope(routeScope(state), context.scope) || memo.scope?.dimension !== state.dimension || memo.scope?.realmId == null || String(memo.scope.realmId) !== String(state.realm?.id) || memo.ownerProfile != null && memo.ownerProfile !== state.profile) return { skipped: true, reason: '帰路の開始点に一致する記憶済みの小屋がありません。' }
-        const doorway = { x: site.center.x - site.forward.x + 0.5, y: site.center.y, z: site.center.z - site.forward.z + 0.5 }
-        const feet = { ...state.position, y: state.position.y - 1.62 }
-        if (Math.hypot(origin.x - doorway.x, origin.y - doorway.y, origin.z - doorway.z) > 1.25 || Math.hypot(feet.x - origin.x, feet.y - origin.y, feet.z - origin.z) > 0.6 || Math.hypot(returned.position.x - state.position.x, returned.position.y - state.position.y, returned.position.z - state.position.z) > 0.05) return { skipped: true, reason: '遠い帰路の開始点から小屋へ移動する処理は行いません。' }
-        const handoffOrigin = state
-        const stamp = value => typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) : NaN
-        const fresh = (next, previous) => Number.isFinite(stamp(next)) && Number.isFinite(stamp(previous)) && stamp(next) > stamp(previous)
-        const ready = async current => {
-          requireGeneration()
-          if (context.signal?.aborted) throw context.signal.reason ?? new Error('小屋への帰還を中断しました。')
-          const failure = (message, code) => Object.assign(new Error(message), { code })
-          if (current.dead || current.isDead || current.phase !== 'spawned' || !(current.health > 6)) throw failure('小屋へ戻る現在の生存状態を確認できません。', 'DEAD')
-          if (!sameRouteScope(routeScope(current), routeScope(handoffOrigin)) || ['connectionId', 'startedAt', 'runtimeEntityId'].some(field => handoffOrigin[field] != null && String(current[field]) !== String(handoffOrigin[field]))) throw failure('小屋へ戻るセッションが変わりました。', 'SESSION_CHANGED')
-          if (current.health < handoffOrigin.health) throw failure('小屋への帰還中に被ダメージを確認しました。', 'TOOK_DAMAGE')
-          if (current.inventory?.known !== true || current.inventory.uncertain) throw failure('小屋を閉じる持ち物が未確定です。', 'INVENTORY_UNKNOWN')
-          if (!await verifyRouteStanding(current, { ...current.position, y: current.position.y - 1.62 }, { signal: context.signal })) throw failure('小屋を閉じ直す前の実支持を確認できません。', 'SUPPORT_UNKNOWN')
-        }
-        let attempts = 0
-        for (let batch = 0; batch < 3; batch++) {
-          const before = routeState()
-          try {
-            await ready(before)
-            attempts++
-            const result = await closeReturnedHut(context)
-            await ready(routeState())
-            return { ...result, hutHandoffAttempts: attempts }
-          } catch (error) {
-            error.hutHandoffAttempts = attempts
-            if (error.code !== 'REPLAN_REQUIRED' || batch === 2) throw error
-            const after = routeState()
-            try { await ready(after) } catch (unsafe) { unsafe.hutHandoffAttempts = attempts; unsafe.hutHandoffCause = { code: error.code, reason: error.message }; throw unsafe }
-            if (!fresh(after.positionUpdatedAt, before.positionUpdatedAt) && !fresh(after.rawServerPositionUpdatedAt, before.rawServerPositionUpdatedAt)) { error.hutHandoffRetryBlockedBy = 'stale_pose'; throw error }
-          }
-        }
-        throw new Error('小屋を閉じる有限再試行が終了しました。')
-      },
-      onProgress: data => {
-        if (!currentGeneration()) return
-        const reached = data.reached && ['x', 'y', 'z'].every(axis => Number.isFinite(data.reached[axis])) ? data.reached : guardRouteProgress?.lastReached ?? null
-        guardRouteProgress = { ...structuredClone(data), lastReached: structuredClone(reached), scope: routeScope(working()) }
-        host.noteProgress({ type: 'guard_route', ...structuredClone(guardRouteProgress) })
-      }
+    // This part lives in idle-safety-runtime.js. It reads and writes these bindings of
+    // this closure through accessors, so each use sees the current value exactly
+    // as the code did when it was written here.
+    const idleSafetyRuntime = require('./runtime/idle-safety-runtime').createIdleSafetyRuntime({
+      get activeUnarmedSpiderFloor () { return activeUnarmedSpiderFloor },
+      get actualLifeId () { return actualLifeId },
+      get autonomy () { return autonomyRuntime.autonomy },
+      get boundedJumpSearch () { return boundedJumpSearch }, set boundedJumpSearch (value) { boundedJumpSearch = value },
+      get cancelBackgroundInventory () { return cancelBackgroundInventory },
+      get captureWorkActors () { return captureWorkActors },
+      get chestStatus () { return chestStatus },
+      get clearanceDistanceAllowed () { return clearanceDistanceAllowed },
+      get clearanceEquipmentKey () { return clearanceEquipmentKey },
+      get clearanceTargetAllowed () { return clearanceTargetAllowed },
+      get closeReturnedHut () { return closeReturnedHut },
+      get combatAttackExposure () { return combatAttackExposure },
+      get combatOwnsInput () { return combatOwnsInput },
+      get completedDryProofs () { return completedDryProofs },
+      get constrainedSecondaryFloor () { return constrainedSecondaryFloor },
+      get continuationScope () { return continuationScope },
+      get crafting () { return crafting },
+      get craftStatus () { return craftStatus },
+      get createGuardedRoute () { return createGuardedRoute },
+      get createNavigator () { return createNavigator },
+      get createWaterCounterattack () { return createWaterCounterattack },
+      get currentGeneration () { return currentGeneration },
+      get delay () { return delay },
+      get depotBuilder () { return depotBuilder }, set depotBuilder (value) { depotBuilder = value },
+      get depotStorage () { return depotStorage }, set depotStorage (value) { depotStorage = value },
+      get diagnoseStrikeBody () { return diagnoseStrikeBody },
+      get drownedStepEquipmentKey () { return drownedStepEquipmentKey },
+      get drownedStepThreatAllowed () { return drownedStepThreatAllowed },
+      get escapePaused () { return escapePaused },
+      get evaluateThreats () { return evaluateThreats },
+      get excavation () { return excavation }, set excavation (value) { excavation = value },
+      get food () { return food },
+      get foraging () { return foraging }, set foraging (value) { foraging = value },
+      get furnace () { return furnace },
+      get generationCombat () { return generationCombat },
+      get generationHistory () { return generationHistory },
+      get generationHut () { return generationHut },
+      get generationInput () { return generationInput },
+      get generationMovement () { return generationMovement },
+      get generationPhysics () { return generationPhysics },
+      get generationPlanningPhysics () { return generationPlanningPhysics },
+      get generationSafety () { return generationSafety },
+      get generationShelter () { return generationShelter },
+      get generationStream () { return generationStream },
+      get guardRoute () { return guardRoute }, set guardRoute (value) { guardRoute = value },
+      get guardRouteProgress () { return guardRouteProgress }, set guardRouteProgress (value) { guardRouteProgress = value },
+      get historyScope () { return historyScope },
+      get host () { return host }, set host (value) { host = value },
+      get idleSafety () { return idleSafety }, set idleSafety (value) { idleSafety = value },
+      get inputHistory () { return inputHistory }, set inputHistory (value) { inputHistory = value },
+      get inputOwner () { return inputOwner }, set inputOwner (value) { inputOwner = value },
+      get inspectEmergencyLeafPacket () { return inspectEmergencyLeafPacket }, set inspectEmergencyLeafPacket (value) { inspectEmergencyLeafPacket = value },
+      get inspectIdleEscape () { return inspectIdleEscape }, set inspectIdleEscape (value) { inspectIdleEscape = value },
+      get inspectIdleEscapePacket () { return inspectIdleEscapePacket }, set inspectIdleEscapePacket (value) { inspectIdleEscapePacket = value },
+      get inspectPartialEscapePacket () { return inspectPartialEscapePacket }, set inspectPartialEscapePacket (value) { inspectPartialEscapePacket = value },
+      get interactions () { return interactions },
+      get inventory () { return inventory },
+      get isUnarmedCreeperZombie () { return isUnarmedCreeperZombie },
+      get knownSurfaceBody () { return knownSurfaceBody },
+      get lightweightUserState () { return lightweightUserState },
+      get logEscapePhase () { return logEscapePhase },
+      get lowHealthSurfaceEligible () { return lowHealthSurfaceEligible },
+      get maintainIdle () { return maintainIdle },
+      get mining () { return mining },
+      get motionActive () { return motionActive },
+      get motionOrigin () { return motionOrigin }, set motionOrigin (value) { motionOrigin = value },
+      get navigationDestination () { return navigationDestination },
+      get offhandTotem () { return offhandTotem },
+      get outsideSkeletonFloor () { return outsideSkeletonFloor },
+      get outsideUnarmedSpiderFloor () { return outsideUnarmedSpiderFloor },
+      get own () { return own },
+      get ownedMining () { return ownedMining },
+      get pendingStops () { return pendingStops },
+      get planEmergencyLeafAsync () { return planEmergencyLeafAsync },
+      get planLearningShore () { return planLearningShore },
+      get planningWorld () { return planningWorld },
+      get planProtectiveDrownedStepAsync () { return planProtectiveDrownedStepAsync },
+      get planProtectiveSkeletonStepAsync () { return planProtectiveSkeletonStepAsync },
+      get planRecentDamageRetreat () { return planRecentDamageRetreat },
+      get preMovementFences () { return preMovementFences },
+      get protectiveDrownedStepCurrent () { return protectiveDrownedStepCurrent },
+      get protectiveSkeletonStepCurrent () { return protectiveSkeletonStepCurrent },
+      get proveLearningShoreRoute () { return proveLearningShoreRoute },
+      get proveLowHealthSurfaceRoute () { return proveLowHealthSurfaceRoute },
+      get queuedMotionFrames () { return queuedMotionFrames }, set queuedMotionFrames (value) { queuedMotionFrames = value },
+      get raw () { return raw },
+      get recovery () { return recovery }, set recovery (value) { recovery = value },
+      get requireGeneration () { return requireGeneration },
+      get resolveWorkActors () { return resolveWorkActors },
+      get resourceMinHealth () { return resourceMinHealth },
+      get retreatFrameAllowed () { return retreatFrameAllowed },
+      get routeInventory () { return routeInventory },
+      get routeMovement () { return routeMovement },
+      get routeScope () { return routeScope },
+      get routeState () { return routeState },
+      get safetyDispatchEpoch () { return safetyDispatchEpoch }, set safetyDispatchEpoch (value) { safetyDispatchEpoch = value },
+      get sameRouteScope () { return sameRouteScope },
+      get selectConstrainedPrimary () { return selectConstrainedPrimary },
+      get shoreScore () { return shoreScore },
+      get skeletonStepThreatAllowed () { return skeletonStepThreatAllowed },
+      get surfaceReturn () { return surfaceReturn }, set surfaceReturn (value) { surfaceReturn = value },
+      get terrainOcclusionApplies () { return terrainOcclusionApplies },
+      get tunneling () { return tunneling }, set tunneling (value) { tunneling = value },
+      get unarmedCreeperDrowned () { return unarmedCreeperDrowned },
+      get unarmedWaterDrowned () { return unarmedWaterDrowned },
+      get unarmedWaterZombie () { return unarmedWaterZombie },
+      get unarmedZombieFloor () { return unarmedZombieFloor },
+      get unprovedInputFrames () { return unprovedInputFrames }, set unprovedInputFrames (value) { unprovedInputFrames = value },
+      get userBehaviorOwns () { return userBehaviorOwns },
+      get userScope () { return userScope },
+      get verifyCompletedDryProgress () { return verifyCompletedDryProgress },
+      get verifyQueuedTail () { return verifyQueuedTail },
+      get verifyQueuedTailHandoff () { return verifyQueuedTailHandoff },
+      get verifyRouteOrigin () { return verifyRouteOrigin },
+      get verifyRouteStanding () { return verifyRouteStanding },
+      get WORK_MARGIN () { return WORK_MARGIN },
+      get workEscapeEvaluation () { return workEscapeEvaluation },
+      get working () { return working }
     })
-    guardRouteProgress = null
-    guardRoute = generationGuardRoute
-    const safetyScope = state => JSON.stringify([state.profile ?? null, state.realm?.id == null ? null : String(state.realm.id), state.dimension ?? null, state.connectionId ?? null, state.runtimeEntityId == null ? null : String(state.runtimeEntityId)])
-    const safetyOriginScope = safetyScope(raw())
-    const safetyCurrent = () => currentGeneration() && safetyScope(raw()) === safetyOriginScope && !combatOwnsInput()
-    const requireSafety = () => { requireGeneration(); if (!safetyCurrent()) throw new Error('待機保護のワールド・プレイヤーが変わりました。') }
-    const owners = { inventory: null, combat: null, hut: null, escape: null }
-    let emergencyMiningOp = null
-    let emergencyDropOp = null
-    let emergencyWaterCounterOp = null
-    async function safetyOwn (kind, context, fn) {
-      requireSafety()
-      if (context.signal?.aborted) throw context.signal.reason ?? new Error('待機保護を中断しました。')
-      const record = { operationId: context.operationId }
-      owners[kind] = record
-      try { const result = await own(fn)(); requireSafety(); return result } finally { if (owners[kind] === record) owners[kind] = null }
-    }
-    let recentUserSafetyObservation = null
-    function safetyActors (state, actors = state.entities) {
-      // Planning and live inspection use the same current attack-access view.
-      // Unknown access stays visible; this never proves future path safety.
-      return actors.filter(actor => {
-        if (actor.hostile !== true || actor.alive === false || actor.primed === true) return true
-        const exposure = combatAttackExposure(actor, state)
-        // A forbidden combat profile (boss/avoid-only) is still dangerous.
-        // Only current, known attack-access/recognition negatives suppress it.
-        if (exposure.reason === 'PROFILE_DISALLOWS_ENGAGEMENT') return true
-        if (!exposure.unknown && exposure.evidence.sight === false) return false
-        return exposure.unknown || !['ENEMY_ATTACK_ROUTE_BLOCKED', 'PROJECTILE_SIGHT_BLOCKED', 'NO_CURRENT_RECOGNITION'].includes(exposure.reason)
-      })
-    }
-    const safetyObservation = () => {
-      requireSafety()
-      const state = { ...routeState(), loading: !host.shared.loadingScreenEnded, loadingScreenEnded: host.shared.loadingScreenEnded === true, world: host.world.stats(), totemGuard: offhandTotem() }
-      // Keep both views from this one observation. A currently occluded actor
-      // still has an identity and position that bound an active retreat.
-      const observedEntities = state.entities
-      state.entities = safetyActors(state)
-      recentUserSafetyObservation = { state, at: Date.now(), scope: userScope(state) }
-      return { state, observedEntities }
-    }
-    const safetyState = () => safetyObservation().state
-    function safetyIdle (context = {}) {
-      if (!safetyCurrent() || depotBuilder?.snapshot().busy || depotStorage?.snapshot().busy) return false
-      if (userBehaviorOwns()) return false
-      const ownActor = kind => context.operationId != null && owners[kind]?.operationId === context.operationId
-      const ownHut = ownActor('hut')
-      const ownEscape = ownActor('escape')
-      const ownEmergencyMining = ownEscape && emergencyMiningOp === context.operationId
-      // A fresh manual request cannot postpone an already active defense episode.
-      // Actual foreign actor ownership always takes precedence over this monitor.
-      if (!context.episodeActive && (pendingStops.size || Date.now() - (host.shared.safetyManualActionAt ?? 0) < 500)) return false
-      // Read-only autonomy observations do not own survival, including at the
-      // initial handoff. Only its dispatched action blocks that handoff; all
-      // concrete foreign actor checks below retain their ownership rules.
-      const protectedEpisode = context.episodeActive && idleSafety?.snapshot().busy === true
-      if ((!ownEscape && generationGuardRoute.snapshot().busy) || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || generationShelter.snapshot().busy || (!protectedEpisode && autonomy.snapshot().actionActive === true) || food.snapshot().busy || (furnace.snapshot().busy || chestStatus().busy) || craftStatus().pendingRequestId != null) return false
-      if ((!ownHut && (generationHut.snapshot().busy || !ownEmergencyMining && mining.snapshot().phase === 'mining' || interactions.snapshot().pendingOperation)) || (!ownHut && !ownEscape && motionActive())) return false
-      if (!ownHut && !ownEscape && !ownActor('inventory') && inventory.snapshot().busy) return false
-      const fight = generationCombat.snapshot()
-      if (!ownEscape && !ownActor('combat') && (fight.busy || fight.defending || fight.engaging)) return false
-      if (!ownHut && !ownEscape && !ownActor('combat') && generationInput.stats().running) return false
-      return true
-    }
-    function verifyStrikeBody (observed, { signal } = {}) {
-      requireGeneration()
-      if (signal?.aborted) return false
-      const state = working(); const p = state.position
-      if (!p || !observed?.position || !sameRouteScope(routeScope(state), routeScope(observed)) || Math.hypot(p.x - observed.position.x, p.y - observed.position.y, p.z - observed.position.z) > 0.05) return false
-      const physical = state.predicted?.physicsState ?? state.physicsState
-      if (physical?.isInWater || physical?.isInLava) return false
-      const foot = p.y - 1.62, minX = p.x - 0.3, maxX = p.x + 0.3, minZ = p.z - 0.3, maxZ = p.z + 0.3
-      const hazard = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush)/
-      try {
-        // Match the physics model's float32 contact skin without changing
-        // the received pose: micron-scale edge contact is not penetration.
-        for (let x = Math.floor(minX + 1e-4); x <= Math.floor(maxX - 1e-4); x++) for (let z = Math.floor(minZ + 1e-4); z <= Math.floor(maxZ - 1e-4); z++) for (let y = Math.floor(foot + 1e-7); y <= Math.floor(foot + 1.8 - 1e-7); y++) {
-          const block = generationPhysics.blockAt({ x, y, z })
-          if (hazard.test(block.name) || block.shapes.some(box => maxX > x + box[0] + 1e-4 && minX < x + box[3] - 1e-4 && foot + 1.8 > y + box[1] + 1e-7 && foot < y + box[4] - 1e-4 && maxZ > z + box[2] + 1e-4 && minZ < z + box[5] - 1e-4)) return false
-        }
-        return true
-      } catch { return false }
-    }
-    function strikeBodyDiagnostic (observed, { signal } = {}) {
-      requireGeneration()
-      const state = working()
-      return diagnoseStrikeBody({ state, observed, signal,
-        scopeMatches: !!observed?.position && sameRouteScope(routeScope(state), routeScope(observed)),
-        blockAt: position => generationPhysics.blockAt(position) })
-    }
-    // Stationary combat can continue on a partially supported edge, but only
-    // when the received collision shapes prove contact and every floor cell
-    // beneath the footprint is known and harmless. Walking keeps its stricter
-    // full-footprint route check.
-    function verifyMeleeBody (observed, context = {}) {
-      if (!verifyStrikeBody(observed, context)) return false
-      const state = working(); const p = state.position
-      const physical = state.predicted?.physicsState ?? state.physicsState
-      if (physical?.onGround === false || physical?.isInWater || physical?.isInLava || physical?.velocity?.y > 0.05 || physical?.velocity?.y < -0.12) return false
-      const feet = { x: p.x, y: p.y - 1.62, z: p.z }
-      const hazard = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush)/
-      try {
-        for (let x = Math.floor(feet.x - 0.3 + 1e-7); x <= Math.floor(feet.x + 0.3 - 1e-7); x++) for (let z = Math.floor(feet.z - 0.3 + 1e-7); z <= Math.floor(feet.z + 0.3 - 1e-7); z++) {
-          const floor = generationPhysics.blockAt({ x, y: Math.floor(feet.y - 1e-4), z })
-          if (hazard.test(floor.name)) return false
-        }
-        return generationPhysics.hasSupport(feet)
-      } catch { return false }
-    }
-    function verifyUnarmedBody (observed, { continuation = false } = {}) {
-      const physical = observed.predicted?.physicsState ?? observed.physicsState
-      // A received upward impulse can precede the next on-ground flag. Prove
-      // the dry body without rewriting that flag or inventing floor contact.
-      if (physical?.onGround === false || physical?.velocity?.y > 0.05 || physical?.velocity?.y < -0.12) return continuation && ['x', 'y', 'z'].every(axis => Number.isFinite(physical.velocity?.[axis])) && verifyStrikeBody(observed)
-      return verifyMeleeBody(observed) || verifyRouteOrigin(observed, { ...observed.position, y: observed.position.y - 1.62 }, { stablePartialOrigin: true })
-    }
-    // A dry, grounded shoreline can have water under one edge of the player.
-    // This only permits recentering, never stationary combat or swimming.
-    function verifyLedgeBody (observed, context = {}) {
-      if (verifyMeleeBody(observed, context)) return true
-      if (!verifyStrikeBody(observed, context)) return false
-      const state = working(); const physical = state.predicted?.physicsState ?? state.physicsState
-      if (physical?.onGround !== true || physical?.isInWater || physical?.isInLava || physical?.velocity?.y > 0.05 || physical?.velocity?.y < -0.12) return false
-      const feet = { x: state.position.x, y: state.position.y - 1.62, z: state.position.z }
-      const y = Math.floor(feet.y - 1e-4); let water = false
-      const cube = block => block.shapes.length === 1 && block.shapes[0].every((value, index) => Math.abs(value - [0, 0, 0, 1, 1, 1][index]) <= 1e-9)
-      try {
-        for (let x = Math.floor(feet.x - 0.3 + 1e-7); x <= Math.floor(feet.x + 0.3 - 1e-7); x++) for (let z = Math.floor(feet.z - 0.3 + 1e-7); z <= Math.floor(feet.z + 0.3 - 1e-7); z++) {
-          const floor = generationPhysics.blockAt({ x, y, z })
-          if (['water', 'flowing_water'].includes(floor.name) && floor.shapes.length === 0) { water = true; continue }
-          if (!cube(floor) || /(?:lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush|concrete_powder|anvil)/.test(floor.name)) return false
-          if (/^(?:sand|red_sand|gravel)$/.test(floor.name)) {
-            let stable = false
-            for (let depth = 1; depth <= 8; depth++) {
-              const below = generationPhysics.blockAt({ x, y: y - depth, z })
-              if (!cube(below) || /(?:lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush|concrete_powder|anvil)/.test(below.name)) return false
-              if (!/^(?:sand|red_sand|gravel)$/.test(below.name)) { stable = true; break }
-            }
-            if (!stable) return false
-          }
-        }
-        return water && generationPhysics.hasSupport(feet)
-      } catch { return false }
-    }
-    function shallowWaterTerrain (point, surfaceY, { allowDeepSurface = false, allowBriefSubmerge = false } = {}) {
-      const fullCube = block => block.shapes.length === 1 && block.shapes[0].every((value, index) => Math.abs(value - [0, 0, 0, 1, 1, 1][index]) <= 1e-9)
-      try {
-        // Keep the modelled eye at least 0.02 blocks above the water surface.
-        // Server corrections can legitimately put the feet deeper than 1.05
-        // blocks even when the player's head is still in air.
-        if (!point || !['x', 'y', 'z'].every(axis => Number.isFinite(point[axis])) || !Number.isInteger(surfaceY) || point.y < surfaceY - (allowBriefSubmerge ? 1.85 : 1.60)) return false
-        for (let x = Math.floor(point.x - 0.3 + 1e-4); x <= Math.floor(point.x + 0.3 - 1e-4); x++) for (let z = Math.floor(point.z - 0.3 + 1e-4); z <= Math.floor(point.z + 0.3 - 1e-4); z++) {
-          const layer = generationPhysics.blockAt({ x, y: surfaceY - 1, z })
-          if (['water', 'flowing_water'].includes(layer.name)) {
-            // Keep the head above the received surface. A surface retreat can
-            // cross deeper water only when five consecutive liquid layers are
-            // known; no bottom or deeper terrain is inferred from that proof.
-            if (!Number.isInteger(layer.metadata) || layer.metadata < 0 || layer.metadata >= 8) return false
-            let floor = null; let floorY = null
-            for (let depth = 1; depth <= 4; depth++) {
-              const block = generationPhysics.blockAt({ x, y: surfaceY - 1 - depth, z })
-              if (['water', 'flowing_water'].includes(block.name)) {
-                if (!Number.isInteger(block.metadata) || block.metadata < 0 || block.metadata >= 8) return false
-                continue
-              }
-              floor = block; floorY = surfaceY - 1 - depth; break
-            }
-            if (!floor && !allowDeepSurface) return false
-            if (floor && (!fullCube(floor) || /(?:lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush|concrete_powder|anvil)/.test(floor.name))) return false
-            if (floor && /^(?:sand|red_sand|gravel)$/.test(floor.name)) {
-              let stable = false
-              for (let depth = 1; depth <= 8; depth++) {
-                const below = generationPhysics.blockAt({ x, y: floorY - depth, z })
-                if (!fullCube(below) || /(?:lava|fire|cactus|magma|campfire|concrete_powder|anvil)/.test(below.name)) return false
-                if (!/^(?:sand|red_sand|gravel)$/.test(below.name)) { stable = true; break }
-              }
-              if (!stable) return false
-            }
-          } else if (!fullCube(layer) || /(?:lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush|concrete_powder|anvil)/.test(layer.name)) return false
-          const head = generationPhysics.blockAt({ x, y: Math.floor(point.y + 1.62), z })
-          const submergedHead = allowBriefSubmerge && ['water', 'flowing_water'].includes(head.name) && Number.isInteger(head.metadata) && head.metadata >= 0 && head.metadata < 8
-          if (head.shapes.length || !submergedHead && /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush)/.test(head.name)) return false
-          if (submergedHead) {
-            const above = generationPhysics.blockAt({ x, y: surfaceY, z })
-            if (above.shapes.length || !['air', 'cave_air', 'void_air'].includes(above.name)) return false
-          }
-        }
-        return true
-      } catch { return false }
-    }
-    function verifyShallowWater (observed, { signal, allowDeepSurface = false } = {}) {
-      if (signal?.aborted) return false
-      const state = working(); const p = state.position; const physical = state.predicted?.physicsState ?? state.physicsState
-      if (!p || !observed?.position || !sameRouteScope(routeScope(state), routeScope(observed)) || Math.hypot(p.x - observed.position.x, p.y - observed.position.y, p.z - observed.position.z) > 0.05 || physical?.isInLava) return false
-      const feet = { ...p, y: p.y - 1.62 }
-      try {
-        const surface = generationPhysics.waterSurface(feet)
-        if (!surface) return false
-        // On a new spawn the physics model can initially report isInWater
-        // false before its first tick. A received water block actually around
-        // the feet and a dry, shallow column are independent evidence.
-        const contact = generationPhysics.blockAt(feet)
-        const knownContact = ['water', 'flowing_water'].includes(contact.name) && feet.y < surface.surfaceY - 0.05
-        // Immediately after a server-confirmed spawn there may be no local
-        // physics frame yet. Known water at the received pose and the same
-        // complete shallow-column checks are sufficient to run a preview;
-        // they do not invent an on-ground or velocity observation.
-        const unseededServerPose = !physical && state.positionSource !== 'client_prediction' && state.positionServerConfirmed !== false && knownContact
-        return (physical?.isInWater === true || physical?.onGround === false && knownContact || unseededServerPose) && shallowWaterTerrain(feet, surface.surfaceY, { allowDeepSurface })
-      } catch { return false }
-    }
-    function verifyNearSurfaceWater (observed, { signal } = {}) {
-      if (signal?.aborted) return false
-      const state = working(); const p = state.position; const physical = state.predicted?.physicsState ?? state.physicsState
-      if (!p || !observed?.position || !sameRouteScope(routeScope(state), routeScope(observed)) || Math.hypot(p.x - observed.position.x, p.y - observed.position.y, p.z - observed.position.z) > 0.05 || physical?.isInWater !== true || physical.isInLava) return false
-      const feet = { ...p, y: p.y - 1.62 }
-      try {
-        // waterSurface deliberately rejects a submerged head. For this bounded
-        // wait, inspect the current head cell and the next two cells directly.
-        const headY = Math.floor(feet.y + 1.62)
-        let surfaceY = null
-        for (let y = headY; y <= headY + 2; y++) {
-          const block = generationPhysics.blockAt({ x: feet.x, y, z: feet.z })
-          if (['air', 'cave_air', 'void_air'].includes(block.name)) { surfaceY = y; break }
-          if (!['water', 'flowing_water'].includes(block.name)) return false
-        }
-        if (!Number.isInteger(surfaceY) || feet.y < surfaceY - 2.1 || feet.y >= surfaceY - 1.6 || !shallowWaterTerrain({ ...feet, y: surfaceY - 1.59 }, surfaceY, { allowDeepSurface: true })) return false
-        for (let x = Math.floor(feet.x - 0.3 + 1e-4); x <= Math.floor(feet.x + 0.3 - 1e-4); x++) for (let z = Math.floor(feet.z - 0.3 + 1e-4); z <= Math.floor(feet.z + 0.3 - 1e-4); z++) {
-          for (let y = Math.floor(feet.y); y <= Math.floor(feet.y + 1.62); y++) {
-            const block = generationPhysics.blockAt({ x, y, z })
-            if (block.shapes.length || !['water', 'flowing_water', 'air', 'cave_air', 'void_air'].includes(block.name)) return false
-          }
-        }
-        return true
-      } catch { return false }
-    }
-    const waterCounter = createWaterCounterattack({
-      getState: safetyState, world: planningWorld, version: host.meta.version, verifyShallow: verifyShallowWater, shallowPoint: shallowWaterTerrain, isCurrent: safetyCurrent,
-      movement: { preview: routeMovement.preview, start: routeMovement.start, snapshot: () => generationMovement.snapshot(), stop: reason => { if (safetyCurrent()) routeMovement.stop(reason) } },
-      combat: { physics: generationPhysics, previewWaterCreeper: id => own(() => generationCombat.previewWaterCreeper(id))(), waterCreeperAttack: (id, options) => own(() => generationCombat.waterCreeperAttack(id, options))(), cancel: reason => { if (safetyCurrent()) generationCombat.cancel(reason) } }
-    })
-    async function tryLearningShoreEscape (initial, context, deadline) {
-      const initialPhysical = initial.predicted?.physicsState ?? initial.physicsState
-      if (initial.threatPolicy !== 'online_learning' || initial.phase !== 'spawned' || initial.dead || initial.isDead || !(Number.isFinite(initial.health) && initial.health > 0 && initial.health <= 20) || initialPhysical?.isInWater !== true || !Number.isSafeInteger(host.shared.deathRespawn?.deathId) || context.operationId == null || !(context.movementBudget > 0) || Date.now() >= deadline) return null
-      const life = actualLifeId(), scope = userScope(initial), owner = owners.escape, controller = new AbortController()
-      const signal = context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal
-      const fail = (reason, code = 'LEARNING_SHORE_CHANGED') => Object.assign(new Error(reason), { code })
-      const diagnostic = host.shared.learningShoreEscape = { at: new Date().toISOString(), connectionId: initial.connectionId, deathId: life, phase: 'planning', health: initial.health, starts: 0, target: null, reason: null, riskAccepted: false, actualSent: 0, serverConfirmed: false }
-      const timer = setTimeout(() => controller.abort(fail('Learning shore deadline exceeded', 'TIMEOUT')), Math.max(1, deadline - Date.now()))
-      const rawStamp = raw().positionUpdatedAt, forceStamp = host.shared.lastServerMotion?.receivedAt ?? null
-      const horizontal = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
-      const feet = state => ({ ...state.position, y: state.position.y - 1.62 })
-      const eye = point => ({ ...point, y: point.y + 1.62 })
-      const segment = (p, a, b) => { const d = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z }, n = d.x ** 2 + d.y ** 2 + d.z ** 2; const t = n ? Math.max(0, Math.min(1, ((p.x - a.x) * d.x + (p.y - a.y) * d.y + (p.z - a.z) * d.z) / n)) : 0; return Math.hypot(p.x - a.x - t * d.x, p.y - a.y - t * d.y, p.z - a.z - t * d.z) }
-      let bindings = null, proof = null, started = false, sentBefore = 0, historyBefore = null, previous = null
-      function fresh (checkActors = true) {
-        requireSafety()
-        if (signal.aborted) throw signal.reason ?? fail('Learning shore cancelled', 'ABORTED')
-        if (Date.now() >= deadline) throw fail('Learning shore deadline exceeded', 'TIMEOUT')
-        if (owners.escape !== owner || !safetyIdle({ operationId: context.operationId, episodeActive: true, defenseEpisode: true })) throw fail('Learning shore no longer owns movement', 'YIELD')
-        if (!started && motionActive()) throw fail('Another native movement is already active', 'YIELD')
-        const state = lightweightUserState()
-        if (actualLifeId() !== life || userScope(state) !== scope || state.phase !== 'spawned' || state.dead || state.isDead || state.spawnPending || !(state.health > 0) || state.threatPolicy !== 'online_learning') throw fail('Learning shore life or scope changed', 'SESSION_CHANGED')
-        if (state.health < initial.health) throw fail('Observed damage interrupted learning shore', 'DAMAGE')
-        if (state.inventory?.known !== true || state.inventory.uncertain || !Number.isFinite(state.breath?.current) || !(state.breath.current > 0 && state.breath.current <= state.breath.maximum)) throw fail('Learning shore observations became unknown', 'OBSERVATION_UNKNOWN')
-        if (raw().positionUpdatedAt !== rawStamp || (host.shared.lastServerMotion?.receivedAt ?? null) !== forceStamp) throw fail('Received movement changed the learning shore origin', 'ORIGIN_CHANGED')
-        if (bindings && checkActors) currentBindings(state)
-        return state
-      }
-      function currentBindings (state) {
-        const evaluation = evaluateThreats(state, state.entities, { observationRadius: 32 })
-        if (evaluation.requiresObservation || state.entityStats?.unknownPositions > evaluation.unknownPositions.length) throw fail('Learning shore actor positions are unknown', 'ACTOR_UNKNOWN')
-        const actors = [...evaluation.threats, ...evaluation.outsideDanger, ...evaluation.suppressedByTerrain]
-        if (actors.length !== bindings.length) throw fail('Learning shore actor set changed', 'ACTORS_CHANGED')
-        const seen = new Set(), uids = new Set()
-        return bindings.map(binding => {
-          const actor = actors.find(a => a.runtimeId === binding.id), entity = state.entities.find(e => String(e.runtimeId) === binding.id)
-          if (!actor || !entity || String(entity.uniqueId) !== binding.uniqueId || entity.entityType !== binding.name || entity.dimension !== binding.dimension || entity.alive !== true || entity.positionKnown !== true || actor.dangerRadius !== binding.dangerRadius || seen.has(binding.id) || uids.has(binding.uniqueId)) throw fail('Learning shore actor identity or policy changed', 'ACTORS_CHANGED')
-          if (actor.category === 'boss' || binding.name === 'minecraft:creeper' && (entity.primed || entity.ignited || entity.exploding || entity.charged || entity.isCharged || entity.primed !== false && ['creeper_prime_fuse', 32].includes(entity.lastEvent?.event))) throw fail('Learning shore unsupported actor state', 'ACTOR_UNSUPPORTED')
-          seen.add(binding.id); uids.add(binding.uniqueId)
-          return { ...binding, position: { ...entity.position } }
-        })
-      }
-      function knownBody (point, swept = false) {
-        if (!proof || !['x', 'y', 'z'].every(k => Number.isFinite(point?.[k])) || point.y + 1.62 < proof.surfaceY + 0.02 || point.y < proof.surfaceY - 1.6 || point.y > proof.surfaceY + 1.5) return false
-        try {
-          for (let x = Math.floor(point.x - 0.3 + 1e-6); x <= Math.floor(point.x + 0.3 - 1e-6); x++) for (let z = Math.floor(point.z - 0.3 + 1e-6); z <= Math.floor(point.z + 0.3 - 1e-6); z++) {
-            const head = generationPhysics.blockAt({ x, y: Math.floor(point.y + 1.62), z })
-            if (!['air', 'cave_air', 'void_air'].includes(head.name) || head.shapes.length) return false
-              for (let y = Math.floor(point.y + 1e-6); y <= Math.floor(point.y + 1.8 - 1e-6); y++) { const b = generationPhysics.blockAt({ x, y, z }); if ((!swept && b.shapes.length) || !(swept && b.shapes.length || ['air', 'cave_air', 'void_air', 'water', 'flowing_water'].includes(b.name)) || /(?:lava|fire|cactus|magma|campfire|powder_snow|cobweb|pointed_dripstone|wither_rose|sweet_berry_bush)/.test(b.name) || ['water', 'flowing_water'].includes(b.name) && (!Number.isInteger(b.metadata) || b.metadata < 0 || b.metadata >= 8)) { diagnostic.frameReject = { point: { ...point }, block: { x, y, z, name: b.name } }; return false } }
-          }
-          return true
-        } catch { return false }
-      }
-      const terminalCodes = new Set(['DAMAGE', 'SESSION_CHANGED', 'ACTORS_CHANGED', 'ACTOR_UNKNOWN', 'ACTOR_UNSUPPORTED', 'ABORTED', 'YIELD'])
-      const rejectPlan = plan => { diagnostic.reason = String(plan.reason ?? plan.code ?? 'NO_PLAN').slice(0, 180); if (terminalCodes.has(plan.code)) throw fail(diagnostic.reason, plan.code); return null }
-      const cancel = () => { if (started && safetyCurrent() && owners.escape === owner && emergencyDropOp === context.operationId) routeMovement.stop('Learning shore interrupted') }
-      signal.addEventListener('abort', cancel, { once: true })
-      try {
-        const state = { ...fresh(), entities: initial.entities }, destination = navigationDestination(state)?.position ?? null
-        const navigator = createNavigator({ world: planningWorld, version: host.meta.version, allowWater: true, physics: generationPhysics })
-        const input = { state, world: planningWorld, physics: generationPhysics, navigator, destination, validate: fresh, signal }
-        const plan = await planLearningShore(input)
-        if (!plan.ready) { diagnostic.phase = 'no_plan'; return rejectPlan(plan) }
-        bindings = plan.actorBindings
-        diagnostic.target = { ...plan.target }; diagnostic.riskAccepted = true
-        diagnostic.actors = { count: bindings.length, floors: bindings.slice(0, 8).map(a => ({ id: a.id, name: a.name, initialDistance: a.initialDistance, minDistance: a.minDistance, hardMinimum: a.hardMinimum })) }
-        let startState = null
-        for (let attempt = 0; attempt < 2; attempt++) {
-          await new Promise(resolve => setImmediate(resolve))
-          const current = fresh()
-          // The final bounded rehearsal stays synchronous between its fresh
-          // validations, like Movement.prepare; it does not lock observations.
-          const selected = await proveLearningShoreRoute({ ...input, state: current, target: plan.target, actorBindings: plan.actorBindings, originScope: plan.originScope, yieldControl: () => Promise.resolve() })
-          if (!selected.ready) { diagnostic.phase = 'no_plan'; return rejectPlan(selected) }
-          const latest = fresh(), physical = generationPhysics.fromServer(latest), first = selected.trace?.[0]
-          if (first && ['x', 'y', 'z'].every(k => Math.abs(first.position[k] - physical.position[k]) <= 1e-5 && Math.abs(first.velocity[k] - physical.velocity[k]) <= 1e-5)) { proof = selected; bindings = selected.actorBindings; startState = latest; break }
-        }
-        if (!proof || !startState) { diagnostic.phase = 'no_plan'; diagnostic.reason = 'Fresh working origin changed during selected-target proof'; return null }
-        const origin = { ...proof.trace[0].position }
-        previous = { ...origin }
-        const beforeInput = frame => {
-          const current = fresh(false), actors = currentBindings(current), next = frame.predictedState?.position
-          if (!next || frame.predictedState.isInLava || horizontal(origin, next) > 1.5) throw fail('Learning shore native frame left its bound', 'SHORE_FRAME_UNSAFE')
-          const length = Math.hypot(next.x - previous.x, next.y - previous.y, next.z - previous.z), pieces = Math.max(1, Math.ceil(length / 0.1))
-          if (pieces > 16) throw fail('Learning shore native frame moved unexpectedly', 'SHORE_FRAME_UNSAFE')
-          if (!knownBody(next)) throw fail('Learning shore actual native body, head or liquid became unsafe', 'BODY_UNKNOWN')
-          // Native physics resolves solid collisions per axis. A diagonal
-          // interpolation is only a known-cell/hazard sweep, not a new motion
-          // model that rejects its already resolved bank contact.
-          for (let n = 0; n <= pieces; n++) { const p = { x: previous.x + (next.x - previous.x) * n / pieces, y: previous.y + (next.y - previous.y) * n / pieces, z: previous.z + (next.z - previous.z) * n / pieces }; if (!knownBody(p, true)) throw fail('Learning shore swept head, liquid or terrain became unknown', 'BODY_UNKNOWN') }
-          if (actors.some(a => segment(a.position, eye(previous), eye(next)) < a.minDistance - 1e-4)) throw fail('Learning shore current actor crossed its initial fixed floor', 'ACTOR_FLOOR')
-          previous = { ...next }; return true
-        }
-        const current = fresh(), physical = generationPhysics.fromServer(current)
-        if (!['x', 'y', 'z'].every(k => Math.abs(physical.position[k] - proof.trace[0].position[k]) <= 1e-5 && Math.abs(physical.velocity[k] - proof.trace[0].velocity[k]) <= 1e-5)) { diagnostic.phase = 'no_plan'; diagnostic.reason = 'Origin changed before native start'; return null }
-        historyBefore = generationHistory.snapshot(); sentBefore = generationMovement.snapshot().sent ?? 0
-        diagnostic.phase = 'moving'; diagnostic.executionTicks = proof.executionTicks; diagnostic.neutralCoastTicks = proof.neutralCoastTicks
-        diagnostic.starts = 1; started = true; emergencyDropOp = context.operationId; context.onMovementStart?.()
-        routeMovement.start(proof.target, { ...proof.options, avoidance: currentBindings(current).map(a => ({ id: a.id, position: a.position, minDistance: a.minDistance, padding: 0 })), beforeInput })
-        while (true) {
-          const state = fresh(), motion = generationMovement.snapshot()
-          diagnostic.actualSent = Math.max(0, (motion.sent ?? 0) - sentBefore)
-          if (['failed', 'stopped', 'replan_required'].includes(motion.phase)) throw fail(motion.reason ?? 'Learning shore native movement stopped', 'SHORE_MOVEMENT_STOPPED')
-          if (['awaiting_server_confirmation', 'completed'].includes(motion.phase)) {
-            const history = generationHistory.snapshot(), queuedAt = motion.queuedAt
-            const receipt = motion.queuedReceiptConfirmed === true && diagnostic.actualSent >= proof.executionTicks && history.navigationQueued - historyBefore.navigationQueued >= diagnostic.actualSent && history.count > 0 && Number.isFinite(queuedAt) && Date.now() - queuedAt >= 0 && Date.now() - queuedAt <= 200 && motion.queuedTick != null && history.latestTick != null && BigInt(history.latestTick) >= BigInt(motion.queuedTick)
-            const body = generationPhysics.fromServer(state), landing = feet(state)
-            if (!receipt || body.onGround !== true || body.isInWater || body.isInLava || Math.abs(landing.y - proof.surfaceY) > 0.05 || horizontal(landing, proof.target) > 0.35 || !verifyRouteStanding(state, landing, { signal })) throw fail('Learning shore lacks queued-receipt or full landing proof', 'LANDING_UNCONFIRMED')
-            const final = safetyState(), observed = evaluateThreats(final, final.entities, { observationRadius: 32 })
-            fresh(); currentBindings(final)
-            if (observed.requiresObservation || final.entityStats?.unknownPositions > observed.unknownPositions.length) throw fail('Learning shore final actor observation is unknown', 'ACTOR_UNKNOWN')
-            const finalMotion = generationMovement.snapshot()
-            if (finalMotion.queuedReceiptConfirmed !== true || finalMotion.queuedTick !== motion.queuedTick || Date.now() - queuedAt > 200) throw fail('Learning shore receipt became stale during landing verification', 'LANDING_UNCONFIRMED')
-            diagnostic.phase = 'model_landing'; diagnostic.landing = { ...landing }; diagnostic.reason = 'Queued native frames reached known full standing; server arrival remains unconfirmed'
-            diagnostic.receipt = { tick: String(motion.queuedTick), historyAdvance: history.navigationQueued - historyBefore.navigationQueued }
-            return { supported: true, arrived: true, escaped: observed.threats.length === 0, partialEscape: observed.threats.length > 0, learningShore: true, movementStarts: 1, serverConfirmed: false, safe: false }
-          }
-          await delay(25, undefined, { signal })
-        }
-      } catch (error) {
-        diagnostic.phase = started ? 'interrupted' : 'no_plan'; diagnostic.reason = String(error.message ?? error).slice(0, 180); diagnostic.code = error.code ?? 'SHORE_FAILED'
-        if (!started && terminalCodes.has(error.code)) throw error
-        return started ? { supported: true, arrived: false, escaped: false, partialEscape: false, learningShore: true, movementStarts: 1, code: 'LEARNING_SHORE_INTERRUPTED', reason: 'no_known_away_route', partialFailure: diagnostic.reason, serverConfirmed: false, safe: false } : null
-      } finally {
-        clearTimeout(timer); signal.removeEventListener('abort', cancel)
-        if (started && safetyCurrent() && owners.escape === owner && emergencyDropOp === context.operationId) { routeMovement.stop('Learning shore episode finished'); if (typeof generationMovement.drain === 'function') await generationMovement.drain() }
-        if (owners.escape === owner && emergencyDropOp === context.operationId) emergencyDropOp = null
-        diagnostic.elapsedMs = Math.max(0, Date.now() - Date.parse(diagnostic.at))
-      }
-    }
-
-    async function tryRecentDamageNoPrimary (initial, context, parentDeadline) {
-      const damage = host.shared.recentDamageNoPrimary, life = actualLifeId(), scope = continuationScope(initial), owner = owners.escape
-      const used = host.shared.recentDamageRetreatUsed
-      if (!scope || !damage || context.operationId == null || !(context.movementBudget > 0) || used?.damageAt === damage.at && JSON.stringify(used.scope) === JSON.stringify(scope)) return null
-      const controller = new AbortController(), signal = AbortSignal.any([context.signal, controller.signal])
-      const deadline = Math.min(parentDeadline, Date.now() + 2000), startedAt = Date.now(), force = host.shared.lastServerMotion?.receivedAt ?? null, correction = host.shared.lastServerCorrection?.receivedAt ?? null
-      const diagnostic = host.shared.recentDamageRetreatDiagnostic = { kind: 'recent_damage_no_primary', at: new Date().toISOString(), phase: 'planning', life, health: initial.health, riskAccepted: false, safetyConfirmed: false, serverConfirmed: false, attackerAttributed: false, actualSent: 0, code: null }
-      const physics = generationPhysics.withWorld(host.world, { allowWater: false })
-      let started = false, plan = null, sentBefore = 0, historyBefore = null, stamp = null
-      const state = () => ({ ...safetyState(), lifecycle: { phase: 'alive', deathId: actualLifeId(), dead: raw().dead === true } })
-      const fresh = () => {
-        requireSafety(); if (signal.aborted) throw signal.reason ?? Error('Recent damage retreat cancelled')
-        if (Date.now() >= deadline || !started && Date.now() - startedAt > 500) throw Error('Recent damage retreat deadline')
-        const s = state()
-        if (actualLifeId() !== life || JSON.stringify(continuationScope(s)) !== JSON.stringify(scope) || s.health < initial.health || owners.escape !== owner || owner?.operationId !== context.operationId || !safetyIdle({ operationId: context.operationId, episodeActive: true, defenseEpisode: true }) || (host.shared.lastServerMotion?.receivedAt ?? null) !== force || (host.shared.lastServerCorrection?.receivedAt ?? null) !== correction) throw Error('Recent damage retreat scope, owner, health or motion changed')
-        if (!started && (motionActive() || Math.hypot(s.position.x - initial.position.x, s.position.y - initial.position.y, s.position.z - initial.position.z) > 1e-4)) throw Error('Recent damage retreat seed changed')
-        return s
-      }
-      const cancel = () => { if (started && safetyCurrent() && owners.escape === owner && emergencyDropOp === context.operationId && generationMovement.snapshot().timingDiagnostics?.start?.at === stamp) routeMovement.stop('Recent damage retreat interrupted') }
-      const timer = setTimeout(() => controller.abort(Error('Recent damage retreat deadline')), Math.max(1, deadline - Date.now()))
-      signal.addEventListener('abort', cancel, { once: true })
-      try {
-        const seed = fresh()
-        plan = await planRecentDamageRetreat({ state: seed, world: host.world, physics, damage, status: host.shared.ownDamageEffects, check: fresh })
-        if (!plan.ready) { diagnostic.phase = 'declined'; diagnostic.code = plan.code; return null }
-        fresh()
-        const beforeInput = frame => retreatFrameAllowed({ state: fresh(), plan, frame, world: host.world, physics, damage: host.shared.recentDamageNoPrimary, status: host.shared.ownDamageEffects })
-        const options = { allowWater: false, emergency: true, sprint: false, maxDistance: 2, maxExpanded: 300, maxTicks: 20, avoidance: plan.avoidance, beforeInput }
-        if (Date.now() + 1000 > deadline || !routeMovement.preview(plan.target, options)?.ready) return null
-        fresh(); sentBefore = generationMovement.snapshot().sent; historyBefore = generationHistory.snapshot().navigationQueued
-        emergencyDropOp = context.operationId; context.onMovementStart?.(); diagnostic.target = { ...plan.target }; diagnostic.nativeTicks = plan.executionTicks
-        started = true; const result = routeMovement.start(plan.target, options)
-        stamp = generationMovement.snapshot().timingDiagnostics?.start?.at ?? result?.timingDiagnostics?.start?.at
-        diagnostic.phase = 'moving'
-        while (Date.now() < deadline) {
-          const s = fresh(), m = generationMovement.snapshot()
-          diagnostic.actualSent = Math.max(0, m.sent - sentBefore)
-          if (m.timingDiagnostics?.start?.at !== stamp) throw Error('Recent damage retreat movement owner changed')
-          if (diagnostic.actualSent > 0 && m.queuedReceiptConfirmed === true) host.shared.recentDamageRetreatUsed = { scope, damageAt: damage.at, queuedTick: m.queuedTick, queuedAt: m.queuedAt }
-          if (m.phase === 'awaiting_server_confirmation') {
-            const physical = generationPhysics.fromServer(s), end = physical.position, h = generationHistory.snapshot()
-            const receipt = m.queuedReceiptConfirmed === true && diagnostic.actualSent >= plan.executionTicks && h.navigationQueued - historyBefore >= diagnostic.actualSent && Date.now() - m.queuedAt >= 0 && Date.now() - m.queuedAt <= 200
-            if (!receipt || !createNavigator({ world: host.world, physics }).verifyOrigin(physical) || Math.hypot(end.x - plan.target.x, end.y - plan.target.y, end.z - plan.target.z) > .4) throw Error('Recent damage retreat landing is unconfirmed')
-            diagnostic.phase = 'model_landing'
-            return { supported: true, arrived: true, escaped: false, partialEscape: true, movementStarts: 1, code: 'RECENT_DAMAGE_RETREAT', recentDamageNoPrimary: true, safetyConfirmed: false, safe: false, serverConfirmed: false }
-          }
-          if (['failed', 'stopped', 'replan_required'].includes(m.phase)) throw Error(m.reason ?? 'Recent damage retreat replans')
-          await delay(25, undefined, { signal })
-        }
-        throw Error('Recent damage retreat deadline')
-      } catch (error) {
-        diagnostic.phase = started ? 'interrupted' : 'declined'; diagnostic.code = String(error.code ?? 'RECENT_DAMAGE_REPLAN'); diagnostic.reason = String(error.message).slice(0, 160)
-        return started ? { supported: true, arrived: false, escaped: false, partialEscape: false, movementStarts: 1, code: 'RECENT_DAMAGE_REPLAN', recentDamageNoPrimary: true, safetyConfirmed: false, safe: false, serverConfirmed: false } : null
-      } finally {
-        clearTimeout(timer); signal.removeEventListener('abort', cancel)
-        if (started && safetyCurrent() && owners.escape === owner && emergencyDropOp === context.operationId && generationMovement.snapshot().timingDiagnostics?.start?.at === stamp) { routeMovement.stop('Recent damage retreat prefix ended'); await generationMovement.drain?.() }
-        if (owners.escape === owner && emergencyDropOp === context.operationId) emergencyDropOp = null
-      }
-    }
-    let partialEscapeAction = null
-    const generationSafety = createIdleSafety({
-      retryAfterEmergency: true,
-      getState: safetyState, isIdle: safetyIdle, isCurrentGeneration: safetyCurrent, supportsWorkClearance: true,
-      equipSword: context => safetyOwn('inventory', context, async () => {
-        const state = safetyState()
-        const ranks = ['wooden', 'golden', 'stone', 'iron', 'diamond', 'netherite']
-        const swords = state.inventory?.items?.filter(item => item.count === 1 && /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/.test(item.name) && !(item.durabilityKnown === true && item.durabilityRemaining <= 0)) ?? []
-        swords.sort((a, b) => ranks.indexOf(b.name.slice(10, -6)) - ranks.indexOf(a.name.slice(10, -6)))
-        if (state.inventory?.known !== true || state.inventory.uncertain || !swords.length) return { supported: false, serverConfirmed: false }
-        const cancel = () => { if (safetyCurrent()) cancelBackgroundInventory('待機中の武器の持ち替えを中断しました。') }
-        context.signal?.addEventListener('abort', cancel, { once: true })
-        try { const result = await inventory.equip(swords[0].slot); requireSafety(); if (result.serverConfirmed) host.shared.equipment = null; return result } finally { context.signal?.removeEventListener('abort', cancel) }
-      }),
-      closeGui: context => { requireSafety(); if (context.signal?.aborted) throw context.signal.reason; return own(() => crafting.closeContainer())() },
-      previewEngage: (id, context) => { requireSafety(); if (context.signal?.aborted) throw context.signal.reason; return own(() => generationCombat.previewEngage(id, { allowUnarmed: context.allowUnarmed === true }))() },
-      engage: (id, context) => safetyOwn('combat', context, () => generationCombat.engage(id, { durationMs: context.durationMs, maxHits: context.maxHits, allowUnarmed: context.allowUnarmed === true, signal: context.signal })),
-      previewStrike: (id, context) => { requireSafety(); if (context.signal?.aborted) throw context.signal.reason; return own(() => generationCombat.preview(id))() },
-      previewEmergency: (id, context) => { requireSafety(); if (context.signal?.aborted) throw context.signal.reason; return own(() => generationCombat.previewEmergency(id, { allowDistantRanged: context.allowDistantRanged === true, allowDistantZombie: context.allowDistantZombie === true, allowGuardedGroup: context.allowGuardedGroup === true, allowCritical: context.allowCritical === true, allowEmergencyCreeper: context.allowEmergencyCreeper === true }))() },
-      emergencyStrike: (id, context) => safetyOwn('combat', context, async () => {
-        const cancel = () => { if (safetyCurrent()) generationCombat.cancel('緊急自衛を中断しました。') }
-        context.signal?.addEventListener('abort', cancel, { once: true })
-        try { return await generationCombat.emergencyAttack(id, { allowDistantRanged: context.allowDistantRanged === true, allowDistantZombie: context.allowDistantZombie === true, allowGuardedGroup: context.allowGuardedGroup === true, allowCritical: context.allowCritical === true, allowEmergencyCreeper: context.allowEmergencyCreeper === true }) } finally { context.signal?.removeEventListener('abort', cancel) }
-      }),
-      verifyStrikeBody: (state, context) => { requireSafety(); return verifyStrikeBody(state, context) },
-      verifyMeleeBody: (state, context) => { requireSafety(); return verifyMeleeBody(state, context) },
-      verifyLedgeBody: (state, context) => { requireSafety(); return verifyLedgeBody(state, context) },
-      verifyShallowWater: (state, context) => { requireSafety(); return verifyShallowWater(state, { ...context, allowDeepSurface: true }) },
-      verifyNearSurfaceWater: (state, context) => { requireSafety(); return verifyNearSurfaceWater(state, context) },
-      waterCounter: context => safetyOwn('escape', context, async () => {
-        emergencyWaterCounterOp = context.operationId; emergencyDropOp = context.operationId
-        try { return await waterCounter.execute({ signal: context.signal }) } finally { if (emergencyWaterCounterOp === context.operationId) emergencyWaterCounterOp = null; if (emergencyDropOp === context.operationId) emergencyDropOp = null }
-      }),
-      strike: (id, context) => safetyOwn('combat', context, async () => {
-        const cancel = () => { if (safetyCurrent()) generationCombat.cancel('空中での自衛を中断しました。') }
-        context.signal?.addEventListener('abort', cancel, { once: true })
-        try { return await generationCombat.attack(id) } finally { context.signal?.removeEventListener('abort', cancel) }
-      }),
-      verifyBody: (state, context) => { requireSafety(); return verifyRouteOrigin(state, { ...state.position, y: state.position.y - 1.62 }, { ...context, stablePartialOrigin: true }) },
-      verifyCompletedDryProgress,
-      partialEscape: partialEscapeAction = context => {
-        requireSafety()
-        if (!safetyIdle({ operationId: context.operationId, episodeActive: true, defenseEpisode: true })) return { supported: false, reason: 'foreign_actor' }
-        return safetyOwn('escape', context, async () => {
-          const controller = new AbortController()
-          const signal = context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal
-          const initial = safetyState(); const origin = { ...initial.position, y: initial.position.y - 1.62 }
-          const selected = initial.rawServerSelectedSlot ?? initial.rawSelectedSlot
-          const sword = initial.inventory?.known === true && !initial.inventory.uncertain && initial.equipmentServerConfirmed !== false && initial.inventory.items?.some(item => item.slot === selected && item.count === 1 && /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/.test(item.name) && initial.heldItem?.name === item.name && initial.heldItem?.count === 1)
-          const handItem = initial.inventory?.items?.find(item => item.slot === selected && item.count > 0)
-          const bootstrapHand = !initial.heldItem && !handItem || initial.heldItem?.name === 'minecraft:rotten_flesh' && handItem?.name === initial.heldItem.name && handItem.count === initial.heldItem.count
-          const unarmed = initial.health >= 18 && initial.inventory?.known === true && !initial.inventory.uncertain && initial.equipmentServerConfirmed !== false && Number.isInteger(selected) && bootstrapHand && !initial.inventory.items?.some(item => item.count > 0 && /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/.test(item.name))
-          const physical = initial.predicted?.physicsState ?? initial.physicsState
-          const learningLife = actualLifeId()
-          const confirmedHand = Number.isInteger(selected) && selected >= 0 && selected <= 8 && (initial.heldItem ? handItem?.name === initial.heldItem.name && handItem.count === initial.heldItem.count && handItem.count > 0 : !handItem)
-          const learningShore = resourceMinHealth(initial) === 0 && initial.inventory?.known === true && !initial.inventory.uncertain && initial.equipmentServerConfirmed !== false && confirmedHand && physical?.onGround === true && !physical.isInWater && !physical.isInLava && !verifyMeleeBody(initial, { signal }) && verifyLedgeBody(initial, { signal })
-          if (!(initial.health > 0) || !(sword || unarmed || learningShore) || physical?.onGround !== true || !verifyLedgeBody(initial, { signal }) || await verifyRouteStanding(initial, origin, { signal })) return { supported: false, reason: 'no_known_escape_origin' }
-          const initialThreats = evaluateThreats(initial, initial.entities, { observationRadius: 32 })
-          if (initialThreats.requiresObservation || initial.entityStats?.unknownPositions > initialThreats.unknownPositions.length || !initialThreats.threats.length) return { supported: false, reason: 'no_known_away_route' }
-          const single = initialThreats.threats[0]
-          const creeperRecenter = initialThreats.threats.length === 1 && single.name === 'minecraft:creeper' && single.dangerRadius === 8 && single.distance >= 3.9 && single.position && Math.hypot(single.position.x - origin.x, single.position.y - origin.y, single.position.z - origin.z) >= 3.1
-          const criticalZombieRecenter = initial.health <= 6 && initialThreats.threats.length === 1 && single.name === 'minecraft:zombie' && single.distance >= 5.75
-          const unarmedCreeperRecenter = unarmed && creeperRecenter && single.distance >= 5.5
-          const unarmedZombieRecenter = unarmed && initialThreats.threats.length === 1 && single.name === 'minecraft:zombie' && single.distance >= 8.5
-          const unarmedDrownedRecenter = unarmed && initialThreats.threats.length === 1 && single.name === 'minecraft:drowned' && single.distance >= 10.5
-          const unarmedSpiderRecenter = unarmed && initialThreats.threats.length === 1 && single.name === 'minecraft:spider' && single.distance >= 8.5
-          const unarmedSpiderGroup = unarmed && initialThreats.threats.length === 2 && initialThreats.threats.every(actor => actor.name === 'minecraft:spider' && actor.distance >= 8.5)
-          const unarmedCreeperZombie = isUnarmedCreeperZombie(initial, initialThreats.threats)
-          const shoreRecenter = learningShore || !verifyMeleeBody(initial, { signal }) && (unarmedSpiderRecenter || unarmedSpiderGroup || unarmedCreeperRecenter || unarmedCreeperZombie)
-          const shoreSpiderApproach = shoreRecenter && unarmedSpiderRecenter && initial.health === 20 && single.distance >= 9.5
-          const creeperEntity = single && initial.entities.find(item => String(item.runtimeId ?? item.runtimeEntityId ?? item.entityId ?? item.id) === single.runtimeId)
-          const shoreCreeperCloseApproach = shoreRecenter && unarmedCreeperRecenter && initial.health === 20 && single.distance >= 5.75 && Math.hypot(single.position.x - initial.position.x, single.position.z - initial.position.z) >= 5.5 && creeperEntity?.primed === false && creeperEntity?.charged === false
-          const shoreCreeperApproach = shoreRecenter && unarmedCreeperRecenter && initial.health === 20 && single.distance >= 7 && Math.hypot(single.position.x - initial.position.x, single.position.z - initial.position.z) >= 6.4 || shoreCreeperCloseApproach
-          // A partly supported player can also recenter away from both members
-          // of one identified, sufficiently distant creeper/spider pair. The
-          // simulated and live corridor must never approach either actor.
-          const unarmedDualRecenter = unarmedCreeperZombie || unarmed && initialThreats.threats.length === 2 && initialThreats.threats.some(actor => actor.name === 'minecraft:creeper' && actor.dangerRadius === 8 && actor.distance >= 5.5) && initialThreats.threats.some(actor => actor.name === 'minecraft:spider' && actor.distance >= 8.5)
-          if (unarmed && !learningShore && !(unarmedZombieRecenter || unarmedDrownedRecenter || unarmedSpiderRecenter || unarmedSpiderGroup || unarmedDualRecenter || unarmedCreeperRecenter)) return { supported: false, reason: 'no_known_away_route' }
-          // Below ten health permit a single ordinary creeper, or at critical
-          // health a single sufficiently distant zombie. The retreat never
-          // moves closer along its simulated corridor.
-          if (initial.health < 10 && !learningShore && !creeperRecenter && !criticalZombieRecenter) return { supported: false, reason: 'no_known_away_route' }
-          const primary = initialThreats.threats.reduce((a, b) => a.distance < b.distance ? a : b)
-          const all = [...initialThreats.threats, ...initialThreats.outsideDanger]
-          const activeIds = new Set(initialThreats.threats.map(actor => actor.runtimeId))
-          const trackedRangedIds = new Set()
-          const identities = new Map(); const circles = []
-          for (const actor of all) {
-            const entity = initial.entities.find(item => String(item.runtimeId ?? item.runtimeEntityId ?? item.entityId ?? item.id) === actor.runtimeId)
-            if (entity?.uniqueId == null) return { supported: false, reason: 'no_known_away_route' }
-            identities.set(actor.runtimeId, { uniqueId: String(entity.uniqueId), name: actor.name, radius: actor.dangerRadius })
-            let minimum = actor.dangerRadius
-            const ranged = ['minecraft:skeleton', 'minecraft:stray', 'minecraft:bogged'].includes(actor.name)
-            const zombie = ['minecraft:zombie', 'minecraft:zombie_villager', 'minecraft:zombie_villager_v2', 'minecraft:husk'].includes(actor.name)
-            const spider = actor.name === 'minecraft:spider'
-            const creeper = creeperRecenter && actor.runtimeId === single.runtimeId
-            if (activeIds.has(actor.runtimeId)) {
-              const exactDistance = learningShore || unarmedDualRecenter || unarmedSpiderGroup || creeper || (criticalZombieRecenter || unarmedZombieRecenter || unarmedDrownedRecenter || unarmedSpiderRecenter) && actor.runtimeId === single.runtimeId
-              const floor = exactDistance ? actor.distance : zombie ? (actor.runtimeId === primary.runtimeId ? 4.5 : 7.5) : spider ? 6 : ranged ? 18 : null
-              if (floor === null || !exactDistance && actor.distance < floor + 0.1) return { supported: false, reason: 'no_known_away_route' }
-              const recenterBudget = unarmedDrownedRecenter && initial.health === 20 && actor.distance >= 12.5 ? 0.5 : 0.25
-              minimum = learningShore ? actor.distance : unarmedCreeperZombie && zombie ? unarmedZombieFloor(actor) : unarmedCreeperZombie && spider ? activeUnarmedSpiderFloor(actor) : unarmedCreeperZombie && actor.name === 'minecraft:creeper' ? Math.max(5.75, actor.distance - 0.4) : shoreCreeperApproach && actor.runtimeId === single.runtimeId ? shoreCreeperCloseApproach ? Math.max(5.25, actor.distance - 0.65) : Math.max(6.5, actor.distance - 0.4) : shoreSpiderApproach && actor.runtimeId === single.runtimeId ? Math.max(9, actor.distance - 0.4) : unarmedDrownedRecenter && actor.runtimeId === single.runtimeId ? Math.max(10.25, actor.distance - recenterBudget) : exactDistance ? actor.distance : actor.runtimeId === primary.runtimeId ? Math.max(floor, actor.distance - 0.4) : Math.max(floor, actor.distance - 1.5)
-            } else if (ranged && actor.distance >= 18.25 && actor.distance <= actor.dangerRadius + 1.5) {
-              // The same already observed ranged actor may cross its broad
-              // avoidance radius while the short descent is underway. It still
-              // must remain beyond 18 and within the fixed 1.5-block budget.
-              trackedRangedIds.add(actor.runtimeId)
-              minimum = Math.max(18, actor.distance - 1.5)
-            }
-            circles.push({ id: actor.runtimeId, position: { ...actor.position }, minDistance: minimum, padding: 0 })
-          }
-          const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
-          const eye = point => ({ ...point, y: point.y + 1.62 })
-          const segment = (point, from, to) => {
-            const d = { x: to.x - from.x, y: to.y - from.y, z: to.z - from.z }; const length = d.x ** 2 + d.y ** 2 + d.z ** 2
-            const t = length ? Math.max(0, Math.min(1, ((point.x - from.x) * d.x + (point.y - from.y) * d.y + (point.z - from.z) * d.z) / length)) : 0
-            return distance(point, { x: from.x + t * d.x, y: from.y + t * d.y, z: from.z + t * d.z })
-          }
-          function knownFullRecenterFloor (target) {
-            try {
-              const cube = block => block.shapes.length === 1 && block.shapes[0].every((value, index) => Math.abs(value - [0, 0, 0, 1, 1, 1][index]) <= 1e-9)
-              const hazard = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush|concrete_powder|anvil)/
-              for (let x = Math.floor(target.x - 0.3 + 1e-4); x <= Math.floor(target.x + 0.3 - 1e-4); x++) for (let z = Math.floor(target.z - 0.3 + 1e-4); z <= Math.floor(target.z + 0.3 - 1e-4); z++) {
-                const floor = generationPhysics.blockAt({ x, y: target.y - 1, z })
-                if (hazard.test(floor.name) || !cube(floor)) return false
-                if (/^(?:sand|red_sand|gravel)$/.test(floor.name)) {
-                  let stable = false
-                  for (let depth = 1; depth <= 8; depth++) {
-                    const below = generationPhysics.blockAt({ x, y: target.y - 1 - depth, z })
-                    if (hazard.test(below.name) || !cube(below)) return false
-                    if (!/^(?:sand|red_sand|gravel)$/.test(below.name)) { stable = true; break }
-                  }
-                  if (!stable) return false
-                }
-                for (const y of [target.y, target.y + 1]) {
-                  const body = generationPhysics.blockAt({ x, y, z })
-                  if (hazard.test(body.name) || body.shapes.length) return false
-                }
-              }
-              return true
-            } catch { return false }
-          }
-          let started = false; let timer; let watch; let trace = null; let traceIndex = 0
-          const deadline = Date.now() + 4000
-          const check = () => {
-            requireSafety(); if (signal.aborted) throw signal.reason ?? new Error('Partial escape interrupted')
-            if (Date.now() >= deadline) throw new Error('Partial escape deadline')
-            const { state: current, observedEntities } = safetyObservation()
-            if (signal.aborted) throw signal.reason ?? new Error('Partial escape interrupted')
-            if (current.dead || current.health < initial.health || learningShore && actualLifeId() !== learningLife || current.connectionId !== initial.connectionId || !sameRouteScope(routeScope(current), routeScope(initial))) throw new Error('Partial escape session or health changed')
-            const currentPhysical = current.predicted?.physicsState ?? current.physicsState
-            if (shoreRecenter && (currentPhysical?.isInWater || currentPhysical?.isInLava)) throw new Error('Partial escape entered water or lava')
-            const currentSlot = current.rawServerSelectedSlot ?? current.rawSelectedSlot
-            const currentItem = current.inventory.items?.find(item => item.slot === currentSlot && item.count > 0)
-            const equipmentValid = learningShore ? initial.heldItem ? current.heldItem?.name === initial.heldItem.name && current.heldItem?.count === initial.heldItem.count && currentItem?.name === initial.heldItem.name && currentItem.count === initial.heldItem.count : !current.heldItem && !currentItem : unarmed ? initial.heldItem ? current.heldItem?.name === initial.heldItem.name && current.heldItem?.count === initial.heldItem.count && currentItem?.name === initial.heldItem.name && currentItem.count === initial.heldItem.count : !current.heldItem && !currentItem : current.heldItem?.name === initial.heldItem?.name && current.heldItem?.count === 1 && currentItem?.name === current.heldItem.name && currentItem.count === 1
-            if (current.inventory?.known !== true || current.inventory.uncertain || current.equipmentServerConfirmed === false || currentSlot !== selected || !equipmentValid) throw new Error('Partial escape equipment changed')
-            const evaluation = evaluateThreats(current, current.entities, { observationRadius: 32 })
-            if (evaluation.requiresObservation || current.entityStats?.unknownPositions > evaluation.unknownPositions.length || evaluation.threats.some(actor => !activeIds.has(actor.runtimeId) && !trackedRangedIds.has(actor.runtimeId))) throw new Error('Partial escape danger changed')
-            if (trace) {
-              // Occlusion changes danger, not identity or the fixed distance
-              // floor of an actor already included in this retreat corridor.
-              const observed = evaluateThreats(current, observedEntities, { observationRadius: 32 })
-              if (observed.requiresObservation) throw new Error('Partial escape actor observations are incomplete')
-              const actors = new Map([...observed.threats, ...observed.outsideDanger, ...observed.suppressedByTerrain, ...observed.unreachable].map(actor => [actor.runtimeId, actor]))
-              const nearest = trace.reduce((best, point, index) => index < traceIndex ? best : !best || distance(eye(point), current.position) < best.distance ? { index, distance: distance(eye(point), current.position) } : best, null)
-              if (!nearest || nearest.distance > 0.5) throw new Error('Partial escape left its predicted corridor')
-              traceIndex = nearest.index
-              const remaining = [current.position, ...trace.slice(traceIndex + 1).map(eye)]
-              for (const circle of circles) {
-                const actor = actors.get(circle.id); const entity = observedEntities.find(item => String(item.runtimeId ?? item.runtimeEntityId ?? item.entityId ?? item.id) === circle.id); const known = identities.get(circle.id)
-                if (!actor || !known) throw new Error('Partial escape actor no longer observed')
-                if (String(entity?.uniqueId) !== known.uniqueId || actor.name !== known.name) throw new Error('Partial escape actor identity changed')
-                if (actor.dangerRadius > known.radius) throw new Error('Partial escape actor danger expanded')
-                if (actor.distance < circle.minDistance - 1e-4) throw new Error('Partial escape actor approached distance floor')
-                if (unarmedCreeperZombie && actor.name === 'minecraft:creeper' && (Math.hypot(actor.position.x - current.position.x, actor.position.z - current.position.z) < 5.5 || remaining.slice(1).some((point, index) => segment({ ...actor.position, y: 0 }, { ...remaining[index], y: 0 }, { ...point, y: 0 }) < 5.5))) throw new Error('Partial escape creeper horizontal distance became unsafe')
-                if (shoreCreeperApproach && actor.runtimeId === single.runtimeId && (Math.hypot(actor.position.x - current.position.x, actor.position.z - current.position.z) < (shoreCreeperCloseApproach ? 5 : 6) || remaining.slice(1).some((point, index) => segment({ ...actor.position, y: 0 }, { ...remaining[index], y: 0 }, { ...point, y: 0 }) < (shoreCreeperCloseApproach ? 5 : 6)))) throw new Error('Partial escape creeper horizontal distance became unsafe')
-                if (remaining.slice(1).some((point, index) => segment(actor.position, remaining[index], point) < circle.minDistance - 1e-4)) throw new Error('Partial escape remaining path is unsafe')
-              }
-            }
-            return current
-          }
-          const cancel = () => { if (started && safetyCurrent()) routeMovement.stop('Partial escape interrupted') }
-          const inspectPacket = () => { try { check() } catch (error) { controller.abort(error) } }
-          signal.addEventListener('abort', cancel, { once: true })
-          try {
-            timer = setTimeout(() => controller.abort(new Error('Partial escape deadline')), 4000)
-            let partialPlanningChecks = 0, partialPlanningSlice = performance.now()
-            const yieldPartialPlanning = async (force = false) => {
-              if (!force && ++partialPlanningChecks % 32 !== 0 && performance.now() - partialPlanningSlice < 12) return
-              requireSafety(); if (signal.aborted) throw signal.reason
-              maintainIdle()
-              await new Promise(resolve => setImmediate(resolve))
-              check()
-              partialPlanningSlice = performance.now()
-            }
-            const targets = []
-            for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (const ox of [0.3, 0.35, 0.5, 0.65, 0.7]) for (const oz of [0.3, 0.35, 0.5, 0.65, 0.7]) for (const recenter of learningShore ? [true] : creeperRecenter || criticalZombieRecenter || unarmedZombieRecenter || unarmedDrownedRecenter || unarmedSpiderRecenter || unarmedSpiderGroup || unarmedDualRecenter ? [true, false] : [false]) {
-              await yieldPartialPlanning()
-              if (!recenter && (shoreRecenter || creeperRecenter && !clearanceDistanceAllowed(initial, single))) continue
-              const target = { x: Math.floor(origin.x) + dx + ox, y: Math.round(origin.y) - (recenter ? 0 : 1), z: Math.floor(origin.z) + dz + oz }
-              const horizontal = Math.hypot(target.x - origin.x, target.z - origin.z)
-              const gain = distance(primary.position, eye(target)) - primary.distance
-              // A partly supported ledge may require one short step onto its
-              // support before an away route is possible. Restrict this to a
-              // healthy unarmed player and a single distant drowned; the
-              // fixed circle still bounds every simulated and observed frame.
-              const mixedCreeperApproach = unarmedCreeperZombie && primary.name === 'minecraft:creeper' && primary.distance >= 6.5 && Math.hypot(primary.position.x - initial.position.x, primary.position.z - initial.position.z) >= 6
-              const recenterGain = learningShore ? 0 : shoreRecenter && recenter ? (mixedCreeperApproach ? -0.3 : shoreCreeperCloseApproach ? -0.65 : shoreSpiderApproach || shoreCreeperApproach ? -0.4 : 0) : unarmedDrownedRecenter && recenter ? -(initial.health === 20 && single.distance >= 12.5 ? 0.5 : 0.25) : 0.25
-              const creeperHorizontalSafe = !shoreCreeperApproach || segment({ ...single.position, y: 0 }, { ...initial.position, y: 0 }, { ...target, y: 0 }) >= (shoreCreeperCloseApproach ? 5 : 6)
-              if (horizontal < 0.2 || horizontal > (unarmedCreeperZombie ? 0.9 : shoreCreeperCloseApproach ? 0.75 : 1.2) || gain < recenterGain || !creeperHorizontalSafe || circles.some(circle => segment(circle.position, initial.position, eye(target)) < circle.minDistance - 1e-4)) continue
-              if ((learningShore || unarmedCreeperZombie) && recenter && !knownFullRecenterFloor(target)) continue
-              targets.push({ target, gain, recenter })
-            }
-            targets.sort((a, b) => Number(b.recenter) - Number(a.recenter) || (unarmedCreeperZombie ? Math.hypot(a.target.x - origin.x, a.target.z - origin.z) - Math.hypot(b.target.x - origin.x, b.target.z - origin.z) : b.gain - a.gain))
-            let candidate = null; let preview = null
-            for (const entry of targets.slice(0, unarmedZombieRecenter || unarmedDrownedRecenter || unarmedSpiderRecenter || unarmedSpiderGroup || unarmedDualRecenter || unarmedCreeperRecenter ? 120 : 60)) {
-              await new Promise(resolve => setImmediate(resolve)); check(); motionOrigin = working()
-              const options = { emergency: true, allowWater: shoreRecenter, shoreRecenter, partialDrop: !entry.recenter, partialRecenter: entry.recenter, maxDistance: 2, maxTicks: 40, avoidance: circles }
-              const planned = generationMovement.preview(entry.target, options)
-              if (planned.ready && (entry.recenter ? planned.partialRecenter === true : planned.partialDrop === true) && Array.isArray(planned.predictedTrace) && planned.predictedTrace.length > 2) { candidate = { ...entry, options }; preview = planned; break }
-            }
-            if (!candidate) return { supported: false, reason: 'no_known_away_route' }
-            trace = preview.predictedTrace
-            await yieldPartialPlanning(true)
-            watch = setInterval(inspectPacket, 25)
-            inspectPartialEscapePacket = inspectPacket
-            routeMovement.start(candidate.target, candidate.options); started = true
-            while (true) {
-              await delay(50, undefined, { signal })
-              const current = check(); const movementState = generationMovement.snapshot()
-              if (['failed', 'stopped', 'replan_required'].includes(movementState.phase)) return { supported: true, arrived: false, escaped: false, code: movementState.phase === 'replan_required' ? 'PARTIAL_REPLAN' : movementState.phase === 'failed' && movementState.reason === 'Movement input timer stalled' ? 'PARTIAL_STALLED' : 'PARTIAL_STOPPED', reason: 'no_known_away_route', partialFailure: typeof movementState.reason === 'string' ? movementState.reason.slice(0, 200) : null }
-              if (['awaiting_server_confirmation', 'completed', 'idle'].includes(movementState.phase)) {
-                if (!await verifyRouteStanding(current, candidate.target, { signal })) return { supported: true, arrived: false, escaped: false, reason: 'no_known_escape_origin' }
-                const evaluation = evaluateThreats(current, current.entities, { observationRadius: 32 })
-                return { supported: true, arrived: true, escaped: !evaluation.requiresObservation && !evaluation.threats.length, partialEscape: !evaluation.requiresObservation && evaluation.threats.length > 0, constrainedEscape: !(creeperRecenter || criticalZombieRecenter || unarmedZombieRecenter || unarmedDrownedRecenter || unarmedSpiderRecenter || unarmedSpiderGroup || unarmedDualRecenter), constrainedPrimaryId: creeperRecenter || criticalZombieRecenter || unarmedZombieRecenter || unarmedDrownedRecenter || unarmedSpiderRecenter || unarmedSpiderGroup || unarmedDualRecenter ? null : primary.runtimeId, serverConfirmed: false }
-              }
-            }
-          } catch (error) {
-            // Node's abortable delay reports a generic AbortError; preserve
-            // the specific safety condition that stopped the owned motion.
-            if (controller.signal.aborted && controller.signal.reason instanceof Error) throw controller.signal.reason
-            throw error
-          } finally {
-            clearTimeout(timer); clearInterval(watch); signal.removeEventListener('abort', cancel)
-            if (inspectPartialEscapePacket === inspectPacket) inspectPartialEscapePacket = null
-            if (started && safetyCurrent()) routeMovement.stop('Partial escape finished')
-          }
-        })
-      },
-      clearEscape: context => {
-        requireSafety()
-        if (!safetyIdle({ operationId: context.operationId, episodeActive: true, defenseEpisode: true })) return { cleared: false }
-        return safetyOwn('escape', context, async () => {
-          const controller = new AbortController()
-          const signal = context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal
-          const initial = safetyState()
-          const initialEvaluation = evaluateThreats(initial, initial.entities, { observationRadius: 32 })
-          const drownedMode = initialEvaluation.threats.length === 1 && drownedStepThreatAllowed(initial, initialEvaluation.threats[0])
-          const skeletonMode = initialEvaluation.threats.length === 1 && skeletonStepThreatAllowed(initial, initialEvaluation.threats[0])
-          const stepMode = drownedMode || skeletonMode
-          const stepThreatAllowed = skeletonMode ? skeletonStepThreatAllowed : drownedStepThreatAllowed
-          const stepCurrent = skeletonMode ? protectiveSkeletonStepCurrent : protectiveDrownedStepCurrent
-          const deadline = Date.now() + (stepMode ? 4000 : 2000)
-          const planningStarted = performance.now()
-          const diagnostic = { phase: 'planning', planningMs: null, maxPlanningSliceMs: 0, miningStartedMs: null, airReceivedMs: null, elapsedMs: 0, reason: null }
-          host.shared.clearanceDiagnostic = diagnostic
-          const mark = phase => { diagnostic.phase = phase; diagnostic.elapsedMs = Math.round((performance.now() - planningStarted) * 10) / 10 }
-          const clearId = initialEvaluation.threats[0]?.runtimeId
-          const clearEntity = initial.entities.find(item => String(item.runtimeId ?? item.runtimeEntityId ?? item.entityId ?? item.id) === clearId)
-          const clearUniqueId = clearEntity?.uniqueId == null ? null : String(clearEntity.uniqueId)
-          const equipmentKey = stepMode ? drownedStepEquipmentKey(initial) : clearanceEquipmentKey(initial)
-          if (initialEvaluation.requiresObservation || initialEvaluation.threats.length !== 1 || !(stepMode || clearanceDistanceAllowed(initial, initialEvaluation.threats[0])) || clearUniqueId === null || equipmentKey === null) { mark('not_cleared'); diagnostic.reason = 'initial_conditions'; return { cleared: false } }
-          if (stepMode) {
-            const requested=context.state, requestedActor=requested?.entities?.find(item=>String(item.runtimeId ?? item.runtimeEntityId ?? item.entityId ?? item.id)===clearId)
-            if (!requested || JSON.stringify(continuationScope(requested))!==JSON.stringify(continuationScope(initial)) || requestedActor?.uniqueId==null || String(requestedActor.uniqueId)!==clearUniqueId || requestedActor.entityType!==clearEntity.entityType || drownedStepEquipmentKey(requested)!==equipmentKey || initial.health<requested.health || !requested.position || Math.hypot(initial.position.x-requested.position.x,initial.position.y-requested.position.y,initial.position.z-requested.position.z)>.1) {mark('not_cleared');diagnostic.reason=skeletonMode?'skeleton_step_context_changed':'drowned_step_context_changed';return {cleared:false}}
-          }
-          let plan = null; let soilSupport = null
-          let drownedHealth = initial.health
-          const initialDrownedTool = initial.inventory?.items?.find(item => item.slot === (initial.rawServerSelectedSlot ?? initial.rawSelectedSlot))
-          let drownedWear = initialDrownedTool?.durabilityKnown === true ? initialDrownedTool.durabilityUsed : null
-          let started = false; let timer; let watch
-          const cancel = () => { if (started) ownedMining.stop('Emergency leaf clearance interrupted') }
-          const check = () => {
-            requireSafety(); if (signal.aborted) throw signal.reason ?? new Error('Emergency leaf clearance interrupted')
-            if (Date.now() >= deadline) throw new Error('Emergency leaf clearance timed out')
-            const state = safetyState(); const evaluation = evaluateThreats(state, state.entities, { observationRadius: 32 }); const target = evaluation.threats[0]
-            const actor = state.entities.find(item => String(item.runtimeId ?? item.runtimeEntityId ?? item.entityId ?? item.id) === clearId)
-            if (state.dead || state.health < initial.health || state.connectionId !== initial.connectionId || !sameRouteScope(routeScope(state), routeScope(initial)) || !state.position || Math.hypot(state.position.x - initial.position.x, state.position.y - initial.position.y, state.position.z - initial.position.z) > 0.1 || equipmentKey === null || (stepMode ? drownedStepEquipmentKey(state) : clearanceEquipmentKey(state)) !== equipmentKey || evaluation.requiresObservation || state.entityStats?.unknownPositions > evaluation.unknownPositions.length || evaluation.threats.length !== 1 || target?.runtimeId !== clearId || clearUniqueId === null || !(stepMode ? stepThreatAllowed(state, target) : clearanceDistanceAllowed(state, target)) || String(actor?.uniqueId) !== clearUniqueId || !verifyMeleeBody(state, { signal })) throw new Error('Emergency leaf clearance is no longer safe')
-            if (stepMode) {
-              if (state.health < drownedHealth) throw new Error('Protective drowned step observed damage')
-              drownedHealth = Math.max(drownedHealth, state.health)
-              const tool = state.inventory?.items?.find(item => item.slot === (state.rawServerSelectedSlot ?? state.rawSelectedSlot))
-              if (drownedWear !== null) {
-                if (tool?.durabilityKnown !== true || !Number.isFinite(tool.durabilityUsed) || tool.durabilityUsed < drownedWear || tool.durabilityUsed - initialDrownedTool.durabilityUsed > (skeletonMode ? 4 : 6) || !(tool.durabilityRemaining > 0)) throw new Error('Protective drowned step tool wear changed unexpectedly')
-                drownedWear = tool.durabilityUsed
-              }
-              if (plan?.ready && !stepCurrent({state,world:planningWorld,plan})) throw new Error('Protective drowned step terrain or actors changed')
-            }
-            if (plan?.kind === 'soil') {
-              const block = planningWorld.getBlock(plan.block.x, plan.block.y, plan.block.z)
-              const air = block?.known && ['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'].includes(block.name)
-              const support = planningWorld.getBlock(plan.block.x, plan.block.y - 1, plan.block.z)
-              if (!block?.known || block.extra?.length || block.protected || block.protectionSource || !air && !clearanceTargetAllowed(plan, block) || !support?.known || support.name !== soilSupport?.name || support.runtimeId !== soilSupport?.runtimeId || support.extra?.length || support.protected || support.protectionSource) throw new Error('Emergency soil clearance terrain changed')
-              for (const [x, y, z] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
-                const neighbour = planningWorld.getBlock(plan.block.x + x, plan.block.y + y, plan.block.z + z)
-                if (!neighbour?.known || /water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|sweet_berry_bush|pointed_dripstone|sand$|gravel$|concrete_powder|anvil/.test(neighbour.name ?? '') || neighbour.extra?.length) throw new Error('Emergency soil clearance terrain changed')
-              }
-            }
-            return state
-          }
-          signal.addEventListener('abort', cancel, { once: true })
-          const inspectPacket = () => { try { check() } catch (error) { controller.abort(error) } }
-          try {
-            timer = setTimeout(() => controller.abort(new Error('Emergency leaf clearance timed out')), stepMode ? 4000 : 2000)
-            watch = setInterval(inspectPacket, 25)
-            inspectEmergencyLeafPacket = inspectPacket
-            if (stepMode) {
-              plan = await (skeletonMode ? planProtectiveSkeletonStepAsync : planProtectiveDrownedStepAsync)({state:initial,world:planningWorld,version:host.meta.version,physics:generationPhysics,retainedActors:context.retainedActors ?? [],signal,check,onSlice:ms=>{diagnostic.maxPlanningSliceMs=Math.max(diagnostic.maxPlanningSliceMs,Math.round(ms*10)/10)}})
-            } else plan = await planEmergencyLeafAsync({ state: initial, world: planningWorld, version: host.meta.version, physics: generationPhysics, signal, check, onSlice: ms => { diagnostic.maxPlanningSliceMs = Math.max(diagnostic.maxPlanningSliceMs, Math.round(ms * 10) / 10) } })
-            mark('planned'); diagnostic.planningMs = diagnostic.elapsedMs
-            if (!plan.ready) { diagnostic.reason = plan.reason; return { cleared: false } }
-            soilSupport = plan.kind === 'soil' ? planningWorld.getBlock(plan.block.x, plan.block.y - 1, plan.block.z) : null
-            check()
-            const targets = stepMode ? plan.blocks?.map(block => ({...block.position})) : [plan.block]
-            if (stepMode) {
-              if (plan.kind !== (skeletonMode ? 'skeleton_step' : 'drowned_step') || !Array.isArray(targets) || targets.length < 1 || targets.length > (skeletonMode ? 2 : 3) || !stepCurrent({state:check(),world:planningWorld,plan})) return {cleared:false}
-            } else {
-              const leaf = planningWorld.getBlock(plan.block.x, plan.block.y, plan.block.z)
-              if (!clearanceTargetAllowed(plan, leaf)) return {cleared:false}
-            }
-            if (ownedMining.preview(targets)?.ready !== true) return {cleared:false}
-            emergencyMiningOp = context.operationId
-            mark('starting_mining')
-            ownedMining.start(targets); started = true
-            mark('mining'); diagnostic.miningStartedMs = diagnostic.elapsedMs
-            while (true) {
-              await delay(25, undefined, { signal }); check()
-              const allAir = targets.every(position => {const block=host.world.getBlock(position.x,position.y,position.z);return block?.known === true && !block.extra?.length && ['minecraft:air','minecraft:cave_air','minecraft:void_air'].includes(block.name)})
-              const phase = mining.snapshot().phase
-              if (allAir) {
-                if (diagnostic.airReceivedMs === null) { mark('received_air'); diagnostic.airReceivedMs = diagnostic.elapsedMs }
-                if (phase === 'completed') { mark('cleared'); return { cleared: true, serverConfirmed: true, target: { ...plan.target }, kind: plan.kind } }
-              }
-              if (stepMode && phase === 'completed' && !allAir) {mark('failed');diagnostic.reason='incomplete_received_air';return {cleared:false}}
-              if (['failed', 'stopped'].includes(phase)) { mark('failed'); diagnostic.reason = String(mining.snapshot().reason ?? phase).slice(0, 160); return { cleared: false } }
-            }
-          } catch (error) {
-            mark('failed'); diagnostic.reason = String(error.message).slice(0, 160)
-            throw error
-          } finally {
-            if (diagnostic.phase !== 'failed' && diagnostic.phase !== 'cleared') mark('not_cleared')
-            clearTimeout(timer); clearInterval(watch); signal.removeEventListener('abort', cancel)
-            if (inspectEmergencyLeafPacket === inspectPacket) inspectEmergencyLeafPacket = null
-            if (started) ownedMining.stop('Emergency leaf clearance finished')
-            if (emergencyMiningOp === context.operationId) emergencyMiningOp = null
-          }
-        })
-      },
-      closeHut: context => {
-        if (host.shared.depotHutUpgraded === true) return {supported:false,serverConfirmed:false,reason:'OWNED_DEPOT_LAYOUT'}
-        requireSafety()
-        const state = safetyState(); const base = state.hut
-        const dirt = state.inventory?.items?.reduce((sum, item) => sum + (item.name === 'minecraft:dirt' && Number.isSafeInteger(item.count) && item.count > 0 ? item.count : 0), 0) ?? 0
-        if (!(state.health > 6) || state.dead || state.phase !== 'spawned' || state.loading || state.inventory?.known !== true || state.inventory.uncertain || dirt < 2 || base?.inside !== true || base.closed || base.entranceClosed || base.established !== true || !(base.structureIntact || base.geometryVerified) || base.serverConfirmed !== true || base.pendingPlacement || base.memo?.pendingPlacement) return { supported: false, serverConfirmed: false }
-        return safetyOwn('hut', context, () => generationHut.execute({}, { signal: context.signal }))
-      },
-
-      escape: function escape (context) {
-        requireSafety()
-        if (!safetyIdle({ operationId: context.operationId, episodeActive: true, defenseEpisode: true })) return { supported: false, reason: 'foreign_actor' }
-        if (escapePaused()) return { supported: false, reason: 'escape_paused_no_route' }
-        return logEscapePhase(context, safetyOwn('escape', context, async () => {
-          const controller = new AbortController()
-          const signal = context.signal ? AbortSignal.any([context.signal, controller.signal]) : controller.signal
-          const inheritedFence = preMovementFences.get(context)
-          const deadline = inheritedFence?.deadline ?? Date.now() + 4000
-          const surfaceTiming = host.shared.lowHealthWaterTiming?.version === 'cooperative_surface_v1' ? host.shared.lowHealthWaterTiming : (host.shared.lowHealthWaterTiming = { version: 'cooperative_surface_v1', since: new Date().toISOString(), maxSlice: {}, lastSlice: null, recent: [] })
-          const surfaceMark = () => { const cursor = generationHistory.snapshot().cursor; return { at: performance.now(), cursorAge: cursor ? Date.now() - cursor.queuedAt : null } }
-          const surfaceRecord = (phase, mark) => {
-            const ms = Math.round((performance.now() - mark.at) * 10) / 10
-            surfaceTiming.maxSlice[phase] = Math.max(surfaceTiming.maxSlice[phase] ?? 0, ms)
-            const cursor = generationHistory.snapshot().cursor
-            surfaceTiming.lastSlice = { phase, ms, cursorBeforeMs: mark.cursorAge, cursorAfterMs: cursor ? Date.now() - cursor.queuedAt : null, owner: inputOwner, at: new Date().toISOString() }
-            surfaceTiming.recent.push(surfaceTiming.lastSlice); if (surfaceTiming.recent.length > 16) surfaceTiming.recent.shift()
-          }
-          const surfaceTimed = (phase, fn) => { const mark = surfaceMark(); try { return fn() } finally { surfaceRecord(phase, mark) } }
-          const initial = surfaceTimed('initialState', safetyState)
-          const learningShoreResult = await tryLearningShoreEscape(initial, { ...context, signal, movementBudget: Math.max(0, 5 - (inheritedFence?.starts ?? 0)), onMovementStart: () => { if (inheritedFence) inheritedFence.starts++ } }, deadline)
-          if (learningShoreResult) return learningShoreResult
-          const entityId = entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id)
-          const dimension = value => ['overworld', 'nether', 'end'][value] ?? value
-          const fence = inheritedFence ?? { deadline, createdAt: deadline - 4000, origin: initial, sent: initial.movement?.sent ?? 0, motionFrames: queuedMotionFrames, unprovedFrames: unprovedInputFrames, starts: 0, replans: 0, guardInvoked: false, identities: new Map((initial.entities ?? []).map(entity => [entityId(entity), { uniqueId: entity.uniqueId == null ? null : String(entity.uniqueId), name: entity.entityType ?? entity.name }])) }
-          let pendingReplan = null
-          const restartState = state => {
-            const origin = fence.origin
-            if (context.signal?.aborted || Date.now() >= fence.deadline || fence.replans >= 2 || fence.guardInvoked || fence.starts !== 0 || state.movement?.sent !== fence.sent || !['idle', 'stopped'].includes(state.movement?.phase) || queuedMotionFrames !== fence.motionFrames || unprovedInputFrames !== fence.unprovedFrames || motionActive() || state.health !== origin.health || state.dead || state.phase !== 'spawned' || state.loading || state.inventory?.known !== true || state.inventory.uncertain) return false
-            if (!['profile', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId', 'rawServerPositionUpdatedAt'].every(key => state[key] === origin[key]) || String(state.realm?.id) !== String(origin.realm?.id) || ![state.position, state.rawServerPosition, origin.position, origin.rawServerPosition].every(point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))) || ['x', 'y', 'z'].some(axis => state.position[axis] !== origin.position[axis] || state.rawServerPosition[axis] !== origin.rawServerPosition[axis])) return false
-            const entities = state.entities ?? [], ids = new Set(), uniqueIds = new Set()
-            for (const entity of entities) {
-              const id = entityId(entity), uid = entity.uniqueId == null ? null : String(entity.uniqueId), old = fence.identities.get(id)
-              if (!uid || ids.has(id) || uniqueIds.has(uid) || entity.positionKnown === false || !entity.position || !['x', 'y', 'z'].every(axis => Number.isFinite(entity.position[axis])) || dimension(entity.dimension) !== dimension(state.dimension) || old && (uid !== old.uniqueId || (entity.entityType ?? entity.name) !== old.name) || !old && [...fence.identities.values()].some(value => value.uniqueId === uid)) return false
-              ids.add(id); uniqueIds.add(uid)
-            }
-            if ([...fence.identities].some(([id, old]) => !ids.has(id) && !(state.removedEntities ?? []).some(receipt => String(receipt.runtimeId) === id && String(receipt.uniqueId) === old.uniqueId && receipt.entityType === old.name && (typeof receipt.removedAt === 'number' ? receipt.removedAt : Date.parse(receipt.removedAt)) >= fence.createdAt))) return false
-            const observed = evaluateThreats(state, entities, { observationRadius: 32 })
-            return !observed.requiresObservation && !(state.entityStats?.unknownPositions > observed.unknownPositions.length)
-          }
-          const jumpSearchDiagnostic = { candidates: 0, previews: 0, verified: 0, rejected: 0, hungerReady: null, elapsedMs: 0, maxSliceMs: 0, chosen: null, attempts: 0, reason: 'ordinary_planning', preMovementReplans: fence.replans, deadline }
-          boundedJumpSearch = jumpSearchDiagnostic
-          let jumpSearchStartedAt = null
-          const retainedActors = [...new Map([...captureWorkActors(initial, evaluateThreats(initial, initial.entities, { observationRadius: 32 })), ...(context.retainedActors ?? [])].map(actor => [actor.runtimeId, actor])).values()]
-          const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
-          const feet = state => ({ ...state.position, y: state.position.y - 1.62 })
-          const eye = point => ({ ...point, y: point.y + 1.62 })
-          const assessEnemies = state => {
-            const actors = safetyActors(state, state.entities ?? [])
-            const canonical = evaluateThreats(state, actors, { observationRadius: 32 })
-            if (canonical.requiresObservation || state.entityStats?.unknownPositions > canonical.unknownPositions.length) throw new Error('Idle escape actor positions are unknown')
-            const retained = resolveWorkActors(state, canonical, retainedActors)
-            if (retained.invalid.length) throw new Error('Idle escape retained actor identity, policy or scope changed')
-            const value = workEscapeEvaluation(canonical, retained.actors)
-            // Match Guard: actual threats keep their distance; an outside actor
-            // contributes its danger circle unless its current full proof applies.
-            const outside = value.outsideDanger.filter(actor => {
-              const entity = actors.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
-              return !entity || !terrainOcclusionApplies(state, entity)
-            })
-            return { ...value, outside }
-          }
-          const baseline = assessEnemies(initial)
-          const unarmedMixed = isUnarmedCreeperZombie(initial, baseline.threats) || verifyShallowWater(initial, { signal, allowDeepSurface: true }) && isUnarmedCreeperZombie(initial, baseline.threats, { creeperMinimum: 4, zombieMinimum: baseline.threats.length === 2 && baseline.threats.some(value => value.name === 'minecraft:zombie') ? 9 : 9.5, allowSingle: true, allowCloseZombie: true })
-          const diagnostics = { visited: 0, candidates: 0, partials: 0, previews: 0, readyPreviews: 0, floorBlocked: 0, bodyBlocked: 0, terrainUnknown: 0, awayBlocked: 0, gainBlocked: 0 }
-          const known = [...baseline.threats, ...baseline.outside]
-          const ids = new Map(baseline.threats.map(actor => {
-            const entity = initial.entities.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
-            return [actor.runtimeId, { ...actor, uniqueId: entity?.uniqueId == null ? null : String(entity.uniqueId) }]
-          }))
-          const outsideTracked = new Map(baseline.outside.flatMap(actor => {
-            const entity = initial.entities.find(value => String(value.runtimeId ?? value.runtimeEntityId ?? value.entityId ?? value.id) === actor.runtimeId)
-            return (outsideSkeletonFloor(actor) !== null || unarmedMixed && outsideUnarmedSpiderFloor(actor) !== null) && entity?.uniqueId != null ? [[actor.runtimeId, { ...actor, uniqueId: String(entity.uniqueId) }]] : []
-          }))
-          const primary = baseline.threats.find(actor => actor.runtimeId === context.threats?.[0]?.runtimeId)
-          let remainingTargets = null
-          let remainingJumpTrace = null; let remainingJumpIndex = 0
-          let remainingConstrained = false
-          let dropTrace = null; let dropTraceIndex = 0; let dropCircles = null; let shallowWaterRun = false; let shallowWaterCheck = null; let shallowSurfaceY = null; let briefSubmerge = false; let submergedSince = null; let lowHealthSurfaceRun = false; let lowHealthSurfaceOrigin = null
-          const inspect = state => {
-            if (signal.aborted) return
-            const startedAt = performance.now()
-            try {
-              requireSafety()
-              if (state.dead || !(state.health > 0)) throw new Error('Idle escape stopped on death or unknown health')
-              if (state.health < initial.health - 1e-6) throw new Error('Idle escape stopped on observed damage')
-              if (Date.now() >= deadline) throw new Error('Idle escape four-second deadline exceeded')
-              const current = assessEnemies(state)
-              const changed = current.threats.filter(actor => {
-                const previous = ids.get(actor.runtimeId) ?? outsideTracked.get(actor.runtimeId)
-                const entity = state.entities.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
-                return !previous || actor.name !== previous.name || actor.dangerRadius > previous.dangerRadius || previous.uniqueId != null && String(entity?.uniqueId) !== previous.uniqueId
-              })
-              if (changed.length) {
-                const error = new Error('Idle escape danger changed')
-                const additions = changed.every(actor => !ids.has(actor.runtimeId) && !outsideTracked.has(actor.runtimeId) && !fence.identities.has(actor.runtimeId))
-                if (additions && restartState(state)) {
-                  const request = { state, operationId: context.operationId, deadline, movementStarts: fence.starts, replanCount: fence.replans + 1 }
-                  if (typeof context.onPreMovementReplan !== 'function' || context.onPreMovementReplan(request) === true) pendingReplan = { error, state }
-                }
-                throw error
-              }
-              if (dropTrace && dropCircles) {
-                if (lowHealthSurfaceRun && (!lowHealthSurfaceEligible(state, [...current.threats, ...current.outside], generationPhysics, { starting: false, surfaceY: shallowSurfaceY }) || Math.hypot(state.position.x - lowHealthSurfaceOrigin.x, state.position.z - lowHealthSurfaceOrigin.z) > 1.5)) throw new Error('Low-health surface body, breath, actor or distance changed')
-                const physical = state.predicted?.physicsState ?? state.physicsState
-                if (shallowWaterRun && (!state.position || !['x', 'y', 'z'].every(axis => Number.isFinite(state.position[axis])) || state.position.y - 1.62 < shallowSurfaceY - (briefSubmerge ? 1.85 : 1.60) || physical?.isInLava)) throw new Error('Shallow escape exceeded its known water depth')
-                if (shallowWaterRun && briefSubmerge) {
-                  if (state.position.y < shallowSurfaceY + 0.02) submergedSince ??= Date.now()
-                  else submergedSince = null
-                  if (submergedSince != null && Date.now() - submergedSince > 500) throw new Error('Surface recovery exceeded the bounded submersion time')
-                }
-                const actors = new Map([...current.threats, ...current.outside].map(actor => [actor.runtimeId, actor]))
-                // Surface buoyancy is checked against its own depth/headroom
-                // bounds above and below. It must not look like lateral
-                // departure from an otherwise unchanged swimming corridor.
-                const corridorDistance = point => shallowWaterRun ? Math.hypot(point.x - state.position.x, point.z - state.position.z) : distance(eye(point), state.position)
-                const nearest = dropTrace.reduce((best, point, index) => index < dropTraceIndex ? best : !best || corridorDistance(point) < best.distance ? { index, distance: corridorDistance(point) } : best, null)
-                if (!nearest || nearest.distance > 0.5) throw new Error('Controlled descent left its predicted corridor')
-                dropTraceIndex = nearest.index
-                const remaining = [state.position, ...dropTrace.slice(dropTraceIndex + 1).map(eye)]
-                if (shallowWaterRun && (!shallowWaterCheck || !shallowWaterCheck(feet(state)) || dropTrace.slice(dropTraceIndex + 1, dropTraceIndex + 6).some(point => !shallowWaterCheck(point)))) throw new Error('Shallow escape terrain or headroom changed')
-                if (current.outside.some(actor => !dropCircles.some(circle => circle.id === actor.runtimeId) && remaining.slice(1).some((point, index) => segmentDistance(actor.position, remaining[index], point) < actor.dangerRadius - 1e-4))) throw new Error('Controlled descent newly exposed actor intersects the remaining path')
-                for (const circle of dropCircles) {
-                  const actor = actors.get(circle.id)
-                  const entity = state.entities.find(value => String(value.runtimeId ?? value.runtimeEntityId ?? value.entityId ?? value.id) === circle.id)
-                  const unsafe = (reason, extra = {}) => Object.assign(new Error('Controlled descent actor or remaining path became unsafe'), { escapeDiagnostic: { reason, actorId: circle.id, actorName: actor?.name ?? null, ...extra } })
-                  // A death event is authoritative evidence that this exact
-                  // tracked actor no longer poses a collision threat. Missing,
-                  // replaced or merely out-of-range actors remain unknown.
-                  if (!actor && entity?.alive === false && String(entity.uniqueId) === circle.uniqueId && (entity.lastEvent?.event === 'death_animation' || entity.lastEvent?.event === 3)) continue
-                  // A server remove event for an actor that was already
-                  // outside the danger set means it is no longer tracked by
-                  // this client. Any later add or approach is checked again.
-                  const removed = !actor && !entity && !ids.has(circle.id) && (state.removedEntities ?? []).some(value => value.runtimeId === circle.id && value.uniqueId === circle.uniqueId)
-                  if (removed) continue
-                  if (!actor || String(entity?.uniqueId) !== circle.uniqueId || actor.dangerRadius > circle.radius) throw unsafe(!actor ? 'actor_unobserved' : String(entity?.uniqueId) !== circle.uniqueId ? 'identity_changed' : 'radius_increased')
-                  // A pursuer may close in while the player moves away. In
-                  // bounded surface water, recompute the remaining path from
-                  // the current actor pose, without crossing hard floors.
-                  const mobileWaterActor = shallowWaterRun && circle.horizontalMinimum != null
-                  const distanceFloor = mobileWaterActor ? Math.max(circle.hardEye, Math.min(circle.minDistance, actor.distance - 0.4)) : circle.minDistance
-                  if (actor.distance < (mobileWaterActor ? circle.hardEye : distanceFloor) - 1e-4) throw unsafe('actor_inside_floor', { distance: actor.distance, floor: mobileWaterActor ? circle.hardEye : distanceFloor })
-                  const pathDistance = remaining.slice(1).reduce((min, point, index) => Math.min(min, segmentDistance(actor.position, remaining[index], point)), Infinity)
-                  if (pathDistance < distanceFloor - 1e-4) throw unsafe('remaining_path_inside_floor', { distance: actor.distance, pathDistance, floor: distanceFloor })
-                  const horizontal = Math.hypot(actor.position.x - state.position.x, actor.position.z - state.position.z)
-                  const horizontalFloor = mobileWaterActor ? Math.max(circle.hardHorizontal, Math.min(circle.horizontalMinimum, horizontal - 0.05)) : circle.horizontalMinimum
-                  if (mobileWaterActor && (horizontal < circle.hardHorizontal || remaining.slice(1).some((point, index) => segmentDistance({ ...actor.position, y: 0 }, { ...remaining[index], y: 0 }, { ...point, y: 0 }) < horizontalFloor - 1e-4))) throw new Error('Shallow escape creeper horizontal distance became unsafe')
-                }
-              }
-              if (remainingJumpTrace) {
-                const currentFeet = feet(state)
-                const nearest = remainingJumpTrace.reduce((best, point, index) => index < remainingJumpIndex ? best : !best || distance(point, currentFeet) < best.distance ? { index, distance: distance(point, currentFeet) } : best, null)
-                if (!nearest || nearest.distance > 0.5) throw new Error('Idle bounded jump left its proven arc')
-                remainingJumpIndex = nearest.index
-                const points = [state.position, ...remainingJumpTrace.slice(remainingJumpIndex + 1).map(eye)]
-                if (current.outside.some(actor => points.slice(1).some((point, index) => segmentDistance(actor.position, points[index], point) < actor.dangerRadius - 1e-4))) throw new Error('Idle bounded jump remaining arc danger changed')
-              }
-              if (remainingTargets) {
-                const currentFeet = feet(state)
-                const physical = state.predicted?.physicsState ?? state.physicsState
-                if (physical?.onGround !== false) {
-                  const reached = remainingTargets.findLastIndex(point => Math.abs(currentFeet.y - point.y) <= 1e-4 && Math.hypot(currentFeet.x - point.x, currentFeet.z - point.z) <= 0.4)
-                  if (reached >= 0) remainingTargets.splice(0, reached + 1)
-                }
-                const points = [state.position, ...remainingTargets.map(eye)]
-                if (current.outside.some(actor => points.slice(1).some((point, index) => segmentDistance(actor.position, points[index], point) < (remainingConstrained ? constrainedFloors.get(actor.runtimeId) ?? actor.dangerRadius : actor.dangerRadius) - 1e-4))) throw new Error('Idle escape remaining path danger changed')
-              }
-            } catch (error) { controller.abort(error) } finally {
-              if (process.env.MINECRAFT_CAPTURE_EMERGENCY === '1') {
-                host.shared.perfObservations ??= {}
-                host.shared.perfObservations.escapeInspectMs = Math.max(host.shared.perfObservations.escapeInspectMs ?? 0, performance.now() - startedAt)
-              }
-            }
-          }
-          // safetyState routes through inspectIdleEscape already; do not run
-          // the expensive terrain/actor inspection twice for the same read.
-          const ensure = () => surfaceTimed('ensure', () => { requireSafety(); if (signal.aborted) throw signal.reason; const observed = safetyState(); if (signal.aborted) throw signal.reason; return observed })
-          const yieldPlanning = async () => {
-            // Check ownership/abort cheaply before yielding. The one complete
-            // fresh observation after the timer turn still performs inspect.
-            requireSafety()
-            if (signal.aborted) throw signal.reason
-            maintainIdle()
-            await new Promise(resolve => setImmediate(resolve))
-            const state = ensure()
-            maintainIdle()
-            return state
-          }
-          const segmentDistance = (point, a, b) => {
-            const delta = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z }
-            const length = delta.x ** 2 + delta.y ** 2 + delta.z ** 2
-            const t = length ? Math.max(0, Math.min(1, ((point.x - a.x) * delta.x + (point.y - a.y) * delta.y + (point.z - a.z) * delta.z) / length)) : 0
-            return distance(point, { x: a.x + t * delta.x, y: a.y + t * delta.y, z: a.z + t * delta.z })
-          }
-          const constrainedPrimary = selectConstrainedPrimary(baseline.threats, initial.health)
-          const constrainedFloors = new Map(baseline.threats.filter(actor => actor.runtimeId !== constrainedPrimary?.runtimeId).flatMap(actor => {
-            const floor = unarmedMixed && actor.name === 'minecraft:zombie' ? unarmedZombieFloor(actor) : unarmedMixed && actor.name === 'minecraft:spider' ? activeUnarmedSpiderFloor(actor) : constrainedSecondaryFloor(actor, constrainedPrimary, baseline.threats, initial.health)
-            const observed = ids.get(actor.runtimeId)
-            return floor !== null && observed?.uniqueId != null ? [[actor.runtimeId, floor]] : []
-          }))
-          for (const actor of baseline.outside) if (outsideTracked.has(actor.runtimeId)) constrainedFloors.set(actor.runtimeId, (unarmedMixed ? outsideUnarmedSpiderFloor(actor) : null) ?? outsideSkeletonFloor(actor))
-          const awayFromActors = (from, to, actors = known, constrained = false) => {
-            const safe = actors.every(actor => segmentDistance(actor.position, eye(from), eye(to)) >= (constrained && constrainedFloors.has(actor.runtimeId) ? constrainedFloors.get(actor.runtimeId) : ids.has(actor.runtimeId) ? distance(actor.position, eye(from)) : actor.dangerRadius) - 1e-4)
-            if (!safe) diagnostics.awayBlocked++
-            return safe
-          }
-          const cellSafe = point => {
-            try {
-              const hazard = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush|concrete_powder$|anvil$)/
-              const cube = block => block.shapes.some(box => box.every((value, index) => value === [0, 0, 0, 1, 1, 1][index]))
-              // Reject an endpoint whose player footprint reaches into a
-              // neighbouring blocked cell, not just the centre column.
-              for (let x = Math.floor(point.x - 0.3 + 1e-4); x <= Math.floor(point.x + 0.3 - 1e-4); x++) for (let z = Math.floor(point.z - 0.3 + 1e-4); z <= Math.floor(point.z + 0.3 - 1e-4); z++) {
-                const floor = generationPhysics.blockAt({ x, y: point.y - 1, z })
-                if (hazard.test(floor.name) || !cube(floor)) { diagnostics.floorBlocked++; return false }
-                if (/^(?:sand|red_sand|gravel)$/.test(floor.name)) {
-                  let stable = false
-                  for (let depth = 1; depth <= 8; depth++) {
-                    const below = generationPhysics.blockAt({ x, y: point.y - 1 - depth, z })
-                    if (hazard.test(below.name) || !cube(below)) break
-                    if (!/^(?:sand|red_sand|gravel)$/.test(below.name)) { stable = true; break }
-                  }
-                  if (!stable) { diagnostics.floorBlocked++; return false }
-                }
-                for (const y of [point.y, point.y + 1]) { const body = generationPhysics.blockAt({ x, y, z }); if (hazard.test(body.name) || body.shapes.length) { diagnostics.bodyBlocked++; return false } }
-              }
-              return true
-            } catch { diagnostics.terrainUnknown++; return false }
-          }
-          let timer; let watch
-          inspectIdleEscape = inspect
-          const inspectPacket = () => { try { safetyState() } catch (error) { controller.abort(error) } }
-          inspectIdleEscapePacket = inspectPacket
-          try {
-            timer = setTimeout(() => controller.abort(new Error('Idle escape four-second deadline')), Math.max(1, deadline - Date.now()))
-            watch = setInterval(() => { try { safetyState() } catch (error) { controller.abort(error) } }, 25)
-            let planningState = initial; let episodeMovementStarts = fence.starts; let boundedJumpAttempted = false; let lastBoundedPartial = null
-            escapePlanning: while (true) {
-            ensure()
-            const initial = planningState
-            const baseline = assessEnemies(initial)
-            const known = [...baseline.threats, ...baseline.outside]
-            const primary = baseline.threats.find(actor => actor.runtimeId === context.threats?.[0]?.runtimeId) ?? baseline.threats[0]
-            const away = (from, to, actors = known, constrained = false) => awayFromActors(from, to, actors, constrained)
-            const origin = feet(initial)
-            const lowHealthSurfaceDiagnostic = { observedAt: new Date().toISOString(), health: initial.health, reason: 'not_checked', previews: 0, ready: 0, attempts: 0, maxSlice: surfaceTiming.maxSlice }
-            const receivedSurfaceOrigin = lowHealthSurfaceEligible(initial, known, generationPhysics, { diagnostic: lowHealthSurfaceDiagnostic })
-            host.shared.lowHealthWaterDiagnostic = lowHealthSurfaceDiagnostic
-            const alreadyShallow = receivedSurfaceOrigin || verifyShallowWater(initial, { signal, allowDeepSurface: true })
-            const fullOrigin = alreadyShallow || await verifyRouteStanding(initial, origin, { signal })
-            const partialOrigin = !fullOrigin && await verifyRouteOrigin(initial, origin, { signal, stablePartialOrigin: true })
-            if (!primary && fullOrigin && !alreadyShallow) {
-              const retreat = await tryRecentDamageNoPrimary({ ...initial, lifecycle: { phase: 'alive', deathId: actualLifeId(), dead: initial.dead === true } }, { ...context, signal, movementBudget: Math.max(0, 5 - episodeMovementStarts), onMovementStart: () => { episodeMovementStarts++; fence.starts = episodeMovementStarts } }, deadline)
-              if (retreat) return retreat
-            }
-            if (!primary || !alreadyShallow && !fullOrigin && !partialOrigin) {
-              const physical = initial.predicted?.physicsState ?? initial.physicsState
-              if (primary && resourceMinHealth(initial) === 0 && partialEscapeAction && physical?.onGround === true && !physical.isInWater && !physical.isInLava && verifyLedgeBody(initial, { signal })) return partialEscapeAction({ ...context, signal })
-              return { supported: false, reason: 'no_known_escape_origin' }
-            }
-            const urgentCreeper = baseline.threats.length === 1 && primary.name === 'minecraft:creeper' && primary.distance < 4.5
-            const queue = alreadyShallow ? [] : [{ position: origin, depth: 0 }]; const visited = new Set(); const candidates = []; const partials = []; let planningChecks = 0
-            let planningSlice = surfaceMark()
-            const yieldCandidatePlanning = async (force = false) => {
-              if (!force && ++planningChecks % 64 !== 0 && performance.now() - planningSlice.at < 12) return
-              surfaceRecord('escapeCandidateSlice', planningSlice)
-              if (process.env.MINECRAFT_CAPTURE_EMERGENCY === '1') {
-                host.shared.perfObservations ??= {}
-                host.shared.perfObservations.escapePlanningMaxSliceMs = Math.max(host.shared.perfObservations.escapePlanningMaxSliceMs ?? 0, surfaceTiming.lastSlice.ms)
-              }
-              await yieldPlanning()
-              planningSlice = surfaceMark()
-            }
-            for (let i = 0; i < queue.length && i < (urgentCreeper ? 24 : 256); i++) {
-              // Yield often enough for incoming actor, damage and abort
-              // packets while bounding the cost of the local BFS.
-              if ((i & 15) === 0) await yieldCandidatePlanning(true)
-              const node = queue[i]
-              if (node.depth >= (urgentCreeper ? 3 : 6)) continue
-              for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (const dy of [0, -1, 1]) {
-                await yieldCandidatePlanning()
-                const target = { x: Math.floor(node.position.x) + dx + 0.5, y: Math.round(node.position.y) + dy, z: Math.floor(node.position.z) + dz + 0.5 }
-                const key = [target.x, target.y, target.z].join(',')
-                if (visited.has(key) || !cellSafe(target) || !away(node.position, target)) continue
-                if (distance(primary.position, eye(target)) < distance(primary.position, eye(node.position)) + 0.25) { diagnostics.gainBlocked++; continue }
-                visited.add(key); queue.push({ position: target, depth: node.depth + 1 })
-                const gain = distance(primary.position, eye(target)) - primary.distance
-                if (gain >= 0.25) {
-                  const candidate = { target, depth: node.depth + 1, gain }
-                  if (known.every(actor => distance(actor.position, eye(target)) > actor.dangerRadius + 0.2)) candidates.push(candidate)
-                  else if (baseline.threats.every(actor => distance(actor.position, eye(target)) >= actor.distance + 0.15)) partials.push(candidate)
-                }
-              }
-            }
-            // Grid-only steps can be trapped between two hostile circles even
-            // when a diagonal path on the same known floor moves away from
-            // both. Try finite headings; Nav and Guard verify the full path.
-            for (let angle = 0; !alreadyShallow && angle < 32; angle += urgentCreeper ? 2 : 1) for (const length of urgentCreeper ? [0.75, 1, 1.5, 2] : [0.75, 1, 1.5, 2, 4, 6]) {
-              await yieldCandidatePlanning()
-              const theta = angle * Math.PI / 16
-              const target = { x: origin.x + Math.cos(theta) * length, y: origin.y, z: origin.z + Math.sin(theta) * length }
-              // A short diagonal can unlock the next safe segment between
-              // several threat circles. Guard still requires a 0.25 gain from
-              // the primary and validates the entire swept route.
-              const minimumGain = length < 2 ? 0.15 : 0.5
-              if (!cellSafe(target) || !away(origin, target)) continue
-              if (distance(primary.position, eye(target)) < primary.distance + 0.25 || !baseline.threats.every(actor => distance(actor.position, eye(target)) >= actor.distance + minimumGain)) { diagnostics.gainBlocked++; continue }
-              const candidate = { target, depth: Math.ceil(length), gain: distance(primary.position, eye(target)) - primary.distance }
-              if (known.every(actor => distance(actor.position, eye(target)) > actor.dangerRadius + 0.2)) candidates.push(candidate)
-              else partials.push(candidate)
-            }
-            // Small offsets within the adjacent cell matter when the opening
-            // is bordered by leaves or trunks; the body is wider than a point.
-            const originOffsets = partialOrigin ? [0, -0.15, 0.15, -0.25, 0.25] : [0, -0.15, 0.15]
-            const originDirections = partialOrigin ? [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] : [[1, 0], [-1, 0], [0, 1], [0, -1]]
-            for (const [dx, dz] of (alreadyShallow ? [] : originDirections)) for (const dy of (partialOrigin ? [0, -1] : [0])) for (const ox of originOffsets) for (const oz of originOffsets) {
-              await yieldCandidatePlanning()
-              if (!dx && !dz && dy) continue
-              const target = { x: Math.floor(origin.x) + dx + 0.5 + ox, y: Math.round(origin.y) + dy, z: Math.floor(origin.z) + dz + 0.5 + oz }
-              const gain = distance(primary.position, eye(target)) - primary.distance
-              if (distance(origin, target) > 2 || gain < 0.25 || !cellSafe(target) || !away(origin, target) || !baseline.threats.every(actor => distance(actor.position, eye(target)) >= actor.distance + 0.15)) continue
-              const boundedRecenter = partialOrigin && !dy && distance(origin, target) <= 1.2
-              const candidate = { target, depth: 1, gain, ...(boundedRecenter ? { recenter: true, recenterOffset: Math.abs(ox) + Math.abs(oz) } : {}) }
-              if (known.every(actor => distance(actor.position, eye(target)) > actor.dangerRadius + 0.2)) candidates.push(candidate)
-              else partials.push(candidate)
-            }
-            // Prefer useful pause clearance over the first point just outside
-            // a hostile radius. Every chosen route still uses the actual hard
-            // distance floors, complete body checks and the same deadline.
-            const pauseClearance = candidate => Math.min(...known.map(actor => distance(actor.position, eye(candidate.target)) - actor.dangerRadius - WORK_MARGIN))
-            candidates.sort((a, b) => pauseClearance(b) - pauseClearance(a) || b.gain - a.gain || a.depth - b.depth)
-            partials.sort((a, b) => initial.health <= 6 ? a.depth - b.depth || b.gain - a.gain : b.gain - a.gain || a.depth - b.depth)
-            diagnostics.visited = visited.size; diagnostics.candidates = candidates.length; diagnostics.partials = partials.length
-            const choices = candidates.length ? [...candidates.slice(0, 6), ...partials.slice(0, 6)] : partials.slice(0, 12)
-            // A nearby creeper leaves little time for previews. Include one
-            // partial escape when available: a distant destination can fail
-            // even though a shorter, guarded move away is feasible. The
-            // supervisor can replan after that move from fresh observations.
-            if (!['confirmed_leaf_clearance', 'confirmed_soil_clearance', 'confirmed_drowned_step_clearance','confirmed_skeleton_step_clearance'].includes(context.reason) && baseline.threats.length === 1 && primary.name === 'minecraft:creeper' && primary.distance < 6.5) {
-              const shortPartial = partials.filter(candidate => primary.distance + candidate.gain < primary.dangerRadius - 0.1 && candidate.gain >= 0.5).sort((a, b) => distance(origin, a.target) - distance(origin, b.target) || b.gain - a.gain)[0]
-              const first = candidates[0] ?? shortPartial ?? partials[0]
-              const second = candidates[0] ? shortPartial ?? partials[0] ?? candidates[1] : partials.find(candidate => candidate !== first)
-              const next = [...partials, ...candidates].filter(candidate => candidate !== first && candidate !== second).sort((a, b) => distance(origin, a.target) - distance(origin, b.target))
-              choices.splice(0, choices.length, ...[first, second, ...next.slice(0, 2)].filter(Boolean))
-            }
-            // The leaf planner has already simulated a route through the
-            // intended opening. Recheck that exact point against the latest
-            // terrain and actors, then run the ordinary live preview and Guard.
-            const preferred = context.preferredTarget
-            if (['confirmed_leaf_clearance', 'confirmed_soil_clearance', 'confirmed_drowned_step_clearance','confirmed_skeleton_step_clearance'].includes(context.reason) && preferred && ['x', 'y', 'z'].every(axis => Number.isFinite(preferred[axis])) && distance(origin, preferred) <= 2 && Math.abs(preferred.y - origin.y - (['confirmed_soil_clearance','confirmed_drowned_step_clearance','confirmed_skeleton_step_clearance'].includes(context.reason) ? 1 : 0)) < 1e-4 && distance(primary.position, eye(preferred)) >= primary.distance + 0.25 && cellSafe(preferred) && away(origin, preferred)) choices.unshift({ target: { ...preferred }, depth: 1, gain: distance(primary.position, eye(preferred)) - primary.distance })
-            // If no route moves away from every current enemy, consider a
-            // single adjacent step that still moves away from the primary.
-            // Only identified distant secondary zombies, spiders or skeletons
-            // may lose up to 1.5 blocks, never below their fixed floors. The
-            // Guard independently enforces the same bounds on every segment.
-            const selected = initial.rawServerSelectedSlot ?? initial.rawSelectedSlot
-            const sword = initial.inventory?.known === true && !initial.inventory.uncertain && initial.equipmentServerConfirmed !== false && initial.inventory.items?.some(item => item.slot === selected && item.count === 1 && /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/.test(item.name) && initial.heldItem?.name === item.name && initial.heldItem?.count === 1)
-            if (initial.health > 6 && (sword || unarmedMixed) && baseline.threats.length > 1 && constrainedFloors.size && baseline.threats.every(actor => ids.get(actor.runtimeId)?.uniqueId != null)) {
-              const constrainedChoices = []
-              let checked = 0
-              for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) for (const dy of [0, -1, 1]) for (const ox of [0, -0.15, 0.15]) for (const oz of [0, -0.15, 0.15]) {
-                if (++checked % 12 === 0) await yieldPlanning()
-                const target = { x: Math.floor(origin.x) + dx + 0.5 + ox, y: Math.round(origin.y) + dy, z: Math.floor(origin.z) + dz + 0.5 + oz }
-                const gain = distance(constrainedPrimary.position, eye(target)) - constrainedPrimary.distance
-                if (distance(origin, target) > 2 || gain < 0.25 || !cellSafe(target) || !away(origin, target, known, true)) continue
-                constrainedChoices.push({ target, depth: 1, gain, constrained: true })
-              }
-              constrainedChoices.sort((a, b) => b.gain - a.gain)
-              choices.push(...constrainedChoices)
-            }
-            let lastRejected = null
-            const previewCandidate = async candidate => {
-              await yieldPlanning(); motionOrigin = working()
-              diagnostics.previews++
-              // The actor may have moved while the bounded search yielded.
-              // Use its newest received position for each live preview; the
-              // identity/radius check in ensure() still fences new dangers.
-              const previewState = safetyState(), current = assessEnemies(previewState)
-              let currentKnown = [...current.threats, ...current.outside]
-              const avoidance = currentKnown.map(actor => {
-                const minDistance = candidate.constrained && constrainedFloors.has(actor.runtimeId) ? constrainedFloors.get(actor.runtimeId) : ids.has(actor.runtimeId) ? actor.distance : actor.dangerRadius
-                // Guard uses this padding rule for its live movement preview.
-                // Checking with zero padding here could select a candidate the
-                // Guard immediately rejects, wasting the emergency deadline.
-                const padding = candidate.constrained ? 0 : Math.min(0.5, Math.max(0, distance(actor.position, eye(candidate.target)) - minDistance))
-                return { id: actor.runtimeId, position: { ...actor.position }, minDistance, padding }
-              })
-              const live = generationMovement.preview(candidate.target, { emergency: true, allowWater: false, directFlat: true, exactGoal: true, stablePartialOrigin: true, maxDistance: 8, maxExpanded: 800, avoidance })
-              if (!live.ready || !Array.isArray(live.waypoints) || !live.waypoints.length || live.waypoints.length > 8) return null
-              const refreshed = await yieldPlanning()
-              if (distance(refreshed.position, previewState.position) > 0.05) return null
-              const refreshedActors = assessEnemies(refreshed)
-              currentKnown = [...refreshedActors.threats, ...refreshedActors.outside]
-              diagnostics.readyPreviews++
-              let previous = feet(safetyState()); let allowed = true
-              for (const [index, waypoint] of live.waypoints.entries()) {
-                const point = waypoint.position
-                const sameCellConnector = point && index === 0 && Math.floor(point.x) === Math.floor(previous.x) && Math.floor(point.z) === Math.floor(previous.z) && Math.abs(point.y - previous.y) <= 1e-4 && distance(point, previous) <= (partialOrigin && candidate.recenter ? 1.2 : 0.5)
-                const diagonalConnector = point && index === 0 && waypoint.action === 'walk' && Math.abs(point.y - previous.y) <= 1e-4 && Math.abs(Math.floor(point.x) - Math.floor(previous.x)) === 1 && Math.abs(Math.floor(point.z) - Math.floor(previous.z)) === 1 && distance(point, previous) <= 1.5 && Array.from({ length: Math.max(1, Math.ceil(distance(point, previous) / 0.1)) + 1 }, (_, i) => i / Math.max(1, Math.ceil(distance(point, previous) / 0.1))).every(ratio => cellSafe({ x: previous.x + (point.x - previous.x) * ratio, y: previous.y, z: previous.z + (point.z - previous.z) * ratio }))
-                const adjacent = point && (sameCellConnector || diagonalConnector || live.directFlat === true && live.waypoints.length === 1 && Math.abs(point.y - previous.y) <= 1e-4 && distance(point, previous) <= 6.1 || Math.abs(Math.floor(point.x) - Math.floor(previous.x)) + Math.abs(Math.floor(point.z) - Math.floor(previous.z)) === 1)
-                // A safe detour can turn slightly toward an actor after first
-                // increasing separation. Keep the fixed observed minimum for
-                // every segment, as the independent Guard also does.
-                const corridorSafe = point && currentKnown.every(actor => segmentDistance(actor.position, eye(previous), eye(point)) >= (candidate.constrained && constrainedFloors.has(actor.runtimeId) ? constrainedFloors.get(actor.runtimeId) : ids.has(actor.runtimeId) ? actor.distance : actor.dangerRadius) - 1e-4)
-                // The received feet position can be a few float32 microns
-                // above its block height; keep the same contact tolerance as
-                // navigation when checking a one-block elevation change.
-                if (!adjacent || waypoint.medium !== 'land' || !['walk', 'jump'].includes(waypoint.action) || Math.abs(point.y - previous.y) > 1.0001 || !cellSafe(point) || !corridorSafe) { allowed = false; break }
-                previous = point
-              }
-              if (!allowed || distance(previous, candidate.target) > 0.05 || candidate.constrained && live.waypoints.length !== 1) return null
-              // Rehearse descents and short multi-threat routes. A geometrical
-              // target can be reachable while the settled pose falls short of
-              // Guard's required gain or needs an unreceived lower block.
-              const descentState = safetyState()
-              const shortMultiThreat = baseline.threats.length > 1 && Math.hypot(candidate.target.x - descentState.position.x, candidate.target.z - descentState.position.z) <= 2.5
-              if (['confirmed_soil_clearance','confirmed_drowned_step_clearance','confirmed_skeleton_step_clearance'].includes(context.reason) || candidate.recenter || candidate.target.y < feet(descentState).y - 0.5 || shortMultiThreat) {
-                try {
-                  const navigator = createNavigator({ world: planningWorld, version: host.meta.version, physics: generationPlanningPhysics })
-                  const initialPhysics = navigator.physics.fromServer(descentState)
-                  const simulated = navigator.createStepper(live, initialPhysics, { maxTicks: 80, sprint: false })
-                  let last = descentState.position; let complete = false
-                  for (let tick = 0; tick < 80; tick++) {
-                    if (tick > 0 && tick % 4 === 0) {
-                      const current = await yieldPlanning()
-                      if (distance(current.position, descentState.position) > 0.05) return null
-                      const actors = assessEnemies(current)
-                      currentKnown = [...actors.threats, ...actors.outside]
-                    }
-                    const frame = simulated.next(); const point = eye(frame.predictedState.position)
-                    if (frame.predictedState.isInWater || frame.predictedState.isInLava || currentKnown.some(actor => segmentDistance(actor.position, last, point) < (candidate.constrained && constrainedFloors.has(actor.runtimeId) ? constrainedFloors.get(actor.runtimeId) : ids.has(actor.runtimeId) ? actor.distance : actor.dangerRadius) - 1e-4)) break
-                    last = point
-                    if (frame.phase === 'awaiting_server_confirmation') { complete = !['confirmed_soil_clearance','confirmed_drowned_step_clearance','confirmed_skeleton_step_clearance'].includes(context.reason) || navigator.verifyOrigin(frame.predictedState); break }
-                    if (frame.phase !== 'moving') break
-                  }
-                  const predictedPrimary = currentKnown.find(actor => actor.runtimeId === (candidate.constrained ? constrainedPrimary.runtimeId : primary.runtimeId))
-                  if (!complete || !predictedPrimary || distance(predictedPrimary.position, last) < distance(predictedPrimary.position, descentState.position) + 0.25) return null
-                } catch { return null }
-              }
-              return live
-            }
-            if (partialOrigin) {
-              // First restore a complete footprint within the current or an
-              // adjacent cell, using the same bounded partial-origin connector.
-              // A valid cell centre has more landing margin than an offset;
-              // prove at most two short choices before the ordinary gain list.
-              const recenters = [...candidates, ...partials].filter(candidate => candidate.recenter).sort((a, b) => a.recenterOffset - b.recenterOffset || distance(origin, a.target) - distance(origin, b.target) || b.gain - a.gain).slice(0, 2)
-              choices.splice(0, choices.length, ...recenters, ...choices.filter(candidate => !candidate.recenter))
-            }
-            const jumpHungerReady = state => {
-              const value = state.vitals?.hunger
-              const time = value => typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) : NaN
-              const observedAt = time(value?.observedAt), startedAt = time(state.startedAt)
-              const matchingScope = ['connectionId', 'startedAt', 'runtimeEntityId'].every(key => value?.[key] == null || String(value[key]) === String(state[key]))
-              return value?.source === 'server_attribute' && Number.isFinite(value.value) && value.value > 6 && value.value <= 20 && !!state.connectionId && Number.isFinite(startedAt) && matchingScope && Number.isFinite(observedAt) && observedAt <= Date.now() && observedAt >= startedAt
-            }
-            let jumpNavigator = null
-            const previewJump = candidate => {
-              const state = ensure()
-              jumpSearchDiagnostic.hungerReady = jumpHungerReady(state)
-              if (alreadyShallow || boundedJumpAttempted || !jumpSearchDiagnostic.hungerReady || !['profile', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId'].every(key => state[key] === initial[key]) || String(state.realm?.id) !== String(initial.realm?.id)) return null
-              const current = assessEnemies(state), actors = [...current.threats, ...current.outside]
-              const primary = current.threats.find(actor => actor.runtimeId === baseline.threats[0]?.runtimeId) ?? current.threats[0]
-              if (!primary) return null
-              const circles = target => actors.map(actor => {
-                const minDistance = ids.has(actor.runtimeId) ? actor.distance : actor.dangerRadius
-                return { id: actor.runtimeId, position: { ...actor.position }, minDistance, padding: target ? Math.min(0.5, Math.max(0, distance(actor.position, eye(target)) - minDistance)) : 0 }
-              })
-              try {
-                motionOrigin = working()
-                const settings = { emergency: true, sprint: true, allowWater: false, stablePartialOrigin: true, maxDistance: 8, boundedJump: candidate.boundedJump }
-                jumpSearchDiagnostic.previews++
-                const first = generationMovement.preview(null, { ...settings, avoidance: circles(null) })
-                if (!first.ready || !first.boundedJump || !first.target) return null
-                jumpSearchDiagnostic.previews++
-                const live = generationMovement.preview(first.target, { ...settings, avoidance: circles(first.target) })
-                if (!live.ready || !live.boundedJump || !live.target || !Array.isArray(live.predictedTrace) || !Array.isArray(live.neutralCoastTrace) || live.predictedTrace.length < 3 || live.predictedTrace.length > 41 || live.neutralCoastTrace.length < 3 || live.neutralCoastTrace.length > 41 || !(live.apexDrop < 3)) return null
-                const safeSegments = points => points.every(point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis]))) && points.slice(1).every((point, index) => actors.every(actor => segmentDistance(actor.position, eye(points[index]), eye(point)) >= (ids.has(actor.runtimeId) ? actor.distance : actor.dangerRadius) - 1e-4))
-                if (!safeSegments(live.predictedTrace) || !safeSegments(live.neutralCoastTrace) || distance(primary.position, eye(live.target)) < primary.distance + 0.25) return null
-                jumpNavigator ??= createNavigator({ world: planningWorld, version: host.meta.version, physics: generationPlanningPhysics })
-                const rehearsal = jumpNavigator.createStepper(live, generationPlanningPhysics.fromServer(state), { maxTicks: 40, sprint: true })
-                let complete = false
-                for (let tick = 0; tick < 40; tick++) {
-                  const frame = rehearsal.next()
-                  if (frame.phase === 'awaiting_server_confirmation') { complete = frame.boundedJumpLanded === true && jumpNavigator.verifyOrigin(frame.predictedState); break }
-                  if (frame.phase !== 'moving') break
-                }
-                if (!complete) return null
-                candidate.target = { ...live.target }
-                candidate.gain = distance(primary.position, eye(live.target)) - primary.distance
-                candidate.pauseClearance = Math.min(...actors.map(actor => distance(actor.position, eye(live.target)) - actor.dangerRadius - WORK_MARGIN))
-                return live
-              } catch { return null }
-            }
-            const measuredJumpPreview = candidate => {
-              const startedAt = performance.now()
-              jumpSearchDiagnostic.candidates++
-              try {
-                const preview = previewJump(candidate)
-                if (preview) jumpSearchDiagnostic.verified++
-                else jumpSearchDiagnostic.rejected++
-                return preview
-              } finally {
-                const endedAt = performance.now()
-                jumpSearchDiagnostic.maxSliceMs = Math.max(jumpSearchDiagnostic.maxSliceMs, Math.round((endedAt - startedAt) * 10) / 10)
-                if (jumpSearchStartedAt !== null) jumpSearchDiagnostic.elapsedMs = Math.round((endedAt - jumpSearchStartedAt) * 10) / 10
-              }
-            }
-            async function * escapeChoices () {
-              const tiny = choices[0]
-              const compareTiny = urgentCreeper && !['confirmed_leaf_clearance', 'confirmed_soil_clearance', 'confirmed_drowned_step_clearance','confirmed_skeleton_step_clearance'].includes(context.reason) && !alreadyShallow && !boundedJumpAttempted && tiny && Math.hypot(tiny.target.x - origin.x, tiny.target.z - origin.z) < 1
-              if (compareTiny) {
-                jumpSearchStartedAt = performance.now()
-                jumpSearchDiagnostic.reason = 'priority_search'
-                const yaw = -Math.atan2(origin.x - primary.position.x, origin.z - primary.position.z) * 180 / Math.PI
-                const center = ((Math.round(yaw / 11.25) % 32) + 32) % 32
-                const headings = [0, 1, -1, 2, -2, 3, -3].map(offset => (center + offset + 32) % 32)
-                priorityJump: for (const driveTicks of [9, 6, 3]) for (const heading of headings) {
-                  await yieldPlanning()
-                  jumpSearchDiagnostic.hungerReady = jumpHungerReady(ensure())
-                  if (!jumpSearchDiagnostic.hungerReady) { jumpSearchDiagnostic.reason = 'hunger_unready'; break priorityJump }
-                  diagnostics.boundedJumpPreviews = (diagnostics.boundedJumpPreviews ?? 0) + 1
-                  const candidate = { boundedJump: { heading, driveTicks }, constrained: false }
-                  if (!measuredJumpPreview(candidate)) continue
-                  const current = assessEnemies(ensure()), actors = [...current.threats, ...current.outside]
-                  const currentPrimary = current.threats.find(actor => actor.runtimeId === primary.runtimeId)
-                  const ordinaryGain = currentPrimary ? distance(currentPrimary.position, eye(tiny.target)) - currentPrimary.distance : Infinity
-                  const ordinaryClearance = Math.min(...actors.map(actor => distance(actor.position, eye(tiny.target)) - actor.dangerRadius - WORK_MARGIN))
-                  if (candidate.gain <= ordinaryGain || candidate.pauseClearance <= ordinaryClearance) continue
-                  jumpSearchDiagnostic.reason = 'priority_ready'
-                  yield candidate
-                  break priorityJump
-                }
-                if (jumpSearchDiagnostic.reason === 'priority_search') jumpSearchDiagnostic.reason = 'no_stronger_arc'
-              }
-              for (const candidate of choices) yield candidate
-              if (compareTiny) return
-              if (alreadyShallow) { jumpSearchDiagnostic.reason = 'not_dry'; return }
-              if (boundedJumpAttempted) return
-              jumpSearchStartedAt = performance.now()
-              jumpSearchDiagnostic.reason = 'searching'
-              const jumps = []
-              // Prove a small useful-clearance shortlist before committing a
-              // tape. Longer drive can retain the same floors under pursuit.
-              jumpSearch: for (const driveTicks of [9, 6, 3]) for (let heading = 0; heading < 32; heading++) {
-                if (boundedJumpAttempted) return
-                await new Promise(resolve => setImmediate(resolve))
-                jumpSearchDiagnostic.hungerReady = jumpHungerReady(ensure())
-                if (!jumpSearchDiagnostic.hungerReady) { jumpSearchDiagnostic.reason = 'hunger_unready'; jumpSearchDiagnostic.elapsedMs = Math.round((performance.now() - jumpSearchStartedAt) * 10) / 10; return }
-                diagnostics.boundedJumpPreviews = (diagnostics.boundedJumpPreviews ?? 0) + 1
-                const candidate = { boundedJump: { heading, driveTicks }, constrained: false }
-                if (measuredJumpPreview(candidate)) {
-                  jumps.push(candidate)
-                  jumps.sort((a, b) => b.pauseClearance - a.pauseClearance || b.gain - a.gain)
-                  jumps.splice(3)
-                  if (jumps.length === 3) break jumpSearch
-                }
-              }
-              jumpSearchDiagnostic.reason = jumps.length ? 'shortlist_ready' : 'no_safe_arc'
-              for (const candidate of jumps) yield candidate
-            }
-            for await (const candidate of escapeChoices()) {
-              const live = candidate.boundedJump ? measuredJumpPreview(candidate) : await previewCandidate(candidate)
-              if (!live) { if (candidate.boundedJump) jumpSearchDiagnostic.reason = 'fresh_preview_rejected'; continue }
-              ensure()
-              remainingTargets = candidate.boundedJump ? null : live.waypoints.map(waypoint => ({ ...waypoint.position }))
-              remainingJumpTrace = candidate.boundedJump ? [...live.predictedTrace, ...live.neutralCoastTrace.slice(1)].map(point => ({ ...point })) : null
-              remainingJumpIndex = 0
-              remainingConstrained = candidate.constrained === true
-              const before = safetyState()
-              const historyBefore = generationHistory.snapshot()
-              // Server corrections can legitimately require several restarts
-              // while the actor is already making guarded progress. The same
-              // four-second episode deadline and per-frame threat checks still
-              // bound the additional attempts.
-              const remainingStarts = 5 - episodeMovementStarts
-              if (remainingStarts < 1) return { supported: true, arrived: false, escaped: false, partialEscape: false, code: 'START_LIMIT', movementStarts: episodeMovementStarts, safe: false }
-              if (candidate.boundedJump) {
-                boundedJumpAttempted = true
-                jumpSearchDiagnostic.attempts++
-                jumpSearchDiagnostic.chosen = { heading: live.boundedJump.heading, driveTicks: live.boundedJump.driveTicks, flightTicks: live.jumpFrames.length, expectedGain: candidate.gain }
-                jumpSearchDiagnostic.reason = 'guard_attempt'
-              }
-              fence.guardInvoked = true
-              const nativeProgressLife = actualLifeId()
-              const result = await generationGuardRoute.escape([{ ...candidate.target }], { signal, timeoutMs: Math.max(100, deadline - Date.now()), maxMovementStarts: remainingStarts, maxLegDistance: candidate.constrained ? 2 : 8, allowUnarmedBootstrap: !candidate.constrained || unarmedMixed, allowConstrainedEscape: candidate.constrained === true, maxBootstrapNodes: 4, maxBootstrapDistance: 10, retainedActors, ...(candidate.boundedJump ? { boundedJump: live.boundedJump } : {}) })
-              if (candidate.boundedJump) jumpSearchDiagnostic.reason = result.ok === true && result.arrived === true ? 'landed' : 'guard_rejected'
-              const consumedStarts = Number.isSafeInteger(result.movementStarts) && result.movementStarts > 0 ? result.movementStarts : 0
-              episodeMovementStarts += Math.min(remainingStarts, consumedStarts)
-              fence.starts = episodeMovementStarts
-              remainingTargets = null
-              remainingJumpTrace = null
-              remainingConstrained = false
-              ensure()
-              const after = safetyState(); const evaluation = evaluateThreats(after, after.entities, { observationRadius: 32 })
-              if (candidate.boundedJump && result.ok === true && result.arrived === true && result.escaped === true && result.code == null && !result.routeInterruption && !result.routeRejection && !result.remainingRouteRejection) {
-                const queued = generationHistory.snapshot().navigationQueued > historyBefore.navigationQueued
-                const sameScope = ['profile', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId'].every(key => before[key] === after[key]) && String(before.realm?.id) === String(after.realm?.id)
-                if (!queued || consumedStarts < 1 || !sameScope || after.health < before.health || !await verifyRouteStanding(after, feet(after), { signal })) return { ...result, supported: true, arrived: false, escaped: false, partialEscape: false, code: 'ARRIVAL_UNCONFIRMED', movementStarts: episodeMovementStarts, safe: false }
-                const current = ensure()
-                if (!verifyRouteStanding(current, feet(current), { signal })) return { ...result, supported: true, arrived: false, escaped: false, partialEscape: false, code: 'ARRIVAL_UNCONFIRMED', movementStarts: episodeMovementStarts, safe: false }
-                const workClearancePending = resolveWorkActors(after, evaluation, retainedActors).actors.length > 0
-                lastBoundedPartial = { ...result, supported: true, movementStarts: episodeMovementStarts, escaped: result.riskRemains !== true && !evaluation.threats.length && !workClearancePending, partialEscape: evaluation.threats.length > 0 || workClearancePending, workClearancePending, returned: false, refugeConfirmed: false, safe: false }
-                if (!lastBoundedPartial.partialEscape || episodeMovementStarts >= 5) return lastBoundedPartial
-                planningState = await yieldPlanning()
-                continue escapePlanning
-              }
-              if (result.code === 'ESCAPE_PROGRESS_REPLAN') {
-                const progress = result.progressReplan
-                const previousEvaluation = evaluateThreats(before, before.entities, { observationRadius: 32 })
-                const previousActors = new Map([...previousEvaluation.threats, ...previousEvaluation.outsideDanger, ...previousEvaluation.suppressedByTerrain].map(actor => [actor.runtimeId, actor]))
-                const sameActors = [...evaluation.threats, ...evaluation.outsideDanger, ...evaluation.suppressedByTerrain].every(actor => {
-                  const previous = previousActors.get(actor.runtimeId)
-                  const beforeEntity = before.entities.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
-                  const afterEntity = after.entities.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
-                  return previous && previous.name === actor.name && actor.dangerRadius <= previous.dangerRadius && (beforeEntity?.uniqueId == null || String(beforeEntity.uniqueId) === String(afterEntity?.uniqueId))
-                })
-                const stamp = value => typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) : NaN
-                const beforeStamp = stamp(before.rawServerPositionUpdatedAt ?? before.positionUpdatedAt)
-                const afterStamp = stamp(after.rawServerPositionUpdatedAt ?? after.positionUpdatedAt)
-                const proofStamp = stamp(progress?.authoritativeStamp)
-                const sameScope = ['profile', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId'].every(key => before[key] === after[key]) && String(before.realm?.id) === String(after.realm?.id)
-                if (progress?.kind === 'native_partial_landing') {
-                  const eligible = sameScope && sameActors && actualLifeId() === nativeProgressLife && after.health === before.health && consumedStarts > 0 && result.ok === false && result.arrived === false && result.escaped === false && !result.routeInterruption && !result.routeRejection && !result.remainingRouteRejection && Number.isFinite(progress.primaryGain) && progress.primaryGain >= 0.1 && progress.primaryGain < 0.25 && Number.isFinite(progress.horizontalProgress) && progress.horizontalProgress >= 0.1 && /^\d+$/.test(String(progress.queuedTick)) && Number.isFinite(beforeStamp) && beforeStamp === afterStamp
-                  const expectedAnchor = historyBefore.anchorTick ?? (historyBefore.stationary?.neutralFrames >= 8 ? historyBefore.stationary.checkpointTick : null)
-                  let nativeBinding = null
-                  const bindNativeLanding = state => {
-                    if (!eligible || signal.aborted || actualLifeId() !== nativeProgressLife || state.health !== before.health || ['profile', 'dimension', 'connectionId', 'startedAt', 'runtimeEntityId'].some(key => before[key] !== state[key]) || String(before.realm?.id) !== String(state.realm?.id) || stamp(state.rawServerPositionUpdatedAt ?? state.positionUpdatedAt) !== beforeStamp || !state.rawServerPosition || !before.rawServerPosition || distance(state.rawServerPosition, before.rawServerPosition) > 1e-4 || !progress.position || distance(state.position, progress.position) > 0.05) return false
-                    const evaluated = evaluateThreats(state, state.entities, { observationRadius: 32 })
-                    if (evaluated.requiresObservation || state.entityStats?.unknownPositions > evaluated.unknownPositions.length || [...evaluated.threats, ...evaluated.outsideDanger, ...evaluated.suppressedByTerrain].some(actor => {
-                      const old = previousActors.get(actor.runtimeId), original = before.entities.find(value => String(value.runtimeId ?? value.entityId ?? value.runtimeEntityId ?? value.id) === actor.runtimeId), current = state.entities.find(value => String(value.runtimeId ?? value.entityId ?? value.runtimeEntityId ?? value.id) === actor.runtimeId)
-                      return !old || old.name !== actor.name || actor.dangerRadius > old.dangerRadius || original?.uniqueId == null || String(current?.uniqueId) !== String(original.uniqueId)
-                    })) return false
-                    const witness = generationHistory.witness({ scope: historyScope(state), health: state.health, position: state.position })
-                    if (!witness.ready || expectedAnchor == null || witness.anchorTick !== expectedAnchor || stamp(witness.anchor?.rawStamp) !== beforeStamp || witness.navigationQueued <= historyBefore.navigationQueued || witness.queuedTicks < 1 || !Array.isArray(witness.physicsTrace)) return false
-                    // The first real moving frame freezes an already queued
-                    // eight-neutral raw checkpoint. Retain that exact anchor
-                    // and lease; never create or refresh one for this handoff.
-                    if (historyBefore.anchorTick != null ? witness.anchor?.leaseAt !== historyBefore.leaseAt : witness.anchor?.kind !== 'stationary_raw_checkpoint' || witness.anchor?.derived !== true || witness.anchor?.checkpointTick !== expectedAnchor) return false
-                    if (nativeBinding && (witness.anchorTick !== nativeBinding.anchorTick || witness.anchor?.leaseAt !== nativeBinding.leaseAt)) return false
-                    const landingIndex = witness.physicsTrace.findIndex(frame => String(frame.tick) === String(progress.queuedTick))
-                    const landing = witness.physicsTrace[landingIndex]
-                    if (!landing || distance(landing.position, progress.position) > 1e-4 || landing.physicsState?.onGround !== true || landing.physicsState.isInWater || landing.physicsState.isInLava) return false
-                    const currentActors = assessEnemies(state), points = [...witness.physicsTrace.slice(landingIndex).map(frame => frame.position), state.position]
-                    for (const actor of [...currentActors.threats, ...currentActors.outside]) {
-                      const floor = constrainedFloors.get(actor.runtimeId) ?? (ids.has(actor.runtimeId) ? Math.min(ids.get(actor.runtimeId).distance, actor.distance) : actor.dangerRadius)
-                      for (let index = 1; index < points.length; index++) if (segmentDistance(actor.position, points[index - 1], points[index]) < floor - 1e-4) return false
-                    }
-                    nativeBinding ??= { anchorTick: witness.anchorTick, leaseAt: witness.anchor.leaseAt }
-                    return true
-                  }
-                  if (!bindNativeLanding(after) || episodeMovementStarts >= 5 || Date.now() >= deadline || !await verifyRouteStanding(after, feet(after), { signal })) return { ...result, supported: true, arrived: false, escaped: false, partialEscape: false, movementStarts: episodeMovementStarts, safe: false }
-                  const current = await yieldPlanning()
-                  if (!bindNativeLanding(current) || Date.now() >= deadline || !await verifyRouteStanding(current, feet(current), { signal })) return { ...result, supported: true, arrived: false, escaped: false, partialEscape: false, movementStarts: episodeMovementStarts, safe: false }
-                  planningState = current
-                  continue escapePlanning
-                }
-                if (progress?.kind === 'queued_prediction_tail') {
-                  const eligible = sameScope && sameActors && after.health === before.health && consumedStarts > 0 && result.ok === false && result.arrived === false && result.escaped === false && !result.routeInterruption && !result.routeRejection && !result.remainingRouteRejection && Number.isFinite(progress.horizontalProgress) && progress.horizontalProgress >= 0.25 && progress.targetOvershoot > 0 && Number.isFinite(beforeStamp) && Number.isFinite(afterStamp) && Number.isFinite(proofStamp) && afterStamp > beforeStamp && proofStamp === afterStamp
-                  const current = eligible && episodeMovementStarts < 5 && Date.now() < deadline ? await verifyQueuedTailHandoff(result, after, { signal, operationId: context.operationId }) : null
-                  if (!current || Date.now() >= deadline) return { ...result, supported: true, arrived: false, escaped: false, partialEscape: false, movementStarts: episodeMovementStarts, safe: false }
-                  planningState = current
-                  continue escapePlanning
-                }
-                // Idle physics may coast after the Guard drains its sender.
-                // Bind the receipt to the unchanged authoritative position,
-                // then prove the current model's coherence and origin anew.
-                const sameReceipt = progress?.position && progress.authoritativePosition && after.rawServerPosition && distance(progress.position, progress.authoritativePosition) <= 0.05 && distance(progress.authoritativePosition, after.rawServerPosition) <= 0.05 && distance(after.position, after.rawServerPosition) <= 0.75
-                const freshProgress = sameScope && sameActors && after.health === before.health && consumedStarts > 0 && result.ok === false && result.arrived === false && result.escaped === false && distance(before.position, after.position) >= 0.25 && Number.isFinite(progress?.horizontalProgress) && progress.horizontalProgress >= 0.25 && progress.targetOvershoot > 0 && Number.isFinite(beforeStamp) && Number.isFinite(afterStamp) && Number.isFinite(proofStamp) && afterStamp > beforeStamp && proofStamp > beforeStamp && proofStamp <= afterStamp && sameReceipt
-                if (!freshProgress || episodeMovementStarts >= 5 || !await verifyRouteOrigin(after, feet(after), { signal, stablePartialOrigin: true })) return { ...result, supported: true, arrived: false, escaped: false, partialEscape: false, movementStarts: episodeMovementStarts, safe: false }
-                // The Guard has drained its old sender. Discard every old
-                // candidate and sample this newly observed origin, while the
-                // same controller, deadline and start budget remain active.
-                planningState = after
-                continue escapePlanning
-              }
-              // A preliminary preview can differ from Guard's actor-aware
-              // preview. Try another known candidate only if no movement was
-              // started, the pose remains essentially unchanged and the
-              // enemy has not entered immediate reach.
-              const rejectedPreview = result.routeRejection?.reason === 'invalid_route' && result.routeRejection?.detail === 'preview_not_ready' && result.routeInterruption?.reason === 'No known route stays clear of the observed dangers'
-              if (!result.ok && result.movementStarts === 0 && (result.code === 'NO_SAFE_RETREAT' || result.routeInterruption?.code === 'NO_SAFE_RETREAT' || rejectedPreview) && distance(before.position, after.position) < 0.1 && evaluation.threats.every(actor => actor.distance > 3.5)) { lastRejected = result; continue }
-              const reached = result.escaped === true && result.arrived === true && !evaluation.requiresObservation
-              const workClearancePending = resolveWorkActors(after, evaluation, retainedActors).actors.length > 0
-              const returned = { ...result, supported: true, movementStarts: episodeMovementStarts, constrainedEscape: candidate.constrained === true, constrainedPrimaryId: candidate.constrained ? constrainedPrimary.runtimeId : null, escaped: reached && result.riskRemains !== true && !evaluation.threats.length && !workClearancePending, partialEscape: reached && (evaluation.threats.length > 0 || workClearancePending) && evaluation.threats.every(actor => ids.has(actor.runtimeId) || candidate.constrained && outsideTracked.has(actor.runtimeId)), workClearancePending, returned: false, refugeConfirmed: false, safe: false }
-              if (boundedJumpAttempted && returned.partialEscape && result.ok === true && !result.routeInterruption && !result.routeRejection && !result.remainingRouteRejection) {
-                lastBoundedPartial = returned
-                const tracked = assessEnemies(after).threats
-                const legacyRecovered = tracked.every(actor => {
-                  const old = ids.get(actor.runtimeId)
-                  if (!old || old.name !== actor.name || actor.dangerRadius > old.dangerRadius || actor.distance < 3.5) return false
-                  if (['minecraft:zombie', 'minecraft:zombie_villager', 'minecraft:zombie_villager_v2', 'minecraft:husk'].includes(actor.name)) {
-                    const previous = before.entities.find(entity => String(entity.runtimeId ?? entity.runtimeEntityId ?? entity.entityId ?? entity.id) === actor.runtimeId)
-                    const previousDistance = previous?.position ? distance(previous.position, before.position) : Infinity
-                    return actor.distance >= 4.5 && (actor.distance >= old.distance - 0.5 || actor.distance >= previousDistance - 0.6)
-                  }
-                  return actor.distance >= old.distance - 0.5
-                })
-                if (workClearancePending && !legacyRecovered && episodeMovementStarts < 5 && Date.now() < deadline && await verifyRouteStanding(after, feet(after), { signal })) {
-                  const current = ensure()
-                  if (verifyRouteStanding(current, feet(current), { signal })) { planningState = current; continue escapePlanning }
-                }
-              }
-              const witness = generationHistory.witness({ scope: historyScope(after), health: after.health, position: after.position })
-              if (returned.partialEscape && result.ok === true && result.arrived === true && result.escaped === true && result.code == null && !result.routeRejection && !result.remainingRouteRejection && !result.routeInterruption && consumedStarts > 0 && witness.ready === true && witness.navigationQueued > historyBefore.navigationQueued && witness.queuedTicks > 0 && after.health === before.health && distance(before.position, after.position) >= 0.1 && Date.now() <= deadline && await verifyRouteStanding(after, feet(after), { signal })) {
-                completedDryProofs.set(returned, { operationId: context.operationId, health: after.health, revision: witness.revision, anchorTick: witness.anchorTick, anchorKind: witness.anchor?.kind, checkpointTick: witness.anchor?.checkpointTick, leaseAt: witness.anchor?.leaseAt, navigationQueued: witness.navigationQueued, rawPosition: structuredClone(after.rawServerPosition), rawStamp: after.rawServerPositionUpdatedAt })
-                if (!await verifyCompletedDryProgress(returned, after, { signal, operationId: context.operationId }) || Date.now() > deadline) completedDryProofs.delete(returned)
-              }
-              return returned
-            }
-            // When an ordinary escape is unavailable, a healthy unarmed bot
-            // can use either a known short descent away from one drowned or a
-            // short dry detour around water near one distant spider. Both use
-            // fully simulated trajectories and monitor every known actor.
-            const drySpiderDetour = initial.health === 20 && baseline.threats.length >= 1 && baseline.threats.length <= 2 && baseline.threats.every(actor => actor.name === 'minecraft:spider' && actor.distance >= 9.5)
-            const drownedDrop = initial.health >= 18 && baseline.threats.length === 1 && primary.name === 'minecraft:drowned' && primary.distance >= 10.5
-            if (!alreadyShallow && !lastRejected && (drySpiderDetour || drownedDrop) && !sword && initial.inventory?.known === true && !initial.inventory.uncertain && ids.get(primary.runtimeId)?.uniqueId != null) {
-              const current = assessEnemies(safetyState())
-              const currentPrimary = current.threats.find(actor => actor.runtimeId === primary.runtimeId)
-              const actors = [...current.threats, ...current.outside]
-              if (currentPrimary && (drySpiderDetour ? current.threats.length === baseline.threats.length && current.threats.every(actor => ids.has(actor.runtimeId) && actor.name === 'minecraft:spider' && actor.distance >= 9.5) : current.threats.length === 1)) {
-                const circles = actors.map(actor => {
-                  const entity = initial.entities.find(value => String(value.runtimeId ?? value.runtimeEntityId ?? value.entityId ?? value.id) === actor.runtimeId)
-                  return { id: actor.runtimeId, uniqueId: entity?.uniqueId == null ? null : String(entity.uniqueId), radius: actor.dangerRadius, position: { ...actor.position }, minDistance: ids.has(actor.runtimeId) ? drySpiderDetour ? Math.max(9, actor.distance - 0.5) : actor.distance : actor.dangerRadius, padding: 0 }
-                })
-                if (circles.every(circle => circle.uniqueId != null)) {
-                  const targets = []
-                  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) for (const depth of (drySpiderDetour ? [0] : [2, 3])) for (const ox of (drySpiderDetour ? [0.25, 0.3, 0.35, 0.5, 0.65, 0.7, 0.75] : [0.3, 0.5, 0.7])) for (const oz of (drySpiderDetour ? [0.25, 0.3, 0.35, 0.5, 0.65, 0.7, 0.75] : [0.3, 0.5, 0.7])) {
-                    const target = { x: Math.floor(origin.x) + dx + ox, y: Math.round(origin.y) - depth, z: Math.floor(origin.z) + dz + oz }
-                    const gain = distance(currentPrimary.position, eye(target)) - currentPrimary.distance
-                    const length = Math.hypot(target.x - origin.x, target.z - origin.z)
-                    if (length <= (drySpiderDetour ? 1.25 : 1.5) && length >= 0.2 && gain >= (drySpiderDetour ? -0.5 : 0.5) && cellSafe(target)) targets.push({ target, gain, depth, length })
-                  }
-                  targets.sort((a, b) => a.depth - b.depth || (drySpiderDetour ? a.length - b.length || b.gain - a.gain : b.gain - a.gain))
-                  for (const candidate of targets.slice(0, 36)) {
-                    await new Promise(resolve => setImmediate(resolve)); ensure(); motionOrigin = working()
-                    const options = { emergency: true, allowWater: false, ...(drySpiderDetour ? { directFlat: true, exactGoal: true } : { controlledDrop: true }), maxDistance: 2, maxTicks: 80, avoidance: circles.map(({ id, position, minDistance, padding }) => ({ id, position, minDistance, padding })) }
-                    const preview = generationMovement.preview(candidate.target, options)
-                    if (!preview.ready) continue
-                    let predictedTrace = preview.predictedTrace
-                    if (drySpiderDetour) {
-                      if (preview.directFlat !== true || preview.waypoints.length !== 1) continue
-                      try {
-                        const navigator = createNavigator({ world: planningWorld, version: host.meta.version, physics: generationPlanningPhysics })
-                        const stepper = navigator.createStepper(preview, navigator.physics.fromServer(safetyState()), { maxTicks: 80, sprint: false })
-                        const trace = [origin]; let complete = false
-                        for (let tick = 0; tick < 80; tick++) {
-                          const frame = stepper.next(); const next = frame.predictedState.position; const previous = trace.at(-1)
-                          if (frame.predictedState.onGround !== true || frame.predictedState.isInWater || frame.predictedState.isInLava || !cellSafe(next) || circles.some(circle => segmentDistance(circle.position, eye(previous), eye(next)) < circle.minDistance - 1e-4)) break
-                          trace.push({ ...next })
-                          if (frame.phase === 'awaiting_server_confirmation') { complete = true; break }
-                          if (frame.phase !== 'moving') break
-                        }
-                        if (!complete || trace.length < 3 || Math.hypot(trace.at(-1).x - origin.x, trace.at(-1).z - origin.z) < 0.15) continue
-                        predictedTrace = trace
-                      } catch { continue }
-                    } else if (preview.controlledDrop !== true) continue
-                    if (!Array.isArray(predictedTrace) || predictedTrace.length < 3) continue
-                    dropTrace = predictedTrace; dropCircles = circles; dropTraceIndex = 0; ensure()
-                    const stopDrop = () => { if (safetyCurrent()) routeMovement.stop('Controlled descent interrupted') }
-                    signal.addEventListener('abort', stopDrop, { once: true })
-                    emergencyDropOp = context.operationId
-                    try {
-                      routeMovement.start(candidate.target, options)
-                      while (true) {
-                        await delay(50, undefined, { signal }); ensure()
-                        const state = safetyState(); const motion = generationMovement.snapshot()
-                        if (['failed', 'stopped', 'replan_required'].includes(motion.phase)) return { supported: true, arrived: false, escaped: false, reason: 'no_known_away_route' }
-                        if (['awaiting_server_confirmation', 'completed', 'idle'].includes(motion.phase)) {
-                          if (!await verifyRouteStanding(state, candidate.target, { signal })) return { supported: true, arrived: false, escaped: false, reason: 'no_known_escape_origin' }
-                          const after = assessEnemies(state)
-                          return { supported: true, arrived: true, escaped: after.threats.length === 0 && !after.requiresObservation, partialEscape: after.threats.length > 0 && !after.requiresObservation, serverConfirmed: false }
-                        }
-                      }
-                    } finally {
-                      signal.removeEventListener('abort', stopDrop)
-                      if (emergencyDropOp === context.operationId) emergencyDropOp = null
-                      if (safetyCurrent()) routeMovement.stop('Controlled descent finished')
-                      dropTrace = null; dropCircles = null
-                    }
-                  }
-                }
-              }
-            }
-            // Last resort for a healthy player on a dry bank with a single
-            // ordinary creeper: cross only bounded, received surface water,
-            // keeping the head in air and every observed actor outside its
-            // fixed corridor. This is prediction, never a server confirmation.
-            const lowHealthSurface = receivedSurfaceOrigin
-            const tightShallowPair = alreadyShallow && baseline.threats.length === 2 && baseline.threats.every(value => value.name === 'minecraft:creeper' && value.dangerRadius === 8)
-            const immediateShallowPair = tightShallowPair && baseline.threats.some(value => Math.hypot(value.position.x - origin.x, value.position.z - origin.z) < 4.5)
-            const soloZombie = alreadyShallow && unarmedWaterZombie(initial, baseline.threats)
-            const allowBank = soloZombie || alreadyShallow && baseline.threats.every(value => value.name === 'minecraft:creeper' && value.dangerRadius === 8 && value.distance >= 5.5 && Math.hypot(value.position.x - origin.x, value.position.z - origin.z) >= 5.5)
-            // A separately observed critical start can be just inside the
-            // ordinary 3.5-block horizontal guard. A local Bedrock 1.26.60
-            // trial with the same pair geometry showed an outward surface
-            // move while both actors moved. Keep this exception bounded to a
-            // full-health pair above a 3.25-block absolute horizontal floor;
-            // every subsequent packet still rechecks both actors and terrain.
-            const boundaryShallowPair = immediateShallowPair && baseline.threats.some(value => Math.hypot(value.position.x - origin.x, value.position.z - origin.z) < 3.5) && baseline.threats.every(value => Math.hypot(value.position.x - origin.x, value.position.z - origin.z) >= 3.25 && value.position.y <= origin.y + 1.5)
-            // If an unprimed pair is already close, require an almost
-            // non-approaching horizontal route and keep at least one block
-            // beyond the normal 2.5-block fuse trigger throughout the trace.
-            const singleShallow = alreadyShallow && baseline.threats.length === 1
-            const closeZombiePair = alreadyShallow && baseline.threats.length === 2 && baseline.threats.some(value => value.name === 'minecraft:creeper') && baseline.threats.some(value => value.name === 'minecraft:zombie')
-            const drownedWaterEscape = alreadyShallow && (unarmedCreeperDrowned(initial, baseline.threats) || unarmedWaterDrowned(initial, baseline.threats))
-            const mixedWaterEscape = soloZombie || drownedWaterEscape || isUnarmedCreeperZombie(initial, baseline.threats, { creeperMinimum: singleShallow || closeZombiePair ? 4 : alreadyShallow ? 5 : 5.5, zombieMinimum: closeZombiePair ? 9 : 9.5, allowSingle: singleShallow, allowCloseZombie: closeZombiePair })
-            diagnostics.waterContext = { alreadyShallow, singleShallow, closeZombiePair, mixedWaterEscape, lowHealthSurface, threatCount: baseline.threats.length }
-            const waterCreeperEyeFloor = immediateShallowPair ? 3.5 : tightShallowPair ? 4.75 : mixedWaterEscape && (singleShallow || closeZombiePair) ? 3.5 : mixedWaterEscape && alreadyShallow ? 5 : 5.5
-            const waterCreeperHorizontalFloor = boundaryShallowPair ? 3.25 : immediateShallowPair ? 3.5 : tightShallowPair ? 4.5 : mixedWaterEscape && (singleShallow || closeZombiePair) ? 3.5 : mixedWaterEscape && alreadyShallow ? 5 : 5.5
-            const waterThreatAllowed = value => value.name === 'minecraft:creeper' && value.dangerRadius === 8 && value.distance >= waterCreeperEyeFloor || mixedWaterEscape && value.name === 'minecraft:zombie' && value.distance >= (closeZombiePair || soloZombie ? 9 : 9.5) || mixedWaterEscape && value.name === 'minecraft:spider' && value.distance >= 11.25 || drownedWaterEscape && value.name === 'minecraft:drowned' && value.distance >= 10.75
-            if ((!lastRejected || lowHealthSurface) && (initial.health === 20 || lowHealthSurface) && baseline.threats.length >= 1 && (lowHealthSurface || baseline.threats.length <= (alreadyShallow ? 2 : 1) || mixedWaterEscape) && baseline.threats.every(value => (lowHealthSurface || waterThreatAllowed(value)) && ids.get(value.runtimeId)?.uniqueId != null) && initial.inventory?.known === true && !initial.inventory.uncertain) {
-              const waterObserved = safetyState()
-              const current = assessEnemies(waterObserved)
-              const actor = current.threats.find(value => value.runtimeId === primary.runtimeId) ?? selectConstrainedPrimary(current.threats, initial.health)
-              const actors = [...current.threats, ...current.outside]
-              const baselineActorsStillKnown = baseline.threats.every(previous => {
-                const observed = actors.find(value => value.runtimeId === previous.runtimeId)
-                const entity = waterObserved.entities.find(value => String(value.runtimeId ?? value.runtimeEntityId ?? value.entityId ?? value.id) === previous.runtimeId)
-                const known = ids.get(previous.runtimeId)
-                return observed && known?.uniqueId != null && String(entity?.uniqueId) === known.uniqueId && observed.name === previous.name && observed.dangerRadius <= previous.dangerRadius
-              })
-              if (actor && (lowHealthSurface || actor.distance >= waterCreeperEyeFloor) && baselineActorsStillKnown && current.threats.every(value => ids.has(value.runtimeId) && (lowHealthSurface || waterThreatAllowed(value))) && (!lowHealthSurface || lowHealthSurfaceEligible(waterObserved, actors, generationPhysics))) {
-                const circles = actors.map(value => {
-                  const entity = (lowHealthSurface ? waterObserved : initial).entities.find(item => String(item.runtimeId ?? item.runtimeEntityId ?? item.entityId ?? item.id) === value.runtimeId)
-                  if (lowHealthSurface) return { id: value.runtimeId, uniqueId: entity?.uniqueId == null ? null : String(entity.uniqueId), radius: value.dangerRadius, position: { ...value.position }, minDistance: ids.has(value.runtimeId) ? value.distance : value.dangerRadius, horizontalMinimum: null, padding: 0 }
-                  // Buoyancy changes eye height even while moving sideways.
-                  // Keep a separate, tighter horizontal floor so that a small
-                  // vertical bob cannot be mistaken for enemy approach.
-                  const mixedZombie = mixedWaterEscape && ids.has(value.runtimeId) && value.name === 'minecraft:zombie'
-                  const mixedSpider = mixedWaterEscape && ids.has(value.runtimeId) && value.name === 'minecraft:spider'
-                  const mixedDrowned = drownedWaterEscape && ids.has(value.runtimeId) && value.name === 'minecraft:drowned'
-                  const initialHorizontal = Math.hypot(value.position.x - origin.x, value.position.z - origin.z)
-                  const hardEye = mixedZombie ? 8.75 : mixedSpider ? 10.5 : mixedDrowned ? 10.25 : waterCreeperEyeFloor
-                  const hardHorizontal = mixedZombie ? 7.5 : mixedSpider ? 9.5 : mixedDrowned ? Math.max(0, initialHorizontal - 0.75) : waterCreeperHorizontalFloor
-                  // Vertical bob changes 3D separation without horizontal
-                  // approach. Drowned routes therefore use a fixed 3D floor
-                  // plus the independently checked outward horizontal path.
-                  const minimum = mixedZombie ? unarmedZombieFloor(value) : mixedSpider ? activeUnarmedSpiderFloor(value) : mixedDrowned ? hardEye : ids.has(value.runtimeId) ? alreadyShallow ? Math.max(hardEye, value.distance - 0.4) : value.distance : constrainedFloors.get(value.runtimeId) ?? value.dangerRadius
-                  return { id: value.runtimeId, uniqueId: entity?.uniqueId == null ? null : String(entity.uniqueId), radius: value.dangerRadius, position: { ...value.position }, minDistance: minimum, horizontalMinimum: ids.has(value.runtimeId) ? Math.max(hardHorizontal, initialHorizontal - (mixedDrowned ? 0.05 : mixedSpider ? 0.75 : immediateShallowPair ? 0.05 : alreadyShallow ? 0.35 : 0)) : null, hardEye, hardHorizontal, padding: 0 }
-                })
-                const surfaceY = alreadyShallow ? generationPhysics.waterSurface(origin)?.surfaceY : Math.round(origin.y)
-                const initialVertical = (initial.predicted?.physicsState ?? initial.physicsState)?.velocity?.y
-                const mayBrieflySubmerge = alreadyShallow && initial.health === 20 && Number.isFinite(initialVertical) && initialVertical < 0 && initial.position.y - surfaceY < 0.5
-                const shallow = point => shallowWaterTerrain(point, surfaceY, { allowDeepSurface: alreadyShallow, allowBriefSubmerge: mayBrieflySubmerge }) && (!lowHealthSurface || knownSurfaceBody(generationPhysics, point, surfaceY))
-                if (circles.every(circle => circle.uniqueId != null && (circle.horizontalMinimum == null || Math.hypot(circle.position.x - origin.x, circle.position.z - origin.z) >= circle.horizontalMinimum)) && shallow(origin)) {
-                  const fastWater = alreadyShallow && mixedWaterEscape
-                  for (let phase = 0; phase < (fastWater ? 2 : 1); phase++) {
-                  const waterTargets = []
-                  function considerWaterTarget (target) {
-                    const length = Math.hypot(target.x - origin.x, target.z - origin.z)
-                    if (length < (lowHealthSurface ? 0.5 : mixedWaterEscape && alreadyShallow ? 0.5 : immediateShallowPair || mixedWaterEscape ? 1.5 : alreadyShallow ? 0.5 : 2) || length > (lowHealthSurface ? 1 : 4.5) || distance(actor.position, eye(target)) < actor.distance + (alreadyShallow ? 0.1 : 0.25) || circles.some(circle => distance(circle.position, eye(target)) < circle.minDistance - 1e-4) || drownedWaterEscape && current.threats.some(threat => threat.name === 'minecraft:drowned' && Math.hypot(threat.position.x - target.x, threat.position.z - target.z) < Math.hypot(threat.position.x - origin.x, threat.position.z - origin.z) + 0.25) || !shallow(target)) return
-                    let medium
-                    try {
-                      const below = generationPhysics.blockAt({ x: target.x, y: surfaceY - 1, z: target.z })
-                      medium = ['water', 'flowing_water'].includes(below.name) ? 'water' : allowBank && generationPhysics.hasSupport(target) ? 'land' : null
-                      if (!medium) return
-                    } catch { return }
-                    waterTargets.push({ target, length, medium })
-                  }
-                  if (lowHealthSurface) {
-                    let enumerationMark = surfaceMark()
-                    for (let heading = 0; heading < 32; heading++) {
-                      if (heading % 8 === 0) { if (heading) surfaceRecord('enumerationSlice', enumerationMark); await yieldPlanning(); enumerationMark = surfaceMark() }
-                      const theta = heading * Math.PI / 16
-                      for (const length of [1, 0.75]) considerWaterTarget({ x: origin.x + Math.cos(theta) * length, y: surfaceY, z: origin.z + Math.sin(theta) * length })
-                    }
-                    surfaceRecord('enumerationSlice', enumerationMark)
-                  } else if (fastWater && phase === 0) {
-                    const direction = { x: 0, z: 0 }
-                    for (const threat of current.threats) {
-                      const dx = origin.x - threat.position.x; const dz = origin.z - threat.position.z; const h = Math.hypot(dx, dz)
-                      if (!(h > 0)) continue
-                      const weight = threat.runtimeId === actor.runtimeId ? 1 : 0.4
-                      direction.x += weight * dx / h; direction.z += weight * dz / h
-                    }
-                    const angle = Math.atan2(direction.z, direction.x)
-                    for (const offset of [0, -Math.PI / 8, Math.PI / 8, -Math.PI / 4, Math.PI / 4]) for (const length of [0.75, 1, 1.5, 1.75, 2.5, 3.25]) {
-                      considerWaterTarget({ x: Math.round((origin.x + Math.cos(angle + offset) * length) * 4) / 4, y: surfaceY, z: Math.round((origin.z + Math.sin(angle + offset) * length) * 4) / 4 })
-                    }
-                    // A remembered shore is a direction only. Add headings
-                    // toward it, then run the same known-terrain and actor
-                    // checks used for every other candidate.
-                    if (shoreScore(initial, origin, origin)) for (let heading = 0; heading < 16; heading++) for (const length of [0.75, 1.5, 2.5, 3.25]) {
-                      const theta = heading * Math.PI / 8
-                      considerWaterTarget({ x: Math.round((origin.x + Math.cos(theta) * length) * 4) / 4, y: surfaceY, z: Math.round((origin.z + Math.sin(theta) * length) * 4) / 4 })
-                    }
-                  } else {
-                    let checkedWaterTargets = 0
-                    for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) for (const ox of (alreadyShallow ? [0.25, 0.5, 0.75] : [0.5])) for (const oz of (alreadyShallow ? [0.25, 0.5, 0.75] : [0.5])) {
-                      if (++checkedWaterTargets % 64 === 0) { await new Promise(resolve => setImmediate(resolve)); ensure() }
-                      considerWaterTarget({ x: Math.floor(origin.x) + dx + ox, y: surfaceY, z: Math.floor(origin.z) + dz + oz })
-                    }
-                  }
-                  const rankingMark = surfaceMark()
-                  // An observed dry bank can end the slow water pursuit.
-                  // It is still subjected to the same full trajectory, body,
-                  // known terrain and hostile-distance checks as water.
-                  if ((singleShallow || closeZombiePair) && mixedWaterEscape) {
-                    // A nearby pursuer can make a bank-seeking sideways step
-                    // unsafe before it pays off. Prefer headings that point
-                    // away from the observed creeper; retain bank preference
-                    // only for routes with the same outward alignment.
-                    const dx = origin.x - actor.position.x; const dz = origin.z - actor.position.z
-                    const alignment = candidate => ((candidate.target.x - origin.x) * dx + (candidate.target.z - origin.z) * dz) / candidate.length
-                    waterTargets.sort((a, b) => alignment(b) - alignment(a) || Number(b.medium === 'land') - Number(a.medium === 'land') || a.length - b.length)
-                  } else waterTargets.sort((a, b) => Number(b.medium === 'land') - Number(a.medium === 'land') || a.length - b.length)
-                  if (shoreScore(initial, origin, origin)) {
-                    for (const candidate of waterTargets) candidate.shoreProgress = shoreScore(initial, origin, candidate.target)?.progress ?? -Infinity
-                    waterTargets.sort((a, b) => b.shoreProgress - a.shoreProgress || Number(b.medium === 'land') - Number(a.medium === 'land') || a.length - b.length)
-                  }
-                  if (lowHealthSurface) waterTargets.sort((a, b) => Math.min(...current.threats.map(value => distance(value.position, eye(b.target)) - value.distance)) - Math.min(...current.threats.map(value => distance(value.position, eye(a.target)) - value.distance)))
-                  if (lowHealthSurface) surfaceRecord('ranking', rankingMark)
-                  diagnostics.waterTargetCount = (diagnostics.waterTargetCount ?? 0) + waterTargets.length
-                  for (const candidate of waterTargets.slice(0, alreadyShallow ? 24 : 12)) {
-                    if (lowHealthSurface) await yieldPlanning()
-                    else { await new Promise(resolve => setImmediate(resolve)); ensure() }
-                    motionOrigin = working()
-                    const options = { emergency: true, allowWater: true, directSurface: candidate.medium === 'water', exactGoal: true, maxDistance: lowHealthSurface ? 2 : 6, maxExpanded: lowHealthSurface ? 32 : 1500, maxTicks: lowHealthSurface ? 40 : 80, avoidance: circles.map(({ id, position, minDistance, padding }) => ({ id, position, minDistance, padding })) }
-                    if (candidate.medium === 'water') {
-                      options.continueAfterReplay = true
-                      options.beforeInput = frame => {
-                        const observed = ensure()
-                        inspect({ ...observed, position: { ...frame.packetPosition }, predicted: { ...observed.predicted, position: { ...frame.packetPosition }, physicsState: structuredClone(frame.predictedState) }, physicsState: structuredClone(frame.predictedState) })
-                        if (signal.aborted) throw signal.reason ?? new Error('Shallow escape frame is no longer safe')
-                      }
-                    }
-                    if (lowHealthSurface) lowHealthSurfaceDiagnostic.previews++
-                    const preview = lowHealthSurface ? surfaceTimed('preview', () => generationMovement.preview(candidate.target, options)) : generationMovement.preview(candidate.target, options)
-                    if (!preview.ready || !preview.waypoints?.length || preview.waypoints.at(-1).medium !== candidate.medium) { if (lowHealthSurface) lowHealthSurfaceDiagnostic.reason = preview.reason ?? 'surface_preview_rejected'; continue }
-                    let trace; let complete = false
-                    try {
-                      if (lowHealthSurface) {
-                        // Preserve neutral input while yielding, then use the already
-                        // freshly checked pose instead of repeating a full actor read.
-                        const proofState = await yieldPlanning()
-                        const navigator = createNavigator({ world: planningWorld, version: host.meta.version, allowWater: true, physics: generationPhysics })
-                        const proof = surfaceTimed('nativeProof', () => proveLowHealthSurfaceRoute({ navigator, initial: navigator.physics.fromServer(proofState), preview, circles, surfaceY, shallow }))
-                        if (!proof.ready) { lowHealthSurfaceDiagnostic.reason = proof.reason; continue }
-                        lowHealthSurfaceDiagnostic.ready++; lowHealthSurfaceDiagnostic.reason = 'native_surface_proven'; lowHealthSurfaceDiagnostic.ticks = proof.ticks
-                        trace = proof.trace; complete = true
-                      } else if (preview.directSurface === true && candidate.medium === 'water' && Array.isArray(preview.predictedTrace) && preview.predictedTrace.length >= 3 && preview.predictedTrace.length <= 81 && distance(preview.predictedTrace[0], origin) <= 0.05) {
-                        trace = preview.predictedTrace.map(point => ({ ...point }))
-                        complete = trace.every((next, index) => shallow(next) && (!index || circles.every(circle => !(circle.horizontalMinimum != null && segmentDistance({ ...circle.position, y: 0 }, { ...trace[index - 1], y: 0 }, { ...next, y: 0 }) < circle.horizontalMinimum) && segmentDistance(circle.position, eye(trace[index - 1]), eye(next)) >= circle.minDistance - 1e-4)))
-                      } else {
-                        // The shared water physics already reads the same live
-                        // block geometry; the planning overlay only adds
-                        // protection metadata, which physics does not use.
-                        // Rebuilding the registry for every candidate can let
-                        // a nearby pursuer close before movement starts.
-                        const navigator = createNavigator({ world: planningWorld, version: host.meta.version, allowWater: true, physics: generationPhysics })
-                        const stepper = navigator.createStepper(preview, navigator.physics.fromServer(safetyState()), { maxTicks: 80, sprint: false })
-                        trace = [origin]; let submergedTicks = 0
-                        for (let tick = 0; tick < 80; tick++) {
-                          const frame = stepper.next(); const next = frame.predictedState.position; const previous = trace.at(-1)
-                          submergedTicks = eye(next).y < surfaceY + 0.02 ? submergedTicks + 1 : 0
-                          const blocked = circles.find(circle => circle.horizontalMinimum != null && segmentDistance({ ...circle.position, y: 0 }, { ...previous, y: 0 }, { ...next, y: 0 }) < circle.horizontalMinimum || segmentDistance(circle.position, eye(previous), eye(next)) < circle.minDistance - 1e-4)
-                          if (frame.predictedState.isInLava || submergedTicks > 10 || !shallow(next) || blocked) {
-                            diagnostics.waterTraceRejection = { reason: frame.predictedState.isInLava ? 'lava' : blocked ? 'actor' : 'terrain', actorId: blocked?.id ?? null, tick, floor: blocked?.minDistance ?? null, initialDistance: blocked ? distance(blocked.position, eye(origin)) : null, position: { ...next }, surfaceY }
-                            break
-                          }
-                          trace.push({ ...next })
-                          if (frame.phase === 'awaiting_server_confirmation') { complete = candidate.medium === 'water' ? frame.predictedState.isInWater === true : frame.predictedState.onGround === true && frame.predictedState.isInWater !== true && generationPhysics.hasSupport(next); break }
-                          if (frame.phase !== 'moving') break
-                        }
-                      }
-                    } catch { continue }
-                    if (!complete || trace.length < 3 || distance(actor.position, eye(trace.at(-1))) < actor.distance + (alreadyShallow ? 0.1 : 0.25) || drownedWaterEscape && current.threats.some(threat => threat.name === 'minecraft:drowned' && Math.hypot(threat.position.x - trace.at(-1).x, threat.position.z - trace.at(-1).z) < Math.hypot(threat.position.x - origin.x, threat.position.z - origin.z) + 0.25) || alreadyShallow && Math.hypot(actor.position.x - trace.at(-1).x, actor.position.z - trace.at(-1).z) < Math.hypot(actor.position.x - origin.x, actor.position.z - origin.z) + 0.2) continue
-                    lowHealthSurfaceRun = lowHealthSurface; lowHealthSurfaceOrigin = { ...origin }; dropTrace = trace; dropCircles = circles; dropTraceIndex = 0; shallowWaterCheck = shallow; shallowSurfaceY = surfaceY; shallowWaterRun = true; briefSubmerge = mayBrieflySubmerge; submergedSince = null; surfaceTimed('finalEnsure', ensure)
-                    const stopWater = () => { if (safetyCurrent()) routeMovement.stop('Shallow escape interrupted') }
-                    signal.addEventListener('abort', stopWater, { once: true }); emergencyDropOp = context.operationId
-                    try {
-                      if (lowHealthSurface) { if (episodeMovementStarts >= 5) return { supported: false, reason: 'no_known_away_route', movementStarts: episodeMovementStarts }; episodeMovementStarts++; fence.starts = episodeMovementStarts; lowHealthSurfaceDiagnostic.attempts++; lowHealthSurfaceDiagnostic.reason = 'surface_start'; lowHealthSurfaceDiagnostic.target = { ...candidate.target } }
-                      surfaceTimed('senderStart', () => routeMovement.start(candidate.target, options))
-                      while (true) {
-                        await delay(50, undefined, { signal }); ensure()
-                        const state = safetyState(); const motion = generationMovement.snapshot()
-                        if (motion.phase === 'replan_required') return { supported: true, arrived: false, escaped: false, code: 'SHALLOW_CORRECTION_REPLAN', reason: 'no_known_away_route', serverConfirmed: false }
-                        if (motion.phase === 'stopped' && motion.reason === 'サーバーから速度の変更を受信したため再計画します。') return { supported: true, arrived: false, escaped: false, code: 'SHALLOW_MOTION_REPLAN', reason: 'no_known_away_route', serverConfirmed: false }
-                        if (['failed', 'stopped'].includes(motion.phase)) return { supported: true, arrived: false, escaped: false, code: motion.phase === 'failed' ? 'SHALLOW_MOVEMENT_FAILED' : 'SHALLOW_MOVEMENT_STOPPED', reason: 'no_known_away_route', partialFailure: typeof motion.reason === 'string' ? motion.reason.slice(0, 200) : null }
-                        if (['awaiting_server_confirmation', 'completed', 'idle'].includes(motion.phase)) {
-                          const after = assessEnemies(state)
-                          const safeSurface = candidate.medium === 'water' ? shallowWaterTerrain(feet(state), surfaceY, { allowDeepSurface: true }) && (lowHealthSurface ? knownSurfaceBody(generationPhysics, feet(state), surfaceY) : (state.predicted?.physicsState ?? state.physicsState)?.isInWater === true) : await verifyRouteStanding(state, candidate.target, { signal })
-                          return { supported: true, ...(lowHealthSurface ? { lowHealthSurface: true, movementStarts: episodeMovementStarts } : {}), arrived: safeSurface, escaped: safeSurface && after.threats.length === 0 && !after.requiresObservation, partialEscape: safeSurface && !after.requiresObservation && after.threats.length > 0 && after.threats.every(value => ids.has(value.runtimeId)), serverConfirmed: false }
-                        }
-                      }
-                    } finally {
-                      signal.removeEventListener('abort', stopWater)
-                      if (emergencyDropOp === context.operationId) emergencyDropOp = null
-                      if (safetyCurrent()) routeMovement.stop('Shallow escape finished')
-                      dropTrace = null; dropCircles = null; shallowWaterRun = false; shallowWaterCheck = null; shallowSurfaceY = null; briefSubmerge = false; submergedSince = null; lowHealthSurfaceRun = false; lowHealthSurfaceOrigin = null
-                    }
-                  }
-                  }
-                }
-              }
-            }
-            if (lastRejected) return { ...lastRejected, supported: true, escaped: false, partialEscape: false, safe: false, diagnostics }
-            if (lastBoundedPartial) return { ...lastBoundedPartial, movementStarts: episodeMovementStarts, diagnostics }
-            if (boundedJumpAttempted) return { supported: true, arrived: false, escaped: false, partialEscape: false, code: 'NO_SAFE_RETREAT', reason: 'no_known_away_route', movementStarts: episodeMovementStarts, safe: false, diagnostics }
-            // Keep the original deadline and live guards active while a partial origin recenters.
-            if (partialOrigin && episodeMovementStarts === 0 && partialEscapeAction && Date.now() < deadline) {
-              return await partialEscapeAction({ ...context, signal })
-            }
-            return { supported: false, reason: 'no_known_away_route', diagnostics }
-            }
-          } catch (error) {
-            if (pendingReplan && controller.signal.reason === pendingReplan.error && !context.signal?.aborted) {
-              const fresh = safetyState()
-              const roster = state => JSON.stringify((state.entities ?? []).map(entity => [entityId(entity), String(entity.uniqueId), entity.entityType ?? entity.name]).sort((a, b) => a[0].localeCompare(b[0])))
-              if (restartState(fresh) && roster(fresh) === roster(pendingReplan.state)) {
-                clearTimeout(timer); clearInterval(watch)
-                if (inspectIdleEscape === inspect) inspectIdleEscape = null
-                if (inspectIdleEscapePacket === inspectPacket) inspectIdleEscapePacket = null
-                fence.replans++
-                for (const entity of fresh.entities ?? []) fence.identities.set(entityId(entity), { uniqueId: String(entity.uniqueId), name: entity.entityType ?? entity.name })
-                const next = { ...context, state: structuredClone(fresh), threats: evaluateThreats(fresh, fresh.entities, { observationRadius: 32 }).threats }
-                preMovementFences.set(next, fence)
-                return await escape(next)
-              }
-            }
-            if (['searching', 'priority_search', 'guard_attempt'].includes(jumpSearchDiagnostic.reason)) jumpSearchDiagnostic.reason = Date.now() >= deadline || /deadline|timed out/i.test(error.message) ? 'deadline' : 'interrupted'
-            if (controller.signal.aborted && controller.signal.reason instanceof Error) throw controller.signal.reason
-            throw error
-          } finally {
-            clearTimeout(timer); clearInterval(watch)
-            if (inspectIdleEscape === inspect) inspectIdleEscape = null
-            if (inspectIdleEscapePacket === inspectPacket) inspectIdleEscapePacket = null
-            if (signal.aborted) await generationGuardRoute.stop('Idle escape interrupted')
-          }
-        }))
-      },
-      cancelOwned: async context => {
-        if (!safetyCurrent()) return
-        const owns = kind => owners[kind]?.operationId === context.operationId
-        const cleanup = []
-        if (owns('inventory')) cancelBackgroundInventory(context.reason)
-        if (owns('combat')) { generationCombat.cancel(context.reason); cleanup.push(generationCombat.drain()) }
-        if (owns('hut')) cleanup.push(generationHut.stop(context.reason))
-        if (owns('escape')) { if (emergencyMiningOp === context.operationId) ownedMining.stop(context.reason); if (emergencyDropOp === context.operationId) routeMovement.stop(context.reason); if (emergencyWaterCounterOp === context.operationId) { generationCombat.cancel(context.reason); cleanup.push(generationCombat.drain()) }; cleanup.push(generationGuardRoute.stop(context.reason)) }
-        await Promise.allSettled(cleanup)
-      },
-      onProgress: data => {
-        if (!safetyCurrent()) return
-        host.noteProgress({ type: 'idle_safety', ...data })
-        // Display only: once protection is back to plain observation (no
-        // threat, pursuer, unknown or owned action), an earlier online
-        // emergency record is marked resolved. Nothing is unlocked by this:
-        // gates only look at scheduled/in_flight, which are left untouched.
-        if (data?.phase !== 'observing' || data.busy || data.active || data.workClearancePending || data.cleanupUnconfirmed) return
-        const at = new Date().toISOString(); let resolved = false
-        const receipt = host.shared.safetyEmergency
-        if (receipt?.status === 'remaining_online' && receipt.scope === safetyOriginScope) { receipt.status = 'resolved'; receipt.resolvedAt = at; resolved = true }
-        const online = host.shared.onlineEmergency
-        if (online?.status === 'remaining_online' && online.reasonCode === 'LOCAL_DANGER' && !online.resumeError && online.connectionId === raw().connectionId) { online.status = 'resolved'; online.resolvedAt = at; resolved = true }
-        if (resolved) host.log('待機保護: 危険が解消したため非常停止の記録を解決済みにしました（表示のみ）')
-      },
-      onEmergencyStop: details => {
-        if (!safetyCurrent() || !host.shared.safetyWanted || String(details.enableEpoch) !== String(host.shared.safetyEnableEpoch)) return
-        const previous = host.shared.safetyEmergency
-        const captureDue = !previous || previous.scope !== safetyOriginScope || Date.now() - Date.parse(previous.capturedAt ?? previous.at) >= 5000
-        const receipt = { enableEpoch: host.shared.safetyEnableEpoch, scope: safetyOriginScope, status: 'remaining_online', reason: details.reason, health: details.health, at: new Date().toISOString(), capturedAt: captureDue ? new Date().toISOString() : previous.capturedAt ?? previous.at, retries: (previous?.retries ?? 0) + 1, retryAt: details.retryAt ?? null }
-        const dispatchEpoch = safetyDispatchEpoch
-        host.shared.safetyEmergency = receipt
-        // Reporting is local. A failed defense keeps the connection, wanted
-        // state and supervisor alive; confirmed death uses normal recovery.
-        setImmediate(() => {
-          if (!safetyCurrent() || !host.shared.safetyWanted || dispatchEpoch !== safetyDispatchEpoch || host.shared.safetyEmergency !== receipt || receipt.enableEpoch !== host.shared.safetyEnableEpoch) { receipt.status = 'cancelled'; return }
-          try { Promise.resolve(host.onEmergency?.({ ...details, continuedOnline: true })).catch(error => host.log(`待機保護の記録: ${error.message}`)) } catch (error) { host.log(`待機保護の記録: ${error.message}`) }
-          if (!captureDue) return
-          try {
-            const reasonCode = new Map([
-              ['Idle danger cannot be safely defended', 'DEFENSE_UNAVAILABLE'],
-              ['Actual sword equip is unconfirmed', 'SWORD_UNCONFIRMED'],
-              ['Known body or closed GUI is unconfirmed', 'BODY_OR_GUI_UNCONFIRMED'],
-              ['Exact idle defense oracle refused', 'DEFENSE_PREVIEW_REFUSED'],
-              ['Fresh idle defense state changed after preview', 'DEFENSE_STATE_CHANGED'],
-              ['Idle danger remains after bounded defense', 'DANGER_REMAINS'],
-              ['プレイヤー位置・次元が変わりました。', 'POSITION_OR_DIMENSION_CHANGED']
-            ]).get(details.reason) ?? 'IDLE_PROTECTION_UNRESOLVED'
-            const observed = raw()
-            const phase = ['starting', 'connecting', 'joining', 'spawned', 'dead', 'disconnected'].includes(observed.phase) ? observed.phase : 'unknown'
-            host.log(`待機保護の非常停止: reasonCode=${reasonCode} health=${Number.isFinite(observed.health) ? observed.health : 'unknown'} phase=${phase} sameScope=true`)
-            if (process.env.MINECRAFT_CAPTURE_EMERGENCY === '1') {
-              try {
-                const current = safetyState(); const p = current.position
-                if (p && ['x', 'y', 'z'].every(axis => Number.isFinite(p[axis])) && typeof host.world.getArea === 'function') {
-                  const center = { x: Math.floor(p.x), y: Math.floor(p.y - 1.62), z: Math.floor(p.z) }
-                  const protection = generationSafety.snapshot()
-                  const lowerTerrain = []
-                  // Bound diagnostic capture to nearby received terrain; it is
-                  // evidence only and never authorizes a movement by itself.
-                  for (let x = center.x - 6; x <= center.x + 6; x++) for (let z = center.z - 6; z <= center.z + 6; z++) for (let y = center.y - 12; y <= center.y + 4; y++) lowerTerrain.push(host.world.getBlock(x, y, z))
-                  const motion = generationMovement.snapshot()
-                  const guardStatus = generationGuardRoute.snapshot()
-                  const capturePoint = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(point[axis])) ? { x: point.x, y: point.y, z: point.z } : null
-                  const captureText = value => typeof value === 'string' ? value.slice(0, 300) : null
-                  const inputStatus = generationStream.stats()
-                  const capture = { observedAt: new Date().toISOString(), health: current.health, position: p, rawServerPosition: current.rawServerPosition, predicted: current.predicted, realmId: current.realm?.id, dimension: current.dimension, performance: host.shared.perfObservations ?? null, movement: { phase: motion.phase, target: motion.target, sent: motion.sent, reason: motion.reason, lastTimerGapMs: motion.lastTimerGapMs, maxFrameTimings: motion.maxFrameTimings ?? null, inputReplay: motion.inputReplay ?? null, directSurface: motion.route?.directSurface === true, start: generationMovement.diagnostics?.() ?? null, route: motion.route ? { origin: motion.route.origin ?? null, flags: { directSurface: motion.route.directSurface === true, directFlat: motion.route.directFlat === true, partialDrop: motion.route.partialDrop === true, controlledDrop: motion.route.controlledDrop === true, partialRecenter: motion.route.partialRecenter === true, shoreRecenter: motion.route.shoreRecenter === true }, waypointCount: motion.route.waypoints?.length ?? 0, waypoints: (motion.route.waypoints ?? []).slice(0, 4), avoidanceCount: motion.route.avoidance?.length ?? 0, avoidance: (motion.route.avoidance ?? []).slice(0, 16), reason: motion.route.reason ?? null, unknownFrontier: (motion.route.unknownFrontier ?? []).slice(0, 4) } : null }, safety: { lastError: typeof protection.lastError === 'string' ? protection.lastError.slice(0, 300) : null, lastEscapeDiagnostic: protection.lastEscapeDiagnostic ?? null, lastResult: protection.lastResult, lastWaterSearch: protection.lastWaterSearch ?? null, lastWaterReplan: protection.lastWaterReplan ?? null, lastWaterCounter: protection.lastWaterCounter ?? null }, enemies: (current.entities ?? []).filter(actor => actor.hostile && actor.positionKnown && actor.position).map(actor => ({ runtimeId: actor.runtimeId, uniqueId: actor.uniqueId, entityType: actor.entityType, position: actor.position, primed: actor.primed ?? null, ignited: actor.ignited ?? null, fuseLength: actor.fuseLength ?? null, charged: actor.charged ?? null, lastEvent: actor.lastEvent ?? null, terrainOcclusion: actor.terrainOcclusion ? { suppressed: actor.terrainOcclusion.suppressed, reason: actor.terrainOcclusion.reason, rays: actor.terrainOcclusion.rays.map(ray => ({ known: ray.known, blocked: ray.blocked, reason: ray.reason, barrierLength: ray.barrierLength, barrierCells: ray.barrierCells })) } : null })), blocks: host.world.getArea(center, 3), lowerTerrain }
-                  capture.clearance = structuredClone(host.shared.clearanceDiagnostic ?? null)
-                  capture.guardRoute = { phase: captureText(guardStatus.phase), code: captureText(guardStatus.code), reason: captureText(guardStatus.reason), routeInterruption: guardStatus.routeInterruption ? { code: captureText(guardStatus.routeInterruption.code), reason: captureText(guardStatus.routeInterruption.reason) } : null, interruptions: Number.isSafeInteger(guardStatus.interruptions) ? guardStatus.interruptions : null, movementStarts: Number.isSafeInteger(guardStatus.movementStarts) ? guardStatus.movementStarts : null, origin: capturePoint(guardStatus.visitedPrefix?.[0]), originCoordinates: 'feet', visitedPrefix: (guardStatus.visitedPrefix ?? []).slice(0, 8).map(capturePoint).filter(Boolean) }
-                  const captureRejection = value => value ? { reason: captureText(value.reason), detail: captureText(value.detail), mode: captureText(value.mode), actorId: captureText(value.actorId), actorName: captureText(value.actorName), minDistance: Number.isFinite(value.minDistance) ? value.minDistance : null, required: Number.isFinite(value.required) ? value.required : null, requestedTarget: capturePoint(value.requestedTarget), segment: value.segment ? { index: Number.isSafeInteger(value.segment.index) ? value.segment.index : null, from: capturePoint(value.segment.from), to: capturePoint(value.segment.to) } : null, preview: value.preview ? { ready: value.preview.ready === true, reason: captureText(value.preview.reason), origin: capturePoint(value.preview.origin), target: capturePoint(value.preview.target), waypointCount: Number.isSafeInteger(value.preview.waypointCount) ? value.preview.waypointCount : null, waypoints: (value.preview.waypoints ?? []).slice(0, 4).map(waypoint => ({ position: capturePoint(waypoint.position), action: captureText(waypoint.action), medium: captureText(waypoint.medium) })) } : null, latestPose: value.latestPose ? { position: capturePoint(value.latestPose.position), rawServerPosition: capturePoint(value.latestPose.rawServerPosition), positionSource: captureText(value.latestPose.positionSource) } : null } : null
-                  capture.safety.lastContinuation = protection.lastContinuation ?? null
-                  capture.safety.workClearancePending = protection.workClearancePending === true
-                  capture.safety.workClearance = protection.workClearance ?? null
-                  capture.queuedPrediction = inputHistory?.snapshot() ?? null
-                  capture.boundedJumpSearch = structuredClone(boundedJumpSearch)
-                  capture.lastInputFailure = structuredClone(host.shared.lastInputFailure ?? null)
-                  capture.input = { owner: inputOwner, running: inputStatus.running === true, tick: captureText(inputStatus.tick), sent: Number.isSafeInteger(inputStatus.sent) ? inputStatus.sent : null, lastError: captureText(inputStatus.lastError), idleError: captureText(host.shared.idleError) }
-                  capture.guardRoute.progressReplan = guardStatus.progressReplan ? { kind: captureText(guardStatus.progressReplan.kind), originMode: captureText(guardStatus.progressReplan.originMode), anchorTick: captureText(guardStatus.progressReplan.anchorTick), currentTick: captureText(guardStatus.progressReplan.currentTick) } : null
-                  capture.connectionId = captureText(current.connectionId)
-                  capture.profile = captureText(current.profile)
-                  capture.phase = captureText(current.phase)
-                  capture.gameMode = current.gameMode
-                  capture.version = captureText(host.meta.version)
-                  capture.threatPolicy = captureText(current.threatPolicy)
-                  const capturedEvaluation = evaluateThreats(current, current.entities ?? [], { observationRadius: 32 })
-                  const capturedActor = actor => ({ runtimeId: captureText(actor.runtimeId), name: captureText(actor.name), distance: actor.distance, dangerRadius: actor.dangerRadius, category: captureText(actor.category) })
-                  capture.threatEvaluation = { observedAt: capture.observedAt, requiresObservation: capturedEvaluation.requiresObservation, unknownPositions: capturedEvaluation.unknownPositions.length, hostUnknownPositions: current.entityStats?.unknownPositions ?? null, threatCount: capturedEvaluation.threats.length, threats: capturedEvaluation.threats.slice(0, 32).map(capturedActor), outsideDanger: capturedEvaluation.outsideDanger.slice(0, 32).map(capturedActor), suppressedByTerrain: capturedEvaluation.suppressedByTerrain.slice(0, 32).map(capturedActor) }
-                  capture.inventory = { known: current.inventory?.known === true, uncertain: current.inventory?.uncertain === true, items: (current.inventory?.items ?? []).slice(0, 36).map(item => ({ slot: item.slot, name: captureText(item.name), count: item.count })) }
-                  capture.rawSelectedSlot = current.rawServerSelectedSlot ?? current.rawSelectedSlot ?? current.selectedSlot
-                  capture.heldItem = current.heldItem ? { slot: current.heldItem.slot, name: captureText(current.heldItem.name), count: current.heldItem.count } : null
-                  capture.equipmentServerConfirmed = current.equipmentServerConfirmed
-                  capture.vitals = structuredClone(current.vitals ?? {})
-                  capture.removedEntities = (current.removedEntities ?? []).slice(-16).map(actor => ({ runtimeId: captureText(actor.runtimeId), uniqueId: captureText(actor.uniqueId), entityType: captureText(actor.entityType), position: capturePoint(actor.position), removedAt: typeof actor.removedAt === 'string' ? captureText(actor.removedAt) : Number.isFinite(actor.removedAt) ? actor.removedAt : null }))
-                  capture.guardRoute.routeRejection = captureRejection(guardStatus.routeRejection)
-                  capture.guardRoute.remainingRouteRejection = captureRejection(guardStatus.remainingRouteRejection)
-                  capture.guardRoute.progressReplan = guardStatus.progressReplan ? { from: capturePoint(guardStatus.progressReplan.from), target: capturePoint(guardStatus.progressReplan.target), position: capturePoint(guardStatus.progressReplan.position), authoritativePosition: capturePoint(guardStatus.progressReplan.authoritativePosition), horizontalProgress: Number.isFinite(guardStatus.progressReplan.horizontalProgress) ? guardStatus.progressReplan.horizontalProgress : null, targetOvershoot: Number.isFinite(guardStatus.progressReplan.targetOvershoot) ? guardStatus.progressReplan.targetOvershoot : null, authoritativeStamp: typeof guardStatus.progressReplan.authoritativeStamp === 'number' ? guardStatus.progressReplan.authoritativeStamp : captureText(guardStatus.progressReplan.authoritativeStamp) } : null
-                  process.stdout.write('EMERGENCY_CAPTURE ' + JSON.stringify(capture) + '\n')
-                }
-              } catch { /* Diagnostics must never block the emergency stop. */ }
-            }
-            const protection = generationSafety.snapshot()
-            const escape = protection.lastResult?.action === 'escape' ? protection.lastResult : null
-            const defense = protection.lastDefense
-            if (protection.lastClear?.cleared) host.log('待機保護の障害物: 自然の葉1個の除去を確認')
-            if (defense) host.log(`待機保護の自衛: action=${defense.action} phase=${defense.phase} code=${defense.code ?? 'none'} reason=${defense.reasonCode ?? 'none'} hits=${Number.isSafeInteger(defense.hitsRequested) ? defense.hitsRequested : 'unknown'} confirmed=${defense.serverConfirmed === true}`)
-            const errorText = String(protection.lastError ?? '')
-            const errorCode = /damage/i.test(errorText) ? 'DAMAGE' : /deadline|timed out|timeout/i.test(errorText) ? 'TIMEOUT' : /danger|threat|enemy/i.test(errorText) ? 'THREAT_CHANGED' : /support|terrain|ground|landing/i.test(errorText) ? 'TERRAIN' : /scope|session|generation/i.test(errorText) ? 'SCOPE' : /cancel|abort|stopped/i.test(errorText) ? 'CANCELLED' : errorText ? 'OTHER' : 'none'
-            host.log(`待機保護の退避: attempts=${Number.isSafeInteger(protection.escapes) ? protection.escapes : 0} supported=${escape?.supported === true} partial=${escape?.partialEscape === true} code=${escape?.code ?? escape?.reason ?? 'none'} cause=${escape?.cause ?? 'none'} error=${errorCode}`)
-            const errorDetail = new Map([['Idle escape danger changed', 'IDENTITY_OR_NEW_THREAT'], ['Idle escape remaining path danger changed', 'OUTSIDE_THREAT_CROSSED_PATH'], ['New or unknown danger interrupted protection', 'NEW_OR_UNKNOWN_THREAT'], ['Idle escape four-second deadline exceeded', 'DEADLINE'], ['Idle escape stopped on observed damage', 'DAMAGE']]).get(errorText)
-            if (errorDetail) host.log(`待機保護の中断詳細: ${errorDetail}`)
-            if (escape?.diagnostics) host.log(`待機保護の探索: visited=${escape.diagnostics.visited} candidates=${escape.diagnostics.candidates} partials=${escape.diagnostics.partials} previews=${escape.diagnostics.previews} ready=${escape.diagnostics.readyPreviews} floor=${escape.diagnostics.floorBlocked} body=${escape.diagnostics.bodyBlocked} unknown=${escape.diagnostics.terrainUnknown} away=${escape.diagnostics.awayBlocked} gain=${escape.diagnostics.gainBlocked}`)
-            try {
-              const current = working(); const physical = current.predicted?.physicsState ?? current.physicsState
-              const grounded = typeof physical?.onGround === 'boolean' ? String(physical.onGround) : 'unknown'
-              const sword = current.inventory?.known === true && /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/.test(current.heldItem?.name ?? '')
-              const bodyClear = verifyStrikeBody(current)
-              host.log(`待機保護の体勢: grounded=${grounded} bodyClear=${bodyClear} meleeSupport=${verifyMeleeBody(current)} swordHeld=${sword} inventoryKnown=${current.inventory?.known === true} defenses=${Number.isSafeInteger(protection.defenses) ? protection.defenses : 0}`)
-              if (!bodyClear) host.log(`待機保護の体勢詳細: ${JSON.stringify(strikeBodyDiagnostic(current))}`)
-            } catch { /* Diagnostics cannot interrupt online protection. */ }
-            if (escape?.rejection) host.log(`待機保護の経路: reason=${escape.rejection.reason} detail=${escape.rejection.detail ?? 'none'} preview=${escape.rejection.previewCode ?? 'none'} actor=${escape.rejection.actorName ?? 'unknown'} distance=${Number.isFinite(escape.rejection.minDistance) ? escape.rejection.minDistance.toFixed(2) : 'unknown'} required=${Number.isFinite(escape.rejection.required) ? escape.rejection.required.toFixed(2) : 'unknown'}`)
-            // Keep a bounded, non-packet summary for diagnosing a protection
-            // failure while the bot remains online. Never log
-            // player names, positions, inventory, chat or authentication.
-            try {
-              const state = { ...observed, threatPolicy: host.shared.autoWanted ? 'online_learning' : 'balanced_mining' }
-              const danger = evaluateThreats(state, host.entities.snapshot({ kind: 'all' }), { observationRadius: 32 })
-              const nearest = danger.threats[0]
-              if (nearest && /^minecraft:[a-z_]{1,40}$/.test(nearest.name) && Number.isFinite(nearest.distance)) host.log(`待機保護の近傍敵: type=${nearest.name} distance=${nearest.distance.toFixed(1)} cover=unverified unknown=${danger.requiresObservation} count=${danger.threats.length}`)
-              if (danger.threats.length === 1 && nearest) {
-                const preview = generationCombat.previewEngage(nearest.runtimeId)
-                const reason = String(preview.errors?.[0] ?? '')
-                const code = preview.ready ? 'READY' : /視線/.test(reason) ? 'SIGHT' : /近接範囲/.test(reason) ? 'RANGE' : /剣|持ち物|スロット|主手/.test(reason) ? 'EQUIPMENT' : /体力/.test(reason) ? 'HEALTH' : /操作/.test(reason) ? 'BUSY' : 'OTHER'
-                host.log(`待機保護の交戦確認: ${code}`)
-              }
-              const summary = danger.threats.slice(0, 8).filter(actor => /^minecraft:[a-z_]{1,40}$/.test(actor.name) && Number.isFinite(actor.distance) && actor.position).map(actor => {
-                const dx = actor.position.x - state.position.x; const dz = actor.position.z - state.position.z
-                const direction = Math.abs(dx) > Math.abs(dz) * 2 ? (dx > 0 ? 'E' : 'W') : Math.abs(dz) > Math.abs(dx) * 2 ? (dz > 0 ? 'S' : 'N') : `${dz > 0 ? 'S' : 'N'}${dx > 0 ? 'E' : 'W'}`
-                return `${actor.name}:${actor.distance.toFixed(1)}:${direction}`
-              }).join(',')
-              if (summary) host.log(`待機保護の敵一覧（遮蔽未評価）: ${summary}`)
-            } catch { /* Logging must not prevent a fresh bounded response. */ }
-          } catch (error) { host.log(`待機保護の記録に失敗しました: ${error.message}`) }
-        })
-      }
-    })
+    function verifyUnarmedBody (...args) { return idleSafetyRuntime.verifyUnarmedBody(...args) }
+    const generationSafety = createIdleSafety(idleSafetyRuntime.generationSafetyPorts)
     idleSafety = generationSafety
-    function requireUserLease (context) {
-      requireGeneration()
-      if (!userBehaviorLease || userBehaviorLease.generation !== generationStream || context?.kind !== userBehaviorLease.kind || context.claimId !== userBehaviorLease.claimId || context.token !== userBehaviorLease.token) throw new Error('利用者指定動作の操作権が一致しません。')
-      if (context.signal?.aborted) throw context.signal.reason ?? new Error('User behavior cancelled')
-      const state = lightweightUserState(), scope = context.scope
-      if (scope && ['profile', 'connectionId', 'startedAt', 'dimension'].some(k => scope[k] != null && String(scope[k]) !== String(state[k])) || scope?.realmId != null && String(scope.realmId) !== String(state.realm?.id) || scope?.runtimeEntityId != null && String(scope.runtimeEntityId) !== String(state.runtimeEntityId) || scope?.deathId != null && scope.deathId !== actualLifeId()) throw new Error('User behavior scope changed')
-      if (state.dead || !(state.health > 0)) throw new Error('User behavior requires a living player')
-      return state
-    }
-    const sameLease = context => userBehaviorLease?.generation === generationStream && context?.kind === userBehaviorLease.kind && context?.claimId === userBehaviorLease.claimId && context?.token === userBehaviorLease.token
-    let userMeleeSurvey = null
-    const userApproachSurveys = new Map()
-    async function combatCanPreemptSafety (state, actor, surfaceBinding, context) {
-      const protection = generationSafety.snapshot()
-      if (protection.running !== true) return true
-      try {
-        const selected = state.rawServerSelectedSlot ?? state.rawSelectedSlot
-        const weapon = require('./melee-weapons').selectMeleeWeapon({ items: craftInventory().inventory ?? [], rawItem: crafting.rawItem, selectedSlot: selected, target: actor })
-        const motion = generationMovement.snapshot(), age = Date.now() - motion.queuedAt
-        // A real in-flight escape must not be exchanged for an unarmed trade.
-        // Without a moving escape, normal positive-health near defense remains.
-        if ((!weapon.ready || weapon.fists === true) && owners.escape && protection.busy && protection.active === 'escape' && motion.running && motion.phase === 'moving' && motion.queuedReceiptConfirmed === true && motion.sent > 0 && Number.isFinite(age) && age >= 0 && age <= 200) return false
-        userMeleeSurvey ??= require('./melee-combat').createMeleeCombat({ client: { queue: () => { throw Error('Passive melee survey cannot send packets') } }, getState: lightweightUserState, getRawState: lightweightRawState, world: host.world, entities: host.entities, crafting, equip: () => { throw Error('Passive melee survey cannot equip') }, getInput: () => { throw Error('Passive melee survey cannot own input') }, isBusy: () => false, version: host.meta.version })
-        const attack = userMeleeSurvey.preview(actor.runtimeId)
-        host.shared.lastPreemptSurvey = { code: attack.code ?? (attack.ready ? 'ready' : 'unknown'), error: (attack.errors ?? [])[0] ?? null, weapon: weapon.ready ? (weapon.fists ? 'fists' : 'weapon') : 'none', at: new Date().toISOString() }
-        if (attack.ready === true && String(attack.targetUniqueId) === String(actor.uniqueId)) return true
-        // A hostile inside real reach takes priority over the escape. A model
-        // pose a tick past its 200ms window at the escape handover is not a
-        // reason to keep trading hits; the bound controller re-verifies pose.
-        if (attack.code === 'POSE_UNTRUSTED' && weapon.ready) {
-          const reachAim = meleeApproachAim(actor)
-          if (reachAim && Math.hypot(state.position.x - reachAim.x, state.position.y - reachAim.y, state.position.z - reachAim.z) <= 2.8) return true
-        }
-        const aim = meleeApproachAim(actor), range = Math.hypot(state.position.x - aim.x, state.position.y - aim.y, state.position.z - aim.z)
-        // Far bow claims already require the actual Ranged passive survey in
-        // Coordinator selection. A melee survey code (e.g. a momentarily stale
-        // pose) must not veto that bow claim, so check it before the melee code.
-        if (range >= 4 && userHasBowAndAmmo(state)) return true
-        if (attack.code !== 'OUT_OF_REACH') return false
-        // Immediate defence (ranked above the escape): a hostile just outside
-        // real reach but within the 4-block defence range takes the lease with
-        // a usable weapon; the bound approach still proves its own route.
-        if (weapon.ready && range < 4) return true
-        if (!surfaceMeleeSight(state.position, aim)) return false
-        const physical = state.predicted?.physicsState ?? state.physicsState
-        const initial = generationPhysics.fromServer(state), surfaceY = generationPhysics.waterSurface(initial.position)?.surfaceY
-        const water = !(physical?.onGround === true && physical.isInWater !== true) && Number.isInteger(surfaceY) && knownSurfaceBody(generationPhysics, initial.position, surfaceY)
-        if (water && !surfaceBinding || !water && (initial.isInWater || !initial.onGround)) return false
-        const dx = state.position.x - actor.position.x, dz = state.position.z - actor.position.z, horizontal = Math.hypot(dx, dz)
-        if (!horizontal) return false
-        const avoidance = userAvoidance(state, actor)
-        if (!userApproachSurveys.has(water)) userApproachSurveys.set(water, createNavigator({ world: host.world, version: host.meta.version, allowWater: water, physics: generationPhysics.withWorld(host.world, { allowWater: water }) }))
-        const navigator = userApproachSurveys.get(water)
-        for (const radius of [2, 1.8, 2.2]) for (const y of water ? [surfaceY] : [...new Set([Math.round(state.position.y - 1.62), Math.floor(actor.position.y), Math.floor(actor.position.y) + 1])]) {
-          const target = { x: actor.position.x + dx / horizontal * radius, y, z: actor.position.z + dz / horizontal * radius }
-          if (Math.hypot(target.x - state.position.x, target.y - state.position.y + 1.62, target.z - state.position.z) > 6) continue
-          const targetEye = { ...target, y: y + 1.62 }
-          if (Math.hypot(targetEye.x - aim.x, targetEye.y - aim.y, targetEye.z - aim.z) > 2.8 || !surfaceMeleeSight(targetEye, aim)) continue
-          const route = navigator.plan(initial, target, { maxDistance: 6, maxExpanded: 300, avoidance, ...(water ? { directSurface: true, exactGoal: true } : {}) })
-          if (route.ready === true && (!water || route.directSurface === true)) return true
-          // Yield between bounded candidates while the existing sender keeps
-          // ownership. A changed live seed/target/circle set needs a fresh try.
-          await delay(0, undefined, { signal: context.signal })
-          const fresh = lightweightUserState(), currentActor = fresh.entities?.find(e => String(e.runtimeId) === String(actor.runtimeId) && String(e.uniqueId) === String(actor.uniqueId) && e.entityType === actor.entityType)
-          if (!currentGeneration() || context.signal?.aborted || userScope(fresh) !== userScope(state) || fresh.health < state.health || !currentActor || !['x', 'y', 'z'].every(k => currentActor.position?.[k] === actor.position[k] && Math.abs(fresh.position?.[k] - state.position[k]) <= 1e-4) || JSON.stringify(userAvoidance(fresh, currentActor)) !== JSON.stringify(avoidance)) return false
-        }
-      } catch (error) { host.shared.lastPreemptSurvey = { code: 'THROWN', error: String(error?.message ?? error).slice(0, 160), at: new Date().toISOString() } /* Unknown state, terrain, tool or actors cannot preempt safety. */ }
-      return false
-    }
-    // Diagnostics only: the most recent root refusal of a user-behavior lease.
-    function userAcquireDenied (reason) {
-      host.shared.userAcquireDenials ??= {}
-      const counts = host.shared.userAcquireDenials
-      counts[reason] = (counts[reason] ?? 0) + 1
-      host.shared.lastUserAcquireDenial = { reason, at: new Date().toISOString() }
-      return { acquired: false, reason }
-    }
-    async function acquireUserControl (context) {
-      requireGeneration()
-      const preemptedBed = context.kind === 'combat' && userBehaviorLease?.kind === 'bed' && !userBehaviorSleeping && !userBehaviorSnapshot().sleeping ? userBehaviorLease : null
-      if (userBehaviorLease && userBehaviorLease !== preemptedBed || context.signal?.aborted || disposed || disposing) return userAcquireDenied('busy_or_disposed')
-      let meleeApproach = null, surfaceMeleeBinding = null
-      if (context.kind === 'combat' && context.target) {
-        const state = lightweightUserState(), aim = meleeApproachAim(context.target)
-        const range = aim ? Math.hypot(state.position.x - aim.x, state.position.y - aim.y, state.position.z - aim.z) : NaN
-        const canonical = evaluateThreats(state, state.entities ?? [], { observationRadius: 32 })
-        const actor = state.entities?.find(e => String(e.runtimeId) === String(context.target.runtimeId) && String(e.uniqueId) === String(context.target.uniqueId) && e.entityType === context.target.entityType && e.kind === 'mob' && e.hostile === true && e.alive === true && e.positionKnown === true && e.dimension === state.dimension)
-        const currentAim = actor && meleeApproachAim(actor), currentRange = currentAim ? Math.hypot(state.position.x - currentAim.x, state.position.y - currentAim.y, state.position.z - currentAim.z) : Infinity
-        if (currentRange < 4 && actor && !canonical.requiresObservation && canonical.threats.some(e => e.runtimeId === String(actor.runtimeId) && e.category === 'melee') && state.inventory?.known === true && !state.inventory.uncertain && state.inventoryConfidence?.known !== false && Array.isArray(state.inventory.items)) surfaceMeleeBinding = { scope: userScope(state), runtimeId: String(actor.runtimeId), uniqueId: String(actor.uniqueId), entityType: actor.entityType, initialBodyRange: currentRange, threatPolicy: state.threatPolicy, radius: canonical.threats.find(e => e.runtimeId === String(actor.runtimeId)).dangerRadius }
-        const scope = context.scope
-        if (scope && ['profile', 'connectionId', 'startedAt', 'dimension'].some(k => scope[k] != null && String(scope[k]) !== String(state[k])) || scope?.realmId != null && String(scope.realmId) !== String(state.realm?.id) || scope?.runtimeEntityId != null && String(scope.runtimeEntityId) !== String(state.runtimeEntityId) || scope?.deathId != null && scope.deathId !== actualLifeId()) return userAcquireDenied('scope_changed')
-        if (!actor) return userAcquireDenied('target_moved_or_unknown')
-        // Coordinator already selected a live eligible target. Take control
-        // before any work cleanup; moving mobs are re-read by the controller.
-        if (range >= 4 && !userHasBowAndAmmo(state) && !canAcquireStuckMeleeApproach(context.target, state)) {
-          if (canAcquireHealthyMeleeApproach(actor, state)) meleeApproach = { reason: 'healthy_armed_melee', scope: userScope(state), target: { runtimeId: String(actor.runtimeId), uniqueId: String(actor.uniqueId), entityType: actor.entityType }, engagementReached: false }
-        }
-      }
-      const token = {}, lease = { kind: context.kind, claimId: context.claimId, token, generation: generationStream, scope: context.scope, ready: false, meleeApproach, surfaceMeleeBinding }
-      quarryEgressAbort?.abort(new Error('EGRESS_COMBAT_INTERRUPTED'))
-      // Revoke the old task before the combat lease makes its ownership check
-      // fail. This also removes any not-yet-sent placement transaction.
-      generationPillar?.cancel('ASCENT_COMBAT_INTERRUPTED')
-      if (context.kind === 'combat') {
-        cancelChunkMovement('COMBAT_PRIORITY')
-        manualChestStorage?.cancel('COMBAT_PRIORITY')
-        manualShulkerAbort?.abort(new Error('COMBAT_PRIORITY'))
-        manualShulkerRecovery?.cancel('COMBAT_PRIORITY')
-        if (!host.shared.autoWanted && quarryJob?.holdsWork()) lease.defenseAnchor = createDefenseAnchor(lightweightUserState())
-        else if (!host.shared.autoWanted) {
-          const state = lightweightUserState(), anchor = host.shared.combatDefenseAnchor
-          if (!anchor || !defenseMovementAllowed({ anchor, state, position: anchor.feet, retreating: true }).allowed) host.shared.combatDefenseAnchor = createDefenseAnchor(state)
-          lease.defenseAnchor = host.shared.combatDefenseAnchor
-        }
-      }
-      userBehaviorLease = lease
-      quarryCancellationRevision++
-      const storageContext = quarryJob?.storageInterruptionContext?.()
-      const preemption = storageContext ? (() => {
-        const s = lightweightUserState()
-        return { ...storageContext, sequence: host.shared.quarryUserPreemptionSequence = (host.shared.quarryUserPreemptionSequence ?? 0) + 1, preemptionStarted: true, kind: context.kind, claimedAt: Date.now(), claimId: String(context.claimId ?? ''), scope: JSON.stringify([s.profile ?? null, s.realm?.id ?? s.realmId ?? null, s.dimension ?? null, s.connectionId ?? null, s.startedAt ?? null]), life: actualLifeId(), outcome: 'preempting' }
-      })() : null
-      if (preemption) host.shared.quarryUserPreemption = preemption
-      if (context.kind === 'combat') {
-        const cleanupTasks = []
-        const revoke = fn => { try { cleanupTasks.push(Promise.resolve(fn())) } catch (error) { cleanupTasks.push(Promise.reject(error)) } }
-        // Release the exact food-use input while it still owns the stream.
-        if (typeof food.preemptForCombat === 'function') food.preemptForCombat('user_behavior')
-        else food.cancel('user_behavior')
-        armor.preemptForCombat?.('user_behavior')
-        // Cancel input synchronously. Bookkeeping/drain promises retain their
-        // checkpoints but cannot delay the new combat owner's first action.
-        stopOrdinaryUserStream(); mining.stop('user_behavior'); walker?.stop('user_behavior'); generationMovement.stop('user_behavior'); generationCombat.cancel('user_behavior')
-        const mutationPending = () => inventory.snapshot().pendingRequestId != null || chestStatus().pendingRequestId != null || furnace.snapshot().pendingRequestId != null || craftStatus().pendingRequestId != null || manualChestStorage?.pendingMutation()
-        const receiptWaiting = () => mutationPending() || inventory.snapshot().busy || chestStatus().busy || furnace.snapshot().busy || manualChestStorage?.equipmentBusy?.()
-        if (craftStatus().pendingRequestId == null) crafting.cancel('user_behavior')
-        if (furnace.snapshot().pendingRequestId == null) furnace.cancel('user_behavior')
-        if (chestStatus().pendingRequestId == null) chest.cancel('user_behavior')
-        interactions.cancel('user_behavior'); prospecting.cancel('user_behavior')
-        // A request already on the wire keeps its reply observer. Combat
-        // remains the owner while its actual inventory receipt settles.
-        if (inventory.snapshot().pendingRequestId == null) inventory.cancel('user_behavior')
-        if (!mutationPending()) { try { crafting.closeContainer() } catch {} }
-        for (const fn of [
-          () => autonomy.stop('user_behavior'), () => depotPrebuild?.cancel('user_behavior'), () => depotBuilder?.stop('user_behavior'), () => depotStorage?.cancel('user_behavior'),
-          () => depotPrebuild?.drain(), () => quarryPillarTask, () => quarryEgressTask,
-          () => generationSafety.stop('user_behavior'), () => generationSafety.drain(), () => generationCombat.drain(),
-          () => excavation?.stop('user_behavior'), () => tunneling?.stop('user_behavior'), () => recovery?.stop('user_behavior'),
-          () => foraging?.stop('user_behavior'), () => surfaceReturn?.stop('user_behavior'), () => generationShelter.stop('user_behavior'), () => generationHut.stop('user_behavior'), () => generationGuardRoute.stop('user_behavior')
-        ]) revoke(fn)
-        const cleanup = Promise.allSettled(cleanupTasks)
-        void cleanup.then(results => {
-          if (currentGeneration()) host.shared.combatPreemptionCleanup = { claimId: context.claimId, completedAt: Date.now(), failures: results.filter(r => r.status === 'rejected').length }
-        })
-        lease.ready = true
-        lease.receiptsReady = !receiptWaiting() && !host.shared.inventoryUncertain
-        if (!lease.receiptsReady) {
-          // This observer never resumes the old operation. It keeps only the
-          // sent request's response and closes its GUI before weapon input.
-          void (async () => {
-            const until = Date.now() + 10000
-            let refreshSent = false
-            while (currentGeneration() && userBehaviorLease === lease && !context.signal?.aborted && Date.now() < until) {
-              if (!receiptWaiting()) {
-                try { crafting.closeContainer() } catch {}
-                if (!host.shared.inventoryUncertain) { lease.receiptsReady = true; return }
-                if (!refreshSent) {
-                  try { await requestInventoryResyncWithReceipt('combat_preemption', { combatLease: lease }); refreshSent = true } catch (error) { if (!['BUSY', 'RESYNC_RATE_LIMIT'].includes(error.code)) break }
-                }
-              }
-              await delay(25)
-            }
-            if (userBehaviorLease === lease && !lease.receiptsReady) userBehaviors?.cancel('戦闘前の持ち物受信を確認できませんでした。', 'INVENTORY_RECEIPT_UNCONFIRMED')
-          })().catch(error => { host.shared.combatReceiptError = String(error.message ?? error).slice(0, 200) })
-        }
-        if (preemption) { preemption.outcome = 'ready'; preemption.readyAt = Date.now() }
-        host.shared.combatPriorityTransition = { claimId: context.claimId, target: context.target?.entityType ?? null, at: Date.now(), cleanupPending: true }
-        startIdle()
-        return token
-      }
-      autonomy.stop('user_behavior')
-      depotPrebuild?.cancel('user_behavior'); depotBuilder?.stop('user_behavior'); depotStorage?.cancel('user_behavior')
-      // A cancelled prebuild settles with its abort reason; that is not an acquire failure.
-      await depotPrebuild?.drain()?.catch(() => {})
-      stopOrdinaryUserStream(); mining.stop('user_behavior'); walker?.stop('user_behavior'); generationMovement.stop('user_behavior'); generationCombat.cancel('user_behavior')
-      crafting.cancel('user_behavior'); furnace.cancel('user_behavior'); inventory.cancel('user_behavior'); food.cancel('user_behavior'); interactions.cancel('user_behavior'); prospecting.cancel('user_behavior')
-      const stopped = await Promise.allSettled([quarryPillarTask, quarryEgressTask, generationSafety.stop('user_behavior'), generationSafety.drain(), generationCombat.drain(), excavation?.stop('user_behavior'), tunneling?.stop('user_behavior'), recovery?.stop('user_behavior'), foraging?.stop('user_behavior'), generationShelter.stop('user_behavior'), generationHut.stop('user_behavior'), generationGuardRoute.stop('user_behavior')])
-      const deadline = Date.now() + 2000
-      while ((autonomy.snapshot().actionActive || depotBuilder?.snapshot().busy || depotStorage?.snapshot().busy) && Date.now() < deadline && currentGeneration()) await delay(25)
-      if (!currentGeneration() || stopped.some(r => r.status === 'rejected') || autonomy.snapshot().actionActive || depotBuilder?.snapshot().busy || depotStorage?.snapshot().busy) { if (preemption) preemption.outcome = 'cleanup_failed'; if (userBehaviorLease === lease) userBehaviorLease = null; return userAcquireDenied('stops_rejected_or_still_busy') }
-      lease.ready = true
-      if (preemption) { preemption.outcome = 'ready'; preemption.readyAt = Date.now() }
-      // A first combat claim can precede resumeRequested and its idle timer.
-      // Keep real neutral physics queued during equipment/observation waits.
-      if (lease.kind === 'combat') startIdle()
-      return token
-    }
-    async function resumeUserControl (context) {
-      // An acquisition that threw never handed out a token. Refusing its release
-      // left the coordinator release_blocked (no combat at all) for the rest of
-      // the life. Nothing was granted, so clear a half-set lease of the same
-      // claim and report the release as complete.
-      if (context?.token == null && (!userBehaviorLease || userBehaviorLease.kind === context?.kind && userBehaviorLease.claimId === context?.claimId && userBehaviorLease.ready !== true)) {
-        if (userBehaviorLease) userBehaviorLease = null
-        return { resumed: true, reason: 'NO_ROOT_LEASE_GRANTED' }
-      }
-      if (!sameLease(context)) return { resumed: false, reason: 'STALE_ROOT_USER_BEHAVIOR_TOKEN' }
-      userBehaviorLease = null
-      if (context.kind === 'combat' && !lightweightUserState().entities?.some(e => e.hostile === true && e.alive !== false && e.positionKnown === true && e.position && Math.hypot(e.position.x - working().position.x, e.position.y - working().position.y + 1.62, e.position.z - working().position.z) <= 32)) host.shared.combatDefenseAnchor = null
-      return { resumed: true }
-    }
-    function userClock () {
-      const clock = Object.values(host.shared.worldClocks ?? {}).find(c => c.name === 'minecraft:overworld' && c.source === 'server_sync_world_clocks' && Number.isSafeInteger(c.time))
-      if (clock) return { time: clock.time, source: clock.source }
-      const fallback = host.shared.worldTime
-      return raw().dimension === 'overworld' && fallback?.source === 'server_set_time' && Number.isSafeInteger(fallback.ticks) ? { time: fallback.ticks, source: fallback.source } : { time: null, source: 'unknown' }
-    }
-    async function userInteraction (method, value, context) {
-      requireUserLease(context)
-      const cancel = () => { if (sameLease(context)) interactions.cancel('Bed interaction cancelled') }
-      context.signal?.addEventListener('abort', cancel, { once: true })
-      try { const result = await interactions[method](value); requireUserLease(context); return result } finally { context.signal?.removeEventListener('abort', cancel) }
-    }
-    async function mineUserBed (target, context) {
-      requireUserLease(context)
-      const cancel = () => { if (sameLease(context)) mining.stop('Owned bed mining cancelled') }
-      context.signal?.addEventListener('abort', cancel, { once: true })
-      try {
-        mining.start([target])
-        const deadline = Date.now() + 10000
-        while (Date.now() < deadline) {
-          requireUserLease(context)
-          const result = mining.snapshot()
-          if (result.phase === 'completed') return { ...result, serverConfirmed: true, confirmedBy: 'normal_miner_received_block_air' }
-          if (['failed', 'stopped'].includes(result.phase)) throw new Error(result.reason ?? 'Owned bed mining stopped')
-          await delay(50, undefined, { signal: context.signal })
-        }
-        throw new Error('Owned bed mining confirmation timed out')
-      } finally { context.signal?.removeEventListener('abort', cancel) }
-    }
-    // Fighting several hostiles: their full danger radii (a skeleton's is its
-    // shot range) blocked every approach step to the primary. Only a creeper's
-    // blast radius is kept; other bodies are just stepped around.
-    function combatAvoidRadius (e, radius) { return e.entityType === 'minecraft:creeper' || e.kind === 'player' ? radius : Math.min(radius, 2.5) }
-    function userAvoidance (state, primary = null) {
-      const actors = host.entities.snapshot({ kind: 'all' })
-      if (actors.some(e => e.alive !== false && e.kind !== 'item' && (e.positionKnown !== true || !e.position))) throw new Error('User movement has unknown actor bodies')
-      const threats = evaluateThreats(state, actors, { observationRadius: 32 })
-      if (threats.requiresObservation) throw new Error('User movement needs known actor positions')
-      return actors.filter(e => e.alive !== false && e.kind !== 'item' && e.entityType !== 'minecraft:arrow' && String(e.runtimeId) !== String(primary?.runtimeId)).map(e => ({ id: String(e.runtimeId), position: { ...e.position }, minDistance: combatAvoidRadius(e, threats.threats.concat(threats.outsideDanger, threats.suppressedByTerrain ?? []).find(t => t.runtimeId === String(e.runtimeId))?.dangerRadius ?? (e.kind === 'player' ? 3 : 1.5)), padding: 0 }))
-    }
-    function surfaceMeleeSight (from, to) {
-      const passable = p => { const b = host.world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)); return b?.known === true && !b.extra?.length && ['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air', 'minecraft:water', 'minecraft:flowing_water'].includes(b.name) }
-      const axes = ['x', 'y', 'z'], cell = {}, step = {}, next = {}, delta = {}
-      for (const k of axes) { cell[k] = Math.floor(from[k]); const d = to[k] - from[k]; step[k] = Math.sign(d); delta[k] = d ? 1 / Math.abs(d) : Infinity; next[k] = d ? (cell[k] + Number(d > 0) - from[k]) / d : Infinity }
-      if (!passable(cell)) return false
-      for (let count = 0; count < 64; count++) {
-        const crossing = Math.min(...axes.map(k => next[k])); if (crossing > 1) return true
-        const crossed = axes.filter(k => Math.abs(next[k] - crossing) < 1e-10)
-        for (let mask = 1; mask < 1 << crossed.length; mask++) { const p = { ...cell }; crossed.forEach((k, i) => { if (mask & 1 << i) p[k] += step[k] }); if (!passable(p)) return false }
-        for (const k of crossed) { cell[k] += step[k]; next[k] += delta[k] }
-      }
-      return false
-    }
-    function surfaceCombatState (target, context, expected = null) {
-      const state = requireUserLease(context), lease = userBehaviorLease, binding = lease?.surfaceMeleeBinding
-      if (!binding || lease.kind !== 'combat' || String(target?.runtimeId) !== binding.runtimeId || String(target?.uniqueId) !== binding.uniqueId || target?.entityType !== binding.entityType) return null
-      if (binding.scope !== userScope(state) || expected && expected.scope !== binding.scope || state.threatPolicy !== binding.threatPolicy || host.shared.autoWanted !== true || host.shared.userBehaviorsEnabled !== true || host.shared.respawnTerrain?.pending || userBehaviorSleeping || userBehaviorWakePending || replaying) throw new Error('Surface melee approach scope or policy changed')
-      const actor = state.entities?.find(e => String(e.runtimeId) === binding.runtimeId && String(e.uniqueId) === binding.uniqueId && e.entityType === binding.entityType && e.kind === 'mob' && e.hostile === true && e.alive === true && e.positionKnown === true && e.dimension === state.dimension)
-      if (!actor || actor.positionSource === 'client_prediction' || state.inventory?.known !== true || state.inventory.uncertain || state.inventoryConfidence?.known === false) throw new Error('Surface melee target or inventory changed')
-      const evaluated = evaluateThreats(state, state.entities, { observationRadius: 32 }), canonical = [...evaluated.threats, ...evaluated.outsideDanger, ...evaluated.suppressedByTerrain].find(e => e.runtimeId === binding.runtimeId)
-      if (evaluated.requiresObservation || !canonical || canonical.category !== 'melee' || canonical.dangerRadius !== binding.radius) throw new Error('Surface melee target policy changed')
-      const physical = state.predicted?.physicsState ?? state.physicsState
-      if (!expected && physical?.onGround === true && physical.isInWater !== true) return null
-      const initial = generationPhysics.fromServer(state), surfaceY = generationPhysics.waterSurface(initial.position)?.surfaceY
-      if (!Number.isInteger(surfaceY) || !knownSurfaceBody(generationPhysics, initial.position, surfaceY)) { if (expected) throw new Error('Surface melee water, body or head changed'); return null }
-      if (expected && surfaceY !== expected.surfaceY) throw new Error('Surface melee received surface changed')
-      const stamp = typeof state.positionUpdatedAt === 'number' ? state.positionUpdatedAt : Date.parse(state.positionUpdatedAt)
-      if (!Number.isFinite(stamp) || Date.now() - stamp < 0 || Date.now() - stamp > 200 || !physical || !['x', 'y', 'z'].every(k => Number.isFinite(physical.velocity?.[k])) || physical.isInLava || state.positionSource === 'client_prediction' && !['x', 'y', 'z'].every(k => Number.isFinite(state.predicted?.position?.[k]) && Math.abs(state.predicted.position[k] - state.position[k]) <= 1e-6 && Number.isFinite(physical.position?.[k]) && Math.abs(physical.position[k] + (k === 'y' ? 1.62 : 0) - state.position[k]) <= 1e-6)) throw new Error('Surface melee current native pose is untrusted')
-      const aim = meleeApproachAim(actor)
-      if (!aim || !surfaceMeleeSight(state.position, aim)) throw new Error('Surface melee sight is blocked or unknown')
-      return { state, actor, scope: binding.scope, surfaceY, initial }
-    }
-    function surfaceEyeSegmentSafe (from, to, circles) {
-      return circles.every(circle => {
-        const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z, length = dx * dx + dy * dy + dz * dz
-        const t = length ? Math.max(0, Math.min(1, ((circle.position.x - from.x) * dx + (circle.position.y - from.y) * dy + (circle.position.z - from.z) * dz) / length)) : 0
-        return Math.hypot(from.x + t * dx - circle.position.x, from.y + t * dy - circle.position.y, from.z + t * dz - circle.position.z) >= circle.minDistance + (circle.padding ?? 0) - 1e-4
-      })
-    }
-    async function moveUserNative (target, context, primary = null, surface = null) {
-      const initial = requireUserLease(context), expectedScope = userScope(initial), controller = generationMovement, owner = userBehaviorLease
-      const counterOrigin = { ...initial.position, y: initial.position.y - 1.62 }
-      const emergencyCounterhit = context.kind === 'combat' && context.emergencyCreeperStrike === true && primary?.entityType === 'minecraft:creeper' && Math.hypot(initial.position.x - primary.position.x, initial.position.y - primary.position.y - 0.9, initial.position.z - primary.position.z) <= 4.5
-      if (context.emergencyCreeperStrike === true && !emergencyCounterhit) throw new Error('Invalid emergency creeper counterstep')
-      const checkCounterstep = points => {
-        if (!emergencyCounterhit) return
-        for (const p of points) if (!p || !['x', 'y', 'z'].every(k => Number.isFinite(p[k])) || Math.hypot(p.x - counterOrigin.x, p.y - counterOrigin.y, p.z - counterOrigin.z) > 1.5) throw new Error('Emergency creeper counterstep exceeds1.5m')
-      }
-      checkCounterstep([target])
-      if (context.kind === 'combat' && quarryJob?.holdsWork()) {
-        // Quarry §9.3: ordinary combat steps stay within 8m of the fixed anchor
-        // on the current layer; kite retreats count as emergency escapes.
-        quarryJob.bridge.interrupt(initial, { reason: 'combat_movement' })
-        const verdict = quarryJob.bridge.canMoveTo(target, { reason: emergencyCounterhit ? 'emergency_counterhit' : quarryRetreatDepth > 0 ? 'emergency_escape' : 'combat' })
-        if (!verdict.allowed) throw Object.assign(new Error(`Quarry combat movement refused: ${verdict.reason}`), { code: 'QUARRY_ANCHOR' })
-      }
-      const checkDefenseRoute = (state, position, waypoints = []) => {
-        checkCounterstep([...waypoints.map(p=>p?.position??p),position])
-        if (context.kind !== 'combat' || !owner.defenseAnchor) return
-        const verdict = defenseMovementAllowed({ anchor: owner.defenseAnchor, state, position, waypoints, retreating: quarryRetreatDepth > 0 || emergencyCounterhit })
-        if (!verdict.allowed) throw Object.assign(new Error(`Defense movement refused: ${verdict.reason}`), { code: 'DEFENSE_ANCHOR' })
-      }
-      checkDefenseRoute(initial, target)
-      let waterSerial = null
-      if (!target || !['x', 'y', 'z'].every(k => Number.isFinite(target[k])) || Math.hypot(target.x - initial.position.x, target.y - initial.position.y + 1.62, target.z - initial.position.z) > 6) throw new Error('User movement exceeds its known six-block step')
-      const ensure = () => {
-        const fresh = requireUserLease(context)
-        if (userScope(fresh) !== expectedScope || userBehaviorLease !== owner || controller !== movement || surface && waterSerial != null && waterSerial !== portableMovementSerial) throw new Error('User movement life or owner changed')
-        if (primary && !host.entities.snapshot({ kind: 'all' }).some(e => String(e.runtimeId) === String(primary.runtimeId) && String(e.uniqueId) === String(primary.uniqueId) && e.entityType === primary.entityType && e.alive === true && e.positionKnown === true)) throw new Error('Combat approach target changed')
-        if (emergencyCounterhit) {
-          const actor = host.entities.snapshot({kind:'all'}).find(e=>String(e.runtimeId)===String(primary.runtimeId)&&String(e.uniqueId)===String(primary.uniqueId))
-          if (!actor?.position || Math.hypot(actor.position.x-fresh.position.x,actor.position.y+0.9-fresh.position.y,actor.position.z-fresh.position.z)>4.5) throw new Error('Creeper counterstep target is no longer close')
-        }
-        if (surface && !surfaceCombatState(primary, context, surface)) throw new Error('Surface melee approach lost its bound admission')
-        validateHealthyMeleeApproach(fresh, primary)
-        return fresh
-      }
-      const options = { allowWater: surface !== null, emergency: true, maxDistance: 6, maxExpanded: 300, ...(surface ? { directSurface: true, exactGoal: true, sprint: false, maxTicks: 80 } : {}), avoidance: userAvoidance(initial, primary), signal: context.signal, beforeInput: frame => {
-        const fresh = ensure(), eye = { ...frame.predictedState.position, y: frame.predictedState.position.y + 1.62 }
-        checkDefenseRoute(fresh, frame.predictedState.position)
-        if (surface) {
-          if (!knownSurfaceBody(generationPhysics, frame.predictedState.position, surface.surfaceY) || !frame.packetPosition || Math.hypot(eye.x - frame.packetPosition.x, eye.y - frame.packetPosition.y, eye.z - frame.packetPosition.z) > 1e-6) return false
-          return surfaceEyeSegmentSafe(fresh.position, eye, userAvoidance(fresh, primary))
-        }
-        return userAvoidance(fresh, primary).every(a => Math.hypot(eye.x - a.position.x, eye.y - a.position.y, eye.z - a.position.z) >= a.minDistance)
-      } }
-      ensure(); motionOrigin = working()
-      const preview = controller.preview(target, options)
-      if (!preview?.ready || surface && preview.directSurface !== true) return { ready: false, reason: 'No known native user movement route' }
-      if ((owner.defenseAnchor || emergencyCounterhit) && (!Array.isArray(preview.waypoints) || !preview.waypoints.length)) return { ready: false, reason: 'Defense route waypoints are unknown' }
-      checkDefenseRoute(ensure(), target, preview.waypoints ?? [])
-      ensure(); stopOrdinaryUserStream(); motionOrigin = working(); host.shared.motionSource = 'navigation'
-      const owns = () => sameLease(context) && userBehaviorLease === owner && controller === movement && (!surface || waterSerial === portableMovementSerial)
-      const cancel = () => { if (owns()) controller.stop('User movement cancelled') }
-      context.signal?.addEventListener('abort', cancel, { once: true })
-      try {
-        ensure()
-        if (surface) { yieldPortableMovement(); waterSerial = ++portableMovementSerial; portableMovementOwner = null }
-        controller.start(target, options)
-        const deadline = Date.now() + 6000
-        while (Date.now() < deadline) {
-          const fresh = ensure(), motion = controller.snapshot()
-          if (primary) {
-            const e = host.entities.snapshot({ kind: 'all' }).find(e => String(e.runtimeId) === String(primary.runtimeId)), p = e && (surface ? meleeApproachAim(e) : { ...e.position, y: e.position.y + 0.9 })
-            if (p && Math.hypot(fresh.position.x - p.x, fresh.position.y - p.y, fresh.position.z - p.z) <= (surface ? 2.8 : 2.2) && (!surface || surfaceMeleeSight(fresh.position, p))) return { phase: 'predicted', accepted: true, serverConfirmed: false, ...(surface ? { meleeReady: true, surfaceApproach: true } : {}) }
-          }
-          if (['failed', 'stopped'].includes(motion.phase)) throw new Error(motion.reason ?? 'User movement stopped')
-          if (['awaiting_server_confirmation', 'completed', 'replan_required'].includes(motion.phase)) return { phase: 'predicted', accepted: true, serverConfirmed: false, movement: motion }
-          await delay(50, undefined, { signal: context.signal })
-        }
-        throw new Error('User movement step timed out')
-      } finally { context.signal?.removeEventListener('abort', cancel); if (owns()) controller.stop('User movement step ended') }
-    }
-    async function approachSurfaceMelee (target, context) {
-      const initial = surfaceCombatState(target, context)
-      if (!initial) return null
-      const pinned = { scope: initial.scope, surfaceY: initial.surfaceY }
-      for (const radius of [2, 1.8, 2.2]) {
-        const current = surfaceCombatState(target, context, pinned), dx = current.state.position.x - current.actor.position.x, dz = current.state.position.z - current.actor.position.z, distance = Math.hypot(dx, dz)
-        if (!distance) return { ready: false, reason: 'Surface melee approach direction is unknown' }
-        const candidate = { x: current.actor.position.x + dx / distance * radius, y: pinned.surfaceY, z: current.actor.position.z + dz / distance * radius }
-        if (Math.hypot(candidate.x - current.state.position.x, candidate.y - current.state.position.y + 1.62, candidate.z - current.state.position.z) > 6) continue
-        const options = { allowWater: true, emergency: true, directSurface: true, exactGoal: true, sprint: false, maxTicks: 80, maxDistance: 6, maxExpanded: 300, avoidance: userAvoidance(current.state, current.actor) }
-        motionOrigin = working()
-        const preview = generationMovement.preview(candidate, options)
-        if (preview?.ready && preview.directSurface === true) return moveUserNative(candidate, context, current.actor, pinned)
-      }
-      return { ready: false, reason: 'No known bounded surface melee stance' }
-    }
-    function meleeApproachAim (target) {
-      return target?.position && ['x', 'y', 'z'].every(axis => Number.isFinite(target.position[axis])) ? { ...target.position, y: target.position.y + (['minecraft:spider', 'minecraft:cave_spider', 'minecraft:silverfish', 'minecraft:endermite', 'minecraft:slime', 'minecraft:magma_cube', 'minecraft:vex', 'minecraft:phantom'].includes(target.entityType) ? 0.2 : 0.9) } : null
-    }
-    function userHasBowAndAmmo (state) {
-      return state.inventory?.known === true && !state.inventory.uncertain && Array.isArray(state.inventory.items) && state.inventory.items.some(i => i.name === 'minecraft:bow' && i.count === 1) && state.inventory.items.some(i => i.name === 'minecraft:arrow' && Number.isSafeInteger(i.count) && i.count > 0)
-    }
-    function knownUserSword (state) {
-      const inventory = craftInventory()
-      if (state.inventory?.known !== true || state.inventory.uncertain || state.inventoryConfidence?.known === false || !Array.isArray(state.inventory.items) || inventory.authority !== true || inventory.inventoryKnown !== true || inventory.pendingRequestId != null) return false
-      return state.inventory.items.some(item => {
-        if (!/^minecraft:(?:wooden|golden|stone|copper|iron|diamond|netherite)_sword$/.test(item.name) || item.count !== 1 || !Number.isInteger(item.slot) || item.slot < 0 || item.slot > 35) return false
-        const raw = crafting.rawItem(item.slot), observed = inventory.inventory?.find(value => value.slot === item.slot)
-        if (!raw || !Number.isSafeInteger(raw.network_id) || raw.network_id <= 0 || raw.count !== 1 || raw.has_stack_id !== true || !Number.isSafeInteger(raw.stack_id) || raw.stack_id <= 0 || observed?.name !== item.name || observed.count !== 1 || observed.stackId !== raw.stack_id || item.stackId != null && item.stackId !== raw.stack_id) return false
-        const extra = raw.extra, marker = extra?.has_nbt
-        if (!['false', 'true', false, true, 0, 65535].includes(marker) || !Array.isArray(extra?.can_place_on) || !Array.isArray(extra?.can_destroy)) return false
-        if (['true', true, 65535].includes(marker)) {
-          const nbt = extra.nbt?.nbt, damage = nbt?.value?.Damage
-          if (nbt?.type !== 'compound' || !nbt.value || typeof nbt.value !== 'object' || Array.isArray(nbt.value) || damage != null && (!['int', 'short'].includes(damage.type) || !Number.isSafeInteger(damage.value))) return false
-        } else if (extra.nbt != null) return false
-        try {
-          const parsed = UserCombatItem.fromNotch(structuredClone(raw))
-          return parsed && 'minecraft:' + parsed.name === item.name && Number.isSafeInteger(parsed.maxDurability) && parsed.maxDurability > 0 && Number.isSafeInteger(parsed.durabilityUsed) && parsed.durabilityUsed >= 0 && parsed.maxDurability - parsed.durabilityUsed >= 4
-        } catch { return false }
-      })
-    }
-    function healthyMeleeReady (target, state) {
-      const authoritative = raw()
-      if (!Number.isSafeInteger(host.shared.deathRespawn?.deathId) || state.lifecycle?.deathId !== actualLifeId() || state.health !== authoritative.health || ['connectionId', 'startedAt', 'dimension', 'runtimeEntityId'].some(field => state[field] !== authoritative[field]) || state.profile !== (authoritative.profile ?? host.meta.profile) || String(state.realm?.id ?? '') !== String(authoritative.realm?.id ?? '')) return false
-      if (!currentGeneration() || replaying || host.shared.autoWanted !== true || host.shared.userBehaviorsEnabled !== true || resourceMinHealth(state) !== 0 || state.health < 12 || host.shared.respawnTerrain?.pending || userBehaviorSleeping || userBehaviorWakePending || userHasBowAndAmmo(state)) return false
-      if (!['minecraft:zombie', 'minecraft:zombie_villager', 'minecraft:zombie_villager_v2', 'minecraft:husk', 'minecraft:spider', 'minecraft:cave_spider'].includes(target?.entityType) || target.kind !== 'mob' || target.hostile !== true || target.alive !== true || target.positionKnown !== true || target.positionSource === 'client_prediction' || target.dimension !== state.dimension || !/^\d+$/.test(String(target.runtimeId)) || !/^-?\d+$/.test(String(target.uniqueId)) || !meleeApproachAim(target)) return false
-      const current = evaluateThreats(state, state.entities ?? [], { observationRadius: 32 })
-      if (current.requiresObservation || state.entityStats?.unknownPositions > current.unknownPositions.length || !current.threats.some(e => e.runtimeId === String(target.runtimeId) && e.category === 'melee')) return false
-      const actor = state.entities?.find(e => String(e.runtimeId) === String(target.runtimeId) && String(e.uniqueId) === String(target.uniqueId) && e.entityType === target.entityType && e.alive === true && e.positionKnown === true)
-      return !!actor && ['x', 'y', 'z'].every(axis => actor.position?.[axis] === target.position[axis]) && knownUserSword(state)
-    }
-    function canAcquireHealthyMeleeApproach (target, state) {
-      const protection = generationSafety.snapshot(), observation = recentUserSafetyObservation
-      if (protection.running !== true || protection.cleanupUnconfirmed || !observation || Date.now() - observation.at < 0 || Date.now() - observation.at > 500 || observation.scope !== userScope(state) || !['x', 'y', 'z'].every(axis => state.position?.[axis] === observation.state.position?.[axis]) || !healthyMeleeReady(target, state)) return false
-      const observed = observation.state.entities?.find(e => String(e.runtimeId) === String(target.runtimeId) && String(e.uniqueId) === String(target.uniqueId) && e.entityType === target.entityType)
-      if (!observed || !['x', 'y', 'z'].every(axis => observed.position?.[axis] === target.position[axis])) return false
-      const canonical = evaluateThreats(observation.state, observation.state.entities, { observationRadius: 32 })
-      return !canonical.requiresObservation && !(observation.state.entityStats?.unknownPositions > canonical.unknownPositions.length) && canonical.threats.some(e => e.runtimeId === String(target.runtimeId) && e.category === 'melee')
-    }
-    function validateHealthyMeleeApproach (state, primary) {
-      const admission = userBehaviorLease?.meleeApproach
-      if (!admission || !primary) return
-      const actor = state.entities?.find(e => String(e.runtimeId) === admission.target.runtimeId && String(e.uniqueId) === admission.target.uniqueId && e.entityType === admission.target.entityType && e.alive === true && e.positionKnown === true)
-      if (!actor) throw new Error('Healthy melee approach target changed')
-      rememberCurrentMeleeReach(state)
-      // This is approach permission, never proof of a hit. After entering real
-      // current melee reach, the existing positive-health fight keeps its lease.
-      if (!admission.engagementReached && !healthyMeleeReady(actor, state)) throw new Error('Healthy melee approach admission was revoked before engagement')
-    }
-    function canAcquireStuckMeleeApproach (target, state) {
-      if (!currentGeneration() || replaying || host.shared.autoWanted !== true || host.shared.userBehaviorsEnabled !== true || resourceMinHealth(state) !== 0 || host.shared.respawnTerrain?.pending || userBehaviorSleeping || userBehaviorWakePending) return false
-      const protection = generationSafety.snapshot(), result = protection.lastResult
-      if (protection.running !== true || protection.phase !== 'emergency_retry' || protection.cleanupUnconfirmed || !(result?.action === 'escape' && (result.reason === 'no_known_away_route' || ['NO_ROUTE', 'AVOIDANCE', 'SEARCH_LIMIT'].includes(result.rejection?.previewCode) || result.cause === 'NO_SAFE_ROUTE') || /four-second deadline exceeded/i.test(protection.lastError ?? ''))) return false
-      if (state.inventory?.known !== true || state.inventory.uncertain || state.inventoryConfidence?.known === false || !Array.isArray(state.inventory.items)) return false
-      if (state.inventory.items.some(i => i.name === 'minecraft:bow' && i.count === 1) && state.inventory.items.some(i => i.name === 'minecraft:arrow' && Number.isSafeInteger(i.count) && i.count > 0)) return false
-      const observation = recentUserSafetyObservation
-      if (!observation || Date.now() - observation.at < 0 || Date.now() - observation.at > 500 || observation.scope !== userScope(state) || !['x', 'y', 'z'].every(axis => state.position?.[axis] === observation.state.position?.[axis])) return false
-      const current = evaluateThreats(state, state.entities ?? [], { observationRadius: 32 })
-      if (current.requiresObservation || state.entityStats?.unknownPositions > current.unknownPositions.length) return false
-      const observed = observation.state.entities?.find(e => String(e.runtimeId) === String(target.runtimeId) && String(e.uniqueId) === String(target.uniqueId) && e.entityType === target.entityType)
-      if (!observed || !['x', 'y', 'z'].every(axis => observed.position?.[axis] === target.position?.[axis])) return false
-      const canonical = evaluateThreats(observation.state, observation.state.entities, { observationRadius: 32 })
-      return !canonical.requiresObservation && !(observation.state.entityStats?.unknownPositions > canonical.unknownPositions.length) && canonical.threats.some(e => e.runtimeId === String(target.runtimeId) && e.category !== 'boss')
-    }
-    // melee_kite: after a hit, one short native step straight away from the
-    // target to a known standpoint just outside its reach (never a long
-    // escape; the ordinary approach brings the bot back in for the next hit).
-    async function retreatUserTarget (target, context) {
-      quarryRetreatDepth++
-      try { return await retreatUserTargetInner(target, context) } finally { quarryRetreatDepth-- }
-    }
-    async function retreatUserTargetInner (target, context) {
-      // The kite step follows a hit that is often a critical hop: the native
-      // planner refuses an airborne origin, so wait briefly for the landing.
-      for (let i = 0; i < KITE_LANDING_POLLS; i++) {
-        const now = requireUserLease(context), physical = now.predicted?.physicsState ?? now.physicsState
-        if (physical?.onGround === true && !generationMovement.snapshot().running) break
-        await delay(50, undefined, { signal: context.signal })
-      }
-      const state = requireUserLease(context), dx = state.position.x - target.position.x, dz = state.position.z - target.position.z, d = Math.hypot(dx, dz)
-      if (!d) return { ready: false, reason: 'Retreat direction is unknown' }
-      // A creeper retreat asks for farther standpoints and a longer (still
-      // bounded, at most 6) step; the kite default is a short 3-block step.
-      const radii = Array.isArray(context.radii) && context.radii.every(r => Number.isFinite(r) && r > 0 && r <= 12) ? context.radii : KITE_RADII
-      const maxStep = Number.isFinite(context.maxStep) && context.maxStep > 0 && context.maxStep <= 6 ? context.maxStep : 3
-      let tried = 0, skipped = 0, lastReason = null
-      // Straight back first, then diagonal-back directions when the terrain
-      // directly behind has no known standpoint.
-      for (const angle of KITE_ANGLES) for (const radius of radii) for (const y of [...new Set([Math.round(state.position.y - 1.62), Math.round(state.position.y - 1.62) - 1, Math.round(state.position.y - 1.62) + 1])]) {
-        const cos = Math.cos(angle), sin = Math.sin(angle), ux = (dx * cos - dz * sin) / d, uz = (dx * sin + dz * cos) / d
-        const candidate = { x: target.position.x + ux * radius, y, z: target.position.z + uz * radius }
-        if (Math.hypot(candidate.x - state.position.x, candidate.y - state.position.y + 1.62, candidate.z - state.position.z) > maxStep) { skipped++; continue }
-        motionOrigin = working()
-        const preview = generationMovement.preview(candidate, { emergency: true, allowWater: false, maxDistance: Math.ceil(maxStep) + 1, maxExpanded: 300, avoidance: userAvoidance(state, target) })
-        tried++
-        if (preview?.ready) return moveUserNative(candidate, context, target)
-        lastReason = preview?.reason ?? preview?.error ?? lastReason
-      }
-      return { ready: false, reason: `No known retreat standpoint (tried=${tried} skipped=${skipped} last=${lastReason ?? 'none'})` }
-    }
-    // Bow sight stance: a short move (<=4.5m, higher ground first) to a
-    // standable cell from which the eye has a clear line to the target body.
-    function bowSightClear (from, to) { return bowSightClearAt(from, to) }
-    function bowSightClearUnused (from, to) {
-      const ok = p => { const b = host.world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)); return b?.known === true && !b.extra?.length && (/^minecraft:(?:air|cave_air|void_air)$/.test(b.name) || b.boundingBox === 'empty' && !/water|lava|bubble|powder_snow|cobweb|portal/.test(String(b.name))) }
-      const steps = Math.ceil(Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z) / 0.25)
-      for (let i = 1; i < steps; i++) { const f = i / steps; if (!ok({ x: from.x + (to.x - from.x) * f, y: from.y + (to.y - from.y) * f, z: from.z + (to.z - from.z) * f })) return false }
-      return true
-    }
-    const seekSightStance = createSightStanceSearch({
-      requireLease: requireUserLease,
-      getTarget: id => typeof host.entities.get === 'function' ? host.entities.get(id) : allActors().find(actor => String(actor.runtimeId) === String(id)),
-      getActors: allActors,
-      getVelocity: id => host.entities.motion?.(id)?.velocity ?? null,
-      getWorldRevision: () => host.world.revision?.() ?? null,
-      getBlock: (x, y, z) => host.world.getBlock(x, y, z),
-      sightClear: bowSightClear,
-      standingClear: fullStandingGeometry,
-      previewRoute: (point, state, target) => {
-        motionOrigin = working()
-        return generationMovement.preview(point, { emergency: true, allowWater: false, maxDistance: 18, maxExpanded: 900, avoidance: userAvoidance(state, target) })
-      },
-      move: moveUserNative,
-      log: message => host.log(message)
+    // This part lives in user-control-runtime.js. It reads and writes these bindings of
+    // this closure through accessors, so each use sees the current value exactly
+    // as the code did when it was written here.
+    const userControl = require('./runtime/user-control-runtime').createUserControlRuntime({
+      get actualLifeId () { return actualLifeId },
+      get allActors () { return allActors },
+      get armor () { return armor },
+      get autonomy () { return autonomyRuntime.autonomy },
+      get bowSightClearAt () { return bowSightClearAt },
+      get cancelChunkMovement () { return cancelChunkMovement },
+      get chest () { return chest },
+      get chestStatus () { return chestStatus },
+      get chunkMoveHeld () { return chunkMoveHeld },
+      get combatAttackExposure () { return combatAttackExposure },
+      get combatExposure () { return combatExposure },
+      get crafting () { return crafting },
+      get craftInventory () { return craftInventory },
+      get craftStatus () { return craftStatus },
+      get createDefenseAnchor () { return createDefenseAnchor },
+      get createNavigator () { return createNavigator },
+      get createSightStanceSearch () { return createSightStanceSearch },
+      get createUserBehaviors () { return createUserBehaviors },
+      get currentGeneration () { return currentGeneration },
+      get defenseEnabled () { return defenseEnabled },
+      get defenseMovementAllowed () { return defenseMovementAllowed },
+      get delay () { return delay },
+      get depotBuilder () { return depotBuilder }, set depotBuilder (value) { depotBuilder = value },
+      get depotPrebuild () { return depotPrebuild }, set depotPrebuild (value) { depotPrebuild = value },
+      get depotStorage () { return depotStorage }, set depotStorage (value) { depotStorage = value },
+      get disposed () { return disposed }, set disposed (value) { disposed = value },
+      get disposing () { return disposing }, set disposing (value) { disposing = value },
+      get evaluateThreats () { return evaluateThreats },
+      get excavation () { return excavation }, set excavation (value) { excavation = value },
+      get food () { return food },
+      get foraging () { return foraging }, set foraging (value) { foraging = value },
+      get fullStandingGeometry () { return fullStandingGeometry },
+      get furnace () { return furnace },
+      get generationCombat () { return generationCombat },
+      get generationHut () { return generationHut },
+      get generationInput () { return generationInput },
+      get generationMovement () { return generationMovement },
+      get generationPhysics () { return generationPhysics },
+      get generationPillar () { return generationPillar }, set generationPillar (value) { generationPillar = value },
+      get generationSafety () { return generationSafety },
+      get generationShelter () { return generationShelter },
+      get generationStream () { return generationStream },
+      get host () { return host }, set host (value) { host = value },
+      get idleSafetyRuntime () { return idleSafetyRuntime },
+      get interactions () { return interactions },
+      get inventory () { return inventory },
+      get KITE_ANGLES () { return KITE_ANGLES },
+      get KITE_LANDING_POLLS () { return KITE_LANDING_POLLS },
+      get KITE_RADII () { return KITE_RADII },
+      get knownSurfaceBody () { return knownSurfaceBody },
+      get lightweightRawState () { return lightweightRawState },
+      get lightweightUserState () { return lightweightUserState },
+      get manualChestStorage () { return manualChestStorage }, set manualChestStorage (value) { manualChestStorage = value },
+      get manualShulkerAbort () { return manualShulkerAbort }, set manualShulkerAbort (value) { manualShulkerAbort = value },
+      get manualShulkerRecovery () { return manualShulkerRecovery }, set manualShulkerRecovery (value) { manualShulkerRecovery = value },
+      get mining () { return mining },
+      get motionActive () { return motionActive },
+      get motionOrigin () { return motionOrigin }, set motionOrigin (value) { motionOrigin = value },
+      get movement () { return movement }, set movement (value) { movement = value },
+      get onUncertain () { return onUncertain },
+      get pendingStops () { return pendingStops },
+      get portableMovementOwner () { return portableMovementOwner }, set portableMovementOwner (value) { portableMovementOwner = value },
+      get portableMovementSerial () { return portableMovementSerial }, set portableMovementSerial (value) { portableMovementSerial = value },
+      get prospecting () { return prospecting },
+      get quarryCancellationRevision () { return quarryCancellationRevision }, set quarryCancellationRevision (value) { quarryCancellationRevision = value },
+      get quarryCanContinue () { return quarryCanContinue },
+      get quarryCanSelectTarget () { return quarryCanSelectTarget },
+      get quarryCombatArmed () { return quarryCombatArmed }, set quarryCombatArmed (value) { quarryCombatArmed = value },
+      get quarryEgressAbort () { return quarryEgressAbort }, set quarryEgressAbort (value) { quarryEgressAbort = value },
+      get quarryEgressTask () { return quarryEgressTask }, set quarryEgressTask (value) { quarryEgressTask = value },
+      get quarryJob () { return quarryJob }, set quarryJob (value) { quarryJob = value },
+      get quarryPillarTask () { return quarryPillarTask }, set quarryPillarTask (value) { quarryPillarTask = value },
+      get quarryPlacementPreparation () { return quarryPlacementPreparation }, set quarryPlacementPreparation (value) { quarryPlacementPreparation = value },
+      get quarryRetreatDepth () { return quarryRetreatDepth }, set quarryRetreatDepth (value) { quarryRetreatDepth = value },
+      get raw () { return raw },
+      get rawScope () { return rawScope },
+      get recovery () { return recovery }, set recovery (value) { recovery = value },
+      get rememberCurrentMeleeReach () { return rememberCurrentMeleeReach },
+      get replaying () { return replaying }, set replaying (value) { replaying = value },
+      get requestInventoryResyncWithReceipt () { return requestInventoryResyncWithReceipt },
+      get require () { return require },
+      get requireGeneration () { return requireGeneration },
+      get resetHeld () { return resetHeld },
+      get resourceMinHealth () { return resourceMinHealth },
+      get startIdle () { return startIdle },
+      get stopOrdinaryUserStream () { return stopOrdinaryUserStream },
+      get surfaceReturn () { return surfaceReturn }, set surfaceReturn (value) { surfaceReturn = value },
+      get surfaceReturnOwner () { return surfaceReturnOwner }, set surfaceReturnOwner (value) { surfaceReturnOwner = value },
+      get threatReachability () { return threatReachability },
+      get tickUserBehaviors () { return tickUserBehaviors },
+      get tunneling () { return tunneling }, set tunneling (value) { tunneling = value },
+      get userBehaviorError () { return userBehaviorError },
+      get userBehaviorGenerationScope () { return userBehaviorGenerationScope }, set userBehaviorGenerationScope (value) { userBehaviorGenerationScope = value },
+      get userBehaviorLease () { return userBehaviorLease }, set userBehaviorLease (value) { userBehaviorLease = value },
+      get userBehaviors () { return userBehaviors }, set userBehaviors (value) { userBehaviors = value },
+      get userBehaviorSleeping () { return userBehaviorSleeping }, set userBehaviorSleeping (value) { userBehaviorSleeping = value },
+      get userBehaviorSnapshot () { return userBehaviorSnapshot },
+      get userBehaviorTimer () { return userBehaviorTimer }, set userBehaviorTimer (value) { userBehaviorTimer = value },
+      get userBehaviorWakePending () { return userBehaviorWakePending }, set userBehaviorWakePending (value) { userBehaviorWakePending = value },
+      get UserCombatItem () { return UserCombatItem },
+      get userScope () { return userScope },
+      get walker () { return walker }, set walker (value) { walker = value },
+      get working () { return working },
+      get yieldPortableMovement () { return yieldPortableMovement }
     })
-    async function approachUserTarget (target, context) {
-      if (context?.purpose === 'sight') return seekSightStance(target, context)
-      if (context.emergencyCreeperStrike === true && target?.entityType === 'minecraft:creeper') {
-        const state=requireUserLease(context),dx=target.position.x-state.position.x,dz=target.position.z-state.position.z,d=Math.hypot(dx,dz),feetY=state.position.y-1.62
-        if(!d)return {ready:false,reason:'No horizontal creeper counterstep'}
-        for(const step of [...new Set([Math.min(1.2,Math.max(0.25,d-2.4)),0.6,0.3])]) {
-          const p={x:state.position.x+dx/d*step,y:Math.round(feetY),z:state.position.z+dz/d*step}
-          const probe={...state,position:{...p,y:p.y+1.62},predicted:null,physicsState:null}
-          if(!fullStandingGeometry(probe,p))continue
-          motionOrigin=working()
-          if(!generationMovement.preview(p,{emergency:true,allowWater:false,maxDistance:2,maxExpanded:200,avoidance:userAvoidance(state,target)})?.ready)continue
-          return moveUserNative(p,context,target)
-        }
-        return {ready:false,reason:'No known safe short creeper counterstep'}
-      }
-      const surface = await approachSurfaceMelee(target, context)
-      if (surface) return surface
-      validateHealthyMeleeApproach(requireUserLease(context), target)
-      const state = requireUserLease(context), dx = state.position.x - target.position.x, dz = state.position.z - target.position.z, d = Math.hypot(dx, dz)
-      if (!d) return { ready: false, reason: 'Approach direction is unknown' }
-      const candidates = []
-      for (const radius of [2, 1.8, 2.2]) for (const y of [...new Set([Math.round(state.position.y - 1.62), Math.floor(target.position.y), Math.floor(target.position.y) + 1])]) candidates.push({ x: target.position.x + dx / d * radius, y, z: target.position.z + dz / d * radius })
-      for (const candidate of candidates) {
-        if (Math.hypot(candidate.x - state.position.x, candidate.y - state.position.y + 1.62, candidate.z - state.position.z) > 6) continue
-        motionOrigin = working()
-        if (generationMovement.preview(candidate, { emergency: true, allowWater: false, maxDistance: 6, maxExpanded: 300, avoidance: userAvoidance(state, target) })?.ready) return moveUserNative(candidate, context, target)
-      }
-      for (const candidate of candidates) {
-        const range = Math.hypot(candidate.x - state.position.x, candidate.y - state.position.y + 1.62, candidate.z - state.position.z)
-        if (range <= 6 || range > 12) continue
-        requireUserLease(context)
-        motionOrigin = working()
-        const options = { emergency: true, allowWater: false, maxDistance: 12, maxExpanded: 600, avoidance: userAvoidance(state, target) }
-        const route = generationMovement.preview(candidate, options)
-        if (!route?.ready || !Array.isArray(route.waypoints)) continue
-        const relays = route.waypoints.filter(waypoint => {
-          const p = waypoint.position
-          if (waypoint.medium !== 'land' || !p || !['x', 'y', 'z'].every(axis => Number.isFinite(p[axis]))) return false
-          const distance = Math.hypot(p.x - state.position.x, p.y - state.position.y + 1.62, p.z - state.position.z)
-          if (distance < 0.25 || distance > 6) return false
-          // This is a passive geometry probe for a Native planned waypoint;
-          // no received pose, prediction or movement receipt is rewritten.
-          const probe = { ...state, position: { x: p.x, y: p.y + 1.62, z: p.z }, predicted: null, physicsState: null }
-          return fullStandingGeometry(probe, p)
-        }).sort((a, b) => Math.hypot(b.position.x - state.position.x, b.position.y - state.position.y + 1.62, b.position.z - state.position.z) - Math.hypot(a.position.x - state.position.x, a.position.y - state.position.y + 1.62, a.position.z - state.position.z))
-        for (const relay of relays) {
-          requireUserLease(context)
-          motionOrigin = working()
-          if (!generationMovement.preview(relay.position, { ...options, maxDistance: 6, maxExpanded: 300 })?.ready) continue
-          const result = await moveUserNative(relay.position, context, target)
-          return { ...result, code: 'PARTIAL_APPROACH', partialApproach: true, targetReached: false, serverConfirmed: false }
-        }
-      }
-      const initialRange = Math.hypot(state.position.x - target.position.x, state.position.y - (target.position.y + 0.9), state.position.z - target.position.z)
-      // Slopes: the straight-line step at the current feet height is buried or
-      // floating on a hillside, so each step also tries standing heights a few
-      // blocks up and down (nearest first).
-      const feetY = Math.round(state.position.y - 1.62)
-      for (const step of [5.5, 4, 2, 1]) for (const dy of [0, 1, -1, 2, -2, 3, -3]) {
-        const point = { x: state.position.x - dx / d * step, y: feetY + dy, z: state.position.z - dz / d * step }
-        const nextRange = Math.hypot(point.x - target.position.x, point.y + 1.62 - (target.position.y + 0.9), point.z - target.position.z)
-        if (nextRange >= initialRange - 0.25) continue
-        requireUserLease(context)
-        const probe = { ...state, position: { x: point.x, y: point.y + 1.62, z: point.z }, predicted: null, physicsState: null }
-        if (!fullStandingGeometry(probe, point)) continue
-        motionOrigin = working()
-        if (!generationMovement.preview(point, { emergency: true, allowWater: false, maxDistance: 6, maxExpanded: 300, avoidance: userAvoidance(state, target) })?.ready) continue
-        const result = await moveUserNative(point, context, target)
-        return { ...result, code: 'PARTIAL_APPROACH', partialApproach: true, targetReached: false, serverConfirmed: false }
-      }
-      return { ready: false, reason: 'No known bounded melee stance' }
-    }
-    try {
-      userBehaviors = createUserBehaviors({ client: host.client, getState: () => { requireGeneration(); return lightweightUserState() }, getRawState: () => { requireGeneration(); return lightweightRawState() }, world: host.world, entities: host.entities, crafting, inventory,
-        getInput: () => { requireGeneration(); if (userBehaviorSleeping || userBehaviorWakePending || generationMovement.snapshot().running) throw new Error('Native movement or actual sleep owns input'); return generationInput }, getSelfUniqueId: () => host.meta.startGame?.entity_id,
-        previewHop: options => { requireGeneration(); if (motionActive()) return { ready: false, reason: 'Another native movement owns input' }; motionOrigin = working(); return generationMovement.previewHop(options) },
-        startHop: options => { requireGeneration(); stopOrdinaryUserStream(); motionOrigin = working(); host.shared.motionSource = 'navigation'; return generationMovement.startHop(options) }, getMovement: () => generationMovement.snapshot(), stopHop: (reason, id) => { const m = generationMovement.snapshot(); if (currentGeneration() && m.route?.operation === 'critical_hop' && m.criticalHopId === id) generationMovement.stop(reason) },
-        getClock: userClock, getBedMemory: () => structuredClone(host.shared.userBehaviorBedMemory ?? null), setBedMemory: memory => { host.shared.userBehaviorBedMemory = structuredClone(memory) },
-        placeBed: (value, context) => userInteraction('placeBed', value, context), useBed: (value, context) => userInteraction('useBed', value, context), wakeBed: (value, context) => userInteraction('wakeBed', value, context), mineBed: mineUserBed,
-        moveBed: (value, context) => moveUserNative(value.target, context), collectBed: (value, context) => moveUserNative({ x: value.position.x + 0.5, y: value.position.y, z: value.position.z + 0.5 }, context),
-        cancelBedActions: async (reason, context) => { if (!sameLease(context)) return { cleaned: true }; mining.stop(reason); interactions.cancel(reason); if (inventory.snapshot().pendingRequestId == null) inventory.cancel(reason); generationMovement.stop(reason); stopOrdinaryUserStream(); return { cleaned: true } },
-        acquireControl: acquireUserControl, resumeControl: resumeUserControl, approach: approachUserTarget, retreat: retreatUserTarget,
-        rangedOptions: { log: host.log, onSelectionSent: slot => host.commitSelection(slot) },
-        meleeOptions: { log: host.log },
-        coordinatorOptions: { log: host.log, withDecision: fn => combatExposure.withDecision(fn), controlReady: ({ claimId, token }) => !(userBehaviorLease?.kind === 'combat' && userBehaviorLease.claimId === `combat:${claimId}` && userBehaviorLease.token === token && userBehaviorLease.receiptsReady === false), canAcquireMeleeApproach: (target, state) => canAcquireStuckMeleeApproach(target, state) || canAcquireHealthyMeleeApproach(target, state), canEngage: (target, state) => combatAttackExposure(target, state).intercept, engageRadius: threatReachability.ENGAGE_RADIUS, getRecentDamageAt: () => host.shared.recentDamageNoPrimary?.at ?? null, workGuard: { canSelectTarget: quarryCanSelectTarget, canContinue: quarryCanContinue } },
-        // Defense remains available while work is paused; other behaviors keep
-        // their original work permission. An eligible enemy preempts meals.
-        canAct: ({ kind } = {}) => !resetHeld() && currentGeneration() && !replaying && host.shared.loadingScreenEnded === true && !host.shared.respawnTerrain?.pending && !userBehaviorWakePending && (kind === 'combat' ? defenseEnabled(host.shared) : !manualChestStorage?.isBusy() && !chunkMoveHeld() && !quarryPlacementPreparation && !surfaceReturnOwner && host.shared.userBehaviorsEnabled === true && (host.shared.autoWanted === true || quarryCombatArmed)),
-        isBusy: context => !sameLease(context) || !userBehaviorLease?.ready || userBehaviorLease.receiptsReady === false || pendingStops.size > 0 || craftStatus().pendingRequestId != null || inventory.snapshot().busy || (furnace.snapshot().busy || chestStatus().busy) || food.snapshot().busy || mining.snapshot().phase === 'mining',
-        // A released bow shot with no ammo delta only leaves the arrow count in
-        // doubt (no arrow fired = unchanged inventory). Marking the whole
-        // inventory unknown disabled every attack until a full resync and got
-        // the bot killed by a zombie, so it is recorded separately.
-        onUncertain: details => { if (details?.operation === 'ranged_shot') { host.shared.rangedShotUncertain = { ...details, at: new Date().toISOString() }; try { host.log(`射撃未確認: 矢の消費が確認できませんでした（持ち物は不明扱いにしません）`) } catch {} ; return } onUncertain(details) }, onProgress: value => { if (currentGeneration()) host.shared.userBehaviorProgress = { busy: value.busy, sleeping: value.sleeping, activeKind: value.activeKind, at: new Date().toISOString() } }, version: host.meta.version
-      })
-      userBehaviorGenerationScope = userScope(rawScope())
-      if (!userBehaviorTimer) userBehaviorTimer = setInterval(() => { try { tickUserBehaviors() } catch (error) { userBehaviorError(error, 'timer') } }, 50) // one game tick: combat decisions must not lag a real-time fight
-    } catch (error) { userBehaviors = null; userBehaviorError(error, 'initialise') }
     host.setCapabilities({ mining: true, movement: true, flatWalking: true, navigationPrediction: true, crafting: true, interactions: true, guardRoute: true, idleSafety: true })
   }
 
@@ -5512,7 +2907,7 @@ function createRuntime (host) {
         // Long-trip walks use the chunk-move admission rule for water frames (live
         // 2026-11-14: any listed hostile, e.g. a drowned in the lake, rejected every
         // swim frame and the bot stayed in the water for hours).
-        } else preparedPortableOptions = normalWaterMovementOptions(portableMovementOptions(target, options), { combatAware: !!longTravel?.status?.().busy })
+        } else preparedPortableOptions = normalWaterMovementOptions(portableMovementOptions(target, options), { combatAware: !!travelRuntime.longTravel?.status?.().busy })
         portableMovementOwner = options?._portableMovementLease ?? null
         if (portableMovementLease?.id === portableMovementOwner) { portableMovementLease.startedMovement = movement; portableMovementLease.startedSerial = portableMovementSerial }
         try { result = movement.start(target, preparedPortableOptions) } finally { phase('movementStart') }
@@ -5535,861 +2930,153 @@ function createRuntime (host) {
       return structuredClone(record.home)
     } catch { return null }
   }
-  const operations = {
-    loadout: { preview: input => { requireIdle({ loadoutHandoff: true }); return ensureLoadoutReset().prepare({ area: normalizeChunkArea(input?.area) }) },
-      start: input => { requireIdle({ loadoutHandoff: true }); return ensureLoadoutReset().start({ ...input, area: normalizeChunkArea(input?.area) }) },
-      status: () => loadoutReset?.status() ?? { busy: false, phase: 'idle' }, cancel: () => loadoutReset?.cancel() ?? { busy: false, phase: 'idle' } },
-    shulkerRecovery: {
-      load: id => loadManualShulkerRecovery(id),
-      run: () => runManualShulkerRecovery(),
-      status: () => ({ ...(manualShulkerRecovery?.snapshot() ?? { busy: false }), document: structuredClone(manualShulkerDocument) }),
-      cancel: reason => { manualShulkerAbort?.abort(new Error(reason ?? 'MANUAL_STOP')); manualShulkerRecovery?.cancel(reason ?? 'MANUAL_STOP'); return manualShulkerTask ?? Promise.resolve(manualShulkerRecovery?.snapshot() ?? { busy: false }) }
-    },
-    quarry: {
-      moveToChunk: input => ensureChunkTravel().start({ area: normalizeChunkArea(input?.area) }),
-      // Long-distance travel (2026-11-14): repeated chunk-travel legs toward a far
-      // destination; never while quarry work runs. Continues saved progress.
-      travelTo: async input => {
-        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
-        const d = input?.destination
-        if (!d || ![d.x, d.z].every(Number.isFinite)) throw new Error('目的地 {x, z} を指定してください。')
-        let resume = null
-        try { const prior = JSON.parse(await require('node:fs/promises').readFile(longTravelFile(), 'utf8')); if (prior?.destination && Math.hypot(prior.destination.x - d.x, prior.destination.z - d.z) < 1 && prior.phase !== 'arrived') resume = prior } catch {}
-        return ensureLongTravel().start({ destination: { x: d.x, y: d.y, z: d.z }, resume })
-      },
-      travelStatus: () => longTravel?.status() ?? { busy: false, phase: 'idle' },
-      // Last resort out of a cave (2026-11-14, decision relay): a staircase dug
-      // up by ordinary mining until the stand sees the sky. Each step clears the
-      // two cells ahead one block up and the cell over the head, then steps up.
-      // Never under lava/water/gravel/sand; bounded per block and in total.
-      digUp: async (input = {}) => {
-        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
-        const maxMs = Math.min(45 * 60000, input.maxMs ?? 30 * 60000), started = Date.now()
-        const get = (x, y, z) => host.world.getBlock(x, y, z)
-        const nm = b => String(b?.name ?? '')
-        const air = b => b?.known === true && (b.boundingBox === 'empty' || /^minecraft:(?:air|cave_air)$/.test(nm(b))) && !/water|lava/.test(nm(b))
-        const solid = b => b?.known === true && b.boundingBox === 'block' && !/water|lava/.test(nm(b))
-        const danger = b => !b || b.known !== true || /lava|water|gravel|sand|bedrock|obsidian/.test(nm(b))
-        const skyOpen = (x, y, z) => { for (let yy = y + 2; yy < 320; yy++) { const b = get(x, yy, z); if (!b || b.known !== true) { if (yy >= 128) return true; return false } if (b.boundingBox === 'block' && !/leaves|log|wood/.test(nm(b))) return false } return true }
-        const mineCell = async c => {
-          if (air(get(c.x, c.y, c.z))) return true
-          operations.mining.start([{ x: c.x, y: c.y, z: c.z }])
-          const until = Date.now() + 35000
-          while (!air(get(c.x, c.y, c.z))) { if (Date.now() > until) return false; await new Promise(r => setTimeout(r, 250)) }
-          return true
-        }
-        let steps = 0
-        const prefer = input.heading ?? null
-        while (Date.now() - started < maxMs) {
-          const st = working(); if (!st.position || st.dead) { await new Promise(r => setTimeout(r, 1000)); continue }
-          const fx = Math.floor(st.position.x), fy = Math.floor(st.position.y - 1.62 + 0.2), fz = Math.floor(st.position.z)
-          if (skyOpen(fx, fy, fz)) { host.log(`地上へ出ました: (${fx},${fy},${fz})・${steps}段`); return { surfaced: true, steps, position: { x: fx, y: fy, z: fz } } }
-          const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-          if (prefer) dirs.sort((a, b) => (b[0] * prefer.x + b[1] * prefer.z) - (a[0] * prefer.x + a[1] * prefer.z))
-          let done = false
-          for (const [dx, dz] of dirs) {
-            const nx = fx + dx, nz = fz + dz, floor = get(nx, fy, nz)
-            const cells = [{ x: fx, y: fy + 2, z: fz }, { x: nx, y: fy + 1, z: nz }, { x: nx, y: fy + 2, z: nz }]
-            if (!solid(floor)) continue
-            if (cells.some(c => danger(get(c.x, c.y, c.z)) && !air(get(c.x, c.y, c.z))) || danger(get(nx, fy + 3, nz)) && !air(get(nx, fy + 3, nz)) || danger(get(fx, fy + 3, fz)) && !air(get(fx, fy + 3, fz))) continue
-            let ok = true
-            for (const c of cells) { if (!(await mineCell(c))) { ok = false; break } }
-            if (!ok) continue
-            try { startMotion('navigation', { x: nx + 0.5, y: fy + 1, z: nz + 0.5 }, { allowLowHealth: true, maxDistance: 3 }) } catch {}
-            const until = Date.now() + 6000
-            while (Date.now() < until) { await new Promise(r => setTimeout(r, 250)); const p = working().position; if (p && Math.floor(p.x) === nx && Math.floor(p.z) === nz && Math.abs(p.y - 1.62 - (fy + 1)) < 0.6) break }
-            const p = working().position
-            if (p && Math.floor(p.x) === nx && Math.floor(p.z) === nz) { steps++; if (steps % 5 === 1) host.log(`掘り上がり: ${steps}段目 (${nx},${fy + 1},${nz})`); done = true; break }
-          }
-          if (!done) { host.log('掘り上がり: どの方向にも段を作れませんでした'); return { surfaced: false, steps, reason: 'NO_STEP' } }
-        }
-        return { surfaced: false, steps, reason: 'TIME_LIMIT' }
-      },
-      // Long-trip preparation without the legacy autonomy (2026-11-14 decision):
-      // hunt food animals and eat while hunger is below 18, then cut logs from
-      // received trees by ordinary mining and pick the drops up. Every result is
-      // the received inventory change. Logs only (never leaves); shooters are
-      // still avoided by the combat rules for empty hands.
-      prepGather: async (input = {}) => {
-        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
-        const logTarget = Math.max(0, Math.min(10, input.logs ?? 10))
-        // logs: 0 is the food step alone (eat, or hunt within 24 m); no wood is taken.
-        if (logTarget > 0 && !longTravelLogAllowance()) throw new Error('先に prepareLongTravel({gather:false}) で準備の許可を出してください。')
-        const started = Date.now(), maxMs = Math.min(40 * 60000, input.maxMs ?? 20 * 60000)
-        const say = m => host.log(`長距離移動の準備: ${m}`)
-        const items = () => working().inventory?.items ?? []
-        const count = re => items().filter(i => re.test(i.name ?? '')).reduce((n, i) => n + (i.count ?? 0), 0)
-        const LOGS = /^minecraft:[a-z_]+_(?:log|stem)$/, FOOD = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/
-        const hunger = () => { const v = host.shared.vitals?.hunger; return Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : null }
-        const feetOf = () => { const p = working().position; return p ? { x: p.x, y: p.y - 1.62, z: p.z } : null }
-        const sleep = ms => new Promise(r => setTimeout(r, ms))
-        const wait = async (fn, ms) => { const until = Date.now() + ms; while (Date.now() < until) { if (fn()) return true; await sleep(200) } return fn() }
-        // Walk next to a point by the ordinary local movement (radius 1-2, heights -2..+2).
-        const walkNear = async (pos, radii = [1, 2]) => {
-          const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
-          const here = feetOf(); if (!here) return false
-          if (Math.hypot(pos.x - here.x, pos.z - here.z) <= 2.2 && Math.abs(pos.y - here.y) <= 2.5) return true
-          const cands = []
-          for (const r of radii) for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) if (Math.max(Math.abs(dx), Math.abs(dz)) === r) for (const dy of [0, -1, 1, -2, 2]) cands.push({ x: Math.floor(pos.x) + dx + 0.5, y: Math.floor(pos.y) + dy, z: Math.floor(pos.z) + dz + 0.5 })
-          cands.sort((a, b) => Math.hypot(a.x - here.x, a.z - here.z) - Math.hypot(b.x - here.x, b.z - here.z))
-          // Live 15:14: forty back-to-back previews stalled the event loop for 24 s
-          // and the server closed the connection. Yield after each preview and
-          // stop planning after two seconds.
-          const planUntil = Date.now() + 2000
-          for (const t of cands.slice(0, 40)) {
-            if (Date.now() > planUntil) return false
-            let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
-            await new Promise(resolve => setImmediate(resolve))
-            if (pv?.ready !== true) continue
-            try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { return false }
-            await wait(() => { const m = movement?.snapshot() ?? {}; return !['moving', 'settling'].includes(m.phase) }, 20000)
-            const f = feetOf(); return !!f && Math.hypot(t.x - f.x, t.z - f.z) <= 1.5
-          }
-          return false
-        }
-        const pickup = async center => {
-          const drops = allActors().filter(a => a?.kind === 'item' && a.position && Math.hypot(a.position.x - center.x, a.position.z - center.z) <= 5)
-          for (const d of drops.slice(0, 4)) await walkNear(d.position, [0, 1])
-          await sleep(800)
-        }
-        let hunts = 0, logsTried = 0, eatRefused = false, rottenTried = false
-        const woolTarget = Math.max(0, Math.min(3, input.wool ?? 0)), WOOL = /^minecraft:[a-z_]*wool$/
-        const foodTarget = Math.max(0, Math.min(16, input.food ?? 0))
-        const skipLog = new Set() // logs that could not be reached or mined are not tried again
-        while (Date.now() - started < maxMs) {
-          const st = working(); if (!st.position || st.dead) { await sleep(1000); continue }
-          // 1. food first while hunger is below 18
-          if ((hunger() ?? 20) < 18) {
-            // Live 15:04: a raw chicken matched FOOD but the eat check refused it
-            // and the step looped. One refusal ends eating here (emergency rotten
-            // flesh is tried once); the step goes on to hunting.
-            if (!eatRefused && count(FOOD) > 0) { try { await operations.food.eat({}); say(`食べました（満腹度 ${hunger()}）`); continue } catch (e) { eatRefused = true; say(`食事を見送り: ${String(e.message ?? e).slice(0, 60)}`) } }
-            if (!rottenTried && count(/^minecraft:rotten_flesh$/) > 0) { rottenTried = true; try { await operations.food.eat({ allowEmergencyRotten: true }); say(`非常食として腐った肉を食べました（満腹度 ${hunger()}）`); continue } catch {} }
-            const feet = feetOf()
-            const animal = allActors().filter(a => a?.kind === 'mob' && a.hostile === false && /^minecraft:(?:cow|pig|sheep|chicken)$/.test(a.entityType ?? '') && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
-            if (animal && hunts < 12) {
-              hunts++
-              const before = count(FOOD)
-              if (await walkNear(animal.position, [1])) {
-                for (let hit = 0; hit < 6; hit++) { try { await combat.animalAttack(animal.runtimeId, {}) } catch { break } await sleep(500); if (!allActors().some(a => String(a.runtimeId) === String(animal.runtimeId) && a.alive !== false)) break }
-                await pickup(animal.position)
-              }
-              if (count(FOOD) > before) say(`食料を得ました（${count(FOOD)}個）`)
-              continue
-            }
-          }
-          // 1a. a food stock before a long trip (coordinator 2026-11-14: 5-10)
-          if (foodTarget && count(FOOD) < foodTarget && hunts < 24) {
-            const feet = feetOf()
-            const animal = allActors().filter(a => a?.kind === 'mob' && a.hostile === false && /^minecraft:(?:cow|pig|sheep|chicken|rabbit)$/.test(a.entityType ?? '') && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 32).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
-            if (animal) {
-              hunts++
-              const before = count(FOOD)
-              if (await walkNear(animal.position, [1])) {
-                for (let hit = 0; hit < 6; hit++) { try { await combat.animalAttack(animal.runtimeId, {}) } catch { break } await sleep(500); if (!allActors().some(a => String(a.runtimeId) === String(animal.runtimeId) && a.alive !== false)) break }
-                await pickup(animal.position)
-              }
-              if (count(FOOD) > before) say(`食料を得ました（${count(FOOD)}個）`)
-              continue
-            }
-          }
-          // 1b. wool from sheep for a respawn bed (coordinator 2026-11-14)
-          if (woolTarget && count(WOOL) < woolTarget && hunts < 12) {
-            const feet = feetOf()
-            const sheep = allActors().filter(a => a?.kind === 'mob' && a.hostile === false && a.entityType === 'minecraft:sheep' && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
-            if (sheep) {
-              hunts++
-              const before = count(WOOL)
-              if (await walkNear(sheep.position, [1])) {
-                for (let hit = 0; hit < 6; hit++) { try { await combat.animalAttack(sheep.runtimeId, {}) } catch { break } await sleep(500); if (!allActors().some(a => String(a.runtimeId) === String(sheep.runtimeId) && a.alive !== false)) break }
-                await pickup(sheep.position)
-              }
-              if (count(WOOL) > before) say(`羊毛を得ました（${count(WOOL)}個）`)
-              continue
-            }
-          }
-          // 2. logs
-          const logs = count(LOGS)
-          if (logs >= logTarget) { if (logTarget > 0) say(`原木 ${logs} 本を持っています`); return { done: true, logs, food: count(FOOD), hunger: hunger() } }
-          if (logsTried > 40) break
-          const feet = feetOf(), known = []
-          for (let dx = -24; dx <= 24; dx++) for (let dz = -24; dz <= 24; dz++) for (let dy = -6; dy <= 12; dy++) {
-            const x = Math.floor(feet.x) + dx, y = Math.floor(feet.y) + dy, z = Math.floor(feet.z) + dz
-            const b = host.world.getBlock(x, y, z)
-            if (b?.known === true && LOGS.test(b.name ?? '')) known.push({ x, y, z, d: Math.hypot(dx, dz) + Math.abs(dy) * 0.5 })
-          }
-          known.sort((a, b) => a.d - b.d)
-          const trunkLow = t => { for (let y = t.y - 1; y >= t.y - 3; y--) { const b = host.world.getBlock(t.x, y, t.z); if (b?.known !== true) return false; if (LOGS.test(b.name ?? '')) continue; return b.boundingBox === 'block' && !/leaves/.test(b.name ?? '') } return false }
-          const target = known.find(t => trunkLow(t) && !skipLog.has(`${t.x},${t.y},${t.z}`))
-          if (!target) { say('近くに届く原木が見つかりません'); break }
-          logsTried++
-          if (!(await walkNear(target, [1, 2]))) { skipLog.add(`${target.x},${target.y},${target.z}`); say(`原木 (${target.x},${target.y},${target.z}) の隣へ歩けません（この原木は飛ばします）`); continue }
-          const before = count(LOGS)
-          try { operations.mining.start([{ x: target.x, y: target.y, z: target.z }]) } catch (e) { skipLog.add(`${target.x},${target.y},${target.z}`); say(`採掘を開始できません: ${String(e.message ?? e).slice(0, 60)}`); await sleep(1000); continue }
-          const broken = await wait(() => { const b = host.world.getBlock(target.x, target.y, target.z); return b?.known === true && !LOGS.test(b.name ?? '') }, 35000)
-          if (!broken) { skipLog.add(`${target.x},${target.y},${target.z}`); say('原木を壊せませんでした'); continue }
-          await pickup(target)
-          if (count(LOGS) > before) say(`原木 ${count(LOGS)} 本`)
-        }
-        return { done: false, logs: count(LOGS), food: count(FOOD), hunger: hunger(), reason: Date.now() - started >= maxMs ? 'TIME_LIMIT' : 'NO_TARGET' }
-      },
-      // Read-only request: the terrain above the bot (its chunk and the eight
-      // around it) up to y=120, to find the way back to open sky from a cave.
-      // Pick up received item drops near a point by ordinary walking (2026-11-14:
-      // the preparation items dropped at a death). Success is the received
-      // inventory growing; the drop vanishing alone is not counted.
-      pickupNear: async (input = {}) => {
-        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
-        const center = input.center, radius = Math.min(32, input.radius ?? 16), maxMs = Math.min(600000, input.maxMs ?? 180000), started = Date.now()
-        if (!center || ![center.x, center.z].every(Number.isFinite)) throw new Error('center {x, z} を指定してください。')
-        const sleep = ms => new Promise(r => setTimeout(r, ms))
-        const feetOf = () => { const q = working().position; return q ? { x: q.x, y: q.y - 1.62, z: q.z } : null }
-        const total = () => (working().inventory?.items ?? []).reduce((n, i) => n + (i.count ?? 0), 0)
-        const before = total(), skip = new Set()
-        const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
-        while (Date.now() - started < maxMs) {
-          const here = feetOf(); if (!here) { await sleep(500); continue }
-          const drop = allActors().filter(a => a?.kind === 'item' && a.position && !skip.has(String(a.runtimeId)) && Math.hypot(a.position.x - center.x, a.position.z - center.z) <= radius).sort((a, b) => Math.hypot(a.position.x - here.x, a.position.z - here.z) - Math.hypot(b.position.x - here.x, b.position.z - here.z))[0]
-          if (!drop) break
-          const t = { x: Math.floor(drop.position.x) + 0.5, y: Math.floor(drop.position.y + 0.01), z: Math.floor(drop.position.z) + 0.5 }
-          let moved = false
-          for (const dy of [0, 1, -1]) {
-            let pv = null; try { motionOrigin = working(); pv = movement?.preview({ ...t, y: t.y + dy }, opts) } catch {}
-            if (pv?.ready !== true) continue
-            try { requireIdle({ inventoryRequired: false }); startMotion('navigation', { ...t, y: t.y + dy }, opts); moved = true } catch {}
-            break
-          }
-          if (!moved) { skip.add(String(drop.runtimeId)); continue }
-          const until = Date.now() + 20000
-          while (Date.now() < until) { const m = movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await sleep(200) }
-          await sleep(600)
-          if (allActors().some(a => String(a.runtimeId) === String(drop.runtimeId))) skip.add(String(drop.runtimeId))
-        }
-        const gained = total() - before
-        host.log(`拾得: 受信した持ち物が ${gained} 個増えました`)
-        return { gained, items: total(), skipped: skip.size }
-      },
-      // One canopy-escape pass outside a trip (same rules as during long travel).
-      leafEscape: async () => { if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。'); if (longTravel?.status?.().busy) throw new Error('長距離移動の途中です。'); return travelLeafEscape(null) },
-      // Read-only: the route the trip itself would plan from here (same options).
-      travelDebug: (input = {}) => {
-        const st = working(); if (!st.position) throw new Error('位置が不明です。')
-        const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, d = input.destination ?? { x: 1968, z: -2041 }
-        const bad = host.shared.longTravelBadCells
-        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: d, maxNodes: 60000, maxMs: input.maxMs ?? 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: bad ?? new Set(), faceStairs: input.faceStairs === true })
-        const firstDig = r.ready ? r.path.findIndex(q => q.dig) : -1
-        const previews = [12, 9, 6, 4, 3, 2, 1].map(a => { const q = r.path[Math.min(firstDig > 0 ? Math.min(a, firstDig - 1) : a, r.path.length - 1)]; if (!q) return null; let pv = null; try { motionOrigin = working(); pv = movement?.preview({ x: q.x, y: q.y, z: q.z }, { allowWater: true, allowLowHealth: true, maxDistance: 16 }) } catch (e) { pv = { ready: false, reason: e.message } } return { a, q, ready: pv?.ready === true, reason: pv?.reason ?? null } })
-        return { bad: bad?.size ?? 0, ready: r.ready, reached: r.reached, timedOut: r.timedOut, expanded: r.expanded, length: r.path.length, firstDig, firstSteps: r.path.slice(0, 6), previews }
-      },
-      // Kit before a long trip (coordinator 2026-11-14, after three deaths near
-      // spawn): wool for a bed, a food stock, logs; then planks, sticks, a table,
-      // a wooden sword, a bed and a boat. Results are the received inventory.
-      prepKit: async (input = {}) => {
-        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
-        if (longTravel?.status?.().busy) throw new Error('長距離移動の途中です。')
-        const say = m => host.log(`長距離移動の準備: ${m}`)
-        const items = () => working().inventory?.items ?? []
-        const count = re => items().filter(i => re.test(i.name ?? '')).reduce((n, i) => n + (i.count ?? 0), 0)
-        if (!longTravelLogAllowance()) await operations.quarry.prepareLongTravel({ logCount: 10, gather: false })
-        const has = re => count(re) > 0
-        const foodWanted = Math.max(5, Math.min(10, input.food ?? 6))
-        const FOODS = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/
-        const LOGS0 = /^minecraft:[a-z_]+_(?:log|stem)$/
-        // Planks the remaining items need (live 19:25: the last logs went into the
-        // sword and boat and the bed was never crafted): table 4, sticks 2,
-        // sword 2, bed 3, boat 5.
-        const planksNeeded = () => (has(/^minecraft:crafting_table$/) ? 0 : 4) + (has(/_sword$/) ? 0 : 2 + (has(/^minecraft:stick$/) ? 0 : 2)) + (has(/^minecraft:bed$/) ? 0 : 3) + (has(/_boat$/) ? 0 : 5)
-        const woodHeld = () => count(/^minecraft:[a-z_]+_planks$/) + count(LOGS0) * 4
-        const missing = () => [!has(/^minecraft:bed$/) && count(/wool$/) < 3 ? 'wool' : null, count(FOODS) < foodWanted ? 'food' : null, woodHeld() < planksNeeded() ? 'logs' : null].filter(Boolean)
-        // Live 18:52: right after a reconnect nothing was in sight and the kit
-        // ended at once. Gather, and while something is missing walk about 48 m
-        // to another spot (six rounds, turning 60 degrees) and gather again.
-        const origin = working().position ? { x: working().position.x, z: working().position.z } : null
-        for (let round = 0; round < 7 && origin; round++) {
-          if (!longTravelLogAllowance()) await operations.quarry.prepareLongTravel({ logCount: 10, gather: false }) // live 20:01: the 30-minute allowance ran out mid-kit
-          if (missing().includes('wool')) await operations.quarry.prepGather({ logs: 0, wool: 3, maxMs: 120000 })
-          if (missing().includes('food')) await operations.quarry.prepGather({ logs: 0, food: foodWanted, maxMs: 180000 })
-          if (missing().includes('logs')) await operations.quarry.prepGather({ logs: Math.min(10, count(LOGS0) + Math.ceil((planksNeeded() - woodHeld()) / 4)), maxMs: 180000 })
-          if (!missing().length || round === 6) break
-          const ang = round * Math.PI / 3
-          let dest = { x: Math.round(origin.x + Math.cos(ang) * 48), z: Math.round(origin.z + Math.sin(ang) * 48) }
-          // Logs missing (live 19:46: six rounds found none while trees were
-          // known to the west): head for the nearest received log within 64 m.
-          if (missing().includes('logs')) {
-            const here = working().position, hx = Math.floor(here.x), hy = Math.floor(here.y - 1.62), hz = Math.floor(here.z)
-            let best = null
-            for (let dx = -64; dx <= 64; dx += 2) for (let dz = -64; dz <= 64; dz += 2) {
-              const d = Math.hypot(dx, dz); if (d < 20 || best && d >= best.d) continue
-              for (let dy = -8; dy <= 16; dy++) { const b = host.world.getBlock(hx + dx, hy + dy, hz + dz); if (b?.known === true && LOGS0.test(b.name ?? '')) { best = { x: hx + dx, z: hz + dz, d }; break } }
-              if ((dz & 15) === 0) await new Promise(resolve => setImmediate(resolve))
-            }
-            if (best) dest = { x: best.x, z: best.z }
-          }
-          say(`まだ足りません（${missing().join('・')}）。(${dest.x}, ${dest.z}) へ探しに行きます`)
-          try { await operations.quarry.travelTo({ destination: dest }) } catch {}
-          const until = Date.now() + 180000
-          while (Date.now() < until && longTravel?.status?.().busy) await new Promise(r => setTimeout(r, 1000))
-          if (longTravel?.status?.().busy) { try { await longTravel.cancel('KIT_EXPLORE') } catch {} }
-        }
-        const LOGS = /^minecraft:([a-z_]+)_log$/, PLANKS = /^minecraft:([a-z_]+)_planks$/
-        const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
-        const made = []
-        if (log || count(PLANKS) >= 4) {
-          await crafting.openInventory()
-          try {
-            if (log) { await crafting.craft(`minecraft:${LOGS.exec(log.name)[1]}_planks`, { times: log.count }); made.push('planks') }
-            if (!has(/^minecraft:stick$/)) { await crafting.craft('minecraft:stick', { times: 1 }); made.push('stick') }
-            if (!has(/^minecraft:crafting_table$/)) { await crafting.craft('minecraft:crafting_table', { times: 1 }); made.push('table') }
-          } finally { try { crafting.closeContainer() } catch {} }
-          const table = await travelPlaceTable()
-          if (table) {
-            await interactions.openCraftingTable(table)
-            try {
-              if (!has(/_sword$/)) { await crafting.craft('minecraft:wooden_sword', { times: 1 }); made.push('wooden_sword') }
-              if (!has(/^minecraft:bed$/) && count(/wool$/) >= 3) { try { await crafting.craft('minecraft:bed', { times: 1 }); made.push('bed') } catch (e) { say(`ベッドを作れません: ${String(e.message ?? e).slice(0, 60)}`) } }
-              if (!has(/_boat$/)) { const p = items().find(i => PLANKS.test(i.name ?? '') && i.count >= 5); if (p) { try { await crafting.craft(`minecraft:${PLANKS.exec(p.name)[1]}_boat`, { times: 1 }); made.push('boat') } catch {} } }
-            } finally { try { crafting.closeContainer() } catch {} }
-          }
-        }
-        if (longTravel?.status?.().busy) { try { await longTravel.cancel('KIT_DONE') } catch {} }
-        const kit = { bed: count(/^minecraft:bed$/), sword: count(/_sword$/), food: items().filter(i => /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/.test(i.name ?? '')).reduce((n, i) => n + i.count, 0), boat: count(/_boat$/), wool: count(/wool$/) }
-        say(`${missing().length ? `足りないもの: ${missing().join('・')}。` : '揃いました。'}ベッド ${kit.bed}・剣 ${kit.sword}・食料 ${kit.food}・ボート ${kit.boat}（受信した持ち物で確認、作ったもの: ${made.join('・') || 'なし'}）`)
-        return { made, kit }
-      },
-      // Read-only: each gate of the automatic armour step.
-      armorCheck: () => { const g = {}; for (const [k, f] of Object.entries({ resetHeld: () => resetHeld(), manualChest: () => !!manualChestStorage?.isBusy(), chunkMoveHeld: () => chunkMoveHeld(), placementPrep: () => !!quarryPlacementPreparation, surfaceOwner: () => !!host.shared.quarrySurfaceStorageOwner, allowed: () => armorAutoAllowed(), task: () => !!armorTask, workFree: () => armorWorkFree(), nearest: () => nearestHostileDistance(), preview: () => armor.preview(), snapshot: () => armor.snapshot() })) { try { g[k] = f() } catch (e) { g[k] = 'ERR ' + String(e.message ?? e).slice(0, 80) } } return g },
-      // Take a few items out of a supply box kept in the home chest
-      // (coordinator 2026-11-14: totems and a pickaxe/shovel before the trip).
-      // The box is withdrawn, placed beside the bot by ordinary placement,
-      // opened, the items withdrawn, the box broken under this placement's own
-      // record (combat waits from the break until the box is back in the
-      // received inventory) and returned to the chest. Never with a reachable
-      // enemy near. Every step is the received inventory or block.
-      supplyBoxTake: async (input = {}) => travelSupplyBoxTake(input),
-      // Read-only: why the empty-handed preparation flag is on or off.
-      prepCheck: () => {
-        const cheap = require('./learning-health').cheapItem, out = { allowance: longTravelLogAllowance(), flag: emptyHandedPrep(), blocking: [] }
-        for (const [container, size] of [['main', 36], ['armor', 4], ['offhand', 1]]) {
-          const v = inventoryStore.view(container)
-          if (v.known !== true || v.slots.length !== size) { out.blocking.push({ container, known: v.known, size: v.slots.length }); continue }
-          v.slots.forEach((slot, i) => { const name = slot.raw ? crafting.itemNameOf(slot.raw.network_id) : null; if (!(slot.received === true && slot.raw && (slot.raw.network_id === 0 || slot.raw.count === 0 || container === 'main' && cheap(name)))) out.blocking.push({ container, slot: i, received: slot.received, name, id: slot.raw?.network_id }) })
-        }
-        return out
-      },
-      requestTerrainAbove: async () => {
-        const st = working(); if (!st.position) throw new Error('位置が不明です。')
-        const cx = Math.floor(st.position.x / 16), cz = Math.floor(st.position.z / 16), y = Math.floor(st.position.y - 1.62)
-        const results = []
-        // Live 13:58: a canopy over unreceived terrain (y48-63) looked like a deep hole; the request also covers 24 below.
-        for (const [bottom, top] of [[Math.max(-60, y - 24), Math.min(110, y + 60)], [Math.min(110, y + 60), 120]]) {
-          if (bottom >= top) continue
-          results.push(await requestQuarryTerrain({ config: { target: { chunks: [{ x: cx, z: cz }] } }, yTop: top, yBottom: bottom }, {}))
-        }
-        return results.map(r => ({ requested: r.requested, packets: r.packets, reason: r.reason ?? null }))
-      },
-      // Read-only: the coarse wide-area route over the received terrain.
-      coarseRoutePreview: (input = {}) => {
-        const d = input.destination, st = working()
-        if (!d || ![d.x, d.z].every(Number.isFinite) || !st.position) throw new Error('目的地 {x, z} を指定してください。')
-        const started = Date.now()
-        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, goal: d, maxNodes: Math.min(120000, input.maxNodes ?? 60000), allowDig: input.allowDig === true, surfaceOnly: input.surfaceOnly === true, maxDrop: Number.isInteger(input.maxDrop) ? input.maxDrop : 3 })
-        const step = Math.max(1, Math.floor(r.path.length / 20))
-        return { ready: r.ready, reached: r.reached, surfaced: r.surfaced === true, remaining: r.remaining, expanded: r.expanded, ms: Date.now() - started, length: r.path.length, sample: r.path.filter((_, i) => i % step === 0 || i === r.path.length - 1), frontier: r.frontier.slice(0, 8) }
-      },
-      // Preparation for a long trip from empty hands: about 10 logs by the
-      // existing tree work (logs only), then planks/table/tools by the existing
-      // crafting. The allowance expires after 30 minutes.
-      prepareLongTravel: (input = {}) => {
-        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
-        const logCount = Math.max(1, Math.min(10, Number.isInteger(input.logCount) ? input.logCount : 10))
-        host.shared.woodHarvestAllowance = { purpose: 'long_travel_prep', logCount, startedAt: Date.now(), expiresAt: Date.now() + 30 * 60000 }
-        host.log(`長距離移動の準備: 原木を ${logCount} 本まで集めます（30分以内・原木のみ）${input.gather === false ? '（許可のみ。採取は後で）' : ''}`)
-        if (input.gather === false) return { allowance: structuredClone(host.shared.woodHarvestAllowance) }
-        return autonomy.start({ objective: 'long_travel_prep', logCount })
-      },
-      endLongTravelPrep: () => { host.shared.woodHarvestAllowance = null; return autonomy.stop('長距離移動の準備を終了しました。') },
-      cancelTravel: async () => {
-        const result = await (longTravel?.cancel('MANUAL_STOP') ?? { busy: false, phase: 'idle' })
-        // A manual stop is saved, so a reconnect or restart does not resume it.
-        try { const f = longTravelFile(), fsp = require('node:fs/promises'); const doc = JSON.parse(await fsp.readFile(f, 'utf8')); doc.phase = 'stopped'; doc.reason = 'MANUAL_STOP'; doc.savedAt = new Date().toISOString(); await fsp.writeFile(f, JSON.stringify(doc, null, 2)) } catch {}
-        host.shared.longTravelResume = null
-        return result
-      },
-      cancelChunkMove: operationId => {
-        if (!operationId || chunkTravel?.status().operationId !== operationId) throw Object.assign(new Error('移動操作が変わりました。状態を更新してください。'), { code: 'STALE_CHUNK_MOVE' })
-        return cancelChunkMovement('MANUAL_STOP')
-      },
-      chunkMoveStatus: () => chunkTravel?.status() ?? { available: true, busy: false, phase: 'idle', operationId: null, serverConfirmed: false },
-      controlPosition: () => controlLocation.snapshot(),
-      // Read-only: prove the bot's present position to the server (the same
-      // /testfor volume query chunk travel uses), so the dashboard can act here.
-      proveControlPosition: async () => { const st = working(); if (!st.position) throw new Error('位置が不明です。'); return controlLocation.confirm({ x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, { radius: 0.2 }) },
-      confirmControlPosition: (area, options) => controlLocation.confirm(null, { ...options, area: normalizeChunkArea(area), radius: 0.12, operationId: 'dashboard_area_position' }),
-      plan: config => {
-        if (!quarryJob?.holdsWork()) requireIdle()
-        const input=structuredClone(config??{})
-        const registered=getRegisteredQuarryHomeSite()
-        const view=receivedEquipmentView(inventoryInspection,crafting,quarryState())
-        const empty=section=>section?.known===true&&Array.isArray(section.slots)&&section.slots.every(slot=>slot?.known===true&&slot.empty===true&&slot.count===0)
-        const emptyBot=view.known===true&&!view.uncertain&&view.slots?.length===36&&empty(view)&&view.armor?.slots?.length===4&&empty(view.armor)&&view.offhand?.slots?.length===1&&empty(view.offhand)
-        const explicit=input.initialLoadout==='v22'
-        if (explicit && (!registered || input.homeChest && ['position','other','stand','stage'].some(part=>['x','y','z'].some(axis=>input.homeChest[part]?.[axis]!==registered[part]?.[axis])))) {
-          throw Object.assign(new Error('初期セットの登録済みチェストを確認してください。'),{code:'LOADOUT_SOURCE_NOT_REGISTERED'})
-        }
-        if (registered && (explicit || input.homeChest==null&&emptyBot)) {
-          input.homeChest=registered
-          input.initialLoadout='v22'
-          input.inventory={...input.inventory,supplyLayout:'v22'}
-        } else if (input.homeChest == null && (input.inventory?.depositWhen == null || input.inventory.depositWhen === 'four_layers')) {
-          input.homeChest=registered
-        }
-        return ensureQuarryJob().plan(input)
-      },
-      start: () => { requireIdle(); return ensureQuarryJob().start() },
-      resume: () => { requireIdle(); return ensureQuarryJob().resume() },
-      retryPersistence: () => ensureQuarryJob().retryPersistence(),
-      configureExit: options => ensureQuarryJob().configureExit(options ?? {}),
-      configureTools: options => ensureQuarryJob().configureTools(options ?? {}),
-      configureStorage: options => ensureQuarryJob().configureStorage(options ?? {}),
-      configureDirtSupply: options => ensureQuarryJob().configureDirtSupply(options ?? {}),
-      configureAnimalClearing: options => ensureQuarryJob().configureAnimalClearing(options ?? {}),
-      acceptCarriedStorageLoss: options => ensureQuarryJob().acceptCarriedStorageLoss(options ?? {}),
-      // Manual selective storage into a large chest within reach (2026-11-13 user
-      // request): cargo boxes and loose items go in; supply boxes, tools, worn
-      // armour, the totem and food stay. Only while no quarry job is running.
-      storeToChest: async (options = {}) => {
-        const doc = quarryJob?.document?.()
-        if (doc && !['FINISHED', 'PAUSED', 'IDLE', 'CANCELLED'].includes(doc.state)) throw new Error('露天掘りの実行中は収納できません。')
-        const p = options?.position
-        if (!p || !['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])) || Object.keys(options).some(k => !['position', 'all'].includes(k))) throw new Error('storeToChest accepts { position: {x,y,z}, all?: true } of a large chest')
-        const operationId = 'manual-store:' + new Date().toISOString().replace(/[:.]/g, '-')
-        const file = require('node:path').join(process.cwd(), '.local', 'manual-chest-deposit', operationId.replace(':', '-') + '.json')
-        require('node:fs').mkdirSync(require('node:path').dirname(file), { recursive: true })
-        const save = cp => require('node:fs').writeFileSync(file, JSON.stringify(cp, null, 1))
-        const { FINAL_CHEST_KEEP } = require('./quarry-job')
-        ensureQuarryJob()
-        if (!quarrySurfaceChestRunner) throw new Error('収納の準備ができていません。')
-        // all: true stores the gear too (2026-11-13 18:17 user request).
-        const result = await quarrySurfaceChestRunner('depositAll', { jobId: doc?.config?.jobId ?? 'manual', operationId, position: { x: p.x, y: p.y, z: p.z }, checkpoint: null, ...(options.all === true ? {} : { keep: FINAL_CHEST_KEEP }) }, { onCheckpoint: async cp => save(cp) })
-        save({ ...(result.checkpoint ?? {}), result: { status: result.status, reason: result.reason ?? null, serverConfirmed: result.serverConfirmed } })
-        host.log(`手動収納（選択）: ${result.status} ${result.reason ?? ''} 記録 ${file}`)
-        return { status: result.status, reason: result.reason ?? null, serverConfirmed: result.serverConfirmed, stored: (result.checkpoint?.receipts ?? []).filter(r => /deposit/.test(r.kind)).reduce((n, r) => n + (r.count ?? 0), 0), stacks: (result.checkpoint?.receipts ?? []).length, record: file }
-      },
-      configureCargoLossAcceptance: options => ensureQuarryJob().configureCargoLossAcceptance(options ?? {}),
-      configureSpareArmor: options => ensureQuarryJob().configureSpareArmor(options ?? {}),
-      requestTerrain: () => { const doc = ensureQuarryJob().document(); if (!doc) throw new Error('No quarry job'); return requestQuarryTerrain({ config: doc.config, yTop: doc.yTop, yBottom: doc.config.yBottom }) },
-      confirmPosition: (feet, options) => confirmQuarryPosition(feet, options),
-      positionStatus: () => ({ ...(quarryPositionVerifier?.snapshot() ?? { busy: false }), lastOutput: structuredClone(host.shared.quarryPositionOutput ?? null) }),
-      pillarStatus: () => quarryPillar?.snapshot() ?? { busy: false, phase: 'unavailable' },
-      pillarContext: () => {
-        const state = quarryState()
-        return { phase: state.phase, health: state.health, position: state.position, rawServerPosition: state.rawServerPosition, rawServerPositionUpdatedAt: state.rawServerPositionUpdatedAt, connectionId: state.connectionId, startedAt: state.startedAt, lifecycle: state.lifecycle, inventory: state.inventory, heldItem: state.heldItem, selectedSlot: state.selectedSlot, protectionBusy: idleSafety?.snapshot().busy === true, userControlBusy: userBehaviorOwns(), loadingScreenEnded: host.shared.loadingScreenEnded === true }
-      },
-      testPillar: options => testQuarryPillar(options ?? {}),
-      storeCarried: options => { requireIdle(); return ensureQuarryJob().storeCarriedNow(options ?? {}) },
-      configureSupplies: options => { requireIdle(); return ensureQuarryJob().configureSupplies(options ?? {}) },
-      restockSuppliesNow: () => { requireIdle(); return ensureQuarryJob().restockSuppliesNow() },
-      reconcileSupplyPlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileSupplyPlacement() },
-      reconcileCarriedPlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileCarriedPlacement() },
-      reconcileCurrentStoragePlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileCurrentStoragePlacement() },
-      currentPlacementAuditStatus: () => ({ ...(storagePlacementAudit?.snapshot() ?? {}), lastOutput: structuredClone(host.shared.storagePlacementAuditOutput ?? null) }),
-      reconcileRejectedStorage: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileRejectedStorage() },
-      reconcileObservedStoragePlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileObservedStoragePlacement() },
-      acceptExceptions: () => ensureQuarryJob().acceptExceptions(),
-      reopenWorkLayer: options => ensureQuarryJob().reopenWorkLayer(options ?? {}),
-      recordDebugAction: options => ensureQuarryJob().recordDebugAction(options ?? {}),
-      pause: () => { cancelQuarryRestore(); cancelChunkMovement('QUARRY_PAUSE'); return quarryJob ? quarryJob.pause('MANUAL_PAUSE') : quarrySnapshot() },
-      emergencyStop: () => { cancelQuarryRestore(); cancelChunkMovement('EMERGENCY_STOP'); return quarryJob ? quarryJob.emergencyStop() : quarrySnapshot() },
-      cancel: () => { cancelQuarryRestore(); cancelChunkMovement('QUARRY_CANCEL'); return quarryJob ? quarryJob.cancel() : quarrySnapshot() },
-      load: jobId => loadQuarryFile(jobId),
-      status: () => quarrySnapshot(),
-      document: () => quarryJob?.document() ?? structuredClone(host.shared.quarryDocument ?? null)
-    },
-    storage: {
-      prepare: options => ensureManualChestStorage().prepare(options ?? {}),
-      start: options => ensureManualChestStorage().start(options ?? {}),
-      status: () => manualChestStorage?.status() ?? { available: true, busy: false, phase: 'idle', operationId: null, serverConfirmed: false, target: null, transferredStacks: 0, remainingStacks: null, error: null },
-      diagnostics: () => ensureManualChestStorage().diagnostics(),
-      retryClose: () => ensureManualChestStorage().retryClose(),
-      cancel: reason => manualChestStorage?.cancel(reason ?? 'MANUAL_STOP') ?? { available: true, busy: false, phase: 'idle' },
-      drain: () => manualChestStorage?.drain() ?? Promise.resolve()
-    },
-    userBehaviors: {
-      start: () => { if (disposed || disposing) throw new Error('Runtime is reloading'); host.shared.combatDefenseWanted = true; host.shared.userBehaviorsEnabled = true; tickUserBehaviors(); return userBehaviorSnapshot() },
-      stop: async reason => { host.shared.combatDefenseWanted = false; host.shared.combatDefenseAnchor = null; host.shared.userBehaviorsEnabled = false; userBehaviors?.cancel(reason ?? 'manual_user_behavior_stop', 'CANCELLED'); await userBehaviors?.drain(); return userBehaviorSnapshot() },
-      tick: () => { tickUserBehaviors(); return userBehaviorSnapshot() }, snapshot: userBehaviorSnapshot
-    },
-    safety: {
-      start: (options = {}) => {
-        if (disposed || disposing) throw new Error('行動コードを更新しました。新しい状態からやり直してください。')
-        if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).some(key => key !== 'lowHealthRecoveryMs') || options.lowHealthRecoveryMs !== undefined && (!Number.isSafeInteger(options.lowHealthRecoveryMs) || options.lowHealthRecoveryMs < 0 || options.lowHealthRecoveryMs > 60000)) throw new Error('低体力回復の待機時間が不正です。')
-        if (options.lowHealthRecoveryMs && idleSafety?.snapshot().running) throw new Error('保護動作中に低体力回復の期限は変更できません。')
-        if (options.lowHealthRecoveryMs) host.shared.safetyRecoveryDeadline = Date.now() + options.lowHealthRecoveryMs
-        else if (!host.shared.safetyWanted) host.shared.safetyRecoveryDeadline = 0
-        if (!host.shared.safetyWanted) { host.shared.safetyEnableEpoch++; host.shared.safetyEmergency = null }
-        host.shared.safetyWanted = true
-        return resumeSafety()
-      },
-      stop: async reason => {
-        if (disposed || disposing) throw new Error('行動コードを更新しました。新しい状態からやり直してください。')
-        safetyDispatchEpoch++
-        host.shared.safetyWanted = false
-        await idleSafety?.stop(reason ?? '待機保護を停止しました。')
-        await idleSafety?.drain()
-        return safetySnapshot()
-      },
-      snapshot: safetySnapshot
-    },
-    guardRoute: {
-      execute: (waypoints, options) => { requireIdle(); if (!guardRoute) throw new Error('経路監視の初期化を待ってください。'); const result = guardRoute.execute(waypoints, options); guardRouteProgress = null; return result },
-      returnRoute: (prefix, options) => { requireIdle(); if (!guardRoute) throw new Error('経路監視の初期化を待ってください。'); const result = guardRoute.returnRoute(prefix, options); guardRouteProgress = null; return result },
-      escape: (waypoints, options) => { requireIdle(); if (!guardRoute) throw new Error('経路監視の初期化を待ってください。'); const result = guardRoute.escape(waypoints, options); guardRouteProgress = null; return result },
-      snapshot: guardRouteSnapshot,
-      stop: reason => guardRoute?.stop(reason) ?? { phase: 'idle', busy: false }
-    },
-    hut: {
-      preview: options => hut?.preview(options) ?? { ready: false },
-      reconcileEmptyPlacement: () => { requireIdle(); if (!hut) throw new Error('小屋の初期化を待ってください。'); return hut.reconcileEmptyPlacement() },
-      execute: options => { requireIdle(); return hut.execute(options) },
-      leave: options => { requireIdle(); return hut.leave(options) },
-      snapshot: () => hut?.snapshot() ?? null,
-      stop: reason => hut?.stop(reason)
-    },
-    armor: { equipBest: equipManualArmor },
-    diagnostics: {
-      locatePlains: async () => {
-        plainsLocator ??= createPlainsLocator({ client: host.client, getState: () => disposed || disposing || replaying ? null : lightweightRawState() })
-        const result = await plainsLocator.locate()
-        if (result.requestId) host.shared.lastPlainsLocate = structuredClone(result)
-        return result
-      },
-      locatePlainsStatus: () => ({ pending: plainsLocator?.snapshot().pending ?? false, lastResult: structuredClone(host.shared.lastPlainsLocate ?? null) }),
-      resistance: () => selfResistance.snapshot(),
-      manualRecoveryGroundProof: runtimeId => {
-        const state = manualRecoveryState(), target = host.entities.snapshot({ kind: 'all' }).find(actor => String(actor.runtimeId) === String(runtimeId))
-        return manualGroundAccessProof(target, state)
-      },
-      slowFalling: () => selfSlowFalling.snapshot(),
-      effectEvents: () => selfEffectEvents.snapshot(),
-      lastWaterPreview: () => structuredClone(host.shared.waterPreviewObservation ?? null),
-      movement: () => movement?.diagnostics() ?? null,
-      shoreSurvey: async () => {
-        const start = raw()
-        if (start.phase !== 'spawned' || !start.position || start.dead) throw new Error('ワールド内の位置を確認できません。')
-        const scope = JSON.stringify([start.profile, start.realm?.id, start.dimension, start.connectionId])
-        const result = await surveyShore({ world: host.world, position: start.position, radius: 64, valid: () => {
-          const current = raw()
-          return !disposed && !disposing && current.phase === 'spawned' && !current.dead && JSON.stringify([current.profile, current.realm?.id, current.dimension, current.connectionId]) === scope
-        } })
-        if (shoreMemory && !disposed && !disposing) {
-          await loadShoreHistory()
-          shoreMemory.rememberSurvey({ profile: start.profile, realmId: String(start.realm?.id), dimension: start.dimension }, result)
-          await shoreMemory.save()
-        }
-        return result
-      },
-      rawInventorySlot: slot => {
-        if (!Number.isInteger(slot) || slot < 0 || slot > 35) throw new Error('持ち物スロットは0〜35で指定してください。')
-        return crafting.rawItem(slot)
-      },
-      craftingRecipes: output => crafting.describeRecipes(output),
-      lastInventoryUpdate: () => structuredClone(host.shared.lastInventoryUpdate ?? null),
-      shelterEvents: () => structuredClone(host.shared.shelterEvents ?? []),
-      inventoryEvents: () => structuredClone(host.shared.inventoryEvents ?? []),
-      permissions: () => ({ permissionLevel: host.meta.startGame?.permission_level, playerGameMode: host.meta.startGame?.player_gamemode, worldGameMode: host.meta.startGame?.world_gamemode, serverAuthoritativeInventory: host.meta.startGame?.server_authoritative_inventory, serverAuthoritativeBlockBreaking: host.meta.startGame?.server_authoritative_block_breaking, playerName: raw().playerName, runtimeEntityId: raw().runtimeEntityId }),
-      threatReachability: () => threatReachability.snapshot(),
-      combatSearchBudget: () => combatExposure.snapshot(),
-      combatCandidates: () => userBehaviors?.explainCombat?.() ?? null,
-      // Read-only: each condition of the user-behavior combat canAct gate.
-      combatGate: () => {
-        const read = f => { try { return f() } catch (error) { return `unavailable: ${error.message}` } }
-        return { surfaceReturnOwner: read(() => !!surfaceReturnOwner), replaying: read(() => !!replaying), combatDefenseWanted: defenseEnabled(host.shared), userBehaviorsEnabled: host.shared.userBehaviorsEnabled === true, autoWanted: host.shared.autoWanted === true, loadingScreenEnded: host.shared.loadingScreenEnded === true, respawnTerrainPending: !!host.shared.respawnTerrain?.pending, userBehaviorWakePending: read(() => !!userBehaviorWakePending), disposed: read(() => !!disposed || !!disposing) }
-      },
-      // Read-only test helper: dry, flat, open areas in received terrain.
-      findFlatArea: (options = {}) => findFlatArea(options),
-      // Read-only: in-process CPU profile (no inspector port is opened). Saves
-      // .local/cpu-<time>.cpuprofile and returns the top self-time functions.
-      cpuProfile: ms => profileCpu(ms),
-      // Read-only: why the after-restart quarry restore did or did not run.
-      quarryRestore: () => { const st = raw(); return { tried: host.shared.quarryRestoreTried === true, result: host.shared.quarryRestore ?? null, ports: !!quarryPorts, phase: st.phase, loadingScreenEnded: host.shared.loadingScreenEnded === true, spawnPending: !!st.spawnPending, inventoryKnown: st.inventory?.known ?? null, inventoryUncertain: host.shared.inventoryUncertain ?? null } },
-      // Read-only: the raw server item in a slot (NBT, enchantments) as JSON.
-      rawItem: slot => { const r = crafting.rawItem(Number(slot)); return r ? JSON.parse(JSON.stringify(r, (k, v) => typeof v === 'bigint' ? String(v) : v)) : null },
-      // Read-only: milliseconds spent in each part of the /status snapshot.
-      snapshotTimings: () => {
-        const parts = { userBehaviors: () => userBehaviorSnapshot(), safety: () => safetySnapshot(), guardRoute: () => guardRouteSnapshot(), queuedPrediction: () => inputHistory?.snapshot(), missionMemory: () => missionJournal.snapshot(), hut: () => hut?.snapshot(), shelter: () => activeBase()?.snapshot(), foraging: () => foraging?.snapshot(), food: () => food.snapshot(), recovery: () => recovery?.snapshot(), excavation: () => excavation?.snapshot(), quarry: () => quarrySnapshot(), tunneling: () => tunneling?.snapshot(), furnace: () => furnace.snapshot(), chest: () => chest.snapshot(), mining: () => mining.snapshot(), walking: () => walker?.snapshot(), movement: () => movement?.snapshot(), crafting: () => crafting.snapshot(), inventoryActions: () => inventory.snapshot(), interactions: () => interactions.snapshot(), combat: () => combat?.snapshot(), agent: () => autonomy.snapshot(), depotPrebuild: () => depotPrebuild?.snapshot(), depotMission: () => depotMission?.snapshot(), surfaceReturn: () => surfaceReturn?.snapshot(), entitiesAll: () => host.entities.snapshot({ kind: 'all' }), worldStats: () => host.world.stats() }
-        return measureSnapshots(parts)
-      },
-      armor: () => armor.snapshot(),
-      sightFrom: (x, y, z) => { const p = raw().position; const hs = host.entities.snapshot({ kind: 'all' }).filter(e => e.hostile && e.alive !== false && e.position && Math.hypot(e.position.x - x, e.position.z - z) < 32); return hs.map(e => ({ type: e.entityType, runtimeId: e.runtimeId, distance: +Math.hypot(e.position.x - x, e.position.y - y, e.position.z - z).toFixed(1), clear: bowSightClearAt({ x, y: y + 1.62, z }, { x: e.position.x, y: e.position.y + 0.9, z: e.position.z }), clearFromBot: p ? bowSightClearAt(p, { x: e.position.x, y: e.position.y + 0.9, z: e.position.z }) : null })).sort((a, b) => a.distance - b.distance).slice(0, 8) },
-      blocksAround: () => { const p = raw().position; if (!p) return null; const fx = Math.floor(p.x), fy = Math.floor(p.y - 1.62), fz = Math.floor(p.z), rows = []; for (let dy = 2; dy >= -1; dy--) { const lines = []; for (let dz = -2; dz <= 2; dz++) { let line = ''; for (let dx = -2; dx <= 2; dx++) { const b = host.world.getBlock(fx + dx, fy + dy, fz + dz); line += !b?.known ? '?' : /air/.test(b.name) ? '.' : /water/.test(b.name) ? '~' : b.boundingBox === 'empty' ? ',' : '#' } lines.push(line) } rows.push({ dy, lines: lines.join(' ') }) } return { feet: { x: fx, y: fy, z: fz }, exact: p, rows } },
-      userTick: () => { const s = host.shared.userTickStats ?? {}; return { inventoryUncertain: host.shared.inventoryUncertain ?? null, rangedShotUncertain: host.shared.rangedShotUncertain ?? null, resync: host.shared.inventoryResync?.lastRequest ?? null, ...s, taskAgeMs: s.taskSince ? Date.now() - s.taskSince : 0, sinceRanMs: s.lastRanAt ? Date.now() - s.lastRanAt : null, taskPending: !!userBehaviorTickTask, lastCombat: userBehaviors?.snapshot?.().combat?.lastResult?.code ?? null, worker: userBehaviors?.snapshot?.().combat?.phase ?? null } },
-      acquireDenials: () => ({ last: host.shared.lastUserAcquireDenial ?? null, counts: { ...(host.shared.userAcquireDenials ?? {}) }, lastPreemptSurvey: host.shared.lastPreemptSurvey ?? null }),
-      foodLife: () => ({ foodKnownLife: foodKnownLife(), deathRespawn: host.shared.deathRespawn?.deathId ?? null, receipt: host.shared.inventoryLifeReceipt ? { source: host.shared.inventoryLifeReceipt.source, deathId: host.shared.inventoryLifeReceipt.deathId, keyMatches: host.shared.inventoryLifeReceipt.key === inventoryLifeBaseKey(raw()) } : null, verified: !!verifiedInitialLifeReceipt(), hunger: food.snapshot().hunger }),
-      // Operator helper: sends any slash command as the bot (the owner allows
-      // all commands on this Realm). The result is not proof of anything;
-      // check the world or inventory afterwards.
-      command: (text, version = 'latest') => {
-        if (typeof text !== 'string' || !/^\/\S/.test(text) || text.length > 512 || /[\r\n]/.test(text)) throw new Error('コマンドは / で始まる1行（512文字以内）で指定してください。')
-        const uuid = require('node:crypto').randomUUID()
-        // The reply with this request UUID is kept (bounded) for commandOutput().
-        host.shared.diagCommandOutputs ??= new Map()
-        host.shared.diagCommandOutputs.set(uuid, { command: text, sentAt: Date.now(), output: null })
-        while (host.shared.diagCommandOutputs.size > 20) host.shared.diagCommandOutputs.delete(host.shared.diagCommandOutputs.keys().next().value)
-        host.client.queue('command_request', { command: text, origin: { type: 'player', uuid, request_id: '', player_entity_id: 0n }, internal: false, version: String(version) })
-        return { sent: true, command: text, version: String(version), uuid }
-      },
-      // Runs the real storage air audit once (read-only) at a received cell.
-      auditAir: async (x, y, z) => {
-        if (![x, y, z].every(Number.isSafeInteger)) throw new Error('整数の座標を指定してください。')
-        storagePlacementAudit ??= createStoragePlacementAudit({ client: host.client, getState: quarryState })
-        return storagePlacementAudit.confirmAir({ x, y, z }, { operationId: 'diagnostics:audit-air' })
-      },
-      commandOutput: uuid => { const row = host.shared.diagCommandOutputs?.get(String(uuid ?? '').toLowerCase()) ?? host.shared.diagCommandOutputs?.get(String(uuid ?? '')); return row ? structuredClone(row) : null }
-    },
-    shelter: {
-      preview: options => shelter?.preview(options) ?? { ready: false },
-      execute: options => { requireIdle(); return shelter.execute(options) },
-      leave: options => { requireIdle(); return shelter.leave(options) },
-      snapshot: () => shelter?.snapshot() ?? null,
-      stop: reason => shelter?.stop(reason)
-    },
-    foraging: {
-      preview: options => foraging?.preview(options) ?? { ready: false },
-      execute: options => { requireIdle(); return foraging.execute(options) },
-      snapshot: () => foraging?.snapshot() ?? null,
-      stop: reason => foraging?.stop(reason)
-    },
-    food: {
-      preview: options => food.preview(options),
-      eat: options => { requireIdle(); return food.eat(options) },
-      snapshot: () => food.snapshot(),
-      stop: reason => food.cancel(reason)
-    },
-    recovery: {
-      preview: options => recovery?.preview(options) ?? { ready: false },
-      previewAsync: options => recovery?.previewAsync(options) ?? Promise.resolve({ ready: false }),
-      execute: options => { requireIdle({ inventoryRequired: false }); return recovery.execute(options) },
-      snapshot: () => recovery?.snapshot() ?? null,
-      stop: reason => recovery?.stop(reason)
-    },
-    tunneling: {
-      preview: (decision, options) => tunneling?.preview(decision, options) ?? { ready: false },
-      execute: (decision, options) => { requireIdle(); return tunneling.execute(decision, options) },
-      snapshot: () => tunneling?.snapshot() ?? null,
-      stop: reason => tunneling?.stop(reason)
-    },
-    excavation: {
-      preview: options => excavation?.preview(options) ?? { ready: false },
-      execute: options => { requireIdle(); return excavation.execute(options) },
-      snapshot: () => excavation?.snapshot() ?? null,
-      stop: reason => excavation?.stop(reason)
-    },
-    prospecting: {
-      start: options => {
-        prospecting.scan(options ?? {}).then(result => { if (!disposed && !disposing) host.shared.prospecting = result }).catch(error => { if (!disposed) host.shared.prospectingError = error.message })
-        return prospecting.snapshot()
-      },
-      scan: async options => {
-        const result = await prospecting.scan(options ?? {})
-        if (!disposed && !disposing) host.shared.prospecting = result
-        return result
-      },
-      snapshot: () => prospecting.snapshot(),
-      stop: reason => prospecting.cancel(reason)
-    },
-    depotMission: {
-      start: async () => { host.shared.legacyWorkHoldScope = null; host.shared.legacyWorkHoldLease = null; autonomy.stop('ダイヤ保管後も継続する作業へ引き継ぎます。'); return depotMission.start() },
-      stop: () => depotMission.stop(),
-      tick: () => depotMission.tick(),
-      snapshot: () => depotMission.snapshot()
-    },
-    surfaceReturn: {
-      preview: options => surfaceReturn?.previewAsync(options) ?? Promise.resolve({ ready: false, code: 'NOT_READY' }),
-      previewAsync: options => surfaceReturn?.previewAsync(options) ?? Promise.resolve({ ready: false, code: 'NOT_READY' }),
-      execute: options => executeSurfaceReturn(options),
-      stop: reason => surfaceReturn?.stop(reason),
-      snapshot: () => surfaceReturn?.snapshot() ?? null
-    },
-    chest: {
-      open: (position, slot) => { requireIdle(); crafting.closeContainer(); return chest.open(position, slot) },
-      withdrawItem: options => { requireIdle(); return chest.withdrawItem(options) },
-      depositDiamond: options => { requireIdle(); return chest.depositDiamond(options) },
-      depositItem: options => { requireIdle(); return chest.depositItem(options) },
-      snapshot: () => chest.snapshot(),
-      status: chestStatus,
-      rawItem: slot => chest.rawItem(slot),
-      cancel: reason => chest.cancel(reason)
-    },
-    furnace: {
-      putInput: (...args) => { requireIdle(); return furnace.putInput(...args) },
-      putFuel: (...args) => { requireIdle(); return furnace.putFuel(...args) },
-      takeOutput: options => { requireIdle(); return furnace.takeOutput(options) },
-      waitOutput: (...args) => furnace.waitOutput(...args),
-      stop: reason => furnace.cancel(reason),
-      cancel: reason => furnace.cancel(reason),
-      snapshot: () => furnace.snapshot()
-    },
-    perception: {
-      entities: () => host.entities.snapshot({ kind: 'all' }),
-      nearby: (options = {}) => host.entities.nearby(working().position, options),
-      observe: options => runner.observe(options ?? {})
-    },
-    mining: {
-      previewAccessClearance: options => mining.previewAccessClearance(options),
-      startAccessClearance: options => { requireIdle(); crafting.closeContainer(); return mining.startAccessClearance(options) },
-      preview: targets => mining.preview(targets),
-      start: targets => {
-        requireIdle()
-        if (Array.isArray(targets) && targets.some(p => p && portableKeys().has(String(p.x) + ',' + String(p.y) + ',' + String(p.z)))) throw Object.assign(new Error('地下作業場所の床と屋根は掘削しません。'), { code: 'PROTECTED_BLOCK' })
-        if (!ownedCall && Array.isArray(targets) && targets.some(point => point && planningWorld.getBlock(point.x, point.y, point.z).protectionSource === 'bot_base')) {
-          const error = new Error('拠点の床・壁・屋根は通常の資材採掘では壊しません。')
-          error.code = 'PROTECTED_BLOCK'
-          throw error
-        }
-        if (!ownedCall && Array.isArray(targets)) {
-          const state = raw()
-          if (host.shared.tunnelFloors != null && (typeof state.profile !== 'string' || !state.profile || state.realm?.id == null || !['overworld', 'nether', 'end'].includes(state.dimension))) {
-            const error = new Error('帰路の床のワールド情報が未確定のため、通常採掘を停止します。')
-            error.code = 'TUNNEL_FLOOR_SCOPE_UNKNOWN'
-            throw error
-          }
-          const floors = readCurrentTunnelFloors()
-          if (targets.some(point => point && floors.some(floor => floor.x === point.x && floor.y === point.y && floor.z === point.z))) {
-            const error = new Error('実際に通った坑道の帰路の床は、通常の資材採掘では壊しません。')
-            error.code = 'PROTECTED_BLOCK'
-            error.protectionSource = 'tunnel_floor'
-            throw error
-          }
-        }
-        crafting.closeContainer()
-        return mining.start(targets)
-      },
-      stop: reason => mining.stop(reason)
-    },
-    walking: {
-      preview: target => { requireIdle({ inventoryRequired: false }); motionOrigin = working(); return walker?.preview(target) ?? { ready: false, errors: ['歩行の初期化を待っています。'] } },
-      start: target => startMotion('flat_walk', target),
-      stop: reason => { publishWalker(); return walker?.stop(reason) ?? { phase: 'idle' } }
-    },
-    movement: {
-      destination: movementDestination,
-      clearDestination: clearMovementDestination,
-      preview: (target, options) => { const guardedOptions = portableMovementOptions(target, options); requireIdle({ inventoryRequired: false }); motionOrigin = working(); return movement?.preview(target, guardedOptions) ?? { ready: false, errors: ['移動の初期化を待っています。'] } },
-      start: (target, options) => startMotion('navigation', target, options),
-      settle: options => {
-        if (options?._portableMovementLease != null) throw portablePolicyError('tagged settle requires reobservation')
-        requireIdle({ inventoryRequired: false })
-        yieldPortableMovement()
-        if (!movement?.settle) throw new Error('着地処理の更新を待っています。')
-        stopIdleStream()
-        idlePhysicsState = null
-        motionOrigin = working()
-        host.shared.motionSource = 'navigation_settle'
-        return movement.settle(options)
-      },
-      stop: reason => {
-        // A delayed external cleanup must not cancel a movement that the idle
-        // safety supervisor has since acquired. Explicit agent/safety stops
-        // still use their own cancellation and cleanup paths.
-        if (!ownedCall && idleSafety?.snapshot().busy) throw new Error('保護動作が移動を使用中です。全体を停止する場合は自律動作か保護動作を停止してください。')
-        return movement?.stop(reason) ?? { phase: 'idle' }
-      }
-    },
-    crafting: {
-      preview: (...args) => host.shared.inventoryUncertain ? { ready: false, errors: ['操作後の持ち物が未確定です。'] } : crafting.preview(...args),
-      craft: (...args) => { requireIdle(); return crafting.craft(...args) },
-      openInventory: () => { requireIdle({ inventoryRequired: false }); return crafting.openInventory() },
-      closeContainer: () => crafting.closeContainer()
-    },
-    interactions: {
-      cancel: reason => interactions.cancel(reason),
-      equip: slot => { requireIdle(); const result = interactions.equip(slot); host.setEquipmentPrediction(slot); return result },
-      placeCraftingTable: data => {
-        requireIdle(); crafting.closeContainer()
-        return interactions.placeCraftingTable(data).then(result => {
-          host.shared.stations ??= {}
-          host.shared.stations.craftingTable = { known: true, serverConfirmed: true, placedByBot: true, position: result.position }
-          return result
-        })
-      },
-      placeBlock: data => {
-        requireIdle(); crafting.closeContainer()
-        const plan = interactions.previewPlace(data)
-        if (!plan.ready) throw new Error(plan.errors.join('\n'))
-        return interactions.placeBlock(data).then(result => {
-          const name = plan.expectedBlock
-          if (name === 'minecraft:furnace' || name === 'minecraft:crafting_table') {
-            host.shared.stations ??= {}
-            host.shared.stations[name === 'minecraft:furnace' ? 'furnace' : 'craftingTable'] = { known: true, serverConfirmed: true, placedByBot: true, position: result.position }
-          }
-          return result
-        })
-      },
-      previewPlace: data => interactions.previewPlace(data),
-      // Manual normal placement against a side face (2026-11-13: a bridge to the
-      // registered chest over the finished pit). Same checks as the quarry's seals.
-      previewPlaceAgainst: data => interactions.previewQuarryPlace(data),
-      placeAgainst: data => { requireIdle(); crafting.closeContainer(); const plan = interactions.previewQuarryPlace(data); if (!plan.ready) throw new Error((plan.errors ?? []).join(' / ') || 'placement refused'); return interactions.placeQuarryBlock(data) },
-      openCraftingTable: (...args) => { requireIdle(); crafting.closeContainer(); return interactions.openCraftingTable(...args) },
-      openFurnace: (...args) => { requireIdle(); crafting.closeContainer(); return interactions.openFurnace(...args) },
-      openChest: (position, slot) => { requireIdle(); crafting.closeContainer(); return chest.open(position, slot) },
-      previewOpenChest: (position, slot) => interactions.previewOpenChest(position, slot)
-    },
-    inventory: {
-      resync: () => requestInventoryResyncWithReceipt(),
-      resyncStatus: () => structuredClone(host.shared.inventoryResync?.lastRequest ?? null),
-      equip: async slot => {
-        requireIdle()
-        const result = await inventory.equip(slot)
-        if (result.serverConfirmed) host.shared.equipment = null
-        return result
-      }
-    },
-    combat: {
-      previewHunt: id => combat?.previewHunt(id) ?? { ready: false },
-      previewEngage: (id, options) => combat?.previewEngage(id, options) ?? { ready: false },
-      previewWaterCreeper: id => combat?.previewWaterCreeper(id) ?? { ready: false },
-      waterCreeperAttack: id => { requireIdle(); return combat.waterCreeperAttack(id) },
-      hunt: id => { requireIdle(); return combat.hunt(id) },
-      preview: id => combat?.preview(id) ?? { ready: false },
-      attack: id => { requireIdle(); return combat.attack(id) },
-      defend: options => { requireIdle(); return combat.defend(options) },
-      engage: (id, options) => { requireIdle(); return combat.engage(id, options) },
-      stop: reason => { combat?.cancel(reason); return combat?.drain() }
-    },
-    agent: {
-      yieldWork: async reason => {
-        if (disposed || disposing) throw new Error('Runtime is reloading')
-        const options=reason&&typeof reason==='object'?reason:null, ttlMs=options?.ttlMs
-        if(ttlMs!=null&&(!Number.isSafeInteger(ttlMs)||ttlMs<1000||ttlMs>60000))throw Error('Work hold ttlMs must be an integer1000..60000')
-        const scope=userScope(rawScope()), lease=ttlMs==null?null:{id:require('node:crypto').randomUUID(),scope,createdAt:Date.now(),expiresAt:Date.now()+ttlMs}
-        host.shared.legacyWorkHoldScope=scope;host.shared.legacyWorkHoldLease=lease
-        autonomy.stop(options?.reason ?? (typeof reason==='string'?reason:'Logical work handoff'))
-        await autonomy.tick()
-        return {held:lease?host.shared.legacyWorkHoldLease?.id===lease.id&&logicalWorkHeld():logicalWorkHeld(),policyUnchanged:true,leaseId:lease?.id??null,scope,expiresAt:lease?.expiresAt??null,agent:autonomy.snapshot()}
-      },
-      releaseWork: leaseId => {
-        const lease=host.shared.legacyWorkHoldLease
-        if(typeof leaseId!=='string'||!lease||lease.id!==leaseId)return {released:false,policyUnchanged:true}
-        host.shared.legacyWorkHoldLease=null
-        if(host.shared.legacyWorkHoldScope===lease.scope)host.shared.legacyWorkHoldScope=null
-        return {released:true,policyUnchanged:true}
-      },
-      start: options => {
-        if (chunkMoveHeld()) throw Object.assign(new Error('Botの移動が終わるまで待ってください。'), { code: 'CHUNK_MOVE_BUSY' })
-        if (manualChestStorage?.isBusy()) throw Object.assign(new Error('ラージチェストへの収納操作中です。'), { code: 'STORAGE_BUSY' })
-        if (resetHeld()) throw Object.assign(new Error('初期アイテムのリセット処理中です。'), { code: 'RESET_BUSY' })
-        if (disposed || disposing) throw new Error('行動コードを更新しました。新しい状態からやり直してください。')
-        host.shared.legacyWorkHoldScope = null; host.shared.legacyWorkHoldLease = null
-        host.shared.autoWanted = true
-        host.shared.autoOptions = { objective: 'diamond', diamondCount: 1, maxRunMs: 7200000, maxWaitTicks: 1200, ...options }
-        const start = () => { if (disposed || disposing || resetHeld() || manualChestStorage?.isBusy() || chunkMoveHeld()) return autonomy.snapshot(); return autonomy.start({ ...host.shared.autoOptions, progress: options?.progress ?? host.shared.autonomyProgress }) }
-        return missionJournal.enabled ? missionJournal.load().then(result => missionReady(result) ? start() : autonomy.snapshot()) : start()
-      },
-      stop: reason => { host.shared.autoWanted = false; clearNavigationDestination(); const result = autonomy.stop(reason); stopActions(reason); return result },
-      tick: () => { if (chunkMoveHeld()) throw Object.assign(new Error('Botの移動が終わるまで待ってください。'), { code: 'CHUNK_MOVE_BUSY' }); if (manualChestStorage?.isBusy()) throw Object.assign(new Error('ラージチェストへの収納操作中です。'), { code: 'STORAGE_BUSY' }); if (resetHeld()) throw Object.assign(new Error('初期アイテムのリセット処理中です。'), { code: 'RESET_BUSY' }); return autonomy.tick() }
-    }
-  }
+  // This part lives in runtime-operations.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const runtimeOperations = require('./runtime/runtime-operations').createRuntimeOperations({
+    get activeBase () { return activeBase },
+    get allActors () { return allActors },
+    get armor () { return armor },
+    get armorAutoAllowed () { return armorAutoAllowed },
+    get armorTask () { return armorTask }, set armorTask (value) { armorTask = value },
+    get armorWorkFree () { return armorWorkFree },
+    get autonomy () { return autonomyRuntime.autonomy },
+    get bowSightClearAt () { return bowSightClearAt },
+    get cancelChunkMovement () { return cancelChunkMovement },
+    get cancelQuarryRestore () { return cancelQuarryRestore },
+    get chest () { return chest },
+    get chestStatus () { return chestStatus },
+    get chunkMoveHeld () { return chunkMoveHeld },
+    get chunkTravel () { return chunkTravel }, set chunkTravel (value) { chunkTravel = value },
+    get clearMovementDestination () { return clearMovementDestination },
+    get clearNavigationDestination () { return clearNavigationDestination },
+    get combat () { return combat }, set combat (value) { combat = value },
+    get combatExposure () { return combatExposure },
+    get confirmQuarryPosition () { return confirmQuarryPosition },
+    get controlLocation () { return controlLocation },
+    get crafting () { return crafting },
+    get createPlainsLocator () { return createPlainsLocator },
+    get createStoragePlacementAudit () { return createStoragePlacementAudit },
+    get defenseEnabled () { return defenseEnabled },
+    get depotMission () { return depotMission }, set depotMission (value) { depotMission = value },
+    get depotPrebuild () { return depotPrebuild }, set depotPrebuild (value) { depotPrebuild = value },
+    get disposed () { return disposed }, set disposed (value) { disposed = value },
+    get disposing () { return disposing }, set disposing (value) { disposing = value },
+    get emptyHandedPrep () { return emptyHandedPrep },
+    get ensureChunkTravel () { return ensureChunkTravel },
+    get ensureLoadoutReset () { return ensureLoadoutReset },
+    get ensureLongTravel () { return ensureLongTravel },
+    get ensureManualChestStorage () { return ensureManualChestStorage },
+    get ensureQuarryJob () { return ensureQuarryJob },
+    get equipManualArmor () { return equipManualArmor },
+    get excavation () { return excavation }, set excavation (value) { excavation = value },
+    get executeSurfaceReturn () { return executeSurfaceReturn },
+    get findFlatArea () { return findFlatArea },
+    get food () { return food },
+    get foodKnownLife () { return foodKnownLife },
+    get foraging () { return foraging }, set foraging (value) { foraging = value },
+    get furnace () { return furnace },
+    get getRegisteredQuarryHomeSite () { return getRegisteredQuarryHomeSite },
+    get guardRoute () { return guardRoute }, set guardRoute (value) { guardRoute = value },
+    get guardRouteProgress () { return guardRouteProgress }, set guardRouteProgress (value) { guardRouteProgress = value },
+    get guardRouteSnapshot () { return guardRouteSnapshot },
+    get host () { return host }, set host (value) { host = value },
+    get hut () { return hut }, set hut (value) { hut = value },
+    get idlePhysicsState () { return idlePhysicsState }, set idlePhysicsState (value) { idlePhysicsState = value },
+    get idleSafety () { return idleSafety }, set idleSafety (value) { idleSafety = value },
+    get inputHistory () { return inputHistory }, set inputHistory (value) { inputHistory = value },
+    get interactions () { return interactions },
+    get inventory () { return inventory },
+    get inventoryInspection () { return inventoryInspection },
+    get inventoryLifeBaseKey () { return inventoryLifeBaseKey },
+    get inventoryStore () { return inventoryStore },
+    get lightweightRawState () { return lightweightRawState },
+    get loadManualShulkerRecovery () { return loadManualShulkerRecovery },
+    get loadoutReset () { return loadoutReset }, set loadoutReset (value) { loadoutReset = value },
+    get loadQuarryFile () { return loadQuarryFile },
+    get loadShoreHistory () { return loadShoreHistory },
+    get logicalWorkHeld () { return logicalWorkHeld },
+    get longTravelLogAllowance () { return longTravelLogAllowance },
+    get manualChestStorage () { return manualChestStorage }, set manualChestStorage (value) { manualChestStorage = value },
+    get manualGroundAccessProof () { return manualGroundAccessProof },
+    get manualRecoveryState () { return manualRecoveryState },
+    get manualShulkerAbort () { return manualShulkerAbort }, set manualShulkerAbort (value) { manualShulkerAbort = value },
+    get manualShulkerDocument () { return manualShulkerDocument }, set manualShulkerDocument (value) { manualShulkerDocument = value },
+    get manualShulkerRecovery () { return manualShulkerRecovery }, set manualShulkerRecovery (value) { manualShulkerRecovery = value },
+    get manualShulkerTask () { return manualShulkerTask }, set manualShulkerTask (value) { manualShulkerTask = value },
+    get measureSnapshots () { return measureSnapshots },
+    get mining () { return mining },
+    get missionJournal () { return missionJournal },
+    get missionReady () { return missionReady },
+    get motionOrigin () { return motionOrigin }, set motionOrigin (value) { motionOrigin = value },
+    get movement () { return movement }, set movement (value) { movement = value },
+    get movementDestination () { return movementDestination },
+    get nearestHostileDistance () { return nearestHostileDistance },
+    get normalizeChunkArea () { return normalizeChunkArea },
+    get ownedCall () { return ownedCall }, set ownedCall (value) { ownedCall = value },
+    get plainsLocator () { return plainsLocator }, set plainsLocator (value) { plainsLocator = value },
+    get planningWorld () { return planningWorld },
+    get portableKeys () { return portableKeys },
+    get portableMovementOptions () { return portableMovementOptions },
+    get portablePolicyError () { return portablePolicyError },
+    get profileCpu () { return profileCpu },
+    get prospecting () { return prospecting },
+    get publishWalker () { return publishWalker },
+    get quarryJob () { return quarryJob }, set quarryJob (value) { quarryJob = value },
+    get quarryPillar () { return quarryPillar }, set quarryPillar (value) { quarryPillar = value },
+    get quarryPlacementPreparation () { return quarryPlacementPreparation }, set quarryPlacementPreparation (value) { quarryPlacementPreparation = value },
+    get quarryPorts () { return quarryPorts }, set quarryPorts (value) { quarryPorts = value },
+    get quarryPositionVerifier () { return quarryPositionVerifier }, set quarryPositionVerifier (value) { quarryPositionVerifier = value },
+    get quarryRuntime () { return quarryRuntime },
+    get quarrySnapshot () { return quarrySnapshot },
+    get quarryState () { return quarryState },
+    get raw () { return raw },
+    get rawScope () { return rawScope },
+    get readCurrentTunnelFloors () { return readCurrentTunnelFloors }, set readCurrentTunnelFloors (value) { readCurrentTunnelFloors = value },
+    get receivedEquipmentView () { return receivedEquipmentView },
+    get recovery () { return recovery }, set recovery (value) { recovery = value },
+    get replaying () { return replaying }, set replaying (value) { replaying = value },
+    get requestInventoryResyncWithReceipt () { return requestInventoryResyncWithReceipt },
+    get requestQuarryTerrain () { return requestQuarryTerrain },
+    get require () { return require },
+    get requireIdle () { return requireIdle },
+    get resetHeld () { return resetHeld },
+    get resumeSafety () { return resumeSafety },
+    get runManualShulkerRecovery () { return runManualShulkerRecovery },
+    get runner () { return runner },
+    get safetyDispatchEpoch () { return safetyDispatchEpoch }, set safetyDispatchEpoch (value) { safetyDispatchEpoch = value },
+    get safetySnapshot () { return safetySnapshot },
+    get selfEffectEvents () { return selfEffectEvents },
+    get selfResistance () { return selfResistance },
+    get selfSlowFalling () { return selfSlowFalling },
+    get shelter () { return shelter }, set shelter (value) { shelter = value },
+    get shoreMemory () { return shoreMemory },
+    get startMotion () { return startMotion },
+    get stopActions () { return stopActions },
+    get stopIdleStream () { return stopIdleStream },
+    get storagePlacementAudit () { return storagePlacementAudit }, set storagePlacementAudit (value) { storagePlacementAudit = value },
+    get surfaceReturn () { return surfaceReturn }, set surfaceReturn (value) { surfaceReturn = value },
+    get surfaceReturnOwner () { return surfaceReturnOwner }, set surfaceReturnOwner (value) { surfaceReturnOwner = value },
+    get surveyShore () { return surveyShore },
+    get testQuarryPillar () { return testQuarryPillar },
+    get threatReachability () { return threatReachability },
+    get tickUserBehaviors () { return tickUserBehaviors },
+    get travelLeafEscape () { return travelLeafEscape },
+    get travelPlaceTable () { return travelPlaceTable },
+    get travelRuntime () { return travelRuntime },
+    get travelSupplyBoxTake () { return travelSupplyBoxTake },
+    get tunneling () { return tunneling }, set tunneling (value) { tunneling = value },
+    get userBehaviorOwns () { return userBehaviorOwns },
+    get userBehaviors () { return userBehaviors }, set userBehaviors (value) { userBehaviors = value },
+    get userBehaviorSnapshot () { return userBehaviorSnapshot },
+    get userBehaviorTickTask () { return userBehaviorTickTask }, set userBehaviorTickTask (value) { userBehaviorTickTask = value },
+    get userBehaviorWakePending () { return userBehaviorWakePending }, set userBehaviorWakePending (value) { userBehaviorWakePending = value },
+    get userScope () { return userScope },
+    get verifiedInitialLifeReceipt () { return verifiedInitialLifeReceipt },
+    get walker () { return walker }, set walker (value) { walker = value },
+    get working () { return working },
+    get yieldPortableMovement () { return yieldPortableMovement }
+  })
   async function observeDepotSky (signal) {
     const state = lightweightUserState(), p = state.position
     if (!p || state.phase !== 'spawned' || state.dead || state.spawnPending || !(state.health > 0)) return
@@ -6450,7 +3137,7 @@ function createRuntime (host) {
       fullPlanner??=createNavigator({world:planningWorld,version:host.meta.version,allowWater:false,physics:idlePhysics.withWorld(planningWorld,{allowWater:false}),planningDistanceLimit:48})
       return fullPlanner.plan(fullPlanner.physics.fromServer(state),target,{...options,avoidance})
     }
-    const proposal=planOwnedCampReturn({state,world:host.world,campMemo:camp,ownedChest:context.policy.memo().chest,previewMove:(target,options)=>operations.movement.preview(target,{...options,avoidance}),previewRoute})
+    const proposal=planOwnedCampReturn({state,world:host.world,campMemo:camp,ownedChest:context.policy.memo().chest,previewMove:(target,options)=>runtimeOperations.operations.movement.preview(target,{...options,avoidance}),previewRoute})
     if(proposal.detour)await delay(0)
     if(!proposal.ready&&proposal.reason==='full_dry_origin_not_proven'&&!prepareOnly){
       // Half over an edge on dry land: step onto the nearest fully supported
@@ -6459,7 +3146,7 @@ function createRuntime (host) {
       if(physical?.onGround===true&&!physical.isInWater&&!physical.isInLava){
         const recenter={partialRecenter:true,maxDistance:2,maxExpanded:64,maxTicks:40}
         for(const target of landEdgeRecenterTargets(host.world,{...state.position,y:state.position.y-1.62})){
-          if(operations.movement.preview(target.position,{...recenter,avoidance})?.ready!==true)continue
+          if(runtimeOperations.operations.movement.preview(target.position,{...recenter,avoidance})?.ready!==true)continue
           const moved=await movePrebuildStance({standpoint:target.position,avoidance,moveOptions:recenter},context)
           return {...moved,code:'LAND_EDGE_RECENTER'}
         }
@@ -6476,7 +3163,7 @@ function createRuntime (host) {
     prepare:context=>approachOwnedCamp(context,true),
     takeover:async(context,before)=>{
       if(context.signal.aborted||logicalWorkHeld()||!prebuildIdle())return false
-      autonomy.stop('Approach the actual owned crafting camp before empty-bag bootstrap');await autonomy.tick()
+      autonomyRuntime.autonomy.stop('Approach the actual owned crafting camp before empty-bag bootstrap');await autonomyRuntime.autonomy.tick()
       const state=lightweightUserState()
       return !context.signal.aborted&&!logicalWorkHeld()&&JSON.stringify(continuationScope(state))===JSON.stringify(before.scope)&&state.health>=before.health&&Math.hypot(state.position.x-before.position.x,state.position.y-before.position.y,state.position.z-before.position.z)<=.1&&prebuildIdle()
     },
@@ -6540,7 +3227,7 @@ function createRuntime (host) {
     const avoidance = [...evaluation.threats, ...evaluation.outsideDanger, ...evaluation.suppressedByTerrain].map(a => ({ id: a.runtimeId, position: { ...a.position }, minDistance: a.dangerRadius, padding: 0 }))
     const recenter = { partialRecenter: true, maxDistance: 2, maxExpanded: 64, maxTicks: 40 }
     for (const target of targets) {
-      if (operations.movement.preview(target.position, { ...recenter, avoidance })?.ready !== true) continue
+      if (runtimeOperations.operations.movement.preview(target.position, { ...recenter, avoidance })?.ready !== true) continue
       try { return { ...await movePrebuildStance({ standpoint: target.position, avoidance, moveOptions: recenter }, context), code: 'LAND_EDGE_RECENTER' } } catch (error) { return { phase: 'observing', code: 'LAND_EDGE_RECENTER_FAILED', reason: String(error.message ?? error).slice(0, 200), serverConfirmed: false } }
     }
     return null
@@ -6568,10 +3255,10 @@ function createRuntime (host) {
       const home=await ownedCampBootstrap.step(context)
       host.shared.ownedCampBootstrap=ownedCampBootstrap.snapshot()
       if(home.handled)return home.result
-      const active = autonomy.snapshot()
+      const active = autonomyRuntime.autonomy.snapshot()
       if (!userBehaviorOwns() && !pendingStops.size && !active.running && !active.busy && !active.actionActive && Date.now() >= (host.shared.depotMiningRestartAt ?? 0)) {
         host.shared.depotMiningRestartAt = Date.now()+10000
-        autonomy.start({objective:'diamond',diamondCount:1,maxRunMs:7200000,maxWaitTicks:1200,...host.shared.autoOptions,progress:host.shared.autonomyProgress})
+        autonomyRuntime.autonomy.start({objective:'diamond',diamondCount:1,maxRunMs:7200000,maxWaitTicks:1200,...host.shared.autoOptions,progress:host.shared.autonomyProgress})
       }
       return {phase:'reacquiring_diamond',serverConfirmed:false,inventoryConfirmed:false}
     }
@@ -6634,9 +3321,9 @@ function createRuntime (host) {
       if(!validated.ready)return {phase:'observing',code:'OWN_CAMP_REVALIDATION_REQUIRED',reason:validated.reason}
       let result
       if (intent.kind === 'observe_storage' && memory.chest) {
-        const access=operations.interactions.previewOpenChest(memory.chest.position)
+        const access=runtimeOperations.operations.interactions.previewOpenChest(memory.chest.position)
         if(access.ready===true){
-          const opened=await operations.chest.open(memory.chest.position)
+          const opened=await runtimeOperations.operations.chest.open(memory.chest.position)
           const observed=context.policy.observeStored(chest.snapshot())
           return {phase:'observed',serverConfirmed:opened.serverConfirmed===true,storedDiamondRevalidated:observed}
         }
@@ -6654,7 +3341,7 @@ function createRuntime (host) {
         const access = planDepotStorageAccess({state:lightweightUserState(),world:host.world,target:result.position,previewOpenAt:({state:projected,target})=>{probeState=projected;return probe.previewOpenChest(target,projected.rawSelectedSlot)}})
         if (access.standpoint) return runner.actions.move_to({type:'move_to',target:access.standpoint,allowWater:false,reason:'Confirm depot access from an observed standing cell'}, {signal:context.signal,state:lightweightUserState(),observations:{},progress:{}})
         if (context.prebuild) {
-          const close=planPrebuildChestStance({state:lightweightUserState(),scope:context.scope,world:host.world,base:memory.base,target:result.position,previewPlaceAt:({state:projected,target,slot})=>{probeState=projected;return probe.previewPlace({position:target,slot})},previewMove:(target,options)=>operations.movement.preview(target,options)})
+          const close=planPrebuildChestStance({state:lightweightUserState(),scope:context.scope,world:host.world,base:memory.base,target:result.position,previewPlaceAt:({state:projected,target,slot})=>{probeState=projected;return probe.previewPlace({position:target,slot})},previewMove:(target,options)=>runtimeOperations.operations.movement.preview(target,options)})
           if (close?.standpoint) return movePrebuildStance(close,context)
         }
         return {phase:'observing',code:access.reason ?? 'ACCESS_REPREVIEW'}
@@ -6671,10 +3358,10 @@ function createRuntime (host) {
         if (!position) return { phase: 'observing', code: 'OWN_CHEST_UNKNOWN' }
         const candidate = state.inventory.items.find(item => ['minecraft:andesite','minecraft:granite','minecraft:diorite','minecraft:raw_copper','minecraft:raw_gold'].includes(item.name) && item.count > 0) ?? state.inventory.items.find(item => item.name === 'minecraft:cobblestone' && item.count > 0 && state.inventory.items.filter(i => i.name === item.name).reduce((n,i) => n+i.count,0) > 64)
         if (!candidate) return { phase: 'observing', code: 'NO_VALIDATED_SURPLUS' }
-        if (!chestStatus().contentsKnown || JSON.stringify(chestStatus().window?.position) !== JSON.stringify(position)) return operations.chest.open(position)
+        if (!chestStatus().contentsKnown || JSON.stringify(chestStatus().window?.position) !== JSON.stringify(position)) return runtimeOperations.operations.chest.open(position)
         const retained = candidate.name === 'minecraft:cobblestone' ? 64 : 0
         const total = state.inventory.items.filter(i => i.name === candidate.name).reduce((n,i) => n+i.count,0)
-        return operations.chest.depositItem({sourceSlot:candidate.slot,count:Math.min(candidate.count,total-retained),expectedName:candidate.name})
+        return runtimeOperations.operations.chest.depositItem({sourceSlot:candidate.slot,count:Math.min(candidate.count,total-retained),expectedName:candidate.name})
       }
       const actualIron = lightweightUserState().inventory.items.filter(i => ['minecraft:raw_iron','minecraft:iron_ingot'].includes(i.name)).reduce((n,i)=>n+i.count,0)
       return runDepotResource({ ...intent, kind:'work', resource: intent.priority === 'food_health' ? 'food' : 'iron', targetCount: intent.priority === 'food_health' ? 1 : Math.min(4096,actualIron+8), ...(intent.priority === 'weapon' ? {preparation:'weapon'} : {}) }, context)
@@ -6691,7 +3378,7 @@ function createRuntime (host) {
     return {...state,inventory,food:food.snapshot(),crafting:crafting.snapshot()}
   }
   function prebuildIdle () {
-    const idle = !disposed && !disposing && !userBehaviorOwns() && !pendingStops.size && !surfaceReturnOwner && !autonomy.snapshot().actionActive && !motionActive() && !input?.stats().running && !idleSafety?.snapshot().busy && mining.snapshot().phase!=='mining' && !food.snapshot().busy && !inventory.snapshot().busy && craftStatus().pendingRequestId==null && !interactions.snapshot().pendingOperation && !depotBuilder?.snapshot().busy && !depotStorage?.snapshot().busy && !foraging?.snapshot().busy && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !guardRoute?.snapshot().busy && !chestStatus().busy && !furnace.snapshot().busy && !combat?.snapshot().busy && !combat?.snapshot().engaging
+    const idle = !disposed && !disposing && !userBehaviorOwns() && !pendingStops.size && !surfaceReturnOwner && !autonomyRuntime.autonomy.snapshot().actionActive && !motionActive() && !input?.stats().running && !idleSafety?.snapshot().busy && mining.snapshot().phase!=='mining' && !food.snapshot().busy && !inventory.snapshot().busy && craftStatus().pendingRequestId==null && !interactions.snapshot().pendingOperation && !depotBuilder?.snapshot().busy && !depotStorage?.snapshot().busy && !foraging?.snapshot().busy && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !guardRoute?.snapshot().busy && !chestStatus().busy && !furnace.snapshot().busy && !combat?.snapshot().busy && !combat?.snapshot().engaging
     if (!idle) return false
     if (working().survivalWorkClearance === true) {
       if (!idleSafety?.snapshot().running || host.shared.safetyWanted !== true) { resumeSafety(); return false }
@@ -6709,7 +3396,7 @@ function createRuntime (host) {
       if(e.requiresObservation || state.entityStats?.unknownPositions>e.unknownPositions.length)return false
       return [...e.threats,...e.outsideDanger,...e.suppressedByTerrain].every(a=>Math.hypot(p.x-a.position.x,p.y-a.position.y,p.z-a.position.z)>=a.dangerRadius-1e-4)
     }
-    const receipt=operations.movement.start(plan.standpoint,{allowWater:false,maxDistance:6,maxExpanded:300,maxTicks:100,avoidance:plan.avoidance,beforeInput,...(plan.moveOptions??{})})
+    const receipt=runtimeOperations.operations.movement.start(plan.standpoint,{allowWater:false,maxDistance:6,maxExpanded:300,maxTicks:100,avoidance:plan.avoidance,beforeInput,...(plan.moveOptions??{})})
     const stamp=actor.snapshot().timingDiagnostics?.start?.at ?? receipt.timingDiagnostics?.start?.at
     try {
       for(let i=0;i<120;i++) {
@@ -6724,9 +3411,9 @@ function createRuntime (host) {
     } finally { if(actor.snapshot().timingDiagnostics?.start?.at===stamp) {actor.stop('Prebuild stance ended');await actor.drain?.()} }
   }
   depotPrebuild=createWorksiteCampPrebuild({getState:prebuildState,getRawItem:slot=>crafting.rawItem(slot),world:host.world,getSurface:()=>host.shared.depotSurfaceAnchor,getBuilder:()=>depotBuilder?{...depotBuilder.snapshot(),protectedCells:depotBuilder.protectedCells()}:null,getStorage:()=>chest.snapshot(),isIdle:prebuildIdle,
-    takeover:async({scope,signal})=>{if(signal.aborted || JSON.stringify(continuationScope(prebuildState()))!==JSON.stringify(scope) || !prebuildIdle())return false;host.shared.depotReacquireWanted=false;autonomy.stop('Prepare a real depot before valuable mining');await autonomy.tick();return !signal.aborted && JSON.stringify(continuationScope(prebuildState()))===JSON.stringify(scope) && prebuildIdle()},
+    takeover:async({scope,signal})=>{if(signal.aborted || JSON.stringify(continuationScope(prebuildState()))!==JSON.stringify(scope) || !prebuildIdle())return false;host.shared.depotReacquireWanted=false;autonomyRuntime.autonomy.stop('Prepare a real depot before valuable mining');await autonomyRuntime.autonomy.tick();return !signal.aborted && JSON.stringify(continuationScope(prebuildState()))===JSON.stringify(scope) && prebuildIdle()},
     dispatch:(intent,context)=>dispatchDepotIntent(intent,{...context,prebuild:true}),
-    resumeLegacy:async({scope,signal})=>{if(signal.aborted || JSON.stringify(continuationScope(prebuildState()))!==JSON.stringify(scope) || !prebuildIdle())throw Error('Prebuild release owner changed');host.shared.depotReacquireWanted=true;const s=autonomy.snapshot();if(!s.running&&!s.busy&&!s.actionActive)autonomy.start({objective:'diamond',diamondCount:1,maxRunMs:7200000,maxWaitTicks:1200,...host.shared.autoOptions,progress:host.shared.autonomyProgress})},onProgress:value=>{host.shared.depotPrebuildStatus=value}})
+    resumeLegacy:async({scope,signal})=>{if(signal.aborted || JSON.stringify(continuationScope(prebuildState()))!==JSON.stringify(scope) || !prebuildIdle())throw Error('Prebuild release owner changed');host.shared.depotReacquireWanted=true;const s=autonomyRuntime.autonomy.snapshot();if(!s.running&&!s.busy&&!s.actionActive)autonomyRuntime.autonomy.start({objective:'diamond',diamondCount:1,maxRunMs:7200000,maxWaitTicks:1200,...host.shared.autoOptions,progress:host.shared.autonomyProgress})},onProgress:value=>{host.shared.depotPrebuildStatus=value}})
   depotMission = createDepotMission({ getState: () => ({ ...lightweightUserState(), hut: hut?.snapshot(), shelter: shelter?.snapshot(), food: food.snapshot() }), world: host.world, getRawItem: slot => crafting.rawItem(slot), workspaceRoot: host.meta.workspaceRoot, dispatch: dispatchDepotIntent, onProgress: value => { host.shared.depotMissionStatus = value } })
   host.cache.replay(applyPacket)
   replaying = false
@@ -6893,7 +3580,7 @@ function createRuntime (host) {
     return require('node:path').resolve(__dirname, '..', '.local', 'shulker-recovery', `${id}.json`)
   }
   async function saveManualShulkerRecovery (document) {
-    const { validateRecoveryDocument } = require('./manual-shulker-recovery')
+    const { validateRecoveryDocument } = require('./loadout/manual-shulker-recovery')
     const doc = validateRecoveryDocument(document), file = manualShulkerFile(doc.id)
     if (!manualShulkerDocument || doc.id !== manualShulkerDocument.id || !isDeepStrictEqual(doc.position, manualShulkerDocument.position) || !isDeepStrictEqual(doc.world, manualShulkerDocument.world) || !isDeepStrictEqual(doc.expectedContents, manualShulkerDocument.expectedContents)) throw new Error('SHULKER_RECOVERY_DOCUMENT_CHANGED')
     const fs = require('node:fs/promises'), path = require('node:path'), tmp = `${file}.${process.pid}.tmp`
@@ -6905,7 +3592,7 @@ function createRuntime (host) {
   async function loadManualShulkerRecovery (id) {
     requireIdle({ inventoryRequired: false })
     const ticket = ++manualShulkerLoadSequence, generation = quarryPorts
-    const fs = require('node:fs/promises'), { validateRecoveryDocument } = require('./manual-shulker-recovery')
+    const fs = require('node:fs/promises'), { validateRecoveryDocument } = require('./loadout/manual-shulker-recovery')
     const file = manualShulkerFile(id), stat = await fs.stat(file)
     if (stat.size > 262144) throw new Error('SHULKER_RECOVERY_DOCUMENT_TOO_LARGE')
     const doc = validateRecoveryDocument(JSON.parse(await fs.readFile(file, 'utf8')))
@@ -6928,7 +3615,7 @@ function createRuntime (host) {
   }
   function getManualShulkerRecovery () {
     if (manualShulkerRecovery) return manualShulkerRecovery
-    const { createManualShulkerRecovery } = require('./manual-shulker-recovery')
+    const { createManualShulkerRecovery } = require('./loadout/manual-shulker-recovery')
     const live = () => { if (!quarryPorts) throw new Error('SHULKER_RECOVERY_MOTION_NOT_READY'); return quarryPorts }
     const own = fn => (...args) => live().own(fn)(...args)
     manualShulkerRecovery = createManualShulkerRecovery({
@@ -6959,7 +3646,7 @@ function createRuntime (host) {
         if (!damaging(state.heldItem?.name)) return { prepared: true }
         const item = state.inventory?.items?.find(item => item.count > 0 && !damaging(item.name) && item.durabilityKnown !== true)
         if (!item) throw new Error('SHULKER_RECOVERY_HAND_UNAVAILABLE')
-        const receipt = await own(slot => operations.inventory.equip(slot))(item.slot)
+        const receipt = await own(slot => runtimeOperations.operations.inventory.equip(slot))(item.slot)
         signal?.throwIfAborted()
         if (receipt?.serverConfirmed !== true || damaging(quarryState().heldItem?.name)) throw new Error('SHULKER_RECOVERY_HAND_UNCONFIRMED')
         return { prepared: true }
@@ -7027,734 +3714,119 @@ function createRuntime (host) {
     })
   }
 
-  function quarryDir () { return require('node:path').resolve(__dirname, '..', '.local', 'quarry') }
-  const quarryStorage = createQuarryStore({
-    directory: quarryDir(),
-    onSaved: doc => {
-      if (!disposed && quarryJob?.document()?.instanceId === doc.instanceId) host.shared.quarryDocument = doc
-    }
+  // This part lives in quarry-runtime.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const quarryRuntime = require('./runtime/quarry-runtime').createQuarryRuntime({
+    get __dirname () { return __dirname },
+    get armor () { return armor },
+    get armorTask () { return armorTask },
+    get assertJobWorld () { return assertJobWorld },
+    get autonomy () { return autonomyRuntime.autonomy },
+    get canonicalWindowId () { return canonicalWindowId },
+    get chest () { return chest },
+    get chestStatus () { return chestStatus },
+    get chunkMoveHeld () { return chunkMoveHeld },
+    get combat () { return combat },
+    get combatAttackExposure () { return combatAttackExposure },
+    get continuationScope () { return continuationScope },
+    get controlLocation () { return controlLocation },
+    get crafting () { return crafting },
+    get craftStatus () { return craftStatus },
+    get createDepotStorageWork () { return createDepotStorageWork },
+    get createQuarryEgressRuntime () { return createQuarryEgressRuntime },
+    get createQuarryJob () { return createQuarryJob },
+    get createQuarryPortableStorage () { return createQuarryPortableStorage },
+    get createQuarryRuntimeAdapter () { return createQuarryRuntimeAdapter },
+    get createQuarryStore () { return createQuarryStore },
+    get createQuarrySupplies () { return createQuarrySupplies },
+    get createQuarryTerrainRequester () { return createQuarryTerrainRequester },
+    get createQuarryV22ChestWork () { return createQuarryV22ChestWork },
+    get createServerPositionVerifier () { return createServerPositionVerifier },
+    get createStoragePlacementAudit () { return createStoragePlacementAudit },
+    get delay () { return delay },
+    get discardWorkingPrediction () { return discardWorkingPrediction },
+    get disposed () { return disposed },
+    get disposing () { return disposing },
+    get ensureLoadoutReset () { return ensureLoadoutReset },
+    get getRegisteredQuarryHomeSite () { return getRegisteredQuarryHomeSite },
+    get historicalEmptyPlacement () { return historicalEmptyPlacement },
+    get historicalSourceRejection () { return historicalSourceRejection },
+    get host () { return host },
+    get idleSafety () { return idleSafety },
+    get input () { return input },
+    get inputHistory () { return inputHistory },
+    get inputOwner () { return inputOwner }, set inputOwner (value) { inputOwner = value },
+    get inputStream () { return inputStream },
+    get interactions () { return interactions },
+    get inventory () { return inventory },
+    get inventoryInspection () { return inventoryInspection },
+    get inventoryResyncDelay () { return inventoryResyncDelay },
+    get inventoryResyncIdle () { return inventoryResyncIdle },
+    get lightweightUserState () { return lightweightUserState },
+    get manualArmorOwner () { return manualArmorOwner },
+    get manualChestStorage () { return manualChestStorage },
+    get mining () { return mining },
+    get motionActive () { return motionActive },
+    get observedScope () { return observedScope },
+    get operations () { return runtimeOperations.operations },
+    get pendingStops () { return pendingStops },
+    get permitsExitAction () { return permitsExitAction },
+    get planningWorld () { return planningWorld },
+    get portableActionOwners () { return portableActionOwners },
+    get portableCancellationScope () { return portableCancellationScope },
+    get QUARRY_AUTO_RESUMABLE () { return QUARRY_AUTO_RESUMABLE },
+    get quarryBehaviorRestore () { return quarryBehaviorRestore }, set quarryBehaviorRestore (value) { quarryBehaviorRestore = value },
+    get quarryCancellationRevision () { return quarryCancellationRevision },
+    get quarryCombatArmed () { return quarryCombatArmed }, set quarryCombatArmed (value) { quarryCombatArmed = value },
+    get quarryEgressAbort () { return quarryEgressAbort }, set quarryEgressAbort (value) { quarryEgressAbort = value },
+    get quarryEgressRuntime () { return quarryEgressRuntime }, set quarryEgressRuntime (value) { quarryEgressRuntime = value },
+    get quarryEgressTask () { return quarryEgressTask }, set quarryEgressTask (value) { quarryEgressTask = value },
+    get quarryJob () { return quarryJob }, set quarryJob (value) { quarryJob = value },
+    get quarryNameOf () { return quarryNameOf },
+    get quarryPillar () { return quarryPillar },
+    get quarryPillarTask () { return quarryPillarTask },
+    get quarryPlacementPreparation () { return quarryPlacementPreparation }, set quarryPlacementPreparation (value) { quarryPlacementPreparation = value },
+    get quarryPortableStorage () { return quarryPortableStorage }, set quarryPortableStorage (value) { quarryPortableStorage = value },
+    get quarryPorts () { return quarryPorts },
+    get quarryPositionVerifier () { return quarryPositionVerifier }, set quarryPositionVerifier (value) { quarryPositionVerifier = value },
+    get quarryRetreatDepth () { return quarryRetreatDepth },
+    get quarrySelectTool () { return quarrySelectTool },
+    get quarrySupplies () { return quarrySupplies }, set quarrySupplies (value) { quarrySupplies = value },
+    get quarryTerrainRequester () { return quarryTerrainRequester }, set quarryTerrainRequester (value) { quarryTerrainRequester = value },
+    get quarryV22Equipment () { return quarryV22Equipment },
+    get raw () { return raw },
+    get receivedEquipmentView () { return receivedEquipmentView },
+    get recoverableQuarry () { return recoverableQuarry },
+    get refreshInventoryWithRetry () { return refreshInventoryWithRetry },
+    get requestInventoryResyncWithReceipt () { return requestInventoryResyncWithReceipt },
+    get require () { return require },
+    get requireIdle () { return requireIdle },
+    get resetHeld () { return resetHeld },
+    get resumeSafety () { return resumeSafety },
+    get retryableRecoveryError () { return retryableRecoveryError },
+    get sameWindowId () { return sameWindowId },
+    get selectRecoveryCandidate () { return selectRecoveryCandidate },
+    get startIdle () { return startIdle },
+    get storagePlacementAudit () { return storagePlacementAudit }, set storagePlacementAudit (value) { storagePlacementAudit = value },
+    get travelRuntime () { return travelRuntime },
+    get userBehaviorLease () { return userBehaviorLease },
+    get userBehaviorOwns () { return userBehaviorOwns },
+    get userBehaviorSnapshot () { return userBehaviorSnapshot },
+    get userScope () { return userScope },
+    get working () { return working }
   })
-  let quarryLoadSequence = 0
-  let quarryRestoreTask = null
-  function cancelQuarryRestore () {
-    quarryLoadSequence++
-    host.shared.quarryRestoreDisabled = true
-    host.shared.quarryRestoreTried = true
-  }
-  function quarryEvidence (target, state) {
-    const exposure = combatAttackExposure(target, state)
-    return { route: exposure.evidence.routeToBot, sight: exposure.evidence.sight, intercept: exposure.intercept, unknown: exposure.unknown }
-  }
-  // Own shulker out in the world: its recovery has priority over combat
-  // (2026-11-14 user). Hits taken meanwhile are logged; once the box is back in
-  // the received inventory the hold ends and combat proceeds as usual.
-  const shulkerHoldLog = { key: null, at: 0, health: null }
-  function quarryShulkerHold (target, state) {
-    let hold = null
-    try { hold = quarryJob?.shulkerHold?.() ?? null } catch {}
-    // The trip's own supply box between breaking and recovery (same rule as the quarry).
-    if (!hold && host.shared.travelShulkerHold) hold = host.shared.travelShulkerHold
-    if (!hold) { shulkerHoldLog.health = null; shulkerHoldLog.key = null; return null }
-    const hp = Number(state?.health)
-    if (Number.isFinite(hp) && Number.isFinite(shulkerHoldLog.health) && hp < shulkerHoldLog.health) host.log(`露天掘り: 箱の作業中に被弾 HP ${shulkerHoldLog.health}→${hp} (${hold.operationId} ${hold.stage})。戦闘は箱の回収の確定まで保留`)
-    if (Number.isFinite(hp)) shulkerHoldLog.health = hp
-    const key = `${hold.operationId}|${hold.stage}`, at = Date.now()
-    if (key !== shulkerHoldLog.key || at - shulkerHoldLog.at > 5000) {
-      shulkerHoldLog.key = key; shulkerHoldLog.at = at
-      const d = target?.position && state?.position ? Math.hypot(target.position.x - state.position.x, target.position.y - state.position.y, target.position.z - state.position.z) : null
-      host.log(`露天掘り: 箱の回収を優先して戦闘を保留: target=${String(target?.entityType ?? target?.name ?? '?').replace('minecraft:', '')} distance=${d == null ? '?' : d.toFixed(1) + 'm'} box=${hold.box ?? '?'} stage=${hold.stage} operation=${hold.operationId}`)
-    }
-    return { allowed: false, reason: 'SHULKER_RECOVERY_PRIORITY', stage: hold.stage }
-  }
-  // 2026-11-14 02:01 user: "満腹度が一定以下になると体力を回復しなくなるので、満腹度が
-  // 一定以下の場合は食事を取るようにしてください". While no quarry work runs (paused,
-  // waiting), a received hunger below 18 starts the ordinary eat operation and
-  // it repeats up to 20. requireIdle() keeps it out of combat, box work and any
-  // other operation; refused attempts just wait for the next check.
-  const idleEat = { timer: null, toFull: false, busy: false, refusedAt: 0 }
-  const idleEatTick = async () => {
-    if (disposed || disposing) { clearInterval(idleEat.timer); return }
-    if (idleEat.busy || quarryJob?.holdsWork()) return
-    const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : null
-    if (hunger == null) return
-    if (hunger < 18) idleEat.toFull = true
-    if (hunger >= 20) idleEat.toFull = false
-    if (!idleEat.toFull) return
-    let s = null
-    try { s = working() } catch { return }
-    if (s?.phase !== 'spawned' || s.dead || s.isDead || !(s.health > 0) || s.inventory?.known !== true) return
-    if (!(s.inventory.items ?? []).some(i => i.count > 0 && require('./quarry-inventory').isFood(i.name))) { idleEat.toFull = false; return }
-    idleEat.busy = true
-    try { await operations.food.eat({}); host.log(`待機中の食事: 満腹度 ${hunger} → 食事しました`) } catch (error) {
-      if (Date.now() - idleEat.refusedAt > 60000) { idleEat.refusedAt = Date.now(); host.log(`待機中の食事を見送り: 満腹度 ${hunger} (${String(error.message ?? error).slice(0, 80)})`) }
-    } finally { idleEat.busy = false }
-  }
-  // Never throws out of the timer: a fault only logs (a timer error ends the process).
-  idleEat.timer = setInterval(() => { idleEatTick().catch(error => { idleEat.busy = false; try { host.log(`待機中の食事の確認に失敗: ${String(error?.message ?? error).slice(0, 120)}`) } catch {} }) }, 5000)
-  idleEat.timer.unref?.()
-  // Drowned are fought as melee enemies on land (coordinator 2026-11-14: a drowned
-  // killed the bot at 18:48 while it would not fight back); never from the water.
-  function drownedOnLand (target, state) { return /drowned/.test(String(target?.entityType ?? target?.name ?? '')) && state?.isInWater !== true && state?.phase === 'spawned' }
-  function quarryCanSelectTarget (target, state, info = {}) { if (!drownedOnLand(target, state) && !require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; if (longTravel?.status?.().busy && /witch/.test(String(target?.entityType ?? target?.name ?? ''))) return { allowed: false, reason: 'TRAVEL_AVOID_WITCH' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canSelectTarget(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
-  function quarryCanContinue (target, state, info = {}) { if (!require('./learning-health').emptyHandedTargetAllowed(state, target)) return { allowed: false, reason: 'EMPTY_HANDED_AVOID' }; const hold = quarryShulkerHold(target, state); if (hold) return hold; return quarryJob?.holdsWork() ? quarryJob.bridge.canContinue(target, state, { ...quarryEvidence(target, state), provoked: info.provoked === true, retreating: info.retreating === true || quarryRetreatDepth > 0 }) : { allowed: true, reason: 'NO_QUARRY_JOB' } }
-  function quarryState () {
-    const state = lightweightUserState()
-    const hunger = host.shared.vitals?.hunger
-    return { ...state, food: Number.isFinite(hunger) ? hunger : Number.isFinite(hunger?.value) ? hunger.value : state.food ?? null, deathCause: host.shared.deathRespawn?.cause ?? null, inventory: host.shared.inventoryUncertain ? { ...state.inventory, uncertain: true } : state.inventory }
-  }
-  function confirmQuarryPosition (feet, settings) {
-    quarryPositionVerifier ??= createServerPositionVerifier({ client: host.client, getState: quarryState })
-    return quarryPositionVerifier.confirm(feet, settings)
-  }
-  function requestQuarryTerrain (request, settings) {
-    quarryTerrainRequester ??= createQuarryTerrainRequester({ client: host.client, getState: quarryState, world: host.world })
-    return quarryTerrainRequester.request(request, settings)
-  }
-  async function runQuarryEgress (adapter, live, own, request, options = {}) {
-    if (quarryEgressTask) throw new Error('EGRESS_BUSY')
-    const controller = new AbortController()
-    const signal = options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal
-    const read = quarryBlockReader(), config = quarryJob?.document()?.config ?? {}
-    const policy = { ...(config.tools ?? {}), ...(config.collection ?? {}) }
-    const runner = createQuarryEgressRuntime({
-      getState: quarryState, getBlock: read,
-      confirmPosition: (feet, settings) => confirmQuarryPosition(feet, settings),
-      moveTo: (cell, settings) => {
-        if (!permitsExitAction(request.plan, 'travel', cell)) throw new Error('EGRESS_OUTSIDE_PERMITTED_COLUMN')
-        return adapter.moveTo(cell, settings)
-      },
-      mineTargets: async (targets, settings = {}) => {
-        for (const target of targets) {
-          signal.throwIfAborted(); settings.signal?.throwIfAborted()
-          const p = target.position
-          if (!permitsExitAction(request.plan, 'break', p)) throw new Error('EGRESS_OUTSIDE_PERMITTED_COLUMN')
-          const block = read(p.x, p.y, p.z)
-          if (block?.known && ['air', 'cave_air', 'void_air'].includes(quarryNameOf(block))) continue
-          if (block?.known !== true || block.protected || block.protectionSource || block.name !== target.name || block.extra?.length) throw new Error('EGRESS_TARGET_CHANGED')
-          const state = quarryState(), rule = require('./quarry-exit-plan').exitDigRule(block.name)
-          const tool = quarrySelectTool(rule, state.inventory?.items, policy)
-          if (!tool.ok) throw new Error('EXIT_TOOL_MISSING')
-          if (tool.kind !== 'hand') await adapter.prepareMining(tool, { signal })
-          else {
-            const hand = state.inventory?.items?.find(item => item.count > 0 && item.durabilityKnown !== true && !/_(sword|pickaxe|axe|shovel|hoe)$|:(bow|crossbow|shears|trident|fishing_rod|flint_and_steel)$/.test(item.name ?? ''))
-            if (!hand) throw new Error('EXIT_HAND_ITEM_REQUIRED')
-            await own(slot => { requireIdle(); return inventory.equip(slot) })(hand.slot)
-          }
-          signal.throwIfAborted()
-          await adapter.mine([{ ...p, expectedName: block.name, expectedRuntimeId: block.runtimeId ?? target.expectedRuntimeId ?? null, requiredTool: tool.kind === 'hand' ? null : tool, ...(request.allowFullInventory === true ? { allowFullInventory: true } : {}), ...(rule.exitOre ? { exitShaftOre: true } : {}) }], { signal })
-        }
-        return { phase: 'completed' }
-      },
-      pillarStep: (step, settings) => {
-        if (!permitsExitAction(request.plan, 'place', { ...step.column, y: step.feetY })) throw new Error('EGRESS_OUTSIDE_PERMITTED_COLUMN')
-        return live().pillarStep(step, settings)
-      }
-    })
-    quarryEgressRuntime = runner; quarryEgressAbort = controller
-    const task = runner.run(request, { ...options, signal })
-    quarryEgressTask = task
-    try { return await task } finally {
-      if (quarryEgressTask === task) { quarryEgressTask = null; quarryEgressAbort = null }
-    }
-  }
-  // A bounded local diagnostic exercises the same controller without editing
-  // the quarry cursor or granting mining permissions. It only uses the current
-  // received column and is available while the job is paused.
-  async function testQuarryPillar ({ steps = 1 } = {}) {
-    if (!Number.isSafeInteger(steps) || steps < 1 || steps > 3) throw new Error('検証する土柱は1〜3段で指定してください。')
-    if (!quarryPorts || quarryEgressTask || quarryPillarTask || quarryJob?.holdsWork() || userBehaviorOwns() || idleSafety?.snapshot().busy || pendingStops.size) throw new Error('土柱の検証を始められる待機状態ではありません。')
-    const state = quarryState(), source = state.position
-    if (state.phase !== 'spawned' || !(state.health > 0) || !source) throw new Error('ASCENT_NOT_ALIVE')
-    const feet = { x: Math.floor(source.x), y: Math.floor(source.y - 1.62 + 1e-3), z: Math.floor(source.z) }
-    const job = ensureQuarryJob(), document = job.document()
-    if (document?.state !== 'PAUSED') throw new Error('露天掘りを一時停止してから土柱を検証してください。')
-    const adapterMove = createQuarryRuntimeAdapter({ getState: quarryState, getBlock: quarryBlockReader(), entities: () => [], mining: quarryPorts.mining, movement: quarryPorts.movement, getMining: quarryPorts.getMining, getMovement: quarryPorts.getMovement, stopAll: () => {}, combatActive: () => false })
-    const controller = new AbortController(), signal = controller.signal
-    const operationId = 'pillar-validation:' + Date.now(), receipts = []
-    quarryEgressAbort = controller
-    const task = (async () => {
-      await adapterMove.moveTo(feet, { signal })
-      for (let i = 0; i < steps; i++) {
-        signal.throwIfAborted()
-        const result = await quarryPorts.pillarStep({ jobId: document.config.jobId, operationId, column: { x: feet.x, z: feet.z }, feetY: feet.y + i }, { signal, onCheckpoint: async checkpoint => { host.shared.quarryPillarValidation = structuredClone(checkpoint) } })
-        receipts.push(result)
-        if (result.status !== 'completed' || result.serverConfirmed !== true) return { status: 'blocked', reason: result.reason, serverConfirmed: false, operationId, origin: feet, receipts }
-      }
-      return { status: 'completed', serverConfirmed: true, operationId, origin: feet, steps, receipts }
-    })()
-    quarryEgressTask = task
-    try { return await task } finally { if (quarryEgressTask === task) { quarryEgressTask = null; quarryEgressAbort = null } }
-  }
-  // The planner reads thousands of cells per decision. planningWorld.getBlock
-  // re-derives its protection overlays on every call, which can hold the event
-  // loop long enough to stall the movement input timer, so reads are memoised
-  // until the world revision changes (or for at most one second).
-  function quarryBlockReader () {
-    let cache = new Map(), revision = -1, at = 0
-    return (x, y, z) => {
-      const rev = typeof host.world.revision === 'function' ? host.world.revision() : null, t = Date.now()
-      if (rev !== revision || t - at > 1000) { cache = new Map(); revision = rev; at = t }
-      const k = x + ',' + y + ',' + z
-      let b = cache.get(k)
-      if (b === undefined) { b = planningWorld.getBlock(x, y, z); cache.set(k, b) }
-      return b
-    }
-  }
-  // Quarry storage expansion: one more chest at the first candidate cell that
-  // works. It reuses the depot storage controller, one primitive per step: a
-  // carried chest is placed directly; otherwise planks are crafted from
-  // carried logs, a crafting table is used (a nearby one, or one crafted and
-  // placed at another candidate), and the chest is crafted and placed. Only a
-  // server-confirmed chest block counts; nothing comes from commands.
-  let quarryChestWork = null
-  // Torches for the chest area (quarry). Crafted normally from carried coal or
-  // charcoal plus sticks (planks from a carried log if needed); never by command.
-  async function quarryCraftTorches ({ want = 8, signal } = {}) {
-    const inv = () => lightweightUserState().inventory?.items ?? []
-    const count = re => inv().filter(i => re.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
-    const torches = () => count(/^minecraft:torch$/)
-    if (torches() >= want) return { ok: true, torches: torches() }
-    if (!count(/^minecraft:(coal|charcoal)$/)) return { ok: torches() > 0, reason: 'NO_COAL', torches: torches() }
-    const made = []
-    try {
-      await crafting.openInventory()
-      for (let guard = 0; guard < 6 && torches() < want && count(/^minecraft:(coal|charcoal)$/); guard++) {
-        if (signal?.aborted) throw new Error('quarry torch crafting aborted')
-        if (!count(/^minecraft:stick$/)) {
-          if (!count(/_planks$/)) {
-            const log = inv().find(i => /^minecraft:[a-z_]+_log$/.test(i.name ?? '') && !/stripped/.test(i.name))
-            if (!log) return { ok: torches() > 0, reason: 'NO_WOOD', torches: torches(), made }
-            await crafting.craft(log.name.replace(/_log$/, '_planks'), { times: 1 }); made.push('planks')
-          }
-          await crafting.craft('minecraft:stick', { times: 1 }); made.push('stick')
-        }
-        await crafting.craft('minecraft:torch', { times: 1 }); made.push('torch')
-      }
-    } catch (error) { return { ok: torches() > 0, reason: 'CRAFT_FAILED', error: String(error.message).slice(0, 160), torches: torches(), made } }
-    finally { try { crafting.closeContainer() } catch {} }
-    return { ok: torches() > 0, torches: torches(), made }
-  }
-  async function quarryPlaceTorch ({ position, signal } = {}) {
-    let item = (lightweightUserState().inventory?.items ?? []).find(i => i.name === 'minecraft:torch' && i.count > 0)
-    if (!item) return { ok: false, reason: 'NO_TORCH' }
-    if (item.slot > 8) { await operations.inventory.equip(item.slot); item = (lightweightUserState().inventory?.items ?? []).find(i => i.name === 'minecraft:torch' && i.count > 0 && i.slot <= 8) }
-    if (!item) return { ok: false, reason: 'TORCH_NOT_IN_HOTBAR' }
-    if (signal?.aborted) throw new Error('quarry torch placement aborted')
-    await interactions.placeBlock({ position, slot: item.slot, face: 1 })
-    const b = host.world.getBlock(position.x, position.y, position.z)
-    return { ok: b?.known === true && b.name === 'minecraft:torch', block: b?.name ?? null }
-  }
-  async function quarryAddChest ({ candidates = [], signal } = {}) {
-    quarryChestWork ??= createDepotStorageWork({ getState: () => lightweightUserState(), world: host.world, crafting, interactions, chest, inventory })
-    const isAir = p => { const b = host.world.getBlock(p.x, p.y, p.z); return b?.known === true && /^minecraft:(air|cave_air|void_air)$/.test(b.name) }
-    const tried = []
-    const crafted = []
-    try {
-      // The job walks to a stand beside candidates[0] before each call; the
-      // other cells are only spare places for a crafting table.
-      for (const cell of candidates.slice(0, 1)) {
-        let lastKind = null
-        for (let step = 0; step < 32; step++) {
-          if (signal?.aborted) throw new Error('quarry add chest aborted')
-          const b = host.world.getBlock(cell.x, cell.y, cell.z)
-          if (b?.known === true && b.name === 'minecraft:chest') return { ok: true, position: { ...cell }, crafted }
-          const state = lightweightUserState()
-          const near = state.position ? host.world.getArea({ x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62), z: Math.floor(state.position.z) }, 3) : []
-          const table = near.filter(x => x.known && x.name === 'minecraft:crafting_table').sort((a, c) => Math.hypot(a.position.x - state.position.x, a.position.z - state.position.z) - Math.hypot(c.position.x - state.position.x, c.position.z - state.position.z))[0]?.position ?? null
-          const tableCell = candidates.find(c => (c.x !== cell.x || c.y !== cell.y || c.z !== cell.z) && isAir(c) && Math.abs(c.x - cell.x) + Math.abs(c.z - cell.z) >= 2) ?? null
-          const options = { scope: continuationScope(state), storageCell: cell, tablePosition: table, tableCell }
-          const decision = quarryChestWork.preview(options)
-          lastKind = decision.kind
-          if (decision.kind === 'need_logs') return { ok: false, reason: 'NO_CHEST_MATERIAL', needs: { logs: decision.count ?? 2, planks: decision.missingPlanks ?? null }, crafted }
-          if (['need_access', 'need_equip', 'need_table_cell', 'blocked', 'verify_chest_ownership', 'observe_inventory'].includes(decision.kind)) { tried.push({ cell, kind: decision.kind, reason: decision.reason ?? decision.errors?.[0] ?? null }); break }
-          const result = await quarryChestWork.step(options, { signal })
-          if (decision.kind === 'craft') crafted.push(decision.output)
-          if (result?.phase === 'failed') { tried.push({ cell, kind: decision.kind, reason: result.reason ?? null }); break }
-          await new Promise(resolve => setTimeout(resolve, 150))
-        }
-        if (lastKind && !tried.some(t => t.cell === cell)) tried.push({ cell, kind: lastKind, reason: 'STEP_LIMIT' })
-      }
-    } finally { try { crafting.closeContainer() } catch {} }
-    return { ok: false, reason: 'NO_PLACEABLE_CELL', tried: tried.slice(0, 6), crafted }
-  }
-  // Set by ensureQuarryJob: the guarded surface chest runner (manual storage).
-  let quarrySurfaceChestRunner = null
-  function ensureQuarryJob () {
-    if (quarryJob) return quarryJob
-    if (disposed || disposing) throw new Error('行動コードを更新しています。少し待ってからやり直してください。')
-    if (!quarryPorts) throw new Error('移動・採掘の準備がまだ終わっていません。スポーン後にやり直してください。')
-    // Ports are looked up on every call: a teleport or respawn starts a new
-    // input generation, and ports captured when the job was created would then
-    // refuse every move/mine ("スポーン前の操作は終了しました") until a reload.
-    const live = () => { if (!quarryPorts) throw new Error('移動・採掘の準備がまだ終わっていません。'); return quarryPorts }
-    const own = fn => (...args) => live().own(fn)(...args)
-    const ports = {
-      mining: { preview: (...a) => live().mining.preview(...a), start: (...a) => live().mining.start(...a), stop: (...a) => live().mining.stop(...a) },
-      movement: { preview: (...a) => live().movement.preview(...a), start: (...a) => live().movement.start(...a), stop: (...a) => live().movement.stop(...a) },
-      getMining: () => live().getMining(), getMovement: () => live().getMovement()
-    }
-    let portableOwnedWindow = null
-    const containerPorts = {
-      open: own(async (position, slot, settings) => {
-        requireIdle(); crafting.closeContainer()
-        const owner = portableActionOwners.currentOwner(), pending = chest.open(position, slot, settings)
-        const chestSerial = portableActionOwners.serial(chest), interactionSerial = portableActionOwners.serial(interactions)
-        const result = await pending
-        const window = chestStatus().window, open = craftStatus().openContainer
-        if (owner && portableActionOwners.isCurrent(owner) && result?.serverConfirmed === true && window && open && Number.isSafeInteger(window.epoch) && ['x', 'y', 'z'].every(axis => window.position?.[axis] === position[axis]) && sameWindowId(window.id, open.id) && sameWindowId(result.windowId, open.id) && portableActionOwners.serial(chest) === chestSerial && portableActionOwners.serial(interactions) === interactionSerial) portableOwnedWindow = { owner, epoch: window.epoch, id: canonicalWindowId(open.id), type: String(open.type), interactionSerial }
-        return result
-      }),
-      depositItem: own(settings => { requireIdle(); return chest.depositItem(settings) }),
-      withdrawItem: own(settings => { requireIdle(); return chest.withdrawItem(settings) }),
-      snapshot: () => chest.snapshot(), status: chestStatus, rawItem: slot => chest.rawItem(slot), close: () => crafting.closeContainer()
-    }
-    let surfaceChestController = null
-    const verifySurfaceChestOwner = () => {
-      const owner = host.shared.quarrySurfaceStorageOwner
-      owner?.signal?.throwIfAborted()
-      if (owner && (disposed || disposing || owner.scope !== portableCancellationScope() || owner.revision !== quarryCancellationRevision)) throw Object.assign(new Error('SURFACE_STORAGE_INTERRUPTED'), { code: 'SURFACE_STORAGE_INTERRUPTED' })
-    }
-    quarrySurfaceChestRunner = (method, request, options) => runSurfaceChest(method, request, options)
-    async function runSurfaceChest (method, request, options = {}) {
-      options.signal?.throwIfAborted()
-      if (host.shared.quarrySurfaceStorageOwner) throw Object.assign(new Error('SURFACE_STORAGE_BUSY'), { code: 'SURFACE_STORAGE_BUSY' })
-      const owner = { scope: portableCancellationScope(), revision: quarryCancellationRevision, signal: options.signal }
-      host.shared.quarrySurfaceStorageOwner = owner
-      try {
-        verifySurfaceChestOwner()
-        const result = await surfaceChest()[method](request, options)
-        verifySurfaceChestOwner()
-        return result
-      } finally {
-        if (host.shared.quarrySurfaceStorageOwner === owner) delete host.shared.quarrySurfaceStorageOwner
-      }
-    }
-    function surfaceChest () {
-      if (surfaceChestController) return surfaceChestController
-      return surfaceChestController = createQuarryV22ChestWork({
-        getState: () => { verifySurfaceChestOwner(); return quarryState() },
-        getView: () => inventoryInspection.snapshot(quarryState()),
-        getRawMain: slot => crafting.rawItem(slot),
-        getRawChest: slot => chest.rawItem(slot),
-        getRawEquipment: (kind, slot) => inventoryInspection.rawEquipment(kind, slot),
-        open: (position, slot, options) => containerPorts.open(position, slot, options),
-        close: () => crafting.closeContainer(),
-        withdraw: params => containerPorts.withdrawItem(params),
-        deposit: params => containerPorts.depositItem(params),
-        equipArmor: opts => armor.equipBest(opts),
-        equipmentTransfer: params => quarryV22Equipment.transfer(params),
-        resync: opts => adapter.resyncInventory(opts),
-        getRefreshDelay: inventoryResyncDelay
-      })
-    }
-    function getSupplies () {
-      return quarrySupplies ??= createQuarrySupplies({
-        getState: quarryState, crafting, chest: containerPorts, getPortable,
-        refreshInventory: options => adapter.resyncInventory(options),
-        getRefreshDelay: inventoryResyncDelay
-      })
-    }
-    async function preparePortablePlacement (context, { signal } = {}) {
-      const generation = live(), initial = quarryState(), scope = observedScope(initial)
-      const fields = { profile: initial.profile, realmId: String(initial.realm?.id), dimension: initial.dimension, connectionId: initial.connectionId, startedAt: initial.startedAt, runtimeEntityId: String(initial.runtimeEntityId), life: initial.lifecycle?.deathId }
-      if (!scope || !context?.scope || Object.keys(fields).some(key => fields[key] !== context.scope[key])) throw Object.assign(new Error('収納設置の接続範囲を確認できません。'), { code: 'STORAGE_SCOPE_CHANGED' })
-      if (quarryPlacementPreparation) throw Object.assign(new Error('別の設置準備が進行中です。'), { code: 'STORAGE_PLACEMENT_NOT_SETTLED' })
-      const prep = { history: inputHistory, revision: quarryCancellationRevision, frame: null }
-      quarryPlacementPreparation = prep
-      let lastTick = null, lastPosition = null, stableFrames = 0, health = initial.health
-      const deadline = Date.now() + 4000
-      const check = () => {
-        signal?.throwIfAborted()
-        const state = quarryState()
-        if (disposed || disposing || live() !== generation || inputHistory !== prep.history || quarryCancellationRevision !== prep.revision || observedScope(state) !== scope || state.health < health || userBehaviorOwns()) throw Object.assign(new Error('収納設置準備が中断されました。'), { code: 'STORAGE_PREPARATION_INTERRUPTED' })
-        health = Math.max(health, state.health)
-        return state
-      }
-      try {
-        while (Date.now() < deadline) {
-          const state = check(), motion = generation.getMovement(), physical = state.predicted?.physicsState ?? state.physicsState
-          const feet = state.position && { x: state.position.x, y: state.position.y - 1.62, z: state.position.z }
-          if (motion.running || motionActive() || generation.getMining()?.phase === 'mining' || input?.stats().running || armorTask || manualArmorOwner) {
-            stableFrames = 0; await delay(50); continue
-          }
-          // Keep only the existing neutral physics stream running; never stop
-          // another movement owner or replace an observed position to settle.
-          startIdle()
-          const frame = prep.frame
-          const ready = physical?.onGround === true && !physical.isInWater && !physical.isInLava && generation.standingClear(state, feet) && frame && Date.now() - frame.at >= 0 && Date.now() - frame.at <= 200 && Math.hypot(frame.position.x - state.position.x, frame.position.y - state.position.y, frame.position.z - state.position.z) <= 0.03
-          if (!ready) { stableFrames = 0; lastPosition = null }
-          else if (frame.tick !== lastTick) {
-            stableFrames = lastPosition && Math.hypot(lastPosition.x - state.position.x, lastPosition.y - state.position.y, lastPosition.z - state.position.z) <= 0.01 ? stableFrames + 1 : 1
-            lastTick = frame.tick; lastPosition = { ...state.position }
-          }
-          if (stableFrames >= 3) {
-            const proof = await controlLocation.confirm(feet, { signal, radius: 0.12, operationId: context.operationId + ':prepare_placement' })
-            const after = check()
-            if (proof?.serverConfirmed === true && Date.now() < deadline && generation.standingClear(after, { x: after.position.x, y: after.position.y - 1.62, z: after.position.z }) && Math.hypot(after.position.x - state.position.x, after.position.y - state.position.y, after.position.z - state.position.z) <= 0.03) return { ready: true, proof }
-            stableFrames = 0; lastPosition = null
-          }
-          await delay(50)
-        }
-        throw Object.assign(new Error('収納設置前の着地と実位置がまだ安定していません。'), { code: 'STORAGE_PLACEMENT_NOT_SETTLED' })
-      } finally { if (quarryPlacementPreparation === prep) quarryPlacementPreparation = null }
-    }
-    async function reconcileCurrentPortablePlacement (request, options = {}) {
-      const cp = request?.checkpoint
-      if (request?.manual !== true || !cp?.scope || cp.intent?.type !== 'place') throw new Error('STORAGE_CURRENT_AUDIT_MANUAL_REQUIRED')
-      await own(preparePortablePlacement)({ jobId: request.jobId, operationId: request.operationId, scope: cp.scope }, { signal: options.signal })
-      const generation = live(), state = quarryState(), stream = inputStream, scope = observedScope(state)
-      if (quarryPlacementPreparation || !scope || !stream?.drainQueued) throw new Error('STORAGE_CURRENT_AUDIT_BUSY')
-      const owner = { kind: 'current_storage_audit', history: inputHistory, revision: quarryCancellationRevision, generation, stream, scope, request, signal: options.signal, health: state.health, startedAt: Date.now(), deadline: Date.now() + 20000 }
-      quarryPlacementPreparation = owner
-      try {
-        requireCurrentPlacementAudit(owner)
-        owner.drain = stream.drainQueued(); inputOwner = 'none'
-        if (owner.drain.queuedTransaction !== false || owner.drain.queuedActions !== 0) throw new Error('STORAGE_CURRENT_AUDIT_QUEUE_PENDING')
-        owner.transactionGeneration = owner.drain.revision
-        startIdle()
-        const current = requireCurrentPlacementAudit(owner), feet = { ...current.position, y: current.position.y - 1.62 }
-        // Input and commands share Bedrock's RELIABLE_ORDERED channel 0.
-        // This fresh reply follows all earlier queued input on this connection.
-        const positionReceipt = await controlLocation.confirm(feet, { signal: options.signal, radius: 0.12, operationId: request.operationId + ':current_fence' })
-        requireCurrentPlacementAudit(owner)
-        if (positionReceipt?.serverConfirmed !== true || positionReceipt.receivedAt < owner.drain.drainedAt) throw new Error('STORAGE_CURRENT_AUDIT_FENCE_UNCONFIRMED')
-        owner.fence = { kind: 'drained_input_and_server_position_barrier', generation: host.shared.loadoutGeneration, transactionGeneration: owner.transactionGeneration, startedAt: owner.drain.drainedAt, receivedAt: positionReceipt.receivedAt, drain: structuredClone(owner.drain), positionReceipt }
-        return await getPortable().reconcileCurrentPlacement(request, options)
-      } finally {
-        if (quarryPlacementPreparation === owner) quarryPlacementPreparation = null
-      }
-    }
-    function requireCurrentPlacementAudit (owner) {
-      const state = quarryState(), stats = owner.stream.stats()
-      if (owner.signal?.aborted || disposed || disposing || Date.now() >= owner.deadline || quarryPlacementPreparation !== owner || live() !== owner.generation || inputStream !== owner.stream || inputHistory !== owner.history || quarryCancellationRevision !== owner.revision || observedScope(state) !== owner.scope || state.health < owner.health || userBehaviorOwns() || motionActive() || input?.stats().running || mining.snapshot().phase === 'mining' || armorTask || manualArmorOwner || chestStatus().busy || inventory.snapshot().busy || craftStatus().pendingRequestId != null || interactions.snapshot().pendingOperation != null || owner.transactionGeneration !== undefined && (stats.queuedActions !== 0 || stats.queuedTransaction !== false || stats.actionRevision !== owner.transactionGeneration)) throw new Error('STORAGE_CURRENT_AUDIT_INTERRUPTED')
-      owner.health = Math.max(owner.health, state.health)
-      return state
-    }
-    async function confirmCurrentPlacementState (context, { signal } = {}) {
-      const owner = quarryPlacementPreparation, cp = owner?.request?.checkpoint
-      if (owner?.kind !== 'current_storage_audit' || !owner.fence || context.jobId !== cp?.jobId || context.operationId !== cp.operationId || JSON.stringify(context.scope) !== JSON.stringify(cp.scope) || ['x', 'y', 'z'].some(axis => context.position?.[axis] !== cp.intent.position[axis]) || context.slot !== cp.intent.slot || context.sourceStackId !== cp.placementSourcePin?.stackId) throw new Error('STORAGE_CURRENT_AUDIT_OWNER_CHANGED')
-      signal?.throwIfAborted(); requireCurrentPlacementAudit(owner)
-      storagePlacementAudit ??= createStoragePlacementAudit({ client: host.client, getState: quarryState })
-      const targetAirReceipt = await storagePlacementAudit.confirmAir(context.position, { signal, operationId: cp.operationId })
-      const state = requireCurrentPlacementAudit(owner), feet = { ...state.position, y: state.position.y - 1.62 }
-      if (targetAirReceipt?.serverConfirmed !== true || targetAirReceipt.scope !== owner.scope) throw new Error(targetAirReceipt?.reason ?? 'STORAGE_CURRENT_TARGET_UNCONFIRMED')
-      const positionReceipt = await controlLocation.confirm(feet, { signal, radius: 0.12, operationId: cp.operationId + ':current_after_air' })
-      requireCurrentPlacementAudit(owner); signal?.throwIfAborted()
-      if (positionReceipt?.serverConfirmed !== true || positionReceipt.scope !== owner.scope) throw new Error('STORAGE_CURRENT_POSITION_UNCONFIRMED')
-      return { serverConfirmed: true, kind: 'current_placement_state', scope: structuredClone(cp.scope), jobId: cp.jobId, operationId: cp.operationId, position: structuredClone(context.position), targetAir: true, quiet: true, generation: host.shared.loadoutGeneration, transactionGeneration: owner.transactionGeneration, observedAt: positionReceipt.receivedAt, requestId: targetAirReceipt.requestId, fence: structuredClone(owner.fence), targetAirReceipt, positionReceipt }
-    }
-    function getPortable () {
-      return quarryPortableStorage ??= createQuarryPortableStorage({ shulkerOnly: true,
-        getState: quarryState,
-        getObservationFreshness: () => ({
-          inventoryObservedAt: inventoryInspection.snapshot(quarryState()).observedAt,
-          inventoryResync: host.shared.inventoryResync?.lastRequest ?? null
-        }),
-        onRecoveryDiagnostic: diagnostic => {
-          const summary = {
-            operationId: diagnostic.operationId, scope: diagnostic.scope, stage: diagnostic.stage,
-            checks: Object.fromEntries(Object.entries(diagnostic.checks).map(([name, check]) => [name, check.status])),
-            baselineCount: diagnostic.baseline.count, actualCount: diagnostic.actual.count,
-            candidateIds: diagnostic.actual.candidateIds, freshness: diagnostic.freshness
-          }
-          host.log(`収納回収照合: ${JSON.stringify(summary)}`)
-          for (const candidate of diagnostic.candidates) {
-            host.log(`収納回収内容差分: ${JSON.stringify({ operationId: diagnostic.operationId, slot: candidate.slot, stackId: candidate.stackId, status: candidate.contents.status, reason: candidate.contents.reason ?? null, differences: candidate.contents.differences, truncated: candidate.contents.truncated })}`)
-          }
-        },
-        captureActionOwner: (kind, operation) => portableActionOwners.createOwner({ ...operation, kind, generation: live(), revision: quarryCancellationRevision, scope: portableCancellationScope() }),
-        runActionOwned: (owner, fn) => portableActionOwners.run(owner, fn),
-        getBlock: (x, y, z) => host.world.getBlock(x, y, z),
-        crafting,
-        chest: containerPorts,
-        workWithContainer: (context, options) => getSupplies().workWithContainer(context, options),
-        interactions: {
-          snapshot: () => interactions.snapshot(),
-          previewPlace: settings => interactions.previewPlace(settings),
-          placeBlock: own(settings => { requireIdle(); crafting.closeContainer(); return interactions.placeBlock(settings) })
-        },
-        equip: own(slot => operations.inventory.equip(slot)),
-        moveTo: (cell, settings) => adapter.moveTo(cell, settings),
-        getPath: (origin, goal, owner) => ensureQuarryJob().portablePath(origin, goal, owner),
-        travel: (position, owner) => ensureQuarryJob().portableTravel(position, owner),
-        previewMove: cell => ports.movement.preview({ x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }, { allowWater: false, maxDistance: 8, maxExpanded: 500 }),
-        refreshInventory: ({ signal }) => adapter.resyncInventory({ signal }),
-        preparePlacement: own(preparePortablePlacement),
-        confirmPlacementState: confirmCurrentPlacementState,
-        mine: async (target, { signal } = {}) => {
-          signal?.throwIfAborted()
-          // A cargo shulker's v2.2 break must preserve the selected pickaxe.
-          // Normal supply / legacy recovery without requiredTool retains the
-          // original non-damaging item behavior.
-          if (target.requiredTool?.kind === 'pickaxe') {
-            const hand = quarryState().heldItem
-            if (!hand?.name || !/_(?:pickaxe)$/.test(hand.name) ||
-                hand.durabilityKnown !== true ||
-                !Number.isFinite(hand.durabilityRemaining) ||
-                hand.durabilityRemaining <= target.requiredTool.reserve) {
-              throw Object.assign(new Error('SHULKER_PICKAXE_UNCONFIRMED'), { code: 'SHULKER_PICKAXE_UNCONFIRMED' })
-            }
-          } else {
-            const state = quarryState()
-            const damaging = name => /_(sword|pickaxe|axe|shovel|hoe)$|^minecraft:(bow|crossbow|shears|trident|fishing_rod|flint_and_steel)$/.test(name ?? '')
-            if (damaging(state.heldItem?.name)) {
-              const held = state.inventory?.items?.find(item => item.count > 0 && !damaging(item.name) && item.durabilityKnown !== true)
-              if (!held) throw new Error('箱回収に使う非耐久アイテムがありません。')
-              await own(slot => operations.inventory.equip(slot))(held.slot)
-            }
-          }
-          signal?.throwIfAborted()
-          crafting.closeContainer()
-          return ports.mining.start([target])
-        },
-        getMining: () => ports.getMining(), stopMining: (reason, owner) => portableActionOwners.cancel(mining, owner, () => mining.stop(reason)),
-        getEntities: () => host.entities.snapshot({ kind: 'all' }),
-        cancelAction: (kind, reason, owner) => {
-          if (kind === 'equip') portableActionOwners.cancel(inventory, owner, () => inventory.cancel(reason))
-          else if (kind === 'place' || kind === 'interaction') portableActionOwners.cancel(interactions, owner, () => interactions.cancel(reason))
-          else if (kind === 'open' || kind === 'deposit' || kind === 'chest') {
-            const proof = portableOwnedWindow, expected = proof?.owner?.context, actual = owner?.context
-            const window = chestStatus().window, open = craftStatus().openContainer
-            const closeOwned = portableActionOwners.isCurrent(owner) && proof && expected?.generation === actual?.generation && expected?.revision === actual?.revision && expected?.scope === actual?.scope && expected?.jobId === actual?.jobId && expected?.operationId === actual?.operationId && window?.epoch === proof.epoch && sameWindowId(window?.id, proof.id) && sameWindowId(open?.id, proof.id) && String(open?.type) === proof.type && portableActionOwners.serial(interactions) === proof.interactionSerial
-            portableActionOwners.cancel(chest, owner, () => chest.cancel(reason))
-            portableActionOwners.cancel(interactions, owner, () => interactions.cancel(reason))
-            if (closeOwned) { portableOwnedWindow = null; crafting.closeContainer() }
-          } else if (kind === 'mine' || kind === 'mining') {
-            portableActionOwners.cancel(inventory, owner, () => inventory.cancel(reason))
-            portableActionOwners.cancel(mining, owner, () => mining.stop(reason))
-          } else if (kind === 'move' || kind === 'movement') owner?.context?.generation?.cancelPortableMovement(owner, reason)
-        }
-      })
-    }
-    const adapter = createQuarryRuntimeAdapter({
-      getState: quarryState,
-      getBlock: quarryBlockReader(),
-      requestTerrain: (request, options) => requestQuarryTerrain(request, options),
-      confirmPosition: (feet, options) => confirmQuarryPosition(feet, options),
-      // A prediction the server-position witness disproved (2026-11-13) is
-      // discarded; the received raw position is never rewritten.
-      discardPrediction: reason => discardWorkingPrediction(reason),
-      rawItem: slot => crafting.rawItem(slot),
-      inventoryDetails: () => inventoryInspection.snapshot(working()),
-      attackAnimal: (runtimeId, options) => { if (!combat) throw new Error('戦闘モジュールが未準備です。'); return combat.animalAttack(runtimeId, options) },
-      worldRevision: () => host.world.revision?.() ?? null,
-      entities: () => host.entities.snapshot({ kind: 'all' }),
-      mining: ports.mining, getMining: ports.getMining, movement: ports.movement, getMovement: ports.getMovement,
-      previewStorageRoute: (target, options) => live().previewStorageRoute(target, options),
-      equip: own(slot => operations.inventory.equip(slot)),
-      prepareMining: async (tool, { signal } = {}) => {
-        if (signal?.aborted) throw new Error('採掘再開は中断されました。')
-        if (tool.kind === 'hand') return { prepared: true }
-        let state = quarryState(), item = state.inventory?.items?.find(item => item.slot === tool.slot)
-        if (state.inventory?.known !== true || state.inventory.uncertain || item?.name !== tool.name || !(item.count > 0)) throw new Error('採掘再開前の道具を確認できません。')
-        const expectedScope = userScope(state), initialHealth = state.health
-        const verify = () => {
-          if (signal?.aborted) throw new Error('採掘再開は中断されました。')
-          const current = quarryState(), actual = current.inventory?.items?.find(value => value.slot === tool.slot)
-          if (userScope(current) !== expectedScope || current.phase !== 'spawned' || current.dead || current.isDead || current.lifecycle?.dead || !(current.health > 0) || current.health < initialHealth || current.inventory?.known !== true || current.inventory.uncertain || actual?.name !== tool.name || !(actual.count > 0)) throw new Error('採掘再開前の接続・生存状態・実際の道具が変わりました。')
-          return { state: current, item: actual }
-        }
-        // Near the final use, an air update can arrive before the tool's next
-        // damage packet. Request fresh inventory before acquiring the equip
-        // owner: inventoryResyncIdle deliberately refuses an existing owner.
-        if (item.durabilityKnown === true && item.durabilityRemaining <= 9) {
-          const refreshed = await refreshInventoryWithRetry({
-            refreshInventory: () => adapter.resyncInventory({ signal }),
-            getRefreshDelay: inventoryResyncDelay,
-            verify: () => { verify(); inventoryResyncIdle() },
-            signal,
-            waitErrorCode: 'RESYNC_RATE_LIMIT'
-          })
-          if (refreshed !== true) throw new Error('TOOL_DURABILITY_OBSERVATION_PENDING')
-          ;({ state, item } = verify())
-        }
-        return own(async () => {
-          verify(); requireIdle()
-          const result = await inventory.equipForMining(tool.slot, { signal })
-          if (signal?.aborted) throw new Error('採掘再開は中断されました。')
-          const latest = quarryState(), selected = latest.inventory?.items?.find(value => value.slot === result.slot)
-          if (userScope(latest) !== expectedScope || latest.phase !== 'spawned' || latest.dead || latest.isDead || latest.lifecycle?.dead || latest.health < initialHealth) throw new Error('道具を選択した後の接続・生存状態が変わりました。')
-          return { ...result, toolObservation: selected ? { slot: selected.slot, name: selected.name, stackId: selected.stackId ?? null, durabilityKnown: selected.durabilityKnown === true, durabilityRemaining: selected.durabilityRemaining } : null }
-        })()
-      },
-      // Fresh inventory + selected slot from the server (quarry SLOW_BREAK).
-      resyncInventory: async ({ signal } = {}) => {
-        const startedAt = Date.now(); let sent = false; let lastError = null
-        while (Date.now() - startedAt < 5000) {
-          if (signal?.aborted) return false
-          if (!sent) { try { await requestInventoryResyncWithReceipt('quarry_slow_break'); sent = true } catch (error) { if (error.code === 'RESYNC_RATE_LIMIT') throw error; lastError = error } }
-          const r = host.shared.inventoryResync?.lastRequest
-          if (sent && r?.status === 'FRESH_MAIN_OBSERVED' && Date.parse(r.requestedAt) >= startedAt - 50) return true
-          await new Promise(resolve => setTimeout(resolve, 100))
-        }
-        if (!sent && lastError) throw lastError
-        return false
-      },
-      placeQuarry: own(options => { requireIdle(); crafting.closeContainer(); return interactions.placeQuarryBlock(options) }),
-      eat: own(() => operations.food.eat({})),
-      equipmentTransfer: value => quarryV22Equipment.transfer(value),
-      equipmentView: () => receivedEquipmentView(inventoryInspection,crafting,quarryState()),
-      registeredHomeChest: () => getRegisteredQuarryHomeSite(),
-      logout: () => { if (quarryJob?.status()?.state !== 'FINISHED' || quarryJob?.status()?.persistence?.status === 'failed') throw new Error('QUARRY_LOGOUT_NOT_READY'); host.disconnectOnCompletedQuarry() },
-      chest: { open: own(position => operations.chest.open(position)), depositItem: own(options => operations.chest.depositItem(options)), close: () => crafting.closeContainer() },
-      addChest: own(options => { requireIdle(); crafting.closeContainer(); return quarryAddChest(options) }),
-      egress: (request, options) => runQuarryEgress(adapter, live, own, request, options),
-      storeCarried: (request, options) => getPortable().storeCarried(request, options),
-      discoverSupplies: layout => getSupplies().discoverBindings(layout),
-      loadoutWithdraw: (request,options) => runSurfaceChest('withdrawAll',request,options),
-      finalChestDeposit: (request,options) => runSurfaceChest('depositAll',request,options),
-      restockSupplies: (request, options) => getSupplies().run(request, options),
-      previewSupplySite: (stand, options) => getPortable().previewSupplySite(stand, options),
-      reconcileSupplyPlacement: (request, options) => getSupplies().reconcileUnsentPlacement(request, options),
-      reconcileCarriedPlacement: (request, options) => getPortable().reconcileUnsentPlacement(request, options),
-      reconcileCurrentPlacement: (request, options) => reconcileCurrentPortablePlacement(request, options),
-      reconcileObservedPlacement: (request, options) => {
-        // New placement receipts retain send facts. The portable controller
-        // validates them and still requires fresh source, block and exact NBT.
-        if (request.checkpoint?.intent?.placementFailure?.wireSent === true) return getPortable().reconcileObservedPlacement(request, options)
-        const matched = historicalEmptyPlacement({ checkpoint: request.checkpoint, recordedFailure: request.recordedFailure, events: host.shared.inventoryEvents ?? [], state: quarryState() })
-        if (!matched.ok) return { status: 'blocked', reason: matched.reason, checkpoint: structuredClone(request.checkpoint) }
-        return getPortable().reconcileObservedPlacement({ ...request, placementEvidence: matched.proof }, options)
-      },
-      reconcileRejectedDeposit: (request, options) => {
-        if (request.checkpoint?.intent?.rejectionProof) return getPortable().reconcileRejectedDeposit({ ...request, rejectionProof: request.checkpoint.intent.rejectionProof }, options)
-        const matched = historicalSourceRejection({ checkpoint: request.checkpoint, recordedFailure: request.recordedFailure, events: host.shared.inventoryEvents ?? [], state: quarryState() })
-        if (!matched.ok) return { status: 'blocked', reason: matched.reason, checkpoint: structuredClone(request.checkpoint) }
-        return getPortable().reconcileRejectedDeposit({ ...request, rejectionProof: matched.proof }, options)
-      },
-      craftTorches: own(options => { requireIdle(); return quarryCraftTorches(options) }),
-      placeTorch: own(options => { requireIdle(); crafting.closeContainer(); return quarryPlaceTorch(options) }),
-      stopAll: async reason => { try { quarrySupplies?.cancel?.(reason) } catch {} quarryEgressAbort?.abort(new Error(reason ?? 'EGRESS_INTERRUPTED')); quarryPillar?.cancel(reason); try { ports.mining.stop(reason) } catch {} try { ports.movement.stop(reason) } catch {} try { chest.cancel(reason) } catch {} try { interactions.cancel(reason) } catch {} await Promise.allSettled([quarryPillarTask, quarryEgressTask]) },
-      // Idle-protection escapes move the bot too; treat them like a fight so the
-      // quarry yields movement instead of racing them.
-      combatActive: () => { const b = userBehaviorSnapshot(); return userBehaviorLease?.kind === 'combat' || b.activeKind === 'combat' || b.claim?.kind === 'combat' || idleSafety?.snapshot().busy === true },
-      threatEvidence: target => quarryEvidence(target, lightweightUserState()),
-      recentDamageAt: () => { const at = Number(host.shared.recentDamageNoPrimary?.at ?? NaN); return Number.isFinite(at) ? at : null },
-      userControlInterruption: () => structuredClone(host.shared.quarryUserPreemption ?? null),
-      log: message => { try { host.log(message) } catch {} }
-    })
-    adapter.onStarted = () => {
-      const cfg = quarryJob?.document()?.config
-      autonomy.stop('露天掘りを開始します。')
-      if (!host.shared.safetyWanted) { host.shared.safetyEnableEpoch++; host.shared.safetyWanted = true }
-      if (cfg?.quarryCombat?.enabled !== false) {
-        host.shared.combatDefenseAnchor = null
-        quarryBehaviorRestore ??= { userBehaviorsEnabled: host.shared.userBehaviorsEnabled === true }
-        host.shared.userBehaviorsEnabled = true
-        quarryCombatArmed = true
-      }
-      resumeSafety()
-    }
-    adapter.onFinished = s => {
-      quarryCombatArmed = false
-      if (quarryBehaviorRestore) { host.shared.userBehaviorsEnabled = quarryBehaviorRestore.userBehaviorsEnabled; quarryBehaviorRestore = null }
-      try { host.log(`露天掘り: ${s?.result?.type ?? s?.state}${s?.pauseReason ? ` (${s.pauseReason})` : ''}`) } catch {}
-    }
-    // Read the same durable reset record on demand. The dashboard may restart
-    // after the chest is built; a cached in-memory location is not enough.
-    adapter.registeredHomeChest = getRegisteredQuarryHomeSite
-    quarryJob = createQuarryJob({ adapter, storageMode: 'shulker', storage: quarryStorage, log: message => { try { host.log(`露天掘り: ${message}`) } catch {} } })
-    if (host.shared.quarryDocument) { try { quarryJob.load(host.shared.quarryDocument) } catch (error) { host.shared.quarryLoadError = String(error.message).slice(0, 200) } }
-    return quarryJob
-  }
-  function quarrySnapshot () {
-    try { return quarryJob ? quarryJob.status() : host.shared.quarryDocument ? { state: host.shared.quarryDocument.state, jobId: host.shared.quarryDocument.config?.jobId ?? null, pauseReason: host.shared.quarryDocument.pauseReason ?? null, loaded: false } : null } catch (error) { return { error: String(error.message).slice(0, 200) } }
-  }
-  async function loadQuarryFile (jobId) {
-    const ticket = ++quarryLoadSequence, generation = quarryPorts
-    const owner = ensureQuarryJob(), before = owner.document()?.instanceId ?? null
-    const doc = await quarryStorage.load(jobId)
-    if (disposed || disposing || ticket !== quarryLoadSequence || generation !== quarryPorts || owner.document()?.instanceId !== before && !(before === null && owner.document() === null)) throw Object.assign(new Error('Quarry recovery context changed'), { code: 'RECOVERY_CONTEXT_CHANGED' })
-    assertJobWorld(doc, quarryState())
-    const status = owner.load(doc)
-    host.shared.quarryDocument = owner.document()
-    return status
-  }
-
-  // Supply boxes get new stack IDs on every connection; register them again
-  // from the received inventory before an automatic resume (2026-11-13).
-  async function rebindQuarrySupplies () {
-    const doc = ensureQuarryJob().document()
-    if (!doc?.config?.inventory?.supplyBoxes?.length) return
-    try { await ensureQuarryJob().configureSupplies(); host.log('露天掘り: 補給箱を再登録しました。') } catch (error) { host.log(`露天掘り: 補給箱の再登録をせずに再開します: ${String(error.message).slice(0, 160)}`) }
-  }
-  async function restoreQuarryJob () {
-    const job = ensureQuarryJob(), current = job.document()
-    if (current) {
-      if (!recoverableQuarry(current) || !QUARRY_AUTO_RESUMABLE.test(current.pauseReason ?? '')) return { skipped: 'job_loaded' }
-      assertJobWorld(current, quarryState())
-      job.resume()
-      return { loaded: current.config.jobId, resumed: true }
-    }
-    const ticket = quarryLoadSequence, generation = quarryPorts
-    const docs = await quarryStorage.list()
-    if (disposed || disposing || host.shared.quarryRestoreDisabled || ticket !== quarryLoadSequence || generation !== quarryPorts || job.document()) throw Object.assign(new Error('Quarry recovery context changed'), { code: 'RECOVERY_CONTEXT_CHANGED' })
-    const candidate = selectRecoveryCandidate(docs, quarryState())
-    if (!candidate) {
-      // Only on the dashboard's reconnect after an unexpected disconnect (the
-      // restore is disabled for a UI connect): a job left running but paused for
-      // another reason is loaded and its own bounded retries are re-armed; a
-      // placed-box operation stopped by the connection change is resumed once
-      // (its takeover rules decide; anything unsafe pauses again).
-      const paused = host.shared.quarryRestoreAfterReconnect === true ? require('./quarry-recovery').selectPausedRunningCandidate(docs, quarryState()) : null
-      if (!paused) return { skipped: 'none' }
-      const status = await loadQuarryFile(paused.config.jobId)
-      const detail = status?.pauseDetails?.reason ?? null
-      host.log(`露天掘り: 再接続後に一時停止中のジョブを読み込みました: ${paused.config.jobId} (${status?.pauseReason ?? ''}${detail ? ' / ' + detail : ''})`)
-      if (['SUPPLY_RESTOCK_BLOCKED', 'CARRIED_STORAGE_BLOCKED'].includes(status?.pauseReason) && ['SUPPLY_SCOPE_CHANGED', 'STORAGE_PICKUP_CAPACITY_REQUIRED', 'STORAGE_RECOVERY_SLOT_REQUIRED', 'STORAGE_WINDOW_CHANGED'].includes(detail)) {
-        ensureQuarryJob().resume()
-        return { loaded: paused.config.jobId, resumed: true, reason: status.pauseReason, detail }
-      }
-      const rearmed = ensureQuarryJob().rescheduleAutoResume()
-      return { loaded: paused.config.jobId, resumed: false, rearmed: rearmed === true, reason: status?.pauseReason ?? null, detail }
-    }
-    const status = await loadQuarryFile(candidate.config.jobId)
-    const reason = status?.pauseReason ?? ''
-    host.log(`露天掘り: 同じワールドのジョブを復元しました: ${candidate.config.jobId} (${reason || status?.state})`)
-    if (!QUARRY_AUTO_RESUMABLE.test(reason)) return { loaded: candidate.config.jobId, resumed: false, reason }
-    await rebindQuarrySupplies()
-    ensureQuarryJob().resume()
-    return { loaded: candidate.config.jobId, resumed: true, reason }
-  }
-
-  function maybeRestoreQuarryJob () {
-    if (chunkMoveHeld()) return
-    if (manualChestStorage?.isBusy()) return
-    if (resetHeld()) return
-    if (disposed || disposing || host.shared.quarryRestoreDisabled || host.shared.quarryRestoreTried || quarryRestoreTask || !quarryPorts || Date.now() < (host.shared.quarryRestoreNextAt ?? 0)) return
-    const state = raw()
-    if (state.phase !== 'spawned' || !host.shared.loadingScreenEnded || state.spawnPending || state.inventory?.known !== true || host.shared.inventoryUncertain) return
-    const attempt = host.shared.quarryRestoreAttempts = (host.shared.quarryRestoreAttempts ?? 0) + 1
-    const task = restoreQuarryJob().then(result => {
-      if (disposed || disposing) return
-      host.shared.quarryRestoreTried = true
-      host.shared.quarryRestore = { ...result, attempts: attempt }
-      host.log(`露天掘り: 再起動後の確認: ${JSON.stringify(result)}`)
-    }).catch(error => {
-      if (disposed || disposing) return
-      const retry = !host.shared.quarryRestoreDisabled && retryableRecoveryError(error) && attempt < 3
-      host.shared.quarryRestoreTried = !retry
-      host.shared.quarryRestoreNextAt = retry ? Date.now() + 15000 * attempt : null
-      host.shared.quarryRestore = { error: String(error.message).slice(0, 200), code: error.code ?? null, attempts: attempt, retryScheduled: retry }
-      host.log(`露天掘り: 復元失敗 (${retry ? '再試行予定' : '自動再試行なし'}): ${String(error.message).slice(0, 160)}`)
-    }).finally(() => { if (quarryRestoreTask === task) quarryRestoreTask = null })
-    quarryRestoreTask = task
-  }
-  // resumeRequested is not reached while autonomy is running (as it is right
-  // after a restart), so the restore also runs from its own timer.
-  // A reset that switched command feedback on and never confirmed switching it
-  // off (e.g. a disconnect mid-reset) is restored once after spawn (2026-11-13).
-  const feedbackRestoreTimer = setInterval(() => {
-    if (disposed || disposing) { clearInterval(feedbackRestoreTimer); return }
-    if (host.shared.feedbackRestoreChecked || raw().phase !== 'spawned' || !host.shared.loadingScreenEnded) return
-    host.shared.feedbackRestoreChecked = true
-    Promise.resolve().then(() => ensureLoadoutReset().restoreFeedbackIfPending?.()).then(result => { if (result) host.log(`初期セット: コマンド応答の設定を戻しました ${JSON.stringify(result)}`) }).catch(error => host.log(`初期セット: コマンド応答の復元を確認できません: ${String(error.message).slice(0, 160)}`))
-  }, 15000)
-  feedbackRestoreTimer.unref?.()
-  const quarryRestoreTimer = setInterval(() => { if (disposed || disposing) { clearInterval(quarryRestoreTimer); return } try { maybeRestoreQuarryJob() } catch {} }, 15000)
-  quarryRestoreTimer.unref?.()
-  // Keep the quarry's terrain: its chunks and the exit column are never evicted
-  // from the world cache, and eviction starts far from them and from the bot.
+  function quarryState (...args) { return quarryRuntime.quarryState(...args) }
+  function confirmQuarryPosition (...args) { return quarryRuntime.confirmQuarryPosition(...args) }
+  function quarrySnapshot (...args) { return quarryRuntime.quarrySnapshot(...args) }
+  function quarryCanSelectTarget (...args) { return quarryRuntime.quarryCanSelectTarget(...args) }
+  function quarryCanContinue (...args) { return quarryRuntime.quarryCanContinue(...args) }
+  function requestQuarryTerrain (...args) { return quarryRuntime.requestQuarryTerrain(...args) }
+  function ensureQuarryJob (...args) { return quarryRuntime.ensureQuarryJob(...args) }
+  function testQuarryPillar (...args) { return quarryRuntime.testQuarryPillar(...args) }
+  function cancelQuarryRestore (...args) { return quarryRuntime.cancelQuarryRestore(...args) }
+  function loadQuarryFile (...args) { return quarryRuntime.loadQuarryFile(...args) }
+  function maybeRestoreQuarryJob (...args) { return quarryRuntime.maybeRestoreQuarryJob(...args) }
   let worldRetentionJob = { at: 0, pinned: [] }
   function quarryRetentionChunks () {
     const doc = quarryJob?.document?.()
@@ -7781,7 +3853,7 @@ function createRuntime (host) {
   const worldRetentionTimer = setInterval(() => { if (disposed || disposing) { clearInterval(worldRetentionTimer); return } try { updateWorldRetention() } catch {} }, 5000)
   worldRetentionTimer.unref?.()
   const eventLoopStallWatch = createEventLoopStallWatch({
-    context: () => { const q = quarryJob?.status?.(); return q ? { quarry: q.state ?? null, layer: q.currentY ?? null } : null },
+    context: () => describeWork({ quarry: quarryJob?.status?.(), travel: travelRuntime.longTravel?.status?.(), behavior: userBehaviorSnapshot().activeKind }),
     report: r => host.log(`処理の停止を検知: ${r.stallMs}ms 作業=${JSON.stringify(r.doing)}${r.suppressed ? ` 直前の未記録${r.suppressed}件` : ''} 最大=${r.worstMs}ms 累計${r.stalls}回`)
   })
   eventLoopStallWatch.start()
@@ -7815,10 +3887,10 @@ function createRuntime (host) {
       if (manualChestStorage?.isBusy()) return
       if (logicalWorkHeld()) return
       if (depotMission?.isEnabled()) { void depotMission.resume(); return }
-      const status = autonomy.snapshot()
+      const status = autonomyRuntime.autonomy.snapshot()
       // stop() releases running before the current tick finally drains.
       // The next normal behavior tick retries; never start over that owner.
-      if (!disposed && !disposing && !pendingStops.size && !userBehaviorOwns() && !host.shared.respawnTerrain?.pending && host.shared.autoWanted && raw().phase === 'spawned' && !raw().spawnPending && host.shared.loadingScreenEnded && !status.running && !status.busy && !status.actionActive) autonomy.start({ objective: 'diamond', diamondCount: 1, maxRunMs: 7200000, maxWaitTicks: 1200, ...host.shared.autoOptions, progress: host.shared.autonomyProgress })
+      if (!disposed && !disposing && !pendingStops.size && !userBehaviorOwns() && !host.shared.respawnTerrain?.pending && host.shared.autoWanted && raw().phase === 'spawned' && !raw().spawnPending && host.shared.loadingScreenEnded && !status.running && !status.busy && !status.actionActive) autonomyRuntime.autonomy.start({ objective: 'diamond', diamondCount: 1, maxRunMs: 7200000, maxWaitTicks: 1200, ...host.shared.autoOptions, progress: host.shared.autonomyProgress })
     }
     // resumeRequested runs after every user-behavior tick (~20/s); a depot
     // resume rebuilds hut/shelter snapshots each time. At most once a second.
@@ -7852,7 +3924,7 @@ function createRuntime (host) {
       assertIdle: () => {
         requireIdle({ inventoryRequired: false, storageHandoff: true })
         if (craftStatus().authority !== true) throw Object.assign(new Error('サーバーから所持品の確認を待っています。'), { code: 'STORAGE_AUTHORITY_UNKNOWN' })
-        if (armorTask || manualArmorOwner || manualShulkerTask || quarryRestoreTask || autonomy.snapshot().running || depotMission?.isBusy() || host.shared.rangedShotUncertain || jobPending(quietJob())) throw Object.assign(new Error('作業・収納・持ち替えの終了を確認してください。'), { code: 'STORAGE_NOT_IDLE' })
+        if (armorTask || manualArmorOwner || manualShulkerTask || quarryRuntime.quarryRestoreTask || autonomyRuntime.autonomy.snapshot().running || depotMission?.isBusy() || host.shared.rangedShotUncertain || jobPending(quietJob())) throw Object.assign(new Error('作業・収納・持ち替えの終了を確認してください。'), { code: 'STORAGE_NOT_IDLE' })
       },
       onAcquire: owner => {
         stopIdleStream()
@@ -7860,7 +3932,7 @@ function createRuntime (host) {
           host.shared.autoWanted = false
           host.shared.quarryAutoResume = false
           host.shared.quarryRestoreDisabled = true
-          autonomy.stop('ラージチェストへ収納')
+          autonomyRuntime.autonomy.stop('ラージチェストへ収納')
         }
       },
       onRelease: () => { setTimeout(() => resumeSafety(), 0).unref?.() },
@@ -7904,725 +3976,76 @@ function createRuntime (host) {
   // move-origin.js): a stale or distant received position without support is
   // witnessed once before a route is planned.
   async function reconcilePlanningOrigin () {
-    const { reconcileMoveOrigin } = require('./move-origin')
+    const { reconcileMoveOrigin } = require('./movement/move-origin')
     return reconcileMoveOrigin({ state: quarryState(), confirm: (feet, options) => confirmQuarryPosition(feet, options), discardPrediction: discardWorkingPrediction,
       hasSupport: feet => idlePhysics ? idlePhysics.withWorld(host.world, { allowWater: true }).hasSupport(feet) : true, log: message => host.log(message) })
   }
-  let longTravel = null
-  const longTravelFile = () => require('node:path').resolve(__dirname, '..', '.local', 'long-travel', 'current.json')
-  // Received overworld clock only (sync_world_clocks, else set_time).
-  function travelClock () {
-    const clock = Object.values(host.shared.worldClocks ?? {}).find(c => c?.name === 'minecraft:overworld' && c.source === 'server_sync_world_clocks' && Number.isSafeInteger(c.time))
-    if (clock) return { time: clock.time, source: clock.source }
-    const fallback = host.shared.worldTime
-    return raw().dimension === 'overworld' && fallback?.source === 'server_set_time' && Number.isSafeInteger(fallback.ticks) ? { time: fallback.ticks, source: fallback.source } : { time: null, source: 'unknown' }
-  }
-  // Night stop (coordinator 2026-11-14: the day/night cycle is expected to run):
-  // at dusk dig a three-deep pit at the feet by the ordinary mining, cover it
-  // with an ordinary placement and wait for morning; each step is confirmed by
-  // received terrain. In the morning the cover is mined and the trip climbs out
-  // by its covered-start route (carved steps).
-  async function travelNightPit (signal) {
-    const NS = require('./night-stop')
-    const sleep = ms => new Promise(r => setTimeout(r, ms))
-    const wait = async (fn, ms) => { const until = Date.now() + ms; while (Date.now() < until) { if (signal?.aborted) return false; if (fn()) return true; await sleep(200) } return fn() }
-    const feet = () => { const p = working().position; return p ? { x: p.x, y: p.y - 1.62, z: p.z } : null }
-    const plan = NS.planPit((x, y, z) => host.world.getBlock(x, y, z), feet())
-    if (!plan.ready) return { ok: false, reason: plan.reason + (plan.name ? `:${plan.name}` : '') }
-    const isAir = c => { const b = host.world.getBlock(c.x, c.y, c.z); return b?.known === true && /^minecraft:(?:air|cave_air)$/.test(b.name ?? '') }
-    for (const cell of plan.dig) {
-      if (!isAir(cell)) {
-        host.shared.travelDownUntil = Date.now() + 40000
-        try { operations.mining.start([{ ...cell, accessPreparation: 'travel_down' }]) } catch (error) { return { ok: false, reason: `DIG_REFUSED:${String(error.message ?? error).slice(0, 60)}` } }
-        if (!(await wait(() => isAir(cell), 35000))) return { ok: false, reason: 'DIG_UNCONFIRMED' }
-      }
-      if (!(await wait(() => { const f = feet(); return !!f && f.y <= cell.y + 0.05 }, 5000))) return { ok: false, reason: 'FALL_UNCONFIRMED' }
-    }
-    const PLACEABLE = /^minecraft:(?:dirt|coarse_dirt|cobblestone|cobbled_deepslate|stone|andesite|diorite|granite|deepslate|netherrack)$/
-    const items = () => working().inventory?.items ?? []
-    let item = items().find(i => PLACEABLE.test(i.name ?? '') && i.count > 0 && i.slot <= 8) ?? items().find(i => PLACEABLE.test(i.name ?? '') && i.count > 0)
-    if (!item) return { ok: false, reason: 'NO_COVER_BLOCK' }
-    if (item.slot > 8) { try { await operations.inventory.equip(item.slot) } catch {} item = items().find(i => PLACEABLE.test(i.name ?? '') && i.count > 0 && i.slot <= 8) }
-    if (!item) return { ok: false, reason: 'COVER_NOT_IN_HOTBAR' }
-    try { await operations.interactions.placeBlock({ position: plan.cover, slot: item.slot }) } catch (error) { return { ok: false, reason: `COVER_REFUSED:${String(error.message ?? error).slice(0, 60)}` } }
-    const covered = await wait(() => { const b = host.world.getBlock(plan.cover.x, plan.cover.y, plan.cover.z); return b?.known === true && b.boundingBox === 'block' }, 5000)
-    return covered ? { ok: true, cover: plan.cover } : { ok: false, reason: 'COVER_UNCONFIRMED' }
-  }
-  // Getting down from a canopy during long travel (coordinator 2026-11-14,
-  // choice A): only the leaves directly under the feet are broken by the
-  // ordinary mining; nothing is picked up on purpose. The spot is chosen on
-  // received terrain: every cell down to received solid ground, and the fall
-  // damage (each air run minus three) leaves at least six health.
-  async function travelHoldTool (blockName) {
-    const soft = /dirt|grass_block|gravel|sand|clay|snow|mud|podzol|mycelium|farmland|soul_soil/.test(String(blockName ?? ''))
-    const kind = soft ? 'shovel' : 'pickaxe'
-    const tier = n => ['wooden', 'golden', 'stone', 'iron', 'diamond', 'netherite'].findIndex(t => n.startsWith(`minecraft:${t}_`))
-    const items = working().inventory?.items ?? []
-    const tool = items.filter(i => i.count > 0 && i.slot < 36 && new RegExp(`_${kind}$`).test(i.name ?? '')).sort((a, b) => tier(b.name) - tier(a.name))[0]
-    if (!tool) return false
-    if (working().heldItem?.name === tool.name) return true
-    await inventory.equipForMining(tool.slot)
-    return true
-  }
-  async function travelLeafEscape (signal) {
-    const sleep = ms => new Promise(r => setTimeout(r, ms))
-    const feetOf = () => { const q = working().position; return q ? { x: q.x, y: q.y - 1.62, z: q.z } : null }
-    const at = (x, y, z) => host.world.getBlock(x, y, z)
-    const leaf = b => b?.known === true && /leaves$/.test(b.name ?? '')
-    const f0 = feetOf(); if (!f0) return { attempted: false }
-    // Live 14:09: after one leaf the bot landed on a branch (log) over a ravine;
-    // a canopy branch counts as canopy too (only leaves are ever broken).
-    // Every block under the 0.6-wide footprint (live 14:17: the bot stood on the
-    // leaf next to its own column).
-    const canopyBlock = b => leaf(b) || b?.known === true && /_log$/.test(b.name ?? '')
-    const under = []
-    for (const ox of [-0.3, 0.3]) for (const oz of [-0.3, 0.3]) { const b = at(Math.floor(f0.x + ox), Math.round(f0.y) - 1, Math.floor(f0.z + oz)); if (b?.boundingBox === 'block' || b?.known !== true) under.push(b) }
-    if (!under.length || !under.every(canopyBlock)) return { attempted: false }
-    const descent = (x, sy, z) => {
-      let damage = 0, run = 0
-      for (let y = sy - 1; y >= sy - 30; y--) {
-        const b = at(x, y, z)
-        if (b?.known !== true) return null
-        if (leaf(b)) { damage += Math.max(0, run - 3); run = 0; continue }
-        if (/^minecraft:(?:air|cave_air)$/.test(b.name ?? '') || b.boundingBox === 'empty' && !/water|lava|fire/.test(b.name ?? '')) { run++; continue }
-        if (b.boundingBox !== 'block' || /water|lava|fire|magma|cactus|powder_snow|_log$/.test(b.name ?? '')) return null // a branch is not ground (live 14:13)
-        return { damage: damage + Math.max(0, run - 3), ground: y }
-      }
-      return null
-    }
-    const health = working().health ?? 0
-    const cands = []
-    for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) {
-      const x = Math.floor(f0.x) + dx, z = Math.floor(f0.z) + dz
-      for (const sy of [Math.round(f0.y), Math.round(f0.y) - 1, Math.round(f0.y) + 1, Math.round(f0.y) - 2, Math.round(f0.y) + 2]) {
-        if (!leaf(at(x, sy - 1, z)) || at(x, sy, z)?.boundingBox !== 'empty' || at(x, sy + 1, z)?.boundingBox !== 'empty') continue
-        const d = descent(x, sy, z)
-        if (d && health - d.damage >= 6) cands.push({ x, y: sy, z, ...d, dist: Math.hypot(dx, dz) })
-      }
-    }
-    cands.sort((a, b) => a.damage - b.damage || a.dist - b.dist)
-    if (!cands.length) return { attempted: true, ok: false, reason: '受信した地面まで安全に降りられる場所がありません' }
-    for (const c of cands.slice(0, 8)) {
-      if (signal?.aborted) return { attempted: true, ok: false, reason: 'cancelled' }
-      const here = feetOf()
-      if (Math.floor(here.x) !== c.x || Math.floor(here.z) !== c.z || Math.round(here.y) !== c.y) {
-        const t = { x: c.x + 0.5, y: c.y, z: c.z + 0.5 }, opts = { allowWater: false, allowLowHealth: true, maxDistance: 16 }
-        let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
-        if (pv?.ready !== true) continue
-        try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { continue }
-        const until = Date.now() + 20000
-        while (Date.now() < until) { const m = movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await sleep(200) }
-        const f = feetOf(); if (!f || Math.floor(f.x) !== c.x || Math.floor(f.z) !== c.z) continue
-      }
-      host.log(`長距離移動: 葉の上から降ります (${c.x},${c.y},${c.z}) 地面 y${c.ground}・落下の見込み ${c.damage}`)
-      for (let i = 0; i < 30 && !signal?.aborted; i++) {
-        const f = feetOf(); if (!f) return { attempted: true, ok: false, reason: '位置が不明' }
-        const cell = { x: Math.floor(f.x), y: Math.round(f.y) - 1, z: Math.floor(f.z) }
-        if (!leaf(at(cell.x, cell.y, cell.z))) return { attempted: true, ok: true }
-        host.shared.travelDownUntil = Date.now() + 40000
-        try { operations.mining.start([{ ...cell, accessPreparation: 'travel_down' }]) } catch (error) { return { attempted: true, ok: false, reason: `葉を壊せません: ${String(error.message ?? error).slice(0, 80)}` } }
-        const until = Date.now() + 15000
-        while (Date.now() < until && leaf(at(cell.x, cell.y, cell.z))) await sleep(150)
-        if (leaf(at(cell.x, cell.y, cell.z))) return { attempted: true, ok: false, reason: '葉の採掘を確認できません' }
-        // Wait for the received position to settle after the fall.
-        let last = null, still = 0
-        for (let k = 0; k < 40 && still < 4; k++) { await sleep(150); const q = feetOf(); if (q && last && Math.abs(q.y - last.y) < 0.01) still++; else still = 0; last = q }
-      }
-      return { attempted: true, ok: false, reason: '降り切れませんでした' }
-    }
-    // No descent spot is reachable in one walk (live 14:11, a leaf pocket on a
-    // branch): take one accepted step on the canopy toward the best spot; the
-    // next pass tries again from there.
-    const best = cands[0], here = feetOf()
-    const steps = []
-    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) for (const dy of [0, 1, -1, 2]) {
-      const x = Math.floor(here.x) + dx, z = Math.floor(here.z) + dz, y = Math.round(here.y) + dy
-      if (!dx && !dz) continue
-      const floor = at(x, y - 1, z)
-      if (!(leaf(floor) || floor?.known === true && /_log$/.test(floor.name ?? '')) || at(x, y, z)?.boundingBox !== 'empty' || at(x, y + 1, z)?.boundingBox !== 'empty') continue
-      const gain = Math.hypot(best.x - Math.floor(here.x), best.z - Math.floor(here.z)) - Math.hypot(best.x - x, best.z - z)
-      if (gain > 0.5) steps.push({ x, y, z, gain })
-    }
-    steps.sort((a, b) => b.gain - a.gain)
-    for (const st of steps.slice(0, 10)) {
-      const t = { x: st.x + 0.5, y: st.y, z: st.z + 0.5 }, opts = { allowWater: false, allowLowHealth: true, maxDistance: 16 }
-      let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
-      if (pv?.ready !== true) continue
-      try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { continue }
-      const until = Date.now() + 10000
-      while (Date.now() < until) { const m = movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await sleep(200) }
-      return { attempted: true, ok: false, reason: `葉の上を降りる場所 (${best.x},${best.z}) へ1歩進みました` }
-    }
-    return { attempted: true, ok: false, reason: '降りる場所へ歩けません' }
-  }
-  async function travelBeforeLeg (signal) {
-    const NS = require('./night-stop')
-    const night = host.shared.travelNight ??= { cover: null, pitTried: 0 }
-    const phase = NS.dayPhase(travelClock())
-    if (!phase.known) return { hold: true, phase: 'clock_wait', message: '時刻を受信していないため、受信を待ちます', waitMs: 2000 }
-    // Resting (live 18:24: skeleton hits piled up to 1 HP and a creeper finished
-    // it): below half health with hunger 18 or more the bot heals in the covered
-    // pit and leaves it at 18 health (or by night's end when the pit is a night pit).
-    const hpNow = working().health ?? 20, hv0 = host.shared.vitals?.hunger, hunger0 = Number.isFinite(hv0) ? hv0 : Number.isFinite(hv0?.value) ? hv0.value : null
-    // A rest pit at dusk simply becomes the night pit.
-    if (night.cover && night.reason === 'rest' && phase.shelter) night.reason = 'night'
-    const resting = night.reason === 'rest'
-    if (night.cover && resting && (hpNow >= 18 || hunger0 !== null && hunger0 < 18)) phase.resume = true
-    if (night.cover && resting && !phase.resume) return { hold: true, phase: 'rest', message: `体力回復のため穴の中で待ちます（HP ${Math.round(hpNow)}）`, waitMs: 5000 }
-    if (!night.cover && !phase.shelter && hpNow < 10 && hunger0 !== null && hunger0 >= 18 && Date.now() - (night.restTriedAt ?? 0) > 60000) {
-      night.restTriedAt = Date.now()
-      const r = await travelNightPit(signal)
-      if (r.ok) { night.cover = r.cover; night.reason = 'rest'; host.log(`長距離移動: HP ${Math.round(hpNow)} のため、ふたをした穴で回復を待ちます`); return { hold: true, phase: 'rest', message: '体力回復のため穴の中で待ちます', waitMs: 5000 } }
-    }
-    if (phase.resume && night.cover) {
-      const c = night.cover
-      const air = () => { const v = host.world.getBlock(c.x, c.y, c.z); return v?.known === true && /^minecraft:(?:air|cave_air)$/.test(v.name ?? '') }
-      if (!air()) {
-        try { operations.mining.start([c]) } catch (error) { return { hold: true, phase: 'morning', message: `朝です。穴のふたを掘れません: ${String(error.message ?? error).slice(0, 60)}`, waitMs: 3000 } }
-        const until = Date.now() + 35000
-        while (Date.now() < until && !signal?.aborted && !air()) await new Promise(r => setTimeout(r, 200))
-        if (!air()) return { hold: true, phase: 'morning', message: '朝です。ふたの採掘を確認できません', waitMs: 3000 }
-      }
-      host.log(resting ? `長距離移動: 回復しました（HP ${Math.round(hpNow)}）。穴を出て移動を続けます` : `長距離移動: 朝になりました（時刻 ${phase.dayTime}）。穴を出て移動を続けます`)
-      night.cover = null; night.pitTried = 0; night.reason = null
-    }
-    if (phase.shelter) {
-      if (!night.cover && night.pitTried < 3) {
-        night.pitTried++
-        const r = await travelNightPit(signal)
-        if (r.ok) { night.cover = r.cover; night.reason = 'night' }
-        else return { hold: true, phase: 'night', message: `夕方です（時刻 ${phase.dayTime}）。ここに夜の穴を作れません: ${r.reason}`, waitMs: 3000 }
-      }
-      return { hold: true, phase: 'night', message: night.cover ? `夜のため、ふたをした穴の中で朝まで待ちます（時刻 ${phase.dayTime}）` : `夜です（時刻 ${phase.dayTime}）。穴を作れなかったため、その場で朝まで待ちます`, waitMs: 5000 }
-    }
-    night.pitTried = 0
-    // Food (2026-11-14): below hunger 18 natural healing stops; eat, or hunt
-    // within 24 m by the food step of the preparation gatherer (no wood).
-    const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : null
-    // Between legs is the trip's safe point for armour (no enemy within 8 m,
-    // inventory confirmed and the screen free).
-    try { if (!armorTask && armor.preview() && armorWorkFree() && !armorThreatNear()) { const moves = await armor.equipBest(); if (moves.some(m => m.serverConfirmed)) host.log(`長距離移動: 装備を着けました（${moves.filter(m => m.serverConfirmed).map(m => m.name.replace('minecraft:', '')).join('・')}）`) } } catch {}
-    // Shooters (live 16:22: a pillager shot the bot from 20 to 0 while the trip
-    // kept trying legs): retreat out of range first.
-    try { if (await travelShooterRetreat(signal)) return { hold: false } } catch {}
-    if (hunger !== null && hunger < 18) { try { await operations.quarry.prepGather({ logs: 0, maxMs: 90000 }) } catch {} }
-    // The boat was lost (coordinator 2026-11-14): within the preparation
-    // allowance, with trees near, gather a few logs and craft a boat again.
-    try { await travelRespawnBed(signal) } catch (error) { host.log(`長距離移動: ベッドでのリスポーン地点の設定に失敗しました: ${String(error.message ?? error).slice(0, 100)}`) }
-    try { await travelMakeBoat(signal) } catch (error) { host.log(`長距離移動: ボートを作れませんでした: ${String(error.message ?? error).slice(0, 100)}`) }
-    return { hold: false }
-  }
-  // Retreat from shooters during long travel: a shooter within 20 m and a hit
-  // in the last 5 s (or the shooter within 10 m) moves the bot 5-12 m straight
-  // away by the ordinary movement (sprinting when hunger allows).
-  const dangerFile = () => require('node:path').resolve(__dirname, '..', '.local', 'long-travel', 'danger.json')
-  function travelDangerZones () {
-    if (!host.shared.travelDangerZones) { try { host.shared.travelDangerZones = JSON.parse(require('node:fs').readFileSync(dangerFile(), 'utf8')) } catch { host.shared.travelDangerZones = [] } }
-    // Live 22:24: the bot died a third time beside the pillager zone; an outpost
-    // and its patrols reach farther than 48 m. Pillager zones count 120 m.
-    for (const z of host.shared.travelDangerZones) if (/pillager|vindicator|evoker/.test(z.kind ?? '') && z.r < 120) z.r = 120
-    return host.shared.travelDangerZones
-  }
-  // Inside a remembered danger zone (live 22:24: the fallback chunk moves and
-  // relay points ignored the zones and walked the bot into one).
-  function inDangerZone (x, z) { return travelDangerZones().some(zone => Math.hypot(zone.x - x, zone.z - z) < zone.r) }
-  function travelAddDangerZone (p, kind) {
-    const zones = travelDangerZones()
-    if (zones.some(z => Math.hypot(z.x - p.x, z.z - p.z) < 24)) return
-    zones.push({ x: Math.round(p.x), z: Math.round(p.z), r: /pillager|vindicator|evoker/.test(kind) ? 120 : 48, kind, at: new Date().toISOString() })
-    host.log(`長距離移動: 危険地帯を記録しました (${Math.round(p.x)}, ${Math.round(p.z)}) ${kind.replace('minecraft:', '')}・半径48m`)
-    try { require('node:fs').mkdirSync(require('node:path').dirname(dangerFile()), { recursive: true }); require('node:fs').writeFileSync(dangerFile(), JSON.stringify(zones, null, 2)) } catch {}
-  }
-  async function travelShooterRetreat (signal) {
-    const SHOOT = require('./learning-health').SHOOTING
-    const p = working().position; if (!p) return false
-    const feet = { x: p.x, y: p.y - 1.62, z: p.z }
-    const sh = allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && SHOOT.test(String(a.entityType ?? a.name ?? '')) && !/drowned/.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 20)
-    if (!sh.length) return false
-    const nearest = Math.min(...sh.map(a => Math.hypot(a.position.x - feet.x, a.position.z - feet.z)))
-    const hurt = Date.now() - (host.shared.travelLastDamageAt ?? 0) < 5000
-    // Before the shooter's range (coordinator 2026-11-14): within 16 m, or hit.
-    if (!hurt && nearest > 16) return false
-    // Live 22:22: five skeletons at 1-2 m while the bot (diamond sword) kept trying
-    // to walk away in water. Within 4 m an armed bot leaves it to combat.
-    if (nearest < 4 && (working().inventory?.items ?? []).some(i => /_sword$|_axe$/.test(i.name ?? ''))) return false
-    const low = (working().health ?? 20) < 10
-    if (hurt) for (const a of sh.filter(o => Math.hypot(o.position.x - feet.x, o.position.z - feet.z) <= 24)) travelAddDangerZone(a.position, String(a.entityType ?? a.name ?? ''))
-    // Below half health, prefer a spot no shooter can see (a solid received block
-    // on the line between eyes).
-    const covered = t => sh.every(a => { const sx = a.position.x, sy = a.position.y + 1.5, sz = a.position.z, tx = t.x, ty = t.y + 1.6, tz = t.z, n = Math.ceil(Math.hypot(tx - sx, ty - sy, tz - sz) * 2); for (let i = 1; i < n; i++) { const f = i / n, b = host.world.getBlock(Math.floor(sx + (tx - sx) * f), Math.floor(sy + (ty - sy) * f), Math.floor(sz + (tz - sz) * f)); if (b?.known === true && b.boundingBox === 'block') return true } return false })
-    let ax = 0, az = 0
-    for (const a of sh) { const dx = feet.x - a.position.x, dz = feet.z - a.position.z, d = Math.max(0.5, Math.hypot(dx, dz)); ax += dx / d; az += dz / d }
-    const base = Math.atan2(az, ax)
-    const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : 0
-    const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16, sprint: hunger > 6 }
-    const until = Date.now() + 1500
-    for (const d of [12, 8, 5]) for (const deg of [0, 30, -30, 60, -60, 90, -90]) {
-      if (signal?.aborted || Date.now() > until) return false
-      const ang = base + deg * Math.PI / 180
-      const x = Math.floor(feet.x + Math.cos(ang) * d) + 0.5, z = Math.floor(feet.z + Math.sin(ang) * d) + 0.5
-      for (const dy of [0, 1, -1, 2, -2]) {
-        const t = { x, y: Math.round(feet.y) + dy, z }
-        let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
-        await new Promise(resolve => setImmediate(resolve))
-        if (pv?.ready !== true) continue
-        if (low && !covered(t) && Date.now() < until - 700) continue
-        try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { return false }
-        host.log(`長距離移動: 射撃する敵（${sh.map(a => String(a.entityType ?? a.name).replace('minecraft:', '')).join('・')}、${Math.round(nearest)}m）から離れます`)
-        const stop = Date.now() + 8000
-        while (Date.now() < stop) { const m = movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await new Promise(r => setTimeout(r, 200)) }
-        return true
-      }
-    }
-    return false
-  }
-  // Respawn point on a long trip (coordinator 2026-11-14: every death sent the
-  // bot back to the world spawn, about 1,000 m). A bed is crafted from three
-  // wool and planks, placed, used (a day use only sets the spawn point), the new
-  // spawn point is confirmed by the server's set_spawn_position, and the bed is
-  // mined back under this trip's own placement record. No command is used.
-  function travelBedOwns (target, block) {
-    const rec = host.shared.travelBed
-    if (!rec || target?.ownershipKey !== rec.key || block?.name !== 'minecraft:bed' || rec.life !== actualLifeId()) return false
-    return [rec.foot, rec.head].some(p => p && p.x === target.x && p.y === target.y && p.z === target.z)
-  }
-  async function travelRespawnBed (signal) {
-    const items = () => working().inventory?.items ?? []
-    const st = working(); if (!st.position) return { ok: false }
-    const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }
-    const spawn = host.shared.travelSpawn ?? { x: -8, z: 14 }
-    if (Math.hypot(feet.x - spawn.x, feet.z - spawn.z) < 300) return { ok: false, reason: 'NEAR_SPAWN' }
-    const memo = host.shared.travelBedMemo ??= { lastTry: 0 }
-    if (Date.now() - memo.lastTry < 120000) return { ok: false, reason: 'RECENT' }
-    if (nearestHostileDistance() < 16) return { ok: false, reason: 'HOSTILE_NEAR' }
-    memo.lastTry = Date.now()
-    const bed = () => items().find(i => i.name === 'minecraft:bed' && i.count > 0)
-    const WOOL = /^minecraft:[a-z_]*wool$/
-    const wool = () => items().filter(i => WOOL.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
-    if (!bed()) {
-      if (wool() < 3) { await operations.quarry.prepGather({ logs: 0, wool: 3, maxMs: 120000 }); if (wool() < 3) return { ok: false, reason: 'NO_WOOL' } }
-      const LOGS = /^minecraft:([a-z_]+)_log$/, PLANKS = /^minecraft:([a-z_]+)_planks$/
-      const planks = () => items().filter(i => PLANKS.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
-      const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
-      if (planks() < 7 && !log) return { ok: false, reason: 'NO_WOOD' }
-      host.log('長距離移動: ベッドを作ります')
-      await crafting.openInventory()
-      try { if (planks() < 7) await crafting.craft(`minecraft:${LOGS.exec(log.name)[1]}_planks`, { times: Math.min(log.count, 2) }); await crafting.craft('minecraft:crafting_table', { times: 1 }) } finally { try { crafting.closeContainer() } catch {} }
-      const placed = await travelPlaceTable()
-      if (!placed) return { ok: false, reason: 'TABLE_NOT_PLACED' }
-      await interactions.openCraftingTable(placed)
-      try { await crafting.craft('minecraft:bed', { times: 1 }) } finally { try { crafting.closeContainer() } catch {} }
-      if (!bed()) return { ok: false, reason: 'BED_NOT_CRAFTED' }
-    }
-    // Place: a foot cell beside the bot with its head cell, both received air on solid ground.
-    let item = bed(); if (item.slot > 8) { await operations.inventory.equip(item.slot); item = items().find(i => i.name === 'minecraft:bed' && i.slot <= 8) }
-    if (!item) return { ok: false, reason: 'BED_NOT_IN_HOTBAR' }
-    const fx = Math.floor(feet.x), fy = Math.round(feet.y), fz = Math.floor(feet.z)
-    let foot = null
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [0, 2], [-2, 0], [0, -2]]) {
-      const pos = { x: fx + dx, y: fy, z: fz + dz }
-      try { requireIdle({ inventoryRequired: false }); await interactions.placeBed({ position: pos, slot: item.slot }); foot = pos; break } catch {}
-    }
-    if (!foot) return { ok: false, reason: 'BED_NOT_PLACED' }
-    const isBed = p => host.world.getBlock(p.x, p.y, p.z)?.name === 'minecraft:bed'
-    const head = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ x: foot.x + dx, y: foot.y, z: foot.z + dz })).find(isBed) ?? null
-    if (!isBed(foot)) return { ok: false, reason: 'BED_PLACEMENT_UNCONFIRMED' }
-    host.shared.travelBed = { key: `travel_bed:${Date.now()}`, foot, head, life: actualLifeId() }
-    const t0 = Date.now()
-    try { requireIdle({ inventoryRequired: false }); await interactions.useBed(foot) } catch {}
-    const until = Date.now() + 6000
-    while (Date.now() < until && !(host.shared.lastSpawnSet?.at > t0)) await new Promise(r => setTimeout(r, 200))
-    const set = host.shared.lastSpawnSet
-    const confirmed = set?.at > t0 && set.position && Math.hypot(set.position.x - foot.x, set.position.z - foot.z) <= 3
-    if (confirmed) { host.shared.travelSpawn = { x: foot.x, z: foot.z, at: new Date().toISOString() }; host.log(`長距離移動: リスポーン地点を (${foot.x}, ${foot.y}, ${foot.z}) に設定しました（サーバーの通知で確認）`) }
-    else host.log(`長距離移動: ベッドに触れましたが、リスポーン地点の設定を確認できません${set?.at > t0 ? `（通知 ${JSON.stringify(set.position)}）` : ''}`)
-    // Take the bed back under this trip's own placement record.
-    try { if (working().sleeping) await interactions.wakeBed?.(foot) } catch {}
-    try {
-      requireIdle({ inventoryRequired: false })
-      operations.mining.start([{ ...foot, accessPreparation: 'owned_bed', expectedName: 'minecraft:bed', ownershipKey: host.shared.travelBed.key }])
-      const mineUntil = Date.now() + 15000
-      while (Date.now() < mineUntil && isBed(foot)) await new Promise(r => setTimeout(r, 200))
-      if (!isBed(foot)) await operations.quarry.pickupNear({ center: foot, radius: 5, maxMs: 15000 })
-    } catch (error) { host.log(`長距離移動: ベッドを回収できません: ${String(error.message ?? error).slice(0, 80)}`) }
-    host.log(`長距離移動: ベッド${bed() ? 'を回収しました（受信した持ち物で確認）' : 'の回収を確認できません'}`)
-    return { ok: confirmed, recovered: !!bed() }
-  }
-  async function travelPlaceTable () {
-    const items = () => working().inventory?.items ?? []
-    let t = items().find(i => i.name === 'minecraft:crafting_table')
-    if (!t) return null
-    if (t.slot > 8) { await operations.inventory.equip(t.slot); t = items().find(i => i.name === 'minecraft:crafting_table' && i.slot <= 8) }
-    if (!t) return null
-    const p = working().position, fx = Math.floor(p.x), fy = Math.round(p.y - 1.62), fz = Math.floor(p.z)
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
-      const pos = { x: fx + dx, y: fy, z: fz + dz }, at = host.world.getBlock(pos.x, pos.y, pos.z), below = host.world.getBlock(pos.x, pos.y - 1, pos.z)
-      if (at?.known !== true || at.name !== 'minecraft:air' || below?.known !== true || below.boundingBox !== 'block') continue
-      try { await interactions.placeCraftingTable({ position: pos, slot: t.slot }); return pos } catch {}
-    }
-    return null
-  }
-  function travelShulkerOwns (target, block) {
-    const rec = host.shared.travelShulker
-    if (!rec || target?.ownershipKey !== rec.key || rec.life !== actualLifeId()) return false
-    if (!(target.x === rec.position.x && target.y === rec.position.y && target.z === rec.position.z)) return false
-    return !block || block.name === rec.name || /^minecraft:(?:air|cave_air)$/.test(block.name ?? '')
-  }
-  async function travelSupplyBoxTake ({ chest: home, chestSlot, boxName, take = [] } = {}) {
-    if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
-    if (longTravel?.status?.().busy) throw new Error('長距離移動の途中です。')
-    if (armorThreatNear()) throw new Error('攻撃が届く敵が近くにいます。')
-    const say = m => host.log(`補給箱: ${m}`)
-    const items = () => working().inventory?.items ?? []
-    const sleep = ms => new Promise(r => setTimeout(r, ms))
-    const wait = async (fn, ms) => { const until = Date.now() + ms; while (Date.now() < until) { if (fn()) return true; await sleep(200) } return fn() }
-    const isAir = p => { const b = host.world.getBlock(p.x, p.y, p.z); return b?.known === true && /^minecraft:(?:air|cave_air)$/.test(b.name ?? '') }
-    // 1. the box out of the home chest
-    await operations.chest.open(home)
-    await operations.chest.withdrawItem({ chestSlot, count: 1, expectedName: boxName })
-    try { crafting.closeContainer() } catch {}
-    let box = items().find(i => i.name === boxName)
-    if (!box) throw new Error('箱を持ち物で確認できません。')
-    if (box.slot > 8) { await operations.inventory.equip(box.slot); box = items().find(i => i.name === boxName && i.slot <= 8) }
-    if (!box) throw new Error('箱をホットバーへ移せません。')
-    // 2. place it beside the bot (not on the chest cells)
-    const p = working().position, fx = Math.floor(p.x), fy = Math.round(p.y - 1.62), fz = Math.floor(p.z)
-    let at = null
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-      const pos = { x: fx + dx, y: fy, z: fz + dz }, below = host.world.getBlock(pos.x, pos.y - 1, pos.z), above = host.world.getBlock(pos.x, pos.y + 1, pos.z)
-      if (!isAir(pos) || below?.known !== true || below.boundingBox !== 'block' || /chest|shulker/.test(below.name ?? '') || !isAir({ x: pos.x, y: pos.y + 1, z: pos.z }) || above?.known !== true) continue
-      try { await operations.interactions.placeBlock({ position: pos, slot: box.slot }); if (await wait(() => host.world.getBlock(pos.x, pos.y, pos.z)?.name === boxName, 3000)) { at = pos; break } } catch {}
-    }
-    if (!at) throw new Error('箱を置けません（置いた箱を受信できません）。')
-    host.shared.travelShulker = { key: `travel_box:${Date.now()}`, position: at, name: boxName, life: actualLifeId() }
-    say(`${boxName.replace('minecraft:', '')} を (${at.x}, ${at.y}, ${at.z}) に置きました`)
-    // 3. open it and take the items
-    const got = {}
-    await operations.chest.open(at)
-    const snap = operations.chest.snapshot(), slots = Array.isArray(snap.slots) ? snap.slots : []
-    for (const want of take) {
-      let left = want.count
-      for (const sl of slots.filter(s => s?.name === want.name && s.count > 0)) {
-        if (left <= 0) break
-        const n = Math.min(left, sl.count)
-        try { await operations.chest.withdrawItem({ chestSlot: sl.slot, count: n, expectedName: want.name }); left -= n; got[want.name] = (got[want.name] ?? 0) + n } catch (error) { say(`取り出せません: ${String(error.message ?? error).slice(0, 60)}`); break }
-      }
-    }
-    try { crafting.closeContainer() } catch {}
-    // 4. break it under this placement's record and recover it
-    host.shared.travelShulkerHold = { operationId: host.shared.travelShulker.key, stage: 'break_to_recover' }
-    try {
-      operations.mining.start([{ ...at, accessPreparation: 'owned_shulker', expectedName: boxName, ownershipKey: host.shared.travelShulker.key }])
-      if (!(await wait(() => isAir(at), 20000))) throw new Error('箱の破壊を受信できません。')
-      const before = items().filter(i => i.name === boxName).length
-      for (let i = 0; i < 3 && items().filter(x => x.name === boxName).length <= before - 0 && !items().some(x => x.name === boxName); i++) await operations.quarry.pickupNear({ center: at, radius: 4, maxMs: 10000 })
-      if (!(await wait(() => items().some(x => x.name === boxName), 5000))) throw new Error('箱の回収を受信した持ち物で確認できません。')
-    } finally { host.shared.travelShulkerHold = null }
-    // 5. back into the home chest
-    await operations.chest.open(home)
-    const back = items().find(i => i.name === boxName)
-    await operations.chest.depositItem({ sourceSlot: back.slot, count: 1, chestSlot, expectedName: boxName })
-    try { crafting.closeContainer() } catch {}
-    host.shared.travelShulker = null
-    say(`取り出したもの: ${Object.entries(got).map(([k, v]) => `${k.replace('minecraft:', '')}×${v}`).join('・') || 'なし'}。箱はチェストへ戻しました（受信した持ち物で確認）`)
-    return { ok: true, got }
-  }
-  async function travelMakeBoat (signal) {
-    const items = () => working().inventory?.items ?? []
-    if (items().some(i => /_boat$/.test(i.name ?? '') && i.count > 0)) return { ok: true, have: true }
-    if (!longTravelLogAllowance()) return { ok: false, reason: 'NO_ALLOWANCE' }
-    const now = Date.now(), memo = host.shared.travelBoatMemo ??= { lastTry: 0 }
-    if (now - memo.lastTry < 300000) return { ok: false, reason: 'RECENT' }
-    memo.lastTry = now
-    const LOGS = /^minecraft:([a-z_]+)_log$/
-    const logs = () => items().filter(i => LOGS.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
-    if (logs() < 3) { await operations.quarry.prepGather({ logs: 3, maxMs: 120000 }) }
-    if (signal?.aborted || logs() < 3) return { ok: false, reason: 'NO_LOGS' }
-    const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
-    const wood = LOGS.exec(log.name)[1]
-    host.log(`長距離移動: ボートを作ります（${wood}）`)
-    await crafting.openInventory()
-    try { await crafting.craft(`minecraft:${wood}_planks`, { times: 3 }); await crafting.craft('minecraft:crafting_table', { times: 1 }) } finally { try { crafting.closeContainer() } catch {} }
-    const table = items().find(i => i.name === 'minecraft:crafting_table' && i.slot <= 8) ?? items().find(i => i.name === 'minecraft:crafting_table')
-    if (!table) return { ok: false, reason: 'NO_TABLE' }
-    if (table.slot > 8) await operations.inventory.equip(table.slot)
-    const t = items().find(i => i.name === 'minecraft:crafting_table' && i.slot <= 8)
-    const p = working().position, fx = Math.floor(p.x), fy = Math.round(p.y - 1.62), fz = Math.floor(p.z)
-    let placed = null
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
-      const pos = { x: fx + dx, y: fy, z: fz + dz }, at = host.world.getBlock(pos.x, pos.y, pos.z), below = host.world.getBlock(pos.x, pos.y - 1, pos.z)
-      if (at?.known !== true || !/^minecraft:air$/.test(at.name ?? '') || below?.known !== true || below.boundingBox !== 'block') continue
-      try { await interactions.placeCraftingTable({ position: pos, slot: t.slot }); placed = pos; break } catch {}
-    }
-    if (!placed) return { ok: false, reason: 'TABLE_NOT_PLACED' }
-    await interactions.openCraftingTable(placed)
-    try { await crafting.craft(`minecraft:${wood}_boat`, { times: 1 }) } finally { try { crafting.closeContainer() } catch {} }
-    const ok = items().some(i => /_boat$/.test(i.name ?? '') && i.count > 0)
-    host.log(`長距離移動: ボート${ok ? 'を作りました（受信した持ち物で確認）' : 'を確認できません'}`)
-    return { ok }
-  }
-  // Resume a trip that the previous code was running when it was reloaded
-  // (bounded: within ten minutes, once, after the bot is spawned and idle).
-  // Live 14:42: a reconnect also stopped the trip; the saved trip file (phase
-  // still moving, saved within 15 minutes, not stopped by hand) resumes it too.
-  let travelFileChecked = false
-  const travelResumeTimer = setInterval(async () => {
-    if (disposed || disposing) { clearInterval(travelResumeTimer); return }
-    if (raw().phase !== 'spawned' || quarryJob?.holdsWork() || longTravel?.status?.().busy) return
-    // Never inside a node --test child (live 17:10: a test scene with the live Realm id resumed the real trip and hung the comparison).
-    if (!host.shared.longTravelResume && !travelFileChecked && process.env.NODE_TEST_CONTEXT) travelFileChecked = true
-    if (!host.shared.longTravelResume && !travelFileChecked) {
-      travelFileChecked = true
-      try { const doc = JSON.parse(await require('node:fs/promises').readFile(longTravelFile(), 'utf8')); // Only the same Realm and profile the trip was saved for (live 16:13: a test
-      // runtime resumed the live trip from the shared file and never exited).
-      if (['moving', 'cancelled'].includes(doc?.phase) && doc.realmId != null && doc.realmId === String(raw().realm?.id ?? '') && doc.profile === (raw().profile ?? null) && doc.destination && Date.now() - Date.parse(doc.savedAt) < 900000) host.shared.longTravelResume = { destination: { x: doc.destination.x, z: doc.destination.z }, at: Date.now() } } catch {}
-    }
-    const r = host.shared.longTravelResume
-    if (!r) { if (travelFileChecked) clearInterval(travelResumeTimer); return }
-    if (Date.now() - r.at > 600000) { host.shared.longTravelResume = null; return }
-    if (raw().phase !== 'spawned' || quarryJob?.holdsWork() || longTravel?.status?.().busy) return
-    host.shared.longTravelResume = null
-    Promise.resolve().then(() => operations.quarry.travelTo({ destination: r.destination })).then(() => host.log(`長距離移動: 行動コードの反映後に移動を再開しました（目的地 ${r.destination.x}, ${r.destination.z}）`), error => host.log(`長距離移動: 反映後の再開に失敗しました: ${String(error.message ?? error).slice(0, 100)}`))
-  }, 2000)
-  travelResumeTimer.unref?.() // never keeps a process (or a test) alive
-  function ensureLongTravel () {
-    if (longTravel) return longTravel
-    longTravel = require('./long-travel').createLongTravel({
-      getState: quarryState,
-      // One line per pass (coordinator 2026-11-14: measure distance per hour and where the time goes).
-      record: async entry => { const f = require('node:path').resolve(__dirname, '..', '.local', 'long-travel', 'legs.jsonl'); await require('node:fs/promises').mkdir(require('node:path').dirname(f), { recursive: true }); await require('node:fs/promises').appendFile(f, JSON.stringify(entry) + '\n') },
-      chunkTravel: { start: input => { const a = input?.area; if (a && Number.isFinite(a.x1) && Number.isFinite(a.z1)) { const cx = a.x1 * 16 + 8, cz = a.z1 * 16 + 8, p = quarryState().position; if (inDangerZone(cx, cz) && !(p && inDangerZone(p.x, p.z))) throw Object.assign(new Error('危険地帯の中のチャンクへは移動しません'), { code: 'CHUNK_TRAVEL_DANGER_ZONE' }) } return ensureChunkTravel().start(input) }, status: () => ensureChunkTravel().status(), cancel: reason => cancelChunkMovement(reason ?? 'LONG_TRAVEL') },
-      // Only a read request; the chunk travel itself uses received terrain only.
-      requestTerrain: async (area, { signal } = {}) => { const st = quarryState(); const y = Math.floor((st.position?.y ?? 65) - 1.62); return requestQuarryTerrain({ config: { target: { chunks: [{ x: area.x1, z: area.z1 }] } }, yTop: Math.min(300, y + 12), yBottom: Math.max(-60, y - 12) }, { signal }) },
-      terrainRevision: () => host.world.revision?.() ?? null,
-      inventoryReady: () => { try { return inventoryStore.missing().length === 0 } catch { return false } },
-      // Arrival counts only under open sky (live 12:13: 'arrived' in a cave at y-33).
-      onSurface: feet => { const x = Math.floor(feet.x), z = Math.floor(feet.z), y = Math.floor(feet.y + 0.2); for (let yy = y + 2; yy < 320; yy++) { const b = host.world.getBlock(x, yy, z); if (!b || b.known !== true) { if (yy >= 128) return true; return false } if (b.boundingBox === 'block' && !/leaves|log|wood/.test(b.name ?? '')) return false } return true },
-      // Point legs: a walkable received point toward the destination (distance,
-      // angle and height samples), previewed by the ordinary movement planner.
-      // Between legs (2026-11-14): the night stop by the received clock, then food.
-      beforeLeg: async ({ signal } = {}) => travelBeforeLeg(signal),
-      findPoint: async (feet, destination, { signal } = {}) => {
-        const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
-        // Shooters (witches included) are avoided on every long trip (coordinator 2026-11-14).
-        const st0 = working(), fleeing = true
-        const shooters = fleeing ? allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && require('./learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && !/drowned/.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 48).map(a => a.position) : []
-        // Avoid zones (coordinator 2026-11-14): 20 m around a received shooter,
-        // 32 m around a group of three or more (an outpost), never closer than
-        // the bot already is, so the route bends away before the shooter's range.
-        const avoidCols = new Set()
-        // Remembered danger zones (live 16:22 and 17:18: pillagers near
-        // (540..590, -750) killed the bot twice): 48 m around where a shooter
-        // hit the bot, kept on disk; never closer than the bot already is.
-        for (const zone of travelDangerZones()) {
-          const r = Math.min(zone.r, Math.hypot(zone.x - feet.x, zone.z - feet.z) - 2)
-          if (r <= 1 || Math.hypot(zone.x - feet.x, zone.z - feet.z) > 320) continue
-          for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) for (let dz = -Math.ceil(r); dz <= Math.ceil(r); dz++) if (dx * dx + dz * dz <= r * r) avoidCols.add(`${Math.floor(zone.x) + dx},${Math.floor(zone.z) + dz}`)
-        }
-        for (const q of shooters) {
-          const group = shooters.filter(o => Math.hypot(o.x - q.x, o.z - q.z) <= 16).length >= 3
-          const r = Math.min(group ? 32 : 20, Math.hypot(q.x - feet.x, q.z - feet.z) - 2)
-          if (r <= 1) continue
-          for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) for (let dz = -Math.ceil(r); dz <= Math.ceil(r); dz++) if (dx * dx + dz * dz <= r * r) avoidCols.add(`${Math.floor(q.x) + dx},${Math.floor(q.z) + dz}`)
-        }
-        const here = Math.hypot(destination.x - feet.x, destination.z - feet.z)
-        const heading = Math.atan2(destination.z - feet.z, destination.x - feet.x)
-        // Starting in water (live 2026-11-14: the respawn point is a pool), climb
-        // onto an adjacent received ledge first with the water exit move.
-        {
-          const cellAt = (x, y, z) => host.world.getBlock(x, y, z)
-          const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.2), fz = Math.floor(feet.z)
-          if (/water/.test(cellAt(fx, fy, fz)?.name ?? '') || /water/.test(cellAt(fx, fy - 1, fz)?.name ?? '')) {
-            const ledges = []
-            // Within five blocks (live 20:00: open water, shore three blocks away);
-            // nearest first, then toward the destination.
-            for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) if ((dx || dz) && Math.hypot(dx, dz) <= 5.5) for (const dy of [1, 0]) { const c = cellAt(fx + dx, fy + dy - 1, fz + dz), here = cellAt(fx + dx, fy + dy, fz + dz); if (c?.known === true && c.boundingBox === 'block' && !/water/.test(c.name ?? '') && here?.known === true && here.boundingBox === 'empty' && !/water/.test(here.name ?? '')) ledges.push({ x: fx + dx + 0.5, y: fy + dy, z: fz + dz + 0.5 }) }
-            ledges.sort((a, b) => Math.hypot(a.x - feet.x, a.z - feet.z) - Math.hypot(b.x - feet.x, b.z - feet.z) || Math.hypot(destination.x - a.x, destination.z - a.z) - Math.hypot(destination.x - b.x, destination.z - b.z))
-            ledges.splice(12)
-            for (const l of ledges) { let pv = null; try { motionOrigin = working(); pv = movement?.preview(l, { ...opts, maxDistance: 8, waterExit: true }) } catch {} if (pv?.ready === true) return { ...l, waterExit: true } }
-          }
-        }
-        // Follow the coarse wide-area route first (2026-11-14): a point some
-        // nodes ahead on it that the ordinary local planner can walk to.
-        try {
-          const planRoute = (extra = {}) => { const bad = host.shared.longTravelBadCells ??= new Set(); const blocked = avoidCols.size ? { has: k => bad.has(k) || avoidCols.has(k) } : bad; return require('./coarse-route').planCoarseRouteAsync({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 200000, maxMs: 6000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked, ...extra }) }
-          let route = await planRoute()
-          // Live 16:05: columns marked after failed walks fenced the bot in (the
-          // same route without them existed). When they leave no route at all,
-          // they are forgotten and the plan is made again.
-          { const bad = host.shared.longTravelBadCells; if (!route.ready && bad?.size) { host.log(`長距離移動: 歩けなかった列の記録（${bad.size}件）を消して計画し直します`); bad.clear(); route = await planRoute() } }
-          // No reachable point is closer (coordinator 2026-11-14, a 20 m cliff at
-          // 16:51): stairs cut into a face may be used, never a tunnel.
-          if (!route.ready) { const stairs = await planRoute({ faceStairs: true, maxMs: 8000 }); if (stairs.ready) { host.log('長距離移動: 近づける場所がないため、壁面の階段で進みます'); route = stairs } }
-          // Going around (coordinator 2026-11-14): when the route does not reach
-          // the goal, request the received-terrain frontier closest to the
-          // destination (up to three chunks, each at most every two minutes) and
-          // plan again; the best reachable point toward the goal is used.
-          if (!route.reached && route.frontier.length) {
-            const asked = host.shared.longTravelFrontierAsked ??= new Map()
-            const chunks = [...new Map(route.frontier.map(f => [`${Math.floor(f.x / 16)},${Math.floor(f.z / 16)}`, f])).values()]
-              .sort((a, b) => Math.hypot(destination.x - a.x, destination.z - a.z) - Math.hypot(destination.x - b.x, destination.z - b.z))
-              .filter(f => Date.now() - (asked.get(`${Math.floor(f.x / 16)},${Math.floor(f.z / 16)}`) ?? 0) > 120000).slice(0, 3)
-            if (chunks.length) {
-              const y = Math.floor(feet.y)
-              for (const f of chunks) asked.set(`${Math.floor(f.x / 16)},${Math.floor(f.z / 16)}`, Date.now())
-              try { await requestQuarryTerrain({ config: { target: { chunks: chunks.map(f => ({ x: Math.floor(f.x / 16), z: Math.floor(f.z / 16) })) } }, yTop: Math.min(150, y + 40), yBottom: Math.max(-60, y - 24) }, {}) } catch {}
-              await new Promise(r => setTimeout(r, 800))
-              route = await planRoute()
-            }
-          }
-          // Live 2026-11-14 13:35: on a hilltop the terrain above y80 was not
-          // received, so no column counted as open sky and the route closed in
-          // (97 nodes, no frontier). Request the terrain above once per spot
-          // and plan again; unreceived terrain still never counts as open.
-          if (!route.ready && !route.frontier.length) {
-            const key = `${Math.floor(feet.x / 16)},${Math.floor(feet.z / 16)}`
-            const asked = host.shared.longTravelSkyAsked ??= new Map()
-            if (Date.now() - (asked.get(key) ?? 0) > 120000) {
-              asked.set(key, Date.now())
-              try { await operations.quarry.requestTerrainAbove(); await new Promise(r => setTimeout(r, 1500)); route = await planRoute(); host.log(`長距離移動: 頭上の地形を要求しました（経路 ${route.ready ? 'あり' : 'なし'}）`) } catch {}
-            }
-          }
-          // A carved step ahead: walk to the cell before it first, then dig and step.
-          const firstDig = route.ready ? route.path.findIndex(p => p.dig) : -1
-          if (firstDig > 0 && firstDig <= 12) {
-            const before = route.path[firstDig - 1], step = route.path[firstDig]
-            if (Math.hypot(before.x - feet.x, before.z - feet.z) > 1.2 || Math.abs(before.y - feet.y) > 0.6) { let pv = null; try { motionOrigin = working(); pv = movement?.preview({ x: before.x, y: before.y, z: before.z }, opts) } catch {} if (pv?.ready === true) return { x: before.x, y: before.y, z: before.z } }
-            else return { x: step.x, y: step.y, z: step.z, dig: step.dig }
-          }
-          if (route.ready) for (const ahead of [12, 9, 6, 4, 3, 2, 1].map(a => firstDig > 0 ? Math.min(a, firstDig - 1) : a)) {
-            const p = route.path[Math.min(ahead, route.path.length - 1)]
-            if (!p || Math.hypot(p.x - feet.x, p.z - feet.z) < 0.8) continue // a one-node step counts (live 16:06: only it was walkable)
-            if (fleeing && shooters.some(q => Math.hypot(q.x - p.x, q.z - p.z) < Math.min(6, Math.hypot(q.x - feet.x, q.z - feet.z)))) continue
-            let preview = null
-            try { motionOrigin = working(); preview = movement?.preview({ x: p.x, y: p.y, z: p.z }, opts) } catch { preview = null }
-            if (preview?.ready === true) return { x: p.x, y: p.y, z: p.z }
-          }
-        } catch {}
-        for (const d of [14, 10, 6]) for (const deg of [0, 25, -25, 50, -50, 75, -75, 100, -100]) {
-          if (signal?.aborted) return null
-          const ang = heading + deg * Math.PI / 180
-          const x = Math.floor(feet.x + Math.cos(ang) * Math.min(d, here)) + 0.5, z = Math.floor(feet.z + Math.sin(ang) * Math.min(d, here)) + 0.5
-          if (Math.hypot(destination.x - x, destination.z - z) > here - 3) continue
-          if (inDangerZone(x, z) && !inDangerZone(feet.x, feet.z)) continue
-          // Empty-handed (decision C, 2026-11-14): never toward a shooting enemy;
-          // the first walkable point that does not bring one closer wins.
-          if (fleeing && shooters.some(q => Math.hypot(q.x - x, q.z - z) < Math.hypot(q.x - feet.x, q.z - feet.z))) continue
-          for (const dy of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
-            const target = { x, y: Math.floor(feet.y + 0.001) + dy, z }
-            let preview = null
-            try { motionOrigin = working(); preview = movement?.preview(target, opts) } catch { preview = null }
-            if (preview?.ready === true) return target
-          }
-          await new Promise(resolve => setImmediate(resolve))
-        }
-        // Stranded on a canopy (coordinator 2026-11-14, choice A): break only the
-        // leaves under the feet at the best reachable spot, then plan again.
-        try { const r = await travelLeafEscape(signal); if (r.attempted) host.log(`長距離移動: 葉の上から降ります: ${r.ok ? '地面に降りました' : r.reason}`) } catch {}
-        return null
-      },
-      walkTo: async (target, { signal } = {}) => {
-        try { requireIdle({ inventoryRequired: false }) } catch (error) { return { ok: false, code: 'CHUNK_TRAVEL_BUSY', message: String(error.message ?? error).slice(0, 120) } }
-        // Carved step (2026-11-14): each cell by the ordinary mining, confirmed
-        // by received air, before stepping up.
-        if (Array.isArray(target.dig) && target.dig.length) {
-          for (const cell of target.dig) {
-            const air = () => { const b = host.world.getBlock(cell.x, cell.y, cell.z); return b?.known === true && /^minecraft:(?:air|cave_air)$/.test(b.name ?? '') }
-            if (air()) continue
-            host.log(`長距離移動: 段を掘ります (${cell.x},${cell.y},${cell.z}) ${String(cell.name ?? '').replace('minecraft:', '')}`)
-            // Live 14:35: stone was refused with the wooden pickaxe in the bag.
-            // Hold the best received pickaxe (stone-like) or shovel (soft) first.
-            try { await travelHoldTool(cell.name) } catch {}
-            try { operations.mining.start([{ x: cell.x, y: cell.y, z: cell.z }]) } catch (error) { (host.shared.longTravelBadCells ??= new Set()).add(`${cell.x},${cell.z}`); return { ok: false, code: 'DIG_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
-            const until = Date.now() + 30000
-            while (!air()) {
-              if (signal?.aborted) { try { operations.mining.stop?.('LONG_TRAVEL_CANCELLED') } catch {} return { ok: false, code: 'LONG_TRAVEL_CANCELLED' } }
-              if (Date.now() > until) return { ok: false, code: 'DIG_TIMEOUT', message: `(${cell.x},${cell.y},${cell.z})` }
-              await new Promise(resolve => setTimeout(resolve, 250))
-            }
-          }
-          try { requireIdle({ inventoryRequired: false }) } catch (error) { return { ok: false, code: 'CHUNK_TRAVEL_BUSY', message: String(error.message ?? error).slice(0, 120) } }
-        }
-        const startHealth = working().health
-        // Empty-handed: sprint out of range while hunger allows it (> 6).
-        const v = host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : v?.value
-        const sprint = working().emptyHandedPrep === true && Number.isFinite(hunger) && hunger > 6
-        try { startMotion('navigation', { x: target.x, y: target.y, z: target.z }, { allowWater: true, allowLowHealth: true, maxDistance: target.waterExit ? 4 : 16, ...(target.waterExit ? { waterExit: true } : sprint ? { sprint: true } : {}) }) } catch (error) { return { ok: false, code: 'POINT_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
-        const until = Date.now() + 60000
-        for (;;) {
-          await new Promise(resolve => setTimeout(resolve, 200))
-          if (signal?.aborted) { try { movement?.stop?.('LONG_TRAVEL_CANCELLED') } catch {} return { ok: false, code: 'LONG_TRAVEL_CANCELLED' } }
-          const st = working(), m = movement?.snapshot() ?? {}
-          if (st.health < startHealth && st.emptyHandedPrep !== true) { try { movement?.stop?.('damage') } catch {} return { ok: false, code: 'CHUNK_TRAVEL_DAMAGED' } }
-          if (['failed', 'stopped'].includes(m.phase) && !/replan|correction|stalled|ticks were missed/i.test(String(m.reason ?? ''))) { const bad = host.shared.longTravelBadCells ??= new Set(); bad.add(`${Math.floor(target.x)},${Math.floor(target.z)}`); if (bad.size > 2000) bad.delete(bad.values().next().value) }
-          if (['failed', 'stopped', 'replan_required'].includes(m.phase)) return { ok: false, code: m.phase === 'replan_required' || /replan|correction|stalled|ticks were missed/i.test(String(m.reason ?? '')) ? 'POINT_REPLAN' : 'POINT_WALK_FAILED', message: String(m.reason ?? m.phase).slice(0, 120) }
-          if (['completed', 'idle', 'awaiting_server_confirmation'].includes(m.phase) && m.running !== true) {
-            const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }
-            return Math.hypot(feet.x - target.x, feet.z - target.z) <= 1.2 && Math.abs(feet.y - target.y) <= 1.6 ? { ok: true } : { ok: false, code: 'POINT_ENDED_SHORT' }
-          }
-          if (Date.now() > until) { try { movement?.stop?.('timeout') } catch {} return { ok: false, code: 'POINT_WALK_TIMEOUT' } }
-        }
-      },
-      save: async doc => { doc = { ...doc, realmId: raw().realm?.id == null ? null : String(raw().realm.id), profile: raw().profile ?? null }; const fsp = require('node:fs/promises'), file = longTravelFile(); await fsp.mkdir(require('node:path').dirname(file), { recursive: true }); await fsp.writeFile(file + '.tmp', JSON.stringify(doc, null, 2)); await fsp.rename(file + '.tmp', file) },
-      log: message => host.log(message)
-    })
-    return longTravel
-  }
-  function ensureChunkTravel () {
-    if (chunkTravel) return chunkTravel
-    let planner = null
-    chunkTravel = createChunkTravel({ getState: quarryState, getBlock: (x, y, z) => host.world.getBlock(x, y, z),
-      getMovement: () => movement?.snapshot() ?? { phase: 'unavailable', running: false },
-      generation: () => host.shared.loadoutGeneration, jobIdentity: chunkMoveJobIdentity, log: message => host.log(message),
-      planRoute: async (target, options) => {
-        if (!idlePhysics) return { ready: false, reason: '移動に必要な地形が未受信です。' }
-        planner ??= createNavigator({ world: host.world, version: host.meta.version, allowWater: true,
-          physics: idlePhysics.withWorld(host.world, { allowWater: true }), planningDistanceLimit: 48 })
-        await reconcilePlanningOrigin()
-        const origin = require('./move-origin').planningOrigin({ fromServer: state => planner.physics.fromServer(state), getState: quarryState, discardPrediction: discardWorkingPrediction })
-        return planner.planAsync(origin, target, { ...options, maxDistance: 48, maxExpanded: 5000 })
-      },
-      previewMove: (target, options) => {
-        verifyChunkMoveLease(chunkMoveLease?.id)
-        motionOrigin = working()
-        return movement?.preview(target, { ...options, allowWater: true, sprint: false, allowLowHealth: true })
-      },
-      startMove: (target, options) => {
-        const owner = verifyChunkMoveLease(options.operationId)
-        controlLocation.invalidate()
-        chunkMoveDepth++
-        try {
-          const { operationId, ...native } = options
-          // User decision 2026-11-13: a dashboard move runs at any health above zero.
-          const result = startMotion('navigation', target, { ...native, allowWater: true, sprint: false, allowLowHealth: true })
-          owner.startedMovement = movement; owner.startedSerial = portableMovementSerial; owner.stopped = false
-          return result
-        } finally { chunkMoveDepth-- }
-      },
-      stopMove: (id, reason) => stopChunkMovement(id, reason),
-      confirmPosition: (feet, options) => controlLocation.confirm(feet, options),
-      acquire: async (id, options) => {
-        requireIdle({ inventoryRequired: false, chunkMoveHandoff: true })
-        const doc = quarryJob?.document() ?? host.shared.quarryDocument
-        if (chunkMoveLease || resetHeld() || manualChestStorage?.isBusy() || manualShulkerTask || armorTask || manualArmorOwner || quarryRestoreTask ||
-          autonomy.snapshot().running || depotMission?.isBusy() || doc && (!['IDLE', 'PAUSED', 'FINISHED'].includes(doc.state) || doc.persistence?.status === 'failed' ||
-          doc.state !== 'FINISHED' && (doc.portableStorage || doc.supplyRestock || doc.egress?.operationId && !doc.surfaceReturnedAt))) throw Object.assign(new Error('現在の作業を終了してからBotを移動させてください。'), { code: 'CHUNK_MOVE_NOT_IDLE' })
-        chunkMoveLease = { id, scope: options.scope, signal: options.signal, generation: host.shared.loadoutGeneration, job: chunkMoveJobIdentity(), startedMovement: null, startedSerial: null, stopped: true }
-        controlLocation.invalidate()
-        loadoutReset?.cancel()
-        stopIdleStream()
-        idlePhysicsState = null
-        await idleSafety?.stop('選択チャンクへの移動')
-        await idleSafety?.drain()
-        verifyChunkMoveLease(id)
-        if (!(await ensureMovementLifeKnown())) throw Object.assign(new Error('Botの生存状態をまだ確認できていません。数秒待ってからもう一度お試しください。'), { code: 'MOVE_LIFE_UNKNOWN' })
-        verifyChunkMoveLease(id)
-      },
-      release: id => { if (chunkMoveLease?.id === id) { stopChunkMovement(id, 'CHUNK_MOVE_FINISHED'); chunkMoveLease = null; resumeSafety() } }
-    })
-    return chunkTravel
-  }
-
+  // Long-distance travel lives in long-travel-runtime.js. It reads and writes
+  // these bindings of this closure through accessors, so each use sees the
+  // current value exactly as the code did when it was written here.
+  const travelRuntime = require('./runtime/long-travel-runtime').createLongTravelRuntime({
+    get __dirname () { return __dirname },
+    get actualLifeId () { return actualLifeId },
+    get allActors () { return allActors },
+    get armor () { return armor },
+    get armorTask () { return armorTask },
+    get armorThreatNear () { return armorThreatNear },
+    get armorWorkFree () { return armorWorkFree },
+    get autonomy () { return autonomyRuntime.autonomy },
+    get cancelChunkMovement () { return cancelChunkMovement },
+    get chunkMoveDepth () { return chunkMoveDepth }, set chunkMoveDepth (value) { chunkMoveDepth = value },
+    get chunkMoveJobIdentity () { return chunkMoveJobIdentity },
+    get chunkMoveLease () { return chunkMoveLease }, set chunkMoveLease (value) { chunkMoveLease = value },
+    get chunkTravel () { return chunkTravel }, set chunkTravel (value) { chunkTravel = value },
+    get controlLocation () { return controlLocation },
+    get crafting () { return crafting },
+    get createChunkTravel () { return createChunkTravel },
+    get createNavigator () { return createNavigator },
+    get depotMission () { return depotMission },
+    get discardWorkingPrediction () { return discardWorkingPrediction },
+    get disposed () { return disposed },
+    get disposing () { return disposing },
+    get ensureMovementLifeKnown () { return ensureMovementLifeKnown },
+    get host () { return host },
+    get idlePhysics () { return idlePhysics },
+    get idlePhysicsState () { return idlePhysicsState }, set idlePhysicsState (value) { idlePhysicsState = value },
+    get idleSafety () { return idleSafety },
+    get interactions () { return interactions },
+    get inventory () { return inventory },
+    get inventoryStore () { return inventoryStore },
+    get loadoutReset () { return loadoutReset },
+    get longTravelLogAllowance () { return longTravelLogAllowance },
+    get manualArmorOwner () { return manualArmorOwner },
+    get manualChestStorage () { return manualChestStorage },
+    get manualShulkerTask () { return manualShulkerTask },
+    get motionOrigin () { return motionOrigin }, set motionOrigin (value) { motionOrigin = value },
+    get movement () { return movement },
+    get nearestHostileDistance () { return nearestHostileDistance },
+    get operations () { return runtimeOperations.operations },
+    get portableMovementSerial () { return portableMovementSerial },
+    get quarryJob () { return quarryJob },
+    get quarryRestoreTask () { return quarryRuntime.quarryRestoreTask },
+    get quarryState () { return quarryState },
+    get raw () { return raw },
+    get reconcilePlanningOrigin () { return reconcilePlanningOrigin },
+    get requestQuarryTerrain () { return requestQuarryTerrain },
+    get require () { return require },
+    get requireIdle () { return requireIdle },
+    get resetHeld () { return resetHeld },
+    get resumeSafety () { return resumeSafety },
+    get startMotion () { return startMotion },
+    get stopChunkMovement () { return stopChunkMovement },
+    get stopIdleStream () { return stopIdleStream },
+    get verifyChunkMoveLease () { return verifyChunkMoveLease },
+    get working () { return working }
+  })
+  function travelBedOwns (...args) { return travelRuntime.travelBedOwns(...args) }
+  function travelShulkerOwns (...args) { return travelRuntime.travelShulkerOwns(...args) }
+  function ensureChunkTravel (...args) { return travelRuntime.ensureChunkTravel(...args) }
+  function ensureLongTravel (...args) { return travelRuntime.ensureLongTravel(...args) }
+  function travelLeafEscape (...args) { return travelRuntime.travelLeafEscape(...args) }
+  function travelPlaceTable (...args) { return travelRuntime.travelPlaceTable(...args) }
+  function travelSupplyBoxTake (...args) { return travelRuntime.travelSupplyBoxTake(...args) }
   function ensureLoadoutReset () {
     if (loadoutReset) return loadoutReset
     const getState = () => ({ ...quarryState(), loadingScreenEnded: host.shared.loadingScreenEnded })
@@ -8633,14 +4056,14 @@ function createRuntime (host) {
       getJob: () => ensureQuarryJob(),
       assertIdle: () => {
         requireIdle({ loadoutHandoff: true })
-        if (mining.snapshot().phase === 'mining' || mining.snapshot().activeTarget || depotBuilder?.snapshot().busy || depotStorage?.snapshot().busy || armorTask || manualArmorOwner || manualShulkerTask || quarryRestoreTask || autonomy.snapshot().running || depotMission?.isBusy() || host.shared.inventoryUncertain || host.shared.rangedShotUncertain || !host.shared.loadingScreenEnded) throw Object.assign(new Error('採掘・収納・持ち物操作の終了を確認してください。'), { code: 'RESET_NOT_IDLE' })
+        if (mining.snapshot().phase === 'mining' || mining.snapshot().activeTarget || depotBuilder?.snapshot().busy || depotStorage?.snapshot().busy || armorTask || manualArmorOwner || manualShulkerTask || quarryRuntime.quarryRestoreTask || autonomyRuntime.autonomy.snapshot().running || depotMission?.isBusy() || host.shared.inventoryUncertain || host.shared.rangedShotUncertain || !host.shared.loadingScreenEnded) throw Object.assign(new Error('採掘・収納・持ち物操作の終了を確認してください。'), { code: 'RESET_NOT_IDLE' })
       },
       acquire: operationId => {
         if (resetHeld()) throw Object.assign(new Error('リセット処理中です。'), { code: 'RESET_BUSY' })
         requireIdle({ loadoutHandoff: true })
         loadoutLease = operationId
         host.shared.autoWanted = false; host.shared.quarryAutoResume = false; host.shared.quarryRestoreDisabled = true
-        autonomy.stop('初期アイテムリセット')
+        autonomyRuntime.autonomy.stop('初期アイテムリセット')
         stopIdleStream()
         // Fence new combat immediately, then cancel/drain the old owner before
         // the first command. Use the private stop path to preserve this lease.
@@ -8660,7 +4083,7 @@ function createRuntime (host) {
     try { const status = quarryJob.status(); return status.portableStorage != null || status.supplies?.active != null } catch { return true }
   }
   return {
-    operations, snapshot: getSnapshot, applyPacket, onSpawn, onRespawn, stopActions, resumeRequested,
+    operations: runtimeOperations.operations, snapshot: getSnapshot, applyPacket, onSpawn, onRespawn, stopActions, resumeRequested,
     canReload: () => {
       const snapshot = createSnapshotReader()
       return !quarryPlacementPreparation && !chunkMoveHeld() && !resetHeld() && !manualChestStorage?.isBusy() && !host.shared.quarrySurfaceStorageOwner && !quarryV22Equipment.status().busy && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && snapshot(mining).phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !snapshot(food).busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(snapshot(furnace).busy || chestStatus().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !snapshot(combat)?.busy && !snapshot(combat)?.defending && !snapshot(combat)?.engaging
@@ -8684,9 +4107,9 @@ function createRuntime (host) {
       clearInterval(idleTimer)
       idleTimer = null
       clearInterval(userBehaviorTimer); userBehaviorTimer = null
-      clearInterval(quarryRestoreTimer); clearInterval(worldRetentionTimer); eventLoopStallWatch.stop(); clearInterval(inventoryStoreTimer); quarryLoadSequence++
+      clearInterval(quarryRuntime.quarryRestoreTimer); clearInterval(worldRetentionTimer); eventLoopStallWatch.stop(); clearInterval(inventoryStoreTimer); quarryRuntime.quarryLoadSequence++
       publishWalker()
-      autonomy.stop(reason ?? '行動コードを更新します。')
+      autonomyRuntime.autonomy.stop(reason ?? '行動コードを更新します。')
       const cleanup = stopActions(reason ?? '行動コードを更新します。')
       // Stop ordinary inputs synchronously above, then wait for owned reset cleanup.
       await Promise.allSettled([manualShulkerTask, resetDrain, storageDrain, chunkMoveDrain])
@@ -8694,15 +4117,15 @@ function createRuntime (host) {
       inputOwner = 'none'
       await cleanup
       await Promise.allSettled([...pendingStops])
-      await autonomy.tick()
+      await autonomyRuntime.autonomy.tick()
       await memoryFlush
       await depotFlush
       await depotPrebuild?.drain()
       await shoreMemory?.flush().catch(error => { host.shared.shoreMemoryError = String(error.message).slice(0, 160) })
       // Live 2026-11-14 13:30: a reload stopped the trip and the bot stood idle
       // until a creeper killed it. A trip running at reload resumes in the new code.
-      try { const t = longTravel?.status?.(); if (t?.busy && t.destination) host.shared.longTravelResume = { destination: { x: t.destination.x, z: t.destination.z }, at: Date.now() } } catch {}
-      try { longTravel?.cancel('RELOAD') } catch {}
+      try { const t = travelRuntime.longTravel?.status?.(); if (t?.busy && t.destination) host.shared.longTravelResume = { destination: { x: t.destination.x, z: t.destination.z }, at: Date.now() } } catch {}
+      try { travelRuntime.longTravel?.cancel('RELOAD') } catch {}
       inputStream?.stop()
       disposed = true
     }

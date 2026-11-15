@@ -2,8 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryV22Reset } = require('../src/quarry-v22-reset')
-const { observedScope } = require('../src/server-position-verifier')
+const { createQuarryV22Reset } = require('../src/loadout/quarry-v22-reset')
+const { observedScope } = require('../src/movement/server-position-verifier')
 const key = p => `${p.x},${p.y},${p.z}`
 const air = () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] })
 const solid = (name = 'minecraft:stone') => ({ known: true, name, boundingBox: 'block', extra: [] })

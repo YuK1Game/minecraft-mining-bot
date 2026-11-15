@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { historicalEmptyPlacement } = require('../src/placement-source-history')
+const { historicalEmptyPlacement } = require('../src/quarry/storage/placement-source-history')
 function scene () {
   const scope = { profile: 'bot', realmId: '1', dimension: 'overworld', connectionId: 'socket', startedAt: '2026-11-06T13:53:33.633Z', runtimeEntityId: '10', life: 0 }
   const checkpoint = { version: 1, jobId: 'job', operationId: 'job:storage:73', kind: 'shulker', stage: 'placing', scope, stand: { x: -43, y: 40, z: -196 }, positions: [{ x: -41, y: 40, z: -196 }], placed: [], deposited: [], plan: [{ transferred: 0 }], initialContents: 'immutable27', intent: { type: 'place', position: { x: -41, y: 40, z: -196 }, slot: 3, source: 'immutableRaw' } }

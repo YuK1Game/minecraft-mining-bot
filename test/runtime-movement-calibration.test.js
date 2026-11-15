@@ -5,10 +5,10 @@ const file = path.resolve(__dirname, 'runtime-user-behaviors.test.js'), loaded =
 loaded.filename = file; loaded.paths = Module._nodeModulePaths(path.dirname(file))
 let prefix = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0]
 prefix = prefix.replace('  let worldReads = 0,', '  let queuedObserver;\n  let worldReads = 0,')
-prefix = prefix.replace("  loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", `  const inputFactory = overrides['./input'].createInput
-  overrides['./input'] = { createInput: options => { queuedObserver = options.onQueuedFrame; return inputFactory(options) } }
-  const historyFactory = overrides['./input-history'].createInputHistory
-  overrides['./input-history'] = { createInputHistory: options => { const history = historyFactory(options); return { ...history, observeAnchor: value => { events.push({ type: 'anchor_after_calibration', pairCount: runtime.snapshot().movementCalibration.pairs.length }); return history.observeAnchor(value) } } } }
+prefix = prefix.replace("  loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", `  const inputFactory = overrides['./movement/input'].createInput
+  overrides['./movement/input'] = { createInput: options => { queuedObserver = options.onQueuedFrame; return inputFactory(options) } }
+  const historyFactory = overrides['./movement/input-history'].createInputHistory
+  overrides['./movement/input-history'] = { createInputHistory: options => { const history = historyFactory(options); return { ...history, observeAnchor: value => { events.push({ type: 'anchor_after_calibration', pairCount: runtime.snapshot().movementCalibration.pairs.length }); return history.observeAnchor(value) } } } }
   loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)`)
 prefix = prefix.replace('return { runtime, host, raw,', 'return { queueFrame: frame => queuedObserver(frame), runtime, host, raw,')
 loaded._compile(prefix + '\nmodule.exports = { scene };',file)

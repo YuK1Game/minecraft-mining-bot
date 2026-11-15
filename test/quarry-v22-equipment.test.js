@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryV22Equipment } = require('../src/quarry-v22-equipment')
+const { createQuarryV22Equipment } = require('../src/loadout/quarry-v22-equipment')
 const raw = (id = 0, stack_id = 0) => ({ network_id: id, count: id ? 1 : 0, has_stack_id: !!id, stack_id, metadata: 0, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })
 const name = id => ({ 1: 'minecraft:totem_of_undying', 2: 'minecraft:diamond_helmet' })[id]
 function fixture ({alreadyOpen=true,throwOnUncertain=false,timeoutMs=1000}={}) {

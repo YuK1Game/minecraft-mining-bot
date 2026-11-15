@@ -5,7 +5,7 @@
 // failure replies (recorded on the live Realm).
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createStoragePlacementAudit } = require('../src/storage-placement-audit')
+const { createStoragePlacementAudit } = require('../src/quarry/storage/storage-placement-audit')
 
 function fixture () {
   let clock = 1000, serial = 0

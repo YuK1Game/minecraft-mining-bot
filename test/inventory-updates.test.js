@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { serverInventoryUpdate } = require('../src/inventory-updates')
+const { serverInventoryUpdate } = require('../src/inventory/inventory-updates')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
 
 const empty = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0 })

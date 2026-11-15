@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setTimeout: delay } = require('node:timers/promises')
-const { createAutonomy } = require('../src/autonomy')
+const { createAutonomy } = require('../src/survival/autonomy')
 
 function fixture (overrides = {}) {
   const state = { phase: 'spawned', health: 20, gameMode: 'survival', runtimeEntityId: '41', dimension: 'overworld', position: { x: 0.5, y: 66.62, z: 0.5 }, inventory: { known: true, items: [] }, world: { initialized: true, loadedSections: 1 }, capabilities: { mining: true, movement: true } }

@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createIdleSafety } = require('../src/idle-safety')
+const { createIdleSafety } = require('../src/safety/idle-safety')
 const copy = value => structuredClone(value)
 
 function fixture (t, { mode = 'safe', repeat = false } = {}) {

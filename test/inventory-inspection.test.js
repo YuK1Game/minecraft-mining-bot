@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createInventoryInspection } = require('../src/inventory-inspection')
+const { createInventoryInspection } = require('../src/inventory/inventory-inspection')
 
 const tag = (type, value) => ({ type, value })
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, extra: { has_nbt: false, can_place_on: [], can_destroy: [] } })

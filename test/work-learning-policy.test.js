@@ -1,8 +1,8 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { evaluateThreats } = require('../src/threats')
-const { captureWorkActors, resolveWorkActors, workMargin } = require('../src/work-clearance')
+const { evaluateThreats } = require('../src/combat/threats')
+const { captureWorkActors, resolveWorkActors, workMargin } = require('../src/safety/work-clearance')
 const scene = policy => ({ profile: 'bot', realm: { id: '21225335' }, connectionId: 'online', startedAt: '2026-10-31T22:47:16.776Z', runtimeEntityId: '1', dimension: 'overworld', threatPolicy: policy, health: 20, position: { x: 0, y: 64, z: 0 }, entities: [{ runtimeId: '9', uniqueId: '90', entityType: 'minecraft:drowned', positionKnown: true, dimension: 'overworld', position: { x: 9, y: 64, z: 0 } }] })
 
 test('learning keeps current danger but releases work once the actual alert radius clears', () => {

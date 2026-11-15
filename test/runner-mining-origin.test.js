@@ -2,11 +2,11 @@
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
 const { setImmediate: turn } = require('node:timers/promises')
-const { createRunner } = require('../src/runner')
-const { createPhysics } = require('../src/physics')
-const { createMovement } = require('../src/movement')
-const { createMining } = require('../src/mining')
-const { createInput } = require('../src/input')
+const { createRunner } = require('../src/survival/runner')
+const { createPhysics } = require('../src/movement/physics')
+const { createMovement } = require('../src/movement/movement')
+const { createMining } = require('../src/actions/mining')
+const { createInput } = require('../src/movement/input')
 const captured = require('./fixtures/mining-origin-partial-156.json')
 const copy = value => structuredClone(value), key = p => `${p.x},${p.y},${p.z}`
 let prepared = null
@@ -39,7 +39,7 @@ function fixture (t, { factory = createRunner, mode = null, acknowledge = true }
     const physical = physics.step({ ...state.predicted.physicsState, ...rotation }, {}), position = physics.toServerPosition(physical)
     return { position, delta: physical.velocity, physicsState: physical, controls: physical.controls, commitPrediction: () => publish({ position, feetPosition: physical.position, velocity: physical.velocity, onGround: physical.onGround, physicsState: physical }) }
   } })
-  const mining = createMining({ getState: () => state, world, getInput: () => input, now: () => base + time })
+  const mining = createMining({ getState: () => state, world, getInput: () => input, now: () => base + time, logAllowance: () => true })
   t.after(() => { mining.stop(); input.stop(); movement.stop() })
   const request = async (method, endpoint, body) => {
     calls.push({ method, endpoint, body: copy(body) })
@@ -61,7 +61,7 @@ function fixture (t, { factory = createRunner, mode = null, acknowledge = true }
     if (endpoint === '/mining/stop') return mining.stop('Fixture stop')
     throw Error('Unexpected fixture call: ' + endpoint)
   }
-  const runnerOptions = { request, now: () => base + time, delay: async ms => { time += ms; t.mock.timers.tick(ms); await turn() }, timeoutMs: 1200, pollIntervalMs: 50, onProgress: p => progress.push(p) }
+  const runnerOptions = { logAllowance: () => true, request, now: () => base + time, delay: async ms => { time += ms; t.mock.timers.tick(ms); await turn() }, timeoutMs: 1200, pollIntervalMs: 50, onProgress: p => progress.push(p) }
   const runner = factory(runnerOptions)
   const action = { type: 'gather_logs', target: copy(captured.resourceTarget), block: captured.resourceBlock, count: 1 }
   return { state, calls, wire, progress, runner, runnerOptions, movement, mining, broken: () => broken, action }
@@ -72,7 +72,7 @@ test('captured stable partial origin uses existing Native recenter, then fresh r
   const initial = f.mining.preview([f.action.target])
   assert.equal(initial.ready, false); assert.match(initial.errors[0], /通常の地面に静止/)
   if (process.env.MINING_ORIGIN_BASELINE_SOURCE) {
-    const file = path.resolve(__dirname, '../src/runner.js'), baseline = new Module(file, module)
+    const file = path.resolve(__dirname, '../src/survival/runner.js'), baseline = new Module(file, module)
     baseline.filename = file; baseline.paths = Module._nodeModulePaths(path.dirname(file)); baseline._compile(fs.readFileSync(process.env.MINING_ORIGIN_BASELINE_SOURCE, 'utf8'), file)
     const old = baseline.exports.createRunner(f.runnerOptions)
     await assert.rejects(old.actions.gather_logs(f.action, {}), error => error.code === 'PREVIEW_REJECTED' && /通常の地面に静止/.test(error.message))

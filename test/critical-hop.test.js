@@ -1,18 +1,18 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createPhysics } = require('../src/physics')
-const { createNavigator } = require('../src/navigation')
+const { createPhysics } = require('../src/movement/physics')
+const { createNavigator } = require('../src/movement/navigation')
 const { createMovement } = (() => {
-  if (!process.env.MOVEMENT_TEST_SOURCE) return require('../src/movement')
+  if (!process.env.MOVEMENT_TEST_SOURCE) return require('../src/movement/movement')
   const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-  const filename = path.resolve(__dirname, '../src/movement.js')
+  const filename = path.resolve(__dirname, '../src/movement/movement.js')
   const loaded = new Module(filename, module)
   loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
   loaded._compile(fs.readFileSync(path.resolve(process.env.MOVEMENT_TEST_SOURCE), 'utf8'), filename)
   return loaded.exports
 })()
-const { previewCriticalHop, createCriticalHopStepper } = require('../src/critical-hop')
+const { previewCriticalHop, createCriticalHopStepper } = require('../src/movement/critical-hop')
 
 let unknownHead = false
 const world = { getBlock: (x, y, z) => unknownHead && y === 68 && x === 0 && z === 0 ? { known: false } : { known: true, name: y < 65 ? 'minecraft:stone' : 'minecraft:air', position: { x, y, z }, properties: {}, extra: [], boundingBox: y < 65 ? 'block' : 'empty' } }

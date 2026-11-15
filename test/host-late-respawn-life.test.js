@@ -2,7 +2,7 @@
 // Real Host reflex/Lifecycle/terrain handoff with controlled server packets.
 // No Runtime policy bypass, HTTP, game connection or invented successful life.
 const {test}=require('node:test'),assert=require('node:assert/strict'),path=require('node:path'),{setImmediate:turn,setTimeout:delay}=require('node:timers/promises')
-const root=process.env.HOST_LIFE_TEST_ROOT??process.cwd(),{createDeathRespawnReflex,createRespawnTerrainHandoff}=require(path.join(root,'src/host')),{createLifecycle}=require(path.join(root,'src/lifecycle'))
+const root=process.env.HOST_LIFE_TEST_ROOT??process.cwd(),{createDeathRespawnReflex,createRespawnTerrainHandoff}=require(path.join(root,'src/host/host')),{createLifecycle}=require(path.join(root,'src/host/lifecycle'))
 const copy=v=>structuredClone(v)
 function scene(t){
  const state={phase:'spawned',profile:'controlled',realm:{id:'42'},health:20,dead:false,spawnPending:false,connectionId:'controlled-late-connection',startedAt:'2026-11-01T00:00:00.000Z',runtimeEntityId:'41',dimension:'overworld',position:{x:1.5,y:66.62,z:2.5},positionSource:'server_post_move'},shared={autoWanted:true,safetyWanted:true,loadingScreenEnded:true},scheduled=[],packets=[],callbacks=[],reports=[]

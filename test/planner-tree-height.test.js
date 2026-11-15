@@ -4,15 +4,15 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
-const original = path.resolve(__dirname, '../src/planner.js')
+const original = path.resolve(__dirname, '../src/survival/planner.js')
 const loaded = new Module(original, module)
 loaded.filename = original
 loaded.paths = Module._nodeModulePaths(path.dirname(original))
 loaded._compile(fs.readFileSync(process.env.PLANNER_TEST_SOURCE ?? original, 'utf8'), original)
 const { nextBootstrapAction } = loaded.exports
-const { createMining } = require('../src/mining')
-const { createPhysics } = require('../src/physics')
-const { createNavigator } = require('../src/navigation')
+const { createMining } = require('../src/actions/mining')
+const { createPhysics } = require('../src/movement/physics')
+const { createNavigator } = require('../src/movement/navigation')
 
 function fixture ({ otherTree = true, stairs = false } = {}) {
   const blocks = new Map()
@@ -25,8 +25,8 @@ function fixture ({ otherTree = true, stairs = false } = {}) {
   if (stairs) { put(0, 1, 1, 'stone'); put(1, 1, 1, 'stone'); put(1, 2, 1, 'stone') }
   const state = { phase: 'spawned', gameMode: 'survival', health: 20, dimension: 'overworld', position: { x: 0.5, y: 2.62, z: 0.5 }, positionSource: 'start_game', inventory: { known: true, items: [] }, capabilities: { mining: true, movement: true, scan_blocks: true }, world: { initialized: true, loadedSections: 1 } }
   const world = { getBlock: (x, y, z) => blocks.get(`${x},${y},${z}`) ?? { known: false, position: { x, y, z } } }
-  const next = () => nextBootstrapAction(state, { blocks: [...blocks.values()], radius: 14, worldLoaded: true })
-  const mining = createMining({ getState: () => state, world, getInput: () => ({}) })
+  const next = () => nextBootstrapAction(state, { blocks: [...blocks.values()], radius: 14, worldLoaded: true }, { allowLogs: true, logCount: 3 })
+  const mining = createMining({ getState: () => state, world, getInput: () => ({}), logAllowance: () => true })
   return { blocks, put, key, state, world, next, mining }
 }
 

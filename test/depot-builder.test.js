@@ -4,12 +4,12 @@
 // and Native Movement are real; this is no live server/world or goal credit.
 const {test}=require('node:test'),assert=require('node:assert/strict')
 const {setImmediate:turn}=require('node:timers/promises')
-const {createDepotBuilder}=require('../src/depot-builder')
-const {createInteractions}=require('../src/interactions')
-const {createMining}=require('../src/mining')
-const {createMovement}=require('../src/movement')
-const {createPhysics}=require('../src/physics')
-const {buildStationaryInput}=require('../src/input')
+const {createDepotBuilder}=require('../src/survival/depot-builder')
+const {createInteractions}=require('../src/actions/interactions')
+const {createMining}=require('../src/actions/mining')
+const {createMovement}=require('../src/movement/movement')
+const {createPhysics}=require('../src/movement/physics')
+const {buildStationaryInput}=require('../src/movement/input')
 const copy=v=>structuredClone(v),key=p=>`${p.x},${p.y},${p.z}`
 const empty=()=>({network_id:0,count:0,metadata:0,has_stack_id:false,block_runtime_id:0,extra:{has_nbt:0,can_place_on:[],can_destroy:[]}})
 const raw=(network_id,count,stack_id)=>({...empty(),network_id,count,has_stack_id:true,stack_id})

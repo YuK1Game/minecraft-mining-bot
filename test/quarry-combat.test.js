@@ -1,9 +1,9 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryCombatBridge } = require('../src/quarry-combat-bridge')
+const { createQuarryCombatBridge } = require('../src/quarry/quarry-combat-bridge')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
-const { createQuarryJob } = require('../src/quarry-job')
+const { createQuarryJob } = require('../src/quarry/quarry-job')
 
 const bot = (x = 0, y = 64, z = 0, extra = {}) => ({ position: { x: x + 0.5, y: y + 1.62, z: z + 0.5 }, health: 20, maxHealth: 20, food: 20, ...extra })
 const mob = (type, x, y, z, extra = {}) => ({ kind: 'mob', hostile: true, alive: true, positionKnown: true, entityType: `minecraft:${type}`, runtimeId: `${type}${x}`, uniqueId: `-${x}`, position: { x: x + 0.5, y, z: z + 0.5 }, ...extra })

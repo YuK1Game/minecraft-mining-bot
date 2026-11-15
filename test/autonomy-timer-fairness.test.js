@@ -2,7 +2,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { performance } = require('node:perf_hooks')
-const { createAutonomy } = require('../src/autonomy')
+const { createAutonomy } = require('../src/survival/autonomy')
 const spin = ms => { const end = performance.now() + ms; while (performance.now() < end) {} }
 const fixtureState = () => ({ phase: 'spawned', health: 20, position: { x: 0.5, y: 66.62, z: 0.5 }, inventory: { known: true, items: [] }, entities: [] })
 

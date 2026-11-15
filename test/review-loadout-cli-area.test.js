@@ -9,7 +9,7 @@ const first = script.indexOf('function cli () {'), last = script.indexOf("\ntest
 assert.ok(first >= 0 && last > first)
 const loaded = new Module(filename, module)
 loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
-loaded._compile("const { summary } = require('../src/quarry-v22-reset')\n" + script.slice(first, last) + '\nmodule.exports = { cli }\n', filename)
+loaded._compile("const { summary } = require('../src/loadout/quarry-v22-reset')\n" + script.slice(first, last) + '\nmodule.exports = { cli }\n', filename)
 const { cli } = loaded.exports
 const commands = f => f.requests.filter(Boolean)
 

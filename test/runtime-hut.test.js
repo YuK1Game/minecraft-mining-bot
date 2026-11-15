@@ -41,17 +41,17 @@ function fixture (t, { delayedCleanup = false } = {}) {
   const inventory = { snapshot: () => ({ busy: false }), applyPacket: () => {}, equip: async slot => { calls.push({ type: 'equip', slot }); return { phase: 'completed', serverConfirmed: true, slot: 0 } }, cancel: reason => calls.push({ type: 'equip_cancel', reason }) }
   const interactions = { applyPacket: () => {}, snapshot: () => ({ pendingOperation: null }), previewPlace: data => ({ ready: true, position: data.position, expectedBlock: 'minecraft:dirt' }), placeBlock: async data => { calls.push({ type: 'place', data }); return { phase: 'completed', position: data.position } }, cancel: reason => calls.push({ type: 'place_cancel', reason }) }
   const overrides = {
-    './crafting': { createCrafting: () => crafting }, './mining': { createMining: () => mining }, './inventory': { createInventory: () => inventory }, './interactions': { createInteractions: () => interactions },
-    './food': { createFood: () => ({ applyPacket: () => {}, snapshot: () => ({ busy: false }), cancel: () => {}, preview: () => ({ ready: false }) }), isSupportedFood: () => false },
-    './input': { createInput: options => {
+    './actions/crafting': { createCrafting: () => crafting }, './actions/mining': { createMining: () => mining }, './inventory/inventory': { createInventory: () => inventory }, './actions/interactions': { createInteractions: () => interactions },
+    './actions/food': { createFood: () => ({ applyPacket: () => {}, snapshot: () => ({ busy: false }), cancel: () => {}, preview: () => ({ ready: false }) }), isSupportedFood: () => false },
+    './movement/input': { createInput: options => {
       const actor = { running: false, stops: 0, options }; streams.push(actor)
       return { start: () => { actor.running = true }, stop: () => { actor.running = false; actor.stops++ }, release: () => {}, stats: () => ({ running: actor.running }), lookAt: () => {}, sendAction: () => {}, sendTransaction: () => {} }
     } },
-    './movement': { createMovement: options => {
+    './movement/movement': { createMovement: options => {
       const actor = { phase: 'idle', options, stops: [] }; movements.push(actor)
       return { preview: () => ({ ready: true }), start: target => { actor.phase = 'awaiting_server_confirmation'; calls.push({ type: 'move', target }); return { phase: actor.phase } }, settle: () => ({}), stop: reason => { actor.phase = 'stopped'; actor.stops.push(reason); return { phase: 'stopped' } }, applyPacket: () => {}, snapshot: () => ({ phase: actor.phase }) }
     } },
-    './hut': { createHut: options => {
+    './survival/hut': { createHut: options => {
       const actor = { options, busy: false, phase: 'idle', memory: structuredClone(options.memo), previews: [], executions: [], leaves: [], stops: [], work: null, cleanup: null }
       huts.push(actor)
       const snapshot = () => ({ busy: actor.busy, phase: actor.phase, memo: structuredClone(actor.memory) })

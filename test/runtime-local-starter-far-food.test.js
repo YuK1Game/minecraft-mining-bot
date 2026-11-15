@@ -6,7 +6,7 @@ test('current L96 policy inputs H17/hunger16 or15 with full local body choose ex
  for(const hunger of [16,15]){const f=scene(t,{hunger}),d=f.plan(),diag=f.runtime.snapshot().startupPriority;assert.equal(diag.bodyProof,true);assert.equal(diag.actualDanger,0);assert.equal(diag.distantFoodDeferred,true);assert.ok(diag.sourceDistance>27);assert.equal(d.type,'gather_logs');assert.equal(d.count,2);assert.equal(d.preparation,'wooden_sword');assert.equal(f.host.shared.nutritionTask,undefined)}
 })
 test('old threshold produces the actual far-forage scheduling class with identical healthy local inputs',t=>{
- const current=process.env.RUNTIME_TEST_SOURCE,source=fs.readFileSync(current??path.resolve(__dirname,'../src/runtime.js'),'utf8'),needle='const distantFoodDeferred = (stoneBootstrapVitals || localStarterVitals)'
+ const current=process.env.RUNTIME_TEST_SOURCE,source=require('./helpers/runtime-source').runtimeSourceOr(current),needle='const distantFoodDeferred = (stoneBootstrapVitals || localStarterVitals)'
  assert.equal(source.split(needle).length,2,'counterfactual changes only the actual first-sword deferral expression')
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'minecraft-starter-baseline-')),file=path.join(dir,'runtime.js')
  fs.writeFileSync(file,source.replace(needle,()=>'const distantFoodDeferred = stoneBootstrapVitals'))

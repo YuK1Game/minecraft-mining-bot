@@ -2,7 +2,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { evaluateThreats } = require('../src/threats')
+const { evaluateThreats } = require('../src/combat/threats')
 const Item = require('prismarine-item')('bedrock_1.26.60')
 const copy = value => structuredClone(value)
 const empty = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })

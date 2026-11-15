@@ -7,7 +7,7 @@ const io = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const Module = require('node:module')
-const { observedScope } = require('../src/server-position-verifier')
+const { observedScope } = require('../src/movement/server-position-verifier')
 const copy = value => structuredClone(value)
 const ID = '01234567-89ab-4cde-8fab-0123456789ab'
 const OTHER = '11234567-89ab-4cde-8fab-0123456789ab'
@@ -19,7 +19,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve))
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
 
 function fixture ({ journalDirectory, unknownGear = false, composed = false, closeTimeoutMs, shared = {} } = {}) {
-  const captured = {}, filename = require.resolve('../src/manual-chest-runtime-adapter')
+  const captured = {}, filename = require.resolve('../src/loadout/manual-chest-runtime-adapter')
   const loaded = new Module(filename, module), ordinary = Module.createRequire(filename)
   loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
   loaded.require = name => !composed && name === './manual-chest-deposit' ? { createManualChestDeposit: ({ adapter }) => {
@@ -28,7 +28,7 @@ function fixture ({ journalDirectory, unknownGear = false, composed = false, clo
   } } : !composed && name === './quarry-v22-chest-work' ? { createQuarryV22ChestWork: ports => {
     captured.ports = ports
     return { depositAll: (request, options) => captured.run(request, options, ports) }
-  } } : name === './durable-json' ? { ...ordinary(name), writeDurableJson: async (...args) => {
+  } } : name === '../common/durable-json' ? { ...ordinary(name), writeDurableJson: async (...args) => {
     if (captured.pointerFailure && path.basename(args[0]) === 'latest.json') throw new Error('controlled pointer persistence failure')
     const result = await ordinary(name).writeDurableJson(...args)
     await captured.onSave?.(args[1])

@@ -12,8 +12,8 @@ let source = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\ntest(
 source = source.replace('  const calls = []', '  const autoOptions = []; const soilCalls = []; let soilWork = null\n  const calls = []')
 source = source.replace("const raw = { phase: 'spawned',", "const raw = { profile: 'bot', realm: { id: 'own-realm' }, phase: 'spawned',")
 source = source.replace('  const overrides = {', `  const overrides = {
-    './autonomy': { createAutonomy: options => { autoOptions.push(options); return require('../src/autonomy').createAutonomy(options) } },
-    './runner': { ...require('../src/runner'), createRunner: options => { const runner = require('../src/runner').createRunner(options); runner.actions.gather_dirt = async (decision, context) => { soilCalls.push(structuredClone(decision)); return soilWork(decision, context) }; return runner } },`)
+    './survival/autonomy': { createAutonomy: options => { autoOptions.push(options); return require('../src/survival/autonomy').createAutonomy(options) } },
+    './survival/runner': { ...require('../src/survival/runner'), createRunner: options => { const runner = require('../src/survival/runner').createRunner(options); runner.actions.gather_dirt = async (decision, context) => { soilCalls.push(structuredClone(decision)); return soilWork(decision, context) }; return runner } },`)
 source = source.replace('const snapshot = () => ({ busy: actor.busy, phase: actor.phase, memo: structuredClone(actor.memory) })', 'const snapshot = () => ({ busy: actor.busy, phase: actor.phase, memo: structuredClone(actor.memory), ...actor.physical, closureMaterials: actor.materials?.() ?? null })')
 source = source.replace('return { runtime, create, host, raw, huts,', 'return { autoOptions, soilCalls, setSoilWork: value => { soilWork = value }, runtime, create, host, raw, huts,')
 const target = { exports: {} }

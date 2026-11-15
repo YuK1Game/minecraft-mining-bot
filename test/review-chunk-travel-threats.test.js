@@ -2,8 +2,8 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { evaluateThreats } = require('../src/threats')
-const { chunkTravelThreatsClear } = require('../src/chunk-travel-threats')
+const { evaluateThreats } = require('../src/combat/threats')
+const { chunkTravelThreatsClear } = require('../src/travel/chunk-travel-threats')
 const point = x => ({ x, y: 64, z: 0 })
 const actor = (type = 'drowned', x = 10.877, extra = {}) => ({ runtimeId: '22', uniqueId: '-22', kind: 'mob', entityType: `minecraft:${type}`, dimension: 'overworld', alive: true, hostile: true, positionKnown: true, position: point(x), ...extra })
 function fixture (entity = actor()) {

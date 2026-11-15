@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('node:path')
-const { createMissionJournal } = require('../src/mission-journal')
+const { createMissionJournal } = require('../src/survival/mission-journal')
 
 const scope = { profile: 'bot', realmId: '21225335', dimension: 'overworld' }
 const memo = (type = 'soil_hut') => ({ version: 1, site: { type }, scope: { realmId: scope.realmId, dimension: scope.dimension }, requiresWorldValidation: true, pendingPlacement: { requiresReconciliation: true }, totalActions: 1 })

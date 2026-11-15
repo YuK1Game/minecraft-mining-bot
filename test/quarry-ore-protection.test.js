@@ -2,9 +2,9 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { blockRule, selectTool } = require('../src/quarry-rules')
-const { oreDefinition, oreDropRange } = require('../src/quarry-ore')
-const { deriveDropGuarantee, checkDropGuarantees } = require('../src/quarry-drop-guarantee')
+const { blockRule, selectTool } = require('../src/quarry/quarry-rules')
+const { oreDefinition, oreDropRange } = require('../src/quarry/quarry-ore')
+const { deriveDropGuarantee, checkDropGuarantees } = require('../src/quarry/quarry-drop-guarantee')
 
 test('registered overworld and nether ores are diggable, future ore stays protected', () => {
   const examples = ['coal_ore', 'deepslate_iron_ore', 'copper_ore', 'deepslate_gold_ore', 'lit_redstone_ore', 'lit_deepslate_redstone_ore',

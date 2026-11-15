@@ -2,7 +2,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { createEntities } = require('../src/entities')
+const { createEntities } = require('../src/host/entities')
 const numeric = require('protodef/src/datatypes/numeric')
 // Reuse the existing real controller/input-receipt fixture, without registering
 // that file's tests. This keeps protocol and aim/wire behavior in one fixture.

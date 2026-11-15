@@ -1,8 +1,8 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict')
-const {evaluateThreats}=require('../src/threats')
-const {workMargin,captureWorkActors,resolveWorkActors}=require('../src/work-clearance')
-const {createIdleSafety}=require('../src/idle-safety')
+const {evaluateThreats}=require('../src/combat/threats')
+const {workMargin,captureWorkActors,resolveWorkActors}=require('../src/safety/work-clearance')
+const {createIdleSafety}=require('../src/safety/idle-safety')
 const fixture=require('./fixtures/spawn-ranged-clearance.json')
 const clone=x=>structuredClone(x)
 function scene(){return clone(fixture.state)}

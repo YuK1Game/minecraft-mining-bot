@@ -2,7 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { createPhysics } = require('../src/physics')
+const { createPhysics } = require('../src/movement/physics')
 const observed = require('./fixtures/exploration-contact-stall.json')
 const copy = value => structuredClone(value)
 function captured (override = () => null) {

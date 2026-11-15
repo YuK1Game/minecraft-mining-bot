@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const Module = require('node:module')
-const actualManual = require('../src/manual-shulker-recovery')
+const actualManual = require('../src/loadout/manual-shulker-recovery')
 const filename = require.resolve('./runtime-user-behaviors.test'), loaded = new Module(filename, module)
 loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename))
 loaded._compile(fs.readFileSync(filename, 'utf8').split('\ntest(')[0] + '\nmodule.exports = scene\n', filename)
@@ -17,11 +17,11 @@ test('the actual runtime permits observing safety and independent defense, while
   const document = actualManual.createRecoveryDocument({ id: 'guard_test', world: { profile: 'bot', realmId: '21225335', dimension: 'overworld' }, position: { x: 2, y: 65, z: 0 }, expectedContents: { known: true, slotCount: 27, slots: Array(27).fill(null) } })
   const f = scene(t, { runtimeOverrides: {
     'node:fs/promises': { stat: async () => ({ size: 1024 }), readFile: async () => JSON.stringify(document) },
-    './manual-shulker-recovery': { ...actualManual, createManualShulkerRecovery: ports => {
+    './loadout/manual-shulker-recovery': { ...actualManual, createManualShulkerRecovery: ports => {
       captured = ports
       return { snapshot: () => ({ busy: false }), cancel: () => {}, run: async () => ({ status: 'blocked', reason: 'fixture-read-only' }) }
     } },
-    './idle-safety': { createIdleSafety: () => ({ snapshot: () => structuredClone(safety), start: () => {}, stop: async () => {}, drain: async () => {}, requestWorkClearance: () => ({ pending: false }) }) }
+    './safety/idle-safety': { createIdleSafety: () => ({ snapshot: () => structuredClone(safety), start: () => {}, stop: async () => {}, drain: async () => {}, requestWorkClearance: () => ({ pending: false }) }) }
   } })
   f.host.world.revision = () => 5
   await f.runtime.operations.shulkerRecovery.load('guard_test')

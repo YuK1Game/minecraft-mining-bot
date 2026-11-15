@@ -6,7 +6,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
-const { createIdleSafety } = require('../src/idle-safety')
+const { createIdleSafety } = require('../src/safety/idle-safety')
 const copy = value => structuredClone(value)
 const immediate = () => new Promise(resolve => setImmediate(resolve))
 

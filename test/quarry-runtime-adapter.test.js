@@ -2,8 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createQuarryRuntimeAdapter } = require('../src/quarry-runtime-adapter')
-const { parseQuarryCommand } = require('../src/quarry-cli')
+const { createQuarryRuntimeAdapter } = require('../src/quarry/quarry-runtime-adapter')
+const { parseQuarryCommand } = require('../src/host/quarry-cli')
 
 function fakePorts () {
   const blocks = new Map([['1,0,0', 'minecraft:stone'], ['2,0,0', 'minecraft:dirt']])

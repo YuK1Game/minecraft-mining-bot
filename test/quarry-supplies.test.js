@@ -3,8 +3,8 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { serialize } = require('node:v8')
-const { discoverSupplyBindings, storageSupplyExclusions, supplyNeeds, supplyScope, createQuarrySupplies, rolesFor } = require('../src/quarry-supplies')
-const { carriedContainerKey, selectCarriedStorage, keepPlan } = require('../src/quarry-inventory')
+const { discoverSupplyBindings, storageSupplyExclusions, supplyNeeds, supplyScope, createQuarrySupplies, rolesFor } = require('../src/quarry/storage/quarry-supplies')
+const { carriedContainerKey, selectCarriedStorage, keepPlan } = require('../src/quarry/quarry-inventory')
 const data = require('minecraft-data')('bedrock_1.26.60')
 const names = new Map(data.itemsArray.map(item => [item.id, `minecraft:${item.name}`]))
 const tag = (type, value) => ({ type, value })
@@ -138,8 +138,8 @@ test('supply layout regression: a v22-only kit remains missing legacy food rathe
 })
 
 test('supply layout regression: dashboard chunk125 rectangle reaches real planning without world or kit mutations', () => {
-  const { quarryConfig } = require('../src/dashboard-control')
-  const { createQuarryJob } = require('../src/quarry-job')
+  const { quarryConfig } = require('../src/host/dashboard-control')
+  const { createQuarryJob } = require('../src/quarry/quarry-job')
   const items = [...v22Layout(), box(0)], before = structuredClone(items), layouts = []
   const state = { phase: 'spawned', gameMode: 'survival', profile: 'bot', realm: { id: '42' }, connectionId: 'planning-only', startedAt: '2026-11-12T00:00:00Z', runtimeEntityId: '1', lifecycle: { deathId: 0 },
     dimension: 'overworld', health: 20, position: { x: 2008.5, y: 76.62, z: 2008.5 }, inventory: { known: true, items } }

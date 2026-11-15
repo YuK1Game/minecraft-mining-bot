@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createSerializer, createDeserializer } = require('bedrock-protocol/src/transforms/serializer')
-const { readShulkerContents, readContainerContents, compareShulkerContents } = require('../src/shulker-contents')
+const { readShulkerContents, readContainerContents, compareShulkerContents } = require('../src/inventory/shulker-contents')
 
 const tag = (type, value) => ({ type, value })
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: false, can_place_on: [], can_destroy: [] } })

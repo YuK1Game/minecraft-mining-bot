@@ -16,16 +16,16 @@ source = source.replace('  const calls = [];', `  let time = Date.parse(stationa
   const histories = [], inputOptions = [], movementOptions = [], guardResults = [], starts = [], previews = []
   const blocks = new Map(stationaryCapture.blocks.map(block => [block.position.x + ',' + block.position.y + ',' + block.position.z, copy(block)]))
   const calls = [];`)
-source = source.replace("'./input': { createInput: () => {", "'./input': { createInput: options => { inputOptions.push(options);")
+source = source.replace("'./movement/input': { createInput: () => {", "'./movement/input': { createInput: options => { inputOptions.push(options);")
 source = source.replace('  const overrides = {', `  const overrides = {
-    './input-history': { createInputHistory: options => { const value = nativeRequire('./input-history').createInputHistory(options), rawSeeds = [], observe = value.observeStationaryRaw; value.observeStationaryRaw = record => { rawSeeds.push(copy(record)); return observe(record) }; histories.push({ history: value, physics: options.physics, rawSeeds }); return value } },
-    './guarded-route': { createGuardedRoute: options => { const value = nativeRequire('./guarded-route').createGuardedRoute(options); const escape = value.escape; value.escape = async (...args) => { const result = await escape(...args); guardResults.push(result); return result }; return value } },`)
-const movementStart = source.indexOf("    './movement':")
-const movementEnd = source.indexOf("    './combat':", movementStart)
+    './movement/input-history': { createInputHistory: options => { const value = nativeRequire('./movement/input-history').createInputHistory(options), rawSeeds = [], observe = value.observeStationaryRaw; value.observeStationaryRaw = record => { rawSeeds.push(copy(record)); return observe(record) }; histories.push({ history: value, physics: options.physics, rawSeeds }); return value } },
+    './movement/guarded-route': { createGuardedRoute: options => { const value = nativeRequire('./movement/guarded-route').createGuardedRoute(options); const escape = value.escape; value.escape = async (...args) => { const result = await escape(...args); guardResults.push(result); return result }; return value } },`)
+const movementStart = source.indexOf("    './movement/movement':")
+const movementEnd = source.indexOf("    './combat/combat':", movementStart)
 source = source.slice(0, movementStart) + `
-    './movement': { createMovement: options => {
+    './movement/movement': { createMovement: options => {
       movementOptions.push(options)
-      const navigator = nativeRequire('./navigation').createNavigator({ world: host.world })
+      const navigator = nativeRequire('./movement/navigation').createNavigator({ world: host.world })
       let phase = 'idle'
       const preview = (target, settings = {}) => {
         const state = host.getState()
@@ -124,7 +124,7 @@ test('eight real stationary spawn inputs support two real Guard legs and Idle co
   }
   // createIdleSafety captures its callbacks, so build a real instance using the
   // same Runtime-owned functions and the bounded offline completion wrapper.
-  const owned = require('../src/idle-safety').createIdleSafety({ ...options, intervalMs: 1000, graceMs: 0, actionTimeoutMs: 2000, onEmergencyStop: detail => assert.fail(JSON.stringify(detail)) })
+  const owned = require('../src/safety/idle-safety').createIdleSafety({ ...options, intervalMs: 1000, graceMs: 0, actionTimeoutMs: 2000, onEmergencyStop: detail => assert.fail(JSON.stringify(detail)) })
   t.after(() => owned.stop('test_cleanup'))
   owned.start({ enableEpoch: 1 }); await owned.tick(); f.advance(1); await owned.tick(); await owned.drain()
   assert.equal(attempts, 3, JSON.stringify({ protection: owned.snapshot(), history: f.histories[0].history.snapshot(), previews: f.previews.map(value => ({ target: value.target, ready: value.ready, reason: value.reason, partial: value.settings.stablePartialOrigin })) }))

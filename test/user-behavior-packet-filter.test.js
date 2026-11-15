@@ -2,8 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createPortableBed } = require('../src/portable-bed')
-const { createUserBehaviors } = require('../src/user-behaviors')
+const { createPortableBed } = require('../src/actions/portable-bed')
+const { createUserBehaviors } = require('../src/combat/user-behaviors')
 
 function portableFixture ({ owned = false } = {}) {
   let reads = 0; let cancelled = 0
