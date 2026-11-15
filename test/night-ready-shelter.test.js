@@ -3,7 +3,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
 const root=process.env.NIGHT_SHELTER_TEST_ROOT??process.cwd(),file=path.join(root,'test/runtime-user-behaviors.test.js')
 let fixtureSource=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]
-fixtureSource=fixtureSource.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)","let runtimeSource=fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename,'utf8');runtimeSource=runtimeSource.replace('  const operations = {','  const operations = {\\n    __testSoil:()=>shelter, __testHut:()=>hut, __testActiveBase:()=>activeBase(), __testNightReady:(state,observations)=>readyNightSoilShelter(state,observations),');loaded._compile(runtimeSource,filename)")
+fixtureSource=fixtureSource.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)","let runtimeSource=require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE);runtimeSource=runtimeSource.replace('  const operations = {','  const operations = {\\n    __testSoil:()=>shelter, __testHut:()=>hut, __testActiveBase:()=>activeBase(), __testNightReady:(state,observations)=>readyNightSoilShelter(state,observations),');loaded._compile(runtimeSource,filename)")
 const m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(fixtureSource+'\nmodule.exports={scene}',file)
 const {createNavigator}=require(path.join(root,'src/navigation'))
 function scene(t){

@@ -103,13 +103,16 @@
 src/            Bot 本体（約110モジュール）
   main.js         エントリポイント
   host.js         接続・認証・ターミナルコマンド（/status /auto /stop /reload /quit /quarry）。変更時は再起動が必要
-  runtime.js      ホットリロードされる行動の中心（約460KB・5,000行。これ以上育てない）
-  long-travel-runtime.js / quarry-runtime.js / idle-safety-runtime.js / user-control-runtime.js
-                  2026-11-15 に runtime.js から移した配線（長距離移動／露天掘り／待機保護の補助と設定表／操作権・戦闘）。
-                  runtime の変数は `rt.<名前>`、モジュールは `rt.require(...)` で使う。別の runtime の変数を使うときは、
-                  runtime.js 側でそのモジュールを生成している箇所にアクセサを1行足す
+  runtime.js      ホットリロードされる行動の中心（約380KB・4,100行。これ以上育てない）
+  long-travel-runtime.js / quarry-runtime.js / idle-safety-runtime.js / user-control-runtime.js /
+  runtime-operations.js / autonomy-runtime.js
+                  2026-11-15 に runtime.js から移した部分（長距離移動／露天掘り／待機保護の補助と設定表／操作権・戦闘／
+                  API の操作一覧／旧自律実行の配線）。元のクロージャーの変数は `rt.<名前>`、モジュールは `rt.require(...)` で使う。
+                  別の変数を使うときは、runtime.js 側でそのモジュールを生成している箇所にアクセサを1行足す
   api.js          ローカル HTTP API
   quarry-*.js     露天掘りモード（region / rules / inventory / planner / combat-bridge / job / runtime-adapter / cli）
+  quarry-job.js   露天掘りの状態機械（計画・採掘・回収・設置）。収納は quarry-job-storage.js、補給は quarry-job-restock.js、
+                  脱出・最終確認は quarry-job-egress.js、設置の照合は quarry-job-reconcile.js（2026-11-15 に同じ方法で移動）
 scripts/        keep-alive.js（再接続監視）、dashboard.js（:3001）、check.js（構文確認）
 dashboard/      ダッシュボード HTML
 test/           node --test のテスト。fixtures/ に BDS 実測データ（数MB 級）、helpers/quarry-sim.js

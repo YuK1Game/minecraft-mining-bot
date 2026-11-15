@@ -100,7 +100,7 @@ test('productive iron preparation with a currently observed open furnace ignores
   assert.notEqual(action.supplyReturn, true); assert.notEqual(action.supplyReturnRequested, true)
 })
 test('Runtime observation validates the prefix against Native and never invents a route or replaces local blocks', async () => {
-  const f = scene(), file = process.env.RUNTIME_TEST_SOURCE ?? path.join(__dirname, '../src/runtime.js'), source = fs.readFileSync(file, 'utf8')
+  const f = scene(), source = require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE)
   const start = source.indexOf('  async function observeStationSupplies ('), end = source.indexOf('  const autonomy = createAutonomy({', start)
   assert.ok(start >= 0 && end > start)
   const host = { shared: { deathRespawn: { deathId: 176 }, stations: capture.stations }, entities: { snapshot: () => [], stats: () => ({ unknownPositions: 0 }) }, meta: { version: '1.26.60' } }

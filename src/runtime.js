@@ -603,7 +603,7 @@ function createRuntime (host) {
       const state = raw(), counts = sleepProducerCounts(), receipt = snapshot.bed?.sleepReceipt
       userBehaviorSleeping = true; userBehaviorWakePending = false; userBehaviorSleepStamp = state.positionUpdatedAt
       stopOrdinaryUserStream(); mining.stop('実際の睡眠中は通常入力を休止します。'); walker?.stop('server_sleep'); movement?.resetLifecycle?.('server_sleep')
-      autonomy.stop('user_behavior_sleep'); inputHistory?.invalidate('user_behavior_sleep'); stationaryRawPending = null; motionOrigin = null; host.shared.prediction = null; host.shared.motionSource = null
+      autonomyRuntime.autonomy.stop('user_behavior_sleep'); inputHistory?.invalidate('user_behavior_sleep'); stationaryRawPending = null; motionOrigin = null; host.shared.prediction = null; host.shared.motionSource = null
       const after = sleepProducerCounts()
       userBehaviorSleepWitness = receipt?.sleeping === true && ['own_server_metadata', 'own_server_wake_animation'].includes(receipt.source) && typeof receipt.scope === 'string' && Number.isSafeInteger(receipt.sequence) && state.position && state.positionUpdatedAt != null ? { scope: userScope(state), position: { ...state.position }, stamp: state.positionUpdatedAt, receiptScope: receipt.scope, sequence: receipt.sequence, counts: after, inputDuringStop: !counts || !after || ['stream', 'movement', 'walker'].some(k => counts[k] !== after[k]), forceRevision: userBehaviorForceRevision, stream: inputStream, movement, walker, history: inputHistory } : null
       const cleanup = Promise.resolve(idleSafety?.stop('server_sleep')).then(() => idleSafety?.drain()).catch(error => userBehaviorError(error, 'sleep_cleanup'))
@@ -628,7 +628,7 @@ function createRuntime (host) {
     if (!defenseEnabled(host.shared) && host.shared.userBehaviorsEnabled !== true && !userBehaviorLease && !userBehaviorSleeping && !userBehaviorSnapshot().sleeping) return
     let result
     try { result = userBehaviors.tick() } catch (error) { userBehaviorError(error, 'tick'); return }
-    const task = Promise.resolve(result).then(() => { synchronizeUserSleep(); if (!userBehaviorOwns() && host.shared.autoWanted && !autonomy.snapshot().running) return resumeRequested() }).catch(error => userBehaviorError(error, 'tick')).finally(() => { if (userBehaviorTickTask === task) userBehaviorTickTask = null })
+    const task = Promise.resolve(result).then(() => { synchronizeUserSleep(); if (!userBehaviorOwns() && host.shared.autoWanted && !autonomyRuntime.autonomy.snapshot().running) return resumeRequested() }).catch(error => userBehaviorError(error, 'tick')).finally(() => { if (userBehaviorTickTask === task) userBehaviorTickTask = null })
     userBehaviorTickTask = task
   }
   function observeStationaryRaw () {
@@ -890,12 +890,12 @@ function createRuntime (host) {
   portableActionOwners.track(mining, ['start', 'startAccessClearance'], { invalidate: ['stop'], isActive: c => c.snapshot().phase === 'mining' })
 
   async function executeSurfaceReturn (options = {}, context = {}) {
-    if (disposed || disposing || !surfaceReturn || surfaceReturnOwner || userBehaviorOwns() || autonomy.snapshot().actionActive) throw new Error('地上への移動処理が使用中です。')
+    if (disposed || disposing || !surfaceReturn || surfaceReturnOwner || userBehaviorOwns() || autonomyRuntime.autonomy.snapshot().actionActive) throw new Error('地上への移動処理が使用中です。')
     const lease = { serial: ++surfaceReturnSequence, scope: returnScope(lightweightUserState()), operationId: null }
     surfaceReturnOwner = lease
     try {
-      autonomy.stop('地上への帰路へ操作を引き継ぎます。')
-      await autonomy.tick()
+      autonomyRuntime.autonomy.stop('地上への帰路へ操作を引き継ぎます。')
+      await autonomyRuntime.autonomy.tick()
       await observeDepotSky(context.signal)
       const plan = await surfaceReturn.previewAsync(options)
       if (!plan.ready) return { phase: 'observing', busy: false, surfaceReached: false, code: plan.code, reason: plan.reason }
@@ -967,7 +967,7 @@ function createRuntime (host) {
     if (inputOwner === 'idle' && !ownedCall && !pendingStops.size && !motionActive() && idlePhysicsState.onGround === true && !idlePhysicsState.isInWater && !idlePhysicsState.isInLava && Math.hypot(idlePhysicsState.velocity.x, idlePhysicsState.velocity.z) < 0.006 && idlePhysicsState.velocity.y <= 0.05 && idlePhysicsState.velocity.y >= -0.12) {
       try {
         idleOriginNavigator ??= createNavigator({ world: planningWorld, version: host.meta.version, allowWater: true, physics: idlePhysics })
-        if (!idleOriginNavigator.verifyOrigin(idlePhysicsState) && !autonomy.snapshot().busy && !idleSafety?.snapshot().busy && !guardRoute?.snapshot().busy && !excavation?.snapshot().busy && !tunneling?.snapshot().busy && !recovery?.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !shelter?.snapshot().busy && !hut?.snapshot().busy && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging && !food.snapshot().busy && !(furnace.snapshot().busy || chestStatus().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation) {
+        if (!idleOriginNavigator.verifyOrigin(idlePhysicsState) && !autonomyRuntime.autonomy.snapshot().busy && !idleSafety?.snapshot().busy && !guardRoute?.snapshot().busy && !excavation?.snapshot().busy && !tunneling?.snapshot().busy && !recovery?.snapshot().busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !shelter?.snapshot().busy && !hut?.snapshot().busy && !combat?.snapshot().busy && !combat?.snapshot().defending && !combat?.snapshot().engaging && !food.snapshot().busy && !(furnace.snapshot().busy || chestStatus().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation) {
           const observed = raw()
           const sameScope = ['profile', 'startedAt', 'connectionId', 'runtimeEntityId', 'dimension'].every(key => observed[key] != null && observed[key] === state[key]) && observed.realm?.id != null && String(observed.realm.id) === String(state.realm?.id)
           const sameRawPose = observed.position && state.rawServerPosition && ['x', 'y', 'z'].every(axis => Number.isFinite(observed.position[axis]) && observed.position[axis] === state.rawServerPosition[axis])
@@ -1134,7 +1134,7 @@ function createRuntime (host) {
       return
     }
     const behavior = userBehaviorSnapshot()
-    if (ownedCall || pendingStops.size || userBehaviorOwns() || userBehaviorTickTask || behavior.cleanupUnconfirmed || inputOwner === 'task' || motionActive() || input?.stats().running || autonomy.snapshot().actionActive || idleSafety?.snapshot().busy || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy || snapshot(mining).phase === 'mining' || walker?.snapshot().phase === 'walking' || snapshot(food).busy || snapshot(food).pendingRequestId != null || inventory.snapshot().busy || (snapshot(furnace).busy || chestStatus().busy) || snapshot(furnace).waitingOutput || interactions.snapshot().pendingOperation || snapshot(combat)?.busy || snapshot(combat)?.defending || snapshot(combat)?.engaging || host.shared.equipment != null || craftStatus().pendingRequestId != null) throw Object.assign(new Error('現在の操作が完了してから持ち物を再同期します。'), { code: 'BUSY' })
+    if (ownedCall || pendingStops.size || userBehaviorOwns() || userBehaviorTickTask || behavior.cleanupUnconfirmed || inputOwner === 'task' || motionActive() || input?.stats().running || autonomyRuntime.autonomy.snapshot().actionActive || idleSafety?.snapshot().busy || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy || snapshot(mining).phase === 'mining' || walker?.snapshot().phase === 'walking' || snapshot(food).busy || snapshot(food).pendingRequestId != null || inventory.snapshot().busy || (snapshot(furnace).busy || chestStatus().busy) || snapshot(furnace).waitingOutput || interactions.snapshot().pendingOperation || snapshot(combat)?.busy || snapshot(combat)?.defending || snapshot(combat)?.engaging || host.shared.equipment != null || craftStatus().pendingRequestId != null) throw Object.assign(new Error('現在の操作が完了してから持ち物を再同期します。'), { code: 'BUSY' })
   }
   function inventoryResyncSuccessKey (ledger, scopeKey) {
     const r = ledger?.lastRequest
@@ -1292,7 +1292,7 @@ function createRuntime (host) {
     const state = observedState()
     const prospect = prospecting.snapshot()
     const observedOres = prospect.phase === 'idle' ? host.shared.prospecting ?? prospect : prospect
-    return { ownedCampBootstrap: structuredClone(host.shared.ownedCampBootstrap ?? null), workHold: host.shared.legacyWorkHoldLease ? {leaseId:host.shared.legacyWorkHoldLease.id,scope:host.shared.legacyWorkHoldLease.scope,expiresAt:host.shared.legacyWorkHoldLease.expiresAt} : null, recentDamageRetreat: structuredClone(host.shared.recentDamageRetreatDiagnostic ?? null), survivalWorkClearance: state.survivalWorkClearance === true, spawnRangedClearance: state.spawnRangedClearance === true, depotPrebuild: depotPrebuild?.snapshot() ?? null, depotMission: depotMission?.snapshot() ?? null, surfaceReturn: surfaceReturn?.snapshot() ?? null, inventoryResync: structuredClone(host.shared.inventoryResync?.lastRequest ?? null), movementCalibration: structuredClone(movementCalibration), learningShoreEscape: structuredClone(host.shared.learningShoreEscape ?? null), startupPriority: structuredClone(host.shared.startupPriority ?? null), userBehaviors: userBehaviorSnapshot(), lowHealthWater: host.shared.lowHealthWaterDiagnostic ? { ...structuredClone(host.shared.lowHealthWaterDiagnostic), timing: structuredClone(host.shared.lowHealthWaterTiming ?? null) } : null, clearance: structuredClone(host.shared.clearanceDiagnostic ?? null), safety: safetySnapshot(), guardRoute: guardRouteSnapshot(), boundedJumpSearch: structuredClone(boundedJumpSearch), queuedPrediction: inputHistory?.snapshot() ?? null, queuedWireClock: structuredClone(actualWireClock.snapshot()), missionMemory: missionJournal.snapshot(), hut: hut?.snapshot() ?? null, shelter: activeBase()?.snapshot() ?? null, shelterKind: activeBase() === hut ? "hut" : "soil_hill", dayCycleStopTime: host.meta.startGame?.day_cycle_stop_time ?? null, worldClocks: structuredClone(host.shared.worldClocks ?? {}), lastServerMotion: structuredClone(host.shared.lastServerMotion ?? null), lastServerCorrection: structuredClone(host.shared.lastServerCorrection ?? null), worldTime: structuredClone(host.shared.worldTime ?? null), threatPolicy: state.threatPolicy, foraging: foraging?.snapshot() ?? null, food: food.snapshot(), vitals: structuredClone(host.shared.vitals ?? {}), recovery: recovery?.snapshot() ?? null, excavation: excavation?.snapshot() ?? null, quarry: quarrySnapshot(), tunneling: tunneling?.snapshot() ?? null, heldItem: state.heldItem, runtimeVersion: RUNTIME_VERSION, inventory: state.inventory, inventoryDetails: inventoryInspection.snapshot(state), inventoryStore: inventoryStore.snapshot(), inventoryConfidence: { known: !host.shared.inventoryUncertain, unresolved: host.shared.inventoryUncertain ?? null }, stations: structuredClone(host.shared.stations ?? {}), stationCatalog: structuredClone(host.shared.stationCatalog ?? null), portableWorksite: structuredClone(host.shared.portableWorksiteMemo ?? null), prospecting: observedOres, furnace: furnace.snapshot(), chest: chest.snapshot(), entities: state.entities, hostiles: state.hostiles, input: input?.stats() ?? null, mining: mining.snapshot(), walking: walker?.snapshot() ?? null, movement: movement ? { ...movement.snapshot(), runtimeHandoff: structuredClone(host.shared.movementHandoffTiming ?? null) } : null, crafting: crafting.snapshot(), inventoryActions: inventory.snapshot(), interactions: interactions.snapshot(), combat: combat?.snapshot() ?? null, agent: autonomy.snapshot(), idle: { owner: inputOwner, enabled: idleTimer !== null, error: host.shared.idleError ?? null, lastFailure: structuredClone(host.shared.lastInputFailure ?? null) } }
+    return { ownedCampBootstrap: structuredClone(host.shared.ownedCampBootstrap ?? null), workHold: host.shared.legacyWorkHoldLease ? {leaseId:host.shared.legacyWorkHoldLease.id,scope:host.shared.legacyWorkHoldLease.scope,expiresAt:host.shared.legacyWorkHoldLease.expiresAt} : null, recentDamageRetreat: structuredClone(host.shared.recentDamageRetreatDiagnostic ?? null), survivalWorkClearance: state.survivalWorkClearance === true, spawnRangedClearance: state.spawnRangedClearance === true, depotPrebuild: depotPrebuild?.snapshot() ?? null, depotMission: depotMission?.snapshot() ?? null, surfaceReturn: surfaceReturn?.snapshot() ?? null, inventoryResync: structuredClone(host.shared.inventoryResync?.lastRequest ?? null), movementCalibration: structuredClone(movementCalibration), learningShoreEscape: structuredClone(host.shared.learningShoreEscape ?? null), startupPriority: structuredClone(host.shared.startupPriority ?? null), userBehaviors: userBehaviorSnapshot(), lowHealthWater: host.shared.lowHealthWaterDiagnostic ? { ...structuredClone(host.shared.lowHealthWaterDiagnostic), timing: structuredClone(host.shared.lowHealthWaterTiming ?? null) } : null, clearance: structuredClone(host.shared.clearanceDiagnostic ?? null), safety: safetySnapshot(), guardRoute: guardRouteSnapshot(), boundedJumpSearch: structuredClone(boundedJumpSearch), queuedPrediction: inputHistory?.snapshot() ?? null, queuedWireClock: structuredClone(actualWireClock.snapshot()), missionMemory: missionJournal.snapshot(), hut: hut?.snapshot() ?? null, shelter: activeBase()?.snapshot() ?? null, shelterKind: activeBase() === hut ? "hut" : "soil_hill", dayCycleStopTime: host.meta.startGame?.day_cycle_stop_time ?? null, worldClocks: structuredClone(host.shared.worldClocks ?? {}), lastServerMotion: structuredClone(host.shared.lastServerMotion ?? null), lastServerCorrection: structuredClone(host.shared.lastServerCorrection ?? null), worldTime: structuredClone(host.shared.worldTime ?? null), threatPolicy: state.threatPolicy, foraging: foraging?.snapshot() ?? null, food: food.snapshot(), vitals: structuredClone(host.shared.vitals ?? {}), recovery: recovery?.snapshot() ?? null, excavation: excavation?.snapshot() ?? null, quarry: quarrySnapshot(), tunneling: tunneling?.snapshot() ?? null, heldItem: state.heldItem, runtimeVersion: RUNTIME_VERSION, inventory: state.inventory, inventoryDetails: inventoryInspection.snapshot(state), inventoryStore: inventoryStore.snapshot(), inventoryConfidence: { known: !host.shared.inventoryUncertain, unresolved: host.shared.inventoryUncertain ?? null }, stations: structuredClone(host.shared.stations ?? {}), stationCatalog: structuredClone(host.shared.stationCatalog ?? null), portableWorksite: structuredClone(host.shared.portableWorksiteMemo ?? null), prospecting: observedOres, furnace: furnace.snapshot(), chest: chest.snapshot(), entities: state.entities, hostiles: state.hostiles, input: input?.stats() ?? null, mining: mining.snapshot(), walking: walker?.snapshot() ?? null, movement: movement ? { ...movement.snapshot(), runtimeHandoff: structuredClone(host.shared.movementHandoffTiming ?? null) } : null, crafting: crafting.snapshot(), inventoryActions: inventory.snapshot(), interactions: interactions.snapshot(), combat: combat?.snapshot() ?? null, agent: autonomyRuntime.autonomy.snapshot(), idle: { owner: inputOwner, enabled: idleTimer !== null, error: host.shared.idleError ?? null, lastFailure: structuredClone(host.shared.lastInputFailure ?? null) } }
   }
   const http = createHttpClient({ baseUrl: host.apiUrl })
   function runnerFoodWalkBody (body) {
@@ -1803,273 +1803,71 @@ function createRuntime (host) {
     }
     return { ...enriched, supplyReturn }
   }
-  const autonomy = createAutonomy({
-    requestWorkClearance: () => idleSafety?.requestWorkClearance?.() ?? { pending: false },
-    getState: () => {
-      const state = observedState(), knownLife = Number.isSafeInteger(host.shared.deathRespawn?.deathId) && host.shared.deathRespawn.deathId >= 0
-      const dead = state.dead === true || state.isDead === true || state.lifecycle?.dead === true || state.health === 0
-      return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: knownLife ? actualLifeId() : null, dead, phase: dead ? 'dead' : state.phase === 'spawned' && !state.spawnPending && state.health > 0 ? 'alive' : 'unknown' }, idleProtection: safetySnapshot(), shelter: activeBase()?.snapshot(), entityStats: host.entities.stats?.(), world: host.world.stats(), mining: mining.snapshot(), walking: walker?.snapshot(), movement: movement?.snapshot(), crafting: crafting.snapshot(), furnace: furnace.snapshot(), chest: chest.snapshot(), droppedItems: host.entities.snapshot() }
-    },
-    observe: async options => {
-      const observed = await runner.observe(options)
-      const scan = prospecting.snapshot()
-      const baseActor = activeBase()
-      let shelterMemo = baseActor?.memo()
-      let shelterPreview = baseActor?.preview({ radius: baseActor === hut ? 10 : 12 })
-      const boundaries = Object.values(shelterMemo?.site?.preserved ?? {}).flat()
-      if (shelterMemo && !shelterPreview?.ready && boundaries.some(item => { const p = item.position; if (!p) return false; const b = host.world.getBlock(p.x, p.y, p.z); return b.known && ['minecraft:air', 'minecraft:cave_air'].includes(b.name) })) {
-        shelterMemo = {}
-        shelterPreview = shelter?.preview({ radius: 12, memo: {} })
-      }
-      const supplied = await observeStationSupplies(observePortableWorksite({ ...observed, shelter: { status: baseActor?.snapshot(), preview: shelterPreview, memo: shelterMemo }, ores: (scan.phase === 'ready' ? scan : host.shared.prospecting)?.ores ?? {}, furnace: furnace.snapshot(), chest: chest.snapshot(), stations: structuredClone(host.shared.stations ?? {}), capabilities: { ...observed.capabilities, build_shelter: !!baseActor, leave_shelter: !!baseActor, move: !!movement, respawn: true, prospect: true, mine_ore: true, furnace: true, place_furnace: true, open_furnace: true, put_furnace_input: true, put_furnace_fuel: true, take_furnace_output: true, tunnel: !!tunneling } }), options)
-      return observeStoneAccess(supplied, options)
-    },
-    observeSafety: async ({ signal }) => {
-      const state = observedState()
-      if (signal.aborted) throw signal.reason
-      const center = { x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62 + 0.001), z: Math.floor(state.position.z) }
-      const blocks = []
-      for (let x = center.x - 8; x <= center.x + 8; x++) for (let y = center.y - 3; y <= center.y + 5; y++) for (let z = center.z - 8; z <= center.z + 8; z++) blocks.push(host.world.getBlock(x, y, z))
-      const evaluated = evaluateThreats(state, state.entities, { observationRadius: 32 })
-      return { state, center, radius: 8, blocks, entities: state.entities, threats: evaluated.threats, threatEvaluation: evaluated, capabilities: { move: true, explore: true, respawn: true } }
-    },
-    actions: continuationActions = { ...runner.actions, ...diamondActions,
-      tunnel: (decision, context) => decision.resource === 'stone' ? runStoneTunnel(decision, context) : diamondActions.tunnel(decision, context),
-      move_to: (decision, context) => decision.portableSiteId || decision.stage === 'portable_worksite' ? withPortableMovementLease(decision, context, 'move', signal => runner.actions.move_to(decision, { ...context, signal })) : runner.actions.move_to(decision, context),
-      excavate_worksite_step: (decision, context) => portablePrimitive(decision, context, 'excavate'),
-      place_worksite_block: (decision, context) => portablePrimitive(decision, context, 'place'),
-      equip: (decision, context) => {
-        if (decision.nutritionEquip !== true) return runner.actions.equip(decision, context)
-        requireIdle()
-        const state = observedState()
-        const { preview, window } = checkNutritionDispatch(state, decision, { allowSwordEquip: true })
-        const sword = state.inventory.items.find(item => item.slot === decision.slot && item.name === decision.item && item.count > 0 && /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/.test(item.name) && !(item.durabilityKnown === true && item.durabilityRemaining <= 0))
-        if (window !== 'night' || preview.kind !== 'prey' || !sword) { const error = new Error('夜の狩りに使う実際の剣と食料源を再確認します。'); error.code = 'STALE_OBSERVATION'; throw error }
-        return inventory.equip(sword.slot)
-      },
-      build_shelter: (decision, context) => { const actor = (decision.site?.type ?? decision.plan?.type) === 'soil_hut' ? hut : shelter; return executeShelterBatch(actor, { plan: decision.plan, site: decision.site ?? decision.plan, memo: decision.memo }, context) },
-      return_shelter: (decision, context) => executeShelterBatch(activeBase(), {}, context),
-      leave_shelter: (decision, context) => {
-        requireIdle()
-        if (decision.purpose === 'food') {
-          const state = observedState()
-          if (checkNutritionDispatch(state, decision).preview.ready !== true) {
-            const error = new Error('食料のために入口を開ける前に、目的地と周囲の安全を再確認します。'); error.code = 'STALE_OBSERVATION'; throw error
-          }
-        }
-        return activeBase().leave({}, { signal: context.signal })
-      },
-      defend: async (decision, context) => {
-        requireIdle()
-        const state = observedState()
-        const swordTier = name => ['wooden', 'stone', 'iron', 'diamond', 'netherite'].indexOf(/^minecraft:(\w+)_sword$/.exec(name)?.[1])
-        // Defend with the strongest usable sword (higher tier = higher Bedrock damage), not merely the first one listed.
-        const sword = state.inventory.items.filter(item => /^minecraft:(?:wooden|stone|iron|diamond|netherite)_sword$/.test(item.name) && item.count > 0 && !(item.durabilityKnown === true && item.durabilityRemaining <= 0)).sort((x, y) => swordTier(y.name) - swordTier(x.name) || x.slot - y.slot)[0]
-        if ((!sword && decision.purpose !== 'push_back') || state.inventory.known !== true || state.inventory.uncertain || state.health <= 10) throw new Error('十分な体力と確定した主手を確認してから自衛します。')
-        const stop = () => combat.cancel('自衛を中断しました。')
-        context.signal?.addEventListener('abort', stop, { once: true })
-        try {
-          const selected = state.rawSelectedSlot
-          if (sword && sword.slot !== selected) await inventory.equip(sword.slot)
-          crafting.closeContainer()
-          if (context.signal?.aborted) throw context.signal.reason
-          // Engagement eligibility also requires the confirmed equipped hand
-          // and a known actor identity, so recheck it after the real equip.
-          const result = sword && combat.previewEngage(decision.targetRuntimeId).ready ? await combat.engage(decision.targetRuntimeId, { durationMs: 6000, maxHits: 8, signal: context.signal }) : await combat.attack(decision.targetRuntimeId)
-          return { ok: true, phase: 'completed', attack: result, serverConfirmed: result.mode === 'engage' ? result.serverConfirmed : result.phase === 'observed', collected: false, enemyDefeated: null }
-        } catch (error) {
-          const current = working()
-          if (current.dead || current.health === 0) error.code = 'DEAD'
-          else if (current.health < state.health) error.code = 'TOOK_DAMAGE'
-          throw error
-        } finally { context.signal?.removeEventListener('abort', stop) }
-      },
-      recover: (decision, context) => { requireIdle({ inventoryRequired: false }); return recovery.execute({}, { signal: context.signal }) },
-      forage: (decision, context) => {
-        requireIdle()
-        const state = observedState()
-        const { preview, window } = checkNutritionDispatch(state, decision)
-        if (preview.code === 'FOOD_ALREADY_AVAILABLE') return { ok: true, phase: 'observed', foodAvailable: true, serverConfirmed: true, collected: false }
-        return foraging.execute(window === 'night' ? { targetRuntimeId: preview.target.runtimeId } : {}, { signal: context.signal })
-      },
-      eat: async (decision, context) => { requireIdle(); const stop = () => food.cancel('食事を中断しました。'); context.signal?.addEventListener('abort', stop, { once: true }); try { return await food.eat({ slot: decision.slot, ...(decision.allowEmergencyRotten === true ? { allowEmergencyRotten: true } : {}) }) } finally { context.signal?.removeEventListener('abort', stop) } }
-    },
-    planSafety: continuationSafety = function planSafety (state, observations = {}) {
-      if (disposed || disposing) return { type: 'wait', stage: 'safety', code: 'runtime_reloading', reason: '行動コードの更新完了を待ちます。' }
-      if (host.shared.respawnTerrain?.pending) return { type: 'wait', stage: 'safety', code: 'respawn_terrain_pending', reason: 'リスポーン先の地形と前の操作の終了を確認しています。' }
-      const physical = state.predicted?.physicsState ?? state.physicsState
-      const foot = state.position && { x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62), z: Math.floor(state.position.z) }
-      const cell = foot && host.world?.getBlock?.(foot.x, foot.y, foot.z)
-      const actuallyWet = physical?.isInWater === true || cell?.known === true && ['minecraft:water', 'minecraft:flowing_water'].includes(cell.name)
-      const cachedWater = Object.hasOwn(observations, 'userRecoveryPreview')
-      if (actuallyWet && typeof recovery?.previewAsync === 'function' && !cachedWater) return Promise.resolve(recovery.previewAsync()).then(escape => planSafety(state, { ...observations, userRecoveryPreview: escape }))
-      const escape = cachedWater ? observations.userRecoveryPreview : recovery?.preview()
-      if (escape?.requiresDedicatedRoute) return { type: 'wait', stage: 'safety', code: 'navigation_route_required', reason: '指定された立体的な目的地には別の確認済み経路が必要です。水面への到着とは扱いません。' }
-      if (escape?.ready && !escape.alreadyAshore) return { type: 'recover', stage: 'safety', reason: '水辺から確認済みの岸へ戻ることを優先します。' }
-      const threats = evaluateThreats(state, state.entities ?? state.hostiles ?? [], { observationRadius: 32 })
-      const base = activeBase()?.snapshot()
-      const underCover = base?.inside && base?.entranceClosed && base?.usable && base?.serverConfirmed
-      const melee = threats.threats.find(threat => threat.distance <= 4 && ['minecraft:zombie', 'minecraft:zombie_villager', 'minecraft:zombie_villager_v2', 'minecraft:husk', 'minecraft:spider', 'minecraft:cave_spider', 'minecraft:drowned'].includes(threat.name) && combat?.preview(threat.runtimeId).ready)
-      const inventoryReady = nutritionInventoryReady(state)
-      const learningAlive = resourceMinHealth(state) === 0
-      const nutritionHealthReady = state.health > resourceMinHealth(state)
-      const armed = inventoryReady && state.inventory.items.some(item => item.count > 0 && /^minecraft:(?:wooden|stone|iron|diamond|netherite)_sword$/.test(item.name))
-      const explosive = threats.threats.some(threat => threat.name === 'minecraft:creeper' && threat.distance <= 8)
-      const boss = threats.threats.some(threat => threat.category === 'boss' || ['minecraft:warden', 'minecraft:wither', 'minecraft:ender_dragon'].includes(threat.name))
-      const scope = JSON.stringify([state.profile ?? null, state.realm?.id == null ? null : String(state.realm.id), state.dimension ?? null, state.connectionId ?? null])
-      const scopeReady = typeof state.profile === 'string' && state.profile.length > 0 && state.realm?.id != null && ['overworld', 'nether', 'end'].includes(state.dimension)
-      const now = Date.now()
-      const clock = Object.values(host.shared.worldClocks ?? {}).find(clock => clock.name === 'minecraft:overworld')
-      const dayTime = Number.isSafeInteger(clock?.time) ? ((clock.time % 24000) + 24000) % 24000 : null
-      const knownDay = dayTime != null && dayTime >= 200 && dayTime < 12000
-      const knownNight = dayTime != null && !knownDay
-      const foodDay = knownDay && dayTime < 11400
-      const hungerValue = host.shared.vitals?.hunger
-      const hunger = typeof hungerValue === 'number' ? hungerValue : hungerValue?.source === 'client_prediction' ? null : hungerValue?.value
-      const hungerKnown = Number.isFinite(hunger) && hunger >= 0 && hunger <= 20
-      const items = inventoryReady ? state.inventory.items.filter(item => item.count > 0 && isSupportedFood(item.name, state)) : []
-      // Rotten flesh remains emergency food only. While already full and
-      // well-fed, its real reserve can defer optional stocking in explicit
-      // online learning; no eating, healing or healthy-food credit is granted.
-      const receivedReserveCount = inventoryReady ? Math.min(2304, state.inventory.items.reduce((sum, item) => sum + (item.name === 'minecraft:rotten_flesh' && Number.isSafeInteger(item.count) && item.count > 0 && item.count <= 64 ? item.count : 0), 0)) : null
-      const foodReserveDeferred = inventoryReady && !items.length && learningAlive && state.health === 20 && hungerValue?.source === 'server_attribute' && hungerKnown && hunger >= 18 && receivedReserveCount >= 2
-      const needsFood = inventoryReady && !items.length && (state.health > 14 || hungerKnown && hunger <= 17) && !foodReserveDeferred
-      const safeOutside = !threats.requiresObservation && !(state.entityStats?.unknownPositions > threats.unknownPositions.length) && !threats.threats.length && !boss
-      const foodWindow = foodDay ? 'day' : knownNight ? 'night' : null
-      const localWork = localLearningWork(state, threats, base)
-      const learningLocalWork = localWork.eligible
-      let task = host.shared.nutritionTask
-      const validTask = task && ['seeking_food', 'cooldown'].includes(task.phase) && Number.isFinite(task.expiresAt) && (task.phase === 'seeking_food' ? Number.isFinite(task.startedAt) && task.startedAt <= now && task.expiresAt <= task.startedAt + 180000 : Number.isFinite(task.retryAfter) && task.expiresAt === task.retryAfter)
-      if (task && (!validTask || !scopeReady || task.scope !== scope || items.length || !inventoryReady || !safeOutside || !foodWindow)) host.shared.nutritionTask = task = null
-      if (task?.phase === 'cooldown' && now >= task.retryAfter) host.shared.nutritionTask = task = null
-      if (task?.phase === 'seeking_food' && now >= task.expiresAt) {
-        host.shared.nutritionTask = task = { scope, phase: 'cooldown', retryAfter: now + 60000, expiresAt: now + 60000 }
-      }
-      const foragePreview = needsFood && scopeReady && nutritionHealthReady && safeOutside && foodWindow && task?.phase !== 'cooldown' ? foraging?.preview() : null
-      const sourcePosition = foragePreview?.target?.position
-      const sourceDistance = sourcePosition && state.position && ['x', 'y', 'z'].every(axis => Number.isFinite(sourcePosition[axis]) && Math.abs(sourcePosition[axis]) <= 30000000 && Number.isFinite(state.position[axis]) && Math.abs(state.position[axis]) <= 30000000) ? Math.hypot(sourcePosition.x - state.position.x, sourcePosition.y - state.position.y, sourcePosition.z - state.position.z) : null
-      const usableStonePick = inventoryReady && state.inventory.items.some(item => item.count === 1 && /^minecraft:(?:stone|copper|iron|diamond|netherite)_pickaxe$/.test(item.name) && !(item.durabilityKnown === true && item.durabilityRemaining <= 0))
-      // First obtain the basic stone kit while already full and well-fed.
-      // The distant source still exists; this defers only optional dispatch,
-      // never grants food/eating credit, and does not interrupt an owned hunt.
-      const stoneBootstrapVitals = learningAlive && inventoryReady && state.health === 20 && hungerValue?.source === 'server_attribute' && hungerKnown && hunger >= 18 && !usableStonePick
-      const localStarterVitals = learningLocalWork && inventoryReady && !items.length && !nutritionSword(state) && state.health >= 14 && hungerValue?.source === 'server_attribute' && hungerKnown && hunger >= 10 && scopeReady && safeOutside
-      const distantFoodDeferred = (stoneBootstrapVitals || localStarterVitals) && foragePreview?.ready === true && sourceDistance !== null && sourceDistance > 8
-      const canForage = nutritionSourceAllowed(state, foragePreview, foodWindow) && !distantFoodDeferred
-      if (task?.phase === 'seeking_food' && foodWindow === 'night' && !canForage) host.shared.nutritionTask = task = null
-      const seekingFood = task?.phase === 'seeking_food' && needsFood && nutritionHealthReady && safeOutside && canForage
-      // This exception returns only the existing bounded wooden-sword plan;
-      // it never releases the ordinary mining or diamond resource planner.
-      const firstWeaponVitals = inventoryReady && !items.length && (learningAlive || state.health >= 12) && hungerKnown && hunger >= 16 && scopeReady && !nutritionSword(state)
-      const prepareFirstWeapon = firstWeaponVitals && safeOutside && !(canForage && (learningAlive || foragePreview.kind === 'drop'))
-      const localFirstWeapon = learningLocalWork && inventoryReady && !items.length && scopeReady && !nutritionSword(state) && !(canForage && (foragePreview.kind === 'drop' || hungerKnown && hunger <= 17))
-      const priority = host.shared.startupPriority = { policy: state.threatPolicy, health: state.health, receivedHunger: hungerKnown ? hunger : null, foodReserveDeferred, receivedReserveCount, distantFoodDeferred, sourceDistance, bodyProof: localWork.bodyProof, localWorkEligible: learningLocalWork, actualDanger: threats.threats.length, unknown: threats.requiresObservation || state.entityStats?.unknownPositions > threats.unknownPositions.length, foodReady: { owned: null, source: foragePreview?.ready === true, sourceEligible: canForage, sourceKind: foragePreview?.kind ?? null }, hasSword: nutritionSword(state), firstSwordPlan: null, deferOptionalShelter: learningLocalWork }
-      const firstWeapon = () => {
-        // Long-trip preparation gathers logs by the base plan first (2026-11-14).
-        if (longTravelLogAllowance()) return null
-        const decision = nextSurvivalAction(state, observations, { firstWoodenSwordOnly: true }) ?? foodWait()
-        priority.firstSwordPlan = { type: decision.type, code: decision.code ?? null, reason: String(decision.reason ?? '').slice(0, 80) }
-        return decision
-      }
-      const foodPurpose = () => ({ purpose: 'food', nutritionScope: scope, nutritionWindow: foodWindow, ...(foodWindow === 'night' ? { nutritionTarget: nutritionTarget(foragePreview) } : {}) })
-      const beginFood = () => {
-        if (!seekingFood) host.shared.nutritionTask = { scope, phase: 'seeking_food', startedAt: now, expiresAt: now + 180000 }
-      }
-      const foodWait = () => ({ type: 'wait', stage: 'safety', code: task?.phase === 'cooldown' ? 'food_acquisition_cooldown' : 'food_source_required', reason: '回復と採掘に使う食料がありません。時間帯と装備に合う安全な食料源の観測を待ちます。' })
-      if (!underCover && state.health > 10 && melee && inventoryReady && !explosive && !boss && combat?.preview(melee.runtimeId).ready) {
-        if (combat.snapshot().cooldownRemainingMs > 0) return { type: 'wait', stage: 'safety', code: 'defense_cooldown', reason: '次の自衛の一撃まで待ちます。' }
-        return { type: 'defend', purpose: armed ? 'defense' : 'push_back', stage: 'safety', targetRuntimeId: melee.runtimeId, reason: armed ? '剣を使い、近づいた敵に自衛します。' : '近づいた敵を一撃で押し返し、退避や拠点を閉じる時間を作ります。' }
-      }
-      const emergencyMeal = inventoryReady && !items.length && hungerKnown && hunger < 18 ? food.preview({ allowEmergencyRotten: true }) : null
-      if (!boss && emergencyMeal?.ready === true && emergencyMeal.name === 'minecraft:rotten_flesh') return { type: 'eat', stage: 'safety', slot: emergencyMeal.slot, allowEmergencyRotten: true, reason: '対応食料がないため、確認済みの安全な場所で手持ちの腐った肉を1個食べて空腹を補います。' }
-      if (needsFood && !distantFoodDeferred && foodWindow === 'night' && safeOutside && foragePreview?.ready === true && foragePreview.kind === 'prey' && nutritionSword(state) && !nutritionSword(state, true)) {
-        const sword = state.inventory.items.find(item => Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && item.count > 0 && /^minecraft:(?:wooden|stone|iron|golden|diamond|netherite)_sword$/.test(item.name) && !(item.durabilityKnown === true && item.durabilityRemaining <= 0))
-        if (sword) { beginFood(); return { type: 'equip', ...foodPurpose(), nutritionEquip: true, slot: sword.slot, item: sword.name, stage: 'safety', reason: '夜の確認済みの食料源へ向かう前に、実際の剣を装備して主手の確認を待ちます。' } }
-      }
-      if (underCover && !boss) {
-        const item = items.find(item => food.preview({ slot: item.slot }).ready)
-        if ((state.health < 20 || hungerKnown && hunger <= 17) && item) return { type: 'eat', stage: 'safety', slot: item.slot, reason: '入口を閉じた拠点で食事と回復を優先します。' }
-        if (needsFood && canForage && !prepareFirstWeapon) { host.shared.shelterNightWait = null; beginFood(); return { type: 'leave_shelter', ...foodPurpose(), stage: 'shelter', reason: '安全を確認した食料源へ向かうため、入口を開けます。' } }
-        if (knownNight) {
-          const cycle = Math.floor(clock.time / 24000) + (dayTime >= 12000 ? 1 : 0)
-          let waiting = host.shared.shelterNightWait
-          if (waiting?.scope !== scope || waiting.cycle !== cycle) {
-            const remaining = (200 - dayTime + 24000) % 24000
-            host.shared.shelterNightWait = waiting = { scope, cycle, until: now + Math.min(900000, remaining * 50 + 30000) }
-          }
-          return { type: 'wait', stage: 'safety', code: 'shelter_night', waitBudget: 'shelter_night', waitUntil: waiting.until, reason: '夜の間は入口を閉じた拠点で待機し、明るくなってから資材集めへ戻ります。' }
-        }
-        host.shared.shelterNightWait = null
-        if (needsFood && safeOutside && nutritionHealthReady) {
-          if (!prepareFirstWeapon) return foodWait()
-        }
-        if (state.health > 14 && !threats.requiresObservation && threats.threats.every(threat => threat.distance > 8)) return { type: 'leave_shelter', stage: 'shelter', reason: '拠点の入口に近い敵がいないため、入口を開けて資材準備へ戻ります。' }
-        return { type: 'wait', stage: 'safety', code: 'shelter_cover', reason: '入口を閉じた拠点の中で、敵の接近が収まるまで待ちます。' }
-      }
-      if (learningLocalWork && (state.health < 20 || hungerKnown && hunger <= 17)) {
-        const item = items.find(item => food.preview({ slot: item.slot }).ready)
-        priority.foodReady.owned = !!item
-        if (item) return { type: 'eat', stage: 'safety', slot: item.slot, reason: '確認済みの現在地で手持ちの食料を優先し、回復と空腹を補います。' }
-      }
-      const insideTarget = base?.memo?.site?.innerStandpoint ?? base?.memo?.site?.insideStandpoint
-      if (!learningLocalWork && !boss && base?.established && (!base.inside || !base.closed) && state.health > 6 && insideTarget && Math.hypot(state.position.x - insideTarget.x, state.position.y - 1.62 - insideTarget.y, state.position.z - insideTarget.z) <= 10 && (knownNight && !canForage || threats.threats.length || state.health < 14 && !canForage)) {
-        const approach = baseReturnApproach(state, base, host.entities.stats?.().unknownPositions)
-        if (approach.ready) return { type: 'return_shelter', stage: 'safety', reason: '作業を中断し、確認済みの安全な拠点へ戻って入口を閉じます。' }
-        if (safeOutside && !learningLocalWork) return { type: 'wait', stage: 'safety', code: 'shelter_approach_unsafe', reason: '拠点の接近先に敵か未確認の状況があるため、現在地で通常の保護を保ち、食料調達と安全な接近先の次の観測を待ちます。' }
-      }
-      if (state.health > 0 && state.health <= 6 && threats.threats.length && state.emptyHandedPrep !== true) return { type: 'avoid_threat', emergency: true, stage: 'safety', reason: '体力が少ないため、既知の陸上経路で敵から離れます。', threat: threats.threats[0] }
-      if (state.health > 0 && state.health < 20 && safeOutside) {
-        const item = items.find(item => food.preview({ slot: item.slot }).ready)
-        if (item) return { type: 'eat', stage: 'safety', slot: item.slot, reason: '持ち物の食料を食べて回復を優先します。' }
-      }
-      if (state.health === 20 && hungerKnown && hunger <= 17 && safeOutside) {
-        const item = items.find(item => food.preview({ slot: item.slot }).ready)
-        if (item) return { type: 'eat', stage: 'safety', slot: item.slot, reason: '体力が満タンでも空腹を補い、採掘前に食料を使います。' }
-      }
-      if (firstWeaponVitals && (threats.requiresObservation || state.entityStats?.unknownPositions > threats.unknownPositions.length)) return { type: 'wait', stage: 'safety', code: 'threat_observation_unknown', reason: '近くの状況が未確認のため、最初の剣の準備を始める前に観測を待ちます。' }
-      const nightShelter=readyNightSoilShelter(state,observations)
-      if(nightShelter){priority.deferOptionalShelter=false;return nightShelter}
-      if (localFirstWeapon || prepareFirstWeapon) return firstWeapon()
-      if (needsFood && nutritionHealthReady && safeOutside) {
-        if (canForage) { beginFood(); return { type: 'forage', ...foodPurpose(), stage: 'safety', reason: '採掘を休止し、確認済みの食料源から実際の食料を調達します。' } }
-        if (!learningAlive) return foodWait()
-      }
-      if (!learningAlive && state.health > 0 && state.health <= 6) {
-        return { type: 'wait', stage: 'safety', code: 'health_recovery', reason: '体力が少ないため採掘と遠出を休止します。手持ちの食料か安全な補給が必要です。' }
-      }
-      return null
-    },
-    planAction: (state, observations, options) => {
-      // Long-trip preparation (2026-11-14 decision): the base wood path (logs,
-      // planks, table, wooden pickaxe) instead of the survival/diamond plans.
-      if (options?.allowLogs === true) return require('./planner').nextBootstrapAction(state, observations, options)
-      const localWork = localLearningWork(state)
-      const nightShelter=readyNightSoilShelter(state,observations)
-      const survivalOptions = localWork.eligible && !nightShelter ? { ...options, deferOptionalShelter: true } : options
-      if (host.shared.startupPriority) Object.assign(host.shared.startupPriority, { bodyProof: localWork.bodyProof, localWorkEligible: localWork.eligible, deferOptionalShelter: localWork.eligible && !nightShelter })
-      if(nightShelter)return nightShelter
-      const diamond = nextDiamondAction(state, observations, options)
-      const direct = immediateDiamond(state, diamond, targets => mining.preview(targets))
-      const chosen = direct ? { ...diamond, type: 'mine_ore', stage: 'diamond', reason: '確認済みの採掘面に直接届くダイヤ鉱石を採ります。', resourceTarget: diamond.target, requiresLivePreview: true } : nextSurvivalAction(state, observations, survivalOptions) ?? diamond
-      const current = raw()
-      const sameScope = !disposed && !disposing && ['connectionId', 'startedAt', 'dimension', 'runtimeEntityId'].every(field => state[field] === current[field]) && state.profile === (current.profile ?? host.meta.profile) && String(state.realm?.id ?? '') === String(current.realm?.id ?? '') && Number.isSafeInteger(host.shared.deathRespawn?.deathId) && state.lifecycle?.deathId === actualLifeId()
-      const stone = sameScope && observations.stoneAccess?.ready === true ? applyStoneAccess(state, chosen, observations.stoneAccess) : null
-      const observedTunnel = sameScope ? normalizeUnobservedTunnel(chosen, target => planningWorld.getBlock(target.x, target.y, target.z)) : chosen
-      const reachable = stone ?? (sameScope ? normalizeReachableTunnel(state, observedTunnel, targets => mining.preview(targets)) : chosen)
-      const routeGeneration = inputHistoryGeneration
-      const routeCurrent = () => {
-        const actual = raw(), position = working().position
-        return sameScope && !disposed && !disposing && inputHistoryGeneration === routeGeneration && state.lifecycle?.deathId === actualLifeId() && state.health === actual.health && ['connectionId', 'startedAt', 'dimension', 'runtimeEntityId'].every(field => state[field] === actual[field]) && state.profile === (actual.profile ?? host.meta.profile) && String(state.realm?.id ?? '') === String(actual.realm?.id ?? '') && position && Math.hypot(position.x - state.position.x, position.y - state.position.y, position.z - state.position.z) <= 1e-4
-      }
-      const decision = sameScope ? selectReadyOreTunnel(state, reachable, observations, options, { readBlock: target => planningWorld.getBlock(target.x, target.y, target.z), previewTunnel: (target, limits) => tunneling?.preview(target, limits), previewMining: targets => mining.preview(targets), isCurrent: routeCurrent }) : reachable
-      if (host.shared.startupPriority && String(decision.preparation ?? '').startsWith('wooden_sword')) host.shared.startupPriority.firstSwordPlan = { type: decision.type, code: decision.code ?? null, reason: String(decision.reason ?? '').slice(0, 80) }
-      return decision.type === 'move_to' && decision.resourceTarget ? useCurrentAccess(decision, mining.preview([decision.resourceTarget])) : decision
-    },
-    onDecision: decision => host.log(`次の行動: ${decision.reason}`),
-    onProgress: progress => {
-      host.shared.autonomyProgress = progress.progress
-      host.noteProgress(progress)
-    }
+  // This part lives in autonomy-runtime.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const autonomyRuntime = require('./autonomy-runtime').createAutonomyRuntime({
+    get activeBase () { return activeBase },
+    get actualLifeId () { return actualLifeId },
+    get applyStoneAccess () { return applyStoneAccess },
+    get baseReturnApproach () { return baseReturnApproach },
+    get checkNutritionDispatch () { return checkNutritionDispatch },
+    get chest () { return chest },
+    get combat () { return combat }, set combat (value) { combat = value },
+    get continuationActions () { return continuationActions }, set continuationActions (value) { continuationActions = value },
+    get continuationSafety () { return continuationSafety }, set continuationSafety (value) { continuationSafety = value },
+    get crafting () { return crafting },
+    get createAutonomy () { return createAutonomy },
+    get diamondActions () { return diamondActions },
+    get disposed () { return disposed }, set disposed (value) { disposed = value },
+    get disposing () { return disposing }, set disposing (value) { disposing = value },
+    get evaluateThreats () { return evaluateThreats },
+    get executeShelterBatch () { return executeShelterBatch },
+    get food () { return food },
+    get foraging () { return foraging }, set foraging (value) { foraging = value },
+    get furnace () { return furnace },
+    get host () { return host }, set host (value) { host = value },
+    get hut () { return hut }, set hut (value) { hut = value },
+    get idleSafety () { return idleSafety }, set idleSafety (value) { idleSafety = value },
+    get immediateDiamond () { return immediateDiamond },
+    get inputHistoryGeneration () { return inputHistoryGeneration }, set inputHistoryGeneration (value) { inputHistoryGeneration = value },
+    get inventory () { return inventory },
+    get isSupportedFood () { return isSupportedFood },
+    get localLearningWork () { return localLearningWork },
+    get longTravelLogAllowance () { return longTravelLogAllowance },
+    get mining () { return mining },
+    get movement () { return movement }, set movement (value) { movement = value },
+    get nextDiamondAction () { return nextDiamondAction },
+    get nextSurvivalAction () { return nextSurvivalAction },
+    get normalizeReachableTunnel () { return normalizeReachableTunnel },
+    get normalizeUnobservedTunnel () { return normalizeUnobservedTunnel },
+    get nutritionInventoryReady () { return nutritionInventoryReady },
+    get nutritionSourceAllowed () { return nutritionSourceAllowed },
+    get nutritionSword () { return nutritionSword },
+    get nutritionTarget () { return nutritionTarget },
+    get observedState () { return observedState },
+    get observePortableWorksite () { return observePortableWorksite },
+    get observeStationSupplies () { return observeStationSupplies },
+    get observeStoneAccess () { return observeStoneAccess },
+    get planningWorld () { return planningWorld },
+    get portablePrimitive () { return portablePrimitive },
+    get prospecting () { return prospecting },
+    get raw () { return raw },
+    get readyNightSoilShelter () { return readyNightSoilShelter },
+    get recovery () { return recovery }, set recovery (value) { recovery = value },
+    get require () { return require },
+    get requireIdle () { return requireIdle },
+    get resourceMinHealth () { return resourceMinHealth },
+    get runner () { return runner },
+    get runStoneTunnel () { return runStoneTunnel },
+    get safetySnapshot () { return safetySnapshot },
+    get selectReadyOreTunnel () { return selectReadyOreTunnel },
+    get shelter () { return shelter }, set shelter (value) { shelter = value },
+    get tunneling () { return tunneling }, set tunneling (value) { tunneling = value },
+    get useCurrentAccess () { return useCurrentAccess },
+    get walker () { return walker }, set walker (value) { walker = value },
+    get withPortableMovementLease () { return withPortableMovementLease },
+    get working () { return working }
   })
 
   function initialiseMotion () {
@@ -2210,8 +2008,8 @@ function createRuntime (host) {
     }
     const backgroundInventory = { ...inventory, cancel: cancelBackgroundInventory }
     const generationMiningState = () => { requireGeneration(); return miningState() }
-    const ownedMining = { preview: own(targets => mining.preview(targets)), start: own(targets => operations.mining.start(targets)), stop: reason => { if (combatOwnsInput()) return mining.snapshot(); return currentGeneration() ? mining.stop(reason) : generationStream.stop() } }
-    const ownedMovement = { preview: own((target, options) => operations.movement.preview(target, tagPortableOwnedMove(target, options))), start: own((target, options) => startMotion('navigation', target, tagPortableOwnedMove(target, options))), stop: reason => { if (combatOwnsInput()) return generationMovement.snapshot(); return portableMovementLease?.kind === 'excavate' ? stopPortableMovement(portableMovementLease, reason) : generationMovement.stop(reason) } }
+    const ownedMining = { preview: own(targets => mining.preview(targets)), start: own(targets => runtimeOperations.operations.mining.start(targets)), stop: reason => { if (combatOwnsInput()) return mining.snapshot(); return currentGeneration() ? mining.stop(reason) : generationStream.stop() } }
+    const ownedMovement = { preview: own((target, options) => runtimeOperations.operations.movement.preview(target, tagPortableOwnedMove(target, options))), start: own((target, options) => startMotion('navigation', target, tagPortableOwnedMove(target, options))), stop: reason => { if (combatOwnsInput()) return generationMovement.snapshot(); return portableMovementLease?.kind === 'excavate' ? stopPortableMovement(portableMovementLease, reason) : generationMovement.stop(reason) } }
     const ownsPillarInput = (token, stream) => currentGeneration() && pillarInputToken === token && stream === generationInput && inputOwner === 'task' && !host.shared.respawnTerrain?.pending
     generationPillar = createQuarryPillar({
       getState: () => { requireGeneration(); return quarryState() },
@@ -2319,7 +2117,7 @@ function createRuntime (host) {
       } catch { return null }
     }
 
-    generationForaging = createForaging({ getState: () => { requireGeneration(); const state = observedState(); return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: Number.isSafeInteger(host.shared.deathRespawn?.deathId) ? actualLifeId() : null } } }, verifyQueuedLanding: verifyForagingQueuedLanding, world: host.world, entities: host.entities, movement: ownedMovement, getMovement: () => generationMovement.snapshot(), combat: { previewHunt: own(id => generationCombat.previewHunt(id)), hunt: own(id => operations.combat.hunt(id)), cancel: reason => generationCombat.cancel(reason) }, onProgress: data => { if (currentGeneration()) host.noteProgress(data) } })
+    generationForaging = createForaging({ getState: () => { requireGeneration(); const state = observedState(); return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: Number.isSafeInteger(host.shared.deathRespawn?.deathId) ? actualLifeId() : null } } }, verifyQueuedLanding: verifyForagingQueuedLanding, world: host.world, entities: host.entities, movement: ownedMovement, getMovement: () => generationMovement.snapshot(), combat: { previewHunt: own(id => generationCombat.previewHunt(id)), hunt: own(id => runtimeOperations.operations.combat.hunt(id)), cancel: reason => generationCombat.cancel(reason) }, onProgress: data => { if (currentGeneration()) host.noteProgress(data) } })
     foraging = generationForaging
     const generationSurfaceReturn = createSurfaceReturn({ getState: () => { requireGeneration(); return lightweightUserState() }, world: host.world, physics: generationPhysics, getQueuedCursor: () => actualWireClock.snapshot(), movement: { ...ownedMovement, drain: () => generationMovement.drain?.() }, getMovement: () => generationMovement.snapshot(), canAct: ({ operationId, scope }) => {
       if (!currentGeneration() || !surfaceReturnOwner || surfaceReturnOwner.scope !== scope || scope !== returnScope(lightweightUserState())) return false
@@ -2331,9 +2129,9 @@ function createRuntime (host) {
     depotBuilder = createWorksiteCamp({getState:prebuildState,world:host.world,crafting,interactions,inventory:backgroundInventory,movement:ownedMovement,getMovement:()=>generationMovement.snapshot(),getSurface:()=>host.shared.depotSurfaceAnchor,getDepotMemo:()=>depotMission?.extra().campBuilder ?? null,getQueuedCursor:()=>inputHistory?.snapshot().cursor,canAct:depotAdmission})
     depotStorage = createDepotStorageWork({ getState: () => lightweightUserState(), world: host.world, crafting, interactions, chest, inventory:backgroundInventory, validate: depotAdmission })
     const baseMovement = createBaseMovement({ movement: ownedMovement, getState: () => { requireGeneration(); return observedState() }, getUnknownPositionCount: () => host.entities.stats?.().unknownPositions })
-    const generationShelter = createShelter({ getState: () => { requireGeneration(); return observedState() }, world: host.world, planner: planShelter, mining: ownedMining, getMining: own(() => mining.snapshot()), movement: baseMovement, getMovement: () => generationMovement.snapshot(), inventory: { equip: own(slot => operations.inventory.equip(slot)) }, interactions: { previewPlace: own(data => interactions.previewPlace(data)), placeBlock: own(data => operations.interactions.placeBlock(data)) }, memo: host.shared.shelterMemo, maxTotalActions: 512, onProgress: data => { if (currentGeneration()) noteShelterProgress(data) } })
+    const generationShelter = createShelter({ getState: () => { requireGeneration(); return observedState() }, world: host.world, planner: planShelter, mining: ownedMining, getMining: own(() => mining.snapshot()), movement: baseMovement, getMovement: () => generationMovement.snapshot(), inventory: { equip: own(slot => runtimeOperations.operations.inventory.equip(slot)) }, interactions: { previewPlace: own(data => interactions.previewPlace(data)), placeBlock: own(data => runtimeOperations.operations.interactions.placeBlock(data)) }, memo: host.shared.shelterMemo, maxTotalActions: 512, onProgress: data => { if (currentGeneration()) noteShelterProgress(data) } })
     shelter = generationShelter
-    const generationHut = createHut({ getState: () => { requireGeneration(); return observedState() }, world: host.world, planner: planHut, mining: ownedMining, getMining: own(() => mining.snapshot()), movement: baseMovement, getMovement: () => generationMovement.snapshot(), inventory: { equip: own(slot => operations.inventory.equip(slot)), cancel: cancelBackgroundInventory }, interactions: { previewPlace: own(data => interactions.previewPlace(data)), placeBlock: own(data => operations.interactions.placeBlock(data)), cancel: reason => { if (!combatOwnsInput()) interactions.cancel(reason) } }, memo: host.shared.hutMemo, maxActions: 32, maxTotalActions: 512, onProgress: data => { if (currentGeneration()) noteHutProgress(data) } })
+    const generationHut = createHut({ getState: () => { requireGeneration(); return observedState() }, world: host.world, planner: planHut, mining: ownedMining, getMining: own(() => mining.snapshot()), movement: baseMovement, getMovement: () => generationMovement.snapshot(), inventory: { equip: own(slot => runtimeOperations.operations.inventory.equip(slot)), cancel: cancelBackgroundInventory }, interactions: { previewPlace: own(data => interactions.previewPlace(data)), placeBlock: own(data => runtimeOperations.operations.interactions.placeBlock(data)), cancel: reason => { if (!combatOwnsInput()) interactions.cancel(reason) } }, memo: host.shared.hutMemo, maxActions: 32, maxTotalActions: 512, onProgress: data => { if (currentGeneration()) noteHutProgress(data) } })
     hut = generationHut
     const routeScope = state => ({ profile: state.profile, realmId: state.realm?.id == null ? null : String(state.realm.id), dimension: state.dimension })
     const sameRouteScope = (a, b) => a?.profile != null && a.profile === b?.profile && a.realmId != null && String(a.realmId) === String(b?.realmId) && a.dimension === b?.dimension
@@ -2512,7 +2310,7 @@ function createRuntime (host) {
     const idleSafetyRuntime = require('./idle-safety-runtime').createIdleSafetyRuntime({
       get activeUnarmedSpiderFloor () { return activeUnarmedSpiderFloor },
       get actualLifeId () { return actualLifeId },
-      get autonomy () { return autonomy },
+      get autonomy () { return autonomyRuntime.autonomy },
       get boundedJumpSearch () { return boundedJumpSearch }, set boundedJumpSearch (value) { boundedJumpSearch = value },
       get cancelBackgroundInventory () { return cancelBackgroundInventory },
       get captureWorkActors () { return captureWorkActors },
@@ -2639,7 +2437,7 @@ function createRuntime (host) {
       get actualLifeId () { return actualLifeId },
       get allActors () { return allActors },
       get armor () { return armor },
-      get autonomy () { return autonomy },
+      get autonomy () { return autonomyRuntime.autonomy },
       get bowSightClearAt () { return bowSightClearAt },
       get cancelChunkMovement () { return cancelChunkMovement },
       get chest () { return chest },
@@ -3132,861 +2930,153 @@ function createRuntime (host) {
       return structuredClone(record.home)
     } catch { return null }
   }
-  const operations = {
-    loadout: { preview: input => { requireIdle({ loadoutHandoff: true }); return ensureLoadoutReset().prepare({ area: normalizeChunkArea(input?.area) }) },
-      start: input => { requireIdle({ loadoutHandoff: true }); return ensureLoadoutReset().start({ ...input, area: normalizeChunkArea(input?.area) }) },
-      status: () => loadoutReset?.status() ?? { busy: false, phase: 'idle' }, cancel: () => loadoutReset?.cancel() ?? { busy: false, phase: 'idle' } },
-    shulkerRecovery: {
-      load: id => loadManualShulkerRecovery(id),
-      run: () => runManualShulkerRecovery(),
-      status: () => ({ ...(manualShulkerRecovery?.snapshot() ?? { busy: false }), document: structuredClone(manualShulkerDocument) }),
-      cancel: reason => { manualShulkerAbort?.abort(new Error(reason ?? 'MANUAL_STOP')); manualShulkerRecovery?.cancel(reason ?? 'MANUAL_STOP'); return manualShulkerTask ?? Promise.resolve(manualShulkerRecovery?.snapshot() ?? { busy: false }) }
-    },
-    quarry: {
-      moveToChunk: input => ensureChunkTravel().start({ area: normalizeChunkArea(input?.area) }),
-      // Long-distance travel (2026-11-14): repeated chunk-travel legs toward a far
-      // destination; never while quarry work runs. Continues saved progress.
-      travelTo: async input => {
-        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
-        const d = input?.destination
-        if (!d || ![d.x, d.z].every(Number.isFinite)) throw new Error('目的地 {x, z} を指定してください。')
-        let resume = null
-        try { const prior = JSON.parse(await require('node:fs/promises').readFile(travelRuntime.longTravelFile(), 'utf8')); if (prior?.destination && Math.hypot(prior.destination.x - d.x, prior.destination.z - d.z) < 1 && prior.phase !== 'arrived') resume = prior } catch {}
-        return ensureLongTravel().start({ destination: { x: d.x, y: d.y, z: d.z }, resume })
-      },
-      travelStatus: () => travelRuntime.longTravel?.status() ?? { busy: false, phase: 'idle' },
-      // Last resort out of a cave (2026-11-14, decision relay): a staircase dug
-      // up by ordinary mining until the stand sees the sky. Each step clears the
-      // two cells ahead one block up and the cell over the head, then steps up.
-      // Never under lava/water/gravel/sand; bounded per block and in total.
-      digUp: async (input = {}) => {
-        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
-        const maxMs = Math.min(45 * 60000, input.maxMs ?? 30 * 60000), started = Date.now()
-        const get = (x, y, z) => host.world.getBlock(x, y, z)
-        const nm = b => String(b?.name ?? '')
-        const air = b => b?.known === true && (b.boundingBox === 'empty' || /^minecraft:(?:air|cave_air)$/.test(nm(b))) && !/water|lava/.test(nm(b))
-        const solid = b => b?.known === true && b.boundingBox === 'block' && !/water|lava/.test(nm(b))
-        const danger = b => !b || b.known !== true || /lava|water|gravel|sand|bedrock|obsidian/.test(nm(b))
-        const skyOpen = (x, y, z) => { for (let yy = y + 2; yy < 320; yy++) { const b = get(x, yy, z); if (!b || b.known !== true) { if (yy >= 128) return true; return false } if (b.boundingBox === 'block' && !/leaves|log|wood/.test(nm(b))) return false } return true }
-        const mineCell = async c => {
-          if (air(get(c.x, c.y, c.z))) return true
-          operations.mining.start([{ x: c.x, y: c.y, z: c.z }])
-          const until = Date.now() + 35000
-          while (!air(get(c.x, c.y, c.z))) { if (Date.now() > until) return false; await new Promise(r => setTimeout(r, 250)) }
-          return true
-        }
-        let steps = 0
-        const prefer = input.heading ?? null
-        while (Date.now() - started < maxMs) {
-          const st = working(); if (!st.position || st.dead) { await new Promise(r => setTimeout(r, 1000)); continue }
-          const fx = Math.floor(st.position.x), fy = Math.floor(st.position.y - 1.62 + 0.2), fz = Math.floor(st.position.z)
-          if (skyOpen(fx, fy, fz)) { host.log(`地上へ出ました: (${fx},${fy},${fz})・${steps}段`); return { surfaced: true, steps, position: { x: fx, y: fy, z: fz } } }
-          const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-          if (prefer) dirs.sort((a, b) => (b[0] * prefer.x + b[1] * prefer.z) - (a[0] * prefer.x + a[1] * prefer.z))
-          let done = false
-          for (const [dx, dz] of dirs) {
-            const nx = fx + dx, nz = fz + dz, floor = get(nx, fy, nz)
-            const cells = [{ x: fx, y: fy + 2, z: fz }, { x: nx, y: fy + 1, z: nz }, { x: nx, y: fy + 2, z: nz }]
-            if (!solid(floor)) continue
-            if (cells.some(c => danger(get(c.x, c.y, c.z)) && !air(get(c.x, c.y, c.z))) || danger(get(nx, fy + 3, nz)) && !air(get(nx, fy + 3, nz)) || danger(get(fx, fy + 3, fz)) && !air(get(fx, fy + 3, fz))) continue
-            let ok = true
-            for (const c of cells) { if (!(await mineCell(c))) { ok = false; break } }
-            if (!ok) continue
-            try { startMotion('navigation', { x: nx + 0.5, y: fy + 1, z: nz + 0.5 }, { allowLowHealth: true, maxDistance: 3 }) } catch {}
-            const until = Date.now() + 6000
-            while (Date.now() < until) { await new Promise(r => setTimeout(r, 250)); const p = working().position; if (p && Math.floor(p.x) === nx && Math.floor(p.z) === nz && Math.abs(p.y - 1.62 - (fy + 1)) < 0.6) break }
-            const p = working().position
-            if (p && Math.floor(p.x) === nx && Math.floor(p.z) === nz) { steps++; if (steps % 5 === 1) host.log(`掘り上がり: ${steps}段目 (${nx},${fy + 1},${nz})`); done = true; break }
-          }
-          if (!done) { host.log('掘り上がり: どの方向にも段を作れませんでした'); return { surfaced: false, steps, reason: 'NO_STEP' } }
-        }
-        return { surfaced: false, steps, reason: 'TIME_LIMIT' }
-      },
-      // Long-trip preparation without the legacy autonomy (2026-11-14 decision):
-      // hunt food animals and eat while hunger is below 18, then cut logs from
-      // received trees by ordinary mining and pick the drops up. Every result is
-      // the received inventory change. Logs only (never leaves); shooters are
-      // still avoided by the combat rules for empty hands.
-      prepGather: async (input = {}) => {
-        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
-        const logTarget = Math.max(0, Math.min(10, input.logs ?? 10))
-        // logs: 0 is the food step alone (eat, or hunt within 24 m); no wood is taken.
-        if (logTarget > 0 && !longTravelLogAllowance()) throw new Error('先に prepareLongTravel({gather:false}) で準備の許可を出してください。')
-        const started = Date.now(), maxMs = Math.min(40 * 60000, input.maxMs ?? 20 * 60000)
-        const say = m => host.log(`長距離移動の準備: ${m}`)
-        const items = () => working().inventory?.items ?? []
-        const count = re => items().filter(i => re.test(i.name ?? '')).reduce((n, i) => n + (i.count ?? 0), 0)
-        const LOGS = /^minecraft:[a-z_]+_(?:log|stem)$/, FOOD = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/
-        const hunger = () => { const v = host.shared.vitals?.hunger; return Number.isFinite(v) ? v : Number.isFinite(v?.value) ? v.value : null }
-        const feetOf = () => { const p = working().position; return p ? { x: p.x, y: p.y - 1.62, z: p.z } : null }
-        const sleep = ms => new Promise(r => setTimeout(r, ms))
-        const wait = async (fn, ms) => { const until = Date.now() + ms; while (Date.now() < until) { if (fn()) return true; await sleep(200) } return fn() }
-        // Walk next to a point by the ordinary local movement (radius 1-2, heights -2..+2).
-        const walkNear = async (pos, radii = [1, 2]) => {
-          const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
-          const here = feetOf(); if (!here) return false
-          if (Math.hypot(pos.x - here.x, pos.z - here.z) <= 2.2 && Math.abs(pos.y - here.y) <= 2.5) return true
-          const cands = []
-          for (const r of radii) for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) if (Math.max(Math.abs(dx), Math.abs(dz)) === r) for (const dy of [0, -1, 1, -2, 2]) cands.push({ x: Math.floor(pos.x) + dx + 0.5, y: Math.floor(pos.y) + dy, z: Math.floor(pos.z) + dz + 0.5 })
-          cands.sort((a, b) => Math.hypot(a.x - here.x, a.z - here.z) - Math.hypot(b.x - here.x, b.z - here.z))
-          // Live 15:14: forty back-to-back previews stalled the event loop for 24 s
-          // and the server closed the connection. Yield after each preview and
-          // stop planning after two seconds.
-          const planUntil = Date.now() + 2000
-          for (const t of cands.slice(0, 40)) {
-            if (Date.now() > planUntil) return false
-            let pv = null; try { motionOrigin = working(); pv = movement?.preview(t, opts) } catch {}
-            await new Promise(resolve => setImmediate(resolve))
-            if (pv?.ready !== true) continue
-            try { requireIdle({ inventoryRequired: false }); startMotion('navigation', t, opts) } catch { return false }
-            await wait(() => { const m = movement?.snapshot() ?? {}; return !['moving', 'settling'].includes(m.phase) }, 20000)
-            const f = feetOf(); return !!f && Math.hypot(t.x - f.x, t.z - f.z) <= 1.5
-          }
-          return false
-        }
-        const pickup = async center => {
-          const drops = allActors().filter(a => a?.kind === 'item' && a.position && Math.hypot(a.position.x - center.x, a.position.z - center.z) <= 5)
-          for (const d of drops.slice(0, 4)) await walkNear(d.position, [0, 1])
-          await sleep(800)
-        }
-        let hunts = 0, logsTried = 0, eatRefused = false, rottenTried = false
-        const woolTarget = Math.max(0, Math.min(3, input.wool ?? 0)), WOOL = /^minecraft:[a-z_]*wool$/
-        const foodTarget = Math.max(0, Math.min(16, input.food ?? 0))
-        const skipLog = new Set() // logs that could not be reached or mined are not tried again
-        while (Date.now() - started < maxMs) {
-          const st = working(); if (!st.position || st.dead) { await sleep(1000); continue }
-          // 1. food first while hunger is below 18
-          if ((hunger() ?? 20) < 18) {
-            // Live 15:04: a raw chicken matched FOOD but the eat check refused it
-            // and the step looped. One refusal ends eating here (emergency rotten
-            // flesh is tried once); the step goes on to hunting.
-            if (!eatRefused && count(FOOD) > 0) { try { await operations.food.eat({}); say(`食べました（満腹度 ${hunger()}）`); continue } catch (e) { eatRefused = true; say(`食事を見送り: ${String(e.message ?? e).slice(0, 60)}`) } }
-            if (!rottenTried && count(/^minecraft:rotten_flesh$/) > 0) { rottenTried = true; try { await operations.food.eat({ allowEmergencyRotten: true }); say(`非常食として腐った肉を食べました（満腹度 ${hunger()}）`); continue } catch {} }
-            const feet = feetOf()
-            const animal = allActors().filter(a => a?.kind === 'mob' && a.hostile === false && /^minecraft:(?:cow|pig|sheep|chicken)$/.test(a.entityType ?? '') && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
-            if (animal && hunts < 12) {
-              hunts++
-              const before = count(FOOD)
-              if (await walkNear(animal.position, [1])) {
-                for (let hit = 0; hit < 6; hit++) { try { await combat.animalAttack(animal.runtimeId, {}) } catch { break } await sleep(500); if (!allActors().some(a => String(a.runtimeId) === String(animal.runtimeId) && a.alive !== false)) break }
-                await pickup(animal.position)
-              }
-              if (count(FOOD) > before) say(`食料を得ました（${count(FOOD)}個）`)
-              continue
-            }
-          }
-          // 1a. a food stock before a long trip (coordinator 2026-11-14: 5-10)
-          if (foodTarget && count(FOOD) < foodTarget && hunts < 24) {
-            const feet = feetOf()
-            const animal = allActors().filter(a => a?.kind === 'mob' && a.hostile === false && /^minecraft:(?:cow|pig|sheep|chicken|rabbit)$/.test(a.entityType ?? '') && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 32).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
-            if (animal) {
-              hunts++
-              const before = count(FOOD)
-              if (await walkNear(animal.position, [1])) {
-                for (let hit = 0; hit < 6; hit++) { try { await combat.animalAttack(animal.runtimeId, {}) } catch { break } await sleep(500); if (!allActors().some(a => String(a.runtimeId) === String(animal.runtimeId) && a.alive !== false)) break }
-                await pickup(animal.position)
-              }
-              if (count(FOOD) > before) say(`食料を得ました（${count(FOOD)}個）`)
-              continue
-            }
-          }
-          // 1b. wool from sheep for a respawn bed (coordinator 2026-11-14)
-          if (woolTarget && count(WOOL) < woolTarget && hunts < 12) {
-            const feet = feetOf()
-            const sheep = allActors().filter(a => a?.kind === 'mob' && a.hostile === false && a.entityType === 'minecraft:sheep' && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
-            if (sheep) {
-              hunts++
-              const before = count(WOOL)
-              if (await walkNear(sheep.position, [1])) {
-                for (let hit = 0; hit < 6; hit++) { try { await combat.animalAttack(sheep.runtimeId, {}) } catch { break } await sleep(500); if (!allActors().some(a => String(a.runtimeId) === String(sheep.runtimeId) && a.alive !== false)) break }
-                await pickup(sheep.position)
-              }
-              if (count(WOOL) > before) say(`羊毛を得ました（${count(WOOL)}個）`)
-              continue
-            }
-          }
-          // 2. logs
-          const logs = count(LOGS)
-          if (logs >= logTarget) { if (logTarget > 0) say(`原木 ${logs} 本を持っています`); return { done: true, logs, food: count(FOOD), hunger: hunger() } }
-          if (logsTried > 40) break
-          const feet = feetOf(), known = []
-          for (let dx = -24; dx <= 24; dx++) for (let dz = -24; dz <= 24; dz++) for (let dy = -6; dy <= 12; dy++) {
-            const x = Math.floor(feet.x) + dx, y = Math.floor(feet.y) + dy, z = Math.floor(feet.z) + dz
-            const b = host.world.getBlock(x, y, z)
-            if (b?.known === true && LOGS.test(b.name ?? '')) known.push({ x, y, z, d: Math.hypot(dx, dz) + Math.abs(dy) * 0.5 })
-          }
-          known.sort((a, b) => a.d - b.d)
-          const trunkLow = t => { for (let y = t.y - 1; y >= t.y - 3; y--) { const b = host.world.getBlock(t.x, y, t.z); if (b?.known !== true) return false; if (LOGS.test(b.name ?? '')) continue; return b.boundingBox === 'block' && !/leaves/.test(b.name ?? '') } return false }
-          const target = known.find(t => trunkLow(t) && !skipLog.has(`${t.x},${t.y},${t.z}`))
-          if (!target) { say('近くに届く原木が見つかりません'); break }
-          logsTried++
-          if (!(await walkNear(target, [1, 2]))) { skipLog.add(`${target.x},${target.y},${target.z}`); say(`原木 (${target.x},${target.y},${target.z}) の隣へ歩けません（この原木は飛ばします）`); continue }
-          const before = count(LOGS)
-          try { operations.mining.start([{ x: target.x, y: target.y, z: target.z }]) } catch (e) { skipLog.add(`${target.x},${target.y},${target.z}`); say(`採掘を開始できません: ${String(e.message ?? e).slice(0, 60)}`); await sleep(1000); continue }
-          const broken = await wait(() => { const b = host.world.getBlock(target.x, target.y, target.z); return b?.known === true && !LOGS.test(b.name ?? '') }, 35000)
-          if (!broken) { skipLog.add(`${target.x},${target.y},${target.z}`); say('原木を壊せませんでした'); continue }
-          await pickup(target)
-          if (count(LOGS) > before) say(`原木 ${count(LOGS)} 本`)
-        }
-        return { done: false, logs: count(LOGS), food: count(FOOD), hunger: hunger(), reason: Date.now() - started >= maxMs ? 'TIME_LIMIT' : 'NO_TARGET' }
-      },
-      // Read-only request: the terrain above the bot (its chunk and the eight
-      // around it) up to y=120, to find the way back to open sky from a cave.
-      // Pick up received item drops near a point by ordinary walking (2026-11-14:
-      // the preparation items dropped at a death). Success is the received
-      // inventory growing; the drop vanishing alone is not counted.
-      pickupNear: async (input = {}) => {
-        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
-        const center = input.center, radius = Math.min(32, input.radius ?? 16), maxMs = Math.min(600000, input.maxMs ?? 180000), started = Date.now()
-        if (!center || ![center.x, center.z].every(Number.isFinite)) throw new Error('center {x, z} を指定してください。')
-        const sleep = ms => new Promise(r => setTimeout(r, ms))
-        const feetOf = () => { const q = working().position; return q ? { x: q.x, y: q.y - 1.62, z: q.z } : null }
-        const total = () => (working().inventory?.items ?? []).reduce((n, i) => n + (i.count ?? 0), 0)
-        const before = total(), skip = new Set()
-        const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
-        while (Date.now() - started < maxMs) {
-          const here = feetOf(); if (!here) { await sleep(500); continue }
-          const drop = allActors().filter(a => a?.kind === 'item' && a.position && !skip.has(String(a.runtimeId)) && Math.hypot(a.position.x - center.x, a.position.z - center.z) <= radius).sort((a, b) => Math.hypot(a.position.x - here.x, a.position.z - here.z) - Math.hypot(b.position.x - here.x, b.position.z - here.z))[0]
-          if (!drop) break
-          const t = { x: Math.floor(drop.position.x) + 0.5, y: Math.floor(drop.position.y + 0.01), z: Math.floor(drop.position.z) + 0.5 }
-          let moved = false
-          for (const dy of [0, 1, -1]) {
-            let pv = null; try { motionOrigin = working(); pv = movement?.preview({ ...t, y: t.y + dy }, opts) } catch {}
-            if (pv?.ready !== true) continue
-            try { requireIdle({ inventoryRequired: false }); startMotion('navigation', { ...t, y: t.y + dy }, opts); moved = true } catch {}
-            break
-          }
-          if (!moved) { skip.add(String(drop.runtimeId)); continue }
-          const until = Date.now() + 20000
-          while (Date.now() < until) { const m = movement?.snapshot() ?? {}; if (!['moving', 'settling'].includes(m.phase)) break; await sleep(200) }
-          await sleep(600)
-          if (allActors().some(a => String(a.runtimeId) === String(drop.runtimeId))) skip.add(String(drop.runtimeId))
-        }
-        const gained = total() - before
-        host.log(`拾得: 受信した持ち物が ${gained} 個増えました`)
-        return { gained, items: total(), skipped: skip.size }
-      },
-      // One canopy-escape pass outside a trip (same rules as during long travel).
-      leafEscape: async () => { if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。'); if (travelRuntime.longTravel?.status?.().busy) throw new Error('長距離移動の途中です。'); return travelLeafEscape(null) },
-      // Read-only: the route the trip itself would plan from here (same options).
-      travelDebug: (input = {}) => {
-        const st = working(); if (!st.position) throw new Error('位置が不明です。')
-        const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, d = input.destination ?? { x: 1968, z: -2041 }
-        const bad = host.shared.longTravelBadCells
-        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: feet, goal: d, maxNodes: 60000, maxMs: input.maxMs ?? 400, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: bad ?? new Set(), faceStairs: input.faceStairs === true })
-        const firstDig = r.ready ? r.path.findIndex(q => q.dig) : -1
-        const previews = [12, 9, 6, 4, 3, 2, 1].map(a => { const q = r.path[Math.min(firstDig > 0 ? Math.min(a, firstDig - 1) : a, r.path.length - 1)]; if (!q) return null; let pv = null; try { motionOrigin = working(); pv = movement?.preview({ x: q.x, y: q.y, z: q.z }, { allowWater: true, allowLowHealth: true, maxDistance: 16 }) } catch (e) { pv = { ready: false, reason: e.message } } return { a, q, ready: pv?.ready === true, reason: pv?.reason ?? null } })
-        return { bad: bad?.size ?? 0, ready: r.ready, reached: r.reached, timedOut: r.timedOut, expanded: r.expanded, length: r.path.length, firstDig, firstSteps: r.path.slice(0, 6), previews }
-      },
-      // Kit before a long trip (coordinator 2026-11-14, after three deaths near
-      // spawn): wool for a bed, a food stock, logs; then planks, sticks, a table,
-      // a wooden sword, a bed and a boat. Results are the received inventory.
-      prepKit: async (input = {}) => {
-        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。')
-        if (travelRuntime.longTravel?.status?.().busy) throw new Error('長距離移動の途中です。')
-        const say = m => host.log(`長距離移動の準備: ${m}`)
-        const items = () => working().inventory?.items ?? []
-        const count = re => items().filter(i => re.test(i.name ?? '')).reduce((n, i) => n + (i.count ?? 0), 0)
-        if (!longTravelLogAllowance()) await operations.quarry.prepareLongTravel({ logCount: 10, gather: false })
-        const has = re => count(re) > 0
-        const foodWanted = Math.max(5, Math.min(10, input.food ?? 6))
-        const FOODS = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/
-        const LOGS0 = /^minecraft:[a-z_]+_(?:log|stem)$/
-        // Planks the remaining items need (live 19:25: the last logs went into the
-        // sword and boat and the bed was never crafted): table 4, sticks 2,
-        // sword 2, bed 3, boat 5.
-        const planksNeeded = () => (has(/^minecraft:crafting_table$/) ? 0 : 4) + (has(/_sword$/) ? 0 : 2 + (has(/^minecraft:stick$/) ? 0 : 2)) + (has(/^minecraft:bed$/) ? 0 : 3) + (has(/_boat$/) ? 0 : 5)
-        const woodHeld = () => count(/^minecraft:[a-z_]+_planks$/) + count(LOGS0) * 4
-        const missing = () => [!has(/^minecraft:bed$/) && count(/wool$/) < 3 ? 'wool' : null, count(FOODS) < foodWanted ? 'food' : null, woodHeld() < planksNeeded() ? 'logs' : null].filter(Boolean)
-        // Live 18:52: right after a reconnect nothing was in sight and the kit
-        // ended at once. Gather, and while something is missing walk about 48 m
-        // to another spot (six rounds, turning 60 degrees) and gather again.
-        const origin = working().position ? { x: working().position.x, z: working().position.z } : null
-        for (let round = 0; round < 7 && origin; round++) {
-          if (!longTravelLogAllowance()) await operations.quarry.prepareLongTravel({ logCount: 10, gather: false }) // live 20:01: the 30-minute allowance ran out mid-kit
-          if (missing().includes('wool')) await operations.quarry.prepGather({ logs: 0, wool: 3, maxMs: 120000 })
-          if (missing().includes('food')) await operations.quarry.prepGather({ logs: 0, food: foodWanted, maxMs: 180000 })
-          if (missing().includes('logs')) await operations.quarry.prepGather({ logs: Math.min(10, count(LOGS0) + Math.ceil((planksNeeded() - woodHeld()) / 4)), maxMs: 180000 })
-          if (!missing().length || round === 6) break
-          const ang = round * Math.PI / 3
-          let dest = { x: Math.round(origin.x + Math.cos(ang) * 48), z: Math.round(origin.z + Math.sin(ang) * 48) }
-          // Logs missing (live 19:46: six rounds found none while trees were
-          // known to the west): head for the nearest received log within 64 m.
-          if (missing().includes('logs')) {
-            const here = working().position, hx = Math.floor(here.x), hy = Math.floor(here.y - 1.62), hz = Math.floor(here.z)
-            let best = null
-            for (let dx = -64; dx <= 64; dx += 2) for (let dz = -64; dz <= 64; dz += 2) {
-              const d = Math.hypot(dx, dz); if (d < 20 || best && d >= best.d) continue
-              for (let dy = -8; dy <= 16; dy++) { const b = host.world.getBlock(hx + dx, hy + dy, hz + dz); if (b?.known === true && LOGS0.test(b.name ?? '')) { best = { x: hx + dx, z: hz + dz, d }; break } }
-              if ((dz & 15) === 0) await new Promise(resolve => setImmediate(resolve))
-            }
-            if (best) dest = { x: best.x, z: best.z }
-          }
-          say(`まだ足りません（${missing().join('・')}）。(${dest.x}, ${dest.z}) へ探しに行きます`)
-          try { await operations.quarry.travelTo({ destination: dest }) } catch {}
-          const until = Date.now() + 180000
-          while (Date.now() < until && travelRuntime.longTravel?.status?.().busy) await new Promise(r => setTimeout(r, 1000))
-          if (travelRuntime.longTravel?.status?.().busy) { try { await travelRuntime.longTravel.cancel('KIT_EXPLORE') } catch {} }
-        }
-        const LOGS = /^minecraft:([a-z_]+)_log$/, PLANKS = /^minecraft:([a-z_]+)_planks$/
-        const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
-        const made = []
-        if (log || count(PLANKS) >= 4) {
-          await crafting.openInventory()
-          try {
-            if (log) { await crafting.craft(`minecraft:${LOGS.exec(log.name)[1]}_planks`, { times: log.count }); made.push('planks') }
-            if (!has(/^minecraft:stick$/)) { await crafting.craft('minecraft:stick', { times: 1 }); made.push('stick') }
-            if (!has(/^minecraft:crafting_table$/)) { await crafting.craft('minecraft:crafting_table', { times: 1 }); made.push('table') }
-          } finally { try { crafting.closeContainer() } catch {} }
-          const table = await travelPlaceTable()
-          if (table) {
-            await interactions.openCraftingTable(table)
-            try {
-              if (!has(/_sword$/)) { await crafting.craft('minecraft:wooden_sword', { times: 1 }); made.push('wooden_sword') }
-              if (!has(/^minecraft:bed$/) && count(/wool$/) >= 3) { try { await crafting.craft('minecraft:bed', { times: 1 }); made.push('bed') } catch (e) { say(`ベッドを作れません: ${String(e.message ?? e).slice(0, 60)}`) } }
-              if (!has(/_boat$/)) { const p = items().find(i => PLANKS.test(i.name ?? '') && i.count >= 5); if (p) { try { await crafting.craft(`minecraft:${PLANKS.exec(p.name)[1]}_boat`, { times: 1 }); made.push('boat') } catch {} } }
-            } finally { try { crafting.closeContainer() } catch {} }
-          }
-        }
-        if (travelRuntime.longTravel?.status?.().busy) { try { await travelRuntime.longTravel.cancel('KIT_DONE') } catch {} }
-        const kit = { bed: count(/^minecraft:bed$/), sword: count(/_sword$/), food: items().filter(i => /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit)$|^minecraft:(?:bread|apple|carrot|baked_potato)$/.test(i.name ?? '')).reduce((n, i) => n + i.count, 0), boat: count(/_boat$/), wool: count(/wool$/) }
-        say(`${missing().length ? `足りないもの: ${missing().join('・')}。` : '揃いました。'}ベッド ${kit.bed}・剣 ${kit.sword}・食料 ${kit.food}・ボート ${kit.boat}（受信した持ち物で確認、作ったもの: ${made.join('・') || 'なし'}）`)
-        return { made, kit }
-      },
-      // Read-only: each gate of the automatic armour step.
-      armorCheck: () => { const g = {}; for (const [k, f] of Object.entries({ resetHeld: () => resetHeld(), manualChest: () => !!manualChestStorage?.isBusy(), chunkMoveHeld: () => chunkMoveHeld(), placementPrep: () => !!quarryPlacementPreparation, surfaceOwner: () => !!host.shared.quarrySurfaceStorageOwner, allowed: () => armorAutoAllowed(), task: () => !!armorTask, workFree: () => armorWorkFree(), nearest: () => nearestHostileDistance(), preview: () => armor.preview(), snapshot: () => armor.snapshot() })) { try { g[k] = f() } catch (e) { g[k] = 'ERR ' + String(e.message ?? e).slice(0, 80) } } return g },
-      // Take a few items out of a supply box kept in the home chest
-      // (coordinator 2026-11-14: totems and a pickaxe/shovel before the trip).
-      // The box is withdrawn, placed beside the bot by ordinary placement,
-      // opened, the items withdrawn, the box broken under this placement's own
-      // record (combat waits from the break until the box is back in the
-      // received inventory) and returned to the chest. Never with a reachable
-      // enemy near. Every step is the received inventory or block.
-      supplyBoxTake: async (input = {}) => travelSupplyBoxTake(input),
-      // Read-only: why the empty-handed preparation flag is on or off.
-      prepCheck: () => {
-        const cheap = require('./learning-health').cheapItem, out = { allowance: longTravelLogAllowance(), flag: emptyHandedPrep(), blocking: [] }
-        for (const [container, size] of [['main', 36], ['armor', 4], ['offhand', 1]]) {
-          const v = inventoryStore.view(container)
-          if (v.known !== true || v.slots.length !== size) { out.blocking.push({ container, known: v.known, size: v.slots.length }); continue }
-          v.slots.forEach((slot, i) => { const name = slot.raw ? crafting.itemNameOf(slot.raw.network_id) : null; if (!(slot.received === true && slot.raw && (slot.raw.network_id === 0 || slot.raw.count === 0 || container === 'main' && cheap(name)))) out.blocking.push({ container, slot: i, received: slot.received, name, id: slot.raw?.network_id }) })
-        }
-        return out
-      },
-      requestTerrainAbove: async () => {
-        const st = working(); if (!st.position) throw new Error('位置が不明です。')
-        const cx = Math.floor(st.position.x / 16), cz = Math.floor(st.position.z / 16), y = Math.floor(st.position.y - 1.62)
-        const results = []
-        // Live 13:58: a canopy over unreceived terrain (y48-63) looked like a deep hole; the request also covers 24 below.
-        for (const [bottom, top] of [[Math.max(-60, y - 24), Math.min(110, y + 60)], [Math.min(110, y + 60), 120]]) {
-          if (bottom >= top) continue
-          results.push(await requestQuarryTerrain({ config: { target: { chunks: [{ x: cx, z: cz }] } }, yTop: top, yBottom: bottom }, {}))
-        }
-        return results.map(r => ({ requested: r.requested, packets: r.packets, reason: r.reason ?? null }))
-      },
-      // Read-only: the coarse wide-area route over the received terrain.
-      coarseRoutePreview: (input = {}) => {
-        const d = input.destination, st = working()
-        if (!d || ![d.x, d.z].every(Number.isFinite) || !st.position) throw new Error('目的地 {x, z} を指定してください。')
-        const started = Date.now()
-        const r = require('./coarse-route').planCoarseRoute({ getBlock: (x, y, z) => host.world.getBlock(x, y, z), start: { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, goal: d, maxNodes: Math.min(120000, input.maxNodes ?? 60000), allowDig: input.allowDig === true, surfaceOnly: input.surfaceOnly === true, maxDrop: Number.isInteger(input.maxDrop) ? input.maxDrop : 3 })
-        const step = Math.max(1, Math.floor(r.path.length / 20))
-        return { ready: r.ready, reached: r.reached, surfaced: r.surfaced === true, remaining: r.remaining, expanded: r.expanded, ms: Date.now() - started, length: r.path.length, sample: r.path.filter((_, i) => i % step === 0 || i === r.path.length - 1), frontier: r.frontier.slice(0, 8) }
-      },
-      // Preparation for a long trip from empty hands: about 10 logs by the
-      // existing tree work (logs only), then planks/table/tools by the existing
-      // crafting. The allowance expires after 30 minutes.
-      prepareLongTravel: (input = {}) => {
-        if (quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
-        const logCount = Math.max(1, Math.min(10, Number.isInteger(input.logCount) ? input.logCount : 10))
-        host.shared.woodHarvestAllowance = { purpose: 'long_travel_prep', logCount, startedAt: Date.now(), expiresAt: Date.now() + 30 * 60000 }
-        host.log(`長距離移動の準備: 原木を ${logCount} 本まで集めます（30分以内・原木のみ）${input.gather === false ? '（許可のみ。採取は後で）' : ''}`)
-        if (input.gather === false) return { allowance: structuredClone(host.shared.woodHarvestAllowance) }
-        return autonomy.start({ objective: 'long_travel_prep', logCount })
-      },
-      endLongTravelPrep: () => { host.shared.woodHarvestAllowance = null; return autonomy.stop('長距離移動の準備を終了しました。') },
-      cancelTravel: async () => {
-        const result = await (travelRuntime.longTravel?.cancel('MANUAL_STOP') ?? { busy: false, phase: 'idle' })
-        // A manual stop is saved, so a reconnect or restart does not resume it.
-        try { const f = travelRuntime.longTravelFile(), fsp = require('node:fs/promises'); const doc = JSON.parse(await fsp.readFile(f, 'utf8')); doc.phase = 'stopped'; doc.reason = 'MANUAL_STOP'; doc.savedAt = new Date().toISOString(); await fsp.writeFile(f, JSON.stringify(doc, null, 2)) } catch {}
-        host.shared.longTravelResume = null
-        return result
-      },
-      cancelChunkMove: operationId => {
-        if (!operationId || chunkTravel?.status().operationId !== operationId) throw Object.assign(new Error('移動操作が変わりました。状態を更新してください。'), { code: 'STALE_CHUNK_MOVE' })
-        return cancelChunkMovement('MANUAL_STOP')
-      },
-      chunkMoveStatus: () => chunkTravel?.status() ?? { available: true, busy: false, phase: 'idle', operationId: null, serverConfirmed: false },
-      controlPosition: () => controlLocation.snapshot(),
-      // Read-only: prove the bot's present position to the server (the same
-      // /testfor volume query chunk travel uses), so the dashboard can act here.
-      proveControlPosition: async () => { const st = working(); if (!st.position) throw new Error('位置が不明です。'); return controlLocation.confirm({ x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, { radius: 0.2 }) },
-      confirmControlPosition: (area, options) => controlLocation.confirm(null, { ...options, area: normalizeChunkArea(area), radius: 0.12, operationId: 'dashboard_area_position' }),
-      plan: config => {
-        if (!quarryJob?.holdsWork()) requireIdle()
-        const input=structuredClone(config??{})
-        const registered=getRegisteredQuarryHomeSite()
-        const view=receivedEquipmentView(inventoryInspection,crafting,quarryState())
-        const empty=section=>section?.known===true&&Array.isArray(section.slots)&&section.slots.every(slot=>slot?.known===true&&slot.empty===true&&slot.count===0)
-        const emptyBot=view.known===true&&!view.uncertain&&view.slots?.length===36&&empty(view)&&view.armor?.slots?.length===4&&empty(view.armor)&&view.offhand?.slots?.length===1&&empty(view.offhand)
-        const explicit=input.initialLoadout==='v22'
-        if (explicit && (!registered || input.homeChest && ['position','other','stand','stage'].some(part=>['x','y','z'].some(axis=>input.homeChest[part]?.[axis]!==registered[part]?.[axis])))) {
-          throw Object.assign(new Error('初期セットの登録済みチェストを確認してください。'),{code:'LOADOUT_SOURCE_NOT_REGISTERED'})
-        }
-        if (registered && (explicit || input.homeChest==null&&emptyBot)) {
-          input.homeChest=registered
-          input.initialLoadout='v22'
-          input.inventory={...input.inventory,supplyLayout:'v22'}
-        } else if (input.homeChest == null && (input.inventory?.depositWhen == null || input.inventory.depositWhen === 'four_layers')) {
-          input.homeChest=registered
-        }
-        return ensureQuarryJob().plan(input)
-      },
-      start: () => { requireIdle(); return ensureQuarryJob().start() },
-      resume: () => { requireIdle(); return ensureQuarryJob().resume() },
-      retryPersistence: () => ensureQuarryJob().retryPersistence(),
-      configureExit: options => ensureQuarryJob().configureExit(options ?? {}),
-      configureTools: options => ensureQuarryJob().configureTools(options ?? {}),
-      configureStorage: options => ensureQuarryJob().configureStorage(options ?? {}),
-      configureDirtSupply: options => ensureQuarryJob().configureDirtSupply(options ?? {}),
-      configureAnimalClearing: options => ensureQuarryJob().configureAnimalClearing(options ?? {}),
-      acceptCarriedStorageLoss: options => ensureQuarryJob().acceptCarriedStorageLoss(options ?? {}),
-      // Manual selective storage into a large chest within reach (2026-11-13 user
-      // request): cargo boxes and loose items go in; supply boxes, tools, worn
-      // armour, the totem and food stay. Only while no quarry job is running.
-      storeToChest: async (options = {}) => {
-        const doc = quarryJob?.document?.()
-        if (doc && !['FINISHED', 'PAUSED', 'IDLE', 'CANCELLED'].includes(doc.state)) throw new Error('露天掘りの実行中は収納できません。')
-        const p = options?.position
-        if (!p || !['x', 'y', 'z'].every(k => Number.isSafeInteger(p[k])) || Object.keys(options).some(k => !['position', 'all'].includes(k))) throw new Error('storeToChest accepts { position: {x,y,z}, all?: true } of a large chest')
-        const operationId = 'manual-store:' + new Date().toISOString().replace(/[:.]/g, '-')
-        const file = require('node:path').join(process.cwd(), '.local', 'manual-chest-deposit', operationId.replace(':', '-') + '.json')
-        require('node:fs').mkdirSync(require('node:path').dirname(file), { recursive: true })
-        const save = cp => require('node:fs').writeFileSync(file, JSON.stringify(cp, null, 1))
-        const { FINAL_CHEST_KEEP } = require('./quarry-job')
-        ensureQuarryJob()
-        if (!quarryRuntime.quarrySurfaceChestRunner) throw new Error('収納の準備ができていません。')
-        // all: true stores the gear too (2026-11-13 18:17 user request).
-        const result = await quarryRuntime.quarrySurfaceChestRunner('depositAll', { jobId: doc?.config?.jobId ?? 'manual', operationId, position: { x: p.x, y: p.y, z: p.z }, checkpoint: null, ...(options.all === true ? {} : { keep: FINAL_CHEST_KEEP }) }, { onCheckpoint: async cp => save(cp) })
-        save({ ...(result.checkpoint ?? {}), result: { status: result.status, reason: result.reason ?? null, serverConfirmed: result.serverConfirmed } })
-        host.log(`手動収納（選択）: ${result.status} ${result.reason ?? ''} 記録 ${file}`)
-        return { status: result.status, reason: result.reason ?? null, serverConfirmed: result.serverConfirmed, stored: (result.checkpoint?.receipts ?? []).filter(r => /deposit/.test(r.kind)).reduce((n, r) => n + (r.count ?? 0), 0), stacks: (result.checkpoint?.receipts ?? []).length, record: file }
-      },
-      configureCargoLossAcceptance: options => ensureQuarryJob().configureCargoLossAcceptance(options ?? {}),
-      configureSpareArmor: options => ensureQuarryJob().configureSpareArmor(options ?? {}),
-      requestTerrain: () => { const doc = ensureQuarryJob().document(); if (!doc) throw new Error('No quarry job'); return requestQuarryTerrain({ config: doc.config, yTop: doc.yTop, yBottom: doc.config.yBottom }) },
-      confirmPosition: (feet, options) => confirmQuarryPosition(feet, options),
-      positionStatus: () => ({ ...(quarryPositionVerifier?.snapshot() ?? { busy: false }), lastOutput: structuredClone(host.shared.quarryPositionOutput ?? null) }),
-      pillarStatus: () => quarryPillar?.snapshot() ?? { busy: false, phase: 'unavailable' },
-      pillarContext: () => {
-        const state = quarryState()
-        return { phase: state.phase, health: state.health, position: state.position, rawServerPosition: state.rawServerPosition, rawServerPositionUpdatedAt: state.rawServerPositionUpdatedAt, connectionId: state.connectionId, startedAt: state.startedAt, lifecycle: state.lifecycle, inventory: state.inventory, heldItem: state.heldItem, selectedSlot: state.selectedSlot, protectionBusy: idleSafety?.snapshot().busy === true, userControlBusy: userBehaviorOwns(), loadingScreenEnded: host.shared.loadingScreenEnded === true }
-      },
-      testPillar: options => testQuarryPillar(options ?? {}),
-      storeCarried: options => { requireIdle(); return ensureQuarryJob().storeCarriedNow(options ?? {}) },
-      configureSupplies: options => { requireIdle(); return ensureQuarryJob().configureSupplies(options ?? {}) },
-      restockSuppliesNow: () => { requireIdle(); return ensureQuarryJob().restockSuppliesNow() },
-      reconcileSupplyPlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileSupplyPlacement() },
-      reconcileCarriedPlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileCarriedPlacement() },
-      reconcileCurrentStoragePlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileCurrentStoragePlacement() },
-      currentPlacementAuditStatus: () => ({ ...(storagePlacementAudit?.snapshot() ?? {}), lastOutput: structuredClone(host.shared.storagePlacementAuditOutput ?? null) }),
-      reconcileRejectedStorage: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileRejectedStorage() },
-      reconcileObservedStoragePlacement: () => { requireIdle({ inventoryRequired: false }); return ensureQuarryJob().reconcileObservedStoragePlacement() },
-      acceptExceptions: () => ensureQuarryJob().acceptExceptions(),
-      reopenWorkLayer: options => ensureQuarryJob().reopenWorkLayer(options ?? {}),
-      recordDebugAction: options => ensureQuarryJob().recordDebugAction(options ?? {}),
-      pause: () => { cancelQuarryRestore(); cancelChunkMovement('QUARRY_PAUSE'); return quarryJob ? quarryJob.pause('MANUAL_PAUSE') : quarrySnapshot() },
-      emergencyStop: () => { cancelQuarryRestore(); cancelChunkMovement('EMERGENCY_STOP'); return quarryJob ? quarryJob.emergencyStop() : quarrySnapshot() },
-      cancel: () => { cancelQuarryRestore(); cancelChunkMovement('QUARRY_CANCEL'); return quarryJob ? quarryJob.cancel() : quarrySnapshot() },
-      load: jobId => loadQuarryFile(jobId),
-      status: () => quarrySnapshot(),
-      document: () => quarryJob?.document() ?? structuredClone(host.shared.quarryDocument ?? null)
-    },
-    storage: {
-      prepare: options => ensureManualChestStorage().prepare(options ?? {}),
-      start: options => ensureManualChestStorage().start(options ?? {}),
-      status: () => manualChestStorage?.status() ?? { available: true, busy: false, phase: 'idle', operationId: null, serverConfirmed: false, target: null, transferredStacks: 0, remainingStacks: null, error: null },
-      diagnostics: () => ensureManualChestStorage().diagnostics(),
-      retryClose: () => ensureManualChestStorage().retryClose(),
-      cancel: reason => manualChestStorage?.cancel(reason ?? 'MANUAL_STOP') ?? { available: true, busy: false, phase: 'idle' },
-      drain: () => manualChestStorage?.drain() ?? Promise.resolve()
-    },
-    userBehaviors: {
-      start: () => { if (disposed || disposing) throw new Error('Runtime is reloading'); host.shared.combatDefenseWanted = true; host.shared.userBehaviorsEnabled = true; tickUserBehaviors(); return userBehaviorSnapshot() },
-      stop: async reason => { host.shared.combatDefenseWanted = false; host.shared.combatDefenseAnchor = null; host.shared.userBehaviorsEnabled = false; userBehaviors?.cancel(reason ?? 'manual_user_behavior_stop', 'CANCELLED'); await userBehaviors?.drain(); return userBehaviorSnapshot() },
-      tick: () => { tickUserBehaviors(); return userBehaviorSnapshot() }, snapshot: userBehaviorSnapshot
-    },
-    safety: {
-      start: (options = {}) => {
-        if (disposed || disposing) throw new Error('行動コードを更新しました。新しい状態からやり直してください。')
-        if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).some(key => key !== 'lowHealthRecoveryMs') || options.lowHealthRecoveryMs !== undefined && (!Number.isSafeInteger(options.lowHealthRecoveryMs) || options.lowHealthRecoveryMs < 0 || options.lowHealthRecoveryMs > 60000)) throw new Error('低体力回復の待機時間が不正です。')
-        if (options.lowHealthRecoveryMs && idleSafety?.snapshot().running) throw new Error('保護動作中に低体力回復の期限は変更できません。')
-        if (options.lowHealthRecoveryMs) host.shared.safetyRecoveryDeadline = Date.now() + options.lowHealthRecoveryMs
-        else if (!host.shared.safetyWanted) host.shared.safetyRecoveryDeadline = 0
-        if (!host.shared.safetyWanted) { host.shared.safetyEnableEpoch++; host.shared.safetyEmergency = null }
-        host.shared.safetyWanted = true
-        return resumeSafety()
-      },
-      stop: async reason => {
-        if (disposed || disposing) throw new Error('行動コードを更新しました。新しい状態からやり直してください。')
-        safetyDispatchEpoch++
-        host.shared.safetyWanted = false
-        await idleSafety?.stop(reason ?? '待機保護を停止しました。')
-        await idleSafety?.drain()
-        return safetySnapshot()
-      },
-      snapshot: safetySnapshot
-    },
-    guardRoute: {
-      execute: (waypoints, options) => { requireIdle(); if (!guardRoute) throw new Error('経路監視の初期化を待ってください。'); const result = guardRoute.execute(waypoints, options); guardRouteProgress = null; return result },
-      returnRoute: (prefix, options) => { requireIdle(); if (!guardRoute) throw new Error('経路監視の初期化を待ってください。'); const result = guardRoute.returnRoute(prefix, options); guardRouteProgress = null; return result },
-      escape: (waypoints, options) => { requireIdle(); if (!guardRoute) throw new Error('経路監視の初期化を待ってください。'); const result = guardRoute.escape(waypoints, options); guardRouteProgress = null; return result },
-      snapshot: guardRouteSnapshot,
-      stop: reason => guardRoute?.stop(reason) ?? { phase: 'idle', busy: false }
-    },
-    hut: {
-      preview: options => hut?.preview(options) ?? { ready: false },
-      reconcileEmptyPlacement: () => { requireIdle(); if (!hut) throw new Error('小屋の初期化を待ってください。'); return hut.reconcileEmptyPlacement() },
-      execute: options => { requireIdle(); return hut.execute(options) },
-      leave: options => { requireIdle(); return hut.leave(options) },
-      snapshot: () => hut?.snapshot() ?? null,
-      stop: reason => hut?.stop(reason)
-    },
-    armor: { equipBest: equipManualArmor },
-    diagnostics: {
-      locatePlains: async () => {
-        plainsLocator ??= createPlainsLocator({ client: host.client, getState: () => disposed || disposing || replaying ? null : lightweightRawState() })
-        const result = await plainsLocator.locate()
-        if (result.requestId) host.shared.lastPlainsLocate = structuredClone(result)
-        return result
-      },
-      locatePlainsStatus: () => ({ pending: plainsLocator?.snapshot().pending ?? false, lastResult: structuredClone(host.shared.lastPlainsLocate ?? null) }),
-      resistance: () => selfResistance.snapshot(),
-      manualRecoveryGroundProof: runtimeId => {
-        const state = manualRecoveryState(), target = host.entities.snapshot({ kind: 'all' }).find(actor => String(actor.runtimeId) === String(runtimeId))
-        return manualGroundAccessProof(target, state)
-      },
-      slowFalling: () => selfSlowFalling.snapshot(),
-      effectEvents: () => selfEffectEvents.snapshot(),
-      lastWaterPreview: () => structuredClone(host.shared.waterPreviewObservation ?? null),
-      movement: () => movement?.diagnostics() ?? null,
-      shoreSurvey: async () => {
-        const start = raw()
-        if (start.phase !== 'spawned' || !start.position || start.dead) throw new Error('ワールド内の位置を確認できません。')
-        const scope = JSON.stringify([start.profile, start.realm?.id, start.dimension, start.connectionId])
-        const result = await surveyShore({ world: host.world, position: start.position, radius: 64, valid: () => {
-          const current = raw()
-          return !disposed && !disposing && current.phase === 'spawned' && !current.dead && JSON.stringify([current.profile, current.realm?.id, current.dimension, current.connectionId]) === scope
-        } })
-        if (shoreMemory && !disposed && !disposing) {
-          await loadShoreHistory()
-          shoreMemory.rememberSurvey({ profile: start.profile, realmId: String(start.realm?.id), dimension: start.dimension }, result)
-          await shoreMemory.save()
-        }
-        return result
-      },
-      rawInventorySlot: slot => {
-        if (!Number.isInteger(slot) || slot < 0 || slot > 35) throw new Error('持ち物スロットは0〜35で指定してください。')
-        return crafting.rawItem(slot)
-      },
-      craftingRecipes: output => crafting.describeRecipes(output),
-      lastInventoryUpdate: () => structuredClone(host.shared.lastInventoryUpdate ?? null),
-      shelterEvents: () => structuredClone(host.shared.shelterEvents ?? []),
-      inventoryEvents: () => structuredClone(host.shared.inventoryEvents ?? []),
-      permissions: () => ({ permissionLevel: host.meta.startGame?.permission_level, playerGameMode: host.meta.startGame?.player_gamemode, worldGameMode: host.meta.startGame?.world_gamemode, serverAuthoritativeInventory: host.meta.startGame?.server_authoritative_inventory, serverAuthoritativeBlockBreaking: host.meta.startGame?.server_authoritative_block_breaking, playerName: raw().playerName, runtimeEntityId: raw().runtimeEntityId }),
-      threatReachability: () => threatReachability.snapshot(),
-      combatSearchBudget: () => combatExposure.snapshot(),
-      combatCandidates: () => userBehaviors?.explainCombat?.() ?? null,
-      // Read-only: each condition of the user-behavior combat canAct gate.
-      combatGate: () => {
-        const read = f => { try { return f() } catch (error) { return `unavailable: ${error.message}` } }
-        return { surfaceReturnOwner: read(() => !!surfaceReturnOwner), replaying: read(() => !!replaying), combatDefenseWanted: defenseEnabled(host.shared), userBehaviorsEnabled: host.shared.userBehaviorsEnabled === true, autoWanted: host.shared.autoWanted === true, loadingScreenEnded: host.shared.loadingScreenEnded === true, respawnTerrainPending: !!host.shared.respawnTerrain?.pending, userBehaviorWakePending: read(() => !!userBehaviorWakePending), disposed: read(() => !!disposed || !!disposing) }
-      },
-      // Read-only test helper: dry, flat, open areas in received terrain.
-      findFlatArea: (options = {}) => findFlatArea(options),
-      // Read-only: in-process CPU profile (no inspector port is opened). Saves
-      // .local/cpu-<time>.cpuprofile and returns the top self-time functions.
-      cpuProfile: ms => profileCpu(ms),
-      // Read-only: why the after-restart quarry restore did or did not run.
-      quarryRestore: () => { const st = raw(); return { tried: host.shared.quarryRestoreTried === true, result: host.shared.quarryRestore ?? null, ports: !!quarryPorts, phase: st.phase, loadingScreenEnded: host.shared.loadingScreenEnded === true, spawnPending: !!st.spawnPending, inventoryKnown: st.inventory?.known ?? null, inventoryUncertain: host.shared.inventoryUncertain ?? null } },
-      // Read-only: the raw server item in a slot (NBT, enchantments) as JSON.
-      rawItem: slot => { const r = crafting.rawItem(Number(slot)); return r ? JSON.parse(JSON.stringify(r, (k, v) => typeof v === 'bigint' ? String(v) : v)) : null },
-      // Read-only: milliseconds spent in each part of the /status snapshot.
-      snapshotTimings: () => {
-        const parts = { userBehaviors: () => userBehaviorSnapshot(), safety: () => safetySnapshot(), guardRoute: () => guardRouteSnapshot(), queuedPrediction: () => inputHistory?.snapshot(), missionMemory: () => missionJournal.snapshot(), hut: () => hut?.snapshot(), shelter: () => activeBase()?.snapshot(), foraging: () => foraging?.snapshot(), food: () => food.snapshot(), recovery: () => recovery?.snapshot(), excavation: () => excavation?.snapshot(), quarry: () => quarrySnapshot(), tunneling: () => tunneling?.snapshot(), furnace: () => furnace.snapshot(), chest: () => chest.snapshot(), mining: () => mining.snapshot(), walking: () => walker?.snapshot(), movement: () => movement?.snapshot(), crafting: () => crafting.snapshot(), inventoryActions: () => inventory.snapshot(), interactions: () => interactions.snapshot(), combat: () => combat?.snapshot(), agent: () => autonomy.snapshot(), depotPrebuild: () => depotPrebuild?.snapshot(), depotMission: () => depotMission?.snapshot(), surfaceReturn: () => surfaceReturn?.snapshot(), entitiesAll: () => host.entities.snapshot({ kind: 'all' }), worldStats: () => host.world.stats() }
-        return measureSnapshots(parts)
-      },
-      armor: () => armor.snapshot(),
-      sightFrom: (x, y, z) => { const p = raw().position; const hs = host.entities.snapshot({ kind: 'all' }).filter(e => e.hostile && e.alive !== false && e.position && Math.hypot(e.position.x - x, e.position.z - z) < 32); return hs.map(e => ({ type: e.entityType, runtimeId: e.runtimeId, distance: +Math.hypot(e.position.x - x, e.position.y - y, e.position.z - z).toFixed(1), clear: bowSightClearAt({ x, y: y + 1.62, z }, { x: e.position.x, y: e.position.y + 0.9, z: e.position.z }), clearFromBot: p ? bowSightClearAt(p, { x: e.position.x, y: e.position.y + 0.9, z: e.position.z }) : null })).sort((a, b) => a.distance - b.distance).slice(0, 8) },
-      blocksAround: () => { const p = raw().position; if (!p) return null; const fx = Math.floor(p.x), fy = Math.floor(p.y - 1.62), fz = Math.floor(p.z), rows = []; for (let dy = 2; dy >= -1; dy--) { const lines = []; for (let dz = -2; dz <= 2; dz++) { let line = ''; for (let dx = -2; dx <= 2; dx++) { const b = host.world.getBlock(fx + dx, fy + dy, fz + dz); line += !b?.known ? '?' : /air/.test(b.name) ? '.' : /water/.test(b.name) ? '~' : b.boundingBox === 'empty' ? ',' : '#' } lines.push(line) } rows.push({ dy, lines: lines.join(' ') }) } return { feet: { x: fx, y: fy, z: fz }, exact: p, rows } },
-      userTick: () => { const s = host.shared.userTickStats ?? {}; return { inventoryUncertain: host.shared.inventoryUncertain ?? null, rangedShotUncertain: host.shared.rangedShotUncertain ?? null, resync: host.shared.inventoryResync?.lastRequest ?? null, ...s, taskAgeMs: s.taskSince ? Date.now() - s.taskSince : 0, sinceRanMs: s.lastRanAt ? Date.now() - s.lastRanAt : null, taskPending: !!userBehaviorTickTask, lastCombat: userBehaviors?.snapshot?.().combat?.lastResult?.code ?? null, worker: userBehaviors?.snapshot?.().combat?.phase ?? null } },
-      acquireDenials: () => ({ last: host.shared.lastUserAcquireDenial ?? null, counts: { ...(host.shared.userAcquireDenials ?? {}) }, lastPreemptSurvey: host.shared.lastPreemptSurvey ?? null }),
-      foodLife: () => ({ foodKnownLife: foodKnownLife(), deathRespawn: host.shared.deathRespawn?.deathId ?? null, receipt: host.shared.inventoryLifeReceipt ? { source: host.shared.inventoryLifeReceipt.source, deathId: host.shared.inventoryLifeReceipt.deathId, keyMatches: host.shared.inventoryLifeReceipt.key === inventoryLifeBaseKey(raw()) } : null, verified: !!verifiedInitialLifeReceipt(), hunger: food.snapshot().hunger }),
-      // Operator helper: sends any slash command as the bot (the owner allows
-      // all commands on this Realm). The result is not proof of anything;
-      // check the world or inventory afterwards.
-      command: (text, version = 'latest') => {
-        if (typeof text !== 'string' || !/^\/\S/.test(text) || text.length > 512 || /[\r\n]/.test(text)) throw new Error('コマンドは / で始まる1行（512文字以内）で指定してください。')
-        const uuid = require('node:crypto').randomUUID()
-        // The reply with this request UUID is kept (bounded) for commandOutput().
-        host.shared.diagCommandOutputs ??= new Map()
-        host.shared.diagCommandOutputs.set(uuid, { command: text, sentAt: Date.now(), output: null })
-        while (host.shared.diagCommandOutputs.size > 20) host.shared.diagCommandOutputs.delete(host.shared.diagCommandOutputs.keys().next().value)
-        host.client.queue('command_request', { command: text, origin: { type: 'player', uuid, request_id: '', player_entity_id: 0n }, internal: false, version: String(version) })
-        return { sent: true, command: text, version: String(version), uuid }
-      },
-      // Runs the real storage air audit once (read-only) at a received cell.
-      auditAir: async (x, y, z) => {
-        if (![x, y, z].every(Number.isSafeInteger)) throw new Error('整数の座標を指定してください。')
-        storagePlacementAudit ??= createStoragePlacementAudit({ client: host.client, getState: quarryState })
-        return storagePlacementAudit.confirmAir({ x, y, z }, { operationId: 'diagnostics:audit-air' })
-      },
-      commandOutput: uuid => { const row = host.shared.diagCommandOutputs?.get(String(uuid ?? '').toLowerCase()) ?? host.shared.diagCommandOutputs?.get(String(uuid ?? '')); return row ? structuredClone(row) : null }
-    },
-    shelter: {
-      preview: options => shelter?.preview(options) ?? { ready: false },
-      execute: options => { requireIdle(); return shelter.execute(options) },
-      leave: options => { requireIdle(); return shelter.leave(options) },
-      snapshot: () => shelter?.snapshot() ?? null,
-      stop: reason => shelter?.stop(reason)
-    },
-    foraging: {
-      preview: options => foraging?.preview(options) ?? { ready: false },
-      execute: options => { requireIdle(); return foraging.execute(options) },
-      snapshot: () => foraging?.snapshot() ?? null,
-      stop: reason => foraging?.stop(reason)
-    },
-    food: {
-      preview: options => food.preview(options),
-      eat: options => { requireIdle(); return food.eat(options) },
-      snapshot: () => food.snapshot(),
-      stop: reason => food.cancel(reason)
-    },
-    recovery: {
-      preview: options => recovery?.preview(options) ?? { ready: false },
-      previewAsync: options => recovery?.previewAsync(options) ?? Promise.resolve({ ready: false }),
-      execute: options => { requireIdle({ inventoryRequired: false }); return recovery.execute(options) },
-      snapshot: () => recovery?.snapshot() ?? null,
-      stop: reason => recovery?.stop(reason)
-    },
-    tunneling: {
-      preview: (decision, options) => tunneling?.preview(decision, options) ?? { ready: false },
-      execute: (decision, options) => { requireIdle(); return tunneling.execute(decision, options) },
-      snapshot: () => tunneling?.snapshot() ?? null,
-      stop: reason => tunneling?.stop(reason)
-    },
-    excavation: {
-      preview: options => excavation?.preview(options) ?? { ready: false },
-      execute: options => { requireIdle(); return excavation.execute(options) },
-      snapshot: () => excavation?.snapshot() ?? null,
-      stop: reason => excavation?.stop(reason)
-    },
-    prospecting: {
-      start: options => {
-        prospecting.scan(options ?? {}).then(result => { if (!disposed && !disposing) host.shared.prospecting = result }).catch(error => { if (!disposed) host.shared.prospectingError = error.message })
-        return prospecting.snapshot()
-      },
-      scan: async options => {
-        const result = await prospecting.scan(options ?? {})
-        if (!disposed && !disposing) host.shared.prospecting = result
-        return result
-      },
-      snapshot: () => prospecting.snapshot(),
-      stop: reason => prospecting.cancel(reason)
-    },
-    depotMission: {
-      start: async () => { host.shared.legacyWorkHoldScope = null; host.shared.legacyWorkHoldLease = null; autonomy.stop('ダイヤ保管後も継続する作業へ引き継ぎます。'); return depotMission.start() },
-      stop: () => depotMission.stop(),
-      tick: () => depotMission.tick(),
-      snapshot: () => depotMission.snapshot()
-    },
-    surfaceReturn: {
-      preview: options => surfaceReturn?.previewAsync(options) ?? Promise.resolve({ ready: false, code: 'NOT_READY' }),
-      previewAsync: options => surfaceReturn?.previewAsync(options) ?? Promise.resolve({ ready: false, code: 'NOT_READY' }),
-      execute: options => executeSurfaceReturn(options),
-      stop: reason => surfaceReturn?.stop(reason),
-      snapshot: () => surfaceReturn?.snapshot() ?? null
-    },
-    chest: {
-      open: (position, slot) => { requireIdle(); crafting.closeContainer(); return chest.open(position, slot) },
-      withdrawItem: options => { requireIdle(); return chest.withdrawItem(options) },
-      depositDiamond: options => { requireIdle(); return chest.depositDiamond(options) },
-      depositItem: options => { requireIdle(); return chest.depositItem(options) },
-      snapshot: () => chest.snapshot(),
-      status: chestStatus,
-      rawItem: slot => chest.rawItem(slot),
-      cancel: reason => chest.cancel(reason)
-    },
-    furnace: {
-      putInput: (...args) => { requireIdle(); return furnace.putInput(...args) },
-      putFuel: (...args) => { requireIdle(); return furnace.putFuel(...args) },
-      takeOutput: options => { requireIdle(); return furnace.takeOutput(options) },
-      waitOutput: (...args) => furnace.waitOutput(...args),
-      stop: reason => furnace.cancel(reason),
-      cancel: reason => furnace.cancel(reason),
-      snapshot: () => furnace.snapshot()
-    },
-    perception: {
-      entities: () => host.entities.snapshot({ kind: 'all' }),
-      nearby: (options = {}) => host.entities.nearby(working().position, options),
-      observe: options => runner.observe(options ?? {})
-    },
-    mining: {
-      previewAccessClearance: options => mining.previewAccessClearance(options),
-      startAccessClearance: options => { requireIdle(); crafting.closeContainer(); return mining.startAccessClearance(options) },
-      preview: targets => mining.preview(targets),
-      start: targets => {
-        requireIdle()
-        if (Array.isArray(targets) && targets.some(p => p && portableKeys().has(String(p.x) + ',' + String(p.y) + ',' + String(p.z)))) throw Object.assign(new Error('地下作業場所の床と屋根は掘削しません。'), { code: 'PROTECTED_BLOCK' })
-        if (!ownedCall && Array.isArray(targets) && targets.some(point => point && planningWorld.getBlock(point.x, point.y, point.z).protectionSource === 'bot_base')) {
-          const error = new Error('拠点の床・壁・屋根は通常の資材採掘では壊しません。')
-          error.code = 'PROTECTED_BLOCK'
-          throw error
-        }
-        if (!ownedCall && Array.isArray(targets)) {
-          const state = raw()
-          if (host.shared.tunnelFloors != null && (typeof state.profile !== 'string' || !state.profile || state.realm?.id == null || !['overworld', 'nether', 'end'].includes(state.dimension))) {
-            const error = new Error('帰路の床のワールド情報が未確定のため、通常採掘を停止します。')
-            error.code = 'TUNNEL_FLOOR_SCOPE_UNKNOWN'
-            throw error
-          }
-          const floors = readCurrentTunnelFloors()
-          if (targets.some(point => point && floors.some(floor => floor.x === point.x && floor.y === point.y && floor.z === point.z))) {
-            const error = new Error('実際に通った坑道の帰路の床は、通常の資材採掘では壊しません。')
-            error.code = 'PROTECTED_BLOCK'
-            error.protectionSource = 'tunnel_floor'
-            throw error
-          }
-        }
-        crafting.closeContainer()
-        return mining.start(targets)
-      },
-      stop: reason => mining.stop(reason)
-    },
-    walking: {
-      preview: target => { requireIdle({ inventoryRequired: false }); motionOrigin = working(); return walker?.preview(target) ?? { ready: false, errors: ['歩行の初期化を待っています。'] } },
-      start: target => startMotion('flat_walk', target),
-      stop: reason => { publishWalker(); return walker?.stop(reason) ?? { phase: 'idle' } }
-    },
-    movement: {
-      destination: movementDestination,
-      clearDestination: clearMovementDestination,
-      preview: (target, options) => { const guardedOptions = portableMovementOptions(target, options); requireIdle({ inventoryRequired: false }); motionOrigin = working(); return movement?.preview(target, guardedOptions) ?? { ready: false, errors: ['移動の初期化を待っています。'] } },
-      start: (target, options) => startMotion('navigation', target, options),
-      settle: options => {
-        if (options?._portableMovementLease != null) throw portablePolicyError('tagged settle requires reobservation')
-        requireIdle({ inventoryRequired: false })
-        yieldPortableMovement()
-        if (!movement?.settle) throw new Error('着地処理の更新を待っています。')
-        stopIdleStream()
-        idlePhysicsState = null
-        motionOrigin = working()
-        host.shared.motionSource = 'navigation_settle'
-        return movement.settle(options)
-      },
-      stop: reason => {
-        // A delayed external cleanup must not cancel a movement that the idle
-        // safety supervisor has since acquired. Explicit agent/safety stops
-        // still use their own cancellation and cleanup paths.
-        if (!ownedCall && idleSafety?.snapshot().busy) throw new Error('保護動作が移動を使用中です。全体を停止する場合は自律動作か保護動作を停止してください。')
-        return movement?.stop(reason) ?? { phase: 'idle' }
-      }
-    },
-    crafting: {
-      preview: (...args) => host.shared.inventoryUncertain ? { ready: false, errors: ['操作後の持ち物が未確定です。'] } : crafting.preview(...args),
-      craft: (...args) => { requireIdle(); return crafting.craft(...args) },
-      openInventory: () => { requireIdle({ inventoryRequired: false }); return crafting.openInventory() },
-      closeContainer: () => crafting.closeContainer()
-    },
-    interactions: {
-      cancel: reason => interactions.cancel(reason),
-      equip: slot => { requireIdle(); const result = interactions.equip(slot); host.setEquipmentPrediction(slot); return result },
-      placeCraftingTable: data => {
-        requireIdle(); crafting.closeContainer()
-        return interactions.placeCraftingTable(data).then(result => {
-          host.shared.stations ??= {}
-          host.shared.stations.craftingTable = { known: true, serverConfirmed: true, placedByBot: true, position: result.position }
-          return result
-        })
-      },
-      placeBlock: data => {
-        requireIdle(); crafting.closeContainer()
-        const plan = interactions.previewPlace(data)
-        if (!plan.ready) throw new Error(plan.errors.join('\n'))
-        return interactions.placeBlock(data).then(result => {
-          const name = plan.expectedBlock
-          if (name === 'minecraft:furnace' || name === 'minecraft:crafting_table') {
-            host.shared.stations ??= {}
-            host.shared.stations[name === 'minecraft:furnace' ? 'furnace' : 'craftingTable'] = { known: true, serverConfirmed: true, placedByBot: true, position: result.position }
-          }
-          return result
-        })
-      },
-      previewPlace: data => interactions.previewPlace(data),
-      // Manual normal placement against a side face (2026-11-13: a bridge to the
-      // registered chest over the finished pit). Same checks as the quarry's seals.
-      previewPlaceAgainst: data => interactions.previewQuarryPlace(data),
-      placeAgainst: data => { requireIdle(); crafting.closeContainer(); const plan = interactions.previewQuarryPlace(data); if (!plan.ready) throw new Error((plan.errors ?? []).join(' / ') || 'placement refused'); return interactions.placeQuarryBlock(data) },
-      openCraftingTable: (...args) => { requireIdle(); crafting.closeContainer(); return interactions.openCraftingTable(...args) },
-      openFurnace: (...args) => { requireIdle(); crafting.closeContainer(); return interactions.openFurnace(...args) },
-      openChest: (position, slot) => { requireIdle(); crafting.closeContainer(); return chest.open(position, slot) },
-      previewOpenChest: (position, slot) => interactions.previewOpenChest(position, slot)
-    },
-    inventory: {
-      resync: () => requestInventoryResyncWithReceipt(),
-      resyncStatus: () => structuredClone(host.shared.inventoryResync?.lastRequest ?? null),
-      equip: async slot => {
-        requireIdle()
-        const result = await inventory.equip(slot)
-        if (result.serverConfirmed) host.shared.equipment = null
-        return result
-      }
-    },
-    combat: {
-      previewHunt: id => combat?.previewHunt(id) ?? { ready: false },
-      previewEngage: (id, options) => combat?.previewEngage(id, options) ?? { ready: false },
-      previewWaterCreeper: id => combat?.previewWaterCreeper(id) ?? { ready: false },
-      waterCreeperAttack: id => { requireIdle(); return combat.waterCreeperAttack(id) },
-      hunt: id => { requireIdle(); return combat.hunt(id) },
-      preview: id => combat?.preview(id) ?? { ready: false },
-      attack: id => { requireIdle(); return combat.attack(id) },
-      defend: options => { requireIdle(); return combat.defend(options) },
-      engage: (id, options) => { requireIdle(); return combat.engage(id, options) },
-      stop: reason => { combat?.cancel(reason); return combat?.drain() }
-    },
-    agent: {
-      yieldWork: async reason => {
-        if (disposed || disposing) throw new Error('Runtime is reloading')
-        const options=reason&&typeof reason==='object'?reason:null, ttlMs=options?.ttlMs
-        if(ttlMs!=null&&(!Number.isSafeInteger(ttlMs)||ttlMs<1000||ttlMs>60000))throw Error('Work hold ttlMs must be an integer1000..60000')
-        const scope=userScope(rawScope()), lease=ttlMs==null?null:{id:require('node:crypto').randomUUID(),scope,createdAt:Date.now(),expiresAt:Date.now()+ttlMs}
-        host.shared.legacyWorkHoldScope=scope;host.shared.legacyWorkHoldLease=lease
-        autonomy.stop(options?.reason ?? (typeof reason==='string'?reason:'Logical work handoff'))
-        await autonomy.tick()
-        return {held:lease?host.shared.legacyWorkHoldLease?.id===lease.id&&logicalWorkHeld():logicalWorkHeld(),policyUnchanged:true,leaseId:lease?.id??null,scope,expiresAt:lease?.expiresAt??null,agent:autonomy.snapshot()}
-      },
-      releaseWork: leaseId => {
-        const lease=host.shared.legacyWorkHoldLease
-        if(typeof leaseId!=='string'||!lease||lease.id!==leaseId)return {released:false,policyUnchanged:true}
-        host.shared.legacyWorkHoldLease=null
-        if(host.shared.legacyWorkHoldScope===lease.scope)host.shared.legacyWorkHoldScope=null
-        return {released:true,policyUnchanged:true}
-      },
-      start: options => {
-        if (chunkMoveHeld()) throw Object.assign(new Error('Botの移動が終わるまで待ってください。'), { code: 'CHUNK_MOVE_BUSY' })
-        if (manualChestStorage?.isBusy()) throw Object.assign(new Error('ラージチェストへの収納操作中です。'), { code: 'STORAGE_BUSY' })
-        if (resetHeld()) throw Object.assign(new Error('初期アイテムのリセット処理中です。'), { code: 'RESET_BUSY' })
-        if (disposed || disposing) throw new Error('行動コードを更新しました。新しい状態からやり直してください。')
-        host.shared.legacyWorkHoldScope = null; host.shared.legacyWorkHoldLease = null
-        host.shared.autoWanted = true
-        host.shared.autoOptions = { objective: 'diamond', diamondCount: 1, maxRunMs: 7200000, maxWaitTicks: 1200, ...options }
-        const start = () => { if (disposed || disposing || resetHeld() || manualChestStorage?.isBusy() || chunkMoveHeld()) return autonomy.snapshot(); return autonomy.start({ ...host.shared.autoOptions, progress: options?.progress ?? host.shared.autonomyProgress }) }
-        return missionJournal.enabled ? missionJournal.load().then(result => missionReady(result) ? start() : autonomy.snapshot()) : start()
-      },
-      stop: reason => { host.shared.autoWanted = false; clearNavigationDestination(); const result = autonomy.stop(reason); stopActions(reason); return result },
-      tick: () => { if (chunkMoveHeld()) throw Object.assign(new Error('Botの移動が終わるまで待ってください。'), { code: 'CHUNK_MOVE_BUSY' }); if (manualChestStorage?.isBusy()) throw Object.assign(new Error('ラージチェストへの収納操作中です。'), { code: 'STORAGE_BUSY' }); if (resetHeld()) throw Object.assign(new Error('初期アイテムのリセット処理中です。'), { code: 'RESET_BUSY' }); return autonomy.tick() }
-    }
-  }
+  // This part lives in runtime-operations.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const runtimeOperations = require('./runtime-operations').createRuntimeOperations({
+    get activeBase () { return activeBase },
+    get allActors () { return allActors },
+    get armor () { return armor },
+    get armorAutoAllowed () { return armorAutoAllowed },
+    get armorTask () { return armorTask }, set armorTask (value) { armorTask = value },
+    get armorWorkFree () { return armorWorkFree },
+    get autonomy () { return autonomyRuntime.autonomy },
+    get bowSightClearAt () { return bowSightClearAt },
+    get cancelChunkMovement () { return cancelChunkMovement },
+    get cancelQuarryRestore () { return cancelQuarryRestore },
+    get chest () { return chest },
+    get chestStatus () { return chestStatus },
+    get chunkMoveHeld () { return chunkMoveHeld },
+    get chunkTravel () { return chunkTravel }, set chunkTravel (value) { chunkTravel = value },
+    get clearMovementDestination () { return clearMovementDestination },
+    get clearNavigationDestination () { return clearNavigationDestination },
+    get combat () { return combat }, set combat (value) { combat = value },
+    get combatExposure () { return combatExposure },
+    get confirmQuarryPosition () { return confirmQuarryPosition },
+    get controlLocation () { return controlLocation },
+    get crafting () { return crafting },
+    get createPlainsLocator () { return createPlainsLocator },
+    get createStoragePlacementAudit () { return createStoragePlacementAudit },
+    get defenseEnabled () { return defenseEnabled },
+    get depotMission () { return depotMission }, set depotMission (value) { depotMission = value },
+    get depotPrebuild () { return depotPrebuild }, set depotPrebuild (value) { depotPrebuild = value },
+    get disposed () { return disposed }, set disposed (value) { disposed = value },
+    get disposing () { return disposing }, set disposing (value) { disposing = value },
+    get emptyHandedPrep () { return emptyHandedPrep },
+    get ensureChunkTravel () { return ensureChunkTravel },
+    get ensureLoadoutReset () { return ensureLoadoutReset },
+    get ensureLongTravel () { return ensureLongTravel },
+    get ensureManualChestStorage () { return ensureManualChestStorage },
+    get ensureQuarryJob () { return ensureQuarryJob },
+    get equipManualArmor () { return equipManualArmor },
+    get excavation () { return excavation }, set excavation (value) { excavation = value },
+    get executeSurfaceReturn () { return executeSurfaceReturn },
+    get findFlatArea () { return findFlatArea },
+    get food () { return food },
+    get foodKnownLife () { return foodKnownLife },
+    get foraging () { return foraging }, set foraging (value) { foraging = value },
+    get furnace () { return furnace },
+    get getRegisteredQuarryHomeSite () { return getRegisteredQuarryHomeSite },
+    get guardRoute () { return guardRoute }, set guardRoute (value) { guardRoute = value },
+    get guardRouteProgress () { return guardRouteProgress }, set guardRouteProgress (value) { guardRouteProgress = value },
+    get guardRouteSnapshot () { return guardRouteSnapshot },
+    get host () { return host }, set host (value) { host = value },
+    get hut () { return hut }, set hut (value) { hut = value },
+    get idlePhysicsState () { return idlePhysicsState }, set idlePhysicsState (value) { idlePhysicsState = value },
+    get idleSafety () { return idleSafety }, set idleSafety (value) { idleSafety = value },
+    get inputHistory () { return inputHistory }, set inputHistory (value) { inputHistory = value },
+    get interactions () { return interactions },
+    get inventory () { return inventory },
+    get inventoryInspection () { return inventoryInspection },
+    get inventoryLifeBaseKey () { return inventoryLifeBaseKey },
+    get inventoryStore () { return inventoryStore },
+    get lightweightRawState () { return lightweightRawState },
+    get loadManualShulkerRecovery () { return loadManualShulkerRecovery },
+    get loadoutReset () { return loadoutReset }, set loadoutReset (value) { loadoutReset = value },
+    get loadQuarryFile () { return loadQuarryFile },
+    get loadShoreHistory () { return loadShoreHistory },
+    get logicalWorkHeld () { return logicalWorkHeld },
+    get longTravelLogAllowance () { return longTravelLogAllowance },
+    get manualChestStorage () { return manualChestStorage }, set manualChestStorage (value) { manualChestStorage = value },
+    get manualGroundAccessProof () { return manualGroundAccessProof },
+    get manualRecoveryState () { return manualRecoveryState },
+    get manualShulkerAbort () { return manualShulkerAbort }, set manualShulkerAbort (value) { manualShulkerAbort = value },
+    get manualShulkerDocument () { return manualShulkerDocument }, set manualShulkerDocument (value) { manualShulkerDocument = value },
+    get manualShulkerRecovery () { return manualShulkerRecovery }, set manualShulkerRecovery (value) { manualShulkerRecovery = value },
+    get manualShulkerTask () { return manualShulkerTask }, set manualShulkerTask (value) { manualShulkerTask = value },
+    get measureSnapshots () { return measureSnapshots },
+    get mining () { return mining },
+    get missionJournal () { return missionJournal },
+    get missionReady () { return missionReady },
+    get motionOrigin () { return motionOrigin }, set motionOrigin (value) { motionOrigin = value },
+    get movement () { return movement }, set movement (value) { movement = value },
+    get movementDestination () { return movementDestination },
+    get nearestHostileDistance () { return nearestHostileDistance },
+    get normalizeChunkArea () { return normalizeChunkArea },
+    get ownedCall () { return ownedCall }, set ownedCall (value) { ownedCall = value },
+    get plainsLocator () { return plainsLocator }, set plainsLocator (value) { plainsLocator = value },
+    get planningWorld () { return planningWorld },
+    get portableKeys () { return portableKeys },
+    get portableMovementOptions () { return portableMovementOptions },
+    get portablePolicyError () { return portablePolicyError },
+    get profileCpu () { return profileCpu },
+    get prospecting () { return prospecting },
+    get publishWalker () { return publishWalker },
+    get quarryJob () { return quarryJob }, set quarryJob (value) { quarryJob = value },
+    get quarryPillar () { return quarryPillar }, set quarryPillar (value) { quarryPillar = value },
+    get quarryPlacementPreparation () { return quarryPlacementPreparation }, set quarryPlacementPreparation (value) { quarryPlacementPreparation = value },
+    get quarryPorts () { return quarryPorts }, set quarryPorts (value) { quarryPorts = value },
+    get quarryPositionVerifier () { return quarryPositionVerifier }, set quarryPositionVerifier (value) { quarryPositionVerifier = value },
+    get quarryRuntime () { return quarryRuntime },
+    get quarrySnapshot () { return quarrySnapshot },
+    get quarryState () { return quarryState },
+    get raw () { return raw },
+    get rawScope () { return rawScope },
+    get readCurrentTunnelFloors () { return readCurrentTunnelFloors }, set readCurrentTunnelFloors (value) { readCurrentTunnelFloors = value },
+    get receivedEquipmentView () { return receivedEquipmentView },
+    get recovery () { return recovery }, set recovery (value) { recovery = value },
+    get replaying () { return replaying }, set replaying (value) { replaying = value },
+    get requestInventoryResyncWithReceipt () { return requestInventoryResyncWithReceipt },
+    get requestQuarryTerrain () { return requestQuarryTerrain },
+    get require () { return require },
+    get requireIdle () { return requireIdle },
+    get resetHeld () { return resetHeld },
+    get resumeSafety () { return resumeSafety },
+    get runManualShulkerRecovery () { return runManualShulkerRecovery },
+    get runner () { return runner },
+    get safetyDispatchEpoch () { return safetyDispatchEpoch }, set safetyDispatchEpoch (value) { safetyDispatchEpoch = value },
+    get safetySnapshot () { return safetySnapshot },
+    get selfEffectEvents () { return selfEffectEvents },
+    get selfResistance () { return selfResistance },
+    get selfSlowFalling () { return selfSlowFalling },
+    get shelter () { return shelter }, set shelter (value) { shelter = value },
+    get shoreMemory () { return shoreMemory },
+    get startMotion () { return startMotion },
+    get stopActions () { return stopActions },
+    get stopIdleStream () { return stopIdleStream },
+    get storagePlacementAudit () { return storagePlacementAudit }, set storagePlacementAudit (value) { storagePlacementAudit = value },
+    get surfaceReturn () { return surfaceReturn }, set surfaceReturn (value) { surfaceReturn = value },
+    get surfaceReturnOwner () { return surfaceReturnOwner }, set surfaceReturnOwner (value) { surfaceReturnOwner = value },
+    get surveyShore () { return surveyShore },
+    get testQuarryPillar () { return testQuarryPillar },
+    get threatReachability () { return threatReachability },
+    get tickUserBehaviors () { return tickUserBehaviors },
+    get travelLeafEscape () { return travelLeafEscape },
+    get travelPlaceTable () { return travelPlaceTable },
+    get travelRuntime () { return travelRuntime },
+    get travelSupplyBoxTake () { return travelSupplyBoxTake },
+    get tunneling () { return tunneling }, set tunneling (value) { tunneling = value },
+    get userBehaviorOwns () { return userBehaviorOwns },
+    get userBehaviors () { return userBehaviors }, set userBehaviors (value) { userBehaviors = value },
+    get userBehaviorSnapshot () { return userBehaviorSnapshot },
+    get userBehaviorTickTask () { return userBehaviorTickTask }, set userBehaviorTickTask (value) { userBehaviorTickTask = value },
+    get userBehaviorWakePending () { return userBehaviorWakePending }, set userBehaviorWakePending (value) { userBehaviorWakePending = value },
+    get userScope () { return userScope },
+    get verifiedInitialLifeReceipt () { return verifiedInitialLifeReceipt },
+    get walker () { return walker }, set walker (value) { walker = value },
+    get working () { return working },
+    get yieldPortableMovement () { return yieldPortableMovement }
+  })
   async function observeDepotSky (signal) {
     const state = lightweightUserState(), p = state.position
     if (!p || state.phase !== 'spawned' || state.dead || state.spawnPending || !(state.health > 0)) return
@@ -4047,7 +3137,7 @@ function createRuntime (host) {
       fullPlanner??=createNavigator({world:planningWorld,version:host.meta.version,allowWater:false,physics:idlePhysics.withWorld(planningWorld,{allowWater:false}),planningDistanceLimit:48})
       return fullPlanner.plan(fullPlanner.physics.fromServer(state),target,{...options,avoidance})
     }
-    const proposal=planOwnedCampReturn({state,world:host.world,campMemo:camp,ownedChest:context.policy.memo().chest,previewMove:(target,options)=>operations.movement.preview(target,{...options,avoidance}),previewRoute})
+    const proposal=planOwnedCampReturn({state,world:host.world,campMemo:camp,ownedChest:context.policy.memo().chest,previewMove:(target,options)=>runtimeOperations.operations.movement.preview(target,{...options,avoidance}),previewRoute})
     if(proposal.detour)await delay(0)
     if(!proposal.ready&&proposal.reason==='full_dry_origin_not_proven'&&!prepareOnly){
       // Half over an edge on dry land: step onto the nearest fully supported
@@ -4056,7 +3146,7 @@ function createRuntime (host) {
       if(physical?.onGround===true&&!physical.isInWater&&!physical.isInLava){
         const recenter={partialRecenter:true,maxDistance:2,maxExpanded:64,maxTicks:40}
         for(const target of landEdgeRecenterTargets(host.world,{...state.position,y:state.position.y-1.62})){
-          if(operations.movement.preview(target.position,{...recenter,avoidance})?.ready!==true)continue
+          if(runtimeOperations.operations.movement.preview(target.position,{...recenter,avoidance})?.ready!==true)continue
           const moved=await movePrebuildStance({standpoint:target.position,avoidance,moveOptions:recenter},context)
           return {...moved,code:'LAND_EDGE_RECENTER'}
         }
@@ -4073,7 +3163,7 @@ function createRuntime (host) {
     prepare:context=>approachOwnedCamp(context,true),
     takeover:async(context,before)=>{
       if(context.signal.aborted||logicalWorkHeld()||!prebuildIdle())return false
-      autonomy.stop('Approach the actual owned crafting camp before empty-bag bootstrap');await autonomy.tick()
+      autonomyRuntime.autonomy.stop('Approach the actual owned crafting camp before empty-bag bootstrap');await autonomyRuntime.autonomy.tick()
       const state=lightweightUserState()
       return !context.signal.aborted&&!logicalWorkHeld()&&JSON.stringify(continuationScope(state))===JSON.stringify(before.scope)&&state.health>=before.health&&Math.hypot(state.position.x-before.position.x,state.position.y-before.position.y,state.position.z-before.position.z)<=.1&&prebuildIdle()
     },
@@ -4137,7 +3227,7 @@ function createRuntime (host) {
     const avoidance = [...evaluation.threats, ...evaluation.outsideDanger, ...evaluation.suppressedByTerrain].map(a => ({ id: a.runtimeId, position: { ...a.position }, minDistance: a.dangerRadius, padding: 0 }))
     const recenter = { partialRecenter: true, maxDistance: 2, maxExpanded: 64, maxTicks: 40 }
     for (const target of targets) {
-      if (operations.movement.preview(target.position, { ...recenter, avoidance })?.ready !== true) continue
+      if (runtimeOperations.operations.movement.preview(target.position, { ...recenter, avoidance })?.ready !== true) continue
       try { return { ...await movePrebuildStance({ standpoint: target.position, avoidance, moveOptions: recenter }, context), code: 'LAND_EDGE_RECENTER' } } catch (error) { return { phase: 'observing', code: 'LAND_EDGE_RECENTER_FAILED', reason: String(error.message ?? error).slice(0, 200), serverConfirmed: false } }
     }
     return null
@@ -4165,10 +3255,10 @@ function createRuntime (host) {
       const home=await ownedCampBootstrap.step(context)
       host.shared.ownedCampBootstrap=ownedCampBootstrap.snapshot()
       if(home.handled)return home.result
-      const active = autonomy.snapshot()
+      const active = autonomyRuntime.autonomy.snapshot()
       if (!userBehaviorOwns() && !pendingStops.size && !active.running && !active.busy && !active.actionActive && Date.now() >= (host.shared.depotMiningRestartAt ?? 0)) {
         host.shared.depotMiningRestartAt = Date.now()+10000
-        autonomy.start({objective:'diamond',diamondCount:1,maxRunMs:7200000,maxWaitTicks:1200,...host.shared.autoOptions,progress:host.shared.autonomyProgress})
+        autonomyRuntime.autonomy.start({objective:'diamond',diamondCount:1,maxRunMs:7200000,maxWaitTicks:1200,...host.shared.autoOptions,progress:host.shared.autonomyProgress})
       }
       return {phase:'reacquiring_diamond',serverConfirmed:false,inventoryConfirmed:false}
     }
@@ -4231,9 +3321,9 @@ function createRuntime (host) {
       if(!validated.ready)return {phase:'observing',code:'OWN_CAMP_REVALIDATION_REQUIRED',reason:validated.reason}
       let result
       if (intent.kind === 'observe_storage' && memory.chest) {
-        const access=operations.interactions.previewOpenChest(memory.chest.position)
+        const access=runtimeOperations.operations.interactions.previewOpenChest(memory.chest.position)
         if(access.ready===true){
-          const opened=await operations.chest.open(memory.chest.position)
+          const opened=await runtimeOperations.operations.chest.open(memory.chest.position)
           const observed=context.policy.observeStored(chest.snapshot())
           return {phase:'observed',serverConfirmed:opened.serverConfirmed===true,storedDiamondRevalidated:observed}
         }
@@ -4251,7 +3341,7 @@ function createRuntime (host) {
         const access = planDepotStorageAccess({state:lightweightUserState(),world:host.world,target:result.position,previewOpenAt:({state:projected,target})=>{probeState=projected;return probe.previewOpenChest(target,projected.rawSelectedSlot)}})
         if (access.standpoint) return runner.actions.move_to({type:'move_to',target:access.standpoint,allowWater:false,reason:'Confirm depot access from an observed standing cell'}, {signal:context.signal,state:lightweightUserState(),observations:{},progress:{}})
         if (context.prebuild) {
-          const close=planPrebuildChestStance({state:lightweightUserState(),scope:context.scope,world:host.world,base:memory.base,target:result.position,previewPlaceAt:({state:projected,target,slot})=>{probeState=projected;return probe.previewPlace({position:target,slot})},previewMove:(target,options)=>operations.movement.preview(target,options)})
+          const close=planPrebuildChestStance({state:lightweightUserState(),scope:context.scope,world:host.world,base:memory.base,target:result.position,previewPlaceAt:({state:projected,target,slot})=>{probeState=projected;return probe.previewPlace({position:target,slot})},previewMove:(target,options)=>runtimeOperations.operations.movement.preview(target,options)})
           if (close?.standpoint) return movePrebuildStance(close,context)
         }
         return {phase:'observing',code:access.reason ?? 'ACCESS_REPREVIEW'}
@@ -4268,10 +3358,10 @@ function createRuntime (host) {
         if (!position) return { phase: 'observing', code: 'OWN_CHEST_UNKNOWN' }
         const candidate = state.inventory.items.find(item => ['minecraft:andesite','minecraft:granite','minecraft:diorite','minecraft:raw_copper','minecraft:raw_gold'].includes(item.name) && item.count > 0) ?? state.inventory.items.find(item => item.name === 'minecraft:cobblestone' && item.count > 0 && state.inventory.items.filter(i => i.name === item.name).reduce((n,i) => n+i.count,0) > 64)
         if (!candidate) return { phase: 'observing', code: 'NO_VALIDATED_SURPLUS' }
-        if (!chestStatus().contentsKnown || JSON.stringify(chestStatus().window?.position) !== JSON.stringify(position)) return operations.chest.open(position)
+        if (!chestStatus().contentsKnown || JSON.stringify(chestStatus().window?.position) !== JSON.stringify(position)) return runtimeOperations.operations.chest.open(position)
         const retained = candidate.name === 'minecraft:cobblestone' ? 64 : 0
         const total = state.inventory.items.filter(i => i.name === candidate.name).reduce((n,i) => n+i.count,0)
-        return operations.chest.depositItem({sourceSlot:candidate.slot,count:Math.min(candidate.count,total-retained),expectedName:candidate.name})
+        return runtimeOperations.operations.chest.depositItem({sourceSlot:candidate.slot,count:Math.min(candidate.count,total-retained),expectedName:candidate.name})
       }
       const actualIron = lightweightUserState().inventory.items.filter(i => ['minecraft:raw_iron','minecraft:iron_ingot'].includes(i.name)).reduce((n,i)=>n+i.count,0)
       return runDepotResource({ ...intent, kind:'work', resource: intent.priority === 'food_health' ? 'food' : 'iron', targetCount: intent.priority === 'food_health' ? 1 : Math.min(4096,actualIron+8), ...(intent.priority === 'weapon' ? {preparation:'weapon'} : {}) }, context)
@@ -4288,7 +3378,7 @@ function createRuntime (host) {
     return {...state,inventory,food:food.snapshot(),crafting:crafting.snapshot()}
   }
   function prebuildIdle () {
-    const idle = !disposed && !disposing && !userBehaviorOwns() && !pendingStops.size && !surfaceReturnOwner && !autonomy.snapshot().actionActive && !motionActive() && !input?.stats().running && !idleSafety?.snapshot().busy && mining.snapshot().phase!=='mining' && !food.snapshot().busy && !inventory.snapshot().busy && craftStatus().pendingRequestId==null && !interactions.snapshot().pendingOperation && !depotBuilder?.snapshot().busy && !depotStorage?.snapshot().busy && !foraging?.snapshot().busy && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !guardRoute?.snapshot().busy && !chestStatus().busy && !furnace.snapshot().busy && !combat?.snapshot().busy && !combat?.snapshot().engaging
+    const idle = !disposed && !disposing && !userBehaviorOwns() && !pendingStops.size && !surfaceReturnOwner && !autonomyRuntime.autonomy.snapshot().actionActive && !motionActive() && !input?.stats().running && !idleSafety?.snapshot().busy && mining.snapshot().phase!=='mining' && !food.snapshot().busy && !inventory.snapshot().busy && craftStatus().pendingRequestId==null && !interactions.snapshot().pendingOperation && !depotBuilder?.snapshot().busy && !depotStorage?.snapshot().busy && !foraging?.snapshot().busy && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !guardRoute?.snapshot().busy && !chestStatus().busy && !furnace.snapshot().busy && !combat?.snapshot().busy && !combat?.snapshot().engaging
     if (!idle) return false
     if (working().survivalWorkClearance === true) {
       if (!idleSafety?.snapshot().running || host.shared.safetyWanted !== true) { resumeSafety(); return false }
@@ -4306,7 +3396,7 @@ function createRuntime (host) {
       if(e.requiresObservation || state.entityStats?.unknownPositions>e.unknownPositions.length)return false
       return [...e.threats,...e.outsideDanger,...e.suppressedByTerrain].every(a=>Math.hypot(p.x-a.position.x,p.y-a.position.y,p.z-a.position.z)>=a.dangerRadius-1e-4)
     }
-    const receipt=operations.movement.start(plan.standpoint,{allowWater:false,maxDistance:6,maxExpanded:300,maxTicks:100,avoidance:plan.avoidance,beforeInput,...(plan.moveOptions??{})})
+    const receipt=runtimeOperations.operations.movement.start(plan.standpoint,{allowWater:false,maxDistance:6,maxExpanded:300,maxTicks:100,avoidance:plan.avoidance,beforeInput,...(plan.moveOptions??{})})
     const stamp=actor.snapshot().timingDiagnostics?.start?.at ?? receipt.timingDiagnostics?.start?.at
     try {
       for(let i=0;i<120;i++) {
@@ -4321,9 +3411,9 @@ function createRuntime (host) {
     } finally { if(actor.snapshot().timingDiagnostics?.start?.at===stamp) {actor.stop('Prebuild stance ended');await actor.drain?.()} }
   }
   depotPrebuild=createWorksiteCampPrebuild({getState:prebuildState,getRawItem:slot=>crafting.rawItem(slot),world:host.world,getSurface:()=>host.shared.depotSurfaceAnchor,getBuilder:()=>depotBuilder?{...depotBuilder.snapshot(),protectedCells:depotBuilder.protectedCells()}:null,getStorage:()=>chest.snapshot(),isIdle:prebuildIdle,
-    takeover:async({scope,signal})=>{if(signal.aborted || JSON.stringify(continuationScope(prebuildState()))!==JSON.stringify(scope) || !prebuildIdle())return false;host.shared.depotReacquireWanted=false;autonomy.stop('Prepare a real depot before valuable mining');await autonomy.tick();return !signal.aborted && JSON.stringify(continuationScope(prebuildState()))===JSON.stringify(scope) && prebuildIdle()},
+    takeover:async({scope,signal})=>{if(signal.aborted || JSON.stringify(continuationScope(prebuildState()))!==JSON.stringify(scope) || !prebuildIdle())return false;host.shared.depotReacquireWanted=false;autonomyRuntime.autonomy.stop('Prepare a real depot before valuable mining');await autonomyRuntime.autonomy.tick();return !signal.aborted && JSON.stringify(continuationScope(prebuildState()))===JSON.stringify(scope) && prebuildIdle()},
     dispatch:(intent,context)=>dispatchDepotIntent(intent,{...context,prebuild:true}),
-    resumeLegacy:async({scope,signal})=>{if(signal.aborted || JSON.stringify(continuationScope(prebuildState()))!==JSON.stringify(scope) || !prebuildIdle())throw Error('Prebuild release owner changed');host.shared.depotReacquireWanted=true;const s=autonomy.snapshot();if(!s.running&&!s.busy&&!s.actionActive)autonomy.start({objective:'diamond',diamondCount:1,maxRunMs:7200000,maxWaitTicks:1200,...host.shared.autoOptions,progress:host.shared.autonomyProgress})},onProgress:value=>{host.shared.depotPrebuildStatus=value}})
+    resumeLegacy:async({scope,signal})=>{if(signal.aborted || JSON.stringify(continuationScope(prebuildState()))!==JSON.stringify(scope) || !prebuildIdle())throw Error('Prebuild release owner changed');host.shared.depotReacquireWanted=true;const s=autonomyRuntime.autonomy.snapshot();if(!s.running&&!s.busy&&!s.actionActive)autonomyRuntime.autonomy.start({objective:'diamond',diamondCount:1,maxRunMs:7200000,maxWaitTicks:1200,...host.shared.autoOptions,progress:host.shared.autonomyProgress})},onProgress:value=>{host.shared.depotPrebuildStatus=value}})
   depotMission = createDepotMission({ getState: () => ({ ...lightweightUserState(), hut: hut?.snapshot(), shelter: shelter?.snapshot(), food: food.snapshot() }), world: host.world, getRawItem: slot => crafting.rawItem(slot), workspaceRoot: host.meta.workspaceRoot, dispatch: dispatchDepotIntent, onProgress: value => { host.shared.depotMissionStatus = value } })
   host.cache.replay(applyPacket)
   replaying = false
@@ -4556,7 +3646,7 @@ function createRuntime (host) {
         if (!damaging(state.heldItem?.name)) return { prepared: true }
         const item = state.inventory?.items?.find(item => item.count > 0 && !damaging(item.name) && item.durabilityKnown !== true)
         if (!item) throw new Error('SHULKER_RECOVERY_HAND_UNAVAILABLE')
-        const receipt = await own(slot => operations.inventory.equip(slot))(item.slot)
+        const receipt = await own(slot => runtimeOperations.operations.inventory.equip(slot))(item.slot)
         signal?.throwIfAborted()
         if (receipt?.serverConfirmed !== true || damaging(quarryState().heldItem?.name)) throw new Error('SHULKER_RECOVERY_HAND_UNCONFIRMED')
         return { prepared: true }
@@ -4631,7 +3721,7 @@ function createRuntime (host) {
     get armor () { return armor },
     get armorTask () { return armorTask },
     get assertJobWorld () { return assertJobWorld },
-    get autonomy () { return autonomy },
+    get autonomy () { return autonomyRuntime.autonomy },
     get canonicalWindowId () { return canonicalWindowId },
     get chest () { return chest },
     get chestStatus () { return chestStatus },
@@ -4678,7 +3768,7 @@ function createRuntime (host) {
     get mining () { return mining },
     get motionActive () { return motionActive },
     get observedScope () { return observedScope },
-    get operations () { return operations },
+    get operations () { return runtimeOperations.operations },
     get pendingStops () { return pendingStops },
     get permitsExitAction () { return permitsExitAction },
     get planningWorld () { return planningWorld },
@@ -4796,10 +3886,10 @@ function createRuntime (host) {
       if (manualChestStorage?.isBusy()) return
       if (logicalWorkHeld()) return
       if (depotMission?.isEnabled()) { void depotMission.resume(); return }
-      const status = autonomy.snapshot()
+      const status = autonomyRuntime.autonomy.snapshot()
       // stop() releases running before the current tick finally drains.
       // The next normal behavior tick retries; never start over that owner.
-      if (!disposed && !disposing && !pendingStops.size && !userBehaviorOwns() && !host.shared.respawnTerrain?.pending && host.shared.autoWanted && raw().phase === 'spawned' && !raw().spawnPending && host.shared.loadingScreenEnded && !status.running && !status.busy && !status.actionActive) autonomy.start({ objective: 'diamond', diamondCount: 1, maxRunMs: 7200000, maxWaitTicks: 1200, ...host.shared.autoOptions, progress: host.shared.autonomyProgress })
+      if (!disposed && !disposing && !pendingStops.size && !userBehaviorOwns() && !host.shared.respawnTerrain?.pending && host.shared.autoWanted && raw().phase === 'spawned' && !raw().spawnPending && host.shared.loadingScreenEnded && !status.running && !status.busy && !status.actionActive) autonomyRuntime.autonomy.start({ objective: 'diamond', diamondCount: 1, maxRunMs: 7200000, maxWaitTicks: 1200, ...host.shared.autoOptions, progress: host.shared.autonomyProgress })
     }
     // resumeRequested runs after every user-behavior tick (~20/s); a depot
     // resume rebuilds hut/shelter snapshots each time. At most once a second.
@@ -4833,7 +3923,7 @@ function createRuntime (host) {
       assertIdle: () => {
         requireIdle({ inventoryRequired: false, storageHandoff: true })
         if (craftStatus().authority !== true) throw Object.assign(new Error('サーバーから所持品の確認を待っています。'), { code: 'STORAGE_AUTHORITY_UNKNOWN' })
-        if (armorTask || manualArmorOwner || manualShulkerTask || quarryRuntime.quarryRestoreTask || autonomy.snapshot().running || depotMission?.isBusy() || host.shared.rangedShotUncertain || jobPending(quietJob())) throw Object.assign(new Error('作業・収納・持ち替えの終了を確認してください。'), { code: 'STORAGE_NOT_IDLE' })
+        if (armorTask || manualArmorOwner || manualShulkerTask || quarryRuntime.quarryRestoreTask || autonomyRuntime.autonomy.snapshot().running || depotMission?.isBusy() || host.shared.rangedShotUncertain || jobPending(quietJob())) throw Object.assign(new Error('作業・収納・持ち替えの終了を確認してください。'), { code: 'STORAGE_NOT_IDLE' })
       },
       onAcquire: owner => {
         stopIdleStream()
@@ -4841,7 +3931,7 @@ function createRuntime (host) {
           host.shared.autoWanted = false
           host.shared.quarryAutoResume = false
           host.shared.quarryRestoreDisabled = true
-          autonomy.stop('ラージチェストへ収納')
+          autonomyRuntime.autonomy.stop('ラージチェストへ収納')
         }
       },
       onRelease: () => { setTimeout(() => resumeSafety(), 0).unref?.() },
@@ -4899,7 +3989,7 @@ function createRuntime (host) {
     get armorTask () { return armorTask },
     get armorThreatNear () { return armorThreatNear },
     get armorWorkFree () { return armorWorkFree },
-    get autonomy () { return autonomy },
+    get autonomy () { return autonomyRuntime.autonomy },
     get cancelChunkMovement () { return cancelChunkMovement },
     get chunkMoveDepth () { return chunkMoveDepth }, set chunkMoveDepth (value) { chunkMoveDepth = value },
     get chunkMoveJobIdentity () { return chunkMoveJobIdentity },
@@ -4929,7 +4019,7 @@ function createRuntime (host) {
     get motionOrigin () { return motionOrigin }, set motionOrigin (value) { motionOrigin = value },
     get movement () { return movement },
     get nearestHostileDistance () { return nearestHostileDistance },
-    get operations () { return operations },
+    get operations () { return runtimeOperations.operations },
     get portableMovementSerial () { return portableMovementSerial },
     get quarryJob () { return quarryJob },
     get quarryRestoreTask () { return quarryRuntime.quarryRestoreTask },
@@ -4964,14 +4054,14 @@ function createRuntime (host) {
       getJob: () => ensureQuarryJob(),
       assertIdle: () => {
         requireIdle({ loadoutHandoff: true })
-        if (mining.snapshot().phase === 'mining' || mining.snapshot().activeTarget || depotBuilder?.snapshot().busy || depotStorage?.snapshot().busy || armorTask || manualArmorOwner || manualShulkerTask || quarryRuntime.quarryRestoreTask || autonomy.snapshot().running || depotMission?.isBusy() || host.shared.inventoryUncertain || host.shared.rangedShotUncertain || !host.shared.loadingScreenEnded) throw Object.assign(new Error('採掘・収納・持ち物操作の終了を確認してください。'), { code: 'RESET_NOT_IDLE' })
+        if (mining.snapshot().phase === 'mining' || mining.snapshot().activeTarget || depotBuilder?.snapshot().busy || depotStorage?.snapshot().busy || armorTask || manualArmorOwner || manualShulkerTask || quarryRuntime.quarryRestoreTask || autonomyRuntime.autonomy.snapshot().running || depotMission?.isBusy() || host.shared.inventoryUncertain || host.shared.rangedShotUncertain || !host.shared.loadingScreenEnded) throw Object.assign(new Error('採掘・収納・持ち物操作の終了を確認してください。'), { code: 'RESET_NOT_IDLE' })
       },
       acquire: operationId => {
         if (resetHeld()) throw Object.assign(new Error('リセット処理中です。'), { code: 'RESET_BUSY' })
         requireIdle({ loadoutHandoff: true })
         loadoutLease = operationId
         host.shared.autoWanted = false; host.shared.quarryAutoResume = false; host.shared.quarryRestoreDisabled = true
-        autonomy.stop('初期アイテムリセット')
+        autonomyRuntime.autonomy.stop('初期アイテムリセット')
         stopIdleStream()
         // Fence new combat immediately, then cancel/drain the old owner before
         // the first command. Use the private stop path to preserve this lease.
@@ -4991,7 +4081,7 @@ function createRuntime (host) {
     try { const status = quarryJob.status(); return status.portableStorage != null || status.supplies?.active != null } catch { return true }
   }
   return {
-    operations, snapshot: getSnapshot, applyPacket, onSpawn, onRespawn, stopActions, resumeRequested,
+    operations: runtimeOperations.operations, snapshot: getSnapshot, applyPacket, onSpawn, onRespawn, stopActions, resumeRequested,
     canReload: () => {
       const snapshot = createSnapshotReader()
       return !quarryPlacementPreparation && !chunkMoveHeld() && !resetHeld() && !manualChestStorage?.isBusy() && !host.shared.quarrySurfaceStorageOwner && !quarryV22Equipment.status().busy && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && snapshot(mining).phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !snapshot(food).busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(snapshot(furnace).busy || chestStatus().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !snapshot(combat)?.busy && !snapshot(combat)?.defending && !snapshot(combat)?.engaging
@@ -5017,7 +4107,7 @@ function createRuntime (host) {
       clearInterval(userBehaviorTimer); userBehaviorTimer = null
       clearInterval(quarryRuntime.quarryRestoreTimer); clearInterval(worldRetentionTimer); eventLoopStallWatch.stop(); clearInterval(inventoryStoreTimer); quarryRuntime.quarryLoadSequence++
       publishWalker()
-      autonomy.stop(reason ?? '行動コードを更新します。')
+      autonomyRuntime.autonomy.stop(reason ?? '行動コードを更新します。')
       const cleanup = stopActions(reason ?? '行動コードを更新します。')
       // Stop ordinary inputs synchronously above, then wait for owned reset cleanup.
       await Promise.allSettled([manualShulkerTask, resetDrain, storageDrain, chunkMoveDrain])
@@ -5025,7 +4115,7 @@ function createRuntime (host) {
       inputOwner = 'none'
       await cleanup
       await Promise.allSettled([...pendingStops])
-      await autonomy.tick()
+      await autonomyRuntime.autonomy.tick()
       await memoryFlush
       await depotFlush
       await depotPrebuild?.drain()

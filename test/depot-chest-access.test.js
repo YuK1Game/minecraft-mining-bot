@@ -4,7 +4,7 @@ const root=path.resolve(process.env.DEPOT_ACCESS_ROOT??process.cwd()),src=p=>pat
 const {createDepotStorageWork}=require(src('depot-storage-work')),{createInteractions}=require(src('interactions')),{planDepotStorageAccess,selectDepotTableCell}=require(src('depot-storage-access'))
 const fixtureFile=path.join(root,'test/depot-storage-work.test.js'),m=new Module(fixtureFile,module);m.filename=fixtureFile;m.paths=Module._nodeModulePaths(path.dirname(fixtureFile))
 m._compile(fs.readFileSync(fixtureFile,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]+'\nmodule.exports=fixture;',fixtureFile)
-const fixture=m.exports,runtime=fs.readFileSync(process.env.RUNTIME_TEST_SOURCE??src('runtime.js'),'utf8')
+const fixture=m.exports,runtime=require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE)
 const start=runtime.indexOf("    if (['ensure_chest','deposit_diamond','observe_storage'].includes(intent.kind))"),end=runtime.indexOf("    if (intent.kind === 'work')",start)
 const baselineModule=new Module(src('depot-storage-work.js'),module);baselineModule.filename=src('depot-storage-work.js');baselineModule.paths=Module._nodeModulePaths(path.join(root,'src'))
 let oldSource=fs.readFileSync(src('depot-storage-work.js'),'utf8')

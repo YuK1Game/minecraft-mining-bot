@@ -6,7 +6,7 @@ const fixtureFile=path.join(__dirname,'owned-camp-return.test.js'),fixtureModule
 fixtureModule.filename=fixtureFile;fixtureModule.paths=Module._nodeModulePaths(__dirname)
 fixtureModule._compile(fs.readFileSync(fixtureFile,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]+'\nmodule.exports=fixture;',fixtureFile)
 const fixture=fixtureModule.exports
-const runtime=fs.readFileSync(process.env.RUNTIME_TEST_SOURCE??path.join(__dirname,'../src/runtime.js'),'utf8'),start=runtime.indexOf('  async function approachOwnedCamp ('),end=runtime.indexOf('  const ownedCampBootstrap =',start)
+const runtime=require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE),start=runtime.indexOf('  async function approachOwnedCamp ('),end=runtime.indexOf('  const ownedCampBootstrap =',start)
 async function run(f,{idle=()=>true,onPreview=()=>{},onYield=()=>{}}={}){
  assert.ok(start>0&&end>start)
  const moves=[],scope=structuredClone(continuationScope(f.state)),before=structuredClone(f.state)

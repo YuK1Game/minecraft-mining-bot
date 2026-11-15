@@ -3,7 +3,7 @@
 // never a game/API request or physical movement.
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
 const file=path.join(__dirname,'runtime-user-behaviors.test.js'),m=new Module(file,module);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));let source=fs.readFileSync(file,'utf8').split('\ntest(')[0]
-source=source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)","loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8').replace('  const operations = {', '  const operations = {\\n    __testRunner: runner, __testSetPortableLease: value => { portableMovementLease = value },'), filename)")
+source=source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)","loaded._compile(require('./helpers/runtime-source').runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE).replace('  const operations = {', '  const operations = {\\n    __testRunner: runner, __testSetPortableLease: value => { portableMovementLease = value },'), filename)")
 m._compile(source+'\nmodule.exports={scene}',file)
 function fixture(t){const calls=[];t.mock.method(globalThis,'fetch',async(url,o)=>{calls.push({url:String(url),options:o,body:o.body?JSON.parse(o.body):null});return{ok:true,text:async()=>JSON.stringify({ready:true})}});const f=m.exports.scene(t);f.shared.autoWanted=true;f.shared.deathRespawn.deathId=7
  const received=value=>f.runtime.applyPacket('update_attributes',{runtime_entity_id:1n,attributes:[{name:'minecraft:player.hunger',current:value}]});received(16)
