@@ -10,7 +10,7 @@ function fixture ({ blocks = {}, mode = 'player' } = {}) {
   let busy = false, clock = 0
   const recovery = createPlayerRecovery({
     getMode: () => mode, shared, log: line => logs.push(line),
-    agent: { objective: { objective: 'diamond', diamondCount: 1 }, start: async options => { calls.push({ start: options }); shared.autoWanted = true; shared.autoOptions = { ...options } } },
+    agent: { objective: { objective: 'diamond', diamondCount: 1 }, stop: reason => { calls.push('stop'); shared.autoWanted = false }, start: async options => { calls.push({ start: options }); shared.autoWanted = true; shared.autoOptions = { ...options } } },
     travel: { to: async input => { calls.push({ travel: input.destination }); busy = true; setTimeout(() => { busy = false }, 5) }, status: () => ({ busy }), cancel: async () => { busy = false; calls.push('cancel') } },
     getBlock: (x, y, z) => blocks[`${x},${y},${z}`] ?? { known: false },
     getPosition: () => ({ x: 0.5, y: 65.62, z: 0.5 }),
@@ -59,8 +59,20 @@ test('quarry mode, a user stop and a running autonomy are left alone', () => {
   assert.equal(fixture({ mode: 'quarry' }).recovery.onProgress(blocked()), false)
   const f = fixture(); f.shared.autoWanted = false
   assert.equal(f.recovery.onProgress(blocked()), false)
-  assert.equal(fixture().recovery.onProgress({ running: true, phase: 'running' }), false)
+  assert.equal(fixture().recovery.onProgress({ running: true, phase: 'running', lastDecision: { type: 'gather_logs', resource: 'logs' } }), false)
   assert.equal(fixture().recovery.onProgress({ running: false, phase: 'stopped' }), false)
+})
+
+test('wood needed and none near: the search is taken over at once; a tree that did not help is not chosen again', async () => {
+  const f = fixture({ blocks: { '10,70,0': { known: true, name: 'minecraft:oak_log' }, '0,70,60': { known: true, name: 'minecraft:birch_log' } } })
+  const seeking = { running: true, phase: 'running', reason: '探索', lastDecision: { type: 'explore', resource: 'logs' }, progress: { logsCollected: 0 } }
+  assert.equal(f.recovery.onProgress(seeking), true)
+  await settle(f.recovery)
+  f.recovery.onProgress(seeking); await settle(f.recovery)
+  f.recovery.onProgress(seeking); await settle(f.recovery)
+  assert.deepEqual(f.calls.filter(call => call.travel).map(call => call.travel), [{ x: 10, z: 0 }, { x: 0, z: 60 }, ringPoint({ x: 0.5, z: 0.5 }, 3)])
+  assert.equal(f.calls[0], 'stop')
+  assert.deepEqual(f.calls[2], { start: { objective: 'diamond', diamondCount: 1, freshExploration: true } })
 })
 
 test('nearestKnownLog ignores unreceived terrain and logs closer than the minimum', async () => {

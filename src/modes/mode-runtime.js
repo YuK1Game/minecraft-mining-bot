@@ -23,7 +23,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   })
   const recovery = createPlayerRecovery({
     getMode: control.get, shared, log, disposed: () => runtime.disposed?.() === true,
-    agent: { objective: OBJECTIVE, start: options => agent.start(options) },
+    agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason) },
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getPosition: () => runtime.raw().position ?? null
   })
