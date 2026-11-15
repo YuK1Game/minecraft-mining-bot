@@ -69,7 +69,7 @@ test('logs out of reach from the ground are given up, with a log line, not waite
   assert.ok(f.cut.length >= 6, `cut ${f.cut.length}`)
   assert.ok(f.cut.length < 9)
   assert.equal(f.shared.playerTree, undefined)
-  assert.ok(f.lines.some(line => line.includes(`地面から届かない原木が ${9 - f.cut.length} 個残りました`)), f.lines.join('\n'))
+  assert.ok(f.lines.some(line => line.includes(`届かない原木が ${9 - f.cut.length} 個残りました`)), f.lines.join('\n'))
 })
 
 test('an unreceived block still counts as a standing log; stops and other modes are left alone', () => {

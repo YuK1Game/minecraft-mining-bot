@@ -12,7 +12,9 @@
 //   log; an unreceived block still counts as left.
 // - Logs that cannot be reached from the ground (the planner asks to look
 //   around six times in a row, or four minutes pass without one fewer log)
-//   are given up with a log line, so the Bot never stands under a tree forever.
+//   are handed to the scaffold (player-scaffold.js) once; what is still left
+//   after that is given up with a log line, so the Bot never stands under a
+//   tree forever.
 const { normalizeMode } = require('./bot-mode')
 
 const LOG = /^(?:minecraft:)?[a-z_]+_(?:log|stem)$/
@@ -71,13 +73,18 @@ function withPlayerTree ({ mode, shared, decision, position = null, readBlock, p
   const base = tree.logs[0]
   if (position && Math.hypot(position.x - base.x, position.z - base.z) > FAR_M) { drop(`伐っていた木から離れたため、残りの原木 ${left.length} 個はそのままにします`); return begin() }
   if (left.length < tree.left) { tree.left = left.length; tree.misses = 0; tree.progressAt = now() }
+  if (tree.needsScaffold) return decision
   let plan = null
   try { plan = planTree(left) } catch (error) { log(`プレイヤーモード: 木の計画に失敗 ${String(error?.message ?? error).slice(0, 120)}`) }
   if (worksOnTree(plan)) return plan
   // Waits and stops of the tree plan are the base plan's too; only "nothing
   // reachable" (look around, explore) counts against the tree.
   if (plan && ['scan_blocks', 'explore'].includes(plan.type)) tree.misses++
-  if (tree.misses >= MISS_LIMIT || now() - tree.progressAt > STALL_MS) { drop(`地面から届かない原木が ${left.length} 個残りました。この木はここまでにします`); return begin() }
+  if (tree.misses >= MISS_LIMIT || now() - tree.progressAt > STALL_MS) {
+    // The scaffold (player-scaffold.js) takes it from here, once per tree.
+    if (shared.playerScaffold === true && !tree.scaffolded) { tree.needsScaffold = true; return decision }
+    drop(`届かない原木が ${left.length} 個残りました。この木はここまでにします`); return begin()
+  }
   return decision
 }
 
