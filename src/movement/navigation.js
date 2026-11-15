@@ -9,6 +9,12 @@ const HALF_WIDTH = 0.3
 const HEIGHT = 1.8
 const EPSILON = 1e-6
 const CONTACT_EPSILON = 1e-4
+// A position touching a wall arrives as float32: far from the world origin one
+// step of that grid is larger than the micron skin (0.00049 at x = 5000), so the
+// received body overlaps the wall by up to one step. Live 2026-11-15: a Bot
+// against a wall at (4952.3, 5007.3) could not plan any move for 25 minutes.
+const float32Step = value => Math.pow(2, Math.floor(Math.log2(Math.max(1, Math.abs(value)))) - 23)
+const wallSkin = position => Math.max(CONTACT_EPSILON, float32Step(position.x), float32Step(position.z))
 const EYE_HEIGHT = 1.62
 const HAZARD = /(?:lava|fire|cactus|magma|campfire|sweet_berry_bush|powder_snow|cobweb|wither_rose|pointed_dripstone)/
 const key = position => `${Math.floor(position.x)},${position.y},${Math.floor(position.z)}`
@@ -221,7 +227,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
       if (typeof stablePartialOrigin !== 'boolean' || !finite(initialState?.position) || !finite(initialState.velocity) || !['survival', 0].includes(initialState.gameMode) || initialState.onGround !== true || initialState.isInWater || initialState.isInLava || initialState.velocity.y > 0.05 || initialState.velocity.y < -0.12) return false
       const origin = initialState.position
       const dryBody = point => {
-        if (!bodyFree(point, CONTACT_EPSILON)) return false
+        if (!bodyFree(point, wallSkin(point))) return false
         for (let x = Math.floor(point.x - HALF_WIDTH + EPSILON); x <= Math.floor(point.x + HALF_WIDTH - EPSILON); x++) for (let z = Math.floor(point.z - HALF_WIDTH + EPSILON); z <= Math.floor(point.z + HALF_WIDTH - EPSILON); z++) for (let y = Math.floor(point.y + EPSILON); y <= Math.floor(point.y + HEIGHT - EPSILON); y++) if (isWater(geometryBlockAt({ x, y, z }))) return false
         return true
       }
@@ -523,7 +529,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
       // the initial connector can tolerate it. A grounded partial ledge also
       // qualifies when every under-foot cell is a known complete cube or air,
       // with real contact somewhere; no received position is moved.
-      if (!originFree && bodyFree(roundedOrigin, CONTACT_EPSILON)) {
+      if (!originFree && bodyFree(roundedOrigin, wallSkin(roundedOrigin))) {
         const full = fullFootprintSupport(roundedOrigin)
         initialPartialSkin = !full && initialState.onGround === true && initialState.isInWater !== true && initialState.isInLava !== true && knownUnitSupportOrAir(roundedOrigin)
         initialContactSkin = full || initialPartialSkin
@@ -550,7 +556,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
             const ratio = index / count
             const point = { x: origin.x + (candidate.position.x - origin.x) * ratio, y: roundedY, z: origin.z + (candidate.position.z - origin.z) * ratio }
             if (initialPartialSkin && !knownUnitSupportOrAir(point)) { safe = false; break }
-            const free = bodyFree(point) || (initialContactSkin && (initialPartialSkin || fullFootprintSupport(point)) && bodyFree(point, CONTACT_EPSILON))
+            const free = bodyFree(point) || (initialContactSkin && (initialPartialSkin || fullFootprintSupport(point)) && bodyFree(point, wallSkin(point)))
             if (!free || (candidate.medium === 'water' ? !waterAt(point) : !physics.hasSupport(point))) { safe = false; break }
           }
           if (safe) { start = candidate; break }
