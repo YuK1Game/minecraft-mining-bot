@@ -194,6 +194,36 @@ function seekCells (world, feet, goal, { radius = ENGAGE_RADIUS, maxNodes = SEEK
   return grid.unknown() ? null : false
 }
 
+// The other direction, for a hostile the fills above could not answer (an
+// unreceived block anywhere in the 32 m disk makes them "unknown"): a small
+// fill from the hostile's own cell. When every cell it can walk to is received,
+// the region ends well inside the search radius and the bot is not in it, the
+// hostile is shut in and cannot come (real Realm 2026-11-16 12:20-12:50 JST: a
+// drowned at the bottom of a six-deep dry shaft 6.8 m away held idle
+// protection, the flee and all work for half an hour at health 2).
+// Only pits deeper than three blocks below the bot count.
+// true = shut in, null = no such evidence.
+const PIT_RADIUS = 8
+const PIT_MAX_NODES = 300
+const PIT_TIME_LIMIT_MS = 3
+function shutIn (world, position, botFeet) {
+  // A quarter block up: a mob standing at y = 63.9999 is in the cell above.
+  const feet = { x: position.x, y: position.y + 0.25, z: position.z }
+  const start = { x: Math.floor(feet.x), y: Math.floor(feet.y), z: Math.floor(feet.z) }
+  const probe = walkGrid(world)
+  if (!probe.body(start.x, start.y, start.z) || probe.unknown()) return null
+  const region = walkableCells(world, feet, { radius: PIT_RADIUS, maxNodes: PIT_MAX_NODES, maxMs: PIT_TIME_LIMIT_MS })
+  if (region.truncated || region.unknown || nearSeen(region.seen, botFeet)) return null
+  for (const id of region.seen) {
+    const [x, y, z] = id.split(',').map(Number)
+    if (Math.hypot(x - start.x, z - start.z) >= PIT_RADIUS - 1.5) return null
+    // Only a pit deeper than the bot's own drop limit: the fill from the bot
+    // would agree, and a shallow hole leaves an archer's head in the open.
+    if (y > Math.floor(botFeet.y) - MAX_DROP - 1) return null
+  }
+  return true
+}
+
 // One bounded flood fill per interval. Callers read state many times per tick
 // and the fill must never starve the input/packet loop.
 function refresh (state, entities, { world, isHostile = e => e?.hostile === true && e?.alive !== false, now = Date.now(), force = false } = {}) {
@@ -220,6 +250,13 @@ function refresh (state, entities, { world, isHostile = e => e?.hostile === true
     }
     fill.elapsedMs = Math.round((performance.now() - started) * 10) / 10
   }
+  const feet = { ...state.position, y: state.position.y - 1.62 }
+  for (const { e } of due.slice().sort((a, b) => a.d - b.d).slice(0, SEEK_TARGETS)) {
+    if (verdict(state, e, now) !== null) continue
+    let shut = null
+    try { shut = shutIn(world, e.position, feet) } catch { shut = null }
+    if (shut === true) fill.targets.set(String(idOf(e)), { position: { ...e.position }, result: false, shutIn: true })
+  }
   verdicts = due.map(({ e, d }) => ({ runtimeId: String(idOf(e)), entityType: e.entityType ?? null, distance: d, reachable: verdict(state, e, now) }))
   // A slow fill backs off so it stays a small share of the event loop.
   if (elapsed > BUDGET_MS) nextRefreshAt = now + Math.min(4000, elapsed * 20)
@@ -228,4 +265,4 @@ function refresh (state, entities, { world, isHostile = e => e?.hostile === true
 function snapshot () { return fill ? { policy: fill.policy, createdAt: fill.createdAt, cells: fill.cells, truncated: fill.truncated, unknownTouched: fill.unknown, elapsedMs: fill.elapsedMs, origin: fill.origin, hostiles: verdicts } : null }
 function clear () { fill = null; verdicts = []; nextRefreshAt = -Infinity; lastForcedAt = -Infinity }
 
-module.exports = { ENGAGE_RADIUS, MELEE_REACH, refresh, verdict, knownReachable, knownUnreachable, reachableNow, walkableCells, seekCells, snapshot, clear }
+module.exports = { ENGAGE_RADIUS, MELEE_REACH, refresh, verdict, knownReachable, knownUnreachable, reachableNow, walkableCells, seekCells, shutIn, snapshot, clear }
