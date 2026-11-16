@@ -11,6 +11,7 @@ const { bedVisibleFace, bedFingerprint, BED_HEIGHT } = require('./portable-bed')
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const HAZARD = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|scaffolding)/
+const RESTING = /(?:sand$|gravel$|concrete_powder$)/
 // One floor rule for the placement preview and storage site selection.
 const { placementSupportOk } = require('../quarry/storage/storage-site-terrain')
 const PLANKS = new Set(['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'poplar', 'bamboo', 'crimson', 'warped'].map(wood => `minecraft:${wood}_planks`))
@@ -129,7 +130,10 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     if (!placementSupportOk(support)) throw new Error('設置先の下に安全な通常の地面ブロックが必要です。')
     for (const offset of FACE) {
       const neighbour = world.getBlock(target.x + offset.x, target.y + offset.y, target.z + offset.z)
-      if (!neighbour.known || HAZARD.test(neighbour.name) || neighbour.extra?.length) throw new Error('設置先の周囲に未取得領域・液体・落下ブロックがあります。')
+      // A placed block takes no support away: sand or gravel beside or above
+      // the cell stays where it is (real Realm 2026-11-16 09:06 JST: the climb's
+      // dirt step was refused beside gravel, three times).
+      if (!neighbour.known || HAZARD.test(neighbour.name) && !RESTING.test(neighbour.name) || neighbour.extra?.length) throw new Error('設置先の周囲に未取得領域・液体・落下ブロックがあります。')
     }
     const point = { x: target.x + 0.5, y: target.y, z: target.z + 0.5 }
     lineOfSight(point, supportPosition, explicitBed)

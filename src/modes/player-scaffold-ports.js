@@ -85,7 +85,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     try {
       const material = any ? FILL.find(name => held(name) > 0) : DIRT
       const result = await pillarStep({ jobId: 'player-tree', operationId: `player-tree:${now()}:${feetY}`, column: { x: column.x, z: column.z }, feetY, ...(material && material !== DIRT ? { material } : {}) }, {})
-      return result?.status === 'completed' && result.serverConfirmed === true ? { ok: true } : { ok: false, reason: result?.reason ?? 'BLOCKED' }
+      return result?.status === 'completed' && result.serverConfirmed === true ? { ok: true } : (why = result?.checkpoint?.diagnostics?.placementResponse?.reason ?? why, { ok: false, reason: result?.reason ?? 'BLOCKED' })
     } catch (error) { return { ok: false, reason: String(error?.code ?? error?.message ?? error) } }
   }
   async function place (cell) {
