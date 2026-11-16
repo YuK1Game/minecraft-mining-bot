@@ -75,7 +75,7 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
     try { await patient(() => operations.mining.start([cell])) } catch (error) { return refused(error) }
     return until(() => { const found = getBlock(cell.x, cell.y, cell.z); return found?.known === true && /air$/.test(found.name ?? '') }, 10000)
   }
-  return { place, preview, craft, smelt, mine, count, why: () => why }
+  return { place, preview, craft, smelt, mine, count, why: () => why, reset: () => { why = null } }
 }
 
 module.exports = { createHousePorts }

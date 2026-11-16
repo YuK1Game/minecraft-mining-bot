@@ -28,6 +28,7 @@ const { clicks, stands, standable } = require('./house-steps')
 const { underCover } = require('../player-surface')
 
 const AGAIN_MS = 600000, SHORT_MS = 3000, TRIES = 3, RUN_MS = 20 * 60000
+const UNCONFIRMED = /確認できませんでした|確定した持ち物|未確定/
 const WOODS = 'oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|bamboo|crimson|warped'
 const short = name => String(name ?? '').replace(/^minecraft:/, '')
 const ITEM = {
@@ -57,7 +58,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   const held = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).reduce((sum, item) => sum + item.count, 0)
   const stackOf = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).sort((a, b) => b.count - a.count)[0] ?? null
   const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
-  let hunts = 0, unreached = 0, soon = false
+  let hunts = 0, unreached = 0, soon = false, unsettled = false
   const eyeTo = (cell, from) => Math.hypot(cell.x + 0.5 - from.x, cell.y + 0.5 - (from.y + 1.62), cell.z + 0.5 - from.z)
 
   async function save () {
@@ -273,13 +274,19 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
         if (aborted() || now() - started > RUN_MS) break
         if ((fails.get(step.id) ?? 0) >= TRIES) continue
         const left = remaining(getBlock, origin)
-        if (!await make(step, origin, left)) { fails.set(step.id, (fails.get(step.id) ?? 0) + 1); note(step, `${step.item} を用意できません${ports.why() ? `: ${ports.why()}` : ''}`); if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を用意できません（${step.id}${ports.why() ? `: ${ports.why()}` : ''}）`); continue }
+        ports.reset?.()
+        // The server has not confirmed the last transfer: every further craft or
+        // placement would fail the same way (live 06:40 JST: about 90 steps used
+        // up their tries within 0.1 s). Stop here and come back shortly.
+        const settling = () => UNCONFIRMED.test(String(ports.why() ?? ''))
+        if (!await make(step, origin, left)) { if (settling()) { unsettled = true; break } fails.set(step.id, (fails.get(step.id) ?? 0) + 1); note(step, `${step.item} を用意できません${ports.why() ? `: ${ports.why()}` : ''}`); if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を用意できません（${step.id}${ports.why() ? `: ${ports.why()}` : ''}）`); continue }
         if (await put(step)) { placed++; progress++; continue }
+        if (settling()) { unsettled = true; break }
         fails.set(step.id, (fails.get(step.id) ?? 0) + 1)
         note(step, String(walkWhy ?? ports.why() ?? hands.why?.() ?? (clicks(getBlock, step).length ? '置けませんでした' : 'クリックできる面がありません')).slice(0, 80))
         if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を (${step.position.x}, ${step.position.y}, ${step.position.z}) に置けません（${ports.why() ?? hands.why?.() ?? '不明'}）`)
       }
-      if (!progress) break
+      if (!progress || unsettled) break
     }
     const left = remaining(getBlock, origin)
     if (!left.length) {
@@ -311,8 +318,9 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       say(`拠点の家を建てられません ${String(error?.message ?? error).slice(0, 120)}`)
       return false
     } finally {
-      waitUntil = now() + (shared.playerHouse?.done ? 0 : placed > 0 ? SHORT_MS : soon ? 120000 : AGAIN_MS)
+      waitUntil = now() + (shared.playerHouse?.done ? 0 : placed > 0 || unsettled ? SHORT_MS : soon ? 120000 : AGAIN_MS)
       soon = false
+      unsettled = false
       busy = false
       // Something placed and more to do: stay at the house for the next run
       // instead of letting the agent wander off (live 04:30-04:42 JST: after
