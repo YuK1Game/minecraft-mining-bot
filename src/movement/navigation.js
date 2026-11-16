@@ -319,7 +319,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     if (partialRecenter) {
       try {
         const horizontal = horizontalDistance(origin, target)
-        if (initialState.onGround !== true || initialState.isInWater || initialState.isInLava || target.y == null || Math.abs(origin.y - target.y) > CONTACT_EPSILON || horizontal < 0.2 || horizontal > 1.2 || fullFootprintSupport(origin) || !knownUnitSupportOrAir(origin, shoreRecenter) || !physics.hasSupport(origin) || !bodyFree(origin, CONTACT_EPSILON) || !standAt(target) || !fullFootprintSupport(target) || shoreRecenter && !knownUnitSupportOrAir(target, true)) return empty('Partial recenter lacks bounded known support')
+        if (initialState.onGround !== true || initialState.isInWater || initialState.isInLava || target.y == null || Math.abs(origin.y - target.y) > CONTACT_EPSILON || horizontal < 0.2 || horizontal > 1.2 || fullFootprintSupport(origin) || !knownUnitSupportOrAir(origin, shoreRecenter) || !physics.hasSupport(origin) || !bodyFree(origin, wallSkin(origin)) || !standAt(target) || !fullFootprintSupport(target) || shoreRecenter && !knownUnitSupportOrAir(target, true)) return empty('Partial recenter lacks bounded known support')
         // Recenter onto a fully supported nearby point, even when reaching a
         // cell centre would violate an actor's avoidance circle. The entire
         // trajectory below is simulated and checked before any input is sent.

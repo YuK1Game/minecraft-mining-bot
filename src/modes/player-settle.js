@@ -51,7 +51,7 @@ async function settle ({ ports, aborted = () => false }) {
     await walk(centre)
     break
   }
-  return off() <= OFF ? { ok: true, cell, stepped: true } : { ok: false, reason: 'STILL_OFF_CENTRE', cell, off: off() }
+  return off() <= OFF ? { ok: true, cell, stepped: true } : { ok: false, reason: 'STILL_OFF_CENTRE', cell, off: off(), detail: ports.why?.() ?? null }
 }
 
 module.exports = { settle, offCentre }
