@@ -28,6 +28,7 @@ const { clicks, stands, standable } = require('./house-steps')
 const { underCover } = require('../player-surface')
 
 const AGAIN_MS = 600000, SHORT_MS = 3000, TRIES = 3, RUN_MS = 20 * 60000
+const BLIND = /視線が遮られて/
 const UNCONFIRMED = /確認できませんでした|確定した持ち物|未確定/
 const WOODS = 'oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|bamboo|crimson|warped'
 const short = name => String(name ?? '').replace(/^minecraft:/, '')
@@ -79,8 +80,6 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     return left.some(step => step.item === 'glass' ? needs.need.sand === 0 : step.item === 'white_bed' ? needs.need.wool === 0 : true)
   }
 
-  // The wood kind most held, for crafted wood.
-  const wood = () => { const stack = stackOf(name => ITEM.oak_planks(name) || ITEM.oak_log(name)); return stack ? short(stack.name).replace(/_(?:planks|log|stem)$/, '') : null }
   const logsKept = left => left.filter(step => step.item === 'oak_log').length
 
   async function planks (needed, left) {
@@ -90,6 +89,25 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       if (!await ports.craft(short(log.name).replace(/_(?:log|stem)$/, '_planks').replace(/^/, 'minecraft:'), Math.min(spare, 16, Math.ceil((needed - held(ITEM.oak_planks)) / 4)))) return false
     }
     return held(ITEM.oak_planks) >= needed
+  }
+
+  // Slabs and doors take one kind of planks: the kind of which `needed` are
+  // held, made from that kind's logs when short (live 06:43 JST: the most held
+  // stack was birch, the planks were mostly oak, 「材料が不足しています: birch_planks」).
+  async function planksOf (needed, left) {
+    const kinds = () => { const by = new Map(); for (const item of items()) if (item?.count > 0 && ITEM.oak_planks(item.name ?? '')) by.set(short(item.name).replace(/_planks$/, ''), (by.get(short(item.name).replace(/_planks$/, '')) ?? 0) + item.count); return [...by].sort((a, b) => b[1] - a[1]) }
+    const ready = () => kinds().find(([, n]) => n >= needed)?.[0] ?? null
+    if (ready()) return ready()
+    const logs = items().filter(item => item?.count > 0 && ITEM.oak_log(item.name ?? '')).sort((a, b) => b.count - a.count)
+    for (const log of logs) {
+      const kind = short(log.name).replace(/_(?:log|stem)$/, '')
+      const short_ = needed - (kinds().find(([k]) => k === kind)?.[1] ?? 0)
+      const spare = held(ITEM.oak_log) - logsKept(left)
+      const times = Math.min(log.count, spare, Math.ceil(short_ / 4))
+      if (times <= 0) continue
+      if (await ports.craft(`minecraft:${kind}_planks`, times)) { if (ready()) return ready() }
+    }
+    return ready()
   }
 
   const tableAt = origin => { const step = placements(origin).find(s => s.id === 'p_178'); return matches('crafting_table', getBlock(step.position.x, step.position.y, step.position.z)) ? step.position : null }
@@ -105,14 +123,29 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   // Makes what `step` places when none is held. True when one is held.
   async function make (step, origin, left) {
     if (held(ITEM[step.item]) > 0) return true
-    const table = tableAt(origin), kind = wood()
-    const atTable = async (output, times) => table && await near(table) && ports.craft(output, times, table)
+    const table = tableAt(origin)
+    // Opening the table needs a line of sight to it: once the walls stand the
+    // nearest place may be outside them (live 06:43 JST: 98 slab tries, all
+    // 「操作対象への視線が遮られているか、未取得です。」). Other places are tried then.
+    const atTable = async (output, times) => {
+      if (!table) return false
+      if (await near(table) && await ports.craft(output, times, table)) return true
+      if (!BLIND.test(String(ports.why() ?? ''))) return false
+      const feet = getFeet()
+      for (const stand of stands(getBlock, { position: table, item: 'crafting_table' }, { clicked: table, face: 1, clickY: null }, feet ?? table, { reach: 3.8, radius: 3 }).slice(1, 5)) {
+        if (!await hands.walk(stand)) continue
+        ports.reset?.()
+        if (await ports.craft(output, times, table)) return true
+        if (!BLIND.test(String(ports.why() ?? ''))) return false
+      }
+      return false
+    }
     const count = item => left.filter(s => s.item === item).length
     switch (step.item) {
       case 'oak_planks': return planks(1, left)
       case 'crafting_table': return await planks(4, left) && ports.craft('minecraft:crafting_table', 1)
-      case 'oak_slab': { const times = Math.min(16, Math.ceil(count('oak_slab') / 6)); return !!kind && await planks(times * 3, left) && atTable(`minecraft:${kind}_slab`, times) }
-      case 'oak_door': return !!kind && await planks(6, left) && atTable(`minecraft:${kind}_door`, 1)
+      case 'oak_slab': { const times = Math.min(16, Math.ceil(count('oak_slab') / 6)); const as = await planksOf(times * 3, left); return !!as && atTable(`minecraft:${as}_slab`, times) }
+      case 'oak_door': { const as = await planksOf(6, left); return !!as && atTable(`minecraft:${as}_door`, 1) }
       case 'chest': { const times = Math.min(count('chest'), 4); return await planks(times * 8, left) && atTable('minecraft:chest', times) }
       case 'white_bed': return held(name => /_wool$/.test(name)) >= 3 && await planks(3, left) && atTable('minecraft:bed', 1)
       case 'furnace': return held(ITEM.cobblestone) >= 8 && (table ? atTable('minecraft:furnace', 1) : false)
