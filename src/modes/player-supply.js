@@ -9,15 +9,19 @@
 // out on the climb; it stood under a lake bed with four pickaxes at two uses
 // and lost eleven diamonds in the cave below).
 // - Near the surface (feet at y 50 or higher), when the plan's next work lies
-//   six or more blocks below the feet and fewer than four logs' worth of wood
+//   six or more blocks below the feet and fewer than ten logs' worth of wood
 //   is held (a log, four planks or a crafting table count as one), the base
 //   plan's wood work comes first: pick up a dropped log, walk to a tree, cut it.
+// - Ten, not four: a full inventory underground needs two chests (four logs)
+//   on top of the table and sticks; with neither wood nor a chest the rubble
+//   was thrown away and walked over again (real Realm 2026-11-17 01:24-01:26
+//   JST: twenty stacks thrown, the same twenty picked up again within 90 s).
 // - Only wood work replaces the plan. With no tree in the received terrain the
 //   plan goes on as it was.
 const { normalizeMode } = require('./bot-mode')
 const { isLogWork } = require('./player-wood')
 
-const SURFACE_Y = 50, DEPTH = 6, WANTED = 4
+const SURFACE_Y = 50, DEPTH = 6, WANTED = 10
 const short = name => String(name ?? '').replace(/^minecraft:/, '')
 const isLog = name => /_(?:log|stem)$/.test(short(name)) && !/^stripped_/.test(short(name))
 

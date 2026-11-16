@@ -22,7 +22,8 @@ test('on the surface, before work far below, wood is gathered first (real Realm 
 })
 
 test('the plan stays as it is with enough wood, underground, for near work, in quarry mode or when not playing', () => {
-  assert.equal(run({ state: state(inv(['oak_log', 3], ['oak_planks', 4])) }), tunnel)
+  assert.equal(run({ state: state(inv(['oak_log', 9], ['oak_planks', 4])) }), tunnel)
+  assert.equal(run({ state: state(inv(['oak_log', 8], ['oak_planks', 4])) }).type, 'gather_logs', 'nine logs\' worth is not enough')
   assert.equal(run({ state: { ...state(inv()), position: { x: 0, y: 31.62, z: 0 } } }), tunnel)
   const near = { ...tunnel, target: { x: 0, y: 66, z: 0 }, resourceTarget: { x: 0, y: 66, z: 0 } }
   assert.equal(run({ decision: near }), near)
