@@ -37,3 +37,18 @@ test('the house build waits while hungry with no food (live 2026-11-17 08:26-08:
   const house = source.slice(source.indexOf('const house = createHouseBuild('))
   assert.match(house.slice(0, house.indexOf('onDone')), /blocked: \(\) => [^\n]*hungryWithoutFood\(\)/)
 })
+
+test('on open ground, a food source the forage cannot step to: long travel to it, then play goes on (live 2026-11-17 08:32-08:35 JST)', async () => {
+  const calls = [], lines = []
+  let busy = false
+  const food = createPlayerFood({
+    getMode: () => 'player', shared: { playerWanted: true }, log: text => lines.push(text), sleep: async () => { busy = false },
+    getHunger: () => 12, getState: () => ({ position: { x: 0.5, y: 65.6, z: 0.5 }, inventory: inv([['stone', 3]]) }), getBlock: () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty' }),
+    climb: async () => { calls.push('climb'); return { ok: true } }, prey: () => ({ x: -26.5, y: 71, z: 18.4 }),
+    travel: { to: async input => { calls.push(input); busy = true }, status: () => ({ busy }), cancel: async () => {} },
+    agent: { objective: {}, start: async () => { calls.push('start') }, stop: () => calls.push('stop') }
+  })
+  assert.equal(await food.tick(), true)
+  assert.deepEqual(calls, ['stop', { destination: { x: -27, z: 18 } }, 'start'])
+  assert.match(lines.join('\n'), /食料源 \(-27, 18\) へ長距離移動/)
+})
