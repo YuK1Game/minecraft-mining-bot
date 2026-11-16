@@ -94,3 +94,19 @@ test('digs plain rock by hand when no pickaxe can be used', async () => {
   assert.equal(result.ok, true)
   assert.deepEqual(dug, [64])
 })
+
+test('off the centre of its block: one step to a free block beside and back before the first pillar step', async () => {
+  const open = { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  const sim = world({ feetY: 62, surface: 66, extra: { '-1,62,0': open, '-1,63,0': open } })
+  sim.at.z = 0.36
+  const walks = []
+  sim.ports.walk = async target => { walks.push(`${target.x},${target.z}`); if (Math.hypot(target.x - sim.at.x, target.z - sim.at.z) > 0.3) { sim.at.x = target.x; sim.at.z = target.z } return true }
+  const result = await climbOut({ ports: sim.ports, sleep: async () => {} })
+  assert.deepEqual(walks, ['0.5,0.5', '-0.5,0.5', '0.5,0.5'])
+  assert.equal(result.ok, true)
+  const centred = world({ feetY: 62, surface: 66, extra: { '-1,62,0': open, '-1,63,0': open } })
+  const calm = []
+  centred.ports.walk = async target => { calm.push(target.x); return true }
+  await climbOut({ ports: centred.ports, sleep: async () => {} })
+  assert.equal(calm.length, 1)
+})
