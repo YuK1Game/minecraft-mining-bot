@@ -23,3 +23,14 @@ test('armor is not made while the worn armor is not received', () => {
   assert.equal(nextGear({ items: [item('diamond_pickaxe'), item('diamond_sword')], worn: { known: false, worn: [] }, diamonds: 20 }), null)
   assert.equal(nextGear({ items: [], worn: null, diamonds: 3 }).output, 'diamond_pickaxe', 'tools do not need the worn armor')
 })
+
+test('a second diamond pickaxe is made once the held one is worn below 300 uses', () => {
+  const pick = used => ({ ...item('diamond_pickaxe'), maxDurability: 1561, durabilityUsed: used })
+  const all = [item('diamond_sword')]
+  const armor = worn('diamond_helmet', 'diamond_chestplate', 'diamond_leggings', 'diamond_boots')
+  assert.equal(nextGear({ items: [pick(1261), ...all], worn: armor, diamonds: 75 }), null, '300 uses left still counts')
+  assert.equal(nextGear({ items: [pick(1402), ...all], worn: armor, diamonds: 75 }).output, 'diamond_pickaxe', '159 uses left')
+  assert.equal(nextGear({ items: [pick(1402), pick(0), ...all], worn: armor, diamonds: 72 }), null, 'a fresh spare is held')
+  assert.equal(nextGear({ items: [item('diamond_pickaxe'), ...all], worn: armor, diamonds: 75 }), null, 'unknown wear is not worn')
+  assert.equal(nextGear({ items: [{ ...item('diamond_pickaxe'), durabilityUsed: 1400 }, ...all], worn: armor, diamonds: 75 }).output, 'diamond_pickaxe', 'the registry maximum is used when the item has none')
+})
