@@ -1,0 +1,67 @@
+'use strict'
+
+// Player mode: with no chest to use and no wood to make one, a full
+// inventory is emptied by throwing the rubble away (user 2026-11-16 23:14 JST:
+// 「チェストを作るために木が拾えないのであればいらないアイテムを捨てればいいのでは？」;
+// live 23:10 JST at y=-37: 「チェストを作る板材が足りません（板材 8・原木 0・必要 板材 20）」).
+// - Thrown: whole stacks of what the chest would take (stone beyond the
+//   cobblestone/dirt reserve, gravel, flint, leaf litter, rotten flesh, worn
+//   pickaxes) and plain junk (saplings, spider eyes, bones, feathers, swords
+//   and pickaxes weaker than a held better one). Never diamonds, ores, coal,
+//   food, wood, armour, the best tools, arrows, wool, string or gunpowder.
+// - A throw counts only when the server answers it (inventory/discard.js).
+// - Where it was thrown is kept for ten minutes, so the drop-pickup planning
+//   does not walk back for the same things (player-drops.js).
+const { storable } = require('./player-storage-rubble')
+
+const JUNK = /^minecraft:(?:\w+_sapling|spider_eye|bone|feather|poisonous_potato|rotten_flesh|wheat_seeds|pumpkin_seeds|melon_seeds|beetroot_seeds|stick_unused)$/
+const TIER = { wooden: 1, golden: 1, stone: 2, iron: 3, diamond: 4, netherite: 5 }
+const AGAIN_MS = 10 * 60 * 1000
+const tierOf = name => TIER[/^minecraft:(\w+?)_(?:sword|pickaxe)$/.exec(name ?? '')?.[1]] ?? 0
+const usesOf = item => Number.isSafeInteger(item?.maxDurability) && Number.isSafeInteger(item?.durabilityUsed) ? item.maxDurability - item.durabilityUsed : null
+
+// Whole stacks to throw away: [{ slot, name, count }].
+function throwable (inventory) {
+  if (inventory?.known !== true || inventory.uncertain) return []
+  const items = (inventory.items ?? []).filter(item => item?.count > 0 && Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36)
+  const out = new Map()
+  // Only whole stacks free a slot.
+  for (const stack of storable(inventory)) { const item = items.find(other => other.slot === stack.slot); if (item && stack.count >= item.count) out.set(item.slot, { slot: item.slot, name: item.name, count: item.count }) }
+  for (const item of items) if (JUNK.test(item.name ?? '')) out.set(item.slot, { slot: item.slot, name: item.name, count: item.count })
+  // A sword or pickaxe weaker than a held working one of the same kind.
+  for (const kind of ['sword', 'pickaxe']) {
+    const tools = items.filter(item => new RegExp(`_${kind}$`).test(item.name ?? ''))
+    const best = Math.max(0, ...tools.filter(item => (usesOf(item) ?? 99) > 2).map(item => tierOf(item.name)))
+    for (const item of tools) if (tierOf(item.name) < best) out.set(item.slot, { slot: item.slot, name: item.name, count: item.count })
+  }
+  return [...out.values()]
+}
+
+async function discardJunk ({ drop, getInventory, getFeet, shared, say = () => {}, now = Date.now }) {
+  const list = throwable(getInventory())
+  if (!list.length) return 0
+  let thrown = 0
+  const names = []
+  for (const stack of list) {
+    try {
+      const result = await drop(stack.slot, stack.count)
+      if (result?.phase === 'completed') { thrown++; names.push(`${stack.name.replace('minecraft:', '')} ${stack.count}`) }
+    } catch { /* the next stack */ }
+  }
+  const feet = getFeet()
+  if (thrown && feet) {
+    const record = shared.playerDiscards = (shared.playerDiscards ?? []).filter(entry => entry.until > now())
+    record.push({ x: feet.x, y: feet.y, z: feet.z, names: list.map(stack => stack.name), until: now() + AGAIN_MS })
+  }
+  say(thrown ? `チェストを作る木がないため、いらない物を ${thrown} 枠捨てました（${names.slice(0, 8).join('、')}${names.length > 8 ? ' ほか' : ''}）` : `いらない物を捨てられません（${list.length} 枠）`)
+  return thrown
+}
+
+// Drops near where the same things were thrown are not walked back for.
+function discarded (shared, drop, now = Date.now()) {
+  const name = drop?.name ?? drop?.item?.name
+  if (!drop?.position || !Array.isArray(shared?.playerDiscards)) return false
+  return shared.playerDiscards.some(entry => entry.until > now && Math.hypot(drop.position.x - entry.x, drop.position.y - entry.y, drop.position.z - entry.z) <= 6 && (!name || entry.names.some(other => other === name || other === `minecraft:${name}`)))
+}
+
+module.exports = { throwable, discardJunk, discarded }

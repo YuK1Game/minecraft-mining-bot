@@ -22,6 +22,7 @@ const RANGE = 16
 const CELL_LIMIT = 3000
 const idOf = drop => String(drop?.entityId ?? drop?.runtimeEntityId ?? drop?.runtimeId ?? drop?.id ?? '')
 const { cellKey: key } = require('../movement/plan-cache')
+const { discarded } = require('./player-discard')
 
 // Cells the Bot can stand in and walk to from its feet, by received terrain.
 // The answer is kept while the Bot stands in the same cell and the world
@@ -91,6 +92,7 @@ function withCollectableDrops ({ mode, shared, state, observations, getBlock, re
   for (const id of Object.keys(skips)) if (skips[id].until <= now()) delete skips[id]
   let cells = null
   const drops = observations.drops.filter(drop => {
+    if (discarded(shared, drop, now())) return false
     const id = idOf(drop), skip = skips[id]
     if (skip) {
       // The same item where the pickup failed; one that has moved gets another look.

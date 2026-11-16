@@ -1,5 +1,7 @@
 'use strict'
 
+const { createDiscard } = require('../inventory/discard')
+
 // Automatic armor: for each body slot, wear the owned piece with the highest
 // defence (toughness breaks ties). A move is an ordinary server-authoritative
 // item_stack_request between the inventory and the armor container, done with
@@ -56,6 +58,8 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   // gates read only server windows from the same record.
   const isKnown = () => shared ? shared.known('armor', { loose: true }) : store.known === true
   const markUnknown = reason => { if (shared) shared.invalidate('armor', null, reason); else store.known = false }
+  // Throwing a stack away shares this controller's packet path (runtime.js stays as it is).
+  const discard = capable ? createDiscard({ client, getState, crafting, allocateRequestId, onInventory, log }) : null
   let operation = null
   let lastResult = null
   let preemptionRevision = 0, runningBatches = 0
@@ -153,6 +157,7 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   function applyPacket (name, packet) {
     if (!shared) applyWire(name, packet)
     applyOwnResponse(name, packet)
+    discard?.applyPacket(name, packet)
   }
   function applyWire (name, packet) {
     if (name === 'start_game' || name === 'change_dimension') { worn.clear(); store.known = false }
@@ -196,7 +201,7 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   function snapshot () {
     return { busy: !!operation, known: isKnown(), worn: PIECES.map(([piece, slot]) => ({ piece, name: nameOf(worn.get(slot)) })), next: isKnown() ? nextUpgrade() : null, lastResult: copy(lastResult) }
   }
-  return { preview, equipBest, preemptForCombat, applyPacket, snapshot }
+  return { preview, equipBest, preemptForCombat, applyPacket, snapshot, discard: (slot, count) => discard ? discard.drop(slot, count) : Promise.reject(new Error('持ち物を捨てる操作に対応していません。')) }
 }
 
 module.exports = { createArmor, armorInfo, pieceRank }
