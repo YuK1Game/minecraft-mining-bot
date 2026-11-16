@@ -272,8 +272,16 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     const aborted = () => !live() || blocked() || hostile()
     if (underCover(getBlock, getPosition())) {
       say('拠点の家の材料がそろったため、地上へ出て家を建てます。')
-      try { await climb(aborted) } catch {}
-      if (aborted() || underCover(getBlock, getPosition())) { say('地上へ出られないため、拠点の家を建てられません'); return 0 }
+      let out = null
+      try { out = await climb(aborted) } catch (error) { out = { ok: false, reason: String(error?.message ?? error).slice(0, 80) } }
+      if (aborted() || underCover(getBlock, getPosition())) {
+        // Why, and soon again when only an enemy or a pause cut it short (live
+        // 07:02 JST: cut off after 10 s with no reason, then 10 minutes idle).
+        const why = !live() ? 'プレイ停止' : hostile() ? '近くの敵' : blocked() ? 'ほかの作業・体力' : out?.reason ?? '不明'
+        say(`地上へ出られないため、拠点の家を建てられません（${why}）`)
+        if (live() && (hostile() || blocked() || out?.reason === 'INTERRUPTED')) soon = true
+        return 0
+      }
     }
     let origin = shared.playerHouse?.origin ?? null
     if (!origin) {
