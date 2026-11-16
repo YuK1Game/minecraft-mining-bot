@@ -168,18 +168,44 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     return standing()
   }
 
+  // To a received stand by the porch (origin + (3, 8)); true when within 8 m.
+  // From farther, hops of about 9 m toward it first, over received ground at
+  // any height between the Bot's and the house's (a walk plans 16 m at most;
+  // live 04:59 JST: 18 m away and 15 blocks up the hill, 「Target lies outside
+  // the bounded search area」, then 170 steps tried in vain for 1.5 s).
   async function closeIn (origin) {
-    const porch = { x: origin.x + 3, z: origin.z + 8 }
-    const feet = getFeet()
-    if (!feet || Math.hypot(feet.x - porch.x - 0.5, feet.z - porch.z - 0.5) <= 5) return
-    const cells = []
-    for (let dx = -3; dx <= 3; dx++) for (let dz = -2; dz <= 3; dz++) for (let dy = -3; dy <= 2; dy++) {
-      const x = porch.x + dx, y = origin.y + dy, z = porch.z + dz
-      if (standable(getBlock, x, y, z)) cells.push({ x: x + 0.5, y, z: z + 0.5 })
+    const porch = { x: origin.x + 3.5, z: origin.z + 8.5 }
+    const away = () => { const at = getFeet(); return at ? Math.hypot(at.x - porch.x, at.z - porch.z) : Infinity }
+    const near = (centre, low, high, radius) => {
+      const out = []
+      for (let dx = -radius; dx <= radius; dx++) for (let dz = -radius; dz <= radius; dz++) for (let y = high; y >= low; y--) {
+        const x = Math.floor(centre.x) + dx, z = Math.floor(centre.z) + dz
+        if (standable(getBlock, x, y, z)) out.push({ x: x + 0.5, y, z: z + 0.5 })
+      }
+      return out.sort((a, b) => Math.hypot(a.x - centre.x, a.z - centre.z) - Math.hypot(b.x - centre.x, b.z - centre.z))
     }
-    cells.sort((a, b) => Math.hypot(a.x - porch.x - 0.5, a.z - porch.z - 0.5) - Math.hypot(b.x - porch.x - 0.5, b.z - porch.z - 0.5))
-    for (const cell of cells.slice(0, 4)) if (await hands.walk(cell)) return
-    if (cells.length) say(`拠点の家の前まで歩けません（${String(hands.why?.() ?? '不明').slice(0, 80)}）`)
+    for (let round = 0; round < 6 && away() > 5; round++) {
+      const at = getFeet()
+      if (!at) return false
+      const d = away()
+      if (d <= 10) {
+        let walked = false
+        for (const cell of near(porch, origin.y - 3, origin.y + 2, 3).slice(0, 4)) if (await hands.walk(cell)) { walked = true; break }
+        if (!walked) break
+        continue
+      }
+      const step = Math.min(9, d - 5), point = { x: at.x + (porch.x - at.x) / d * step, z: at.z + (porch.z - at.z) / d * step }
+      const low = Math.min(Math.floor(at.y), origin.y) - 3, high = Math.max(Math.floor(at.y), origin.y) + 3
+      let moved = false
+      for (const cell of near(point, low, high, 2).slice(0, 3)) {
+        await hands.walk(cell)
+        if (away() < d - 2) { moved = true; break }
+      }
+      if (!moved) break
+    }
+    if (away() <= 8) return true
+    say(`拠点の家の前まで歩けません（あと ${Math.round(away())}m、${String(hands.why?.() ?? '不明').slice(0, 80)}）`)
+    return false
   }
 
   async function run () {
@@ -217,7 +243,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     // Long travel counts 20 m as arrived and a hop 12 m: walk on to a received
     // stand by the porch, so the steps are within reach (live 04:48 JST: 16 m
     // short of the house, all 14 tries were 「操作対象が手の届く範囲外です」).
-    await closeIn(origin)
+    if (!await closeIn(origin)) return 0
     const fails = new Map(), started = now()
     let placed = 0
     const reasons = new Map()
