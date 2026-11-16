@@ -40,6 +40,14 @@ function dryColumn (block, x, at, z) {
   return seen >= MIN_KNOWN
 }
 
+// Whether the pillar stands in a cave: a side at feet level is open with no
+// ground under it, so no drift can start from here.
+function hanging (block, feet) {
+  const x = Math.floor(feet.x), at = Math.floor(feet.y + 0.001), z = Math.floor(feet.z)
+  const open = found => found?.known === true && AIR.test(found.name ?? '')
+  return SIDES.some(([dx, dz]) => open(block(x + dx, at, z + dz)) && !(block(x + dx, at - 1, z + dz)?.known === true && block(x + dx, at - 1, z + dz).boundingBox === 'block'))
+}
+
 // Dry columns around (x, z), nearest first (walking distance of the drift).
 function dryColumns (block, x, at, z, radius = RADIUS) {
   const found = []
@@ -54,7 +62,10 @@ function dryColumns (block, x, at, z, radius = RADIUS) {
 async function sidestep ({ ports, log = () => {}, aborted = () => false, tries = TRIES }) {
   const { feet, block, walk, canMine, mine } = ports
   // On a pillar with no floor beside it: down the pillar first (player-climb-down.js).
-  if (ports.descend && feet()) await climbDown({ ports, log, aborted })
+  // Only in a cave: inside a shaft cut through rock the drift digs sideways
+  // from where it stands (live 2026-11-17 02:06-02:09 JST: 42 steps up under a
+  // lake, then 42 steps back down the pillar, a drift of two and the same water).
+  if (ports.descend && feet() && hanging(ports.block, feet())) await climbDown({ ports, log, aborted })
   const start = feet()
   if (!start || ![start.x, start.y, start.z].every(Number.isFinite)) return { ok: false, reason: 'NO_POSITION' }
   const at = Math.floor(start.y + 0.001)
@@ -99,4 +110,4 @@ async function sidestep ({ ports, log = () => {}, aborted = () => false, tries =
   return { ok: false, reason: 'DRIFT_REFUSED' }
 }
 
-module.exports = { sidestep, dryColumn, dryColumns }
+module.exports = { sidestep, dryColumn, dryColumns, hanging }

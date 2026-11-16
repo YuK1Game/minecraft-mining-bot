@@ -91,3 +91,13 @@ test('under leaves: a column with leaves in its way up is not chosen, and the dr
   assert.equal(out.ok, false)
   assert.ok(!shut.calls.some(call => /^mine (?:1|-1),43,0$|^mine 0,43,-?1$/.test(call)))
 })
+
+// Live 2026-11-17 02:06-02:09 JST: in a shaft cut through rock the pillar was taken all the way down before each drift.
+test('the pillar is taken down only in a cave, not inside a shaft cut through rock', () => {
+  const { hanging } = require('../src/modes/player-climb-side')
+  const rock = () => ({ known: true, name: 'minecraft:stone', boundingBox: 'block' })
+  const air = { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  const feet = { x: 0.5, y: 10, z: 0.5 }
+  assert.equal(hanging((x, y, z) => x === 0 && z === 0 ? air : rock(), feet), false)
+  assert.equal(hanging((x, y, z) => x === 1 && z === 0 ? air : x === 0 && z === 0 ? air : rock(), feet), true)
+})
