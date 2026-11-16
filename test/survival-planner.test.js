@@ -412,3 +412,19 @@ test('death, low health, unknown inventory and active tasks prevent preparation 
     const f = fixture(); change(f); assert.equal(f.next().type, expected)
   }
 })
+
+test('a table whose standing place had no route is not walked to again; a new one is made', () => {
+  const f = fixture()
+  f.set(7, 65, 3, 'crafting_table'); f.observations.craftingTable = { known: true, usable: true, position: { x: 7, y: 65, z: 3 } }; f.refresh()
+  f.items([['oak_planks', 8], ['stick', 2]])
+  f.preview('wooden_sword', 1, { ready: false, needsCraftingTable: true })
+  f.preview('crafting_table')
+  const walk = f.next({ firstWoodenSwordOnly: true })
+  const move = walk.type === 'capability_required' ? walk.proposedAction : walk
+  assert.equal(move.type, 'move_to')
+  assert.deepEqual(move.stationTarget, { x: 7, y: 65, z: 3 }, 'the run can exclude this table when no route to it exists')
+  f.observations.progress = { excludedResources: [{ resource: 'crafting_table', position: { x: 7, y: 65, z: 3 } }] }
+  const next = f.next({ firstWoodenSwordOnly: true })
+  assert.notEqual((next.proposedAction ?? next).type, 'move_to')
+  assert.equal((next.proposedAction ?? next).output, 'minecraft:crafting_table')
+})

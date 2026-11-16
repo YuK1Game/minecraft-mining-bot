@@ -112,6 +112,7 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
   const known = blocks.filter(block => block.known === true)
   const scan = resource => required('scan_blocks', result('scan_blocks', resource, '準備に必要な資材や作業場所を既知の範囲で調べます。', { resource, rejectUnknown: true, center: { x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62 + 0.001), z: Math.floor(state.position.z) } }), ['scan', 'world_scan'])
 
+  const shut = position => (observations.progress?.excludedResources ?? []).some(entry => entry?.resource === 'crafting_table' && integer(entry?.position) && key(entry.position) === key(position))
   function table () {
     const supplied = [observations.craftingTable, observations.stations?.craftingTable, observations.stations?.table].filter(value => value?.known === true && integer(value.position))
     for (const value of [...supplied, ...known.filter(block => nameOf(block.name) === 'crafting_table')].sort((a, b) => range(state.position, a.position) - range(state.position, b.position))) {
@@ -121,7 +122,10 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
       if (value.protected || value.usable === false || current?.known !== true || nameOf(current.name) !== 'crafting_table') continue
       const access = planStationAccess({ state, observedState: observations.state ?? state, target: value.position, blocks, getBlock: position => map.get(key(position)) })
       if (access.ready) return { ready: true, position: { ...value.position }, scope: access.scope }
-      if (access.standpoint) return { ready: false, position: { ...value.position }, scope: access.scope, action: required('move', result('move_to', preparationStage, '作業台への視線と足場を確認した位置へ近づきます。', { target: copy(access.standpoint), interactionTarget: copy(value.position), interactionScope: access.scope, resource: 'crafting_table', allowWater: false, requiresLivePreview: true }), ['movement', 'walking']) }
+      // A table whose standing place had no route (excluded by the run) is
+      // not walked to again: another table, or a new one, is used instead.
+      if (shut(value.position)) continue
+      if (access.standpoint) return { ready: false, position: { ...value.position }, scope: access.scope, action: required('move', result('move_to', preparationStage, '作業台への視線と足場を確認した位置へ近づきます。', { target: copy(access.standpoint), interactionTarget: copy(value.position), stationTarget: copy(value.position), interactionScope: access.scope, resource: 'crafting_table', allowWater: false, requiresLivePreview: true }), ['movement', 'walking']) }
       // An inaccessible station cannot fund the local material budget. Try
       // other observed stations, then retain the ordinary new-table plan.
     }

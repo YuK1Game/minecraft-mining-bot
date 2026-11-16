@@ -18,6 +18,7 @@ const { normalizeMode } = require('./bot-mode')
 
 const LOG = /^(?:minecraft:)?[a-z_]+_(?:log|stem)$/
 const TRIP_LIMIT = 8
+const PIT_LIMIT = 3 // tries to step out of a pit, per ten minutes
 const { underCover, surfaceAhead } = require('./player-surface')
 const TRIP_MS = 240000
 const OVERHEAD_M = 8
@@ -77,8 +78,8 @@ function overhead (snapshot, position) {
 const stationMove = snapshot => snapshot?.lastDecision?.type === 'move_to' && ['crafting_table', 'table', 'furnace'].includes(snapshot.lastDecision.resource ?? snapshot.lastDecision.stage)
 const seeksWood = snapshot => snapshot?.lastDecision?.type === 'explore' && snapshot.lastDecision.resource === 'logs'
 
-function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, prey = null, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
-  let run = null, trips = 0, pauses = 0, heading = null, logsSeen = 0, reason = null, visited = []
+function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, pit = null, prey = null, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+  let run = null, trips = 0, pits = 0, pitAt = 0, pauses = 0, heading = null, logsSeen = 0, reason = null, visited = []
   const live = token => run === token && !disposed() && normalizeMode(getMode()) === 'player'
 
   async function wait (token, ms) {
@@ -151,9 +152,22 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
     const why = text(snapshot.reason), search = snapshot.running === true || snapshot.stopCode === 'exploration_limit'
     if (snapshot.running === true) { try { agent.stop('木を探して移動します。') } catch {} } else log(`プレイヤーモード: 自律作業が止まりました（${why}）`)
     const logs = snapshot.progress?.logsCollected ?? 0
-    if (logs > logsSeen) { trips = 0; heading = null; visited = [] }
+    if (logs > logsSeen) { trips = 0; pits = 0; heading = null; visited = [] }
     logsSeen = logs
     if (now() - (snapshot.startedAtMs ?? now()) > 600000) pauses = 0
+    // At the bottom of a hole no walk leads out of (player-pit.js): a step is
+    // cut into the wall first; every other answer below needs a walk.
+    // Under a roof the climb below (straight up) is the way out.
+    if (now() - pitAt > 600000) pits = 0
+    if (pit && pits < PIT_LIMIT && !underCover(getBlock, getPosition()) && pit.boxed()) {
+      pits++; pitAt = now()
+      reason = '歩いて出られない穴の中にいるため、壁を掘って段を作り、外へ出ます。'
+      log(`プレイヤーモード: ${reason}`)
+      let out = null
+      try { out = await pit.out(() => !live(token)) } catch (error) { log(`プレイヤーモード: 穴から出られません ${text(error?.message)}`) }
+      if (!live(token) || held()) return false
+      if (out?.ok) { pits = 0; return restart(token, { ...agent.objective, freshExclusions: true }) }
+    }
     if (search && trips < TRIP_LIMIT) {
       trips++
       await trip(token, snapshot)
