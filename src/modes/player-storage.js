@@ -75,18 +75,19 @@ function chestCell (getBlock, feet, cell) {
 }
 
 // Two cells side by side for a new large chest, or one beside a single chest.
-function chestCells (getBlock, feet, single = null) {
+function chestCells (getBlock, feet, single = null, skip = new Set()) {
+  const ok = cell => !skip.has(`${cell.x},${cell.y},${cell.z}`) && chestCell(getBlock, feet, cell)
   const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.001), fz = Math.floor(feet.z)
   const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-  if (single) return SIDES.map(([dx, dz]) => ({ x: single.x + dx, y: single.y, z: single.z + dz })).filter(cell => chestCell(getBlock, feet, cell)).slice(0, 1)
+  if (single) return SIDES.map(([dx, dz]) => ({ x: single.x + dx, y: single.y, z: single.z + dz })).filter(ok).slice(0, 1)
   for (const dy of [0, -1, 1]) for (const [dx, dz] of [...SIDES, [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
     const first = { x: fx + dx, y: fy + dy, z: fz + dz }
-    if (!chestCell(getBlock, feet, first)) continue
+    if (!ok(first)) continue
     // The pair runs across the line of sight so both are placed facing the Bot.
     const along = Math.abs(dx) >= Math.abs(dz) ? [0, 1] : [1, 0]
     for (const sign of [1, -1]) {
       const second = { x: first.x + along[0] * sign, y: first.y, z: first.z + along[1] * sign }
-      if (chestCell(getBlock, feet, second)) return [first, second]
+      if (ok(second)) return [first, second]
     }
   }
   return []
@@ -141,9 +142,22 @@ function createPlayerStorage ({ getMode, shared, agent, hands, getBlock, getFeet
       const cells = chestCells(getBlock, feet)
       if (cells.length < 2) { say('ラージチェストを置ける平らな場所がありません'); return false }
       if (!await makeChests(2, cells)) return false
-      for (const cell of cells) if (!await hands.place(cell, CHEST)) { say(`チェストを置けません (${cell.x}, ${cell.y}, ${cell.z})`); return false }
-      say(`ラージチェストを置きました (${cells[0].x}, ${cells[0].y}, ${cells[0].z})`)
-      target = { position: cells[0] }
+      // A refused first cell is skipped and another pair tried (3 pairs at most);
+      // after one chest stands, the next run makes it large as a single chest.
+      const skip = new Set()
+      let pair = cells
+      for (let attempt = 0; attempt < 3 && pair.length === 2 && !target; attempt++) {
+        if (await hands.place(pair[0], CHEST)) {
+          if (!await hands.place(pair[1], CHEST)) { say(`チェストの2つ目を置けません (${pair[1].x}, ${pair[1].y}, ${pair[1].z}) ${hands.refusal?.() ?? ''}`.trim()); return false }
+          say(`ラージチェストを置きました (${pair[0].x}, ${pair[0].y}, ${pair[0].z})`)
+          target = { position: pair[0] }
+          break
+        }
+        say(`チェストを置けません (${pair[0].x}, ${pair[0].y}, ${pair[0].z}) ${hands.refusal?.() ?? ''}`.trim())
+        skip.add(`${pair[0].x},${pair[0].y},${pair[0].z}`)
+        pair = chestCells(getBlock, getFeet() ?? feet, null, skip)
+      }
+      if (!target) return false
     }
     const moved = await hands.store(target.position, storable(getInventory()))
     stored += moved

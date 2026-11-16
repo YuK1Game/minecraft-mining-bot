@@ -114,3 +114,20 @@ test('no empty slot and no small stone stack: the job says why and stops', async
   assert.match(f.lines.join('\n'), /持ち物に空きを作れません/)
   assert.equal(f.calls.filter(call => call[0] === 'craft').length, 0)
 })
+
+test('a refused chest cell is skipped and another pair is tried', async () => {
+  const calls = []
+  let refused = 0
+  const items = { known: true, items: [...inv([...Array.from({ length: 33 }, (_, slot) => ['diamond', 1, slot]), ['oak_planks', 20, 33], ['diorite', 20, 34]]).items, { name: mc('chest'), count: 2, slot: 35 }] }
+  const hands = {
+    tableNear: () => ({ x: -1, y: 64, z: 0 }), craftPlanks: async () => true, craftSmall: async () => true, placeTable: async () => null,
+    craftAtTable: async () => true, room: () => null, refusal: () => '設置できません',
+    place: async (cell, name) => { calls.push([cell, name]); if (name === mc('chest') && refused === 0) { refused++; return false } return true },
+    store: async () => 5
+  }
+  const storage = createPlayerStorage({ getMode: () => 'player', shared: { playerWanted: true }, agent: { objective: {}, start: async () => {}, stop: () => {} }, hands, getBlock: world(), getFeet: () => feet, getInventory: () => items, log: () => {}, sleep: async () => {} })
+  assert.equal(await storage.tick(), true)
+  const chests = calls.filter(call => call[1] === mc('chest')).map(([cell]) => `${cell.x},${cell.y},${cell.z}`)
+  assert.equal(chests.length, 3)
+  assert.ok(!chests.slice(1).includes(chests[0]))
+})
