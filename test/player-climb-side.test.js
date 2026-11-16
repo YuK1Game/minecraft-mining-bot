@@ -72,3 +72,22 @@ test('no dry column near, or a drift the mining check refuses: says why and stay
   const stopped = world()
   assert.equal((await sidestep({ ports: stopped.ports, aborted: () => true })).reason, 'INTERRUPTED')
 })
+
+test('under leaves: a column with leaves in its way up is not chosen, and the drift does not cut leaves', async () => {
+  const leaf = { known: true, name: 'minecraft:oak_leaves', boundingBox: 'block' }
+  // No pool; a tree crown at y 62 over x -3..3, z -3..3 (the real Realm 2026-11-16 16:16 JST).
+  const crown = {}
+  for (let x = -3; x <= 3; x++) for (let z = -3; z <= 3; z++) crown[`${x},62,${z}`] = leaf
+  const sim = world({ pool: -1, extra: crown })
+  assert.equal(dryColumn(sim.block, 0, 43, 0), false)
+  assert.equal(dryColumn(sim.block, 3, 43, 0), false)
+  assert.equal(dryColumn(sim.block, 4, 43, 0), true)
+  const moved = await sidestep({ ports: sim.ports })
+  assert.equal(moved.ok, true)
+  assert.equal(Math.abs(moved.column.x) + Math.abs(moved.column.z), 4)
+  // Leaves in the drift's way end that drift.
+  const shut = world({ pool: -1, extra: { ...crown, '1,43,0': leaf, '-1,43,0': leaf, '0,43,1': leaf, '0,43,-1': leaf } })
+  const out = await sidestep({ ports: shut.ports })
+  assert.equal(out.ok, false)
+  assert.ok(!shut.calls.some(call => /^mine (?:1|-1),43,0$|^mine 0,43,-?1$/.test(call)))
+})
