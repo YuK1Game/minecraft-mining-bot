@@ -128,3 +128,14 @@ test('off centre in a stair with no level block beside: steps up the stair and b
   assert.deepEqual(shut.calls.slice(0, 2), ['mine 63', 'mine 62'])
   assert.deepEqual(moves, ['0.5,0.5', '1.5,0.5', '0.5,0.5'])
 })
+
+test('the shaft cells are marked so that the floor of its own tunnel may be passed through', async () => {
+  const sim = world({ feetY: 62, surface: 66 })
+  const marks = []
+  const mine = sim.ports.mine
+  sim.ports.mine = async cell => { marks.push(cell.climbShaft); return mine(cell) }
+  await climbOut({ ports: sim.ports, sleep: async () => {} })
+  assert.ok(marks.length > 0 && marks.every(mark => mark === true))
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'runtime', 'runtime-operations.js'), 'utf8')
+  assert.match(source, /point\.climbShaft !== true && floors\.some/)
+})

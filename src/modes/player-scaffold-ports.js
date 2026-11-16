@@ -68,7 +68,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   }
   const canMine = cell => { try { return operations.mining.preview([cell])?.ready === true } catch { return false } }
   // With no usable pickaxe left: plain rock by hand (slow, no drop).
-  const byHand = cell => ({ x: cell.x, y: cell.y, z: cell.z, accessPreparation: 'hand_dig' })
+  const byHand = cell => ({ x: cell.x, y: cell.y, z: cell.z, accessPreparation: 'hand_dig', ...(cell.climbShaft === true ? { climbShaft: true } : {}) })
   const canDig = cell => { try { return operations.mining.preview([byHand(cell)])?.ready === true } catch { return false } }
   async function dig (cell) {
     if (air(cell)) return true
