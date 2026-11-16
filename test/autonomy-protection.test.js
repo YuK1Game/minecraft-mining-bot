@@ -221,3 +221,24 @@ test('with threatWaitMs a hostile that only stands near holds the work for that 
   await agent.tick()
   assert.deepEqual(calls, ['avoid', 'probe'])
 })
+
+test('with skipFailedDrops a pickup that keeps failing leaves that drop and the run goes on', async t => {
+  const state = { phase: 'spawned', health: 20, lifecycle: { dead: false }, inventory: { known: true, items: [] }, entities: [], position: { x: 0, y: 64, z: 0 }, idleProtection: { running: false }, capabilities: { collect_drops: true, probe: true } }
+  const make = () => {
+    const agent = createAutonomy({
+      getState: () => structuredClone(state), intervalMs: 60000, observe: () => ({}), observeSafety: () => ({}),
+      planAction: () => agent.snapshot().progress.excludedDropIds.includes('77') ? { type: 'probe', reason: 'next' } : { type: 'collect_drops', resource: 'diamond', reason: 'pickup', targets: [{ entityId: '77', name: 'minecraft:diamond', count: 1, position: { x: 2, y: 65, z: 0 } }] },
+      actions: { collect_drops: () => { throw new Error('Navigation made no progress') }, probe: () => ({ ok: true, phase: 'completed' }) }
+    })
+    t.after(() => agent.stop())
+    return agent
+  }
+  const plain = make(); plain.start({ objective: 'diamond', maxRetries: 1 })
+  for (let n = 0; n < 4 && plain.snapshot().running; n++) await plain.tick()
+  assert.equal(plain.snapshot().phase, 'failed', 'without the option the run ends')
+  const agent = make(); agent.start({ objective: 'diamond', maxRetries: 1, skipFailedDrops: true })
+  for (let n = 0; n < 4; n++) await agent.tick()
+  assert.equal(agent.snapshot().running, true)
+  assert.deepEqual(agent.snapshot().progress.excludedDropIds, ['77'])
+  assert.equal(require('../src/modes/player-mode').OBJECTIVE.skipFailedDrops, true)
+})
