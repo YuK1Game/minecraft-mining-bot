@@ -40,7 +40,19 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
   }
   let steps = 0, top = null, reason = null, detail = null
   if (above(Math.floor(start.y + 0.001)) !== 'cover') return { ok: false, reason: 'NOT_UNDER_COVER', steps }
-  await walk({ x: column.x + 0.5, y: Math.floor(start.y + 0.001), z: column.z + 0.5 })
+  const base = Math.floor(start.y + 0.001), centre = { x: column.x + 0.5, y: base, z: column.z + 0.5 }
+  await walk(centre)
+  // The pillar step is confirmed by the server within 0.12 of the column's
+  // centre, and a walk of a few centimetres does not move the Bot: off centre,
+  // one step to a free block beside and back (real Realm 2026-11-16 15:33-15:38
+  // JST: 0.1 off after a tunnel, five climbs ended at 0 steps with
+  // ASCENT_POSITION_UNCONFIRMED under three blocks of air).
+  const off = () => { const at = feet(); return at ? Math.hypot(at.x - centre.x, at.z - centre.z) : 0 }
+  if (off() > 0.06 && !aborted()) {
+    const free = (x, y, z) => { const floor = block(x, y - 1, z); return floor?.known === true && floor.boundingBox === 'block' && isAir(block(x, y, z)) && isAir(block(x, y + 1, z)) }
+    const side = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ x: column.x + dx, z: column.z + dz })).find(cell => free(cell.x, base, cell.z))
+    if (side) { await walk({ x: side.x + 0.5, y: base, z: side.z + 0.5 }); await walk(centre) }
+  }
   while (!reason && !aborted()) {
     const at = level()
     if (at === null) { reason = 'LEFT_COLUMN'; break }
