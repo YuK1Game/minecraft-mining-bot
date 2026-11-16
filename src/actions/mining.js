@@ -44,6 +44,9 @@ function targetList (targets) {
     } else if (position.accessPreparation === 'travel_down') {
       // Long travel only: the block directly under the feet (checked in validate).
       Object.assign(target, { accessPreparation: 'travel_down' })
+    } else if (position.accessPreparation === 'house_door') {
+      if (typeof position.expectedName !== 'string' || !/^minecraft:[a-z_]+_door$/.test(position.expectedName) || /iron/.test(position.expectedName)) throw new Error('House door mining needs the expected wooden door')
+      Object.assign(target, { accessPreparation: 'house_door', expectedName: position.expectedName })
     } else if (position.accessPreparation === 'hand_dig') {
       // The player's climb with every pickaxe worn out: plain rock by hand,
       // slowly and without a drop (checked in validate).
@@ -234,7 +237,10 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
       }
     }
     if (fluidRoof) validateFluidRoofContext(target, state, block)
-    if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !logAllowed && !leafDown) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
+    // Player mode's starter house only: its own wooden door, taken down while
+    // work inside is left (src/modes/house/house-build.js openDoorway).
+    const houseDoor = target.accessPreparation === 'house_door' && /^minecraft:[a-z_]+_door$/.test(block.name ?? '') && !/iron/.test(block.name ?? '') && block.name === target.expectedName
+    if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !logAllowed && !leafDown && !houseDoor) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
     if (clearance && (block.name !== 'minecraft:stone' || block.runtimeId !== target.expectedRuntimeId || block.protected === true || block.protectionSource || block.natural === false || isProtected(target, state, block))) throw new Error('Stone clearance target changed or is protected')
     const handDig = target.accessPreparation === 'hand_dig'
     if (handDig && !HAND_ROCK.has(name)) throw new Error(`素手で掘るのは普通の石だけです: ${name}`)

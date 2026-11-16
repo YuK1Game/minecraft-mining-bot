@@ -47,7 +47,14 @@ const ITEM = {
 }
 // The floor, then the table and furnaces, then the blueprint's order.
 const EARLY = ['p_178', 'p_179', 'p_180']
-const order = steps => [...steps.filter(step => step.phase === 'foundation'), ...EARLY.map(id => steps.find(step => step.id === id)).filter(Boolean), ...steps.filter(step => step.phase !== 'foundation' && !EARLY.includes(step.id))]
+// The door goes last: the Bot does not open doors, and the bed, the chests and
+// the table are inside (live 2026-11-17 06:44-06:52 JST: with the door placed
+// early the Bot stood outside the south wall, 72 steps left, nothing placed).
+const DOOR = 'p_172'
+const order = steps => {
+  const rest = steps.filter(step => step.phase !== 'foundation' && !EARLY.includes(step.id) && step.id !== DOOR)
+  return [...steps.filter(step => step.phase === 'foundation'), ...EARLY.map(id => steps.find(step => step.id === id)).filter(Boolean), ...rest, ...steps.filter(step => step.id === DOOR)]
+}
 
 function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel, getBlock, getPosition, getFeet, getInventory, file = null, write = null, blocked = () => false, hostile = () => false, onDone = async () => {}, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, placedTotal = 0
@@ -108,6 +115,21 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       if (await ports.craft(`minecraft:${kind}_planks`, times)) { if (ready()) return ready() }
     }
     return ready()
+  }
+
+  // A door standing while other steps are left closes the way in: it is taken
+  // down by ordinary mining (it drops back) and placed again last.
+  async function openDoorway (origin) {
+    const door = placements(origin).find(step => step.id === DOOR)
+    const left = remaining(getBlock, origin)
+    if (!door || left.some(step => step.id === DOOR) || !left.length) return false
+    const at = door.position
+    if (!matches('oak_door', getBlock(at.x, at.y, at.z))) return false
+    if (!await near(at)) { say('拠点の家: 入口のドアへ近づけません（中の作業が残っています）'); return false }
+    ports.reset?.()
+    const ok = await ports.mine(at, { accessPreparation: 'house_door', expectedName: getBlock(at.x, at.y, at.z)?.name })
+    say(ok ? '拠点の家: 中の作業が残っているため、入口のドアを外しました（最後に付け直します）' : `拠点の家: 入口のドアを外せません（${ports.why() ?? '不明'}）`)
+    return ok
   }
 
   const tableAt = origin => { const step = placements(origin).find(s => s.id === 'p_178'); return matches('crafting_table', getBlock(step.position.x, step.position.y, step.position.z)) ? step.position : null }
@@ -296,6 +318,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       return 0
     }
     unreached = 0
+    await openDoorway(origin)
     const fails = new Map(), started = now()
     let placed = 0
     const reasons = new Map()

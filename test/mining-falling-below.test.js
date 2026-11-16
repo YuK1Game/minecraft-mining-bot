@@ -41,3 +41,15 @@ test('plain rock may be dug by hand on request; ore and an ordinary request stil
   const ore = fixture(); ore.set(ore.target, 'iron_ore')
   assert.equal(ore.mining.preview([{ ...ore.target, accessPreparation: 'hand_dig' }]).ready, false)
 })
+
+test('the starter house door may be taken down on request; an iron door, another block or a plain request may not', () => {
+  const door = fixture(); door.set(door.target, 'oak_door')
+  assert.equal(door.mining.preview([door.target]).ready, false)
+  const ok = door.mining.preview([{ ...door.target, accessPreparation: 'house_door', expectedName: 'minecraft:oak_door' }])
+  assert.equal(ok.ready, true, JSON.stringify(ok.errors))
+  assert.equal(door.mining.preview([{ ...door.target, accessPreparation: 'house_door', expectedName: 'minecraft:birch_door' }]).ready, false)
+  const iron = fixture(); iron.set(iron.target, 'iron_door')
+  assert.throws(() => iron.mining.preview([{ ...iron.target, accessPreparation: 'house_door', expectedName: 'minecraft:iron_door' }]), /wooden door/)
+  const rock = fixture(); rock.set(rock.target, 'stone')
+  assert.equal(rock.mining.preview([{ ...rock.target, accessPreparation: 'house_door', expectedName: 'minecraft:oak_door' }]).ready, false)
+})
