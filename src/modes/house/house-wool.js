@@ -37,7 +37,7 @@ function createHouseWool ({ getMode, shared, agent, gather, getState, getBlock, 
       log(`プレイヤーモード: 拠点の家のベッドにする羊毛を集めます（あと${needs.need.wool}個）`)
       agent.stop('拠点の家の羊毛を集めます。')
       await settle()
-      await gather({ logs: 0, wool: Math.min(3, before + needs.need.wool), maxMs: RUN_MS })
+      await gather({ logs: 0, wool: before + needs.need.wool, maxMs: RUN_MS })
       gained = wool(getState()?.inventory) - before
       log(`プレイヤーモード: 羊毛 ${gained > 0 ? `${gained} 個を得ました` : 'を得られませんでした'}（手元 ${before + Math.max(0, gained)} 個）`)
       return gained > 0

@@ -31,3 +31,9 @@ test('no sheep near, no pickaxe, or the wool held: nothing happens', async () =>
   assert.equal(await job({ items: [] }).wool.tick(), null)
   assert.equal(await job({ items: [['stone_pickaxe', 1], ['white_wool', 3]] }).wool.tick(), null)
 })
+
+test('wool in two colours: a bed takes three of one colour, so more is hunted (live 2026-11-17 07:39 JST)', async () => {
+  const f = job({ items: [['stone_pickaxe', 1], ['white_wool', 2], ['black_wool', 2]], gains: 3 })
+  assert.equal(await f.wool.tick(), true)
+  assert.deepEqual(f.calls[1], { logs: 0, wool: 5, maxMs: 120000 })
+})
