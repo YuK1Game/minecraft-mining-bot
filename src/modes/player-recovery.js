@@ -19,6 +19,7 @@ const { normalizeMode } = require('./bot-mode')
 const LOG = /^(?:minecraft:)?[a-z_]+_(?:log|stem)$/
 const TRIP_LIMIT = 8
 const PIT_LIMIT = 3 // tries to step out of a pit, per ten minutes
+const SETTLE_LIMIT = 3 // walks to the middle of the block, per ten minutes
 const { underCover, surfaceAhead } = require('./player-surface')
 const TRIP_MS = 240000
 const OVERHEAD_M = 8
@@ -78,8 +79,8 @@ function overhead (snapshot, position) {
 const stationMove = snapshot => snapshot?.lastDecision?.type === 'move_to' && ['crafting_table', 'table', 'furnace'].includes(snapshot.lastDecision.resource ?? snapshot.lastDecision.stage)
 const seeksWood = snapshot => snapshot?.lastDecision?.type === 'explore' && snapshot.lastDecision.resource === 'logs'
 
-function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, pit = null, prey = null, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
-  let run = null, trips = 0, pits = 0, pitAt = 0, pauses = 0, heading = null, logsSeen = 0, reason = null, visited = []
+function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, pit = null, settle = null, prey = null, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+  let run = null, trips = 0, pits = 0, pitAt = 0, settles = 0, settleAt = 0, pauses = 0, heading = null, logsSeen = 0, reason = null, visited = []
   const live = token => run === token && !disposed() && normalizeMode(getMode()) === 'player'
 
   async function wait (token, ms) {
@@ -152,7 +153,7 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
     const why = text(snapshot.reason), search = snapshot.running === true || snapshot.stopCode === 'exploration_limit'
     if (snapshot.running === true) { try { agent.stop('木を探して移動します。') } catch {} } else log(`プレイヤーモード: 自律作業が止まりました（${why}）`)
     const logs = snapshot.progress?.logsCollected ?? 0
-    if (logs > logsSeen) { trips = 0; pits = 0; heading = null; visited = [] }
+    if (logs > logsSeen) { trips = 0; pits = 0; settles = 0; heading = null; visited = [] }
     logsSeen = logs
     if (now() - (snapshot.startedAtMs ?? now()) > 600000) pauses = 0
     // At the bottom of a hole no walk leads out of (player-pit.js): a step is
@@ -167,6 +168,19 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
       try { out = await pit.out(() => !live(token)) } catch (error) { log(`プレイヤーモード: 穴から出られません ${text(error?.message)}`) }
       if (!live(token) || held()) return false
       if (out?.ok) { pits = 0; return restart(token, { ...agent.objective, freshExclusions: true }) }
+    }
+    // Against a wall or at the rim of a hole the planners answer "settle first"
+    // and nothing moves (player-settle.js): to the middle of the block, then on.
+    if (now() - settleAt > 600000) settles = 0
+    if (!search && settle && settles < SETTLE_LIMIT && settle.needed()) {
+      settles++
+      settleAt = now()
+      log('プレイヤーモード: マスの中央に立ち直してから続けます。')
+      let out = null
+      try { out = await settle.run(() => !live(token)) } catch (error) { log(`プレイヤーモード: 立ち直せません ${text(error?.message)}`) }
+      if (!live(token) || held()) return false
+      if (out?.ok) return restart(token, { ...agent.objective })
+      log(`プレイヤーモード: マスの中央に立てませんでした（${text(out?.reason)}）`)
     }
     if (search && trips < TRIP_LIMIT) {
       trips++

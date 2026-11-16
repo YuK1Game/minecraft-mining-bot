@@ -20,6 +20,7 @@ const TIERS = { wooden_pickaxe: 1, golden_pickaxe: 1, stone_pickaxe: 2, iron_pic
 const HAZARD = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|sweet_berry_bush|wither_rose|pointed_dripstone|sand$|gravel$|concrete_powder$|anvil$|dragon_egg|scaffolding)/
 const FACES = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }]
 const CONTACT = 1e-4
+const SKIN = 1e-3
 const REFUSED_MS = 300000
 const RISE_CHECK = 3
 const RISE_PROBE = 400
@@ -150,13 +151,19 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     const level = Math.round(state.position.y - 1.62)
     const physics = state.predicted?.physicsState ?? state.predicted ?? state.physicsState
     if (Math.abs(state.position.y - 1.62 - level) > CONTACT || physics?.onGround === false || physics?.isInWater === true) return false
-    for (const dx of [-0.3 + CONTACT, 0.3 - CONTACT]) for (const dz of [-0.3 + CONTACT, 0.3 - CONTACT]) {
+    // Positions are float32 (a step of 0.0005 near 5000): a body against a wall
+    // reads up to that far inside the wall cell. The cell under the body centre
+    // must be floor; an edge may overhang received clear air (the rim of a hole).
+    const cx = Math.floor(state.position.x), cz = Math.floor(state.position.z)
+    for (const dx of [-0.3 + SKIN, 0.3 - SKIN]) for (const dz of [-0.3 + SKIN, 0.3 - SKIN]) {
       const x = Math.floor(state.position.x + dx)
       const z = Math.floor(state.position.z + dz)
       const blocks = [level - 1, level, level + 1].map(y => world.getBlock(x, y, z))
-      if (!blocks.every(block => block?.known === true) || !floor(blocks[0]) || !clear(blocks[1]) || !clear(blocks[2])) return false
+      if (!blocks.every(block => block?.known === true) || !clear(blocks[1]) || !clear(blocks[2])) return false
+      if (!(floor(blocks[0]) || (x !== cx || z !== cz) && clear(blocks[0]) && AIR.has(nameOf(blocks[0])))) return false
     }
-    return true
+    const under = world.getBlock(cx, level - 1, cz)
+    return under?.known === true && floor(under)
   }
 
   function footprintFloors (state) {
