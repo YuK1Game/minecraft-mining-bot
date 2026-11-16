@@ -24,13 +24,15 @@ test('site: the nearest flat 7x8 patch; the floor goes one above the ground', ()
   assert.notDeepEqual(findSite(w.getBlock, { x: 0.5, y: 64, z: 0.5 }), origin)
 })
 
-test('site: ground one lower in some columns still fits; the floor goes one above the highest ground', () => {
+test('site: ground up to two lower in some columns still fits; the floor goes one above the highest ground', () => {
   const w = world()
   // Bumpy ground: every odd x column is one lower (air at 63).
   for (let x = -40; x <= 40; x++) for (let z = -40; z <= 40; z++) if (x % 2) w.cells.set(`${x},63,${z}`, air)
   assert.equal(findSite(w.getBlock, { x: 0.5, y: 64, z: 0.5 }, { radius: 6 }).y, 64)
-  // Two lower is too uneven.
+  // Two lower still fits; three is too uneven.
   for (let x = -40; x <= 40; x++) for (let z = -40; z <= 40; z++) if (x % 2) w.cells.set(`${x},62,${z}`, air)
+  assert.equal(findSite(w.getBlock, { x: 0.5, y: 64, z: 0.5 }, { radius: 6 }).y, 64)
+  for (let x = -40; x <= 40; x++) for (let z = -40; z <= 40; z++) if (x % 2) w.cells.set(`${x},61,${z}`, air)
   assert.equal(findSite(w.getBlock, { x: 0.5, y: 64, z: 0.5 }, { radius: 6 }), null)
 })
 
@@ -116,4 +118,27 @@ test('without sand or wool: builds the rest and leaves the glass and the bed', a
   assert.deepEqual([...new Set(left.map(step => step.item))].sort(), ['glass', 'white_bed'], lines.join('\n'))
   assert.notEqual(shared.playerHouse.done, true)
   assert.equal(done.length, 1)
+})
+
+test('no site nearby: walks about 80 m on and looks again there', async () => {
+  const w = world()
+  const feet = { x: 0.5, y: 64, z: 0.5 }
+  // Only ground received around x 80 (a flat patch there); unknown elsewhere.
+  const getBlock = (x, y, z) => x >= 70 && x <= 100 && z >= -20 && z <= 20 ? w.getBlock(x, y, z) : { known: false }
+  const inventory = { known: true, items: [['wooden_pickaxe', 1], ['oak_log', 44], ['cobblestone', 68]].map(([name, count], slot) => ({ name: `minecraft:${name}`, count, slot })) }
+  const shared = { playerWanted: true }
+  const trips = [], lines = []
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {},
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    ports: { craft: async () => false, smelt: async () => 0, place: async () => false, mine: async () => true, why: () => null },
+    hands: { walk: async () => false, approach: async () => false },
+    climb: async () => ({ ok: true }),
+    travel: { to: async ({ destination }) => { trips.push(destination); Object.assign(feet, { x: destination.x + 0.5, z: destination.z + 0.5 }) }, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
+  })
+  await build.tick()
+  assert.deepEqual(trips[0], { x: 81, z: 1 }, lines.join('\n'))
+  assert.ok(shared.playerHouse?.origin, lines.join('\n'))
+  assert.ok(shared.playerHouse.origin.x >= 70)
 })
