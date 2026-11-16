@@ -11,7 +11,10 @@ const { createPlayerMode, OBJECTIVE } = require('./player-mode')
 const { createPlayerRecovery } = require('./player-recovery')
 const { createPlayerShelter } = require('./player-shelter')
 const { createPlayerFlee } = require('./player-flee')
-const { knownUnreachable } = require('../combat/threat-reachability')
+const { knownUnreachable, knownReachable } = require('../combat/threat-reachability')
+const { createPlayerCover } = require('./player-cover')
+const { walkableCells } = require('./player-drops')
+const { createCombatExposure } = require('../combat/combat-exposure')
 const { createPlayerScaffold } = require('./player-scaffold')
 const { createScaffoldPorts } = require('./player-scaffold-ports')
 const { climbOut } = require('./player-climb')
@@ -47,7 +50,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const idle = () => { const value = agentStatus(); return value.running !== true && value.busy !== true && value.actionActive !== true }
   const control = createModeControl({
     shared, save: mode => saveMode(file, mode), log,
-    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active || flee.status().active || scaffold.status().active || torch.status().active ? { running: true } : agentStatus(),
+    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active ? { running: true } : agentStatus(),
     isBusy: () => runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld()
   })
   // Where the Bot is: the working position. The last received position can be
@@ -116,11 +119,22 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     hostiles: () => { const state = runtime.raw(); return (runtime.hostiles() ?? []).filter(actor => /creeper/.test(String(actor?.entityType ?? '')) || !knownUnreachable(state, actor)) },
     retreat: () => runtime.travel().retreatFromHostiles()
   })
+  // Shot by an archer it cannot walk to: behind the nearest block (player-cover.js).
+  const cover = createPlayerCover({
+    getMode: control.get, shared, log, disposed,
+    agent: { stop: reason => agent.stop(reason), running: () => agentStatus().running === true },
+    getState: () => { const state = runtime.raw(); return { health: state.health, position: where(), inventory: shared.inventoryUncertain ? null : state.inventory } },
+    hostiles: () => runtime.hostiles(), reachable: actor => knownReachable(runtime.raw(), actor),
+    sight: (from, to) => createCombatExposure({ world: runtime.host().world, entities: {}, scopeOf: () => null }).sight(from, to),
+    cells: position => walkableCells(position, (x, y, z) => runtime.host().world.getBlock(x, y, z)).values(),
+    walk: target => hands.walk(target),
+    blocked: () => shelter.status().active || flee.status().active || scaffold.status().active || quarry.travelStatus().busy === true
+  })
   // Logs out of reach: a dirt pillar in the trunk's place, taken down again afterwards.
   const scaffold = createPlayerScaffold({
     getMode: control.get, shared, log, disposed,
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: () => { const value = agentStatus(); return value.running !== true && value.busy !== true && value.actionActive !== true } },
-    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || quarry.travelStatus().busy === true,
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || quarry.travelStatus().busy === true,
     ports: hands
   })
   // Underground, a torch every eight blocks (player-torch.js).
@@ -129,10 +143,10 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed, getFeet: feetNow,
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agentStatus().running === true, settled: idle },
-    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || scaffold.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12,
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12,
     hands: createTorchPorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
   })
-  const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else void flee.tick().catch(() => {}) }), 500)
+  const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else { void flee.tick().catch(() => {}); void cover.tick().catch(() => {}) } }), 500)
   fleeTimer.unref?.()
   // The shelter is checked every two seconds; a reloaded runtime's timer ends itself.
   const timer = setInterval(require('../common/work-spans').wrap('player-mode.tick', () => {
@@ -142,7 +156,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     void shelter.tick()
     void scaffold.tick().catch(() => {})
     void torch.tick().catch(() => {})
-    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active || flee.status().active || scaffold.status().active || torch.status().active }) } catch { /* The next tick retries. */ }
+    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active }) } catch { /* The next tick retries. */ }
   }), 2000)
   timer.unref?.()
   // The previous runtime was reloaded in the middle of a recovery: play on.
