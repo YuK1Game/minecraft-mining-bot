@@ -604,7 +604,11 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
         // reason drops that item from the candidates instead of ending the run
         // (real Realm 2026-11-16 16:58-17:02 JST: one diamond two blocks away,
         // "Navigation made no progress" four times, the run ended each time).
-        const routeLike = error?.code === 'NO_SAFE_ROUTE' || options.skipFailedDrops === true && currentDecision?.type === 'collect_drops'
+        // Player mode also leaves an ore the tunnel no longer accepts as that ore
+        // (protected, a return floor, changed): the planner kept choosing it
+        // (real Realm 2026-11-17 07:09-07:14 JST: deepslate diamond ore, 160
+        // tunnel decisions in 5 minutes, all RESOURCE_CHANGED, no movement).
+        const routeLike = error?.code === 'NO_SAFE_ROUTE' || options.skipFailedDrops === true && (currentDecision?.type === 'collect_drops' || error?.code === 'RESOURCE_CHANGED' && ['tunnel', 'mine_ore'].includes(currentDecision?.type))
         const currentState = routeLike ? await bounded(() => getState(), options.actionTimeoutMs, '経路候補の接続確認', signal) : null
         if (routeLike && excludeRouteTarget(currentDecision, error, actionState, currentState)) {
           failures.delete(currentKey)

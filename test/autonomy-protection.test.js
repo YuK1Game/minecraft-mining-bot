@@ -242,3 +242,24 @@ test('with skipFailedDrops a pickup that keeps failing leaves that drop and the 
   assert.deepEqual(agent.snapshot().progress.excludedDropIds, ['77'])
   assert.equal(require('../src/modes/player-mode').OBJECTIVE.skipFailedDrops, true)
 })
+
+test('with skipFailedDrops an ore the tunnel no longer accepts is left and the run goes on (real Realm 2026-11-17 07:09-07:14 JST)', async t => {
+  const state = { phase: 'spawned', profile: 'bot', realm: { id: 1 }, dimension: 'overworld', connectionId: 'c1', health: 20, lifecycle: { dead: false }, inventory: { known: true, items: [] }, entities: [], position: { x: 0, y: 64, z: 0 }, idleProtection: { running: false }, capabilities: { tunnel: true, probe: true } }
+  const ore = { x: 3, y: 50, z: 0 }
+  const make = () => {
+    const agent = createAutonomy({
+      getState: () => structuredClone(state), intervalMs: 60000, observe: () => ({}), observeSafety: () => ({}),
+      planAction: () => agent.snapshot().progress.excludedResources.some(entry => entry.position?.x === ore.x && entry.position?.y === ore.y) ? { type: 'probe', reason: 'next' } : { type: 'tunnel', resource: 'diamond', stage: 'diamond', reason: 'tunnel', target: ore, resourceTarget: ore },
+      actions: { tunnel: () => { throw Object.assign(new Error('The target no longer matches the specified ore'), { code: 'RESOURCE_CHANGED' }) }, probe: () => ({ ok: true, phase: 'completed' }) }
+    })
+    t.after(() => agent.stop())
+    return agent
+  }
+  const plain = make(); plain.start({ objective: 'diamond', maxRetries: 1 })
+  for (let n = 0; n < 4 && plain.snapshot().running; n++) await plain.tick()
+  assert.equal(plain.snapshot().phase, 'failed', 'without the option the run ends')
+  const agent = make(); agent.start({ objective: 'diamond', maxRetries: 1, skipFailedDrops: true })
+  for (let n = 0; n < 4; n++) await agent.tick()
+  assert.equal(agent.snapshot().running, true, JSON.stringify(agent.snapshot().reason))
+  assert.ok(agent.snapshot().progress.excludedResources.some(entry => entry.resource === 'diamond' && entry.position.y === 50))
+})
