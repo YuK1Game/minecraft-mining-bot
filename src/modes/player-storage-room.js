@@ -25,7 +25,7 @@ function pick (inventory) {
 }
 
 function roomCells (getBlock, feet, avoid = [], tried = new Set()) {
-  const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.001), fz = Math.floor(feet.z)
+  const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.05), fz = Math.floor(feet.z)
   const key = cell => `${cell.x},${cell.y},${cell.z}`
   const kept = new Set(avoid.map(key))
   const out = []
@@ -62,7 +62,7 @@ const BARE = { tuff: 1, stone: 1, andesite: 1, diorite: 1, granite: 1, cobblesto
 // deepslate wall dropped cobbled_deepslate with no stack to merge into, so no
 // wall was opened at all).
 function pocketCell (getBlock, feet, inventory, placing, refused, avoid = []) {
-  const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.001), fz = Math.floor(feet.z)
+  const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.05), fz = Math.floor(feet.z)
   const key = cell => `${cell.x},${cell.y},${cell.z}`
   const kept = new Set(avoid.flatMap(cell => [key(cell), key({ ...cell, y: cell.y - 1 })]))
   const room = name => (inventory?.items ?? []).some(item => item?.name === `minecraft:${name}` && item.count < 64)
@@ -83,25 +83,26 @@ async function makeRoom ({ hands, getBlock, getFeet, getInventory, avoid = [], s
   if (free(getInventory()) >= 1) return true
   const stack = pick(getInventory())
   if (!stack) { say('持ち物に空きを作れません（置ける16個以下の石材がありません）'); return false }
-  const tried = new Set(), refused = new Set()
+  const tried = new Set(), refused = new Set(), note = []
   let pockets = 0
   for (let step = 0; step < 2 * (MOST + 4) && free(getInventory()) < 1; step++) {
     const feet = getFeet()
     const cell = feet && roomCells(getBlock, feet, avoid, tried)[0]
     if (!cell) {
       const wall = mine && feet && pocketCell(getBlock, feet, getInventory(), stack.name, refused, avoid)
-      if (!wall || (wall.bare && !dig)) break
+      if (!wall || (wall.bare && !dig)) { note.push(feet ? `壁の候補なし 足 ${feet.x.toFixed(2)},${feet.y.toFixed(2)},${feet.z.toFixed(2)}` : '足の位置なし'); break }
       // Bare digging holds the stack itself, so nothing drops into the full inventory.
-      const opened = wall.bare ? (await hands.hold?.(stack.name)) !== false && await dig(wall.cell) : await mine(wall.cell)
+      const held = wall.bare ? (await hands.hold?.(stack.name)) !== false : true
+      const opened = held && (wall.bare ? await dig(wall.cell) : await mine(wall.cell))
       if (opened) pockets++
-      else refused.add(`${wall.cell.x},${wall.cell.y},${wall.cell.z}`)
+      else { refused.add(`${wall.cell.x},${wall.cell.y},${wall.cell.z}`); note.push(`${held ? '掘れない' : '持ち替えできない'} ${wall.cell.x},${wall.cell.y},${wall.cell.z}`) }
       continue
     }
-    if (!await hands.place(cell, stack.name)) tried.add(`${cell.x},${cell.y},${cell.z}`)
+    if (!await hands.place(cell, stack.name)) { tried.add(`${cell.x},${cell.y},${cell.z}`); note.push(`置けない ${cell.x},${cell.y},${cell.z}`) }
   }
   if (pockets) say(`石材を置く場所を作るため、坑道の壁を ${pockets} マス掘りました`)
   const ok = free(getInventory()) >= 1
-  say(ok ? `持ち物に空きを作るため、${stack.name.replace('minecraft:', '')} ${stack.count} 個を足元の横に置きました` : `持ち物に空きを作れません（${stack.name.replace('minecraft:', '')} を置けません${hands.refusal?.() ? `: ${hands.refusal()}` : '。置ける場所がありません'}）`)
+  say(ok ? `持ち物に空きを作るため、${stack.name.replace('minecraft:', '')} ${stack.count} 個を足元の横に置きました` : `持ち物に空きを作れません（${stack.name.replace('minecraft:', '')} を置けません${hands.refusal?.() ? `: ${hands.refusal()}` : '。置ける場所がありません'}${note.length ? `; ${note.slice(-4).join('; ')}` : ''}）`)
   return ok
 }
 
