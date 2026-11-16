@@ -27,7 +27,9 @@ const STEP_M = 96
 const GRASS = /^(?:minecraft:)?grass_block$/
 const SCAN_M = 128 // about the terrain a Realm sends around the Bot
 // At most two minutes (user 2026-11-15 22:50 JST: 「６００秒長すぎない？」).
-const PAUSES_MS = [30000, 60000, 120000]
+// Short rests: waiting changes nothing for the Bot (user, 2026-11-16 19:50 JST);
+// they only keep a stop that repeats at once from spinning.
+const PAUSES_MS = [5000, 15000, 30000]
 const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 200)
 
 // Nearest received log block between `min` and `radius` metres. Unreceived
@@ -242,13 +244,14 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
     }
     // The list of unreachable candidates filled up (live 2026-11-15 22:01 JST: a
     // cobblestone drop in a hole under the feet; every retry ten minutes later
-    // met the same full list and stopped within ten seconds). Start again soon
-    // with an empty list: what is still out of reach is excluded again, the
-    // rest of the list is free for other stone and drops.
+    // met the same full list and stopped within ten seconds). Start again at
+    // once with an empty list: what is still out of reach is excluded again,
+    // the rest of the list is free for other stone and drops. No pause: time
+    // changes nothing here (user, 2026-11-16 19:50 JST: 「30秒待たずにすぐに
+    // やり直してください、時間経過で状況が変わることはありません」).
     if (snapshot.stopCode === 'exclusion_limit') {
-      reason = `${why} ${Math.round(PAUSES_MS[0] / 1000)}秒後に、除外した候補を忘れてやり直します。`
-      log(`プレイヤーモード: ${Math.round(PAUSES_MS[0] / 1000)}秒後に、除外した候補を忘れてやり直します`)
-      if (!await wait(token, PAUSES_MS[0])) return false
+      reason = `${why} 除外した候補を忘れて、すぐにやり直します。`
+      log('プレイヤーモード: 除外した候補を忘れて、すぐにやり直します')
       return restart(token, { ...agent.objective, freshExclusions: true })
     }
     // A search only rests between sets of walks; other stops wait longer each time.
