@@ -89,9 +89,9 @@ function createPhysics ({ world, version = '1.26.60', registry, allowWater = fal
     return template
   }
 
-  function readBlock (position, waterEnabled) {
+  function readBlock (position, waterEnabled, replaced = null) {
     const point = vector(position, 'Block position').floored()
-    const raw = world.getBlock(point.x, point.y, point.z)
+    const raw = replaced ?? world.getBlock(point.x, point.y, point.z)
     let template = templateFor(raw, waterEnabled)
     if ((raw.extra ?? []).some(layer => layer?.known === false)) throw new Error('Unknown terrain: secondary collision layer not received')
     const extras = (raw.extra ?? []).filter(layer => !['air', 'cave_air', 'void_air'].includes(nameOf(layer)))
@@ -118,7 +118,26 @@ function createPhysics ({ world, version = '1.26.60', registry, allowWater = fal
   // The engine's collision broadphase also reads below a solid floor. Reading
   // the empty shape of known water there does not mean the player entered it.
   // Public terrain/navigation queries retain their explicit water opt-in.
-  const engineWorld = { getBlock: position => readBlock(position, true) }
+  // The broadphase also reads one block below the floor the body stands on.
+  // Lava sealed there (a received full block on top of it, its top at least one
+  // block under the feet) is read as empty for that tick; the step refuses the
+  // result if the body ends inside such a cell. Only for a body standing on the
+  // ground at the start of the tick; while falling, and anywhere else, lava still stops
+  // the prediction (real Realm 2026-11-16 16:58-17:20 JST: lava under the tuff
+  // floor of the next cell, every walk ended with "Navigation made no
+  // progress" and the Bot stood for 20 minutes with seven diamonds).
+  const EMPTY = { known: true, name: 'minecraft:air', extra: [] }
+  let stepFeetY = null, sealedLava = []
+  const fullBlock = raw => { try { const shapes = raw?.known === true && !(raw.extra ?? []).length ? templateFor(raw, true).shapes : []; return shapes.length === 1 && shapes[0].every((value, index) => value === (index < 3 ? 0 : 1)) } catch { return false } }
+  const engineWorld = {
+    getBlock: position => {
+      if (stepFeetY !== null) {
+        const point = vector(position, 'Block position').floored(), raw = world.getBlock(point.x, point.y, point.z)
+        if (raw?.known === true && isLava(nameOf(raw)) && point.y + 1 <= stepFeetY - 1 + 1e-9 && fullBlock(world.getBlock(point.x, point.y + 1, point.z))) { sealedLava.push(point); return readBlock(point, true, EMPTY) }
+      }
+      return readBlock(position, true)
+    }
+  }
   const engine = PhysicsEngine(registry, engineWorld)
   // The pinned dependency applies an older Bedrock fit at factory creation.
   // These public constants feed its ground attribute calculation each tick;
@@ -364,7 +383,10 @@ function createPhysics ({ world, version = '1.26.60', registry, allowWater = fal
       game: { gameMode: 'survival' }
     }
     for (const name of FLAG_NAMES) bot.entity[name] = !!input[name]
-    const simulated = engine.simulatePlayer(new PlayerState(bot, control), engineWorld)
+    let simulated
+    stepFeetY = input.onGround === true ? input.position.y : null; sealedLava = []
+    try { simulated = engine.simulatePlayer(new PlayerState(bot, control), engineWorld) } finally { stepFeetY = null }
+    if (sealedLava.some(cell => simulated.pos.x + 0.3 > cell.x && simulated.pos.x - 0.3 < cell.x + 1 && simulated.pos.z + 0.3 > cell.z && simulated.pos.z - 0.3 < cell.z + 1 && simulated.pos.y + 1.8 > cell.y && simulated.pos.y < cell.y + 1)) throw new Error('Lava prediction is unsupported')
     if (![simulated.pos.x, simulated.pos.y, simulated.pos.z, simulated.vel.x, simulated.vel.y, simulated.vel.z].every(Number.isFinite)) throw new Error('Physics produced a non-finite prediction')
     if (simulated.isInLava) throw new Error('Lava prediction is unsupported')
     if (simulated.isInWater && !allowWater) throw new Error('Water prediction is experimental and disabled')
