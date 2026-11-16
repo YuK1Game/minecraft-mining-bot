@@ -12,7 +12,8 @@
 //   chest, and the spare diamonds, other valuables and rubble go in.
 // - With no base yet (or one farther than 1024 m, after a respawn), the base
 //   is made where the Bot comes out: a large chest from held wood, as the
-//   storage chest is (player-storage.js).
+//   storage chest is (player-storage.js). Without that wood the trip only
+//   climbs out, and the base is made on the surface once wood is held.
 // - A deposit counts by the received inventory, the chest by the received block.
 const fs = require('node:fs')
 const path = require('node:path')
@@ -87,7 +88,11 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
     const spare = diamonds(inventory) - KEEP
     const base = shared.playerBase
     // With no base to go to, only held wood for a large chest makes the trip worth it.
-    if ((!base || flat(base, position) > FAR_M) && !canBuild()) return false
+    // With no base to go to and no wood for its chest, the trip only climbs out
+    // of the tunnel: on the surface the wood is gathered before going down
+    // again (player-supply.js), and the base is made once it is held (live
+    // 2026-11-17 01:57-02:03 JST: 145 diamonds, no wood, the trip never began).
+    if ((!base || flat(base, position) > FAR_M) && !canBuild()) return spare >= BANK_AT && underCover(getBlock, position)
     if (spare >= BANK_AT) return true
     return spare > 0 && !!base && flat(base, position) <= NEAR_M && !underCover(getBlock, position)
   }
@@ -120,6 +125,7 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
       // A chest that is gone (received as something else) is made again here.
       if (getBlock(base.x, base.y, base.z)?.known === true && !isChest(base)) { say('拠点のチェストがなくなっていたため、作り直します'); base = null }
     }
+    if (!base && !canBuild()) { say('拠点のチェストを作る木がないため、地上で木を集めてから拠点を作ります'); return false }
     if (!base) {
       const at = await chest()
       if (!at) { say('拠点のチェストを置けません'); return false }

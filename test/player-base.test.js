@@ -84,10 +84,26 @@ test('loadBaseSync reads the saved chest and ignores a broken file', () => {
   assert.equal(loadBaseSync('x', { io: { readFileSync: () => '{' } }), null)
 })
 
-test('no base and no wood for a large chest: no trip', async () => {
+test('no base and no wood on the surface: no trip (the wood is gathered first)', async () => {
   const calls = []
   const shared = { playerWanted: true, playerBase: null }
   const api = createPlayerBase({ getMode: () => 'player', shared, getBlock: () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty' }), getPosition: () => ({ x: 0, y: 65.62, z: 0 }), getFeet: () => ({ x: 0, y: 64, z: 0 }), getInventory: () => inv([[0, 'diamond', 64]]), canBuild: () => false, agent: { stop: () => calls.push('stop') }, travel: { status: () => ({ busy: false }) } })
   assert.equal(await api.tick(), null)
   assert.deepEqual(calls, [])
+})
+
+test('no base and no wood underground: climbs out only, no chest', async () => {
+  const calls = []
+  const shared = { playerWanted: true, playerBase: null }
+  let covered = true
+  const getBlock = (x, y, z) => covered && y === 70 ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  const api = createPlayerBase({
+    getMode: () => 'player', shared, getBlock, getPosition: () => ({ x: 0, y: 65.62, z: 0 }), getFeet: () => ({ x: 0, y: 64, z: 0 }), getInventory: () => inv([[0, 'diamond', 64]]), canBuild: () => false,
+    agent: { objective: {}, start: async () => calls.push('start'), stop: () => calls.push('stop'), settled: () => true },
+    climb: async () => { calls.push('climb'); covered = false; return { ok: true } },
+    chest: async () => { calls.push('chest'); return null },
+    travel: { status: () => ({ busy: false }) }, log: () => {}, sleep: async () => {}
+  })
+  assert.equal(await api.tick(), false)
+  assert.deepEqual(calls, ['stop', 'climb', 'start'])
 })
