@@ -217,7 +217,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     hands, climb: climbUp,
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     hostile: () => runtime.nearestHostile() < 12,
-    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active,
+    // Not with 10 health or less: eating, the shelter and fleeing come first (live 2026-11-17 05:53 JST: the build began at 1.9 health with no food).
+    blocked: () => !(runtime.raw().health > 10) || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active,
     // Done: chest A is the base, and the bed sets the respawn point.
     onDone: async origin => {
       const at = chestOf(origin), here = (x, y, z) => runtime.host().world.getBlock(x, y, z)
