@@ -81,9 +81,9 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     climb: async aborted => {
       for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
       const stop = () => aborted() || flee.status().active || shelter.status().active
-      // Under water or gravel the shaft moves sideways and goes on (player-climb-side.js).
+      // Under water, gravel or leaves the shaft moves sideways and goes on (player-climb-side.js).
       let out = await climbOut({ ports: hands, log, aborted: stop })
-      for (let i = 0; i < 3 && !out.ok && out.reason === 'CANNOT_MINE' && !stop(); i++) {
+      for (let i = 0; i < 3 && !out.ok && (out.reason === 'CANNOT_MINE' || out.reason === 'LEAVES_ABOVE') && !stop(); i++) {
         if (!(await sidestep({ ports: hands, log, aborted: stop })).ok) break
         out = await climbOut({ ports: hands, log, aborted: stop })
       }

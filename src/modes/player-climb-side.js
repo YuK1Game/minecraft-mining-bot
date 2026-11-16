@@ -13,9 +13,14 @@
 // - The drift goes along one axis, then the other. Every block is mined by the
 //   ordinary mining after its own check; the floor must be received solid
 //   ground. A refused block ends that drift and the next column is tried.
+// - Leaves are never cut, so a column with leaves in its way up is not chosen
+//   either, and the drift does not go through leaves (real Realm 2026-11-16
+//   16:16 JST: 22 steps up, then LEAVES_ABOVE two blocks under the surface
+//   below a tree; it stayed in that hole and was killed there).
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const LIQUID = /water|lava|bubble_column|kelp|seagrass/
 const FALLING = /^minecraft:(?:gravel|sand|red_sand|suspicious_(?:sand|gravel)|.*concrete_powder)$/
+const LEAVES = /_leaves$/
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]]
 const RADIUS = 12, SCAN_UP = 64, MIN_KNOWN = 8, TRIES = 3
 
@@ -27,7 +32,7 @@ function dryColumn (block, x, at, z) {
   for (let y = at + 2; y < at + 2 + SCAN_UP; y++) {
     const found = block(x, y, z)
     if (found?.known !== true) break
-    if (wet(found) || FALLING.test(found.name ?? '')) return false
+    if (wet(found) || FALLING.test(found.name ?? '') || LEAVES.test(found.name ?? '')) return false
     if (SIDES.some(([dx, dz]) => wet(block(x + dx, y, z + dz)))) return false
     seen++
   }
@@ -55,16 +60,16 @@ async function sidestep ({ ports, log = () => {}, aborted = () => false, tries =
   const clear = async cell => {
     const found = block(cell.x, cell.y, cell.z)
     if (isAir(found)) return true
-    if (found?.known !== true || wet(found)) return false
+    if (found?.known !== true || wet(found) || LEAVES.test(found.name ?? '')) return false
     const tool = canMine(cell) || (await ports.pick?.() && canMine(cell))
     if (!tool && !ports.canDig?.(cell)) return false
     return await (tool ? mine(cell) : ports.dig(cell)) === true
   }
   const origin = here()
   const columns = dryColumns(block, origin.x, at, origin.z).slice(0, tries)
-  if (!columns.length) { log('プレイヤーモード: 近く（12マス以内）に、上が水・砂利でない場所が見つかりません'); return { ok: false, reason: 'NO_DRY_COLUMN' } }
+  if (!columns.length) { log('プレイヤーモード: 近く（12マス以内）に、上が水・砂利・葉でない場所が見つかりません'); return { ok: false, reason: 'NO_DRY_COLUMN' } }
   for (const column of columns) {
-    log(`プレイヤーモード: 真上が水・砂利のため、横へ${column.steps}マス掘ってから上がります（${column.x},${at},${column.z}）`)
+    log(`プレイヤーモード: 真上へ掘れないため、横へ${column.steps}マス掘ってから上がります（${column.x},${at},${column.z}）`)
     let refused = null
     while (!aborted()) {
       const now = here()

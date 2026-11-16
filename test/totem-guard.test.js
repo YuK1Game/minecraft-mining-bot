@@ -105,8 +105,10 @@ test('empty-handed preparation avoids shooters and engages only a non-shooter wi
   assert.equal(emptyHandedTargetAllowed({ ...bot, emptyHandedPrep: false }, at('skeleton', 12)), true)
   const source = require('./helpers/runtime-source').runtimeSource()
   // Drowned on land are the one exception (coordinator 2026-11-14).
-  assert.match(source, /function quarryCanSelectTarget \(target, state, info = \{\}\) \{ if \(!drownedOnLand\(target, state\) && !require\('\.\/safety\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
-  assert.match(source, /function quarryCanContinue \(target, state, info = \{\}\) \{ if \(!require\('\.\/safety\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)\)/)
+  // The rule sits behind emptyHandedAllows (a weapon held in player-mode play lifts it).
+  assert.match(source, /const emptyHandedAllows = \(target, state\) => playerArmed\(state\) \|\| require\('\.\/safety\/learning-health'\)\.emptyHandedTargetAllowed\(state, target\)/)
+  assert.match(source, /function quarryCanSelectTarget \(target, state, info = \{\}\) \{ if \(!drownedOnLand\(target, state\) && !emptyHandedAllows\(target, state\)\)/)
+  assert.match(source, /function quarryCanContinue \(target, state, info = \{\}\) \{ if \(!emptyHandedAllows\(target, state\)\)/)
 })
 
 // Decision a (2026-11-14): only a fixed list of cheap regatherable items still

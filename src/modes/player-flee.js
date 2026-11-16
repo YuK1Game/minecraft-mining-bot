@@ -105,4 +105,8 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
   return { tick, status: () => ({ active: busy, reason: busy ? '敵から離れています。' : null }) }
 }
 
-module.exports = { createPlayerFlee, fleeWanted, unarmed, FLEE_AT }
+// In play with a weapon in the received inventory: combat fights as usual, the
+// "nothing to lose" rule of the long-trip preparation does not apply.
+const armedInPlay = (shared, inventory) => shared?.playerWanted === true && !shared.inventoryUncertain && !unarmed(inventory)
+
+module.exports = { createPlayerFlee, fleeWanted, unarmed, armedInPlay, FLEE_AT }

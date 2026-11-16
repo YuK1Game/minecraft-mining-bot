@@ -148,3 +148,16 @@ test('armed and in melee contact the Bot keeps fighting; unarmed it still runs',
   assert.equal(fleeWanted({ health: 6.4, hostiles: [drowned(5)], position: here })?.name, 'drowned')
   assert.equal(fleeWanted({ health: 6.4, hostiles: [drowned(1.1)], position: here, weaponless: true })?.name, 'drowned')
 })
+
+test('in play with a weapon in the received inventory, the empty-handed rule does not hold combat back', () => {
+  const { armedInPlay } = require('../src/modes/player-flee')
+  const sword = { items: [{ name: 'minecraft:wooden_sword', count: 1 }] }, pick = { items: [{ name: 'minecraft:wooden_pickaxe', count: 1 }] }
+  assert.equal(armedInPlay({ playerWanted: true }, sword), true)
+  assert.equal(armedInPlay({ playerWanted: true }, pick), false)
+  assert.equal(armedInPlay({ playerWanted: true }, null), false)
+  assert.equal(armedInPlay({ playerWanted: true, inventoryUncertain: true }, sword), false)
+  assert.equal(armedInPlay({}, sword), false)
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/runtime/quarry-runtime.js'), 'utf8')
+  assert.match(source, /function quarryCanSelectTarget[^\n]*!emptyHandedAllows\(target, state\)/)
+  assert.match(source, /function quarryCanContinue[^\n]*!emptyHandedAllows\(target, state\)/)
+})
