@@ -6,7 +6,8 @@
 // Modules are loaded through rt.require, the require of runtime.js.
 
 function createAutonomyRuntime (rt) {
-  const autonomy = rt.createAutonomy({
+  // Every port is timed for the stall log (common/work-spans.js).
+  const autonomy = rt.createAutonomy(require('../common/work-spans').wrapAll('autonomy', {
     requestWorkClearance: () => rt.idleSafety?.requestWorkClearance?.() ?? { pending: false },
     getState: () => {
       const state = rt.observedState(), knownLife = Number.isSafeInteger(rt.host.shared.deathRespawn?.deathId) && rt.host.shared.deathRespawn.deathId >= 0
@@ -283,7 +284,7 @@ function createAutonomyRuntime (rt) {
       rt.host.noteProgress(progress)
       rt.host.shared.onAutonomyProgress?.(progress)
     }
-  })
+  }))
   return {
     get autonomy () { return autonomy }
   }

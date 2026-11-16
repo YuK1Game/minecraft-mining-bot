@@ -4,6 +4,9 @@ const { evaluateCombatThreat } = require('./combat-threat-policy')
 const threatReachability = require('./threat-reachability')
 const { createCombatSearchBudget } = require('./combat-search-budget')
 
+// Eye height of a standing two-block mob (skeleton 1.74, pillager 1.62).
+const TARGET_EYE = 1.6
+
 function createCombatExposure ({ world, entities, scopeOf }) {
   let decisionSight = null
   // Only synchronous callers share geometry. Returning (including returning a
@@ -26,19 +29,35 @@ function createCombatExposure ({ world, entities, scopeOf }) {
     }
     return unknown ? null : true
   }
+  // Attack sight between the two bodies, not one ray: an archer behind a
+  // one-block rise shoots from its eye over the edge while the ray from the
+  // bot's eye to its body centre ends inside that block. Any clear ray is
+  // sight; blocked only when every ray is blocked.
+  function bodySight (from, target) {
+    const p = target.position, feetY = from.y - 1.62
+    const eye = { ...p, y: p.y + TARGET_EYE }
+    const rays = [[from, { ...p, y: p.y + 0.9 }], [from, eye], [eye, { ...from, y: feetY + 0.9 }]]
+    let unknown = false
+    for (const [a, b] of rays) {
+      const value = sightEvidence(a, b)
+      if (value === true) return true
+      if (value === null) unknown = true
+    }
+    return unknown ? null : false
+  }
   function targetSight (target, state) {
     const from = state.position, to = { ...target.position, y: target.position.y + 0.9 }
-    if (!decisionSight) return sightEvidence(from, to)
+    if (!decisionSight) return bodySight(from, target)
     const revisionOf = world.revision, getBlock = world.getBlock
     const revision = typeof revisionOf === 'function' ? revisionOf.call(world) : null
     // No authoritative world version means no reuse, even inside one decision.
-    if (!Number.isSafeInteger(revision) || revision < 0) return sightEvidence(from, to)
+    if (!Number.isSafeInteger(revision) || revision < 0) return bodySight(from, target)
     const scope = scopeOf(state)
-    if (scope == null) return sightEvidence(from, to)
+    if (scope == null) return bodySight(from, target)
     const key = JSON.stringify([scope, revision, state.dimension, String(state.runtimeEntityId), String(target.runtimeId), String(target.uniqueId), target.entityType, target.dimension, ...['x', 'y', 'z'].map(k => from?.[k]), ...['x', 'y', 'z'].map(k => to[k])])
     const cached = decisionSight.get(key)
     if (cached && cached.getBlock === getBlock && cached.revisionOf === revisionOf) return cached.value
-    const value = sightEvidence(from, to)
+    const value = bodySight(from, target)
     if (world.getBlock === getBlock && world.revision === revisionOf && revisionOf.call(world) === revision) decisionSight.set(key, { value, getBlock, revisionOf })
     return value
   }
@@ -67,6 +86,6 @@ function createCombatExposure ({ world, entities, scopeOf }) {
     }
     return result
   }
-  return { evaluate, sight: sightEvidence, withDecision, snapshot: () => combatSearchBudget.snapshot() }
+  return { evaluate: require('../common/work-spans').wrap('exposure.evaluate', evaluate), sight: sightEvidence, withDecision, snapshot: () => combatSearchBudget.snapshot() }
 }
 module.exports = { createCombatExposure }

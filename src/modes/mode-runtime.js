@@ -124,10 +124,10 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || scaffold.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12,
     hands: createTorchPorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
   })
-  const fleeTimer = setInterval(() => { if (disposed()) clearInterval(fleeTimer); else void flee.tick().catch(() => {}) }, 500)
+  const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else void flee.tick().catch(() => {}) }), 500)
   fleeTimer.unref?.()
   // The shelter is checked every two seconds; a reloaded runtime's timer ends itself.
-  const timer = setInterval(() => {
+  const timer = setInterval(require('../common/work-spans').wrap('player-mode.tick', () => {
     if (disposed()) return clearInterval(timer)
     void resume.note()
     keepAim()
@@ -135,7 +135,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     void scaffold.tick().catch(() => {})
     void torch.tick().catch(() => {})
     try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active || flee.status().active || scaffold.status().active || torch.status().active }) } catch { /* The next tick retries. */ }
-  }, 2000)
+  }), 2000)
   timer.unref?.()
   // The previous runtime was reloaded in the middle of a recovery: play on.
   if (shared.playerRecovering === true) { shared.playerRecovering = false; if (control.get() === 'player') shared.autoWanted = true }
