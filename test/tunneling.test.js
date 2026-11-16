@@ -460,3 +460,14 @@ test('gravel resting on received stone is ground to tunnel from; gravel over air
   h.set(point(0, 5, 0), 'gravel'); h.set(point(0, 4, 0), { known: false })
   assert.notEqual(h.tunneling.preview(h.decision).ready, true)
 })
+
+test('a step taken from settled gravel keeps the gravel as its return floor', async () => {
+  // 2026-11-17 00:42 JST live: on a gravel pile every completed step failed with PRESERVED_FLOOR_CHANGED.
+  const f = fixture({ target: point(6, 3, 0) })
+  f.set(point(0, 5, 0), 'gravel'); f.set(point(0, 4, 0), 'gravel')
+  const floors = []
+  const tunneling = f.makeTunneling({ onPreserveFloor: point => floors.push(point) })
+  const result = await tunneling.execute(f.decision, { maxSteps: 1, maxDigBlocks: 4 })
+  assert.ok(result.steps.length >= 1, result.reason)
+  assert.ok(floors.some(point => point.x === 0 && point.y === 5 && point.z === 0), 'the gravel under the start is kept as a return floor')
+})

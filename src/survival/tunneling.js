@@ -197,8 +197,15 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     // never evict an older return stair to make room for a new one.
     const points = new Map([...footprintFloors(before), ...footprintFloors(arrived)].map(point => [key(point), point]))
     const known = preserved()
+    // Settled gravel or sand under the feet is a floor too (as in standing); a
+    // footprint corner over received air at a hole rim holds nothing to keep.
+    // (real Realm 2026-11-17 00:42 JST: on a gravel pile every completed step
+    // failed here, 72 decisions with no block dug).
+    const centres = new Set([before, arrived].map(state => key({ x: Math.floor(state.position.x), y: Math.round(state.position.y - 1.62) - 1, z: Math.floor(state.position.z) })))
     for (const [id, point] of points) {
-      if (!floor(world.getBlock(point.x, point.y, point.z))) throw new TunnelingError('A completed step lost its supporting return floor', 'PRESERVED_FLOOR_CHANGED')
+      const block = world.getBlock(point.x, point.y, point.z)
+      if (!centres.has(id) && block?.known === true && clear(block) && AIR.has(nameOf(block))) continue
+      if (!ground(block, point.x, point.y, point.z)) throw new TunnelingError('A completed step lost its supporting return floor', 'PRESERVED_FLOOR_CHANGED')
       if (!known.has(id) && known.size >= 1024) throw new TunnelingError('The preserved return-floor limit was reached', 'PRESERVED_FLOOR_LIMIT')
       known.set(id, point)
       preservedFloors.set(id, point)
