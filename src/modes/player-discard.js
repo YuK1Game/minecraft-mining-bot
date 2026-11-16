@@ -80,7 +80,7 @@ async function discardJunk ({ drop, walk = null, why = () => null, cells = () =>
     const record = shared.playerDiscards = (shared.playerDiscards ?? []).filter(entry => entry.until > now())
     record.push({ x: at.x, y: at.y, z: at.z, names: list.map(stack => stack.name), until: now() + AGAIN_MS })
   }
-  say(thrown ? `チェストを作る木がないため、いらない物を ${thrown} 枠捨てました（${names.slice(0, 8).join('、')}${names.length > 8 ? ' ほか' : ''}${spot ? `、${spot.x}, ${spot.y}, ${spot.z} から` : ''}）` : `いらない物を捨てられません（${list.length} 枠）`)
+  say(thrown ? `チェストを使えないため、いらない物を ${thrown} 枠捨てました（${names.slice(0, 8).join('、')}${names.length > 8 ? ' ほか' : ''}${spot ? `、${spot.x}, ${spot.y}, ${spot.z} から` : ''}）` : `いらない物を捨てられません（${list.length} 枠）`)
   return thrown
 }
 
