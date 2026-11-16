@@ -225,6 +225,8 @@ test('placement preview rejects own and other players, unknown terrain, hazards,
   assert.equal(interactions.previewPlace({ position: target, slot: 0 }).ready, false)
   setBlock({ x: 2, y: 65, z: 0 }, 'lava')
   assert.equal(interactions.previewPlace({ position: target, slot: 0 }).ready, false)
+  setBlock({ x: 2, y: 65, z: 0 }, 'gravel')
+  assert.equal(interactions.previewPlace({ position: target, slot: 0 }).ready, true, 'gravel beside the cell loses no support')
   setBlock({ x: 2, y: 65, z: 0 }, 'air')
   setBlock({ x: 0, y: 66, z: 0 }, 'stone')
   assert.equal(interactions.previewPlace({ position: target, slot: 0 }).ready, false)
