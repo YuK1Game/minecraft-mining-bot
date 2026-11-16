@@ -141,7 +141,15 @@ function createPlayerStorage ({ getMode, shared, agent, hands, getBlock, getFeet
     if (!target) {
       const cells = chestCells(getBlock, feet)
       if (cells.length < 2) { say('ラージチェストを置ける平らな場所がありません'); return false }
-      if (!await makeChests(2, cells)) return false
+      // One chest held and no wood for a second: the single chest is used now
+      // and made large once wood is held (real Realm 2026-11-16 21:24 JST:
+      // 「板材が足りません（板材 4・原木 0）」 every minute with a chest in hand).
+      if (!await makeChests(2, cells)) {
+        if (held(CHEST) < 1) return false
+        if (!await hands.place(cells[0], CHEST)) { say(`チェストを置けません (${cells[0].x}, ${cells[0].y}, ${cells[0].z}) ${hands.refusal?.() ?? ''}`.trim()); return false }
+        say(`チェストを1つ置きました（2つ目の材料が足りません） (${cells[0].x}, ${cells[0].y}, ${cells[0].z})`)
+        target = { position: cells[0] }
+      }
       // A refused first cell is skipped and another pair tried (3 pairs at most);
       // after one chest stands, the next run makes it large as a single chest.
       const skip = new Set()
