@@ -45,6 +45,7 @@ const { createOpenList } = require('../common/open-list')
 const { createFailureMemo } = require('./tunnel-failure-memo')
 const { cellKey } = require('../movement/plan-cache')
 // Search-internal id of a cell (one number); preserved floors keep their "x,y,z" keys.
+const { emptyDug } = require('./tunnel-dug')
 const cid = point => cellKey(point.x, point.y, point.z)
 const same = (a, b) => a.x === b.x && a.y === b.y && a.z === b.z
 const { finitePoint: finite } = require('../common/vec3')
@@ -282,9 +283,8 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
         clearance.push(point)
       }
       if (next.y > node.cell.y) for (const cell of [node.cell, next]) for (let y = Math.max(node.cell.y, next.y); y <= Math.max(node.cell.y, next.y) + 1; y++) if (!clear(read({ ...cell, y }, node.removed))) return null
-      // A step that digs nothing shares its parent's set (sets are never changed after this).
-      const removed = clearance.length ? new Set(node.removed) : node.removed
-      clearance.forEach(point => removed.add(cid(point)))
+      // A step that digs nothing shares its parent's set; one that digs links to it (tunnel-dug.js).
+      const removed = node.removed.with(clearance.map(cid))
       if (removed.size > bounds.maxRouteDigBlocks) return null
       // Only the floors this path adds are copied; the preserved ones are shared
       // (copying hundreds of them per edge froze the Bot for seconds).
@@ -295,7 +295,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     }
     const horizontal = cell => Math.abs(cell.x - ore.target.x) + Math.abs(cell.z - ore.target.z)
     const heuristic = cell => Math.max(Math.max(0, horizontal(cell) - 1), Math.abs(cell.y - (ore.target.y - 1)))
-    const start = { cell: origin, removed: new Set(), preservedFloors: new Set(), g: 0, h: heuristic(origin), parent: null, step: null, depth: 0 }
+    const start = { cell: origin, removed: emptyDug(), preservedFloors: new Set(), g: 0, h: heuristic(origin), parent: null, step: null, depth: 0 }
     start.f = start.h * 2
     const records = new Map([[cid(origin), start]])
     // Best first by f, then h, then horizontal distance (common/open-list.js).
