@@ -23,6 +23,10 @@ const nameOf = value => String(value ?? '').replace(/^minecraft:/, '')
 const fullName = value => `minecraft:${nameOf(value)}`
 const amount = value => Number.isSafeInteger(value) && value > 0 ? value : 0
 const { pointKey: key } = require('../common/vec3')
+// Map keys for block cells: one number instead of a string per block (10,000
+// observed blocks are indexed on every decision).
+const { cellKey } = require('../movement/plan-cache')
+const cell = point => cellKey(point.x, point.y, point.z)
 const copyPoint = point => ({ x: point.x, y: point.y, z: point.z })
 const { finitePoint: finite } = require('../common/vec3')
 const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]))
@@ -100,8 +104,8 @@ function nextDiamondAction (state, observations = {}, options = {}) {
 
   const blocks = Array.isArray(observations.blocks) ? observations.blocks : []
   const known = blocks.filter(block => block?.known === true && integer(block.position))
-  const blockMap = new Map(known.map(block => [key(block.position), block]))
-  const latestBlocks = new Map(blocks.filter(block => integer(block?.position)).map(block => [key(block.position), block]))
+  const blockMap = new Map(known.map(block => [cell(block.position), block]))
+  const latestBlocks = new Map(blocks.filter(block => integer(block?.position)).map(block => [cell(block.position), block]))
   const excluded = (resource, point) => (progress.excludedResources ?? []).some(entry => {
     if (typeof entry === 'string') return entry === key(point) || entry === `${resource}:${key(point)}`
     if (entry?.scope != null && entry.scope !== resourceScope(state)) return false
@@ -139,7 +143,7 @@ function nextDiamondAction (state, observations = {}, options = {}) {
     if (action.type === 'complete') return wait('observation', 'subgoal_changed', '下位工程の持ち物を再確認します。')
     return wrap(action, { name: label, stone: requiredStone })
   }
-  const readBlock = point => latestBlocks.get(key(point))
+  const readBlock = point => latestBlocks.get(cell(point))
   const stationCache = new Map()
   function furnaceAccess (target, stationBlocks = blocks, readStation = readBlock) {
     const world = { getBlock: (x, y, z) => readStation({ x, y, z }) }
@@ -186,8 +190,8 @@ function nextDiamondAction (state, observations = {}, options = {}) {
     const furnace = observations.furnace ?? {}
     const page = currentStationPage(state, observations.stationPages?.[kind === 'table' ? 'craftingTable' : 'furnace'], kind)
     const stationBlocks = page ? [...blocks, ...page.blocks] : blocks
-    const stationMap = new Map(stationBlocks.filter(block => integer(block?.position)).map(block => [key(block.position), block]))
-    const readStation = point => stationMap.get(key(point))
+    const stationMap = page ? new Map(stationBlocks.filter(block => integer(block?.position)).map(block => [cell(block.position), block])) : latestBlocks
+    const readStation = point => stationMap.get(cell(point))
     const current = point => { const block = integer(point) ? readStation(point) : null; return block?.known === true && names.has(nameOf(block.name)) && block.protected !== true && !block.protectionSource && block.usable !== false && !block.extra?.length ? block : null }
     // A remembered location/window is history until a current received block
     // proves its identity. Do not delete the record or invent another station.
@@ -301,7 +305,7 @@ function nextDiamondAction (state, observations = {}, options = {}) {
       const point = input.position ?? input
       // Current block observations override remembered ore metadata, including
       // a now-empty, protected or explicitly unknown cell after a prior dig.
-      const observed = integer(point) ? latestBlocks.get(key(point)) ?? (input.name ? input : null) : null
+      const observed = integer(point) ? latestBlocks.get(cell(point)) ?? (input.name ? input : null) : null
       if (!integer(point) || observed?.known !== true || !ORES[resource].has(nameOf(observed.name)) || observed.protected || observed.natural === false || excluded(resource, point) || seen.has(key(point))) continue
       seen.add(key(point))
       targets.push({ ...observed, position: { ...point }, requiresTunnel: input.requiresTunnel === true })
@@ -312,22 +316,22 @@ function nextDiamondAction (state, observations = {}, options = {}) {
       const emptyScan = scope && (progress.emptyProspects ?? []).some(receipt => receipt?.scope === scope && receipt.resource === resource && integer(receipt.position) && Number.isSafeInteger(receipt.known) && receipt.known > 0 && Number.isSafeInteger(receipt.unknown) && receipt.unknown >= 0 && Math.floor(receipt.position.x / 16) === Math.floor(state.position.x / 16) && Math.floor(receipt.position.z / 16) === Math.floor(state.position.z / 16))
       const knownExcludedOre = inputs.some(input => {
         const point = input.position ?? input
-        const observed = integer(point) ? latestBlocks.get(key(point)) ?? (input.name ? input : null) : null
+        const observed = integer(point) ? latestBlocks.get(cell(point)) ?? (input.name ? input : null) : null
         const scopedExclusion = scope && (progress.excludedResources ?? []).some(entry => entry?.scope === scope && entry.resource === resource && integer(entry.position) && key(entry.position) === key(point))
         return observed?.known === true && ORES[resource].has(nameOf(observed.name)) && scopedExclusion
       })
       if (emptyScan || knownExcludedOre) return requireAction('explore', result('explore', resource, '現在地で必要な鉱石を確認できなかったため、既知の安全な足場を通って別の場所を調べます。', { resource, count: needed, requiredToolTier: requiredTier, rejectUnknown: true, allowWater: false, requiresKnownTerrain: true, requiresLivePreview: true, attempt: amount(progress.explorationAttempts) + 1 }), ['movement_exploration'])
       return requireAction('prospect', result('prospect', resource, '必要な鉱石を未取得の場所にあると決めつけず、確認できる地形を調べます。', { resource, count: needed, requiredToolTier: requiredTier, rejectUnknown: true }))
     }
-    const byPosition = new Map(targets.map(target => [key(target.position), target]))
+    const byPosition = new Map(targets.map(target => [cell(target.position), target]))
     // Reuse the tested full-cube resource geometry. This classification view
     // changes no material counts or live world. The dispatched action below
     // always names the actually observed ore, never the adapter's stone label.
-    const geometry = blocks.map(block => byPosition.has(key(block.position ?? {})) ? { ...block, name: 'minecraft:stone' } : ['stone', 'deepslate'].includes(nameOf(block.name)) ? { ...block, name: 'minecraft:dirt' } : block)
-    for (const target of targets) if (!geometry.some(block => integer(block.position) && key(block.position) === key(target.position))) geometry.push({ ...target, name: 'minecraft:stone' })
+    const geometry = blocks.map(block => block.position && byPosition.has(cell(block.position)) ? { ...block, name: 'minecraft:stone' } : ['stone', 'deepslate'].includes(nameOf(block.name)) ? { ...block, name: 'minecraft:dirt' } : block)
+    for (const target of targets) if (!latestBlocks.has(cell(target.position))) geometry.push({ ...target, name: 'minecraft:stone' })
     const sub = nextBootstrapAction(resourceState, { ...observations, blocks: geometry }, { ...options, stoneCount: counts.stone + 1 })
     const action = sub.type === 'capability_required' ? sub.proposedAction : sub
-    const selected = action?.type === 'mine_stone' ? byPosition.get(key(action.target)) : action?.type === 'move_to' ? byPosition.get(key(action.resourceTarget)) : null
+    const selected = action?.type === 'mine_stone' ? byPosition.get(cell(action.target)) : action?.type === 'move_to' ? byPosition.get(cell(action.resourceTarget)) : null
     if (selected && !selected.requiresTunnel) {
       if (action.type === 'mine_stone') return requireAction('mine_ore', result('mine_ore', resource, '現在の工具で正規に採取できる鉱石を掘ります。', { target: { ...selected.position }, resourceTarget: { ...selected.position }, block: selected.name, resource, count: needed, requiredToolTier: requiredTier, requiresLivePreview: true, requiresKnownDurability: true }))
       return requireAction('move', result('move_to', resource, '鉱石に安全に手が届く観測済みの足場へ近づきます。', { target: { ...action.target }, resourceTarget: { ...selected.position }, block: selected.name, resource, requiredToolTier: requiredTier, stance: action.stance, requiresLivePreview: true, requiresKnownDurability: true }), ['movement', 'walking'])
@@ -418,7 +422,7 @@ function nextDiamondAction (state, observations = {}, options = {}) {
   const rawInside = contentsKnown && RAW_IRON.has(nameOf(input.name)) ? input.count : 0
   const ironOutput = contentsKnown && nameOf(output.name) === 'iron_ingot' ? output.count : 0
   const remainingIron = Math.max(0, 3 - counts.ironIngots - rawInside - ironOutput)
-  const burning = contentsKnown && (furnace.burning === true || furnace.progress?.burnTicksRemaining > 0) || nameOf(blockMap.get(key(placedFurnace.position))?.name) === 'lit_furnace'
+  const burning = contentsKnown && (furnace.burning === true || furnace.progress?.burnTicksRemaining > 0) || nameOf(blockMap.get(cell(placedFurnace.position))?.name) === 'lit_furnace'
   const fuelPresent = contentsKnown && fuel.count > 0
   // Reserve the two planks needed to make sticks if the pickaxe sticks are
   // missing. One plank per remaining ingot is a deliberately conservative

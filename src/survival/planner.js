@@ -27,6 +27,7 @@ const NEIGHBOURS = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z
 const nameOf = value => String(value ?? '').replace(/^minecraft:/, '')
 const fullName = value => `minecraft:${nameOf(value)}`
 const { pointKey: key } = require('../common/vec3')
+const { cellKey } = require('../movement/plan-cache') // numeric map key per block cell
 const position = value => value && ['x', 'y', 'z'].every(axis => Number.isFinite(value[axis]))
 const integerPosition = value => position(value) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(value[axis]))
 const positive = (value, fallback) => Number.isSafeInteger(value) && value > 0 ? value : fallback
@@ -168,8 +169,8 @@ function nextBootstrapAction (snapshot, observations = {}, options = {}) {
 
   const blocks = Array.isArray(observations.blocks) ? observations.blocks : Array.isArray(observations.world?.blocks) ? observations.world.blocks : []
   const known = blocks.filter(block => block?.known === true && integerPosition(block.position))
-  const blockMap = new Map(known.map(block => [key(block.position), block]))
-  const getBlock = point => blockMap.get(key(point))
+  const blockMap = new Map(known.map(block => [cellKey(block.position.x, block.position.y, block.position.z), block]))
+  const getBlock = point => blockMap.get(cellKey(point.x, point.y, point.z))
   const eye = snapshot.position
   const reach = Number.isFinite(options.reach) && options.reach > 0 && options.reach <= 4.5 ? options.reach : 4.5
   const feet = { x: Math.floor(eye.x), y: Math.floor(eye.y - 1.62 + 0.001), z: Math.floor(eye.z) }

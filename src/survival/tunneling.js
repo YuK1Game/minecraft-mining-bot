@@ -24,15 +24,33 @@ const REFUSED_MS = 300000
 const RISE_CHECK = 3
 const RISE_PROBE = 400
 const REFUSED_LIMIT = 24
-const nameOf = block => String(typeof block === 'string' ? block : block?.name ?? '').replace(/^minecraft:/, '')
+// Block names repeat endlessly in a search: the stripped name and the hazard
+// answer are remembered per name (a regex per block read was a fifth of a search).
+const NAMES = new Map(), HAZARDS = new Map()
+const nameOf = block => {
+  const raw = typeof block === 'string' ? block : block?.name
+  let name = NAMES.get(raw)
+  if (name === undefined) { name = String(raw ?? '').replace(/^minecraft:/, ''); if (NAMES.size < 4096) NAMES.set(raw, name) }
+  return name
+}
+const hazardName = name => {
+  let hazard = HAZARDS.get(name)
+  if (hazard === undefined) { hazard = HAZARD.test(name); if (HAZARDS.size < 4096) HAZARDS.set(name, hazard) }
+  return hazard
+}
 const copy = value => structuredClone(value)
 const { pointKey: key } = require('../common/vec3')
 const { createOpenList } = require('../common/open-list')
+const { createFailureMemo } = require('./tunnel-failure-memo')
+const { cellKey } = require('../movement/plan-cache')
+// Search-internal id of a cell (one number); preserved floors keep their "x,y,z" keys.
+const cid = point => cellKey(point.x, point.y, point.z)
+const same = (a, b) => a.x === b.x && a.y === b.y && a.z === b.z
 const { finitePoint: finite } = require('../common/vec3')
 const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]) && Math.abs(point[axis]) <= 30000000)
 const layered = block => block.extra?.some(extra => !AIR.has(nameOf(extra)))
-const clear = block => block.known === true && !HAZARD.test(nameOf(block)) && !layered(block) && (AIR.has(nameOf(block)) || block.boundingBox === 'empty')
-const floor = block => block.known === true && block.boundingBox === 'block' && FLOOR.has(nameOf(block)) && !HAZARD.test(nameOf(block)) && !layered(block)
+const clear = block => block.known === true && !hazardName(nameOf(block)) && !layered(block) && (AIR.has(nameOf(block)) || block.boundingBox === 'empty')
+const floor = block => block.known === true && block.boundingBox === 'block' && FLOOR.has(nameOf(block)) && !hazardName(nameOf(block)) && !layered(block)
 const center = cell => ({ x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 })
 function segmentDistance (point, from, to) {
   const delta = { x: to.x - from.x, y: to.y - from.y, z: to.z - from.z }
@@ -58,6 +76,8 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
   // Standing cells where the geometric line of sight held but the live mining
   // preview refused the ore. Planning must look for another cell, not repeat.
   const refused = { target: null, cells: new Map() }
+  // No-route answers, reused until the received terrain changes (tunnel-failure-memo.js).
+  const failures = createFailureMemo({ now: clock })
   function refusedCells (target) {
     if (refused.target !== key(target)) { refused.target = key(target); refused.cells.clear() }
     for (const [id, at] of refused.cells) if (clock() - at > REFUSED_MS) refused.cells.delete(id)
@@ -196,11 +216,13 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     const cache = new Map()
     const unknown = new Map()
     const rejected = {}
+    let searching = false, unknownTerrain = null
     function read (point, removed) {
-      const id = key(point)
+      const id = cid(point)
       if (!cache.has(id)) cache.set(id, world.getBlock(point.x, point.y, point.z))
       const block = cache.get(id)
-      if (block?.known !== true) { unknown.set(id, { ...point }); throw new TunnelingError(`Unknown terrain at ${id}`, 'UNKNOWN_TERRAIN') }
+      // Inside the search the error is only counted: one shared object, no stack per unknown block.
+      if (block?.known !== true) { unknown.set(id, { ...point }); throw searching ? (unknownTerrain ??= new TunnelingError('Unknown terrain', 'UNKNOWN_TERRAIN')) : new TunnelingError(`Unknown terrain at ${key(point)}`, 'UNKNOWN_TERRAIN') }
       return removed?.has(id) ? { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [], plannedClearance: true } : block
     }
     function supported (point, removed) { return floor(read({ ...point, y: point.y - 1 }, removed)) }
@@ -220,12 +242,12 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       const target = { x: ore.target.x + 0.5, y: ore.target.y + 0.5, z: ore.target.z + 0.5 }
       const distance = Math.hypot(eye.x - target.x, eye.y - target.y, eye.z - target.z)
       if (distance > 4.25 || node.cell.x === ore.target.x && node.cell.z === ore.target.z && ore.target.y <= node.cell.y) return false
-      for (const offset of FACES) { const neighbour = read({ x: ore.target.x + offset.x, y: ore.target.y + offset.y, z: ore.target.z + offset.z }, node.removed); if (HAZARD.test(nameOf(neighbour)) || layered(neighbour)) return false }
+      for (const offset of FACES) { const neighbour = read({ x: ore.target.x + offset.x, y: ore.target.y + offset.y, z: ore.target.z + offset.z }, node.removed); if (hazardName(nameOf(neighbour)) || layered(neighbour)) return false }
       const samples = Math.ceil(distance / 0.08)
       for (let index = 0; index < samples; index++) {
         const ratio = index / samples
         const point = { x: Math.floor(eye.x + (target.x - eye.x) * ratio), y: Math.floor(eye.y + (target.y - eye.y) * ratio), z: Math.floor(eye.z + (target.z - eye.z) * ratio) }
-        if (key(point) !== key(ore.target)) {
+        if (!same(point, ore.target)) {
           const block = read(point, node.removed)
           const transparentTorch = block.known === true && nameOf(block) === 'torch' && block.boundingBox === 'empty' && !block.extra?.length
           if (!AIR.has(nameOf(block)) && !transparentTorch) return false
@@ -245,22 +267,22 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       for (let y = Math.max(node.cell.y, next.y) + 1; y >= next.y; y--) {
         const point = { x: next.x, y, z: next.z }
         const block = read(point, node.removed)
-        if (key(point) === key(ore.target) && !clear(block)) return null
+        if (same(point, ore.target) && !clear(block)) return null
         if (clear(block)) continue
         if (baseFloors.has(key(point)) || node.preservedFloors.has(key(point))) return null
-        if (next.y > node.cell.y || !DIG.has(nameOf(block)) || DIG.get(nameOf(block)) > tool.tier || block.diggable === false || block.protected || block.natural === false || HAZARD.test(nameOf(block)) || layered(block)) return null
-        for (const offset of FACES) { const neighbour = read({ x: point.x + offset.x, y: point.y + offset.y, z: point.z + offset.z }, node.removed); if (HAZARD.test(nameOf(neighbour)) || layered(neighbour)) return null }
+        if (next.y > node.cell.y || !DIG.has(nameOf(block)) || DIG.get(nameOf(block)) > tool.tier || block.diggable === false || block.protected || block.natural === false || hazardName(nameOf(block)) || layered(block)) return null
+        for (const offset of FACES) { const neighbour = read({ x: point.x + offset.x, y: point.y + offset.y, z: point.z + offset.z }, node.removed); if (hazardName(nameOf(neighbour)) || layered(neighbour)) return null }
         clearance.push(point)
       }
       if (next.y > node.cell.y) for (const cell of [node.cell, next]) for (let y = Math.max(node.cell.y, next.y); y <= Math.max(node.cell.y, next.y) + 1; y++) if (!clear(read({ ...cell, y }, node.removed))) return null
-      const removed = new Set(node.removed)
-      clearance.forEach(point => removed.add(key(point)))
+      // A step that digs nothing shares its parent's set (sets are never changed after this).
+      const removed = clearance.length ? new Set(node.removed) : node.removed
+      clearance.forEach(point => removed.add(cid(point)))
       if (removed.size > bounds.maxRouteDigBlocks) return null
       // Only the floors this path adds are copied; the preserved ones are shared
       // (copying hundreds of them per edge froze the Bot for seconds).
-      const floors = new Set(node.preservedFloors)
       const floorId = key({ ...next, y: next.y - 1 })
-      if (!baseFloors.has(floorId)) floors.add(floorId)
+      const floors = baseFloors.has(floorId) || node.preservedFloors.has(floorId) ? node.preservedFloors : new Set(node.preservedFloors).add(floorId)
       if (baseFloors.size + floors.size > 1024) return null
       return { cell: next, removed, preservedFloors: floors, clearance, kind: clearance.length ? 'excavate' : 'move', target: center(next) }
     }
@@ -268,11 +290,11 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     const heuristic = cell => Math.max(Math.max(0, horizontal(cell) - 1), Math.abs(cell.y - (ore.target.y - 1)))
     const start = { cell: origin, removed: new Set(), preservedFloors: new Set(), g: 0, h: heuristic(origin), parent: null, step: null, depth: 0 }
     start.f = start.h * 2
-    const records = new Map([[key(origin), start]])
+    const records = new Map([[cid(origin), start]])
     // Best first by f, then h, then horizontal distance (common/open-list.js).
     const open = createOpenList({ records, before: (a, b) => a.f < b.f || a.f === b.f && (a.h < b.h || a.h === b.h && a.horizontal < b.horizontal) })
     const push = (id, record) => open.push(id, record, { f: record.f, h: record.h, horizontal: horizontal(record.cell) })
-    push(key(origin), start)
+    push(cid(origin), start)
     const closed = new Set()
     let found = null
     let expanded = 0
@@ -282,8 +304,20 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     // JST: coal 58 blocks up, the search ran to 3000 nodes every 8-10 s).
     const rising = ore.target.y >= origin.y + RISE_CHECK
     let highest = origin.y
+    // Hostile circles move, and a world without a terrain version cannot say
+    // when it changed: no reuse then.
+    const terrain = world.revision?.()
+    const memoKey = !avoidance.length && Number.isSafeInteger(terrain) ? JSON.stringify([terrain, ore.target, ore.resource, ore.tier, origin, tool.tier, bounds, initialFloors.size, skipped.size]) : null
+    const known = failures.get(memoKey)
+    if (known) throw new TunnelingError(known.message, 'NO_SAFE_ROUTE', { ...known.details, reused: true })
+    const noRoute = message => {
+      const details = { unknownFrontier: [...unknown.values()].slice(0, 32), expanded, rejected }
+      failures.set(memoKey, { message, details })
+      return new TunnelingError(message, 'NO_SAFE_ROUTE', details)
+    }
+    searching = true
     while (open.size && expanded < bounds.maxExpanded) {
-      if (rising && expanded >= RISE_PROBE && highest <= origin.y) throw new TunnelingError('The ore lies above and no known open way up was found', 'NO_SAFE_ROUTE', { unknownFrontier: [...unknown.values()].slice(0, 32), expanded, rejected })
+      if (rising && expanded >= RISE_PROBE && highest <= origin.y) throw noRoute('The ore lies above and no known open way up was found')
       const id = open.pop()
       if (id === null) break
       const node = records.get(id)
@@ -293,7 +327,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       if (node.depth >= bounds.maxRouteSteps) continue
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (const dy of [-1, 0, 1]) {
         const next = { x: node.cell.x + dx, y: node.cell.y + dy, z: node.cell.z + dz }
-        const nextId = key(next)
+        const nextId = cid(next)
         if (closed.has(nextId) || next.y < Math.max(-63, Math.min(origin.y, ore.target.y) - 2) || Math.abs(next.y - origin.y) > bounds.maxVertical || Math.abs(next.x - origin.x) + Math.abs(next.z - origin.z) > bounds.maxDistance) continue
         try {
           const step = edge(node, next)
@@ -308,7 +342,8 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
         } catch (error) { rejected[error.code] = (rejected[error.code] ?? 0) + 1 }
       }
     }
-    if (!found) throw new TunnelingError(expanded >= bounds.maxExpanded ? 'The bounded tunneling search limit was reached' : 'No complete route through known safe diggable terrain', 'NO_SAFE_ROUTE', { unknownFrontier: [...unknown.values()].slice(0, 32), expanded, rejected })
+    searching = false
+    if (!found) throw noRoute(expanded >= bounds.maxExpanded ? 'The bounded tunneling search limit was reached' : 'No complete route through known safe diggable terrain')
     if (ore.resource === 'stone' && found.removed.size + 2 > tool.remaining) throw new TunnelingError('Insufficient known durability for the bounded stone approach and target', 'TOOL_WORN_OUT')
     const steps = []
     for (let node = found; node.parent; node = node.parent) steps.push({ kind: node.step.kind, targetCell: { ...node.cell }, target: node.step.target, blocksToMine: copy(node.step.clearance) })
