@@ -110,6 +110,7 @@ src/            Bot 本体（約190モジュール。2026-11-15 に役割ごと�
                   user-control-runtime / runtime-operations / autonomy-runtime）と診断。
                   event-loop-stall.js は処理の停止（200ms以上）をログに出し、stall-profile.js は400ms以上の停止について
                   その間に動いていた関数を「処理の停止の内訳」として出す（CPUプロファイルの標本。計測だけ）。
+                  内訳は `.local/stall-profile` というファイルがある時だけ動く（プロファイルの開始そのものが処理を数百ms止めるため、既定では無効）。
                   idle-escape/ は待機保護の退避ポート（idle-safety-runtime.js の escape）の段階。
                   元のクロージャーの変数は `rt.<名前>`、モジュールは `rt.require(...)`（runtime.js から見たパス）、
                   `.local` などのパスは `rt.__dirname` で使う。別の変数を使うときは、runtime.js 側でそのモジュールを

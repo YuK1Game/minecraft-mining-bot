@@ -21,7 +21,9 @@ function createEventLoopStallWatch ({ intervalMs = 100, thresholdMs = 200, minRe
   }
   function start () { if (!timer) { last = now(); timer = setTimer(check, intervalMs); timer?.unref?.() } }
   function stop () { if (timer) { clearTimer(timer); timer = null } }
-  return { start, stop, check, stats: () => ({ ...stats }) }
+  // Forget the time until now (a pause the caller made on purpose).
+  function reset () { last = now() }
+  return { start, stop, check, reset, stats: () => ({ ...stats }) }
 }
 // What the bot was doing, for the report: the quarry state, a running long
 // trip and the behaviour that owns the controls (combat, sleeping). Live
@@ -35,7 +37,8 @@ function describeWork ({ quarry = null, travel = null, behavior = null } = {}) {
 }
 // The watch as the runtime uses it: the report goes to the log, and stalls long
 // enough to matter are followed by the profile's breakdown (stall-profile.js).
-function createLoggedStallWatch ({ context, log, root = null, profile = require('./stall-profile').createStallProfile({ log, root }) }) {
+function createLoggedStallWatch ({ context, log, root = null, profile = null }) {
+  profile ??= require('./stall-profile').createStallProfile({ log, root, settled: () => watch.reset() })
   const watch = createEventLoopStallWatch({
     context,
     report: r => {

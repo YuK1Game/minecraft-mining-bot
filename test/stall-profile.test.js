@@ -28,7 +28,9 @@ test('the samples inside the stall are summed per function, callers included', (
 
 test('a real profile names a busy function, and stop releases the session', async () => {
   const lines = []
-  const profile = createStallProfile({ log: line => lines.push(line), samplingUs: 1000, minStallMs: 50 })
+  let settled = 0
+  assert.equal(await createStallProfile({ root: '/nowhere' }).explain(900), null, 'off without the flag file')
+  const profile = createStallProfile({ log: line => lines.push(line), samplingUs: 1000, minStallMs: 50, enabled: () => true, settled: () => settled++ })
   await profile.start()
   const spinForTheTest = () => { const until = Date.now() + 250; let n = 0; while (Date.now() < until) n += Math.sqrt(n + 1); return n }
   spinForTheTest()
@@ -37,4 +39,5 @@ test('a real profile names a busy function, and stop releases the session', asyn
   assert.ok(top.some(entry => entry.name.startsWith('spinForTheTest ')), JSON.stringify(top))
   assert.match(lines[0], /^処理の停止の内訳 250ms: /)
   assert.equal(await profile.explain(250), null, 'nothing after stop')
+  assert.equal(settled, 2, 'the stall watch is told after each profile start')
 })
