@@ -21,6 +21,22 @@ test('online learning HP1 tunneling retains received ore, tool and death proof r
   f.state.health = 0; assert.equal(f.tunneling.preview(f.decision).ready, false)
 })
 
+test('a standing cell the live mining preview refuses is skipped for another approach cell', async () => {
+  const f = fixture({ target: point(2, 6, 0) })
+  const refusedAt = cell => Math.floor(f.state.position.x) === cell
+  const mining = { ...f.mining, preview: targets => refusedAt(0) ? { ready: false, targets: [], errors: ['face hidden'] } : f.mining.preview(targets) }
+  const tunneling = f.makeTunneling({ mining })
+  const result = await tunneling.execute(f.decision, { maxSteps: 2, maxDigBlocks: 6 })
+  assert.equal(result.oreAccessible, true)
+  assert.notEqual(Math.floor(f.state.position.x), 0)
+  // Refused everywhere: the stop names the live reason.
+  const g = fixture({ target: point(2, 6, 0) })
+  const never = g.makeTunneling({ mining: { ...g.mining, preview: () => ({ ready: false, targets: [], errors: ['face hidden'] }) } })
+  let last
+  for (let index = 0; index < 40 && !last; index++) await never.execute(g.decision, { maxSteps: 2, maxDigBlocks: 6 }).catch(error => { if (error.code === 'MINING_PREVIEW_REJECTED') last = error })
+  assert.match(last.message, /face hidden/)
+})
+
 function fixture ({ height = 6, target = point(3, 0, 0), options = {} } = {}) {
   let time = 0
   let stamp = 0

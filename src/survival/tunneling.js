@@ -20,6 +20,8 @@ const TIERS = { wooden_pickaxe: 1, golden_pickaxe: 1, stone_pickaxe: 2, iron_pic
 const HAZARD = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|sweet_berry_bush|wither_rose|pointed_dripstone|sand$|gravel$|concrete_powder$|anvil$|dragon_egg|scaffolding)/
 const FACES = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }]
 const CONTACT = 1e-4
+const REFUSED_MS = 300000
+const REFUSED_LIMIT = 24
 const nameOf = block => String(typeof block === 'string' ? block : block?.name ?? '').replace(/^minecraft:/, '')
 const copy = value => structuredClone(value)
 const { pointKey: key } = require('../common/vec3')
@@ -50,6 +52,14 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
   registry ??= require('prismarine-registry')('bedrock_1.26.60')
   let active = null
   const preservedFloors = new Map()
+  // Standing cells where the geometric line of sight held but the live mining
+  // preview refused the ore. Planning must look for another cell, not repeat.
+  const refused = { target: null, cells: new Map() }
+  function refusedCells (target) {
+    if (refused.target !== key(target)) { refused.target = key(target); refused.cells.clear() }
+    for (const [id, at] of refused.cells) if (clock() - at > REFUSED_MS) refused.cells.delete(id)
+    return refused.cells
+  }
   let status = { phase: 'idle', busy: false, steps: [], digBlocks: 0, target: null, position: null, positionSource: null, serverConfirmed: false, oreAccessible: false, collected: false, reason: null, cleanupErrors: [] }
 
   function toolOf (state, requiredTier) {
@@ -198,10 +208,11 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     }
     const eyeOf = cell => ({ x: cell.x + 0.5, y: cell.y + 1.62, z: cell.z + 0.5 })
     const allowedEye = eye => avoidance.every(circle => Math.hypot(circle.position.x - eye.x, circle.position.y - eye.y, circle.position.z - eye.z) > circle.minDistance)
+    const skipped = refusedCells(ore.target)
     const allowedEdge = (from, to) => avoidance.every(circle => segmentDistance(circle.position, from, to) >= circle.minDistance - CONTACT)
     function accessible (node) {
       const eye = { x: node.cell.x + 0.5, y: node.cell.y + 1.62, z: node.cell.z + 0.5 }
-      if (!allowedEye(eye)) return false
+      if (!allowedEye(eye) || skipped.has(key(node.cell))) return false
       const target = { x: ore.target.x + 0.5, y: ore.target.y + 0.5, z: ore.target.z + 0.5 }
       const distance = Math.hypot(eye.x - target.x, eye.y - target.y, eye.z - target.z)
       if (distance > 4.25 || node.cell.x === ore.target.x && node.cell.z === ore.target.z && ore.target.y <= node.cell.y) return false
@@ -338,7 +349,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     stoneTargetFloor(run.ore, state)
     const result = await call(run, 'Ore mining preview', () => mining.preview([copy(run.ore.target)], { signal: run.signal }))
     read(run)
-    if (result?.ready !== true) return false
+    if (result?.ready !== true) { run.liveReason = result?.errors?.join(' / ') || null; return false }
     const target = result.targets?.find(target => integer(target.position) && key(target.position) === key(run.ore.target))
     if (nameOf(target) !== nameOf(run.ore.name)) throw new TunnelingError('The live mining preview does not identify the expected ore', 'RESOURCE_CHANGED')
     return true
@@ -394,7 +405,16 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       run.tool = initial.tool
       for (let index = 0; index < maxSteps; index++) {
         if (await accessibleNow(run)) { const result = finish(run, true, run.ore.resource === 'stone' ? 'The live mining preview can reach the unchanged stone; leave mining to mine_stone' : 'The live mining preview can reach the unchanged ore; leave mining to mine_ore'); completed = true; return result }
-        const plan = preview(decision, options)
+        let plan = preview(decision, options)
+        if (plan.ready && !plan.steps.length) {
+          // The live preview refused the ore from this cell: approach from another one.
+          const { state } = read(run)
+          const cells = refusedCells(run.ore.target)
+          if (cells.size >= REFUSED_LIMIT) throw new TunnelingError(`The live mining preview refused the ore from every tried cell${run.liveReason ? `: ${run.liveReason}` : ''}`, 'MINING_PREVIEW_REJECTED')
+          cells.set(key({ x: Math.floor(state.position.x), y: Math.round(state.position.y - 1.62), z: Math.floor(state.position.z) }), clock())
+          plan = preview(decision, options)
+          if (!plan.ready) throw new TunnelingError(`The geometric approach is not accepted by the live mining preview${run.liveReason ? `: ${run.liveReason}` : ''} (${plan.reason})`, 'MINING_PREVIEW_REJECTED', { unknownFrontier: plan.unknownFrontier })
+        }
         if (!plan.ready) throw new TunnelingError(plan.reason, plan.code, { unknownFrontier: plan.unknownFrontier })
         const step = plan.steps[0]
         if (!step) throw new TunnelingError('The geometric approach is not accepted by the live mining preview', 'MINING_PREVIEW_REJECTED')
