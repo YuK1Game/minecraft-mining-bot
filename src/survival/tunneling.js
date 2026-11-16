@@ -246,9 +246,14 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       if (!supported(cell) || !clear(read(cell)) || !clear(read({ ...cell, y: level + 1 }))) throw new TunnelingError('The current body has no known safe standing footprint', 'SETTLE_REQUIRED')
     }
     const eyeOf = cell => ({ x: cell.x + 0.5, y: cell.y + 1.62, z: cell.z + 0.5 })
-    const allowedEye = eye => avoidance.every(circle => Math.hypot(circle.position.x - eye.x, circle.position.y - eye.y, circle.position.z - eye.z) > circle.minDistance)
+    // A circle the Bot already stands in only forbids getting closer than it
+    // is now; moving within or out of it stays possible (live 2026-11-16
+    // 00:01-00:08 JST: 17 non-threat circles, the start inside one, every
+    // first step refused, 「expanded 1」 160 times in five minutes).
+    const limits = avoidance.map(circle => { const now = Math.hypot(circle.position.x - state.position.x, circle.position.y - state.position.y, circle.position.z - state.position.z); return now < circle.minDistance ? Math.max(0, now - 0.25) : circle.minDistance })
+    const allowedEye = eye => avoidance.every((circle, index) => Math.hypot(circle.position.x - eye.x, circle.position.y - eye.y, circle.position.z - eye.z) > limits[index])
     const skipped = refusedCells(ore.target)
-    const allowedEdge = (from, to) => avoidance.every(circle => segmentDistance(circle.position, from, to) >= circle.minDistance - CONTACT)
+    const allowedEdge = (from, to) => avoidance.every((circle, index) => segmentDistance(circle.position, from, to) >= limits[index] - CONTACT)
     function accessible (node) {
       const eye = { x: node.cell.x + 0.5, y: node.cell.y + 1.62, z: node.cell.z + 0.5 }
       if (!allowedEye(eye) || skipped.has(key(node.cell))) return false
@@ -273,7 +278,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       // The first connector starts at the actual working eye, not its cell.
       const from = node.parent ? eyeOf(node.cell) : state.position
       const to = eyeOf(next)
-      if (!allowedEye(to) || !allowedEdge(from, to)) return null
+      if (!allowedEye(to) || !allowedEdge(from, to)) { rejected.AVOID = (rejected.AVOID ?? 0) + 1; return null }
       if (ore.resource === 'stone' && key({ ...next, y: next.y - 1 }) === key(ore.target)) return null
       if (!supported(next, node.removed)) return null
       const clearance = []
