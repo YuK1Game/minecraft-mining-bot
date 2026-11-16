@@ -17,7 +17,8 @@
 //   steps in a row could not start; then combat fights as before. Afterwards
 //   the shelter rests the Bot and play resumes by itself.
 // - A run that could not take a single step is not tried again for 30 s, then
-//   60 s, then 2 min, unless the received health has dropped since (live
+//   60 s, then 2 min, unless the received health has dropped since or a
+//   hostile has come 2 m closer than the one it was stuck on (live
 //   2026-11-16 12:20-12:31 JST: at health 2, a drowned in water 6.6 blocks
 //   below never came closer; 55 runs in ten minutes each stopped the autonomy
 //   and ended with no step, so the Bot never ate or hunted).
@@ -49,16 +50,21 @@ function fleeWanted ({ health, totem, hostiles, position, weaponless = false }) 
 }
 
 function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, hostiles, retreat, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
-  let busy = false, restUntil = 0, stuck = 0, stuckHealth = null
+  let busy = false, restUntil = 0, stuck = 0, stuckHealth = null, stuckDistance = null
   const inPlay = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
 
   async function tick () {
     if (busy || !inPlay() || shared.travelNight?.cover) return false
     const state = getState()
+    const resting = now() < restUntil
     // Hurt again since the run that went nowhere: the wait is over.
-    if (now() < restUntil && !(stuckHealth !== null && state.health < stuckHealth - 0.5)) return false
+    if (resting && stuckHealth === null) return false
     const threat = fleeWanted({ health: state.health, totem: state.totem, hostiles: hostiles(), position: state.position, weaponless: unarmed(state.inventory) })
     if (!threat) return false
+    // So is it when a hostile has come 2 m closer than the one it was stuck on
+    // (live 2026-11-16 13:08 JST: during the wait a creeper walked up to 3.8 m
+    // and its blast killed the Bot at health 2).
+    if (resting && !(state.health < stuckHealth - 0.5) && !(threat.distance <= stuckDistance - 2)) return false
     busy = true
     let steps = 0, failed = 0
     try {
@@ -85,10 +91,11 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
       if (failed >= 3 && steps === 0) {
         stuck++
         stuckHealth = getState().health
+        stuckDistance = threat.distance
         restUntil = now() + Math.min(120000, 30000 * 2 ** (stuck - 1))
         log(`プレイヤーモード: 1歩も離れられなかったため、体力が減らない限り${Math.round((restUntil - now()) / 1000)}秒は離れ直しません。`)
       } else {
-        stuck = 0; stuckHealth = null
+        stuck = 0; stuckHealth = null; stuckDistance = null
         if (failed >= 3) restUntil = now() + 5000
       }
       return true

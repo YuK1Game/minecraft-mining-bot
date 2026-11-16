@@ -92,6 +92,17 @@ test('a run with no step is not tried again for 30 s, 60 s, 2 min, unless the Bo
   assert.match(s.logs.at(-1), /120秒は離れ直しません/)
 })
 
+test('the wait after a stuck run ends when a hostile comes two metres closer', async () => {
+  const s = scene({ retreat: () => false })
+  s.enemies = [zombie(9)]
+  assert.equal(await s.flee.tick(), true)
+  assert.match(s.logs.at(-1), /30秒は離れ直しません/)
+  s.enemies = [zombie(8)]
+  assert.equal(await s.flee.tick(), false)
+  s.enemies = [zombie(9), creeper(6.5)]
+  assert.equal(await s.flee.tick(), true)
+})
+
 test('steps that stop starting after a first step hand back to combat for five seconds', async () => {
   let calls = 0
   const s = scene({ retreat: s => { if (calls++) return false; s.position.x -= 2; return true } })
