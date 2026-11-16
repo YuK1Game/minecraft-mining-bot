@@ -212,4 +212,4 @@ function planStationAccess ({ state, observedState = state, target, blocks = [],
   return invalid('no_known_station_stance')
 }
 
-module.exports = { useCurrentAccess, treeAccessScope, isDryAccessPlant, safeAccessPlant, planTreeAccess, planStationAccess, stationVisibleFace, placementTopVisible, planPlacementAccess, ACCESS_LIMIT }
+module.exports = { useCurrentAccess, treeAccessScope, isDryAccessPlant, safeAccessPlant, stationVisibleFace, placementTopVisible, ACCESS_LIMIT, ...require('../common/work-spans').wrapAll('action-access', { planTreeAccess, planStationAccess, planPlacementAccess }) }

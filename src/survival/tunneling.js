@@ -485,6 +485,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     return snapshot()
   }
   function snapshot () { return copy(status) }
+  plan = require('../common/work-spans').wrap('tunnel.plan', plan) // timed for the stall log
   return { preview, execute, stop, snapshot }
 }
 

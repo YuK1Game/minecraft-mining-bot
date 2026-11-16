@@ -269,6 +269,7 @@ function createExcavation ({ getState, world, mining, movement, getMining, getMo
   }
 
   function snapshot () { return copy(status) }
+  plan = require('../common/work-spans').wrap('excavation.plan', plan) // timed for the stall log
   return { preview, execute, stop, snapshot }
 }
 

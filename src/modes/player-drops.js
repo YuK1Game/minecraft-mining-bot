@@ -104,4 +104,4 @@ function noteFailedDrops ({ mode, shared, progress, drops = [], now = Date.now }
   }
 }
 
-module.exports = { withCollectableDrops, noteFailedDrops, walkableCells, collectable }
+module.exports = { ...require('../common/work-spans').wrapAll('player-drops', { withCollectableDrops, walkableCells }), noteFailedDrops, collectable }

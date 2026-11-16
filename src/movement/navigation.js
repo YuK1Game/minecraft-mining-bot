@@ -979,7 +979,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     return { next, snapshot, stop, reconcile }
   }
 
-  return { plan, planAsync, createStepper, createSettler, verifyOrigin, physics, capabilities: Object.freeze({ version, predictionOnly: true, serverAcceptanceVerified: false, maxSearchDistance: planningDistanceLimit, oneBlockJumpPlanning: true, water: allowWater ? 'experimental-surface-only' : 'disabled', fastSwimmingPose: false }) }
+  return { plan: require('../common/work-spans').wrap('navigation.plan', plan), planAsync, createStepper, createSettler, verifyOrigin, physics, capabilities: Object.freeze({ version, predictionOnly: true, serverAcceptanceVerified: false, maxSearchDistance: planningDistanceLimit, oneBlockJumpPlanning: true, water: allowWater ? 'experimental-surface-only' : 'disabled', fastSwimmingPose: false }) }
 }
 
 module.exports = { createNavigator }
