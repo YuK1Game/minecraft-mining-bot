@@ -5,6 +5,7 @@
 // push through, and died. A player at that health turns and runs: zombies and
 // creepers are slower than a sprint.
 // - Trigger: health 8 or less (and above 0), a hostile within 12 m, no totem.
+//   Not with a weapon in hand once the nearest hostile is within 3.5 m.
 //   With no weapon held (live 20:30-20:33 JST: an empty-handed Bot on a trip
 //   took two creeper blasts, 20 -> 10 -> 0, without stepping away): a creeper
 //   within 8 m at any health, and any hostile within 12 m at health 10 or less.
@@ -17,7 +18,7 @@
 //   the shelter rests the Bot and play resumes by itself.
 const { normalizeMode } = require('./bot-mode')
 
-const FLEE_AT = 8, UNARMED_FLEE_AT = 10, CREEPER_M = 8
+const FLEE_AT = 8, UNARMED_FLEE_AT = 10, CREEPER_M = 8, CONTACT_M = 3.5
 const WEAPON = /_sword$|_axe$|^minecraft:(?:bow|crossbow|trident|mace)$/
 // Unreceived items are not a weapon in hand.
 const unarmed = inventory => !(inventory?.items ?? []).some(item => item?.count > 0 && WEAPON.test(item.name ?? ''))
@@ -33,6 +34,11 @@ function fleeWanted ({ health, totem, hostiles, position, weaponless = false }) 
     const distance = Math.hypot(actor.position.x - position.x, actor.position.y - (position.y - 1.62), actor.position.z - position.z)
     if (distance <= (hurt ? 12 : /creeper/.test(String(actor.entityType ?? actor.name ?? '')) ? CREEPER_M : -1) && (!nearest || distance < nearest.distance)) nearest = { distance, name: text(actor.entityType ?? actor.name) }
   }
+  // Armed and already in melee contact: turning away only gives free hits
+  // (live 2026-11-16 10:00 JST: with a stone sword at 6.4 health and a drowned
+  // at 1.1 m, combat was told to stand down, no step started in three
+  // seconds, and three more hits killed the Bot). Combat keeps the fight.
+  if (nearest && !weaponless && nearest.distance <= CONTACT_M) return null
   // The totem is asked last: reading it costs a full state.
   return nearest && (typeof totem === 'function' ? totem() : totem) !== true ? nearest : null
 }
@@ -56,6 +62,8 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
         if (!(current.health > 0)) break
         const near = (hostiles() ?? []).filter(actor => actor?.position && current.position && Math.hypot(actor.position.x - current.position.x, actor.position.z - current.position.z) <= 16)
         if (!near.length) break
+        // Caught up with while armed: combat takes the fight back.
+        if (steps + failed > 0 && !unarmed(current.inventory) && near.some(actor => Math.hypot(actor.position.x - current.position.x, actor.position.y - (current.position.y - 1.62), actor.position.z - current.position.z) <= CONTACT_M)) break
         // Combat stands down only while a step is being tried or walked.
         shared.playerFlee = { until: now() + 9000 }
         if (agent.running()) agent.stop('敵から離れます。')

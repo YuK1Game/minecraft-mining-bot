@@ -108,3 +108,11 @@ test('the combat work guard stands down while the flee flag is live', () => {
   const source = runtimeSource()
   assert.equal(source.match(/reason: 'EMPTY_HANDED_AVOID' \}; if \(playerFleeing\(\)\) return \{ allowed: false, reason: 'PLAYER_FLEE' \}/g)?.length, 2)
 })
+
+test('armed and in melee contact the Bot keeps fighting; unarmed it still runs', () => {
+  const here = { x: 0, y: 65.62, z: 0 }
+  const drowned = d => ({ entityType: 'minecraft:drowned', position: { x: d, y: 64, z: 0 } })
+  assert.equal(fleeWanted({ health: 6.4, hostiles: [drowned(1.1)], position: here }), null)
+  assert.equal(fleeWanted({ health: 6.4, hostiles: [drowned(5)], position: here })?.name, 'drowned')
+  assert.equal(fleeWanted({ health: 6.4, hostiles: [drowned(1.1)], position: here, weaponless: true })?.name, 'drowned')
+})
