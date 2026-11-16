@@ -27,6 +27,7 @@ const REFUSED_LIMIT = 24
 const nameOf = block => String(typeof block === 'string' ? block : block?.name ?? '').replace(/^minecraft:/, '')
 const copy = value => structuredClone(value)
 const { pointKey: key } = require('../common/vec3')
+const { createOpenList } = require('../common/open-list')
 const { finitePoint: finite } = require('../common/vec3')
 const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]) && Math.abs(point[axis]) <= 30000000)
 const layered = block => block.extra?.some(extra => !AIR.has(nameOf(extra)))
@@ -268,45 +269,9 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     const start = { cell: origin, removed: new Set(), preservedFloors: new Set(), g: 0, h: heuristic(origin), parent: null, step: null, depth: 0 }
     start.f = start.h * 2
     const records = new Map([[key(origin), start]])
-    // Open nodes in a binary heap ordered by f, then h, then horizontal distance,
-    // then first entry into the open list (the order a linear scan of an
-    // insertion-ordered set picked). A scan of every open node per expansion was
-    // quadratic in the search limit. Updated nodes leave stale entries behind.
-    const open = new Map()
-    const heap = []
-    let sequence = 0
-    const before = (a, b) => a.f < b.f || a.f === b.f && (a.h < b.h || a.h === b.h && (a.horizontal < b.horizontal || a.horizontal === b.horizontal && a.sequence < b.sequence))
-    function push (id, record) {
-      if (!open.has(id)) open.set(id, sequence++)
-      const entry = { id, record, f: record.f, h: record.h, horizontal: horizontal(record.cell), sequence: open.get(id) }
-      heap.push(entry)
-      for (let index = heap.length - 1; index > 0;) {
-        const parent = (index - 1) >> 1
-        if (!before(heap[index], heap[parent])) break
-        ;[heap[index], heap[parent]] = [heap[parent], heap[index]]
-        index = parent
-      }
-    }
-    function pop () {
-      while (heap.length) {
-        const top = heap[0]
-        const last = heap.pop()
-        if (heap.length) {
-          heap[0] = last
-          for (let index = 0; ;) {
-            const left = index * 2 + 1, right = left + 1
-            let best = index
-            if (left < heap.length && before(heap[left], heap[best])) best = left
-            if (right < heap.length && before(heap[right], heap[best])) best = right
-            if (best === index) break
-            ;[heap[index], heap[best]] = [heap[best], heap[index]]
-            index = best
-          }
-        }
-        if (open.has(top.id) && records.get(top.id) === top.record) { open.delete(top.id); return top.id }
-      }
-      return null
-    }
+    // Best first by f, then h, then horizontal distance (common/open-list.js).
+    const open = createOpenList({ records, before: (a, b) => a.f < b.f || a.f === b.f && (a.h < b.h || a.h === b.h && a.horizontal < b.horizontal) })
+    const push = (id, record) => open.push(id, record, { f: record.f, h: record.h, horizontal: horizontal(record.cell) })
     push(key(origin), start)
     const closed = new Set()
     let found = null
@@ -319,7 +284,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     let highest = origin.y
     while (open.size && expanded < bounds.maxExpanded) {
       if (rising && expanded >= RISE_PROBE && highest <= origin.y) throw new TunnelingError('The ore lies above and no known open way up was found', 'NO_SAFE_ROUTE', { unknownFrontier: [...unknown.values()].slice(0, 32), expanded, rejected })
-      const id = pop()
+      const id = open.pop()
       if (id === null) break
       const node = records.get(id)
       try { if (accessible(node)) { found = node; break } } catch (error) { rejected[error.code] = (rejected[error.code] ?? 0) + 1 }

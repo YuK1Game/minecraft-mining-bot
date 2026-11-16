@@ -22,6 +22,7 @@ const copy = position => ({ x: position.x, y: position.y, z: position.z })
 const isWater = block => block.name === 'water' || block.name === 'flowing_water'
 const horizontalDistance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
 const { distance3: distance } = require('../common/vec3')
+const { createOpenList } = require('../common/open-list')
 
 function segmentDistance (point, from, to) {
   const delta = { x: to.x - from.x, y: to.y - from.y, z: to.z - from.z }
@@ -577,17 +578,18 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     const heuristic = node => Math.abs(Math.floor(node.position.x) - goalX) + Math.abs(Math.floor(node.position.z) - goalZ) + (target.y == null ? 0 : Math.abs(node.position.y - target.y))
     const firstKey = key(start.position)
     const records = new Map([[firstKey, { ...start, g: 0, f: heuristic(start), parent: null, action: start.medium === 'water' ? 'swim' : 'walk', waterSurfaceY: start.surfaceY }]])
-    const open = new Set([firstKey])
+    // Best first by f; equal f in the order of entry (common/open-list.js).
+    const open = createOpenList({ records, before: (a, b) => a < b })
+    open.push(firstKey, records.get(firstKey), records.get(firstKey).f)
     const closed = new Set()
     let expanded = 0
     let found = null
     while (open.size && expanded < maxExpanded) {
       if (control?.shouldYield()) yield
       if (planningStarted !== null && performance.now() - planningStarted >= 120) return empty('The trusted planning time limit was reached')
-      let currentKey
-      for (const candidate of open) if (currentKey === undefined || records.get(candidate).f < records.get(currentKey).f) currentKey = candidate
+      const currentKey = open.pop()
+      if (currentKey === null) break
       const current = records.get(currentKey)
-      open.delete(currentKey)
       if (Math.floor(current.position.x) === goalX && Math.floor(current.position.z) === goalZ && (target.y == null || Math.abs(current.position.y - target.y) <= 0.26)) {
         found = currentKey
         break
@@ -627,8 +629,9 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
           const previous = records.get(candidateKey)
           if (previous && previous.g <= g) continue
           const surfaces = [current.surfaceY, candidate.surfaceY].filter(Number.isFinite)
-          records.set(candidateKey, { ...candidate, g, f: g + heuristic(candidate), parent: currentKey, action, waterSurfaceY: action === 'swim' ? Math.min(...surfaces) : undefined })
-          open.add(candidateKey)
+          const record = { ...candidate, g, f: g + heuristic(candidate), parent: currentKey, action, waterSurfaceY: action === 'swim' ? Math.min(...surfaces) : undefined }
+          records.set(candidateKey, record)
+          open.push(candidateKey, record, record.f)
         }
       }
     }
