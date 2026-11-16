@@ -307,6 +307,19 @@ function nextBootstrapAction (snapshot, observations = {}, options = {}) {
 
   const tools = items.filter(item => amount(item.count) && TOOL_TIERS[nameOf(item.name)]).sort((a, b) => TOOL_TIERS[nameOf(b.name)] - TOOL_TIERS[nameOf(a.name)] || (a.slot ?? 99) - (b.slot ?? 99))
   if (tools.length) {
+    // Another material in place of stone (options.material: { blocks, items },
+    // the starter house's sand): only blocks with nothing falling on top.
+    if (options.material) {
+      const wanted = new Set(options.material.items), have = items.filter(item => wanted.has(nameOf(item.name))).reduce((sum, item) => sum + amount(item.count), 0)
+      const goalCount = positive(options.material.count, 1)
+      if (have >= goalCount) return result('complete', 'complete', '目標の資材を持ち物で確認しました。')
+      const dropped = collectDrops(name => wanted.has(name), 'material', goalCount - have)
+      if (dropped) return dropped
+      const blocks = new Set(options.material.blocks)
+      const open = known.filter(block => blocks.has(nameOf(block.name)) && !blocks.has(nameOf(getBlock({ ...block.position, y: block.position.y + 1 })?.name)))
+      const chosen = chooseResource(open, 'stone', goalCount - have)
+      return chosen.type === 'mine_stone' ? { ...chosen, material: true, resource: 'material' } : chosen
+    }
     const droppedStone = collectDrops(name => STONE_ITEMS.has(name), 'stone', goal.stone - counts.stone)
     if (droppedStone) return droppedStone
     const tool = tools[0]

@@ -21,7 +21,7 @@ function held (inventory) {
     else if (name === 'stick') out.stick += count
     else if (name === 'cobblestone') out.cobblestone += count
     else if (name === 'glass') out.glass += count
-    else if (name === 'sand') out.sand += count
+    else if (name === 'sand' || name === 'red_sand') out.sand += count
     else if (/_wool$/.test(name)) out.wool += count
     else if (name === 'coal' || name === 'charcoal') out.coal += count
     else if (/_bed$/.test(name)) out.bed += count

@@ -65,3 +65,33 @@ test('the house log plan input hides wood and pickaxes so the plan asks for more
   assert.deepEqual(input.state.inventory.items.map(item => item.name), ['minecraft:diamond'])
   assert.equal(input.options.logCount, 40)
 })
+
+test('after logs and cobblestone: sand from the plan, and with no sand received the decision goes on', () => {
+  const { houseSandInput } = require('../src/modes/house/house-supply')
+  const base = { type: 'tunnel' }
+  const state = { inventory: inv([['wooden_pickaxe', 1], ['birch_log', 44], ['cobblestone', 68], ['red_sand', 2]]) }
+  const asked = []
+  const sand = withHouseSupply({ mode: 'player', playing: true, shared: {}, state, decision: base, planLogs: () => null, planStone: () => null, planSand: count => { asked.push(count); return { type: 'mine_stone', material: true } } })
+  assert.equal(sand.type, 'mine_stone')
+  assert.deepEqual(asked, [4])
+  assert.equal(houseSandInput(state, {}, 4).options.material.count, 6)
+  const none = withHouseSupply({ mode: 'player', playing: true, shared: {}, state, decision: base, planLogs: () => null, planStone: () => null, planSand: () => ({ type: 'scan_blocks' }) })
+  assert.equal(none, base)
+})
+
+test('the plan mines received sand with nothing falling on it, counting sand held', () => {
+  const { nextBootstrapAction } = require('../src/survival/planner')
+  const blocks = []
+  for (let x = -3; x <= 3; x++) for (let z = -3; z <= 3; z++) {
+    blocks.push({ known: true, name: 'minecraft:stone', position: { x, y: 62, z }, boundingBox: 'block' })
+    blocks.push({ known: true, name: x === 2 && z === 0 ? 'minecraft:sand' : 'minecraft:grass_block', position: { x, y: 63, z }, boundingBox: 'block' })
+    for (const y of [64, 65, 66]) blocks.push({ known: true, name: 'minecraft:air', position: { x, y, z }, boundingBox: 'empty' })
+  }
+  const state = { phase: 'spawned', health: 20, gameMode: 'survival', position: { x: 0.5, y: 65.62, z: 0.5 }, heldItem: { name: 'minecraft:stone_pickaxe', slot: 0 }, inventory: { known: true, items: [{ name: 'minecraft:stone_pickaxe', count: 1, slot: 0 }] } }
+  const out = nextBootstrapAction(state, { blocks, canScan: true, capabilities: { break_block: true, move: true, scan_blocks: true, equip: true, collect_drops: true } }, { stoneCount: 2304, material: { blocks: ['sand', 'red_sand'], items: ['sand', 'red_sand'], count: 6 } })
+  assert.equal(out.type, 'mine_stone')
+  assert.deepEqual(out.target, { x: 2, y: 63, z: 0 })
+  assert.equal(out.material, true)
+  const done = nextBootstrapAction({ ...state, inventory: { known: true, items: [...state.inventory.items, { name: 'minecraft:sand', count: 6, slot: 1 }] } }, { blocks, canScan: true }, { stoneCount: 2304, material: { blocks: ['sand'], items: ['sand'], count: 6 } })
+  assert.equal(done.type, 'complete')
+})

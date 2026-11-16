@@ -11,8 +11,9 @@
 //   cutting until the house's logs are in hand instead of crafting the first one.
 // - Cobblestone: the base plan's stone work with the count the house needs.
 // - A plan that stops, completes or only waits keeps the original decision.
-// - Sand, wool and coal, the crafting and the build itself come next
-//   (docs/player-roadmap.md); until then the original decision goes on.
+// - Then sand for the glass (the base plan's stone work on received sand).
+// - Wool comes from sheep (house-wool.js); coal, the crafting and the build
+//   itself come next (docs/player-roadmap.md).
 const { normalizeMode } = require('../bot-mode')
 const { counts, remaining } = require('./house-blueprint')
 const { houseNeeds } = require('./house-needs')
@@ -34,6 +35,13 @@ function houseStoneInput (state, options, cobblestone) {
   return { state, options: { ...options, stoneCount: stone + cobblestone } }
 }
 
+// The plan input for house sand (sand or red sand both make glass).
+const SAND = ['sand', 'red_sand']
+function houseSandInput (state, options, sand) {
+  const held = (state?.inventory?.items ?? []).filter(item => SAND.includes(short(item?.name))).reduce((sum, item) => sum + (item.count ?? 0), 0)
+  return { state, options: { ...options, stoneCount: 2304, material: { blocks: SAND, items: SAND, count: held + sand } } }
+}
+
 function pending ({ mode, playing, shared, state }) {
   return normalizeMode(mode) === 'player' && playing === true && shared?.playerHouse?.done !== true && hasPickaxe(state?.inventory)
 }
@@ -43,7 +51,7 @@ function needsNow ({ shared, state, getBlock }) {
   return houseNeeds(state?.inventory, counts(origin && getBlock ? remaining(getBlock, origin) : remaining(null, null)))
 }
 
-function withHouseSupply ({ mode, playing, shared, state, decision, getBlock = null, planLogs, planStone, log = () => {} }) {
+function withHouseSupply ({ mode, playing, shared, state, decision, getBlock = null, planLogs, planStone, planSand = null, log = () => {} }) {
   if (!decision || !pending({ mode, playing, shared, state })) return decision
   const needs = needsNow({ shared, state, getBlock })
   if (!needs?.short) return decision
@@ -63,7 +71,14 @@ function withHouseSupply ({ mode, playing, shared, state, decision, getBlock = n
     tell(`stone:${total.cobblestone}`, `拠点の家の丸石を集めます（あと${need.cobblestone}個）`)
     return ask(() => planStone(need.cobblestone), `丸石 あと${need.cobblestone}個`) ?? decision
   }
+  // Sand for the glass, from received sand with nothing falling on it. With
+  // none received the plan goes on (the wool, coal and build steps do not wait).
+  if (need.sand > 0 && planSand) {
+    const sand = ask(() => planSand(need.sand), `砂 あと${need.sand}個`)
+    if (sand && sand.type !== 'scan_blocks') { tell(`sand:${total.sand}`, `拠点の家のガラスにする砂を集めます（あと${need.sand}個）`); return sand }
+    tell(`nosand:${total.sand}`, `拠点の家のガラスにする砂が近くに見つかりません（あと${need.sand}個）`)
+  }
   return decision
 }
 
-module.exports = { withHouseSupply, houseLogInput, houseStoneInput, pending, needsNow }
+module.exports = { withHouseSupply, houseLogInput, houseStoneInput, houseSandInput, pending, needsNow }
