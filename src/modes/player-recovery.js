@@ -20,6 +20,7 @@ const LOG = /^(?:minecraft:)?[a-z_]+_(?:log|stem)$/
 const TRIP_LIMIT = 8
 const { underCover, surfaceAhead } = require('./player-surface')
 const TRIP_MS = 240000
+const OVERHEAD_M = 8
 const STEP_M = 96
 const GRASS = /^(?:minecraft:)?grass_block$/
 const SCAN_M = 128 // about the terrain a Realm sends around the Bot
@@ -61,6 +62,15 @@ function farTarget (snapshot, position) {
   if (!position || !point || ![point.x, point.z].every(Number.isFinite)) return null
   const distance = Math.hypot(point.x + 0.5 - position.x, point.z + 0.5 - position.z)
   return distance > 24 && distance <= 512 ? { x: Math.floor(point.x), z: Math.floor(point.z) } : null
+}
+
+// How many blocks above the feet the stopped run's last decision wanted to
+// work, when that is at least OVERHEAD_M (a tunnel only descends or stays level).
+function overhead (snapshot, position) {
+  const point = snapshot?.lastDecision?.resourceTarget ?? snapshot?.lastDecision?.target
+  if (!position || !Number.isFinite(point?.y) || !Number.isFinite(position.y)) return 0
+  const up = Math.floor(point.y - (position.y - 1.62))
+  return up >= OVERHEAD_M ? up : 0
 }
 
 // The stopped run was walking to a table or furnace.
@@ -165,6 +175,20 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
       if (!live(token) || held()) return false
       if (out?.ok) return restart(token, { ...agent.objective })
     }
+    // The work the plan asked for lies far overhead (real Realm 2026-11-16
+    // 11:12-11:22 JST: at y -7 with no coal and no wood, the plan tunnelled
+    // toward coal ore 58 blocks up; a tunnel cannot climb that, so the run
+    // stopped three times on the search limit without moving): straight up.
+    const over = !search && climb && trips < TRIP_LIMIT ? overhead(snapshot, getPosition()) : 0
+    if (over && underCover(getBlock, getPosition())) {
+      trips++
+      reason = `次の作業の場所が ${over} 段上にあるため、真上へ掘って地上へ出ます。`
+      log(`プレイヤーモード: ${reason}`)
+      let out = null
+      try { out = await climb(() => !live(token)) } catch (error) { log(`プレイヤーモード: 真上へ掘れません ${text(error?.message)}`) }
+      if (!live(token) || held()) return false
+      if (out?.ok) return restart(token, { ...agent.objective, freshExclusions: true })
+    }
     // The work the plan asked for is far away (live 2026-11-15 23:00 JST: iron
     // ore 113 m off, "outside the bounded tunneling area", three stops in a
     // row): walk there first, then go on. Once there the distance is short, so
@@ -255,4 +279,4 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
   return { onProgress, keepPlaying, cancel, status: () => ({ active: run !== null, reason }) }
 }
 
-module.exports = { createPlayerRecovery, nearestKnownLog, aheadPoint, farTarget, TRIP_LIMIT }
+module.exports = { createPlayerRecovery, nearestKnownLog, aheadPoint, farTarget, overhead, TRIP_LIMIT }

@@ -222,3 +222,15 @@ test('a food source the forage cannot step to: the long trip walks next to it, t
   await settle(close.recovery)
   assert.deepEqual(close.calls, [{ start: { objective: 'diamond', diamondCount: 1 } }])
 })
+
+test('underground, the next work lies far overhead: straight up, then on with a fresh exclusion list', async () => {
+  const roof = { '0,66,0': { known: true, name: 'minecraft:air', boundingBox: 'empty' }, '0,67,0': { known: true, name: 'minecraft:air', boundingBox: 'empty' }, '0,68,0': { known: true, name: 'minecraft:stone', boundingBox: 'block' } }
+  const stop = y => blocked({ stopCode: 'exclusion_limit', reason: '到達できない候補の除外数が上限に達したため、自律作業を停止しました。', lastDecision: { type: 'tunnel', resource: 'coal', target: { x: -5, y, z: 1 } } })
+  const f = fixture({ blocks: roof, climb: { ok: true } })
+  f.recovery.onProgress(stop(122)); await settle(f.recovery)
+  assert.deepEqual(f.calls, ['climb', { start: { objective: 'diamond', diamondCount: 1, freshExclusions: true } }])
+  assert.match(f.logs.join('\n'), /58 段上/)
+  const level = fixture({ blocks: roof, climb: { ok: true } })
+  level.recovery.onProgress(stop(60)); await settle(level.recovery)
+  assert.equal(level.calls.includes('climb'), false, 'work below or level is tunnelled to')
+})
