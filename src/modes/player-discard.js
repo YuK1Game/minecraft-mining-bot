@@ -37,9 +37,28 @@ function throwable (inventory) {
   return [...out.values()]
 }
 
-async function discardJunk ({ drop, getInventory, getFeet, shared, say = () => {}, now = Date.now }) {
+// Where to throw from: a walkable cell 3-6 m away (farthest first). Walking
+// there faces the Bot away from where it stands now, the throw carries the
+// stacks on ahead, and the walk back leaves them out of pickup range (live
+// 2026-11-16 23:20 JST: 18 stacks thrown at the feet were all picked up again
+// within 20 seconds).
+function throwSpot (cells, feet) {
+  const out = []
+  for (const cell of cells?.values?.() ?? []) {
+    const d = Math.hypot(cell.x + 0.5 - feet.x, cell.z + 0.5 - feet.z)
+    if (d >= 3 && d <= 6) out.push({ cell, d })
+  }
+  return out.sort((a, b) => b.d - a.d)[0]?.cell ?? null
+}
+
+async function discardJunk ({ drop, walk = null, cells = () => null, getInventory, getFeet, shared, say = () => {}, now = Date.now }) {
   const list = throwable(getInventory())
   if (!list.length) return 0
+  const home = getFeet()
+  const spot = walk && home ? throwSpot(cells(), home) : null
+  if (walk && !spot) { say('いらない物を捨てる場所がありません（3〜6m先に歩ける場所がありません。足元に捨てると拾い直すため）'); return 0 }
+  if (spot && !await walk({ x: spot.x + 0.5, y: spot.y, z: spot.z + 0.5 })) { say(`いらない物を捨てる場所へ歩けません (${spot.x}, ${spot.y}, ${spot.z})`); return 0 }
+  const at = getFeet() ?? home
   let thrown = 0
   const names = []
   for (const stack of list) {
@@ -48,12 +67,13 @@ async function discardJunk ({ drop, getInventory, getFeet, shared, say = () => {
       if (result?.phase === 'completed') { thrown++; names.push(`${stack.name.replace('minecraft:', '')} ${stack.count}`) }
     } catch { /* the next stack */ }
   }
-  const feet = getFeet()
-  if (thrown && feet) {
+  // Straight back, before the pickup delay ends.
+  if (spot && thrown) await walk({ x: Math.floor(home.x) + 0.5, y: Math.floor(home.y + 0.05), z: Math.floor(home.z) + 0.5 })
+  if (thrown && at) {
     const record = shared.playerDiscards = (shared.playerDiscards ?? []).filter(entry => entry.until > now())
-    record.push({ x: feet.x, y: feet.y, z: feet.z, names: list.map(stack => stack.name), until: now() + AGAIN_MS })
+    record.push({ x: at.x, y: at.y, z: at.z, names: list.map(stack => stack.name), until: now() + AGAIN_MS })
   }
-  say(thrown ? `チェストを作る木がないため、いらない物を ${thrown} 枠捨てました（${names.slice(0, 8).join('、')}${names.length > 8 ? ' ほか' : ''}）` : `いらない物を捨てられません（${list.length} 枠）`)
+  say(thrown ? `チェストを作る木がないため、いらない物を ${thrown} 枠捨てました（${names.slice(0, 8).join('、')}${names.length > 8 ? ' ほか' : ''}${spot ? `、${spot.x}, ${spot.y}, ${spot.z} から` : ''}）` : `いらない物を捨てられません（${list.length} 枠）`)
   return thrown
 }
 
@@ -64,4 +84,4 @@ function discarded (shared, drop, now = Date.now()) {
   return shared.playerDiscards.some(entry => entry.until > now && Math.hypot(drop.position.x - entry.x, drop.position.y - entry.y, drop.position.z - entry.z) <= 6 && (!name || entry.names.some(other => other === name || other === `minecraft:${name}`)))
 }
 
-module.exports = { throwable, discardJunk, discarded }
+module.exports = { throwable, throwSpot, discardJunk, discarded }
