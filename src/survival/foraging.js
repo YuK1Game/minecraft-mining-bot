@@ -289,7 +289,7 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
     }
     return null
   }
-  async function moveTo (run, candidate) {
+  async function moveTo (run, candidate, interrupt = null) {
     const options = { allowWater: false, emergency: true, maxDistance: 12, maxTicks: 180 }
     run.attempted.add(stanceKey(candidate))
     while (true) {
@@ -357,6 +357,13 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
           status.position = copy(observed.state.position)
           status.positionSource = observed.state.positionSource ?? 'unknown'
           report(observed.state.positionSource === 'client_prediction' ? 'predicted' : 'observed', { position: observed.state.position, collected: false })
+          return true
+        }
+        // Prey is chased, not walked to: in reach, or moved away from the
+        // stand, the walk ends now and the hunt goes on from here.
+        if (interrupt && interrupt(check(run))) {
+          await call(run, () => movement.stop('獲物を追って計画し直します。'))
+          await pause(run, 100)
           return true
         }
         await pause(run, 100)
@@ -432,8 +439,16 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
         try {
           const proposed = candidates(latest.state, current.position, selected.kind, run.attempted)
           status.candidateCount += proposed.length
+          const from = copy(current.position)
+          // Prey (sheep, cows...) moves while the Bot walks: the walk stops as
+          // soon as it is in reach, or 3 m from where the stand was chosen
+          // (user 2026-11-16 20:44 JST: 「止まってから殴るまで時間あるのでその間に羊が移動して失敗している。リアルタイムで追尾して殴る必要がある」).
+          const chase = selected.kind !== 'prey' ? null : observed => {
+            const prey = observed.actors.find(entity => String(idOf(entity)) === String(idOf(target)))
+            return !!prey?.position && (spatial(observed.state.position, prey.position) <= 2.6 || spatial(prey.position, from) > 3)
+          }
           for (const candidate of proposed) {
-            if (await moveTo(run, candidate.position)) { moved = true; break }
+            if (await moveTo(run, candidate.position, chase)) { moved = true; break }
           }
         } catch (error) {
           if (!['MOVEMENT_FAILED', 'NO_MOVEMENT_PROGRESS'].includes(error.code)) throw error

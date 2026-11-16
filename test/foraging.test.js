@@ -475,3 +475,17 @@ test('candidate diagnostics distinguish zero footing candidates from bounded ori
     assert.deepEqual(entry.errors, ['The current footprint has no known safe support'])
   }
 })
+
+test('prey that comes into reach during the walk is hit at once, without waiting for the walk to end', async () => {
+  const f = fixture({
+    initialActors: [animal('sheep', 8.5)],
+    // The walk is still running when the Bot is already beside the sheep.
+    onMove: ({ state, setMovement }) => { state.position = { x: 6.5, y: 66.62, z: 0.5 }; setMovement({ phase: 'moving' }); return { phase: 'moving' } },
+    onHunt: ({ addFood }) => { addFood(1); return { phase: 'observed', reaction: 'death_animation' } }
+  })
+  const result = await f.foraging.execute()
+  assert.equal(f.moves.length, 1)
+  assert.equal(f.stops().movementStops >= 1, true)
+  assert.deepEqual(f.hunts, ['2'])
+  assert.equal(result.collected, true)
+})
