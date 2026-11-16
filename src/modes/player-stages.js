@@ -14,7 +14,9 @@ const STAGES = Object.freeze([
   { id: 'wood', label: '木の道具', implemented: true, reached: pickaxeAtLeast('wooden') },
   { id: 'stone', label: '石の道具', implemented: true, reached: pickaxeAtLeast('stone') },
   { id: 'iron', label: '鉄の道具', implemented: true, reached: pickaxeAtLeast('iron') },
-  { id: 'diamond', label: 'ダイヤ', implemented: true, reached: items => pickaxeAtLeast('diamond')(items) || has(items, name => name === 'diamond') },
+  // Diamond gear, not a diamond: the pickaxe and the sword (docs/player-roadmap.md stage 4;
+  // user 2026-11-16 20:37 JST: 「ダイヤ装備できてないのに、目標が『ネザー』になってる」).
+  { id: 'diamond', label: 'ダイヤ', implemented: true, reached: items => pickaxeAtLeast('diamond')(items) && has(items, name => name === 'diamond_sword' || name === 'netherite_sword') },
   { id: 'nether', label: 'ネザー', implemented: false, reached: items => has(items, name => name === 'blaze_rod' || name === 'blaze_powder' || name === 'ender_eye') },
   { id: 'end', label: 'エンド', implemented: false, reached: items => has(items, name => name === 'dragon_egg' || name === 'elytra') }
 ])

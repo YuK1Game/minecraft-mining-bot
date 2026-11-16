@@ -66,5 +66,8 @@ test('stages are reached only from a received inventory', () => {
   const stone = playerStages({ known: true, items: [{ name: 'minecraft:stone_pickaxe', count: 1 }] })
   assert.deepEqual(stone.stages.filter(s => s.reached).map(s => s.id), ['wood', 'stone'])
   assert.equal(stone.current, 'iron')
-  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:diamond', count: 2 }] }).current, 'nether')
+  // Diamonds alone are not the diamond stage: the pickaxe and the sword are.
+  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:iron_pickaxe', count: 1 }, { name: 'minecraft:diamond', count: 18 }] }).current, 'diamond')
+  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:diamond_pickaxe', count: 1 }] }).current, 'diamond')
+  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:diamond_pickaxe', count: 1 }, { name: 'minecraft:diamond_sword', count: 1 }] }).current, 'nether')
 })
