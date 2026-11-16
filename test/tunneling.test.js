@@ -37,6 +37,14 @@ test('a standing cell the live mining preview refuses is skipped for another app
   assert.match(last.message, /face hidden/)
 })
 
+test('ore well above with no open way up is refused early, not after the whole search limit', () => {
+  const f = fixture({ target: point(3, 30, 0) })
+  for (let x = -40; x <= 40; x++) for (let z = -40; z <= 40; z++) for (let y = 6; y <= 31; y++) if (!(x === 0 && z === 0 && y < 8)) f.set(point(x, y, z), x === 3 && y === 30 && z === 0 ? 'diamond_ore' : 'stone')
+  const plan = f.tunneling.preview(f.decision)
+  assert.equal(plan.code, 'NO_SAFE_ROUTE')
+  assert.equal(plan.expanded, 400)
+})
+
 function fixture ({ height = 6, target = point(3, 0, 0), options = {} } = {}) {
   let time = 0
   let stamp = 0

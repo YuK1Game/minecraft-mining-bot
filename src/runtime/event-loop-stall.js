@@ -33,4 +33,16 @@ function describeWork ({ quarry = null, travel = null, behavior = null } = {}) {
   if (typeof behavior === 'string' && behavior) doing.behavior = behavior
   return Object.keys(doing).length ? doing : null
 }
-module.exports = { createEventLoopStallWatch, describeWork }
+// The watch as the runtime uses it: the report goes to the log, and stalls long
+// enough to matter are followed by the profile's breakdown (stall-profile.js).
+function createLoggedStallWatch ({ context, log, root = null, profile = require('./stall-profile').createStallProfile({ log, root }) }) {
+  const watch = createEventLoopStallWatch({
+    context,
+    report: r => {
+      log(`処理の停止を検知: ${r.stallMs}ms 作業=${JSON.stringify(r.doing)}${r.suppressed ? ` 直前の未記録${r.suppressed}件` : ''} 最大=${r.worstMs}ms 累計${r.stalls}回`)
+      void profile.explain(r.stallMs)
+    }
+  })
+  return { ...watch, start: () => { watch.start(); void profile.start() }, stop: () => { watch.stop(); void profile.stop() } }
+}
+module.exports = { createEventLoopStallWatch, createLoggedStallWatch, describeWork }

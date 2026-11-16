@@ -17,7 +17,7 @@ const { createQuarryV22Equipment } = require('./loadout/quarry-v22-equipment')
 const { createQuarryV22ChestWork } = require('./loadout/quarry-v22-chest-work')
 const { createRuntimeV22ChestReset, receivedEquipmentView, jobPending } = require('./loadout/loadout-runtime-adapter')
 const { createInventoryStore } = require('./inventory/inventory-store')
-const { createEventLoopStallWatch, describeWork } = require('./runtime/event-loop-stall')
+const { createLoggedStallWatch, describeWork } = require('./runtime/event-loop-stall')
 const { currentLifeId } = require('./common/life-identity')
 const { createManualChestRuntime } = require('./loadout/manual-chest-runtime-adapter')
 const { createChunkTravel } = require('./travel/chunk-travel')
@@ -3851,9 +3851,9 @@ function createRuntime (host) {
   const inventoryStoreTimer = setInterval(() => { if (disposed || disposing) { clearInterval(inventoryStoreTimer); return } try { inventoryStoreResyncTick() } catch {} }, 1000)
   const worldRetentionTimer = setInterval(() => { if (disposed || disposing) { clearInterval(worldRetentionTimer); return } try { updateWorldRetention() } catch {} }, 5000)
   worldRetentionTimer.unref?.()
-  const eventLoopStallWatch = createEventLoopStallWatch({
+  const eventLoopStallWatch = createLoggedStallWatch({
     context: () => describeWork({ quarry: quarryJob?.status?.(), travel: travelRuntime.longTravel?.status?.(), behavior: userBehaviorSnapshot().activeKind }),
-    report: r => host.log(`処理の停止を検知: ${r.stallMs}ms 作業=${JSON.stringify(r.doing)}${r.suppressed ? ` 直前の未記録${r.suppressed}件` : ''} 最大=${r.worstMs}ms 累計${r.stalls}回`)
+    log: line => host.log(line), root: require('node:path').join(__dirname, '..')
   })
   eventLoopStallWatch.start()
 
