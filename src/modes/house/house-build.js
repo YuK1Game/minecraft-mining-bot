@@ -28,7 +28,7 @@ const { clicks, stands, standable } = require('./house-steps')
 const { underCover } = require('../player-surface')
 
 const AGAIN_MS = 600000, SHORT_MS = 3000, TRIES = 3, RUN_MS = 20 * 60000
-const BLIND = /視線が遮られて/
+const BLIND = /視線/
 const UNCONFIRMED = /確認できませんでした|確定した持ち物|未確定/
 const WOODS = 'oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|bamboo|crimson|warped'
 const short = name => String(name ?? '').replace(/^minecraft:/, '')
@@ -119,10 +119,17 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
 
   // A door standing while other steps are left closes the way in: it is taken
   // down by ordinary mining (it drops back) and placed again last.
+  // Steps that can go on now: the glass waits for sand and the bed for wool.
+  function workable (step) {
+    if (step.item === 'glass') return held(ITEM.glass) > 0 || held(name => /^minecraft:(?:red_)?sand$/.test(name)) > 0
+    if (step.item === 'white_bed') return held(ITEM.white_bed) > 0 || held(name => /_wool$/.test(name)) >= 3
+    return true
+  }
+
   async function openDoorway (origin) {
     const door = placements(origin).find(step => step.id === DOOR)
     const left = remaining(getBlock, origin)
-    if (!door || left.some(step => step.id === DOOR) || !left.length) return false
+    if (!door || left.some(step => step.id === DOOR) || !left.some(workable)) return false
     const at = door.position
     if (!matches('oak_door', getBlock(at.x, at.y, at.z))) return false
     if (!await near(at)) { say('拠点の家: 入口のドアへ近づけません（中の作業が残っています）'); return false }
@@ -337,6 +344,9 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       for (const step of order(remaining(getBlock, origin))) {
         if (aborted() || now() - started > RUN_MS) break
         if ((fails.get(step.id) ?? 0) >= TRIES) continue
+        // The door only once nothing else is left: placed while slabs or glass
+        // wait it is taken down again on the next run (live 07:22-07:23 JST).
+        if (step.id === DOOR && remaining(getBlock, origin).some(other => other.id !== DOOR && workable(other) && (fails.get(other.id) ?? 0) < TRIES)) continue
         const left = remaining(getBlock, origin)
         ports.reset?.()
         // The server has not confirmed the last transfer: every further craft or
@@ -344,7 +354,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
         // up their tries within 0.1 s). Stop here and come back shortly.
         const settling = () => UNCONFIRMED.test(String(ports.why() ?? ''))
         if (!await make(step, origin, left)) { if (settling()) { unsettled = true; break } fails.set(step.id, (fails.get(step.id) ?? 0) + 1); note(step, `${step.item} を用意できません${ports.why() ? `: ${ports.why()}` : ''}`); if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を用意できません（${step.id}${ports.why() ? `: ${ports.why()}` : ''}）`); continue }
-        if (await put(step)) { placed++; progress++; continue }
+        if (await put(step)) { if (step.id !== DOOR) placed++; progress++; continue }
         if (settling()) { unsettled = true; break }
         fails.set(step.id, (fails.get(step.id) ?? 0) + 1)
         note(step, String(walkWhy ?? ports.why() ?? hands.why?.() ?? (clicks(getBlock, step).length ? '置けませんでした' : 'クリックできる面がありません')).slice(0, 80))
