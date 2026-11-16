@@ -33,7 +33,7 @@ const { playFile, createPlayerResume } = require('./player-resume')
 const { createPlayerBase, baseFile, loadBaseSync } = require('./player-base')
 const { createHouseWool } = require('./house/house-wool')
 const { createHouseSand } = require('./house/house-sand')
-const { createPlayerFood } = require('./player-food')
+const { createPlayerFood, hasFood } = require('./player-food')
 const { createHouseBuild, houseFile, loadHouseSync } = require('./house/house-build')
 const { createHousePorts } = require('./house/house-ports')
 const { chestOf, bedOf, setSpawn } = require('./house/house-spawn')
@@ -202,6 +202,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     hostile: () => runtime.nearestHostile() < 12,
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || wool.status().active || sand.status().active || food.status().active || house.status().active
   })
+  const hungryWithoutFood = () => { const value = hunger(); return Number.isFinite(value) && value <= 14 && !shared.inventoryUncertain && !hasFood(runtime.inventory()) }
   // No food, hungry, deep underground: up to the surface where the animals are (player-food.js).
   const food = createPlayerFood({
     getMode: control.get, shared, log, disposed, getHunger: hunger, getState: () => ({ position: where(), inventory: shared.inventoryUncertain ? null : runtime.inventory() }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z),
@@ -233,7 +234,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     hostile: () => runtime.nearestHostile() < 12,
     // Not with 10 health or less: eating, the shelter and fleeing come first (live 2026-11-17 05:53 JST: the build began at 1.9 health with no food).
-    blocked: () => !(runtime.raw().health > 10) || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active,
+    // Nor hungry with no food: the forage comes first (live 2026-11-17 08:26-08:29 JST: hunger 12, the build stopped the forage for a cow).
+    blocked: () => !(runtime.raw().health > 10) || hungryWithoutFood() || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active,
     // Done: chest A is the base, and the bed sets the respawn point.
     onDone: async origin => {
       const at = chestOf(origin), here = (x, y, z) => runtime.host().world.getBlock(x, y, z)
