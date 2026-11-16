@@ -131,3 +131,20 @@ test('a refused chest cell is skipped and another pair is tried', async () => {
   assert.equal(chests.length, 3)
   assert.ok(!chests.slice(1).includes(chests[0]))
 })
+
+test('one chest in hand and no wood for a second: the single chest is placed and used', async () => {
+  const calls = []
+  const items = { known: true, items: [...inv([...Array.from({ length: 33 }, (_, slot) => ['diamond', 1, slot]), ['oak_planks', 4, 33], ['diorite', 20, 34]]).items, { name: mc('chest'), count: 1, slot: 35 }] }
+  const hands = {
+    tableNear: () => ({ x: -1, y: 64, z: 0 }), craftPlanks: async () => false, craftSmall: async () => false, placeTable: async () => null,
+    craftAtTable: async () => false, room: () => null, refusal: () => null,
+    place: async (cell, name) => { calls.push(['place', cell, name]); return true },
+    store: async (position, stacks) => { calls.push(['store', position]); return 20 }
+  }
+  const lines = []
+  const storage = createPlayerStorage({ getMode: () => 'player', shared: { playerWanted: true }, agent: { objective: {}, start: async () => {}, stop: () => {} }, hands, getBlock: world(), getFeet: () => feet, getInventory: () => items, log: text => lines.push(text), sleep: async () => {} })
+  assert.equal(await storage.tick(), true)
+  assert.equal(calls.filter(call => call[0] === 'place').length, 1)
+  assert.deepEqual(calls.find(call => call[0] === 'store')[1], calls[0][1])
+  assert.match(lines.join('\n'), /チェストを1つ置きました/)
+})
