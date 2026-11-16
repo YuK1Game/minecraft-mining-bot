@@ -17,12 +17,22 @@ const GEAR = Object.freeze([
   { output: 'diamond_boots', diamonds: 4, sticks: 0, armor: true }
 ])
 const bare = name => String(name ?? '').replace(/^minecraft:/, '')
+// A pickaxe this worn no longer counts: a second one is made while the
+// materials are at hand (real Realm 2026-11-17 00:56 JST: one diamond pickaxe
+// left at 159 uses, about 140 used every four minutes, no spare, sticks for
+// exactly one more).
+const WORN = 300
+const MAX = { diamond_pickaxe: 1561, netherite_pickaxe: 2031 }
+const left = item => {
+  const maximum = Number.isSafeInteger(item?.maxDurability) ? item.maxDurability : MAX[bare(item?.name)]
+  return Number.isSafeInteger(maximum) && Number.isSafeInteger(item?.durabilityUsed) ? maximum - item.durabilityUsed : null
+}
 const kind = name => bare(name).replace(/^(?:diamond|netherite)_/, '')
 
 // The next piece to make: { output, diamonds, sticks } or null.
 function nextGear ({ items = [], worn = null, diamonds = 0 } = {}) {
   const owned = new Set()
-  for (const item of items) if (item?.count > 0 && /^(?:diamond|netherite)_/.test(bare(item.name))) owned.add(kind(item.name))
+  for (const item of items) if (item?.count > 0 && /^(?:diamond|netherite)_/.test(bare(item.name)) && !(kind(item.name) === 'pickaxe' && (left(item) ?? Infinity) < WORN)) owned.add(kind(item.name))
   const wornKnown = worn?.known === true && Array.isArray(worn.worn)
   if (wornKnown) for (const piece of worn.worn) if (/^(?:diamond|netherite)_/.test(bare(piece?.name))) owned.add(kind(piece.name))
   for (const piece of GEAR) {
