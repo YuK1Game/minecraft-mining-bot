@@ -32,7 +32,9 @@ function throwable (inventory) {
   for (const kind of ['sword', 'pickaxe']) {
     const tools = items.filter(item => new RegExp(`_${kind}$`).test(item.name ?? ''))
     const best = Math.max(0, ...tools.filter(item => (usesOf(item) ?? 99) > 2).map(item => tierOf(item.name)))
-    for (const item of tools) if (tierOf(item.name) < best) out.set(item.slot, { slot: item.slot, name: item.name, count: item.count })
+    // One working spare pickaxe stays (the best one can wear out deep underground).
+    const spare = kind === 'pickaxe' ? tools.filter(item => tierOf(item.name) < best && (usesOf(item) ?? 0) > 2).sort((a, b) => tierOf(b.name) - tierOf(a.name))[0] : null
+    for (const item of tools) if (tierOf(item.name) < best && item !== spare) out.set(item.slot, { slot: item.slot, name: item.name, count: item.count })
   }
   return [...out.values()]
 }
