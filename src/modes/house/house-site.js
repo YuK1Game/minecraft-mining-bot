@@ -3,11 +3,15 @@
 // Where the starter house goes: a flat patch of received ground near the Bot.
 // The house with its porch takes 7 x 8 cells (x 0..6, z 0..7 from the
 // north-west corner); its floor is laid on the ground, one above it.
-// - Every column of the patch has received solid ground at the same height
-//   (not leaves, logs, liquid or a falling block), and five received cells
-//   above it that are air or a plant (the plants are cut before placing).
-// - The nearest such patch within `radius` of the Bot, preferring one whose
-//   south side (the door) is not higher ground.
+// - Every column of the patch has received solid ground (not leaves, logs,
+//   liquid or a falling block) at the same height or one lower, and received
+//   cells that are air or a plant (the plants are cut before placing) from
+//   the floor up five. The floor goes one above the highest ground; over a
+//   lower column it is placed against the side of the floor beside it, with
+//   a one-block gap under it (live 2026-11-17 04:17 JST: on hilly ground no
+//   perfectly flat 7 x 8 patch was found and the house never started).
+// - The nearest such patch within `radius` of the Bot, preferring flatter
+//   ones.
 const WIDTH = 7, DEPTH = 8, HEIGHT = 5
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const PLANT = /^minecraft:(?:short_grass|tall_grass|grass|fern|large_fern|dandelion|poppy|blue_orchid|allium|azure_bluet|\w+_tulip|oxeye_daisy|cornflower|lily_of_the_valley|sweet_berry_bush|dead_bush|leaf_litter|pink_petals|wildflowers|bush|firefly_bush|short_dry_grass|tall_dry_grass|snow_layer)$/
@@ -43,11 +47,19 @@ function findSite (getBlock, center, { radius = 24 } = {}) {
   for (let ox = cx - radius; ox <= cx + radius; ox++) for (let oz = cz - radius; oz <= cz + radius; oz++) {
     const y = map.get(`${ox},${oz}`)
     if (y == null) continue
-    let flat = true
-    for (let dx = 0; dx < WIDTH && flat; dx++) for (let dz = 0; dz < DEPTH && flat; dz++) flat = map.get(`${ox + dx},${oz + dz}`) === y
-    if (!flat) continue
-    const distance = Math.hypot(ox + WIDTH / 2 - center.x, oz + DEPTH / 2 - center.z) + Math.abs(y - center.y) * 2
-    if (!best || distance < best.distance) best = { origin: { x: ox, y, z: oz }, distance }
+    for (const top of [y, y + 1]) {
+      let fits = true, low = 0
+      for (let dx = 0; dx < WIDTH && fits; dx++) for (let dz = 0; dz < DEPTH && fits; dz++) {
+        const v = map.get(`${ox + dx},${oz + dz}`)
+        if (v === top) continue
+        // One lower: the column was checked open up to top + HEIGHT - 2.
+        fits = v === top - 1 && open(getBlock(ox + dx, top + HEIGHT - 1, oz + dz))
+        low++
+      }
+      if (!fits) continue
+      const distance = Math.hypot(ox + WIDTH / 2 - center.x, oz + DEPTH / 2 - center.z) + Math.abs(top - center.y) * 2 + low * 0.5
+      if (!best || distance < best.distance) best = { origin: { x: ox, y: top, z: oz }, distance }
+    }
   }
   return best?.origin ?? null
 }

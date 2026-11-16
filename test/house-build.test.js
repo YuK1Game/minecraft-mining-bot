@@ -24,6 +24,16 @@ test('site: the nearest flat 7x8 patch; the floor goes one above the ground', ()
   assert.notDeepEqual(findSite(w.getBlock, { x: 0.5, y: 64, z: 0.5 }), origin)
 })
 
+test('site: ground one lower in some columns still fits; the floor goes one above the highest ground', () => {
+  const w = world()
+  // Bumpy ground: every odd x column is one lower (air at 63).
+  for (let x = -40; x <= 40; x++) for (let z = -40; z <= 40; z++) if (x % 2) w.cells.set(`${x},63,${z}`, air)
+  assert.equal(findSite(w.getBlock, { x: 0.5, y: 64, z: 0.5 }, { radius: 6 }).y, 64)
+  // Two lower is too uneven.
+  for (let x = -40; x <= 40; x++) for (let z = -40; z <= 40; z++) if (x % 2) w.cells.set(`${x},62,${z}`, air)
+  assert.equal(findSite(w.getBlock, { x: 0.5, y: 64, z: 0.5 }, { radius: 6 }), null)
+})
+
 test('order: the floor, then the table and furnaces, then the rest; slabs click the slab beside them', () => {
   const steps = order(placements({ x: 0, y: 64, z: 0 }))
   const floor = steps.filter(step => step.phase === 'foundation').length
