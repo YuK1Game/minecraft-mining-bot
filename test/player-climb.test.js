@@ -110,3 +110,21 @@ test('off the centre of its block: one step to a free block beside and back befo
   await climbOut({ ports: centred.ports, sleep: async () => {} })
   assert.equal(calm.length, 1)
 })
+
+test('off centre in a stair with no level block beside: steps up the stair and back, or mines one side', async () => {
+  const open = { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  // South (z+1): stone at the feet, air above it (a step up).
+  const stair = world({ feetY: 62, surface: 70, extra: { '0,64,0': open, '0,63,1': open, '0,64,1': open } })
+  stair.at.z = 0.355
+  const walks = []
+  stair.ports.walk = async target => { walks.push(`${target.x},${target.y},${target.z}`); if (Math.hypot(target.x - stair.at.x, target.z - stair.at.z) > 0.3) { stair.at.x = target.x; stair.at.z = target.z } return true }
+  await climbOut({ ports: stair.ports, sleep: async () => {}, maxSteps: 1 })
+  assert.deepEqual(walks, ['0.5,62,0.5', '0.5,63,1.5', '0.5,62,0.5'])
+  const shut = world({ feetY: 62, surface: 70 })
+  shut.at.z = 0.355
+  const moves = []
+  shut.ports.walk = async target => { moves.push(`${target.x},${target.z}`); if (Math.hypot(target.x - shut.at.x, target.z - shut.at.z) > 0.3) { shut.at.x = target.x; shut.at.z = target.z } return true }
+  await climbOut({ ports: shut.ports, sleep: async () => {}, maxSteps: 1 })
+  assert.deepEqual(shut.calls.slice(0, 2), ['mine 63', 'mine 62'])
+  assert.deepEqual(moves, ['0.5,0.5', '1.5,0.5', '0.5,0.5'])
+})
