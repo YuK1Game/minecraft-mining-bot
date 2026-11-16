@@ -33,3 +33,23 @@ test('a tree farther than one walk is approached in hops over received ground', 
   assert.ok(Math.hypot(40.5 - f.feet.x, 0.5 - f.feet.z) <= 12)
   assert.ok(f.starts.length >= 3 && f.starts.every(target => target.y === 64))
 })
+
+test('a walk refused while hanging above the floor lands first and is planned again', async () => {
+  const settles = []
+  const feet = { x: 0.5, y: 64.02, z: 0.5 }, starts = []
+  let clock = 0, hanging = true
+  const operations = {
+    movement: {
+      start: target => { if (hanging) { const error = new Error('Wait for a supported landing before planning'); error.code = 'NO_ROUTE'; throw error } starts.push({ ...target }); Object.assign(feet, target) },
+      settle: options => { settles.push(options); hanging = false; feet.y = 64 }
+    }
+  }
+  const ports = createScaffoldPorts({ operations, getBlock: (x, y) => ({ known: true, name: y <= 63 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y <= 63 ? 'block' : 'empty' }), getFeet: () => ({ ...feet }), getInventory: () => ({ known: true, items: [] }), getMotion: () => ({ phase: 'idle' }), pillarStep: async () => ({}), sleep: async ms => { clock += ms }, now: () => clock })
+  assert.equal(await ports.walk({ x: 2.5, y: 64, z: 0.5 }), true)
+  assert.equal(settles.length, 1)
+  assert.deepEqual(settles[0], { maxTicks: 40, maxDrop: 1, maxHorizontal: 1 })
+  assert.equal(starts.length, 1)
+  // Any other refusal does not settle.
+  const other = scene({ busy: 1, error: 'No safe route found' })
+  assert.equal(await other.ports.walk({ x: 3.5, y: 64, z: 0.5 }), false)
+})

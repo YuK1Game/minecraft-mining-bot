@@ -20,7 +20,8 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   const fill = () => FILL.reduce((sum, name) => sum + held(name), 0)
 
   let why = null // the last refusal, for the log
-  const refused = error => { why = String(error?.code ?? error?.message ?? error); return false }
+  let said = '' // the last refusal's message
+  const refused = error => { why = String(error?.code ?? error?.message ?? error); said = String(error?.message ?? error); return false }
   // A start refused only because the previous operation is still ending is
   // tried again for a few seconds (real Realm 2026-11-15: every scaffold job
   // began in the same millisecond as the autonomy's stop and was refused with
@@ -35,8 +36,24 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
       }
     }
   }
+  // A walk refused because the body hangs a little above its floor (a step
+  // cut short, e.g. by a fight) first lands with the ordinary settle, then is
+  // planned again. Nothing else moves the prediction while idle (real Realm
+  // 2026-11-16 20:23-20:28 JST: half-way up its own tunnel, every walk, climb
+  // and trip was refused with "Wait for a supported landing before planning"
+  // for five minutes, until a server position arrived).
+  const LANDING = /supported landing/
+  async function land () {
+    if (typeof operations.movement.settle !== 'function') return false
+    try { operations.movement.settle({ maxTicks: 40, maxDrop: 1, maxHorizontal: 1 }) } catch (error) { return refused(error) }
+    await sleep(200)
+    await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 5000)
+    return true
+  }
   async function walk (target) {
-    if (!await begin(() => operations.movement.start(target, { maxDistance: 16 }))) return false
+    let started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
+    if (!started && (LANDING.test(said) || LANDING.test(why ?? '')) && await land()) started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
+    if (!started) return false
     await sleep(300)
     await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 12000)
     const at = getFeet()
