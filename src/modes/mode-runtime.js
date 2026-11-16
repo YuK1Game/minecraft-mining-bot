@@ -28,6 +28,7 @@ const { createTorchPorts } = require('./player-torch-ports')
 const { createPlayerStorage } = require('./player-storage')
 const { createStoragePorts } = require('./player-storage-ports')
 const { nextObjective } = require('./player-goal')
+const { pruneTunnelFloors } = require('./player-floor-prune')
 const { playFile, createPlayerResume } = require('./player-resume')
 
 function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
@@ -185,6 +186,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const timer = setInterval(require('../common/work-spans').wrap('player-mode.tick', () => {
     if (disposed()) return clearInterval(timer)
     void resume.note()
+    try { const gone = control.get() === 'player' ? pruneTunnelFloors(shared, runtime.raw(), where()) : 0; if (gone) log(`プレイヤーモード: 帰路の床の記録が多いため、遠いものから ${gone} 個を外しました`) } catch { /* The next tick retries. */ }
     keepAim()
     void shelter.tick()
     void scaffold.tick().catch(() => {})
