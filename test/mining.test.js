@@ -412,3 +412,14 @@ test('pillar descent mines only received dirt under the feet with a solid block 
   assert.equal(f.mining.preview([{ ...below, accessPreparation: 'pillar_descent', expectedName: 'minecraft:dirt' }]).ready, false, 'dry surroundings only')
   assert.throws(() => f.mining.preview([{ ...below, accessPreparation: 'pillar_descent', expectedName: 'minecraft:stone' }]), /dirt/)
 })
+
+test('pillar descent also takes down a cobblestone pillar, with no pickaxe in the hand', () => {
+  const f = fixture()
+  const set = f.set; f.set = (p, name, runtimeId = 1) => { set(p, name, runtimeId); f.blocks.get(f.id(p)).boundingBox = /air|water/.test(name) ? 'empty' : 'block' }
+  f.set({ x: 0, y: 64, z: 0 }, 'cobblestone', 9); f.set({ x: 0, y: 63, z: 0 }, 'cobblestone', 9)
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { f.set({ x: dx, y: 64, z: dz }, 'air', 0); f.set({ x: dx, y: 65, z: dz }, 'air', 0) }
+  const below = { x: 0, y: 64, z: 0 }
+  f.state.heldItem = { name: 'minecraft:cobblestone', slot: 5 }
+  const preview = f.mining.preview([{ ...below, accessPreparation: 'pillar_descent', expectedName: 'minecraft:cobblestone', expectedRuntimeId: 9 }])
+  assert.equal(preview.ready, true, JSON.stringify(preview.errors))
+})

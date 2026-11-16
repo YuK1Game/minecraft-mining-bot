@@ -52,7 +52,8 @@ function targetList (targets) {
       // Descending the bot's own dirt pillar one block at a time (2026-11-10):
       // only a received dirt block directly under the feet, with a received
       // solid block right below it, so every drop is exactly one block.
-      if (!['minecraft:dirt', 'minecraft:grass_block'].includes(position.expectedName)) throw new Error('Pillar descent mines only the dirt under the feet')
+      // The player's climb also stands on the cobblestone it mined on the way.
+      if (!['minecraft:dirt', 'minecraft:grass_block', 'minecraft:cobblestone', 'minecraft:cobbled_deepslate'].includes(position.expectedName)) throw new Error('Pillar descent mines only the dirt under the feet')
       Object.assign(target, { accessPreparation: 'pillar_descent', expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId ?? null })
     } else if (position.accessPreparation === 'quarry' || position.accessPreparation === 'quarry_fluid_roof') {
       // Quarry targets: the quarry planner already chose the block, the tool
@@ -235,7 +236,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     if (clearance && (block.name !== 'minecraft:stone' || block.runtimeId !== target.expectedRuntimeId || block.protected === true || block.protectionSource || block.natural === false || isProtected(target, state, block))) throw new Error('Stone clearance target changed or is protected')
     const handDig = target.accessPreparation === 'hand_dig'
     if (handDig && !HAND_ROCK.has(name)) throw new Error(`素手で掘るのは普通の石だけです: ${name}`)
-    if (!clearance && !quarry && !handDig && PICK.has(name) && pickTier(state) < PICK.get(name)) throw new Error(`適切なツルハシの装備を確認できません: ${name}`)
+    if (!clearance && !quarry && !handDig && target.accessPreparation !== 'pillar_descent' && PICK.has(name) && pickTier(state) < PICK.get(name)) throw new Error(`適切なツルハシの装備を確認できません: ${name}`)
     if (block.extra?.some(layer => !AIR.has(blockName(layer)))) throw new Error('対象に水などの追加レイヤーがあります。')
     for (const offset of adjacent) {
       const neighbour = world.getBlock(target.x + offset.x, target.y + offset.y, target.z + offset.z)
