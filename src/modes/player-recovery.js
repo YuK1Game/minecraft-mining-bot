@@ -180,7 +180,7 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
       try { out = await settle.run(() => !live(token)) } catch (error) { log(`プレイヤーモード: 立ち直せません ${text(error?.message)}`) }
       if (!live(token) || held()) return false
       if (out?.ok) return restart(token, { ...agent.objective })
-      log(`プレイヤーモード: マスの中央に立てませんでした（${text(out?.reason)}）`)
+      log(`プレイヤーモード: マスの中央に立てませんでした（${text(out?.reason)}${out?.detail ? ` ${text(out.detail)}` : ''}）`)
     }
     if (search && trips < TRIP_LIMIT) {
       trips++
