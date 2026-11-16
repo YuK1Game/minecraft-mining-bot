@@ -49,3 +49,21 @@ test('a ready plan, another failure and an unknown position are never kept', () 
   assert.equal(calls, 8)
   assert.equal(dead.size(), 0)
 })
+
+test('searches are spread over decisions once the window budget is spent', () => {
+  let clock = 0, calls = 0
+  const dead = createDeadTargets({ now: () => 0, elapsed: () => clock, budgetMs: 500, windowMs: 1500 })
+  const here = { x: 0.5, y: -5.4, z: 0.5 }
+  const slow = () => { calls++; clock += 900; return none }
+  assert.equal(dead.preview(ore(1, -18, 5), here, slow).code, 'NO_SAFE_ROUTE')
+  const deferred = dead.preview(ore(2, -18, 5), here, slow)
+  assert.equal(deferred.code, 'SEARCH_DEFERRED')
+  assert.equal(calls, 1)
+  assert.equal(dead.preview(ore(1, -18, 5), here, slow).reused, true, 'a kept answer needs no budget')
+  clock += 1600
+  assert.equal(dead.preview(ore(2, -18, 5), here, slow).code, 'NO_SAFE_ROUTE')
+  assert.equal(calls, 2)
+  const fast = () => { calls++; clock += 50; return { ready: true } }
+  clock += 1600
+  for (let index = 0; index < 5; index++) assert.equal(dead.preview(ore(10 + index, -18, 5), here, fast).ready, true)
+})
