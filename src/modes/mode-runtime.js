@@ -19,6 +19,8 @@ const { createPlayerScaffold } = require('./player-scaffold')
 const { createScaffoldPorts } = require('./player-scaffold-ports')
 const { climbOut } = require('./player-climb')
 const { sidestep } = require('./player-climb-side')
+const { walkOut, recordedFloors } = require('./player-tunnel-exit')
+const { underCover } = require('./player-surface')
 const { boxedIn, stepOut } = require('./player-pit')
 const { settle, offCentre } = require('./player-settle')
 const { createPlayerTorch } = require('./player-torch')
@@ -89,6 +91,11 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     climb: async aborted => {
       for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
       const stop = () => aborted() || flee.status().active || shelter.status().active
+      // First the tunnel it dug itself, on foot (player-tunnel-exit.js); what is left of the way is dug straight up.
+      const sky = () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where())
+      const walked = await walkOut({ ports: hands, floors: recordedFloors(shared, runtime.raw()), log, aborted: stop, open: sky })
+      if (walked.ok && sky()) return { ok: true, steps: 0, walked: walked.walked }
+      if (stop()) return { ok: false, reason: 'INTERRUPTED' }
       // Under water, gravel or leaves the shaft moves sideways and goes on (player-climb-side.js).
       let out = await climbOut({ ports: hands, log, aborted: stop })
       for (let i = 0; i < 3 && !out.ok && (out.reason === 'CANNOT_MINE' || out.reason === 'LEAVES_ABOVE') && !stop(); i++) {
