@@ -319,7 +319,12 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     const memoKey = !avoidance.length && Number.isSafeInteger(terrain) ? JSON.stringify([terrain, ore.target, ore.resource, ore.tier, origin, tool.tier, bounds, initialFloors.size, skipped.size]) : null
     const known = failures.get(memoKey)
     if (known) throw new TunnelingError(known.message, 'NO_SAFE_ROUTE', { ...known.details, reused: true })
-    const noRoute = message => {
+    const noRoute = reason => {
+      // What the search saw goes into the stop text: the live log is the only
+      // place to read it (2026-11-16 22:01-22:06 JST: a deep ore failed 142
+      // times with no clue why, while the same terrain offline found a route).
+      const counts = Object.entries(rejected).map(([code, count]) => `${code} ${count}`).join(', ')
+      const message = `${reason} (expanded ${expanded}, nearest h ${nearest?.h ?? '-'} of ${start.h}, unknown ${unknown.size}, floors ${baseFloors.size}, avoid ${avoidance.length}${counts ? `, rejected ${counts}` : ''})`
       const details = { unknownFrontier: [...unknown.values()].slice(0, 32), expanded, rejected }
       failures.set(memoKey, { message, details })
       return new TunnelingError(message, 'NO_SAFE_ROUTE', details)
