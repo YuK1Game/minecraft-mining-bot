@@ -16,6 +16,11 @@
 // - It ends when nothing hostile is within 16 m, after 20 s, or when three
 //   steps in a row could not start; then combat fights as before. Afterwards
 //   the shelter rests the Bot and play resumes by itself.
+// - A run that could not take a single step is not tried again for 30 s, then
+//   60 s, then 2 min, unless the received health has dropped since (live
+//   2026-11-16 12:20-12:31 JST: at health 2, a drowned in water 6.6 blocks
+//   below never came closer; 55 runs in ten minutes each stopped the autonomy
+//   and ended with no step, so the Bot never ate or hunted).
 const { normalizeMode } = require('./bot-mode')
 
 const FLEE_AT = 8, UNARMED_FLEE_AT = 10, CREEPER_M = 8, CONTACT_M = 3.5
@@ -44,12 +49,14 @@ function fleeWanted ({ health, totem, hostiles, position, weaponless = false }) 
 }
 
 function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, hostiles, retreat, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
-  let busy = false, restUntil = 0
+  let busy = false, restUntil = 0, stuck = 0, stuckHealth = null
   const inPlay = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
 
   async function tick () {
-    if (busy || !inPlay() || now() < restUntil || shared.travelNight?.cover) return false
+    if (busy || !inPlay() || shared.travelNight?.cover) return false
     const state = getState()
+    // Hurt again since the run that went nowhere: the wait is over.
+    if (now() < restUntil && !(stuckHealth !== null && state.health < stuckHealth - 0.5)) return false
     const threat = fleeWanted({ health: state.health, totem: state.totem, hostiles: hostiles(), position: state.position, weaponless: unarmed(state.inventory) })
     if (!threat) return false
     busy = true
@@ -73,8 +80,17 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
         if (moved) { steps++; failed = 0 } else { failed++; await sleep(250) }
       }
       log(failed >= 3 ? `プレイヤーモード: 離れる経路がないため、その場で戦います（${steps}歩）` : `プレイヤーモード: 敵から離れました（${steps}歩）`)
-      // After a failed run, combat gets five seconds before the next try.
-      if (failed >= 3) restUntil = now() + 5000
+      // After a failed run, combat gets five seconds before the next try; a
+      // run with no step at all waits longer each time.
+      if (failed >= 3 && steps === 0) {
+        stuck++
+        stuckHealth = getState().health
+        restUntil = now() + Math.min(120000, 30000 * 2 ** (stuck - 1))
+        log(`プレイヤーモード: 1歩も離れられなかったため、体力が減らない限り${Math.round((restUntil - now()) / 1000)}秒は離れ直しません。`)
+      } else {
+        stuck = 0; stuckHealth = null
+        if (failed >= 3) restUntil = now() + 5000
+      }
       return true
     } finally { shared.playerFlee = null; busy = false }
   }

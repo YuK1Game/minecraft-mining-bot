@@ -46,12 +46,12 @@ test('a trip in progress is cancelled before the first step', async () => {
 })
 
 function scene ({ mode = 'player', wanted = true, health = 5, retreat } = {}) {
-  const s = { shared: { playerWanted: wanted }, clock: 0, enemies: [zombie(4)], stops: [], logs: [], flags: [], running: true, position: { ...here }, travel: [], travelBusy: true, inventory: health > 8 ? { items: [] } : { items: [{ name: 'minecraft:wooden_sword', count: 1 }] } }
+  const s = { health, shared: { playerWanted: wanted }, clock: 0, enemies: [zombie(4)], stops: [], logs: [], flags: [], running: true, position: { ...here }, travel: [], travelBusy: true, inventory: health > 8 ? { items: [] } : { items: [{ name: 'minecraft:wooden_sword', count: 1 }] } }
   s.flee = createPlayerFlee({
     getMode: () => mode, shared: s.shared, log: text => s.logs.push(text), now: () => s.clock,
     sleep: async ms => { s.clock += ms },
     agent: { running: () => s.running, stop: reason => { s.running = false; s.stops.push(reason) } },
-    getState: () => ({ health, position: s.position, totem: false, inventory: s.inventory }),
+    getState: () => ({ health: s.health, position: s.position, totem: false, inventory: s.inventory }),
     travel: { status: () => ({ busy: s.travelBusy }), cancel: async () => { s.travel.push('cancel'); s.travelBusy = false } },
     hostiles: () => s.enemies,
     retreat: async () => { s.flags.push(s.shared.playerFlee?.until > s.clock); s.clock += 1000; return retreat(s) }
@@ -70,12 +70,33 @@ test('steps away until nothing hostile is within 16 m, with combat standing down
   assert.match(s.logs.at(-1), /離れました（2歩）/)
 })
 
-test('three steps that cannot start hand back to combat for five seconds', async () => {
+test('a run with no step is not tried again for 30 s, 60 s, 2 min, unless the Bot is hurt again', async () => {
   const s = scene({ retreat: () => false })
   assert.equal(await s.flee.tick(), true)
   assert.equal(s.flags.length, 3)
   assert.equal(s.shared.playerFlee, null)
-  assert.match(s.logs.at(-1), /その場で戦います/)
+  assert.match(s.logs.at(-2), /その場で戦います（0歩）/)
+  assert.match(s.logs.at(-1), /30秒は離れ直しません/)
+  s.clock += 29000
+  assert.equal(await s.flee.tick(), false)
+  s.clock += 1001
+  assert.equal(await s.flee.tick(), true)
+  assert.match(s.logs.at(-1), /60秒は離れ直しません/)
+  s.clock += 59000
+  assert.equal(await s.flee.tick(), false)
+  s.health = 3 // hurt since the stuck run
+  assert.equal(await s.flee.tick(), true)
+  assert.match(s.logs.at(-1), /120秒は離れ直しません/)
+  s.clock += 120001
+  assert.equal(await s.flee.tick(), true)
+  assert.match(s.logs.at(-1), /120秒は離れ直しません/)
+})
+
+test('steps that stop starting after a first step hand back to combat for five seconds', async () => {
+  let calls = 0
+  const s = scene({ retreat: s => { if (calls++) return false; s.position.x -= 2; return true } })
+  assert.equal(await s.flee.tick(), true)
+  assert.match(s.logs.at(-1), /その場で戦います（1歩）/)
   assert.equal(await s.flee.tick(), false)
   s.clock += 5001
   assert.equal(await s.flee.tick(), true)
