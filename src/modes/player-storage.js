@@ -115,7 +115,9 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     return held(CHEST) >= needed
   }
 
-  async function run () {
+  // A large chest beside the Bot (or one already there): its position, true
+  // when junk was thrown away instead (discard), or null.
+  async function ensure (discard = false) {
     const feet = getFeet()
     let chests = chestsNear(getBlock, feet)
     let target = chests.find(chest => chest.pair && hands.room(chest.position) !== 0) ?? null
@@ -123,7 +125,7 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     const single = !target ? chests.find(chest => !chest.pair) ?? null : null
     // No chest to use and no wood to make one: the rubble is thrown away
     // (user 2026-11-16 23:14 JST; player-discard.js).
-    if (!target && hands.drop && !woodFor(single ? 1 : 2) && await discardJunk({ drop: hands.drop, walk, why, cells, getInventory, getFeet, shared, say, now })) return true
+    if (discard && !target && hands.drop && !woodFor(single ? 1 : 2) && await discardJunk({ drop: hands.drop, walk, why, cells, getInventory, getFeet, shared, say, now })) return true
     if (!target && single) {
       const cells = chestCells(getBlock, feet, single.position)
       if (cells.length && await makeChests(1, cells) && await hands.place(cells[0], CHEST)) say(`チェストの隣にもう1つ置いてラージチェストにしました (${cells[0].x}, ${cells[0].y}, ${cells[0].z})`)
@@ -131,13 +133,13 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     }
     if (!target) {
       const cells = chestCells(getBlock, feet)
-      if (cells.length < 2) { say('ラージチェストを置ける平らな場所がありません'); return false }
+      if (cells.length < 2) { say('ラージチェストを置ける平らな場所がありません'); return null }
       // One chest held and no wood for a second: the single chest is used now
       // and made large once wood is held (real Realm 2026-11-16 21:24 JST:
       // 「板材が足りません（板材 4・原木 0）」 every minute with a chest in hand).
       if (!await makeChests(2, cells)) {
-        if (held(CHEST) < 1) return false
-        if (!await hands.place(cells[0], CHEST)) { say(`チェストを置けません (${cells[0].x}, ${cells[0].y}, ${cells[0].z}) ${hands.refusal?.() ?? ''}`.trim()); return false }
+        if (held(CHEST) < 1) return null
+        if (!await hands.place(cells[0], CHEST)) { say(`チェストを置けません (${cells[0].x}, ${cells[0].y}, ${cells[0].z}) ${hands.refusal?.() ?? ''}`.trim()); return null }
         say(`チェストを1つ置きました（2つ目の材料が足りません） (${cells[0].x}, ${cells[0].y}, ${cells[0].z})`)
         target = { position: cells[0] }
       }
@@ -147,7 +149,7 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
       let pair = cells
       for (let attempt = 0; attempt < 3 && pair.length === 2 && !target; attempt++) {
         if (await hands.place(pair[0], CHEST)) {
-          if (!await hands.place(pair[1], CHEST)) { say(`チェストの2つ目を置けません (${pair[1].x}, ${pair[1].y}, ${pair[1].z}) ${hands.refusal?.() ?? ''}`.trim()); return false }
+          if (!await hands.place(pair[1], CHEST)) { say(`チェストの2つ目を置けません (${pair[1].x}, ${pair[1].y}, ${pair[1].z}) ${hands.refusal?.() ?? ''}`.trim()); return null }
           say(`ラージチェストを置きました (${pair[0].x}, ${pair[0].y}, ${pair[0].z})`)
           target = { position: pair[0] }
           break
@@ -156,8 +158,15 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
         skip.add(`${pair[0].x},${pair[0].y},${pair[0].z}`)
         pair = chestCells(getBlock, getFeet() ?? feet, null, skip)
       }
-      if (!target) return false
+      if (!target) return null
     }
+    return target.position
+  }
+
+  async function run () {
+    const got = await ensure(true)
+    if (got === true || !got) return got === true
+    const target = { position: got }
     const moved = await hands.store(target.position, storable(getInventory()))
     stored += moved
     say(`チェスト (${target.position.x}, ${target.position.y}, ${target.position.z}) に ${moved} 個しまいました（持ち物 ${occupied(getInventory())}/36 枠）`)
@@ -203,7 +212,10 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     }
   }
 
-  return { tick, status: () => ({ active: busy, reason: busy ? '持ち物をチェストにしまっています。' : null, stored }) }
+  // The base's large chest (player-base.js), made like the storage chest.
+  async function chest () { if (busy) return null; busy = true; try { const got = await ensure(false); return got && got !== true ? got : null } finally { busy = false } }
+
+  return { tick, chest, woodFor, status: () => ({ active: busy, reason: busy ? '持ち物をチェストにしまっています。' : null, stored }) }
 }
 
 module.exports = { createPlayerStorage, storable, chestsNear, chestCells, occupied, START_AT }

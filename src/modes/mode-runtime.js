@@ -30,6 +30,7 @@ const { createStoragePorts } = require('./player-storage-ports')
 const { nextObjective } = require('./player-goal')
 const { pruneTunnelFloors } = require('./player-floor-prune')
 const { playFile, createPlayerResume } = require('./player-resume')
+const { createPlayerBase, baseFile, loadBaseSync } = require('./player-base')
 
 function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
   const shared = runtime.host().shared, file = modeFile(root), log = text => runtime.host().log(text)
@@ -57,7 +58,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const idle = () => { const value = agentStatus(); return value.running !== true && value.busy !== true && value.actionActive !== true }
   const control = createModeControl({
     shared, save: mode => saveMode(file, mode), log,
-    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active ? { running: true } : agentStatus(),
+    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active ? { running: true } : agentStatus(),
     isBusy: () => runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld()
   })
   // Where the Bot is: the working position. The last received position can be
@@ -71,6 +72,23 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getMotion: () => runtime.motion(),
     getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
   })
+  // Out of a tunnel to the open sky, shared by the recovery and the base trip.
+  async function climbUp (aborted) {
+    for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
+    const stop = () => aborted() || flee.status().active || shelter.status().active
+    // First the tunnel it dug itself, on foot (player-tunnel-exit.js); what is left of the way is dug straight up.
+    const sky = () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where())
+    const walked = await walkOut({ ports: hands, floors: recordedFloors(shared, runtime.raw()), log, aborted: stop, open: sky })
+    if (walked.ok && sky()) return { ok: true, steps: 0, walked: walked.walked }
+    if (stop()) return { ok: false, reason: 'INTERRUPTED' }
+    // Under water, gravel or leaves the shaft moves sideways and goes on (player-climb-side.js).
+    let out = await climbOut({ ports: hands, log, aborted: stop })
+    for (let i = 0; i < 3 && !out.ok && (out.reason === 'CANNOT_MINE' || out.reason === 'LEAVES_ABOVE') && !stop(); i++) {
+      if (!(await sidestep({ ports: hands, log, aborted: stop })).ok) break
+      out = await climbOut({ ports: hands, log, aborted: stop })
+    }
+    return out
+  }
   const recovery = createPlayerRecovery({
     getMode: control.get, shared, log, disposed, held: () => !!shared.travelNight?.cover,
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason) },
@@ -91,22 +109,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
         return settle({ ports: hands, aborted: () => aborted() || flee.status().active || shelter.status().active })
       }
     },
-    climb: async aborted => {
-      for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
-      const stop = () => aborted() || flee.status().active || shelter.status().active
-      // First the tunnel it dug itself, on foot (player-tunnel-exit.js); what is left of the way is dug straight up.
-      const sky = () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where())
-      const walked = await walkOut({ ports: hands, floors: recordedFloors(shared, runtime.raw()), log, aborted: stop, open: sky })
-      if (walked.ok && sky()) return { ok: true, steps: 0, walked: walked.walked }
-      if (stop()) return { ok: false, reason: 'INTERRUPTED' }
-      // Under water, gravel or leaves the shaft moves sideways and goes on (player-climb-side.js).
-      let out = await climbOut({ ports: hands, log, aborted: stop })
-      for (let i = 0; i < 3 && !out.ok && (out.reason === 'CANNOT_MINE' || out.reason === 'LEAVES_ABOVE') && !stop(); i++) {
-        if (!(await sidestep({ ports: hands, log, aborted: stop })).ok) break
-        out = await climbOut({ ports: hands, log, aborted: stop })
-      }
-      return out
-    }
+    climb: aborted => climbUp(aborted)
   })
   // The runtime restarts a finished run from shared.autoOptions without passing
   // through the starts above (real Realm 2026-11-16 08:11-08:34 JST: with one
@@ -173,12 +176,24 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     hands: createTorchPorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
   })
   // A full inventory goes into a large chest beside the Bot (player-storage.js).
+  const storagePorts = createStoragePorts({ operations, disposed, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
   const storage = createPlayerStorage({
     getMode: control.get, shared, log, disposed, getFeet: feetNow, mine: async cell => (await hands.pick()) && hands.mine(cell), dig: cell => hands.dig(cell), why: () => hands.why(), walk: target => hands.walk(target), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
-    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12,
-    hands: createStoragePorts({ operations, disposed, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || base.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12,
+    hands: storagePorts
+  })
+  // A base on the surface: spare diamonds and valuables go into its large chest (player-base.js).
+  if (shared.playerBase === undefined) shared.playerBase = loadBaseSync(baseFile(root))
+  const base = createPlayerBase({
+    getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: baseFile(root),
+    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
+    agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
+    hands: storagePorts, chest: () => storage.chest(), canBuild: () => storage.woodFor(2), climb: climbUp, walk: target => hands.walk(target), approach: target => hands.approach(target),
+    travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
+    hostile: () => runtime.nearestHostile() < 12,
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active
   })
   const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else { void flee.tick().catch(() => {}); void cover.tick().catch(() => {}) } }), 500)
   fleeTimer.unref?.()
@@ -192,13 +207,14 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     void scaffold.tick().catch(() => {})
     void torch.tick().catch(() => {})
     void storage.tick().catch(() => {})
-    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active }) } catch { /* The next tick retries. */ }
+    void base.tick().catch(() => {})
+    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active }) } catch { /* The next tick retries. */ }
   }), 2000)
   timer.unref?.()
   // The previous runtime was reloaded in the middle of a recovery: play on.
   if (shared.playerRecovering === true) { shared.playerRecovering = false; if (control.get() === 'player') shared.autoWanted = true }
   const player = createPlayerMode({
-    getMode: control.get, log, safety: operations.safety, recovery, shelter, flee, scaffold: { status: () => storage.status().active ? storage.status() : torch.status().active ? torch.status() : scaffold.status() }, shared,
+    getMode: control.get, log, safety: operations.safety, recovery, shelter, flee, scaffold: { status: () => base.status().active ? base.status() : storage.status().active ? storage.status() : torch.status().active ? torch.status() : scaffold.status() }, shared,
     agent: { start: options => agent.start(options), stop: reason => agent.stop(reason), snapshot: agentStatus },
     getInventory: () => shared.inventoryUncertain ? null : runtime.raw().inventory,
     getWorn: () => operations.diagnostics?.armor?.() ?? null

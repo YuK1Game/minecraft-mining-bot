@@ -6,7 +6,7 @@ const { setTimeout: sleep } = require('node:timers/promises')
 const { evaluateThreats } = require('../combat/threats')
 
 const AIR = new Set(['air', 'cave_air', 'void_air'])
-const FLOOR = new Set(['crafting_table', 'furnace', 'lit_furnace', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', 'dirt', 'grass_block', 'coarse_dirt', 'rooted_dirt', 'moss_block', 'netherrack', 'blackstone', 'basalt', 'smooth_basalt', 'obsidian', 'crying_obsidian', 'bedrock', ...['coal', 'iron', 'copper', 'gold', 'redstone', 'lapis', 'emerald', 'diamond'].flatMap(name => [`${name}_ore`, `deepslate_${name}_ore`])])
+const FLOOR = new Set(['crafting_table', 'furnace', 'lit_furnace', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', 'dirt', 'grass_block', 'coarse_dirt', 'rooted_dirt', 'moss_block', 'netherrack', 'blackstone', 'basalt', 'smooth_basalt', 'obsidian', 'crying_obsidian', 'bedrock', ...['coal', 'iron', 'copper', 'gold', 'redstone', 'lapis', 'emerald', 'diamond'].flatMap(name => [`${name}_ore`, `deepslate_${name}_ore`]), 'lit_redstone_ore', 'lit_deepslate_redstone_ore'])
 const DIG = new Map([
   ...['dirt', 'grass_block', 'coarse_dirt', 'rooted_dirt', 'moss_block'].map(name => [name, 0]),
   ...['stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', 'netherrack', 'coal_ore', 'deepslate_coal_ore', 'nether_quartz_ore'].map(name => [name, 1]),
