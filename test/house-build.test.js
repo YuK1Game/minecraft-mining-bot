@@ -256,6 +256,44 @@ test('an unconfirmed transfer stops the run without using up the steps, and the 
   assert.equal(remaining(w.getBlock, shared.playerHouse.origin).length, 0, lines.join('\n'))
 })
 
+test('one block that leaves the transfer unconfirmed every time is passed over after twice, and the rest is built (live 2026-11-17 07:52-07:57 JST)', async () => {
+  const w = world()
+  const feet = { x: 0.5, y: 64, z: 0.5 }
+  const inventory = { known: true, items: [] }
+  const give = (name, count) => { const item = inventory.items.find(stack => stack.name === name); if (item) item.count += count; else inventory.items.push({ name, count, slot: inventory.items.length }) }
+  const take = (name, count) => { const item = inventory.items.find(stack => stack.name === name); item.count -= count; if (item.count <= 0) inventory.items.splice(inventory.items.indexOf(item), 1) }
+  for (const [name, count] of [['wooden_pickaxe', 1], ['birch_log', 44], ['cobblestone', 68], ['sand', 6], ['white_wool', 3], ['coal', 2]]) give(`minecraft:${name}`, count)
+  const recipes = { 'minecraft:birch_planks': [4, [['minecraft:birch_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:birch_planks', 4]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:birch_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:birch_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:birch_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
+  let why = null, placedCount = 0, pending = 0
+  const ports = {
+    craft: async (output, times) => { const [yieldCount, parts] = recipes[output]; for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
+    smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
+    place: async (name, plan) => {
+      if (plan.position.x === shared.playerHouse.origin.x && plan.position.y === shared.playerHouse.origin.y && plan.position.z === shared.playerHouse.origin.z) { pending++; why = 'サーバーから設置・使用の完了を確認できませんでした。'; return false }
+      const step = placements(shared.playerHouse.origin).find(s => s.position.x === plan.position.x && s.position.y === plan.position.y && s.position.z === plan.position.z)
+      take(name, 1)
+      for (const cell of step.cells) w.set(cell, name)
+      placedCount++
+      return true
+    },
+    mine: async () => true, why: () => why, reset: () => { why = null }
+  }
+  const shared = { playerWanted: true }
+  const lines = []
+  let time = 1000000
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {}, now: () => time,
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    ports, hands: { walk: async stand => { Object.assign(feet, stand); return true }, approach: async () => true },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
+  })
+  for (let run = 0; run < 6; run++) { await build.tick(); time += 700000 }
+  const left = remaining(w.getBlock, shared.playerHouse.origin)
+  assert.equal(left.length, 1, lines.join('\n'))
+  assert.deepEqual(left[0].position, shared.playerHouse.origin)
+})
+
 test('mixed planks: slabs are made from the kind held in enough number (live 2026-11-17 06:43 JST)', async () => {
   const w = world()
   const feet = { x: 0.5, y: 64, z: 0.5 }

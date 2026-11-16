@@ -67,6 +67,11 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   const stackOf = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).sort((a, b) => b.count - a.count)[0] ?? null
   const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
   let hunts = 0, unreached = 0, soon = false, unsettled = false
+  // Unconfirmed transfers per step, across runs: a step that leaves the
+  // inventory unconfirmed twice is counted as a failure from then on (live
+  // 2026-11-17 07:52-07:57 JST: one out-of-sight corner block timed out first
+  // in every run, each run ended there and nothing else was tried for 5 min).
+  const limbo = new Map()
   const eyeTo = (cell, from) => Math.hypot(cell.x + 0.5 - from.x, cell.y + 0.5 - (from.y + 1.62), cell.z + 0.5 - from.z)
 
   async function save () {
@@ -353,7 +358,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
         // The server has not confirmed the last transfer: every further craft or
         // placement would fail the same way (live 06:40 JST: about 90 steps used
         // up their tries within 0.1 s). Stop here and come back shortly.
-        const settling = () => UNCONFIRMED.test(String(ports.why() ?? ''))
+        const settling = () => UNCONFIRMED.test(String(ports.why() ?? '')) && (limbo.set(step.id, (limbo.get(step.id) ?? 0) + 1), limbo.get(step.id) <= 2)
         if (!await make(step, origin, left)) { if (settling()) { unsettled = true; break } fails.set(step.id, (fails.get(step.id) ?? 0) + 1); note(step, `${step.item} を用意できません${ports.why() ? `: ${ports.why()}` : ''}`); if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を用意できません（${step.id}${ports.why() ? `: ${ports.why()}` : ''}）`); continue }
         if (await put(step)) { if (step.id !== DOOR) placed++; progress++; continue }
         if (settling()) { unsettled = true; break }
