@@ -15,6 +15,7 @@ const { knownUnreachable } = require('../combat/threat-reachability')
 const { createPlayerScaffold } = require('./player-scaffold')
 const { createScaffoldPorts } = require('./player-scaffold-ports')
 const { climbOut } = require('./player-climb')
+const { boxedIn, stepOut } = require('./player-pit')
 const { createPlayerTorch } = require('./player-torch')
 const { createTorchPorts } = require('./player-torch-ports')
 const { nextObjective } = require('./player-goal')
@@ -66,6 +67,13 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getPosition: where,
     prey: () => operations.foraging?.snapshot()?.target?.position ?? null,
+    pit: {
+      boxed: () => boxedIn((x, y, z) => runtime.host().world.getBlock(x, y, z), where()),
+      out: async aborted => {
+        for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
+        return stepOut({ ports: hands, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, aborted: () => aborted() || flee.status().active || shelter.status().active })
+      }
+    },
     climb: async aborted => {
       for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
       return climbOut({ ports: hands, log, aborted: () => aborted() || flee.status().active || shelter.status().active })
