@@ -6,6 +6,8 @@
 // received inventory, a walk the working position at the target.
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const DIRT = 'minecraft:dirt'
+// What the climb may stand on: dirt first, then the cobblestone it mined on the way.
+const FILL = [DIRT, 'minecraft:cobblestone', 'minecraft:cobbled_deepslate']
 
 function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, getMotion, pillarStep, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
   const block = (x, y, z) => getBlock(x, y, z)
@@ -13,6 +15,9 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
   const stacks = () => (getInventory()?.items ?? []).filter(item => item?.name === DIRT && item.count > 0)
   const dirt = () => getInventory()?.known === true ? stacks().reduce((sum, item) => sum + item.count, 0) : 0
+
+  const held = name => getInventory()?.known === true ? (getInventory().items ?? []).filter(item => item?.name === name && item.count > 0).reduce((sum, item) => sum + item.count, 0) : 0
+  const fill = () => FILL.reduce((sum, name) => sum + held(name), 0)
 
   let why = null // the last refusal, for the log
   const refused = error => { why = String(error?.code ?? error?.message ?? error); return false }
@@ -76,9 +81,10 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     if (!await until(() => air(cell), 35000)) return false
     return until(() => { const at = getFeet(); return !!at && at.y <= cell.y + 0.05 }, 5000)
   }
-  async function pillar (column, feetY) {
+  async function pillar (column, feetY, { any = false } = {}) {
     try {
-      const result = await pillarStep({ jobId: 'player-tree', operationId: `player-tree:${now()}:${feetY}`, column: { x: column.x, z: column.z }, feetY }, {})
+      const material = any ? FILL.find(name => held(name) > 0) : DIRT
+      const result = await pillarStep({ jobId: 'player-tree', operationId: `player-tree:${now()}:${feetY}`, column: { x: column.x, z: column.z }, feetY, ...(material && material !== DIRT ? { material } : {}) }, {})
       return result?.status === 'completed' && result.serverConfirmed === true ? { ok: true } : { ok: false, reason: result?.reason ?? 'BLOCKED' }
     } catch (error) { return { ok: false, reason: String(error?.code ?? error?.message ?? error) } }
   }
@@ -104,7 +110,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     await sleep(250)
     return true
   }
-  return { feet: getFeet, block, dirt, walk, approach, canMine, mine, descend, pillar, place, pick, reason, why: () => why }
+  return { feet: getFeet, block, dirt, fill, walk, approach, canMine, mine, descend, pillar, place, pick, reason, why: () => why }
 }
 
 module.exports = { createScaffoldPorts }

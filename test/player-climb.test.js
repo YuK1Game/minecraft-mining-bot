@@ -70,3 +70,15 @@ test('takes the pickaxe into the hand when the preview refuses with another item
   assert.equal(sim.at.y, 65)
   assert.equal(picked, 1) // only the first round has blocks to mine: 64 and nothing above
 })
+
+test('goes on with the cobblestone it holds when the dirt is used up', async () => {
+  const sim = world({ feetY: 62, surface: 66 })
+  let stone = 5
+  const pillar = sim.ports.pillar
+  sim.ports.dirt = () => 0
+  sim.ports.fill = () => stone
+  sim.ports.pillar = async (column, y, options) => { assert.equal(options?.any, true); stone--; return pillar(column, y) }
+  const result = await climbOut({ ports: sim.ports, sleep: async () => {} })
+  assert.equal(result.ok, true)
+  assert.equal(stone, 0)
+})
