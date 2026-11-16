@@ -167,7 +167,12 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
 
   async function run () {
     const got = await ensure(true)
-    if (got === true || !got) return got === true
+    if (got === true) return true
+    // No chest could be made or placed (no flat cells, table refused): the
+    // rubble is thrown away too, wood or not (live 2026-11-17 05:12-05:24 JST
+    // on a hilltop with 37 logs: 「ラージチェストを置ける平らな場所がありません」
+    // and 「作業台を置けません」, 35-36/36 slots for ten minutes).
+    if (!got) return !!hands.drop && await discardJunk({ drop: hands.drop, walk, why, cells, getInventory, getFeet, shared, say, now }) > 0
     const target = { position: got }
     const moved = await hands.store(target.position, storable(getInventory()))
     stored += moved

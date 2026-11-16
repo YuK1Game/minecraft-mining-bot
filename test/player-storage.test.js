@@ -43,7 +43,7 @@ test('a new large chest takes two cells side by side; a single chest gets a neig
   assert.ok(double[0].pair)
 })
 
-function job ({ chests = [], inventory, makes = true }) {
+function job ({ chests = [], inventory, makes = true, drop = null }) {
   const lines = [], calls = []
   let items = inventory
   const hands = {
@@ -62,6 +62,7 @@ function job ({ chests = [], inventory, makes = true }) {
       return true
     },
     room: () => null,
+    drop,
     store: async (position, stacks) => { calls.push(['store', position, stacks.length]); return stacks.reduce((sum, stack) => sum + stack.count, 0) }
   }
   const storage = createPlayerStorage({ getMode: () => 'player', shared: { playerWanted: true }, agent: { objective: {}, start: async () => {}, stop: () => {} }, hands, getBlock: world(chests), getFeet: () => feet, getInventory: () => items, log: text => lines.push(text), sleep: async () => {} })
@@ -193,4 +194,12 @@ test('wood for one chest only: one chest is made, placed and used (live 2026-11-
   assert.deepEqual(f.calls.filter(call => call[0] === 'craft').map(call => call.slice(1)), [['minecraft:chest', 1]])
   assert.equal(f.calls.filter(call => call[0] === 'place' && call[2] === mc('chest')).length, 1)
   assert.match(f.lines.join('\n'), /チェストを1つ置きました/)
+})
+
+test('no chest can be made (table or craft refused): the rubble is thrown away even with wood (live 2026-11-17 05:12-05:24 JST)', async () => {
+  const drops = []
+  const f = job({ inventory: full(), makes: false, drop: async (slot, count) => { drops.push([slot, count]); return { phase: 'completed' } } })
+  assert.equal(await f.storage.tick(), true)
+  assert.ok(drops.length >= 2, JSON.stringify(drops))
+  assert.match(f.lines.join('\n'), /いらない物を \d+ 枠捨てました/)
 })

@@ -168,3 +168,26 @@ test('far from the porch: hops about 9 m at a time over received ground, then bu
   assert.ok(Math.hypot(walks[0].x - 30.5, walks[0].z - 8.5) <= 11, JSON.stringify(walks[0]))
   assert.ok(Math.hypot(feet.x - 3.5, feet.z - 8.5) <= 5, JSON.stringify(feet))
 })
+
+test('out on a hilltop 23 above the house, close on the map: walks down toward it, height counted (live 2026-11-17 05:14 JST)', async () => {
+  const w = world()
+  // A hill: ground at 86 east of x=6 (feet 87), the house's ground at 63 to the west.
+  for (let x = 6; x <= 40; x++) for (let z = -20; z <= 30; z++) for (let y = 64; y <= 86; y++) w.cells.set(`${x},${y},${z}`, { known: true, name: 'minecraft:stone', boundingBox: 'block' })
+  const feet = { x: 10.5, y: 87, z: 8.5 }
+  const inventory = { known: true, items: [['wooden_pickaxe', 1], ['oak_log', 44], ['cobblestone', 68]].map(([name, count], slot) => ({ name: `minecraft:${name}`, count, slot })) }
+  const shared = { playerWanted: true, playerHouse: { origin: { x: 0, y: 64, z: 0 }, done: false } }
+  const walks = [], lines = [], places = []
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {},
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    ports: { craft: async () => false, smelt: async () => 0, place: async () => { places.push(1); return false }, mine: async () => true, why: () => null },
+    // A walk cannot drop more than 8 blocks at once.
+    hands: { walk: async stand => { walks.push(stand); if (feet.y - stand.y > 8) return false; Object.assign(feet, stand); return true }, approach: async () => true, why: () => 'test' },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
+  })
+  await build.tick()
+  // The hill is a cliff: no walk reaches the house's height, so nothing is tried from the top.
+  assert.equal(places.length, 0)
+  assert.match(lines.join('\n'), /拠点の家の前まで歩けません/)
+})

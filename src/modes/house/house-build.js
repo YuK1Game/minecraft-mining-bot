@@ -175,29 +175,33 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   // the bounded search area」, then 170 steps tried in vain for 1.5 s).
   async function closeIn (origin) {
     const porch = { x: origin.x + 3.5, z: origin.z + 8.5 }
-    const away = () => { const at = getFeet(); return at ? Math.hypot(at.x - porch.x, at.z - porch.z) : Infinity }
-    const near = (centre, low, high, radius) => {
+    // Height counts too (live 05:14 JST: out of a 43-step climb onto a hill
+    // 23 blocks above the house, every step was 「操作対象が手の届く範囲外です」).
+    const away = () => { const at = getFeet(); return at ? Math.hypot(at.x - porch.x, at.z - porch.z, at.y - origin.y) : Infinity }
+    const near = (centre, low, high, radius, y = null) => {
       const out = []
-      for (let dx = -radius; dx <= radius; dx++) for (let dz = -radius; dz <= radius; dz++) for (let y = high; y >= low; y--) {
+      for (let dx = -radius; dx <= radius; dx++) for (let dz = -radius; dz <= radius; dz++) for (let cy = high; cy >= low; cy--) {
         const x = Math.floor(centre.x) + dx, z = Math.floor(centre.z) + dz
-        if (standable(getBlock, x, y, z)) out.push({ x: x + 0.5, y, z: z + 0.5 })
+        if (standable(getBlock, x, cy, z)) out.push({ x: x + 0.5, y: cy, z: z + 0.5 })
       }
-      return out.sort((a, b) => Math.hypot(a.x - centre.x, a.z - centre.z) - Math.hypot(b.x - centre.x, b.z - centre.z))
+      const cost = cell => Math.hypot(cell.x - centre.x, cell.z - centre.z) + (y == null ? 0 : Math.abs(cell.y - y))
+      return out.sort((a, b) => cost(a) - cost(b))
     }
-    for (let round = 0; round < 6 && away() > 5; round++) {
+    for (let round = 0; round < 8 && away() > 5; round++) {
       const at = getFeet()
       if (!at) return false
-      const d = away()
+      const d = away(), flatD = Math.hypot(at.x - porch.x, at.z - porch.z), rise = origin.y - at.y
       if (d <= 10) {
         let walked = false
-        for (const cell of near(porch, origin.y - 3, origin.y + 2, 3).slice(0, 4)) if (await hands.walk(cell)) { walked = true; break }
+        for (const cell of near(porch, origin.y - 3, origin.y + 2, 3, origin.y).slice(0, 4)) if (await hands.walk(cell)) { walked = true; break }
         if (!walked) break
         continue
       }
-      const step = Math.min(9, d - 5), point = { x: at.x + (porch.x - at.x) / d * step, z: at.z + (porch.z - at.z) / d * step }
-      const low = Math.min(Math.floor(at.y), origin.y) - 3, high = Math.max(Math.floor(at.y), origin.y) + 3
+      // About 9 m on, down (or up) a few steps toward the house's height.
+      const step = Math.min(9, Math.max(0, flatD - 4)), point = flatD > 0.5 ? { x: at.x + (porch.x - at.x) / flatD * step, z: at.z + (porch.z - at.z) / flatD * step } : { x: at.x, z: at.z }
+      const goal = Math.floor(at.y) + Math.max(-6, Math.min(4, Math.round(rise)))
       let moved = false
-      for (const cell of near(point, low, high, 2).slice(0, 3)) {
+      for (const cell of near(point, Math.floor(at.y) - 7, Math.floor(at.y) + 4, step < 3 ? 4 : 2, goal).slice(0, 3)) {
         await hands.walk(cell)
         if (away() < d - 2) { moved = true; break }
       }
