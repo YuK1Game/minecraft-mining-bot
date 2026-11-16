@@ -18,6 +18,7 @@ const { createCombatExposure } = require('../combat/combat-exposure')
 const { createPlayerScaffold } = require('./player-scaffold')
 const { createScaffoldPorts } = require('./player-scaffold-ports')
 const { climbOut } = require('./player-climb')
+const { sidestep } = require('./player-climb-side')
 const { boxedIn, stepOut } = require('./player-pit')
 const { createPlayerTorch } = require('./player-torch')
 const { createTorchPorts } = require('./player-torch-ports')
@@ -79,7 +80,14 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     },
     climb: async aborted => {
       for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
-      return climbOut({ ports: hands, log, aborted: () => aborted() || flee.status().active || shelter.status().active })
+      const stop = () => aborted() || flee.status().active || shelter.status().active
+      // Under water or gravel the shaft moves sideways and goes on (player-climb-side.js).
+      let out = await climbOut({ ports: hands, log, aborted: stop })
+      for (let i = 0; i < 3 && !out.ok && out.reason === 'CANNOT_MINE' && !stop(); i++) {
+        if (!(await sidestep({ ports: hands, log, aborted: stop })).ok) break
+        out = await climbOut({ ports: hands, log, aborted: stop })
+      }
+      return out
     }
   })
   // The runtime restarts a finished run from shared.autoOptions without passing
