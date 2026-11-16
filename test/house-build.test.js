@@ -333,3 +333,45 @@ test('the table cannot be seen from the nearest place: crafts from another place
   assert.ok(blinds >= 1)
   assert.equal(remaining(w.getBlock, shared.playerHouse.origin).length, 0, lines.join('\n'))
 })
+
+test('the door goes last; a door already standing with work left is taken down first (live 2026-11-17 06:44-06:52 JST)', async () => {
+  assert.equal(order(placements({ x: 0, y: 64, z: 0 })).at(-1).item, 'oak_door')
+  const w = world()
+  const feet = { x: 0.5, y: 64, z: 0.5 }
+  const inventory = { known: true, items: [] }
+  const give = (name, count) => { const item = inventory.items.find(stack => stack.name === name); if (item) item.count += count; else inventory.items.push({ name, count, slot: inventory.items.length }) }
+  const take = (name, count) => { const item = inventory.items.find(stack => stack.name === name); item.count -= count; if (item.count <= 0) inventory.items.splice(inventory.items.indexOf(item), 1) }
+  for (const [name, count] of [['wooden_pickaxe', 1], ['oak_planks', 64], ['cobblestone', 20]]) give(`minecraft:${name}`, count)
+  const origin0 = { x: 2, y: 64, z: 2 }
+  for (const step of placements(origin0)) if (step.item !== 'oak_slab') for (const cell of step.cells) w.set(cell, step.item === 'white_bed' ? 'minecraft:bed' : `minecraft:${step.item}`)
+  const door = placements(origin0).find(step => step.item === 'oak_door')
+  const recipes = { 'minecraft:oak_slab': [6, [['minecraft:oak_planks', 3]]], 'minecraft:oak_door': [3, [['minecraft:oak_planks', 6]]] }
+  const mined = [], placedOrder = []
+  const ports = {
+    craft: async (output, times) => { const [yieldCount, parts] = recipes[output]; for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
+    smelt: async () => 0,
+    place: async (name, plan) => {
+      const step = placements(origin0).find(s => s.position.x === plan.position.x && s.position.y === plan.position.y && s.position.z === plan.position.z)
+      take(name, 1); placedOrder.push(step.item)
+      for (const cell of step.cells) w.set(cell, name)
+      return true
+    },
+    mine: async (cell, extra) => { mined.push({ cell, extra }); for (const c of door.cells) w.cells.delete(`${c.x},${c.y},${c.z}`); give('minecraft:oak_door', 1); return true },
+    why: () => null
+  }
+  const shared = { playerWanted: true, playerHouse: { origin: origin0, done: false } }
+  const lines = []
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {},
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    ports, hands: { walk: async stand => { Object.assign(feet, stand); return true }, approach: async () => true },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
+  })
+  assert.equal(await build.tick(), true, lines.join('\n'))
+  assert.equal(mined.length, 1)
+  assert.equal(mined[0].extra.accessPreparation, 'house_door')
+  assert.equal(placedOrder.at(-1), 'oak_door')
+  assert.equal(remaining(w.getBlock, origin0).length, 0, lines.join('\n'))
+  assert.match(lines.join('\n'), /入口のドアを外しました/)
+})
