@@ -30,5 +30,13 @@ test('a creeper or melee mob that has not moved for five minutes and is out of r
   assert.equal(evaluateThreats(state, [{ ...still, primed: true }]).threats.length, 1, 'primed')
   assert.equal(evaluateThreats(state, [{ ...still, hurtAt: ago(30 * 1000) }]).threats.length, 1, 'just hurt')
   const skeleton = { ...still, runtimeId: '8', entityType: 'minecraft:skeleton' }
-  assert.equal(evaluateThreats(state, [skeleton]).threats.length, 1, 'an archer shoots without moving')
+  assert.equal(evaluateThreats(state, [skeleton]).threats.length, 1, 'an archer within 8 m shoots without moving')
+})
+
+// Live 2026-11-17 02:16-02:31 JST: a skeleton 17.3 m away, unmoved for 15 minutes, held the work still.
+test('an archer farther than 8 m that has not moved for ten minutes is not a threat', () => {
+  const skeleton = moved => ({ runtimeId: '9', entityType: 'minecraft:skeleton', alive: true, positionKnown: true, position: { x: 17.3, y: 64, z: 0 }, updatedAt: ago(1000), positionUpdatedAt: ago(moved) })
+  assert.equal(evaluateThreats(state, [skeleton(15 * 60 * 1000)]).threats.length, 0)
+  assert.equal(evaluateThreats(state, [skeleton(15 * 60 * 1000)]).unreachable[0]?.standingStill, true)
+  assert.equal(evaluateThreats(state, [skeleton(6 * 60 * 1000)]).threats.length, 1, 'six minutes is not enough for an archer')
 })

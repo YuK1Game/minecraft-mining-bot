@@ -65,12 +65,21 @@ function safeId (value) {
 const STALE_ACTOR_MS = 5 * 60 * 1000
 const STILL_ACTOR_MS = 5 * 60 * 1000
 const STILL_MIN_DISTANCE = 4.5 // nearer than this a creeper can start its fuse
+// Archers and witches strafe and step while they shoot: one whose received
+// position has not changed for ten minutes, farther than 8 m, is stuck or a
+// left-over record (real Realm 2026-11-17 02:16-02:31 JST: a skeleton 17.3 m
+// away, unmoved for 15 minutes, held player mode still with 「退避を優先」
+// and no retreat route).
+const RANGED_STILL_MS = 10 * 60 * 1000
+const RANGED_STILL_MIN_DISTANCE = 8
 function standingStill (entity, type, learning, distance) {
-  if (!(distance > STILL_MIN_DISTANCE) || learning === 'archer' || learning === 'ranged' || type === 'minecraft:witch') return false
+  const ranged = learning === 'archer' || learning === 'ranged' || type === 'minecraft:witch'
+  if (!(distance > (ranged ? RANGED_STILL_MIN_DISTANCE : STILL_MIN_DISTANCE))) return false
   if (entity.primed === true || entity.ignited === true) return false
   const moved = typeof entity.positionUpdatedAt === 'string' ? Date.parse(entity.positionUpdatedAt) : NaN
   const hurt = typeof entity.hurtAt === 'string' ? Date.parse(entity.hurtAt) : NaN
-  return Number.isFinite(moved) && Date.now() - moved > STILL_ACTOR_MS && !(Number.isFinite(hurt) && Date.now() - hurt < STILL_ACTOR_MS)
+  const still = ranged ? RANGED_STILL_MS : STILL_ACTOR_MS
+  return Number.isFinite(moved) && Date.now() - moved > still && !(Number.isFinite(hurt) && Date.now() - hurt < STILL_ACTOR_MS)
 }
 
 function evaluateThreats (state, entities, { extraMargin = 0, observationRadius = null, maxEntities = 1024, now = Date.now, maxTerrainAgeMs = 1500 } = {}) {
