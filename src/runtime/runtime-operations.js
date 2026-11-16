@@ -824,7 +824,7 @@ function createRuntimeOperations (rt) {
       previewEngage: (id, options) => rt.combat?.previewEngage(id, options) ?? { ready: false },
       previewWaterCreeper: id => rt.combat?.previewWaterCreeper(id) ?? { ready: false },
       waterCreeperAttack: id => { rt.requireIdle(); return rt.combat.waterCreeperAttack(id) },
-      hunt: id => { rt.requireIdle(); return rt.require('./survival/hunt-weapon').huntArmed({ hunt: target => rt.combat.hunt(target), equip: slot => rt.inventory.equipForCombat(slot), crafting: rt.crafting, getState: () => rt.observedState(), log: text => rt.host.log(text) }, id) },
+      hunt: id => { rt.requireIdle(); return rt.require('./survival/hunt-weapon').huntArmed({ hunt: target => rt.combat.hunt(target), equip: slot => rt.inventory.equipForCombat(slot), crafting: rt.crafting, getState: () => rt.raw(), log: text => rt.host.log(text) }, id) },
       preview: id => rt.combat?.preview(id) ?? { ready: false },
       attack: id => { rt.requireIdle(); return rt.combat.attack(id) },
       defend: options => { rt.requireIdle(); return rt.combat.defend(options) },
