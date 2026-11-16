@@ -22,6 +22,7 @@ const LIQUID = /water|lava|bubble_column|kelp|seagrass/
 const FALLING = /^minecraft:(?:gravel|sand|red_sand|suspicious_(?:sand|gravel)|.*concrete_powder)$/
 const LEAVES = /_leaves$/
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+const { climbDown } = require('./player-climb-down')
 const RADIUS = 12, SCAN_UP = 64, MIN_KNOWN = 8, TRIES = 3
 
 const wet = found => found?.known !== true || !!found.extra?.length || LIQUID.test(found.name ?? '')
@@ -52,6 +53,8 @@ function dryColumns (block, x, at, z, radius = RADIUS) {
 
 async function sidestep ({ ports, log = () => {}, aborted = () => false, tries = TRIES }) {
   const { feet, block, walk, canMine, mine } = ports
+  // On a pillar with no floor beside it: down the pillar first (player-climb-down.js).
+  if (ports.descend && feet()) await climbDown({ ports, log, aborted })
   const start = feet()
   if (!start || ![start.x, start.y, start.z].every(Number.isFinite)) return { ok: false, reason: 'NO_POSITION' }
   const at = Math.floor(start.y + 0.001)
@@ -66,18 +69,24 @@ async function sidestep ({ ports, log = () => {}, aborted = () => false, tries =
     return await (tool ? mine(cell) : ports.dig(cell)) === true
   }
   const origin = here()
+  const standY = (x, z) => { for (let y = at + 3; y >= at - 6; y--) { const below = block(x, y - 1, z); if (below?.known === true && below.boundingBox === 'block' && !wet(below) && isAir(block(x, y, z)) && isAir(block(x, y + 1, z))) return y } return null }
   const columns = dryColumns(block, origin.x, at, origin.z).slice(0, tries)
   if (!columns.length) { log('プレイヤーモード: 近く（12マス以内）に、上が水・砂利・葉でない場所が見つかりません'); return { ok: false, reason: 'NO_DRY_COLUMN' } }
   for (const column of columns) {
     log(`プレイヤーモード: 真上へ掘れないため、横へ${column.steps}マス掘ってから上がります（${column.x},${at},${column.z}）`)
     let refused = null
+    // Through a cave the column may simply be walked to.
+    const spot = standY(column.x, column.z)
+    if (spot !== null && dryColumn(block, column.x, spot, column.z)) { await walk({ x: column.x + 0.5, y: spot, z: column.z + 0.5 }); const now = here(); if (now && now.x === column.x && now.z === column.z) return { ok: true, column, walked: true } }
     while (!aborted()) {
       const now = here()
       if (!now) { refused = 'NO_POSITION'; break }
       if (now.x === column.x && now.z === column.z) return { ok: true, column }
       const next = now.x !== column.x ? { x: now.x + Math.sign(column.x - now.x), z: now.z } : { x: now.x, z: now.z + Math.sign(column.z - now.z) }
       const floor = block(next.x, at - 1, next.z)
-      if (floor?.known !== true || floor.boundingBox !== 'block' || wet(floor)) { refused = `床がありません ${next.x},${at - 1},${next.z}`; break }
+      // A gap one deep in the floor is filled with a held block (ordinary placement).
+      const gap = isAir(floor) && !floor.extra?.length && ports.place && await clear({ x: next.x, y: at + 1, z: next.z }) && await clear({ x: next.x, y: at, z: next.z }) && await ports.place({ x: next.x, y: at - 1, z: next.z }, { any: true })
+      if (!gap && (floor?.known !== true || floor.boundingBox !== 'block' || wet(floor))) { refused = `床がありません ${next.x},${at - 1},${next.z}`; break }
       if (!await clear({ x: next.x, y: at + 1, z: next.z }) || !await clear({ x: next.x, y: at, z: next.z })) { refused = `掘れません ${next.x},${at},${next.z}${ports.reason ? `: ${ports.reason({ x: next.x, y: at, z: next.z }) ?? ports.reason({ x: next.x, y: at + 1, z: next.z }) ?? ''}` : ''}`; break }
       if (aborted()) break
       await walk({ x: next.x + 0.5, y: at, z: next.z + 0.5 })

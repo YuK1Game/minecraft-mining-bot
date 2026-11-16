@@ -96,9 +96,11 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
       return result?.status === 'completed' && result.serverConfirmed === true ? { ok: true } : (why = result?.checkpoint?.diagnostics?.placementResponse?.reason ?? why, { ok: false, reason: result?.reason ?? 'BLOCKED' })
     } catch (error) { return { ok: false, reason: String(error?.code ?? error?.message ?? error) } }
   }
-  async function place (cell) {
-    let item = stacks().find(stack => stack.slot <= 8)
-    if (!item && stacks().length) { try { await operations.inventory.equip(stacks()[0].slot) } catch { return false } item = stacks().find(stack => stack.slot <= 8) }
+  async function place (cell, { any = false } = {}) {
+    const material = any ? FILL.find(name => held(name) > 0) : DIRT
+    const have = () => (getInventory()?.items ?? []).filter(item => item?.name === material && item.count > 0)
+    let item = have().find(stack => stack.slot <= 8)
+    if (!item && have().length) { try { await operations.inventory.equip(have()[0].slot) } catch { return false } item = have().find(stack => stack.slot <= 8) }
     if (!item) return false
     try { await operations.interactions.placeBlock({ position: cell, slot: item.slot }) } catch { return false }
     return until(() => { const found = block(cell.x, cell.y, cell.z); return found?.known === true && found.boundingBox === 'block' }, 5000)
