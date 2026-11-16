@@ -174,7 +174,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   })
   // A full inventory goes into a large chest beside the Bot (player-storage.js).
   const storage = createPlayerStorage({
-    getMode: control.get, shared, log, disposed, getFeet: feetNow,
+    getMode: control.get, shared, log, disposed, getFeet: feetNow, mine: cell => hands.mine(cell),
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12,
