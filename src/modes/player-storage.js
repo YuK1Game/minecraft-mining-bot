@@ -52,7 +52,7 @@ const occupied = inventory => new Set((inventory?.items ?? []).filter(item => it
 
 // Chests within reach: [{ position, pair: position|null }].
 function chestsNear (getBlock, feet, near = NEAR) {
-  const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.001), fz = Math.floor(feet.z)
+  const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.05), fz = Math.floor(feet.z)
   const isChest = (x, y, z) => { const found = getBlock(x, y, z); return found?.known === true && found.name === CHEST }
   const found = []
   for (let dy = -2; dy <= 3; dy++) for (let dx = -near; dx <= near; dx++) for (let dz = -near; dz <= near; dz++) {
@@ -67,7 +67,7 @@ function chestsNear (getBlock, feet, near = NEAR) {
 // A cell a chest can stand in: received air with received solid ground, not
 // the Bot's own cells, beside the feet level.
 function chestCell (getBlock, feet, cell) {
-  const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.001), fz = Math.floor(feet.z)
+  const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.05), fz = Math.floor(feet.z)
   if (cell.x === fx && cell.z === fz) return false
   if (Math.abs(cell.y - fy) > 1 || Math.hypot(cell.x + 0.5 - feet.x, cell.z + 0.5 - feet.z) > 3.5) return false
   const here = getBlock(cell.x, cell.y, cell.z), below = getBlock(cell.x, cell.y - 1, cell.z)
@@ -77,7 +77,7 @@ function chestCell (getBlock, feet, cell) {
 // Two cells side by side for a new large chest, or one beside a single chest.
 function chestCells (getBlock, feet, single = null, skip = new Set()) {
   const ok = cell => !skip.has(`${cell.x},${cell.y},${cell.z}`) && chestCell(getBlock, feet, cell)
-  const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.001), fz = Math.floor(feet.z)
+  const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.05), fz = Math.floor(feet.z)
   const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]]
   if (single) return SIDES.map(([dx, dz]) => ({ x: single.x + dx, y: single.y, z: single.z + dz })).filter(ok).slice(0, 1)
   for (const dy of [0, -1, 1]) for (const [dx, dz] of [...SIDES, [1, 1], [1, -1], [-1, 1], [-1, -1]]) {

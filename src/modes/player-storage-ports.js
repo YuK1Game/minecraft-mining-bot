@@ -21,7 +21,7 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, disp
     }
   }
   const close = () => { try { operations.crafting.closeContainer() } catch {} }
-  const feetCell = () => { const feet = getFeet(); return feet ? { x: Math.floor(feet.x), y: Math.floor(feet.y + 0.001), z: Math.floor(feet.z) } : null }
+  const feetCell = () => { const feet = getFeet(); return feet ? { x: Math.floor(feet.x), y: Math.floor(feet.y + 0.05), z: Math.floor(feet.z) } : null }
 
   async function craftSmall (output, times = 1) {
     const before = count(output)
