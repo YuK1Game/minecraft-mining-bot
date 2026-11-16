@@ -186,3 +186,11 @@ test('with no open cell for the stack, wall rock is dug with the stack in hand (
   for (const cell of dug) assert.ok(!avoid.some(a => a.x === cell.x && a.z === cell.z && (a.y === cell.y || a.y - 1 === cell.y)))
   assert.equal(items.find(item => item.name === 'minecraft:tuff').count, 0)
 })
+
+test('wood for one chest only: one chest is made, placed and used (live 2026-11-17: no base without wood for two)', async () => {
+  const f = job({ inventory: inv([...Array.from({ length: 30 }, (_, slot) => ['diamond', 1, slot]), ['oak_planks', 10, 30], ['diorite', 20, 31], ['granite', 16, 32], ['andesite', 13, 33], ['dirt', 20, 34], ['leaf_litter', 8, 35]]) })
+  assert.equal(await f.storage.tick(), true)
+  assert.deepEqual(f.calls.filter(call => call[0] === 'craft').map(call => call.slice(1)), [['minecraft:chest', 1]])
+  assert.equal(f.calls.filter(call => call[0] === 'place' && call[2] === mc('chest')).length, 1)
+  assert.match(f.lines.join('\n'), /チェストを1つ置きました/)
+})
