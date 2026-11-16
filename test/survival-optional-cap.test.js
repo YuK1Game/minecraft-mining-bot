@@ -73,3 +73,10 @@ test('Runtime still selects an urgent owned healthy meal before the survival/dia
  const f=runtimeScene(t);f.host.shared.autoWanted=true;f.raw.health=19;f.host.shared.vitals={hunger:{value:17,source:'server_attribute'}};f.daylight();f.setItems([['stone_pickaxe',1,0],['stone_sword',1,1],['bread',1,2]])
  const decision=f.safety();assert.equal(decision.type,'eat');assert.equal(decision.slot,2);assert.equal(f.events.some(e=>e==='mine'||e==='forage'),false)
 })
+
+test('a body on gravel resting on received stone is known; gravel over air or unreceived blocks is not',()=>{
+ // 2026-11-17 00:34-00:38 JST live: on a gravel pile at y=-20 the planner asked for scan_blocks/body 46 times in five minutes.
+ const pile=fixture();pile.set(0,64,0,'gravel');pile.set(0,63,0,'gravel');pile.refresh();assert.equal(pile.next(OPTIONS),null)
+ const hanging=fixture();hanging.set(0,64,0,'gravel');hanging.set(0,63,0,'air',{boundingBox:'empty'});hanging.refresh();assert.equal(hanging.next(OPTIONS).resource,'body')
+ const unseen=fixture();unseen.set(0,64,0,'gravel');unseen.set(0,63,0,'stone',{known:false});unseen.refresh();assert.equal(unseen.next(OPTIONS).resource,'body')
+})
