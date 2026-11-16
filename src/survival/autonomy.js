@@ -600,8 +600,13 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
       const attempt = limitedIncrement(failures, currentKey)
       trace('action_error', status.lastError, { attempt, maxAttempts: options.maxRetries + 1 })
       if (attempt > options.maxRetries) {
-        const currentState = error?.code === 'NO_SAFE_ROUTE' ? await bounded(() => getState(), options.actionTimeoutMs, '経路候補の接続確認', signal) : null
-        if (error?.code === 'NO_SAFE_ROUTE' && excludeRouteTarget(currentDecision, error, actionState, currentState)) {
+        // skipFailedDrops (player mode): a pickup that failed to the limit for any
+        // reason drops that item from the candidates instead of ending the run
+        // (real Realm 2026-11-16 16:58-17:02 JST: one diamond two blocks away,
+        // "Navigation made no progress" four times, the run ended each time).
+        const routeLike = error?.code === 'NO_SAFE_ROUTE' || options.skipFailedDrops === true && currentDecision?.type === 'collect_drops'
+        const currentState = routeLike ? await bounded(() => getState(), options.actionTimeoutMs, '経路候補の接続確認', signal) : null
+        if (routeLike && excludeRouteTarget(currentDecision, error, actionState, currentState)) {
           failures.delete(currentKey)
           noProgress.delete(progressKey)
         } else finish('failed', `再試行の上限に達しました: ${status.lastError}`)
@@ -657,6 +662,7 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
       maxExcludedTargets: positive(configuration.maxExcludedTargets, 12, 64),
       maxRunMs: positive(configuration.maxRunMs, 900000, 43200000),
       traceLimit: positive(configuration.traceLimit, 50, 200),
+      skipFailedDrops: configuration.skipFailedDrops === true,
       threatWaitMs: Number.isFinite(configuration.threatWaitMs) && configuration.threatWaitMs > 0 ? Math.min(configuration.threatWaitMs, 600000) : 0,
       minHealth: Number.isFinite(configuration.minHealth) && configuration.minHealth >= 0 ? configuration.minHealth : 6
     }

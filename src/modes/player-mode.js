@@ -7,7 +7,8 @@ const { startRefusal } = require('./bot-mode')
 const { playerStages } = require('./player-stages')
 
 // threatWaitMs: a hostile that only stands near holds the work this long at most.
-const OBJECTIVE = Object.freeze({ objective: 'diamond', diamondCount: 1, threatWaitMs: 20000 })
+// skipFailedDrops: a drop whose pickup keeps failing is left, the run goes on.
+const OBJECTIVE = Object.freeze({ objective: 'diamond', diamondCount: 1, threatWaitMs: 20000, skipFailedDrops: true })
 const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 240)
 
 function createPlayerMode ({ getMode, agent, safety, recovery = null, shelter = null, flee = null, scaffold = null, shared = {}, getInventory = () => null, log = () => {} }) {
