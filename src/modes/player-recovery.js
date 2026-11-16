@@ -63,11 +63,17 @@ function aheadPoint (position, heading) {
 }
 
 // Where the stopped run's last decision wanted to work, when that is between
-// 24 m and 512 m from the Bot.
+// 24 m and 512 m from the Bot. A target DEEP_M or more below the feet and
+// within TUNNEL_REACH_M is left to the tunnel: long travel only walks the
+// surface (live 2026-11-16 21:55 JST: an ore 68 below, 45 m away, sent the
+// Bot on surface travel that found no walking route for minutes).
+const DEEP_M = 8, TUNNEL_REACH_M = 96
 function farTarget (snapshot, position) {
   const point = snapshot?.lastDecision?.resourceTarget ?? snapshot?.lastDecision?.target
   if (!position || !point || ![point.x, point.z].every(Number.isFinite)) return null
   const distance = Math.hypot(point.x + 0.5 - position.x, point.z + 0.5 - position.z)
+  const deep = Number.isFinite(point.y) && Number.isFinite(position.y) && point.y <= position.y - 1.62 - DEEP_M
+  if (deep && distance <= TUNNEL_REACH_M) return null
   return distance > 24 && distance <= 512 ? { x: Math.floor(point.x), z: Math.floor(point.z) } : null
 }
 

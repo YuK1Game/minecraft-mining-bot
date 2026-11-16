@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createPlayerRecovery, nearestKnownLog, aheadPoint } = require('../src/modes/player-recovery')
+const { createPlayerRecovery, nearestKnownLog, aheadPoint, farTarget } = require('../src/modes/player-recovery')
 const { createAutonomy } = require('../src/survival/autonomy')
 const { playerActivity, modeState } = require('../scripts/lib/player-activity')
 
@@ -264,4 +264,14 @@ test('underground, the next work lies far overhead: straight up, then on with a 
   const level = fixture({ blocks: roof, climb: { ok: true } })
   level.recovery.onProgress(stop(60)); await settle(level.recovery)
   assert.equal(level.calls.includes('climb'), false, 'work below or level is tunnelled to')
+})
+
+test('a deep ore within tunnel reach is left to the tunnel, not surface travel', () => {
+  const eye = { x: -5060.6, y: 65.6, z: -5058.5 }
+  const deep = { lastDecision: { type: 'tunnel', target: { x: -5069, y: -4, z: -5014 } } }
+  assert.equal(farTarget(deep, eye), null)
+  const level = { lastDecision: { type: 'tunnel', target: { x: -5069, y: 62, z: -5014 } } }
+  assert.deepEqual(farTarget(level, eye), { x: -5069, z: -5014 })
+  const remote = { lastDecision: { type: 'tunnel', target: { x: -5069, y: -4, z: -5214 } } }
+  assert.deepEqual(farTarget(remote, eye), { x: -5069, z: -5214 })
 })
