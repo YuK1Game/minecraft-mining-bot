@@ -1,0 +1,6465 @@
+{
+  "format": "minecraft-starter-base-blueprint",
+  "format_version": 1,
+  "title_ja": "序盤拠点 7×7・ベッド1台・ラージチェスト2台・松明4本",
+  "schema_notes": {
+    "format_kind": "custom_semantic_blueprint",
+    "description_ja": "設計用の独自JSON形式。materialとorientationは設計内の識別子・意味定義で、Minecraftの公式インポート形式や各エディション固有のblockstateではない。",
+    "blocks_ja": "完成状態の非空気ブロックを1マスずつ列挙。positionはすべて相対座標。",
+    "placements_ja": "最終的に残るアイテムを通常操作で置く順番。createsは生成されるblocksのID。ベッドとドアは1操作で2マスを生成する。",
+    "orientation_ja": "空オブジェクトは方向指定なし。frontはチェストの留め金またはかまどの口の方向。head_directionは枕の方向。placement_look_directionは設置するプレイヤーの視線方向。",
+    "attachment_ja": "support_positionは取り付け先ブロックの座標。support_faceは支持ブロックから外に向いた面。target_positionまたはblocks.positionは置かれるアイテム側の座標。",
+    "air_ja": "required_airは通路、ベッドの立ち場所、チェスト上の空間として維持する空気のマス。自動掘削命令ではない。",
+    "execution_ja": "建築経路、立ち位置、仮足場の設置・撤去、各エディションの状態値への変換は利用側で扱う。ゲーム内への設置は未実施。"
+  },
+  "coordinate_system": {
+    "type": "relative_block_coordinates",
+    "axis_order": [
+      "x",
+      "y",
+      "z"
+    ],
+    "origin": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "origin_description_ja": "建物の北西隅の床ブロック。Y=0は床ブロックの段であり、実際のワールド高度0を意味しない。",
+    "world_origin": null,
+    "world_conversion_ja": "実座標 = 建設場所に決めたworld_origin + 各position。world_origin未指定の間は相対座標として扱う。",
+    "directions": {
+      "north": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "south": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "east": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "west": {
+        "x": -1,
+        "y": 0,
+        "z": 0
+      },
+      "up": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "down": {
+        "x": 0,
+        "y": -1,
+        "z": 0
+      }
+    }
+  },
+  "dimensions": {
+    "building_footprint": {
+      "width_x": 7,
+      "depth_z": 7
+    },
+    "interior_footprint": {
+      "width_x": 5,
+      "depth_z": 5
+    },
+    "floor_y": 0,
+    "wall_y_min": 1,
+    "wall_y_max": 3,
+    "roof_y": 4,
+    "roof_half": "bottom",
+    "entrance_side": "south",
+    "bounds_including_porch": {
+      "min": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "max": {
+        "x": 6,
+        "y": 4,
+        "z": 7
+      }
+    }
+  },
+  "site_preparation": {
+    "description_ja": "地上の平らな建築場所を用意し、床を設置できるよう地面を整える。",
+    "floor_support_y": -1,
+    "temporary_scaffolding_included": false
+  },
+  "summary": {
+    "non_air_block_cells": 186,
+    "item_placement_actions": 184,
+    "placed_item_count": 184,
+    "reserved_air_cells": 66,
+    "beds": 1,
+    "large_chests": 2,
+    "crafting_tables": 1,
+    "furnaces": 2,
+    "torches": 4,
+    "indoor_torches": 2,
+    "outdoor_torches": 2
+  },
+  "materials": {
+    "placed_items": [
+      {
+        "material": "cobblestone",
+        "name_ja": "丸石",
+        "quantity": 52,
+        "occupied_cells": 52
+      },
+      {
+        "material": "oak_log",
+        "name_ja": "オークの原木",
+        "quantity": 12,
+        "occupied_cells": 12
+      },
+      {
+        "material": "oak_planks",
+        "name_ja": "オークの板材",
+        "quantity": 52,
+        "occupied_cells": 52
+      },
+      {
+        "material": "oak_slab",
+        "name_ja": "オークのハーフブロック",
+        "quantity": 49,
+        "occupied_cells": 49
+      },
+      {
+        "material": "glass",
+        "name_ja": "ガラスブロック",
+        "quantity": 6,
+        "occupied_cells": 6
+      },
+      {
+        "material": "oak_door",
+        "name_ja": "オークのドア",
+        "quantity": 1,
+        "occupied_cells": 2
+      },
+      {
+        "material": "white_bed",
+        "name_ja": "白色のベッド",
+        "quantity": 1,
+        "occupied_cells": 2
+      },
+      {
+        "material": "chest",
+        "name_ja": "チェスト",
+        "quantity": 4,
+        "occupied_cells": 4
+      },
+      {
+        "material": "crafting_table",
+        "name_ja": "作業台",
+        "quantity": 1,
+        "occupied_cells": 1
+      },
+      {
+        "material": "furnace",
+        "name_ja": "かまど",
+        "quantity": 2,
+        "occupied_cells": 2
+      },
+      {
+        "material": "torch",
+        "name_ja": "松明",
+        "quantity": 4,
+        "occupied_cells": 4
+      }
+    ],
+    "raw_materials": [
+      {
+        "material": "oak_log",
+        "name_ja": "オークの原木",
+        "quantity": 44,
+        "use_ja": "柱用12個を残し、加工用32個を板材128個にする。"
+      },
+      {
+        "material": "cobblestone",
+        "name_ja": "丸石",
+        "quantity": 68,
+        "use_ja": "床52個、かまど2台のクラフト用16個。"
+      },
+      {
+        "material": "sand",
+        "name_ja": "砂",
+        "quantity": 6,
+        "use_ja": "ガラス6個に精錬。"
+      },
+      {
+        "material": "white_wool",
+        "name_ja": "白色の羊毛",
+        "quantity": 3,
+        "use_ja": "ベッド1台。別色にする場合は羊毛3個を同じ色にそろえ、ベッドのmaterialも合わせて変更。"
+      },
+      {
+        "material": "coal",
+        "name_ja": "石炭",
+        "quantity": 2,
+        "use_ja": "松明4本の材料1個、ガラス精錬の燃料1個。"
+      }
+    ],
+    "excluded_ja": "採集道具、仮足場、追加の調理・精錬燃料は含まない。"
+  },
+  "assemblies": [
+    {
+      "id": "front_door",
+      "kind": "door",
+      "blocks": [
+        "b_3_1_6",
+        "b_3_2_6"
+      ],
+      "item_count": 1,
+      "orientation": {
+        "hinge_world_side": "west",
+        "passage_axis": "z"
+      }
+    },
+    {
+      "id": "bed_1",
+      "kind": "bed",
+      "blocks": [
+        "b_1_1_2",
+        "b_1_1_1"
+      ],
+      "foot_block": "b_1_1_2",
+      "head_block": "b_1_1_1",
+      "item_count": 1,
+      "orientation": {
+        "head_direction": "north"
+      }
+    },
+    {
+      "id": "large_chest_A",
+      "kind": "large_chest",
+      "blocks": [
+        "b_3_1_1",
+        "b_4_1_1"
+      ],
+      "item_count": 2,
+      "orientation": {
+        "front": "south"
+      },
+      "suggested_use_ja": "建築資材"
+    },
+    {
+      "id": "large_chest_B",
+      "kind": "large_chest",
+      "blocks": [
+        "b_5_1_3",
+        "b_5_1_4"
+      ],
+      "item_count": 2,
+      "orientation": {
+        "front": "west"
+      },
+      "suggested_use_ja": "食料・鉱石・道具"
+    }
+  ],
+  "build_phases": [
+    {
+      "id": "foundation",
+      "order": 1,
+      "name_ja": "床・入口前の床"
+    },
+    {
+      "id": "shell",
+      "order": 2,
+      "name_ja": "原木の柱・板材の壁"
+    },
+    {
+      "id": "windows",
+      "order": 3,
+      "name_ja": "ガラス窓"
+    },
+    {
+      "id": "roof",
+      "order": 4,
+      "name_ja": "下付きハーフの屋根"
+    },
+    {
+      "id": "door",
+      "order": 5,
+      "name_ja": "入口のドア"
+    },
+    {
+      "id": "bed",
+      "order": 6,
+      "name_ja": "ベッド"
+    },
+    {
+      "id": "storage",
+      "order": 7,
+      "name_ja": "ラージチェスト2台"
+    },
+    {
+      "id": "workstations",
+      "order": 8,
+      "name_ja": "作業台・かまど"
+    },
+    {
+      "id": "lighting",
+      "order": 9,
+      "name_ja": "室内・入口の松明"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "b_0_0_0",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_001"
+    },
+    {
+      "id": "b_1_0_0",
+      "position": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_002"
+    },
+    {
+      "id": "b_2_0_0",
+      "position": {
+        "x": 2,
+        "y": 0,
+        "z": 0
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_003"
+    },
+    {
+      "id": "b_3_0_0",
+      "position": {
+        "x": 3,
+        "y": 0,
+        "z": 0
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_004"
+    },
+    {
+      "id": "b_4_0_0",
+      "position": {
+        "x": 4,
+        "y": 0,
+        "z": 0
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_005"
+    },
+    {
+      "id": "b_5_0_0",
+      "position": {
+        "x": 5,
+        "y": 0,
+        "z": 0
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_006"
+    },
+    {
+      "id": "b_6_0_0",
+      "position": {
+        "x": 6,
+        "y": 0,
+        "z": 0
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_007"
+    },
+    {
+      "id": "b_0_0_1",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_008"
+    },
+    {
+      "id": "b_1_0_1",
+      "position": {
+        "x": 1,
+        "y": 0,
+        "z": 1
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_009"
+    },
+    {
+      "id": "b_2_0_1",
+      "position": {
+        "x": 2,
+        "y": 0,
+        "z": 1
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_010"
+    },
+    {
+      "id": "b_3_0_1",
+      "position": {
+        "x": 3,
+        "y": 0,
+        "z": 1
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_011"
+    },
+    {
+      "id": "b_4_0_1",
+      "position": {
+        "x": 4,
+        "y": 0,
+        "z": 1
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_012"
+    },
+    {
+      "id": "b_5_0_1",
+      "position": {
+        "x": 5,
+        "y": 0,
+        "z": 1
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_013"
+    },
+    {
+      "id": "b_6_0_1",
+      "position": {
+        "x": 6,
+        "y": 0,
+        "z": 1
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_014"
+    },
+    {
+      "id": "b_0_0_2",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 2
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_015"
+    },
+    {
+      "id": "b_1_0_2",
+      "position": {
+        "x": 1,
+        "y": 0,
+        "z": 2
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_016"
+    },
+    {
+      "id": "b_2_0_2",
+      "position": {
+        "x": 2,
+        "y": 0,
+        "z": 2
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_017"
+    },
+    {
+      "id": "b_3_0_2",
+      "position": {
+        "x": 3,
+        "y": 0,
+        "z": 2
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_018"
+    },
+    {
+      "id": "b_4_0_2",
+      "position": {
+        "x": 4,
+        "y": 0,
+        "z": 2
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_019"
+    },
+    {
+      "id": "b_5_0_2",
+      "position": {
+        "x": 5,
+        "y": 0,
+        "z": 2
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_020"
+    },
+    {
+      "id": "b_6_0_2",
+      "position": {
+        "x": 6,
+        "y": 0,
+        "z": 2
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_021"
+    },
+    {
+      "id": "b_0_0_3",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 3
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_022"
+    },
+    {
+      "id": "b_1_0_3",
+      "position": {
+        "x": 1,
+        "y": 0,
+        "z": 3
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_023"
+    },
+    {
+      "id": "b_2_0_3",
+      "position": {
+        "x": 2,
+        "y": 0,
+        "z": 3
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_024"
+    },
+    {
+      "id": "b_3_0_3",
+      "position": {
+        "x": 3,
+        "y": 0,
+        "z": 3
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_025"
+    },
+    {
+      "id": "b_4_0_3",
+      "position": {
+        "x": 4,
+        "y": 0,
+        "z": 3
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_026"
+    },
+    {
+      "id": "b_5_0_3",
+      "position": {
+        "x": 5,
+        "y": 0,
+        "z": 3
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_027"
+    },
+    {
+      "id": "b_6_0_3",
+      "position": {
+        "x": 6,
+        "y": 0,
+        "z": 3
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_028"
+    },
+    {
+      "id": "b_0_0_4",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 4
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_029"
+    },
+    {
+      "id": "b_1_0_4",
+      "position": {
+        "x": 1,
+        "y": 0,
+        "z": 4
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_030"
+    },
+    {
+      "id": "b_2_0_4",
+      "position": {
+        "x": 2,
+        "y": 0,
+        "z": 4
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_031"
+    },
+    {
+      "id": "b_3_0_4",
+      "position": {
+        "x": 3,
+        "y": 0,
+        "z": 4
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_032"
+    },
+    {
+      "id": "b_4_0_4",
+      "position": {
+        "x": 4,
+        "y": 0,
+        "z": 4
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_033"
+    },
+    {
+      "id": "b_5_0_4",
+      "position": {
+        "x": 5,
+        "y": 0,
+        "z": 4
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_034"
+    },
+    {
+      "id": "b_6_0_4",
+      "position": {
+        "x": 6,
+        "y": 0,
+        "z": 4
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_035"
+    },
+    {
+      "id": "b_0_0_5",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 5
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_036"
+    },
+    {
+      "id": "b_1_0_5",
+      "position": {
+        "x": 1,
+        "y": 0,
+        "z": 5
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_037"
+    },
+    {
+      "id": "b_2_0_5",
+      "position": {
+        "x": 2,
+        "y": 0,
+        "z": 5
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_038"
+    },
+    {
+      "id": "b_3_0_5",
+      "position": {
+        "x": 3,
+        "y": 0,
+        "z": 5
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_039"
+    },
+    {
+      "id": "b_4_0_5",
+      "position": {
+        "x": 4,
+        "y": 0,
+        "z": 5
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_040"
+    },
+    {
+      "id": "b_5_0_5",
+      "position": {
+        "x": 5,
+        "y": 0,
+        "z": 5
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_041"
+    },
+    {
+      "id": "b_6_0_5",
+      "position": {
+        "x": 6,
+        "y": 0,
+        "z": 5
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_042"
+    },
+    {
+      "id": "b_0_0_6",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 6
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_043"
+    },
+    {
+      "id": "b_1_0_6",
+      "position": {
+        "x": 1,
+        "y": 0,
+        "z": 6
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_044"
+    },
+    {
+      "id": "b_2_0_6",
+      "position": {
+        "x": 2,
+        "y": 0,
+        "z": 6
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_045"
+    },
+    {
+      "id": "b_3_0_6",
+      "position": {
+        "x": 3,
+        "y": 0,
+        "z": 6
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_046"
+    },
+    {
+      "id": "b_4_0_6",
+      "position": {
+        "x": 4,
+        "y": 0,
+        "z": 6
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_047"
+    },
+    {
+      "id": "b_5_0_6",
+      "position": {
+        "x": 5,
+        "y": 0,
+        "z": 6
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_048"
+    },
+    {
+      "id": "b_6_0_6",
+      "position": {
+        "x": 6,
+        "y": 0,
+        "z": 6
+      },
+      "material": "cobblestone",
+      "label_ja": "丸石の床",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_049"
+    },
+    {
+      "id": "b_2_0_7",
+      "position": {
+        "x": 2,
+        "y": 0,
+        "z": 7
+      },
+      "material": "cobblestone",
+      "label_ja": "入口前の丸石",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_050"
+    },
+    {
+      "id": "b_3_0_7",
+      "position": {
+        "x": 3,
+        "y": 0,
+        "z": 7
+      },
+      "material": "cobblestone",
+      "label_ja": "入口前の丸石",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_051"
+    },
+    {
+      "id": "b_4_0_7",
+      "position": {
+        "x": 4,
+        "y": 0,
+        "z": 7
+      },
+      "material": "cobblestone",
+      "label_ja": "入口前の丸石",
+      "orientation": {},
+      "phase": "foundation",
+      "placement_id": "p_052"
+    },
+    {
+      "id": "b_0_1_0",
+      "position": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "material": "oak_log",
+      "label_ja": "オークの原木",
+      "orientation": {
+        "axis": "y"
+      },
+      "phase": "shell",
+      "placement_id": "p_053"
+    },
+    {
+      "id": "b_1_1_0",
+      "position": {
+        "x": 1,
+        "y": 1,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_054"
+    },
+    {
+      "id": "b_2_1_0",
+      "position": {
+        "x": 2,
+        "y": 1,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_055"
+    },
+    {
+      "id": "b_3_1_0",
+      "position": {
+        "x": 3,
+        "y": 1,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_056"
+    },
+    {
+      "id": "b_4_1_0",
+      "position": {
+        "x": 4,
+        "y": 1,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_057"
+    },
+    {
+      "id": "b_5_1_0",
+      "position": {
+        "x": 5,
+        "y": 1,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_058"
+    },
+    {
+      "id": "b_6_1_0",
+      "position": {
+        "x": 6,
+        "y": 1,
+        "z": 0
+      },
+      "material": "oak_log",
+      "label_ja": "オークの原木",
+      "orientation": {
+        "axis": "y"
+      },
+      "phase": "shell",
+      "placement_id": "p_059"
+    },
+    {
+      "id": "b_0_1_1",
+      "position": {
+        "x": 0,
+        "y": 1,
+        "z": 1
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_060"
+    },
+    {
+      "id": "b_6_1_1",
+      "position": {
+        "x": 6,
+        "y": 1,
+        "z": 1
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_061"
+    },
+    {
+      "id": "b_0_1_2",
+      "position": {
+        "x": 0,
+        "y": 1,
+        "z": 2
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_062"
+    },
+    {
+      "id": "b_6_1_2",
+      "position": {
+        "x": 6,
+        "y": 1,
+        "z": 2
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_063"
+    },
+    {
+      "id": "b_0_1_3",
+      "position": {
+        "x": 0,
+        "y": 1,
+        "z": 3
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_064"
+    },
+    {
+      "id": "b_6_1_3",
+      "position": {
+        "x": 6,
+        "y": 1,
+        "z": 3
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_065"
+    },
+    {
+      "id": "b_0_1_4",
+      "position": {
+        "x": 0,
+        "y": 1,
+        "z": 4
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_066"
+    },
+    {
+      "id": "b_6_1_4",
+      "position": {
+        "x": 6,
+        "y": 1,
+        "z": 4
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_067"
+    },
+    {
+      "id": "b_0_1_5",
+      "position": {
+        "x": 0,
+        "y": 1,
+        "z": 5
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_068"
+    },
+    {
+      "id": "b_6_1_5",
+      "position": {
+        "x": 6,
+        "y": 1,
+        "z": 5
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_069"
+    },
+    {
+      "id": "b_0_1_6",
+      "position": {
+        "x": 0,
+        "y": 1,
+        "z": 6
+      },
+      "material": "oak_log",
+      "label_ja": "オークの原木",
+      "orientation": {
+        "axis": "y"
+      },
+      "phase": "shell",
+      "placement_id": "p_070"
+    },
+    {
+      "id": "b_1_1_6",
+      "position": {
+        "x": 1,
+        "y": 1,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_071"
+    },
+    {
+      "id": "b_2_1_6",
+      "position": {
+        "x": 2,
+        "y": 1,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_072"
+    },
+    {
+      "id": "b_4_1_6",
+      "position": {
+        "x": 4,
+        "y": 1,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_073"
+    },
+    {
+      "id": "b_5_1_6",
+      "position": {
+        "x": 5,
+        "y": 1,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_074"
+    },
+    {
+      "id": "b_6_1_6",
+      "position": {
+        "x": 6,
+        "y": 1,
+        "z": 6
+      },
+      "material": "oak_log",
+      "label_ja": "オークの原木",
+      "orientation": {
+        "axis": "y"
+      },
+      "phase": "shell",
+      "placement_id": "p_075"
+    },
+    {
+      "id": "b_0_2_0",
+      "position": {
+        "x": 0,
+        "y": 2,
+        "z": 0
+      },
+      "material": "oak_log",
+      "label_ja": "オークの原木",
+      "orientation": {
+        "axis": "y"
+      },
+      "phase": "shell",
+      "placement_id": "p_076"
+    },
+    {
+      "id": "b_1_2_0",
+      "position": {
+        "x": 1,
+        "y": 2,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_077"
+    },
+    {
+      "id": "b_2_2_0",
+      "position": {
+        "x": 2,
+        "y": 2,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_078"
+    },
+    {
+      "id": "b_5_2_0",
+      "position": {
+        "x": 5,
+        "y": 2,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_079"
+    },
+    {
+      "id": "b_6_2_0",
+      "position": {
+        "x": 6,
+        "y": 2,
+        "z": 0
+      },
+      "material": "oak_log",
+      "label_ja": "オークの原木",
+      "orientation": {
+        "axis": "y"
+      },
+      "phase": "shell",
+      "placement_id": "p_080"
+    },
+    {
+      "id": "b_0_2_1",
+      "position": {
+        "x": 0,
+        "y": 2,
+        "z": 1
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_081"
+    },
+    {
+      "id": "b_6_2_1",
+      "position": {
+        "x": 6,
+        "y": 2,
+        "z": 1
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_082"
+    },
+    {
+      "id": "b_0_2_3",
+      "position": {
+        "x": 0,
+        "y": 2,
+        "z": 3
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_083"
+    },
+    {
+      "id": "b_6_2_3",
+      "position": {
+        "x": 6,
+        "y": 2,
+        "z": 3
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_084"
+    },
+    {
+      "id": "b_0_2_5",
+      "position": {
+        "x": 0,
+        "y": 2,
+        "z": 5
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_085"
+    },
+    {
+      "id": "b_6_2_5",
+      "position": {
+        "x": 6,
+        "y": 2,
+        "z": 5
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_086"
+    },
+    {
+      "id": "b_0_2_6",
+      "position": {
+        "x": 0,
+        "y": 2,
+        "z": 6
+      },
+      "material": "oak_log",
+      "label_ja": "オークの原木",
+      "orientation": {
+        "axis": "y"
+      },
+      "phase": "shell",
+      "placement_id": "p_087"
+    },
+    {
+      "id": "b_1_2_6",
+      "position": {
+        "x": 1,
+        "y": 2,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_088"
+    },
+    {
+      "id": "b_2_2_6",
+      "position": {
+        "x": 2,
+        "y": 2,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_089"
+    },
+    {
+      "id": "b_4_2_6",
+      "position": {
+        "x": 4,
+        "y": 2,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_090"
+    },
+    {
+      "id": "b_5_2_6",
+      "position": {
+        "x": 5,
+        "y": 2,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_091"
+    },
+    {
+      "id": "b_6_2_6",
+      "position": {
+        "x": 6,
+        "y": 2,
+        "z": 6
+      },
+      "material": "oak_log",
+      "label_ja": "オークの原木",
+      "orientation": {
+        "axis": "y"
+      },
+      "phase": "shell",
+      "placement_id": "p_092"
+    },
+    {
+      "id": "b_0_3_0",
+      "position": {
+        "x": 0,
+        "y": 3,
+        "z": 0
+      },
+      "material": "oak_log",
+      "label_ja": "オークの原木",
+      "orientation": {
+        "axis": "y"
+      },
+      "phase": "shell",
+      "placement_id": "p_093"
+    },
+    {
+      "id": "b_1_3_0",
+      "position": {
+        "x": 1,
+        "y": 3,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_094"
+    },
+    {
+      "id": "b_2_3_0",
+      "position": {
+        "x": 2,
+        "y": 3,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_095"
+    },
+    {
+      "id": "b_3_3_0",
+      "position": {
+        "x": 3,
+        "y": 3,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_096"
+    },
+    {
+      "id": "b_4_3_0",
+      "position": {
+        "x": 4,
+        "y": 3,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_097"
+    },
+    {
+      "id": "b_5_3_0",
+      "position": {
+        "x": 5,
+        "y": 3,
+        "z": 0
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_098"
+    },
+    {
+      "id": "b_6_3_0",
+      "position": {
+        "x": 6,
+        "y": 3,
+        "z": 0
+      },
+      "material": "oak_log",
+      "label_ja": "オークの原木",
+      "orientation": {
+        "axis": "y"
+      },
+      "phase": "shell",
+      "placement_id": "p_099"
+    },
+    {
+      "id": "b_0_3_1",
+      "position": {
+        "x": 0,
+        "y": 3,
+        "z": 1
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_100"
+    },
+    {
+      "id": "b_6_3_1",
+      "position": {
+        "x": 6,
+        "y": 3,
+        "z": 1
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_101"
+    },
+    {
+      "id": "b_0_3_2",
+      "position": {
+        "x": 0,
+        "y": 3,
+        "z": 2
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_102"
+    },
+    {
+      "id": "b_6_3_2",
+      "position": {
+        "x": 6,
+        "y": 3,
+        "z": 2
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_103"
+    },
+    {
+      "id": "b_0_3_3",
+      "position": {
+        "x": 0,
+        "y": 3,
+        "z": 3
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_104"
+    },
+    {
+      "id": "b_6_3_3",
+      "position": {
+        "x": 6,
+        "y": 3,
+        "z": 3
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_105"
+    },
+    {
+      "id": "b_0_3_4",
+      "position": {
+        "x": 0,
+        "y": 3,
+        "z": 4
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_106"
+    },
+    {
+      "id": "b_6_3_4",
+      "position": {
+        "x": 6,
+        "y": 3,
+        "z": 4
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_107"
+    },
+    {
+      "id": "b_0_3_5",
+      "position": {
+        "x": 0,
+        "y": 3,
+        "z": 5
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_108"
+    },
+    {
+      "id": "b_6_3_5",
+      "position": {
+        "x": 6,
+        "y": 3,
+        "z": 5
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_109"
+    },
+    {
+      "id": "b_0_3_6",
+      "position": {
+        "x": 0,
+        "y": 3,
+        "z": 6
+      },
+      "material": "oak_log",
+      "label_ja": "オークの原木",
+      "orientation": {
+        "axis": "y"
+      },
+      "phase": "shell",
+      "placement_id": "p_110"
+    },
+    {
+      "id": "b_1_3_6",
+      "position": {
+        "x": 1,
+        "y": 3,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_111"
+    },
+    {
+      "id": "b_2_3_6",
+      "position": {
+        "x": 2,
+        "y": 3,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_112"
+    },
+    {
+      "id": "b_3_3_6",
+      "position": {
+        "x": 3,
+        "y": 3,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_113"
+    },
+    {
+      "id": "b_4_3_6",
+      "position": {
+        "x": 4,
+        "y": 3,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_114"
+    },
+    {
+      "id": "b_5_3_6",
+      "position": {
+        "x": 5,
+        "y": 3,
+        "z": 6
+      },
+      "material": "oak_planks",
+      "label_ja": "オークの板材",
+      "orientation": {},
+      "phase": "shell",
+      "placement_id": "p_115"
+    },
+    {
+      "id": "b_6_3_6",
+      "position": {
+        "x": 6,
+        "y": 3,
+        "z": 6
+      },
+      "material": "oak_log",
+      "label_ja": "オークの原木",
+      "orientation": {
+        "axis": "y"
+      },
+      "phase": "shell",
+      "placement_id": "p_116"
+    },
+    {
+      "id": "b_3_2_0",
+      "position": {
+        "x": 3,
+        "y": 2,
+        "z": 0
+      },
+      "material": "glass",
+      "label_ja": "ガラスブロック",
+      "orientation": {},
+      "phase": "windows",
+      "placement_id": "p_117"
+    },
+    {
+      "id": "b_4_2_0",
+      "position": {
+        "x": 4,
+        "y": 2,
+        "z": 0
+      },
+      "material": "glass",
+      "label_ja": "ガラスブロック",
+      "orientation": {},
+      "phase": "windows",
+      "placement_id": "p_118"
+    },
+    {
+      "id": "b_0_2_2",
+      "position": {
+        "x": 0,
+        "y": 2,
+        "z": 2
+      },
+      "material": "glass",
+      "label_ja": "ガラスブロック",
+      "orientation": {},
+      "phase": "windows",
+      "placement_id": "p_119"
+    },
+    {
+      "id": "b_6_2_2",
+      "position": {
+        "x": 6,
+        "y": 2,
+        "z": 2
+      },
+      "material": "glass",
+      "label_ja": "ガラスブロック",
+      "orientation": {},
+      "phase": "windows",
+      "placement_id": "p_120"
+    },
+    {
+      "id": "b_0_2_4",
+      "position": {
+        "x": 0,
+        "y": 2,
+        "z": 4
+      },
+      "material": "glass",
+      "label_ja": "ガラスブロック",
+      "orientation": {},
+      "phase": "windows",
+      "placement_id": "p_121"
+    },
+    {
+      "id": "b_6_2_4",
+      "position": {
+        "x": 6,
+        "y": 2,
+        "z": 4
+      },
+      "material": "glass",
+      "label_ja": "ガラスブロック",
+      "orientation": {},
+      "phase": "windows",
+      "placement_id": "p_122"
+    },
+    {
+      "id": "b_0_4_0",
+      "position": {
+        "x": 0,
+        "y": 4,
+        "z": 0
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_123"
+    },
+    {
+      "id": "b_1_4_0",
+      "position": {
+        "x": 1,
+        "y": 4,
+        "z": 0
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_124"
+    },
+    {
+      "id": "b_2_4_0",
+      "position": {
+        "x": 2,
+        "y": 4,
+        "z": 0
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_125"
+    },
+    {
+      "id": "b_3_4_0",
+      "position": {
+        "x": 3,
+        "y": 4,
+        "z": 0
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_126"
+    },
+    {
+      "id": "b_4_4_0",
+      "position": {
+        "x": 4,
+        "y": 4,
+        "z": 0
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_127"
+    },
+    {
+      "id": "b_5_4_0",
+      "position": {
+        "x": 5,
+        "y": 4,
+        "z": 0
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_128"
+    },
+    {
+      "id": "b_6_4_0",
+      "position": {
+        "x": 6,
+        "y": 4,
+        "z": 0
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_129"
+    },
+    {
+      "id": "b_0_4_1",
+      "position": {
+        "x": 0,
+        "y": 4,
+        "z": 1
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_130"
+    },
+    {
+      "id": "b_1_4_1",
+      "position": {
+        "x": 1,
+        "y": 4,
+        "z": 1
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_131"
+    },
+    {
+      "id": "b_2_4_1",
+      "position": {
+        "x": 2,
+        "y": 4,
+        "z": 1
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_132"
+    },
+    {
+      "id": "b_3_4_1",
+      "position": {
+        "x": 3,
+        "y": 4,
+        "z": 1
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_133"
+    },
+    {
+      "id": "b_4_4_1",
+      "position": {
+        "x": 4,
+        "y": 4,
+        "z": 1
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_134"
+    },
+    {
+      "id": "b_5_4_1",
+      "position": {
+        "x": 5,
+        "y": 4,
+        "z": 1
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_135"
+    },
+    {
+      "id": "b_6_4_1",
+      "position": {
+        "x": 6,
+        "y": 4,
+        "z": 1
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_136"
+    },
+    {
+      "id": "b_0_4_2",
+      "position": {
+        "x": 0,
+        "y": 4,
+        "z": 2
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_137"
+    },
+    {
+      "id": "b_1_4_2",
+      "position": {
+        "x": 1,
+        "y": 4,
+        "z": 2
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_138"
+    },
+    {
+      "id": "b_2_4_2",
+      "position": {
+        "x": 2,
+        "y": 4,
+        "z": 2
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_139"
+    },
+    {
+      "id": "b_3_4_2",
+      "position": {
+        "x": 3,
+        "y": 4,
+        "z": 2
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_140"
+    },
+    {
+      "id": "b_4_4_2",
+      "position": {
+        "x": 4,
+        "y": 4,
+        "z": 2
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_141"
+    },
+    {
+      "id": "b_5_4_2",
+      "position": {
+        "x": 5,
+        "y": 4,
+        "z": 2
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_142"
+    },
+    {
+      "id": "b_6_4_2",
+      "position": {
+        "x": 6,
+        "y": 4,
+        "z": 2
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_143"
+    },
+    {
+      "id": "b_0_4_3",
+      "position": {
+        "x": 0,
+        "y": 4,
+        "z": 3
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_144"
+    },
+    {
+      "id": "b_1_4_3",
+      "position": {
+        "x": 1,
+        "y": 4,
+        "z": 3
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_145"
+    },
+    {
+      "id": "b_2_4_3",
+      "position": {
+        "x": 2,
+        "y": 4,
+        "z": 3
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_146"
+    },
+    {
+      "id": "b_3_4_3",
+      "position": {
+        "x": 3,
+        "y": 4,
+        "z": 3
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_147"
+    },
+    {
+      "id": "b_4_4_3",
+      "position": {
+        "x": 4,
+        "y": 4,
+        "z": 3
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_148"
+    },
+    {
+      "id": "b_5_4_3",
+      "position": {
+        "x": 5,
+        "y": 4,
+        "z": 3
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_149"
+    },
+    {
+      "id": "b_6_4_3",
+      "position": {
+        "x": 6,
+        "y": 4,
+        "z": 3
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_150"
+    },
+    {
+      "id": "b_0_4_4",
+      "position": {
+        "x": 0,
+        "y": 4,
+        "z": 4
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_151"
+    },
+    {
+      "id": "b_1_4_4",
+      "position": {
+        "x": 1,
+        "y": 4,
+        "z": 4
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_152"
+    },
+    {
+      "id": "b_2_4_4",
+      "position": {
+        "x": 2,
+        "y": 4,
+        "z": 4
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_153"
+    },
+    {
+      "id": "b_3_4_4",
+      "position": {
+        "x": 3,
+        "y": 4,
+        "z": 4
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_154"
+    },
+    {
+      "id": "b_4_4_4",
+      "position": {
+        "x": 4,
+        "y": 4,
+        "z": 4
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_155"
+    },
+    {
+      "id": "b_5_4_4",
+      "position": {
+        "x": 5,
+        "y": 4,
+        "z": 4
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_156"
+    },
+    {
+      "id": "b_6_4_4",
+      "position": {
+        "x": 6,
+        "y": 4,
+        "z": 4
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_157"
+    },
+    {
+      "id": "b_0_4_5",
+      "position": {
+        "x": 0,
+        "y": 4,
+        "z": 5
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_158"
+    },
+    {
+      "id": "b_1_4_5",
+      "position": {
+        "x": 1,
+        "y": 4,
+        "z": 5
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_159"
+    },
+    {
+      "id": "b_2_4_5",
+      "position": {
+        "x": 2,
+        "y": 4,
+        "z": 5
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_160"
+    },
+    {
+      "id": "b_3_4_5",
+      "position": {
+        "x": 3,
+        "y": 4,
+        "z": 5
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_161"
+    },
+    {
+      "id": "b_4_4_5",
+      "position": {
+        "x": 4,
+        "y": 4,
+        "z": 5
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_162"
+    },
+    {
+      "id": "b_5_4_5",
+      "position": {
+        "x": 5,
+        "y": 4,
+        "z": 5
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_163"
+    },
+    {
+      "id": "b_6_4_5",
+      "position": {
+        "x": 6,
+        "y": 4,
+        "z": 5
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_164"
+    },
+    {
+      "id": "b_0_4_6",
+      "position": {
+        "x": 0,
+        "y": 4,
+        "z": 6
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_165"
+    },
+    {
+      "id": "b_1_4_6",
+      "position": {
+        "x": 1,
+        "y": 4,
+        "z": 6
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_166"
+    },
+    {
+      "id": "b_2_4_6",
+      "position": {
+        "x": 2,
+        "y": 4,
+        "z": 6
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_167"
+    },
+    {
+      "id": "b_3_4_6",
+      "position": {
+        "x": 3,
+        "y": 4,
+        "z": 6
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_168"
+    },
+    {
+      "id": "b_4_4_6",
+      "position": {
+        "x": 4,
+        "y": 4,
+        "z": 6
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_169"
+    },
+    {
+      "id": "b_5_4_6",
+      "position": {
+        "x": 5,
+        "y": 4,
+        "z": 6
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_170"
+    },
+    {
+      "id": "b_6_4_6",
+      "position": {
+        "x": 6,
+        "y": 4,
+        "z": 6
+      },
+      "material": "oak_slab",
+      "label_ja": "オークのハーフブロック",
+      "orientation": {
+        "half": "bottom"
+      },
+      "phase": "roof",
+      "placement_id": "p_171"
+    },
+    {
+      "id": "b_3_1_6",
+      "position": {
+        "x": 3,
+        "y": 1,
+        "z": 6
+      },
+      "material": "oak_door",
+      "label_ja": "オークのドア・下半分",
+      "orientation": {
+        "part": "lower",
+        "hinge_world_side": "west",
+        "closed_span_axis": "x",
+        "passage_axis": "z",
+        "open": false
+      },
+      "assembly_id": "front_door",
+      "phase": "door",
+      "placement_id": "p_172"
+    },
+    {
+      "id": "b_3_2_6",
+      "position": {
+        "x": 3,
+        "y": 2,
+        "z": 6
+      },
+      "material": "oak_door",
+      "label_ja": "オークのドア・上半分",
+      "orientation": {
+        "part": "upper",
+        "hinge_world_side": "west",
+        "closed_span_axis": "x",
+        "passage_axis": "z",
+        "open": false
+      },
+      "assembly_id": "front_door",
+      "phase": "door",
+      "placement_id": "p_172"
+    },
+    {
+      "id": "b_1_1_1",
+      "position": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "material": "white_bed",
+      "label_ja": "白色のベッド・枕側",
+      "orientation": {
+        "part": "head",
+        "head_direction": "north"
+      },
+      "assembly_id": "bed_1",
+      "phase": "bed",
+      "placement_id": "p_173"
+    },
+    {
+      "id": "b_1_1_2",
+      "position": {
+        "x": 1,
+        "y": 1,
+        "z": 2
+      },
+      "material": "white_bed",
+      "label_ja": "白色のベッド・足側",
+      "orientation": {
+        "part": "foot",
+        "head_direction": "north"
+      },
+      "assembly_id": "bed_1",
+      "phase": "bed",
+      "placement_id": "p_173"
+    },
+    {
+      "id": "b_3_1_1",
+      "position": {
+        "x": 3,
+        "y": 1,
+        "z": 1
+      },
+      "material": "chest",
+      "label_ja": "ラージチェストA・西半分",
+      "orientation": {
+        "front": "south"
+      },
+      "assembly_id": "large_chest_A",
+      "phase": "storage",
+      "placement_id": "p_174"
+    },
+    {
+      "id": "b_4_1_1",
+      "position": {
+        "x": 4,
+        "y": 1,
+        "z": 1
+      },
+      "material": "chest",
+      "label_ja": "ラージチェストA・東半分",
+      "orientation": {
+        "front": "south"
+      },
+      "assembly_id": "large_chest_A",
+      "phase": "storage",
+      "placement_id": "p_175"
+    },
+    {
+      "id": "b_5_1_3",
+      "position": {
+        "x": 5,
+        "y": 1,
+        "z": 3
+      },
+      "material": "chest",
+      "label_ja": "ラージチェストB・北半分",
+      "orientation": {
+        "front": "west"
+      },
+      "assembly_id": "large_chest_B",
+      "phase": "storage",
+      "placement_id": "p_176"
+    },
+    {
+      "id": "b_5_1_4",
+      "position": {
+        "x": 5,
+        "y": 1,
+        "z": 4
+      },
+      "material": "chest",
+      "label_ja": "ラージチェストB・南半分",
+      "orientation": {
+        "front": "west"
+      },
+      "assembly_id": "large_chest_B",
+      "phase": "storage",
+      "placement_id": "p_177"
+    },
+    {
+      "id": "b_1_1_3",
+      "position": {
+        "x": 1,
+        "y": 1,
+        "z": 3
+      },
+      "material": "crafting_table",
+      "label_ja": "作業台",
+      "orientation": {},
+      "phase": "workstations",
+      "placement_id": "p_178"
+    },
+    {
+      "id": "b_1_1_4",
+      "position": {
+        "x": 1,
+        "y": 1,
+        "z": 4
+      },
+      "material": "furnace",
+      "label_ja": "かまど・鉱石用",
+      "orientation": {
+        "front": "east"
+      },
+      "phase": "workstations",
+      "placement_id": "p_179"
+    },
+    {
+      "id": "b_1_1_5",
+      "position": {
+        "x": 1,
+        "y": 1,
+        "z": 5
+      },
+      "material": "furnace",
+      "label_ja": "かまど・食料用",
+      "orientation": {
+        "front": "east"
+      },
+      "phase": "workstations",
+      "placement_id": "p_180"
+    },
+    {
+      "id": "b_2_2_7",
+      "position": {
+        "x": 2,
+        "y": 2,
+        "z": 7
+      },
+      "material": "torch",
+      "label_ja": "入口西側の壁付け松明",
+      "orientation": {
+        "mount": "wall"
+      },
+      "attachment": {
+        "support_position": {
+          "x": 2,
+          "y": 2,
+          "z": 6
+        },
+        "support_block_id": "b_2_2_6",
+        "support_face": "south"
+      },
+      "phase": "lighting",
+      "placement_id": "p_181"
+    },
+    {
+      "id": "b_4_2_7",
+      "position": {
+        "x": 4,
+        "y": 2,
+        "z": 7
+      },
+      "material": "torch",
+      "label_ja": "入口東側の壁付け松明",
+      "orientation": {
+        "mount": "wall"
+      },
+      "attachment": {
+        "support_position": {
+          "x": 4,
+          "y": 2,
+          "z": 6
+        },
+        "support_block_id": "b_4_2_6",
+        "support_face": "south"
+      },
+      "phase": "lighting",
+      "placement_id": "p_182"
+    },
+    {
+      "id": "b_1_3_3",
+      "position": {
+        "x": 1,
+        "y": 3,
+        "z": 3
+      },
+      "material": "torch",
+      "label_ja": "室内の壁付け松明",
+      "orientation": {
+        "mount": "wall"
+      },
+      "attachment": {
+        "support_position": {
+          "x": 0,
+          "y": 3,
+          "z": 3
+        },
+        "support_block_id": "b_0_3_3",
+        "support_face": "east"
+      },
+      "phase": "lighting",
+      "placement_id": "p_183"
+    },
+    {
+      "id": "b_5_3_3",
+      "position": {
+        "x": 5,
+        "y": 3,
+        "z": 3
+      },
+      "material": "torch",
+      "label_ja": "室内の壁付け松明",
+      "orientation": {
+        "mount": "wall"
+      },
+      "attachment": {
+        "support_position": {
+          "x": 6,
+          "y": 3,
+          "z": 3
+        },
+        "support_block_id": "b_6_3_3",
+        "support_face": "west"
+      },
+      "phase": "lighting",
+      "placement_id": "p_184"
+    }
+  ],
+  "placements": [
+    {
+      "id": "p_001",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "creates": [
+        "b_0_0_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_002",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "creates": [
+        "b_1_0_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_003",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 0,
+        "z": 0
+      },
+      "creates": [
+        "b_2_0_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_004",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 0,
+        "z": 0
+      },
+      "creates": [
+        "b_3_0_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_005",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 0,
+        "z": 0
+      },
+      "creates": [
+        "b_4_0_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_006",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 0,
+        "z": 0
+      },
+      "creates": [
+        "b_5_0_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_007",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 0,
+        "z": 0
+      },
+      "creates": [
+        "b_6_0_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_008",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "creates": [
+        "b_0_0_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_009",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 0,
+        "z": 1
+      },
+      "creates": [
+        "b_1_0_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_010",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 0,
+        "z": 1
+      },
+      "creates": [
+        "b_2_0_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_011",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 0,
+        "z": 1
+      },
+      "creates": [
+        "b_3_0_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_012",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 0,
+        "z": 1
+      },
+      "creates": [
+        "b_4_0_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_013",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 0,
+        "z": 1
+      },
+      "creates": [
+        "b_5_0_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_014",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 0,
+        "z": 1
+      },
+      "creates": [
+        "b_6_0_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_015",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 0,
+        "z": 2
+      },
+      "creates": [
+        "b_0_0_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_016",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 0,
+        "z": 2
+      },
+      "creates": [
+        "b_1_0_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_017",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 0,
+        "z": 2
+      },
+      "creates": [
+        "b_2_0_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_018",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 0,
+        "z": 2
+      },
+      "creates": [
+        "b_3_0_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_019",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 0,
+        "z": 2
+      },
+      "creates": [
+        "b_4_0_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_020",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 0,
+        "z": 2
+      },
+      "creates": [
+        "b_5_0_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_021",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 0,
+        "z": 2
+      },
+      "creates": [
+        "b_6_0_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_022",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 0,
+        "z": 3
+      },
+      "creates": [
+        "b_0_0_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_023",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 0,
+        "z": 3
+      },
+      "creates": [
+        "b_1_0_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_024",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 0,
+        "z": 3
+      },
+      "creates": [
+        "b_2_0_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_025",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 0,
+        "z": 3
+      },
+      "creates": [
+        "b_3_0_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_026",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 0,
+        "z": 3
+      },
+      "creates": [
+        "b_4_0_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_027",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 0,
+        "z": 3
+      },
+      "creates": [
+        "b_5_0_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_028",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 0,
+        "z": 3
+      },
+      "creates": [
+        "b_6_0_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_029",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 0,
+        "z": 4
+      },
+      "creates": [
+        "b_0_0_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_030",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 0,
+        "z": 4
+      },
+      "creates": [
+        "b_1_0_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_031",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 0,
+        "z": 4
+      },
+      "creates": [
+        "b_2_0_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_032",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 0,
+        "z": 4
+      },
+      "creates": [
+        "b_3_0_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_033",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 0,
+        "z": 4
+      },
+      "creates": [
+        "b_4_0_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_034",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 0,
+        "z": 4
+      },
+      "creates": [
+        "b_5_0_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_035",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 0,
+        "z": 4
+      },
+      "creates": [
+        "b_6_0_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_036",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 0,
+        "z": 5
+      },
+      "creates": [
+        "b_0_0_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_037",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 0,
+        "z": 5
+      },
+      "creates": [
+        "b_1_0_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_038",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 0,
+        "z": 5
+      },
+      "creates": [
+        "b_2_0_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_039",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 0,
+        "z": 5
+      },
+      "creates": [
+        "b_3_0_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_040",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 0,
+        "z": 5
+      },
+      "creates": [
+        "b_4_0_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_041",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 0,
+        "z": 5
+      },
+      "creates": [
+        "b_5_0_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_042",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 0,
+        "z": 5
+      },
+      "creates": [
+        "b_6_0_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_043",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 0,
+        "z": 6
+      },
+      "creates": [
+        "b_0_0_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_044",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 0,
+        "z": 6
+      },
+      "creates": [
+        "b_1_0_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_045",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 0,
+        "z": 6
+      },
+      "creates": [
+        "b_2_0_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_046",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 0,
+        "z": 6
+      },
+      "creates": [
+        "b_3_0_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_047",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 0,
+        "z": 6
+      },
+      "creates": [
+        "b_4_0_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_048",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 0,
+        "z": 6
+      },
+      "creates": [
+        "b_5_0_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_049",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 0,
+        "z": 6
+      },
+      "creates": [
+        "b_6_0_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_050",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 0,
+        "z": 7
+      },
+      "creates": [
+        "b_2_0_7"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_051",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 0,
+        "z": 7
+      },
+      "creates": [
+        "b_3_0_7"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_052",
+      "phase": "foundation",
+      "action": "place_item",
+      "item": "cobblestone",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 0,
+        "z": 7
+      },
+      "creates": [
+        "b_4_0_7"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_053",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_log",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "creates": [
+        "b_0_1_0"
+      ],
+      "depends_on": [],
+      "desired_axis": "y"
+    },
+    {
+      "id": "p_054",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 1,
+        "z": 0
+      },
+      "creates": [
+        "b_1_1_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_055",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 1,
+        "z": 0
+      },
+      "creates": [
+        "b_2_1_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_056",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 1,
+        "z": 0
+      },
+      "creates": [
+        "b_3_1_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_057",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 1,
+        "z": 0
+      },
+      "creates": [
+        "b_4_1_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_058",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 1,
+        "z": 0
+      },
+      "creates": [
+        "b_5_1_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_059",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_log",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 1,
+        "z": 0
+      },
+      "creates": [
+        "b_6_1_0"
+      ],
+      "depends_on": [],
+      "desired_axis": "y"
+    },
+    {
+      "id": "p_060",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 1,
+        "z": 1
+      },
+      "creates": [
+        "b_0_1_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_061",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 1,
+        "z": 1
+      },
+      "creates": [
+        "b_6_1_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_062",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 1,
+        "z": 2
+      },
+      "creates": [
+        "b_0_1_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_063",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 1,
+        "z": 2
+      },
+      "creates": [
+        "b_6_1_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_064",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 1,
+        "z": 3
+      },
+      "creates": [
+        "b_0_1_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_065",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 1,
+        "z": 3
+      },
+      "creates": [
+        "b_6_1_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_066",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 1,
+        "z": 4
+      },
+      "creates": [
+        "b_0_1_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_067",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 1,
+        "z": 4
+      },
+      "creates": [
+        "b_6_1_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_068",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 1,
+        "z": 5
+      },
+      "creates": [
+        "b_0_1_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_069",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 1,
+        "z": 5
+      },
+      "creates": [
+        "b_6_1_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_070",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_log",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 1,
+        "z": 6
+      },
+      "creates": [
+        "b_0_1_6"
+      ],
+      "depends_on": [],
+      "desired_axis": "y"
+    },
+    {
+      "id": "p_071",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 1,
+        "z": 6
+      },
+      "creates": [
+        "b_1_1_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_072",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 1,
+        "z": 6
+      },
+      "creates": [
+        "b_2_1_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_073",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 1,
+        "z": 6
+      },
+      "creates": [
+        "b_4_1_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_074",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 1,
+        "z": 6
+      },
+      "creates": [
+        "b_5_1_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_075",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_log",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 1,
+        "z": 6
+      },
+      "creates": [
+        "b_6_1_6"
+      ],
+      "depends_on": [],
+      "desired_axis": "y"
+    },
+    {
+      "id": "p_076",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_log",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 2,
+        "z": 0
+      },
+      "creates": [
+        "b_0_2_0"
+      ],
+      "depends_on": [],
+      "desired_axis": "y"
+    },
+    {
+      "id": "p_077",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 2,
+        "z": 0
+      },
+      "creates": [
+        "b_1_2_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_078",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 2,
+        "z": 0
+      },
+      "creates": [
+        "b_2_2_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_079",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 2,
+        "z": 0
+      },
+      "creates": [
+        "b_5_2_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_080",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_log",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 2,
+        "z": 0
+      },
+      "creates": [
+        "b_6_2_0"
+      ],
+      "depends_on": [],
+      "desired_axis": "y"
+    },
+    {
+      "id": "p_081",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 2,
+        "z": 1
+      },
+      "creates": [
+        "b_0_2_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_082",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 2,
+        "z": 1
+      },
+      "creates": [
+        "b_6_2_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_083",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 2,
+        "z": 3
+      },
+      "creates": [
+        "b_0_2_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_084",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 2,
+        "z": 3
+      },
+      "creates": [
+        "b_6_2_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_085",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 2,
+        "z": 5
+      },
+      "creates": [
+        "b_0_2_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_086",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 2,
+        "z": 5
+      },
+      "creates": [
+        "b_6_2_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_087",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_log",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 2,
+        "z": 6
+      },
+      "creates": [
+        "b_0_2_6"
+      ],
+      "depends_on": [],
+      "desired_axis": "y"
+    },
+    {
+      "id": "p_088",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 2,
+        "z": 6
+      },
+      "creates": [
+        "b_1_2_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_089",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 2,
+        "z": 6
+      },
+      "creates": [
+        "b_2_2_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_090",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 2,
+        "z": 6
+      },
+      "creates": [
+        "b_4_2_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_091",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 2,
+        "z": 6
+      },
+      "creates": [
+        "b_5_2_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_092",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_log",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 2,
+        "z": 6
+      },
+      "creates": [
+        "b_6_2_6"
+      ],
+      "depends_on": [],
+      "desired_axis": "y"
+    },
+    {
+      "id": "p_093",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_log",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 3,
+        "z": 0
+      },
+      "creates": [
+        "b_0_3_0"
+      ],
+      "depends_on": [],
+      "desired_axis": "y"
+    },
+    {
+      "id": "p_094",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 3,
+        "z": 0
+      },
+      "creates": [
+        "b_1_3_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_095",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 3,
+        "z": 0
+      },
+      "creates": [
+        "b_2_3_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_096",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 3,
+        "z": 0
+      },
+      "creates": [
+        "b_3_3_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_097",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 3,
+        "z": 0
+      },
+      "creates": [
+        "b_4_3_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_098",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 3,
+        "z": 0
+      },
+      "creates": [
+        "b_5_3_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_099",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_log",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 3,
+        "z": 0
+      },
+      "creates": [
+        "b_6_3_0"
+      ],
+      "depends_on": [],
+      "desired_axis": "y"
+    },
+    {
+      "id": "p_100",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 3,
+        "z": 1
+      },
+      "creates": [
+        "b_0_3_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_101",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 3,
+        "z": 1
+      },
+      "creates": [
+        "b_6_3_1"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_102",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 3,
+        "z": 2
+      },
+      "creates": [
+        "b_0_3_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_103",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 3,
+        "z": 2
+      },
+      "creates": [
+        "b_6_3_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_104",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 3,
+        "z": 3
+      },
+      "creates": [
+        "b_0_3_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_105",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 3,
+        "z": 3
+      },
+      "creates": [
+        "b_6_3_3"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_106",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 3,
+        "z": 4
+      },
+      "creates": [
+        "b_0_3_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_107",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 3,
+        "z": 4
+      },
+      "creates": [
+        "b_6_3_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_108",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 3,
+        "z": 5
+      },
+      "creates": [
+        "b_0_3_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_109",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 3,
+        "z": 5
+      },
+      "creates": [
+        "b_6_3_5"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_110",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_log",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 3,
+        "z": 6
+      },
+      "creates": [
+        "b_0_3_6"
+      ],
+      "depends_on": [],
+      "desired_axis": "y"
+    },
+    {
+      "id": "p_111",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 3,
+        "z": 6
+      },
+      "creates": [
+        "b_1_3_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_112",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 3,
+        "z": 6
+      },
+      "creates": [
+        "b_2_3_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_113",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 3,
+        "z": 6
+      },
+      "creates": [
+        "b_3_3_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_114",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 3,
+        "z": 6
+      },
+      "creates": [
+        "b_4_3_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_115",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_planks",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 3,
+        "z": 6
+      },
+      "creates": [
+        "b_5_3_6"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_116",
+      "phase": "shell",
+      "action": "place_item",
+      "item": "oak_log",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 3,
+        "z": 6
+      },
+      "creates": [
+        "b_6_3_6"
+      ],
+      "depends_on": [],
+      "desired_axis": "y"
+    },
+    {
+      "id": "p_117",
+      "phase": "windows",
+      "action": "place_item",
+      "item": "glass",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 2,
+        "z": 0
+      },
+      "creates": [
+        "b_3_2_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_118",
+      "phase": "windows",
+      "action": "place_item",
+      "item": "glass",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 2,
+        "z": 0
+      },
+      "creates": [
+        "b_4_2_0"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_119",
+      "phase": "windows",
+      "action": "place_item",
+      "item": "glass",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 2,
+        "z": 2
+      },
+      "creates": [
+        "b_0_2_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_120",
+      "phase": "windows",
+      "action": "place_item",
+      "item": "glass",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 2,
+        "z": 2
+      },
+      "creates": [
+        "b_6_2_2"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_121",
+      "phase": "windows",
+      "action": "place_item",
+      "item": "glass",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 2,
+        "z": 4
+      },
+      "creates": [
+        "b_0_2_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_122",
+      "phase": "windows",
+      "action": "place_item",
+      "item": "glass",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 2,
+        "z": 4
+      },
+      "creates": [
+        "b_6_2_4"
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "p_123",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 4,
+        "z": 0
+      },
+      "creates": [
+        "b_0_4_0"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_124",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 4,
+        "z": 0
+      },
+      "creates": [
+        "b_1_4_0"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_125",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 4,
+        "z": 0
+      },
+      "creates": [
+        "b_2_4_0"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_126",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 4,
+        "z": 0
+      },
+      "creates": [
+        "b_3_4_0"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_127",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 4,
+        "z": 0
+      },
+      "creates": [
+        "b_4_4_0"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_128",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 4,
+        "z": 0
+      },
+      "creates": [
+        "b_5_4_0"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_129",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 4,
+        "z": 0
+      },
+      "creates": [
+        "b_6_4_0"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_130",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 4,
+        "z": 1
+      },
+      "creates": [
+        "b_0_4_1"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_131",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 4,
+        "z": 1
+      },
+      "creates": [
+        "b_1_4_1"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_132",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 4,
+        "z": 1
+      },
+      "creates": [
+        "b_2_4_1"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_133",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 4,
+        "z": 1
+      },
+      "creates": [
+        "b_3_4_1"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_134",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 4,
+        "z": 1
+      },
+      "creates": [
+        "b_4_4_1"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_135",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 4,
+        "z": 1
+      },
+      "creates": [
+        "b_5_4_1"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_136",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 4,
+        "z": 1
+      },
+      "creates": [
+        "b_6_4_1"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_137",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 4,
+        "z": 2
+      },
+      "creates": [
+        "b_0_4_2"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_138",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 4,
+        "z": 2
+      },
+      "creates": [
+        "b_1_4_2"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_139",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 4,
+        "z": 2
+      },
+      "creates": [
+        "b_2_4_2"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_140",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 4,
+        "z": 2
+      },
+      "creates": [
+        "b_3_4_2"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_141",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 4,
+        "z": 2
+      },
+      "creates": [
+        "b_4_4_2"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_142",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 4,
+        "z": 2
+      },
+      "creates": [
+        "b_5_4_2"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_143",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 4,
+        "z": 2
+      },
+      "creates": [
+        "b_6_4_2"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_144",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 4,
+        "z": 3
+      },
+      "creates": [
+        "b_0_4_3"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_145",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 4,
+        "z": 3
+      },
+      "creates": [
+        "b_1_4_3"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_146",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 4,
+        "z": 3
+      },
+      "creates": [
+        "b_2_4_3"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_147",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 4,
+        "z": 3
+      },
+      "creates": [
+        "b_3_4_3"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_148",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 4,
+        "z": 3
+      },
+      "creates": [
+        "b_4_4_3"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_149",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 4,
+        "z": 3
+      },
+      "creates": [
+        "b_5_4_3"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_150",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 4,
+        "z": 3
+      },
+      "creates": [
+        "b_6_4_3"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_151",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 4,
+        "z": 4
+      },
+      "creates": [
+        "b_0_4_4"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_152",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 4,
+        "z": 4
+      },
+      "creates": [
+        "b_1_4_4"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_153",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 4,
+        "z": 4
+      },
+      "creates": [
+        "b_2_4_4"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_154",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 4,
+        "z": 4
+      },
+      "creates": [
+        "b_3_4_4"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_155",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 4,
+        "z": 4
+      },
+      "creates": [
+        "b_4_4_4"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_156",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 4,
+        "z": 4
+      },
+      "creates": [
+        "b_5_4_4"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_157",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 4,
+        "z": 4
+      },
+      "creates": [
+        "b_6_4_4"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_158",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 4,
+        "z": 5
+      },
+      "creates": [
+        "b_0_4_5"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_159",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 4,
+        "z": 5
+      },
+      "creates": [
+        "b_1_4_5"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_160",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 4,
+        "z": 5
+      },
+      "creates": [
+        "b_2_4_5"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_161",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 4,
+        "z": 5
+      },
+      "creates": [
+        "b_3_4_5"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_162",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 4,
+        "z": 5
+      },
+      "creates": [
+        "b_4_4_5"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_163",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 4,
+        "z": 5
+      },
+      "creates": [
+        "b_5_4_5"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_164",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 4,
+        "z": 5
+      },
+      "creates": [
+        "b_6_4_5"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_165",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 0,
+        "y": 4,
+        "z": 6
+      },
+      "creates": [
+        "b_0_4_6"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_166",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 4,
+        "z": 6
+      },
+      "creates": [
+        "b_1_4_6"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_167",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 4,
+        "z": 6
+      },
+      "creates": [
+        "b_2_4_6"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_168",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 4,
+        "z": 6
+      },
+      "creates": [
+        "b_3_4_6"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_169",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 4,
+        "z": 6
+      },
+      "creates": [
+        "b_4_4_6"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_170",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 4,
+        "z": 6
+      },
+      "creates": [
+        "b_5_4_6"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_171",
+      "phase": "roof",
+      "action": "place_item",
+      "item": "oak_slab",
+      "quantity": 1,
+      "target_position": {
+        "x": 6,
+        "y": 4,
+        "z": 6
+      },
+      "creates": [
+        "b_6_4_6"
+      ],
+      "depends_on": [],
+      "desired_half": "bottom"
+    },
+    {
+      "id": "p_172",
+      "phase": "door",
+      "action": "place_item",
+      "item": "oak_door",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 1,
+        "z": 6
+      },
+      "creates": [
+        "b_3_1_6",
+        "b_3_2_6"
+      ],
+      "depends_on": [
+        "p_046"
+      ],
+      "placement_look_direction": "north",
+      "desired_hinge_world_side": "west",
+      "instruction_ja": "南側から北を向き、床の上に1枚置く。上半分は自動生成。蝶番が西側にあることを確認する。",
+      "attachment": {
+        "support_position": {
+          "x": 3,
+          "y": 0,
+          "z": 6
+        },
+        "support_block_id": "b_3_0_6",
+        "support_face": "up"
+      }
+    },
+    {
+      "id": "p_173",
+      "phase": "bed",
+      "action": "place_item",
+      "item": "white_bed",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 1,
+        "z": 2
+      },
+      "creates": [
+        "b_1_1_2",
+        "b_1_1_1"
+      ],
+      "depends_on": [
+        "p_009",
+        "p_016"
+      ],
+      "placement_look_direction": "north",
+      "instruction_ja": "北を向き、足側(1,1,2)を指定して1台置く。枕側(1,1,1)は自動生成。",
+      "attachment": {
+        "support_position": {
+          "x": 1,
+          "y": 0,
+          "z": 2
+        },
+        "support_block_id": "b_1_0_2",
+        "support_face": "up"
+      }
+    },
+    {
+      "id": "p_174",
+      "phase": "storage",
+      "action": "place_item",
+      "item": "chest",
+      "quantity": 1,
+      "target_position": {
+        "x": 3,
+        "y": 1,
+        "z": 1
+      },
+      "creates": [
+        "b_3_1_1"
+      ],
+      "depends_on": [
+        "p_011"
+      ],
+      "placement_look_direction": "north",
+      "sneak": false,
+      "assembly_id": "large_chest_A",
+      "attachment": {
+        "support_position": {
+          "x": 3,
+          "y": 0,
+          "z": 1
+        },
+        "support_block_id": "b_3_0_1",
+        "support_face": "up"
+      }
+    },
+    {
+      "id": "p_175",
+      "phase": "storage",
+      "action": "place_item",
+      "item": "chest",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 1,
+        "z": 1
+      },
+      "creates": [
+        "b_4_1_1"
+      ],
+      "depends_on": [
+        "p_012",
+        "p_174"
+      ],
+      "placement_look_direction": "north",
+      "sneak": false,
+      "assembly_id": "large_chest_A",
+      "attachment": {
+        "support_position": {
+          "x": 4,
+          "y": 0,
+          "z": 1
+        },
+        "support_block_id": "b_4_0_1",
+        "support_face": "up"
+      }
+    },
+    {
+      "id": "p_176",
+      "phase": "storage",
+      "action": "place_item",
+      "item": "chest",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 1,
+        "z": 3
+      },
+      "creates": [
+        "b_5_1_3"
+      ],
+      "depends_on": [
+        "p_027"
+      ],
+      "placement_look_direction": "east",
+      "sneak": false,
+      "assembly_id": "large_chest_B",
+      "attachment": {
+        "support_position": {
+          "x": 5,
+          "y": 0,
+          "z": 3
+        },
+        "support_block_id": "b_5_0_3",
+        "support_face": "up"
+      }
+    },
+    {
+      "id": "p_177",
+      "phase": "storage",
+      "action": "place_item",
+      "item": "chest",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 1,
+        "z": 4
+      },
+      "creates": [
+        "b_5_1_4"
+      ],
+      "depends_on": [
+        "p_034",
+        "p_176"
+      ],
+      "placement_look_direction": "east",
+      "sneak": false,
+      "assembly_id": "large_chest_B",
+      "attachment": {
+        "support_position": {
+          "x": 5,
+          "y": 0,
+          "z": 4
+        },
+        "support_block_id": "b_5_0_4",
+        "support_face": "up"
+      }
+    },
+    {
+      "id": "p_178",
+      "phase": "workstations",
+      "action": "place_item",
+      "item": "crafting_table",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 1,
+        "z": 3
+      },
+      "creates": [
+        "b_1_1_3"
+      ],
+      "depends_on": [
+        "p_023"
+      ],
+      "attachment": {
+        "support_position": {
+          "x": 1,
+          "y": 0,
+          "z": 3
+        },
+        "support_block_id": "b_1_0_3",
+        "support_face": "up"
+      }
+    },
+    {
+      "id": "p_179",
+      "phase": "workstations",
+      "action": "place_item",
+      "item": "furnace",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 1,
+        "z": 4
+      },
+      "creates": [
+        "b_1_1_4"
+      ],
+      "depends_on": [
+        "p_030"
+      ],
+      "placement_look_direction": "west",
+      "attachment": {
+        "support_position": {
+          "x": 1,
+          "y": 0,
+          "z": 4
+        },
+        "support_block_id": "b_1_0_4",
+        "support_face": "up"
+      }
+    },
+    {
+      "id": "p_180",
+      "phase": "workstations",
+      "action": "place_item",
+      "item": "furnace",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 1,
+        "z": 5
+      },
+      "creates": [
+        "b_1_1_5"
+      ],
+      "depends_on": [
+        "p_037"
+      ],
+      "placement_look_direction": "west",
+      "attachment": {
+        "support_position": {
+          "x": 1,
+          "y": 0,
+          "z": 5
+        },
+        "support_block_id": "b_1_0_5",
+        "support_face": "up"
+      }
+    },
+    {
+      "id": "p_181",
+      "phase": "lighting",
+      "action": "place_item",
+      "item": "torch",
+      "quantity": 1,
+      "target_position": {
+        "x": 2,
+        "y": 2,
+        "z": 7
+      },
+      "creates": [
+        "b_2_2_7"
+      ],
+      "depends_on": [
+        "p_089"
+      ],
+      "attachment": {
+        "support_position": {
+          "x": 2,
+          "y": 2,
+          "z": 6
+        },
+        "support_block_id": "b_2_2_6",
+        "support_face": "south"
+      },
+      "instruction_ja": "support_positionのブロックのsupport_face面を指定し、壁付けの松明を1本置く。"
+    },
+    {
+      "id": "p_182",
+      "phase": "lighting",
+      "action": "place_item",
+      "item": "torch",
+      "quantity": 1,
+      "target_position": {
+        "x": 4,
+        "y": 2,
+        "z": 7
+      },
+      "creates": [
+        "b_4_2_7"
+      ],
+      "depends_on": [
+        "p_090"
+      ],
+      "attachment": {
+        "support_position": {
+          "x": 4,
+          "y": 2,
+          "z": 6
+        },
+        "support_block_id": "b_4_2_6",
+        "support_face": "south"
+      },
+      "instruction_ja": "support_positionのブロックのsupport_face面を指定し、壁付けの松明を1本置く。"
+    },
+    {
+      "id": "p_183",
+      "phase": "lighting",
+      "action": "place_item",
+      "item": "torch",
+      "quantity": 1,
+      "target_position": {
+        "x": 1,
+        "y": 3,
+        "z": 3
+      },
+      "creates": [
+        "b_1_3_3"
+      ],
+      "depends_on": [
+        "p_104"
+      ],
+      "attachment": {
+        "support_position": {
+          "x": 0,
+          "y": 3,
+          "z": 3
+        },
+        "support_block_id": "b_0_3_3",
+        "support_face": "east"
+      },
+      "instruction_ja": "support_positionのブロックのsupport_face面を指定し、壁付けの松明を1本置く。"
+    },
+    {
+      "id": "p_184",
+      "phase": "lighting",
+      "action": "place_item",
+      "item": "torch",
+      "quantity": 1,
+      "target_position": {
+        "x": 5,
+        "y": 3,
+        "z": 3
+      },
+      "creates": [
+        "b_5_3_3"
+      ],
+      "depends_on": [
+        "p_105"
+      ],
+      "attachment": {
+        "support_position": {
+          "x": 6,
+          "y": 3,
+          "z": 3
+        },
+        "support_block_id": "b_6_3_3",
+        "support_face": "west"
+      },
+      "instruction_ja": "support_positionのブロックのsupport_face面を指定し、壁付けの松明を1本置く。"
+    }
+  ],
+  "clearance": {
+    "required_air": [
+      {
+        "x": 2,
+        "y": 1,
+        "z": 1
+      },
+      {
+        "x": 5,
+        "y": 1,
+        "z": 1
+      },
+      {
+        "x": 2,
+        "y": 1,
+        "z": 2
+      },
+      {
+        "x": 3,
+        "y": 1,
+        "z": 2
+      },
+      {
+        "x": 4,
+        "y": 1,
+        "z": 2
+      },
+      {
+        "x": 5,
+        "y": 1,
+        "z": 2
+      },
+      {
+        "x": 2,
+        "y": 1,
+        "z": 3
+      },
+      {
+        "x": 3,
+        "y": 1,
+        "z": 3
+      },
+      {
+        "x": 4,
+        "y": 1,
+        "z": 3
+      },
+      {
+        "x": 2,
+        "y": 1,
+        "z": 4
+      },
+      {
+        "x": 3,
+        "y": 1,
+        "z": 4
+      },
+      {
+        "x": 4,
+        "y": 1,
+        "z": 4
+      },
+      {
+        "x": 2,
+        "y": 1,
+        "z": 5
+      },
+      {
+        "x": 3,
+        "y": 1,
+        "z": 5
+      },
+      {
+        "x": 4,
+        "y": 1,
+        "z": 5
+      },
+      {
+        "x": 5,
+        "y": 1,
+        "z": 5
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "z": 1
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "z": 1
+      },
+      {
+        "x": 3,
+        "y": 2,
+        "z": 1
+      },
+      {
+        "x": 4,
+        "y": 2,
+        "z": 1
+      },
+      {
+        "x": 5,
+        "y": 2,
+        "z": 1
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "z": 2
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "z": 2
+      },
+      {
+        "x": 3,
+        "y": 2,
+        "z": 2
+      },
+      {
+        "x": 4,
+        "y": 2,
+        "z": 2
+      },
+      {
+        "x": 5,
+        "y": 2,
+        "z": 2
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "z": 3
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "z": 3
+      },
+      {
+        "x": 3,
+        "y": 2,
+        "z": 3
+      },
+      {
+        "x": 4,
+        "y": 2,
+        "z": 3
+      },
+      {
+        "x": 5,
+        "y": 2,
+        "z": 3
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "z": 4
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "z": 4
+      },
+      {
+        "x": 3,
+        "y": 2,
+        "z": 4
+      },
+      {
+        "x": 4,
+        "y": 2,
+        "z": 4
+      },
+      {
+        "x": 5,
+        "y": 2,
+        "z": 4
+      },
+      {
+        "x": 1,
+        "y": 2,
+        "z": 5
+      },
+      {
+        "x": 2,
+        "y": 2,
+        "z": 5
+      },
+      {
+        "x": 3,
+        "y": 2,
+        "z": 5
+      },
+      {
+        "x": 4,
+        "y": 2,
+        "z": 5
+      },
+      {
+        "x": 5,
+        "y": 2,
+        "z": 5
+      },
+      {
+        "x": 1,
+        "y": 3,
+        "z": 1
+      },
+      {
+        "x": 2,
+        "y": 3,
+        "z": 1
+      },
+      {
+        "x": 3,
+        "y": 3,
+        "z": 1
+      },
+      {
+        "x": 4,
+        "y": 3,
+        "z": 1
+      },
+      {
+        "x": 5,
+        "y": 3,
+        "z": 1
+      },
+      {
+        "x": 1,
+        "y": 3,
+        "z": 2
+      },
+      {
+        "x": 2,
+        "y": 3,
+        "z": 2
+      },
+      {
+        "x": 3,
+        "y": 3,
+        "z": 2
+      },
+      {
+        "x": 4,
+        "y": 3,
+        "z": 2
+      },
+      {
+        "x": 5,
+        "y": 3,
+        "z": 2
+      },
+      {
+        "x": 2,
+        "y": 3,
+        "z": 3
+      },
+      {
+        "x": 3,
+        "y": 3,
+        "z": 3
+      },
+      {
+        "x": 4,
+        "y": 3,
+        "z": 3
+      },
+      {
+        "x": 1,
+        "y": 3,
+        "z": 4
+      },
+      {
+        "x": 2,
+        "y": 3,
+        "z": 4
+      },
+      {
+        "x": 3,
+        "y": 3,
+        "z": 4
+      },
+      {
+        "x": 4,
+        "y": 3,
+        "z": 4
+      },
+      {
+        "x": 5,
+        "y": 3,
+        "z": 4
+      },
+      {
+        "x": 1,
+        "y": 3,
+        "z": 5
+      },
+      {
+        "x": 2,
+        "y": 3,
+        "z": 5
+      },
+      {
+        "x": 3,
+        "y": 3,
+        "z": 5
+      },
+      {
+        "x": 4,
+        "y": 3,
+        "z": 5
+      },
+      {
+        "x": 5,
+        "y": 3,
+        "z": 5
+      },
+      {
+        "x": 3,
+        "y": 1,
+        "z": 7
+      },
+      {
+        "x": 3,
+        "y": 2,
+        "z": 7
+      }
+    ]
+  },
+  "completion_checks_ja": [
+    "松明が室内2本・入口外側2本の計4本あり、指定の壁面に付いている。",
+    "ドアは南北に通行でき、閉じた状態の蝶番が西側にある。",
+    "ベッドは北枕で、東隣の立ち場所とその上が空いている。",
+    "AとBがそれぞれラージチェストになっており、両方のふたが開く。",
+    "かまど2台の正面は東を向いている。",
+    "屋根49マスがすべて下付きハーフブロックである。",
+    "ベッドを使い、リスポーン地点が設定されたことを確認する。"
+  ],
+  "validation": {
+    "json_parsed": true,
+    "coordinate_conflicts": 0,
+    "blueprint_checked": true,
+    "in_game_build_executed": false
+  }
+}

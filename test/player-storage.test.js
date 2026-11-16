@@ -14,7 +14,7 @@ test('rubble, the stone over the reserve and worn pickaxes are stored; valuables
     ['iron_pickaxe', 1, 9, { maxDurability: 250, durabilityUsed: 4 }], ['stone_pickaxe', 1, 10, { maxDurability: 131, durabilityUsed: 129 }]
   ]))
   const by = Object.fromEntries(list.map(item => [item.slot, item.count]))
-  assert.deepEqual(by, { 1: 28, 3: 64, 4: 20, 5: 8, 10: 1 })
+  assert.deepEqual(by, { 1: 20, 3: 64, 4: 20, 5: 8, 10: 1 }) // 72 cobblestone kept (starter house)
   // The last working pickaxe is never stored, even worn.
   assert.deepEqual(storable(inv([['stone_pickaxe', 1, 0, { maxDurability: 131, durabilityUsed: 129 }]])), [])
   assert.deepEqual(storable({ known: false, items: [] }), [])
