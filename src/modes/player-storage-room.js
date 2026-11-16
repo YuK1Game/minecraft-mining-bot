@@ -79,7 +79,7 @@ function pocketCell (getBlock, feet, inventory, placing, refused, avoid = []) {
   return soft ? { cell: soft.cell, bare: true } : null
 }
 
-async function makeRoom ({ hands, getBlock, getFeet, getInventory, avoid = [], say = () => {}, mine = null, dig = null }) {
+async function makeRoom ({ hands, getBlock, getFeet, getInventory, avoid = [], say = () => {}, mine = null, dig = null, why = () => null }) {
   if (free(getInventory()) >= 1) return true
   const stack = pick(getInventory())
   if (!stack) { say('持ち物に空きを作れません（置ける16個以下の石材がありません）'); return false }
@@ -95,7 +95,7 @@ async function makeRoom ({ hands, getBlock, getFeet, getInventory, avoid = [], s
       const held = wall.bare ? (await hands.hold?.(stack.name)) !== false : true
       const opened = held && (wall.bare ? await dig(wall.cell) : await mine(wall.cell))
       if (opened) pockets++
-      else { refused.add(`${wall.cell.x},${wall.cell.y},${wall.cell.z}`); note.push(`${held ? '掘れない' : '持ち替えできない'} ${wall.cell.x},${wall.cell.y},${wall.cell.z}`) }
+      else { refused.add(`${wall.cell.x},${wall.cell.y},${wall.cell.z}`); note.push(`${held ? '掘れない' : '持ち替えできない'} ${wall.cell.x},${wall.cell.y},${wall.cell.z}${held && why() ? ` ${String(why()).slice(0, 80)}` : ''}`) }
       continue
     }
     if (!await hands.place(cell, stack.name)) { tried.add(`${cell.x},${cell.y},${cell.z}`); note.push(`置けない ${cell.x},${cell.y},${cell.z}`) }
