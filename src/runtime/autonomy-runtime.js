@@ -100,7 +100,9 @@ function createAutonomyRuntime (rt) {
         const state = rt.observedState()
         const { preview, window } = rt.checkNutritionDispatch(state, decision)
         if (preview.code === 'FOOD_ALREADY_AVAILABLE') return { ok: true, phase: 'observed', foodAvailable: true, serverConfirmed: true, collected: false }
-        return rt.foraging.execute(window === 'night' ? { targetRuntimeId: preview.target.runtimeId } : {}, { signal: context.signal })
+        // In play, one batch chases the animal to the end (foraging.js MAX_BATCH).
+        const batch = rt.host.shared.botMode === 'player' && rt.host.shared.playerWanted === true ? { maxSteps: 8, maxHits: 8 } : {}
+        return rt.foraging.execute(window === 'night' ? { ...batch, targetRuntimeId: preview.target.runtimeId } : batch, { signal: context.signal })
       },
       eat: async (decision, context) => { rt.requireIdle(); const stop = () => rt.food.cancel('食事を中断しました。'); context.signal?.addEventListener('abort', stop, { once: true }); try { return await rt.food.eat({ slot: decision.slot, ...(decision.allowEmergencyRotten === true ? { allowEmergencyRotten: true } : {}) }) } finally { context.signal?.removeEventListener('abort', stop) } }
     },

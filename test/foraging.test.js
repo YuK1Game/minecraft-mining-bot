@@ -207,7 +207,7 @@ test('a hung movement is bounded by the real batch timeout and existing food is 
   assert.equal(result.foodAvailable, true)
   assert.equal(result.foodGained, 0)
   assert.equal(available.moves.length, 0)
-  await assert.rejects(available.foraging.execute({ maxSteps: 4 }), error => error.code === 'INVALID_LIMIT')
+  await assert.rejects(available.foraging.execute({ maxSteps: 9 }), error => error.code === 'INVALID_LIMIT')
 })
 
 test('an observed hunt can lead to a newly received drop, but completion waits until the subsequent actual pickup', async () => {

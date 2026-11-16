@@ -34,6 +34,11 @@ class ForagingError extends Error {
   constructor (message, code, details = {}) { super(message); this.code = code; Object.assign(this, details) }
 }
 
+// Moves and hits per batch: 3 by default; up to 8 so that one batch chases one
+// animal to the end (player mode; live 2026-11-17 03:00 JST: 1.4-1.7 s between
+// batches of 3, the sheep ran off each time).
+const BATCH = 3, MAX_BATCH = 8
+
 function createForaging ({ getState, world, entities, movement, getMovement, combat, verifyQueuedLanding = null, onProgress = () => {}, clock = Date.now, delay = (ms, signal) => sleep(ms, undefined, { signal }) }) {
   if (verifyQueuedLanding !== null && typeof verifyQueuedLanding !== 'function' || typeof getState !== 'function' || typeof world?.getBlock !== 'function' || typeof entities?.snapshot !== 'function' || typeof getMovement !== 'function' || ['preview', 'start', 'stop'].some(method => typeof movement?.[method] !== 'function') || ['previewHunt', 'hunt', 'cancel'].some(method => typeof combat?.[method] !== 'function') || [onProgress, clock, delay].some(value => typeof value !== 'function')) throw new Error('食料探しには実観測、既知地形、陸上移動と狩りの実行器が必要です。')
   const history = new Map()
@@ -127,7 +132,7 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
       if (targetRuntimeId !== null && !selected) throw new ForagingError('指定された食料源は未観測・不適格・除外中です。別の動物へは切り替えません。', 'FORAGING_TARGET_UNAVAILABLE')
       if (foodCount(observation.state)) return { ready: false, code: 'FOOD_ALREADY_AVAILABLE', recommendation: 'eat' }
       if (!selected) return { ready: false, code: 'NO_KNOWN_FOOD_SOURCE', capability: 'food_source_observation', errors: ['観測済みの対応食料か、保護されていない牛・豚・羊が必要です。'] }
-      return { ready: true, ...(targetRuntimeId === null ? {} : { requestedTargetRuntimeId: targetRuntimeId }), kind: selected.kind, target: { runtimeId: String(idOf(selected.entity)), name: selected.kind === 'drop' ? selected.entity.name : typeOf(selected.entity), position: copy(selected.entity.position), ...(selected.kind === 'prey' && chickenYield(selected.entity) ? { yieldRisk: chickenYield(selected.entity) } : {}) }, distance: spatial(observation.state.position, selected.entity.position), maxSteps: 3, maxHits: 3, maxDurationMs: 30000 }
+      return { ready: true, ...(targetRuntimeId === null ? {} : { requestedTargetRuntimeId: targetRuntimeId }), kind: selected.kind, target: { runtimeId: String(idOf(selected.entity)), name: selected.kind === 'drop' ? selected.entity.name : typeOf(selected.entity), position: copy(selected.entity.position), ...(selected.kind === 'prey' && chickenYield(selected.entity) ? { yieldRisk: chickenYield(selected.entity) } : {}) }, distance: spatial(observation.state.position, selected.entity.position), maxSteps: BATCH, maxHits: BATCH, maxDurationMs: 30000 }
     } catch (error) { return { ready: false, code: error.code, recommendation: error.recommendation, errors: [error.message] } }
   }
   function chooseForRun (run, observation) {
@@ -376,9 +381,9 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
     entry.failures++; entry.blockedUntil = clock() + milliseconds; entry.reason = reason
     if (continuation?.pin.runtimeId === String(idOf(entity))) continuation = null
   }
-  async function execute ({ targetRuntimeId, maxSteps = 3, maxHits = 3, timeoutMs = 30000 } = {}, { signal } = {}) {
+  async function execute ({ targetRuntimeId, maxSteps = BATCH, maxHits = BATCH, timeoutMs = 30000 } = {}, { signal } = {}) {
     if (active) throw new ForagingError('前の食料探しが進行中です。', 'BUSY')
-    if (!Number.isInteger(maxSteps) || maxSteps < 0 || maxSteps > 3 || !Number.isInteger(maxHits) || maxHits < 0 || maxHits > 3 || !Number.isFinite(timeoutMs) || timeoutMs < 100 || timeoutMs > 30000) throw new ForagingError('食料探しは30秒、移動3回・攻撃3打以内です。', 'INVALID_LIMIT')
+    if (!Number.isInteger(maxSteps) || maxSteps < 0 || maxSteps > MAX_BATCH || !Number.isInteger(maxHits) || maxHits < 0 || maxHits > MAX_BATCH || !Number.isFinite(timeoutMs) || timeoutMs < 100 || timeoutMs > 30000) throw new ForagingError(`食料探しは30秒、移動${MAX_BATCH}回・攻撃${MAX_BATCH}打以内です。`, 'INVALID_LIMIT')
     const requestedId = requestedTarget(targetRuntimeId)
     let initial
     try { initial = observe() } catch (error) { continuation = null; throw error }
@@ -419,7 +424,10 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
             const result = await call(run, () => combat.hunt(String(idOf(target))))
             if (result?.phase !== 'observed') { cooldown(target, 30000, 'hunt_unconfirmed'); status.reason = '狩りのサーバー反応が未確認のため別の食料源へ戻ります。'; break }
             if (run.pin?.kind === 'prey' && String(result.targetRuntimeId) === run.pin.runtimeId && ['death_animation', 'target_removed'].includes(result.reaction)) run.pin.terminalObserved = true
-            await pause(run, 350)
+            // No extra rest after a confirmed hit: the next swing waits only
+            // for the attack interval (user 2026-11-17 02:59 JST: 「ニワトリを
+            // 攻撃したあと、何秒か待ってから攻撃を再開している」).
+            await pause(run, 50)
             continue
           }
         } else {
@@ -492,4 +500,4 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
   return { preview, execute, stop, snapshot }
 }
 
-module.exports = { createForaging, ForagingError }
+module.exports = { MAX_BATCH, createForaging, ForagingError }

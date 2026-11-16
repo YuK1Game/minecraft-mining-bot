@@ -162,7 +162,7 @@ function createCombat ({ client, getState, world, entities, crafting, getInput, 
   function previewFor (runtimeId, purpose) {
     try {
       const target = plan(runtimeId, purpose)
-      return { ready: true, target: { runtimeId: target.entity.runtimeId, name: target.entity.entityType, position: target.entity.position, aimPoint: target.aimPoint }, distance: target.distance, slot: target.slot, ...(purpose === 'hunt' ? { purpose: 'food', collected: false, ...(target.entity.entityType === 'minecraft:chicken' ? { yieldRisk: { foodYieldConfirmed: false, age: target.entity.isBaby === false || target.entity.baby === false ? 'observed_nonbaby' : 'unknown' } } : {}) } : {}), cooldownRemainingMs: Math.max(0, cooldownMs - (now() - lastAttackAt)) }
+      return { ready: true, target: { runtimeId: target.entity.runtimeId, name: target.entity.entityType, position: target.entity.position, aimPoint: target.aimPoint }, distance: target.distance, slot: target.slot, ...(purpose === 'hunt' ? { purpose: 'food', collected: false, ...(target.entity.entityType === 'minecraft:chicken' ? { yieldRisk: { foodYieldConfirmed: false, age: target.entity.isBaby === false || target.entity.baby === false ? 'observed_nonbaby' : 'unknown' } } : {}) } : {}), cooldownRemainingMs: Math.max(0, (purpose === 'hunt' ? engagementCooldownMs : cooldownMs) - (now() - lastAttackAt)) }
     } catch (error) { return { ready: false, errors: [error.message], recommendation: 'avoid' } }
   }
   const preview = runtimeId => previewFor(runtimeId, 'defense')
@@ -245,7 +245,7 @@ function createCombat ({ client, getState, world, entities, crafting, getInput, 
   }
   async function attackOnce (runtimeId, { internal = false, deadline = Infinity, purpose = 'defense', signal, allowDistantRanged = false, allowDistantZombie = false, allowGuardedGroup = false, allowCritical = false, allowEmergencyCreeper = false } = {}) {
     if (busy || (defending || engagement) && !internal) throw new Error('前の自衛操作が終了するまで待ってください。')
-    if (now() - lastAttackAt < (purpose === 'engage' ? engagementInterval(engagement?.allowUnarmed === true) : cooldownMs)) throw new Error('連打を避けるため次の攻撃まで待ってください。')
+    if (now() - lastAttackAt < (purpose === 'engage' ? engagementInterval(engagement?.allowUnarmed === true) : purpose === 'hunt' ? engagementCooldownMs : cooldownMs)) throw new Error('連打を避けるため次の攻撃まで待ってください。')
     if (allowEmergencyCreeper && (purpose !== 'emergency' || allowDistantRanged || allowDistantZombie || allowGuardedGroup || allowCritical)) throw new Error('クリーパー自衛は単独対象のみです。')
     const original = purpose === 'engage' ? engagementTarget(engagement, 2.8) : plan(runtimeId, purpose, { maxDistance: purpose === 'water_creeper' ? 3.2 : purpose === 'emergency' && allowCritical ? 2.95 : 2.8, allowEmergencySpider: purpose === 'emergency' && (allowDistantZombie || allowGuardedGroup), allowEmergencyCreeper, allowCritical })
     const lifeScope = state => JSON.stringify([state.profile ?? null, state.realm?.id ?? null, state.dimension, state.connectionId ?? null, state.startedAt ?? null, String(state.runtimeEntityId), state.lifecycle?.deathId ?? state.deathId ?? null])
