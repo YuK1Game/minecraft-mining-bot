@@ -131,7 +131,10 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
       heading = grass ? Math.atan2(grass.z - Math.floor(position.z), grass.x - Math.floor(position.x)) : 0
     }
     // From a tunnel the trees stand overhead: first out to the open sky (player-surface.js).
-    const under = !goal && wood && underCover(getBlock, position)
+    // Any search walk too: the long walk only crosses open ground (real Realm
+    // 2026-11-17 01:00-01:04 JST: at y -50 in a dug tunnel, the walk to look
+    // elsewhere answered 「歩ける中継点が見つかりません」 every 5 s for four minutes).
+    const under = !goal && underCover(getBlock, position)
     const destination = goal ? { x: goal.x, z: goal.z } : under ? surfaceAhead(position, tree, heading) : tree ? { x: tree.x, z: tree.z } : aheadPoint(position, heading)
     if (tree && !under) visited = [...visited.slice(-15), destination]
     reason = under ? `地下にいるため、先に地上へ出ます（(${destination.x}, ${destination.z}) の方向）。` : goal?.label ? `${goal.label} (${destination.x}, ${destination.z}) へ歩いて近づきます。` : goal ? `次の作業の場所 (${destination.x}, ${destination.z}) が遠いため、そこへ移動しています。` : tree ? `木が見える (${destination.x}, ${destination.z}) へ移動しています。` : `近くに${wood ? '木' : '資源'}が見つからないため、(${destination.x}, ${destination.z}) へ移動して探します。`
