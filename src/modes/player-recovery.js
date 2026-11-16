@@ -67,7 +67,7 @@ function farTarget (snapshot, position) {
 const stationMove = snapshot => snapshot?.lastDecision?.type === 'move_to' && ['crafting_table', 'table', 'furnace'].includes(snapshot.lastDecision.resource ?? snapshot.lastDecision.stage)
 const seeksWood = snapshot => snapshot?.lastDecision?.type === 'explore' && snapshot.lastDecision.resource === 'logs'
 
-function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, prey = null, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
   let run = null, trips = 0, pauses = 0, heading = null, logsSeen = 0, reason = null, visited = []
   const live = token => run === token && !disposed() && normalizeMode(getMode()) === 'player'
 
@@ -109,7 +109,7 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, h
     const under = !goal && wood && underCover(getBlock, position)
     const destination = goal ? { x: goal.x, z: goal.z } : under ? surfaceAhead(position, tree, heading) : tree ? { x: tree.x, z: tree.z } : aheadPoint(position, heading)
     if (tree && !under) visited = [...visited.slice(-15), destination]
-    reason = under ? `地下にいるため、先に地上へ出ます（(${destination.x}, ${destination.z}) の方向）。` : goal ? `次の作業の場所 (${destination.x}, ${destination.z}) が遠いため、そこへ移動しています。` : tree ? `木が見える (${destination.x}, ${destination.z}) へ移動しています。` : `近くに${wood ? '木' : '資源'}が見つからないため、(${destination.x}, ${destination.z}) へ移動して探します。`
+    reason = under ? `地下にいるため、先に地上へ出ます（(${destination.x}, ${destination.z}) の方向）。` : goal?.label ? `${goal.label} (${destination.x}, ${destination.z}) へ歩いて近づきます。` : goal ? `次の作業の場所 (${destination.x}, ${destination.z}) が遠いため、そこへ移動しています。` : tree ? `木が見える (${destination.x}, ${destination.z}) へ移動しています。` : `近くに${wood ? '木' : '資源'}が見つからないため、(${destination.x}, ${destination.z}) へ移動して探します。`
     // No walk leads out of a closed tunnel: straight up first (player-climb.js); the walk below is the fallback.
     if (under && climb) {
       reason = '地下にいるため、真上へ掘って地上へ出ます。'
@@ -169,6 +169,18 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, h
     // ore 113 m off, "outside the bounded tunneling area", three stops in a
     // row): walk there first, then go on. Once there the distance is short, so
     // the same place is not walked to twice.
+    // The food source cannot be walked to by the forage's own short steps
+    // (real Realm 2026-11-16 10:02-10:34 JST: a cow 21 m away, every step
+    // refused with 「Partial recenter lacks bounded known support」, twelve
+    // stops in half an hour without moving): the long trip walks next to it.
+    const food = !search && snapshot.lastDecision?.type === 'forage' && prey ? (() => { try { return prey() } catch { return null } })() : null
+    const here = getPosition()
+    if (food && here && [food.x, food.z].every(Number.isFinite) && Math.hypot(food.x - here.x, food.z - here.z) > 6 && trips < TRIP_LIMIT) {
+      trips++
+      await trip(token, snapshot, { x: Math.floor(food.x), z: Math.floor(food.z), label: '食料源' })
+      if (!live(token) || held()) return false
+      return restart(token, { ...agent.objective })
+    }
     const far = farTarget(snapshot, getPosition())
     if (!search && far && trips < TRIP_LIMIT) {
       trips++
