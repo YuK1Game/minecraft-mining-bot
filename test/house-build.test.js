@@ -148,3 +148,23 @@ test('no site nearby: walks about 80 m on and looks again there', async () => {
   const porch = { x: shared.playerHouse.origin.x + 3.5, z: shared.playerHouse.origin.z + 8.5 }
   assert.ok(walks.length && Math.hypot(walks[0].x - porch.x, walks[0].z - porch.z) <= 4, JSON.stringify(walks[0]))
 })
+
+test('far from the porch: hops about 9 m at a time over received ground, then builds', async () => {
+  const w = world()
+  const feet = { x: 30.5, y: 64, z: 8.5 }
+  const inventory = { known: true, items: [['wooden_pickaxe', 1], ['oak_log', 44], ['cobblestone', 68]].map(([name, count], slot) => ({ name: `minecraft:${name}`, count, slot })) }
+  const shared = { playerWanted: true, playerHouse: { origin: { x: 0, y: 64, z: 0 }, done: false } }
+  const walks = [], lines = []
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {},
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    ports: { craft: async () => false, smelt: async () => 0, place: async () => false, mine: async () => true, why: () => null },
+    hands: { walk: async stand => { walks.push(stand); if (Math.hypot(stand.x - feet.x, stand.z - feet.z) > 16) return false; Object.assign(feet, stand); return true }, approach: async () => true, why: () => 'test' },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
+  })
+  await build.tick()
+  assert.ok(walks.length >= 3, JSON.stringify(walks))
+  assert.ok(Math.hypot(walks[0].x - 30.5, walks[0].z - 8.5) <= 11, JSON.stringify(walks[0]))
+  assert.ok(Math.hypot(feet.x - 3.5, feet.z - 8.5) <= 5, JSON.stringify(feet))
+})
