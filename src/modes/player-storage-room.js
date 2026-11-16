@@ -54,7 +54,7 @@ async function makeRoom ({ hands, getBlock, getFeet, getInventory, avoid = [], s
     if (!await hands.place(cell, stack.name)) tried.add(`${cell.x},${cell.y},${cell.z}`)
   }
   const ok = free(getInventory()) >= 1
-  say(ok ? `持ち物に空きを作るため、${stack.name.replace('minecraft:', '')} ${stack.count} 個を足元の横に置きました` : `持ち物に空きを作れません（${stack.name.replace('minecraft:', '')} を置ける場所がありません）`)
+  say(ok ? `持ち物に空きを作るため、${stack.name.replace('minecraft:', '')} ${stack.count} 個を足元の横に置きました` : `持ち物に空きを作れません（${stack.name.replace('minecraft:', '')} を置けません${hands.refusal?.() ? `: ${hands.refusal()}` : '。置ける場所がありません'}）`)
   return ok
 }
 

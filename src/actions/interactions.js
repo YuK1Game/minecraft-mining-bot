@@ -15,7 +15,11 @@ const RESTING = /(?:sand$|gravel$|concrete_powder$)/
 // One floor rule for the placement preview and storage site selection.
 const { placementSupportOk } = require('../quarry/storage/storage-site-terrain')
 const PLANKS = new Set(['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'poplar', 'bamboo', 'crimson', 'warped'].map(wood => `minecraft:${wood}_planks`))
-const PLACEABLE = new Set(['minecraft:crafting_table', 'minecraft:furnace', 'minecraft:chest', 'minecraft:cobblestone', 'minecraft:cobbled_deepslate', 'minecraft:dirt', 'minecraft:torch', ...PLANKS, ...SHULKER_BLOCKS])
+// Plain stone blocks are placed as themselves (the player's storage sets a
+// small stack down to free a slot; real Realm 2026-11-16 21:04-21:16 JST:
+// andesite was refused here every time, 「指定スロットの実アイテムは設置に対応していません」).
+const STONES = ['stone', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', 'deepslate', 'netherrack', 'sandstone'].map(name => `minecraft:${name}`)
+const PLACEABLE = new Set(['minecraft:crafting_table', 'minecraft:furnace', 'minecraft:chest', 'minecraft:cobblestone', 'minecraft:cobbled_deepslate', 'minecraft:dirt', 'minecraft:torch', ...STONES, ...PLANKS, ...SHULKER_BLOCKS])
 // Bedrock is a full, unbreakable block: the floor of a quarry dug to Y-59 (live
 // 2026-11-11 0:39, the exit pillar's first dirt was refused on it).
 const GROUND = new Set([...require('../common/standing-ground').STANDING_GROUND, 'bedrock'].map(name => `minecraft:${name}`))
