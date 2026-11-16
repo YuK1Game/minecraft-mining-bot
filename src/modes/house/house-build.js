@@ -61,15 +61,20 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
 
   async function save () {
     if (!file || !write) return
-    try { await write(file, { version: 1, origin: shared.playerHouse.origin, done: shared.playerHouse.done === true, savedAt: new Date(now()).toISOString() }) } catch { /* Kept in shared until the next save. */ }
+    try { await write(file, { version: 1, origin: shared.playerHouse.origin, done: shared.playerHouse.done === true, spawn: shared.playerHouse.spawn === true, savedAt: new Date(now()).toISOString() }) } catch { /* Kept in shared until the next save. */ }
   }
 
   function due () {
     const inventory = getInventory(), position = getPosition()
     if (!inventory || !position || !pending({ mode: getMode(), playing: shared.playerWanted === true, shared, state: { inventory } })) return false
     const origin = shared.playerHouse?.origin ?? null
-    const needs = houseNeeds(inventory, counts(origin ? remaining(getBlock, origin) : placements()))
-    return !!needs && needs.need.logs === 0 && needs.need.cobblestone === 0 && needs.need.sand === 0 && needs.need.wool === 0
+    const left = origin ? remaining(getBlock, origin) : placements()
+    const needs = houseNeeds(inventory, counts(left))
+    // Logs and cobblestone start it; the glass waits for sand and the bed for
+    // wool, so a house is not held back by a desert-less or sheep-less area
+    // (live 2026-11-17 03:32 JST: no sand in sight, the build never began).
+    if (!needs || needs.need.logs > 0 || needs.need.cobblestone > 0) return false
+    return left.some(step => step.item === 'glass' ? needs.need.sand === 0 : step.item === 'white_bed' ? needs.need.wool === 0 : true)
   }
 
   // The wood kind most held, for crafted wood.
@@ -199,11 +204,12 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     }
     const left = remaining(getBlock, origin)
     if (!left.length) {
-      shared.playerHouse = { origin, done: true }
+      shared.playerHouse = { ...shared.playerHouse, origin, done: true }
       await save()
       say(`拠点の家が完成しました (${origin.x}, ${origin.y}, ${origin.z})`)
-      try { await onDone(origin) } catch (error) { say(`拠点の家の仕上げ（拠点・ベッド）に失敗しました ${String(error?.message ?? error).slice(0, 80)}`) }
     } else say(`拠点の家: ${placed} 個置きました（残り ${left.length} 個）`)
+    // The chest A and the bed are used as soon as they stand, finished or not.
+    try { await onDone(origin) } catch (error) { say(`拠点の家の仕上げ（拠点・ベッド）に失敗しました ${String(error?.message ?? error).slice(0, 80)}`) }
     return placed
   }
 
@@ -236,7 +242,7 @@ function loadHouseSync (file, { io = fs } = {}) {
   try {
     const value = JSON.parse(String(io.readFileSync(file, 'utf8')).replace(/^\uFEFF/, ''))
     const origin = value?.origin
-    return origin && [origin.x, origin.y, origin.z].every(Number.isSafeInteger) ? { origin: { x: origin.x, y: origin.y, z: origin.z }, done: value.done === true } : null
+    return origin && [origin.x, origin.y, origin.z].every(Number.isSafeInteger) ? { origin: { x: origin.x, y: origin.y, z: origin.z }, done: value.done === true, spawn: value.spawn === true } : null
   } catch { return null }
 }
 
