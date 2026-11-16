@@ -147,16 +147,29 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   const tableAt = origin => { const step = placements(origin).find(s => s.id === 'p_178'); return matches('crafting_table', getBlock(step.position.x, step.position.y, step.position.z)) ? step.position : null }
   const furnaceAt = origin => placements(origin).filter(s => s.item === 'furnace').map(s => s.position).find(at => matches('furnace', getBlock(at.x, at.y, at.z))) ?? null
 
+  // Why the last make() came back empty-handed with no port reason (live
+  // 2026-11-17 08:04 JST: 「white_bed を用意できません」 with no reason at all).
+  let lack = null
   async function near (cell) {
     const feet = getFeet()
     if (feet && eyeTo(cell, feet) <= 4) return true
     const stand = stands(getBlock, { position: cell, item: 'crafting_table' }, { clicked: cell, face: 1, clickY: null }, feet ?? cell, { reach: 3.8, radius: 3 })[0]
-    return !!stand && await hands.walk(stand) && eyeTo(cell, getFeet()) <= 4.5
+    if (!stand) { lack = `(${cell.x}, ${cell.y}, ${cell.z}) の近くに立てる場所がありません`; return false }
+    if (!await hands.walk(stand)) { lack = `(${cell.x}, ${cell.y}, ${cell.z}) へ歩けません: ${hands.why?.() ?? '不明'}`; return false }
+    if (eyeTo(cell, getFeet()) > 4.5) { lack = `(${cell.x}, ${cell.y}, ${cell.z}) に届きません`; return false }
+    return true
   }
 
   // Makes what `step` places when none is held. True when one is held.
   async function make (step, origin, left) {
+    lack = null
     if (held(ITEM[step.item]) > 0) return true
+    const made = await making(step, origin, left)
+    if (!made && !lack) lack = step.item === 'white_bed' && bestWool(items()) < 3 ? '同じ色の羊毛が3個ありません' : step.item === 'oak_log' ? '原木を持っていません' : !tableAt(origin) ? '作業台がありません' : '理由不明'
+    return made
+  }
+
+  async function making (step, origin, left) {
     const table = tableAt(origin)
     // Opening the table needs a line of sight to it: once the walls stand the
     // nearest place may be outside them (live 06:43 JST: 98 slab tries, all
@@ -359,7 +372,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
         // placement would fail the same way (live 06:40 JST: about 90 steps used
         // up their tries within 0.1 s). Stop here and come back shortly.
         const settling = () => UNCONFIRMED.test(String(ports.why() ?? '')) && (limbo.set(step.id, (limbo.get(step.id) ?? 0) + 1), limbo.get(step.id) <= 2)
-        if (!await make(step, origin, left)) { if (settling()) { unsettled = true; break } fails.set(step.id, (fails.get(step.id) ?? 0) + 1); note(step, `${step.item} を用意できません${ports.why() ? `: ${ports.why()}` : ''}`); if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を用意できません（${step.id}${ports.why() ? `: ${ports.why()}` : ''}）`); continue }
+        if (!await make(step, origin, left)) { if (settling()) { unsettled = true; break } fails.set(step.id, (fails.get(step.id) ?? 0) + 1); const lacking = ports.why() ?? lack; note(step, `${step.item} を用意できません${lacking ? `: ${lacking}` : ''}`); if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を用意できません（${step.id}${lacking ? `: ${lacking}` : ''}）`); continue }
         if (await put(step)) { if (step.id !== DOOR) placed++; progress++; continue }
         if (settling()) { unsettled = true; break }
         fails.set(step.id, (fails.get(step.id) ?? 0) + 1)
