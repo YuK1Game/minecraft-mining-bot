@@ -1,5 +1,7 @@
 'use strict'
 
+const { nextGear } = require('./diamond-gear')
+
 const { resourceMinHealth } = require('../safety/learning-health')
 
 const { nextBootstrapAction, inventoryCounts } = require('./planner')
@@ -340,6 +342,9 @@ function nextDiamondAction (state, observations = {}, options = {}) {
     return requireAction('tunnel', result('tunnel', resource, '確認済みの鉱石へ、隣接する地形を検証しながら掘り進む必要があります。', { target: { ...target.position }, resourceTarget: { ...target.position }, targetOre: { name: target.name, position: { ...target.position } }, resource, requiredToolTier: requiredTier, rejectUnknown: true, requiresLivePreview: true, requiresKnownDurability: true }))
   }
 
+  // Diamonds held become gear before more are mined (diamond-gear.js).
+  const gear = reserveIron ? null : nextGear({ items, worn: observations.wornArmor, diamonds: counts.diamond })
+  if (gear) return (gear.sticks ? sticks(gear.sticks, gear.output) : null) ?? table() ?? craft(gear.output, 1, gear.output)
   if (reserveIron) {
     const reserveTool = pick(2)
     if (reserveTool) return equip(reserveTool, 'iron_reserve') ?? ore('iron', reserveCount - counts.ironIngots - counts.rawIron, 2)

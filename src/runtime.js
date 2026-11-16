@@ -1807,7 +1807,7 @@ function createRuntime (host) {
   // this closure through accessors, so each use sees the current value exactly
   // as the code did when it was written here.
   const autonomyRuntime = require('./runtime/autonomy-runtime').createAutonomyRuntime({
-    get activeBase () { return activeBase },
+    get activeBase () { return activeBase }, get armor () { return armor },
     get actualLifeId () { return actualLifeId },
     get applyStoneAccess () { return applyStoneAccess },
     get baseReturnApproach () { return baseReturnApproach },
