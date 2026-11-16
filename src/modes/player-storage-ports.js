@@ -43,6 +43,16 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, disp
     return null
   }
 
+  // A held stack into the hand the server has selected (equip moves it there),
+  // so bare digging breaks rock with no drop.
+  async function hold (name) {
+    const item = items().find(stack => stack?.name === name && stack.count > 0)
+    if (!item) return false
+    try { if ((await patient(() => operations.inventory.equip(item.slot)))?.phase === 'failed') return false } catch (error) { refusal = String(error?.message ?? error).slice(0, 120); return false }
+    await sleep(250)
+    return true
+  }
+
   let refusal = null // the last placement refusal, for the log
   // Normal placement of a held block on the floor of a cell; it counts when the block is received.
   async function place (cell, name) {
@@ -102,7 +112,7 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, disp
     return moved
   }
 
-  return { craftSmall, craftPlanks, tableNear, place, placeTable, craftAtTable, room, store, refusal: () => refusal }
+  return { craftSmall, craftPlanks, tableNear, place, hold, placeTable, craftAtTable, room, store, refusal: () => refusal }
 }
 
 module.exports = { createStoragePorts }

@@ -93,7 +93,7 @@ function chestCells (getBlock, feet, single = null, skip = new Set()) {
   return []
 }
 
-function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, getBlock, getFeet, getInventory, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig = null, getBlock, getFeet, getInventory, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, stored = 0
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const restart = async () => { for (let attempt = 0; attempt < 5 && live(); attempt++) { try { await agent.start({ ...agent.objective }); return true } catch { await sleep(2000) } } return false }
@@ -108,7 +108,7 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, getB
     const want = needed - held(CHEST)
     if (want <= 0) return true
     // A craft needs an empty slot for its result.
-    if (!await makeRoom({ hands, getBlock, getFeet, getInventory, avoid, say, mine })) return false
+    if (!await makeRoom({ hands, getBlock, getFeet, getInventory, avoid, say, mine, dig })) return false
     const table = hands.tableNear()
     const plankNeed = want * 8 + (table ? 0 : held(TABLE) ? 0 : 4)
     for (let step = 0; step < 4 && planks() < plankNeed && logs().length; step++) {
