@@ -229,7 +229,10 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
         const physical = state.predicted?.physicsState ?? state.physicsState
         let bodyKnown = Math.abs(feetY - foot) <= 1e-4 && !(physical?.onGround === false || physical?.isInWater || physical?.isInLava) && !(state.positionSource === 'client_prediction' && physical?.onGround !== true)
         if (physical?.position && (!finite(physical.position) || Math.hypot(physical.position.x - state.position.x, physical.position.y - feetY, physical.position.z - state.position.z) > 1e-3)) bodyKnown = false
-        for (let x = Math.floor(state.position.x - 0.3 + 1e-6); bodyKnown && x <= Math.floor(state.position.x + 0.3 - 1e-6); x++) for (let z = Math.floor(state.position.z - 0.3 + 1e-6); bodyKnown && z <= Math.floor(state.position.z + 0.3 - 1e-6); z++) {
+        // Positions arrive as float32: near x/z = 5000 one step is 0.0005, so a
+        // body pressed against a wall reads up to that far inside the wall cell.
+        const SKIN = 1e-3
+        for (let x = Math.floor(state.position.x - 0.3 + SKIN); bodyKnown && x <= Math.floor(state.position.x + 0.3 - SKIN); x++) for (let z = Math.floor(state.position.z - 0.3 + SKIN); bodyKnown && z <= Math.floor(state.position.z + 0.3 - SKIN); z++) {
           const floor = map.get(`${x},${foot - 1},${z}`)
           // The cell under the body centre must be received standing ground. A
           // footprint edge that overhangs a received air cell (standing at the

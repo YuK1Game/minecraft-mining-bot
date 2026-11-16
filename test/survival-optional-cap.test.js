@@ -50,6 +50,12 @@ test('a body whose edge overhangs a received air cell is still known; an unrecei
  const centre=make();centre.set(0,64,-1,'air',{boundingBox:'empty'});centre.set(0,64,0,'air',{boundingBox:'empty'});centre.refresh();assert.equal(centre.next(OPTIONS).resource,'body')
 })
 
+test('a body pressed against a wall with float32 contact skin is not inside the wall cell',()=>{
+ // 2026-11-16 17:44 JST live: x=-5040.7001953125 put the body edge 0.0002 inside the wall cell at x=-5042 and scan_blocks/body repeated.
+ const f=fixture();f.state.position.x=.2998046875;f.set(-1,65,0,'air',{boundingBox:'empty'});f.set(-1,66,0,'stone');f.set(-1,64,0,'stone');f.refresh();assert.equal(f.next(OPTIONS),null)
+ const inside=fixture();inside.state.position.x=.29;inside.set(-1,65,0,'air',{boundingBox:'empty'});inside.set(-1,66,0,'stone');inside.set(-1,64,0,'stone');inside.refresh();assert.equal(inside.next(OPTIONS).resource,'body')
+})
+
 test('near foes, unknown actor positions and uncertain inventory stay ahead of mineral fallback',()=>{
  const enemy={runtimeId:'900',uniqueId:'-900',kind:'mob',entityType:'minecraft:zombie',dimension:'overworld',alive:true,positionKnown:true,position:{x:2.5,y:65,z:.5}}
  const danger=fixture();danger.state.entities=[enemy];assert.equal(danger.next(OPTIONS).code,'nearby_threat')
