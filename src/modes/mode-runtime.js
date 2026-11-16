@@ -33,6 +33,7 @@ const { playFile, createPlayerResume } = require('./player-resume')
 const { createPlayerBase, baseFile, loadBaseSync } = require('./player-base')
 const { createHouseWool } = require('./house/house-wool')
 const { createHouseSand } = require('./house/house-sand')
+const { createPlayerFood } = require('./player-food')
 const { createHouseBuild, houseFile, loadHouseSync } = require('./house/house-build')
 const { createHousePorts } = require('./house/house-ports')
 const { chestOf, bedOf, setSpawn } = require('./house/house-spawn')
@@ -64,7 +65,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const idle = () => { const value = agentStatus(); return value.running !== true && value.busy !== true && value.actionActive !== true }
   const control = createModeControl({
     shared, save: mode => saveMode(file, mode), log,
-    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || house.status().active ? { running: true } : agentStatus(),
+    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || house.status().active ? { running: true } : agentStatus(),
     isBusy: () => runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld()
   })
   // Where the Bot is: the working position. The last received position can be
@@ -187,7 +188,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed, getFeet: feetNow, mine: async cell => (await hands.pick()) && hands.mine(cell), dig: cell => hands.dig(cell), why: () => hands.why(), walk: target => hands.walk(target), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
-    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || base.status().active || wool.status().active || sand.status().active || house.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12,
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || house.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12,
     hands: storagePorts
   })
   // A base on the surface: spare diamonds and valuables go into its large chest (player-base.js).
@@ -199,7 +200,13 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     hands: storagePorts, chest: () => storage.chest(), canBuild: () => shared.playerHouse?.done === true && storage.woodFor(1), climb: climbUp, walk: target => hands.walk(target), approach: target => hands.approach(target),
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     hostile: () => runtime.nearestHostile() < 12,
-    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || wool.status().active || sand.status().active || house.status().active
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || wool.status().active || sand.status().active || food.status().active || house.status().active
+  })
+  // No food, hungry, deep underground: up to the surface where the animals are (player-food.js).
+  const food = createPlayerFood({
+    getMode: control.get, shared, log, disposed, getHunger: hunger, getState: () => ({ position: where(), inventory: shared.inventoryUncertain ? null : runtime.inventory() }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z),
+    agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason) }, climb: climbUp,
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || house.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12
   })
   // The starter house's wool from sheep (house/house-wool.js).
   const wool = createHouseWool({
@@ -226,7 +233,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     hostile: () => runtime.nearestHostile() < 12,
     // Not with 10 health or less: eating, the shelter and fleeing come first (live 2026-11-17 05:53 JST: the build began at 1.9 health with no food).
-    blocked: () => !(runtime.raw().health > 10) || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active,
+    blocked: () => !(runtime.raw().health > 10) || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active,
     // Done: chest A is the base, and the bed sets the respawn point.
     onDone: async origin => {
       const at = chestOf(origin), here = (x, y, z) => runtime.host().world.getBlock(x, y, z)
@@ -256,14 +263,15 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     void base.tick().catch(() => {})
     void wool.tick().catch(() => {})
     void sand.tick().catch(() => {})
+    void food.tick().catch(() => {})
     void house.tick().catch(() => {})
-    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || house.status().active }) } catch { /* The next tick retries. */ }
+    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || house.status().active }) } catch { /* The next tick retries. */ }
   }), 2000)
   timer.unref?.()
   // The previous runtime was reloaded in the middle of a recovery: play on.
   if (shared.playerRecovering === true) { shared.playerRecovering = false; if (control.get() === 'player') shared.autoWanted = true }
   const player = createPlayerMode({
-    getMode: control.get, log, safety: operations.safety, recovery, shelter, flee, scaffold: { status: () => house.status().active ? house.status() : wool.status().active ? wool.status() : sand.status().active ? sand.status() : base.status().active ? base.status() : storage.status().active ? storage.status() : torch.status().active ? torch.status() : scaffold.status() }, shared,
+    getMode: control.get, log, safety: operations.safety, recovery, shelter, flee, scaffold: { status: () => house.status().active ? house.status() : wool.status().active ? wool.status() : sand.status().active ? sand.status() : food.status().active ? food.status() : base.status().active ? base.status() : storage.status().active ? storage.status() : torch.status().active ? torch.status() : scaffold.status() }, shared,
     agent: { start: options => agent.start(options), stop: reason => agent.stop(reason), snapshot: agentStatus },
     getInventory: () => shared.inventoryUncertain ? null : runtime.raw().inventory,
     getWorn: () => operations.diagnostics?.armor?.() ?? null
