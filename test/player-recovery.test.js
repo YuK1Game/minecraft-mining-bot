@@ -275,3 +275,11 @@ test('a deep ore within tunnel reach is left to the tunnel, not surface travel',
   const remote = { lastDecision: { type: 'tunnel', target: { x: -5069, y: -4, z: -5214 } } }
   assert.deepEqual(farTarget(remote, eye), { x: -5069, z: -5214 })
 })
+
+test('an exploration limit under a roof climbs first even when no wood is sought', async () => {
+  // 2026-11-17 01:00-01:04 JST live: at y -50 the long walk found no waypoint every 5 s for four minutes.
+  const roof = { '0,66,0': { known: true, name: 'minecraft:air', boundingBox: 'empty' }, '0,67,0': { known: true, name: 'minecraft:air', boundingBox: 'empty' }, '0,68,0': { known: true, name: 'minecraft:deepslate', boundingBox: 'block' } }
+  const f = fixture({ blocks: roof, climb: { ok: true } })
+  f.recovery.onProgress(blocked({ lastDecision: { type: 'explore', resource: 'crafting_table' } })); await settle(f.recovery)
+  assert.deepEqual(f.calls, ['climb', { start: { objective: 'diamond', diamondCount: 1, freshExploration: true } }])
+})
