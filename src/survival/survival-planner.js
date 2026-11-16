@@ -231,7 +231,12 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
         if (physical?.position && (!finite(physical.position) || Math.hypot(physical.position.x - state.position.x, physical.position.y - feetY, physical.position.z - state.position.z) > 1e-3)) bodyKnown = false
         for (let x = Math.floor(state.position.x - 0.3 + 1e-6); bodyKnown && x <= Math.floor(state.position.x + 0.3 - 1e-6); x++) for (let z = Math.floor(state.position.z - 0.3 + 1e-6); bodyKnown && z <= Math.floor(state.position.z + 0.3 - 1e-6); z++) {
           const floor = map.get(`${x},${foot - 1},${z}`)
-          if (floor?.known !== true || floor.boundingBox !== 'block' || !SUPPORT.has(nameOf(floor.name)) || floor.extra?.length) { bodyKnown = false; break }
+          // The cell under the body centre must be received standing ground. A
+          // footprint edge that overhangs a received air cell (standing at the
+          // rim of a hole) is still a known, supported body.
+          const centre = x === Math.floor(state.position.x) && z === Math.floor(state.position.z)
+          const overhang = !centre && floor?.known === true && floor.boundingBox === 'empty' && AIR.has(nameOf(floor.name)) && !floor.extra?.length
+          if (!overhang && (floor?.known !== true || floor.boundingBox !== 'block' || !SUPPORT.has(nameOf(floor.name)) || floor.extra?.length)) { bodyKnown = false; break }
           for (const y of [foot, foot + 1]) {
             const block = map.get(`${x},${y},${z}`)
             if (block?.known !== true || block.boundingBox !== 'empty' || block.extra?.length || !(AIR.has(nameOf(block.name)) || ['short_grass', 'fern', 'deadbush', 'leaf_litter', 'torch'].includes(nameOf(block.name)))) bodyKnown = false

@@ -40,6 +40,16 @@ test('known empty-box plants and float32 contact skin remain valid without chang
  }
 })
 
+test('a body whose edge overhangs a received air cell is still known; an unreceived or liquid cell under the edge is not',()=>{
+ // 2026-11-16 17:25 JST live: z fraction .212 at the rim of a hole (floor under the north edge was air) asked for scan_blocks/body forever.
+ const make=()=>{const f=fixture();f.state.position.z=.212;f.set(0,65,-1,'air',{boundingBox:'empty'});f.set(0,66,-1,'air',{boundingBox:'empty'});return f}
+ const rim=make();rim.set(0,64,-1,'air',{boundingBox:'empty'});rim.refresh();assert.equal(rim.next(OPTIONS),null)
+ for(const mutate of [f=>f.set(0,64,-1,'air',{known:false}),f=>f.set(0,64,-1,'lava',{boundingBox:'empty'}),f=>f.set(0,64,-1,'water',{boundingBox:'empty'})]){
+  const f=make();mutate(f);f.refresh();const d=f.next(OPTIONS);assert.equal(d.type,'scan_blocks');assert.equal(d.resource,'body')
+ }
+ const centre=make();centre.set(0,64,-1,'air',{boundingBox:'empty'});centre.set(0,64,0,'air',{boundingBox:'empty'});centre.refresh();assert.equal(centre.next(OPTIONS).resource,'body')
+})
+
 test('near foes, unknown actor positions and uncertain inventory stay ahead of mineral fallback',()=>{
  const enemy={runtimeId:'900',uniqueId:'-900',kind:'mob',entityType:'minecraft:zombie',dimension:'overworld',alive:true,positionKnown:true,position:{x:2.5,y:65,z:.5}}
  const danger=fixture();danger.state.entities=[enemy];assert.equal(danger.next(OPTIONS).code,'nearby_threat')
