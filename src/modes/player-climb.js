@@ -80,7 +80,10 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
     if (sky === 'unknown' && top === null) { reason = 'UNKNOWN_ABOVE'; break }
     if (steps >= maxSteps) { reason = 'TOO_HIGH'; break }
     for (const y of [at + 2, at + 3]) {
-      const cell = { x: column.x, y, z: column.z }, found = block(cell.x, cell.y, cell.z)
+      // climbShaft: the floor of a tunnel it walked may be passed through here
+      // (the pillar fills the hole again; real Realm 2026-11-16 16:01-16:11 JST:
+      // four steps up, then PROTECTED_BLOCK under its own corridor, six times).
+      const cell = { x: column.x, y, z: column.z, climbShaft: true }, found = block(cell.x, cell.y, cell.z)
       if (isAir(found)) continue
       if (found?.known !== true) { reason = 'UNKNOWN_ABOVE'; break }
       if (LEAVES.test(found.name ?? '')) { reason = 'LEAVES_ABOVE'; break }

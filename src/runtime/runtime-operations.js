@@ -725,7 +725,8 @@ function createRuntimeOperations (rt) {
             throw error
           }
           const floors = rt.readCurrentTunnelFloors()
-          if (targets.some(point => point && floors.some(floor => floor.x === point.x && floor.y === point.y && floor.z === point.z))) {
+          // The player's climb (player-climb.js) passes through a floor and fills its shaft behind it.
+          if (targets.some(point => point && point.climbShaft !== true && floors.some(floor => floor.x === point.x && floor.y === point.y && floor.z === point.z))) {
             const error = new Error('実際に通った坑道の帰路の床は、通常の資材採掘では壊しません。')
             error.code = 'PROTECTED_BLOCK'
             error.protectionSource = 'tunnel_floor'
