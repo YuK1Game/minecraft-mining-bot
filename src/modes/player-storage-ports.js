@@ -43,6 +43,7 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, disp
     return null
   }
 
+  let refusal = null // the last placement refusal, for the log
   // Normal placement of a held block on the floor of a cell; it counts when the block is received.
   async function place (cell, name) {
     const stacks = () => items().filter(item => item?.name === name && item.count > 0)
@@ -51,7 +52,7 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, disp
       if (!item && stacks().length) { await patient(() => operations.inventory.equip(stacks()[0].slot)); item = stacks().find(stack => stack.slot <= 8) }
       if (!item) return false
       await patient(() => operations.interactions.placeBlock({ position: cell, slot: item.slot, face: 1 }))
-    } catch { return false }
+    } catch (error) { refusal = String(error?.message ?? error).slice(0, 120); return false }
     return until(() => { const found = getBlock(cell.x, cell.y, cell.z); return found?.known === true && found.name === name }, 5000)
   }
 
@@ -101,7 +102,7 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, disp
     return moved
   }
 
-  return { craftSmall, craftPlanks, tableNear, place, placeTable, craftAtTable, room, store }
+  return { craftSmall, craftPlanks, tableNear, place, placeTable, craftAtTable, room, store, refusal: () => refusal }
 }
 
 module.exports = { createStoragePorts }

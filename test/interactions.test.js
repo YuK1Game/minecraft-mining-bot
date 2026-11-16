@@ -645,3 +645,13 @@ test('a block can be placed on received bedrock, the floor of a quarry dug to th
   f.blocks.set('1,64,0', { known: false })
   assert.equal(f.interactions.previewPlace({ position: f.target, slot: 0 }).ready, false, 'unknown support stays refused')
 })
+
+test('plain stone blocks such as andesite are placed as themselves', () => {
+  const f = fixture()
+  f.names.set(777, 'minecraft:andesite')
+  const preview = f.interactions.previewPlace({ position: f.target, slot: 0 })
+  assert.equal(preview.ready, true)
+  assert.equal(preview.expectedBlock, 'minecraft:andesite')
+  f.names.set(777, 'minecraft:gravel')
+  assert.equal(f.interactions.previewPlace({ position: f.target, slot: 0 }).ready, false)
+})
