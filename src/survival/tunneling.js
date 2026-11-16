@@ -21,6 +21,8 @@ const HAZARD = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|swee
 const FACES = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }]
 const CONTACT = 1e-4
 const REFUSED_MS = 300000
+const RISE_CHECK = 3
+const RISE_PROBE = 400
 const REFUSED_LIMIT = 24
 const nameOf = block => String(typeof block === 'string' ? block : block?.name ?? '').replace(/^minecraft:/, '')
 const copy = value => structuredClone(value)
@@ -309,7 +311,14 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     const closed = new Set()
     let found = null
     let expanded = 0
+    // A tunnel only digs level or down: rising needs open air already there.
+    // When the ore lies well above and no open way up turned up early, the full
+    // search would only fail at its limit (real Realm 2026-11-16 11:12-11:32
+    // JST: coal 58 blocks up, the search ran to 3000 nodes every 8-10 s).
+    const rising = ore.target.y >= origin.y + RISE_CHECK
+    let highest = origin.y
     while (open.size && expanded < bounds.maxExpanded) {
+      if (rising && expanded >= RISE_PROBE && highest <= origin.y) throw new TunnelingError('The ore lies above and no known open way up was found', 'NO_SAFE_ROUTE', { unknownFrontier: [...unknown.values()].slice(0, 32), expanded, rejected })
       const id = pop()
       if (id === null) break
       const node = records.get(id)
@@ -330,6 +339,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
           const record = { cell: next, removed: step.removed, preservedFloors: step.preservedFloors, g, h, f: g + h * 2, depth: node.depth + 1, parent: node, step }
           records.set(nextId, record)
           push(nextId, record)
+          if (next.y > highest) highest = next.y
         } catch (error) { rejected[error.code] = (rejected[error.code] ?? 0) + 1 }
       }
     }
