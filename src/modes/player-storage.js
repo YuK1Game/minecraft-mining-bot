@@ -123,7 +123,7 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     const single = !target ? chests.find(chest => !chest.pair) ?? null : null
     // No chest to use and no wood to make one: the rubble is thrown away
     // (user 2026-11-16 23:14 JST; player-discard.js).
-    if (!target && hands.drop && !woodFor(single ? 1 : 2) && await discardJunk({ drop: hands.drop, walk, cells, getInventory, getFeet, shared, say, now })) return true
+    if (!target && hands.drop && !woodFor(single ? 1 : 2) && await discardJunk({ drop: hands.drop, walk, why, cells, getInventory, getFeet, shared, say, now })) return true
     if (!target && single) {
       const cells = chestCells(getBlock, feet, single.position)
       if (cells.length && await makeChests(1, cells) && await hands.place(cells[0], CHEST)) say(`チェストの隣にもう1つ置いてラージチェストにしました (${cells[0].x}, ${cells[0].y}, ${cells[0].z})`)

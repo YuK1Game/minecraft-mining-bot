@@ -42,24 +42,27 @@ function throwable (inventory) {
 // stacks on ahead, and the walk back leaves them out of pickup range (live
 // 2026-11-16 23:20 JST: 18 stacks thrown at the feet were all picked up again
 // within 20 seconds).
-function throwSpot (cells, feet) {
+function throwSpots (cells, feet) {
   const out = []
   for (const cell of cells?.values?.() ?? []) {
     const d = Math.hypot(cell.x + 0.5 - feet.x, cell.z + 0.5 - feet.z)
     if (d >= 3 && d <= 6) out.push({ cell, d })
   }
-  return out.sort((a, b) => b.d - a.d)[0]?.cell ?? null
+  return out.sort((a, b) => b.d - a.d).map(entry => entry.cell)
 }
 
-async function discardJunk ({ drop, walk = null, cells = () => null, getInventory, getFeet, shared, say = () => {}, now = Date.now }) {
+async function discardJunk ({ drop, walk = null, why = () => null, cells = () => null, getInventory, getFeet, shared, say = () => {}, now = Date.now }) {
   const list = throwable(getInventory())
   if (!list.length) return 0
   // Not again within a minute: a pickup that undid the throw must not loop (live 23:24-23:25 JST: 18 stacks every 8 s).
   if ((shared.playerDiscards ?? []).some(entry => entry.until - AGAIN_MS > now() - 60000)) return 0
   const home = getFeet()
-  const spot = walk && home ? throwSpot(cells(), home) : null
-  if (walk && !spot) { say('いらない物を捨てる場所がありません（3〜6m先に歩ける場所がありません。足元に捨てると拾い直すため）'); return 0 }
-  if (spot && !await walk({ x: spot.x + 0.5, y: spot.y, z: spot.z + 0.5 })) { say(`いらない物を捨てる場所へ歩けません (${spot.x}, ${spot.y}, ${spot.z})`); return 0 }
+  const spots = walk && home ? throwSpots(cells(), home) : []
+  if (walk && !spots.length) { say('いらない物を捨てる場所がありません（3〜6m先に歩ける場所がありません。足元に捨てると拾い直すため）'); return 0 }
+  // Up to three spots, farthest first (live 23:29 JST: the first walk was refused at once).
+  let spot = null
+  for (const cell of spots.slice(0, 3)) if (await walk({ x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 })) { spot = cell; break }
+  if (walk && !spot) { say(`いらない物を捨てる場所へ歩けません (${spots.slice(0, 3).map(cell => `${cell.x}, ${cell.y}, ${cell.z}`).join(' / ')})${why() ? ` ${String(why()).slice(0, 100)}` : ''}`); return 0 }
   const at = getFeet() ?? home
   let thrown = 0
   const names = []
@@ -86,4 +89,4 @@ function discarded (shared, drop, now = Date.now()) {
   return shared.playerDiscards.some(entry => entry.until > now && Math.hypot(drop.position.x - entry.x, drop.position.y - entry.y, drop.position.z - entry.z) <= 6 && (!name || entry.names.some(other => other === name || other === `minecraft:${name}`)))
 }
 
-module.exports = { throwable, throwSpot, discardJunk, discarded }
+module.exports = { throwable, throwSpots, discardJunk, discarded }
