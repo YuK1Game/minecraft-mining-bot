@@ -8,6 +8,14 @@
 const short = name => String(name ?? '').replace(/^minecraft:/, '')
 const isLog = name => /_(?:log|stem)$/.test(name) && !/^stripped_/.test(name)
 
+// A bed takes three wool of one colour: the most held of a single colour
+// counts (live 2026-11-17 07:39 JST: 5 wool in two colours, no bed).
+function bestWool (items) {
+  const by = new Map()
+  for (const item of items ?? []) { const name = short(item?.name); if (/_wool$/.test(name) && item.count > 0) by.set(name, (by.get(name) ?? 0) + item.count) }
+  return Math.max(0, ...by.values())
+}
+
 function held (inventory) {
   const out = { log: 0, planks: 0, slab: 0, door: 0, stick: 0, cobblestone: 0, glass: 0, sand: 0, wool: 0, coal: 0, chest: 0, crafting_table: 0, furnace: 0, torch: 0, bed: 0 }
   for (const item of inventory.items) {
@@ -22,11 +30,12 @@ function held (inventory) {
     else if (name === 'cobblestone') out.cobblestone += count
     else if (name === 'glass') out.glass += count
     else if (name === 'sand' || name === 'red_sand') out.sand += count
-    else if (/_wool$/.test(name)) out.wool += count
+    else if (/_wool$/.test(name)) continue
     else if (name === 'coal' || name === 'charcoal') out.coal += count
     else if (/_bed$/.test(name)) out.bed += count
     else if (name in out) out[name] += count
   }
+  out.wool = bestWool(inventory.items)
   return out
 }
 
@@ -59,4 +68,4 @@ function houseNeeds (inventory, left) {
   return { need, total: { logs, cobblestone: want('cobblestone') + furnaces * 8, sand: glass, wool: beds * 3, coal: (glass ? 1 : 0) + (torches ? 1 : 0) }, have, short: Object.values(need).some(count => count > 0) }
 }
 
-module.exports = { houseNeeds, held }
+module.exports = { bestWool, houseNeeds, held }

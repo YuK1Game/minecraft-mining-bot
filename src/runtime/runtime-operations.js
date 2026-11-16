@@ -124,7 +124,7 @@ function createRuntimeOperations (rt) {
           await sleep(800)
         }
         let hunts = 0, logsTried = 0, eatRefused = false, rottenTried = false
-        const woolTarget = Math.max(0, Math.min(3, input.wool ?? 0)), WOOL = /^minecraft:[a-z_]*wool$/
+        const woolTarget = Math.max(0, Math.min(64, input.wool ?? 0)), WOOL = /^minecraft:[a-z_]*wool$/
         const foodTarget = Math.max(0, Math.min(16, input.food ?? 0))
         const skipLog = new Set() // logs that could not be reached or mined are not tried again
         while (Date.now() - started < maxMs) {

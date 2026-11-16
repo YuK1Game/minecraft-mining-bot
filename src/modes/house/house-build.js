@@ -21,7 +21,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { normalizeMode } = require('../bot-mode')
 const { placements, remaining, matches, counts } = require('./house-blueprint')
-const { houseNeeds } = require('./house-needs')
+const { houseNeeds, bestWool } = require('./house-needs')
 const { pending } = require('./house-supply')
 const { findSite, PLANT } = require('./house-site')
 const { clicks, stands, standable } = require('./house-steps')
@@ -122,7 +122,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   // Steps that can go on now: the glass waits for sand and the bed for wool.
   function workable (step) {
     if (step.item === 'glass') return held(ITEM.glass) > 0 || held(name => /^minecraft:(?:red_)?sand$/.test(name)) > 0
-    if (step.item === 'white_bed') return held(ITEM.white_bed) > 0 || held(name => /_wool$/.test(name)) >= 3
+    if (step.item === 'white_bed') return held(ITEM.white_bed) > 0 || bestWool(items()) >= 3
     return true
   }
 
@@ -177,7 +177,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       case 'oak_door': { const as = await planksOf(6, left); return !!as && atTable(`minecraft:${as}_door`, 1) }
       // One chest at a time: a batch over mixed plank kinds splits unevenly (live 07:32 JST: 「材料の種類が混在しています。1回ずつクラフトしてください。」).
       case 'chest': { let made = 0; for (let i = 0; i < Math.min(count('chest'), 4); i++) { if (!(await planks(8, left) && await atTable('minecraft:chest', 1))) break; made++ } return made > 0 }
-      case 'white_bed': return held(name => /_wool$/.test(name)) >= 3 && await planks(3, left) && atTable('minecraft:bed', 1)
+      case 'white_bed': return bestWool(items()) >= 3 && await planks(3, left) && atTable('minecraft:bed', 1)
       case 'furnace': return held(ITEM.cobblestone) >= 8 && (table ? atTable('minecraft:furnace', 1) : false)
       case 'glass': {
         const furnace = furnaceAt(origin), sand = stackOf(name => /^minecraft:(?:red_)?sand$/.test(name))
