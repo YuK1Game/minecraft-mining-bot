@@ -20,6 +20,7 @@ const { createScaffoldPorts } = require('./player-scaffold-ports')
 const { climbOut } = require('./player-climb')
 const { sidestep } = require('./player-climb-side')
 const { boxedIn, stepOut } = require('./player-pit')
+const { settle, offCentre } = require('./player-settle')
 const { createPlayerTorch } = require('./player-torch')
 const { createTorchPorts } = require('./player-torch-ports')
 const { nextObjective } = require('./player-goal')
@@ -76,6 +77,13 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       out: async aborted => {
         for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
         return stepOut({ ports: hands, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, aborted: () => aborted() || flee.status().active || shelter.status().active })
+      }
+    },
+    settle: {
+      needed: () => !!offCentre((x, y, z) => runtime.host().world.getBlock(x, y, z), hands.feet()),
+      run: async aborted => {
+        for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
+        return settle({ ports: hands, aborted: () => aborted() || flee.status().active || shelter.status().active })
       }
     },
     climb: async aborted => {
