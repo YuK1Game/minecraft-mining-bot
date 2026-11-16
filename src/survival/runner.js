@@ -206,6 +206,7 @@ function createObserver ({ request, refreshState, getState, previewCache = new M
     const outputs = new Set(['minecraft:stick', 'minecraft:crafting_table', 'minecraft:wooden_pickaxe', 'minecraft:stone_pickaxe'])
     for (const recipe of initial.crafting?.availableRecipes ?? []) for (const item of recipe.output ?? []) if (item.name) outputs.add(nameOf(item.name))
     for (const item of initial.inventory?.items ?? []) if (LOG.test(item.name)) outputs.add(item.name.replace(/_log$/, '_planks'))
+    for (const output of previewCache.keys()) outputs.add(output)
     const digest = inventoryDigest(initial)
     const previews = {}
     await boundedMap([...outputs], concurrency, async output => {

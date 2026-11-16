@@ -489,3 +489,16 @@ test('prey that comes into reach during the walk is hit at once, without waiting
   assert.deepEqual(f.hunts, ['2'])
   assert.equal(result.collected, true)
 })
+
+test('a prey hit in this batch that runs off is chased again after a short rest, not left for 15 s', async () => {
+  const f = fixture({
+    initialActors: [animal('pig', 2.5)],
+    onHunt: ({ list }) => { list[0].position = { x: 9.5, y: 65, z: 0.5 }; return { phase: 'observed', targetRuntimeId: '2', reaction: 'hurt_animation' } },
+    onPreview: () => ({ ready: false, errors: ['no route'] })
+  })
+  const result = await f.foraging.execute()
+  assert.deepEqual(f.hunts, ['2'])
+  assert.match(result.reason, /すぐに追い直します/)
+  f.advance(2000)
+  assert.equal(f.foraging.preview().target?.runtimeId, '2')
+})

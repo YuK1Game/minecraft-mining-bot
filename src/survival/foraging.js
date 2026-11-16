@@ -457,6 +457,11 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
           break
         }
         if (run.correctionBudgetExhausted) break
+        // A prey already hit in this batch runs off: it is chased again by the
+        // next batch after a short rest, not left for 15 s (real Realm
+        // 2026-11-16 21:30 JST: two hits on a pig, then 30 s of waiting while it
+        // ran from 3.3 m to 15.4 m).
+        if (!moved && selected.kind === 'prey' && status.hits > 0) { cooldown(current, 1500, 'no_safe_land_relay'); status.reason = '逃げた獲物へ歩く中継を作れないため、すぐに追い直します。'; break }
         if (!moved) { cooldown(current, 15000, 'no_safe_land_relay'); status.reason = '既知の安全な陸上中継を作れないため、別の食料源を待ちます。'; break }
       }
       status.phase = run.predicted ? 'predicted' : 'observed'
