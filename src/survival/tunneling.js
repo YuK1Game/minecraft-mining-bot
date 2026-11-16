@@ -199,6 +199,9 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       known.set(id, point)
       preservedFloors.set(id, point)
       onPreserveFloor({ ...point })
+      // Recorded: the shared record holds it now, and may later let far floors
+      // go (player-floor-prune.js); a local copy would keep them forever.
+      if (getPreservedFloors().some(floor => floor && key(floor) === id)) preservedFloors.delete(id)
     }
   }
 
