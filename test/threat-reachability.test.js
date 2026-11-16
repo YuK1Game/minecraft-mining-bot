@@ -74,3 +74,32 @@ test('targeted seek reaches a hostile on open ground, reports false when walled 
   assert.equal(seekCells(pit, { x: 0.5, y: 61, z: 0.5 }, { x: 10.5, y: 64, z: 0.5 }), false)
   assert.equal(seekCells(flat, { x: 0.5, y: 64, z: 0.5 }, { x: 30.5, y: 64, z: 0.5 }, { maxNodes: 5 }), null)
 })
+
+// Live 2026-11-16: bot on grass at y=68 (feet 69), a drowned at the bottom of
+// a dry 1x1 shaft six deep, 6.8 m away; elsewhere in the disk a block was not
+// received, so the fill from the bot stayed "unknown".
+test('a hostile at the bottom of a deep shaft is shut in even when the disk has unreceived blocks', () => {
+  const shaft = (x, y, z) => !(x === -5 && z === 4 && y >= 64)
+  const terrain = unknown => ({ getBlock: (x, y, z) => unknown(x, y, z) ? { known: false } : y <= 63 || y <= 68 && shaft(x, y, z) ? { known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] } : { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] } })
+  const far = (x, y, z) => x === 20 && z === 0 && y === 68
+  const bot = { phase: 'spawned', dimension: 'overworld', position: { x: 0.5, y: 70.62, z: 0.5 }, threatPolicy: 'balanced_mining', health: 2, runtimeEntityId: '1' }
+  const drowned = (x, y, z) => ({ runtimeId: '11237', kind: 'mob', entityType: 'minecraft:drowned', hostile: true, alive: true, positionKnown: true, dimension: 'overworld', position: { x, y, z } })
+  const actor = drowned(-4.5, 63.9999, 4.5)
+  reach.clear()
+  reach.refresh(bot, [actor], { world: terrain(far), now: 1000 })
+  assert.equal(reach.snapshot().unknownTouched, true)
+  assert.equal(reach.knownUnreachable(bot, actor, 1200), true)
+  const e = evaluateThreats(bot, [actor], { now: () => 1200 })
+  assert.equal(e.threats.length, 0); assert.equal(e.unreachable[0].unreachableNow, true)
+  // It climbed out (moved more than 3 m): the old answer is not reused.
+  assert.equal(reach.knownUnreachable(bot, drowned(-1.5, 69, 4.5), 1200), false)
+  // An unreceived block in the shaft wall: no evidence.
+  reach.clear()
+  reach.refresh(bot, [actor], { world: terrain((x, y, z) => far(x, y, z) || x === -6 && z === 4 && y === 65), now: 1000 })
+  assert.equal(reach.knownUnreachable(bot, actor, 1200), false)
+  // On open ground at the bot's level, or in a hole only two deep: no evidence.
+  assert.equal(reach.shutIn(terrain(() => false), { x: 5.5, y: 69, z: 0.5 }, { x: 0.5, y: 69, z: 0.5 }), null)
+  const shallow = { getBlock: (x, y, z) => y <= 66 || y <= 68 && !(x === -5 && z === 4) ? { known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] } : { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] } }
+  assert.equal(reach.shutIn(shallow, { x: -4.5, y: 67, z: 4.5 }, { x: 0.5, y: 69, z: 0.5 }), null)
+  assert.equal(reach.shutIn(terrain(() => false), { x: -4.5, y: 64, z: 4.5 }, { x: 0.5, y: 69, z: 0.5 }), true)
+})

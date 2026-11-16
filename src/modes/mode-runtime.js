@@ -11,6 +11,7 @@ const { createPlayerMode, OBJECTIVE } = require('./player-mode')
 const { createPlayerRecovery } = require('./player-recovery')
 const { createPlayerShelter } = require('./player-shelter')
 const { createPlayerFlee } = require('./player-flee')
+const { knownUnreachable } = require('../combat/threat-reachability')
 const { createPlayerScaffold } = require('./player-scaffold')
 const { createScaffoldPorts } = require('./player-scaffold-ports')
 const { climbOut } = require('./player-climb')
@@ -102,7 +103,10 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     agent: { stop: reason => agent.stop(reason), running: () => agentStatus().running === true },
     travel: { status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     getState: () => { const state = runtime.raw(); return { health: state.health, position: where(), inventory: shared.inventoryUncertain ? null : state.inventory, totem: () => runtime.totem() } },
-    hostiles: () => runtime.hostiles(), retreat: () => runtime.travel().retreatFromHostiles()
+    // A hostile with fresh evidence that it cannot walk to the Bot (shut in a
+    // deep pit, no route) is not run from; creepers always are.
+    hostiles: () => { const state = runtime.raw(); return (runtime.hostiles() ?? []).filter(actor => /creeper/.test(String(actor?.entityType ?? '')) || !knownUnreachable(state, actor)) },
+    retreat: () => runtime.travel().retreatFromHostiles()
   })
   // Logs out of reach: a dirt pillar in the trunk's place, taken down again afterwards.
   const scaffold = createPlayerScaffold({
