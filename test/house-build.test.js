@@ -106,9 +106,10 @@ test('without sand or wool: builds the rest and leaves the glass and the bed', a
   }
   const shared = { playerWanted: true }
   const lines = [], done = []
+  let starts = 0
   const build = createHouseBuild({
     getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {},
-    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    agent: { objective: {}, start: async () => { starts++ }, stop: () => {}, settled: () => true },
     ports, hands: { walk: async stand => { Object.assign(feet, stand); return true }, approach: async () => true },
     climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
     getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory, onDone: async origin => { done.push(origin) }
@@ -118,6 +119,8 @@ test('without sand or wool: builds the rest and leaves the glass and the bed', a
   assert.deepEqual([...new Set(left.map(step => step.item))].sort(), ['glass', 'white_bed'], lines.join('\n'))
   assert.notEqual(shared.playerHouse.done, true)
   assert.equal(done.length, 1)
+  // Only the glass and the bed are left and nothing to make them: the agent goes on.
+  assert.equal(starts, 1)
 })
 
 test('no site nearby: walks about 80 m on and looks again there', async () => {
