@@ -148,3 +148,18 @@ test('one chest in hand and no wood for a second: the single chest is placed and
   assert.deepEqual(calls.find(call => call[0] === 'store')[1], calls[0][1])
   assert.match(lines.join('\n'), /チェストを1つ置きました/)
 })
+
+test('a full inventory in a 1-wide stair tunnel sets stone down on a step above', () => {
+  const { roomCells } = require('../src/modes/player-storage-room')
+  // Stone everywhere; a stair tunnel going down along +x: step k has feet at y=-k.
+  const open = new Set()
+  for (let k = -3; k <= 3; k++) { open.add(`${k},${-k},0`); open.add(`${k},${-k + 1},0`) }
+  const getBlock = (x, y, z) => open.has(`${x},${y},${z}`) ? { known: true, name: 'minecraft:air', boundingBox: 'empty' } : { known: true, name: 'minecraft:stone', boundingBox: 'block' }
+  const cells = roomCells(getBlock, { x: 0.5, y: 0, z: 0.5 })
+  assert.ok(cells.length > 0)
+  for (const cell of cells) {
+    assert.ok(open.has(`${cell.x},${cell.y},${cell.z}`))
+    assert.equal(getBlock(cell.x, cell.y - 1, cell.z).boundingBox, 'block')
+  }
+  assert.deepEqual(cells[0], { x: -1, y: 1, z: 0 })
+})

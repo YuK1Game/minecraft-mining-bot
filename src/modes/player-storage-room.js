@@ -29,17 +29,21 @@ function roomCells (getBlock, feet, avoid = [], tried = new Set()) {
   const key = cell => `${cell.x},${cell.y},${cell.z}`
   const kept = new Set(avoid.map(key))
   const out = []
-  for (const dy of [0, 1]) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+  // Beside the feet first; in a 1-wide stair tunnel the only open cells are the
+  // steps above and below (live 2026-11-16 22:31 JST, y=-37: 36/36 slots and
+  // 「tuff を置けません。置ける場所がありません」 with only dy 0/1 within 3 m).
+  for (const dy of [0, 1, 2, -1]) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) {
     const cell = { x: fx + dx, y: fy + dy, z: fz + dz }
     if ((dx === 0 && dz === 0) || kept.has(key(cell)) || kept.has(key({ ...cell, y: cell.y - 1 })) || tried.has(key(cell))) continue
-    if (Math.hypot(cell.x + 0.5 - feet.x, cell.z + 0.5 - feet.z) > 3) continue
+    if (Math.hypot(cell.x + 0.5 - feet.x, cell.z + 0.5 - feet.z) > (dy === 0 || dy === 1 ? 3 : 3.5)) continue
     const here = getBlock(cell.x, cell.y, cell.z), below = getBlock(cell.x, cell.y - 1, cell.z)
     if (here?.known !== true || !AIR.test(here.name ?? '') || here.extra?.length || below?.known !== true || below.boundingBox !== 'block') continue
     if (/chest|crafting_table|furnace/.test(below.name ?? '')) continue
     out.push(cell)
   }
   // Farther cells first, so the Bot's own way out stays open longest.
-  return out.sort((a, b) => a.y - b.y || Math.hypot(b.x + 0.5 - feet.x, b.z + 0.5 - feet.z) - Math.hypot(a.x + 0.5 - feet.x, a.z + 0.5 - feet.z))
+  const rank = cell => [0, 1, 2, -1].indexOf(cell.y - fy)
+  return out.sort((a, b) => rank(a) - rank(b) || Math.hypot(b.x + 0.5 - feet.x, b.z + 0.5 - feet.z) - Math.hypot(a.x + 0.5 - feet.x, a.z + 0.5 - feet.z))
 }
 
 async function makeRoom ({ hands, getBlock, getFeet, getInventory, avoid = [], say = () => {} }) {
