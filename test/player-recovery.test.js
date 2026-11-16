@@ -5,11 +5,11 @@ const { createPlayerRecovery, nearestKnownLog, aheadPoint } = require('../src/mo
 const { createAutonomy } = require('../src/survival/autonomy')
 const { playerActivity, modeState } = require('../scripts/lib/player-activity')
 
-function fixture ({ blocks = {}, mode = 'player', walks = false, climb = null } = {}) {
+function fixture ({ blocks = {}, mode = 'player', walks = false, climb = null, prey = null } = {}) {
   const calls = [], shared = { autoWanted: true, autoOptions: {} }, logs = [], position = { x: 0.5, y: 65.62, z: 0.5 }
   let busy = false, clock = 0
   const recovery = createPlayerRecovery({
-    getMode: () => mode, shared, log: line => logs.push(line), climb: climb && (async () => { calls.push('climb'); return climb }),
+    getMode: () => mode, shared, log: line => logs.push(line), prey, climb: climb && (async () => { calls.push('climb'); return climb }),
     agent: { objective: { objective: 'diamond', diamondCount: 1 }, stop: reason => { calls.push('stop'); shared.autoWanted = false }, start: async options => { calls.push({ start: options }); shared.autoWanted = true; shared.autoOptions = { ...options } } },
     travel: { to: async input => { calls.push({ travel: input.destination }); if (walks) Object.assign(position, { x: input.destination.x + 0.5, z: input.destination.z + 0.5 }); busy = true; setTimeout(() => { busy = false }, 5) }, status: () => ({ busy }), cancel: async () => { busy = false; calls.push('cancel') } },
     getBlock: (x, y, z) => blocks[`${x},${y},${z}`] ?? { known: false },
@@ -209,4 +209,16 @@ test('underground, a table that cannot be walked to: straight up, then on at onc
   const open = fixture({ climb: { ok: true } })
   open.recovery.onProgress(stuck); await settle(open.recovery)
   assert.equal(open.calls.includes('climb'), false, 'not under the open sky')
+})
+
+test('a food source the forage cannot step to: the long trip walks next to it, then play goes on', async () => {
+  const f = fixture({ walks: true, prey: () => ({ x: -20.5, y: 72, z: 3.2 }) })
+  f.recovery.onProgress(blocked({ stopCode: null, reason: '同じ状態で同じ操作を繰り返しても進展がないため停止しました。', lastDecision: { type: 'forage', stage: 'safety' } }))
+  await settle(f.recovery)
+  assert.deepEqual(f.calls, [{ travel: { x: -21, z: 3 } }, { start: { objective: 'diamond', diamondCount: 1 } }])
+  assert.match(f.logs.join('\n'), /食料源 \(-21, 3\) へ歩いて近づきます/)
+  const close = fixture({ prey: () => ({ x: 3, y: 65, z: 1 }) })
+  close.recovery.onProgress(blocked({ stopCode: null, lastDecision: { type: 'forage', stage: 'safety' } }))
+  await settle(close.recovery)
+  assert.deepEqual(close.calls, [{ start: { objective: 'diamond', diamondCount: 1 } }])
 })
