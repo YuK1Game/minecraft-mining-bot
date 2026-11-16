@@ -65,3 +65,21 @@ test('a rejected drop is not counted', async () => {
   discard.applyPacket('item_stack_response', { responses: [{ status: 'error', request_id: -7 }] })
   assert.equal((await pending).phase, 'rejected')
 })
+
+test('throws from a walkable cell 3-6 m away and walks straight back; with no such cell it throws nothing', async () => {
+  const items = [[0, 'granite', 10]]
+  let inventory = inv(items)
+  let feet = { x: 0.5, y: 0, z: 0.5 }
+  const walks = [], drops = []
+  const walk = async target => { walks.push(target); feet = { ...target }; return true }
+  const drop = async slot => { drops.push({ slot, at: { ...feet } }); inventory = inv([]); return { phase: 'completed' } }
+  const cells = new Map([[0, { x: 0, y: 0, z: 0 }], [1, { x: 1, y: 0, z: 0 }], [2, { x: 4, y: 0, z: 0 }], [3, { x: 9, y: 0, z: 0 }]])
+  const thrown = await discardJunk({ drop, walk, cells: () => cells, getInventory: () => inventory, getFeet: () => feet, shared: {}, now: () => 0 })
+  assert.equal(thrown, 1)
+  assert.deepEqual(walks.map(target => target.x), [4.5, 0.5])
+  assert.equal(drops[0].at.x, 4.5)
+  inventory = inv(items)
+  const said = []
+  assert.equal(await discardJunk({ drop, walk, cells: () => new Map([[0, { x: 0, y: 0, z: 0 }]]), getInventory: () => inventory, getFeet: () => feet, shared: {}, say: text => said.push(text) }), 0)
+  assert.match(said[0], /捨てる場所がありません/)
+})
