@@ -24,7 +24,7 @@ const { placements, remaining, matches, counts } = require('./house-blueprint')
 const { houseNeeds } = require('./house-needs')
 const { pending } = require('./house-supply')
 const { findSite, PLANT } = require('./house-site')
-const { clicks, stands } = require('./house-steps')
+const { clicks, stands, standable } = require('./house-steps')
 const { underCover } = require('../player-surface')
 
 const AGAIN_MS = 600000, SHORT_MS = 3000, TRIES = 3, RUN_MS = 20 * 60000
@@ -141,7 +141,9 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   }
 
   // One placement of `step`; true when its received block stands.
+  let walkWhy = null
   async function put (step) {
+    walkWhy = null
     const standing = () => step.cells.every(cell => matches(step.item, getBlock(cell.x, cell.y, cell.z)))
     if (standing()) return true
     for (const cell of step.cells) {
@@ -159,11 +161,25 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       if (!step.look && await ports.place(stack.name, plan)) { await sleep(150); if (standing()) return true }
       for (const stand of stands(getBlock, step, click, feet ?? step.position).slice(0, 3)) {
         if (!live() || blocked() || hostile()) return false
-        if (!await hands.walk(stand)) continue
+        if (!await hands.walk(stand)) { walkWhy = `歩けません: ${String(hands.why?.() ?? '不明').slice(0, 60)}`; continue }
         if (await ports.place(stackOf(ITEM[step.item])?.name ?? stack.name, plan)) { await sleep(150); if (standing()) return true }
       }
     }
     return standing()
+  }
+
+  async function closeIn (origin) {
+    const porch = { x: origin.x + 3, z: origin.z + 8 }
+    const feet = getFeet()
+    if (!feet || Math.hypot(feet.x - porch.x - 0.5, feet.z - porch.z - 0.5) <= 5) return
+    const cells = []
+    for (let dx = -3; dx <= 3; dx++) for (let dz = -2; dz <= 3; dz++) for (let dy = -3; dy <= 2; dy++) {
+      const x = porch.x + dx, y = origin.y + dy, z = porch.z + dz
+      if (standable(getBlock, x, y, z)) cells.push({ x: x + 0.5, y, z: z + 0.5 })
+    }
+    cells.sort((a, b) => Math.hypot(a.x - porch.x - 0.5, a.z - porch.z - 0.5) - Math.hypot(b.x - porch.x - 0.5, b.z - porch.z - 0.5))
+    for (const cell of cells.slice(0, 4)) if (await hands.walk(cell)) return
+    if (cells.length) say(`拠点の家の前まで歩けません（${String(hands.why?.() ?? '不明').slice(0, 80)}）`)
   }
 
   async function run () {
@@ -198,6 +214,10 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
       if (flat(origin, getPosition()) > 12) await hands.approach({ x: origin.x + 3, y: origin.y, z: origin.z + 8 })
     }
+    // Long travel counts 20 m as arrived and a hop 12 m: walk on to a received
+    // stand by the porch, so the steps are within reach (live 04:48 JST: 16 m
+    // short of the house, all 14 tries were 「操作対象が手の届く範囲外です」).
+    await closeIn(origin)
     const fails = new Map(), started = now()
     let placed = 0
     const reasons = new Map()
@@ -212,7 +232,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
         if (!await make(step, origin, left)) { fails.set(step.id, (fails.get(step.id) ?? 0) + 1); note(step, `${step.item} を用意できません${ports.why() ? `: ${ports.why()}` : ''}`); if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を用意できません（${step.id}${ports.why() ? `: ${ports.why()}` : ''}）`); continue }
         if (await put(step)) { placed++; progress++; continue }
         fails.set(step.id, (fails.get(step.id) ?? 0) + 1)
-        note(step, String(ports.why() ?? hands.why?.() ?? (clicks(getBlock, step).length ? '置けませんでした' : 'クリックできる面がありません')).slice(0, 80))
+        note(step, String(walkWhy ?? ports.why() ?? hands.why?.() ?? (clicks(getBlock, step).length ? '置けませんでした' : 'クリックできる面がありません')).slice(0, 80))
         if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を (${step.position.x}, ${step.position.y}, ${step.position.z}) に置けません（${ports.why() ?? hands.why?.() ?? '不明'}）`)
       }
       if (!progress) break

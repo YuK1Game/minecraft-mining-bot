@@ -130,18 +130,21 @@ test('no site nearby: walks about 80 m on and looks again there', async () => {
   const getBlock = (x, y, z) => x >= 70 && x <= 100 && z >= -20 && z <= 20 ? w.getBlock(x, y, z) : { known: false }
   const inventory = { known: true, items: [['wooden_pickaxe', 1], ['oak_log', 44], ['cobblestone', 68]].map(([name, count], slot) => ({ name: `minecraft:${name}`, count, slot })) }
   const shared = { playerWanted: true }
-  const trips = [], lines = []
+  const trips = [], lines = [], walks = []
   const build = createHouseBuild({
     getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {},
     agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
     ports: { craft: async () => false, smelt: async () => 0, place: async () => false, mine: async () => true, why: () => null },
-    hands: { walk: async () => false, approach: async () => false },
+    hands: { walk: async stand => { walks.push(stand); return false }, approach: async () => false, why: () => 'test' },
     climb: async () => ({ ok: true }),
-    travel: { to: async ({ destination }) => { trips.push(destination); Object.assign(feet, { x: destination.x + 0.5, z: destination.z + 0.5 }) }, status: () => ({ busy: false }), cancel: async () => {} },
+    travel: { to: async ({ destination }) => { trips.push(destination); Object.assign(feet, { x: destination.x - 14.5, z: destination.z + 0.5 }) }, status: () => ({ busy: false }), cancel: async () => {} },
     getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
   })
   await build.tick()
   assert.deepEqual(trips[0], { x: 81, z: 1 }, lines.join('\n'))
   assert.ok(shared.playerHouse?.origin, lines.join('\n'))
   assert.ok(shared.playerHouse.origin.x >= 70)
+  // Long travel stops short: walks on to the porch first.
+  const porch = { x: shared.playerHouse.origin.x + 3.5, z: shared.playerHouse.origin.z + 8.5 }
+  assert.ok(walks.length && Math.hypot(walks[0].x - porch.x, walks[0].z - porch.z) <= 4, JSON.stringify(walks[0]))
 })
