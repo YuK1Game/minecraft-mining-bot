@@ -13,4 +13,24 @@ const ORE_NAME = /^(?:minecraft:)?(?:deepslate_)?(?:coal|iron|copper|gold|lapis|
 // For the modules that test ground by a pattern of their own (with planks, logs, stations).
 const isOreGround = name => ORE_NAME.test(String(name ?? ''))
 
-module.exports = { STANDING_GROUND, ORE_GROUND, isOreGround }
+// Gravel and sand that rest on received solid ground are ground too: the
+// Bot standing on them takes no support away (real Realm 2026-11-17 00:34-00:38
+// JST: on a gravel pile at y=-20 every tunnel plan answered "Settle on known
+// dry land" and the planner asked to scan the body cells again, 46 times in
+// five minutes). Only the block under the feet is meant: digging beside or
+// under loose blocks keeps its own checks.
+const LOOSE = new Set(['gravel', 'sand', 'red_sand'])
+const bare = name => String(name ?? '').replace(/^minecraft:/, '')
+const isLoose = name => LOOSE.has(bare(name))
+// read(x, y, z) -> received block. True when the loose block at (x, y, z)
+// sits on a column of loose blocks (8 at most) that ends on a received full block.
+function settledLoose (read, x, y, z, depth = 8) {
+  for (let step = 1; step <= depth; step++) {
+    const below = read(x, y - step, z)
+    if (below?.known !== true || below.boundingBox !== 'block' || below.extra?.length) return false
+    if (!isLoose(below.name)) return !/(?:water|lava|concrete_powder$|anvil$|scaffolding)/.test(bare(below.name))
+  }
+  return false
+}
+
+module.exports = { STANDING_GROUND, ORE_GROUND, isOreGround, isLoose, settledLoose }

@@ -203,6 +203,8 @@ test('unknown terrain, lava, water and falling material block a sealed route wit
   for (const hazard of [{ known: false }, 'lava', 'water', 'gravel']) {
     const f = fixture()
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) f.set(point(dx, 6, dz), hazard)
+    // Gravel resting on stone is ground to step up onto; a wall two high of it is not passable.
+    if (hazard === 'gravel') for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) f.set(point(dx, 7, dz), hazard)
     const preview = f.tunneling.preview(f.decision, { maxExpanded: 80 })
     assert.equal(preview.ready, false)
     await assert.rejects(f.tunneling.execute(f.decision, { maxExpanded: 80 }), error => error.code === 'NO_SAFE_ROUTE')
@@ -443,4 +445,18 @@ test('an ore far below behind unknown terrain gets a route down to the known edg
   assert.equal(plan.ready, true)
   assert.equal(plan.partialRoute, true)
   assert.ok(plan.steps.at(-1).targetCell.y <= -5)
+})
+
+test('gravel resting on received stone is ground to tunnel from; gravel over air is not', () => {
+  const f = fixture()
+  // The body footprint around x/z 0.5 covers only cell (0, 0).
+  f.set(point(0, 5, 0), 'gravel'); f.set(point(0, 4, 0), 'gravel')
+  const plan = f.tunneling.preview(f.decision)
+  assert.equal(plan.ready, true, plan.reason)
+  const g = fixture()
+  g.set(point(0, 5, 0), 'gravel'); g.set(point(0, 4, 0), 'air')
+  assert.equal(g.tunneling.preview(g.decision).code, 'SETTLE_REQUIRED')
+  const h = fixture()
+  h.set(point(0, 5, 0), 'gravel'); h.set(point(0, 4, 0), { known: false })
+  assert.notEqual(h.tunneling.preview(h.decision).ready, true)
 })

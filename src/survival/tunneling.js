@@ -55,6 +55,8 @@ const integer = point => finite(point) && ['x', 'y', 'z'].every(axis => Number.i
 const layered = block => block.extra?.some(extra => !AIR.has(nameOf(extra)))
 const clear = block => block.known === true && !hazardName(nameOf(block)) && !layered(block) && (AIR.has(nameOf(block)) || block.boundingBox === 'empty')
 const floor = block => block.known === true && block.boundingBox === 'block' && FLOOR.has(nameOf(block)) && !hazardName(nameOf(block)) && !layered(block)
+const { isLoose, settledLoose } = require('../common/standing-ground')
+const looseFloor = block => block?.known === true && block.boundingBox === 'block' && isLoose(block.name) && !layered(block)
 const center = cell => ({ x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 })
 function segmentDistance (point, from, to) {
   const delta = { x: to.x - from.x, y: to.y - from.y, z: to.z - from.z }
@@ -150,6 +152,8 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     return { target: { ...decision.target }, name: block.name, resource: info.resource, tier }
   }
 
+  // Received ground under the feet, gravel or sand on solid ground included (common/standing-ground.js).
+  const ground = (block, x, y, z) => floor(block) || looseFloor(block) && settledLoose((bx, by, bz) => world.getBlock(bx, by, bz), x, y, z)
   function standing (state) {
     const level = Math.round(state.position.y - 1.62)
     const physics = state.predicted?.physicsState ?? state.predicted ?? state.physicsState
@@ -163,10 +167,10 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       const z = Math.floor(state.position.z + dz)
       const blocks = [level - 1, level, level + 1].map(y => world.getBlock(x, y, z))
       if (!blocks.every(block => block?.known === true) || !clear(blocks[1]) || !clear(blocks[2])) return false
-      if (!(floor(blocks[0]) || (x !== cx || z !== cz) && clear(blocks[0]) && AIR.has(nameOf(blocks[0])))) return false
+      if (!(ground(blocks[0], x, level - 1, z) || (x !== cx || z !== cz) && clear(blocks[0]) && AIR.has(nameOf(blocks[0])))) return false
     }
     const under = world.getBlock(cx, level - 1, cz)
-    return under?.known === true && floor(under)
+    return under?.known === true && ground(under, cx, level - 1, cz)
   }
 
   function footprintFloors (state) {
@@ -238,7 +242,10 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       if (block?.known !== true) { unknown.set(id, { ...point }); throw searching ? (unknownTerrain ??= new TunnelingError('Unknown terrain', 'UNKNOWN_TERRAIN')) : new TunnelingError(`Unknown terrain at ${key(point)}`, 'UNKNOWN_TERRAIN') }
       return removed?.has(id) ? { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [], plannedClearance: true } : block
     }
-    function supported (point, removed) { return floor(read({ ...point, y: point.y - 1 }, removed)) }
+    function supported (point, removed) {
+      const below = read({ ...point, y: point.y - 1 }, removed)
+      return floor(below) || looseFloor(below) && settledLoose((x, y, z) => read({ x, y, z }, removed), point.x, point.y - 1, point.z)
+    }
     // Current body corners must be supported too; a nearby centre is no excuse
     // for starting a dig while the real working pose hangs over a ledge.
     for (const dx of [-0.3 + CONTACT, 0.3 - CONTACT]) for (const dz of [-0.3 + CONTACT, 0.3 - CONTACT]) {

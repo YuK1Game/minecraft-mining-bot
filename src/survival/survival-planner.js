@@ -11,6 +11,7 @@ const WOODS = new Set(['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak',
 const STONE = new Set(['cobblestone', 'cobbled_deepslate'])
 const SWORDS = new Set(['stone_sword', 'iron_sword', 'diamond_sword', 'netherite_sword'])
 const SUPPORT = new Set(require('../common/standing-ground').STANDING_GROUND)
+const { isLoose, settledLoose } = require('../common/standing-ground')
 const AIR = new Set(['air', 'cave_air', 'void_air'])
 const HAZARD = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|fire|cactus|magma|scaffolding)/
 const nameOf = value => String(value ?? '').replace(/^minecraft:/, '')
@@ -239,7 +240,8 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
           // rim of a hole) is still a known, supported body.
           const centre = x === Math.floor(state.position.x) && z === Math.floor(state.position.z)
           const overhang = !centre && floor?.known === true && floor.boundingBox === 'empty' && AIR.has(nameOf(floor.name)) && !floor.extra?.length
-          if (!overhang && (floor?.known !== true || floor.boundingBox !== 'block' || !SUPPORT.has(nameOf(floor.name)) || floor.extra?.length)) { bodyKnown = false; break }
+          const loose = floor?.known === true && floor.boundingBox === 'block' && !floor.extra?.length && isLoose(floor.name) && settledLoose((bx, by, bz) => map.get(`${bx},${by},${bz}`), x, foot - 1, z)
+          if (!overhang && !loose && (floor?.known !== true || floor.boundingBox !== 'block' || !SUPPORT.has(nameOf(floor.name)) || floor.extra?.length)) { bodyKnown = false; break }
           for (const y of [foot, foot + 1]) {
             const block = map.get(`${x},${y},${z}`)
             if (block?.known !== true || block.boundingBox !== 'empty' || block.extra?.length || !(AIR.has(nameOf(block.name)) || ['short_grass', 'fern', 'deadbush', 'leaf_litter', 'torch'].includes(nameOf(block.name)))) bodyKnown = false
