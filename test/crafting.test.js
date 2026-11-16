@@ -561,3 +561,18 @@ test('lightweight crafting reads follow pending and confirmed requests rather th
   assert.equal(f.crafting.status().lastResult.output.count, 4)
   assert.deepEqual(f.crafting.inventorySnapshot().inventory, [{ slot: 1, name: 'minecraft:oak_planks', count: 4, stackId: 102 }])
 })
+
+test('a bed: the white recipe takes held white wool named with its variant (live 2026-11-17 07:48 JST: 「材料が不足しています: minecraft:black_wool:0」 with three white wool held)', () => {
+  const crafting = createCrafting({ client: { queue: () => {} }, getState: () => ({ phase: 'spawned', gameMode: 'survival', runtimeEntityId: '41', health: 20 }), timeoutMs: 1000 })
+  crafting.applyPacket('start_game', { server_authoritative_inventory: true })
+  crafting.applyPacket('item_registry', { itemstates: [{ name: 'minecraft:oak_planks', runtime_id: 29 }, { name: 'minecraft:white_wool', runtime_id: 35 }, { name: 'minecraft:black_wool', runtime_id: 36 }, { name: 'minecraft:bed', runtime_id: 418 }] })
+  const bed = (id, wool) => ({ recipe_id: `minecraft:bed_${id}`, network_id: id, block: 'crafting_table', width: 3, height: 2, input: [ingredient(wool), ingredient(wool), ingredient(wool), plank(), plank(), plank()], output: [output(418, 1)] })
+  crafting.applyPacket('crafting_data', { clear_recipes: true, shapeless_recipes: [], shaped_recipes: [bed(950, 'minecraft:black_wool:0'), bed(951, 'minecraft:white_wool:0')] })
+  const slots = Array.from({ length: 36 }, air)
+  slots[0] = item(35, 3, 71); slots[1] = item(29, 6, 72)
+  crafting.applyPacket('inventory_content', { window_id: 'inventory', input: slots })
+  crafting.applyPacket('container_open', { window_id: 'first', window_type: 'workbench', coordinates: { x: 1, y: 64, z: 1 } })
+  const plan = crafting.preview('bed')
+  assert.equal(plan.ready, true, JSON.stringify(plan))
+  assert.equal(plan.recipeNetworkId, 951)
+})

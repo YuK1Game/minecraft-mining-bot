@@ -79,7 +79,12 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
   function matches (ingredient, item) {
     const name = itemName(item)
     if (!name || empty(item)) return false
-    if (ingredient.descriptor_type === 'name') return name === nameOf(ingredient.name) && (ingredient.metadata == null || ingredient.metadata < 0 || ingredient.metadata === 32767 || ingredient.metadata === item.metadata)
+    if (ingredient.descriptor_type === 'name') {
+      // A name may carry its variant as a suffix ("minecraft:white_wool:0").
+      const [, bare, suffix] = /^([^:]+:[^:]+)(?::(\d+))?$/.exec(String(nameOf(ingredient.name))) ?? [null, nameOf(ingredient.name), null]
+      const metadata = suffix != null && (ingredient.metadata == null || ingredient.metadata < 0 || ingredient.metadata === 32767) ? Number(suffix) : ingredient.metadata
+      return name === bare && (metadata == null || metadata < 0 || metadata === 32767 || metadata === (item.metadata ?? 0))
+    }
     if (ingredient.descriptor_type === 'item_tag') {
       // Only known vanilla material tags needed for the bootstrap recipes.
       // Unknown/custom tags are not guessed; the server still validates all requests.
@@ -168,7 +173,12 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
     for (const recipe of candidates) {
       try { return planRecipe(recipe, outputName, times) } catch (error) { errors.push(error) }
     }
-    const error = new Error([...new Set(errors.map(error => error.message))].join('\n'))
+    // A reason other than a missing ingredient (a held stack the recipe would
+    // not take, a full bag...) goes first: log lines are cut short, and sixteen
+    // bed colours' 「材料が不足しています」 hid the white bed's own reason
+    // (live 2026-11-17 07:39-07:48 JST: three white wool held, no bed made).
+    const missing = message => /^材料が不足しています/.test(message)
+    const error = new Error([...new Set([...errors.filter(error => !missing(error.message)), ...errors.filter(error => missing(error.message))].map(error => error.message))].join('\n'))
     error.needsCraftingTable = errors.some(error => error.needsCraftingTable)
     throw error
   }
