@@ -46,20 +46,48 @@ function roomCells (getBlock, feet, avoid = [], tried = new Set()) {
   return out.sort((a, b) => rank(a) - rank(b) || Math.hypot(b.x + 0.5 - feet.x, b.z + 0.5 - feet.z) - Math.hypot(a.x + 0.5 - feet.x, a.z + 0.5 - feet.z))
 }
 
-async function makeRoom ({ hands, getBlock, getFeet, getInventory, avoid = [], say = () => {} }) {
+// What a mined wall block drops, when it is one plain rock.
+const DROP = { stone: 'cobblestone', deepslate: 'cobbled_deepslate', cobblestone: 'cobblestone', cobbled_deepslate: 'cobbled_deepslate', tuff: 'tuff', andesite: 'andesite', diorite: 'diorite', granite: 'granite', calcite: 'calcite', dirt: 'dirt' }
+
+// A wall cell beside the Bot (feet or head height) whose drop fits into a held
+// stack: mining it opens a cell to set the stack down in without taking a slot.
+// In a 1-wide tunnel the steps hold only a block or two (live 2026-11-16
+// 22:35-22:39 JST, y=-37: a tuff stack never fit, 36/36 slots for 4 minutes).
+function pocketCell (getBlock, feet, inventory, placing, refused) {
+  const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.001), fz = Math.floor(feet.z)
+  const room = name => (inventory?.items ?? []).some(item => item?.name === `minecraft:${name}` && item.count < 64)
+  for (const dy of [1, 0]) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const cell = { x: fx + dx, y: fy + dy, z: fz + dz }
+    if (refused.has(`${cell.x},${cell.y},${cell.z}`)) continue
+    const block = getBlock(cell.x, cell.y, cell.z), name = String(block?.name ?? '').replace('minecraft:', '')
+    if (block?.known !== true || block.extra?.length || !DROP[name] || `minecraft:${DROP[name]}` === placing || !room(DROP[name])) continue
+    return cell
+  }
+  return null
+}
+
+async function makeRoom ({ hands, getBlock, getFeet, getInventory, avoid = [], say = () => {}, mine = null }) {
   if (free(getInventory()) >= 1) return true
   const stack = pick(getInventory())
   if (!stack) { say('持ち物に空きを作れません（置ける16個以下の石材がありません）'); return false }
-  const tried = new Set()
-  for (let step = 0; step < MOST + 4 && free(getInventory()) < 1; step++) {
+  const tried = new Set(), refused = new Set()
+  let pockets = 0
+  for (let step = 0; step < 2 * (MOST + 4) && free(getInventory()) < 1; step++) {
     const feet = getFeet()
     const cell = feet && roomCells(getBlock, feet, avoid, tried)[0]
-    if (!cell) break
+    if (!cell) {
+      const wall = mine && feet && pocketCell(getBlock, feet, getInventory(), stack.name, refused)
+      if (!wall) break
+      if (await mine(wall)) pockets++
+      else refused.add(`${wall.x},${wall.y},${wall.z}`)
+      continue
+    }
     if (!await hands.place(cell, stack.name)) tried.add(`${cell.x},${cell.y},${cell.z}`)
   }
+  if (pockets) say(`石材を置く場所を作るため、坑道の壁を ${pockets} マス掘りました`)
   const ok = free(getInventory()) >= 1
   say(ok ? `持ち物に空きを作るため、${stack.name.replace('minecraft:', '')} ${stack.count} 個を足元の横に置きました` : `持ち物に空きを作れません（${stack.name.replace('minecraft:', '')} を置けません${hands.refusal?.() ? `: ${hands.refusal()}` : '。置ける場所がありません'}）`)
   return ok
 }
 
-module.exports = { makeRoom, roomCells, pick, free }
+module.exports = { makeRoom, roomCells, pocketCell, pick, free }
