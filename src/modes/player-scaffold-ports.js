@@ -67,6 +67,14 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     return !!at && Math.hypot(target.x - at.x, target.z - at.z) <= 12
   }
   const canMine = cell => { try { return operations.mining.preview([cell])?.ready === true } catch { return false } }
+  // With no usable pickaxe left: plain rock by hand (slow, no drop).
+  const byHand = cell => ({ x: cell.x, y: cell.y, z: cell.z, accessPreparation: 'hand_dig' })
+  const canDig = cell => { try { return operations.mining.preview([byHand(cell)])?.ready === true } catch { return false } }
+  async function dig (cell) {
+    if (air(cell)) return true
+    if (!await begin(() => operations.mining.start([byHand(cell)]))) return false
+    return until(() => air(cell), 35000)
+  }
   // Why the mining preview refuses a cell, for the log.
   const reason = cell => { try { const preview = operations.mining.preview([cell]); return preview?.ready === true ? null : String(preview?.errors?.[0] ?? preview?.error ?? '').slice(0, 160) || null } catch (error) { return String(error?.message ?? error).slice(0, 160) } }
   async function mine (cell) {
@@ -110,7 +118,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     await sleep(250)
     return true
   }
-  return { feet: getFeet, block, dirt, fill, walk, approach, canMine, mine, descend, pillar, place, pick, reason, why: () => why }
+  return { feet: getFeet, block, dirt, fill, walk, approach, canMine, mine, canDig, dig, descend, pillar, place, pick, reason, why: () => why }
 }
 
 module.exports = { createScaffoldPorts }

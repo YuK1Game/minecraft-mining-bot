@@ -82,3 +82,15 @@ test('goes on with the cobblestone it holds when the dirt is used up', async () 
   assert.equal(result.ok, true)
   assert.equal(stone, 0)
 })
+
+test('digs plain rock by hand when no pickaxe can be used', async () => {
+  const sim = world({ feetY: 62, surface: 64 })
+  const dug = []
+  sim.ports.canMine = () => false
+  sim.ports.pick = async () => false
+  sim.ports.canDig = () => true
+  sim.ports.dig = async cell => { dug.push(cell.y); return sim.ports.mine(cell) }
+  const result = await climbOut({ ports: sim.ports, sleep: async () => {} })
+  assert.equal(result.ok, true)
+  assert.deepEqual(dug, [64])
+})

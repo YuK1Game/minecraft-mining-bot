@@ -33,3 +33,11 @@ test('gravel beside the target that rests on a received solid block does not ref
   const wet = fixture(); wet.set({ x: 1, y: 65, z: 1 }, 'water'); wet.set({ x: 1, y: 64, z: 1 }, 'stone')
   assert.equal(wet.mining.preview([wet.target]).ready, false, 'a liquid beside still refuses')
 })
+
+test('plain rock may be dug by hand on request; ore and an ordinary request still need the pickaxe', () => {
+  const rock = fixture(); rock.set(rock.target, 'stone')
+  assert.equal(rock.mining.preview([rock.target]).ready, false)
+  assert.equal(rock.mining.preview([{ ...rock.target, accessPreparation: 'hand_dig' }]).ready, true)
+  const ore = fixture(); ore.set(ore.target, 'iron_ore')
+  assert.equal(ore.mining.preview([{ ...ore.target, accessPreparation: 'hand_dig' }]).ready, false)
+})
