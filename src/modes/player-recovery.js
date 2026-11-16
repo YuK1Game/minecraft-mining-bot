@@ -139,6 +139,15 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
     if (tree && !under) visited = [...visited.slice(-15), destination]
     reason = under ? `地下にいるため、先に地上へ出ます（(${destination.x}, ${destination.z}) の方向）。` : goal?.label ? `${goal.label} (${destination.x}, ${destination.z}) へ歩いて近づきます。` : goal ? `次の作業の場所 (${destination.x}, ${destination.z}) が遠いため、そこへ移動しています。` : tree ? `木が見える (${destination.x}, ${destination.z}) へ移動しています。` : `近くに${wood ? '木' : '資源'}が見つからないため、(${destination.x}, ${destination.z}) へ移動して探します。`
     // No walk leads out of a closed tunnel: straight up first (player-climb.js); the walk below is the fallback.
+    // A walk to a known place (a food source...) too: long travel only crosses
+    // open ground (live 2026-11-17 08:10-08:13 JST: 13 below the surface, the
+    // walk to a sheep found no waypoint and no route, twice, with no food held).
+    if (goal && climb && underCover(getBlock, position)) {
+      log(`プレイヤーモード: 地下にいるため、先に真上へ掘って地上へ出ます（${goal.label ?? '目的地'} (${destination.x}, ${destination.z}) へ行く前）。`)
+      let out = null
+      try { out = await climb(() => !live(token)) } catch (error) { log(`プレイヤーモード: 真上へ掘れません ${text(error?.message)}`) }
+      if (!live(token)) return false
+    }
     if (under && climb) {
       reason = '地下にいるため、真上へ掘って地上へ出ます。'
       log(`プレイヤーモード: ${reason}`)
