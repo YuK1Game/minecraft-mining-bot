@@ -182,3 +182,26 @@ test('with no open cell for the whole stack, wall rock that merges into a held s
   assert.ok(mined.length >= 1)
   assert.equal(items.find(item => item.name === 'minecraft:tuff').count, 0)
 })
+
+test('when no held stack takes the drop, wall rock is dug with the stack in hand (no drop), never a chest cell', async () => {
+  const { makeRoom } = require('../src/modes/player-storage-room')
+  const blocks = new Map()
+  const key = (x, y, z) => `${x},${y},${z}`
+  for (const [x, y, z] of [[0, 0, 0], [0, 1, 0], [0, 1, -1], [1, 1, -1]]) blocks.set(key(x, y, z), 'air')
+  const getBlock = (x, y, z) => { const name = blocks.get(key(x, y, z)) ?? 'deepslate'; return { known: true, name: `minecraft:${name}`, boundingBox: name === 'air' ? 'empty' : 'block' } }
+  const items = Array.from({ length: 34 }, (_, slot) => ({ slot, name: 'minecraft:diamond', count: 1 }))
+  items.push({ slot: 34, name: 'minecraft:tuff', count: 3 }, { slot: 35, name: 'minecraft:cobbled_deepslate', count: 64 })
+  const inventory = () => ({ items: items.filter(item => item.count > 0) })
+  const held = []
+  const hands = { place: async (cell, name) => { if (getBlock(cell.x, cell.y, cell.z).name !== 'minecraft:air') return false; blocks.set(key(cell.x, cell.y, cell.z), name.replace('minecraft:', '')); items.find(item => item.name === name).count--; return true }, hold: async name => { held.push(name); return true }, refusal: () => null }
+  const mine = async () => { throw new Error('a pickaxe dig would drop into a full inventory') }
+  const dug = []
+  const dig = async cell => { dug.push(cell); blocks.set(key(cell.x, cell.y, cell.z), 'air'); return true }
+  const avoid = [{ x: 0, y: 1, z: -1 }, { x: 1, y: 1, z: -1 }]
+  const ok = await makeRoom({ hands, getBlock, getFeet: () => ({ x: 0.5, y: 0, z: 0.5 }), getInventory: inventory, avoid, mine, dig })
+  assert.equal(ok, true)
+  assert.ok(dug.length >= 1)
+  assert.ok(held.every(name => name === 'minecraft:tuff') && held.length === dug.length)
+  for (const cell of dug) assert.ok(!avoid.some(a => a.x === cell.x && a.z === cell.z && (a.y === cell.y || a.y - 1 === cell.y)))
+  assert.equal(items.find(item => item.name === 'minecraft:tuff').count, 0)
+})
