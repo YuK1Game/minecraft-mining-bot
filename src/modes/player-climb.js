@@ -16,11 +16,14 @@ const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const LEAVES = /_leaves$/
 const TREE = /_(?:leaves|log|wood|stem)$|leaf_litter/
 const SCAN_UP = 64
-const MAX_STEPS = 48
+const MAX_STEPS = 96
 
 // ports: the scaffold's hands (player-scaffold-ports.js).
 async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), maxSteps = MAX_STEPS }) {
   const { feet, block, dirt, walk, canMine, mine, pillar } = ports
+  // Dirt, or the cobblestone mined on the way up (real Realm 2026-11-16 08:39
+  // JST: 64 blocks under the surface with 34 dirt).
+  const fill = () => ports.fill?.() ?? dirt()
   const start = feet()
   if (!start || ![start.x, start.y, start.z].every(Number.isFinite)) return { ok: false, reason: 'NO_POSITION', steps: 0 }
   const column = { x: Math.floor(start.x), z: Math.floor(start.z) }
@@ -55,10 +58,10 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
       if (found.boundingBox === 'block') top = Math.max(top ?? y, y)
     }
     if (reason || aborted()) break
-    if (dirt() < 1) { reason = 'NO_DIRT'; break }
-    let step = await pillar(column, at)
+    if (fill() < 1) { reason = 'NO_DIRT'; break }
+    let step = await pillar(column, at, { any: true })
     // The step before may still be ending (ASCENT_BUSY, a mining that just finished).
-    if (!step?.ok && !aborted()) { await sleep(1500); if (level() === at) step = await pillar(column, at); else step = { ok: level() === at + 1 } }
+    if (!step?.ok && !aborted()) { await sleep(1500); if (level() === at) step = await pillar(column, at, { any: true }); else step = { ok: level() === at + 1 } }
     if (!step?.ok) { reason = `PILLAR_${String(step?.reason ?? 'BLOCKED').slice(0, 60)}`; break }
     steps++
   }

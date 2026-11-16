@@ -243,6 +243,14 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
       // diamond ores with visible top faces were refused for the gravel under
       // them, 13 stops in three hours). Beside or above it still denies.
       if (!quarry && offset.y === -1 && offset.x === 0 && offset.z === 0 && FALLING_BELOW.test(blockName(neighbour)) && !neighbour.extra?.some(layer => !AIR.has(blockName(layer)))) continue
+      // A falling block beside the target that rests on a received solid,
+      // non-falling block also stays: the target is not what holds it (real
+      // Realm 2026-11-16 08:39 JST: the climb to the surface stopped under a
+      // stone with gravel on one side, five times in twenty minutes).
+      if (!quarry && offset.y === 0 && FALLING_BELOW.test(blockName(neighbour)) && !neighbour.extra?.some(layer => !AIR.has(blockName(layer)))) {
+        const rest = world.getBlock(target.x + offset.x, target.y - 1, target.z + offset.z)
+        if (rest?.known === true && rest.boundingBox === 'block' && !AIR.has(blockName(rest)) && !HAZARDS.test(blockName(rest)) && !rest.extra?.some(layer => !AIR.has(blockName(layer)))) continue
+      }
       if (hazards.test(blockName(neighbour)) || neighbour.extra?.some(layer => hazards.test(blockName(layer)))) {
         throw new Error('対象の隣に液体・落下ブロックなどがあります。')
       }

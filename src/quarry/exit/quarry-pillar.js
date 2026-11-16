@@ -11,7 +11,11 @@ const copy = value => structuredClone(value)
 const finite = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]))
 const key = p => `${p.x},${p.y},${p.z}`
 const scopeOf = s => JSON.stringify([s.profile ?? null, String(s.realm?.id ?? ''), s.connectionId ?? null, s.startedAt ?? null, s.dimension ?? null, String(s.runtimeEntityId ?? ''), s.lifecycle?.deathId ?? null])
-const dirtTotal = s => (s.inventory?.items ?? []).filter(i => i.name === 'minecraft:dirt' && Number.isInteger(i.count) && i.count > 0).reduce((n, i) => n + i.count, 0)
+// The block the step places: dirt, or for the player's climb a plain full
+// block it mined on the way (request.material).
+const DIRT = 'minecraft:dirt'
+const FILL = new Set([DIRT, 'minecraft:cobblestone', 'minecraft:cobbled_deepslate'])
+const dirtTotal = (s, fill = DIRT) => (s.inventory?.items ?? []).filter(i => i.name === fill && Number.isInteger(i.count) && i.count > 0).reduce((n, i) => n + i.count, 0)
 const isAir = b => b?.known === true && AIR.has(b.name) && !b.extra?.length
 
 // rawServerPosition is copied from received Host state by workingSnapshot.
@@ -146,7 +150,7 @@ function createQuarryPillar ({ getState, getBlock, getPhysics, getInput, equipDi
     let block = null
     try { block = getBlock(run.target.x, run.target.y, run.target.z) } catch {}
     const frames = run.checkpoint.diagnostics.frames
-    frames.push({ tick: String(queued.tick), feetY: physical?.position?.y ?? null, velocityY: physical?.velocity?.y ?? null, queuedAt: Number.isFinite(queued.queuedAt) ? queued.queuedAt : now(), workingFeetYBeforeFrame: run.inputWorkingFeetY, jump: queued.controls?.jump === true, jumpStart: run.ticks === 1 && queued.controls?.jump === true, placementAttempted: run.placeAttempted, placedBlock: block?.known === true && block.name === 'minecraft:dirt', blockKnown: block?.known === true, blockName: block?.known === true ? block.name : null, landed: run.landed === true })
+    frames.push({ tick: String(queued.tick), feetY: physical?.position?.y ?? null, velocityY: physical?.velocity?.y ?? null, queuedAt: Number.isFinite(queued.queuedAt) ? queued.queuedAt : now(), workingFeetYBeforeFrame: run.inputWorkingFeetY, jump: queued.controls?.jump === true, jumpStart: run.ticks === 1 && queued.controls?.jump === true, placementAttempted: run.placeAttempted, placedBlock: block?.known === true && block.name === (run.fill ?? DIRT), blockKnown: block?.known === true, blockName: block?.known === true ? block.name : null, landed: run.landed === true })
     if (frames.length > 16) frames.splice(0, frames.length - 16)
   }
   function cancel (reason = 'ASCENT_INTERRUPTED') {
@@ -163,12 +167,12 @@ function createQuarryPillar ({ getState, getBlock, getPhysics, getInput, equipDi
     const column = request?.column, feetY = request?.feetY
     if (!column || !Number.isSafeInteger(column.x) || !Number.isSafeInteger(column.z) || !Number.isSafeInteger(feetY)) throw new Error('Pillar needs an integer column and feetY')
     const target = { x: column.x, y: feetY, z: column.z }, centre = { x: column.x + 0.5, y: feetY, z: column.z + 0.5 }
-    const prior = request.checkpoint
+    const prior = request.checkpoint, fill = FILL.has(request.material) ? request.material : DIRT
     if (prior && key(prior.target ?? {}) !== key(target)) return { status: 'blocked', reason: 'ASCENT_CHECKPOINT_MISMATCH', serverConfirmed: false, checkpoint: copy(prior) }
     if (prior?.phase === 'completed' && prior.serverConfirmed === true) {
       try {
         const s = getState(), expected = { ...centre, y: feetY + 1 }, block = getBlock(target.x, target.y, target.z)
-        if (scopeOf(s) !== prior.scope || block?.known !== true || block.name !== 'minecraft:dirt') throw new Error('ASCENT_CHECKPOINT_CHANGED')
+        if (scopeOf(s) !== prior.scope || block?.known !== true || block.name !== (prior.fill ?? DIRT)) throw new Error('ASCENT_CHECKPOINT_CHANGED')
         if (!usableServerPose(s, expected, now(), !!confirmPosition)) {
           if (!confirmPosition) throw new Error('ASCENT_CHECKPOINT_CHANGED')
           const receipt = await positionVolume(expected, { signal, operationId: request.operationId }, () => { if (signal?.aborted || scopeOf(getState()) !== prior.scope) throw new Error('ASCENT_SCOPE_CHANGED') })
@@ -208,23 +212,23 @@ function createQuarryPillar ({ getState, getBlock, getPhysics, getInput, equipDi
       const floor = getBlock(target.x, target.y - 1, target.z)
       if (floor?.known !== true || floor.boundingBox !== 'block' || floor.extra?.length || HAZARD.test(floor.name)) throw new Error('ASCENT_SUPPORT_UNCONFIRMED')
       for (let y = feetY; y <= feetY + 3; y++) if (!isAir(getBlock(target.x, y, target.z))) throw new Error('ASCENT_HEADSPACE_BLOCKED')
-      const dirt = s.inventory.items.filter(i => i.name === 'minecraft:dirt' && i.count > 0).sort((a, b) => a.slot - b.slot)[0]
+      const dirt = s.inventory.items.filter(i => i.name === fill && i.count > 0).sort((a, b) => a.slot - b.slot)[0]
       if (!dirt) throw new Error('EXIT_DIRT_REQUIRED')
       verifyOriginState()
       const equipped = await equipDirt(dirt.slot, { signal })
       const origin = await resolveOrigin(verifyOriginState(), 'ASCENT_ORIGIN_CHANGED'), latest = origin.state, latestPose = origin.pose
       const slot = equipped?.slot ?? (dirt.slot <= 8 ? dirt.slot : null)
       const held = latest.inventory?.items?.find(i => i.slot === slot)
-      if (!Number.isInteger(slot) || slot < 0 || slot > 8 || held?.name !== 'minecraft:dirt' || !(held.count > 0) || latest.inventory?.known !== true || latest.inventory.uncertain || scopeOf(latest) !== scopeOf(s)) throw new Error('ASCENT_DIRT_EQUIP_UNCONFIRMED')
+      if (!Number.isInteger(slot) || slot < 0 || slot > 8 || held?.name !== fill || !(held.count > 0) || latest.inventory?.known !== true || latest.inventory.uncertain || scopeOf(latest) !== scopeOf(s)) throw new Error('ASCENT_DIRT_EQUIP_UNCONFIRMED')
       // This remains a physics model seed inside a server-confirmed volume;
       // the volume centre is never written as an exact received player pose.
       const physics = getPhysics(), physical = physics.fromServer({ ...latest, position: origin.modelPosition, predicted: null, physicsState: null })
       if (physical.onGround !== true || Math.hypot(physical.velocity.x, physical.velocity.z) > 0.01) throw new Error('ASCENT_ORIGIN_UNSETTLED')
-      const checkpoint = { version: 1, jobId: request.jobId, operationId: request.operationId, target, phase: 'intent', beforeDirt: dirtTotal(latest), slot, stackId: held.stackId ?? null, beforeCount: held.count, originStamp: latestPose?.stamp ?? null, originPositionEvidence: copy(origin.evidence), modelSeedSource: origin.evidence.kind === 'server_position_volume' ? 'working_prediction_with_server_position_volume' : 'received_server_position', modelSeedPosition: copy(origin.modelPosition), scope: scopeOf(latest), serverConfirmed: false,
+      const checkpoint = { version: 1, jobId: request.jobId, operationId: request.operationId, target, phase: 'intent', ...(fill === DIRT ? {} : { fill }), beforeDirt: dirtTotal(latest, fill), slot, stackId: held.stackId ?? null, beforeCount: held.count, originStamp: latestPose?.stamp ?? null, originPositionEvidence: copy(origin.evidence), modelSeedSource: origin.evidence.kind === 'server_position_volume' ? 'working_prediction_with_server_position_volume' : 'received_server_position', modelSeedPosition: copy(origin.modelPosition), scope: scopeOf(latest), serverConfirmed: false,
         diagnostics: { startedAt: now(), framesPredictionOnly: true, frames: [], placementTriggeredAt: null, placementStartedAt: null, placementRespondedAt: null } }
       await onCheckpoint(copy(checkpoint))
       if (signal?.aborted || preparingReason) throw new Error(preparingReason ?? 'ASCENT_INTERRUPTED')
-      run = { token: {}, target, centre, scope: scopeOf(latest), health: latest.health, signal, physics, physical, slot, checkpoint, lastPoseStamp: latestPose?.stamp ?? null, ticks: 0, airborne: false, landed: false, placeAttempted: false, input: null }
+      run = { token: {}, target, centre, scope: scopeOf(latest), health: latest.health, signal, physics, physical, slot, fill, checkpoint, lastPoseStamp: latestPose?.stamp ?? null, ticks: 0, airborne: false, landed: false, placeAttempted: false, input: null }
       active = run
       check(run)
       await acquireInput({ token: run.token, operationId: request.operationId })
@@ -236,7 +240,7 @@ function createQuarryPillar ({ getState, getBlock, getPhysics, getInput, equipDi
         if (run.failure) throw new Error(run.failure)
         if (run.placeError) throw new Error('ASCENT_PLACEMENT_UNCONFIRMED')
         const block = getBlock(target.x, target.y, target.z), currentPose = usableServerPose(current, { ...centre, y: feetY + 1 }, now(), !!confirmPosition)
-        const placed = run.placeResult?.phase === 'completed' && run.placeResult.confirmedBy === 'server_block_and_inventory' && block?.known === true && block.name === 'minecraft:dirt' && dirtTotal(current) === checkpoint.beforeDirt - 1
+        const placed = run.placeResult?.phase === 'completed' && run.placeResult.confirmedBy === 'server_block_and_inventory' && block?.known === true && block.name === fill && dirtTotal(current, fill) === checkpoint.beforeDirt - 1
         const rawConfirmed = currentPose && currentPose.stamp !== checkpoint.originStamp && currentPose.stamp !== run.landingStamp
         if (placed && run.landed && !rawConfirmed && confirmPosition && !run.positionVolume) {
           run.positionVolume = await positionVolume({ ...centre, y: feetY + 1 }, { signal, operationId: request.operationId }, () => check(run))
@@ -244,7 +248,7 @@ function createQuarryPillar ({ getState, getBlock, getPhysics, getInput, equipDi
           continue
         }
         if (placed && run.landed && (rawConfirmed || run.positionVolume)) {
-          Object.assign(checkpoint, { phase: 'completed', serverConfirmed: true, confirmedBy: rawConfirmed ? 'server_block_inventory_and_position' : 'server_block_inventory_and_position_volume', afterDirt: dirtTotal(current) })
+          Object.assign(checkpoint, { phase: 'completed', serverConfirmed: true, confirmedBy: rawConfirmed ? 'server_block_inventory_and_position' : 'server_block_inventory_and_position_volume', afterDirt: dirtTotal(current, fill) })
           if (rawConfirmed) Object.assign(checkpoint, { position: copy(currentPose.position), positionStamp: currentPose.stamp })
           else Object.assign(checkpoint, { positionVolume: copy(run.positionVolume), modelLandingFeet: copy(run.physical.position) })
           await onCheckpoint(copy(checkpoint))
@@ -260,7 +264,7 @@ function createQuarryPillar ({ getState, getBlock, getPhysics, getInput, equipDi
         Object.assign(run.checkpoint.diagnostics, { failedAt: now(), failureReason: String(error.code ?? error.message).slice(0, 300) })
         try {
           const state = getState(), pose = serverPose(state)
-          run.checkpoint.diagnostics.failureObservation = { workingFeetY: Number.isFinite(state.position?.y) ? state.position.y - FEET : null, rawFeetY: pose ? pose.position.y - FEET : null, rawStamp: pose?.stamp ?? null, inventoryKnown: state.inventory?.known === true, inventoryUncertain: state.inventory?.uncertain === true, dirt: dirtTotal(state) }
+          run.checkpoint.diagnostics.failureObservation = { workingFeetY: Number.isFinite(state.position?.y) ? state.position.y - FEET : null, rawFeetY: pose ? pose.position.y - FEET : null, rawStamp: pose?.stamp ?? null, inventoryKnown: state.inventory?.known === true, inventoryUncertain: state.inventory?.uncertain === true, dirt: dirtTotal(state, run.fill ?? DIRT) }
         } catch {}
       }
       last = { status: 'blocked', reason: error.code ?? error.message, serverConfirmed: false, checkpoint: copy(run?.checkpoint ?? prior ?? null) }
@@ -279,4 +283,4 @@ function createQuarryPillar ({ getState, getBlock, getPhysics, getInput, equipDi
   return { step, frame, onQueuedFrame, cancel, snapshot: () => ({ busy: active !== null || preparing, phase: active?.checkpoint.phase ?? 'idle', target: active ? copy(active.target) : null, diagnostics: copy(active?.checkpoint.diagnostics ?? last?.checkpoint?.diagnostics ?? null), lastResult: copy(last) }) }
 }
 
-module.exports = { createQuarryPillar, serverPose, atFeet, usableServerPose, validPositionVolume, withinPositionVolume, workingFeet }
+module.exports = { createQuarryPillar, FILL, serverPose, atFeet, usableServerPose, validPositionVolume, withinPositionVolume, workingFeet }
