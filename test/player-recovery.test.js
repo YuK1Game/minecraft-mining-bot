@@ -58,7 +58,7 @@ test('other stops restart after a pause, not at once; stop cancels the wait', as
   f.recovery.onProgress({ running: false, phase: 'failed', reason: '同じ状態で同じ操作を繰り返しても進展がないため停止しました。', progress: {} })
   await settle(f.recovery)
   assert.deepEqual(f.calls, [{ start: { objective: 'diamond', diamondCount: 1 } }])
-  assert.ok(f.clock() >= 30000)
+  assert.ok(f.clock() >= 5000)
   f.recovery.onProgress({ running: false, phase: 'failed', reason: 'x', progress: {} })
   assert.equal(f.recovery.cancel(), true)
   await new Promise(resolve => setTimeout(resolve, 20))
@@ -174,12 +174,13 @@ test('mode runtime reads the working position for the search and the retreat, no
   assert.doesNotMatch(source, /getPosition: \(\) => runtime\.raw\(\)\.position/)
 })
 
-test('a full list of unreachable candidates: restart after 30 s with an empty list, not every ten minutes with the same one', async () => {
+test('a full list of unreachable candidates: restart at once with an empty list, not every ten minutes with the same one', async () => {
   const f = fixture()
   f.recovery.onProgress(blocked({ stopCode: 'exclusion_limit', reason: '到達できない候補の除外数が上限に達したため、自律作業を停止しました。', lastDecision: { type: 'collect_drops', stage: 'stone' } }))
   await settle(f.recovery)
   assert.deepEqual(f.calls, [{ start: { objective: 'diamond', diamondCount: 1, freshExclusions: true } }])
-  assert.ok(f.clock() >= 30000 && f.clock() < 40000, `waited ${f.clock()}`)
+  assert.ok(f.clock() < 1000, `waited ${f.clock()}`)
+  assert.match(f.logs.join('\n'), /すぐにやり直します/)
   assert.equal(f.shared.autoOptions.freshExclusions, undefined)
   const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/survival/autonomy.js'), 'utf8')
   assert.match(source, /'exclusion_limit'\)/)
@@ -196,7 +197,7 @@ test('a stop whose work lies far away walks there first, then goes on; a near on
   near.recovery.onProgress(blocked({ stopCode: null, lastDecision: { type: 'tunnel', resource: 'iron', target: { x: 10, y: 68, z: 5 } } }))
   await settle(near.recovery)
   assert.deepEqual(near.calls, [{ start: { objective: 'diamond', diamondCount: 1 } }])
-  assert.ok(near.clock() >= 30000)
+  assert.ok(near.clock() >= 5000)
 })
 
 test('underground, a table that cannot be walked to: straight up, then on at once', async () => {
