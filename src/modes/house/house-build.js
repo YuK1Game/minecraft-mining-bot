@@ -27,7 +27,7 @@ const { findSite, PLANT } = require('./house-site')
 const { clicks, stands } = require('./house-steps')
 const { underCover } = require('../player-surface')
 
-const AGAIN_MS = 600000, SHORT_MS = 30000, TRIES = 3, RUN_MS = 20 * 60000
+const AGAIN_MS = 600000, SHORT_MS = 3000, TRIES = 3, RUN_MS = 20 * 60000
 const WOODS = 'oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|bamboo|crimson|warped'
 const short = name => String(name ?? '').replace(/^minecraft:/, '')
 const ITEM = {
@@ -200,15 +200,19 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     }
     const fails = new Map(), started = now()
     let placed = 0
-    for (let pass = 0; pass < 3 && !aborted() && now() - started < RUN_MS; pass++) {
+    const reasons = new Map()
+    const note = (step, text) => { if (!reasons.has(text)) reasons.set(text, { count: 0, step }); reasons.get(text).count++ }
+    // Passes go on while one places something (each step is tried TRIES times at most).
+    for (let pass = 0; !aborted() && now() - started < RUN_MS; pass++) {
       let progress = 0
       for (const step of order(remaining(getBlock, origin))) {
         if (aborted() || now() - started > RUN_MS) break
         if ((fails.get(step.id) ?? 0) >= TRIES) continue
         const left = remaining(getBlock, origin)
-        if (!await make(step, origin, left)) { fails.set(step.id, (fails.get(step.id) ?? 0) + 1); if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を用意できません（${step.id}${ports.why() ? `: ${ports.why()}` : ''}）`); continue }
+        if (!await make(step, origin, left)) { fails.set(step.id, (fails.get(step.id) ?? 0) + 1); note(step, `${step.item} を用意できません${ports.why() ? `: ${ports.why()}` : ''}`); if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を用意できません（${step.id}${ports.why() ? `: ${ports.why()}` : ''}）`); continue }
         if (await put(step)) { placed++; progress++; continue }
         fails.set(step.id, (fails.get(step.id) ?? 0) + 1)
+        note(step, String(ports.why() ?? hands.why?.() ?? (clicks(getBlock, step).length ? '置けませんでした' : 'クリックできる面がありません')).slice(0, 80))
         if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を (${step.position.x}, ${step.position.y}, ${step.position.z}) に置けません（${ports.why() ?? hands.why?.() ?? '不明'}）`)
       }
       if (!progress) break
@@ -218,7 +222,12 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       shared.playerHouse = { ...shared.playerHouse, origin, done: true }
       await save()
       say(`拠点の家が完成しました (${origin.x}, ${origin.y}, ${origin.z})`)
-    } else say(`拠点の家: ${placed} 個置きました（残り ${left.length} 個）`)
+    } else {
+      say(`拠点の家: ${placed} 個置きました（残り ${left.length} 個）`)
+      // Why the rest stayed: the three commonest reasons, with one step each.
+      const top = [...reasons].sort((a, b) => b[1].count - a[1].count).slice(0, 3)
+      if (top.length) say(`拠点の家: 置けなかった理由 ${top.map(([text, { count, step }]) => `${text}（${count}回、${step.item} (${step.position.x}, ${step.position.y}, ${step.position.z})）`).join(' / ')}`)
+    }
     // The chest A and the bed are used as soon as they stand, finished or not.
     try { await onDone(origin) } catch (error) { say(`拠点の家の仕上げ（拠点・ベッド）に失敗しました ${String(error?.message ?? error).slice(0, 80)}`) }
     return placed
@@ -240,7 +249,10 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     } finally {
       waitUntil = now() + (shared.playerHouse?.done ? 0 : placed > 0 ? SHORT_MS : AGAIN_MS)
       busy = false
-      await restart()
+      // Something placed and more to do: stay at the house for the next run
+      // instead of letting the agent wander off (live 04:30-04:42 JST: after
+      // 14 blocks it went mining and could not climb back out).
+      if (!(placed > 0 && live() && !shared.playerHouse?.done && due())) await restart()
     }
   }
 
