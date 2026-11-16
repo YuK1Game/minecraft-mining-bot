@@ -60,6 +60,12 @@ test('missing existing table gets a validated preparation target or bounded nati
   const follow = f.next({ preparationStep: { type: 'move_to', target: { x: 1.5, y: 65, z: 0.5 }, requiresReobservation: true } })
   assert.equal(follow.type, 'move_to')
   assert.equal(f.next().type, 'capability_required', 'missing verified options are an explicit finite blocker')
+  // No prepared place and no stop to walk to (real Realm 2026-11-16 16:37 JST, on the surface):
+  // the held table goes down by the ordinary placement instead of stopping the run.
+  const stuck = f.next({ preparationStep: { type: 'capability_required', stage: 'portable_worksite', capability: 'known_safe_underground_worksite' } })
+  assert.notEqual(stuck.capability, 'known_safe_underground_worksite')
+  assert.notEqual(stuck.capability, 'known_safe_workbench_placement')
+  assert.equal(stuck.type, 'place_crafting_table')
 })
 test('actual176 terrain supports only a private projected four-cell niche, with intact reserved floor/roof and original passage', () => {
   const f = scene(), before = JSON.stringify([...f.cells]), site = f.site()
