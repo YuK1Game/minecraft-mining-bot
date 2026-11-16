@@ -255,3 +255,81 @@ test('an unconfirmed transfer stops the run without using up the steps, and the 
   assert.equal(await build.tick(), true, lines.join('\n'))
   assert.equal(remaining(w.getBlock, shared.playerHouse.origin).length, 0, lines.join('\n'))
 })
+
+test('mixed planks: slabs are made from the kind held in enough number (live 2026-11-17 06:43 JST)', async () => {
+  const w = world()
+  const feet = { x: 0.5, y: 64, z: 0.5 }
+  const inventory = { known: true, items: [] }
+  const total = name => inventory.items.filter(stack => stack.name === name).reduce((sum, stack) => sum + stack.count, 0)
+  const give = (name, count) => { const item = inventory.items.find(stack => stack.name === name); if (item) item.count += count; else inventory.items.push({ name, count, slot: inventory.items.length }) }
+  const take = (name, count) => { for (const item of inventory.items.filter(stack => stack.name === name)) { const used = Math.min(item.count, count); item.count -= used; count -= used } inventory.items = inventory.items.filter(stack => stack.count > 0) }
+  for (const [name, count] of [['wooden_pickaxe', 1], ['oak_log', 12], ['cobblestone', 68], ['sand', 6], ['white_wool', 3], ['coal', 2], ['birch_planks', 20]]) give(`minecraft:${name}`, count)
+  for (let i = 0; i < 9; i++) inventory.items.push({ name: 'minecraft:oak_planks', count: 16, slot: 20 + i })
+  // Everything but the slabs already stands.
+  const origin0 = { x: 2, y: 64, z: 2 }
+  for (const step of placements(origin0)) if (step.item !== 'oak_slab') for (const cell of step.cells) w.set(cell, step.item === 'white_bed' ? 'minecraft:bed' : `minecraft:${step.item}`)
+  const recipes = { 'minecraft:oak_planks': [4, [['minecraft:oak_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:oak_planks', 4]]], 'minecraft:oak_slab': [6, [['minecraft:oak_planks', 3]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:oak_door': [3, [['minecraft:oak_planks', 6]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:oak_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:oak_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:oak_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
+  const short = []
+  const ports = {
+    craft: async (output, times) => { const [yieldCount, parts] = recipes[output]; if (parts.some(([name, n]) => total(name) < n * times)) { short.push(output); return false } for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
+    smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
+    place: async (name, plan) => {
+      const step = placements(shared.playerHouse.origin).find(s => s.position.x === plan.position.x && s.position.y === plan.position.y && s.position.z === plan.position.z)
+      take(name, 1)
+      for (const cell of step.cells) w.set(cell, name)
+      return true
+    },
+    mine: async () => true, why: () => null
+  }
+  const shared = { playerWanted: true, playerHouse: { origin: origin0, done: false } }
+  const lines = []
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {},
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    ports, hands: { walk: async stand => { Object.assign(feet, stand); return true }, approach: async () => true },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
+  })
+  assert.equal(remaining(w.getBlock, origin0).every(step => step.item === 'oak_slab'), true)
+  assert.equal(await build.tick(), true, lines.join('\n'))
+  assert.deepEqual(short, [], lines.join('\n'))
+  assert.equal(remaining(w.getBlock, shared.playerHouse.origin).filter(step => step.item === 'oak_slab' || step.item === 'oak_door').length, 0, lines.join('\n'))
+})
+
+test('the table cannot be seen from the nearest place: crafts from another place (live 2026-11-17 06:43 JST)', async () => {
+  const w = world()
+  const feet = { x: 0.5, y: 64, z: 0.5 }
+  const inventory = { known: true, items: [] }
+  const give = (name, count) => { const item = inventory.items.find(stack => stack.name === name); if (item) item.count += count; else inventory.items.push({ name, count, slot: inventory.items.length }) }
+  const take = (name, count) => { const item = inventory.items.find(stack => stack.name === name); item.count -= count; if (item.count <= 0) inventory.items.splice(inventory.items.indexOf(item), 1) }
+  for (const [name, count] of [['wooden_pickaxe', 1], ['birch_log', 44], ['cobblestone', 68], ['sand', 6], ['white_wool', 3], ['coal', 2]]) give(`minecraft:${name}`, count)
+  const recipes = { 'minecraft:birch_planks': [4, [['minecraft:birch_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:birch_planks', 4]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:birch_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:birch_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:birch_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
+  let why = null, blindAt = null, blinds = 0
+  const ports = {
+    craft: async (output, times, table) => {
+      // At the table the first place tried each time is blind; the next one sees it.
+      if (table) { const here = `${feet.x},${feet.y},${feet.z}`; if (blindAt !== 'used' && (blindAt == null || blindAt === here)) { blindAt = here; blinds++; why = '操作対象への視線が遮られているか、未取得です。'; if (blinds >= 1) blindAt = blindAt ?? here; return false } }
+      const [yieldCount, parts] = recipes[output]; for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); if (table) blindAt = 'used'; return true
+    },
+    smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
+    place: async (name, plan) => {
+      const step = placements(shared.playerHouse.origin).find(s => s.position.x === plan.position.x && s.position.y === plan.position.y && s.position.z === plan.position.z)
+      take(name, 1)
+      for (const cell of step.cells) w.set(cell, name)
+      return true
+    },
+    mine: async () => true, why: () => why, reset: () => { why = null }
+  }
+  const shared = { playerWanted: true }
+  const lines = []
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {},
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    ports, hands: { walk: async stand => { Object.assign(feet, stand); return true }, approach: async () => true },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
+  })
+  assert.equal(await build.tick(), true, lines.join('\n'))
+  assert.ok(blinds >= 1)
+  assert.equal(remaining(w.getBlock, shared.playerHouse.origin).length, 0, lines.join('\n'))
+})
