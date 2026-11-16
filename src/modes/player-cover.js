@@ -3,7 +3,8 @@
 // Player mode: out of an archer's line of fire when it cannot be fought.
 // Without a bow the only answer to a skeleton is to walk up to it, and where
 // no walk leads there the Bot stood in its sight and was shot (real Realm
-// 2026-11-16 13:47 and 14:31 JST: a skeleton 8-11 m away, the approach ended
+// 2026-11-16 13:47 and 14:31 JST, and witches at 2026-11-17 03:38 and
+// 06:14 JST, whose potions killed the Bot the same way: a skeleton 8-11 m away, the approach ended
 // with 「No known bounded melee stance」, the flee found no step straight away
 // from it, and three arrows killed the Bot each time).
 // - Trigger: in play, no bow with arrows held, hit within the last four
@@ -18,7 +19,9 @@
 // - No such place: said once in the log; tried again after ten seconds.
 const { normalizeMode } = require('./bot-mode')
 
-const ARCHER = /^minecraft:(?:skeleton|stray|bogged|pillager)$/
+const ARCHER = /^minecraft:(?:skeleton|stray|bogged|pillager|witch)$/
+// A witch throws potions from close by, so it counts from sword reach (3 m).
+const nearOf = actor => String(actor?.entityType ?? '') === 'minecraft:witch' ? 3 : NEAR_M
 const HIT_MS = 4000, NEAR_M = 4, FAR_M = 20, REACH_CELLS = 8, TRIES = 3
 const hasBow = inventory => { const items = inventory?.items ?? []; return items.some(item => item?.name === 'minecraft:bow' && item.count > 0) && items.some(item => item?.name === 'minecraft:arrow' && item.count > 0) }
 const eyeOf = actor => ({ x: actor.position.x, y: actor.position.y + 1.6, z: actor.position.z })
@@ -55,7 +58,7 @@ function createPlayerCover ({ getMode, shared, agent, getState, hostiles, sight,
     if (!(state.health > 0) || !state.position || state.inventory == null || hasBow(state.inventory)) return false
     const feet = { x: state.position.x, y: state.position.y - 1.62, z: state.position.z }
     const range = actor => Math.hypot(actor.position.x - feet.x, actor.position.y - feet.y, actor.position.z - feet.z)
-    const near = (hostiles() ?? []).filter(actor => actor?.position && ARCHER.test(String(actor.entityType ?? '')) && range(actor) > NEAR_M && range(actor) <= FAR_M)
+    const near = (hostiles() ?? []).filter(actor => actor?.position && ARCHER.test(String(actor.entityType ?? '')) && range(actor) > nearOf(actor) && range(actor) <= FAR_M)
     const archers = near.length ? exposedTo(feet, near, sight).filter(actor => !reachable(actor)) : []
     if (!archers.length) return false
     busy = true

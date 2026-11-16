@@ -93,3 +93,11 @@ test('a walk that does not arrive tries the next place, and combat is released a
   assert.equal(shared.playerFlee, null)
   assert.match(logs.at(-1), /歩けませんでした/)
 })
+
+test('a witch that cannot be reached is treated like an archer from 3 m', async () => {
+  const witch = (x) => ({ ...skeleton(x, 0.5), entityType: 'minecraft:witch' })
+  const { cover, logs } = setup({ hostiles: [witch(-10.5)] })
+  assert.equal(await cover.tick(), true)
+  assert.match(logs[0], /witch（11\.0m）に撃たれているため/)
+  assert.equal(await setup({ hostiles: [witch(-2.5)] }).cover.tick(), false)
+})
