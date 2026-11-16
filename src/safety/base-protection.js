@@ -99,7 +99,8 @@ function createBaseProtection ({ world, getState, getHutMemo = () => null, getSh
     refresh()
     return area.map(block => overlay(block, block?.position))
   }
-  return { getBlock, getArea, getRawBlock: (x, y, z) => world.getBlock(x, y, z), stats: () => { refresh(); return { protectedBlocks: protectedCells.size, rebuilds } } }
+  // The received terrain version, for callers that reuse answers until it changes.
+  return { getBlock, getArea, revision: () => world.revision?.() ?? null, getRawBlock: (x, y, z) => world.getBlock(x, y, z), stats: () => { refresh(); return { protectedBlocks: protectedCells.size, rebuilds } } }
 }
 
 module.exports = { createBaseProtection }
