@@ -22,6 +22,6 @@ test('the respawn point counts only from the server notice near the bed', async 
 
 test('the house record is read back', () => {
   const io = { readFileSync: () => JSON.stringify({ version: 1, origin: { x: 1, y: 2, z: 3 }, done: true }) }
-  assert.deepEqual(loadHouseSync('x', { io }), { origin: { x: 1, y: 2, z: 3 }, done: true })
+  assert.deepEqual(loadHouseSync('x', { io }), { origin: { x: 1, y: 2, z: 3 }, done: true, spawn: false })
   assert.equal(loadHouseSync('x', { io: { readFileSync: () => { throw Error('none') } } }), null)
 })

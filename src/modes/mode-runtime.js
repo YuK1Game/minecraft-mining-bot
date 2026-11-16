@@ -34,7 +34,7 @@ const { createPlayerBase, baseFile, loadBaseSync } = require('./player-base')
 const { createHouseWool } = require('./house/house-wool')
 const { createHouseBuild, houseFile, loadHouseSync } = require('./house/house-build')
 const { createHousePorts } = require('./house/house-ports')
-const { chestOf, setSpawn } = require('./house/house-spawn')
+const { chestOf, bedOf, setSpawn } = require('./house/house-spawn')
 const { writeDurableJson } = require('../common/durable-json')
 
 function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
@@ -220,10 +220,16 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active,
     // Done: chest A is the base, and the bed sets the respawn point.
     onDone: async origin => {
-      shared.playerBase = chestOf(origin)
-      try { await writeDurableJson(baseFile(root), { version: 1, chest: shared.playerBase, savedAt: new Date().toISOString() }) } catch { /* Kept in shared. */ }
-      log(`プレイヤーモード: 拠点を家のラージチェスト (${shared.playerBase.x}, ${shared.playerBase.y}, ${shared.playerBase.z}) にしました`)
-      await setSpawn({ origin, shared, useBed: at => operations.interactions.useBed(at), wakeBed: at => operations.interactions.wakeBed(at), walk: target => hands.walk(target), getFeet: feetNow, log })
+      const at = chestOf(origin), here = (x, y, z) => runtime.host().world.getBlock(x, y, z)
+      if (/chest$/.test(here(at.x, at.y, at.z)?.name ?? '') && !(shared.playerBase && shared.playerBase.x === at.x && shared.playerBase.y === at.y && shared.playerBase.z === at.z)) {
+        shared.playerBase = at
+        try { await writeDurableJson(baseFile(root), { version: 1, chest: at, savedAt: new Date().toISOString() }) } catch { /* Kept in shared. */ }
+        log(`プレイヤーモード: 拠点を家のラージチェスト (${at.x}, ${at.y}, ${at.z}) にしました`)
+      }
+      const bed = bedOf(origin)
+      if (bed && /bed$/.test(here(bed.x, bed.y, bed.z)?.name ?? '') && shared.playerHouse?.spawn !== true) {
+        if (await setSpawn({ origin, shared, useBed: target => operations.interactions.useBed(target), wakeBed: target => operations.interactions.wakeBed(target), walk: target => hands.walk(target), getFeet: feetNow, log })) shared.playerHouse = { ...shared.playerHouse, spawn: true }
+      }
     }
   })
   const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else { void flee.tick().catch(() => {}); void cover.tick().catch(() => {}) } }), 500)

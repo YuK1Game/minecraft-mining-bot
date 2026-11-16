@@ -71,3 +71,39 @@ test('with the materials held: builds every step in order and marks the house do
   assert.match(lines.join('\n'), /拠点の家が完成しました/)
   assert.ok(crafted.some(([output]) => output === 'minecraft:bed'))
 })
+
+test('without sand or wool: builds the rest and leaves the glass and the bed', async () => {
+  const w = world()
+  const feet = { x: 0.5, y: 64, z: 0.5 }
+  const inventory = { known: true, items: [] }
+  const give = (name, count) => { const item = inventory.items.find(stack => stack.name === name); if (item) item.count += count; else inventory.items.push({ name, count, slot: inventory.items.length }) }
+  const take = (name, count) => { const item = inventory.items.find(stack => stack.name === name); item.count -= count; if (item.count <= 0) inventory.items.splice(inventory.items.indexOf(item), 1) }
+  for (const [name, count] of [['wooden_pickaxe', 1], ['birch_log', 44], ['cobblestone', 68], ['coal', 2]]) give(`minecraft:${name}`, count)
+  const crafted = []
+  const recipes = { 'minecraft:birch_planks': [4, [['minecraft:birch_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:birch_planks', 4]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:birch_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:birch_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:birch_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
+  const ports = {
+    craft: async (output, times) => { crafted.push([output, times]); const [yieldCount, parts] = recipes[output]; for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
+    smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
+    place: async (name, plan) => {
+      const step = placements(shared.playerHouse.origin).find(s => s.position.x === plan.position.x && s.position.y === plan.position.y && s.position.z === plan.position.z)
+      take(name, 1)
+      for (const cell of step.cells) w.set(cell, name)
+      return true
+    },
+    mine: async () => true, why: () => null
+  }
+  const shared = { playerWanted: true }
+  const lines = [], done = []
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {},
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    ports, hands: { walk: async stand => { Object.assign(feet, stand); return true }, approach: async () => true },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory, onDone: async origin => { done.push(origin) }
+  })
+  assert.equal(await build.tick(), true, lines.join('\n'))
+  const left = remaining(w.getBlock, shared.playerHouse.origin)
+  assert.deepEqual([...new Set(left.map(step => step.item))].sort(), ['glass', 'white_bed'], lines.join('\n'))
+  assert.notEqual(shared.playerHouse.done, true)
+  assert.equal(done.length, 1)
+})
