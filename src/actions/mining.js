@@ -18,6 +18,8 @@ const PICK = new Map([
 ])
 const HAZARDS = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|dragon_egg|scaffolding)/
 const QUARRY_HAZARDS = /(?:water|lava|bubble_column)/
+// Plain rock a hand breaks within the block timeout (no ore, nothing that drops something worth a tool).
+const HAND_ROCK = new Set(['stone', 'andesite', 'diorite', 'granite', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'tuff'])
 const FALLING_BELOW = /(?:sand$|gravel$|concrete_powder$)/
 const { blockRule: quarryRule, toolOf: quarryTool } = require('../quarry/quarry-rules')
 const blockName = block => String(block?.name ?? '').replace(/^minecraft:/, '')
@@ -42,6 +44,10 @@ function targetList (targets) {
     } else if (position.accessPreparation === 'travel_down') {
       // Long travel only: the block directly under the feet (checked in validate).
       Object.assign(target, { accessPreparation: 'travel_down' })
+    } else if (position.accessPreparation === 'hand_dig') {
+      // The player's climb with every pickaxe worn out: plain rock by hand,
+      // slowly and without a drop (checked in validate).
+      Object.assign(target, { accessPreparation: 'hand_dig' })
     } else if (position.accessPreparation === 'pillar_descent') {
       // Descending the bot's own dirt pillar one block at a time (2026-11-10):
       // only a received dirt block directly under the feet, with a received
@@ -227,7 +233,9 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     if (fluidRoof) validateFluidRoofContext(target, state, block)
     if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !logAllowed && !leafDown) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
     if (clearance && (block.name !== 'minecraft:stone' || block.runtimeId !== target.expectedRuntimeId || block.protected === true || block.protectionSource || block.natural === false || isProtected(target, state, block))) throw new Error('Stone clearance target changed or is protected')
-    if (!clearance && !quarry && PICK.has(name) && pickTier(state) < PICK.get(name)) throw new Error(`適切なツルハシの装備を確認できません: ${name}`)
+    const handDig = target.accessPreparation === 'hand_dig'
+    if (handDig && !HAND_ROCK.has(name)) throw new Error(`素手で掘るのは普通の石だけです: ${name}`)
+    if (!clearance && !quarry && !handDig && PICK.has(name) && pickTier(state) < PICK.get(name)) throw new Error(`適切なツルハシの装備を確認できません: ${name}`)
     if (block.extra?.some(layer => !AIR.has(blockName(layer)))) throw new Error('対象に水などの追加レイヤーがあります。')
     for (const offset of adjacent) {
       const neighbour = world.getBlock(target.x + offset.x, target.y + offset.y, target.z + offset.z)
