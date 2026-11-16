@@ -173,3 +173,24 @@ test('one-cell descent retains the player floor and exposes the lower top face o
   f.state.health = NaN
   assert.equal(f.mining.preview([lower]).ready, false)
 })
+
+// Live 2026-11-16 13:26 JST: log at (-5028,72,-5045) with a log above it,
+// leaves to the south, leaf litter in the cells to the west; eye 1.6 above the
+// litter cell's floor, 1.5 m to the west.
+test('a face beside a leaf litter cell is visible from above the litter, not through the layer itself', () => {
+  const f = fixture()
+  const litter = point => f.blocks.set(f.key(point), { known: true, name: 'minecraft:leaf_litter', runtimeId: 9, boundingBox: 'empty', extra: [] })
+  const target = { x: 2, y: 0, z: 0 }
+  f.set(target, 'oak_log'); f.set({ x: 2, y: 1, z: 0 }, 'oak_log'); f.set({ x: 2, y: 0, z: 1 }, 'oak_leaves')
+  for (const x of [0, 1]) for (const z of [-1, 0]) { litter({ x, y: 0, z }); f.set({ x, y: -1, z }, 'grass_block') }
+  f.set({ x: 2, y: -1, z: 0 }, 'dirt'); f.set({ x: 3, y: 0, z: 0 }, 'stone'); f.set({ x: 2, y: 0, z: -1 }, 'stone')
+  const aim = selectVisibleBlockFace({ eye: { x: 0.44, y: 1.62, z: 0.45 }, target, world: f.world, maxReach: 4.5 })
+  assert.equal(aim?.face, 4)
+  assert.ok(aim.point.y >= 0.125)
+  // A ray along the floor of the litter cell does touch the layer.
+  assert.equal(traceBlockFace({ eye: { x: 0.44, y: 0.05, z: 0.45 }, target, world: f.world, maxReach: 4.5, point: { x: 2.001, y: 0.05, z: 0.5 } }), null)
+  // Litter with water in the cell, or unreceived, is not passed.
+  f.blocks.set(f.key({ x: 1, y: 0, z: 0 }), { known: true, name: 'minecraft:leaf_litter', boundingBox: 'empty', extra: [{ known: true, name: 'minecraft:water' }] })
+  f.blocks.set(f.key({ x: 1, y: 0, z: -1 }), { known: false })
+  assert.equal(selectVisibleBlockFace({ eye: { x: 0.44, y: 1.62, z: 0.45 }, target, world: f.world, maxReach: 4.5 }), null)
+})

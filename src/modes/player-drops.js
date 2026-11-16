@@ -21,10 +21,22 @@ const SKIP_MS = 600000
 const RANGE = 16
 const CELL_LIMIT = 3000
 const idOf = drop => String(drop?.entityId ?? drop?.runtimeEntityId ?? drop?.runtimeId ?? drop?.id ?? '')
-const key = (x, y, z) => `${x},${y},${z}`
+const { cellKey: key } = require('../movement/plan-cache')
 
 // Cells the Bot can stand in and walk to from its feet, by received terrain.
-function walkableCells (position, getBlock) {
+// The answer is kept while the Bot stands in the same cell and the world
+// reports the same revision (any received world packet bumps it): the plan
+// asks before every decision, and one fill read some 15,000 blocks (live
+// 2026-11-16 13:31 JST: 155 ms of a 201 ms stall).
+let kept = null
+function walkableCells (position, getBlock, revision = null) {
+  const at = `${Math.floor(position.x)},${Math.floor(position.y - 1.62 + 0.001)},${Math.floor(position.z)}`
+  if (Number.isSafeInteger(revision) && kept?.revision === revision && kept.at === at && kept.getBlock === getBlock) return kept.cells
+  const cells = fillWalkable(position, getBlock)
+  if (Number.isSafeInteger(revision)) kept = { revision, at, getBlock, cells }
+  return cells
+}
+function fillWalkable (position, getBlock) {
   const cache = new Map()
   const read = (x, y, z) => { const id = key(x, y, z); let block = cache.get(id); if (block === undefined) { block = getBlock(x, y, z) ?? null; cache.set(id, block) } return block }
   const open = (x, y, z) => { const block = read(x, y, z); return block?.known === true && !block.extra?.length && !HAZARD.test(block.name ?? '') && (AIR.test(block.name ?? '') || block.boundingBox === 'empty') }
@@ -73,7 +85,7 @@ function collectable (drop, cells) {
 }
 
 // The observations the plan may use: without the drops it cannot pick up.
-function withCollectableDrops ({ mode, shared, state, observations, getBlock, log = () => {}, now = Date.now }) {
+function withCollectableDrops ({ mode, shared, state, observations, getBlock, revision = () => null, log = () => {}, now = Date.now }) {
   if (normalizeMode(mode) !== 'player' || !Array.isArray(observations?.drops) || !observations.drops.length || !state?.position) return observations
   const skips = shared.playerDropSkips ??= {}
   for (const id of Object.keys(skips)) if (skips[id].until <= now()) delete skips[id]
@@ -85,7 +97,7 @@ function withCollectableDrops ({ mode, shared, state, observations, getBlock, lo
       if (drop.position && Math.hypot(drop.position.x - skip.x, drop.position.y - skip.y, drop.position.z - skip.z) <= 1) return false
       delete skips[id]
     }
-    cells ??= walkableCells(state.position, getBlock)
+    cells ??= walkableCells(state.position, getBlock, revision())
     if (collectable(drop, cells)) return true
     if (id && shared.playerDropNoted !== id) { shared.playerDropNoted = id; log(`プレイヤーモード: 歩いて届かない場所のアイテムは拾いません（${String(drop.name ?? '').replace(/^minecraft:/, '').slice(0, 40)}、(${Math.floor(drop.position?.x)}, ${Math.floor(drop.position?.y)}, ${Math.floor(drop.position?.z)})）`) }
     return false
