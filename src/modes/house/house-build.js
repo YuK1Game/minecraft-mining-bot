@@ -57,6 +57,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   const held = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).reduce((sum, item) => sum + item.count, 0)
   const stackOf = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).sort((a, b) => b.count - a.count)[0] ?? null
   const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
+  let hunts = 0
   const eyeTo = (cell, from) => Math.hypot(cell.x + 0.5 - from.x, cell.y + 0.5 - (from.y + 1.62), cell.z + 0.5 - from.z)
 
   async function save () {
@@ -175,6 +176,16 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     let origin = shared.playerHouse?.origin ?? null
     if (!origin) {
       origin = findSite(getBlock, getFeet())
+      // None here: walk about 80 m on (a new direction each time) and look again.
+      if (!origin && getFeet()) {
+        const from = getFeet(), angle = (hunts++ % 6) * Math.PI / 3
+        say(`近くに拠点の家を建てられる場所（7×8マス、起伏2段まで）がないため、約80m先で探します（${Math.round(angle * 180 / Math.PI)}°）`)
+        try { await travel.to({ destination: { x: Math.round(from.x + Math.cos(angle) * 80), z: Math.round(from.z + Math.sin(angle) * 80) } }) } catch {}
+        const until = now() + 300000
+        while (!aborted() && now() < until && travel.status()?.busy) await sleep(1000)
+        if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
+        if (!aborted()) origin = findSite(getBlock, getFeet())
+      }
       if (!origin) { say('近くに拠点の家を建てられる平らな場所（7×8マス）が見つかりません'); return 0 }
       shared.playerHouse = { origin, done: false }
       say(`拠点の家を (${origin.x}, ${origin.y}, ${origin.z}) から建てます（北西の角）`)

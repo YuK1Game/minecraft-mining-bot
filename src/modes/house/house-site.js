@@ -4,15 +4,16 @@
 // The house with its porch takes 7 x 8 cells (x 0..6, z 0..7 from the
 // north-west corner); its floor is laid on the ground, one above it.
 // - Every column of the patch has received solid ground (not leaves, logs,
-//   liquid or a falling block) at the same height or one lower, and received
+//   liquid or a falling block) at the same height or up to two lower, and received
 //   cells that are air or a plant (the plants are cut before placing) from
 //   the floor up five. The floor goes one above the highest ground; over a
 //   lower column it is placed against the side of the floor beside it, with
-//   a one-block gap under it (live 2026-11-17 04:17 JST: on hilly ground no
-//   perfectly flat 7 x 8 patch was found and the house never started).
+//   a gap of one or two blocks under it (live 2026-11-17 04:17 JST: on hilly ground no
+//   perfectly flat 7 x 8 patch was found and the house never started; 04:26
+//   on a hill at y 86 none was found with one block either).
 // - The nearest such patch within `radius` of the Bot, preferring flatter
 //   ones.
-const WIDTH = 7, DEPTH = 8, HEIGHT = 5
+const WIDTH = 7, DEPTH = 8, HEIGHT = 5, DROP = 2
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const PLANT = /^minecraft:(?:short_grass|tall_grass|grass|fern|large_fern|dandelion|poppy|blue_orchid|allium|azure_bluet|\w+_tulip|oxeye_daisy|cornflower|lily_of_the_valley|sweet_berry_bush|dead_bush|leaf_litter|pink_petals|wildflowers|bush|firefly_bush|short_dry_grass|tall_dry_grass|snow_layer)$/
 const BAD_GROUND = /leaves|_log$|_stem$|water|lava|sand$|gravel$|concrete_powder|ice$|snow$|_slab$|_stairs$|fence|wall|torch|chest|furnace|crafting_table|bed$|door/
@@ -39,7 +40,7 @@ function columns (getBlock, center, radius) {
   return map
 }
 
-function findSite (getBlock, center, { radius = 24 } = {}) {
+function findSite (getBlock, center, { radius = 40 } = {}) {
   if (!center || ![center.x, center.y, center.z].every(Number.isFinite)) return null
   const map = columns(getBlock, center, radius)
   const cx = Math.floor(center.x), cz = Math.floor(center.z)
@@ -47,14 +48,15 @@ function findSite (getBlock, center, { radius = 24 } = {}) {
   for (let ox = cx - radius; ox <= cx + radius; ox++) for (let oz = cz - radius; oz <= cz + radius; oz++) {
     const y = map.get(`${ox},${oz}`)
     if (y == null) continue
-    for (const top of [y, y + 1]) {
+    for (let top = y; top <= y + DROP; top++) {
       let fits = true, low = 0
       for (let dx = 0; dx < WIDTH && fits; dx++) for (let dz = 0; dz < DEPTH && fits; dz++) {
         const v = map.get(`${ox + dx},${oz + dz}`)
         if (v === top) continue
-        // One lower: the column was checked open up to top + HEIGHT - 2.
-        fits = v === top - 1 && open(getBlock(ox + dx, top + HEIGHT - 1, oz + dz))
-        low++
+        // Lower: the column was checked open up to v + HEIGHT - 1.
+        fits = v != null && v < top && v >= top - DROP
+        for (let up = v + HEIGHT; up < top + HEIGHT && fits; up++) fits = open(getBlock(ox + dx, up, oz + dz))
+        low += top - v
       }
       if (!fits) continue
       const distance = Math.hypot(ox + WIDTH / 2 - center.x, oz + DEPTH / 2 - center.z) + Math.abs(top - center.y) * 2 + low * 0.5
