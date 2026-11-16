@@ -53,6 +53,11 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, disp
     return true
   }
 
+  // Throwing a stack away; it counts when the server answers (inventory/discard.js).
+  async function drop (slot, count) {
+    try { return await patient(() => operations.inventory.discard(slot, count)) } catch (error) { refusal = String(error?.message ?? error).slice(0, 120); return null }
+  }
+
   let refusal = null // the last placement refusal, for the log
   // Normal placement of a held block on the floor of a cell; it counts when the block is received.
   async function place (cell, name) {
@@ -112,7 +117,7 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, disp
     return moved
   }
 
-  return { craftSmall, craftPlanks, tableNear, place, hold, placeTable, craftAtTable, room, store, refusal: () => refusal }
+  return { craftSmall, craftPlanks, tableNear, place, hold, drop, placeTable, craftAtTable, room, store, refusal: () => refusal }
 }
 
 module.exports = { createStoragePorts }

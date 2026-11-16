@@ -815,7 +815,9 @@ function createRuntimeOperations (rt) {
         const result = await rt.inventory.equip(slot)
         if (result.serverConfirmed) rt.host.shared.equipment = null
         return result
-      }
+      },
+      // Throwing a held stack away (player mode, no chest and no wood).
+      discard: (slot, count) => { rt.requireIdle(); return rt.armor.discard(slot, count) }
     },
     combat: {
       previewHunt: id => rt.combat?.previewHunt(id) ?? { ready: false },

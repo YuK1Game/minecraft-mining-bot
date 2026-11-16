@@ -18,35 +18,13 @@
 //   inventory, a chest by the received block, a deposit by the received slots.
 const { normalizeMode } = require('./bot-mode')
 const { makeRoom, free } = require('./player-storage-room')
+const { storable } = require('./player-storage-rubble')
+const { discardJunk } = require('./player-discard')
 
 const CHEST = 'minecraft:chest'
 const TABLE = 'minecraft:crafting_table'
 const AIR = /^minecraft:(?:air|cave_air|void_air|short_grass|fern|leaf_litter)$/
-const RUBBLE = /^minecraft:(?:cobbled_deepslate|deepslate|diorite|granite|andesite|tuff|calcite|stone|gravel|flint|leaf_litter|rotten_flesh|netherrack|sandstone|sand|clay_ball|poisonous_potato)$/
-const KEEP = { 'minecraft:cobblestone': 64, 'minecraft:dirt': 32 }
 const START_AT = 34, NEAR = 5, AGAIN_MS = 60000
-
-const bare = name => String(name ?? '')
-const pickaxeUses = item => Number.isSafeInteger(item?.maxDurability) && Number.isSafeInteger(item?.durabilityUsed) ? item.maxDurability - item.durabilityUsed : null
-
-// The stacks to store: [{ slot, name, count }], biggest reserve first kept.
-function storable (inventory) {
-  if (inventory?.known !== true || inventory.uncertain) return []
-  const items = (inventory.items ?? []).filter(item => item?.count > 0 && Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36)
-  const out = []
-  // Keep the reserve in the largest stacks; store the rest.
-  for (const [name, keep] of Object.entries(KEEP)) {
-    let left = keep
-    for (const item of items.filter(item => item.name === name).sort((a, b) => b.count - a.count)) {
-      if (left >= item.count) { left -= item.count; continue }
-      out.push({ slot: item.slot, name, count: item.count - left }); left = 0
-    }
-  }
-  for (const item of items) if (RUBBLE.test(bare(item.name))) out.push({ slot: item.slot, name: item.name, count: item.count })
-  const picks = items.filter(item => /_pickaxe$/.test(bare(item.name)))
-  if (picks.some(item => (pickaxeUses(item) ?? 0) > 2)) for (const item of picks) { const uses = pickaxeUses(item); if (uses != null && uses <= 2) out.push({ slot: item.slot, name: item.name, count: item.count }) }
-  return out
-}
 
 const occupied = inventory => new Set((inventory?.items ?? []).filter(item => item?.count > 0 && Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36).map(item => item.slot)).size
 
@@ -101,6 +79,16 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
   const held = name => (getInventory()?.items ?? []).filter(item => item?.name === name && item.count > 0).reduce((sum, item) => sum + item.count, 0)
   const say = text => log(`プレイヤーモード: ${text}`)
 
+  // Enough held chests, or planks and logs for the missing ones and a table.
+  function woodFor (needed) {
+    const items = getInventory()?.items ?? []
+    const want = needed - held(CHEST)
+    if (want <= 0) return true
+    const planks = items.filter(item => /_planks$/.test(item?.name ?? '')).reduce((sum, item) => sum + item.count, 0)
+    const logs = items.filter(item => /_(?:log|stem|wood|hyphae)$/.test(item?.name ?? '') && !/stripped/.test(item.name)).reduce((sum, item) => sum + item.count, 0)
+    return planks + 4 * logs >= want * 8 + (hands.tableNear() || held(TABLE) ? 0 : 4)
+  }
+
   // Chests held, made at a table from planks (logs are cut into planks first).
   async function makeChests (needed, avoid = []) {
     const planks = () => (getInventory()?.items ?? []).filter(item => /_planks$/.test(item?.name ?? '') && item.count > 0).reduce((sum, item) => sum + item.count, 0)
@@ -133,6 +121,9 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     let target = chests.find(chest => chest.pair && hands.room(chest.position) !== 0) ?? null
     // A single chest is made large first (user: large chests first).
     const single = !target ? chests.find(chest => !chest.pair) ?? null : null
+    // No chest to use and no wood to make one: the rubble is thrown away
+    // (user 2026-11-16 23:14 JST; player-discard.js).
+    if (!target && hands.drop && !woodFor(single ? 1 : 2) && await discardJunk({ drop: hands.drop, getInventory, getFeet, shared, say, now })) return true
     if (!target && single) {
       const cells = chestCells(getBlock, feet, single.position)
       if (cells.length && await makeChests(1, cells) && await hands.place(cells[0], CHEST)) say(`チェストの隣にもう1つ置いてラージチェストにしました (${cells[0].x}, ${cells[0].y}, ${cells[0].z})`)
