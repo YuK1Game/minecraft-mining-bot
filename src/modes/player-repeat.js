@@ -42,7 +42,9 @@ function createRepeat ({ now = Date.now } = {}) {
 }
 
 // A point `metres` from the Bot, away from where the failed work was (or along `turn`).
-function elsewhere (position, decision, metres = 16, turn = 0) {
+// 32 m: long travel counts 20 m as arrived, so 16 m was no walk at all (live
+// 2026-11-17 04:10 JST: 「目的地に着きました（残り 16m・0区間）」, same stop 3 s later).
+function elsewhere (position, decision, metres = 32, turn = 0) {
   const point = decision?.resourceTarget ?? decision?.target
   const away = point && [point.x, point.z].every(Number.isFinite) && Math.hypot(point.x + 0.5 - position.x, point.z + 0.5 - position.z) > 0.5
     ? Math.atan2(position.z - point.z - 0.5, position.x - point.x - 0.5) : 0

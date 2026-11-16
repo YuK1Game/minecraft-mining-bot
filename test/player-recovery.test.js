@@ -60,10 +60,10 @@ test('the same stop is not answered the same way twice: at once, then from anoth
   assert.deepEqual(f.calls, [{ start: { objective: 'diamond', diamondCount: 1 } }])
   assert.ok(f.clock() < 1000, 'no pause before the first restart')
   assert.match(f.logs.join('\n'), /すぐにやり直します/)
-  // The same stop again, at the same place: about 16 m away, then on with fresh lists.
+  // The same stop again, at the same place: about 32 m away, then on with fresh lists.
   f.calls.length = 0
   f.recovery.onProgress(stop); await settle(f.recovery)
-  assert.deepEqual(f.calls, [{ travel: { x: 16, z: 0 } }, { start: { objective: 'diamond', diamondCount: 1, freshExclusions: true, freshExploration: true } }])
+  assert.deepEqual(f.calls, [{ travel: { x: 32, z: 0 } }, { start: { objective: 'diamond', diamondCount: 1, freshExclusions: true, freshExploration: true } }])
   assert.match(f.logs.join('\n'), /別の場所へ移ってから続けます/)
   // From the new place the stop counts as new.
   f.calls.length = 0
@@ -76,7 +76,7 @@ test('a stop that comes back where the Bot could not move away: the third time i
   const stop = { running: false, phase: 'failed', reason: '再試行の上限に達しました: No known safe retreat route exists', lastDecision: { type: 'avoid_threat' }, progress: {} }
   for (let i = 0; i < 3; i++) { f.recovery.onProgress(stop); await settle(f.recovery) }
   const walks = f.calls.filter(call => call.travel).map(call => call.travel)
-  assert.deepEqual(walks, [{ x: 16, z: 0 }, aheadPoint({ x: 0.5, z: 0.5 }, Math.PI / 3)])
+  assert.deepEqual(walks, [{ x: 32, z: 0 }, aheadPoint({ x: 0.5, z: 0.5 }, Math.PI / 3)])
   assert.match(f.logs.join('\n'), /遠くへ移動してから続けます/)
   assert.ok(f.clock() < 30000, 'no rest before the sixth time')
 })

@@ -19,7 +19,9 @@ const { normalizeMode } = require('./bot-mode')
 
 const LOG = /^(?:minecraft:)?[a-z_]+_(?:log|stem)$/
 const MISS_LIMIT = 6
-const STALL_MS = 240000
+// A minute without a log cut (live 2026-11-17 04:04-04:10 JST: the same unseen
+// root log was planned every two seconds for six minutes).
+const STALL_MS = 60000
 const FAR_M = 48
 const KEEP = new Set(['stop', 'complete', 'respawn', 'build_shelter', 'leave_shelter'])
 const key = point => `${point.x},${point.y},${point.z}`
