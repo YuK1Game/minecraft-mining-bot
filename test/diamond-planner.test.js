@@ -547,3 +547,29 @@ test('explicit unknown or contradictory durability never becomes a fresh tool or
   assert.equal(legacy.next().requiresKnownDurability, true)
   assert.equal(legacy.state.inventory.items[0].durabilityRemaining, undefined)
 })
+
+test('held diamonds become a diamond pickaxe and sword before more are mined', () => {
+  const f = fixture()
+  // The player mode always aims above the diamonds held (player-goal.js).
+  f.next = () => nextDiamondAction(f.state, f.observations, { diamondCount: 29 })
+  f.table()
+  f.items([['iron_pickaxe', 1], ['diamond', 18], ['stick', 4]])
+  f.hold('iron_pickaxe')
+  f.ore('diamond', 'diamond_ore', { x: 3, y: 60, z: 0 }, { requiresTunnel: true })
+  assert.equal(f.next().type, 'preview_craft')
+  assert.equal(f.next().output, 'minecraft:diamond_pickaxe')
+  f.preview('diamond_pickaxe')
+  assert.equal(f.next().type, 'craft')
+  assert.equal(f.next().output, 'minecraft:diamond_pickaxe')
+  f.items([['iron_pickaxe', 1], ['diamond_pickaxe', 1], ['diamond', 15], ['stick', 2]])
+  f.hold('iron_pickaxe')
+  f.preview('diamond_sword')
+  assert.equal(f.next().output, 'minecraft:diamond_sword')
+  // Armor waits for the received worn armor; meanwhile the work goes on.
+  f.items([['iron_pickaxe', 1], ['diamond_pickaxe', 1], ['diamond_sword', 1], ['diamond', 13], ['stick', 1]])
+  f.hold('diamond_pickaxe')
+  assert.notEqual(f.next().output, 'minecraft:diamond_chestplate')
+  f.observations.wornArmor = { known: true, worn: [{ piece: 'head', name: null }, { piece: 'chest', name: null }, { piece: 'legs', name: null }, { piece: 'feet', name: null }] }
+  f.preview('diamond_chestplate')
+  assert.equal(f.next().output, 'minecraft:diamond_chestplate')
+})

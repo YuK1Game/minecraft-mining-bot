@@ -28,7 +28,11 @@ function createAutonomyRuntime (rt) {
         shelterPreview = rt.shelter?.preview({ radius: 12, memo: {} })
       }
       const supplied = await rt.observeStationSupplies(rt.observePortableWorksite({ ...observed, shelter: { status: baseActor?.snapshot(), preview: shelterPreview, memo: shelterMemo }, ores: (scan.phase === 'ready' ? scan : rt.host.shared.prospecting)?.ores ?? {}, furnace: rt.furnace.snapshot(), chest: rt.chest.snapshot(), stations: structuredClone(rt.host.shared.stations ?? {}), capabilities: { ...observed.capabilities, build_shelter: !!baseActor, leave_shelter: !!baseActor, move: !!rt.movement, respawn: true, prospect: true, mine_ore: true, furnace: true, place_furnace: true, open_furnace: true, put_furnace_input: true, put_furnace_fuel: true, take_furnace_output: true, tunnel: !!rt.tunneling } }), options)
-      return rt.observeStoneAccess(supplied, options)
+      // The worn armor, so diamond armor is not made twice (survival/diamond-gear.js).
+      const access = await rt.observeStoneAccess(supplied, options)
+      let wornArmor = null
+      try { wornArmor = rt.armor?.snapshot() ?? null } catch {}
+      return access && typeof access === 'object' ? { ...access, wornArmor } : access
     },
     observeSafety: async ({ signal }) => {
       const state = rt.observedState()
