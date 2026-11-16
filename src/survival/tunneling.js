@@ -187,6 +187,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     const initialFloors = preserved()
     for (const point of footprintFloors(state)) initialFloors.set(key(point), point)
     stoneTargetFloor(ore, state, initialFloors)
+    const baseFloors = new Set(initialFloors.keys())
     if (initialFloors.size > 1024) throw new TunnelingError('The preserved return-floor limit was reached', 'PRESERVED_FLOOR_LIMIT')
     if (Math.abs(origin.x - ore.target.x) + Math.abs(origin.z - ore.target.z) > bounds.maxDistance || Math.abs(origin.y - ore.target.y) > bounds.maxVertical) throw new TunnelingError('The ore lies outside the bounded tunneling area', 'DISTANCE_LIMIT')
     const cache = new Map()
@@ -243,7 +244,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
         const block = read(point, node.removed)
         if (key(point) === key(ore.target) && !clear(block)) return null
         if (clear(block)) continue
-        if (node.preservedFloors.has(key(point))) return null
+        if (baseFloors.has(key(point)) || node.preservedFloors.has(key(point))) return null
         if (next.y > node.cell.y || !DIG.has(nameOf(block)) || DIG.get(nameOf(block)) > tool.tier || block.diggable === false || block.protected || block.natural === false || HAZARD.test(nameOf(block)) || layered(block)) return null
         for (const offset of FACES) { const neighbour = read({ x: point.x + offset.x, y: point.y + offset.y, z: point.z + offset.z }, node.removed); if (HAZARD.test(nameOf(neighbour)) || layered(neighbour)) return null }
         clearance.push(point)
@@ -252,29 +253,66 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       const removed = new Set(node.removed)
       clearance.forEach(point => removed.add(key(point)))
       if (removed.size > bounds.maxRouteDigBlocks) return null
+      // Only the floors this path adds are copied; the preserved ones are shared
+      // (copying hundreds of them per edge froze the Bot for seconds).
       const floors = new Set(node.preservedFloors)
-      floors.add(key({ ...next, y: next.y - 1 }))
-      if (floors.size > 1024) return null
+      const floorId = key({ ...next, y: next.y - 1 })
+      if (!baseFloors.has(floorId)) floors.add(floorId)
+      if (baseFloors.size + floors.size > 1024) return null
       return { cell: next, removed, preservedFloors: floors, clearance, kind: clearance.length ? 'excavate' : 'move', target: center(next) }
     }
     const horizontal = cell => Math.abs(cell.x - ore.target.x) + Math.abs(cell.z - ore.target.z)
     const heuristic = cell => Math.max(Math.max(0, horizontal(cell) - 1), Math.abs(cell.y - (ore.target.y - 1)))
-    const start = { cell: origin, removed: new Set(), preservedFloors: new Set(initialFloors.keys()), g: 0, h: heuristic(origin), parent: null, step: null, depth: 0 }
+    const start = { cell: origin, removed: new Set(), preservedFloors: new Set(), g: 0, h: heuristic(origin), parent: null, step: null, depth: 0 }
     start.f = start.h * 2
     const records = new Map([[key(origin), start]])
-    const open = new Set([key(origin)])
+    // Open nodes in a binary heap ordered by f, then h, then horizontal distance,
+    // then first entry into the open list (the order a linear scan of an
+    // insertion-ordered set picked). A scan of every open node per expansion was
+    // quadratic in the search limit. Updated nodes leave stale entries behind.
+    const open = new Map()
+    const heap = []
+    let sequence = 0
+    const before = (a, b) => a.f < b.f || a.f === b.f && (a.h < b.h || a.h === b.h && (a.horizontal < b.horizontal || a.horizontal === b.horizontal && a.sequence < b.sequence))
+    function push (id, record) {
+      if (!open.has(id)) open.set(id, sequence++)
+      const entry = { id, record, f: record.f, h: record.h, horizontal: horizontal(record.cell), sequence: open.get(id) }
+      heap.push(entry)
+      for (let index = heap.length - 1; index > 0;) {
+        const parent = (index - 1) >> 1
+        if (!before(heap[index], heap[parent])) break
+        ;[heap[index], heap[parent]] = [heap[parent], heap[index]]
+        index = parent
+      }
+    }
+    function pop () {
+      while (heap.length) {
+        const top = heap[0]
+        const last = heap.pop()
+        if (heap.length) {
+          heap[0] = last
+          for (let index = 0; ;) {
+            const left = index * 2 + 1, right = left + 1
+            let best = index
+            if (left < heap.length && before(heap[left], heap[best])) best = left
+            if (right < heap.length && before(heap[right], heap[best])) best = right
+            if (best === index) break
+            ;[heap[index], heap[best]] = [heap[best], heap[index]]
+            index = best
+          }
+        }
+        if (open.has(top.id) && records.get(top.id) === top.record) { open.delete(top.id); return top.id }
+      }
+      return null
+    }
+    push(key(origin), start)
     const closed = new Set()
     let found = null
     let expanded = 0
     while (open.size && expanded < bounds.maxExpanded) {
-      let id
-      for (const candidate of open) {
-        const a = records.get(candidate)
-        const b = records.get(id)
-        if (!b || a.f < b.f || a.f === b.f && (a.h < b.h || a.h === b.h && horizontal(a.cell) < horizontal(b.cell))) id = candidate
-      }
+      const id = pop()
+      if (id === null) break
       const node = records.get(id)
-      open.delete(id)
       try { if (accessible(node)) { found = node; break } } catch (error) { rejected[error.code] = (rejected[error.code] ?? 0) + 1 }
       closed.add(id)
       expanded++
@@ -289,8 +327,9 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
           const g = node.g + 1 + step.clearance.length * 0.08 + (dy > 0 ? 0.25 : 0)
           if (records.has(nextId) && records.get(nextId).g <= g) continue
           const h = heuristic(next)
-          records.set(nextId, { cell: next, removed: step.removed, preservedFloors: step.preservedFloors, g, h, f: g + h * 2, depth: node.depth + 1, parent: node, step })
-          open.add(nextId)
+          const record = { cell: next, removed: step.removed, preservedFloors: step.preservedFloors, g, h, f: g + h * 2, depth: node.depth + 1, parent: node, step }
+          records.set(nextId, record)
+          push(nextId, record)
         } catch (error) { rejected[error.code] = (rejected[error.code] ?? 0) + 1 }
       }
     }
