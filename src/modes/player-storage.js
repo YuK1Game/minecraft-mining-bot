@@ -137,7 +137,9 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
       // One chest held and no wood for a second: the single chest is used now
       // and made large once wood is held (real Realm 2026-11-16 21:24 JST:
       // 「板材が足りません（板材 4・原木 0）」 every minute with a chest in hand).
+      // Wood for one only: one chest is made and used now (the base too).
       if (!await makeChests(2, cells)) {
+        if (held(CHEST) < 1 && woodFor(1)) await makeChests(1, cells)
         if (held(CHEST) < 1) return null
         if (!await hands.place(cells[0], CHEST)) { say(`チェストを置けません (${cells[0].x}, ${cells[0].y}, ${cells[0].z}) ${hands.refusal?.() ?? ''}`.trim()); return null }
         say(`チェストを1つ置きました（2つ目の材料が足りません） (${cells[0].x}, ${cells[0].y}, ${cells[0].z})`)
