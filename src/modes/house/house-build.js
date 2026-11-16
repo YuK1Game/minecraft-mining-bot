@@ -57,7 +57,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   const held = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).reduce((sum, item) => sum + item.count, 0)
   const stackOf = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).sort((a, b) => b.count - a.count)[0] ?? null
   const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
-  let hunts = 0
+  let hunts = 0, unreached = 0, soon = false
   const eyeTo = (cell, from) => Math.hypot(cell.x + 0.5 - from.x, cell.y + 0.5 - (from.y + 1.62), cell.z + 0.5 - from.z)
 
   async function save () {
@@ -247,7 +247,21 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     // Long travel counts 20 m as arrived and a hop 12 m: walk on to a received
     // stand by the porch, so the steps are within reach (live 04:48 JST: 16 m
     // short of the house, all 14 tries were 「操作対象が手の届く範囲外です」).
-    if (!await closeIn(origin)) return 0
+    if (!await closeIn(origin)) {
+      // A site the Bot cannot walk to twice running, with little built yet, is
+      // given up for one near the Bot (live 2026-11-17 05:28-05:36 JST: the
+      // site lay 9-23 blocks below a steep slope, 「No safe route found」).
+      const built = placements(origin).length - remaining(getBlock, origin).length
+      if (++unreached >= 2 && built < 30) {
+        say(`拠点の家の場所 (${origin.x}, ${origin.y}, ${origin.z}) へ歩けないため、別の場所に建て直します（置いた ${built} 個は残します）`)
+        shared.playerHouse = null
+        unreached = 0
+        try { if (file) await fs.promises.rm(file, { force: true }) } catch {}
+      }
+      soon = true
+      return 0
+    }
+    unreached = 0
     const fails = new Map(), started = now()
     let placed = 0
     const reasons = new Map()
@@ -297,7 +311,8 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       say(`拠点の家を建てられません ${String(error?.message ?? error).slice(0, 120)}`)
       return false
     } finally {
-      waitUntil = now() + (shared.playerHouse?.done ? 0 : placed > 0 ? SHORT_MS : AGAIN_MS)
+      waitUntil = now() + (shared.playerHouse?.done ? 0 : placed > 0 ? SHORT_MS : soon ? 120000 : AGAIN_MS)
+      soon = false
       busy = false
       // Something placed and more to do: stay at the house for the next run
       // instead of letting the agent wander off (live 04:30-04:42 JST: after

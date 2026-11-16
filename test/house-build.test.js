@@ -191,3 +191,27 @@ test('out on a hilltop 23 above the house, close on the map: walks down toward i
   assert.equal(places.length, 0)
   assert.match(lines.join('\n'), /拠点の家の前まで歩けません/)
 })
+
+test('a site the Bot cannot walk to twice running, with little built, is given up for a new one (live 2026-11-17 05:28-05:36 JST)', async () => {
+  const w = world()
+  for (let x = 6; x <= 40; x++) for (let z = -20; z <= 30; z++) for (let y = 64; y <= 86; y++) w.cells.set(`${x},${y},${z}`, { known: true, name: 'minecraft:stone', boundingBox: 'block' })
+  const feet = { x: 10.5, y: 87, z: 8.5 }
+  const inventory = { known: true, items: [['wooden_pickaxe', 1], ['oak_log', 44], ['cobblestone', 68]].map(([name, count], slot) => ({ name: `minecraft:${name}`, count, slot })) }
+  const shared = { playerWanted: true, playerHouse: { origin: { x: 0, y: 64, z: 0 }, done: false } }
+  const lines = []
+  let clock = 0
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {}, now: () => clock,
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    ports: { craft: async () => false, smelt: async () => 0, place: async () => false, mine: async () => true, why: () => null },
+    hands: { walk: async () => false, approach: async () => true, why: () => 'No safe route found' },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
+  })
+  await build.tick()
+  assert.deepEqual(shared.playerHouse.origin, { x: 0, y: 64, z: 0 })
+  clock += 130000
+  await build.tick()
+  assert.equal(shared.playerHouse, null)
+  assert.match(lines.join('\n'), /別の場所に建て直します/)
+})
