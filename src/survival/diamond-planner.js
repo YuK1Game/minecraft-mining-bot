@@ -18,6 +18,8 @@ const RAW_IRON = new Set(['raw_iron', 'iron_ore', 'deepslate_iron_ore'])
 const ORES = { coal: new Set(['coal_ore', 'deepslate_coal_ore']), iron: new Set(['iron_ore', 'deepslate_iron_ore']), diamond: new Set(['diamond_ore', 'deepslate_diamond_ore']) }
 const AIR = new Set(['air', 'cave_air', 'void_air'])
 const SUPPORT = new Set(require('../common/standing-ground').STANDING_GROUND)
+// How much farther the ore worked toward may be than the nearest and still be kept (keepTarget).
+const KEEP_MARGIN = 6
 const HAZARD = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|scaffolding)/
 const ADJACENT = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }]
 const BUSY = new Set(['running', 'queued', 'mining', 'moving', 'walking', 'crafting', 'placing', 'opening', 'collecting', 'requesting', 'awaiting_server_confirmation'])
@@ -297,6 +299,19 @@ function nextDiamondAction (state, observations = {}, options = {}) {
     }
     return planks(4, 'crafting_table') ?? craft('crafting_table', 1, 'crafting_table')
   }
+  // The ore the last decision worked toward stays first while it is nearly as
+  // near as the nearest: a tunnel moves the Bot two steps per batch, and the
+  // nearest by straight line flipped between an ore up the stair and one below
+  // it, so every batch walked back what the last one walked (real Realm
+  // 2026-11-17 01:06-01:13 JST: two diamond ores 12 m off, two steps down and
+  // two up for seven minutes, nothing dug).
+  function keepTarget (targets, resource) {
+    const last = observations.lastDecision
+    const point = last?.resourceTarget ?? last?.target
+    if (!targets.length || last?.resource !== resource || !['tunnel', 'mine_ore', 'move_to'].includes(last.type) || !integer(point)) return
+    const index = targets.findIndex(target => key(target.position) === key(point))
+    if (index > 0 && distance(state.position, targets[index].position) <= distance(state.position, targets[0].position) + KEEP_MARGIN) targets.unshift(...targets.splice(index, 1))
+  }
   function ore (resource, needed, requiredTier) {
     const pickup = drops(resource === 'iron' ? RAW_IRON : new Set([resource]), resource, needed)
     if (pickup) return pickup
@@ -313,6 +328,7 @@ function nextDiamondAction (state, observations = {}, options = {}) {
       targets.push({ ...observed, position: { ...point }, requiresTunnel: input.requiresTunnel === true })
     }
     targets.sort((a, b) => distance(state.position, a.position) - distance(state.position, b.position))
+    keepTarget(targets, resource)
     if (!targets.length) {
       const scope = resourceScope(state)
       const emptyScan = scope && (progress.emptyProspects ?? []).some(receipt => receipt?.scope === scope && receipt.resource === resource && integer(receipt.position) && Number.isSafeInteger(receipt.known) && receipt.known > 0 && Number.isSafeInteger(receipt.unknown) && receipt.unknown >= 0 && Math.floor(receipt.position.x / 16) === Math.floor(state.position.x / 16) && Math.floor(receipt.position.z / 16) === Math.floor(state.position.z / 16))
