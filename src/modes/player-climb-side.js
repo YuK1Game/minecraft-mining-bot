@@ -17,6 +17,11 @@
 //   either, and the drift does not go through leaves (real Realm 2026-11-16
 //   16:16 JST: 22 steps up, then LEAVES_ABOVE two blocks under the surface
 //   below a tree; it stayed in that hole and was killed there).
+// - Each drift is a path (x then z, or z then x) whose cells have no liquid or
+//   falling block beside them, which the mining check would refuse; a cell
+//   refused once is not tried again by a later drift (real Realm 2026-11-17
+//   02:35 JST: the three drifts all began at the same cell beside water and
+//   all ended there, under gravel 60 steps up).
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const LIQUID = /water|lava|bubble_column|kelp|seagrass/
 const FALLING = /^minecraft:(?:gravel|sand|red_sand|suspicious_(?:sand|gravel)|.*concrete_powder)$/
@@ -46,6 +51,30 @@ function hanging (block, feet) {
   const x = Math.floor(feet.x), at = Math.floor(feet.y + 0.001), z = Math.floor(feet.z)
   const open = found => found?.known === true && AIR.test(found.name ?? '')
   return SIDES.some(([dx, dz]) => open(block(x + dx, at, z + dz)) && !(block(x + dx, at - 1, z + dz)?.known === true && block(x + dx, at - 1, z + dz).boundingBox === 'block'))
+}
+
+const HOLD = /water|lava|bubble_column/
+const NEAR = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
+const keyOf = (x, y, z) => `${x},${y},${z}`
+
+// The cells of a drift from (x, z) to the column, along x then z (or z then x).
+function driftPath (from, to, zFirst) {
+  const cells = []
+  let { x, z } = from
+  const stepX = () => { while (x !== to.x) { x += Math.sign(to.x - x); cells.push({ x, z }) } }
+  const stepZ = () => { while (z !== to.z) { z += Math.sign(to.z - z); cells.push({ x, z }) } }
+  if (zFirst) { stepZ(); stepX() } else { stepX(); stepZ() }
+  return cells
+}
+
+// A path whose cells (feet and head) the mining check would let through:
+// nothing liquid or falling beside them, and no cell refused before.
+function openPath (block, path, at, refused = new Set()) {
+  return path.every(({ x, z }) => [at, at + 1].every(y => {
+    if (refused.has(keyOf(x, y, z))) return false
+    if (HOLD.test(block(x, y, z)?.name ?? '')) return false
+    return NEAR.every(([dx, dy, dz]) => { const name = block(x + dx, y + dy, z + dz)?.name ?? ''; return !HOLD.test(name) && !FALLING.test(name) })
+  }))
 }
 
 // Dry columns around (x, z), nearest first (walking distance of the drift).
@@ -81,33 +110,48 @@ async function sidestep ({ ports, log = () => {}, aborted = () => false, tries =
   }
   const origin = here()
   const standY = (x, z) => { for (let y = at + 3; y >= at - 6; y--) { const below = block(x, y - 1, z); if (below?.known === true && below.boundingBox === 'block' && !wet(below) && isAir(block(x, y, z)) && isAir(block(x, y + 1, z))) return y } return null }
-  const columns = dryColumns(block, origin.x, at, origin.z).slice(0, tries)
+  const columns = dryColumns(block, origin.x, at, origin.z)
   if (!columns.length) { log('プレイヤーモード: 近く（12マス以内）に、上が水・砂利・葉でない場所が見つかりません'); return { ok: false, reason: 'NO_DRY_COLUMN' } }
+  const refusedCells = new Set()
+  let tried = 0
   for (const column of columns) {
-    log(`プレイヤーモード: 真上へ掘れないため、横へ${column.steps}マス掘ってから上がります（${column.x},${at},${column.z}）`)
-    let refused = null
+    if (tried >= tries || aborted()) break
+    const from = here() ?? origin
     // Through a cave the column may simply be walked to.
     const spot = standY(column.x, column.z)
-    if (spot !== null && dryColumn(block, column.x, spot, column.z)) { await walk({ x: column.x + 0.5, y: spot, z: column.z + 0.5 }); const now = here(); if (now && now.x === column.x && now.z === column.z) return { ok: true, column, walked: true } }
-    while (!aborted()) {
+    const walkable = spot !== null && dryColumn(block, column.x, spot, column.z)
+    const path = [false, true].map(zFirst => driftPath(from, column, zFirst)).find(cells => openPath(block, cells, at, refusedCells))
+    if (!walkable && !path) continue
+    tried++
+    log(`プレイヤーモード: 真上へ掘れないため、横へ${column.steps}マス掘ってから上がります（${column.x},${at},${column.z}）`)
+    let refused = null
+    if (walkable) { await walk({ x: column.x + 0.5, y: spot, z: column.z + 0.5 }); const now = here(); if (now && now.x === column.x && now.z === column.z) return { ok: true, column, walked: true } }
+    if (!path) { log('プレイヤーモード: 横へ掘る途中で止まりました（歩いて行けません）'); continue }
+    for (const next of path) {
+      if (aborted()) break
       const now = here()
       if (!now) { refused = 'NO_POSITION'; break }
       if (now.x === column.x && now.z === column.z) return { ok: true, column }
-      const next = now.x !== column.x ? { x: now.x + Math.sign(column.x - now.x), z: now.z } : { x: now.x, z: now.z + Math.sign(column.z - now.z) }
+      if (now.x === next.x && now.z === next.z) continue
       const floor = block(next.x, at - 1, next.z)
       // A gap one deep in the floor is filled with a held block (ordinary placement).
       const gap = isAir(floor) && !floor.extra?.length && ports.place && await clear({ x: next.x, y: at + 1, z: next.z }) && await clear({ x: next.x, y: at, z: next.z }) && await ports.place({ x: next.x, y: at - 1, z: next.z }, { any: true })
       if (!gap && (floor?.known !== true || floor.boundingBox !== 'block' || wet(floor))) { refused = `床がありません ${next.x},${at - 1},${next.z}`; break }
-      if (!await clear({ x: next.x, y: at + 1, z: next.z }) || !await clear({ x: next.x, y: at, z: next.z })) { refused = `掘れません ${next.x},${at},${next.z}${ports.reason ? `: ${ports.reason({ x: next.x, y: at, z: next.z }) ?? ports.reason({ x: next.x, y: at + 1, z: next.z }) ?? ''}` : ''}`; break }
+      if (!await clear({ x: next.x, y: at + 1, z: next.z })) { refusedCells.add(keyOf(next.x, at + 1, next.z)); refused = `掘れません ${next.x},${at + 1},${next.z}${ports.reason ? `: ${ports.reason({ x: next.x, y: at + 1, z: next.z }) ?? ''}` : ''}`; break }
+      if (!await clear({ x: next.x, y: at, z: next.z })) { refusedCells.add(keyOf(next.x, at, next.z)); refused = `掘れません ${next.x},${at},${next.z}${ports.reason ? `: ${ports.reason({ x: next.x, y: at, z: next.z }) ?? ''}` : ''}`; break }
       if (aborted()) break
       await walk({ x: next.x + 0.5, y: at, z: next.z + 0.5 })
       const after = here()
       if (!after || after.x !== next.x || after.z !== next.z) { refused = `歩けません ${next.x},${at},${next.z}`; break }
     }
     if (aborted()) return { ok: false, reason: 'INTERRUPTED' }
-    log(`プレイヤーモード: 横へ掘る途中で止まりました（${refused}）`)
+    const end = here()
+    if (!refused && end && end.x === column.x && end.z === column.z) return { ok: true, column }
+    log(`プレイヤーモード: 横へ掘る途中で止まりました（${refused ?? '不明'}）`)
   }
+  if (aborted()) return { ok: false, reason: 'INTERRUPTED' }
+  if (!tried) { log('プレイヤーモード: 近くの上が乾いた場所へは、水・砂利の横を通らずに掘って行けません'); return { ok: false, reason: 'NO_DRY_PATH' } }
   return { ok: false, reason: 'DRIFT_REFUSED' }
 }
 
-module.exports = { sidestep, dryColumn, dryColumns, hanging }
+module.exports = { sidestep, dryColumn, dryColumns, hanging, driftPath, openPath }

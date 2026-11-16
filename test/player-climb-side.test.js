@@ -101,3 +101,20 @@ test('the pillar is taken down only in a cave, not inside a shaft cut through ro
   assert.equal(hanging((x, y, z) => x === 0 && z === 0 ? air : rock(), feet), false)
   assert.equal(hanging((x, y, z) => x === 1 && z === 0 ? air : x === 0 && z === 0 ? air : rock(), feet), true)
 })
+
+test('a drift beside water is not tried, and a refused cell is not tried again (live 2026-11-17 02:35 JST)', async () => {
+  const { driftPath, openPath } = require('../src/modes/player-climb-side')
+  // Water at feet level just west of the first drift cell, as at (-5075,47,-5110).
+  const sim = world({ extra: { '-2,44,0': water } })
+  assert.equal(openPath(sim.block, driftPath({ x: 0, z: 0 }, { x: -4, z: 0 }, false), 43), false)
+  assert.equal(openPath(sim.block, driftPath({ x: 0, z: 0 }, { x: 4, z: 0 }, false), 43), true)
+  const moved = await sidestep({ ports: sim.ports })
+  assert.equal(moved.ok, true)
+  assert.ok(sim.calls.every(call => !call.startsWith('mine -1,')))
+  // The mining check refuses every block: three different drifts, never the same first cell twice.
+  const shut = world()
+  const tried = []
+  shut.ports.canMine = cell => { tried.push(`${cell.x},${cell.y},${cell.z}`); return false }
+  assert.equal((await sidestep({ ports: shut.ports })).reason, 'DRIFT_REFUSED')
+  assert.equal(new Set(tried).size, tried.length)
+})
