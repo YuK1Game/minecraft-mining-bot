@@ -31,3 +31,9 @@ test('nothing with food held, hunger above 14, or open sky', async () => {
   assert.equal(await job({ hunger: 15 }).food.tick(), null)
   assert.equal(await job({ getBlock: () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty' }) }).food.tick(), null)
 })
+
+test('the house build waits while hungry with no food (live 2026-11-17 08:26-08:29 JST)', () => {
+  const source = require('node:fs').readFileSync(require.resolve('../src/modes/mode-runtime'), 'utf8')
+  const house = source.slice(source.indexOf('const house = createHouseBuild('))
+  assert.match(house.slice(0, house.indexOf('onDone')), /blocked: \(\) => [^\n]*hungryWithoutFood\(\)/)
+})
