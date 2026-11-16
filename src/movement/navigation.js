@@ -23,6 +23,7 @@ const isWater = block => block.name === 'water' || block.name === 'flowing_water
 const horizontalDistance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
 const { distance3: distance } = require('../common/vec3')
 const { createOpenList } = require('../common/open-list')
+const { cellKey, createPointCache } = require('./plan-cache')
 
 function segmentDistance (point, from, to) {
   const delta = { x: to.x - from.x, y: to.y - from.y, z: to.z - from.z }
@@ -44,9 +45,9 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
   let planGeometry = null
   function geometryBlockAt (position) {
     if (!planGeometry) return physics.blockAt(position)
-    const id = [Math.floor(position.x), Math.floor(position.y), Math.floor(position.z)].join(',')
-    if (planGeometry.has(id)) {
-      const entry = planGeometry.get(id)
+    const id = cellKey(Math.floor(position.x), Math.floor(position.y), Math.floor(position.z))
+    const entry = planGeometry.get(id)
+    if (entry) {
       if (entry.error) throw entry.error
       return entry.block
     }
@@ -59,9 +60,19 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
       throw error
     }
   }
+  // Blocks read for one plan are kept for the next while the world reports
+  // the same revision through the same reader (any received world packet
+  // bumps it). A world without a revision gets a fresh map for every plan.
+  let kept = null
+  function geometryForPlan () {
+    const revision = typeof world?.revision === 'function' ? world.revision() : null
+    if (!Number.isSafeInteger(revision)) return new Map()
+    if (!kept || kept.revision !== revision || kept.getBlock !== world.getBlock || kept.map.size >= 32768) kept = { revision, getBlock: world.getBlock, map: new Map() }
+    return kept.map
+  }
   function plan (initialState, target, options) {
     const previous = planGeometry
-    planGeometry = new Map()
+    planGeometry = geometryForPlan()
     try {
       const iterator = planCore(initialState, target, options)
       let next
@@ -369,13 +380,13 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     // The received world cannot change during this synchronous search. Cache
     // only this call's geometric classifications; actor policy is still checked
     // on every edge, and subsequent plans observe the world again.
-    const classificationCache = new Map()
+    const classificationCache = createPointCache(32768)
     function safeClassify (position) {
-      const id = [position.x, position.y, position.z].join(',')
-      if (classificationCache.has(id)) return classificationCache.get(id)
+      const cached = classificationCache.get(position)
+      if (cached !== undefined) return cached
       let result = null
       try { result = classify(position) } catch (error) { noteUnknown(position, error) }
-      if (classificationCache.size < 32768) classificationCache.set(id, result)
+      classificationCache.set(position, result)
       return result
     }
     // A corrected swimmer must keep the chosen heading instead of restarting
