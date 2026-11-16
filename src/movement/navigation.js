@@ -60,9 +60,19 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
       throw error
     }
   }
+  // Blocks read for one plan are kept for the next while the world reports
+  // the same revision through the same reader (any received world packet
+  // bumps it). A world without a revision gets a fresh map for every plan.
+  let kept = null
+  function geometryForPlan () {
+    const revision = typeof world?.revision === 'function' ? world.revision() : null
+    if (!Number.isSafeInteger(revision)) return new Map()
+    if (!kept || kept.revision !== revision || kept.getBlock !== world.getBlock || kept.map.size >= 32768) kept = { revision, getBlock: world.getBlock, map: new Map() }
+    return kept.map
+  }
   function plan (initialState, target, options) {
     const previous = planGeometry
-    planGeometry = new Map()
+    planGeometry = geometryForPlan()
     try {
       const iterator = planCore(initialState, target, options)
       let next

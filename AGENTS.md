@@ -118,6 +118,7 @@ src/            Bot 本体（約190モジュール。2026-11-15 に役割ごと�
   common/         小さな共通部品（vec3、durable-json、chunk-area、life-identity、operation-scope、action-owner-tracker）
   combat/         戦闘モード、敵の評価（threats、mob-catalog、threat-reachability）、剣・弓、user-behaviors
   movement/       入力、物理予測、経路探索、警戒付き移動、水辺、サーバー位置の照合
+                  経路探索が読んだブロックは、受信した地形の版（`world.revision()`）が変わるまで次の探索でも使い回す（`navigation.js`、キーは `plan-cache.js`）
   travel/         長距離移動（long-travel、coarse-route、chunk-travel、night-stop）
   inventory/      持ち物の記録と検査（inventory-store ほか）、コンテナ・耐久・装備の読み取り
   actions/        ゲームへの操作（mining、interactions、crafting、furnace、chest、food、armor、portable-bed）

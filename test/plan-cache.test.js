@@ -45,3 +45,31 @@ test('nothing more is kept past the limit', () => {
   assert.equal(cache.get({ x: 0, y: 3, z: 0 }), undefined)
   assert.equal(cache.size, 2)
 })
+
+test('a plan reuses the blocks of the previous plan only while the world revision is unchanged', () => {
+  const { createNavigator } = require('../src/movement/navigation')
+  const block = name => ({ known: true, name: `minecraft:${name}`, properties: {}, extra: [] })
+  let reads = 0, revision = 1, wall = false
+  const world = { revision: () => revision, getBlock: (x, y, z) => { reads++; return block(y < 64 || (wall && x === 2 && y < 67) ? 'stone' : 'air') } }
+  const navigator = createNavigator({ world })
+  const initial = navigator.physics.fromServer({ position: { x: 0.5, y: 65.62, z: 0.5 }, rotation: { yaw: -90, pitch: 0 }, gameMode: 'survival' })
+  const plan = () => navigator.plan(structuredClone(initial), { x: 4.5, z: 0.5 }, { maxDistance: 8, maxExpanded: 400 })
+  assert.equal(plan().ready, true)
+  const first = reads
+  assert.ok(first > 20)
+  assert.equal(plan().ready, true)
+  assert.ok(reads - first < first / 4, `second plan read ${reads - first} of ${first}`)
+  // A received block change (new revision) is seen by the next plan.
+  wall = true; revision++
+  const before = reads
+  const blocked = plan()
+  assert.ok(reads - before > 20)
+  assert.ok(!blocked.ready || blocked.waypoints.some(point => Math.abs(point.position.z - 0.5) > 0.4))
+  // No revision: every plan reads the world again.
+  reads = 0
+  const plain = createNavigator({ world: { getBlock: world.getBlock } })
+  plain.plan(structuredClone(initial), { x: 4.5, z: 0.5 }, { maxDistance: 8, maxExpanded: 400 })
+  const once = reads
+  plain.plan(structuredClone(initial), { x: 4.5, z: 0.5 }, { maxDistance: 8, maxExpanded: 400 })
+  assert.equal(reads, once * 2)
+})
