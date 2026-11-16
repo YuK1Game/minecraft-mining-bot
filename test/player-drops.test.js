@@ -59,3 +59,27 @@ test('other modes and empty lists are left exactly as they are', () => {
   const none = { drops: [] }
   assert.equal(withCollectableDrops({ mode: 'player', shared: {}, state, observations: none, getBlock: w.getBlock }), none)
 })
+
+test('the walkable cells are kept while the Bot stands in the same cell and the world revision is unchanged', () => {
+  const w = world({ gapHeight: 2 })
+  let reads = 0, revision = 7
+  const getBlock = (x, y, z) => { reads++; return w.getBlock(x, y, z) }
+  const ask = (at = state) => withCollectableDrops({ mode: 'player', shared: {}, state: at, observations: { drops: [drop(1, 8.5, 1.1, 0.5)] }, getBlock, revision: () => revision }).drops.length
+  assert.equal(ask(), 1)
+  const first = reads
+  assert.ok(first > 100)
+  assert.equal(ask(), 1)
+  assert.equal(reads, first)
+  // A received block change: the gap is closed, and the next answer sees it.
+  w.put(5, 1, 0, 'stone'); w.put(5, 2, 0, 'stone'); revision++
+  assert.equal(ask(), 0)
+  assert.ok(reads > first)
+  // Another cell underfoot is a new fill; no revision means no keeping.
+  const again = reads
+  assert.equal(ask({ position: { x: 1.5, y: 2.62, z: 0.5 } }), 0)
+  assert.ok(reads > again)
+  const plain = reads
+  withCollectableDrops({ mode: 'player', shared: {}, state, observations: { drops: [drop(1, 2.5, 1.1, 0.5)] }, getBlock })
+  withCollectableDrops({ mode: 'player', shared: {}, state, observations: { drops: [drop(1, 2.5, 1.1, 0.5)] }, getBlock })
+  assert.ok(reads - plain > 200)
+})

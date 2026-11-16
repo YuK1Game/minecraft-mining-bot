@@ -27,6 +27,8 @@ const { pointKey: key } = require('../common/vec3')
 const finite = point => point && AXES.every(axis => Number.isFinite(point[axis]) && Math.abs(point[axis]) <= 30000001)
 const clamp = value => Math.max(EDGE_MARGIN, Math.min(1 - EDGE_MARGIN, value))
 const air = block => block?.known === true && AIR.has(nameOf(block)) && !(block.extra ?? []).some(layer => !AIR.has(nameOf(layer)))
+const LITTER_TOP = 0.125
+const leafLitter = block => block?.known === true && nameOf(block) === 'leaf_litter' && block.boundingBox === 'empty' && !block.extra?.length
 const emptyTorch = block => block?.known === true && nameOf(block) === 'torch' && block.boundingBox === 'empty' && !block.extra?.length
 
 function argumentsFor ({ eye, target, world, maxReach = 4.5, removed = new Set() }) {
@@ -55,12 +57,17 @@ function trace (settings, point) {
   let nz = sz ? (cz + Number(sz > 0) - eye.z) / dz : Infinity
   const stx = sx ? 1 / Math.abs(dx) : Infinity, sty = sy ? 1 / Math.abs(dy) : Infinity, stz = sz ? 1 / Math.abs(dz) : Infinity
   const checkRemoved = removed.size > 0
+  const litterMin = Math.min(eye.y, point.y)
   const cell = { x: 0, y: 0, z: 0 }
   const clear = (x, y, z) => {
     cell.x = x; cell.y = y; cell.z = z
     if (checkRemoved && removed.has(`${x},${y},${z}`)) return true
     const block = read(cell)
-    return air(block) || emptyTorch(block)
+    // Leaf litter is a layer one sixteenth high on the floor of its cell: a ray
+    // that stays above it for its whole length does not touch it (real Realm
+    // 2026-11-16 13:15-13:34 JST: a log whose side face was beside a litter
+    // cell was refused ten times, with the eye 1.6 above that cell's floor).
+    return air(block) || emptyTorch(block) || litterMin >= y + LITTER_TOP && leafLitter(block)
   }
   let entry = 0
   let face = null
