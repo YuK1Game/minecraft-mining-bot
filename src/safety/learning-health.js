@@ -11,8 +11,17 @@ const totemGuarded = state => state?.totemGuard === true && state.phase === 'spa
 // entirely empty, nothing can be lost; gathering and hunting may start at low
 // health (a death respawns with full health). One item in hand ends it.
 const emptyHandedPrep = state => state?.emptyHandedPrep === true && state.phase === 'spawned' && Number.isFinite(state.health) && state.health > 0 && !state.dead && !state.isDead && !state.lifecycle?.dead && !state.spawnPending
+// Player mode while playing (state.playerPlay, from shared.playerWanted): the
+// recovery's own work (the climb out, the walk to a tree, the way down a
+// pillar) runs with the autonomy stopped, so the autonomy's policy does not
+// cover it. Health alone stops none of it: standing still at low health in a
+// cave is what kills (real Realm 2026-11-16 19:15-19:30 JST: at 5.8 health
+// every pillar step, hand change and walk was refused for fifteen minutes,
+// until five skeletons shot it; eleven diamonds lost). The user's decision of
+// 2026-11-13 stands: move whenever alive.
+const playing = state => state?.playerPlay === true && state.phase === 'spawned' && Number.isFinite(state.health) && state.health > 0 && !state.dead && !state.isDead && !state.lifecycle?.dead && !state.spawnPending
 function resourceMinHealth (state, legacy = 6) {
-  if (totemGuarded(state) || emptyHandedPrep(state)) return 0
+  if (totemGuarded(state) || emptyHandedPrep(state) || playing(state)) return 0
   return state?.threatPolicy === 'online_learning' && state.phase === 'spawned' && Number.isFinite(state.health) && state.health > 0 && !state.dead && !state.isDead && !state.lifecycle?.dead && !state.spawnPending ? 0 : legacy
 }
 

@@ -484,6 +484,7 @@ function createRuntime (host) {
     }
     if (host.shared.inventoryUncertain) state.inventory = { ...state.inventory, known: false, uncertain: true }
     state.threatPolicy = host.shared.autoWanted ? 'online_learning' : 'balanced_mining'
+    state.playerPlay = host.shared.playerWanted === true
     const held = state.inventory?.items ?? []
     const useful = suffix => held.some(i => new RegExp('^minecraft:(?:wooden|golden|stone|iron|diamond|netherite)_'+suffix+'$').test(i.name ?? '') && i.count > 0 && !(i.durabilityKnown === true && i.durabilityRemaining <= 0))
     state.spawnRangedClearance = depotMission?.isEnabled() === true && state.phase === 'spawned' && Number.isFinite(state.health) && state.health > 0 && !state.dead && !state.isDead && !state.spawnPending && !state.lifecycle?.dead

@@ -13,3 +13,13 @@ test('online learning resource threshold is explicit, alive, spawned and positiv
   }
   assert.equal(resourceMinHealth(null), 6)
 })
+
+test('player mode while playing: health alone stops no work, also with the autonomy stopped', () => {
+  const { resourceMinHealth } = require('../src/safety/learning-health')
+  const alive = { phase: 'spawned', health: 5.81, threatPolicy: 'balanced_mining' }
+  assert.equal(resourceMinHealth(alive), 6)
+  assert.equal(resourceMinHealth({ ...alive, playerPlay: true }), 0)
+  assert.equal(resourceMinHealth({ ...alive, playerPlay: true, dead: true }), 6)
+  assert.equal(resourceMinHealth({ ...alive, playerPlay: true, health: NaN }), 6)
+  assert.equal(resourceMinHealth({ ...alive, playerPlay: true, spawnPending: true }), 6)
+})
