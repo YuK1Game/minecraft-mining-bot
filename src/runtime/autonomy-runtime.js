@@ -6,6 +6,8 @@
 // Modules are loaded through rt.require, the require of runtime.js.
 
 function createAutonomyRuntime (rt) {
+  // Ore no tunnel reaches is not searched again at every decision (survival/tunnel-dead-targets.js).
+  const deadTargets = rt.require('./survival/tunnel-dead-targets').createDeadTargets()
   // Every port is timed for the stall log (common/work-spans.js).
   const autonomy = rt.createAutonomy(require('../common/work-spans').wrapAll('autonomy', {
     requestWorkClearance: () => rt.idleSafety?.requestWorkClearance?.() ?? { pending: false },
@@ -272,7 +274,7 @@ function createAutonomyRuntime (rt) {
         const actual = rt.raw(), position = rt.working().position
         return sameScope && !rt.disposed && !rt.disposing && rt.inputHistoryGeneration === routeGeneration && state.lifecycle?.deathId === rt.actualLifeId() && state.health === actual.health && ['connectionId', 'startedAt', 'dimension', 'runtimeEntityId'].every(field => state[field] === actual[field]) && state.profile === (actual.profile ?? rt.host.meta.profile) && String(state.realm?.id ?? '') === String(actual.realm?.id ?? '') && position && Math.hypot(position.x - state.position.x, position.y - state.position.y, position.z - state.position.z) <= 1e-4
       }
-      const decision = sameScope ? rt.selectReadyOreTunnel(state, reachable, observations, options, { readBlock: target => rt.planningWorld.getBlock(target.x, target.y, target.z), previewTunnel: (target, limits) => rt.tunneling?.preview(target, limits), previewMining: targets => rt.mining.preview(targets), isCurrent: routeCurrent }) : reachable
+      const decision = sameScope ? rt.selectReadyOreTunnel(state, reachable, observations, options, { readBlock: target => rt.planningWorld.getBlock(target.x, target.y, target.z), previewTunnel: (target, limits) => deadTargets.preview(target, state.position, () => rt.tunneling?.preview(target, limits)), previewMining: targets => rt.mining.preview(targets), isCurrent: routeCurrent }) : reachable
       if (rt.host.shared.startupPriority && String(decision.preparation ?? '').startsWith('wooden_sword')) rt.host.shared.startupPriority.firstSwordPlan = { type: decision.type, code: decision.code ?? null, reason: String(decision.reason ?? '').slice(0, 80) }
       const planned = decision.type === 'move_to' && decision.resourceTarget ? rt.useCurrentAccess(decision, rt.mining.preview([decision.resourceTarget])) : decision
       const wooded = rt.require('./modes/player-wood').withPlayerWood({ mode: rt.host.shared.botMode, decision: planned, log: text => rt.host.log(text), planLogs: () => { const wood = rt.require('./modes/player-wood').woodPlanInput(state, options); return rt.require('./survival/planner').nextBootstrapAction(wood.state, observations, wood.options) } })
