@@ -434,3 +434,13 @@ test('an ore far below with the search limit reached gets a route part of the wa
   const near = fixture({ target: point(14, 2, 0) })
   assert.equal(near.tunneling.preview(near.decision, { maxExpanded: 5 }).code, 'NO_SAFE_ROUTE')
 })
+
+test('an ore far below behind unknown terrain gets a route down to the known edge', () => {
+  // Terrain below y=-10 is not received yet; the ore itself is.
+  const f = fixture({ target: point(6, -30, 0) })
+  for (let x = -12; x <= 12; x++) for (let z = -12; z <= 12; z++) for (let y = -40; y < -10; y++) if (!(x === 6 && y === -30 && z === 0)) f.set(point(x, y, z), { known: false })
+  const plan = f.tunneling.preview(f.decision)
+  assert.equal(plan.ready, true)
+  assert.equal(plan.partialRoute, true)
+  assert.ok(plan.steps.at(-1).targetCell.y <= -5)
+})
