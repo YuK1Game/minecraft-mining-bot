@@ -281,7 +281,7 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
       log(`プレイヤーモード: ${reason}`)
       let out = null
       if (under) { try { out = await climb(() => !live(token)) } catch (error) { log(`プレイヤーモード: 真上へ掘れません ${text(error?.message)}`) } }
-      if (!out?.ok && live(token) && !held()) await trip(token, snapshot, { ...elsewhere(position, snapshot.lastDecision, 16, turns++ * Math.PI / 2), label: '別の場所' })
+      if (!out?.ok && live(token) && !held()) await trip(token, snapshot, { ...elsewhere(position, snapshot.lastDecision, 32, turns++ * Math.PI / 2), label: '別の場所' })
       if (!live(token) || held()) return false
       return restart(token, { ...agent.objective, freshExclusions: true, freshExploration: true })
     }
