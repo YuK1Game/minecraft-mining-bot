@@ -48,11 +48,19 @@ function job ({ chests = [], inventory, makes = true }) {
   let items = inventory
   const hands = {
     tableNear: () => ({ x: -1, y: 64, z: 0 }),
-    craftPlanks: async () => true,
+    craftPlanks: async (log, times) => {
+      calls.push(['planks', log, times])
+      items = { ...items, items: [...items.items.map(item => item.name === log ? { ...item, count: item.count - times } : item).filter(item => item.count > 0), { name: mc('oak_planks'), count: times * 4, slot: 35 }] }
+      return true
+    },
     craftSmall: async () => true,
     placeTable: async () => null,
     craftAtTable: async (table, output, times) => { calls.push(['craft', output, times]); if (makes) items = { ...items, items: [...items.items, { name: output, count: times, slot: 30 }] }; return makes },
-    place: async (cell, name) => { calls.push(['place', cell, name]); return true },
+    place: async (cell, name) => {
+      calls.push(['place', cell, name])
+      if (name !== mc('chest')) items = { ...items, items: items.items.map(item => item.name === name ? { ...item, count: item.count - 1 } : item).filter(item => item.count > 0) }
+      return true
+    },
     room: () => null,
     store: async (position, stacks) => { calls.push(['store', position, stacks.length]); return stacks.reduce((sum, stack) => sum + stack.count, 0) }
   }
@@ -65,8 +73,14 @@ test('a full inventory places a large chest and stores the rubble', async () => 
   const f = job({ inventory: full() })
   assert.equal(await f.storage.tick(), true)
   assert.deepEqual(f.calls.filter(call => call[0] === 'craft').map(call => call.slice(1)), [['minecraft:chest', 2]])
-  assert.equal(f.calls.filter(call => call[0] === 'place').length, 2)
-  assert.equal(f.calls.find(call => call[0] === 'store')[2], 4)
+  // The smallest stone stack (13 andesite) is set down first so a craft has an empty slot.
+  const placed = f.calls.filter(call => call[0] === 'place')
+  assert.equal(placed.filter(call => call[2] === mc('andesite')).length, 13)
+  const chests = placed.filter(call => call[2] === mc('chest')).map(call => `${call[1].x},${call[1].y},${call[1].z}`)
+  assert.equal(chests.length, 2)
+  assert.ok(placed.filter(call => call[2] === mc('andesite')).every(call => !chests.includes(`${call[1].x},${call[1].y},${call[1].z}`) && !chests.includes(`${call[1].x},${call[1].y - 1},${call[1].z}`)))
+  assert.match(f.lines.join('\n'), /andesite 13 個を足元の横に置きました/)
+  assert.equal(f.calls.find(call => call[0] === 'store')[2], 3)
   assert.match(f.lines.join('\n'), /ラージチェストを置きました/)
 })
 
@@ -74,7 +88,7 @@ test('a single chest nearby is made large and used; a large chest is used as it 
   const single = job({ inventory: full(), chests: [{ x: 2, y: 64, z: 0 }] })
   assert.equal(await single.storage.tick(), true)
   assert.deepEqual(single.calls.filter(call => call[0] === 'craft').map(call => call[2]), [1])
-  assert.equal(single.calls.filter(call => call[0] === 'place').length, 1)
+  assert.equal(single.calls.filter(call => call[0] === 'place' && call[2] === mc('chest')).length, 1)
   assert.deepEqual(single.calls.find(call => call[0] === 'store')[1], { x: 2, y: 64, z: 0 })
   const double = job({ inventory: full(), chests: [{ x: 2, y: 64, z: 0 }, { x: 2, y: 64, z: 1 }] })
   assert.equal(await double.storage.tick(), true)
@@ -86,4 +100,17 @@ test('nothing happens below 34 slots or with nothing to store', async () => {
   assert.equal(await few.storage.tick(), null)
   const valuables = job({ inventory: inv(Array.from({ length: 36 }, (_, slot) => ['diamond', 1, slot])) })
   assert.equal(await valuables.storage.tick(), null)
+})
+
+test('with one empty slot the whole log stack is cut into planks', async () => {
+  const f = job({ inventory: inv([...Array.from({ length: 32 }, (_, slot) => ['diamond', 1, slot]), ['diorite', 40, 32], ['oak_log', 5, 33], ['oak_planks', 6, 34]]) })
+  assert.equal(await f.storage.tick(), true)
+  assert.deepEqual(f.calls.find(call => call[0] === 'planks'), ['planks', mc('oak_log'), 5])
+})
+
+test('no empty slot and no small stone stack: the job says why and stops', async () => {
+  const f = job({ inventory: inv([...Array.from({ length: 35 }, (_, slot) => ['diamond', 1, slot]), ['diorite', 40, 35]]) })
+  assert.equal(await f.storage.tick(), false)
+  assert.match(f.lines.join('\n'), /持ち物に空きを作れません/)
+  assert.equal(f.calls.filter(call => call[0] === 'craft').length, 0)
 })

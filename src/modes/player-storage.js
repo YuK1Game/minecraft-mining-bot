@@ -17,6 +17,7 @@
 // - Every step counts only by received data: a craft by the received
 //   inventory, a chest by the received block, a deposit by the received slots.
 const { normalizeMode } = require('./bot-mode')
+const { makeRoom, free } = require('./player-storage-room')
 
 const CHEST = 'minecraft:chest'
 const TABLE = 'minecraft:crafting_table'
@@ -100,15 +101,21 @@ function createPlayerStorage ({ getMode, shared, agent, hands, getBlock, getFeet
   const say = text => log(`プレイヤーモード: ${text}`)
 
   // Chests held, made at a table from planks (logs are cut into planks first).
-  async function makeChests (needed) {
+  async function makeChests (needed, avoid = []) {
     const planks = () => (getInventory()?.items ?? []).filter(item => /_planks$/.test(item?.name ?? '') && item.count > 0).reduce((sum, item) => sum + item.count, 0)
     const logs = () => (getInventory()?.items ?? []).filter(item => /_(?:log|stem|wood|hyphae)$/.test(item?.name ?? '') && !/stripped/.test(item.name) && item.count > 0)
     const want = needed - held(CHEST)
     if (want <= 0) return true
+    // A craft needs an empty slot for its result.
+    if (!await makeRoom({ hands, getBlock, getFeet, getInventory, avoid, say })) return false
     const table = hands.tableNear()
     const plankNeed = want * 8 + (table ? 0 : held(TABLE) ? 0 : 4)
-    for (let step = 0; step < 4 && planks() < plankNeed && logs().length; step++) if (!await hands.craftPlanks(logs()[0].name, Math.min(logs()[0].count, Math.ceil((plankNeed - planks()) / 4)))) break
-    if (planks() < plankNeed) { say(`チェストを作る板材が足りません（板材 ${planks()}・必要 ${plankNeed}）`); return false }
+    for (let step = 0; step < 4 && planks() < plankNeed && logs().length; step++) {
+      // With one empty slot the whole log stack is cut, so its slot is freed for the next craft.
+      const log = logs()[0], times = free(getInventory()) <= 1 ? log.count : Math.min(log.count, Math.ceil((plankNeed - planks()) / 4))
+      if (!await hands.craftPlanks(log.name, times)) { say(`原木から板材を作れません（${log.name.replace('minecraft:', '')} ${times} 本）`); break }
+    }
+    if (planks() < plankNeed) { say(`チェストを作る板材が足りません（板材 ${planks()}・原木 ${logs().reduce((sum, item) => sum + item.count, 0)}・必要 板材 ${plankNeed}）`); return false }
     let at = table
     if (!at) {
       if (!held(TABLE) && !await hands.craftSmall(TABLE)) { say('作業台を作れません'); return false }
@@ -127,13 +134,13 @@ function createPlayerStorage ({ getMode, shared, agent, hands, getBlock, getFeet
     const single = !target ? chests.find(chest => !chest.pair) ?? null : null
     if (!target && single) {
       const cells = chestCells(getBlock, feet, single.position)
-      if (cells.length && await makeChests(1) && await hands.place(cells[0], CHEST)) say(`チェストの隣にもう1つ置いてラージチェストにしました (${cells[0].x}, ${cells[0].y}, ${cells[0].z})`)
+      if (cells.length && await makeChests(1, cells) && await hands.place(cells[0], CHEST)) say(`チェストの隣にもう1つ置いてラージチェストにしました (${cells[0].x}, ${cells[0].y}, ${cells[0].z})`)
       target = { position: single.position }
     }
     if (!target) {
       const cells = chestCells(getBlock, feet)
       if (cells.length < 2) { say('ラージチェストを置ける平らな場所がありません'); return false }
-      if (!await makeChests(2)) return false
+      if (!await makeChests(2, cells)) return false
       for (const cell of cells) if (!await hands.place(cell, CHEST)) { say(`チェストを置けません (${cell.x}, ${cell.y}, ${cell.z})`); return false }
       say(`ラージチェストを置きました (${cells[0].x}, ${cells[0].y}, ${cells[0].z})`)
       target = { position: cells[0] }
