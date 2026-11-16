@@ -175,7 +175,8 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       case 'crafting_table': return await planks(4, left) && ports.craft('minecraft:crafting_table', 1)
       case 'oak_slab': { const times = Math.min(16, Math.ceil(count('oak_slab') / 6)); const as = await planksOf(times * 3, left); return !!as && atTable(`minecraft:${as}_slab`, times) }
       case 'oak_door': { const as = await planksOf(6, left); return !!as && atTable(`minecraft:${as}_door`, 1) }
-      case 'chest': { const times = Math.min(count('chest'), 4); return await planks(times * 8, left) && atTable('minecraft:chest', times) }
+      // One chest at a time: a batch over mixed plank kinds splits unevenly (live 07:32 JST: 「材料の種類が混在しています。1回ずつクラフトしてください。」).
+      case 'chest': { let made = 0; for (let i = 0; i < Math.min(count('chest'), 4); i++) { if (!(await planks(8, left) && await atTable('minecraft:chest', 1))) break; made++ } return made > 0 }
       case 'white_bed': return held(name => /_wool$/.test(name)) >= 3 && await planks(3, left) && atTable('minecraft:bed', 1)
       case 'furnace': return held(ITEM.cobblestone) >= 8 && (table ? atTable('minecraft:furnace', 1) : false)
       case 'glass': {
