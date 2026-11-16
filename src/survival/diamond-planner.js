@@ -385,8 +385,12 @@ function nextDiamondAction (state, observations = {}, options = {}) {
         const knownTable = station('table')
         if (kit.table > 0 && !knownTable?.access?.ready && !knownTable?.access?.standpoint) {
           if (portable.preparationTarget) return result('place_crafting_table', 'portable_station_kit', '帰路を塞がない確認済みの場所に準備用の作業台を置き、携帯用は後で作り直します。', { target: copyPoint(portable.preparationTarget), requiresLivePreview: true })
-          if (portable.preparationStep) return { ...portable.preparationStep, goal: { ...goal }, counts: { ...counts } }
-          return result('capability_required', 'portable_station_kit', '作業台を置ける既知の準備場所を確認します。', { capability: 'known_safe_workbench_placement' })
+          // No prepared place and no stop on the way back to walk to: the held
+          // table goes down by the ordinary placement below (real Realm 2026-11-16
+          // 16:37-16:47 JST: on the surface with a table and 8 cobblestone held,
+          // seven stops in a row with known_safe_underground_worksite).
+          if (portable.preparationStep && portable.preparationStep.type !== 'capability_required') return { ...portable.preparationStep, goal: { ...goal }, counts: { ...counts } }
+          if (!portable.preparationStep) return result('capability_required', 'portable_station_kit', '作業台を置ける既知の準備場所を確認します。', { capability: 'known_safe_workbench_placement' })
         }
         const access = table()
         if (access) return access
