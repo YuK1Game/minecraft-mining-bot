@@ -54,6 +54,8 @@ function throwSpot (cells, feet) {
 async function discardJunk ({ drop, walk = null, cells = () => null, getInventory, getFeet, shared, say = () => {}, now = Date.now }) {
   const list = throwable(getInventory())
   if (!list.length) return 0
+  // Not again within a minute: a pickup that undid the throw must not loop (live 23:24-23:25 JST: 18 stacks every 8 s).
+  if ((shared.playerDiscards ?? []).some(entry => entry.until - AGAIN_MS > now() - 60000)) return 0
   const home = getFeet()
   const spot = walk && home ? throwSpot(cells(), home) : null
   if (walk && !spot) { say('いらない物を捨てる場所がありません（3〜6m先に歩ける場所がありません。足元に捨てると拾い直すため）'); return 0 }
