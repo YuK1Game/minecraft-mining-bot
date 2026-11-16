@@ -15,6 +15,8 @@ const DIG = new Map([
 ])
 const ORES = new Map(['coal', 'iron', 'diamond'].flatMap((resource, index) => [`${resource}_ore`, `deepslate_${resource}_ore`].map(name => [name, { resource, tier: index + 1 }])))
 for (const name of ['stone', 'deepslate']) ORES.set(name, { resource: 'stone', tier: 1 })
+// An ore this far below the feet may be approached by a partial route (see plan).
+const DEEP = 8
 const STONE_BOUNDS = { maxDistance: 6, maxVertical: 6, maxRouteSteps: 6, maxRouteDigBlocks: 16, maxExpanded: 3000 }
 const TIERS = { wooden_pickaxe: 1, golden_pickaxe: 1, stone_pickaxe: 2, iron_pickaxe: 3, diamond_pickaxe: 4, netherite_pickaxe: 5 }
 const HAZARD = /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|sweet_berry_bush|wither_rose|pointed_dripstone|sand$|gravel$|concrete_powder$|anvil$|dragon_egg|scaffolding)/
@@ -303,7 +305,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     const push = (id, record) => open.push(id, record, { f: record.f, h: record.h, horizontal: horizontal(record.cell) })
     push(cid(origin), start)
     const closed = new Set()
-    let found = null
+    let found = null, nearest = null
     let expanded = 0
     // A tunnel only digs level or down: rising needs open air already there.
     // When the ore lies well above and no open way up turned up early, the full
@@ -328,6 +330,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       const id = open.pop()
       if (id === null) break
       const node = records.get(id)
+      if (!nearest || node.h < nearest.h || node.h === nearest.h && node.g < nearest.g) nearest = node
       try { if (accessible(node)) { found = node; break } } catch (error) { rejected[error.code] = (rejected[error.code] ?? 0) + 1 }
       closed.add(id)
       expanded++
@@ -350,12 +353,18 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       }
     }
     searching = false
+    // Far below, a search that ran out of nodes still walks the Bot part of the
+    // way down: the route to the node nearest the ore, when it gains 4 or more
+    // (real Realm 2026-11-16 21:36-21:42 JST: a diamond ore 70 blocks below the
+    // surface, every plan ended at the limit with no step, 115 times in 5 min).
+    const descent = !found && expanded >= bounds.maxExpanded && ore.target.y <= origin.y - DEEP && nearest && nearest !== start && start.h - nearest.h >= 4
+    if (descent) found = nearest
     if (!found) throw noRoute(expanded >= bounds.maxExpanded ? 'The bounded tunneling search limit was reached' : 'No complete route through known safe diggable terrain')
     if (ore.resource === 'stone' && found.removed.size + 2 > tool.remaining) throw new TunnelingError('Insufficient known durability for the bounded stone approach and target', 'TOOL_WORN_OUT')
     const steps = []
     for (let node = found; node.parent; node = node.parent) steps.push({ kind: node.step.kind, targetCell: { ...node.cell }, target: node.step.target, blocksToMine: copy(node.step.clearance) })
     steps.reverse()
-    return { ready: true, target: ore.target, resource: ore.resource, block: ore.name, requiredToolTier: ore.tier, origin: copy(state.position), approach: center(found.cell), steps, plannedDigBlocks: found.removed.size, tool, withinDurability: found.removed.size + 2 <= tool.remaining, expanded, unknownFrontier: [...unknown.values()].slice(0, 32), requiresLivePreview: true, oreAccessible: steps.length === 0, serverConfirmed: false, collected: false }
+    return { ready: true, ...(descent ? { partialRoute: true, reason: 'The search limit was reached; the route goes part of the way down toward the ore' } : {}), target: ore.target, resource: ore.resource, block: ore.name, requiredToolTier: ore.tier, origin: copy(state.position), approach: center(found.cell), steps, plannedDigBlocks: found.removed.size, tool, withinDurability: found.removed.size + 2 <= tool.remaining, expanded, unknownFrontier: [...unknown.values()].slice(0, 32), requiresLivePreview: true, oreAccessible: steps.length === 0, serverConfirmed: false, collected: false }
   }
 
   function preview (decision, options) {
