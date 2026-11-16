@@ -502,7 +502,7 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
       physicsState: structuredClone(prepared.initial), velocity: copy(prepared.initial.velocity), onGround: prepared.initial.onGround, settled: false, emergency: prepared.emergency === true, allowLowHealth: prepared.allowLowHealth === true, continueAfterReplay: prepared.continueAfterReplay === true && typeof beforeInput === 'function', sprintRouteDry: prepared.sprintRouteDry ?? null, sprintAutomatic: prepared.sprintAutomatic === true, ...routeSprintPolicy(prepared.state, prepared.sprintRequested === true, prepared.sprintRouteDry, prepared.sprintAutomatic)
     }
     flush()
-    if (active()) timer = setInterval(flush, INTERVAL)
+    if (active()) timer = setInterval(require('../common/work-spans').wrap('movement.flush', flush), INTERVAL)
     return snapshot()
   }
 

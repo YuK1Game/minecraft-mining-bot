@@ -175,7 +175,7 @@ function createWalker ({ client, getState, world, startGame, version, startGameR
     serverSignature = signature(state)
     status = { phase: 'walking', predictedPosition: copy(predicted), serverPosition: copy(state.position), target: copy(candidate.target), sent, reason: null, serverConfirmed: false }
     advance()
-    if (status.phase === 'walking') timer = setInterval(advance, 50)
+    if (status.phase === 'walking') timer = setInterval(require('../common/work-spans').wrap('walking.advance', advance), 50)
     return snapshot()
   }
 

@@ -613,7 +613,7 @@ function createUserControlRuntime (rt) {
         onUncertain: details => { if (details?.operation === 'ranged_shot') { rt.host.shared.rangedShotUncertain = { ...details, at: new Date().toISOString() }; try { rt.host.log(`射撃未確認: 矢の消費が確認できませんでした（持ち物は不明扱いにしません）`) } catch {} ; return } rt.onUncertain(details) }, onProgress: value => { if (rt.currentGeneration()) rt.host.shared.userBehaviorProgress = { busy: value.busy, sleeping: value.sleeping, activeKind: value.activeKind, at: new Date().toISOString() } }, version: rt.host.meta.version
       })
       rt.userBehaviorGenerationScope = rt.userScope(rt.rawScope())
-      if (!rt.userBehaviorTimer) rt.userBehaviorTimer = setInterval(() => { try { rt.tickUserBehaviors() } catch (error) { rt.userBehaviorError(error, 'timer') } }, 50) // one game tick: combat decisions must not lag a real-time fight
+      if (!rt.userBehaviorTimer) rt.userBehaviorTimer = setInterval(require('../common/work-spans').wrap('user-behaviors.tick', () => { try { rt.tickUserBehaviors() } catch (error) { rt.userBehaviorError(error, 'timer') } }), 50) // one game tick: combat decisions must not lag a real-time fight
     } catch (error) { rt.userBehaviors = null; rt.userBehaviorError(error, 'initialise') }
   return {
   }
