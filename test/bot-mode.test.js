@@ -69,5 +69,11 @@ test('stages are reached only from a received inventory', () => {
   // Diamonds alone are not the diamond stage: the pickaxe and the sword are.
   assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:iron_pickaxe', count: 1 }, { name: 'minecraft:diamond', count: 18 }] }).current, 'diamond')
   assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:diamond_pickaxe', count: 1 }] }).current, 'diamond')
-  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:diamond_pickaxe', count: 1 }, { name: 'minecraft:diamond_sword', count: 1 }] }).current, 'nether')
+  // Pickaxe, sword and a worn chestplate are not the full set (user 21:39 JST).
+  const tools = [{ name: 'minecraft:diamond_pickaxe', count: 1 }, { name: 'minecraft:diamond_sword', count: 1 }]
+  assert.equal(playerStages({ known: true, items: tools }, { known: true, worn: [{ piece: 'chest', name: 'minecraft:diamond_chestplate' }] }).current, 'diamond')
+  const set = { known: true, worn: ['helmet', 'chestplate', 'leggings'].map(piece => ({ name: `minecraft:diamond_${piece}` })) }
+  assert.equal(playerStages({ known: true, items: [...tools, { name: 'minecraft:diamond_boots', count: 1 }] }, set).current, 'nether')
+  // Unreceived armour counts as nothing worn.
+  assert.equal(playerStages({ known: true, items: [...tools, { name: 'minecraft:diamond_boots', count: 1 }] }, { known: false, worn: set.worn }).current, 'diamond')
 })

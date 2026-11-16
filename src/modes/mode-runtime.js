@@ -198,7 +198,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const player = createPlayerMode({
     getMode: control.get, log, safety: operations.safety, recovery, shelter, flee, scaffold: { status: () => storage.status().active ? storage.status() : torch.status().active ? torch.status() : scaffold.status() }, shared,
     agent: { start: options => agent.start(options), stop: reason => agent.stop(reason), snapshot: agentStatus },
-    getInventory: () => shared.inventoryUncertain ? null : runtime.raw().inventory
+    getInventory: () => shared.inventoryUncertain ? null : runtime.raw().inventory,
+    getWorn: () => operations.diagnostics?.armor?.() ?? null
   })
   for (const name of ['start', 'resume']) {
     const inner = quarry[name]
