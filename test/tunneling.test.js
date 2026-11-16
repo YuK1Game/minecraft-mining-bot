@@ -417,3 +417,20 @@ test('the carved synthetic descent keeps every previous floor and can be climbed
   assert.equal(output.serverConfirmed, false)
   assert.deepEqual(initial, before)
 })
+
+test('an ore far below with the search limit reached gets a route part of the way down', () => {
+  // Ore 30 blocks below the feet (y=6), 14 blocks east; too few nodes for the whole route.
+  const f = fixture({ target: point(14, -24, 0) })
+  const full = f.tunneling.preview(f.decision)
+  assert.equal(full.ready, true)
+  assert.equal(full.partialRoute, undefined)
+  const plan = f.tunneling.preview(f.decision, { maxExpanded: 20 })
+  assert.equal(plan.ready, true)
+  assert.equal(plan.partialRoute, true)
+  assert.equal(plan.oreAccessible, false)
+  assert.ok(plan.steps.length >= 4)
+  assert.ok(plan.steps.at(-1).targetCell.y < 6)
+  // A near ore with the same limit is still refused, never sent part of the way.
+  const near = fixture({ target: point(14, 2, 0) })
+  assert.equal(near.tunneling.preview(near.decision, { maxExpanded: 5 }).code, 'NO_SAFE_ROUTE')
+})

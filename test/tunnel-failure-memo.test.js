@@ -21,7 +21,8 @@ test('a remembered failure is returned until it expires; no key means no reuse',
 })
 
 function scene () {
-  const target = { x: -8, y: -18, z: -12 }
+  // Within 8 blocks below: a deeper ore gets a partial descent route instead (tunneling.js DEEP).
+  const target = { x: -8, y: -6, z: -12 }
   const block = name => ({ known: true, name: `minecraft:${name}`, boundingBox: name === 'air' ? 'empty' : 'block', diggable: true, extra: [] })
   const shell = (x, y, z) => Math.max(Math.abs(x - target.x), Math.abs(y - target.y), Math.abs(z - target.z))
   const counts = { reads: 0 }
