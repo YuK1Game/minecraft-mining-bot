@@ -46,16 +46,13 @@ function roomCells (getBlock, feet, avoid = [], tried = new Set()) {
   return out.sort((a, b) => rank(a) - rank(b) || Math.hypot(b.x + 0.5 - feet.x, b.z + 0.5 - feet.z) - Math.hypot(a.x + 0.5 - feet.x, a.z + 0.5 - feet.z))
 }
 
-// What a mined wall block drops, when it is one plain rock.
-const DROP = { stone: 'cobblestone', deepslate: 'cobbled_deepslate', cobblestone: 'cobblestone', cobbled_deepslate: 'cobbled_deepslate', tuff: 'tuff', andesite: 'andesite', diorite: 'diorite', granite: 'granite', calcite: 'calcite', dirt: 'dirt' }
-
 // Plain rock that a bare hand (any non-tool held) breaks without a drop.
 const BARE = { tuff: 1, stone: 1, andesite: 1, diorite: 1, granite: 1, cobblestone: 2, deepslate: 3, cobbled_deepslate: 3 }
 
 // A wall cell beside the Bot (feet or head height) to open for the stack:
-// { cell, bare }. First one whose drop fits into a held stack (mined with the
-// pickaxe, the drop takes no slot); otherwise plain rock dug with the stack
-// itself in hand, which drops nothing (bare: true), softest first.
+// { cell, bare: true }: plain rock dug with the stack itself in hand, which
+// drops nothing, softest first. A pickaxe dig is refused with a full bag
+// (live 23:04-23:07 JST: 「持ち物が満杯です。」 for every wall).
 // In a 1-wide tunnel the steps hold only a block or two (live 2026-11-16
 // 22:35-22:39 JST, y=-37: a tuff stack never fit, 36/36 slots for 4 minutes),
 // and the open cells there are kept for the chests (22:43-22:47 JST: every
@@ -65,14 +62,12 @@ function pocketCell (getBlock, feet, inventory, placing, refused, avoid = []) {
   const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.05), fz = Math.floor(feet.z)
   const key = cell => `${cell.x},${cell.y},${cell.z}`
   const kept = new Set(avoid.flatMap(cell => [key(cell), key({ ...cell, y: cell.y - 1 })]))
-  const room = name => (inventory?.items ?? []).some(item => item?.name === `minecraft:${name}` && item.count < 64)
   const bare = []
   for (const dy of [1, 0]) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     const cell = { x: fx + dx, y: fy + dy, z: fz + dz }
     if (refused.has(key(cell)) || kept.has(key(cell))) continue
     const block = getBlock(cell.x, cell.y, cell.z), name = String(block?.name ?? '').replace('minecraft:', '')
     if (block?.known !== true || block.extra?.length) continue
-    if (DROP[name] && `minecraft:${DROP[name]}` !== placing && room(DROP[name])) return { cell, bare: false }
     if (BARE[name]) bare.push({ cell, rank: BARE[name] * 2 + (dy === 0 ? 0 : 1) })
   }
   const soft = bare.sort((a, b) => a.rank - b.rank)[0]

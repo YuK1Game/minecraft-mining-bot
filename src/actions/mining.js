@@ -170,7 +170,9 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     if (!state.inventory.known) throw new Error('持ち物の一覧をまだ取得できていません。')
     // A quarry with every storage box full (passive, dig-through policy) mines
     // with a full bag and leaves the drops; only plain quarry targets may.
-    const fullAllowed = target.allowFullInventory === true && target.accessPreparation === 'quarry' || target.accessPreparation === 'pillar_descent'
+    // Bare-hand digging of plain rock (the player's storage room digs a wall
+    // with a stone stack in hand to free a slot) drops nothing to pick up.
+    const fullAllowed = target.allowFullInventory === true && target.accessPreparation === 'quarry' || target.accessPreparation === 'pillar_descent' || target.accessPreparation === 'hand_dig'
     if (!fullAllowed && state.inventory.items.filter(item => item.slot < 36).length >= 36) throw new Error('持ち物が満杯です。')
     const feet = { x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62 + 0.001), z: Math.floor(state.position.z) }
     const feetY = state.position.y - 1.62
