@@ -21,15 +21,18 @@ const TRIP_LIMIT = 8
 const PIT_LIMIT = 3 // tries to step out of a pit, per ten minutes
 const SETTLE_LIMIT = 3 // walks to the middle of the block, per ten minutes
 const { underCover, surfaceAhead } = require('./player-surface')
+const { createRepeat, elsewhere } = require('./player-repeat')
 const TRIP_MS = 240000
 const OVERHEAD_M = 8
 const STEP_M = 96
 const GRASS = /^(?:minecraft:)?grass_block$/
 const SCAN_M = 128 // about the terrain a Realm sends around the Bot
 // At most two minutes (user 2026-11-15 22:50 JST: 「６００秒長すぎない？」).
-// Short rests: waiting changes nothing for the Bot (user, 2026-11-16 19:50 JST);
-// they only keep a stop that repeats at once from spinning.
+// Rests are not an answer to a stop (user, 2026-11-16): the search for wood
+// rests five seconds between sets of walks, and a stop that came back even
+// after the far walks rests thirty seconds so it cannot spin.
 const PAUSES_MS = [5000, 15000, 30000]
+const SPIN_AFTER = 6
 const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 200)
 
 // Nearest received log block between `min` and `radius` metres. Unreceived
@@ -82,7 +85,9 @@ const stationMove = snapshot => snapshot?.lastDecision?.type === 'move_to' && ['
 const seeksWood = snapshot => snapshot?.lastDecision?.type === 'explore' && snapshot.lastDecision.resource === 'logs'
 
 function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, pit = null, settle = null, prey = null, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
-  let run = null, trips = 0, pits = 0, pitAt = 0, settles = 0, settleAt = 0, pauses = 0, heading = null, logsSeen = 0, reason = null, visited = []
+  let run = null, trips = 0, pits = 0, pitAt = 0, settles = 0, settleAt = 0, heading = null, logsSeen = 0, reason = null, visited = []
+  const repeat = createRepeat({ now })
+  let turns = 0
   const live = token => run === token && !disposed() && normalizeMode(getMode()) === 'player'
 
   async function wait (token, ms) {
@@ -157,7 +162,6 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
     const logs = snapshot.progress?.logsCollected ?? 0
     if (logs > logsSeen) { trips = 0; pits = 0; settles = 0; heading = null; visited = [] }
     logsSeen = logs
-    if (now() - (snapshot.startedAtMs ?? now()) > 600000) pauses = 0
     // At the bottom of a hole no walk leads out of (player-pit.js): a step is
     // cut into the wall first; every other answer below needs a walk.
     // Under a roof the climb below (straight up) is the way out.
@@ -242,25 +246,49 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
       if (!live(token) || held()) return false
       return restart(token, { ...agent.objective })
     }
-    // The list of unreachable candidates filled up (live 2026-11-15 22:01 JST: a
-    // cobblestone drop in a hole under the feet; every retry ten minutes later
-    // met the same full list and stopped within ten seconds). Start again at
-    // once with an empty list: what is still out of reach is excluded again,
-    // the rest of the list is free for other stone and drops. No pause: time
-    // changes nothing here (user, 2026-11-16 19:50 JST: 「30秒待たずにすぐに
-    // やり直してください、時間経過で状況が変わることはありません」).
-    if (snapshot.stopCode === 'exclusion_limit') {
-      reason = `${why} 除外した候補を忘れて、すぐにやり直します。`
-      log('プレイヤーモード: 除外した候補を忘れて、すぐにやり直します')
-      return restart(token, { ...agent.objective, freshExclusions: true })
+    if (search) {
+      // The search for wood only rests between sets of walks.
+      reason = `${why} ${Math.round(PAUSES_MS[0] / 1000)}秒後にやり直します。`
+      log(`プレイヤーモード: ${Math.round(PAUSES_MS[0] / 1000)}秒後にやり直します`)
+      trips = 0; visited = []
+      if (!await wait(token, PAUSES_MS[0])) return false
+      return restart(token, { ...agent.objective, freshExploration: true })
     }
-    // A search only rests between sets of walks; other stops wait longer each time.
-    const pause = search ? PAUSES_MS[0] : PAUSES_MS[Math.min(pauses++, PAUSES_MS.length - 1)]
-    reason = `${why} ${Math.round(pause / 1000)}秒後にやり直します。`
-    log(`プレイヤーモード: ${Math.round(pause / 1000)}秒後にやり直します`)
-    if (search) { trips = 0; visited = [] }
-    if (!await wait(token, pause)) return false
-    return restart(token, { ...agent.objective, ...(search ? { freshExploration: true } : {}) })
+    // No answer above fits. The same stop is not answered the same way twice
+    // (player-repeat.js): at once, then from another place, then from far away.
+    const again = repeat.note(snapshot, getPosition())
+    const full = snapshot.stopCode === 'exclusion_limit'
+    if (again.step === 'again') {
+      // The list of unreachable candidates filled up (live 2026-11-15 22:01
+      // JST): an empty list; what is still out of reach is excluded again.
+      reason = full ? `${why} 除外した候補を忘れて、すぐにやり直します。` : `${why} すぐにやり直します。`
+      log(full ? 'プレイヤーモード: 除外した候補を忘れて、すぐにやり直します' : 'プレイヤーモード: すぐにやり直します')
+      return restart(token, { ...agent.objective, ...(full ? { freshExclusions: true } : {}) })
+    }
+    const position = getPosition()
+    if (again.step === 'near' && position) {
+      const under = climb && underCover(getBlock, position)
+      reason = under ? '同じ場所で同じ理由で止まったため、真上へ掘って地上へ出てから続けます。' : '同じ場所で同じ理由で止まったため、別の場所へ移ってから続けます。'
+      log(`プレイヤーモード: ${reason}`)
+      let out = null
+      if (under) { try { out = await climb(() => !live(token)) } catch (error) { log(`プレイヤーモード: 真上へ掘れません ${text(error?.message)}`) } }
+      if (!out?.ok && live(token) && !held()) await trip(token, snapshot, { ...elsewhere(position, snapshot.lastDecision, 16, turns++ * Math.PI / 2), label: '別の場所' })
+      if (!live(token) || held()) return false
+      return restart(token, { ...agent.objective, freshExclusions: true, freshExploration: true })
+    }
+    if (position) {
+      if (again.count >= SPIN_AFTER) {
+        reason = `${why} 遠くへ移っても同じ理由で止まるため、30秒後に続けます。`
+        log('プレイヤーモード: 遠くへ移っても同じ理由で止まるため、30秒後に続けます')
+        if (!await wait(token, PAUSES_MS[2])) return false
+      }
+      heading = (heading ?? 0) + Math.PI / 3
+      reason = '別の場所でも同じ理由で止まったため、遠くへ移動してから続けます。'
+      log(`プレイヤーモード: ${reason}`)
+      await trip(token, snapshot, { ...aheadPoint(position, heading), label: '遠くの場所' })
+      if (!live(token) || held()) return false
+    }
+    return restart(token, { ...agent.objective, freshExclusions: true, freshExploration: true })
   }
 
   // Called with every autonomy progress snapshot.
@@ -301,7 +329,7 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
 
   function cancel () {
     const active = run !== null
-    run = null; reason = null; trips = 0; pauses = 0; heading = null; visited = []
+    run = null; reason = null; trips = 0; heading = null; visited = []; repeat.reset(); turns = 0
     shared.playerRecovering = false
     if (active && travel.status()?.busy) void Promise.resolve().then(() => travel.cancel()).catch(() => {})
     return active

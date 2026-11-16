@@ -53,17 +53,47 @@ test('the search starts toward the nearest received grass', async () => {
   assert.deepEqual(f.calls[0], { travel: { x: 1, z: -95 } })
 })
 
-test('other stops restart after a pause, not at once; stop cancels the wait', async () => {
-  const f = fixture()
-  f.recovery.onProgress({ running: false, phase: 'failed', reason: '同じ状態で同じ操作を繰り返しても進展がないため停止しました。', progress: {} })
-  await settle(f.recovery)
+test('the same stop is not answered the same way twice: at once, then from another place, then from far away', async () => {
+  const f = fixture({ walks: true })
+  const stop = { running: false, phase: 'failed', reason: '同じ状態で同じ操作を繰り返しても進展がないため停止しました。', lastDecision: { type: 'scan_blocks', stage: 'body' }, progress: {} }
+  f.recovery.onProgress(stop); await settle(f.recovery)
   assert.deepEqual(f.calls, [{ start: { objective: 'diamond', diamondCount: 1 } }])
-  assert.ok(f.clock() >= 5000)
-  f.recovery.onProgress({ running: false, phase: 'failed', reason: 'x', progress: {} })
-  assert.equal(f.recovery.cancel(), true)
+  assert.ok(f.clock() < 1000, 'no pause before the first restart')
+  assert.match(f.logs.join('\n'), /すぐにやり直します/)
+  // The same stop again, at the same place: about 16 m away, then on with fresh lists.
+  f.calls.length = 0
+  f.recovery.onProgress(stop); await settle(f.recovery)
+  assert.deepEqual(f.calls, [{ travel: { x: 16, z: 0 } }, { start: { objective: 'diamond', diamondCount: 1, freshExclusions: true, freshExploration: true } }])
+  assert.match(f.logs.join('\n'), /別の場所へ移ってから続けます/)
+  // From the new place the stop counts as new.
+  f.calls.length = 0
+  f.recovery.onProgress(stop); await settle(f.recovery)
+  assert.deepEqual(f.calls, [{ start: { objective: 'diamond', diamondCount: 1 } }])
+})
+
+test('a stop that comes back where the Bot could not move away: the third time it walks far', async () => {
+  const f = fixture()
+  const stop = { running: false, phase: 'failed', reason: '再試行の上限に達しました: No known safe retreat route exists', lastDecision: { type: 'avoid_threat' }, progress: {} }
+  for (let i = 0; i < 3; i++) { f.recovery.onProgress(stop); await settle(f.recovery) }
+  const walks = f.calls.filter(call => call.travel).map(call => call.travel)
+  assert.deepEqual(walks, [{ x: 16, z: 0 }, aheadPoint({ x: 0.5, z: 0.5 }, Math.PI / 3)])
+  assert.match(f.logs.join('\n'), /遠くへ移動してから続けます/)
+  assert.ok(f.clock() < 30000, 'no rest before the sixth time')
+})
+
+test('underground the second answer is straight up; a stop cancels a recovery', async () => {
+  const roof = { '0,66,0': { known: true, name: 'minecraft:air', boundingBox: 'empty' }, '0,67,0': { known: true, name: 'minecraft:air', boundingBox: 'empty' }, '0,68,0': { known: true, name: 'minecraft:stone', boundingBox: 'block' } }
+  const f = fixture({ blocks: roof, climb: { ok: true } })
+  const stop = { running: false, phase: 'failed', reason: 'Navigation made no progress', lastDecision: { type: 'collect_drops', stage: 'diamond' }, progress: {} }
+  f.recovery.onProgress(stop); await settle(f.recovery)
+  f.recovery.onProgress(stop); await settle(f.recovery)
+  assert.deepEqual(f.calls, [{ start: { objective: 'diamond', diamondCount: 1 } }, 'climb', { start: { objective: 'diamond', diamondCount: 1, freshExclusions: true, freshExploration: true } }])
+  const g = fixture({ blocks: { '40,70,0': { known: true, name: 'minecraft:oak_log' } } })
+  g.recovery.onProgress(blocked())
+  assert.equal(g.recovery.cancel(), true)
   await new Promise(resolve => setTimeout(resolve, 20))
-  assert.equal(f.calls.length, 1)
-  assert.equal(f.shared.autoWanted, false)
+  assert.equal(g.calls.filter(call => call.start).length, 0)
+  assert.equal(g.shared.autoWanted, false)
 })
 
 test('quarry mode, a user stop and a running autonomy are left alone', () => {
@@ -187,7 +217,7 @@ test('a full list of unreachable candidates: restart at once with an empty list,
   assert.match(source, /freshExclusions === true\) \{ seed\.excludedResources = \[\]; seed\.excludedDropIds = \[\] \}/)
 })
 
-test('a stop whose work lies far away walks there first, then goes on; a near one only pauses', async () => {
+test('a stop whose work lies far away walks there first, then goes on; a near one starts again at once', async () => {
   const far = fixture({ walks: true })
   far.recovery.onProgress(blocked({ stopCode: null, reason: '再試行の上限に達しました: The ore lies outside the bounded tunneling area', lastDecision: { type: 'tunnel', resource: 'iron', target: { x: 85, y: 68, z: 75 } } }))
   await settle(far.recovery)
@@ -197,7 +227,7 @@ test('a stop whose work lies far away walks there first, then goes on; a near on
   near.recovery.onProgress(blocked({ stopCode: null, lastDecision: { type: 'tunnel', resource: 'iron', target: { x: 10, y: 68, z: 5 } } }))
   await settle(near.recovery)
   assert.deepEqual(near.calls, [{ start: { objective: 'diamond', diamondCount: 1 } }])
-  assert.ok(near.clock() >= 5000)
+  assert.ok(near.clock() < 1000)
 })
 
 test('underground, a table that cannot be walked to: straight up, then on at once', async () => {
