@@ -102,7 +102,10 @@ function createAutonomyRuntime (rt) {
         if (preview.code === 'FOOD_ALREADY_AVAILABLE') return { ok: true, phase: 'observed', foodAvailable: true, serverConfirmed: true, collected: false }
         // In play, one batch chases the animal to the end (foraging.js MAX_BATCH).
         const batch = rt.host.shared.botMode === 'player' && rt.host.shared.playerWanted === true ? { maxSteps: 8, maxHits: 8 } : {}
-        return rt.foraging.execute(window === 'night' ? { ...batch, targetRuntimeId: preview.target.runtimeId } : batch, { signal: context.signal })
+        const run = rt.foraging.execute(window === 'night' ? { ...batch, targetRuntimeId: preview.target.runtimeId } : batch, { signal: context.signal })
+        // Why a hunt failed, in play (live 2026-11-17 05:52-05:57 JST: chicken and sheep hunts failed with no reason anywhere, 0 hits).
+        if (batch.maxSteps) Promise.resolve(run).then(result => { if (result?.ok !== true) { const shot = rt.foraging.snapshot?.() ?? {}; rt.host.log(`プレイヤーモード: 食料の調達に失敗しました（${String(result?.code ?? shot.code ?? '')} ${String(result?.reason ?? shot.reason ?? '').slice(0, 120)}、${String(shot.target?.name ?? preview.target?.name ?? '').replace('minecraft:', '')}、当たった数 ${shot.hits ?? '?'}）`) } }, error => rt.host.log(`プレイヤーモード: 食料の調達に失敗しました（${String(error?.code ?? '')} ${String(error?.message ?? error).slice(0, 120)}）`))
+        return run
       },
       eat: async (decision, context) => { rt.requireIdle(); const stop = () => rt.food.cancel('食事を中断しました。'); context.signal?.addEventListener('abort', stop, { once: true }); try { return await rt.food.eat({ slot: decision.slot, ...(decision.allowEmergencyRotten === true ? { allowEmergencyRotten: true } : {}) }) } finally { context.signal?.removeEventListener('abort', stop) } }
     },
