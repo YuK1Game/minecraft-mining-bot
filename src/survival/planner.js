@@ -264,16 +264,32 @@ function nextBootstrapAction (snapshot, observations = {}, options = {}) {
     candidates = [...candidates].filter(block => !excludedResource(block, resource) && safe(block)).sort((a, b) => distance(eye, a.position) - distance(eye, b.position) || orderPosition(a, b))
     const reachable = candidates.find(block => distance(eye, block.position) <= reach && lineClear(block.position) && !(block.position.x === feet.x && block.position.z === feet.z && block.position.y <= feet.y))
     if (reachable) return requireCapability('break_block', result(resource === 'logs' ? 'gather_logs' : 'mine_stone', resource, resource === 'logs' ? '幹と葉を確認した木から、不足する原木を集めます。' : '必要な石材を集めます。', { target: { ...reachable.position }, block: fullName(reachable.name), count, ...metadata, requiresLivePreview: true }))
-    const approaches = candidates.flatMap(block => {
-      const stand = standPoints.filter(point => {
-        if (resource === 'logs' && point.target.y > eye.y - 1.62 + 0.05 && !logStandConnected(point)) return false
-        if (Math.hypot(point.target.x - eye.x, point.target.y - (eye.y - 1.62), point.target.z - eye.z) <= 0.4) return false
-        if (distance(point.eye, block.position) > Math.max(0, reach - 0.5)) return false
-        if (Math.floor(point.target.x) === block.position.x && Math.floor(point.target.z) === block.position.z && block.position.y <= point.target.y) return false
-        return point.samples.every(sample => distance(sample, block.position) <= Math.max(0, reach - 0.2) && lineClearFrom(sample, block.position))
-      }).sort((a, b) => a.cost - b.cost || a.target.x - b.target.x || a.target.y - b.target.y || a.target.z - b.target.z)[0]
-      return stand ? [{ block, stand }] : []
-    }).sort((a, b) => a.stand.cost - b.stand.cost || distance(eye, a.block.position) - distance(eye, b.block.position) || orderPosition(a.block, b.block))
+    // The cheapest standing place that reaches any candidate, then the nearest
+    // candidate it (or an equally cheap place) reaches. Standing places are
+    // walked in order of cost and only the blocks within reach of each are
+    // looked up: testing every candidate against every standing place took
+    // 300 ms per decision on open ground (real Realm 2026-11-16 14:53 JST).
+    // A sight line enters its target through one of the six cells around it,
+    // so a block with no see-through neighbour is seen from nowhere.
+    const exposed = block => NEIGHBOURS.some(offset => SEE_THROUGH.has(nameOf(getBlock({ x: block.position.x + offset.x, y: block.position.y + offset.y, z: block.position.z + offset.z })?.name)))
+    const wanted = new Map(candidates.filter(exposed).map(block => [cellKey(block.position.x, block.position.y, block.position.z), block]))
+    const span = Math.max(0, reach - 0.5)
+    const stands = standPoints.filter(point => !(resource === 'logs' && point.target.y > eye.y - 1.62 + 0.05 && !logStandConnected(point)) && Math.hypot(point.target.x - eye.x, point.target.y - (eye.y - 1.62), point.target.z - eye.z) > 0.4)
+      .sort((a, b) => a.cost - b.cost || a.target.x - b.target.x || a.target.y - b.target.y || a.target.z - b.target.z)
+    const approaches = []
+    const taken = new Set()
+    for (const point of wanted.size ? stands : []) {
+      if (approaches.length && point.cost > approaches[0].stand.cost) break
+      for (let x = Math.ceil(point.eye.x - span); x <= Math.floor(point.eye.x + span); x++) for (let y = Math.ceil(point.eye.y - span); y <= Math.floor(point.eye.y + span); y++) for (let z = Math.ceil(point.eye.z - span); z <= Math.floor(point.eye.z + span); z++) {
+        const block = wanted.get(cellKey(x, y, z))
+        if (!block || taken.has(block) || distance(point.eye, block.position) > span) continue
+        if (Math.floor(point.target.x) === block.position.x && Math.floor(point.target.z) === block.position.z && block.position.y <= point.target.y) continue
+        if (!point.samples.every(sample => distance(sample, block.position) <= Math.max(0, reach - 0.2) && lineClearFrom(sample, block.position))) continue
+        taken.add(block)
+        approaches.push({ block, stand: point })
+      }
+    }
+    approaches.sort((a, b) => a.stand.cost - b.stand.cost || distance(eye, a.block.position) - distance(eye, b.block.position) || orderPosition(a.block, b.block))
     if (approaches.length) {
       const selected = approaches[0]
       return requireCapability('move', result('move_to', resource, '位置が少しずれても採取できる地面の位置へ近づきます。', { target: { ...selected.stand.target }, resourceTarget: { ...selected.block.position }, block: fullName(selected.block.name), resource, ...metadata, stance: { positionTolerance: 0.25, testedPoints: selected.stand.samples.length, centerDistance: distance(selected.stand.eye, selected.block.position), worstDistance: Math.max(...selected.stand.samples.map(point => distance(point, selected.block.position))) }, requiresLivePreview: true }))
