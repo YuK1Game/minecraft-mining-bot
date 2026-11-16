@@ -375,3 +375,30 @@ test('the door goes last; a door already standing with work left is taken down f
   assert.equal(remaining(w.getBlock, origin0).length, 0, lines.join('\n'))
   assert.match(lines.join('\n'), /入口のドアを外しました/)
 })
+
+test('a climb cut short by an enemy says so and tries again in 2 minutes, not 10 (live 2026-11-17 07:02 JST)', async () => {
+  const w = world()
+  for (let x = -6; x <= 6; x++) for (let z = -6; z <= 6; z++) w.set({ x, y: 70, z }, 'minecraft:stone')
+  const feet = { x: 0.5, y: 64, z: 0.5 }
+  const inventory = { known: true, items: [] }
+  for (const [name, count] of [['wooden_pickaxe', 1], ['birch_log', 44], ['cobblestone', 68]]) inventory.items.push({ name: `minecraft:${name}`, count, slot: inventory.items.length })
+  const shared = { playerWanted: true }
+  const lines = []
+  let time = 1000000, near = false, climbs = 0
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {}, now: () => time, hostile: () => near,
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true, running: () => false },
+    ports: { craft: async () => false, smelt: async () => 0, place: async () => false, mine: async () => true, why: () => null },
+    hands: { walk: async () => false, approach: async () => false },
+    climb: async () => { climbs++; near = true; return { ok: false, reason: 'INTERRUPTED' } },
+    travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
+  })
+  await build.tick()
+  assert.equal(climbs, 1)
+  assert.match(lines.join('\n'), /地上へ出られないため、拠点の家を建てられません（近くの敵）/)
+  near = false
+  time += 125000
+  await build.tick()
+  assert.equal(climbs, 2, lines.join('\n'))
+})
