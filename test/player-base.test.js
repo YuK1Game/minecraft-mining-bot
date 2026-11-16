@@ -1,0 +1,93 @@
+'use strict'
+
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { createPlayerBase, bankable, standBeside, loadBaseSync } = require('../src/modes/player-base')
+
+const inv = items => ({ known: true, items: items.map(([slot, name, count]) => ({ slot, name: `minecraft:${name}`, count })) })
+
+test('bankable keeps 8 diamonds in the largest stack and takes valuables and rubble', () => {
+  const stacks = bankable(inv([[0, 'diamond', 64], [1, 'diamond', 50], [2, 'emerald', 3], [3, 'iron_ingot', 9], [4, 'tuff', 20], [5, 'coal', 12]]))
+  assert.deepEqual(stacks.find(s => s.slot === 0), { slot: 0, name: 'minecraft:diamond', count: 56 })
+  assert.deepEqual(stacks.find(s => s.slot === 1), { slot: 1, name: 'minecraft:diamond', count: 50 })
+  assert.ok(stacks.some(s => s.name === 'minecraft:emerald'))
+  assert.ok(stacks.some(s => s.name === 'minecraft:tuff'))
+  assert.ok(!stacks.some(s => /iron_ingot|coal/.test(s.name)))
+  assert.deepEqual(bankable({ known: true, uncertain: true, items: [] }), [])
+})
+
+// A flat world: stone below y=64, air above; a chest at (5,64,0).
+function world (extra = {}) {
+  return (x, y, z) => {
+    const key = `${x},${y},${z}`
+    if (extra[key]) return { known: true, name: extra[key], boundingBox: 'block' }
+    return y < 64 ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  }
+}
+
+test('standBeside picks an open cell on solid ground next to the chest', () => {
+  const at = standBeside(world({ '5,64,0': 'minecraft:chest' }), { x: 5, y: 64, z: 0 })
+  assert.deepEqual(at, { x: 6.5, y: 64, z: 0.5 })
+})
+
+function rig ({ base = null, position = { x: 0, y: 65.62, z: 0 }, items = [[0, 'diamond', 40]], cover = false } = {}) {
+  const shared = { playerWanted: true, playerBase: base }
+  const calls = []
+  let inventory = inv(items), pos = { ...position }
+  const blocks = world({ '5,64,0': 'minecraft:chest' })
+  let covered = cover
+  const getBlock = (x, y, z) => (covered && x === 0 && z === 0 && y === 70) ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : blocks(x, y, z) ?? null
+  const writes = []
+  const api = createPlayerBase({
+    getMode: () => 'player', shared, getBlock, getPosition: () => pos, getFeet: () => ({ x: pos.x, y: pos.y - 1.62, z: pos.z }), getInventory: () => inventory,
+    agent: { objective: {}, start: async () => calls.push('start'), stop: () => calls.push('stop'), settled: () => true },
+    hands: {
+      store: async (at, stacks) => { calls.push(['store', at, stacks.reduce((s, x) => s + x.count, 0)]); inventory = inv([[0, 'diamond', 8]]); return stacks.reduce((s, x) => s + x.count, 0) },
+      room: () => 10
+    },
+    chest: async () => { calls.push('chest'); return { x: 1, y: 64, z: 1 } },
+    climb: async () => { calls.push('climb'); covered = false; return { ok: true } },
+    travel: { to: async ({ destination }) => { calls.push(['travel', destination]); pos = { x: destination.x + 3, y: 65.62, z: destination.z } }, status: () => ({ busy: false }), cancel: async () => {} },
+    walk: async target => { calls.push(['walk', target]); pos = { x: target.x, y: target.y + 1.62, z: target.z }; return true },
+    approach: async () => true,
+    file: '/nowhere', write: async (file, data) => writes.push(data),
+    log: () => {}, sleep: async () => {}
+  })
+  return { api, shared, calls, writes }
+}
+
+test('underground with no base: climbs out, makes the base chest there and banks', async () => {
+  const { api, shared, calls, writes } = rig({ cover: true })
+  assert.equal(await api.tick(), true)
+  assert.deepEqual(calls.slice(0, 4), ['stop', 'climb', 'chest', ['store', { x: 1, y: 64, z: 1 }, 32]])
+  assert.deepEqual(shared.playerBase, { x: 1, y: 64, z: 1 })
+  assert.deepEqual(writes[0].chest, { x: 1, y: 64, z: 1 })
+  assert.equal(calls.at(-1), 'start')
+})
+
+test('a far base: long walk there, a walk beside the chest, then the deposit', async () => {
+  const { api, calls } = rig({ base: { x: 5, y: 64, z: 0 }, position: { x: 300, y: 65.62, z: 0 } })
+  assert.equal(await api.tick(), true)
+  assert.deepEqual(calls[1], ['travel', { x: 5, z: 0 }])
+  assert.equal(calls[2][0], 'walk')
+  assert.deepEqual(calls[3], ['store', { x: 5, y: 64, z: 0 }, 32])
+})
+
+test('few spare diamonds far from the base: no trip', async () => {
+  const { api, calls } = rig({ base: { x: 5, y: 64, z: 0 }, position: { x: 300, y: 65.62, z: 0 }, items: [[0, 'diamond', 20]] })
+  assert.equal(await api.tick(), null)
+  assert.deepEqual(calls, [])
+})
+
+test('loadBaseSync reads the saved chest and ignores a broken file', () => {
+  assert.deepEqual(loadBaseSync('x', { io: { readFileSync: () => '{"chest":{"x":1,"y":2,"z":3}}' } }), { x: 1, y: 2, z: 3 })
+  assert.equal(loadBaseSync('x', { io: { readFileSync: () => '{' } }), null)
+})
+
+test('no base and no wood for a large chest: no trip', async () => {
+  const calls = []
+  const shared = { playerWanted: true, playerBase: null }
+  const api = createPlayerBase({ getMode: () => 'player', shared, getBlock: () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty' }), getPosition: () => ({ x: 0, y: 65.62, z: 0 }), getFeet: () => ({ x: 0, y: 64, z: 0 }), getInventory: () => inv([[0, 'diamond', 64]]), canBuild: () => false, agent: { stop: () => calls.push('stop') }, travel: { status: () => ({ busy: false }) } })
+  assert.equal(await api.tick(), null)
+  assert.deepEqual(calls, [])
+})
