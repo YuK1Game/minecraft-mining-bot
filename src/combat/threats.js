@@ -168,4 +168,4 @@ function evaluateThreats (state, entities, { extraMargin = 0, observationRadius 
   }
 }
 
-module.exports = { threatRadius, evaluateThreats }
+module.exports = { threatRadius, evaluateThreats: require('../common/work-spans').wrap('threats.evaluate', evaluateThreats) }

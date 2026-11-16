@@ -246,4 +246,4 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
   return required('explore', result('explore', 'shelter', '既知の安全な足場を通って別の場所へ移り、土の拠点候補を探します。', { resource: 'shelter', attempt: attempts + 1, maxAttempts: limit, allowWater: false, requiresKnownTerrain: true, requiresLivePreview: true }), ['movement_exploration'])
 }
 
-module.exports = { nextSurvivalAction }
+module.exports = require('../common/work-spans').wrapAll('survival-planner', { nextSurvivalAction })

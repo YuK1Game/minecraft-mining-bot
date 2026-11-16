@@ -459,4 +459,4 @@ function nextDiamondAction (state, observations = {}, options = {}) {
   return wait('smelting', 'furnace_cooking', 'サーバーの結果スロットに鉄インゴットが現れるまで待ちます。', { expectedName: 'minecraft:iron_ingot', remaining: 3 - counts.ironIngots })
 }
 
-module.exports = { nextDiamondAction }
+module.exports = require('../common/work-spans').wrapAll('diamond-planner', { nextDiamondAction })

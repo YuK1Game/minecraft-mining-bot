@@ -43,6 +43,9 @@ function createLoggedStallWatch ({ context, log, root = null, profile = null }) 
     context,
     report: r => {
       log(`処理の停止を検知: ${r.stallMs}ms 作業=${JSON.stringify(r.doing)}${r.suppressed ? ` 直前の未記録${r.suppressed}件` : ''} 最大=${r.worstMs}ms 累計${r.stalls}回`)
+      // Which timed work ran during the stall (common/work-spans.js).
+      const spans = require('../common/work-spans').describeRecent(r.stallMs + 250)
+      log(`処理の停止の内訳（計測区間）: ${spans ?? '計測している処理は動いていませんでした'}`)
       void profile.explain(r.stallMs)
     }
   })

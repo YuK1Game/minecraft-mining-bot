@@ -202,7 +202,8 @@ function createExploration ({ historyLimit = 80, historyTtlMs = 600000, clock = 
     updateScope(state)
     return rankExplorationTargets(state, observations, { ...options, history, transitBudget: Math.max(0, MAX_TRANSIT_REVISITS - transitRevisits), readSupportBlock:readSupportBlock ? position=>readSupportBlock(position,state) : null })
   }
+  candidates = require('../common/work-spans').wrap('exploration.candidates', candidates) // timed for the stall log
   return { candidates, remember, snapshot: () => ({ scope, history: copy(history), limit: historyLimit, historyTtlMs, transitRevisits, maxTransitRevisits: MAX_TRANSIT_REVISITS }) }
 }
 
-module.exports = { knownStandpoints, rankExplorationTargets, rankRetreatTargets, createExploration }
+module.exports = require('../common/work-spans').wrapAll('exploration', { knownStandpoints, rankExplorationTargets, rankRetreatTargets, createExploration })

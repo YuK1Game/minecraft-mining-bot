@@ -375,4 +375,4 @@ function nextBootstrapAction (snapshot, observations = {}, options = {}) {
   return craft('wooden_pickaxe', 1, 'wooden_pickaxe')
 }
 
-module.exports = { nextBootstrapAction, inventoryCounts, naturalLogCandidates }
+module.exports = require('../common/work-spans').wrapAll('planner', { nextBootstrapAction, inventoryCounts, naturalLogCandidates })

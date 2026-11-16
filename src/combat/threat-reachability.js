@@ -205,7 +205,7 @@ function seekCells (world, feet, goal, { radius = ENGAGE_RADIUS, maxNodes = SEEK
 // true = shut in, null = no such evidence.
 const PIT_RADIUS = 8
 const PIT_MAX_NODES = 300
-const PIT_TIME_LIMIT_MS = 3
+const PIT_TIME_LIMIT_MS = 6
 function shutIn (world, position, botFeet) {
   // A quarter block up: a mob standing at y = 63.9999 is in the cell above.
   const feet = { x: position.x, y: position.y + 0.25, z: position.z }
@@ -265,4 +265,4 @@ function refresh (state, entities, { world, isHostile = e => e?.hostile === true
 function snapshot () { return fill ? { policy: fill.policy, createdAt: fill.createdAt, cells: fill.cells, truncated: fill.truncated, unknownTouched: fill.unknown, elapsedMs: fill.elapsedMs, origin: fill.origin, hostiles: verdicts } : null }
 function clear () { fill = null; verdicts = []; nextRefreshAt = -Infinity; lastForcedAt = -Infinity }
 
-module.exports = { ENGAGE_RADIUS, MELEE_REACH, refresh, verdict, knownReachable, knownUnreachable, reachableNow, walkableCells, seekCells, shutIn, snapshot, clear }
+module.exports = { ENGAGE_RADIUS, MELEE_REACH, refresh: require('../common/work-spans').wrap('reachability.refresh', refresh), verdict, knownReachable, knownUnreachable, reachableNow, walkableCells, seekCells, shutIn, snapshot, clear }

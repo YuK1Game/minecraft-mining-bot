@@ -224,4 +224,4 @@ function terrainOcclusionApplies (state, entity, { now = Date.now, maxAgeMs = 15
   })
 }
 
-module.exports = { buildTerrainThreatEvidence, annotateTerrainThreats, terrainOcclusionApplies }
+module.exports = { ...require('../common/work-spans').wrapAll('terrain-threats', { buildTerrainThreatEvidence, annotateTerrainThreats }), terrainOcclusionApplies }

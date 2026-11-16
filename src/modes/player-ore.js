@@ -52,4 +52,4 @@ function reachableOre ({ mode, state, decision, observations, preview, guarded }
   return { ...rest, type: 'mine_ore', stage: decision.resource, reason: kind.reason, target: { ...ore.position }, resourceTarget: { ...ore.position }, block: ore.name, requiresLivePreview: true, requiresKnownDurability: true }
 }
 
-module.exports = { reachableOre }
+module.exports = require('../common/work-spans').wrapAll('player-ore', { reachableOre })
