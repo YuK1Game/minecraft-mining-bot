@@ -11,8 +11,20 @@
 // stays near where it was asked; after that, or after walking away, the ore
 // is searched again. Only previews are answered from here: the tunnel that
 // is actually dug is always planned afresh.
-function createDeadTargets ({ ttlMs = 45000, radius = 6, limit = 32, now = () => Date.now() } = {}) {
+// Searches are also spread over decisions: once the previews of the last
+// windowMs took budgetMs, a further ore is not searched now but answered
+// "deferred" (SEARCH_DEFERRED); the caller keeps its decision, and the next
+// decision skips the ores already found dead (real Realm 2026-11-17 00:25 JST:
+// four searches to the limit in one decision, 0.9 s each, the Bot's
+// processing stopped for 3.6 s).
+function createDeadTargets ({ ttlMs = 45000, radius = 6, limit = 32, budgetMs = 500, windowMs = 1500, now = () => Date.now(), elapsed = () => performance.now() } = {}) {
   const entries = new Map()
+  const spent = []
+  const busy = () => {
+    const at = elapsed()
+    while (spent.length && at - spent[0].at > windowMs) spent.shift()
+    return spent.reduce((sum, entry) => sum + entry.ms, 0) >= budgetMs
+  }
   const finite = point => !!point && [point.x, point.y, point.z].every(Number.isFinite)
   const keyOf = decision => {
     const target = decision?.target
@@ -27,14 +39,17 @@ function createDeadTargets ({ ttlMs = 45000, radius = 6, limit = 32, now = () =>
         if (now() - entry.at <= ttlMs && Math.hypot(position.x - entry.position.x, position.y - entry.position.y, position.z - entry.position.z) <= radius) return { ...entry.result, reused: true }
         entries.delete(key)
       }
-      const result = search()
+      if (busy()) return { ready: false, code: 'SEARCH_DEFERRED', reason: 'Tunnel searches already took this decision\'s time; this ore is searched at a later decision' }
+      const started = elapsed()
+      let result
+      try { result = search() } finally { const ended = elapsed(); spent.push({ at: ended, ms: ended - started }) }
       if (result?.ready !== true && result?.code === 'NO_SAFE_ROUTE') {
         entries.set(key, { at: now(), position: { x: position.x, y: position.y, z: position.z }, result })
         while (entries.size > limit) entries.delete(entries.keys().next().value)
       }
       return result
     },
-    clear () { entries.clear() },
+    clear () { entries.clear(); spent.length = 0 },
     size: () => entries.size
   }
 }
