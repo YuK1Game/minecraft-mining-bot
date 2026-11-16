@@ -84,6 +84,17 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
   const refused = { target: null, cells: new Map() }
   // No-route answers, reused until the received terrain changes (tunnel-failure-memo.js).
   const failures = createFailureMemo({ now: clock })
+  // Dig steps (from a cell into the next) whose blocks the live mining preview
+  // could not see from where the Bot stood: planned around for five minutes
+  // (live 2026-11-17 05:14-05:32 JST: the grass floor beside the Bot, under
+  // leaf litter, was planned as the first dig every time, 「射程内の採掘面への
+  // 視線が遮られているか、未取得です」, about 470 decisions without a step).
+  const refusedSteps = new Map()
+  const stepKey = (from, to) => `${key(from)}>${key(to)}`
+  function blindSteps () {
+    for (const [id, at] of refusedSteps) if (clock() - at > REFUSED_MS) refusedSteps.delete(id)
+    return refusedSteps
+  }
   function refusedCells (target) {
     if (refused.target !== key(target)) { refused.target = key(target); refused.cells.clear() }
     for (const [id, at] of refused.cells) if (clock() - at > REFUSED_MS) refused.cells.delete(id)
@@ -267,6 +278,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     const limits = avoidance.map(circle => { const now = Math.hypot(circle.position.x - state.position.x, circle.position.y - state.position.y, circle.position.z - state.position.z); return now < circle.minDistance ? Math.max(0, now - 0.25) : circle.minDistance })
     const allowedEye = eye => avoidance.every((circle, index) => Math.hypot(circle.position.x - eye.x, circle.position.y - eye.y, circle.position.z - eye.z) > limits[index])
     const skipped = refusedCells(ore.target)
+    const blind = blindSteps()
     const allowedEdge = (from, to) => avoidance.every((circle, index) => segmentDistance(circle.position, from, to) >= limits[index] - CONTACT)
     function accessible (node) {
       const eye = { x: node.cell.x + 0.5, y: node.cell.y + 1.62, z: node.cell.z + 0.5 }
@@ -306,6 +318,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
         for (const offset of FACES) { const neighbour = read({ x: point.x + offset.x, y: point.y + offset.y, z: point.z + offset.z }, node.removed); if (hazardName(nameOf(neighbour)) || layered(neighbour)) return null }
         clearance.push(point)
       }
+      if (clearance.length && blind.size && blind.has(stepKey(node.cell, next))) return null
       if (next.y > node.cell.y) for (const cell of [node.cell, next]) for (let y = Math.max(node.cell.y, next.y); y <= Math.max(node.cell.y, next.y) + 1; y++) if (!clear(read({ ...cell, y }, node.removed))) return null
       // A step that digs nothing shares its parent's set; one that digs links to it (tunnel-dug.js).
       const removed = node.removed.with(clearance.map(cid))
@@ -338,7 +351,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     // Hostile circles move, and a world without a terrain version cannot say
     // when it changed: no reuse then.
     const terrain = world.revision?.()
-    const memoKey = !avoidance.length && Number.isSafeInteger(terrain) ? JSON.stringify([terrain, ore.target, ore.resource, ore.tier, origin, tool.tier, bounds, initialFloors.size, skipped.size]) : null
+    const memoKey = !avoidance.length && Number.isSafeInteger(terrain) ? JSON.stringify([terrain, ore.target, ore.resource, ore.tier, origin, tool.tier, bounds, initialFloors.size, skipped.size, blind.size]) : null
     const known = failures.get(memoKey)
     if (known) throw new TunnelingError(known.message, 'NO_SAFE_ROUTE', { ...known.details, reused: true })
     const noRoute = reason => {
@@ -522,6 +535,16 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
         report(step.kind === 'excavate' ? 'excavating' : 'moving', { target: step.target, blocksToMine: step.blocksToMine, resource: run.ore.resource })
         let result
         if (step.kind === 'excavate') {
+          // Each block of the step must be seen from here; else plan around it.
+          const sight = await call(run, 'Step mining preview', () => mining.preview(step.blocksToMine.map(copy), { signal: run.signal }))
+          if (sight && sight.ready === false) {
+            const from = { x: Math.floor(before.position.x), y: Math.round(before.position.y - 1.62), z: Math.floor(before.position.z) }
+            refusedSteps.set(stepKey(from, step.targetCell), clock())
+            run.blindSteps = (run.blindSteps ?? 0) + 1
+            run.liveReason = String(sight.errors?.[0] ?? sight.reason ?? '').slice(0, 120) || run.liveReason
+            if (run.blindSteps > 8) throw new TunnelingError(`The live mining preview cannot see the next dig blocks${run.liveReason ? `: ${run.liveReason}` : ''}`, 'MINING_PREVIEW_REJECTED')
+            continue
+          }
           const live = await call(run, 'Excavation preview', () => excavation.preview({ target: copy(step.targetCell) }))
           const planned = new Set(step.blocksToMine.map(key))
           const floors = preserved()

@@ -37,6 +37,21 @@ test('a standing cell the live mining preview refuses is skipped for another app
   assert.match(last.message, /face hidden/)
 })
 
+test('a dig step whose blocks the live mining preview cannot see is planned around (live 2026-11-17 05:14 JST)', async () => {
+  const f = fixture()
+  let refused = null
+  const mining = { ...f.mining, preview: (targets, options) => {
+    const first = targets[0]
+    if (!refused && first && key(first) !== key(f.decision.target)) { refused = key(first); return { ready: false, targets: [], errors: ['face hidden by leaf litter'] } }
+    return f.mining.preview(targets, options)
+  } }
+  const tunneling = f.makeTunneling({ mining })
+  const result = await tunneling.execute(f.decision, { maxSteps: 3, maxDigBlocks: 8 })
+  assert.ok(refused)
+  assert.ok(result.steps.length >= 1, JSON.stringify(result))
+  assert.ok(result.steps.every(step => !(step.blocksToMine ?? []).some(block => key(block) === refused)), JSON.stringify(result.steps))
+})
+
 test('ore well above with no open way up is refused early, not after the whole search limit', () => {
   const f = fixture({ target: point(3, 30, 0) })
   for (let x = -40; x <= 40; x++) for (let z = -40; z <= 40; z++) for (let y = 6; y <= 31; y++) if (!(x === 0 && z === 0 && y < 8)) f.set(point(x, y, z), x === 3 && y === 30 && z === 0 ? 'diamond_ore' : 'stone')
