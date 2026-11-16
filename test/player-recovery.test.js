@@ -283,3 +283,12 @@ test('an exploration limit under a roof climbs first even when no wood is sought
   f.recovery.onProgress(blocked({ lastDecision: { type: 'explore', resource: 'crafting_table' } })); await settle(f.recovery)
   assert.deepEqual(f.calls, ['climb', { start: { objective: 'diamond', diamondCount: 1, freshExploration: true } }])
 })
+
+test('a food source from underground: straight up first, then the long trip (live 2026-11-17 08:10-08:13 JST)', async () => {
+  const roof = { '0,66,0': { known: true, name: 'minecraft:air', boundingBox: 'empty' }, '0,67,0': { known: true, name: 'minecraft:air', boundingBox: 'empty' }, '0,68,0': { known: true, name: 'minecraft:stone', boundingBox: 'block' } }
+  const f = fixture({ blocks: roof, walks: true, climb: { ok: true }, prey: () => ({ x: -20.5, y: 81, z: 3.2 }) })
+  f.recovery.onProgress(blocked({ stopCode: null, reason: '同じ状態で同じ操作を繰り返しても進展がないため停止しました。', lastDecision: { type: 'forage', stage: 'safety' } }))
+  await settle(f.recovery)
+  assert.deepEqual(f.calls.slice(0, 2), ['climb', { travel: { x: -21, z: 3 } }])
+  assert.match(f.logs.join('\n'), /地下にいるため、先に真上へ掘って地上へ出ます（食料源/)
+})
