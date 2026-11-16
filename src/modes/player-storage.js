@@ -164,10 +164,27 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     return moved > 0
   }
 
+  // Why a full inventory is not being stored, once a minute (live 23:37-23:42
+  // JST: 36/36 slots and no storage line at all for five minutes).
+  let quietSince = null, quietSaid = 0
+  function quiet (why) {
+    if (!why) { quietSince = null; return null }
+    quietSince ??= now()
+    if (now() - quietSince >= 60000 && now() - quietSaid >= 60000) { quietSaid = now(); say(`持ち物が満杯ですが、しまう処理を始めていません（${why}）`) }
+    return null
+  }
+
   async function tick () {
-    if (busy || !live() || blocked() || now() < waitUntil) return null
+    if (!live()) return null
     const inventory = getInventory(), feet = getFeet()
-    if (!feet || occupied(inventory) < START_AT || !storable(inventory).length) return null
+    const full = (inventory && occupied(inventory) >= START_AT) || (getInventory() == null && shared.inventoryUncertain)
+    if (busy) return full ? quiet('前のしまう処理が終わっていません') : null
+    if (blocked()) return full ? quiet('別の作業中か、12m以内に敵がいます') : quiet(null)
+    if (now() < waitUntil) return null
+    if (!inventory) return quiet(shared.inventoryUncertain ? '持ち物が未確定です' : null)
+    if (!feet || occupied(inventory) < START_AT) return quiet(null)
+    if (!storable(inventory).length) return quiet('しまえる物がありません')
+    quiet(null)
     busy = true
     let ok = false
     try {
