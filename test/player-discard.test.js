@@ -17,7 +17,8 @@ test('throws whole rubble stacks and junk, keeps the reserve, valuables and the 
   ])
   const slots = throwable(inventory).map(stack => stack.slot).sort((a, b) => a - b)
   // One cobblestone 64 stays; the dirt stack is partly reserve so it is not thrown whole.
-  assert.deepEqual(slots, [1, 2, 3, 4, 9, 10, 11, 12, 15])
+  // The stone pickaxe stays as the one working spare.
+  assert.deepEqual(slots, [1, 2, 3, 4, 9, 10, 11, 12])
 })
 
 test('discardJunk throws, records where, and the drop planning skips those drops', async () => {
