@@ -187,3 +187,26 @@ test('the asynchronous search yields to the event loop and returns the same rout
   assert.equal(a.path.length, b.path.length)
   assert.ok(ticks > 0, 'other work ran during the search')
 })
+
+// Live 2026-11-17 12:13-12:20 JST: inside the player's own house the bot stood
+// on the furnace (one above the floor) under the slab roof. Every covered
+// stand refused a downward step, so it could not step off the furnace and the
+// long trip found no route out through the doorway (177 CHUNK_TRAVEL_NO_ROUTE).
+test('a covered start may step one block down near the start to walk out of a house', () => {
+  const air = { known: true, name: 'minecraft:air', boundingBox: 'empty' }, solid = name => ({ known: true, name, boundingBox: 'block' })
+  const get = (x, y, z) => {
+    if (x < -20 || x > 30 || z < -20 || z > 30) return { known: false }
+    if (y <= 62) return solid('minecraft:dirt')
+    const inside = x >= 0 && x <= 6 && z >= 0 && z <= 6
+    if (!inside) return air
+    const wall = x === 0 || x === 6 || z === 0 || z === 6
+    if (y === 63) return solid('minecraft:cobblestone')
+    if (y === 67) return solid('minecraft:oak_slab')
+    if (y === 64 && x === 1 && z === 5) return solid('minecraft:furnace')
+    if (wall && !(x === 3 && z === 6 && (y === 64 || y === 65))) return solid('minecraft:oak_planks')
+    return air
+  }
+  const r = planCoarseRoute({ getBlock: get, start: { x: 1.5, y: 65, z: 5.5 }, goal: { x: 3, z: 40 }, maxDrop: 1, surfaceOnly: true, allowDig: true })
+  assert.equal(r.ready, true)
+  assert.ok(r.path.some(p => Math.floor(p.x) === 3 && Math.floor(p.z) === 6), 'through the doorway')
+})
