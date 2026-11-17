@@ -163,7 +163,11 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
     // A death moves the Bot to its spawn point: the search goes on from there,
     // never back across the map to the old destination (live 2026-11-15 21:44
     // JST: after a respawn the walk went on toward a point 14 km away).
-    const lost = () => { const at = getPosition(); return !!at && Math.hypot(at.x - destination.x, at.z - destination.z) > SCAN_M * 3 }
+    // Measured from where the walk began: a goal up to 512 m off (farTarget) is
+    // farther than 384 m at the start (live 2026-11-17 19:25-19:26 JST: a diamond
+    // 413 m away, every walk cancelled 3 ms after it began, eight times).
+    const start = Math.hypot(position.x - destination.x, position.z - destination.z)
+    const lost = () => { const at = getPosition(); return !!at && Math.hypot(at.x - destination.x, at.z - destination.z) > Math.max(SCAN_M * 3, start + SCAN_M) }
     while (live(token) && now() < until && travel.status()?.busy && !lost() && !(under && !underCover(getBlock, getPosition()))) await sleep(1000)
     if (lost() && !goal) { log('プレイヤーモード: 目的地から大きく離れたため、この移動をやめて今の場所から探し直します'); heading = null; visited = [] }
     // A walk that got nowhere (a cliff, water, no route): try the next direction.
