@@ -252,6 +252,14 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
       return result('stop', 'shelter', '拠点候補を探す回数の上限に達したため停止します。', { code: 'shelter_search_limit', attempts, limit })
     }
     if (options.objective === 'diamond' && preparedSword && diamondTool && state.health > 14 && !evaluation.requiresObservation && evaluation.threats.length === 0 && !(state.entityStats?.unknownPositions > evaluation.unknownPositions.length)) return null
+    // Equipped for the diamond run, only a hostile nearby (or one not yet
+    // placed) holds it: wait for the usual safety handling instead of ending
+    // the run (live 2026-11-17 16:03-16:08 JST: a spider combat could not
+    // reach, the run stopped and restarted 613 times in five minutes).
+    if (options.objective === 'diamond' && preparedSword && diamondTool && state.health > 14) {
+      if (evaluation.requiresObservation || state.entityStats?.unknownPositions > evaluation.unknownPositions.length) return wait('threat_observation_unknown', '周囲の相手を確認してから、拠点探索とは別の採掘工程へ戻ります。', 'safety', { requiresObservation: true })
+      return wait('nearby_threat', '近くの敵への通常の安全判断を優先します。', 'safety', { threat: copy(evaluation.threats[0]) })
+    }
     return result('stop', 'shelter', '拠点候補を探す回数の上限に達したため停止します。', { code: 'shelter_search_limit', attempts, limit })
   }
   const coverage = observations.coverage
