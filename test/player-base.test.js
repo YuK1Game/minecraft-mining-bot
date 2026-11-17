@@ -281,3 +281,20 @@ test('a base chest that would not open counts as full: chest B, then a new chest
   assert.deepEqual(calls.filter(c => Array.isArray(c)), [['store', '5,0'], ['store', '7,2'], ['chest'], ['store', '1,11']])
   assert.deepEqual(shared.playerBase, { x: 1, y: 63, z: 11 })
 })
+
+test('hops that stop at a slope hand over to the house porch walk (live 2026-11-18 01:14-01:15 JST)', async () => {
+  const calls = [], shared = { playerWanted: true, playerBase: { x: 5, y: 64, z: 0 } }
+  let pos = { x: -20.5, y: 65.62, z: 0.5 }, inventory = inv([[0, 'diamond', 40]])
+  const api = createPlayerBase({
+    getMode: () => 'player', shared, getBlock: world({ '5,64,0': 'minecraft:chest' }), getPosition: () => pos, getFeet: () => ({ x: pos.x, y: pos.y - 1.62, z: pos.z }), getInventory: () => inventory,
+    agent: { objective: {}, start: async () => calls.push('start'), stop: () => calls.push('stop'), settled: () => true },
+    hands: { store: async (at, stacks) => { calls.push('store'); inventory = inv([[0, 'diamond', 8]]); return stacks.reduce((s, x) => s + x.count, 0) }, room: () => 10 },
+    approach: async () => { calls.push('approach'); return false },
+    porchWalk: async () => { calls.push('porch'); pos = { x: 4.5, y: 65.62, z: 0.5 }; return true },
+    chest: async () => null, climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    walk: async () => true, log: () => {}, sleep: async () => {}
+  })
+  const ok = await api.tick()
+  assert.equal(ok, true, JSON.stringify(calls))
+  assert.deepEqual(calls.filter(c => ['approach', 'porch', 'store'].includes(c)), ['approach', 'porch', 'store'])
+})
