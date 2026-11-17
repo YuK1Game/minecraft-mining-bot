@@ -13,6 +13,9 @@ test('stone above the head is cover; a tree crown or open sky is not', () => {
   assert.equal(underCover(column(fill(64, 130, 'air')), eye), false)
   assert.equal(underCover(column(fill(64, 66, 'air')), eye), false, 'unreceived terrain above is not called cover')
   assert.equal(underCover(null, eye), false)
+  assert.equal(underCover(column(fill(64, 65, 'air', fill(66, 66, 'birch_slab', fill(67, 130, 'air')))), eye), false, 'a built roof (the house) is not cover')
+  assert.equal(underCover(column(fill(64, 65, 'air', fill(66, 66, 'oak_planks', fill(67, 130, 'air')))), eye), false)
+  assert.equal(underCover(column(fill(64, 65, 'air', fill(66, 66, 'oak_planks', fill(67, 80, 'stone', fill(81, 130, 'air'))))), eye), true, 'mineshaft planks under rock are still cover')
 })
 
 test('the way out points 48 m toward the tree, or along the heading when it is overhead', () => {

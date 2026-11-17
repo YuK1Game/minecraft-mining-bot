@@ -9,6 +9,11 @@
 // to a point 48 m away instead; the long travel's route from a covered start
 // leads to the first place under open sky, and the trip ends there.
 const TREE = /_(?:leaves|log|wood|stem)$|leaf_litter/
+// A roof of built blocks (the house) is not ground: inside the house the Bot
+// is on the surface (real Realm 2026-11-17 11:57 JST: after banking in the
+// house, the sand search took the slab roof for cover and tried to dig up
+// through it, the bed and the walls).
+const BUILT = /_(?:planks|slab|stairs|door|trapdoor|bed|wool|carpet|fence|fence_gate)$|^minecraft:(?:glass|glass_pane|.*_stained_glass(?:_pane)?|chest|crafting_table|furnace|torch|lantern)$/
 const AHEAD_M = 48
 const SCAN_UP = 64
 
@@ -19,6 +24,7 @@ function underCover (getBlock, position) {
   for (let y = top; y < top + SCAN_UP; y++) {
     const block = getBlock(x, y, z)
     if (block?.known !== true) return false
+    if (BUILT.test(block.name ?? '')) continue // (a mineshaft's planks under rock are still cover: the rock above counts)
     if (block.boundingBox === 'block' && !TREE.test(block.name ?? '')) return true
   }
   return false
