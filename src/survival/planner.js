@@ -177,6 +177,10 @@ function nextBootstrapAction (snapshot, observations = {}, options = {}) {
   const scan = (resource, reason) => requireCapability('scan_blocks', result('scan_blocks', resource, reason, { resource, center: { ...feet }, rejectUnknown: true }))
   const safe = block => block.protected !== true && block.natural !== false && !block.extra?.some(extra => !AIR.has(nameOf(extra.name))) && NEIGHBOURS.every(offset => {
     const neighbour = getBlock({ x: block.position.x + offset.x, y: block.position.y + offset.y, z: block.position.z + offset.z })
+    // The house's sand (options.material): sand beside or below the target
+    // rests on its own column, as mining's house_sand allows (live 2026-11-17
+    // 13:15-13:21 JST: sand on a beach was never chosen, every block had sand beside it).
+    if (options.material && neighbour && offset.y <= 0 && /(?:^|:)(?:red_)?sand$/.test(neighbour.name ?? '') && !neighbour.extra?.some(extra => HAZARDS.test(nameOf(extra.name)))) return true
     return neighbour && !HAZARDS.test(nameOf(neighbour.name)) && !neighbour.extra?.some(extra => HAZARDS.test(nameOf(extra.name)))
   })
   const lineClearFrom = (from, target) => {

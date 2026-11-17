@@ -88,7 +88,11 @@ function withHouseSupply ({ mode, playing, shared, state, decision, getBlock = n
   if (need.sand > 0 && planSand) {
     const sand = ask(() => planSand(need.sand), `砂 あと${need.sand}個`)
     if (sand && sand.type !== 'scan_blocks') { tell(`sand:${total.sand}`, `拠点の家のガラスにする砂を集めます（あと${need.sand}個）`); return sand }
-    tell(`nosand:${total.sand}`, `拠点の家のガラスにする砂が近くに見つかりません（あと${need.sand}個）`)
+    // Why the plan gave no sand work (live 2026-11-17 13:15-13:21 JST: sand in
+    // sight, still no sand dug and no word why).
+    let raw = null
+    try { raw = planSand(need.sand) } catch {}
+    tell(`nosand:${total.sand}:${raw?.type}:${raw?.code ?? ''}`, `拠点の家のガラスにする砂が近くに見つかりません（あと${need.sand}個。計画: ${raw?.type ?? 'なし'}${raw?.code ? `・${raw.code}` : ''}${raw?.reason ? `・${String(raw.reason).slice(0, 80)}` : ''}）`)
   }
   return decision
 }
