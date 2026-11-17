@@ -23,3 +23,10 @@ test('away from the house, the counts last read with the house received are used
   assert.deepEqual(away.total, here.total)
   assert.ok(last)
 })
+
+test('away from a house never read whole, unreceived steps are not asked for', () => {
+  const shared = { playerHouse: { origin: { x: 0, y: 64, z: 0 } } }
+  const away = needsNow({ shared, state: { inventory: inv }, getBlock: () => ({ known: false }) })
+  assert.equal(away.total.cobblestone, 0)
+  assert.equal(away.short, false)
+})

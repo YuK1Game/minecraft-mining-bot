@@ -55,7 +55,12 @@ function needsNow ({ shared, state, getBlock }) {
   if (!origin || !getBlock) return houseNeeds(state?.inventory, counts(remaining(null, null)))
   const seen = placements(origin).every(step => step.cells.every(cell => getBlock(cell.x, cell.y, cell.z)?.known === true))
   if (seen) house.left = counts(remaining(getBlock, origin))
-  return houseNeeds(state?.inventory, seen || !house.left ? counts(remaining(getBlock, origin)) : house.left)
+  if (seen) return houseNeeds(state?.inventory, house.left)
+  if (house.left) return houseNeeds(state?.inventory, house.left)
+  // Never read whole yet (a house recorded before this was kept): only the steps
+  // seen unplaced are counted, the unreceived ones wait until the house is seen.
+  const known = step => step.cells.every(cell => getBlock(cell.x, cell.y, cell.z)?.known === true)
+  return houseNeeds(state?.inventory, counts(remaining(getBlock, origin).filter(known)))
 }
 
 function withHouseSupply ({ mode, playing, shared, state, decision, getBlock = null, planLogs, planStone, planSand = null, log = () => {} }) {

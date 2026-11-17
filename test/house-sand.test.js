@@ -3,6 +3,9 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createHouseSand, spiralPoint } = require('../src/modes/house/house-sand')
+const { counts, remaining } = require('../src/modes/house/house-blueprint')
+// The whole blueprint still to place, as last read (house-supply.js needsNow).
+const LEFT = counts(remaining(null, null))
 
 const inv = items => ({ known: true, items: items.map(([name, count], slot) => ({ name: `minecraft:${name}`, count, slot })) })
 const READY = [['stone_pickaxe', 1], ['oak_log', 64], ['cobblestone', 64], ['cobblestone', 64], ['white_wool', 3], ['coal', 4]]
@@ -11,7 +14,7 @@ function job ({ items = READY, sand = null, covered = false } = {}) {
   const calls = [], lines = []
   let busy = false
   const house = createHouseSand({
-    getMode: () => 'player', shared: { playerWanted: true, playerHouse: { origin: { x: 100, y: 64, z: 200 } } }, log: text => lines.push(text), sleep: async () => { busy = false },
+    getMode: () => 'player', shared: { playerWanted: true, playerHouse: { origin: { x: 100, y: 64, z: 200 }, left: LEFT } }, log: text => lines.push(text), sleep: async () => { busy = false },
     getState: () => ({ position: { x: 100, y: 65, z: 180 }, inventory: inv(items) }),
     getBlock: () => covered ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : null,
     scan: async () => sand,
@@ -48,7 +51,7 @@ test('sand the trip could not reach is passed over on the next scan', async () =
   const scans = [], lines = []
   let t = 0, busy = false
   const house = createHouseSand({
-    getMode: () => 'player', shared: { playerWanted: true, playerHouse: { origin: { x: 100, y: 64, z: 200 } } }, log: text => lines.push(text), sleep: async () => { busy = false }, now: () => t,
+    getMode: () => 'player', shared: { playerWanted: true, playerHouse: { origin: { x: 100, y: 64, z: 200 }, left: LEFT } }, log: text => lines.push(text), sleep: async () => { busy = false }, now: () => t,
     getState: () => ({ position: { x: 100, y: 65, z: 180 }, inventory: inv(READY) }),
     getBlock: () => null,
     scan: async input => { scans.push(input.avoid.map(p => ({ x: p.x, z: p.z }))); return { x: 150, z: 250, distance: 60 } },
@@ -67,7 +70,7 @@ test('sand under water is not a destination; sand under open air is', async () =
   let busy = false
   const blocks = { '130,60,180': 'sand', '130,61,180': 'water', '160,60,180': 'sand', '160,61,180': 'air' }
   const house = createHouseSand({
-    getMode: () => 'player', shared: { playerWanted: true, playerHouse: { origin: { x: 100, y: 64, z: 200 } } }, sleep: async () => { busy = false },
+    getMode: () => 'player', shared: { playerWanted: true, playerHouse: { origin: { x: 100, y: 64, z: 200 }, left: LEFT } }, sleep: async () => { busy = false },
     getState: () => ({ position: { x: 100, y: 63.62, z: 180 }, inventory: inv(READY) }),
     getBlock: (x, y, z) => { const name = blocks[`${x},${y},${z}`]; return name ? { known: true, name: `minecraft:${name}` } : y > 70 ? { known: true, name: 'minecraft:air' } : null },
     travel: { to: async input => { calls.push(input.destination); busy = true }, status: () => ({ busy }), cancel: async () => {} },
