@@ -249,7 +249,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed, getState: () => ({ ...runtime.raw(), position: where(), inventory: shared.inventoryUncertain ? null : runtime.inventory() }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z),
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
-    blocked: () => hungryWithoutFood() || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || house.status().active || quarry.travelStatus().busy === true || danger()
+    blocked: () => !(runtime.raw().health > 10) || hungryWithoutFood() || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || house.status().active || quarry.travelStatus().busy === true || danger()
   })
   // The starter house from the user's blueprint, right after the wooden tools (house/house-build.js).
   if (shared.playerHouse === undefined) shared.playerHouse = loadHouseSync(houseFile(root))
