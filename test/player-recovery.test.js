@@ -157,6 +157,40 @@ test('a restart that is refused keeps trying; it does not leave the player stopp
   assert.deepEqual(calls, ['start'])
 })
 
+test('a restart refused because the run is already going ends the recovery; the next stop is answered (live 2026-11-18 05:44-06:07 JST)', async t => {
+  // The real start operation sets the wish to play before the autonomy refuses
+  // (its last stop is still ending); the runtime then starts the run itself.
+  const shared = { autoWanted: true, autoOptions: {} }, logs = []
+  let running = false, starts = 0
+  const recovery = createPlayerRecovery({
+    getMode: () => 'player', shared, log: line => logs.push(line),
+    agent: {
+      objective: { objective: 'diamond' }, stop () {}, running: () => running,
+      start: async options => {
+        starts++
+        shared.autoWanted = true; shared.autoOptions = { ...options }
+        if (starts === 1) { setTimeout(() => { running = true }, 0); throw new Error('すでに実行中、または前の処理の停止完了を待っています。') }
+        if (running) throw new Error('すでに実行中、または前の処理の停止完了を待っています。')
+      }
+    },
+    travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: () => ({ known: false }), getPosition: () => ({ x: 0, y: 65, z: 0 }), sleep: async () => { await new Promise(resolve => setTimeout(resolve, 1)) }, now: (() => { let t = 0; return () => (t += 1000) })()
+  })
+  const full = { running: false, phase: 'blocked', reason: '到達できない候補の除外数が上限に達したため、自律作業を停止しました。', stopCode: 'exclusion_limit', lastDecision: { type: 'approach_resource', resource: 'crafting_table' }, progress: {} }
+  assert.equal(recovery.onProgress(full), true)
+  await settle(recovery)
+  // Without the fix the tries never end: stop them so the failure is reported.
+  t.after(() => recovery.cancel())
+  assert.equal(recovery.status().active, false, 'the recovery must not stay active while the run it wanted is going')
+  assert.equal(starts, 2, 'one refused start, one that found the run going; no endless tries')
+  assert.equal(shared.autoOptions.freshExclusions, undefined, 'later automatic restarts keep their list')
+  assert.match(logs.join('\n'), /再開を待っています: すでに実行中/)
+  assert.match(logs.join('\n'), /自律作業はもう動いているので、再開の待ちを終えます/)
+  running = false
+  assert.equal(recovery.onProgress({ ...full, reason: '同じ状態で同じ操作を繰り返しても進展がないため停止しました。', stopCode: undefined, phase: 'failed' }), true, 'the next stop is taken over')
+  recovery.cancel()
+})
+
 test('keepPlaying: wanted but idle for ten seconds starts again; a user stop, a rest or a running player does not', async () => {
   const f = fixture()
   let clock = 0

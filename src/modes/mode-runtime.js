@@ -127,7 +127,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   }
   const recovery = createPlayerRecovery({
     getMode: control.get, shared, log, disposed, held: () => !!shared.travelNight?.cover,
-    agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason) },
+    agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agentStatus().running === true },
     travel: { to: travelTo, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getPosition: where,
     prey: () => operations.foraging?.snapshot()?.target?.position ?? null,

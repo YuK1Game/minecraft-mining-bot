@@ -46,7 +46,7 @@ const path = require('node:path')
 
 const STAGES = Object.freeze(['observe', 'surface', 'travel', 'approach', 'container', 'store', 'verify', 'replan'])
 const LABEL = Object.freeze({ observe: '状態の確認', surface: '出発位置の確保', travel: '拠点へ移動', approach: 'チェストへ接近', container: 'チェストの確認', store: '収納', verify: '収納の確認', replan: '作業の再開' })
-const BUDGET = Object.freeze({ STAGE_ATTEMPTS: 3, GOAL_ATTEMPTS: 12, WAKE_ATTEMPTS: 4, MAX_WAKES: 6, ACTIVE_MS: 1800000, WAKE_ACTIVE_MS: 600000, HOLD_MS: 600000, GIVE_UP_MS: 600000, MAX_INTERRUPTS: 10, STOP_WAIT_MS: 8000, HOSTILE_WAIT_MS: 60000, WAIT_MS: 30000, RETRY_MS: 2000, MOVED_M: 32, MOVED_UP: 8, DETOURS: 2, DETOUR_M: 48, SIDES: 2, SIDE_M: 30 })
+const BUDGET = Object.freeze({ STAGE_ATTEMPTS: 3, GOAL_ATTEMPTS: 12, WAKE_ATTEMPTS: 4, MAX_WAKES: 6, ACTIVE_MS: 1800000, WAKE_ACTIVE_MS: 600000, HOLD_MS: 600000, GIVE_UP_MS: 600000, MAX_INTERRUPTS: 10, OWNER_WAIT_MS: 300000, STOP_WAIT_MS: 8000, HOSTILE_WAIT_MS: 60000, WAIT_MS: 30000, RETRY_MS: 2000, MOVED_M: 32, MOVED_UP: 8, DETOURS: 2, DETOUR_M: 48, SIDES: 2, SIDE_M: 30 })
 
 const cell = point => point && [point.x, point.y, point.z].every(Number.isFinite) ? { x: Math.floor(point.x), y: Math.floor(point.y), z: Math.floor(point.z) } : null
 const chestCell = value => value && [value.x, value.y, value.z].every(Number.isSafeInteger) ? { x: value.x, y: value.y, z: value.z } : null
@@ -100,6 +100,7 @@ function wakeReason (goal, seen) {
   if (kinds.includes('inventory_update') && seen.inventoryKnown === true) return 'INVENTORY_RECEIVED'
   if (kinds.includes('terrain_received') && seen.terrain === true) return 'TERRAIN_RECEIVED'
   if (kinds.includes('owner_released') && seen.settled === true) return 'OWNER_RELEASED'
+  if (kinds.includes('owner_free') && seen.owner === null) return 'OWNER_FREE'
   if (seen.now >= hold.until) return 'HOLD_TIME'
   return null
 }
