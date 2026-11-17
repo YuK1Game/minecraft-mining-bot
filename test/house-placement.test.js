@@ -39,3 +39,22 @@ test('a torch on a wall face; out of reach, onto a non-air cell, or a non-house 
   const dirt = fixture('minecraft:diamond')
   assert.equal(dirt.interactions.previewHouseBlock({ position: { x: 1, y: 65, z: 0 }, slot: 0, clicked: { x: 1, y: 64, z: 0 }, face: 1 }).ready, false)
 })
+
+test('a floor cell under a wall is placed from a stand with a clear line outside the house', () => {
+  const { clicks, stands } = require('../src/modes/house/house-steps')
+  const solidCells = new Set()
+  const put = (x, y, z) => solidCells.add(`${x},${y},${z}`)
+  // Floor y=0 for x 0..4, z 0..4, the hole at (0,0,2); walls at y=1..2 around the edge; ground outside at y=-1 for x<0.
+  for (let x = 0; x <= 4; x++) for (let z = 0; z <= 4; z++) if (!(x === 0 && z === 2)) put(x, 0, z)
+  for (let y = 1; y <= 2; y++) for (let x = 0; x <= 4; x++) for (let z = 0; z <= 4; z++) if (x === 0 || x === 4 || z === 0 || z === 4) put(x, y, z)
+  for (let x = -4; x < 0; x++) for (let z = -2; z <= 6; z++) put(x, -1, z)
+  for (let x = 0; x <= 4; x++) for (let z = 0; z <= 4; z++) put(x, -1, z)
+  solidCells.delete('0,-1,2')
+  const getBlock = (x, y, z) => solidCells.has(`${x},${y},${z}`) ? { known: true, name: 'minecraft:cobblestone', boundingBox: 'block' } : { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  const step = { position: { x: 0, y: 0, z: 2 }, item: 'cobblestone' }
+  const click = clicks(getBlock, step).find(c => c.clicked.x === 1)
+  assert.ok(click)
+  const list = stands(getBlock, step, click, { x: 2.5, y: 1, z: 2.5 })
+  assert.ok(list.length > 0)
+  assert.ok(list[0].x < 0, `first stand ${JSON.stringify(list[0])} should be outside the west wall`)
+})
