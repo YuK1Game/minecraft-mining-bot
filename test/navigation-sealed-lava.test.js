@@ -47,3 +47,13 @@ test('open lava below the next cell is still never walked over', () => {
   assert.equal(reached, false)
   assert.throws(() => navigator.physics.step({ ...initial, position: { x: 1.5, y: -2.9, z: 0.5 }, onGround: false }, {}), /[Ll]ava/)
 })
+
+test('a body hanging 0.23 above a floor sealed over lava lands instead of refusing (live 2026-11-17 21:27-21:39 JST)', () => {
+  const world = { getBlock: (x, y, z) => y >= 65 ? block('air') : y === 64 ? block('netherrack') : y === 63 && x === 0 && z === 0 ? block('lava', { liquid_depth: 0 }) : block('stone') }
+  const navigator = createNavigator({ world })
+  const initial = navigator.physics.fromServer({ position: { x: 0.5736, y: 65.2315 + 1.62, z: 0.4986 }, rotation: { yaw: 0, pitch: 0 }, gameMode: 'survival' })
+  let state = { ...initial, onGround: false, velocity: { x: 0, y: -0.377, z: 0 } }
+  for (let i = 0; i < 10; i++) state = navigator.physics.step(state, {})
+  assert.equal(state.onGround, true)
+  assert.ok(Math.abs(state.position.y - (65 + 1.62)) < 1e-6 || Math.abs(state.position.y - 65) < 1e-6, String(state.position.y))
+})
