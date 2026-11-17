@@ -456,7 +456,7 @@ function createLongTravelRuntime (rt) {
     memo.lastTry = now
     const LOGS = /^minecraft:([a-z_]+)_log$/
     const logs = () => items().filter(i => LOGS.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
-    if (logs() < 3) { await rt.operations.quarry.prepGather({ logs: 3, maxMs: 120000 }) }
+    if (logs() < 3 && rt.require('./travel/travel-boat-wood').gatherBoatLogs(rt.host.shared)) { await rt.operations.quarry.prepGather({ logs: 3, maxMs: 120000 }) }
     if (signal?.aborted || logs() < 3) return { ok: false, reason: 'NO_LOGS' }
     const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
     const wood = LOGS.exec(log.name)[1]
