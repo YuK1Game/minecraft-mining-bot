@@ -7,11 +7,11 @@ const { createPlayerFood } = require('../src/modes/player-food')
 const inv = items => ({ known: true, items: items.map(([name, count], slot) => ({ name: `minecraft:${name}`, count, slot })) })
 const roof = (x, y, z) => y >= 15 && y <= 16 ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : { known: true, name: 'minecraft:air', boundingBox: 'empty' }
 
-function job ({ hunger = 14, items = [['stone', 3]], getBlock = roof, climbed = { ok: true } } = {}) {
+function job ({ hunger = 14, health = 20, items = [['stone', 3]], getBlock = roof, climbed = { ok: true } } = {}) {
   const calls = [], lines = []
   const food = createPlayerFood({
     getMode: () => 'player', shared: { playerWanted: true }, log: text => lines.push(text), sleep: async () => {},
-    getHunger: () => hunger, getState: () => ({ position: { x: 0.5, y: 13.6, z: 0.5 }, inventory: inv(items) }), getBlock,
+    getHunger: () => hunger, getState: () => ({ health, position: { x: 0.5, y: 13.6, z: 0.5 }, inventory: inv(items) }), getBlock,
     climb: async () => { calls.push('climb'); return climbed },
     agent: { objective: {}, start: async () => { calls.push('start') }, stop: () => calls.push('stop') }
   })
@@ -51,4 +51,12 @@ test('on open ground, a food source the forage cannot step to: long travel to it
   assert.equal(await food.tick(), true)
   assert.deepEqual(calls, ['stop', { destination: { x: -27, z: 18 } }, 'start'])
   assert.match(lines.join('\n'), /食料源 \(-27, 18\) へ長距離移動/)
+})
+
+test('hurt with hunger under 18 and no food also goes up for food: no natural healing (live 2026-11-17 19:05-19:09 JST)', async () => {
+  const f = job({ hunger: 16, health: 2.7 })
+  assert.equal(await f.food.tick(), true)
+  assert.deepEqual(f.calls, ['stop', 'climb', 'start'])
+  assert.equal(await job({ hunger: 16, health: 12 }).food.tick(), null)
+  assert.equal(await job({ hunger: 18, health: 2.7 }).food.tick(), null)
 })
