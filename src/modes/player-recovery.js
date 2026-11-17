@@ -39,7 +39,7 @@ const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 2
 // Nearest received log block between `min` and `radius` metres. Unreceived
 // terrain is skipped, never read as "no tree". `avoid` holds trees already
 // walked to that did not end the search.
-async function nearestKnownLog ({ getBlock, position, radius = SCAN_M, min = 6, step = 2, avoid = [], match = LOG, below = 8, pause = () => new Promise(resolve => setImmediate(resolve)) }) {
+async function nearestKnownLog ({ getBlock, position, radius = SCAN_M, min = 6, step = 2, avoid = [], avoidM = 8, match = LOG, below = 8, pause = () => new Promise(resolve => setImmediate(resolve)) }) {
   if (!position || ![position.x, position.y, position.z].every(Number.isFinite)) return null
   const hx = Math.floor(position.x), hy = Math.floor(position.y - 1.62), hz = Math.floor(position.z)
   let best = null
@@ -47,7 +47,7 @@ async function nearestKnownLog ({ getBlock, position, radius = SCAN_M, min = 6, 
     for (let dz = -radius; dz <= radius; dz += step) {
       const distance = Math.hypot(dx, dz)
       if (distance < min || distance > radius || best && distance >= best.distance) continue
-      if (avoid.some(point => Math.hypot(point.x - hx - dx, point.z - hz - dz) < 8)) continue
+      if (avoid.some(point => Math.hypot(point.x - hx - dx, point.z - hz - dz) < avoidM)) continue
       for (let dy = -below; dy <= 24; dy++) {
         const block = getBlock(hx + dx, hy + dy, hz + dz)
         if (block?.known === true && match.test(block.name ?? '')) { best = { x: hx + dx, z: hz + dz, distance }; break }
