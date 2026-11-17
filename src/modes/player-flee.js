@@ -51,20 +51,25 @@ function fleeWanted ({ health, totem, hostiles, position, weaponless = false }) 
 
 function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, hostiles, retreat, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, restUntil = 0, stuck = 0, stuckHealth = null, stuckDistance = null
+  // Why the last tick did not run, for the hit note (damage-note.js).
+  let skip = null
   const inPlay = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
 
   async function tick () {
-    if (busy || !inPlay() || shared.travelNight?.cover) return false
+    if (busy) { skip = 'busy'; return false }
+    if (!inPlay()) { skip = 'not_playing'; return false }
+    if (shared.travelNight?.cover) { skip = 'night_pit'; return false }
     const state = getState()
     const resting = now() < restUntil
     // Hurt again since the run that went nowhere: the wait is over.
-    if (resting && stuckHealth === null) return false
+    if (resting && stuckHealth === null) { skip = 'rest'; return false }
     const threat = fleeWanted({ health: state.health, totem: state.totem, hostiles: hostiles(), position: state.position, weaponless: unarmed(state.inventory) })
-    if (!threat) return false
+    if (!threat) { skip = 'no_threat'; return false }
     // So is it when a hostile has come 2 m closer than the one it was stuck on
     // (live 2026-11-16 13:08 JST: during the wait a creeper walked up to 3.8 m
     // and its blast killed the Bot at health 2).
-    if (resting && !(state.health < stuckHealth - 0.5) && !(threat.distance <= stuckDistance - 2)) return false
+    if (resting && !(state.health < stuckHealth - 0.5) && !(threat.distance <= stuckDistance - 2)) { skip = 'stuck_rest'; return false }
+    skip = null
     busy = true
     let steps = 0, failed = 0
     try {
@@ -102,7 +107,7 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
     } finally { shared.playerFlee = null; busy = false }
   }
 
-  return { tick, status: () => ({ active: busy, reason: busy ? '敵から離れています。' : null }) }
+  return { tick, status: () => ({ active: busy, reason: busy ? '敵から離れています。' : null, skip }) }
 }
 
 // In play with a weapon in the received inventory: combat fights as usual, the

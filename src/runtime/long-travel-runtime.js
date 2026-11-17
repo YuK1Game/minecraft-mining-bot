@@ -519,7 +519,7 @@ function createLongTravelRuntime (rt) {
       terrainRevision: () => rt.host.world.revision?.() ?? null,
       inventoryReady: () => { try { return rt.inventoryStore.missing().length === 0 } catch { return false } },
       // Arrival counts only under open sky (live 12:13: 'arrived' in a cave at y-33).
-      onSurface: feet => { const x = Math.floor(feet.x), z = Math.floor(feet.z), y = Math.floor(feet.y + 0.2); for (let yy = y + 2; yy < 320; yy++) { const b = rt.host.world.getBlock(x, yy, z); if (!b || b.known !== true) { if (yy >= 128) return true; return false } if (b.boundingBox === 'block' && !/leaves|log|wood/.test(b.name ?? '')) return false } return true },
+      onSurface: feet => rt.require('./travel/open-sky').openSky((x, y, z) => rt.host.world.getBlock(x, y, z), feet),
       // Point legs: a walkable received point toward the destination (distance,
       // angle and height samples), previewed by the ordinary movement planner.
       // Between legs (2026-11-14): the night stop by the received clock, then food.

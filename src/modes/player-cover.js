@@ -48,19 +48,25 @@ function coverCells ({ feet, cells, archers, sight, limit = TRIES }) {
 
 function createPlayerCover ({ getMode, shared, agent, getState, hostiles, sight, cells, walk, reachable = () => false, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now }) {
   let busy = false, restUntil = 0
+  // Why the last tick did not run, for the hit note (damage-note.js).
+  let skip = null
   const inPlay = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
 
   async function tick () {
-    if (busy || !inPlay() || now() < restUntil || shared.travelNight?.cover || shared.playerFlee || blocked()) return false
+    const reason = busy ? 'busy' : !inPlay() ? 'not_playing' : now() < restUntil ? 'rest' : shared.travelNight?.cover ? 'night_pit' : shared.playerFlee ? 'fleeing' : blocked() ? 'blocked' : null
+    if (reason) { skip = reason; return false }
     const hitAt = Number(shared.recentDamageNoPrimary?.at ?? NaN)
-    if (!(now() - hitAt >= 0 && now() - hitAt <= HIT_MS)) return false
+    if (!(now() - hitAt >= 0 && now() - hitAt <= HIT_MS)) { skip = 'no_recent_hit'; return false }
     const state = getState()
-    if (!(state.health > 0) || !state.position || state.inventory == null || hasBow(state.inventory)) return false
+    if (!(state.health > 0) || !state.position || state.inventory == null) { skip = 'state_unknown'; return false }
+    if (hasBow(state.inventory)) { skip = 'bow'; return false }
     const feet = { x: state.position.x, y: state.position.y - 1.62, z: state.position.z }
     const range = actor => Math.hypot(actor.position.x - feet.x, actor.position.y - feet.y, actor.position.z - feet.z)
     const near = (hostiles() ?? []).filter(actor => actor?.position && ARCHER.test(String(actor.entityType ?? '')) && range(actor) > nearOf(actor) && range(actor) <= FAR_M)
-    const archers = near.length ? exposedTo(feet, near, sight).filter(actor => !reachable(actor)) : []
-    if (!archers.length) return false
+    const exposed = near.length ? exposedTo(feet, near, sight) : []
+    const archers = exposed.filter(actor => !reachable(actor))
+    if (!archers.length) { skip = !near.length ? 'no_archer_4_20m' : !exposed.length ? `unseen_by_${near.length}` : 'reachable'; return false }
+    skip = null
     busy = true
     try {
       const places = coverCells({ feet, cells: cells(state.position), archers: near, sight })
@@ -85,7 +91,7 @@ function createPlayerCover ({ getMode, shared, agent, getState, hostiles, sight,
     } finally { shared.playerFlee = null; busy = false }
   }
 
-  return { tick, status: () => ({ active: busy, reason: busy ? '弓の敵の射線から外れています。' : null }) }
+  return { tick, status: () => ({ active: busy, reason: busy ? '弓の敵の射線から外れています。' : null, skip }) }
 }
 
 module.exports = { createPlayerCover, coverCells, exposedTo }

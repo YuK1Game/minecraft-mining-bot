@@ -8,7 +8,8 @@ const GAP_MS = 5000
 const RANGE_M = 48
 const SKIP = /^minecraft:(item|xp_orb|player)$/
 
-function noteDamage ({ shared, health, position, actors, getBlock, log, now = Date.now() }) {
+// `why` (optional) is a short text of what the defenses did, read only when a note is written.
+function noteDamage ({ shared, health, position, actors, getBlock, log, why = null, now = Date.now() }) {
   const at = shared?.travelLastDamageAt
   if (!Number.isFinite(at) || at === shared.damageNoteSeen) return null
   shared.damageNoteSeen = at
@@ -26,7 +27,7 @@ function noteDamage ({ shared, health, position, actors, getBlock, log, now = Da
   // hid the skeleton (live 2026-11-17 23:13-23:14 JST).
   const arrows = near.filter(actor => actor.type === 'arrow')
   const shown = near.filter(actor => actor.type !== 'arrow').slice(0, 8)
-  const text = `被弾のまわり: 体力 ${Number.isFinite(health) ? Math.round(health * 100) / 100 : '?'}、足 (${feet.x}, ${feet.y}, ${feet.z})、足のマス ${cell(0)}・頭 ${cell(1)}・下 ${cell(-1)}、${RANGE_M}m 以内 ${arrows.length ? `矢 ${arrows.length} 本（最も近い ${arrows[0].distance.toFixed(1)}m）、` : ''}${shown.length ? shown.map(actor => `${actor.type} ${actor.distance.toFixed(1)}m(${actor.dy >= 0 ? '+' : ''}${actor.dy.toFixed(1)})`).join(' / ') : 'なし'}${unknown ? `、位置不明 ${unknown}` : ''}`
+  const text = `被弾のまわり: 体力 ${Number.isFinite(health) ? Math.round(health * 100) / 100 : '?'}、足 (${feet.x}, ${feet.y}, ${feet.z})、足のマス ${cell(0)}・頭 ${cell(1)}・下 ${cell(-1)}、${RANGE_M}m 以内 ${arrows.length ? `矢 ${arrows.length} 本（最も近い ${arrows[0].distance.toFixed(1)}m）、` : ''}${shown.length ? shown.map(actor => `${actor.type} ${actor.distance.toFixed(1)}m(${actor.dy >= 0 ? '+' : ''}${actor.dy.toFixed(1)})`).join(' / ') : 'なし'}${unknown ? `、位置不明 ${unknown}` : ''}${typeof why === 'function' ? `、${String(why() ?? '').slice(0, 160)}` : ''}`
   log(text)
   return text
 }
