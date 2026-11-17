@@ -186,7 +186,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     // A hostile with fresh evidence that it cannot walk to the Bot (shut in a
     // deep pit, no route) is not run from; creepers always are.
     // Nor is a shooter or a flyer behind received blocks (player-flee-threats.js).
-    hostiles: () => { const state = runtime.raw(), at = where(), seen = createCombatExposure({ world: runtime.host().world, entities: {}, scopeOf: () => null }); return fleeThreats({ hostiles: runtime.hostiles(), unreachable: actor => knownUnreachable(state, actor), sight: actor => at && actor?.position ? seen.evaluate(actor, { position: at }).evidence.sight : null }) },
+    hostiles: () => { const state = runtime.raw(), at = where(), seen = createCombatExposure({ world: runtime.host().world, entities: {}, scopeOf: () => null, solidCover: true }); return fleeThreats({ hostiles: runtime.hostiles(), unreachable: actor => knownUnreachable(state, actor), sight: actor => at && actor?.position ? seen.evaluate(actor, { position: at }).evidence.sight : null }) },
     retreat: () => runtime.travel().retreatFromHostiles()
   })
   // Shot by an archer it cannot walk to: behind the nearest block (player-cover.js).

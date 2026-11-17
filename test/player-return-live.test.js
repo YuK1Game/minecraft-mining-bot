@@ -328,3 +328,53 @@ test('interrupted again and again by a flee: none of it is charged, and the goal
   assert.equal(lines(sim, /保留/).length, 0)
   assert.equal(sim.stored(chest, 'diamond'), 37)
 })
+
+test('after a death the kit is taken from the chest the Bot does not stand beside; one that gives nothing says why (live 2026-11-18 05:11 JST)', async () => {
+  // The base is a chest outside the south wall, with nothing wanted in it;
+  // the diamonds are in the house's chest B, out of reach from there.
+  const sim = createReturnSim({ feet: { x: 3.5, y: GROUND, z: 16.5 }, items: [[0, 'diamond', 20]] })
+  const house = sim.buildHouse({ x: 0, y: GROUND, z: 0 })
+  const B = { x: house.origin.x + 5, y: house.origin.y + 1, z: house.origin.z + 3 }
+  const base = sim.placeChest(3, GROUND, 14)
+  sim.storeOf(B)[0] = structuredClone(sim.bag[0])
+  sim.shared.playerBase = base
+  sim.worn = { known: true, worn: [] }
+  sim.die({ x: 3.5, y: GROUND, z: 16.5 })
+  sim.agent.running = true
+  const runtime = sim.mount()
+  assert.equal(await sim.run(runtime, { until: done, ms: 300000 }), true, sim.log.join('\n'))
+  assert.equal(lines(sim, /拠点のチェストからダイヤと資材を取り出します/).length, 1, sim.log.join('\n'))
+  assert.equal(lines(sim, /RESTOCK_UNCONFIRMED|保留/).length, 0, sim.log.join('\n'))
+  assert.equal(sim.bag.filter(item => item.network_id && item.count === 20).length, 1, 'the diamonds are in the inventory by its received slots')
+  assert.equal(sim.stored(B, 'diamond'), 0)
+  assert.equal(lines(sim, /取り出し 20 個/).length, 1, sim.log.join('\n'))
+  // Each chest was opened once: the base beside the Bot, then B after the walk through the door.
+  const opened = sim.events.filter(event => event.kind === 'open')
+  assert.equal(opened.length, 2, JSON.stringify(opened))
+  // Nothing more is wanted from chests whose slots were received: no second goal.
+  await sim.sleep(60000)
+  assert.equal(await runtime.base.tick(), null)
+  assert.equal(sim.events.filter(event => event.kind === 'open').length, 2)
+})
+
+test('a chest that is wanted for the kit and gives nothing answers with its own reason, and the goal is held on it', async () => {
+  // The base's contents never arrive: unknown, so the kit may be in it.
+  const sim = createReturnSim({ feet: { x: 3.5, y: GROUND, z: 16.5 }, items: [] })
+  const base = sim.placeChest(3, GROUND, 14)
+  sim.shared.playerBase = base
+  sim.worn = { known: true, worn: [] }
+  sim.server.contents = 'none'
+  sim.agent.running = true
+  const runtime = sim.mount()
+  await sim.run(runtime, { until: () => sim.goal(runtime)?.state === 'held', ms: 600000 })
+  assert.equal(sim.goal(runtime)?.state, 'held', sim.log.join('\n'))
+  const failed = lines(sim, /に失敗/)
+  assert.ok(failed.length >= 1 && failed.every(line => /収納の確認に失敗: CONTAINER_CONTENTS_UNKNOWN/.test(line)), sim.log.join('\n'))
+  assert.equal(lines(sim, /RESTOCK_UNCONFIRMED/).length, 0)
+  assert.equal(sim.server.requests.length, 0, 'nothing is asked of a chest that was not read')
+  // The contents arrive, with nothing wanted in them: the goal ends, and no new one starts.
+  sim.server.contents = 'send'
+  assert.equal(await sim.run(runtime, { until: done, ms: 1500000 }), true, sim.log.slice(-12).join('\n'))
+  await sim.sleep(60000)
+  assert.equal(await runtime.base.tick(), null)
+})

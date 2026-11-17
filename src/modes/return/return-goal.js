@@ -60,7 +60,7 @@ function newGoal ({ id, reason, base = null, scope = null, origin = null, now = 
     createdAt: now, stageAt: now,
     progress: { banked: 0, taken: 0, lastAt: null, last: null },
     remaining: null,
-    full: [], unopened: [], unreached: [], built: 0, detour: null, detours: 0, sides: 0,
+    full: [], unopened: [], unreached: [], visited: [], built: 0, detour: null, detours: 0, sides: 0,
     budget: { attempts: 0, activeMs: 0, wakes: 0, interrupts: 0 },
     wait: null, hold: null, interrupt: null, last: null, saved: true
   }
@@ -78,7 +78,7 @@ function restoreGoal (value) {
     createdAt: number(value.createdAt, Date.now()), stageAt: Date.now(),
     progress: { banked: number(value.progress?.banked), taken: number(value.progress?.taken), lastAt: Number.isFinite(value.progress?.lastAt) ? value.progress.lastAt : null, last: typeof value.progress?.last === 'string' ? value.progress.last : null },
     remaining: null,
-    full: chestList(value.full), unopened: [], unreached: [], built: number(value.built), detour: null, detours: number(value.detours), sides: 0,
+    full: chestList(value.full), unopened: [], unreached: [], visited: [], built: number(value.built), detour: null, detours: number(value.detours), sides: 0,
     budget: { attempts: number(value.budget?.attempts), activeMs: number(value.budget?.activeMs), wakes: number(value.budget?.wakes), interrupts: 0 },
     wait: null, hold: value.state === 'held' && value.hold && typeof value.hold === 'object' ? { code: String(value.hold.code ?? 'UNKNOWN'), at: number(value.hold.at), until: number(value.hold.until), position: cell(value.hold.position), supplies: typeof value.hold.supplies === 'string' ? value.hold.supplies : null, kinds: Array.isArray(value.hold.kinds) ? value.hold.kinds.filter(kind => typeof kind === 'string') : [], vertical: value.hold.vertical === true } : null,
     interrupt: null, last: null, saved: true, resumed: true

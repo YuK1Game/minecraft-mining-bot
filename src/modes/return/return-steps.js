@@ -275,16 +275,35 @@ function createReturnSteps ({ goal, ports, flow }) {
     const cargo = policy.cargo()
     goalNow.remaining = { stacks: cargo.length, items: total(cargo) }
     if (cargo.length) return { ...failed('CARGO_REMAINS', { remaining: goalNow.remaining, evidence: { chest: goalNow.target, state: { items: goalNow.remaining.items } } }), next: goalNow.target ? 'store' : 'container' }
-    let taken = 0
+    // Every chest of the base that may hold what is wanted: its received
+    // slots show it, or it was not opened yet. One that does not open from
+    // here is walked to first, once (live 2026-11-18 05:11 JST: after a
+    // death the kit was wanted from a chest the Bot did not stand beside;
+    // nothing was opened, three times, every ten minutes).
+    let taken = 0, why = null
     if (chests.hands.take) {
+      goalNow.visited = goalNow.visited ?? []
+      const may = at => { const slots = chests.hands.contents?.(at); return slots ? policy.restock(slots).length > 0 : policy.restockWanted() }
       for (const at of [goalNow.target, goalNow.base, ...chests.spares()].filter((entry, index, all) => entry && all.findIndex(other => same(other, entry)) === index)) {
-        if (aborted() || !isChest(at) || away(at)) continue
-        taken += await chests.hands.take(at, policy.restock)
+        if (aborted() || !isChest(at) || !may(at)) continue
+        if (away(at)) {
+          if (inList(goalNow.visited, at) || inList(goalNow.unreached, at)) continue
+          listed(goalNow.visited, at); goalNow.target = at
+          return { ...completed('KIT_CHEST_CHOSEN', { evidence: { chest: at } }), next: 'approach' }
+        }
+        const out = chests.hands.withdraw ? await chests.hands.withdraw(at, policy.restock) : { status: 'completed', progress: { confirmedTransferred: await chests.hands.take(at, policy.restock) } }
+        taken += out.progress?.confirmedTransferred ?? 0
+        if (out.status !== 'completed') why = why ?? out
       }
     }
     if (taken > 0) { goalNow.progress.taken += taken; goalNow.progress.lastAt = now(); goalNow.progress.last = `${taken} 個を取り出し` }
-    // Still wanted and nothing came out (the chest did not open, or the hands are full): not "done".
-    if (!taken && !goalNow.progress.banked && !aborted() && policy.restockWanted()) return failed('RESTOCK_UNCONFIRMED', { evidence: { chest: goalNow.base, state: { at: area(getFeet(), 4) } } })
+    // Still wanted and nothing came out: not "done". The chest's own answer
+    // when one did not open or gave nothing (its code, what has to change);
+    // otherwise no chest was left to try, and the goal is held at once.
+    if (!goalNow.progress.taken && !goalNow.progress.banked && !aborted() && policy.restockWanted()) {
+      if (why) return { ...why, evidence: { ...why.evidence, state: { at: area(getFeet(), 4) } } }
+      return { ...failed('RESTOCK_UNCONFIRMED', { evidence: { chest: goalNow.base, state: { at: area(getFeet(), 4) } } }), hold: true }
+    }
     return completed('RETURN_DONE', { progress: { banked: goalNow.progress.banked, taken: goalNow.progress.taken } })
   }
 
