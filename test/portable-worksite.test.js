@@ -66,6 +66,11 @@ test('missing existing table gets a validated preparation target or bounded nati
   assert.notEqual(stuck.capability, 'known_safe_underground_worksite')
   assert.notEqual(stuck.capability, 'known_safe_workbench_placement')
   assert.equal(stuck.type, 'place_crafting_table')
+  // Asked once and no answer came (real Realm 2026-11-17 22:24-22:29 JST, next to the house):
+  // the held table goes down by the ordinary placement instead of asking again.
+  f.observations.lastDecision = { type: 'capability_required', capability: 'known_safe_workbench_placement' }
+  assert.equal(f.next().type, 'place_crafting_table')
+  delete f.observations.lastDecision
 })
 test('actual176 terrain supports only a private projected four-cell niche, with intact reserved floor/roof and original passage', () => {
   const f = scene(), before = JSON.stringify([...f.cells]), site = f.site()

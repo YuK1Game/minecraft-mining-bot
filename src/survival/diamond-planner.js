@@ -417,7 +417,12 @@ function nextDiamondAction (state, observations = {}, options = {}) {
           // 16:37-16:47 JST: on the surface with a table and 8 cobblestone held,
           // seven stops in a row with known_safe_underground_worksite).
           if (portable.preparationStep && portable.preparationStep.type !== 'capability_required') return { ...portable.preparationStep, goal: { ...goal }, counts: { ...counts } }
-          if (!portable.preparationStep) return result('capability_required', 'portable_station_kit', '作業台を置ける既知の準備場所を確認します。', { capability: 'known_safe_workbench_placement' })
+          // The runtime answers this request with a prepared place or a step on the
+          // next observation. When the last decision already asked and no answer
+          // came, the held table goes down by the ordinary placement below (real
+          // Realm 2026-11-17 22:24-22:29 JST: next to the house after a death,
+          // this request 100 times in 5 minutes with a table held).
+          if (!portable.preparationStep && observations.lastDecision?.capability !== 'known_safe_workbench_placement') return result('capability_required', 'portable_station_kit', '作業台を置ける既知の準備場所を確認します。', { capability: 'known_safe_workbench_placement' })
         }
         const access = table()
         if (access) return access
