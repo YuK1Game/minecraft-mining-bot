@@ -236,3 +236,23 @@ test('a shooter or a flyer behind received blocks is not run from; unreceived bl
   assert.deepEqual(names(fleeThreats({ hostiles: [mob('zombie'), mob('creeper')], unreachable: () => true })), ['creeper'])
   assert.deepEqual(fleeThreats({ hostiles: null }), [])
 })
+
+test('water between the two is not cover: a drowned in the pond is still run from (live 2026-11-18 05:09 JST)', () => {
+  const { fleeThreats } = require('../src/modes/player-flee-threats')
+  const { createCombatExposure } = require('../src/combat/combat-exposure')
+  // A pond: water from x=2 to x=10 below y=64; the Bot stands on the bank, the drowned on the bottom.
+  const block = (x, y, z) => y < 60 ? { known: true, name: 'minecraft:dirt', boundingBox: 'block' } : y < 64 && x >= 2 && x <= 10 ? { known: true, name: 'minecraft:water', boundingBox: 'empty' } : y < 64 ? { known: true, name: 'minecraft:dirt', boundingBox: 'block' } : { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  const at = { x: 1.5, y: 65.62, z: 0.5 }
+  const sight = options => actor => createCombatExposure({ world: { getBlock: block }, entities: {}, scopeOf: () => null, ...options }).evaluate(actor, { position: at }).evidence.sight
+  const drowned = { entityType: 'minecraft:drowned', hostile: true, position: { x: 8.5, y: 60, z: 0.5 } }
+  // Combat's own reading keeps water as "in the way"; the flee asks for solid cover only.
+  assert.equal(sight({})(drowned), false)
+  assert.equal(sight({ solidCover: true })(drowned), true)
+  assert.deepEqual(fleeThreats({ hostiles: [drowned], sight: sight({ solidCover: true }) }), [drowned])
+  // Seagrass in the water (a plant with a water layer) is no cover either; the bank itself is.
+  const weeds = (x, y, z) => y === 62 && x >= 2 && x <= 10 ? { known: true, name: 'minecraft:seagrass', boundingBox: 'empty', extra: [{ name: 'minecraft:water' }] } : block(x, y, z)
+  assert.equal(createCombatExposure({ world: { getBlock: weeds }, entities: {}, scopeOf: () => null, solidCover: true }).evaluate(drowned, { position: at }).evidence.sight, true)
+  const behindBank = { ...drowned, position: { x: -6.5, y: 60, z: 0.5 } }
+  assert.equal(sight({ solidCover: true })(behindBank), false)
+  assert.deepEqual(fleeThreats({ hostiles: [behindBank], sight: sight({ solidCover: true }) }), [])
+})

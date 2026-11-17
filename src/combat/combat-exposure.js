@@ -7,7 +7,12 @@ const { createCombatSearchBudget } = require('./combat-search-budget')
 // Eye height of a standing two-block mob (skeleton 1.74, pillager 1.62).
 const TARGET_EYE = 1.6
 
-function createCombatExposure ({ world, entities, scopeOf }) {
+// solidCover: only a received block with a body counts as being in the way
+// (water, lava, cobweb and plants do not). Combat's own choice of target keeps
+// the stricter default; a caller that asks "is the Bot safe from this one
+// here" (player-flee-threats.js) must not take water for a wall: a drowned
+// throws its trident through it (live 2026-11-18 05:09 JST).
+function createCombatExposure ({ world, entities, scopeOf, solidCover = false }) {
   let decisionSight = null
   // Only synchronous callers share geometry. Returning (including returning a
   // promise) or throwing ends this scope; the next guard observes a fresh ray.
@@ -25,7 +30,7 @@ function createCombatExposure ({ world, entities, scopeOf }) {
     for (let i = 1; i < steps; i++) {
       const f = i / steps, b = world.getBlock(Math.floor(from.x + (to.x - from.x) * f), Math.floor(from.y + (to.y - from.y) * f), Math.floor(from.z + (to.z - from.z) * f))
       if (b?.known !== true) { unknown = true; continue }
-      if (b.extra?.length || !(/^minecraft:(?:air|cave_air|void_air)$/.test(b.name) || b.boundingBox === 'empty' && !/water|lava|bubble|powder_snow|cobweb|portal/.test(String(b.name)))) return false
+      if (solidCover ? b.boundingBox !== 'empty' && !/^minecraft:(?:air|cave_air|void_air)$/.test(b.name) : b.extra?.length || !(/^minecraft:(?:air|cave_air|void_air)$/.test(b.name) || b.boundingBox === 'empty' && !/water|lava|bubble|powder_snow|cobweb|portal/.test(String(b.name)))) return false
     }
     return unknown ? null : true
   }

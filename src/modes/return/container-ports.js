@@ -134,26 +134,33 @@ function createContainerPorts ({ operations, getInventory, held = () => false, d
     return answer(moved > 0 ? partial : failed, 'TRANSFER_REJECTED', { detail: refused?.message })
   }
 
-  // The stacks pick(slots) names out of the chest; returns the items the inventory gained.
-  async function take (position, pick) {
-    let moved = 0
+  // The stacks pick(slots) names out of the chest. The answer says how many
+  // items the inventory gained, and why the chest did not open or gave nothing
+  // (live 2026-11-18 05:11 JST: a chest that gave nothing answered a bare 0,
+  // and the log could not say whether it had opened).
+  async function withdraw (position, pick) {
+    let moved = 0, refused = null
+    const opened = await open(position)
+    if (opened.status !== 'completed') { close(); return { ...opened, progress: { confirmedTransferred: 0 } } }
     try {
-      if ((await open(position)).status !== 'completed') return 0
       for (const want of pick(view().slots ?? [])) {
         if (disposed()) break
         const before = count(want.name)
-        try { await patient(() => operations.chest.withdrawItem({ chestSlot: want.chestSlot, count: want.count, expectedName: want.name })) } catch (error) { if (error?.code === 'INVENTORY_FULL') break; continue }
+        try { await patient(() => operations.chest.withdrawItem({ chestSlot: want.chestSlot, count: want.count, expectedName: want.name })) } catch (error) { refused = error; if (error?.code === 'INVENTORY_FULL') break; continue }
         if (await until(() => count(want.name) >= before + want.count, SLOT_MS)) moved += want.count
+        else refused = refused ?? new Error('取り出した数を持ち物の受信で確認できませんでした。')
       }
       if (view()?.contentsKnown === true) remember(position)
-    } catch { /* What was taken is counted from the received inventory. */ } finally { close() }
-    return moved
+    } catch (error) { refused = error /* What was taken is counted from the received inventory. */ } finally { close() }
+    const extra = { progress: { confirmedTransferred: moved }, evidence: { chest: chestOf(position) } }
+    return moved > 0 || !refused ? completed('KIT_TAKEN', extra) : failed('WITHDRAW_REFUSED', { ...extra, detail: refused?.message })
   }
+  const take = async (position, pick) => (await withdraw(position, pick)).progress?.confirmedTransferred ?? 0
 
   // The count alone, for the callers that only add it up (player-storage.js).
   const store = async (position, stacks) => (await deposit(position, stacks)).progress?.confirmedTransferred ?? 0
 
-  return { open, inspect, deposit, take, store, room, contents, patient, access }
+  return { open, inspect, deposit, take, withdraw, store, room, contents, patient, access }
 }
 
 module.exports = { createContainerPorts }

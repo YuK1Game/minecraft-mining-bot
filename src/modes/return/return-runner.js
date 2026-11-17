@@ -57,7 +57,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
   const seenNow = () => ({ position: ports.getPosition(), supplies: supplies(), inventoryKnown: !!ports.getInventory(), terrain: terrain(), settled: settled(), scope: scope(), now: now() })
 
   function end (state, code, text) {
-    say(`${text}（${code}・収納済み ${goal.progress.banked} 個・試行 ${goal.budget.attempts} 回）`)
+    say(`${text}（${code}・収納済み ${goal.progress.banked} 個${goal.progress.taken ? `・取り出し ${goal.progress.taken} 個` : ''}・試行 ${goal.budget.attempts} 回）`)
     banked += goal.progress.banked
     goal = null
     commit()
@@ -147,7 +147,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     const current = scope()
     if (goal.scope === current) return false
     say('接続・次元・生存回が変わったため、今の状態から計画し直します')
-    Object.assign(goal, { scope: current, stage: 'observe', target: null, detour: null, sides: 0, base: shared.playerBase ?? goal.base, full: [], unopened: [], unreached: [], wait: null, interrupt: null })
+    Object.assign(goal, { scope: current, stage: 'observe', target: null, detour: null, sides: 0, base: shared.playerBase ?? goal.base, full: [], unopened: [], unreached: [], visited: [], wait: null, interrupt: null })
     if (goal.state === 'held') { goal.state = 'active'; goal.hold = null; goal.budget.wakes++ }
     memory.prune(current)
     commit()
@@ -176,7 +176,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     if (goal.state === 'held') {
       const why = wakeReason(goal, seenNow())
       if (!why) return null
-      goal.state = 'active'; goal.hold = null; goal.stage = 'observe'; goal.unopened = []; goal.unreached = []; goal.sides = 0; goal.budget.wakes++
+      goal.state = 'active'; goal.hold = null; goal.stage = 'observe'; goal.unopened = []; goal.unreached = []; goal.visited = []; goal.sides = 0; goal.budget.wakes++
       say(`を再開します（${why}・${goal.budget.wakes} 回目の再評価）`)
       commit()
     }
