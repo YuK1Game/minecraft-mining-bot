@@ -220,7 +220,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // A base on the surface: spare diamonds and valuables go into its large chest (player-base.js).
   if (shared.playerBase === undefined) shared.playerBase = loadBaseSync(baseFile(root))
   const base = createPlayerBase({
-    getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: baseFile(root), getWorn: () => operations.diagnostics?.armor?.() ?? null,
+    getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: baseFile(root), getWorn: () => { try { return runtime.armor?.() ?? null } catch { return null } },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     hands: storagePorts, chest: () => storage.chest(), canBuild: () => shared.playerHouse?.done === true && storage.woodFor(1), climb: climbUp, door: () => houseDoor(), spares: () => { const o = shared.playerHouse?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] }, walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within),
@@ -313,7 +313,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, log, safety: operations.safety, recovery, shelter, flee, scaffold: { status: () => house.status().active ? house.status() : wool.status().active ? wool.status() : sand.status().active ? sand.status() : food.status().active ? food.status() : base.status().active ? base.status() : storage.status().active ? storage.status() : torch.status().active ? torch.status() : scaffold.status() }, shared,
     agent: { start: options => agent.start(options), stop: reason => agent.stop(reason), snapshot: agentStatus },
     getInventory: () => shared.inventoryUncertain ? null : runtime.raw().inventory,
-    getWorn: () => operations.diagnostics?.armor?.() ?? null
+    getWorn: () => { try { return runtime.armor?.() ?? null } catch { return null } }
   })
   for (const name of ['start', 'resume']) {
     const inner = quarry[name]
