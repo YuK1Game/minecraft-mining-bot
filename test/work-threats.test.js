@@ -31,3 +31,13 @@ test('evaluateThreats caps a non-creeper avoidance radius at 8 m during player p
   const creeper = { runtimeId: 'c1', entityType: 'minecraft:creeper', alive: true, positionKnown: true, position: { x: 10, y: 64, z: 0 } }
   assert.equal(evaluateThreats({ ...state, playerPlay: true }, [creeper], { observationRadius: 32 }).outsideDanger[0]?.dangerRadius ?? evaluateThreats({ ...state, playerPlay: true }, [creeper], { observationRadius: 32 }).threats[0].dangerRadius, evaluateThreats(state, [creeper], { observationRadius: 32 }).outsideDanger[0]?.dangerRadius ?? evaluateThreats(state, [creeper], { observationRadius: 32 }).threats[0].dangerRadius, 'creeper radius unchanged')
 })
+
+test('every runtime state that sets the threat policy also carries playerPlay (live 2026-11-17 17:44-17:52 JST)', () => {
+  const { threatFields } = require('../src/safety/threat-policy')
+  assert.deepEqual(threatFields({ autoWanted: true, playerWanted: true }), { threatPolicy: 'online_learning', playerPlay: true })
+  assert.deepEqual(threatFields({}), { threatPolicy: 'balanced_mining', playerPlay: false })
+  const fs = require('node:fs')
+  const { runtimeSource } = require('./helpers/runtime-source')
+  const sources = [runtimeSource(), fs.readFileSync(require.resolve('../src/runtime/idle-safety-runtime.js'), 'utf8')]
+  for (const source of sources) assert.doesNotMatch(source, /threatPolicy: (?:rt\.)?host\.shared\.autoWanted/)
+})
