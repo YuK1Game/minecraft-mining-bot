@@ -278,7 +278,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       }
       const bed = bedOf(origin)
       if (bed && /bed$/.test(here(bed.x, bed.y, bed.z)?.name ?? '') && shared.playerHouse?.spawn !== true) {
-        if (await setSpawn({ origin, shared, useBed: target => operations.interactions.useBed(target), wakeBed: target => operations.interactions.wakeBed(target), walk: target => hands.walk(target), getFeet: feetNow, log })) shared.playerHouse = { ...shared.playerHouse, spawn: true }
+        if (await setSpawn({ origin, shared, useBed: target => operations.interactions.useBed(target), wakeBed: target => operations.interactions.wakeBed(target), walk: target => hands.walk(target), getFeet: feetNow, getBlock: here, previewUse: target => operations.interactions.previewUseBed?.(target), log })) shared.playerHouse = { ...shared.playerHouse, spawn: true }
       }
     }
   })

@@ -43,10 +43,28 @@ function standable (getBlock, x, y, z) {
   return solid(getBlock(x, y - 1, z)) && !slabby(getBlock(x, y - 1, z)) && open(getBlock(x, y, z)) && open(getBlock(x, y + 1, z))
 }
 
+// Whether the straight line from `eye` to `point` passes only received open
+// cells (the clicked block itself aside).
+function clearLine (getBlock, eye, point, click) {
+  const d = Math.hypot(point.x - eye.x, point.y - eye.y, point.z - eye.z), n = Math.max(1, Math.ceil(d / 0.1))
+  for (let i = 0; i < n; i++) {
+    const t = i / n, x = Math.floor(eye.x + (point.x - eye.x) * t), y = Math.floor(eye.y + (point.y - eye.y) * t), z = Math.floor(eye.z + (point.z - eye.z) * t)
+    if (x === click.x && y === click.y && z === click.z) continue
+    if (!open(getBlock(x, y, z))) return false
+  }
+  return true
+}
+
 // Stands for a step, nearest to `from` first: feet cells whose eye is within
-// reach of the click point.
+// reach of the click point. Stands with a received clear line to the point come
+// first: a floor cell left under a wall is seen only from outside the house
+// (live 2026-11-17 14:33-14:35 JST: the cobblestone at the floor's west edge,
+// under the west wall, was tried three runs from the nearest stands inside,
+// all 「操作対象への視線が遮られているか、未取得です」).
 function stands (getBlock, step, click, from, { reach = 4.2, radius = 4 } = {}) {
   const n = NORMAL[click.face]
+  const front = eye => (eye.x - point.x) * n.x + (eye.y - point.y) * n.y + (eye.z - point.z) * n.z > 0
+  const seen = list => { const clear = new Set(list.filter(stand => { const eye = { x: stand.x, y: stand.y + 1.62, z: stand.z }; return front(eye) && clearLine(getBlock, eye, point, click.clicked) })); return [...list.filter(stand => clear.has(stand)), ...list.filter(stand => !clear.has(stand))] }
   const point = { x: click.clicked.x + 0.5 + n.x * 0.5, y: click.clicked.y + (click.clickY ?? 0.5 + n.y * 0.5), z: click.clicked.z + 0.5 + n.z * 0.5 }
   const out = []
   const look = step.look ? LOOK[step.look] : null
@@ -55,7 +73,7 @@ function stands (getBlock, step, click, from, { reach = 4.2, radius = 4 } = {}) 
       const x = step.position.x - look.x * k, z = step.position.z - look.z * k, y = step.position.y + dy
       if (standable(getBlock, x, y, z)) out.push({ x: x + 0.5, y, z: z + 0.5 })
     }
-    return out.filter(stand => Math.hypot(point.x - stand.x, point.y - (stand.y + 1.62), point.z - stand.z) <= reach)
+    return seen(out.filter(stand => Math.hypot(point.x - stand.x, point.y - (stand.y + 1.62), point.z - stand.z) <= reach))
   }
   for (let dx = -radius; dx <= radius; dx++) for (let dz = -radius; dz <= radius; dz++) for (let dy = -3; dy <= 1; dy++) {
     const x = step.position.x + dx, y = step.position.y + dy, z = step.position.z + dz
@@ -65,7 +83,7 @@ function stands (getBlock, step, click, from, { reach = 4.2, radius = 4 } = {}) 
     if (Math.hypot(point.x - stand.x, point.y - (stand.y + 1.62), point.z - stand.z) <= reach) out.push(stand)
   }
   const cost = stand => Math.hypot(stand.x - from.x, stand.z - from.z) + Math.abs(stand.y - from.y) * 2
-  return out.sort((a, b) => cost(a) - cost(b))
+  return seen(out.sort((a, b) => cost(a) - cost(b)))
 }
 
-module.exports = { clicks, stands, standable, FACES, LOOK }
+module.exports = { clicks, stands, standable, clearLine, FACES, LOOK }

@@ -40,3 +40,16 @@ test('the counts left are saved and read back', async () => {
   await house.tick()
   assert.deepEqual(writes.map(value => value.left), [{ glass: 6 }])
 })
+
+test('the bed is used from a stand around it when it cannot be used from here', async () => {
+  let t = 1000
+  const origin = { x: 0, y: 70, z: 0 }, bed = bedOf(origin), shared = {}
+  // The cell south of the foot holds a table (solid).
+  const getBlock = (x, y, z) => y < bed.y || x === bed.x && y === bed.y && z === bed.z + 1 ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  const near = () => Math.hypot(feet.x - bed.x - 0.5, feet.z - bed.z - 0.5) < 2
+  let feet = { x: bed.x + 10, y: bed.y, z: bed.z }
+  const walks = []
+  const ok = await setSpawn({ origin, shared, getBlock, previewUse: () => ({ ready: near() }), now: () => t, sleep: async ms => { t += ms }, getFeet: () => feet, walk: async target => { walks.push(target); if (getBlock(Math.floor(target.x), target.y, Math.floor(target.z)).boundingBox === 'block') return false; feet = target; return true }, wakeBed: async () => {}, useBed: async () => { if (!near()) throw new Error('no visible face'); shared.lastSpawnSet = { at: t + 1, position: { x: bed.x, y: bed.y, z: bed.z } } } })
+  assert.equal(ok, true)
+  assert.equal(walks.length, 1)
+})

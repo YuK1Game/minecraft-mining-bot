@@ -804,6 +804,7 @@ function createRuntimeOperations (rt) {
       // The starter house's bed: lie down to set the respawn point, then get up (modes/house/house-spawn.js).
       useBed: position => { rt.requireIdle({ inventoryRequired: false }); return rt.interactions.useBed(position) },
       wakeBed: position => rt.working().sleeping ? rt.interactions.wakeBed?.(position) : null,
+      previewUseBed: position => rt.interactions.previewUseBed(position),
       // Manual normal placement against a side face (2026-11-13: a bridge to the
       // registered chest over the finished pit). Same checks as the quarry's seals.
       previewPlaceAgainst: data => rt.interactions.previewQuarryPlace(data),
