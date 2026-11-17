@@ -153,3 +153,23 @@ test('direct nondestructive movement receives fresh canonical zero-padding circl
     assert.equal(result.serverConfirmed, false)
   }
 })
+
+test('in player play a non-threat circle shrinks to 3 m (creepers keep theirs; live 2026-11-17 15:36 JST)', () => {
+  const position = { x: 6.5, y: 5.62, z: 0.5 }
+  const f = fixture(), baseline = f.tunneling.preview(f.decision)
+  f.state.hostiles = [actor(position)]
+  const quarry = f.tunneling.preview(f.decision)
+  assert.notDeepEqual(quarry.steps.map(step => step.target), baseline.steps.map(step => step.target))
+  f.state.playerPlay = true
+  const play = f.tunneling.preview(f.decision)
+  assert.equal(play.ready, true, play.reason)
+  const eyes = [play.origin, ...play.steps.map(step => eye(step.target))]
+  assert.ok(eyes.every(at => distance(position, at) > 3))
+  assert.ok(eyes.some(at => distance(position, at) < 5), 'the play route passes inside the old 5 m circle')
+  f.state.hostiles = [actor(position, { entityType: 'minecraft:creeper' })]
+  const creeper = evaluateThreats(f.state, f.state.hostiles, { observationRadius: 32 })
+  if (!creeper.threats.length) {
+    const kept = f.tunneling.preview(f.decision)
+    assertFutureCircles(kept, creeper.outsideDanger)
+  }
+})
