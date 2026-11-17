@@ -298,3 +298,21 @@ test('hops that stop at a slope hand over to the house porch walk (live 2026-11-
   assert.equal(ok, true, JSON.stringify(calls))
   assert.deepEqual(calls.filter(c => ['approach', 'porch', 'store'].includes(c)), ['approach', 'porch', 'store'])
 })
+
+test('a new chest that fills too: another new chest takes the rest (live 2026-11-18 01:54 JST)', async () => {
+  const calls = [], shared = { playerWanted: true, playerBase: { x: 5, y: 64, z: 0 } }
+  let inventory = inv([[0, 'diamond', 40]]), made = 0
+  const pos = { x: 4.5, y: 65.62, z: 0.5 }
+  const api = createPlayerBase({
+    getMode: () => 'player', shared, getBlock: world({ '5,64,0': 'minecraft:chest' }), getPosition: () => pos, getFeet: () => ({ x: pos.x, y: pos.y - 1.62, z: pos.z }), getInventory: () => inventory,
+    agent: { objective: {}, start: async () => calls.push('start'), stop: () => calls.push('stop'), settled: () => true },
+    // The base chest takes nothing; the first new chest takes 30 and is full; the second takes the rest.
+    hands: { store: async (at, stacks) => { calls.push(['store', `${at.x},${at.z}`]); const total = stacks.reduce((s, x) => s + x.count, 0); if (at.x === 5) return 0; if (at.x === 1) { inventory = inv([[0, 'diamond', 18]]); return 5 } inventory = inv([[0, 'diamond', 8]]); return total }, room: at => (at?.x === 5 || at?.x === 1) ? 0 : 10 },
+    chest: async ({ full } = {}) => { calls.push(['chest', full.length]); return ++made === 1 ? { x: 1, y: 63, z: 11 } : { x: 2, y: 63, z: 12 } },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    walk: async () => true, approach: async () => true, log: () => {}, sleep: async () => {}
+  })
+  assert.equal(await api.tick(), true)
+  assert.deepEqual(calls.filter(c => Array.isArray(c)), [['store', '5,0'], ['chest', 1], ['store', '1,11'], ['chest', 2], ['store', '2,12']])
+  assert.deepEqual(shared.playerBase, { x: 2, y: 63, z: 12 })
+})
