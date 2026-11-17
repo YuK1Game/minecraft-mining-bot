@@ -155,3 +155,30 @@ test('a full base chest: the house chest B takes the rest before a new chest (li
   assert.deepEqual(calls.filter(c => Array.isArray(c)), [['store', '5,0'], ['store', '7,2']])
   assert.ok(!calls.includes('chest'))
 })
+
+test('both house chests full: a new chest skips them, stands outside the door and becomes the base (live 2026-11-17 18:43-18:46 JST)', async () => {
+  const calls = [], shared = { playerWanted: true, playerBase: { x: 5, y: 64, z: 0 } }
+  let inventory = inv([[0, 'diamond', 40]]), pos = { x: 4.5, y: 65.62, z: 0.5 }
+  const blocks = world({ '5,64,0': 'minecraft:chest', '7,64,2': 'minecraft:chest' })
+  const rooms = {}, writes = []
+  const porch = { stand: { x: 3, y: 63, z: 10 }, avoid: [{ x: 3, y: 63, z: 8 }] }
+  const api = createPlayerBase({
+    getMode: () => 'player', shared, getBlock: blocks, getPosition: () => pos, getFeet: () => ({ x: pos.x, y: pos.y - 1.62, z: pos.z }), getInventory: () => inventory,
+    agent: { objective: {}, start: async () => calls.push('start'), stop: () => calls.push('stop'), settled: () => true },
+    hands: {
+      store: async (at, stacks) => { const key = `${at.x},${at.z}`; calls.push(['store', key]); if (key !== '1,11') { rooms[key] = 0; return 0 } inventory = inv([[0, 'diamond', 8]]); return stacks.reduce((s, x) => s + x.count, 0) },
+      room: at => rooms[`${at.x},${at.z}`] ?? null
+    },
+    spares: () => [{ x: 7, y: 64, z: 2 }],
+    porch: () => porch,
+    chest: async options => { calls.push(['chest', options]); return options.avoid ? { x: 1, y: 63, z: 11 } : null },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    walk: async () => true, approach: async (target, within) => { calls.push(['approach', target, within]); return true },
+    file: '/nowhere', write: async (file, data) => writes.push(data), log: () => {}, sleep: async () => {}
+  })
+  assert.equal(await api.tick(), true)
+  const full = [{ x: 5, y: 64, z: 0 }, { x: 7, y: 64, z: 2 }]
+  assert.deepEqual(calls.filter(c => Array.isArray(c) && c[0] !== 'approach' || Array.isArray(c) && c[1] === porch.stand), [['store', '5,0'], ['store', '7,2'], ['chest', { full }], ['approach', porch.stand, 1.5], ['chest', { full, avoid: porch.avoid }], ['store', '1,11']])
+  assert.deepEqual(shared.playerBase, { x: 1, y: 63, z: 11 })
+  assert.deepEqual(writes.at(-1).chest, { x: 1, y: 63, z: 11 })
+})
