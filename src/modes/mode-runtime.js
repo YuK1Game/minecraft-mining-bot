@@ -38,6 +38,7 @@ const { createHouseWool } = require('./house/house-wool')
 const { createHouseSand } = require('./house/house-sand')
 const { createPlayerFood, hasFood } = require('./player-food')
 const { createPlayerWater } = require('./player-water')
+const { dryStart } = require('./travel-dry-start')
 const { createHouseBuild, houseFile, loadHouseSync } = require('./house/house-build')
 const { createHousePorts } = require('./house/house-ports')
 const { chestOf, bedOf, setSpawn } = require('./house/house-spawn')
@@ -102,7 +103,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
   })
   // A long trip from inside the starter house first walks out through its door (house/house-exit.js).
-  const travelTo = async input => { try { await leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => hands.walk(target), door: () => houseDoor(), log }) } catch {} return quarry.travelTo(input) }
+  const travelTo = async input => { try { await leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => hands.walk(target), door: () => houseDoor(), log }) } catch {} if (shared.playerWanted === true) await dryStart({ needed: () => water.needed(), exit: () => water.exit(() => flee.status().active || shelter.status().active), log }); return quarry.travelTo(input) }
   // Out of a tunnel to the open sky, shared by the recovery and the base trip.
   async function climbUp (aborted) {
     for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
