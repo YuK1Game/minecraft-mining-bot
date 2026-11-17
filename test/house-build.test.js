@@ -567,3 +567,28 @@ test('a block it failed on and the door do not call the Bot back from the sand; 
   assert.notEqual(await build.tick(), null)
   assert.deepEqual(left(), [], lines.join('\n'))
 })
+
+test('an enemy by the house cuts the run short: says so and tries again in 2 minutes, not 10 (live 2026-11-17 14:19 JST)', async () => {
+  const w = world()
+  const feet = { x: 0.5, y: 64, z: 0.5 }
+  const inventory = { known: true, items: [] }
+  for (const [name, count] of [['wooden_pickaxe', 1], ['birch_log', 44], ['cobblestone', 68]]) inventory.items.push({ name: `minecraft:${name}`, count, slot: inventory.items.length })
+  const shared = { playerWanted: true }
+  const lines = []
+  let time = 1000000, near = false
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {}, now: () => time, hostile: () => near,
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true, running: () => false },
+    ports: { craft: async () => false, smelt: async () => 0, place: async () => false, mine: async () => true, why: () => null },
+    hands: { walk: async stand => { Object.assign(feet, stand); near = true; return true }, approach: async () => true },
+    climb: async () => ({ ok: true }),
+    travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
+  })
+  await build.tick()
+  assert.match(lines.join('\n'), /拠点の家: 敵が近いため中断しました（2分後に続けます）/)
+  near = false
+  time += 125000
+  await build.tick()
+  assert.equal(lines.filter(line => /0 個置きました/.test(line)).length, 2, lines.join('\n'))
+})

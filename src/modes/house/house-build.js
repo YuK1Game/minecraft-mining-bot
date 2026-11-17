@@ -394,6 +394,10 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       }
       if (!progress || unsettled) break
     }
+    // Cut short by an enemy or a pause before or between the steps: say so and
+    // come back in 2 minutes, not 10 (live 2026-11-17 14:19 JST: a witch and two
+    // skeletons by the house, 「0 個置きました」 with no reason at all).
+    if (aborted() && live()) { soon = true; say(`拠点の家: ${hostile() ? '敵が近い' : 'ほかの作業が始まった'}ため中断しました（2分後に続けます）`) }
     const left = remaining(getBlock, origin)
     for (const step of left) if ((fails.get(step.id) ?? 0) > 0 && workable(step)) failedAt.set(step.id, now())
     if (!left.length) {
