@@ -24,6 +24,7 @@ const { underCover } = require('./player-surface')
 const { boxedIn, stepOut } = require('./player-pit')
 const { settle, offCentre, offGrid } = require('./player-settle')
 const { openDoor } = require('./house/house-door')
+const { leaveHouse } = require('./house/house-exit')
 const { createPlayerTorch } = require('./player-torch')
 const { createTorchPorts } = require('./player-torch-ports')
 const { createPlayerStorage } = require('./player-storage')
@@ -99,6 +100,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getMotion: () => runtime.motion(),
     getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
   })
+  // A long trip from inside the starter house first walks out through its door (house/house-exit.js).
+  const travelTo = async input => { try { await leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => hands.walk(target), door: () => houseDoor(), log }) } catch {} return quarry.travelTo(input) }
   // Out of a tunnel to the open sky, shared by the recovery and the base trip.
   async function climbUp (aborted) {
     for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
@@ -119,7 +122,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const recovery = createPlayerRecovery({
     getMode: control.get, shared, log, disposed, held: () => !!shared.travelNight?.cover,
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason) },
-    travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
+    travel: { to: travelTo, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getPosition: where,
     prey: () => operations.foraging?.snapshot()?.target?.position ?? null,
     water: {
@@ -224,7 +227,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     hands: storagePorts, chest: options => storage.chest(options), porch: () => { const o = shared.playerHouse?.origin; return o ? { stand: { x: o.x + 3, y: o.y, z: o.z + 10 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null }, canBuild: () => shared.playerHouse?.done === true && storage.woodFor(1), climb: climbUp, door: () => houseDoor(), spares: () => { const o = shared.playerHouse?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] }, walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within),
-    travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
+    travel: { to: travelTo, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     hostile: () => danger(),
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active
   })
@@ -233,7 +236,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const food = createPlayerFood({
     getMode: control.get, shared, log, disposed, getHunger: hunger, getState: () => ({ health: runtime.raw()?.health, position: where(), inventory: shared.inventoryUncertain ? null : runtime.inventory() }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason) }, climb: climbUp,
-    travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() }, prey: () => { const seen = operations.foraging?.snapshot(); return seen && seen.busy !== true && seen.phase !== 'moving' ? seen.target?.position ?? null : null },
+    travel: { to: travelTo, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() }, prey: () => { const seen = operations.foraging?.snapshot(); return seen && seen.busy !== true && seen.phase !== 'moving' ? seen.target?.position ?? null : null },
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active || quarry.travelStatus().busy === true || danger()
   })
   // Afloat and not moving: onto the nearest ledge with the water exit (player-water.js).
@@ -254,7 +257,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // The starter house's sand for the glass: walk to received sand or search for it (house/house-sand.js).
   const sand = createHouseSand({
     getMode: control.get, shared, log, disposed, getState: () => ({ ...runtime.raw(), position: where(), inventory: shared.inventoryUncertain ? null : runtime.inventory() }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z),
-    travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() }, climb: climbUp, approach: (target, within) => hands.approach(target, within),
+    travel: { to: travelTo, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() }, climb: climbUp, approach: (target, within) => hands.approach(target, within),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     blocked: () => !(runtime.raw().health > 10) || hungryWithoutFood() || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || house.status().active || quarry.travelStatus().busy === true || danger()
   })
@@ -266,7 +269,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     ports: createHousePorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() }),
     hands, climb: climbUp,
-    travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
+    travel: { to: travelTo, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     hostile: () => danger(),
     // Not with 10 health or less: eating, the shelter and fleeing come first (live 2026-11-17 05:53 JST: the build began at 1.9 health with no food).
     // Nor hungry with no food: the forage comes first (live 2026-11-17 08:26-08:29 JST: hunger 12, the build stopped the forage for a cow).
