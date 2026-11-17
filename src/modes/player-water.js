@@ -46,7 +46,7 @@ function ledges (getBlock, feet) {
   return out.sort((a, b) => Math.hypot(a.x - feet.x, a.z - feet.z) - Math.hypot(b.x - feet.x, b.z - feet.z))
 }
 
-function createPlayerWater ({ getMode, shared, agent, getPosition, getBlock, start, moving, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerWater ({ getMode, shared, agent, getPosition, getBlock, start, moving, why = () => null, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, since = null, anchor = null
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const settle = async () => { for (let i = 0; i < 40 && agent.settled?.() === false && !disposed(); i++) await sleep(200) }
@@ -73,7 +73,7 @@ function createPlayerWater ({ getMode, shared, agent, getPosition, getBlock, sta
         await sleep(300)
         for (let i = 0; i < 50 && moving() && !disposed(); i++) await sleep(200)
         if (!wet(getBlock, getPosition())) { log('プレイヤーモード: 水から上がりました'); since = null; anchor = null; return true }
-        reasons.push('上がれませんでした')
+        reasons.push(why() ?? '上がれませんでした')
       }
       log(`プレイヤーモード: 水から上がれません（${[...new Set(reasons)].slice(0, 2).join(' / ') || '不明'}）`)
       return false
