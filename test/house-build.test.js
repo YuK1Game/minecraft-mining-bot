@@ -592,3 +592,12 @@ test('an enemy by the house cuts the run short: says so and tries again in 2 min
   await build.tick()
   assert.equal(lines.filter(line => /0 個置きました/.test(line)).length, 2, lines.join('\n'))
 })
+
+test('the oak door item is minecraft:wooden_door on Bedrock', () => {
+  const { doorItem, ITEM } = require('../src/modes/house/house-build')
+  assert.equal(doorItem('oak'), 'minecraft:wooden_door')
+  assert.equal(doorItem('birch'), 'minecraft:birch_door')
+  assert.equal(ITEM.oak_door('minecraft:wooden_door'), true)
+  const { HOUSE } = require('../src/actions/house-placement')
+  assert.equal(HOUSE.test('minecraft:wooden_door'), true)
+})

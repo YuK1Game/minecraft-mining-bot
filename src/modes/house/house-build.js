@@ -37,7 +37,7 @@ const ITEM = {
   oak_log: name => new RegExp(`^minecraft:(?:${WOODS})_(?:log|stem)$`).test(name),
   oak_planks: name => new RegExp(`^minecraft:(?:${WOODS})_planks$`).test(name),
   oak_slab: name => new RegExp(`^minecraft:(?:${WOODS})_slab$`).test(name),
-  oak_door: name => new RegExp(`^minecraft:(?:${WOODS})_door$`).test(name),
+  oak_door: name => new RegExp(`^minecraft:(?:(?:${WOODS})_door|wooden_door)$`).test(name),
   white_bed: name => name === 'minecraft:bed',
   glass: name => name === 'minecraft:glass',
   chest: name => name === 'minecraft:chest',
@@ -47,6 +47,10 @@ const ITEM = {
 }
 // The floor, then the table and furnaces, then the blueprint's order.
 const EARLY = ['p_178', 'p_179', 'p_180']
+// Bedrock names the oak door item minecraft:wooden_door (live 2026-11-17 15:06
+// JST: 「サーバーから受信したレシピがありません: minecraft:oak_door」).
+const doorItem = kind => kind === 'oak' ? 'minecraft:wooden_door' : `minecraft:${kind}_door`
+
 // The door goes last: the Bot does not open doors, and the bed, the chests and
 // the table are inside (live 2026-11-17 06:44-06:52 JST: with the door placed
 // early the Bot stood outside the south wall, 72 steps left, nothing placed).
@@ -205,7 +209,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       case 'oak_planks': return planks(1, left)
       case 'crafting_table': return await planks(4, left) && ports.craft('minecraft:crafting_table', 1)
       case 'oak_slab': { const times = Math.min(16, Math.ceil(count('oak_slab') / 6)); const as = await planksOf(times * 3, left); return !!as && atTable(`minecraft:${as}_slab`, times) }
-      case 'oak_door': { const as = await planksOf(6, left); return !!as && atTable(`minecraft:${as}_door`, 1) }
+      case 'oak_door': { const as = await planksOf(6, left); return !!as && atTable(doorItem(as), 1) }
       // One chest at a time: a batch over mixed plank kinds splits unevenly (live 07:32 JST: 「材料の種類が混在しています。1回ずつクラフトしてください。」).
       case 'chest': { let made = 0; for (let i = 0; i < Math.min(count('chest'), 4); i++) { if (!(await planks(8, left) && await atTable('minecraft:chest', 1))) break; made++ } return made > 0 }
       case 'white_bed': return bestWool(items()) >= 3 && await planks(3, left) && atTable('minecraft:bed', 1)
@@ -455,4 +459,4 @@ function loadHouseSync (file, { io = fs } = {}) {
   } catch { return null }
 }
 
-module.exports = { createHouseBuild, order, ITEM, houseFile, loadHouseSync }
+module.exports = { createHouseBuild, order, ITEM, doorItem, houseFile, loadHouseSync }

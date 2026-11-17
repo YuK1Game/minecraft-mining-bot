@@ -652,7 +652,7 @@ function createRuntime (host) {
     if (state.phase !== 'spawned' || state.dead || state.spawnPending || !(state.health > 0) || state.positionUpdatedAt !== pending.rawStamp || JSON.stringify(historyScope(state)) !== pending.scope || !state.position || ['x', 'y', 'z'].some(axis => state.position[axis] !== pending.position[axis])) return
     inputHistory.observeStationaryRaw({ rawPosition: pending.position, rawStamp: pending.rawStamp, scope: historyScope(state), health: state.health, receivedAt: pending.receivedAt })
   }
-  const baseProtectedWorld = createBaseProtection({ world: host.world, getState: raw, getHutMemo: () => host.shared.hutMemo, getShelterMemo: () => host.shared.shelterMemo, ownerProfile: raw().profile ?? null })
+  const baseProtectedWorld = createBaseProtection({ world: host.world, getState: raw, shared: host.shared, ownerProfile: raw().profile ?? null })
   const noTunnelFloorKeys = new Set()
   let tunnelFloorViewCache = null
   function tunnelFloorKeys () {

@@ -3,10 +3,12 @@
 const { pointKey: key } = require('../common/vec3')
 const integer = point => point && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]) && Math.abs(point[axis]) <= 30000000) && point.y >= -64 && point.y <= 319
 const positionOf = value => value?.position ?? value
+const { createHouseProtection } = require('./house-protection')
 
 // This is a planning view, never a world update. Memos are immutable snapshots:
 // their reference (or the active scope) changes when the host accepts progress.
-function createBaseProtection ({ world, getState, getHutMemo = () => null, getShelterMemo = () => null, ownerProfile = null, maxBlocks = 256 } = {}) {
+// `shared` (the host's) gives the hut and shelter memos and the player's house.
+function createBaseProtection ({ world, getState, shared = null, getHutMemo = () => shared?.hutMemo ?? null, getShelterMemo = () => shared?.shelterMemo ?? null, getHouse = () => shared?.playerHouse ?? null, ownerProfile = null, maxBlocks = 256 } = {}) {
   if (typeof world?.getBlock !== 'function' || [getState, getHutMemo, getShelterMemo].some(callback => typeof callback !== 'function')) throw new Error('Base protection requires a raw world, state and memo callbacks')
   if (!Number.isSafeInteger(maxBlocks) || maxBlocks < 26 || maxBlocks > 1024) throw new Error('Invalid base protection bound')
   let previous = null
@@ -85,15 +87,16 @@ function createBaseProtection ({ world, getState, getHutMemo = () => null, getSh
     if (block?.known !== true || block.protected === true || !integer(point) || !protectedCells.has(key(point))) return block
     return { ...block, protected: true, protectionSource: 'bot_base' }
   }
+  const house = createHouseProtection(getHouse)
   function getBlock (x, y, z) {
-    const block = world.getBlock(x, y, z)
+    const block = house(world.getBlock(x, y, z), x, y, z)
     if (!candidateCells().has(`${x},${y},${z}`)) return block
     refresh()
     return overlay(block, { x, y, z })
   }
   function getArea (center, radius = 1) {
     if (typeof world.getArea !== 'function') throw new Error('The raw world does not expose area observations')
-    const area = world.getArea(center, radius)
+    const area = world.getArea(center, radius).map(block => block?.position ? house(block, block.position.x, block.position.y, block.position.z) : block)
     const cells = candidateCells()
     if (!area.some(block => block?.position && cells.has(key(block.position)))) return area
     refresh()
