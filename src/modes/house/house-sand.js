@@ -17,6 +17,12 @@ const { nearestKnownLog } = require('../player-recovery')
 const { underCover } = require('../player-surface')
 
 const SAND = /^(?:minecraft:)?(?:red_)?sand$/
+const OPEN = /^minecraft:(?:air|cave_air|short_grass|tall_grass|fern|dead_bush|leaf_litter)$/
+// Only sand with received open air on top: the planner digs no sand under
+// water or under gravel (live 2026-11-17 09:41-09:48 JST: the 100 received
+// sand blocks near the house all lay under a pool, gravel or dirt; every trip
+// went there and none was dug).
+const exposed = getBlock => (x, y, z) => { const up = getBlock(x, y + 1, z); return up?.known === true && OPEN.test(up.name ?? '') }
 const NEAR_M = 24, STEP_M = 96, RINGS = 5, AGAIN_MS = 60000, TRIP_MS = 240000, AVOID_M = 24, FORGET_MS = 1800000
 
 function spiralPoint (center, trip) {
@@ -42,7 +48,7 @@ function createHouseSand ({ getMode, shared, agent, travel, getState, getBlock, 
     let stopped = false
     try {
       failed = failed.filter(point => now() - point.at < FORGET_MS)
-      const sand = await scan({ getBlock, position: state.position, match: SAND, min: 0, step: 2, below: 24, avoid: failed, avoidM: AVOID_M })
+      const sand = await scan({ getBlock, position: state.position, match: SAND, accept: exposed(getBlock), min: 0, step: 2, below: 24, avoid: failed, avoidM: AVOID_M })
       if (!live()) return null
       if (sand && sand.distance < NEAR_M) return null
       const origin = shared.playerHouse?.origin

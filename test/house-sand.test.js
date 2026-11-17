@@ -61,3 +61,18 @@ test('sand the trip could not reach is passed over on the next scan', async () =
   assert.deepEqual(scans, [[], [{ x: 150, z: 250 }]])
   assert.match(lines.join('\n'), /砂 \(150, 250\) へ行けなかった/)
 })
+
+test('sand under water is not a destination; sand under open air is', async () => {
+  const calls = []
+  let busy = false
+  const blocks = { '130,60,180': 'sand', '130,61,180': 'water', '160,60,180': 'sand', '160,61,180': 'air' }
+  const house = createHouseSand({
+    getMode: () => 'player', shared: { playerWanted: true, playerHouse: { origin: { x: 100, y: 64, z: 200 } } }, sleep: async () => { busy = false },
+    getState: () => ({ position: { x: 100, y: 63.62, z: 180 }, inventory: inv(READY) }),
+    getBlock: (x, y, z) => { const name = blocks[`${x},${y},${z}`]; return name ? { known: true, name: `minecraft:${name}` } : y > 70 ? { known: true, name: 'minecraft:air' } : null },
+    travel: { to: async input => { calls.push(input.destination); busy = true }, status: () => ({ busy }), cancel: async () => {} },
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true }
+  })
+  assert.equal(await house.tick(), true)
+  assert.deepEqual(calls, [{ x: 160, z: 180 }])
+})
