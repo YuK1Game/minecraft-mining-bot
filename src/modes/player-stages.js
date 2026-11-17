@@ -13,6 +13,11 @@ const pickaxeAtLeast = tier => items => items.some(item => item?.count > 0 && pi
 
 const STAGES = Object.freeze([
   { id: 'wood', label: '木の道具', implemented: true, reached: pickaxeAtLeast('wooden') },
+  // The house of the user's blueprint, built right after the wooden tools
+  // (house/; user 2026-11-17 03:06-03:07 JST). Reached only from the house record
+  // (shared.playerHouse.done, set when every received block matches), never
+  // implied by a later stage (user 23:16 JST: 「02目標に『拠点の作成』も追加しといて」).
+  { id: 'base', label: '拠点の作成', implemented: true, record: true, reached: (items, house) => house?.done === true },
   { id: 'stone', label: '石の道具', implemented: true, reached: pickaxeAtLeast('stone') },
   { id: 'iron', label: '鉄の道具', implemented: true, reached: pickaxeAtLeast('iron') },
   // The full diamond set, held or worn: pickaxe, sword and all four armour pieces
@@ -28,13 +33,16 @@ const STAGES = Object.freeze([
 // or the inventory is not known.
 // `worn` is the armour snapshot ({ known, worn: [{ name }] }); worn pieces count
 // as held. Unreceived armour counts as nothing worn.
-function playerStages (inventory, worn = null) {
+// `house` is the house record (shared.playerHouse: { origin, done }).
+function playerStages (inventory, worn = null, house = null) {
   const known = inventory?.known === true && inventory.uncertain !== true && Array.isArray(inventory.items)
   const wearing = worn?.known === true && Array.isArray(worn.worn) ? worn.worn.filter(piece => piece?.name).map(piece => ({ name: piece.name, count: 1 })) : []
   const items = known ? [...inventory.items, ...wearing] : []
-  const stages = STAGES.map(stage => ({ id: stage.id, label: stage.label, implemented: stage.implemented, reached: known && stage.reached(items) }))
-  // A later stage reached implies the earlier ones (an iron pickaxe covers wood and stone).
-  for (let i = stages.length - 2; i >= 0; i--) if (stages[i + 1].reached) stages[i].reached = true
+  const stages = STAGES.map(stage => ({ id: stage.id, label: stage.label, implemented: stage.implemented, reached: known && stage.reached(items, house) }))
+  // A later stage reached implies the earlier ones (an iron pickaxe covers wood and
+  // stone); the house is its own record and is skipped both ways.
+  const gear = stages.filter((stage, i) => !STAGES[i].record)
+  for (let i = gear.length - 2; i >= 0; i--) if (gear[i + 1].reached) gear[i].reached = true
   return { known, current: known ? stages.find(stage => !stage.reached)?.id ?? null : null, stages }
 }
 
