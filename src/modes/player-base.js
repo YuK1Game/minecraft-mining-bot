@@ -27,7 +27,7 @@ const { bankableAll, restockable } = require('./player-base-kit')
 
 const CHEST = 'minecraft:chest'
 const DIAMOND = 'minecraft:diamond'
-const KEEP = 8, BANK_AT = 16, NEAR_M = 96, DEEP_DIAMONDS = 8, DEEP_VALUABLES = 32, NEAR_STACKS = 4, FAR_M = 1024, AGAIN_MS = 600000, TRAVEL_MS = 300000
+const KEEP = 8, BANK_AT = 16, NEAR_M = 96, DEEP_DIAMONDS = 8, DEEP_VALUABLES = 32, NEAR_STACKS = 4, FAR_M = 1024, AGAIN_MS = 600000, SOON_MS = 120000, TRAVEL_MS = 300000
 const VALUABLE = /^minecraft:(?:emerald|lapis_lazuli|redstone|raw_gold|gold_ingot|gold_nugget|amethyst_shard|quartz)$/
 const PRECIOUS = /^minecraft:(?:diamond|emerald|lapis_lazuli|redstone|raw_gold|gold_ingot|gold_nugget|amethyst_shard|quartz|iron_ingot|raw_iron|raw_copper|copper_ingot|gold_block|iron_block|diamond_block)$/
 
@@ -74,7 +74,7 @@ function standsBeside (getBlock, chest) {
 }
 
 function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, door = async () => true, spares = () => [], porch = () => null, climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
-  let busy = false, waitUntil = 0, banked = 0
+  let busy = false, waitUntil = 0, banked = 0, soon = false
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const say = text => log(`プレイヤーモード: ${text}`)
   const restart = async () => { for (let attempt = 0; attempt < 5 && live(); attempt++) { try { await agent.start({ ...agent.objective }); return true } catch { await sleep(2000) } } return false }
@@ -128,7 +128,14 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
       let out = null
       try { out = await climb(aborted) } catch (error) { out = { ok: false, reason: String(error?.message ?? error).slice(0, 80) } }
       if (aborted()) return false
-      if (underCover(getBlock, getPosition())) { say(`地上へ出られないため、拠点へ預けに行けません（${out?.reason ?? '不明'}）`); return false }
+      if (underCover(getBlock, getPosition())) {
+        // A climb a fight cut short is tried again in two minutes, not ten (live
+        // 2026-11-17 20:16 JST: 24 steps up, PILLAR_ASCENT_COMBAT_INTERRUPTED, then
+        // ten minutes underground with the diamonds going 15 -> 33 and no food).
+        soon = /COMBAT|INTERRUPT|戦闘/.test(String(out?.reason ?? '') + String(out?.code ?? ''))
+        say(`地上へ出られないため、拠点へ預けに行けません（${out?.reason ?? '不明'}）${soon ? '。2分後にやり直します' : ''}`)
+        return false
+      }
     }
     let base = shared.playerBase
     if (base && flat(base, getPosition()) > FAR_M) { say(`拠点 (${base.x}, ${base.z}) が ${FAR_M}m より遠いため、ここに新しい拠点を作ります`); base = null }
@@ -201,7 +208,8 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
       say(`拠点へ預けられません ${String(error?.message ?? error).slice(0, 120)}`)
       return false
     } finally {
-      waitUntil = now() + (ok ? 30000 : AGAIN_MS)
+      waitUntil = now() + (ok ? 30000 : soon ? SOON_MS : AGAIN_MS)
+      soon = false
       busy = false
       await restart()
     }
