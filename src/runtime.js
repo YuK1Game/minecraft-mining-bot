@@ -28,6 +28,7 @@ const { historicalSourceRejection } = require('./quarry/storage/rejected-source-
 const { historicalEmptyPlacement } = require('./quarry/storage/placement-source-history')
 
 const { resourceMinHealth } = require('./safety/learning-health')
+const { threatFields } = require('./safety/threat-policy')
 
 const { setTimeout: delay } = require('node:timers/promises')
 // Reloadable behaviour only. The client, authentication, world observations,
@@ -524,7 +525,7 @@ function createRuntime (host) {
   function lightweightUserState () {
     const state = working(), observed = raw(), actors = allActors()
     const dead = observed.dead === true || observed.isDead === true || observed.health === 0
-    const current = { ...state, profile: state.profile ?? host.meta.profile, dead: state.dead === true || dead, isDead: state.isDead === true || dead, threatPolicy: host.shared.autoWanted ? 'online_learning' : 'balanced_mining', entities: actors, hostiles: actors.filter(e => e.hostile && e.alive), entityStats: host.entities.stats?.() ?? { unknownPositions: actors.filter(e => e.positionKnown !== true).length }, lifecycle: { ...(state.lifecycle ?? {}), deathId: actualLifeId(), dead, phase: dead ? 'dead' : 'alive' } }
+    const current = { ...state, profile: state.profile ?? host.meta.profile, dead: state.dead === true || dead, isDead: state.isDead === true || dead, ...threatFields(host.shared), entities: actors, hostiles: actors.filter(e => e.hostile && e.alive), entityStats: host.entities.stats?.() ?? { unknownPositions: actors.filter(e => e.positionKnown !== true).length }, lifecycle: { ...(state.lifecycle ?? {}), deathId: actualLifeId(), dead, phase: dead ? 'dead' : 'alive' } }
     rememberCurrentMeleeReach(current)
     return current
   }
@@ -806,7 +807,7 @@ function createRuntime (host) {
       host.shared.perfObservations ??= {}
       host.shared.perfObservations.observedStateMs = Math.max(host.shared.perfObservations.observedStateMs ?? 0, performance.now() - startedAt)
     }
-    return { ...state, threatPolicy: host.shared.autoWanted ? 'online_learning' : 'balanced_mining', entities, removedEntities: host.entities.snapshotRemoved?.() ?? [], hostiles: entities.filter(entity => entity.hostile && entity.alive) }
+    return { ...state, ...threatFields(host.shared), entities, removedEntities: host.entities.snapshotRemoved?.() ?? [], hostiles: entities.filter(entity => entity.hostile && entity.alive) }
   }
   // Left over from before ranged shots were recorded separately (see userBehaviors onUncertain).
   if (host.shared.inventoryUncertain?.operation === 'ranged_shot') host.shared.inventoryUncertain = null
@@ -944,7 +945,7 @@ function createRuntime (host) {
     return food.restoreHunger({ ...structuredClone(observation), scope: Object.hasOwn(observation, 'scope') ? structuredClone(observation.scope) : foodHungerScope(), respawn: structuredClone(host.shared.deathRespawn ?? null) })
   }
   function motionState () {
-    const latest = { ...raw(), threatPolicy: host.shared.autoWanted ? 'online_learning' : 'balanced_mining', vitals: structuredClone(host.shared.vitals ?? {}), totemGuard: offhandTotem() }
+    const latest = { ...raw(), ...threatFields(host.shared), vitals: structuredClone(host.shared.vitals ?? {}), totemGuard: offhandTotem() }
     if (!motionOrigin) return latest
     return { ...latest, position: { ...motionOrigin.position }, positionUpdatedAt: motionOrigin.positionUpdatedAt, positionSource: motionOrigin.positionSource, predicted: motionOrigin.predicted ? structuredClone(motionOrigin.predicted) : null }
   }

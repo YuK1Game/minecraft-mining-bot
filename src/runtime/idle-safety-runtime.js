@@ -1,6 +1,7 @@
 'use strict'
+const { threatFields } = require('../safety/threat-policy')
 
-// Moved out of runtime.js unchanged by scripts/extract-runtime-block.js.
+// Moved from runtime.js by scripts/extract-runtime-block.js.
 // `rt` exposes the runtime closure bindings this code uses; each read or write
 // of rt.<name> reads or writes the runtime's own variable at that moment.
 // Modules are loaded through rt.require, the runtime's own require.
@@ -1188,7 +1189,7 @@ function createIdleSafetyRuntime (rt) {
             // failure while the bot remains online. Never log
             // player names, positions, inventory, chat or authentication.
             try {
-              const state = { ...observed, threatPolicy: rt.host.shared.autoWanted ? 'online_learning' : 'balanced_mining' }
+              const state = { ...observed, ...threatFields(rt.host.shared) }
               const danger = rt.evaluateThreats(state, rt.host.entities.snapshot({ kind: 'all' }), { observationRadius: 32 })
               const nearest = danger.threats[0]
               if (nearest && /^minecraft:[a-z_]{1,40}$/.test(nearest.name) && Number.isFinite(nearest.distance)) rt.host.log(`待機保護の近傍敵: type=${nearest.name} distance=${nearest.distance.toFixed(1)} cover=unverified unknown=${danger.requiresObservation} count=${danger.threats.length}`)
