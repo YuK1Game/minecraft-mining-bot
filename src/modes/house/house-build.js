@@ -95,8 +95,15 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     // wool, so a house is not held back by a desert-less or sheep-less area
     // (live 2026-11-17 03:32 JST: no sand in sight, the build never began).
     if (!needs || needs.need.logs > 0 || needs.need.cobblestone > 0) return false
-    return left.some(step => step.item === 'glass' ? needs.need.sand === 0 : step.item === 'white_bed' ? needs.need.wool === 0 : true)
+    // A step the last run failed on waits AGAIN_MS, and the door waits for
+    // the rest: neither brings the Bot back (live 2026-11-17 14:06-14:11 JST:
+    // a corner block out of sight and the door called it home from the sand
+    // after every single sand, one glass per round trip).
+    const fresh = step => !(now() - (failedAt.get(step.id) ?? -Infinity) < AGAIN_MS)
+    if (left.every(step => step.id === DOOR)) return left.length > 0
+    return left.some(step => step.id !== DOOR && fresh(step) && (step.item === 'glass' ? needs.need.sand === 0 : step.item === 'white_bed' ? needs.need.wool === 0 : true))
   }
+  const failedAt = new Map()
 
   const logsKept = left => left.filter(step => step.item === 'oak_log').length
 
@@ -388,6 +395,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       if (!progress || unsettled) break
     }
     const left = remaining(getBlock, origin)
+    for (const step of left) if ((fails.get(step.id) ?? 0) > 0 && workable(step)) failedAt.set(step.id, now())
     if (!left.length) {
       shared.playerHouse = { ...shared.playerHouse, origin, done: true }
       await save()
