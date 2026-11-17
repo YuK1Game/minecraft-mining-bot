@@ -17,7 +17,7 @@ test('a hit logs the body cells and the entities around it once per hit, at most
   const text = noteDamage(input(1000))
   assert.match(text, /足 \(0, 10, 0\)/)
   assert.match(text, /下 stone/)
-  assert.match(text, /arrow 1\.4m\(\+1\.0\) \/ skeleton 21\.5m\(\+8\.0\)/)
+  assert.match(text, /48m 以内 矢 1 本（最も近い 1\.4m）、skeleton 21\.5m\(\+8\.0\)/)
   assert.doesNotMatch(text, /zombie|item/)
   assert.equal(noteDamage(input(2000)), null) // same hit
   shared.travelLastDamageAt = 3000

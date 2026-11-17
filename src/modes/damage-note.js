@@ -21,8 +21,12 @@ function noteDamage ({ shared, health, position, actors, getBlock, log, now = Da
   const unknown = list.filter(actor => !actor.position || ![actor.position.x, actor.position.y, actor.position.z].every(Number.isFinite)).length
   const near = list.filter(actor => actor.position && [actor.position.x, actor.position.y, actor.position.z].every(Number.isFinite))
     .map(actor => ({ type: actor.entityType.replace(/^minecraft:/, ''), distance: Math.hypot(actor.position.x - position.x, actor.position.y - (position.y - 1.62), actor.position.z - position.z), dy: actor.position.y - (position.y - 1.62) }))
-    .filter(actor => actor.distance <= RANGE_M).sort((a, b) => a.distance - b.distance).slice(0, 8)
-  const text = `被弾のまわり: 体力 ${Number.isFinite(health) ? Math.round(health * 100) / 100 : '?'}、足 (${feet.x}, ${feet.y}, ${feet.z})、足のマス ${cell(0)}・頭 ${cell(1)}・下 ${cell(-1)}、${RANGE_M}m 以内 ${near.length ? near.map(actor => `${actor.type} ${actor.distance.toFixed(1)}m(${actor.dy >= 0 ? '+' : ''}${actor.dy.toFixed(1)})`).join(' / ') : 'なし'}${unknown ? `、位置不明 ${unknown}` : ''}`
+    .filter(actor => actor.distance <= RANGE_M).sort((a, b) => a.distance - b.distance)
+  // Arrows are one count with the nearest: a dozen stuck arrows filled the list and
+  // hid the skeleton (live 2026-11-17 23:13-23:14 JST).
+  const arrows = near.filter(actor => actor.type === 'arrow')
+  const shown = near.filter(actor => actor.type !== 'arrow').slice(0, 8)
+  const text = `被弾のまわり: 体力 ${Number.isFinite(health) ? Math.round(health * 100) / 100 : '?'}、足 (${feet.x}, ${feet.y}, ${feet.z})、足のマス ${cell(0)}・頭 ${cell(1)}・下 ${cell(-1)}、${RANGE_M}m 以内 ${arrows.length ? `矢 ${arrows.length} 本（最も近い ${arrows[0].distance.toFixed(1)}m）、` : ''}${shown.length ? shown.map(actor => `${actor.type} ${actor.distance.toFixed(1)}m(${actor.dy >= 0 ? '+' : ''}${actor.dy.toFixed(1)})`).join(' / ') : 'なし'}${unknown ? `、位置不明 ${unknown}` : ''}`
   log(text)
   return text
 }

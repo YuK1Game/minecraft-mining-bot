@@ -48,7 +48,7 @@ test('mode control records the switch, saves it and never restores a quarry job 
 test('player mode starts the survival autonomy with idle protection only in player mode', async () => {
   let mode = 'quarry'; const calls = []
   const agent = { start: options => { calls.push(['start', options.objective]); return { running: true } }, stop: () => calls.push(['stop']), snapshot: () => ({ running: calls.at(-1)?.[0] === 'start', phase: 'working' }) }
-  const player = createPlayerMode({ getMode: () => mode, agent, safety: { start: () => calls.push(['safety']) }, getInventory: () => ({ known: true, items: [{ name: 'minecraft:iron_pickaxe', count: 1 }] }) })
+  const player = createPlayerMode({ getMode: () => mode, agent, safety: { start: () => calls.push(['safety']) }, shared: { playerHouse: { done: true } }, getInventory: () => ({ known: true, items: [{ name: 'minecraft:iron_pickaxe', count: 1 }] }) })
   assert.throws(() => player.start(), { code: 'MODE_MISMATCH' })
   assert.deepEqual(calls, [])
   mode = 'player'
@@ -63,17 +63,22 @@ test('stages are reached only from a received inventory', () => {
   assert.equal(playerStages(null).current, null)
   assert.equal(playerStages({ known: true, uncertain: true, items: [{ name: 'minecraft:diamond', count: 1 }] }).known, false)
   assert.equal(playerStages({ known: true, items: [] }).current, 'wood')
-  const stone = playerStages({ known: true, items: [{ name: 'minecraft:stone_pickaxe', count: 1 }] })
-  assert.deepEqual(stone.stages.filter(s => s.reached).map(s => s.id), ['wood', 'stone'])
+  // The house comes right after the wooden tools and only from its record (user 23:16 JST).
+  const built = { origin: { x: 0, y: 64, z: 0 }, done: true }
+  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:wooden_pickaxe', count: 1 }] }).current, 'base')
+  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:iron_pickaxe', count: 1 }] }, null, { done: false }).current, 'base')
+  assert.equal(playerStages({ known: true, items: [] }, null, built).current, 'wood')
+  const stone = playerStages({ known: true, items: [{ name: 'minecraft:stone_pickaxe', count: 1 }] }, null, built)
+  assert.deepEqual(stone.stages.filter(s => s.reached).map(s => s.id), ['wood', 'base', 'stone'])
   assert.equal(stone.current, 'iron')
   // Diamonds alone are not the diamond stage: the pickaxe and the sword are.
-  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:iron_pickaxe', count: 1 }, { name: 'minecraft:diamond', count: 18 }] }).current, 'diamond')
-  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:diamond_pickaxe', count: 1 }] }).current, 'diamond')
+  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:iron_pickaxe', count: 1 }, { name: 'minecraft:diamond', count: 18 }] }, null, built).current, 'diamond')
+  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:diamond_pickaxe', count: 1 }] }, null, built).current, 'diamond')
   // Pickaxe, sword and a worn chestplate are not the full set (user 21:39 JST).
   const tools = [{ name: 'minecraft:diamond_pickaxe', count: 1 }, { name: 'minecraft:diamond_sword', count: 1 }]
-  assert.equal(playerStages({ known: true, items: tools }, { known: true, worn: [{ piece: 'chest', name: 'minecraft:diamond_chestplate' }] }).current, 'diamond')
+  assert.equal(playerStages({ known: true, items: tools }, { known: true, worn: [{ piece: 'chest', name: 'minecraft:diamond_chestplate' }] }, built).current, 'diamond')
   const set = { known: true, worn: ['helmet', 'chestplate', 'leggings'].map(piece => ({ name: `minecraft:diamond_${piece}` })) }
-  assert.equal(playerStages({ known: true, items: [...tools, { name: 'minecraft:diamond_boots', count: 1 }] }, set).current, 'nether')
+  assert.equal(playerStages({ known: true, items: [...tools, { name: 'minecraft:diamond_boots', count: 1 }] }, set, built).current, 'nether')
   // Unreceived armour counts as nothing worn.
-  assert.equal(playerStages({ known: true, items: [...tools, { name: 'minecraft:diamond_boots', count: 1 }] }, { known: false, worn: set.worn }).current, 'diamond')
+  assert.equal(playerStages({ known: true, items: [...tools, { name: 'minecraft:diamond_boots', count: 1 }] }, { known: false, worn: set.worn }, built).current, 'diamond')
 })

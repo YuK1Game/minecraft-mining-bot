@@ -41,16 +41,16 @@ function createPlayerMode ({ getMode, agent, safety, recovery = null, shelter = 
     // While recovery owns the pause or the far move, the player is still playing.
     const wanted = shared.playerWanted === true
     const fleeing = flee?.status() ?? { active: false }
-    if (fleeing.active) return { wanted, running: true, phase: 'fleeing', reason: text(fleeing.reason), ...playerStages(getInventory(), worn()) }
+    if (fleeing.active) return { wanted, running: true, phase: 'fleeing', reason: text(fleeing.reason), ...playerStages(getInventory(), worn(), shared.playerHouse) }
     const sheltering = shelter?.status() ?? { active: false }
-    if (sheltering.active) return { wanted, running: true, phase: 'sheltering', reason: text(sheltering.reason), ...playerStages(getInventory(), worn()) }
+    if (sheltering.active) return { wanted, running: true, phase: 'sheltering', reason: text(sheltering.reason), ...playerStages(getInventory(), worn(), shared.playerHouse) }
     const scaffolding = scaffold?.status() ?? { active: false }
-    if (scaffolding.active) return { wanted, running: true, phase: 'working', reason: text(scaffolding.reason), ...playerStages(getInventory(), worn()) }
+    if (scaffolding.active) return { wanted, running: true, phase: 'working', reason: text(scaffolding.reason), ...playerStages(getInventory(), worn(), shared.playerHouse) }
     const recovering = recovery?.status() ?? { active: false }
-    if (recovering.active) return { wanted, running: true, phase: 'recovering', reason: text(recovering.reason), ...playerStages(getInventory(), worn()) }
+    if (recovering.active) return { wanted, running: true, phase: 'recovering', reason: text(recovering.reason), ...playerStages(getInventory(), worn(), shared.playerHouse) }
     // A run whose current decision is a wait is waiting, whatever its phase says between ticks.
     const phase = value.running === true && value.lastDecision?.type === 'wait' ? 'waiting' : value.phase
-    return { wanted, running: value.running === true, phase: text(phase), reason: text(value.reason), ...playerStages(getInventory(), worn()) }
+    return { wanted, running: value.running === true, phase: text(phase), reason: text(value.reason), ...playerStages(getInventory(), worn(), shared.playerHouse) }
   }
   return { start, stop, status }
 }
