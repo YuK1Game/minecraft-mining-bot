@@ -326,8 +326,13 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
   // Called with every autonomy progress snapshot.
   function onProgress (snapshot) {
     if (run || !snapshot || normalizeMode(getMode()) !== 'player' || shared.autoWanted !== true) return false
-    // Running: only the search for wood is taken over. Stopped: blocked and failed runs.
-    if (snapshot.running ? !seeksWood(snapshot) : !['blocked', 'failed'].includes(snapshot.phase)) return false
+    // Running: only the search for wood is taken over. Stopped: blocked and
+    // failed runs, and runs the planner itself ended with a stop decision: the
+    // runtime restarts those at once with the same exhausted counts (live
+    // 2026-11-17 16:01-16:16 JST: 「拠点候補を探す回数の上限に達したため停止します。」
+    // every 0.5 s for fifteen minutes, nothing logged, the Bot never moved).
+    const planned = snapshot.phase === 'stopped' && snapshot.lastDecision?.type === 'stop'
+    if (snapshot.running ? !seeksWood(snapshot) : !(['blocked', 'failed'].includes(snapshot.phase) || planned)) return false
     // The runtime restarts a stopped run at once while autoWanted is set.
     shared.autoWanted = false
     shared.playerRecovering = true
