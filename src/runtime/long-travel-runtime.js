@@ -246,6 +246,7 @@ function createLongTravelRuntime (rt) {
     // Live 22:22: five skeletons at 1-2 m while the bot (diamond sword) kept trying
     // to walk away in water. Within 4 m an armed bot leaves it to combat.
     if (nearest < 4 && (rt.working().inventory?.items ?? []).some(i => /_sword$|_axe$/.test(i.name ?? ''))) return false
+    if (rt.require('./travel/travel-shooters').playerArmedAndWell({ shared: rt.host.shared, health: rt.working().health, items: rt.working().inventory?.items, hurt })) return false
     const low = (rt.working().health ?? 20) < 10
     if (hurt) for (const a of sh.filter(o => Math.hypot(o.position.x - feet.x, o.position.z - feet.z) <= 24)) travelAddDangerZone(a.position, String(a.entityType ?? a.name ?? ''))
     return retreatStep(sh, feet, { signal, low, label: `長距離移動: 射撃する敵（${sh.map(a => String(a.entityType ?? a.name).replace('minecraft:', '')).join('・')}、${Math.round(nearest)}m）から離れます` })

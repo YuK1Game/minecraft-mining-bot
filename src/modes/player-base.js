@@ -27,7 +27,7 @@ const { bankableAll, restockable } = require('./player-base-kit')
 
 const CHEST = 'minecraft:chest'
 const DIAMOND = 'minecraft:diamond'
-const KEEP = 8, BANK_AT = 16, NEAR_M = 96, DEEP_DIAMONDS = 8, DEEP_VALUABLES = 32, NEAR_STACKS = 4, FAR_M = 1024, AGAIN_MS = 600000, SOON_MS = 120000, TRAVEL_MS = 300000, TRAVEL_MAX_MS = 1200000, STALL_MS = 120000, STALL_M = 8, MS_PER_M = 2000
+const KEEP = 8, BANK_AT = 16, NEAR_M = 96, DEEP_DIAMONDS = 8, DEEP_VALUABLES = 32, NEAR_STACKS = 4, FAR_M = 1024, AGAIN_MS = 600000, SOON_MS = 120000, TRAVEL_MS = 300000, TRAVEL_MAX_MS = 1200000, STALL_MS = 240000, QUICK_MS = 30000, STALL_M = 8, MS_PER_M = 2000
 const VALUABLE = /^minecraft:(?:emerald|lapis_lazuli|redstone|raw_gold|gold_ingot|gold_nugget|amethyst_shard|quartz)$/
 const PRECIOUS = /^minecraft:(?:diamond|emerald|lapis_lazuli|redstone|raw_gold|gold_ingot|gold_nugget|amethyst_shard|quartz|iron_ingot|raw_iron|raw_copper|copper_ingot|gold_block|iron_block|diamond_block)$/
 
@@ -74,7 +74,7 @@ function standsBeside (getBlock, chest) {
 }
 
 function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, door = async () => true, spares = () => [], porch = () => null, climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
-  let busy = false, waitUntil = 0, banked = 0, soon = false
+  let busy = false, waitUntil = 0, banked = 0, soon = false, quick = false
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const say = text => log(`プレイヤーモード: ${text}`)
   const restart = async () => { for (let attempt = 0; attempt < 5 && live(); attempt++) { try { await agent.start({ ...agent.objective }); return true } catch { await sleep(2000) } } return false }
@@ -147,6 +147,8 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
         // gets closer (live 2026-11-17 20:36〜20:41 JST: a 407 m trip slowed by
         // skeletons and a meal was cancelled at five minutes with 311 m left, and
         // the next try came ten minutes later, by when the bot was back underground).
+        // A trip that falls short is tried again in 30 s: while it waited two
+        // minutes the work walked 100 m back west (live 21:02 JST).
         const until = now() + Math.min(TRAVEL_MAX_MS, Math.max(TRAVEL_MS, flat(base, getPosition()) * MS_PER_M))
         let best = flat(base, getPosition()), bestAt = now()
         while (!aborted() && now() < until && now() - bestAt < STALL_MS && travel.status()?.busy) {
@@ -156,7 +158,7 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
         }
         if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
         if (aborted()) return false
-        if (flat(base, getPosition()) > 20) soon = true
+        if (flat(base, getPosition()) > 20) quick = true
       }
       if (flat(base, getPosition()) > 6) await approach(base, 6)
       // Any received stand beside the chest that a walk reaches (inside the house the nearest may be walled off).
@@ -164,7 +166,7 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
       try { await door() } catch {}
       for (const stand of standsBeside(getBlock, base).slice(0, 4)) { if (aborted() || flat(stand, getFeet()) <= 0.45) break; if (await walk(stand)) break }
       if (aborted()) return false
-      if (flat(base, getPosition()) > 4) { say(`拠点のチェストのそばまで行けません（残り ${Math.round(flat(base, getPosition()))}m）${soon ? '。2分後にやり直します' : ''}`); return false }
+      if (flat(base, getPosition()) > 4) { say(`拠点のチェストのそばまで行けません（残り ${Math.round(flat(base, getPosition()))}m）${quick ? '。30秒後にやり直します' : ''}`); return false }
       // A chest that is gone (received as something else) is made again here.
       if (getBlock(base.x, base.y, base.z)?.known === true && !isChest(base)) { say('拠点のチェストがなくなっていたため、作り直します'); base = null }
     }
@@ -218,8 +220,8 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
       say(`拠点へ預けられません ${String(error?.message ?? error).slice(0, 120)}`)
       return false
     } finally {
-      waitUntil = now() + (ok ? 30000 : soon ? SOON_MS : AGAIN_MS)
-      soon = false
+      waitUntil = now() + (ok ? 30000 : quick ? QUICK_MS : soon ? SOON_MS : AGAIN_MS)
+      soon = false; quick = false
       busy = false
       await restart()
     }
