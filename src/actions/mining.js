@@ -5,7 +5,7 @@ const { resourceMinHealth } = require('../safety/learning-health')
 
 const { selectVisibleBlockFace, traceBlockFace } = require('../combat/aim')
 const { isDryAccessPlant } = require('./action-access')
-const { bedVisibleFace } = require('./portable-bed')
+const { bedVisibleFace, BED_HEIGHT } = require('./portable-bed')
 const { isShulkerBlock } = require('../inventory/container-types')
 const { fluidRoofNeighbourSafe } = require('../quarry/quarry-fluid-roof-safety')
 
@@ -322,7 +322,9 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     startedBlockAt = now()
     activeInput.lookAt(expected.aim.point)
     activeInput.start()
-    activeInput.sendAction('start_break', target, expected.aim.face, { hitPoint: expected.aim.hit })
+    // A bed's top face is 9/16 high (live 2026-11-17 12:08 JST: its top-face hit
+    // was refused as 交点が指定されたブロック面にありません).
+    activeInput.sendAction('start_break', target, expected.aim.face, { hitPoint: expected.aim.hit, ...(expected.name === 'minecraft:bed' ? { topHeight: BED_HEIGHT } : {}) })
   }
 
   function check () {

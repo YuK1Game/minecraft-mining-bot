@@ -298,7 +298,18 @@ function createLongTravelRuntime (rt) {
     if (!rec || target?.ownershipKey !== rec.key || block?.name !== 'minecraft:bed' || rec.life !== rt.actualLifeId()) return false
     return [rec.foot, rec.head].some(p => p && p.x === target.x && p.y === target.y && p.z === target.z)
   }
+  async function mineTravelBed (foot, key) {
+    const isBed = p => rt.host.world.getBlock(p.x, p.y, p.z)?.name === 'minecraft:bed'
+    rt.requireIdle({ inventoryRequired: false })
+    rt.operations.mining.start([{ ...foot, accessPreparation: 'owned_bed', expectedName: 'minecraft:bed', ownershipKey: key }])
+    const mineUntil = Date.now() + 15000
+    while (Date.now() < mineUntil && isBed(foot)) await new Promise(r => setTimeout(r, 200))
+    if (!isBed(foot)) await rt.operations.quarry.pickupNear({ center: foot, radius: 5, maxMs: 15000 })
+  }
   async function travelRespawnBed (signal) {
+    const leftover = rt.require('./travel/travel-bed-leftover')
+    try { await leftover.recoverLeftover({ shared: rt.host.shared, getBlock: (x, y, z) => rt.host.world.getBlock(x, y, z), mine: mineTravelBed, log: m => rt.host.log(m) }) } catch {}
+    if (leftover.houseOwnsSpawn(rt.host.shared)) return { ok: false, reason: 'PLAYER_HOUSE' }
     const items = () => rt.working().inventory?.items ?? []
     const st = rt.working(); if (!st.position) return { ok: false }
     const feet = { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }
@@ -351,11 +362,8 @@ function createLongTravelRuntime (rt) {
     // Take the bed back under this trip's own placement record.
     try { if (rt.working().sleeping) await rt.interactions.wakeBed?.(foot) } catch {}
     try {
-      rt.requireIdle({ inventoryRequired: false })
-      rt.operations.mining.start([{ ...foot, accessPreparation: 'owned_bed', expectedName: 'minecraft:bed', ownershipKey: rt.host.shared.travelBed.key }])
-      const mineUntil = Date.now() + 15000
-      while (Date.now() < mineUntil && isBed(foot)) await new Promise(r => setTimeout(r, 200))
-      if (!isBed(foot)) await rt.operations.quarry.pickupNear({ center: foot, radius: 5, maxMs: 15000 })
+      await mineTravelBed(foot, rt.host.shared.travelBed.key)
+      if (!isBed(foot)) rt.host.shared.travelBed = null
     } catch (error) { rt.host.log(`長距離移動: ベッドを回収できません: ${String(error.message ?? error).slice(0, 80)}`) }
     rt.host.log(`長距離移動: ベッド${bed() ? 'を回収しました（受信した持ち物で確認）' : 'の回収を確認できません'}`)
     return { ok: confirmed, recovered: !!bed() }
