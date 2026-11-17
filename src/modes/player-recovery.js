@@ -18,6 +18,7 @@ const { normalizeMode } = require('./bot-mode')
 
 const LOG = /^(?:minecraft:)?[a-z_]+_(?:log|stem)$/
 const TRIP_LIMIT = 8
+const SHORT_MS = 30 * 60000 // a far place a walk did not reach
 const PIT_LIMIT = 3 // tries to step out of a pit, per ten minutes
 const WATER_LIMIT = 3 // swims onto a ledge after a stop, per ten minutes
 const SETTLE_LIMIT = 3 // walks to the middle of the block, per ten minutes
@@ -95,6 +96,11 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
   let run = null, trips = 0, pits = 0, pitAt = 0, settles = 0, settleAt = 0, waters = 0, waterAt = 0, heading = null, logsSeen = 0, reason = null, visited = []
   const repeat = createRepeat({ now })
   let turns = 0
+  // Far work places a walk did not reach: not walked to again for SHORT_MS (live
+  // 2026-11-17 23:26-23:36 JST: the same ore 160 m west, each walk ended with no
+  // route, 181 legs without progress, or the danger zone, and was started again).
+  const short = new Map()
+  const shortKey = point => `${Math.floor(point.x / 16)},${Math.floor(point.z / 16)}`
   const live = token => run === token && !disposed() && normalizeMode(getMode()) === 'player'
 
   async function wait (token, ms) {
@@ -276,10 +282,14 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
       return restart(token, { ...agent.objective })
     }
     const far = farTarget(snapshot, getPosition())
-    if (!search && far && trips < TRIP_LIMIT) {
+    const shortAt = far ? short.get(shortKey(far)) : undefined
+    if (far && shortAt !== undefined && now() - shortAt < SHORT_MS) log(`プレイヤーモード: 次の作業の場所 (${far.x}, ${far.z}) へは前の移動で着けなかったため、今回は移動しません`)
+    else if (!search && far && trips < TRIP_LIMIT) {
       trips++
       await trip(token, snapshot, far)
       if (!live(token) || held()) return false
+      const after = getPosition()
+      if (after && Math.hypot(far.x + 0.5 - after.x, far.z + 0.5 - after.z) > 24) { short.set(shortKey(far), now()); if (short.size > 64) short.delete(short.keys().next().value) }
       return restart(token, { ...agent.objective })
     }
     if (search) {

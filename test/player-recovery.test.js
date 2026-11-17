@@ -320,3 +320,12 @@ test('a run the planner ended with a stop decision is taken over, not restarted 
   const manual = fixture()
   assert.equal(manual.recovery.onProgress({ running: false, phase: 'stopped', reason: '停止しました。', lastDecision: { type: 'tunnel' }, progress: {} }), false)
 })
+
+test('a far work place the walk did not reach is not walked to again; the repeat rules answer (live 2026-11-17 23:26-23:36 JST)', async () => {
+  const f = fixture({ walks: false })
+  const stop = () => blocked({ stopCode: null, reason: '再試行の上限に達しました: The ore lies outside the bounded tunneling area', lastDecision: { type: 'tunnel', resource: 'diamond', target: { x: 160, y: 20, z: 5 } } })
+  f.recovery.onProgress(stop()); await settle(f.recovery)
+  f.recovery.onProgress(stop()); await settle(f.recovery)
+  assert.deepEqual(f.calls.filter(call => call.travel).map(call => call.travel), [{ x: 160, z: 5 }])
+  assert.match(f.logs.join('\n'), /\(160, 5\) へは前の移動で着けなかったため/)
+})
