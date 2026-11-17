@@ -171,7 +171,9 @@ function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 
           if (!clear) continue
         }
         const covered = surfaceOnly && !sky(x, s.y, z)
-        if (covered && dy < 0) continue
+        // Live 2026-11-17 12:13: on a furnace in the own house; one step down
+        // within 4 blocks of a covered start is allowed (getting off a block).
+        if (covered && dy < 0 && !(startCovered && dy === -1 && Math.hypot(x - sx, z - sz) <= 4)) continue
         const g = n.g + (dx && dz ? 1.414 : 1) * (s.water ? 10 : 1) /* coordinator 2026-11-14: keep out of water where possible */ * (covered ? 5 : 1) + (dy > 0 ? 0.5 : 0)
         const k = key(x, s.y, z)
         if (g >= (best.get(k) ?? Infinity)) continue
