@@ -31,6 +31,7 @@ const { createPlayerStorage } = require('./player-storage')
 const { createStoragePorts } = require('./player-storage-ports')
 const { nextObjective } = require('./player-goal')
 const { pruneTunnelFloors } = require('./player-floor-prune')
+const { noteDamage } = require('./damage-note')
 const { playFile, createPlayerResume } = require('./player-resume')
 const { createPlayerBase, baseFile, loadBaseSync } = require('./player-base')
 const { createHouseWool } = require('./house/house-wool')
@@ -289,7 +290,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       }
     }
   })
-  const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else { void flee.tick().catch(() => {}); void cover.tick().catch(() => {}) } }), 500)
+  const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else { void flee.tick().catch(() => {}); void cover.tick().catch(() => {}); try { noteDamage({ shared, health: runtime.raw().health, position: where(), actors: runtime.host().entities.snapshot({ kind: 'all' }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log }) } catch { /* A log line only. */ } } }), 500)
   fleeTimer.unref?.()
   // The shelter is checked every two seconds; a reloaded runtime's timer ends itself.
   const timer = setInterval(require('../common/work-spans').wrap('player-mode.tick', () => {
