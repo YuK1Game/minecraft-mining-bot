@@ -37,6 +37,8 @@ test('a column is dry only when nothing above it, or beside its way up, is liqui
   assert.equal(dryColumn(block, 4, 43, 0), true)
   const gravel = world({ extra: { '4,50,0': { known: true, name: 'minecraft:gravel', boundingBox: 'block' } } })
   assert.equal(dryColumn(gravel.block, 4, 43, 0), false)
+  const sandBeside = world({ extra: { '5,52,0': { known: true, name: 'minecraft:sand', boundingBox: 'block' } } })
+  assert.equal(dryColumn(sandBeside.block, 4, 43, 0), false, 'sand beside the way up is refused by the mining check')
   const unknown = world({ extra: { '4,48,0': { known: false } } })
   assert.equal(dryColumn(unknown.block, 4, 43, 0), false)
   assert.equal(dryColumns(block, 0, 43, 0)[0].steps, 4)
