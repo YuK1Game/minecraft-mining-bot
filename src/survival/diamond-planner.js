@@ -39,6 +39,7 @@ const isWoodFuel = name => name.endsWith('_planks') && FUEL_WOODS.has(name.slice
 const isFuel = name => ['coal', 'charcoal'].includes(name) || isWoodFuel(name)
 const distance = (eye, point) => Math.hypot(point.x + 0.5 - eye.x, point.y + 0.5 - eye.y, point.z + 0.5 - eye.z)
 const entityId = item => item.entityId ?? item.runtimeEntityId ?? item.runtimeId ?? item.id
+const EXCLUDED_NEAR_M = 32
 const resourceScope = state => state && typeof state.profile === 'string' && state.realm?.id != null && typeof state.dimension === 'string' && typeof state.connectionId === 'string'
   ? JSON.stringify([state.profile, String(state.realm.id), state.dimension, state.connectionId, String(state.runtimeEntityId ?? '')]) : null
 const MIN_BULK_DURABILITY = 5
@@ -336,7 +337,12 @@ function nextDiamondAction (state, observations = {}, options = {}) {
         const point = input.position ?? input
         const observed = integer(point) ? latestBlocks.get(cell(point)) ?? (input.name ? input : null) : null
         const scopedExclusion = scope && (progress.excludedResources ?? []).some(entry => entry?.scope === scope && entry.resource === resource && integer(entry.position) && key(entry.position) === key(point))
-        return observed?.known === true && ORES[resource].has(nameOf(observed.name)) && scopedExclusion
+        // Only an excluded ore around here (the prospect's reach) makes this place
+        // explored; one left far behind gets a scan of here instead (live
+        // 2026-11-17 18:46-18:58 JST: the house's excluded ores 360 m away kept
+        // every stop an explore, the scan from 14:28 never redone, 380 m west).
+        const near = Math.hypot(point.x + 0.5 - state.position.x, point.z + 0.5 - state.position.z) <= EXCLUDED_NEAR_M
+        return near && observed?.known === true && ORES[resource].has(nameOf(observed.name)) && scopedExclusion
       })
       if (emptyScan || knownExcludedOre) return requireAction('explore', result('explore', resource, '現在地で必要な鉱石を確認できなかったため、既知の安全な足場を通って別の場所を調べます。', { resource, count: needed, requiredToolTier: requiredTier, rejectUnknown: true, allowWater: false, requiresKnownTerrain: true, requiresLivePreview: true, attempt: amount(progress.explorationAttempts) + 1 }), ['movement_exploration'])
       return requireAction('prospect', result('prospect', resource, '必要な鉱石を未取得の場所にあると決めつけず、確認できる地形を調べます。', { resource, count: needed, requiredToolTier: requiredTier, rejectUnknown: true }))
