@@ -22,7 +22,7 @@ const { sidestep } = require('./player-climb-side')
 const { walkOut, recordedFloors } = require('./player-tunnel-exit')
 const { underCover } = require('./player-surface')
 const { boxedIn, stepOut } = require('./player-pit')
-const { settle, offCentre } = require('./player-settle')
+const { settle, offCentre, offGrid } = require('./player-settle')
 const { createPlayerTorch } = require('./player-torch')
 const { createTorchPorts } = require('./player-torch-ports')
 const { createPlayerStorage } = require('./player-storage')
@@ -133,7 +133,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       }
     },
     settle: {
-      needed: () => !!offCentre((x, y, z) => runtime.host().world.getBlock(x, y, z), hands.feet()),
+      needed: () => !!offCentre((x, y, z) => runtime.host().world.getBlock(x, y, z), hands.feet()) || offGrid(hands.feet()),
       run: async aborted => {
         for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
         return settle({ ports: hands, aborted: () => aborted() || flee.status().active || shelter.status().active })

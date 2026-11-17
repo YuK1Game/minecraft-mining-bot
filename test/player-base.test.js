@@ -118,3 +118,8 @@ test('everything but the kit is banked (user 11:09 JST: 必要最低限のアイ
   assert.equal(diamondsNeeded(items.items, worn), 0)
   assert.deepEqual(bankableAll({ known: true, uncertain: true, items: [] }), [])
 })
+
+test('standBeside never picks the cell on top of the other half of a large chest', () => {
+  const at = standBeside(world({ '5,64,0': 'minecraft:chest', '6,64,0': 'minecraft:chest' }), { x: 5, y: 64, z: 0 })
+  assert.deepEqual(at, { x: 4.5, y: 64, z: 0.5 })
+})

@@ -213,7 +213,7 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
     if (options.boundedJump != null) requireJumpHunger(state, sprintPolicy(state, sprint), enabled, emergency)
     const candidate = navigatorFor(enabled)
     const initial = candidate.physics.fromServer(state)
-    const route = candidate.plan(initial, target, { maxDistance: options.maxDistance ?? 12, maxExpanded: options.maxExpanded ?? 1500, avoidance: options.avoidance, directFlat: options.directFlat ?? false, directSurface: options.directSurface ?? false, exactGoal: options.exactGoal ?? false, partialDrop: options.partialDrop ?? false, partialRecenter: options.partialRecenter ?? false, controlledDrop: options.controlledDrop ?? false, shoreRecenter: options.shoreRecenter ?? false, stablePartialOrigin: options.stablePartialOrigin ?? (options.boundedJump != null), boundedJump: options.boundedJump ?? null, waterExit: options.waterExit === true })
+    const route = candidate.plan(initial, target, { maxDistance: options.maxDistance ?? 12, maxExpanded: options.maxExpanded ?? 1500, avoidance: options.avoidance, directFlat: options.directFlat ?? false, directSurface: options.directSurface ?? false, exactGoal: options.exactGoal ?? false, partialDrop: options.partialDrop ?? false, partialRecenter: options.partialRecenter ?? false, controlledDrop: options.controlledDrop ?? false, shoreRecenter: options.shoreRecenter ?? false, stablePartialOrigin: options.stablePartialOrigin ?? (options.boundedJump != null), boundedJump: options.boundedJump ?? null, waterExit: options.waterExit === true, lowStepDown: options.lowStepDown === true })
     let sprintRouteDry = null
     if (automatic) { try { sprintRouteDry = knownDryRoute(initial, route) } catch { sprintRouteDry = false } }
     const policy = routeSprintPolicy(state, sprint, sprintRouteDry, automatic)
@@ -521,7 +521,7 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
       if (!Number.isInteger(maxTicks) || maxTicks < 1 || maxTicks > 1200) throw new Error('maxTicks must be between 1 and 1200')
       mark = performance.now()
       prepared.tickLimit=maxTicks
-      prepared.replanOptions={maxDistance:options.maxDistance??12,maxExpanded:options.maxExpanded??1500,avoidance:prepared.route.avoidance??[],directFlat:options.directFlat??false,directSurface:options.directSurface??false,exactGoal:options.exactGoal??false,partialDrop:options.partialDrop??false,partialRecenter:options.partialRecenter??false,controlledDrop:options.controlledDrop??false,shoreRecenter:options.shoreRecenter??false,stablePartialOrigin:options.stablePartialOrigin??false}
+      prepared.replanOptions={maxDistance:options.maxDistance??12,maxExpanded:options.maxExpanded??1500,avoidance:prepared.route.avoidance??[],directFlat:options.directFlat??false,directSurface:options.directSurface??false,exactGoal:options.exactGoal??false,partialDrop:options.partialDrop??false,partialRecenter:options.partialRecenter??false,controlledDrop:options.controlledDrop??false,shoreRecenter:options.shoreRecenter??false,stablePartialOrigin:options.stablePartialOrigin??false,lowStepDown:options.lowStepDown===true}
       const nextStepper = prepared.candidate.createStepper(prepared.route, prepared.initial, { maxTicks, sprint: prepared.sprintAllowed })
       timing.stepperMs = performance.now() - mark; mark = performance.now()
       const result = begin(prepared, nextStepper, 'moving')

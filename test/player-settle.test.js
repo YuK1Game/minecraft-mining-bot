@@ -59,3 +59,11 @@ test('with no free cell beside it the answer says so, and a cell that cannot be 
   const midair = scene({ at: { x: 0.3, y: 10.4, z: 0.5 } })
   assert.equal(offCentre(midair.ports.block, midair.ports.feet()), null)
 })
+
+test('on a chest the settle steps down beside it', async () => {
+  const { settle } = require('../src/modes/player-settle')
+  let stepped = 0
+  const ports = { feet: () => ({ x: 0.5, y: 64.95, z: 0.5 }), block: () => null, walk: async () => true, stepOff: async () => { stepped++; return true } }
+  assert.deepEqual(await settle({ ports }), { ok: true, steppedOff: true })
+  assert.equal(stepped, 1)
+})

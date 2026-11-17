@@ -16,6 +16,7 @@ const NORMAL = [{ x: 0, y: -1, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: -1
 const LOOK = { north: { x: 0, z: -1 }, south: { x: 0, z: 1 }, west: { x: -1, z: 0 }, east: { x: 1, z: 0 } }
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const LIQUID = /water|lava/
+const { low } = require('../low-block')
 
 const solid = block => block?.known === true && !AIR.test(block.name ?? '') && !LIQUID.test(block.name ?? '') && block.boundingBox !== 'empty' && !block.extra?.length
 const slabby = block => solid(block) && /_slab$/.test(block.name ?? '')
@@ -40,7 +41,7 @@ function clicks (getBlock, step) {
 
 // Whether the Bot can stand with its feet in cell (x, y, z).
 function standable (getBlock, x, y, z) {
-  return solid(getBlock(x, y - 1, z)) && !slabby(getBlock(x, y - 1, z)) && open(getBlock(x, y, z)) && open(getBlock(x, y + 1, z))
+  return solid(getBlock(x, y - 1, z)) && !low(getBlock(x, y - 1, z)) && open(getBlock(x, y, z)) && open(getBlock(x, y + 1, z))
 }
 
 // Whether the straight line from `eye` to `point` passes only received open
