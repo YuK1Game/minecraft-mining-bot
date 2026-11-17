@@ -1,5 +1,7 @@
 'use strict'
 
+const { low } = require('./low-block')
+
 // Player mode: a base on the surface. Everything carried was lost at every
 // death (real Realm 2026-11-16: 12 diamonds at 16:23, 11 at 19:30 JST; 111
 // held at 01:34 JST 2026-11-17 with no chest anywhere; user 01:32 JST:
@@ -60,7 +62,8 @@ function standBeside (getBlock, chest) { return standsBeside(getBlock, chest)[0]
 function standsBeside (getBlock, chest) {
   const out = []
   const open = (x, y, z) => { const found = getBlock(x, y, z); return found?.known === true && found.boundingBox !== 'block' && !/water|lava/.test(found.name ?? '') }
-  const solid = (x, y, z) => { const found = getBlock(x, y, z); return found?.known === true && found.boundingBox === 'block' }
+  // Not on a chest (the other half of the large chest) or another low block (modes/low-block.js).
+  const solid = (x, y, z) => { const found = getBlock(x, y, z); return found?.known === true && found.boundingBox === 'block' && !low(found) }
   for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
     for (const dy of [0, -1, 1]) {
       const x = chest.x + dx, y = chest.y + dy, z = chest.z + dz

@@ -8,6 +8,7 @@ const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const DIRT = 'minecraft:dirt'
 // What the climb may stand on: dirt first, then the cobblestone it mined on the way.
 const FILL = [DIRT, 'minecraft:cobblestone', 'minecraft:cobbled_deepslate']
+const { low, offGrid } = require('./low-block')
 
 function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, getMotion, pillarStep, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
   const block = (x, y, z) => getBlock(x, y, z)
@@ -50,8 +51,29 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 5000)
     return true
   }
+  // Standing on a chest (feet off the half-block grid) no walk can be
+  // planned: one step down onto a floor cell beside it first
+  // (movement/low-step-down.js, modes/low-block.js).
+  async function stepOff (toward = null) {
+    const at = getFeet()
+    if (!offGrid(at)) return false
+    const y = Math.floor(at.y), cx = Math.floor(at.x), cz = Math.floor(at.z), out = []
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      const x = cx + dx, z = cz + dz, below = block(x, y - 1, z)
+      if ((dx || dz) && below?.known === true && below.boundingBox === 'block' && !low(below) && air({ x, y, z }) && air({ x, y: y + 1, z })) out.push({ x: x + 0.5, y, z: z + 0.5 })
+    }
+    const cost = cell => toward ? Math.hypot(cell.x - toward.x, cell.z - toward.z) : Math.hypot(cell.x - at.x, cell.z - at.z)
+    for (const cell of out.sort((a, b) => cost(a) - cost(b)).slice(0, 4)) {
+      if (!await begin(() => operations.movement.start(cell, { lowStepDown: true, maxDistance: 2, maxTicks: 40 }))) continue
+      await sleep(300)
+      await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 5000)
+      if (!offGrid(getFeet())) return true
+    }
+    return false
+  }
   async function walk (target) {
     let started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
+    if (!started && (LANDING.test(said) || LANDING.test(why ?? '')) && offGrid(getFeet()) && await stepOff(target)) started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
     if (!started && (LANDING.test(said) || LANDING.test(why ?? '')) && await land()) started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
     if (!started) return false
     await sleep(300)
@@ -66,7 +88,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   // The stand nearest the wanted height (by default the highest within reach).
   const standY = (x, z, near, want = near + 4) => {
     let best = null
-    for (let y = near + 4; y >= near - 6; y--) { const below = block(x, y - 1, z); if (below?.known === true && below.boundingBox === 'block' && open(x, y, z) && open(x, y + 1, z) && (best === null || Math.abs(y - want) < Math.abs(best - want))) best = y }
+    for (let y = near + 4; y >= near - 6; y--) { const below = block(x, y - 1, z); if (below?.known === true && below.boundingBox === 'block' && !low(below) && open(x, y, z) && open(x, y + 1, z) && (best === null || Math.abs(y - want) < Math.abs(best - want))) best = y }
     return best
   }
   // `within`: how near counts as there. With the target's height known, each
@@ -149,7 +171,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     await sleep(250)
     return true
   }
-  return { feet: getFeet, block, dirt, fill, walk, approach, canMine, mine, canDig, dig, descend, pillar, place, pick, reason, why: () => why }
+  return { feet: getFeet, block, dirt, fill, walk, stepOff, approach, canMine, mine, canDig, dig, descend, pillar, place, pick, reason, why: () => why }
 }
 
 module.exports = { createScaffoldPorts }

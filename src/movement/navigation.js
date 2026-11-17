@@ -4,6 +4,7 @@ const { createPhysics } = require('./physics')
 const { knownSurfaceBody } = require('./low-health-water')
 const { planBoundedJump, createBoundedJumpStepper } = require('./bounded-jump')
 const { planWaterExit, createWaterExitStepper } = require('./water-exit')
+const { planLowStepDown } = require('./low-step-down')
 
 const HALF_WIDTH = 0.3
 const HEIGHT = 1.8
@@ -278,13 +279,13 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     return true
   }
 
-  function * planWithoutCache (initialState, target, { maxDistance = 12, maxExpanded = 1500, avoidance = [], directFlat = false, directSurface = false, exactGoal = false, partialDrop = false, partialRecenter = false, controlledDrop = false, shoreRecenter = false, stablePartialOrigin = false, boundedJump = null, waterExit = false } = {}, control = null) {
+  function * planWithoutCache (initialState, target, { maxDistance = 12, maxExpanded = 1500, avoidance = [], directFlat = false, directSurface = false, exactGoal = false, partialDrop = false, partialRecenter = false, controlledDrop = false, shoreRecenter = false, stablePartialOrigin = false, boundedJump = null, waterExit = false, lowStepDown = false } = {}, control = null) {
     const planningStarted = planningDistanceLimit > 24 && !control ? performance.now() : null
     const unknown = new Map()
     const empty = reason => ({ ready: false, reason, waypoints: [], unknownFrontier: [...unknown.values()].slice(0, 32), predictionOnly: true, serverConfirmed: false })
     if (!finite(initialState?.position) || !(boundedJump !== null && target == null) && (!Number.isFinite(target?.x) || !Number.isFinite(target?.z) || (target.y != null && !Number.isFinite(target.y)))) return empty('Invalid navigation coordinates')
     if (!Number.isInteger(maxDistance) || maxDistance < 1 || maxDistance > planningDistanceLimit || !Number.isInteger(maxExpanded) || maxExpanded < 1 || maxExpanded > 5000) return empty('Invalid navigation search bounds')
-    if (typeof directFlat !== 'boolean' || typeof directSurface !== 'boolean' || directSurface && (!allowWater || !exactGoal) || typeof exactGoal !== 'boolean' || typeof partialDrop !== 'boolean' || typeof partialRecenter !== 'boolean' || typeof controlledDrop !== 'boolean' || typeof shoreRecenter !== 'boolean' || typeof stablePartialOrigin !== 'boolean' || shoreRecenter && (!partialRecenter || !allowWater) || Number(partialDrop) + Number(partialRecenter) + Number(controlledDrop) > 1) return empty('Invalid direct movement policy')
+    if (typeof directFlat !== 'boolean' || typeof directSurface !== 'boolean' || directSurface && (!allowWater || !exactGoal) || typeof exactGoal !== 'boolean' || typeof partialDrop !== 'boolean' || typeof partialRecenter !== 'boolean' || typeof controlledDrop !== 'boolean' || typeof shoreRecenter !== 'boolean' || typeof stablePartialOrigin !== 'boolean' || shoreRecenter && (!partialRecenter || !allowWater) || typeof lowStepDown !== 'boolean' || Number(partialDrop) + Number(partialRecenter) + Number(controlledDrop) + Number(lowStepDown) > 1) return empty('Invalid direct movement policy')
     if (!Array.isArray(avoidance) || avoidance.length > 64 || avoidance.some(circle => typeof circle?.id !== 'string' || !circle.id.length || circle.id.length > 80 || !finite(circle.position) || ['x', 'y', 'z'].some(axis => Math.abs(circle.position[axis]) > 30000000) || !Number.isFinite(circle.minDistance) || circle.minDistance < 0 || circle.minDistance > 64 || !Number.isFinite(circle.padding ?? 0) || (circle.padding ?? 0) < 0 || (circle.padding ?? 0) > 0.5) || new Set(avoidance.map(circle => circle.id)).size !== avoidance.length) return empty('Invalid navigation avoidance policy')
     const circles = avoidance.map(circle => ({ id: circle.id, position: copy(circle.position), minDistance: circle.minDistance, padding: circle.padding ?? 0 }))
     function policyEdge (fromFeet, toFeet, initialConnector = false) {
@@ -335,6 +336,11 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
         }
         return empty('Partial recenter did not predict fully supported land')
       } catch (error) { return empty(`Partial recenter is unknown or unsupported: ${error.message}`) }
+    }
+    // Off a chest-high block onto the floor (movement/low-step-down.js).
+    if (lowStepDown) {
+      const route = yield * planLowStepDown({ initialState, origin, target, createStepper, bodyFree, standAt, fullFootprintSupport, policyEdge, hasSupport: position => physics.hasSupport(position), circles, control, epsilon: CONTACT_EPSILON })
+      return route.ready ? route : empty(route.reason)
     }
     if (partialDrop) {
       try {

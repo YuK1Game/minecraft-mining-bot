@@ -65,3 +65,23 @@ test('hops toward a lower target step down toward its height and count the heigh
   assert.ok(Math.hypot(30.5 - feet.x, 64 - feet.y, 0.5 - feet.z) <= 6)
   assert.equal(feet.y, 64)
 })
+
+test('standing on a chest, a walk refused for the landing first steps down beside it', async () => {
+  const feet = { x: 0.5, y: 64.95, z: 0.5 }, starts = []
+  const getBlock = (x, y, z) => y <= 63 ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : x === 0 && y === 64 && z === 0 ? { known: true, name: 'minecraft:chest', boundingBox: 'block' } : { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  const operations = {
+    movement: {
+      start: (target, options) => {
+        if (Math.abs(feet.y * 2 - Math.round(feet.y * 2)) > 0.02 && options.lowStepDown !== true) throw new Error('Wait for a supported landing before planning')
+        starts.push({ target: { ...target }, lowStepDown: options.lowStepDown === true }); Object.assign(feet, target)
+      },
+      settle: () => {}
+    }
+  }
+  let clock = 0
+  const ports = createScaffoldPorts({ operations, getBlock, getFeet: () => ({ ...feet }), getInventory: () => ({ known: true, items: [] }), getMotion: () => ({ phase: 'idle' }), pillarStep: async () => ({}), sleep: async ms => { clock += ms }, now: () => clock })
+  assert.equal(await ports.walk({ x: 3.5, y: 64, z: 0.5 }), true)
+  assert.equal(starts[0].lowStepDown, true)
+  assert.equal(starts[0].target.y, 64)
+  assert.deepEqual(starts.at(-1).target, { x: 3.5, y: 64, z: 0.5 })
+})

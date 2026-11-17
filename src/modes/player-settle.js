@@ -14,6 +14,7 @@ const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const REACH = 0.2 // from the centre, the footprint (half width 0.3) reaches the cell border
 const SKIN = 1e-3
 const OFF = 0.06
+const { offGrid } = require('./low-block')
 
 const finite = point => !!point && [point.x, point.y, point.z].every(Number.isFinite)
 const solid = found => found?.known === true && found.boundingBox === 'block'
@@ -32,6 +33,8 @@ function offCentre (getBlock, feet) {
 // ports: the scaffold's hands (player-scaffold-ports.js); only feet, block and walk are used.
 async function settle ({ ports, aborted = () => false }) {
   const { feet, block, walk } = ports
+  // On a chest or another low block: one step down beside it (modes/low-block.js).
+  if (offGrid(feet()) && typeof ports.stepOff === 'function') return await ports.stepOff() ? { ok: true, steppedOff: true } : { ok: false, reason: 'STILL_ON_LOW_BLOCK', detail: ports.why?.() ?? null }
   const cell = offCentre(block, feet())
   if (!cell) return { ok: false, reason: 'NOT_NEEDED' }
   const centre = { x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }
@@ -54,4 +57,4 @@ async function settle ({ ports, aborted = () => false }) {
   return off() <= OFF ? { ok: true, cell, stepped: true } : { ok: false, reason: 'STILL_OFF_CENTRE', cell, off: off(), detail: ports.why?.() ?? null }
 }
 
-module.exports = { settle, offCentre }
+module.exports = { settle, offCentre, offGrid }
