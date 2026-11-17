@@ -435,7 +435,7 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
         else if (threatEvaluation.requiresObservation) decision = { type: 'wait', stage: 'safety', reason: '周囲のキャラクターやBotの位置情報が不足しているため、作業前に追加の観測を待ちます。', code: 'threat_observation_required', unknownPositions: serial(threatEvaluation.unknownPositions), hostUnknownPositionCount: threatEvaluation.hostUnknownPositionCount ?? 0, observationRadius: 32 }
         // Long-trip preparation ends once the logs are actually in hand.
         else if (options.objective === 'long_travel_prep' && status.progress.milestones?.logs) decision = { type: 'stop', stage: 'done', reason: `長距離移動の準備: 原木 ${status.progress.logsCollected} 本を集めました。` }
-        else decision = planAction(state, { ...observations, progress: { ...observations.progress, ...serial(status.progress) }, lastDecision: serial(status.lastDecision) }, { logCount: status.goal.logs, stoneCount: status.goal.stone, minHealth: resourceMinHealth(state, options.minHealth), ...(options.objective === 'long_travel_prep' ? { allowLogs: true } : {}), ...(options.objective === 'diamond' ? { objective: 'diamond', diamondCount: status.goal.diamond } : {}) })
+        else decision = planAction(state, { ...observations, progress: { ...observations.progress, ...serial(status.progress) }, lastDecision: serial(status.lastDecision) }, { logCount: status.goal.logs, stoneCount: status.goal.stone, minHealth: resourceMinHealth(state, options.minHealth), ...(options.objective === 'long_travel_prep' ? { allowLogs: true } : {}), ...(options.objective === 'diamond' ? { objective: 'diamond', diamondCount: status.goal.diamond } : {}), ...(options.deferOptionalShelter ? { deferOptionalShelter: true } : {}) })
       }
       if (options.objective === 'diamond') {
         // A replaceable resource planner may finish a wood/stone subgoal. Only
@@ -670,6 +670,10 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
       maxRunMs: positive(configuration.maxRunMs, 900000, 43200000),
       traceLimit: positive(configuration.traceLimit, 50, 200),
       skipFailedDrops: configuration.skipFailedDrops === true,
+      // Player mode plays from its own house (modes/house): the optional soil
+      // shelter search never ends a run (live 2026-11-17 16:01-16:20 JST:
+      // shelter_search_limit stop every 0.5 s beside the finished house).
+      deferOptionalShelter: configuration.deferOptionalShelter === true,
       threatWaitMs: Number.isFinite(configuration.threatWaitMs) && configuration.threatWaitMs > 0 ? Math.min(configuration.threatWaitMs, 600000) : 0,
       minHealth: Number.isFinite(configuration.minHealth) && configuration.minHealth >= 0 ? configuration.minHealth : 6
     }

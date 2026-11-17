@@ -278,3 +278,17 @@ test('with skipFailedDrops an ore that is no longer observed is left and the run
   assert.equal(agent.snapshot().running, true, JSON.stringify(agent.snapshot().reason))
   assert.ok(agent.snapshot().progress.excludedResources.some(entry => entry.resource === 'iron' && entry.position.y === 50))
 })
+
+test('deferOptionalShelter reaches the plan options; player mode sets it (live 2026-11-17 16:01-16:20 JST)', async t => {
+  const state = { phase: 'spawned', profile: 'bot', realm: { id: 1 }, dimension: 'overworld', connectionId: 'c1', health: 20, lifecycle: { dead: false }, inventory: { known: true, items: [] }, entities: [], position: { x: 0, y: 64, z: 0 }, idleProtection: { running: false }, capabilities: { probe: true } }
+  const seen = []
+  const make = () => {
+    const agent = createAutonomy({ getState: () => structuredClone(state), intervalMs: 60000, observe: () => ({}), observeSafety: () => ({}), planAction: (s, o, options) => { seen.push(options.deferOptionalShelter); return { type: 'probe', reason: 'next' } }, actions: { probe: () => ({ ok: true, phase: 'completed' }) } })
+    t.after(() => agent.stop())
+    return agent
+  }
+  const plain = make(); plain.start({ objective: 'diamond' }); await plain.tick()
+  const player = make(); player.start({ objective: 'diamond', deferOptionalShelter: true }); await player.tick()
+  assert.deepEqual(seen, [undefined, true])
+  assert.equal(require('../src/modes/player-mode').OBJECTIVE.deferOptionalShelter, true)
+})
