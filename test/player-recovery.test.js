@@ -230,6 +230,15 @@ test('a stop whose work lies far away walks there first, then goes on; a near on
   assert.ok(near.clock() < 1000)
 })
 
+test('a far goal more than 384 m away is walked to, not cancelled as a respawn (live 2026-11-17 19:25 JST)', async () => {
+  const f = fixture()
+  f.recovery.onProgress(blocked({ stopCode: null, reason: '再試行の上限に達しました: The ore lies outside the bounded tunneling area', lastDecision: { type: 'tunnel', resource: 'diamond', target: { x: -393, y: -40, z: -127 } } }))
+  await settle(f.recovery)
+  assert.deepEqual(f.calls.slice(0, 2), [{ travel: { x: -393, z: -127 } }, { start: { objective: 'diamond', diamondCount: 1 } }])
+  assert.ok(!f.calls.includes('cancel'), 'the walk ran out on its own')
+  assert.doesNotMatch(f.logs.join('\n'), /大きく離れた/)
+})
+
 test('underground, a table that cannot be walked to: straight up, then on at once', async () => {
   const roof = { '0,66,0': { known: true, name: 'minecraft:air', boundingBox: 'empty' }, '0,67,0': { known: true, name: 'minecraft:air', boundingBox: 'empty' }, '0,68,0': { known: true, name: 'minecraft:stone', boundingBox: 'block' } }
   const stuck = { running: false, phase: 'failed', reason: '再試行の上限に達しました: No known safe standing position has a valid route', lastDecision: { type: 'move_to', stage: 'crafting_table', resource: 'crafting_table', target: { x: 2, y: 63, z: 2 } }, progress: {} }
