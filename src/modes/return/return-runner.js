@@ -223,8 +223,12 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
         continue
       }
       if (out.status === 'interrupted') {
+        // Something with priority has the controls: the goal waits for it and
+        // nothing is charged, however often (live 2026-11-18 04:18-04:22 JST: the
+        // eleventh flee in a row was counted as a failure, 9 of 12 tries).
+        if (interrupter()) continue
         // An interruption nobody owns any more is tried again; many in a row count as a failure.
-        if (++goal.budget.interrupts <= BUDGET.MAX_INTERRUPTS) { if (!interrupter()) goal.wait = { kind: 'time', until: now() + 2000 }; continue }
+        if (++goal.budget.interrupts <= BUDGET.MAX_INTERRUPTS) { goal.wait = { kind: 'time', until: now() + 2000 }; continue }
         goal.budget.interrupts = 0
         out = { ...out, status: 'failed', code: 'INTERRUPTED_REPEATEDLY' }
       }

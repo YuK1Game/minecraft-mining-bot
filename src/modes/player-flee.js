@@ -22,13 +22,21 @@
 //   2026-11-16 12:20-12:31 JST: at health 2, a drowned in water 6.6 blocks
 //   below never came closer; 55 runs in ten minutes each stopped the autonomy
 //   and ended with no step, so the Bot never ate or hunted).
+// - A run that walked and still has the same hostile as near as before did
+//   not get away either (live 2026-11-18 04:31-04:34 JST: a phantom 4.6 blocks
+//   overhead stayed at 6.3 m through nine runs of 20 s, 「敵から離れました（71歩）」
+//   each time, the Bot on the same spot at health 3.7; neither the fight nor
+//   the trip to the base went on). It waits the same way, and during that
+//   wait the hostile it could not leave behind does not start a new run,
+//   however near it comes: combat has it.
 const { normalizeMode } = require('./bot-mode')
 
-const FLEE_AT = 8, UNARMED_FLEE_AT = 10, CREEPER_M = 8, CONTACT_M = 3.5
+const FLEE_AT = 8, UNARMED_FLEE_AT = 10, CREEPER_M = 8, CONTACT_M = 3.5, GAIN_M = 2
 const WEAPON = /_sword$|_axe$|^minecraft:(?:bow|crossbow|trident|mace)$/
 // Unreceived items are not a weapon in hand.
 const unarmed = inventory => !(inventory?.items ?? []).some(item => item?.count > 0 && WEAPON.test(item.name ?? ''))
 const text = value => String(value ?? '').replace(/^minecraft:/, '').replace(/[\p{C}§]/gu, ' ').slice(0, 40)
+const idOf = actor => actor?.runtimeId ?? actor?.uniqueId ?? null
 
 function fleeWanted ({ health, totem, hostiles, position, weaponless = false }) {
   if (!Number.isFinite(health) || health <= 0 || !position) return null
@@ -38,7 +46,7 @@ function fleeWanted ({ health, totem, hostiles, position, weaponless = false }) 
   for (const actor of hostiles ?? []) {
     if (!actor?.position) continue
     const distance = Math.hypot(actor.position.x - position.x, actor.position.y - (position.y - 1.62), actor.position.z - position.z)
-    if (distance <= (hurt ? 12 : /creeper/.test(String(actor.entityType ?? actor.name ?? '')) ? CREEPER_M : -1) && (!nearest || distance < nearest.distance)) nearest = { distance, name: text(actor.entityType ?? actor.name) }
+    if (distance <= (hurt ? 12 : /creeper/.test(String(actor.entityType ?? actor.name ?? '')) ? CREEPER_M : -1) && (!nearest || distance < nearest.distance)) nearest = { distance, name: text(actor.entityType ?? actor.name), ...(idOf(actor) != null ? { id: String(idOf(actor)) } : {}) }
   }
   // Armed and already in melee contact: turning away only gives free hits
   // (live 2026-11-16 10:00 JST: with a stone sword at 6.4 health and a drowned
@@ -51,6 +59,9 @@ function fleeWanted ({ health, totem, hostiles, position, weaponless = false }) 
 
 function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, hostiles, retreat, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, restUntil = 0, stuck = 0, stuckHealth = null, stuckDistance = null
+  // The hostiles the last runs walked from without leaving them behind.
+  const kept = new Set()
+  const others = () => kept.size ? (hostiles() ?? []).filter(actor => idOf(actor) == null || !kept.has(String(idOf(actor)))) : hostiles()
   // Why the last tick did not run, for the hit note (damage-note.js).
   let skip = null
   const inPlay = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
@@ -63,8 +74,8 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
     const resting = now() < restUntil
     // Hurt again since the run that went nowhere: the wait is over.
     if (resting && stuckHealth === null) { skip = 'rest'; return false }
-    const threat = fleeWanted({ health: state.health, totem: state.totem, hostiles: hostiles(), position: state.position, weaponless: unarmed(state.inventory) })
-    if (!threat) { skip = 'no_threat'; return false }
+    const threat = fleeWanted({ health: state.health, totem: state.totem, hostiles: resting ? others() : hostiles(), position: state.position, weaponless: unarmed(state.inventory) })
+    if (!threat) { skip = resting && kept.size ? 'kept_up_rest' : 'no_threat'; return false }
     // So is it when a hostile has come 2 m closer than the one it was stuck on
     // (live 2026-11-16 13:08 JST: during the wait a creeper walked up to 3.8 m
     // and its blast killed the Bot at health 2).
@@ -90,17 +101,22 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
         try { moved = await retreat() === true } catch { moved = false }
         if (moved) { steps++; failed = 0 } else { failed++; await sleep(250) }
       }
-      log(failed >= 3 ? `プレイヤーモード: 離れる経路がないため、その場で戦います（${steps}歩）` : `プレイヤーモード: 敵から離れました（${steps}歩）`)
+      // Walked, and the hostile is as near as it was: it flies, or it keeps up.
+      const end = getState()
+      const left = steps > 0 ? fleeWanted({ health: end.health, totem: end.totem, hostiles: hostiles(), position: end.position, weaponless: unarmed(end.inventory) }) : null
+      const keptUp = !!left && left.distance < threat.distance + GAIN_M
+      log(failed >= 3 ? `プレイヤーモード: 離れる経路がないため、その場で戦います（${steps}歩）` : keptUp ? `プレイヤーモード: 離れても敵との距離が開きません（${steps}歩、${left.name} ${left.distance.toFixed(1)}m）` : `プレイヤーモード: 敵から離れました（${steps}歩）`)
       // After a failed run, combat gets five seconds before the next try; a
-      // run with no step at all waits longer each time.
-      if (failed >= 3 && steps === 0) {
+      // run with no step at all, or one that did not get away, waits longer each time.
+      if ((failed >= 3 && steps === 0) || keptUp) {
         stuck++
-        stuckHealth = getState().health
-        stuckDistance = threat.distance
+        stuckHealth = end.health
+        stuckDistance = keptUp ? left.distance : threat.distance
+        if (keptUp && left.id != null) kept.add(left.id)
         restUntil = now() + Math.min(120000, 30000 * 2 ** (stuck - 1))
-        log(`プレイヤーモード: 1歩も離れられなかったため、体力が減らない限り${Math.round((restUntil - now()) / 1000)}秒は離れ直しません。`)
+        log(keptUp ? `プレイヤーモード: 離れられない敵のため、ほかの敵が近づくか体力が減らない限り${Math.round((restUntil - now()) / 1000)}秒は離れ直しません（その敵は戦闘に任せます）。` : `プレイヤーモード: 1歩も離れられなかったため、体力が減らない限り${Math.round((restUntil - now()) / 1000)}秒は離れ直しません。`)
       } else {
-        stuck = 0; stuckHealth = null; stuckDistance = null
+        stuck = 0; stuckHealth = null; stuckDistance = null; kept.clear()
         if (failed >= 3) restUntil = now() + 5000
       }
       return true
