@@ -183,7 +183,7 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
     // new large chest beside it (live 2026-11-17 15:50 JST: 「0 個預けました」,
     // chest A full, no flat spot for a new chest, 208 cobblestone thrown away).
     for (const spare of spares()) {
-      if (moved >= total || aborted() || hands.room(base) !== 0 || !isChest(spare)) break
+      if (moved >= total || aborted() || hands.room(base) > 0 || !isChest(spare)) break
       moved += await hands.store(spare, stacksNow())
     }
     // The new chest skips the full ones (an unopened full chest reads as room
@@ -191,7 +191,9 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
     // with no flat pair inside the house, stands outside its door. It becomes
     // the base, so the next trip does not open the full chest first (live
     // 2026-11-17 18:43-18:46 JST: 「0 個預けました（預ける物 10 個、チェストの空き 0 枠）」).
-    if (moved < total && hands.room(base) === 0) {
+    // A chest that would not open (room unknown) counts as full too (live
+    // 2026-11-18 01:02 JST: 「0 個預けました（…空き 開けられず不明 枠）」 and no new chest).
+    if (moved < total && !(hands.room(base) > 0)) {
       const full = [base, ...spares()]
       let extra = await chest({ full })
       const out = !extra && porch()

@@ -262,3 +262,22 @@ test('a long trip that keeps getting closer is not cut at five minutes; a short-
   clock = after + 29000
   assert.equal(await stuck.tick(), null)
 })
+
+test('a base chest that would not open counts as full: chest B, then a new chest (live 2026-11-18 01:02 JST)', async () => {
+  const calls = [], shared = { playerWanted: true, playerBase: { x: 5, y: 64, z: 0 } }
+  let inventory = inv([[0, 'diamond', 40]])
+  const pos = { x: 4.5, y: 65.62, z: 0.5 }
+  const api = createPlayerBase({
+    getMode: () => 'player', shared, getBlock: world({ '5,64,0': 'minecraft:chest', '7,64,2': 'minecraft:chest' }), getPosition: () => pos, getFeet: () => ({ x: pos.x, y: pos.y - 1.62, z: pos.z }), getInventory: () => inventory,
+    agent: { objective: {}, start: async () => calls.push('start'), stop: () => calls.push('stop'), settled: () => true },
+    // Neither house chest opens (room stays unknown); the new one takes everything.
+    hands: { store: async (at, stacks) => { calls.push(['store', `${at.x},${at.z}`]); if (at.x !== 1) return 0; inventory = inv([[0, 'diamond', 8]]); return stacks.reduce((s, x) => s + x.count, 0) }, room: () => null },
+    spares: () => [{ x: 7, y: 64, z: 2 }],
+    chest: async () => { calls.push(['chest']); return { x: 1, y: 63, z: 11 } },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    walk: async () => true, approach: async () => true, log: () => {}, sleep: async () => {}
+  })
+  assert.equal(await api.tick(), true)
+  assert.deepEqual(calls.filter(c => Array.isArray(c)), [['store', '5,0'], ['store', '7,2'], ['chest'], ['store', '1,11']])
+  assert.deepEqual(shared.playerBase, { x: 1, y: 63, z: 11 })
+})
