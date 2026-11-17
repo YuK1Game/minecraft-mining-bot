@@ -425,7 +425,8 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
       updateProgress(state)
       const dead = deadState(state)
       const threatEvaluation = observedThreats(state, observations)
-      const threat = threatEvaluation.threats[0] ?? null
+      // Player play leaves a far non-creeper to combat mode instead of retreating.
+      const threat = threatEvaluation.threats.find(actor => !(options.nearThreatDistance > 0) || /creeper/.test(actor.name ?? actor.entityType ?? '') || !(actor.distance > options.nearThreatDistance)) ?? null
       let decision
       if (dead) decision = { type: 'respawn', stage: 'safety', reason: '死亡を確認したため、正規のリスポーンを行います。' }
       else if (planSafety) decision = await bounded(() => planSafety(state, observations), options.actionTimeoutMs, '安全判断', signal)
@@ -674,6 +675,7 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
       // shelter search never ends a run (live 2026-11-17 16:01-16:20 JST:
       // shelter_search_limit stop every 0.5 s beside the finished house).
       deferOptionalShelter: configuration.deferOptionalShelter === true,
+      nearThreatDistance: Number.isFinite(configuration.nearThreatDistance) && configuration.nearThreatDistance > 0 ? configuration.nearThreatDistance : 0,
       threatWaitMs: Number.isFinite(configuration.threatWaitMs) && configuration.threatWaitMs > 0 ? Math.min(configuration.threatWaitMs, 600000) : 0,
       minHealth: Number.isFinite(configuration.minHealth) && configuration.minHealth >= 0 ? configuration.minHealth : 6
     }

@@ -310,7 +310,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // The previous runtime was reloaded in the middle of a recovery: play on.
   if (shared.playerRecovering === true) { shared.playerRecovering = false; if (control.get() === 'player') shared.autoWanted = true }
   // The runtime restarts a stopped run with the options it was last started with: a reload brings the player objective's current flags.
-  if (control.get() === 'player' && shared.autoOptions && typeof shared.autoOptions === 'object') shared.autoOptions = { ...shared.autoOptions, deferOptionalShelter: true }
+  if (control.get() === 'player' && shared.autoOptions && typeof shared.autoOptions === 'object') shared.autoOptions = { ...shared.autoOptions, deferOptionalShelter: true, nearThreatDistance: 8 }
   const player = createPlayerMode({
     getMode: control.get, log, safety: operations.safety, recovery, shelter, flee, scaffold: { status: () => house.status().active ? house.status() : wool.status().active ? wool.status() : sand.status().active ? sand.status() : food.status().active ? food.status() : base.status().active ? base.status() : storage.status().active ? storage.status() : torch.status().active ? torch.status() : scaffold.status() }, shared,
     agent: { start: options => agent.start(options), stop: reason => agent.stop(reason), snapshot: agentStatus },
