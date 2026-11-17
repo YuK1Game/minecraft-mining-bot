@@ -22,3 +22,15 @@ test('a failing exit does not stop the trip', async () => {
   const out = await dryStart({ needed: () => true, exit: async () => { throw new Error('boom') } })
   assert.equal(out.ok, false)
 })
+
+test('the exit waits for the stopped work and retries a refusal to wait', async () => {
+  let ready = false, calls = 0
+  const out = await dryStart({
+    needed: () => true,
+    ready: () => { const was = ready; ready = true; return was },
+    exit: async () => { calls++; return calls < 2 ? { ok: false, reason: '前の操作の終了処理を待ってください。' } : { ok: true } },
+    sleep: async () => {}
+  })
+  assert.equal(calls, 2)
+  assert.equal(out.ok, true)
+})
