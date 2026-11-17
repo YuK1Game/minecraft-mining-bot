@@ -226,7 +226,7 @@ test('a climb a fight cut short is tried again in two minutes, not ten (live 202
   assert.deepEqual(calls, ['climb', 'climb'])
 })
 
-test('a long trip that keeps getting closer is not cut at five minutes; a short-fallen trip retries in two (live 2026-11-17 20:41 JST)', async () => {
+test('a long trip that keeps getting closer is not cut at five minutes; a short-fallen trip retries in 30 s (live 2026-11-17 20:41, 21:02 JST)', async () => {
   let clock = 0, busy = false, x = 405, cancelled = 0
   const shared = { playerWanted: true, playerBase: { x: 5, y: 64, z: 0 } }
   const logs = []
@@ -243,7 +243,7 @@ test('a long trip that keeps getting closer is not cut at five minutes; a short-
   assert.equal(cancelled, 0)
   assert.ok(clock > 300000)
 
-  // A trip that stops getting closer is ended after two minutes and tried again in two.
+  // A trip that stops getting closer is ended after four minutes and tried again in 30 s.
   x = 405; clock = 10_000_000
   const stuck = createPlayerBase({
     getMode: () => 'player', shared, getBlock: world({ '5,64,0': 'minecraft:chest' }), getPosition: () => ({ x, y: 65.62, z: 0.5 }), getFeet: () => ({ x, y: 64, z: 0.5 }), getInventory: () => inv([[0, 'diamond', 40]]),
@@ -256,9 +256,9 @@ test('a long trip that keeps getting closer is not cut at five minutes; a short-
   const start = clock
   assert.equal(await stuck.tick(), false)
   assert.equal(cancelled, 1)
-  assert.ok(clock - start <= 125000)
-  assert.ok(logs.some(line => /2分後にやり直します/.test(line)))
+  assert.ok(clock - start >= 235000 && clock - start <= 245000)
+  assert.ok(logs.some(line => /30秒後にやり直します/.test(line)))
   const after = clock
-  clock = after + 119000
+  clock = after + 29000
   assert.equal(await stuck.tick(), null)
 })
