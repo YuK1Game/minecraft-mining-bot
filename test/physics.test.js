@@ -293,9 +293,8 @@ test('the engine-only water reader still rejects actual water contact for a dry 
   assert.equal(enabled.step(seed, {}).isInWater, true, 'actual contact is detected, rather than guessed from a broadphase read')
 })
 
-test('buried lava, unknown terrain and unsupported or unknown secondary layers remain forbidden during dry lookahead', () => {
+test('unknown terrain and unsupported or unknown secondary layers remain forbidden during dry lookahead', () => {
   for (const [replacement, pattern] of [
-    [block('lava', { liquid_depth: 0 }), /Lava/],
     [{ known: false, reason: 'unreceived buried cell' }, /Unknown terrain/],
     [{ ...block('stone'), extra: [block('water', { liquid_depth: 0 })] }, /Waterlogged/],
     [{ ...block('air'), extra: [{ ...block('water', { liquid_depth: 0 }), known: false }] }, /Unknown terrain/]
@@ -305,4 +304,14 @@ test('buried lava, unknown terrain and unsupported or unknown secondary layers r
     const second = run(physics, seed, {}, 2)
     assert.throws(() => physics.step(second, {}), pattern)
   }
+})
+
+test('lava sealed under the full floor a falling body is less than one block above: the body lands (live 2026-11-17 21:27-21:39 JST)', () => {
+  const { world, seed } = dryDescentAboveWater(block('lava', { liquid_depth: 0 }))
+  const physics = createPhysics({ world })
+  let state = run(physics, seed, {}, 2)
+  for (let tick = 0; tick < 3; tick++) state = physics.step(state, {})
+  assert.equal(state.position.y, 64)
+  assert.equal(state.onGround, true)
+  assert.equal(state.isInLava, false)
 })

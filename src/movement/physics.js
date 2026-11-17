@@ -129,6 +129,12 @@ function createPhysics ({ world, version = '1.26.60', registry, allowWater = fal
   const EMPTY = { known: true, name: 'minecraft:air', extra: [] }
   let stepFeetY = null, sealedLava = []
   const fullBlock = raw => { try { const shapes = raw?.known === true && !(raw.extra ?? []).length ? templateFor(raw, true).shapes : []; return shapes.length === 1 && shapes[0].every((value, index) => value === (index < 3 ? 0 : 1)) } catch { return false } }
+  // A body hanging less than one block above a received full block (a fall cut
+  // short, onGround false) counts as standing for this rule: the full block
+  // between it and the lava still seals it (real Realm 2026-11-17 21:27-21:39
+  // JST: 0.23 above netherrack with lava two blocks under the feet, every
+  // landing and walk was refused with "Lava traversal is unsupported").
+  const nearFloor = position => { try { const y = Math.floor(position.y) - 1; return position.y - (y + 1) < 1 && fullBlock(world.getBlock(Math.floor(position.x), y, Math.floor(position.z))) } catch { return false } }
   const engineWorld = {
     getBlock: position => {
       if (stepFeetY !== null) {
@@ -384,7 +390,7 @@ function createPhysics ({ world, version = '1.26.60', registry, allowWater = fal
     }
     for (const name of FLAG_NAMES) bot.entity[name] = !!input[name]
     let simulated
-    stepFeetY = input.onGround === true ? input.position.y : null; sealedLava = []
+    stepFeetY = input.onGround === true || nearFloor(input.position) ? input.position.y : null; sealedLava = []
     try { simulated = engine.simulatePlayer(new PlayerState(bot, control), engineWorld) } finally { stepFeetY = null }
     if (sealedLava.some(cell => simulated.pos.x + 0.3 > cell.x && simulated.pos.x - 0.3 < cell.x + 1 && simulated.pos.z + 0.3 > cell.z && simulated.pos.z - 0.3 < cell.z + 1 && simulated.pos.y + 1.8 > cell.y && simulated.pos.y < cell.y + 1)) throw new Error('Lava prediction is unsupported')
     if (![simulated.pos.x, simulated.pos.y, simulated.pos.z, simulated.vel.x, simulated.vel.y, simulated.vel.z].every(Number.isFinite)) throw new Error('Physics produced a non-finite prediction')
