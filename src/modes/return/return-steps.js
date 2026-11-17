@@ -54,6 +54,10 @@ function createReturnSteps ({ goal, ports, flow }) {
   // Why a step ended without its end condition, when it was not its own failure.
   const stopped = code => !ok() ? cancelled('RETURN_CANCELLED') : interrupter() ? interrupted(code, { detail: interrupter() }) : null
   const inList = (list, at) => list.some(entry => same(entry, at))
+  const received = at => getBlock(at.x, at.y, at.z)?.known === true
+  // The cells the Bot stands in and on are received.
+  const landed = () => { const feet = getFeet(); if (!feet) return false; const x = Math.floor(feet.x), y = Math.floor(feet.y + 0.05), z = Math.floor(feet.z); return received({ x, y, z }) && received({ x, y: y - 1, z }) && received({ x, y: y + 1, z }) }
+  const unseen = at => blocked('TERRAIN_UNKNOWN', { kind: 'terrain_received', timeoutMs: 10000 }, { evidence: { chest: at, state: { at: area(getFeet(), 16) } } })
   // Why the open click cannot be sent from here (too far, or no clear line to
   // the chest), by the open operation's own preview; null when it can.
   const away = at => chests.hands.access ? chests.hands.access(at) : reach(at, getPosition()) > REACH_M ? 'CONTAINER_NOT_IN_REACH' : null
@@ -65,6 +69,11 @@ function createReturnSteps ({ goal, ports, flow }) {
     const position = getPosition()
     if (!position) return blocked('POSITION_UNKNOWN', { kind: 'time', ms: 5000 })
     if (!getInventory()) return blocked('INVENTORY_UNKNOWN', { kind: 'inventory_update', timeoutMs: 30000 })
+    // Right after a reconnection the position is there before the terrain: nothing
+    // is decided from blocks that are not received (live 2026-11-18 03:28:43 JST,
+    // 2.3 s before the world was joined: "under the open sky" at y -49, "near the
+    // base" 131 m under it, three walks refused within 20 ms).
+    if (!landed()) return blocked('TERRAIN_UNKNOWN', { kind: 'terrain_received', timeoutMs: 10000 }, { evidence: { state: { at: area(position, 16) } } })
     // The base is in the overworld: from another dimension the goal is held until the dimension changes.
     const dimension = ports.dimension?.()
     if (typeof dimension === 'string' && dimension !== 'overworld') return { ...failed('BASE_IN_OTHER_DIMENSION', { detail: dimension, evidence: { state: { dimension } } }), hold: true }
@@ -102,7 +111,8 @@ function createReturnSteps ({ goal, ports, flow }) {
     let base = goalNow.base
     if (base && flat(base, position) > FAR_M) { say(`拠点 (${base.x}, ${base.z}) が ${FAR_M}m より遠いため、ここに新しい拠点を作ります`); goalNow.base = base = null }
     if (!base) return { ...completed('NO_BASE_YET'), next: 'container' }
-    if (flat(base, position) <= ARRIVE_M) return completed('NEAR_BASE', { evidence: { distance: Math.round(flat(base, position)) } })
+    // On the way round to another side of the base, being near it is not the end.
+    if (!goalNow.detour && flat(base, position) <= ARRIVE_M) return completed('NEAR_BASE', { evidence: { distance: Math.round(flat(base, position)) } })
     if (underCover(getBlock, position) || moves.water.needed()) return { ...completed('START_LOST'), next: 'surface' }
     // From inside the starter house: out through its door first (house/house-exit.js).
     if (moves.house.inside()) {
@@ -152,12 +162,13 @@ function createReturnSteps ({ goal, ports, flow }) {
   async function approach () {
     const goalNow = g(), at = goalNow.target ?? goalNow.base
     if (!at) return { ...completed('NO_BASE_YET'), next: 'container' }
+    if (flat(at, getPosition()) > ARRIVE_M) return { ...completed('TOO_FAR'), next: 'travel' }
+    if (!received(at)) return unseen(at)
     if (gone(at)) {
       if (same(at, goalNow.base)) { say('拠点のチェストがなくなっていたため、作り直します'); goalNow.base = null }
       goalNow.target = null
       return { ...completed('CHEST_GONE'), next: 'container' }
     }
-    if (flat(at, getPosition()) > ARRIVE_M) return { ...completed('TOO_FAR'), next: 'travel' }
     if (moves.water.needed()) return { ...completed('START_LOST'), next: 'surface' }
     if (away(at) && flat(at, getPosition()) > CLOSE_M) { try { await moves.approach(at, CLOSE_M) } catch {} }
     if (away(at) && flat(at, getPosition()) > CLOSE_M && !aborted()) { try { await moves.porchWalk() } catch {} }
@@ -187,6 +198,7 @@ function createReturnSteps ({ goal, ports, flow }) {
     // Only taking out: no chest with room is needed, and none is built.
     if (!policy.cargo().length && getInventory()) return { ...completed('NOTHING_TO_STORE'), next: 'verify' }
     // The base's chest, the house's second one, the one in use, and any other standing near the Bot.
+    if (goalNow.base && !received(goalNow.base)) return unseen(goalNow.base)
     const known = goalNow.base ? [goalNow.base, ...chests.spares(), ...(goalNow.target ? [goalNow.target] : []), ...(chests.near?.() ?? [])].filter((at, index, all) => all.findIndex(other => same(other, at)) === index) : []
     // The halves of a large chest are one container: what is known of one half
     // (full, would not open, could not be got to) holds for the other.
@@ -210,7 +222,7 @@ function createReturnSteps ({ goal, ports, flow }) {
     // its received slots showed it full is a new one made beside it.
     if (known.some(at => isChest(at) && either(goalNow.unreached, at)) && !known.some(at => isChest(at) && full(at))) return failed('CHEST_UNREACHED', { retry: { kind: 'position_changed' }, evidence: { state: { at: area(getFeet(), 4) } } })
     if (goalNow.base && gone(goalNow.base)) { say('拠点のチェストがなくなっていたため、作り直します'); goalNow.base = null }
-    if (!policy.canBuild()) return failed('NO_CHEST_MATERIAL', { retry: { kind: 'supplies_changed' }, detail: !goalNow.base ? '拠点のチェストを作る木がありません' : goalNow.unopened.length ? '使えるチェストがなく、新しいチェストを作る木がありません' : '拠点のチェストが満杯で、新しいチェストを作る木がありません' })
+    if (!policy.canBuild()) return failed('NO_CHEST_MATERIAL', { retry: { kind: 'supplies_changed' }, detail: !goalNow.base ? '拠点のチェストを作る木がありません' : goalNow.full.length ? '拠点のチェストが満杯で、新しいチェストを作る木がありません' : '使えるチェストがなく、新しいチェストを作る木がありません' })
     if (goalNow.built >= MAX_BUILT) return failed('CHEST_LIMIT', { retry: { kind: 'supplies_changed' } })
     // The maker answers with a chest standing near the Bot when there is one
     // it was not told to skip; only a chest that was not there before counts as built.

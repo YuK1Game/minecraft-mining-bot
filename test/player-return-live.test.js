@@ -269,3 +269,35 @@ test('held for a chest, the goal is not woken by the mining below the base; held
   assert.equal(await deep.run(other, { until: done, ms: 600000 }), true, deep.log.join('\n'))
   assert.equal(lines(deep, /再開します（POSITION_CHANGED/).length, 1)
 })
+
+test('arrived on the hill over the base with no way down: round to another side and in from there (live 2026-11-18 03:41 JST)', async () => {
+  const sim = createReturnSim({ feet: { x: 8.5, y: GROUND + 5, z: -10.5 }, items: [...KIT, [2, 'diamond', 40]] })
+  // A plateau five blocks high north of the chest: within 20 m of it, and no walk down.
+  for (let x = -5; x <= 25; x++) for (let z = -25; z <= -5; z++) for (let y = GROUND; y < GROUND + 5; y++) sim.setBlock(x, y, z, 'minecraft:stone')
+  const chest = sim.placeChest(5, GROUND, 0)
+  sim.shared.playerBase = chest
+  sim.agent.running = true
+  const runtime = sim.mount()
+  assert.equal(await sim.run(runtime, { until: done, ms: 1800000 }), true, sim.log.join('\n'))
+  assert.equal(lines(sim, /別の側から近づきます/).length, 1, sim.log.join('\n'))
+  assert.equal(lines(sim, /CHEST_UNREACHED/).length, 3, 'three tries from the hill, then the other side')
+  assert.equal(lines(sim, /使えないため/).length, 0, 'the chest is not given up for another')
+  assert.equal(sim.stored(chest, 'diamond'), 37)
+  assert.equal(sim.events.filter(event => event.kind === 'place_chest').length, 0)
+})
+
+test('nothing is decided before the terrain at the Bot is received (live 2026-11-18 03:28:43 JST, before the world was joined)', async () => {
+  const sim = createReturnSim({ feet: { x: 30.5, y: GROUND, z: 0.5 }, items: [...KIT, [2, 'diamond', 40]] })
+  const chest = sim.placeChest(5, GROUND, 0)
+  sim.shared.playerBase = chest
+  sim.agent.running = true
+  for (let cx = -2; cx <= 3; cx++) for (let cz = -2; cz <= 2; cz++) sim.unknown.add(`${cx},${cz}`)
+  sim.later(8000, () => sim.unknown.clear())
+  const runtime = sim.mount()
+  await sim.run(runtime, { ms: 6000 })
+  assert.equal(sim.events.length, 0, 'no walk, no trip, no click while the blocks are not received')
+  assert.equal(lines(sim, /TERRAIN_UNKNOWN/).length >= 1, true, sim.log.join('\n'))
+  assert.equal(await sim.run(runtime, { until: done }), true, sim.log.join('\n'))
+  assert.equal(sim.stored(chest, 'diamond'), 37)
+  assert.equal(lines(sim, /保留/).length, 0)
+})

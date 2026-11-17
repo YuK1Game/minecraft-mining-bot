@@ -167,7 +167,14 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     const stuck = fail.travel ?? (inWater() ? 'CHUNK_TRAVEL_NO_ROUTE' : house && inside(house.origin, getFeet()) ? 'CHUNK_TRAVEL_NO_ROUTE' : null)
     const move = Math.min(far - 20 + 0.1, travel.speed * dt / 1000), nx = body.x + (to.x - body.x) / far * move, nz = body.z + (to.z - body.z) / far * move
     const zone = travel.zones.find(z => nx >= z.x1 && nx <= z.x2 && nz >= z.z1 && nz <= z.z2)
-    const y = surfaceY(nx, nz)
+    let y = surfaceY(nx, nz)
+    // A single block in the way (a chest) is walked round, as the real route does.
+    if (y === null && !stuck && !zone) {
+      for (const side of [1.5, -1.5]) {
+        const sx = nx - (to.z - body.z) / far * side, sz = nz + (to.x - body.x) / far * side, sy = surfaceY(sx, sz)
+        if (sy !== null) { body.x = sx; body.z = sz; body.y = sy; return }
+      }
+    }
     if (stuck || zone || y === null) {
       travel.reason = stuck ?? zone?.code ?? 'CHUNK_TRAVEL_NO_ROUTE'
       if (++travel.failures >= 15) { Object.assign(travel, { busy: false, phase: 'failed' }); if (zone?.once) travel.zones.splice(travel.zones.indexOf(zone), 1) }
