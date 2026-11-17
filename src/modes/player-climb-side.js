@@ -9,7 +9,7 @@
 // every two minutes, with twelve diamonds held).
 // - A column is dry when every received block above the head in it is neither
 //   liquid nor a falling block, and none of the four blocks beside each of
-//   those is liquid or unreceived. At least eight blocks up must be received.
+//   those is liquid, a falling block or unreceived. At least eight blocks up must be received.
 // - The drift goes along one axis, then the other. Every block is mined by the
 //   ordinary mining after its own check; the floor must be received solid
 //   ground. A refused block ends that drift and the next column is tried.
@@ -39,7 +39,8 @@ function dryColumn (block, x, at, z) {
     const found = block(x, y, z)
     if (found?.known !== true) break
     if (wet(found) || FALLING.test(found.name ?? '') || LEAVES.test(found.name ?? '')) return false
-    if (SIDES.some(([dx, dz]) => wet(block(x + dx, y, z + dz)))) return false
+    // Sand or gravel beside the way up is refused by the mining check too (live 2026-11-17 11:33 JST: three columns near the surface, each refused at y=87 beside a falling block).
+    if (SIDES.some(([dx, dz]) => { const side = block(x + dx, y, z + dz); return wet(side) || FALLING.test(side?.name ?? '') })) return false
     seen++
   }
   return seen >= MIN_KNOWN
