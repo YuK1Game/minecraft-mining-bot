@@ -73,6 +73,20 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // minutes old on this Realm (live 2026-11-15 21:24-21:42 JST: every walk
   // looked like "got nowhere", so the search turned 60 degrees each time and
   // circled a hexagon around the stale point).
+  // A hostile near enough to stop a side job (storage, food, house...): within
+  // 12 m, an archer within 24 m, or damage taken in the last 10 s (real Realm
+  // 2026-11-17 09:52-09:53 JST: a skeleton 12.4 m away shot the Bot from 12.9
+  // to 0; the storage and the food climb started anyway, the climb cancelled the
+  // fight, and no hit landed).
+  let healthSeen = null, hurtAt = 0
+  const ARCHER = /skeleton|stray|bogged|pillager|witch/ // one that has not moved for 5 min is not counted
+  const danger = () => {
+    const health = runtime.raw()?.health
+    if (Number.isFinite(health)) { if (Number.isFinite(healthSeen) && health < healthSeen) hurtAt = Date.now(); healthSeen = health }
+    if (Date.now() - hurtAt < 10000 || runtime.nearestHostile() < 12) return true
+    const at = where()
+    return !!at && (runtime.hostiles() ?? []).some(actor => ARCHER.test(String(actor?.entityType ?? '')) && actor.position && !(Date.now() - Date.parse(actor.positionUpdatedAt ?? '') > 300000) && Math.hypot(actor.position.x - at.x, actor.position.y - at.y, actor.position.z - at.z) < 24)
+  }
   const where = () => { const position = runtime.position?.(); return position && [position.x, position.y, position.z].every(Number.isFinite) ? position : runtime.raw().position ?? null }
   // Ordinary walking, mining, placement and the pillar step, shared by the scaffold and the climb out of a tunnel.
   const hands = createScaffoldPorts({
@@ -184,7 +198,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed, getFeet: feetNow,
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agentStatus().running === true, settled: idle },
-    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || house.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12,
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || house.status().active || quarry.travelStatus().busy === true || danger(),
     hands: createTorchPorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
   })
   // A full inventory goes into a large chest beside the Bot (player-storage.js).
@@ -193,7 +207,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed, getFeet: feetNow, mine: async cell => (await hands.pick()) && hands.mine(cell), dig: cell => hands.dig(cell), why: () => hands.why(), walk: target => hands.walk(target), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
-    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12,
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active || quarry.travelStatus().busy === true || danger(),
     hands: storagePorts
   })
   // A base on the surface: spare diamonds and valuables go into its large chest (player-base.js).
@@ -204,7 +218,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     hands: storagePorts, chest: () => storage.chest(), canBuild: () => shared.playerHouse?.done === true && storage.woodFor(1), climb: climbUp, walk: target => hands.walk(target), approach: target => hands.approach(target),
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
-    hostile: () => runtime.nearestHostile() < 12,
+    hostile: () => danger(),
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active
   })
   const hungryWithoutFood = () => { const value = hunger(); return Number.isFinite(value) && value <= 14 && !shared.inventoryUncertain && !hasFood(runtime.inventory()) }
@@ -213,7 +227,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed, getHunger: hunger, getState: () => ({ position: where(), inventory: shared.inventoryUncertain ? null : runtime.inventory() }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason) }, climb: climbUp,
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() }, prey: () => { const seen = operations.foraging?.snapshot(); return seen && seen.busy !== true && seen.phase !== 'moving' ? seen.target?.position ?? null : null },
-    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active || quarry.travelStatus().busy === true || danger()
   })
   // Afloat and not moving: onto the nearest ledge with the water exit (player-water.js).
   const water = createPlayerWater({
@@ -221,21 +235,21 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     start: (target, options) => operations.movement.start(target, options), moving: () => ['moving', 'settling'].includes(runtime.motion()?.phase),
     why: () => { const reason = runtime.motion()?.reason; return reason ? `${String(reason).slice(0, 80)}${/frame guard/.test(reason) && shared.waterGuardWhy ? ` [${shared.waterGuardWhy}]` : ''}` : null },
-    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || house.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || house.status().active || quarry.travelStatus().busy === true || danger()
   })
   // The starter house's wool from sheep (house/house-wool.js).
   const wool = createHouseWool({
     getMode: control.get, shared, log, disposed, getState: () => ({ ...runtime.raw(), position: where(), inventory: shared.inventoryUncertain ? null : runtime.inventory() }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z),
     actors: () => runtime.host().entities.snapshot({ kind: 'all' }), gather: input => quarry.prepGather(input),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
-    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || house.status().active || sand.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12
+    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || house.status().active || sand.status().active || quarry.travelStatus().busy === true || danger()
   })
   // The starter house's sand for the glass: walk to received sand or search for it (house/house-sand.js).
   const sand = createHouseSand({
     getMode: control.get, shared, log, disposed, getState: () => ({ ...runtime.raw(), position: where(), inventory: shared.inventoryUncertain ? null : runtime.inventory() }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z),
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
-    blocked: () => hungryWithoutFood() || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || house.status().active || quarry.travelStatus().busy === true || runtime.nearestHostile() < 12
+    blocked: () => hungryWithoutFood() || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || house.status().active || quarry.travelStatus().busy === true || danger()
   })
   // The starter house from the user's blueprint, right after the wooden tools (house/house-build.js).
   if (shared.playerHouse === undefined) shared.playerHouse = loadHouseSync(houseFile(root))
@@ -246,7 +260,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     ports: createHousePorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() }),
     hands, climb: climbUp,
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
-    hostile: () => runtime.nearestHostile() < 12,
+    hostile: () => danger(),
     // Not with 10 health or less: eating, the shelter and fleeing come first (live 2026-11-17 05:53 JST: the build began at 1.9 health with no food).
     // Nor hungry with no food: the forage comes first (live 2026-11-17 08:26-08:29 JST: hunger 12, the build stopped the forage for a cow).
     blocked: () => !(runtime.raw().health > 10) || hungryWithoutFood() || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active,
