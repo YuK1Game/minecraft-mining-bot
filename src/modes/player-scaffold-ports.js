@@ -63,25 +63,37 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   // target over received ground (the walk itself plans at most 16 blocks; real
   // Realm 2026-11-15: 「Target lies outside the bounded search area」).
   const open = (x, y, z) => { const found = block(x, y, z); return found?.known === true && found.boundingBox !== 'block' }
-  const standY = (x, z, near) => { for (let y = near + 4; y >= near - 6; y--) { const below = block(x, y - 1, z); if (below?.known === true && below.boundingBox === 'block' && open(x, y, z) && open(x, y + 1, z)) return y } return null }
-  async function approach (target) {
+  // The stand nearest the wanted height (by default the highest within reach).
+  const standY = (x, z, near, want = near + 4) => {
+    let best = null
+    for (let y = near + 4; y >= near - 6; y--) { const below = block(x, y - 1, z); if (below?.known === true && below.boundingBox === 'block' && open(x, y, z) && open(x, y + 1, z) && (best === null || Math.abs(y - want) < Math.abs(best - want))) best = y }
+    return best
+  }
+  // `within`: how near counts as there. With the target's height known, each
+  // hop steps toward it as well and the height counts in the distance (real
+  // Realm 2026-11-17 11:46 JST: 32 m from the base chest and 7 blocks above
+  // it, the hops kept to the highest ground and the trip ended there).
+  async function approach (target, within = 12) {
+    const away = at => Math.hypot(target.x - at.x, target.z - at.z, Number.isFinite(target.y) ? target.y - at.y : 0)
     for (let hop = 0; hop < 10 && !disposed(); hop++) {
       const at = getFeet()
       if (!at) return false
-      const dx = target.x - at.x, dz = target.z - at.z, far = Math.hypot(dx, dz)
-      if (far <= 12) return true
+      const dx = target.x - at.x, dz = target.z - at.z, far = away(at), flatFar = Math.hypot(dx, dz)
+      if (far <= within) return true
+      const base = Math.floor(at.y + 0.001), want = Number.isFinite(target.y) ? base + Math.max(-6, Math.min(4, Math.round(target.y - base))) : base + 4
+      const reach = Math.max(2, Math.min(10, flatFar - within / 2))
       let moved = false
       for (const turn of [0, 0.5, -0.5, 1, -1]) {
-        const angle = Math.atan2(dz, dx) + turn, x = Math.floor(at.x + Math.cos(angle) * 10), z = Math.floor(at.z + Math.sin(angle) * 10), y = standY(x, z, Math.floor(at.y + 0.001))
+        const angle = Math.atan2(dz, dx) + turn, x = Math.floor(at.x + Math.cos(angle) * reach), z = Math.floor(at.z + Math.sin(angle) * reach), y = standY(x, z, base, want)
         if (y === null) continue
         await walk({ x: x + 0.5, y, z: z + 0.5 })
         const after = getFeet()
-        if (after && Math.hypot(target.x - after.x, target.z - after.z) < far - 3) { moved = true; break }
+        if (after && away(after) < far - 2) { moved = true; break }
       }
       if (!moved) return false
     }
     const at = getFeet()
-    return !!at && Math.hypot(target.x - at.x, target.z - at.z) <= 12
+    return !!at && away(at) <= within
   }
   const canMine = cell => { try { return operations.mining.preview([cell])?.ready === true } catch { return false } }
   // With no usable pickaxe left: plain rock by hand (slow, no drop).

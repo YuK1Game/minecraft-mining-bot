@@ -53,3 +53,15 @@ test('a walk refused while hanging above the floor lands first and is planned ag
   const other = scene({ busy: 1, error: 'No safe route found' })
   assert.equal(await other.ports.walk({ x: 3.5, y: 64, z: 0.5 }), false)
 })
+
+test('hops toward a lower target step down toward its height and count the height (live 2026-11-17 11:46 JST)', async () => {
+  // Ground at y=63 and a slab everywhere at y=69: each column has a stand at 64 and one at 70.
+  const feet = { x: 0.5, y: 70, z: 0.5 }, starts = []
+  const solid = y => y <= 63 || y === 69
+  const getBlock = (x, y) => ({ known: true, name: solid(y) ? 'minecraft:stone' : 'minecraft:air', boundingBox: solid(y) ? 'block' : 'empty' })
+  const operations = { movement: { start: (target, options) => { if (Math.hypot(target.x - feet.x, target.z - feet.z) > options.maxDistance) throw new Error('Target lies outside the bounded search area'); starts.push({ ...target }); Object.assign(feet, target) } } }
+  const ports = createScaffoldPorts({ operations, getBlock, getFeet: () => ({ ...feet }), getInventory: () => ({ known: true, items: [] }), getMotion: () => ({ phase: 'idle' }), pillarStep: async () => ({}), sleep: async () => {}, now: () => 0 })
+  assert.equal(await ports.approach({ x: 30.5, y: 64, z: 0.5 }, 6), true)
+  assert.ok(Math.hypot(30.5 - feet.x, 64 - feet.y, 0.5 - feet.z) <= 6)
+  assert.equal(feet.y, 64)
+})
