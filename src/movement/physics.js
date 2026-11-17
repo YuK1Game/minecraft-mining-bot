@@ -12,6 +12,11 @@ const { Vec3 } = require('vec3')
 const GROUND_CALIBRATION = Object.freeze({ tag: 'bedrock-1.26.60-bds-strict-ground-v1', playerSpeed: 0.1, sprintSpeed: 0.3 })
 const EYE_HEIGHT = 1.62
 const CONTACT_TOLERANCE = 1e-4
+// A received float32 position near x/z 5000 can sit up to ~0.00025 inside a
+// wall it touches; a step pushes the body out of overlaps this shallow (live
+// 2026-11-18 00:21 JST: z -4924.7 read as -4924.70019531 put the swimmer
+// 0.0002 into the ledge, so the water exit passed through it and sank).
+const HORIZONTAL_SKIN = 1e-3
 const HALF_WIDTH = 0.3
 const HEIGHT = 1.8
 const CONTROL_NAMES = ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'sneak']
@@ -252,14 +257,14 @@ function createPhysics ({ world, version = '1.26.60', registry, allowWater = fal
     const projected = plainVector(feet)
     const targets = new Map()
     for (const shape of collisions) {
-      const face = horizontalFaces(feet, shape, CONTACT_TOLERANCE, true).sort((a, b) => a.penetration - b.penetration)[0]
+      const face = horizontalFaces(feet, shape, HORIZONTAL_SKIN, true).sort((a, b) => a.penetration - b.penetration)[0]
       if (!face || targets.has(face.axis) && Math.abs(targets.get(face.axis) - face.target) > 1e-9) return null
       targets.set(face.axis, face.target)
       projected[face.axis] = face.target
     }
     const delta = { x: projected.x - feet.x, z: projected.z - feet.z }
-    if (Math.hypot(delta.x, delta.z) > CONTACT_TOLERANCE || bodyGeometry(projected).some(shape => intersectsBody(projected, shape))) return null
-    return { from: { x: feet.x, z: feet.z }, to: { x: projected.x, z: projected.z }, delta, source: 'known_horizontal_shape_contact', tolerance: CONTACT_TOLERANCE }
+    if (Math.hypot(delta.x, delta.z) > HORIZONTAL_SKIN || bodyGeometry(projected).some(shape => intersectsBody(projected, shape))) return null
+    return { from: { x: feet.x, z: feet.z }, to: { x: projected.x, z: projected.z }, delta, source: 'known_horizontal_shape_contact', tolerance: HORIZONTAL_SKIN }
   }
 
   function repairHorizontalContact (modelState, rawState, options = {}) {
