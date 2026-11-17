@@ -73,3 +73,26 @@ test('nothing happens with a torch near, under the open sky, without supplies or
   assert.equal(await held.torch.tick(), null)
   assert.deepEqual([...lit.calls, ...sky.calls, ...poor.calls, ...held.calls], [])
 })
+
+test('spots behind the heading come first: a torch ahead in the tunnel is mined away (live 2026-11-18 02:18 JST)', () => {
+  assert.deepEqual(torchSpots(tunnel(), feet, { x: 4, y: 0, z: 0 }), [{ x: -1, y: 40, z: 0 }, { x: 1, y: 40, z: 0 }])
+  assert.deepEqual(torchSpots(tunnel(), feet, { x: -4, y: 0, z: 0 }), [{ x: 1, y: 40, z: 0 }, { x: -1, y: 40, z: 0 }])
+})
+
+test('a placed torch that is gone again is not placed in that cell a second time', async () => {
+  const f = job({ items: [stack('torch', 5, 4)] })
+  const cells = new Map()
+  const calls = []
+  const torch = createPlayerTorch({
+    getMode: () => 'player', shared: { playerWanted: true }, getBlock: (x, y, z) => cells.get(`${x},${y},${z}`) ?? tunnel()(x, y, z), getFeet: () => feet, getInventory: () => ({ known: true, items: [stack('torch', 5, 4)] }),
+    agent: { objective: {}, running: () => true, settled: () => true, stop: () => {}, start: async () => {} },
+    log: line => calls.push(line), sleep: async () => {}, now: (() => { let t = 1000000; return () => (t += 100000) })(),
+    // The cell turns back to air right after the placement.
+    hands: { craft: async () => false, place: async cell => { calls.push(`place ${cell.x},${cell.y},${cell.z}`); return true } }
+  })
+  assert.equal(await torch.tick(), false)
+  assert.ok(calls.some(line => /置いた松明が残っていません \(1, 40, 0\)/.test(line)), calls.join('|'))
+  assert.equal(await torch.tick(), false)
+  assert.deepEqual(calls.filter(line => line.startsWith('place')), ['place 1,40,0', 'place -1,40,0'])
+  void f
+})
