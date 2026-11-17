@@ -73,4 +73,27 @@ function bankableAll (inventory, { worn = null } = {}) {
   return out
 }
 
-module.exports = { bankableAll, diamondsNeeded }
+// What to take back out of a base chest (its received slots) up to the kit:
+// the diamonds the missing gear takes, and coal, sticks, wood and iron up to
+// their caps. After a death the gear is gone and the diamonds sit in the chest
+// (live 2026-11-17 19:09 JST: died with the diamond gear, respawned at the
+// house with a wooden pickaxe while the base chest held the banked diamonds).
+const TAKE = [[/^diamond$/, null], ...CAPS.filter(([pattern]) => ['coal', 'stick', 'oak_log', 'oak_planks', 'iron_ingot'].some(name => pattern.test(name)))]
+function restockable (inventory, worn, slots) {
+  if (inventory?.known !== true || inventory.uncertain || !Array.isArray(slots)) return []
+  const items = (inventory.items ?? []).filter(item => item?.count > 0)
+  const out = []
+  for (const [pattern, cap] of TAKE) {
+    const held = items.filter(item => pattern.test(bare(item.name))).reduce((sum, item) => sum + item.count, 0)
+    let left = (cap ?? diamondsNeeded(items, worn)) - held
+    for (const slot of slots) {
+      if (left <= 0) break
+      if (slot?.known !== true || !(slot.count > 0) || !pattern.test(bare(slot.name))) continue
+      const count = Math.min(left, slot.count, 64)
+      out.push({ chestSlot: slot.slot, name: slot.name, count }); left -= count
+    }
+  }
+  return out
+}
+
+module.exports = { bankableAll, diamondsNeeded, restockable }

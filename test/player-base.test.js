@@ -182,3 +182,26 @@ test('both house chests full: a new chest skips them, stands outside the door an
   assert.deepEqual(shared.playerBase, { x: 1, y: 63, z: 11 })
   assert.deepEqual(writes.at(-1).chest, { x: 1, y: 63, z: 11 })
 })
+
+test('after a death near the base: the banked diamonds come back out for the gear (live 2026-11-17 19:09 JST)', async () => {
+  const { restockable } = require('../src/modes/player-base-kit')
+  const slots = [{ slot: 0, known: true, name: 'minecraft:diamond', count: 64 }, { slot: 1, known: true, name: 'minecraft:coal', count: 40 }, { slot: 2, known: true, name: 'minecraft:tuff', count: 64 }]
+  const bare = inv([[0, 'wooden_pickaxe', 1]])
+  assert.deepEqual(restockable(bare, { known: true, worn: [] }, slots), [{ chestSlot: 0, name: 'minecraft:diamond', count: 29 }, { chestSlot: 1, name: 'minecraft:coal', count: 16 }])
+  const calls = [], shared = { playerWanted: true, playerBase: { x: 5, y: 64, z: 0 } }
+  let inventory = bare, seen = null
+  const pos = { x: 6.5, y: 65.62, z: 0.5 }
+  const api = createPlayerBase({
+    getMode: () => 'player', shared, getBlock: world({ '5,64,0': 'minecraft:chest' }), getPosition: () => pos, getFeet: () => ({ x: pos.x, y: pos.y - 1.62, z: pos.z }), getInventory: () => inventory, getWorn: () => ({ known: true, worn: [] }),
+    agent: { objective: {}, start: async () => calls.push('start'), stop: () => calls.push('stop'), settled: () => true },
+    hands: {
+      store: async () => 0, room: () => 10, contents: () => seen,
+      take: async (at, pick) => { seen = slots; const picks = pick(slots); calls.push(['take', picks.map(p => p.count)]); inventory = inv([[0, 'wooden_pickaxe', 1], [1, 'diamond', 29], [2, 'coal', 16]]); seen = [{ ...slots[0], count: 35 }, { ...slots[1], count: 24 }, slots[2]]; return 45 }
+    },
+    chest: async () => null, climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    walk: async () => true, approach: async () => true, log: () => {}, sleep: async () => {}
+  })
+  assert.equal(await api.tick(), true)
+  assert.deepEqual(calls.filter(Array.isArray), [['take', [29, 16]]])
+  assert.equal(await api.tick(), null, 'nothing more to take: no second trip')
+})
