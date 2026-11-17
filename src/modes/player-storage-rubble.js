@@ -2,9 +2,10 @@
 
 // What a full inventory can give up: stored in a chest (player-storage.js) or,
 // with no chest and no wood, thrown away (player-discard.js).
-const RUBBLE = /^minecraft:(?:cobbled_deepslate|deepslate|diorite|granite|andesite|tuff|calcite|stone|gravel|flint|leaf_litter|rotten_flesh|netherrack|sandstone|sand|clay_ball|poisonous_potato)$/
+const RUBBLE = /^minecraft:(?:cobbled_deepslate|deepslate|diorite|granite|andesite|tuff|calcite|stone|gravel|flint|leaf_litter|rotten_flesh|netherrack|sandstone|clay_ball|poisonous_potato)$/
 // Cobblestone: the starter house takes 68 (house-needs.js), so 72 stay in hand.
-const KEEP = { 'minecraft:cobblestone': 72, 'minecraft:dirt': 32 }
+// Sand: the house's six glass panes (it was rubble and could be stored or thrown away).
+const KEEP = { 'minecraft:cobblestone': 72, 'minecraft:dirt': 32, 'minecraft:sand': 6 }
 
 const bare = name => String(name ?? '')
 const pickaxeUses = item => Number.isSafeInteger(item?.maxDurability) && Number.isSafeInteger(item?.durabilityUsed) ? item.maxDurability - item.durabilityUsed : null
