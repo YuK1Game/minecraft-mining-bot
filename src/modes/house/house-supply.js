@@ -15,7 +15,7 @@
 // - Wool comes from sheep (house-wool.js); coal, the crafting and the build
 //   itself come next (docs/player-roadmap.md).
 const { normalizeMode } = require('../bot-mode')
-const { counts, remaining } = require('./house-blueprint')
+const { counts, remaining, placements } = require('./house-blueprint')
 const { houseNeeds } = require('./house-needs')
 
 const short = name => String(name ?? '').replace(/^minecraft:/, '')
@@ -46,9 +46,16 @@ function pending ({ mode, playing, shared, state }) {
   return normalizeMode(mode) === 'player' && playing === true && shared?.playerHouse?.done !== true && hasPickaxe(state?.inventory)
 }
 
+// Away from the house its chunks are not received and every step looks
+// unplaced (real Realm 2026-11-17 10:04 JST: 246 m away with 8 steps left, the
+// supply asked for 61 cobblestone and walked 220 m to look for stone). The
+// counts last read with the whole house received stand in until it is seen again.
 function needsNow ({ shared, state, getBlock }) {
-  const origin = shared?.playerHouse?.origin ?? null
-  return houseNeeds(state?.inventory, counts(origin && getBlock ? remaining(getBlock, origin) : remaining(null, null)))
+  const house = shared?.playerHouse ?? null, origin = house?.origin ?? null
+  if (!origin || !getBlock) return houseNeeds(state?.inventory, counts(remaining(null, null)))
+  const seen = placements(origin).every(step => step.cells.every(cell => getBlock(cell.x, cell.y, cell.z)?.known === true))
+  if (seen) house.left = counts(remaining(getBlock, origin))
+  return houseNeeds(state?.inventory, seen || !house.left ? counts(remaining(getBlock, origin)) : house.left)
 }
 
 function withHouseSupply ({ mode, playing, shared, state, decision, getBlock = null, planLogs, planStone, planSand = null, log = () => {} }) {
