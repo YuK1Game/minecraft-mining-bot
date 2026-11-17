@@ -11,6 +11,10 @@
 //   192 m ... out to 480 m, 60 degrees on each trip) to receive new terrain.
 // Sand nearer than 24 m is left to the house supply. Not while a hostile is
 // within 12 m, another job runs or the Bot travels. A minute between trips.
+// Under cover (a tunnel), it first climbs out the recovery's way (tunnel walk
+// back, else straight up), then searches (real Realm 2026-11-17 10:31-10:40
+// JST: the trip was cut short by a fight, the agent went down 30 blocks for
+// iron, and no sand search ran again with 8 house steps left).
 const { normalizeMode } = require('../bot-mode')
 const { pending, needsNow } = require('./house-supply')
 const { nearestKnownLog } = require('../player-recovery')
@@ -23,14 +27,14 @@ const OPEN = /^minecraft:(?:air|cave_air|short_grass|tall_grass|fern|dead_bush|l
 // sand blocks near the house all lay under a pool, gravel or dirt; every trip
 // went there and none was dug).
 const exposed = getBlock => (x, y, z) => { const up = getBlock(x, y + 1, z); return up?.known === true && OPEN.test(up.name ?? '') }
-const NEAR_M = 24, STEP_M = 96, RINGS = 5, AGAIN_MS = 60000, TRIP_MS = 240000, AVOID_M = 24, FORGET_MS = 1800000
+const NEAR_M = 24, STEP_M = 96, RINGS = 5, AGAIN_MS = 60000, TRIP_MS = 240000, AVOID_M = 24, FORGET_MS = 1800000, CLIMB_AGAIN_MS = 300000
 
 function spiralPoint (center, trip) {
   const ring = 1 + Math.floor(trip / 6) % RINGS, angle = trip * Math.PI / 3
   return { x: Math.round(center.x + Math.cos(angle) * STEP_M * ring), z: Math.round(center.z + Math.sin(angle) * STEP_M * ring) }
 }
 
-function createHouseSand ({ getMode, shared, agent, travel, getState, getBlock, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), scan = nearestKnownLog }) {
+function createHouseSand ({ getMode, shared, agent, travel, climb = null, getState, getBlock, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), scan = nearestKnownLog }) {
   let busy = false, waitUntil = 0, trips = 0, failed = []
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const settle = async () => { for (let i = 0; i < 40 && agent.settled?.() === false && !disposed(); i++) await sleep(200) }
@@ -42,22 +46,32 @@ function createHouseSand ({ getMode, shared, agent, travel, getState, getBlock, 
     if (!state?.position || !pending({ mode: getMode(), playing: shared.playerWanted === true, shared, state })) return null
     const needs = needsNow({ shared, state, getBlock })
     if (!needs || needs.need.sand <= 0 || needs.need.logs > 0 || needs.need.cobblestone > 0) return null
-    if (underCover(getBlock, state.position)) return null
+    const covered = underCover(getBlock, state.position)
+    if (covered && !climb) return null
     busy = true
     waitUntil = now() + AGAIN_MS
     let stopped = false
     try {
+      if (covered) {
+        log(`プレイヤーモード: 拠点の家のガラスにする砂を探すため、地上へ出ます（あと${needs.need.sand}個）`)
+        agent.stop('拠点の家の砂を探しに地上へ出ます。')
+        stopped = true
+        await settle()
+        let out
+        try { out = await climb(() => !live()) } catch (error) { out = { ok: false, reason: String(error?.message ?? error).slice(0, 100) } }
+        if (!live()) return null
+        if (!out?.ok || underCover(getBlock, getState()?.position)) { waitUntil = now() + CLIMB_AGAIN_MS; log(`プレイヤーモード: 砂を探しに地上へ出られません（${out?.reason ?? '屋根の下のまま'}）`); return false }
+      }
       failed = failed.filter(point => now() - point.at < FORGET_MS)
-      const sand = await scan({ getBlock, position: state.position, match: SAND, accept: exposed(getBlock), min: 0, step: 2, below: 24, avoid: failed, avoidM: AVOID_M })
+      const here = covered ? getState()?.position ?? state.position : state.position
+      const sand = await scan({ getBlock, position: here, match: SAND, accept: exposed(getBlock), min: 0, step: 2, below: 24, avoid: failed, avoidM: AVOID_M })
       if (!live()) return null
       if (sand && sand.distance < NEAR_M) return null
       const origin = shared.playerHouse?.origin
-      const center = origin ?? { x: Math.floor(state.position.x), z: Math.floor(state.position.z) }
+      const center = origin ?? { x: Math.floor(here.x), z: Math.floor(here.z) }
       const destination = sand ? { x: sand.x, z: sand.z } : spiralPoint(center, trips++)
       log(`プレイヤーモード: ${sand ? `拠点の家のガラスにする砂が見える (${destination.x}, ${destination.z}) へ移動します` : `拠点の家のガラスにする砂を探しに (${destination.x}, ${destination.z}) へ移動します`}（あと${needs.need.sand}個）`)
-      agent.stop('拠点の家の砂を探します。')
-      stopped = true
-      await settle()
+      if (!stopped) { agent.stop('拠点の家の砂を探します。'); stopped = true; await settle() }
       try { await travel.to({ destination }) } catch (error) { log(`プレイヤーモード: 砂を探す移動を始められません ${String(error?.message ?? error).slice(0, 100)}`); return false }
       const until = now() + TRIP_MS
       while (live() && now() < until && travel.status()?.busy) await sleep(1000)
