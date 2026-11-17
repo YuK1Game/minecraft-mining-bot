@@ -805,6 +805,8 @@ function createRuntimeOperations (rt) {
       useBed: position => { rt.requireIdle({ inventoryRequired: false }); return rt.interactions.useBed(position) },
       wakeBed: position => rt.working().sleeping ? rt.interactions.wakeBed?.(position) : null,
       previewUseBed: position => rt.interactions.previewUseBed(position),
+      // The house door: an ordinary click opens or closes it (modes/house/house-door.js).
+      useDoor: position => { rt.requireIdle({ inventoryRequired: false }); return rt.interactions.useDoor(position) },
       // Manual normal placement against a side face (2026-11-13: a bridge to the
       // registered chest over the finished pit). Same checks as the quarry's seals.
       previewPlaceAgainst: data => rt.interactions.previewQuarryPlace(data),

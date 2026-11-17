@@ -23,6 +23,7 @@ const { walkOut, recordedFloors } = require('./player-tunnel-exit')
 const { underCover } = require('./player-surface')
 const { boxedIn, stepOut } = require('./player-pit')
 const { settle, offCentre, offGrid } = require('./player-settle')
+const { openDoor } = require('./house/house-door')
 const { createPlayerTorch } = require('./player-torch')
 const { createTorchPorts } = require('./player-torch-ports')
 const { createPlayerStorage } = require('./player-storage')
@@ -197,6 +198,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     ports: hands
   })
   // Underground, a torch every eight blocks (player-torch.js).
+  // The finished house's door, opened by an ordinary click before going in (house/house-door.js).
+  const houseDoor = () => shared.playerHouse?.origin ? openDoor({ origin: shared.playerHouse.origin, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), useDoor: target => operations.interactions.useDoor(target), walk: target => hands.walk(target), getFeet: feetNow, log }) : Promise.resolve(true)
   const feetNow = () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
   const torch = createPlayerTorch({
     getMode: control.get, shared, log, disposed, getFeet: feetNow,
@@ -220,7 +223,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: baseFile(root), getWorn: () => operations.diagnostics?.armor?.() ?? null,
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
-    hands: storagePorts, chest: () => storage.chest(), canBuild: () => shared.playerHouse?.done === true && storage.woodFor(1), climb: climbUp, walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within),
+    hands: storagePorts, chest: () => storage.chest(), canBuild: () => shared.playerHouse?.done === true && storage.woodFor(1), climb: climbUp, door: () => houseDoor(), walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within),
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     hostile: () => danger(),
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active
@@ -278,6 +281,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       }
       const bed = bedOf(origin)
       if (bed && /bed$/.test(here(bed.x, bed.y, bed.z)?.name ?? '') && shared.playerHouse?.spawn !== true) {
+        await houseDoor()
         if (await setSpawn({ origin, shared, useBed: target => operations.interactions.useBed(target), wakeBed: target => operations.interactions.wakeBed(target), walk: target => hands.walk(target), getFeet: feetNow, getBlock: here, previewUse: target => operations.interactions.previewUseBed?.(target), log })) shared.playerHouse = { ...shared.playerHouse, spawn: true }
       }
     }
