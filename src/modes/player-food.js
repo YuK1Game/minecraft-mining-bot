@@ -8,7 +8,8 @@
 // - the autonomy stops, the Bot comes up to open sky (its own tunnel back on
 //   foot, else straight up: the same climb as the recovery), and play goes on
 //   there, where the forage can walk to the animals.
-// - Only while playing, hunger received at 14 or less, no food held and
+// - Only while playing, hunger received at 14 or less (or under 18 with health
+//   under 10: no natural healing), no food held and
 //   received solid ground overhead. Not while a hostile is within 12 m or
 //   another job runs. Five minutes between tries.
 // - On open ground, a known food source more than 6 m away that the forage
@@ -18,7 +19,7 @@
 const { normalizeMode } = require('./bot-mode')
 const { underCover } = require('./player-surface')
 
-const HUNGRY = 14, AGAIN_MS = 300000, NEAR_M = 6, TRIP_MS = 180000
+const HUNGRY = 14, REGEN = 18, HURT = 10, AGAIN_MS = 300000, NEAR_M = 6, TRIP_MS = 180000
 const FOOD = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit|cod|salmon)$|^minecraft:(?:bread|apple|golden_apple|carrot|baked_potato|potato|beetroot|melon_slice|sweet_berries|glow_berries|cookie|pumpkin_pie|dried_kelp|mushroom_stew|rabbit_stew|beetroot_soup)$/
 const hasFood = inventory => (inventory?.items ?? []).some(item => item?.count > 0 && FOOD.test(item.name ?? ''))
 
@@ -30,7 +31,11 @@ function createPlayerFood ({ getMode, shared, agent, climb, travel = null, prey 
   async function tick () {
     if (!live() || busy || blocked() || now() < waitUntil) return null
     const hunger = getHunger(), state = getState()
-    if (!Number.isFinite(hunger) || hunger > HUNGRY || state?.inventory?.known !== true || hasFood(state.inventory) || !state.position) return null
+    // Hurt with hunger under 18 heals no more, so no food then counts as hungry
+    // too (live 2026-11-17 19:05-19:09 JST: health 2.7, hunger 16, no food, deep
+    // among slimes and creepers; this waited for hunger 14).
+    const stuck = Number.isFinite(state?.health) && state.health < HURT && hunger < REGEN
+    if (!Number.isFinite(hunger) || (hunger > HUNGRY && !stuck) || state?.inventory?.known !== true || hasFood(state.inventory) || !state.position) return null
     if (!underCover(getBlock, state.position)) return walkToFood(state.position, hunger)
     busy = true
     waitUntil = now() + AGAIN_MS
