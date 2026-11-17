@@ -573,3 +573,17 @@ test('held diamonds become a diamond pickaxe and sword before more are mined', (
   f.preview('diamond_chestplate')
   assert.equal(f.next().output, 'minecraft:diamond_chestplate')
 })
+
+test('an excluded ore far behind does not keep the planner exploring; here gets a new scan (live 2026-11-17 18:46-18:58 JST)', () => {
+  const f = fixture()
+  Object.assign(f.state, { profile: 'p', realm: { id: 1 }, connectionId: 'c' })
+  f.observations.capabilities.explore = true
+  const scope = JSON.stringify(['p', '1', 'overworld', 'c', '41'])
+  f.items([['iron_pickaxe', 1]])
+  f.hold('iron_pickaxe')
+  f.ore('diamond', 'diamond_ore', { x: 2, y: 65, z: 0 })
+  f.observations.progress = { excludedResources: [{ scope, resource: 'diamond', position: { x: 2, y: 65, z: 0 } }] }
+  assert.equal(f.next().type, 'explore')
+  f.state.position = { x: 360.5, y: 66.62, z: 0.5 }
+  assert.equal(f.next().type, 'prospect')
+})
