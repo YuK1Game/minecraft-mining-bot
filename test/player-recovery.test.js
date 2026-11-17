@@ -5,11 +5,11 @@ const { createPlayerRecovery, nearestKnownLog, aheadPoint, farTarget } = require
 const { createAutonomy } = require('../src/survival/autonomy')
 const { playerActivity, modeState } = require('../scripts/lib/player-activity')
 
-function fixture ({ blocks = {}, mode = 'player', walks = false, climb = null, prey = null } = {}) {
+function fixture ({ blocks = {}, mode = 'player', walks = false, climb = null, prey = null, water = null } = {}) {
   const calls = [], shared = { autoWanted: true, autoOptions: {} }, logs = [], position = { x: 0.5, y: 65.62, z: 0.5 }
   let busy = false, clock = 0
   const recovery = createPlayerRecovery({
-    getMode: () => mode, shared, log: line => logs.push(line), prey, climb: climb && (async () => { calls.push('climb'); return climb }),
+    getMode: () => mode, shared, log: line => logs.push(line), prey, water: water && { needed: () => water.wet, exit: async () => { calls.push('swim'); water.wet = false; return { ok: true } } }, climb: climb && (async () => { calls.push('climb'); return climb }),
     agent: { objective: { objective: 'diamond', diamondCount: 1 }, stop: reason => { calls.push('stop'); shared.autoWanted = false }, start: async options => { calls.push({ start: options }); shared.autoWanted = true; shared.autoOptions = { ...options } } },
     travel: { to: async input => { calls.push({ travel: input.destination }); if (walks) Object.assign(position, { x: input.destination.x + 0.5, z: input.destination.z + 0.5 }); busy = true; setTimeout(() => { busy = false }, 5) }, status: () => ({ busy }), cancel: async () => { busy = false; calls.push('cancel') } },
     getBlock: (x, y, z) => blocks[`${x},${y},${z}`] ?? { known: false },
@@ -291,4 +291,12 @@ test('a food source from underground: straight up first, then the long trip (liv
   await settle(f.recovery)
   assert.deepEqual(f.calls.slice(0, 2), ['climb', { travel: { x: -21, z: 3 } }])
   assert.match(f.logs.join('\n'), /地下にいるため、先に真上へ掘って地上へ出ます（食料源/)
+})
+
+test('afloat after a stop: swims onto a ledge first, then plays on', async () => {
+  const f = fixture({ water: { wet: true } })
+  f.recovery.onProgress(blocked({ stopCode: null, reason: '再試行の上限に達しました: No safe known shore route is accepted by the live movement preview', lastDecision: { type: 'return_to_shore' } }))
+  await settle(f.recovery)
+  assert.deepEqual(f.calls, ['swim', { start: { objective: 'diamond', diamondCount: 1 } }])
+  assert.match(f.logs.join('\n'), /岸へ上がって/)
 })

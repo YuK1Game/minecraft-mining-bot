@@ -62,28 +62,39 @@ function createPlayerWater ({ getMode, shared, agent, getPosition, getBlock, sta
     waitUntil = now() + AGAIN_MS
     if (!found.length) { log('プレイヤーモード: 水の中で止まっていますが、5マス以内に上がれる岸が見つかりません'); return false }
     busy = true
-    const reasons = []
     try {
       log(`プレイヤーモード: 水の中で止まっているため、岸 (${Math.floor(found[0].x)}, ${found[0].y}, ${Math.floor(found[0].z)}) へ上がります`)
       agent.stop('水から上がります。')
       await settle()
-      for (const ledge of found) {
-        if (!live()) return null
-        try { start(ledge, { allowWater: true, allowLowHealth: true, waterExit: true, maxDistance: 4 }) } catch (error) { reasons.push(String(error?.message ?? error).slice(0, 80)); continue }
-        await sleep(300)
-        for (let i = 0; i < 50 && moving() && !disposed(); i++) await sleep(200)
-        if (!wet(getBlock, getPosition())) { log('プレイヤーモード: 水から上がりました'); since = null; anchor = null; return true }
-        reasons.push(why() ?? '上がれませんでした')
-      }
-      log(`プレイヤーモード: 水から上がれません（${[...new Set(reasons)].slice(0, 2).join(' / ') || '不明'}）`)
-      return false
+      const out = await exit(() => !live())
+      return out.ok
     } finally {
       busy = false
       await restart()
     }
   }
 
-  return { tick, status: () => ({ active: busy, reason: busy ? '水から上がっています。' : null }) }
+  // Swim onto the nearest ledge; the caller has stopped the autonomy.
+  async function exit (aborted = () => false) {
+    const feet = getPosition()
+    if (!wet(getBlock, feet)) return { ok: false, reason: 'NOT_IN_WATER' }
+    const found = ledges(getBlock, feet).slice(0, TRIES)
+    if (!found.length) { log('プレイヤーモード: 水の中で止まっていますが、5マス以内に上がれる岸が見つかりません'); return { ok: false, reason: 'NO_LEDGE' } }
+    const reasons = []
+    for (const ledge of found) {
+      if (aborted() || disposed()) return { ok: false, reason: 'INTERRUPTED' }
+      try { start(ledge, { allowWater: true, allowLowHealth: true, waterExit: true, maxDistance: 4 }) } catch (error) { reasons.push(String(error?.message ?? error).slice(0, 80)); continue }
+      await sleep(300)
+      for (let i = 0; i < 50 && moving() && !disposed(); i++) await sleep(200)
+      if (!wet(getBlock, getPosition())) { log('プレイヤーモード: 水から上がりました'); since = null; anchor = null; return { ok: true } }
+      reasons.push(why() ?? '上がれませんでした')
+    }
+    const reason = [...new Set(reasons)].slice(0, 2).join(' / ') || '不明'
+    log(`プレイヤーモード: 水から上がれません（${reason}）`)
+    return { ok: false, reason }
+  }
+
+  return { tick, exit, needed: () => wet(getBlock, getPosition()), status: () => ({ active: busy, reason: busy ? '水から上がっています。' : null }) }
 }
 
 module.exports = { createPlayerWater, wet, ledges }

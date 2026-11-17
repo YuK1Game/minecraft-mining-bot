@@ -19,6 +19,7 @@ const { normalizeMode } = require('./bot-mode')
 const LOG = /^(?:minecraft:)?[a-z_]+_(?:log|stem)$/
 const TRIP_LIMIT = 8
 const PIT_LIMIT = 3 // tries to step out of a pit, per ten minutes
+const WATER_LIMIT = 3 // swims onto a ledge after a stop, per ten minutes
 const SETTLE_LIMIT = 3 // walks to the middle of the block, per ten minutes
 const { underCover, surfaceAhead } = require('./player-surface')
 const { createRepeat, elsewhere } = require('./player-repeat')
@@ -90,8 +91,8 @@ function overhead (snapshot, position) {
 const stationMove = snapshot => snapshot?.lastDecision?.type === 'move_to' && ['crafting_table', 'table', 'furnace'].includes(snapshot.lastDecision.resource ?? snapshot.lastDecision.stage)
 const seeksWood = snapshot => snapshot?.lastDecision?.type === 'explore' && snapshot.lastDecision.resource === 'logs'
 
-function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, pit = null, settle = null, prey = null, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
-  let run = null, trips = 0, pits = 0, pitAt = 0, settles = 0, settleAt = 0, heading = null, logsSeen = 0, reason = null, visited = []
+function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, pit = null, settle = null, water = null, prey = null, held = () => false, getBlock, getPosition, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+  let run = null, trips = 0, pits = 0, pitAt = 0, settles = 0, settleAt = 0, waters = 0, waterAt = 0, heading = null, logsSeen = 0, reason = null, visited = []
   const repeat = createRepeat({ now })
   let turns = 0
   const live = token => run === token && !disposed() && normalizeMode(getMode()) === 'player'
@@ -180,6 +181,19 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
     const logs = snapshot.progress?.logsCollected ?? 0
     if (logs > logsSeen) { trips = 0; pits = 0; settles = 0; heading = null; visited = [] }
     logsSeen = logs
+    // Afloat (player-water.js): the ordinary walk does not plan in water and
+    // the shore return of the autonomy keeps failing (real Realm 2026-11-17
+    // 09:08 JST: 「No safe known shore route is accepted by the live movement
+    // preview」 for 20 minutes in a one-deep pool): onto a ledge with the water exit.
+    if (now() - waterAt > 600000) waters = 0
+    if (water && waters < WATER_LIMIT && water.needed()) {
+      waters++; waterAt = now()
+      log('プレイヤーモード: 水の中で止まったため、岸へ上がってから続けます。')
+      let out = null
+      try { out = await water.exit(() => !live(token)) } catch (error) { log(`プレイヤーモード: 水から上がれません ${text(error?.message)}`) }
+      if (!live(token) || held()) return false
+      if (out?.ok) { waters = 0; return restart(token, { ...agent.objective }) }
+    }
     // At the bottom of a hole no walk leads out of (player-pit.js): a step is
     // cut into the wall first; every other answer below needs a walk.
     // Under a roof the climb below (straight up) is the way out.
