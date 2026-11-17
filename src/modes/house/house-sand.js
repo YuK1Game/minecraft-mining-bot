@@ -72,7 +72,7 @@ function createHouseSand ({ getMode, shared, agent, travel, climb = null, approa
       const sand = await scan({ getBlock, position: here, match: SAND, accept: exposed(getBlock), min: 0, step: 2, below: 24, avoid: failed, avoidM: AVOID_M })
       if (!live()) return null
       const seen = (point, from) => { if (!from) return false; const feetY = Math.floor(from.y - 1.62 + 0.001); return Math.hypot(point.x + 0.5 - from.x, point.z + 0.5 - from.z) <= SEEN_M && point.y - feetY >= -SEEN_BELOW && point.y - feetY <= SEEN_ABOVE }
-      if (sand && seen(sand, here)) return null
+      if (sand && seen(sand, here)) { const k = `${sand.x},${sand.y},${sand.z}`; if (shared.houseSandNote !== k) { shared.houseSandNote = k; log(`プレイヤーモード: 砂 (${sand.x}, ${sand.y}, ${sand.z}) は見える範囲にあるので、材料集めに任せます`) } return null }
       if (sand && sand.distance < NEAR_M && !approach) return null
       const origin = shared.playerHouse?.origin
       const center = origin ?? { x: Math.floor(here.x), z: Math.floor(here.z) }

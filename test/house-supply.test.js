@@ -95,3 +95,22 @@ test('the plan mines received sand with nothing falling on it, counting sand hel
   const done = nextBootstrapAction({ ...state, inventory: { known: true, items: [...state.inventory.items, { name: 'minecraft:sand', count: 6, slot: 1 }] } }, { blocks, canScan: true }, { stoneCount: 2304, material: { blocks: ['sand'], items: ['sand'], count: 6 } })
   assert.equal(done.type, 'complete')
 })
+
+// Live 2026-11-17 13:15-13:21 JST: on a beach every sand block had sand beside
+// or below it, and the plan never chose one.
+test('the plan mines beach sand with sand beside and below it, not sand under sand', () => {
+  const { nextBootstrapAction } = require('../src/survival/planner')
+  const blocks = []
+  for (let x = -3; x <= 3; x++) for (let z = -3; z <= 3; z++) {
+    blocks.push({ known: true, name: 'minecraft:stone', position: { x, y: 61, z }, boundingBox: 'block' })
+    blocks.push({ known: true, name: x >= 2 ? 'minecraft:sand' : 'minecraft:stone', position: { x, y: 62, z }, boundingBox: 'block' })
+    blocks.push({ known: true, name: x >= 2 ? 'minecraft:sand' : 'minecraft:grass_block', position: { x, y: 63, z }, boundingBox: 'block' })
+    for (const y of [64, 65, 66]) blocks.push({ known: true, name: 'minecraft:air', position: { x, y, z }, boundingBox: 'empty' })
+  }
+  const state = { phase: 'spawned', health: 20, gameMode: 'survival', position: { x: 0.5, y: 65.62, z: 0.5 }, heldItem: { name: 'minecraft:stone_pickaxe', slot: 0 }, inventory: { known: true, items: [{ name: 'minecraft:stone_pickaxe', count: 1, slot: 0 }] } }
+  const material = { blocks: ['sand', 'red_sand'], items: ['sand', 'red_sand'], count: 6 }
+  const out = nextBootstrapAction(state, { blocks, canScan: true, capabilities: { break_block: true, move: true, scan_blocks: true, equip: true, collect_drops: true } }, { stoneCount: 2304, material })
+  assert.equal(out.type, 'mine_stone', JSON.stringify(out))
+  assert.equal(out.target.y, 63)
+  assert.equal(out.material, true)
+})
