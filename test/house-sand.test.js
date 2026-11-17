@@ -43,3 +43,21 @@ test('nothing while logs or cobblestone are short, the sand is held, or under a 
   assert.equal(await job({ items: [...READY, ['sand', 6]] }).house.tick(), null)
   assert.equal(await job({ covered: true }).house.tick(), null)
 })
+
+test('sand the trip could not reach is passed over on the next scan', async () => {
+  const scans = [], lines = []
+  let t = 0, busy = false
+  const house = createHouseSand({
+    getMode: () => 'player', shared: { playerWanted: true, playerHouse: { origin: { x: 100, y: 64, z: 200 } } }, log: text => lines.push(text), sleep: async () => { busy = false }, now: () => t,
+    getState: () => ({ position: { x: 100, y: 65, z: 180 }, inventory: inv(READY) }),
+    getBlock: () => null,
+    scan: async input => { scans.push(input.avoid.map(p => ({ x: p.x, z: p.z }))); return { x: 150, z: 250, distance: 60 } },
+    travel: { to: async () => { busy = true }, status: () => ({ busy }), cancel: async () => {} },
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true }
+  })
+  assert.equal(await house.tick(), true)
+  t = 120000
+  await house.tick()
+  assert.deepEqual(scans, [[], [{ x: 150, z: 250 }]])
+  assert.match(lines.join('\n'), /砂 \(150, 250\) へ行けなかった/)
+})

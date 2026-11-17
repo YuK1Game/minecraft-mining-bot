@@ -17,7 +17,7 @@ const { nearestKnownLog } = require('../player-recovery')
 const { underCover } = require('../player-surface')
 
 const SAND = /^(?:minecraft:)?(?:red_)?sand$/
-const NEAR_M = 24, STEP_M = 96, RINGS = 5, AGAIN_MS = 60000, TRIP_MS = 240000
+const NEAR_M = 24, STEP_M = 96, RINGS = 5, AGAIN_MS = 60000, TRIP_MS = 240000, AVOID_M = 24, FORGET_MS = 1800000
 
 function spiralPoint (center, trip) {
   const ring = 1 + Math.floor(trip / 6) % RINGS, angle = trip * Math.PI / 3
@@ -25,7 +25,7 @@ function spiralPoint (center, trip) {
 }
 
 function createHouseSand ({ getMode, shared, agent, travel, getState, getBlock, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), scan = nearestKnownLog }) {
-  let busy = false, waitUntil = 0, trips = 0
+  let busy = false, waitUntil = 0, trips = 0, failed = []
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const settle = async () => { for (let i = 0; i < 40 && agent.settled?.() === false && !disposed(); i++) await sleep(200) }
   const restart = async () => { for (let attempt = 0; attempt < 5 && live(); attempt++) { try { await agent.start({ ...agent.objective }); return } catch { await sleep(2000) } } }
@@ -41,7 +41,8 @@ function createHouseSand ({ getMode, shared, agent, travel, getState, getBlock, 
     waitUntil = now() + AGAIN_MS
     let stopped = false
     try {
-      const sand = await scan({ getBlock, position: state.position, match: SAND, min: 0, step: 2, below: 24 })
+      failed = failed.filter(point => now() - point.at < FORGET_MS)
+      const sand = await scan({ getBlock, position: state.position, match: SAND, min: 0, step: 2, below: 24, avoid: failed, avoidM: AVOID_M })
       if (!live()) return null
       if (sand && sand.distance < NEAR_M) return null
       const origin = shared.playerHouse?.origin
@@ -55,6 +56,14 @@ function createHouseSand ({ getMode, shared, agent, travel, getState, getBlock, 
       const until = now() + TRIP_MS
       while (live() && now() < until && travel.status()?.busy) await sleep(1000)
       if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
+      // Sand the trip could not reach (live 2026-11-17 09:33-09:37 JST: the
+      // same sand by a pool full of drowned, 「危険地帯の中のチャンクへは移動しません」
+      // eight times) is passed over for half an hour; the next trip goes elsewhere.
+      const at = getState()?.position
+      if (sand && (!at || Math.hypot(at.x - destination.x, at.z - destination.z) > NEAR_M)) {
+        failed.push({ x: destination.x, z: destination.z, at: now() })
+        log(`プレイヤーモード: 砂 (${destination.x}, ${destination.z}) へ行けなかったため、しばらく別の砂を探します`)
+      }
       return true
     } finally {
       busy = false
