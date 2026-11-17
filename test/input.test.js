@@ -335,3 +335,15 @@ test('release followed by a new target sends abort then start in one ordered inp
   assert.deepEqual(packets[2].params.block_action[1].position, second)
   assert.deepEqual(input.stats().target, second)
 })
+
+// Live 2026-11-17 12:08 JST: the trip bed's top-face hit (9/16 high) was refused
+// against the full cube's top plane, so the bed stayed in the house doorway.
+test('a bed top-face hit is accepted at its own height when topHeight is given', t => {
+  const { input, state } = fixture()
+  t.after(() => input.stop())
+  state.position = { x: 4.5, y: 67.2, z: 1.5 }
+  input.start()
+  const block = { x: 4, y: 65, z: 0 }
+  assert.throws(() => input.sendAction('start_break', block, 1, { hitPoint: { x: 4.5, y: 65.5625, z: 0.5 } }), /ブロック面/)
+  assert.doesNotThrow(() => input.sendAction('start_break', block, 1, { hitPoint: { x: 4.5, y: 65.5625, z: 0.5 }, topHeight: 0.5625 }))
+})

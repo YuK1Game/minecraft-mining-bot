@@ -301,7 +301,7 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
     }, INTERVAL_MS)
   }
 
-  function sendAction (action, position, face = 1, { hitPoint } = {}) {
+  function sendAction (action, position, face = 1, { hitPoint, topHeight = 1 } = {}) {
     if (timer === null) throw new Error('ブロック操作の前に入力送信を開始してください。')
     if (!ACTIONS.has(action)) throw new Error('対応していないブロック操作です。')
     if (!Number.isInteger(face) || face < 0 || face > 5) throw new Error('ブロック面は0〜5で指定してください。')
@@ -313,7 +313,8 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
     if (hitPoint != null) {
       reach = finiteVector(hitPoint, '採掘面の交点')
       const axis = face <= 1 ? 'y' : face <= 3 ? 'z' : 'x'
-      const plane = position[axis] + Number(face % 2 === 1)
+      // topHeight: a lower block's top face (a bed, 9/16).
+      const plane = position[axis] + (face === 1 ? (topHeight > 0 && topHeight <= 1 ? topHeight : 1) : Number(face % 2 === 1))
       if (Math.abs(reach[axis] - plane) > 1e-5 || ['x', 'y', 'z'].some(key => reach[key] < position[key] - 1e-5 || reach[key] > position[key] + 1 + 1e-5)) throw new Error('交点が指定されたブロック面にありません。')
     }
     const distance = Math.hypot(reach.x - state.position.x, reach.y - state.position.y, reach.z - state.position.z)
