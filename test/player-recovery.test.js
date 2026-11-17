@@ -300,3 +300,14 @@ test('afloat after a stop: swims onto a ledge first, then plays on', async () =>
   assert.deepEqual(f.calls, ['swim', { start: { objective: 'diamond', diamondCount: 1 } }])
   assert.match(f.logs.join('\n'), /岸へ上がって/)
 })
+
+test('a run the planner ended with a stop decision is taken over, not restarted at once (live 2026-11-17 16:01-16:16 JST)', async () => {
+  const f = fixture({ walks: true })
+  const stop = { running: false, phase: 'stopped', reason: '拠点候補を探す回数の上限に達したため停止します。', lastDecision: { type: 'stop', stage: 'shelter', code: 'shelter_search_limit' }, progress: {} }
+  assert.equal(f.recovery.onProgress(stop), true)
+  await settle(f.recovery)
+  f.recovery.onProgress(stop); await settle(f.recovery)
+  assert.ok(f.calls.some(call => call.start?.freshExploration === true), 'the second same stop moves and starts with a fresh exploration count')
+  const manual = fixture()
+  assert.equal(manual.recovery.onProgress({ running: false, phase: 'stopped', reason: '停止しました。', lastDecision: { type: 'tunnel' }, progress: {} }), false)
+})
