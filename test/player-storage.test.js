@@ -43,7 +43,7 @@ test('a new large chest takes two cells side by side; a single chest gets a neig
   assert.ok(double[0].pair)
 })
 
-function job ({ chests = [], inventory, makes = true, drop = null }) {
+function job ({ chests = [], inventory, makes = true, drop = null, room = () => null }) {
   const lines = [], calls = []
   let items = inventory
   const hands = {
@@ -61,7 +61,7 @@ function job ({ chests = [], inventory, makes = true, drop = null }) {
       if (name !== mc('chest')) items = { ...items, items: items.items.map(item => item.name === name ? { ...item, count: item.count - 1 } : item).filter(item => item.count > 0) }
       return true
     },
-    room: () => null,
+    room,
     drop,
     store: async (position, stacks) => { calls.push(['store', position, stacks.length]); return stacks.reduce((sum, stack) => sum + stack.count, 0) }
   }
@@ -215,4 +215,14 @@ test('the base chest: full chests and their pairs are skipped and a new pair avo
   const placed = f.calls.filter(call => call[0] === 'place' && call[2] === mc('chest')).map(call => call[1])
   assert.equal(placed.length, 2)
   assert.ok(placed.every(cell => !avoid.some(p => p.x === cell.x && p.y === cell.y && p.z === cell.z)))
+})
+
+test('a half of a full large chest and a full single chest beside it are skipped; a new pair is placed (live 2026-11-18 00:52-00:55 JST)', async () => {
+  // Chest A (2,0)+(3,0) full as opened at (2,0); a full single chest at (3,1); house chest B (4,2)+(4,3).
+  const cells = [{ x: 2, y: 64, z: 0 }, { x: 3, y: 64, z: 0 }, { x: 3, y: 64, z: 1 }, { x: 4, y: 64, z: 2 }, { x: 4, y: 64, z: 3 }]
+  const zero = new Set(['2,64,0', '3,64,1'])
+  const f = job({ inventory: inv([['oak_planks', 20, 0]]), chests: cells, room: p => zero.has(`${p.x},${p.y},${p.z}`) ? 0 : null })
+  const at = await f.storage.chest({ full: [cells[2], cells[3]] })
+  assert.ok(at && !cells.some(c => c.x === at.x && c.z === at.z), JSON.stringify(at))
+  assert.equal(f.calls.filter(call => call[0] === 'place' && call[2] === mc('chest')).length, 2)
 })
