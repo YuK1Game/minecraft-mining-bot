@@ -84,9 +84,12 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const danger = () => {
     const health = runtime.raw()?.health
     if (Number.isFinite(health)) { if (Number.isFinite(healthSeen) && health < healthSeen) hurtAt = Date.now(); healthSeen = health }
-    if (Date.now() - hurtAt < 10000 || runtime.nearestHostile() < 12) return true
+    if (Date.now() - hurtAt < 10000) return true
     const at = where()
-    return !!at && (runtime.hostiles() ?? []).some(actor => ARCHER.test(String(actor?.entityType ?? '')) && actor.position && !(Date.now() - Date.parse(actor.positionUpdatedAt ?? '') > 60000) && Math.hypot(actor.position.x - at.x, actor.position.y - at.y, actor.position.z - at.z) < 24)
+    if (!at) return runtime.nearestHostile() < 12
+    const state = runtime.raw(), near = actor => actor?.position && Math.hypot(actor.position.x - at.x, actor.position.y - at.y, actor.position.z - at.z)
+    // A walker the reachability check found no route from does not count (creepers always do): live 2026-11-17 11:15 JST, zombies 10-12 m away in the cave above held the base trip.
+    return (runtime.hostiles() ?? []).some(actor => (near(actor) < 12 && (/creeper/.test(String(actor?.entityType ?? '')) || !knownUnreachable(state, actor))) || (ARCHER.test(String(actor?.entityType ?? '')) && actor.position && !(Date.now() - Date.parse(actor.positionUpdatedAt ?? '') > 60000) && near(actor) < 24))
   }
   const where = () => { const position = runtime.position?.(); return position && [position.x, position.y, position.z].every(Number.isFinite) ? position : runtime.raw().position ?? null }
   // Ordinary walking, mining, placement and the pillar step, shared by the scaffold and the climb out of a tunnel.
