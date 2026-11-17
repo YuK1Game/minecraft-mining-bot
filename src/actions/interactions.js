@@ -219,6 +219,22 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     lineOfSight(point, target)
     return { target, clicked: target, face, clickPos: { x: 0.5 + offset.x * 0.5, y: 0.5 + offset.y * 0.5, z: 0.5 + offset.z * 0.5 }, point, blockRuntimeId: block.runtimeId, expectedBlock: block.name, container, slot, raw }
   }
+  // A wooden door is opened or closed by an ordinary click on it; the caller
+  // confirms the received open_bit (modes/house/house-door.js).
+  function doorUsePlan (position, requestedSlot) {
+    const state = session(), target = integerPosition(position), block = world.getBlock(target.x, target.y, target.z)
+    if (block?.known !== true || !/^minecraft:[a-z_]*door$/.test(block.name ?? '') || /iron|trapdoor/.test(block.name)) throw new Error('受信した木のドアがありません。')
+    const center = { x: target.x + 0.5, y: target.y + 0.5, z: target.z + 0.5 }
+    const dx = state.position.x - center.x, dy = state.position.y - center.y, dz = state.position.z - center.z
+    const face = Math.abs(dx) >= Math.abs(dz) ? (dx > 0 ? 5 : 4) : (dz > 0 ? 3 : 2)
+    const offset = FACE[face]
+    const point = { x: center.x + offset.x * 0.5, y: center.y, z: center.z + offset.z * 0.5 }
+    if (Math.hypot(point.x - state.position.x, point.y - state.position.y, point.z - state.position.z) > 4.5) throw new Error('操作対象が手の届く範囲外です。')
+    void dy
+    lineOfSight(point, target)
+    const slot = requestedSlot ?? state.rawServerSelectedSlot ?? state.rawSelectedSlot ?? state.selectedSlot
+    return { target, clicked: target, face, clickPos: { x: 0.5 + offset.x * 0.5, y: 0.5, z: 0.5 + offset.z * 0.5 }, point, blockRuntimeId: block.runtimeId, expectedBlock: block.name, slot, raw: slotItem(slot) }
+  }
   function bedUsePlan (position, requestedSlot) {
     const state = session(true), target = integerPosition(position), block = world.getBlock(target.x, target.y, target.z), bed = bedFingerprint(block)
     if (state.dimension !== 'overworld' || !bed || ![false, 0].includes(bed.properties.occupied_bit)) throw new Error('A received unoccupied Overworld bed is required')
@@ -311,10 +327,10 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
       request.wireSent = true
       if (request.failureReceipt) Object.assign(request.failureReceipt, { wireSent: true, notSent: false, notSentBasis: null, lateWireSentAt: Date.now() })
       if (request.cancelled) notifyUncertain(request, '停止後に設置要求の送信が確認されました。')
-      if (request.kind === 'bed_use' && !request.cancelled && pending === request) {
+      if (['bed_use', 'door_use'].includes(request.kind) && !request.cancelled && pending === request) {
         pending = null; clearTimeout(request.timeout); clearInterval(request.poll)
         if (request.startedInput) request.input.stop()
-        lastResult = { phase: 'requested', operation: 'bed_use', position: request.plan.target, confirmedBy: 'queued_item_use', serverConfirmed: false }
+        lastResult = { phase: 'requested', operation: request.kind, position: request.plan.target, confirmedBy: 'queued_item_use', serverConfirmed: false }
         request.resolve(copy(lastResult))
       }
     } })
@@ -483,7 +499,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
   const openShulker = (position, slot) => begin('open', openPlan(position, slot, 'shulker'))
   const previewOpenShulker = (position, slot) => { try { const plan = openPlan(position, slot, 'shulker'); return { ready: true, position: plan.target, face: plan.face, point: plan.point, blockName: plan.expectedBlock } } catch (error) { return { ready: false, errors: [error.message] } } }
   const previewQuarryPlace = options => { try { const plan = quarryPlacementPlan(options); return { ready: true, position: plan.target, clicked: plan.clicked, face: plan.face, slot: plan.slot, expectedBlock: plan.expectedBlock } } catch (error) { return { ready: false, errors: [error.message] } } }
-  return { equip, previewPlace, previewQuarryPlace, openShulker, previewOpenShulker, placeQuarryBlock: options => begin('place', quarryPlacementPlan(options)), placeBed: options => begin('place', placementPlan(options, 'minecraft:bed')), previewPlaceBed: options => { try { const plan = placementPlan(options, 'minecraft:bed'); return { ready: true, position: plan.target, expectedBlock: plan.expectedBlock } } catch (error) { return { ready: false, errors: [error.message] } } }, useBed: (position, slot) => begin('bed_use', bedUsePlan(position, slot)), previewUseBed: (position, slot) => { try { const plan = bedUsePlan(position, slot); return { ready: true, position: plan.target, face: plan.face } } catch (error) { return { ready: false, errors: [error.message] } } }, wakeBed, previewOpenCraftingTable: (position, slot) => { try { const plan = openPlan(position, slot, 'workbench'); return { ready: true, position: plan.target, face: plan.face, point: plan.point } } catch (error) { return { ready: false, code: error.code ?? null, errors: [error.message] } } }, placeBlock: options => begin('place', placementPlan(options)), placeHouseBlock: options => begin('place', housePlan(options)), previewHouseBlock: options => { try { const plan = housePlan(options); return { ready: true, position: plan.target, expectedBlock: plan.expectedBlock, point: plan.point } } catch (error) { return { ready: false, errors: [error.message] } } }, placeCraftingTable: options => begin('place', placementPlan(options, 'minecraft:crafting_table')), openCraftingTable: openWorkbench, openWorkbench, openFurnace: (position, slot) => begin('open', openPlan(position, slot, 'furnace')), openChest: (position, slot) => begin('open', openPlan(position, slot, 'chest')), previewOpenChest: (position, slot) => { try { const plan = openPlan(position, slot, 'chest'); return { ready: true, position: plan.target, face: plan.face, point: plan.point } } catch (error) { return { ready: false, errors: [error.message] } } }, applyPacket, cancel, snapshot: () => ({ equipment: copy(selected), pendingOperation: pending?.kind ?? null, lastResult: copy(lastResult), trackedPlayers: players.size }) }
+  return { equip, previewPlace, previewQuarryPlace, openShulker, previewOpenShulker, placeQuarryBlock: options => begin('place', quarryPlacementPlan(options)), placeBed: options => begin('place', placementPlan(options, 'minecraft:bed')), previewPlaceBed: options => { try { const plan = placementPlan(options, 'minecraft:bed'); return { ready: true, position: plan.target, expectedBlock: plan.expectedBlock } } catch (error) { return { ready: false, errors: [error.message] } } }, useBed: (position, slot) => begin('bed_use', bedUsePlan(position, slot)), useDoor: (position, slot) => begin('door_use', doorUsePlan(position, slot)), previewUseBed: (position, slot) => { try { const plan = bedUsePlan(position, slot); return { ready: true, position: plan.target, face: plan.face } } catch (error) { return { ready: false, errors: [error.message] } } }, wakeBed, previewOpenCraftingTable: (position, slot) => { try { const plan = openPlan(position, slot, 'workbench'); return { ready: true, position: plan.target, face: plan.face, point: plan.point } } catch (error) { return { ready: false, code: error.code ?? null, errors: [error.message] } } }, placeBlock: options => begin('place', placementPlan(options)), placeHouseBlock: options => begin('place', housePlan(options)), previewHouseBlock: options => { try { const plan = housePlan(options); return { ready: true, position: plan.target, expectedBlock: plan.expectedBlock, point: plan.point } } catch (error) { return { ready: false, errors: [error.message] } } }, placeCraftingTable: options => begin('place', placementPlan(options, 'minecraft:crafting_table')), openCraftingTable: openWorkbench, openWorkbench, openFurnace: (position, slot) => begin('open', openPlan(position, slot, 'furnace')), openChest: (position, slot) => begin('open', openPlan(position, slot, 'chest')), previewOpenChest: (position, slot) => { try { const plan = openPlan(position, slot, 'chest'); return { ready: true, position: plan.target, face: plan.face, point: plan.point } } catch (error) { return { ready: false, errors: [error.message] } } }, applyPacket, cancel, snapshot: () => ({ equipment: copy(selected), pendingOperation: pending?.kind ?? null, lastResult: copy(lastResult), trackedPlayers: players.size }) }
 }
 
 module.exports = { createInteractions }

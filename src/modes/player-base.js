@@ -73,7 +73,7 @@ function standsBeside (getBlock, chest) {
   return out
 }
 
-function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, door = async () => true, climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, banked = 0
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const say = text => log(`プレイヤーモード: ${text}`)
@@ -133,6 +133,8 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
       }
       if (flat(base, getPosition()) > 6) await approach(base, 6)
       // Any received stand beside the chest that a walk reaches (inside the house the nearest may be walled off).
+      // Into the starter house: its door opened first (house/house-door.js).
+      try { await door() } catch {}
       for (const stand of standsBeside(getBlock, base).slice(0, 4)) { if (aborted() || flat(stand, getFeet()) <= 0.45) break; if (await walk(stand)) break }
       if (aborted()) return false
       if (flat(base, getPosition()) > 4) { say(`拠点のチェストのそばまで行けません（残り ${Math.round(flat(base, getPosition()))}m）`); return false }
