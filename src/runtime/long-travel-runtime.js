@@ -225,7 +225,7 @@ function createLongTravelRuntime (rt) {
   }
   // Inside a remembered danger zone (live 22:24: the fallback chunk moves and
   // relay points ignored the zones and walked the bot into one).
-  function inDangerZone (x, z) { return travelDangerZones().some(zone => Math.hypot(zone.x - x, zone.z - z) < zone.r) }
+  function inDangerZone (x, z) { let goal = null; try { goal = longTravel?.status?.().destination ?? null } catch {} return rt.require('./travel/danger-zones').inZone(travelDangerZones(), x, z, goal) }
   function travelAddDangerZone (p, kind) {
     const zones = travelDangerZones()
     if (zones.some(z => Math.hypot(z.x - p.x, z.z - p.z) < 24)) return
