@@ -26,7 +26,7 @@ const SKIN = 1e-3
 const REFUSED_MS = 300000
 const RISE_CHECK = 3
 const RISE_PROBE = 400
-const PLAY_AVOID = 3
+const PLAY_AVOID = 3, PLAY_NEAR = 8
 const REFUSED_LIMIT = 24
 // Block names repeat endlessly in a search: the stripped name and the hazard
 // answer are remembered per name (a regex per block read was a fifth of a search).
@@ -130,7 +130,15 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     }
     const actors = [state.entities, state.hostiles, state.nearbyHostiles, state.threats].find(Array.isArray)
     const evaluation = evaluateThreats(state, actors, { observationRadius: 32 })
-    if (evaluation.threats.length) throw new TunnelingError('A hostile actor is within the avoidance radius', 'NEARBY_THREAT')
+    // In player play only a hostile within PLAY_NEAR (or a creeper) stops the
+    // tunnel; a farther one inside its policy radius is a 3 m circle like the
+    // rest, and combat takes it if it comes (live 2026-11-17 16:28-16:33 JST: a
+    // skeleton 13-15 m away in its 18 m circle held every tunnel for minutes).
+    const playing = state.playerPlay === true
+    const creeper = actor => /creeper/.test(actor.name ?? actor.entityType ?? '')
+    const near = playing ? evaluation.threats.filter(actor => creeper(actor) || !(actor.distance > PLAY_NEAR)) : evaluation.threats
+    if (near.length) throw new TunnelingError('A hostile actor is within the avoidance radius', 'NEARBY_THREAT')
+    const farThreats = playing ? evaluation.threats.filter(actor => !near.includes(actor)) : []
     if (evaluation.requiresObservation) throw new TunnelingError('Actor positions require another observation', 'THREAT_OBSERVATION_UNKNOWN')
     // Current cover is not a promise about a future tunnel. Keep every known
     // hostile circle, including actors suppressed only at the present pose.
@@ -139,8 +147,8 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     // full of mobs behind rock closed every way (real Realm 2026-11-17
     // 15:36-15:41 JST at y=-46: 18 circles, 642 edges refused, a diamond ore
     // 17 up searched to the limit 158 times in 5 minutes, no step).
-    const radius = actor => state.playerPlay === true && !/creeper/.test(actor.name ?? actor.entityType ?? '') ? Math.min(actor.dangerRadius, PLAY_AVOID) : actor.dangerRadius
-    const avoidance = [...evaluation.outsideDanger, ...evaluation.suppressedByTerrain].map(actor => ({ id: actor.runtimeId, position: copy(actor.position), minDistance: radius(actor), padding: 0 }))
+    const radius = actor => playing && !creeper(actor) ? Math.min(actor.dangerRadius, PLAY_AVOID) : actor.dangerRadius
+    const avoidance = [...farThreats, ...evaluation.outsideDanger, ...evaluation.suppressedByTerrain].map(actor => ({ id: actor.runtimeId, position: copy(actor.position), minDistance: radius(actor), padding: 0 }))
     if (avoidance.length > 64 || avoidance.some(circle => typeof circle.id !== 'string' || !circle.id.length || circle.id.length > 80 || !finite(circle.position) || ['x', 'y', 'z'].some(axis => Math.abs(circle.position[axis]) > 30000000) || !Number.isFinite(circle.minDistance) || circle.minDistance < 0 || circle.minDistance > 64) || new Set(avoidance.map(circle => circle.id)).size !== avoidance.length) throw new TunnelingError('Actor identities or avoidance circles require another observation', 'THREAT_OBSERVATION_UNKNOWN')
     return { state, tool: toolOf(state, tier), avoidance }
   }

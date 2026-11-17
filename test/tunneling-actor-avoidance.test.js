@@ -173,3 +173,19 @@ test('in player play a non-threat circle shrinks to 3 m (creepers keep theirs; l
     assertFutureCircles(kept, creeper.outsideDanger)
   }
 })
+
+test('in player play a hostile inside its policy radius but beyond 8 m does not stop the tunnel (live 2026-11-17 16:28 JST)', () => {
+  const f = fixture()
+  const position = { x: f.state.position.x + 9.5, y: f.state.position.y, z: f.state.position.z }
+  f.state.hostiles = [actor(position, { entityType: 'minecraft:skeleton' })]
+  const evaluation = evaluateThreats(f.state, f.state.hostiles, { observationRadius: 32 })
+  assert.equal(evaluation.threats.length, 1, 'the skeleton is inside its policy radius')
+  const blocked = f.tunneling.preview(f.decision)
+  assert.equal(blocked.ready, false); assert.match(blocked.reason ?? blocked.code ?? '', /avoidance radius|NEARBY_THREAT/)
+  f.state.playerPlay = true
+  const plan = f.tunneling.preview(f.decision)
+  assert.equal(plan.ready, true, plan.reason)
+  f.state.hostiles = [actor({ x: f.state.position.x + 5, y: f.state.position.y, z: f.state.position.z }, { entityType: 'minecraft:skeleton' })]
+  const close = f.tunneling.preview(f.decision)
+  assert.equal(close.ready, false); assert.match(close.reason ?? close.code ?? '', /avoidance radius|NEARBY_THREAT/)
+})
