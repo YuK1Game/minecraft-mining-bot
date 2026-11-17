@@ -34,7 +34,18 @@ function offCentre (getBlock, feet) {
 async function settle ({ ports, aborted = () => false }) {
   const { feet, block, walk } = ports
   // On a chest or another low block: one step down beside it (modes/low-block.js).
-  if (offGrid(feet()) && typeof ports.stepOff === 'function') return await ports.stepOff() ? { ok: true, steppedOff: true } : { ok: false, reason: 'STILL_ON_LOW_BLOCK', detail: ports.why?.() ?? null }
+  // Hanging a little above the floor (the prediction stopped mid-fall, live
+  // 2026-11-17 21:27-21:35 JST: 0.23 above netherrack with onGround false, the
+  // step-down found no low block and every base trip leg failed for eight
+  // minutes): the ordinary landing first, then the step-down.
+  const landed = async () => typeof ports.land === 'function' && await ports.land() && !offGrid(feet())
+  if (offGrid(feet())) {
+    const at = feet(), here = block(Math.floor(at.x), Math.floor(at.y), Math.floor(at.z))
+    if (air(here) && await landed()) return { ok: true, landed: true }
+    if (typeof ports.stepOff === 'function' && await ports.stepOff()) return { ok: true, steppedOff: true }
+    if (!air(here) && await landed()) return { ok: true, landed: true }
+    return { ok: false, reason: 'STILL_ON_LOW_BLOCK', detail: ports.why?.() ?? null }
+  }
   const cell = offCentre(block, feet())
   if (!cell) return { ok: false, reason: 'NOT_NEEDED' }
   const centre = { x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }
