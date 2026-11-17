@@ -56,16 +56,18 @@ function bankable (inventory, keep = KEEP) {
 }
 
 // A cell to stand in beside the chest: received solid ground and two received open cells.
-function standBeside (getBlock, chest) {
+function standBeside (getBlock, chest) { return standsBeside(getBlock, chest)[0] ?? null }
+function standsBeside (getBlock, chest) {
+  const out = []
   const open = (x, y, z) => { const found = getBlock(x, y, z); return found?.known === true && found.boundingBox !== 'block' && !/water|lava/.test(found.name ?? '') }
   const solid = (x, y, z) => { const found = getBlock(x, y, z); return found?.known === true && found.boundingBox === 'block' }
   for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
     for (const dy of [0, -1, 1]) {
       const x = chest.x + dx, y = chest.y + dy, z = chest.z + dz
-      if (solid(x, y - 1, z) && open(x, y, z) && open(x, y + 1, z)) return { x: x + 0.5, y, z: z + 0.5 }
+      if (solid(x, y - 1, z) && open(x, y, z) && open(x, y + 1, z)) { out.push({ x: x + 0.5, y, z: z + 0.5 }); break }
     }
   }
-  return null
+  return out
 }
 
 function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
@@ -126,9 +128,9 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
         if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
         if (aborted()) return false
       }
-      if (flat(base, getPosition()) > 12) await approach(base)
-      const stand = standBeside(getBlock, base)
-      if (stand && flat(stand, getFeet()) > 0.45) await walk(stand)
+      if (flat(base, getPosition()) > 6) await approach(base, 6)
+      // Any received stand beside the chest that a walk reaches (inside the house the nearest may be walled off).
+      for (const stand of standsBeside(getBlock, base).slice(0, 4)) { if (aborted() || flat(stand, getFeet()) <= 0.45) break; if (await walk(stand)) break }
       if (aborted()) return false
       if (flat(base, getPosition()) > 4) { say(`拠点のチェストのそばまで行けません（残り ${Math.round(flat(base, getPosition()))}m）`); return false }
       // A chest that is gone (received as something else) is made again here.
