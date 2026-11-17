@@ -161,3 +161,78 @@ test('in play with a weapon in the received inventory, the empty-handed rule doe
   assert.match(source, /function quarryCanSelectTarget[^\n]*!emptyHandedAllows\(target, state\)/)
   assert.match(source, /function quarryCanContinue[^\n]*!emptyHandedAllows\(target, state\)/)
 })
+
+const phantom = (x, y = 68.6, id = 7) => ({ entityType: 'minecraft:phantom', hostile: true, runtimeId: id, position: { x, y, z: 0 } })
+
+test('a run that walked and did not get away waits, and the hostile it could not leave does not start the next one', async () => {
+  // Live 2026-11-18 04:31-04:34 JST: a phantom overhead stayed at 6.3 m through nine runs.
+  const s = scene({ retreat: s => { s.position.x -= 3; s.enemies = [phantom(s.position.x + 4.3)]; return true } })
+  s.enemies = [phantom(4.3)]
+  assert.equal(await s.flee.tick(), true)
+  assert.match(s.logs.at(-2), /離れても敵との距離が開きません（\d+歩、phantom 6\.3m）/)
+  assert.match(s.logs.at(-1), /離れられない敵のため.*30秒は離れ直しません/)
+  assert.equal(s.shared.playerFlee, null)
+  const runs = s.flags.length
+  // It dives: still not run from, and combat is not told to stand down.
+  s.enemies = [phantom(s.position.x + 3.8, 65)]
+  assert.equal(await s.flee.tick(), false)
+  assert.equal(s.flee.status().skip, 'kept_up_rest')
+  // Hurt by it: the same.
+  s.health = 3
+  assert.equal(await s.flee.tick(), false)
+  assert.equal(s.flags.length, runs)
+  // Another hostile within reach of a run, while hurt since: a new run.
+  s.enemies = [phantom(s.position.x + 4.3), { ...zombie(s.position.x + 9), runtimeId: 9 }]
+  assert.equal(await s.flee.tick(), true)
+  assert.ok(s.flags.length > runs)
+})
+
+test('another hostile ends that wait only when it is two metres nearer or the Bot is hurt again', async () => {
+  const s = scene({ retreat: s => { s.position.x -= 3; s.enemies = [phantom(s.position.x + 4.3)]; return true } })
+  s.enemies = [phantom(4.3)]
+  assert.equal(await s.flee.tick(), true)
+  const other = distance => ({ ...zombie(s.position.x + distance), runtimeId: 9 })
+  s.enemies = [phantom(s.position.x + 4.3), other(9)]
+  assert.equal(await s.flee.tick(), false)
+  assert.equal(s.flee.status().skip, 'stuck_rest')
+  s.enemies = [phantom(s.position.x + 4.3), other(4)]
+  assert.equal(await s.flee.tick(), true)
+})
+
+test('after that wait the run is tried once more and the wait doubles; a run that gets away ends it', async () => {
+  let follows = true
+  const s = scene({ retreat: s => { s.position.x -= 3; if (follows) s.enemies = [phantom(s.position.x + 4.3)]; return true } })
+  s.enemies = [phantom(4.3)]
+  assert.equal(await s.flee.tick(), true)
+  s.clock += 30001
+  assert.equal(await s.flee.tick(), true)
+  assert.match(s.logs.at(-1), /60秒は離れ直しません/)
+  s.clock += 60001
+  follows = false
+  assert.equal(await s.flee.tick(), true)
+  assert.match(s.logs.at(-1), /敵から離れました/)
+  // Nothing is remembered of it: the next hostile is run from at once.
+  s.enemies = [phantom(s.position.x + 4.3)]
+  assert.equal(await s.flee.tick(), true)
+})
+
+test('a shooter or a flyer behind received blocks is not run from; unreceived blocks are not cover', () => {
+  const { fleeThreats } = require('../src/modes/player-flee-threats')
+  const { createCombatExposure } = require('../src/combat/combat-exposure')
+  const wall = new Set(['2,64,0', '2,65,0', '2,66,0'])
+  const world = known => ({ getBlock: (x, y, z) => wall.has(`${x},${y},${z}`) ? (known ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : { known: false }) : { known: true, name: 'minecraft:air', boundingBox: 'empty' } })
+  const at = { x: 0.5, y: 65.62, z: 0.5 }
+  const sight = known => actor => createCombatExposure({ world: world(known), entities: {}, scopeOf: () => null }).evaluate(actor, { position: at }).evidence.sight
+  const mob = (name, x = 8.5, z = 0.5) => ({ entityType: `minecraft:${name}`, hostile: true, position: { x, y: 64, z } })
+  const names = list => list.map(actor => actor.entityType.replace('minecraft:', ''))
+  const all = [mob('skeleton'), mob('witch'), mob('phantom'), mob('zombie'), mob('creeper')]
+  // Behind the wall: the walker and the creeper stay, the three that attack along a line do not.
+  assert.deepEqual(names(fleeThreats({ hostiles: all, sight: sight(true) })), ['zombie', 'creeper'])
+  // The same wall not received: nothing is known to be in the way.
+  assert.deepEqual(names(fleeThreats({ hostiles: all, sight: sight(false) })), ['skeleton', 'witch', 'phantom', 'zombie', 'creeper'])
+  // In the open, to the side of the wall.
+  assert.deepEqual(names(fleeThreats({ hostiles: [mob('skeleton', 0.5, 8.5)], sight: sight(true) })), ['skeleton'])
+  // No route to the Bot, as before; a creeper counts whatever is known.
+  assert.deepEqual(names(fleeThreats({ hostiles: [mob('zombie'), mob('creeper')], unreachable: () => true })), ['creeper'])
+  assert.deepEqual(fleeThreats({ hostiles: null }), [])
+})

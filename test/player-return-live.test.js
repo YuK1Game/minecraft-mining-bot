@@ -301,3 +301,30 @@ test('nothing is decided before the terrain at the Bot is received (live 2026-11
   assert.equal(sim.stored(chest, 'diamond'), 37)
   assert.equal(lines(sim, /保留/).length, 0)
 })
+
+test('interrupted again and again by a flee: none of it is charged, and the goal ends when the flee stops (live 2026-11-18 04:18-04:22 JST)', async () => {
+  // Then: the eleventh flee in a row on the walk to the chest was counted as a failure (INTERRUPTED_REPEATEDLY, 9 of 12 tries).
+  const start = { x: 19.5, y: GROUND, z: 0.5 }
+  const sim = createReturnSim({ feet: { ...start }, items: [...KIT, [2, 'diamond', 40]] })
+  const chest = sim.placeChest(5, GROUND, 0)
+  sim.shared.playerBase = chest
+  sim.agent.running = true
+  sim.fail.approach = true // the hops over the ground do not make it: the walk to a cell beside the chest is what runs
+  const runtime = sim.mount()
+  // Sixteen flees, each a moment into the walk to the chest; a flee has the movement for 14 s and takes the Bot back to where it was.
+  let flees = 0, fleeing = false, seen = 0
+  const flee = () => { flees++; fleeing = true; runtime.jobs.other = '敵から離れる'; sim.fight(14000); Object.assign(sim.body, start); sim.later(14000, () => { runtime.jobs.other = null; fleeing = false }) }
+  const watch = () => {
+    const walking = sim.log.slice(seen).some(line => /チェストへ接近（NEAR_BASE）|計画し直します/.test(line))
+    seen = sim.log.length
+    if (!fleeing && flees < 16 && walking) sim.later(600, flee)
+    sim.later(200, watch)
+  }
+  watch()
+  assert.equal(await sim.run(runtime, { until: done }), true, sim.log.join('\n'))
+  assert.equal(flees, 16)
+  assert.equal(lines(sim, /チェストへ接近を中断して待ちます（敵から離れる）/).length, 16, sim.log.join('\n'))
+  assert.equal(lines(sim, /に失敗/).length, 0, sim.log.join('\n'))
+  assert.equal(lines(sim, /保留/).length, 0)
+  assert.equal(sim.stored(chest, 'diamond'), 37)
+})
