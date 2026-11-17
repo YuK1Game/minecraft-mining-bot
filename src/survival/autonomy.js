@@ -408,8 +408,11 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
       // Protection retains the living player's actions even at critical HP.
       // Keep this controller alive so a later confirmed death reaches respawn.
       if (waitForProtection(state)) return snapshot()
+      // Player play leaves a far non-creeper to combat mode: no retreat, and
+      // the full observation (with capabilities) still feeds the plan.
+      const nearThreat = actor => !(options.nearThreatDistance > 0) || /creeper/.test(actor.name ?? actor.entityType ?? '') || !(actor.distance > options.nearThreatDistance)
       const initialSafety = knownDead ? null : observedThreats(state, {})
-      const urgent = knownLowHealth || initialSafety?.threats.length > 0 || initialSafety?.unknownPositions.length > 0 || initialSafety?.hostUnknownPositionCount > 0
+      const urgent = knownLowHealth || initialSafety?.threats.some(nearThreat) || initialSafety?.unknownPositions.length > 0 || initialSafety?.hostUnknownPositionCount > 0
       const observationArgs = { goal: { ...status.goal }, progress: serial(status.progress), lastDecision: serial(status.lastDecision) }
       // A known threat must not wait behind resource scans or craft previews.
       // The optional safety observer reads a small local terrain/actor view;
@@ -425,8 +428,7 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
       updateProgress(state)
       const dead = deadState(state)
       const threatEvaluation = observedThreats(state, observations)
-      // Player play leaves a far non-creeper to combat mode instead of retreating.
-      const threat = threatEvaluation.threats.find(actor => !(options.nearThreatDistance > 0) || /creeper/.test(actor.name ?? actor.entityType ?? '') || !(actor.distance > options.nearThreatDistance)) ?? null
+      const threat = threatEvaluation.threats.find(nearThreat) ?? null
       let decision
       if (dead) decision = { type: 'respawn', stage: 'safety', reason: '死亡を確認したため、正規のリスポーンを行います。' }
       else if (planSafety) decision = await bounded(() => planSafety(state, observations), options.actionTimeoutMs, '安全判断', signal)
