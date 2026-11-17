@@ -263,3 +263,18 @@ test('with skipFailedDrops an ore the tunnel no longer accepts is left and the r
   assert.equal(agent.snapshot().running, true, JSON.stringify(agent.snapshot().reason))
   assert.ok(agent.snapshot().progress.excludedResources.some(entry => entry.resource === 'diamond' && entry.position.y === 50))
 })
+
+test('with skipFailedDrops an ore that is no longer observed is left and the run goes on (real Realm 2026-11-17 12:43 JST)', async t => {
+  const state = { phase: 'spawned', profile: 'bot', realm: { id: 1 }, dimension: 'overworld', connectionId: 'c1', health: 20, lifecycle: { dead: false }, inventory: { known: true, items: [] }, entities: [], position: { x: 0, y: 64, z: 0 }, idleProtection: { running: false }, capabilities: { tunnel: true, probe: true } }
+  const ore = { x: 3, y: 50, z: 0 }
+  const agent = createAutonomy({
+    getState: () => structuredClone(state), intervalMs: 60000, observe: () => ({}), observeSafety: () => ({}),
+    planAction: () => agent.snapshot().progress.excludedResources.some(entry => entry.position?.x === ore.x && entry.position?.y === ore.y) ? { type: 'probe', reason: 'next' } : { type: 'tunnel', resource: 'iron', stage: 'iron', reason: 'tunnel', target: ore, resourceTarget: ore },
+    actions: { tunnel: () => { throw Object.assign(new Error('The target ore has not been observed'), { code: 'RESOURCE_UNKNOWN' }) }, probe: () => ({ ok: true, phase: 'completed' }) }
+  })
+  t.after(() => agent.stop())
+  agent.start({ objective: 'diamond', maxRetries: 1, skipFailedDrops: true })
+  for (let n = 0; n < 4; n++) await agent.tick()
+  assert.equal(agent.snapshot().running, true, JSON.stringify(agent.snapshot().reason))
+  assert.ok(agent.snapshot().progress.excludedResources.some(entry => entry.resource === 'iron' && entry.position.y === 50))
+})

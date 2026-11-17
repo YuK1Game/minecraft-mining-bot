@@ -608,7 +608,10 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
         // (protected, a return floor, changed): the planner kept choosing it
         // (real Realm 2026-11-17 07:09-07:14 JST: deepslate diamond ore, 160
         // tunnel decisions in 5 minutes, all RESOURCE_CHANGED, no movement).
-        const routeLike = error?.code === 'NO_SAFE_ROUTE' || options.skipFailedDrops === true && (currentDecision?.type === 'collect_drops' || error?.code === 'RESOURCE_CHANGED' && ['tunnel', 'mine_ore'].includes(currentDecision?.type))
+        // An ore the planner remembers but the world no longer holds (its chunk
+        // left, RESOURCE_UNKNOWN) is left the same way (live 2026-11-17 12:43-12:48
+        // JST: 86 tunnel decisions in 5 minutes, The target ore has not been observed).
+        const routeLike = error?.code === 'NO_SAFE_ROUTE' || options.skipFailedDrops === true && (currentDecision?.type === 'collect_drops' || ['RESOURCE_CHANGED', 'RESOURCE_UNKNOWN'].includes(error?.code) && ['tunnel', 'mine_ore'].includes(currentDecision?.type))
         const currentState = routeLike ? await bounded(() => getState(), options.actionTimeoutMs, '経路候補の接続確認', signal) : null
         if (routeLike && excludeRouteTarget(currentDecision, error, actionState, currentState)) {
           failures.delete(currentKey)
