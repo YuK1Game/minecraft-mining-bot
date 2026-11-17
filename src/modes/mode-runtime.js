@@ -80,12 +80,13 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // fight, and no hit landed).
   let healthSeen = null, hurtAt = 0
   const ARCHER = /skeleton|stray|bogged|pillager|witch/ // one that has not moved for 5 min is not counted
+  // An archer whose position has not changed for a minute is not aiming (a skeleton that aims turns, and every turn is a move update): live 2026-11-17 10:46-10:59 JST, a cave skeleton 15 blocks below with no update for 4+ minutes held the house's sand search the whole time.
   const danger = () => {
     const health = runtime.raw()?.health
     if (Number.isFinite(health)) { if (Number.isFinite(healthSeen) && health < healthSeen) hurtAt = Date.now(); healthSeen = health }
     if (Date.now() - hurtAt < 10000 || runtime.nearestHostile() < 12) return true
     const at = where()
-    return !!at && (runtime.hostiles() ?? []).some(actor => ARCHER.test(String(actor?.entityType ?? '')) && actor.position && !(Date.now() - Date.parse(actor.positionUpdatedAt ?? '') > 300000) && Math.hypot(actor.position.x - at.x, actor.position.y - at.y, actor.position.z - at.z) < 24)
+    return !!at && (runtime.hostiles() ?? []).some(actor => ARCHER.test(String(actor?.entityType ?? '')) && actor.position && !(Date.now() - Date.parse(actor.positionUpdatedAt ?? '') > 60000) && Math.hypot(actor.position.x - at.x, actor.position.y - at.y, actor.position.z - at.z) < 24)
   }
   const where = () => { const position = runtime.position?.(); return position && [position.x, position.y, position.z].every(Number.isFinite) ? position : runtime.raw().position ?? null }
   // Ordinary walking, mining, placement and the pillar step, shared by the scaffold and the climb out of a tunnel.
