@@ -292,3 +292,23 @@ test('deferOptionalShelter reaches the plan options; player mode sets it (live 2
   assert.deepEqual(seen, [undefined, true])
   assert.equal(require('../src/modes/player-mode').OBJECTIVE.deferOptionalShelter, true)
 })
+
+test('nearThreatDistance: player play does not retreat from a far hostile, still from a creeper (live 2026-11-17 16:37-16:43 JST)', async t => {
+  const run = async (entity, options) => {
+    const state = { phase: 'spawned', health: 20, lifecycle: { dead: false }, inventory: { known: true, items: [] }, entities: [entity], position: { x: 0, y: 64, z: 0 }, idleProtection: { running: false, wanted: true, busy: false, phase: 'grace' }, capabilities: { probe: true } }
+    const calls = []
+    const agent = createAutonomy({ getState: () => structuredClone(state), intervalMs: 60000, observe: () => ({}), observeSafety: () => ({}), planAction: () => ({ type: 'probe', reason: 'next' }), actions: { probe: () => { calls.push('probe'); return { ok: true, phase: 'completed' } }, avoid_threat: () => { calls.push('avoid'); return { ok: true, phase: 'completed' } } } })
+    t.after(() => agent.stop())
+    agent.start({ objective: 'diamond', ...options })
+    await agent.tick()
+    return calls
+  }
+  const skeleton = nearbyZombie()
+  const close = { ...nearbyZombie(), position: { x: 5, y: 64, z: 0 } }
+  const creeper = { runtimeId: '91', entityType: 'minecraft:creeper', alive: true, positionKnown: true, position: { x: 7, y: 64, z: 0 } }
+  assert.deepEqual(await run(skeleton, {}), ['avoid'])
+  assert.deepEqual(await run(skeleton, { nearThreatDistance: 8 }), ['probe'])
+  assert.deepEqual(await run(creeper, { nearThreatDistance: 8 }), ['avoid'])
+  assert.deepEqual(await run(close, { nearThreatDistance: 8 }), ['avoid'])
+  assert.equal(require('../src/modes/player-mode').OBJECTIVE.nearThreatDistance, 8)
+})
