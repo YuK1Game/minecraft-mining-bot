@@ -41,3 +41,12 @@ test('every runtime state that sets the threat policy also carries playerPlay (l
   const sources = [runtimeSource(), fs.readFileSync(require.resolve('../src/runtime/idle-safety-runtime.js'), 'utf8')]
   for (const source of sources) assert.doesNotMatch(source, /threatPolicy: (?:rt\.)?host\.shared\.autoWanted/)
 })
+
+test('the /status state that the runner and the diamond actions read carries playerPlay (live 2026-11-17 18:22-18:28 JST)', () => {
+  // Skeletons and zombies 11-16 m away, 8-10 levels up, stopped every tunnel batch with NEARBY_THREAT:
+  // the /status snapshot passed threatPolicy but not playerPlay, so the 8 m play radius never applied.
+  const { runtimeSource } = require('./helpers/runtime-source')
+  const source = runtimeSource()
+  assert.match(source, /threatPolicy: state\.threatPolicy, playerPlay: state\.playerPlay,/)
+  assert.match(source, /Object\.assign\(state, threatFields\(host\.shared\)\)/)
+})
