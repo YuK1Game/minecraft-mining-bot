@@ -27,10 +27,17 @@
 //   fight, a meal or the night does not count.
 // - DETOURS 2: a trip that gets nowhere twice from the same place goes round,
 //   48 m to one side and then to the other, before the goal is held.
+// - RETRY_MS 2 s: between two tries of a step that failed, so that three tries
+//   are not one instant (live 2026-11-18 03:28 JST: three within 20 ms).
+// - SIDES 2: arrived (within 20 m) with no way to the chest from this side (a
+//   cliff over the house), the Bot goes round to another side, 30 m beyond the
+//   chest, and comes in from there: the door's side first, then the far side.
 // - HOSTILE_WAIT_MS 1 min: a hostile nearby that starts no fight delays the
 //   start of a goal this long, then the trip starts anyway.
-// - A held goal wakes when what it waits for changes (the place, the supplies,
-//   the life) or, at the latest, after HOLD_MS 10 min (hostiles and danger
+// - A held goal wakes when what its failure depends on changes (the supplies,
+//   the life; the place, 32 m away, only for a failure of getting somewhere,
+//   and 8 blocks up or down only for the way out of a tunnel) or, at the
+//   latest, after HOLD_MS 10 min (hostiles and danger
 //   zones move by themselves). Each wake allows WAKE_ATTEMPTS 4 more tries;
 //   after MAX_WAKES 6 the goal is given up and a new one waits GIVE_UP_MS.
 //   The failure memory (return-failures.js) outlives the goal either way.
@@ -39,7 +46,7 @@ const path = require('node:path')
 
 const STAGES = Object.freeze(['observe', 'surface', 'travel', 'approach', 'container', 'store', 'verify', 'replan'])
 const LABEL = Object.freeze({ observe: '状態の確認', surface: '出発位置の確保', travel: '拠点へ移動', approach: 'チェストへ接近', container: 'チェストの確認', store: '収納', verify: '収納の確認', replan: '作業の再開' })
-const BUDGET = Object.freeze({ STAGE_ATTEMPTS: 3, GOAL_ATTEMPTS: 12, WAKE_ATTEMPTS: 4, MAX_WAKES: 6, ACTIVE_MS: 1800000, WAKE_ACTIVE_MS: 600000, HOLD_MS: 600000, GIVE_UP_MS: 600000, MAX_INTERRUPTS: 10, STOP_WAIT_MS: 8000, HOSTILE_WAIT_MS: 60000, WAIT_MS: 30000, MOVED_M: 32, MOVED_UP: 8, DETOURS: 2, DETOUR_M: 48 })
+const BUDGET = Object.freeze({ STAGE_ATTEMPTS: 3, GOAL_ATTEMPTS: 12, WAKE_ATTEMPTS: 4, MAX_WAKES: 6, ACTIVE_MS: 1800000, WAKE_ACTIVE_MS: 600000, HOLD_MS: 600000, GIVE_UP_MS: 600000, MAX_INTERRUPTS: 10, STOP_WAIT_MS: 8000, HOSTILE_WAIT_MS: 60000, WAIT_MS: 30000, RETRY_MS: 2000, MOVED_M: 32, MOVED_UP: 8, DETOURS: 2, DETOUR_M: 48, SIDES: 2, SIDE_M: 30 })
 
 const cell = point => point && [point.x, point.y, point.z].every(Number.isFinite) ? { x: Math.floor(point.x), y: Math.floor(point.y), z: Math.floor(point.z) } : null
 const chestCell = value => value && [value.x, value.y, value.z].every(Number.isSafeInteger) ? { x: value.x, y: value.y, z: value.z } : null
@@ -53,7 +60,7 @@ function newGoal ({ id, reason, base = null, scope = null, origin = null, now = 
     createdAt: now, stageAt: now,
     progress: { banked: 0, taken: 0, lastAt: null, last: null },
     remaining: null,
-    full: [], unopened: [], unreached: [], built: 0, detour: null, detours: 0,
+    full: [], unopened: [], unreached: [], built: 0, detour: null, detours: 0, sides: 0,
     budget: { attempts: 0, activeMs: 0, wakes: 0, interrupts: 0 },
     wait: null, hold: null, interrupt: null, last: null, saved: true
   }
@@ -71,9 +78,9 @@ function restoreGoal (value) {
     createdAt: number(value.createdAt, Date.now()), stageAt: Date.now(),
     progress: { banked: number(value.progress?.banked), taken: number(value.progress?.taken), lastAt: Number.isFinite(value.progress?.lastAt) ? value.progress.lastAt : null, last: typeof value.progress?.last === 'string' ? value.progress.last : null },
     remaining: null,
-    full: chestList(value.full), unopened: [], unreached: [], built: number(value.built), detour: null, detours: number(value.detours),
+    full: chestList(value.full), unopened: [], unreached: [], built: number(value.built), detour: null, detours: number(value.detours), sides: 0,
     budget: { attempts: number(value.budget?.attempts), activeMs: number(value.budget?.activeMs), wakes: number(value.budget?.wakes), interrupts: 0 },
-    wait: null, hold: value.state === 'held' && value.hold && typeof value.hold === 'object' ? { code: String(value.hold.code ?? 'UNKNOWN'), at: number(value.hold.at), until: number(value.hold.until), position: cell(value.hold.position), supplies: typeof value.hold.supplies === 'string' ? value.hold.supplies : null, kinds: Array.isArray(value.hold.kinds) ? value.hold.kinds.filter(kind => typeof kind === 'string') : [] } : null,
+    wait: null, hold: value.state === 'held' && value.hold && typeof value.hold === 'object' ? { code: String(value.hold.code ?? 'UNKNOWN'), at: number(value.hold.at), until: number(value.hold.until), position: cell(value.hold.position), supplies: typeof value.hold.supplies === 'string' ? value.hold.supplies : null, kinds: Array.isArray(value.hold.kinds) ? value.hold.kinds.filter(kind => typeof kind === 'string') : [], vertical: value.hold.vertical === true } : null,
     interrupt: null, last: null, saved: true, resumed: true
   }
 }
@@ -88,9 +95,10 @@ function wakeReason (goal, seen) {
   if (!hold) return 'NOT_HELD'
   if (seen.scope !== goal.scope) return 'SCOPE_CHANGED'
   const kinds = hold.kinds ?? []
-  if (kinds.includes('position_changed') && hold.position && seen.position && (Math.hypot(seen.position.x - hold.position.x, seen.position.z - hold.position.z) >= BUDGET.MOVED_M || Math.abs(seen.position.y - hold.position.y) >= BUDGET.MOVED_UP)) return 'POSITION_CHANGED'
+  if (kinds.includes('position_changed') && hold.position && seen.position && (Math.hypot(seen.position.x - hold.position.x, seen.position.z - hold.position.z) >= BUDGET.MOVED_M || (hold.vertical === true && Math.abs(seen.position.y - hold.position.y) >= BUDGET.MOVED_UP))) return 'POSITION_CHANGED'
   if (kinds.includes('supplies_changed') && hold.supplies !== null && seen.supplies !== hold.supplies) return 'SUPPLIES_CHANGED'
   if (kinds.includes('inventory_update') && seen.inventoryKnown === true) return 'INVENTORY_RECEIVED'
+  if (kinds.includes('terrain_received') && seen.terrain === true) return 'TERRAIN_RECEIVED'
   if (kinds.includes('owner_released') && seen.settled === true) return 'OWNER_RELEASED'
   if (seen.now >= hold.until) return 'HOLD_TIME'
   return null

@@ -26,6 +26,8 @@ const { leaveHouse, inside } = require('../../src/modes/house/house-exit')
 const { placements } = require('../../src/modes/house/house-blueprint')
 const { underCover } = require('../../src/modes/player-surface')
 const { low } = require('../../src/modes/low-block')
+const { openAccess } = require('../../src/actions/open-face')
+const { chestsNear } = require('../../src/modes/player-storage')
 
 const EYE = 1.62, WALK = 4.3, TRAVEL = 4, GROUND = 64
 const extra = () => ({ has_nbt: 'false', can_place_on: [], can_destroy: [] })
@@ -121,6 +123,9 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
       const wet = options.waterExit === true
       if (inWater() && !wet) throw new Error('Water prediction is experimental and disabled')
       if (wet && fail.waterExit) throw new Error('No safe known shore route is accepted by the live movement preview')
+      // The short walk plans no way out of the house by itself beyond a few cells (sim.indoorWalkM):
+      // out goes through the door's two stands (house-exit.js).
+      if (sim.house && inside(sim.house.origin, getFeet()) && !inside(sim.house.origin, { x: target.x, y: target.y, z: target.z }) && Math.hypot(target.x - body.x, target.z - body.z) > sim.indoorWalkM) throw new Error('No safe route found')
       path = route(target, { wet, max: options.maxDistance ?? 16 })
       motion = { phase: 'moving', reason: null }
       began('walk', { x: target.x, y: target.y, z: target.z })
@@ -162,7 +167,14 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     const stuck = fail.travel ?? (inWater() ? 'CHUNK_TRAVEL_NO_ROUTE' : house && inside(house.origin, getFeet()) ? 'CHUNK_TRAVEL_NO_ROUTE' : null)
     const move = Math.min(far - 20 + 0.1, travel.speed * dt / 1000), nx = body.x + (to.x - body.x) / far * move, nz = body.z + (to.z - body.z) / far * move
     const zone = travel.zones.find(z => nx >= z.x1 && nx <= z.x2 && nz >= z.z1 && nz <= z.z2)
-    const y = surfaceY(nx, nz)
+    let y = surfaceY(nx, nz)
+    // A single block in the way (a chest) is walked round, as the real route does.
+    if (y === null && !stuck && !zone) {
+      for (const side of [1.5, -1.5]) {
+        const sx = nx - (to.z - body.z) / far * side, sz = nz + (to.x - body.x) / far * side, sy = surfaceY(sx, sz)
+        if (sy !== null) { body.x = sx; body.z = sz; body.y = sy; return }
+      }
+    }
     if (stuck || zone || y === null) {
       travel.reason = stuck ?? zone?.code ?? 'CHUNK_TRAVEL_NO_ROUTE'
       if (++travel.failures >= 15) { Object.assign(travel, { busy: false, phase: 'failed' }); if (zone?.once) travel.zones.splice(travel.zones.indexOf(zone), 1) }
@@ -256,9 +268,11 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     }
   }
   const interactions = {
+    // The real rule of the open click (actions/open-face.js): within reach of the
+    // face towards the eye, with a clear line to it.
     async openChest (target) {
-      const reach = Math.hypot(target.x + 0.5 - body.x, target.y - body.y, target.z + 0.5 - body.z)
-      if (reach > 5) throw new Error('操作対象が手の届く範囲外です')
+      const refused = openAccess(pos => getBlock(pos.x, pos.y, pos.z), getPosition(), target)
+      if (refused) { began('open_refused', { ...target, code: refused.code }); throw new Error(refused.message) }
       began('open', { ...target })
       const id = ++windowId
       server.window = { id, position: { ...target } }
@@ -282,7 +296,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     movement,
     chest: { open: position => { requireIdle(); crafting.closeContainer(); return chest.open(position) }, depositItem: options => { requireIdle(); return chest.depositItem(options) }, withdrawItem: options => { requireIdle(); return chest.withdrawItem(options) }, snapshot: () => chest.snapshot(), cancel: reason => chest.cancel(reason) },
     crafting: { closeContainer: () => crafting.closeContainer() },
-    interactions: { useDoor: async at => { requireIdle(); began('door', { ...at }); later(200, () => { for (const dy of [0, 1]) { const found = getBlock(at.x, at.y + dy, at.z); if (/door$/.test(found?.name ?? '')) blocks.set(key(at.x, at.y + dy, at.z), empty(found.name, { open_bit: true })) } }) } },
+    interactions: { previewOpenChest: target => { const refused = openAccess(pos => getBlock(pos.x, pos.y, pos.z), getPosition(), target); return refused ? { ready: false, code: refused.code, errors: [refused.message] } : { ready: true } }, useDoor: async at => { requireIdle(); began('door', { ...at }); later(200, () => { for (const dy of [0, 1]) { const found = getBlock(at.x, at.y + dy, at.z); if (/door$/.test(found?.name ?? '')) blocks.set(key(at.x, at.y + dy, at.z), empty(found.name, { open_bit: true })) } }) } },
     mining: { preview: () => ({ ready: false }), start () { throw new Error('not simulated') } },
     inventory: {}
   }
@@ -303,7 +317,12 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
   // ---- one runtime: the real player modules over the simulated Realm ----
   const shared = { playerWanted: true, playerBase: null }
   const canBuild = () => held('chest') >= 1
-  function makeChest ({ full = [], avoid = [] } = {}) {
+  // Like player-storage.js ensure(): a chest standing near the Bot that it was
+  // not told to skip and that is not known full comes first; otherwise a held one is placed.
+  function makeChest ({ full = [], avoid = [] } = {}, room = () => null) {
+    const skipped = new Set(full.map(p => key(p.x, p.y, p.z))), listed = p => !!p && skipped.has(key(p.x, p.y, p.z))
+    const standing = chestsNear(getBlock, getFeet()).find(found => !listed(found.position) && !listed(found.pair) && room(found.position) !== 0 && !(found.pair && room(found.pair) === 0))
+    if (standing) return standing.position
     if (held('chest') < 1 || (sim.house && inside(sim.house.origin, getFeet()))) return null // no flat pair inside the house
     const at = cellOf(), taken = new Set([...full, ...avoid].map(p => key(p.x, p.y, p.z)))
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [2, 0], [0, 2]]) {
@@ -329,7 +348,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     const base = createPlayerBase({
       getMode: () => sim.mode, shared, log: say, disposed, getFeet, getPosition, getBlock, getInventory: inventory, getWorn: () => sim.worn, now, sleep,
       agent: { objective: { objective: 'diamond' }, start: async options => { if (gone) throw new Error('reloaded'); agent.running = true; agent.starts.push({ at: clock, options }) }, stop: reason => { agent.running = false; agent.stopUntil = clock + sim.stopLagMs; agent.stops.push({ at: clock, reason }); path = []; motion = { phase: 'idle', reason: null } }, settled, running: () => agent.running },
-      hands: storagePorts, chest: async options => makeChest(options), canBuild,
+      hands: storagePorts, chest: async options => makeChest(options, at => storagePorts.room(at)), canBuild,
       porch: () => { const o = sim.house?.origin; return o ? { stand: { x: o.x + 3.5, y: o.y, z: o.z + 10.5 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null },
       spares: () => { const o = sim.house?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] },
       climb, door, walk: target => hands.walk(target), approach: (target, within) => fail.approach ? Promise.resolve(false) : hands.approach(target, within),
@@ -357,7 +376,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
   }
 
   const sim = {
-    mode: 'player', worn: { known: true, worn: ['helmet', 'chestplate', 'leggings', 'boots'].map(piece => ({ piece, name: `minecraft:diamond_${piece}` })) }, hostileNear: false, stopLagMs, writeFails: false, files: {}, house: null, porch: null,
+    mode: 'player', worn: { known: true, worn: ['helmet', 'chestplate', 'leggings', 'boots'].map(piece => ({ piece, name: `minecraft:diamond_${piece}` })) }, hostileNear: false, stopLagMs, writeFails: false, files: {}, house: null, porch: null, indoorWalkM: Infinity,
     now, sleep, later, getBlock, setBlock, water, placeChest, stored, storeOf, buildHouse, unknown, body, state, shared, agent, log, events, server, fail, travel, bag, held, inventory, chest, operations, mount, run, getFeet, getPosition, scope, settled, combatOwns,
     get clock () { return clock }, get trips () { return trips },
     set uncertain (value) { uncertain = value }, get uncertain () { return uncertain },

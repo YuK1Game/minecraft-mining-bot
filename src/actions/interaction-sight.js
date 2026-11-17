@@ -5,9 +5,12 @@ const sightPassable = block => block?.known === true && !block.extra?.length && 
 
 // Shared by the actual interaction and site previews. The clicked support
 // itself is solid; only the intervening cells need to be clear.
-function interactionSightError (read, eye, point, clicked, { plannedClearance = null } = {}) {
+// Null when the click can be sent, or why not: { code, message }. The code is
+// what a caller decides on (OUT_OF_REACH: stand closer; SIGHT_BLOCKED: stand
+// somewhere else); the message is for the log.
+function interactionSightFailure (read, eye, point, clicked, { plannedClearance = null } = {}) {
   const distance = Math.hypot(point.x - eye.x, point.y - eye.y, point.z - eye.z)
-  if (!Number.isFinite(distance) || distance > 4.5) return '操作対象が手の届く範囲外です。'
+  if (!Number.isFinite(distance) || distance > 4.5) return { code: 'OUT_OF_REACH', message: '操作対象が手の届く範囲外です。' }
   const steps = Math.max(1, Math.ceil(distance / 0.05))
   for (let step = 0; step < steps; step++) {
     const ratio = step / steps
@@ -19,10 +22,11 @@ function interactionSightError (read, eye, point, clicked, { plannedClearance = 
     if (pos.x === clicked.x && pos.y === clicked.y && pos.z === clicked.z) continue
     const block = read(pos)
     // Only read-only proposals pass this callback. Live interactions never do.
-    if (!sightPassable(block) && !plannedClearance?.(block, pos)) return '操作対象への視線が遮られているか、未取得です。'
+    if (!sightPassable(block) && !plannedClearance?.(block, pos)) return { code: 'SIGHT_BLOCKED', message: '操作対象への視線が遮られているか、未取得です。' }
   }
   return null
 }
+const interactionSightError = (read, eye, point, clicked, options) => interactionSightFailure(read, eye, point, clicked, options)?.message ?? null
 
 function canSeePlacementFloor (read, eye, position, options) {
   const point = { x: position.x + 0.5, y: position.y, z: position.z + 0.5 }
@@ -30,4 +34,4 @@ function canSeePlacementFloor (read, eye, position, options) {
   return interactionSightError(read, eye, point, support, options) === null
 }
 
-module.exports = { canSeePlacementFloor, interactionSightError, sightPassable }
+module.exports = { canSeePlacementFloor, interactionSightError, interactionSightFailure, sightPassable }
