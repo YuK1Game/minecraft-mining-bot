@@ -73,8 +73,14 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   }
   async function walk (target) {
     let started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
-    if (!started && (LANDING.test(said) || LANDING.test(why ?? '')) && offGrid(getFeet()) && await stepOff(target)) started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
-    if (!started && (LANDING.test(said) || LANDING.test(why ?? '')) && await land()) started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
+    // The landing refusal is read before the step-down, whose own refusal
+    // would hide it from the ordinary landing below (real Realm 2026-11-17
+    // 15:12 JST: mid-stair in its tunnel the step-down was refused and the
+    // walk back never settled: 「Low block step-down lacks bounded known support」).
+    const landing = !started && (LANDING.test(said) || LANDING.test(why ?? ''))
+    if (landing && offGrid(getFeet()) && await stepOff(target)) started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
+    if (!started && landing && await land()) started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
+    if (!started && landing && offGrid(getFeet()) && await stepOff(target)) started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
     if (!started) return false
     await sleep(300)
     await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 12000)
