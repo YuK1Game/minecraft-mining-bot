@@ -486,3 +486,19 @@ test('a step taken from settled gravel keeps the gravel as its return floor', as
   assert.ok(result.steps.length >= 1, result.reason)
   assert.ok(floors.some(point => point.x === 0 && point.y === 5 && point.z === 0), 'the gravel under the start is kept as a return floor')
 })
+
+test('a body on the rim of a hole steps onto the supporting cell before tunneling (live 2026-11-17 22:04 JST)', async () => {
+  const f = fixture({ target: point(3, 6, 0) })
+  f.set(point(0, 5, 0), 'air')
+  f.state.position = { x: 0.75, y: 6 + 1.62001037597656, z: 0.5 }
+  f.state.predicted = { position: { ...f.state.position }, physicsState: { onGround: true, isInWater: false } }
+  const result = await f.tunneling.execute(f.decision, { maxSteps: 2, maxDigBlocks: 6 })
+  assert.equal(result.oreAccessible, true)
+  assert.deepEqual(f.calls.find(call => call.type === 'move').target, { x: 1.5, y: 6, z: 0.5 })
+  // Over air with no supported edge: still a settle request, no movement.
+  const g = fixture({ target: point(3, 6, 0) })
+  g.set(point(0, 5, 0), 'air')
+  g.state.predicted = { position: { ...g.state.position }, physicsState: { onGround: true, isInWater: false } }
+  await assert.rejects(g.tunneling.execute(g.decision, { maxSteps: 2, maxDigBlocks: 6 }), error => error.code === 'SETTLE_REQUIRED')
+  assert.equal(g.calls.filter(call => call.type === 'move').length, 0)
+})
