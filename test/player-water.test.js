@@ -51,3 +51,16 @@ test('on dry land or still moving it does nothing', async () => {
   await water.tick(); t = 30000; feet = { x: 2.5, y: 63.9, z: 0.5 }
   assert.equal(await water.tick(), null)
 })
+
+test('exit alone swims out without touching the autonomy', async () => {
+  const getBlock = world()
+  let feet = { x: 0.5, y: 63.9, z: 0.5 }
+  const water = createPlayerWater({
+    getMode: () => 'player', shared: { playerWanted: true }, getBlock, getPosition: () => feet,
+    agent: { start: async () => { throw new Error('no') }, stop: () => { throw new Error('no') } },
+    start: target => { feet = { x: target.x, y: target.y, z: target.z } }, moving: () => false, sleep: async () => {}
+  })
+  assert.equal(water.needed(), true)
+  assert.deepEqual(await water.exit(), { ok: true })
+  assert.equal(water.needed(), false)
+})

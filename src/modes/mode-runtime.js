@@ -103,6 +103,10 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getPosition: where,
     prey: () => operations.foraging?.snapshot()?.target?.position ?? null,
+    water: {
+      needed: () => water.needed(),
+      exit: async aborted => { for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200)); return water.exit(() => aborted() || flee.status().active || shelter.status().active) }
+    },
     pit: {
       boxed: () => boxedIn((x, y, z) => runtime.host().world.getBlock(x, y, z), where()),
       out: async aborted => {
