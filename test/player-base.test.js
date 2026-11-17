@@ -205,3 +205,23 @@ test('after a death near the base: the banked diamonds come back out for the gea
   assert.deepEqual(calls.filter(Array.isArray), [['take', [29, 16]]])
   assert.equal(await api.tick(), null, 'nothing more to take: no second trip')
 })
+
+test('a climb a fight cut short is tried again in two minutes, not ten (live 2026-11-17 20:16 JST)', async () => {
+  let clock = 0
+  const calls = [], shared = { playerWanted: true, playerBase: { x: 5, y: 64, z: 0 } }
+  const getBlock = (x, y, z) => (x === 0 && z === 0 && y === 70) ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : world()(x, y, z)
+  const api = createPlayerBase({
+    getMode: () => 'player', shared, getBlock, getPosition: () => ({ x: 0, y: 65.62, z: 0 }), getFeet: () => ({ x: 0, y: 64, z: 0 }), getInventory: () => inv([[0, 'diamond', 40]]),
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    hands: { store: async () => 0, room: () => 10 }, chest: async () => null,
+    climb: async () => { calls.push('climb'); return { ok: false, reason: 'PILLAR_ASCENT_COMBAT_INTERRUPTED' } },
+    travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    walk: async () => true, approach: async () => true, log: () => {}, sleep: async () => {}, now: () => clock
+  })
+  assert.equal(await api.tick(), false)
+  clock = 119000
+  assert.equal(await api.tick(), null)
+  clock = 121000
+  assert.equal(await api.tick(), false)
+  assert.deepEqual(calls, ['climb', 'climb'])
+})
