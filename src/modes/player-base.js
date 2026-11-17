@@ -197,12 +197,17 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
     // 2026-11-17 18:43-18:46 JST: 「0 個預けました（預ける物 10 個、チェストの空き 0 枠）」).
     // A chest that would not open (room unknown) counts as full too (live
     // 2026-11-18 01:02 JST: 「0 個預けました（…空き 開けられず不明 枠）」 and no new chest).
-    if (moved < total && !(hands.room(base) > 0)) {
-      const full = [base, ...spares()]
-      let extra = await chest({ full })
+    // The new chest can fill too (a nearby chest of unknown room took 345 of
+    // 367 and was full; live 2026-11-18 01:54 JST: 22 left in the pack): up to
+    // three chests in a row, each skipping every full one before it.
+    const full = [base, ...spares()]
+    for (let round = 0; round < 3 && moved < total && !aborted() && !(hands.room(base) > 0); round++) {
+      let extra = await chest({ full: [...full] })
       const out = !extra && porch()
-      if (out && !aborted()) { await approach(out.stand, 1.5); extra = await chest({ full, avoid: out.avoid }) }
-      if (extra) { moved += await hands.store(extra, stacksNow()); base = await record(extra) } else say('拠点のチェストが満杯で、新しいチェストを置けません')
+      if (out && !aborted()) { await approach(out.stand, 1.5); extra = await chest({ full: [...full], avoid: out.avoid }) }
+      if (!extra) { say('拠点のチェストが満杯で、新しいチェストを置けません'); break }
+      moved += await hands.store(extra, stacksNow()); base = await record(extra)
+      full.push(extra)
     }
     banked += moved
     let taken = 0
