@@ -182,3 +182,20 @@ test('live case 2026-11-04: ordinary block reads never clone the state; only bas
   for (let i = 0; i < 1000; i++) p.getBlock(i, 64, 0)
   assert.equal(stateReads, 0)
 })
+
+test('the built blocks of the player house read as not natural, its door and air do not', () => {
+  const { createBaseProtection } = require('../src/safety/base-protection')
+  const { placements } = require('../src/modes/house/house-blueprint')
+  const origin = { x: 100, y: 64, z: 100 }
+  const steps = placements(origin)
+  const floor = steps.find(step => step.item === 'cobblestone').position
+  const door = steps.find(step => step.item === 'oak_door').position
+  const world = { getBlock: (x, y, z) => x === floor.x && y === floor.y && z === floor.z ? { known: true, name: 'minecraft:cobblestone', boundingBox: 'block' } : x === door.x && y === door.y && z === door.z ? { known: true, name: 'minecraft:wooden_door', boundingBox: 'block' } : { known: true, name: 'minecraft:air', boundingBox: 'empty' } }
+  const shared = { playerHouse: { origin } }
+  const view = createBaseProtection({ world, getState: () => ({}), shared })
+  assert.equal(view.getBlock(floor.x, floor.y, floor.z).natural, false)
+  assert.notEqual(view.getBlock(door.x, door.y, door.z).natural, false)
+  assert.notEqual(view.getBlock(floor.x, floor.y + 1, floor.z).natural, false)
+  shared.playerHouse = null
+  assert.notEqual(view.getBlock(floor.x, floor.y, floor.z).natural, false)
+})

@@ -12,7 +12,7 @@
 // - With `alignFacing` the Bot first turns to the point (chests, furnaces, the
 //   door and the bed face from the turn); the plan can be checked again.
 const WOODS = '(?:oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|bamboo|crimson|warped)'
-const HOUSE = new RegExp(`^minecraft:(?:cobblestone|glass|torch|chest|furnace|crafting_table|bed|${WOODS}_(?:log|stem|planks|slab|door))$`)
+const HOUSE = new RegExp(`^minecraft:(?:cobblestone|glass|torch|chest|furnace|crafting_table|bed|wooden_door|${WOODS}_(?:log|stem|planks|slab|door))$`)
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const LIQUID = /water|lava/
 const FACE = [{ x: 0, y: -1, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: -1 }, { x: 0, y: 0, z: 1 }, { x: -1, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }]
