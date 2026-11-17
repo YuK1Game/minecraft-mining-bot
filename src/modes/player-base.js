@@ -73,7 +73,7 @@ function standsBeside (getBlock, chest) {
   return out
 }
 
-function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, door = async () => true, climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, door = async () => true, spares = () => [], climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, banked = 0
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const say = text => log(`プレイヤーモード: ${text}`)
@@ -150,13 +150,20 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
     const stacks = stacksNow()
     const total = stacks.reduce((sum, stack) => sum + stack.count, 0)
     let moved = await hands.store(base, stacks)
-    // A full base chest: a new large chest beside it takes the rest.
+    // A full base chest: the house's other large chest takes the rest, then a
+    // new large chest beside it (live 2026-11-17 15:50 JST: 「0 個預けました」,
+    // chest A full, no flat spot for a new chest, 208 cobblestone thrown away).
+    for (const spare of spares()) {
+      if (moved >= total || aborted() || hands.room(base) !== 0 || !isChest(spare)) break
+      moved += await hands.store(spare, stacksNow())
+    }
     if (moved < total && hands.room(base) === 0) {
       const extra = await chest()
       if (extra) moved += await hands.store(extra, stacksNow())
     }
     banked += moved
-    say(`拠点のチェスト (${base.x}, ${base.y}, ${base.z}) に ${moved} 個預けました（手元のダイヤ ${diamonds(getInventory())} 個）`)
+    const room = hands.room(base)
+    say(`拠点のチェスト (${base.x}, ${base.y}, ${base.z}) に ${moved} 個預けました（預ける物 ${total} 個、チェストの空き ${room ?? '開けられず不明'} 枠、手元のダイヤ ${diamonds(getInventory())} 個）`)
     return moved > 0
   }
 
