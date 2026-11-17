@@ -37,4 +37,4 @@ function surfaceAhead (position, tree, heading) {
   return { x: Math.round(position.x + Math.cos(angle) * AHEAD_M), z: Math.round(position.z + Math.sin(angle) * AHEAD_M) }
 }
 
-module.exports = { underCover, surfaceAhead }
+module.exports = { underCover, surfaceAhead, BUILT }
