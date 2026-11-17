@@ -59,7 +59,7 @@ function rig ({ base = null, position = { x: 0, y: 65.62, z: 0 }, items = [[0, '
 test('underground with no base: climbs out, makes the base chest there and banks', async () => {
   const { api, shared, calls, writes } = rig({ cover: true })
   assert.equal(await api.tick(), true)
-  assert.deepEqual(calls.slice(0, 4), ['stop', 'climb', 'chest', ['store', { x: 1, y: 64, z: 1 }, 32]])
+  assert.deepEqual(calls.slice(0, 4), ['stop', 'climb', 'chest', ['store', { x: 1, y: 64, z: 1 }, 11]])
   assert.deepEqual(shared.playerBase, { x: 1, y: 64, z: 1 })
   assert.deepEqual(writes[0].chest, { x: 1, y: 64, z: 1 })
   assert.equal(calls.at(-1), 'start')
@@ -70,7 +70,7 @@ test('a far base: long walk there, a walk beside the chest, then the deposit', a
   assert.equal(await api.tick(), true)
   assert.deepEqual(calls[1], ['travel', { x: 5, z: 0 }])
   assert.equal(calls[2][0], 'walk')
-  assert.deepEqual(calls[3], ['store', { x: 5, y: 64, z: 0 }, 32])
+  assert.deepEqual(calls[3], ['store', { x: 5, y: 64, z: 0 }, 11])
 })
 
 test('few spare diamonds far from the base: no trip', async () => {
@@ -106,4 +106,15 @@ test('no base and no wood underground: climbs out only, no chest', async () => {
   })
   assert.equal(await api.tick(), false)
   assert.deepEqual(calls, ['stop', 'climb', 'start'])
+})
+
+const { bankableAll, diamondsNeeded } = require('../src/modes/player-base-kit')
+test('everything but the kit is banked (user 11:09 JST: 必要最低限のアイテム以外はチェストに格納)', () => {
+  const items = inv([[0, 'diamond_pickaxe', 1], [1, 'iron_pickaxe', 1], [2, 'stone_pickaxe', 1], [3, 'diamond_sword', 1], [4, 'stone_sword', 1], [5, 'cooked_beef', 10], [6, 'torch', 30], [7, 'coal', 40], [8, 'iron_ingot', 20], [9, 'emerald', 2], [10, 'string', 5], [11, 'cobblestone', 100], [12, 'oak_log', 30], [13, 'diamond', 12], [14, 'bone', 3]])
+  const worn = { known: true, worn: ['helmet', 'chestplate', 'leggings', 'boots'].map(piece => ({ piece, name: `minecraft:diamond_${piece}` })) }
+  const out = Object.fromEntries(bankableAll(items, { worn }).map(stack => [stack.name.replace('minecraft:', ''), stack.count]))
+  assert.deepEqual(out, { coal: 24, iron_ingot: 12, cobblestone: 28, oak_log: 20, diamond: 12, stone_pickaxe: 1, stone_sword: 1, emerald: 2, string: 5, bone: 3 })
+  assert.equal(diamondsNeeded([], null), 29)
+  assert.equal(diamondsNeeded(items.items, worn), 0)
+  assert.deepEqual(bankableAll({ known: true, uncertain: true, items: [] }), [])
 })

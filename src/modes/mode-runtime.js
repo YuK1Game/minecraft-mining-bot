@@ -214,7 +214,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // A base on the surface: spare diamonds and valuables go into its large chest (player-base.js).
   if (shared.playerBase === undefined) shared.playerBase = loadBaseSync(baseFile(root))
   const base = createPlayerBase({
-    getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: baseFile(root),
+    getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: baseFile(root), getWorn: () => operations.diagnostics?.armor?.() ?? null,
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     hands: storagePorts, chest: () => storage.chest(), canBuild: () => shared.playerHouse?.done === true && storage.woodFor(1), climb: climbUp, walk: target => hands.walk(target), approach: target => hands.approach(target),

@@ -21,11 +21,13 @@ const { writeDurableJson } = require('../common/durable-json')
 const { normalizeMode } = require('./bot-mode')
 const { storable } = require('./player-storage-rubble')
 const { underCover } = require('./player-surface')
+const { bankableAll } = require('./player-base-kit')
 
 const CHEST = 'minecraft:chest'
 const DIAMOND = 'minecraft:diamond'
-const KEEP = 8, BANK_AT = 16, NEAR_M = 32, FAR_M = 1024, AGAIN_MS = 600000, TRAVEL_MS = 300000
+const KEEP = 8, BANK_AT = 16, NEAR_M = 96, DEEP_DIAMONDS = 8, DEEP_VALUABLES = 32, NEAR_STACKS = 4, FAR_M = 1024, AGAIN_MS = 600000, TRAVEL_MS = 300000
 const VALUABLE = /^minecraft:(?:emerald|lapis_lazuli|redstone|raw_gold|gold_ingot|gold_nugget|amethyst_shard|quartz)$/
+const PRECIOUS = /^minecraft:(?:diamond|emerald|lapis_lazuli|redstone|raw_gold|gold_ingot|gold_nugget|amethyst_shard|quartz|iron_ingot|raw_iron|raw_copper|copper_ingot|gold_block|iron_block|diamond_block)$/
 
 const baseFile = root => path.resolve(root, '.local', 'player-base.json')
 function loadBaseSync (file, { io = fs } = {}) {
@@ -66,7 +68,7 @@ function standBeside (getBlock, chest) {
   return null
 }
 
-function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, banked = 0
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const say = text => log(`プレイヤーモード: ${text}`)
@@ -82,25 +84,32 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
     return shared.playerBase
   }
 
+  // Everything but the kit goes in (player-base-kit.js; user 2026-11-17 11:09 JST:
+  // 「必要最低限のアイテム以外はチェストに格納するようにして」). The trip starts:
+  // from a tunnel with 8 diamonds or 32 other valuables to bank; on the surface
+  // within 96 m of the base with any valuable or 4 stacks to bank.
+  const stacksNow = () => bankableAll(getInventory(), { worn: getWorn() })
   function due () {
     const inventory = getInventory(), position = getPosition()
     if (!inventory || !position) return false
-    const spare = diamonds(inventory) - KEEP
+    const stacks = stacksNow()
+    const banked = name => stacks.filter(stack => stack.name === name).reduce((sum, stack) => sum + stack.count, 0)
+    const spare = banked(DIAMOND), precious = stacks.filter(stack => PRECIOUS.test(stack.name)).reduce((sum, stack) => sum + stack.count, 0)
     const base = shared.playerBase
-    // With no base to go to, only held wood for a large chest makes the trip worth it.
+    const covered = underCover(getBlock, position)
     // With no base to go to and no wood for its chest, the trip only climbs out
     // of the tunnel: on the surface the wood is gathered before going down
     // again (player-supply.js), and the base is made once it is held (live
     // 2026-11-17 01:57-02:03 JST: 145 diamonds, no wood, the trip never began).
-    if ((!base || flat(base, position) > FAR_M) && !canBuild()) return spare >= BANK_AT && underCover(getBlock, position)
-    if (spare >= BANK_AT) return true
-    return spare > 0 && !!base && flat(base, position) <= NEAR_M && !underCover(getBlock, position)
+    if ((!base || flat(base, position) > FAR_M) && !canBuild()) return spare >= BANK_AT && covered
+    if (spare >= DEEP_DIAMONDS || precious - spare >= DEEP_VALUABLES) return true
+    return !!base && flat(base, position) <= NEAR_M && !covered && (precious > 0 || stacks.length >= NEAR_STACKS)
   }
 
   async function trip () {
     const aborted = () => !live() || blocked()
     if (underCover(getBlock, getPosition())) {
-      say('ダイヤが増えたため、地上へ出て拠点のチェストに預けます。')
+      say('大事な物が増えたため、地上へ出て拠点のチェストに預けます。')
       let out = null
       try { out = await climb(aborted) } catch (error) { out = { ok: false, reason: String(error?.message ?? error).slice(0, 80) } }
       if (aborted()) return false
@@ -131,13 +140,13 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
       if (!at) { say('拠点のチェストを置けません'); return false }
       base = await record(at)
     }
-    const stacks = bankable(getInventory())
+    const stacks = stacksNow()
     const total = stacks.reduce((sum, stack) => sum + stack.count, 0)
     let moved = await hands.store(base, stacks)
     // A full base chest: a new large chest beside it takes the rest.
     if (moved < total && hands.room(base) === 0) {
       const extra = await chest()
-      if (extra) moved += await hands.store(extra, bankable(getInventory()))
+      if (extra) moved += await hands.store(extra, stacksNow())
     }
     banked += moved
     say(`拠点のチェスト (${base.x}, ${base.y}, ${base.z}) に ${moved} 個預けました（手元のダイヤ ${diamonds(getInventory())} 個）`)
