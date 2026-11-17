@@ -123,3 +123,25 @@ test('standBeside never picks the cell on top of the other half of a large chest
   const at = standBeside(world({ '5,64,0': 'minecraft:chest', '6,64,0': 'minecraft:chest' }), { x: 5, y: 64, z: 0 })
   assert.deepEqual(at, { x: 4.5, y: 64, z: 0.5 })
 })
+
+test('a full base chest: the house chest B takes the rest before a new chest (live 2026-11-17 15:50 JST)', async () => {
+  const calls = [], shared = { playerWanted: true, playerBase: { x: 5, y: 64, z: 0 } }
+  let inventory = inv([[0, 'diamond', 40]]), pos = { x: 4.5, y: 65.62, z: 0.5 }
+  const blocks = world({ '5,64,0': 'minecraft:chest', '7,64,2': 'minecraft:chest' })
+  const rooms = {}
+  const api = createPlayerBase({
+    getMode: () => 'player', shared, getBlock: blocks, getPosition: () => pos, getFeet: () => ({ x: pos.x, y: pos.y - 1.62, z: pos.z }), getInventory: () => inventory,
+    agent: { objective: {}, start: async () => calls.push('start'), stop: () => calls.push('stop'), settled: () => true },
+    hands: {
+      store: async (at, stacks) => { const key = `${at.x},${at.z}`; calls.push(['store', key]); if (key === '5,0') { rooms[key] = 0; return 0 } inventory = inv([[0, 'diamond', 8]]); return stacks.reduce((s, x) => s + x.count, 0) },
+      room: at => rooms[`${at.x},${at.z}`] ?? null
+    },
+    spares: () => [{ x: 7, y: 64, z: 2 }],
+    chest: async () => { calls.push('chest'); return null },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    walk: async () => true, approach: async () => true, log: () => {}, sleep: async () => {}
+  })
+  assert.equal(await api.tick(), true)
+  assert.deepEqual(calls.filter(c => Array.isArray(c)), [['store', '5,0'], ['store', '7,2']])
+  assert.ok(!calls.includes('chest'))
+})
