@@ -519,3 +519,51 @@ test('a climb cut short by an enemy says so and tries again in 2 minutes, not 10
   await build.tick()
   assert.equal(climbs, 2, lines.join('\n'))
 })
+
+test('a block it failed on and the door do not call the Bot back from the sand; all the sand does (live 2026-11-17 14:06-14:11 JST)', async () => {
+  const w = world()
+  const feet = { x: 0.5, y: 64, z: 0.5 }
+  const inventory = { known: true, items: [] }
+  const give = (name, count) => { const item = inventory.items.find(stack => stack.name === name); if (item) item.count += count; else inventory.items.push({ name, count, slot: inventory.items.length }) }
+  const take = (name, count) => { const item = inventory.items.find(stack => stack.name === name); item.count -= count; if (item.count <= 0) inventory.items.splice(inventory.items.indexOf(item), 1) }
+  for (const [name, count] of [['wooden_pickaxe', 1], ['birch_log', 54], ['cobblestone', 68], ['coal', 2], ['white_wool', 3]]) give(`minecraft:${name}`, count)
+  const recipes = { 'minecraft:birch_planks': [4, [['minecraft:birch_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:birch_planks', 4]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:birch_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:birch_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:birch_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
+  let stuck = null
+  const ports = {
+    craft: async (output, times) => { const [yieldCount, parts] = recipes[output]; for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
+    smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
+    place: async (name, plan) => {
+      const step = placements(shared.playerHouse.origin).find(s => s.position.x === plan.position.x && s.position.y === plan.position.y && s.position.z === plan.position.z)
+      if (step.item === 'oak_planks') { stuck ??= step.id; if (step.id === stuck) return false }
+      take(name, 1)
+      for (const cell of step.cells) w.set(cell, name)
+      return true
+    },
+    mine: async () => true, why: () => '操作対象への視線が遮られているか、未取得です。'
+  }
+  const shared = { playerWanted: true }
+  const lines = []
+  let clock = 1000000
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {}, now: () => clock,
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    ports, hands: { walk: async stand => { Object.assign(feet, stand); return true }, approach: async () => true },
+    climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
+    getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
+  })
+  await build.tick()
+  const left = () => remaining(w.getBlock, shared.playerHouse.origin)
+  assert.deepEqual([...new Set(left().map(step => step.item))].sort(), ['glass', 'oak_door', 'oak_planks'], lines.join('\n'))
+  // One sand of six: the failed block and the door wait, the glass waits for all of its sand.
+  give('minecraft:sand', 1)
+  clock += 60000
+  assert.equal(await build.tick(), null)
+  // All the sand: back to build.
+  give('minecraft:sand', 5)
+  assert.notEqual(await build.tick(), null)
+  // The failed block alone, after 10 minutes, is tried again.
+  clock += 600000
+  stuck = 'none'
+  assert.notEqual(await build.tick(), null)
+  assert.deepEqual(left(), [], lines.join('\n'))
+})
