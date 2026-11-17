@@ -81,9 +81,10 @@ test('drowned are fought on land, never from the water; the route prices water h
 // Live 2026-11-14: long-trip walks in water had every frame rejected while any
 // hostile was listed; they now use the chunk-move admission rule (attack access
 // along the step), as chunk travel already does.
-test('long-trip walks use the combat-aware water frame guard', () => {
+// Live 2026-11-18: water exits too (a drowned in the pond rejected every frame).
+test('long-trip walks and water exits use the combat-aware water frame guard', () => {
   const src = require('./helpers/runtime-source').runtimeSource()
-  assert.match(src, /preparedPortableOptions = normalWaterMovementOptions\(portableMovementOptions\(target, options\), \{ combatAware: !!longTravel\?\.status\?\.\(\)\.busy \}\)/)
+  assert.match(src, /preparedPortableOptions = normalWaterMovementOptions\(portableMovementOptions\(target, options\), \{ combatAware: !!longTravel\?\.status\?\.\(\)\.busy \|\| options\?\.waterExit === true \}\)/)
   const guard = src.slice(src.indexOf('  function normalWaterMovementOptions ('), src.indexOf('  function startMotion ('))
   assert.match(guard, /else if \(combatAware\) \{\s+if \(!chunkTravelThreatsClear\(/)
 })

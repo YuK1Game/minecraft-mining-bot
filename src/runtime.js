@@ -2857,7 +2857,7 @@ function createRuntime (host) {
       else if (combatAware) {
         if (!chunkTravelThreatsClear({ state: current, previous, next: p, risk, attackExposure: combatAttackExposure })) return G('threat')
       } else {
-        if(risk.requiresObservation||risk.threats.length)return false
+        if(risk.requiresObservation||risk.threats.length)return G('threat')
         for(const a of [...risk.outsideDanger,...risk.suppressedByTerrain]){
         if(!current.entities.some(e=>String(e.runtimeId)===a.runtimeId&&e.uniqueId!=null&&/^-?\d+$/.test(String(e.uniqueId))&&String(e.uniqueId)!=='0'&&e.entityType===a.name&&e.dimension===current.dimension&&e.positionKnown===true&&e.position&&['x','y','z'].every(k=>Number.isFinite(e.position[k]))))return false
         const q=a.position,dx=p.x-previous.x,dy=p.y-previous.y,dz=p.z-previous.z,den=dx*dx+dy*dy+dz*dz,t=den?Math.max(0,Math.min(1,((q.x-previous.x)*dx+(q.y-previous.y)*dy+(q.z-previous.z)*dz)/den)):0
@@ -2905,10 +2905,9 @@ function createRuntime (host) {
             if (controllerGuard && controllerGuard(frame) === false) return false
             return ordinaryGuard ? ordinaryGuard(frame) !== false : true
           } }
-        // Long-trip walks use the chunk-move admission rule for water frames (live
-        // 2026-11-14: any listed hostile, e.g. a drowned in the lake, rejected every
-        // swim frame and the bot stayed in the water for hours).
-        } else preparedPortableOptions = normalWaterMovementOptions(portableMovementOptions(target, options), { combatAware: !!travelRuntime.longTravel?.status?.().busy })
+        // Long trips and water exits use the chunk-move rule for water frames (live
+        // 11-14, 11-18: a drowned in the pond rejected every swim frame for hours).
+        } else preparedPortableOptions = normalWaterMovementOptions(portableMovementOptions(target, options), { combatAware: !!travelRuntime.longTravel?.status?.().busy || options?.waterExit === true })
         portableMovementOwner = options?._portableMovementLease ?? null
         if (portableMovementLease?.id === portableMovementOwner) { portableMovementLease.startedMovement = movement; portableMovementLease.startedSerial = portableMovementSerial }
         try { result = movement.start(target, preparedPortableOptions) } finally { phase('movementStart') }

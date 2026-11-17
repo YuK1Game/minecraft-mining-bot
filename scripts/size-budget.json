@@ -1,7 +1,7 @@
 {
     "note":  "Bytes without carriage returns at 2026-11-15 (re-measured after the directory split lengthened require paths; no code was added). npm run check reports growth beyond these. Lower a value after moving code out; do not raise one to fit new code.",
     "files":  {
-                  "src/runtime.js":  378940,
+                  "src/runtime.js":  378911,
                   "src/quarry/quarry-job.js":  269612,
                   "src/safety/idle-safety.js":  41445,
                   "src/runtime/idle-safety-runtime.js":  132927,
