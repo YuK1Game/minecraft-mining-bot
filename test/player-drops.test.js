@@ -83,3 +83,10 @@ test('the walkable cells are kept while the Bot stands in the same cell and the 
   withCollectableDrops({ mode: 'player', shared: {}, state, observations: { drops: [drop(1, 2.5, 1.1, 0.5)] }, getBlock })
   assert.ok(reads - plain > 200)
 })
+
+test('each unreachable item is logged once, not on every decision', () => {
+  const lines = [], shared = {}
+  const items = [drop(1, 8.5, 1.1, 0.5), drop(2, 9.5, 1.1, 0.5), drop(3, 10.5, 1.1, 0.5)]
+  for (let i = 0; i < 5; i++) filter(world(), items, shared, { log: line => lines.push(line) })
+  assert.equal(lines.length, 3)
+})

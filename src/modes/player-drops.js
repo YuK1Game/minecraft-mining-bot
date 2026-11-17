@@ -101,7 +101,10 @@ function withCollectableDrops ({ mode, shared, state, observations, getBlock, re
     }
     cells ??= walkableCells(state.position, getBlock, revision())
     if (collectable(drop, cells)) return true
-    if (id && shared.playerDropNoted !== id) { shared.playerDropNoted = id; log(`プレイヤーモード: 歩いて届かない場所のアイテムは拾いません（${String(drop.name ?? '').replace(/^minecraft:/, '').slice(0, 40)}、(${Math.floor(drop.position?.x)}, ${Math.floor(drop.position?.y)}, ${Math.floor(drop.position?.z)})）`) }
+    // Each item once per ten minutes (real Realm 2026-11-17 10:08-10:12 JST: twenty
+    // cobblestone drops took turns, 2,293 lines in four minutes).
+    const noted = shared.playerDropNotes ??= {}
+    if (id && !(noted[id] > now())) { noted[id] = now() + 600000; for (const key of Object.keys(noted)) if (noted[key] <= now()) delete noted[key]; log(`プレイヤーモード: 歩いて届かない場所のアイテムは拾いません（${String(drop.name ?? '').replace(/^minecraft:/, '').slice(0, 40)}、(${Math.floor(drop.position?.x)}, ${Math.floor(drop.position?.y)}, ${Math.floor(drop.position?.z)})）`) }
     return false
   })
   return drops.length === observations.drops.length ? observations : { ...observations, drops }
