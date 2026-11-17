@@ -25,3 +25,18 @@ test('the house record is read back', () => {
   assert.deepEqual(loadHouseSync('x', { io }), { origin: { x: 1, y: 2, z: 3 }, done: true, spawn: false })
   assert.equal(loadHouseSync('x', { io: { readFileSync: () => { throw Error('none') } } }), null)
 })
+
+test('the counts left are saved and read back', async () => {
+  const io = { readFileSync: () => JSON.stringify({ version: 1, origin: { x: 1, y: 2, z: 3 }, done: false, left: { glass: 6, cobblestone: 1 } }) }
+  assert.deepEqual(loadHouseSync('x', { io }).left, { glass: 6, cobblestone: 1 })
+  const { createHouseBuild } = require('../src/modes/house/house-build')
+  const writes = []
+  const shared = { playerHouse: { origin: { x: 1, y: 2, z: 3 }, done: false } }
+  const house = createHouseBuild({ getMode: () => 'quarry', shared, file: 'f', write: async (file, value) => { writes.push(value) }, getFeet: () => null, getPosition: () => null, getBlock: () => null, getInventory: () => null, agent: {}, ports: {}, hands: {}, climb: async () => ({ ok: false }), travel: { status: () => ({}) } })
+  await house.tick()
+  assert.equal(writes.length, 0)
+  shared.playerHouse.left = { glass: 6 }
+  await house.tick()
+  await house.tick()
+  assert.deepEqual(writes.map(value => value.left), [{ glass: 6 }])
+})
