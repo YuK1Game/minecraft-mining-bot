@@ -26,5 +26,5 @@ test('a hit logs the body cells and the entities around it once per hit, at most
   assert.ok(noteDamage(input(7000)))
   assert.equal(lines.length, 2)
   shared.travelLastDamageAt = 20000
-  assert.match(noteDamage({ ...input(20000), why: () => '離れる no_threat・射線 bow' }), /、離れる no_threat・射線 bow$/)
+  assert.match(noteDamage({ ...input(20000), why: () => '離れる no_threat・射線 bow' }), /^被弾のまわり: 体力 9\.5、離れる no_threat・射線 bow、足 /)
 })

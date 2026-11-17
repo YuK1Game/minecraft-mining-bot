@@ -26,8 +26,9 @@ function noteDamage ({ shared, health, position, actors, getBlock, log, why = nu
   // Arrows are one count with the nearest: a dozen stuck arrows filled the list and
   // hid the skeleton (live 2026-11-17 23:13-23:14 JST).
   const arrows = near.filter(actor => actor.type === 'arrow')
-  const shown = near.filter(actor => actor.type !== 'arrow').slice(0, 8)
-  const text = `被弾のまわり: 体力 ${Number.isFinite(health) ? Math.round(health * 100) / 100 : '?'}、足 (${feet.x}, ${feet.y}, ${feet.z})、足のマス ${cell(0)}・頭 ${cell(1)}・下 ${cell(-1)}、${RANGE_M}m 以内 ${arrows.length ? `矢 ${arrows.length} 本（最も近い ${arrows[0].distance.toFixed(1)}m）、` : ''}${shown.length ? shown.map(actor => `${actor.type} ${actor.distance.toFixed(1)}m(${actor.dy >= 0 ? '+' : ''}${actor.dy.toFixed(1)})`).join(' / ') : 'なし'}${unknown ? `、位置不明 ${unknown}` : ''}${typeof why === 'function' ? `、${String(why() ?? '').slice(0, 160)}` : ''}`
+  const shown = near.filter(actor => actor.type !== 'arrow').slice(0, 6)
+  // The defenses go first: the host log cuts a line at about 260 characters (live 23:39 JST).
+  const text = `被弾のまわり: 体力 ${Number.isFinite(health) ? Math.round(health * 100) / 100 : '?'}、${typeof why === 'function' ? `${String(why() ?? '').slice(0, 100)}、` : ''}足 (${feet.x}, ${feet.y}, ${feet.z})、足のマス ${cell(0)}・頭 ${cell(1)}・下 ${cell(-1)}、${RANGE_M}m 以内 ${arrows.length ? `矢 ${arrows.length} 本（最も近い ${arrows[0].distance.toFixed(1)}m）、` : ''}${shown.length ? shown.map(actor => `${actor.type} ${actor.distance.toFixed(1)}m(${actor.dy >= 0 ? '+' : ''}${actor.dy.toFixed(1)})`).join(' / ') : 'なし'}${unknown ? `、位置不明 ${unknown}` : ''}`
   log(text)
   return text
 }
