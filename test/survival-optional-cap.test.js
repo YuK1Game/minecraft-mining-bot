@@ -80,3 +80,11 @@ test('a body on gravel resting on received stone is known; gravel over air or un
  const hanging=fixture();hanging.set(0,64,0,'gravel');hanging.set(0,63,0,'air',{boundingBox:'empty'});hanging.refresh();assert.equal(hanging.next(OPTIONS).resource,'body')
  const unseen=fixture();unseen.set(0,64,0,'gravel');unseen.set(0,63,0,'stone',{known:false});unseen.refresh();assert.equal(unseen.next(OPTIONS).resource,'body')
 })
+
+test('outside the live-learning scope, a diamond-equipped miner waits on a nearby foe instead of stopping (live 2026-11-17 16:03 JST)',()=>{
+ const enemy={runtimeId:'901',uniqueId:'-901',kind:'mob',entityType:'minecraft:spider',dimension:'overworld',alive:true,positionKnown:true,position:{x:2.5,y:65,z:.5}}
+ const f=fixture();f.state.threatPolicy='balanced_mining';f.state.entities=[enemy]
+ const pick=f.state.inventory.items.find(item=>/pickaxe/.test(item.name));Object.assign(pick,{name:'minecraft:diamond_pickaxe',count:1,durabilityKnown:true,durabilityRemaining:1000})
+ const d=f.next(OPTIONS);assert.equal(d.type,'wait');assert.equal(d.code,'nearby_threat')
+ f.state.entities=[];assert.equal(f.next(OPTIONS),null)
+})
