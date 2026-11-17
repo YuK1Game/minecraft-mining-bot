@@ -63,6 +63,7 @@ function safeId (value) {
 }
 
 const STALE_ACTOR_MS = 5 * 60 * 1000
+const PLAY_RADIUS = 8
 const STILL_ACTOR_MS = 5 * 60 * 1000
 const STILL_MIN_DISTANCE = 4.5 // nearer than this a creeper can start its fuse
 // Archers and witches strafe and step while they shoot: one whose received
@@ -129,7 +130,11 @@ function evaluateThreats (state, entities, { extraMargin = 0, observationRadius 
     const balancedRadius = learningOnline && type === 'minecraft:witch' ? 14 : healthyMining && type === 'minecraft:drowned' ? 14 : rangedEscapeHealth && learning === 'archer' ? 18 : null
     const legacyRadius = (balancedRadius ?? policy.radius) + extraMargin
     const learningRadius = learningOnline ? learning === 'archer' ? 18 : learning === 'melee' ? 5 : learning === 'ranged' ? 10 : null : null
-    const radius = (learningRadius ?? balancedRadius ?? policy.radius) + extraMargin
+    // Player play leaves a hostile beyond 8 m (creepers excepted) to combat
+    // mode: work, idle protection and routes treat it as outside danger
+    // (real Realm 2026-11-17 16:37-17:06 JST: a skeleton 11-17 m away inside
+    // its 18 m archer radius held or interrupted every tunnel for 30 minutes).
+    const radius = Math.min((learningRadius ?? balancedRadius ?? policy.radius) + extraMargin, state?.playerPlay === true && type !== 'minecraft:creeper' ? PLAY_RADIUS : Infinity)
     const acceptedRisk = learningRadius !== null && radius < legacyRadius
     const riskMetadata = acceptedRisk ? { riskAccepted: true, legacyRadius } : {}
     if (observationRadius !== null && radius > observationRadius) coverageWarnings.push({ runtimeId, name: type, observationRadius, dangerRadius: radius, reason: 'この種類の回避方針は現在の観測距離より広いため、未観測領域の安全を確認できません。' })
