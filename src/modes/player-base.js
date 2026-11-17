@@ -73,7 +73,7 @@ function standsBeside (getBlock, chest) {
   return out
 }
 
-function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, door = async () => true, spares = () => [], porch = () => null, climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, door = async () => true, porchWalk = async () => false, spares = () => [], porch = () => null, climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, banked = 0, soon = false, quick = false
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const say = text => log(`プレイヤーモード: ${text}`)
@@ -161,6 +161,10 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
         if (flat(base, getPosition()) > 20) quick = true
       }
       if (flat(base, getPosition()) > 6) await approach(base, 6)
+      // The greedy hops stop at a slope; the house's porch walk tries stands at
+      // every height between (live 2026-11-18 01:14-01:15 JST: 8 blocks below
+      // the house, 「拠点のチェストのそばまで行けません（残り 25m）」 twice).
+      if (flat(base, getPosition()) > 6) { try { await porchWalk() } catch {} }
       // Any received stand beside the chest that a walk reaches (inside the house the nearest may be walled off).
       // Into the starter house: its door opened first (house/house-door.js).
       try { await door() } catch {}

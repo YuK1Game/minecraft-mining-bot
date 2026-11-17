@@ -445,7 +445,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     }
   }
 
-  return { tick, status: () => ({ active: busy, reason: busy ? '拠点の家を建てています。' : null, placed: placedTotal, house: shared.playerHouse ?? null }) }
+  return { tick, closeIn, status: () => ({ active: busy, reason: busy ? '拠点の家を建てています。' : null, placed: placedTotal, house: shared.playerHouse ?? null }) }
 }
 
 // The house's record: .local/player-house.json ({ origin, done }).
