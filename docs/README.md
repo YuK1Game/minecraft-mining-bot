@@ -26,6 +26,7 @@
 | [handoff.md](handoff.md) | 作業の引き継ぎ資料（その時点の状態と残課題） |
 | [quarry-start-handoff.md](quarry-start-handoff.md) | 露天掘り開始の実行引継ぎと、その後の追記 |
 | [player-roadmap.md](player-roadmap.md) | プレイヤーモードのロードマップ（エンダードラゴン討伐までの段階と、松明での湧き潰しなど全段階に共通の決まり） |
+| [player-return.md](player-return.md) | プレイヤーモードの帰還（拠点へ戻って収納する）の設計: 目的と操作の分離、段階と終了条件、結果のコード、再試行の上限、受け入れシナリオ |
 
 ## 参考資料
 

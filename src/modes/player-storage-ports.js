@@ -6,8 +6,9 @@
 // block, a deposit by the received inventory slot.
 const TABLE = 'minecraft:crafting_table'
 const AIR = /^minecraft:(?:air|cave_air|void_air|short_grass|fern|leaf_litter)$/
+const { createContainerPorts } = require('./return/container-ports')
 
-function createStoragePorts ({ operations, getBlock, getFeet, getInventory, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
   const items = () => getInventory()?.items ?? []
   const count = name => items().filter(item => item?.name === name && item.count > 0).reduce((sum, item) => sum + item.count, 0)
   const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
@@ -91,54 +92,10 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, disp
     return until(() => count(output) >= before + times, 4000)
   }
 
-  // How many empty slots the chest has, and its received slots (null until it was opened once here).
-  const rooms = new Map(), seen = new Map()
-  const key = position => `${position.x},${position.y},${position.z}`
-  const room = position => rooms.get(key(position)) ?? null
-  const contents = position => seen.get(key(position)) ?? null
-  const remember = position => { const slots = operations.chest.snapshot()?.slots ?? []; rooms.set(key(position), slots.filter(slot => slot.known === true && !slot.name && !slot.count).length); seen.set(key(position), slots.map(slot => ({ ...slot }))) }
+  // The chest window: opening, reading, depositing and taking out (return/container-ports.js).
+  const box = createContainerPorts({ operations, getInventory, held, disposed, sleep, now })
 
-  // Each stack into an empty chest slot; returns the items the inventory lost.
-  async function store (position, stacks) {
-    let moved = 0
-    try {
-      await patient(() => operations.chest.open(position))
-      if (!await until(() => operations.chest.snapshot()?.contentsKnown === true, 4000)) return 0
-      for (const stack of stacks) {
-        if (disposed()) break
-        const view = operations.chest.snapshot()
-        const free = (view.slots ?? []).find(slot => slot.known === true && !slot.name && !slot.count)
-        remember(position)
-        if (!free) break
-        const source = items().find(item => item.slot === stack.slot && item.name === stack.name && item.count > 0)
-        if (!source) continue
-        const amount = Math.min(stack.count, source.count, 64), before = source.count
-        try { await patient(() => operations.chest.depositItem({ sourceSlot: stack.slot, count: amount, chestSlot: free.slot, expectedName: stack.name })) } catch { continue }
-        if (await until(() => (items().find(item => item.slot === stack.slot && item.name === stack.name)?.count ?? 0) <= before - amount, 3000)) moved += amount
-      }
-    } catch { /* What was moved is counted from the received inventory. */ } finally { if (operations.chest.snapshot()?.contentsKnown === true) remember(position); close() }
-    return moved
-  }
-
-  // The stacks pick(slots) names out of the chest; returns the items the inventory gained.
-  async function take (position, pick) {
-    let moved = 0
-    try {
-      await patient(() => operations.chest.open(position))
-      if (!await until(() => operations.chest.snapshot()?.contentsKnown === true, 4000)) return 0
-      remember(position)
-      for (const want of pick(operations.chest.snapshot().slots ?? [])) {
-        if (disposed()) break
-        const before = count(want.name)
-        try { await patient(() => operations.chest.withdrawItem({ chestSlot: want.chestSlot, count: want.count, expectedName: want.name })) } catch (error) { if (error?.code === 'INVENTORY_FULL') break; continue }
-        if (await until(() => count(want.name) >= before + want.count, 3000)) moved += want.count
-      }
-      remember(position)
-    } catch { /* What was taken is counted from the received inventory. */ } finally { close() }
-    return moved
-  }
-
-  return { craftSmall, craftPlanks, tableNear, place, hold, drop, placeTable, craftAtTable, room, contents, store, take, refusal: () => refusal }
+  return { craftSmall, craftPlanks, tableNear, place, hold, drop, placeTable, craftAtTable, room: box.room, contents: box.contents, store: box.store, take: box.take, inspect: box.inspect, deposit: box.deposit, refusal: () => refusal }
 }
 
 module.exports = { createStoragePorts }

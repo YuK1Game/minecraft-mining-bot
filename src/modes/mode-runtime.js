@@ -34,6 +34,8 @@ const { pruneTunnelFloors } = require('./player-floor-prune')
 const { noteDamage } = require('./damage-note')
 const { playFile, createPlayerResume } = require('./player-resume')
 const { createPlayerBase, baseFile, loadBaseSync } = require('./player-base')
+const { returnFile, loadReturnSync } = require('./return/return-goal')
+const { inside: insideHouse } = require('./house/house-exit')
 const { createHouseWool } = require('./house/house-wool')
 const { createHouseSand } = require('./house/house-sand')
 const { createPlayerFood, hasFood } = require('./player-food')
@@ -64,7 +66,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     aim = next?.diamondCount ?? aim
     return next
   }
-  operations.agent = { ...inner, start: options => { if (control.get() === 'player') shared.playerWanted = true; return inner.start(aimed(options)) }, stop: reason => { shared.playerWanted = false; recovery.cancel(); return inner.stop(reason) } }
+  operations.agent = { ...inner, start: options => { if (control.get() === 'player') shared.playerWanted = true; return inner.start(aimed(options)) }, stop: reason => { shared.playerWanted = false; recovery.cancel(); base.cancel('MANUAL_STOP'); return inner.stop(reason) } }
   const agentStatus = () => runtime.autonomy()?.snapshot() ?? { running: false }
   const disposed = () => runtime.disposed?.() === true
   const idle = () => { const value = agentStatus(); return value.running !== true && value.busy !== true && value.actionActive !== true }
@@ -103,7 +105,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
   })
   // A long trip from inside the starter house first walks out through its door (house/house-exit.js).
-  const travelTo = async input => { try { await leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => hands.walk(target), door: () => houseDoor(), log }) } catch {} if (shared.playerWanted === true) await dryStart({ needed: () => water.needed(), exit: () => water.exit(() => flee.status().active || shelter.status().active), ready: idle, log }); return quarry.travelTo(input) }
+  // Still in the water after the exit: the land trip is not started (it only fails leg after leg from there).
+  const travelTo = async input => { try { await leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => hands.walk(target), door: () => houseDoor(), log }) } catch {} if (shared.playerWanted === true) { await dryStart({ needed: () => water.needed(), exit: () => water.exit(() => flee.status().active || shelter.status().active), ready: idle, log }); if (water.needed()) throw Object.assign(new Error('水から上がれないため、長距離移動を始めません。'), { code: 'WATER_EXIT_FAILED' }) } return quarry.travelTo(input) }
   // Out of a tunnel to the open sky, shared by the recovery and the base trip.
   async function climbUp (aborted) {
     for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
@@ -214,7 +217,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     hands: createTorchPorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
   })
   // A full inventory goes into a large chest beside the Bot (player-storage.js).
-  const storagePorts = createStoragePorts({ operations, disposed, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
+  const storagePorts = createStoragePorts({ operations, disposed, held: () => runtime.combatOwns?.() === true, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
   const storage = createPlayerStorage({
     getMode: control.get, shared, log, disposed, getFeet: feetNow, mine: async cell => (await hands.pick()) && hands.mine(cell), dig: cell => hands.dig(cell), why: () => hands.why(), walk: target => hands.walk(target), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
@@ -224,14 +227,23 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   })
   // A base on the surface: spare diamonds and valuables go into its large chest (player-base.js).
   if (shared.playerBase === undefined) shared.playerBase = loadBaseSync(baseFile(root))
+  // The return goal and its failure memory outlive a restart (return/return-goal.js).
+  if (shared.playerReturn === undefined) { const saved = loadReturnSync(returnFile(root)); shared.playerReturn = saved.goal; shared.playerReturnFailures = saved.failures }
+  const jobs = () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active
+  // Who holds the controls ahead of the return: a fight, a meal, or one of the jobs above.
+  const eating = () => { try { return operations.food?.snapshot?.()?.busy === true } catch { return false } }
+  const ahead = () => flee.status().active ? '敵から離れる' : cover.status().active ? '射線から外れる' : shelter.status().active ? '避難' : runtime.combatOwns?.() === true ? '戦闘' : eating() ? '食事' : jobs() ? 'ほかの作業' : null
   const base = createPlayerBase({
-    getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: baseFile(root), getWorn: () => { try { return runtime.armor?.() ?? null } catch { return null } },
+    getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: baseFile(root), returnFile: returnFile(root), getWorn: () => { try { return runtime.armor?.() ?? null } catch { return null } },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
-    agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
+    agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle, running: () => agentStatus().running === true || shared.autoWanted === true },
     hands: storagePorts, chest: options => storage.chest(options), porch: () => { const o = shared.playerHouse?.origin; return o ? { stand: { x: o.x + 3, y: o.y, z: o.z + 10 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null }, canBuild: () => shared.playerHouse?.done === true && storage.woodFor(1), climb: climbUp, door: () => houseDoor(), porchWalk: () => shared.playerHouse?.origin ? house.closeIn(shared.playerHouse.origin) : false, spares: () => { const o = shared.playerHouse?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] }, walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within),
-    travel: { to: travelTo, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
-    hostile: () => danger(),
-    blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active
+    // The return checks each precondition itself: out of the water, out of the house, then the raw long travel.
+    travel: { to: input => quarry.travelTo(input), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
+    water: { needed: () => water.needed(), exit: aborted => water.exit(aborted) },
+    house: { inside: () => insideHouse(shared.playerHouse?.origin, feetNow()), leave: () => leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => hands.walk(target), door: () => houseDoor(), log }) },
+    scope: () => { try { return runtime.scope?.() ?? null } catch { return null } }, dimension: () => { try { return runtime.raw()?.dimension ?? null } catch { return null } }, interrupter: ahead,
+    hostile: () => danger()
   })
   const hungryWithoutFood = () => { const value = hunger(); return Number.isFinite(value) && value <= 14 && !shared.inventoryUncertain && !hasFood(runtime.inventory()) }
   // No food, hungry, deep underground: up to the surface where the animals are (player-food.js).
@@ -320,7 +332,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // The runtime restarts a stopped run with the options it was last started with: a reload brings the player objective's current flags.
   if (control.get() === 'player' && shared.autoOptions && typeof shared.autoOptions === 'object') shared.autoOptions = { ...shared.autoOptions, deferOptionalShelter: true, nearThreatDistance: 8 }
   const player = createPlayerMode({
-    getMode: control.get, log, safety: operations.safety, recovery, shelter, flee, scaffold: { status: () => house.status().active ? house.status() : wool.status().active ? wool.status() : sand.status().active ? sand.status() : food.status().active ? food.status() : base.status().active ? base.status() : storage.status().active ? storage.status() : torch.status().active ? torch.status() : scaffold.status() }, shared,
+    getMode: control.get, log, safety: operations.safety, recovery: { ...recovery, cancel: () => { if (shared.playerWanted !== true) base.cancel('MANUAL_STOP'); return recovery.cancel() } }, shelter, flee, scaffold: { status: () => house.status().active ? house.status() : wool.status().active ? wool.status() : sand.status().active ? sand.status() : food.status().active ? food.status() : base.status().active ? base.status() : storage.status().active ? storage.status() : torch.status().active ? torch.status() : scaffold.status() }, shared,
     agent: { start: options => agent.start(options), stop: reason => agent.stop(reason), snapshot: agentStatus },
     getInventory: () => shared.inventoryUncertain ? null : runtime.raw().inventory,
     getWorn: () => { try { return runtime.armor?.() ?? null } catch { return null } }
