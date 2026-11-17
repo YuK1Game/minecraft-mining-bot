@@ -27,6 +27,11 @@ const OPEN = /^minecraft:(?:air|cave_air|short_grass|tall_grass|fern|dead_bush|l
 // sand blocks near the house all lay under a pool, gravel or dirt; every trip
 // went there and none was dug).
 const exposed = getBlock => (x, y, z) => { const up = getBlock(x, y + 1, z); return up?.known === true && OPEN.test(up.name ?? '') }
+// The plan only sees blocks within 12 m and 3 below to 12 above the feet
+// (runner observe): sand beyond that is walked to first (live 2026-11-17
+// 13:03-13:09 JST: sand 16 m away and 15 above the feet was left to the plan,
+// which never saw it and tunnelled down again every minute).
+const SEEN_M = 10, SEEN_BELOW = 3, SEEN_ABOVE = 10
 const NEAR_M = 24, STEP_M = 96, RINGS = 5, AGAIN_MS = 60000, TRIP_MS = 240000, AVOID_M = 24, FORGET_MS = 1800000, CLIMB_AGAIN_MS = 300000
 
 function spiralPoint (center, trip) {
@@ -34,7 +39,7 @@ function spiralPoint (center, trip) {
   return { x: Math.round(center.x + Math.cos(angle) * STEP_M * ring), z: Math.round(center.z + Math.sin(angle) * STEP_M * ring) }
 }
 
-function createHouseSand ({ getMode, shared, agent, travel, climb = null, getState, getBlock, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), scan = nearestKnownLog }) {
+function createHouseSand ({ getMode, shared, agent, travel, climb = null, approach = null, getState, getBlock, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), scan = nearestKnownLog }) {
   let busy = false, waitUntil = 0, trips = 0, failed = []
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const settle = async () => { for (let i = 0; i < 40 && agent.settled?.() === false && !disposed(); i++) await sleep(200) }
@@ -66,21 +71,27 @@ function createHouseSand ({ getMode, shared, agent, travel, climb = null, getSta
       const here = covered ? getState()?.position ?? state.position : state.position
       const sand = await scan({ getBlock, position: here, match: SAND, accept: exposed(getBlock), min: 0, step: 2, below: 24, avoid: failed, avoidM: AVOID_M })
       if (!live()) return null
-      if (sand && sand.distance < NEAR_M) return null
+      const seen = (point, from) => { if (!from) return false; const feetY = Math.floor(from.y - 1.62 + 0.001); return Math.hypot(point.x + 0.5 - from.x, point.z + 0.5 - from.z) <= SEEN_M && point.y - feetY >= -SEEN_BELOW && point.y - feetY <= SEEN_ABOVE }
+      if (sand && seen(sand, here)) return null
+      if (sand && sand.distance < NEAR_M && !approach) return null
       const origin = shared.playerHouse?.origin
       const center = origin ?? { x: Math.floor(here.x), z: Math.floor(here.z) }
       const destination = sand ? { x: sand.x, z: sand.z } : spiralPoint(center, trips++)
       log(`プレイヤーモード: ${sand ? `拠点の家のガラスにする砂が見える (${destination.x}, ${destination.z}) へ移動します` : `拠点の家のガラスにする砂を探しに (${destination.x}, ${destination.z}) へ移動します`}（あと${needs.need.sand}個）`)
       if (!stopped) { agent.stop('拠点の家の砂を探します。'); stopped = true; await settle() }
-      try { await travel.to({ destination }) } catch (error) { log(`プレイヤーモード: 砂を探す移動を始められません ${String(error?.message ?? error).slice(0, 100)}`); return false }
-      const until = now() + TRIP_MS
-      while (live() && now() < until && travel.status()?.busy) await sleep(1000)
-      if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
+      if (!sand || sand.distance >= NEAR_M) {
+        try { await travel.to({ destination }) } catch (error) { log(`プレイヤーモード: 砂を探す移動を始められません ${String(error?.message ?? error).slice(0, 100)}`); return false }
+        const until = now() + TRIP_MS
+        while (live() && now() < until && travel.status()?.busy) await sleep(1000)
+        if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
+      }
+      // Close enough for the plan to see it (long travel stops 20 m short).
+      if (sand && approach && live()) { try { await approach({ x: sand.x + 0.5, y: sand.y + 1, z: sand.z + 0.5 }, 4) } catch {} }
       // Sand the trip could not reach (live 2026-11-17 09:33-09:37 JST: the
       // same sand by a pool full of drowned, 「危険地帯の中のチャンクへは移動しません」
       // eight times) is passed over for half an hour; the next trip goes elsewhere.
       const at = getState()?.position
-      if (sand && (!at || Math.hypot(at.x - destination.x, at.z - destination.z) > NEAR_M)) {
+      if (sand && (!at || (approach ? !seen(sand, at) : Math.hypot(at.x - destination.x, at.z - destination.z) > NEAR_M))) {
         failed.push({ x: destination.x, z: destination.z, at: now() })
         log(`プレイヤーモード: 砂 (${destination.x}, ${destination.z}) へ行けなかったため、しばらく別の砂を探します`)
       }

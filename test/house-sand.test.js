@@ -10,14 +10,14 @@ const LEFT = counts(remaining(null, null))
 const inv = items => ({ known: true, items: items.map(([name, count], slot) => ({ name: `minecraft:${name}`, count, slot })) })
 const READY = [['stone_pickaxe', 1], ['oak_log', 64], ['cobblestone', 64], ['cobblestone', 64], ['white_wool', 3], ['coal', 4]]
 
-function job ({ items = READY, sand = null, covered = false, climb } = {}) {
+function job ({ items = READY, sand = null, covered = false, climb, approach } = {}) {
   const calls = [], lines = []
   let busy = false
   const house = createHouseSand({
     getMode: () => 'player', shared: { playerWanted: true, playerHouse: { origin: { x: 100, y: 64, z: 200 }, left: LEFT } }, log: text => lines.push(text), sleep: async () => { busy = false },
     getState: () => ({ position: { x: 100, y: 65, z: 180 }, inventory: inv(items) }),
     getBlock: (x, y) => covered && y > 65 ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : null,
-    scan: async () => sand, climb: climb && (async () => { calls.push('climb'); return climb(() => { covered = false }) }),
+    scan: async () => sand, ...(approach ? { approach: async (target, within) => { calls.push({ approach: target, within }); return approach(target) } } : {}), climb: climb && (async () => { calls.push('climb'); return climb(() => { covered = false }) }),
     travel: { to: async input => { calls.push(input); busy = true }, status: () => ({ busy }), cancel: async () => {} },
     agent: { objective: {}, start: async () => { calls.push('start') }, stop: () => calls.push('stop'), settled: () => true }
   })
@@ -89,4 +89,16 @@ test('under a roof: climb out first, then search for the sand', async () => {
   assert.equal(await stuck.house.tick(), false)
   assert.deepEqual(stuck.calls, ['stop', 'climb', 'start'])
   assert.match(stuck.lines.join('\n'), /地上へ出られません（NO_DIRT）/)
+})
+
+// Live 2026-11-17 13:03-13:09 JST: sand 16 m away was left to the plan, which
+// sees only 12 m around (3 below, 12 above) and tunnelled down every minute.
+test('near sand the plan cannot see is walked to; sand it sees is left to it', async () => {
+  const unseen = job({ sand: { x: 116, y: 70, z: 180, distance: 16 }, approach: () => true })
+  assert.equal(await unseen.house.tick(), true)
+  assert.deepEqual(unseen.calls.filter(c => c.destination), [], 'no long travel for sand this near')
+  assert.deepEqual(unseen.calls.find(c => c.approach), { approach: { x: 116.5, y: 71, z: 180.5 }, within: 4 })
+  const seen = job({ sand: { x: 106, y: 64, z: 180, distance: 6 }, approach: () => true })
+  assert.equal(await seen.house.tick(), null)
+  assert.deepEqual(seen.calls, [])
 })

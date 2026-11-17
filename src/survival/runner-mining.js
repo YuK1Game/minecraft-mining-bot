@@ -91,7 +91,9 @@ function createRunnerMining (rt) {
     if (!rt.finite(decision.target) || !['x', 'y', 'z'].every(axis => Number.isSafeInteger(decision.target[axis]))) throw new rt.RunnerError('Mining requires an integer block target')
     const target = rt.copy(decision.target)
     const type = decision.type ?? rt.active?.type
-    const miningTarget = type === 'clear_access' ? { ...target, accessPreparation: 'tree_access', expectedName: decision.block } : target
+    // The house's glass sand (player mode material plan): sand is not plain rock
+    // or soil, so normal mining refused it (live 2026-11-17: no sand was ever dug).
+    const miningTarget = type === 'clear_access' ? { ...target, accessPreparation: 'tree_access', expectedName: decision.block } : type === 'mine_stone' && decision.material === true && /^minecraft:(?:red_)?sand$/.test(decision.block ?? '') ? { ...target, accessPreparation: 'house_sand' } : target
     let preview = await rt.request('POST', '/mining/preview', { targets: [miningTarget] }, { signal: context.signal })
     if (!preview?.ready && ['gather_logs', 'mine_stone', 'mine_ore'].includes(type) && (preview?.errors ?? []).some(error => String(error).includes('通常の地面に静止していることを確認できません。'))) {
       const recentered = await recenterMiningOrigin(decision, context, state)

@@ -50,7 +50,7 @@ async function nearestKnownLog ({ getBlock, position, radius = SCAN_M, min = 6, 
       if (avoid.some(point => Math.hypot(point.x - hx - dx, point.z - hz - dz) < avoidM)) continue
       for (let dy = -below; dy <= 24; dy++) {
         const block = getBlock(hx + dx, hy + dy, hz + dz)
-        if (block?.known === true && match.test(block.name ?? '') && (!accept || accept(hx + dx, hy + dy, hz + dz))) { best = { x: hx + dx, z: hz + dz, distance }; break }
+        if (block?.known === true && match.test(block.name ?? '') && (!accept || accept(hx + dx, hy + dy, hz + dz))) { best = { x: hx + dx, y: hy + dy, z: hz + dz, distance }; break }
       }
     }
     await pause()
