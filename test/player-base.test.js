@@ -113,10 +113,20 @@ test('everything but the kit is banked (user 11:09 JST: 必要最低限のアイ
   const items = inv([[0, 'diamond_pickaxe', 1], [1, 'iron_pickaxe', 1], [2, 'stone_pickaxe', 1], [3, 'diamond_sword', 1], [4, 'stone_sword', 1], [5, 'cooked_beef', 10], [6, 'torch', 30], [7, 'coal', 40], [8, 'iron_ingot', 20], [9, 'emerald', 2], [10, 'string', 5], [11, 'cobblestone', 100], [12, 'oak_log', 30], [13, 'diamond', 12], [14, 'bone', 3]])
   const worn = { known: true, worn: ['helmet', 'chestplate', 'leggings', 'boots'].map(piece => ({ piece, name: `minecraft:diamond_${piece}` })) }
   const out = Object.fromEntries(bankableAll(items, { worn }).map(stack => [stack.name.replace('minecraft:', ''), stack.count]))
-  assert.deepEqual(out, { coal: 24, iron_ingot: 12, cobblestone: 28, oak_log: 20, diamond: 12, stone_pickaxe: 1, stone_sword: 1, emerald: 2, string: 5, bone: 3 })
+  assert.deepEqual(out, { coal: 24, iron_ingot: 12, cobblestone: 28, oak_log: 20, diamond: 9, stone_pickaxe: 1, stone_sword: 1, emerald: 2, string: 5, bone: 3 })
   assert.equal(diamondsNeeded([], null), 29)
-  assert.equal(diamondsNeeded(items.items, worn), 0)
+  assert.equal(diamondsNeeded(items.items, worn), 3)
   assert.deepEqual(bankableAll({ known: true, uncertain: true, items: [] }), [])
+})
+
+test('the diamonds of the next pickaxe stay in hand while only one diamond pickaxe is good (live 2026-11-17 18:13 JST)', () => {
+  const pick = (slot, used) => ({ slot, name: 'minecraft:diamond_pickaxe', count: 1, maxDurability: 1561, durabilityUsed: used })
+  const worn = { known: true, worn: ['helmet', 'chestplate', 'leggings', 'boots'].map(piece => ({ piece, name: `minecraft:diamond_${piece}` })) }
+  const sword = { slot: 9, name: 'minecraft:diamond_sword', count: 1 }
+  assert.equal(diamondsNeeded([pick(0, 1016), sword], worn), 3)
+  assert.equal(diamondsNeeded([pick(0, 1016), pick(1, 0), sword], worn), 0)
+  assert.equal(diamondsNeeded([pick(0, 1400), sword], worn), 3)
+  assert.equal(diamondsNeeded([pick(0, 1400), pick(1, 1000), sword], worn), 3)
 })
 
 test('standBeside never picks the cell on top of the other half of a large chest', () => {
