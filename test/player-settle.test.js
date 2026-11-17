@@ -67,3 +67,18 @@ test('on a chest the settle steps down beside it', async () => {
   assert.deepEqual(await settle({ ports }), { ok: true, steppedOff: true })
   assert.equal(stepped, 1)
 })
+
+test('hanging 0.23 above the floor: the ordinary landing comes before the step-down (live 2026-11-17 21:27 JST)', async () => {
+  let y = 65.2315
+  const calls = []
+  const block = (x, by) => by === 65 ? { known: true, name: 'minecraft:air', boundingBox: 'empty' } : by === 64 ? { known: true, name: 'minecraft:netherrack', boundingBox: 'block' } : null
+  const ports = { feet: () => ({ x: -4989.4, y, z: -4974.5 }), block, walk: async () => true, stepOff: async () => { calls.push('stepOff'); return false }, land: async () => { calls.push('land'); y = 65; return true } }
+  assert.deepEqual(await settle({ ports }), { ok: true, landed: true })
+  assert.deepEqual(calls, ['land'])
+  // A landing that leaves the body hanging still tries the step-down, then reports.
+  y = 65.2315
+  const stuck = { ...ports, land: async () => { calls.push('land'); return true } }
+  calls.length = 0
+  assert.equal((await settle({ ports: stuck })).reason, 'STILL_ON_LOW_BLOCK')
+  assert.deepEqual(calls, ['land', 'stepOff'])
+})

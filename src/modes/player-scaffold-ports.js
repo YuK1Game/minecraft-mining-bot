@@ -177,7 +177,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     await sleep(250)
     return true
   }
-  return { feet: getFeet, block, dirt, fill, walk, stepOff, approach, canMine, mine, canDig, dig, descend, pillar, place, pick, reason, why: () => why }
+  return { feet: getFeet, block, dirt, fill, walk, stepOff, land, approach, canMine, mine, canDig, dig, descend, pillar, place, pick, reason, why: () => why }
 }
 
 module.exports = { createScaffoldPorts }
