@@ -123,7 +123,11 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     const feet = getFeet()
     const key = p => `${p.x},${p.y},${p.z}`, fullSet = new Set(full.map(key))
     let chests = chestsNear(getBlock, feet).filter(chest => !fullSet.has(key(chest.position)) && !(chest.pair && fullSet.has(key(chest.pair))))
-    let target = chests.find(chest => chest.pair && hands.room(chest.position) !== 0) ?? null
+    // A half whose other half was found full is full too (rooms are kept per
+    // opened cell; live 2026-11-18 00:52-00:55 JST: the base moved between the
+    // halves of the full chest A and a full single chest beside it, 0 stored).
+    const roomy = chest => hands.room(chest.position) !== 0 && !(chest.pair && hands.room(chest.pair) === 0)
+    let target = chests.find(chest => chest.pair && roomy(chest)) ?? null
     // A single chest is made large first (user: large chests first).
     const single = !target ? chests.find(chest => !chest.pair) ?? null : null
     // No chest to use and no wood to make one: the rubble is thrown away
