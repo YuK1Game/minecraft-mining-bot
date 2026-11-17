@@ -74,9 +74,15 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   const limbo = new Map()
   const eyeTo = (cell, from) => Math.hypot(cell.x + 0.5 - from.x, cell.y + 0.5 - (from.y + 1.62), cell.z + 0.5 - from.z)
 
+  // The counts last read with the whole house received (house-supply.js needsNow) are saved too: after a
+  // restart away from the house they are all there is (live 2026-11-17 11:03 JST: a reconnect 140 m away
+  // dropped them, the house then looked to need no sand and the sand search never started).
+  let savedLeft = JSON.stringify(shared.playerHouse?.left ?? null)
   async function save () {
     if (!file || !write) return
-    try { await write(file, { version: 1, origin: shared.playerHouse.origin, done: shared.playerHouse.done === true, spawn: shared.playerHouse.spawn === true, savedAt: new Date(now()).toISOString() }) } catch { /* Kept in shared until the next save. */ }
+    const left = shared.playerHouse.left
+    savedLeft = JSON.stringify(left ?? null)
+    try { await write(file, { version: 1, origin: shared.playerHouse.origin, done: shared.playerHouse.done === true, spawn: shared.playerHouse.spawn === true, ...(left ? { left } : {}), savedAt: new Date(now()).toISOString() }) } catch { /* Kept in shared until the next save. */ }
   }
 
   function due () {
@@ -398,6 +404,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   }
 
   async function tick () {
+    if (shared.playerHouse?.origin && JSON.stringify(shared.playerHouse.left ?? null) !== savedLeft) await save()
     if (!live() || busy || blocked() || hostile() || travel.status()?.busy || now() < waitUntil || !due()) return null
     busy = true
     let placed = 0
@@ -431,7 +438,8 @@ function loadHouseSync (file, { io = fs } = {}) {
   try {
     const value = JSON.parse(String(io.readFileSync(file, 'utf8')).replace(/^\uFEFF/, ''))
     const origin = value?.origin
-    return origin && [origin.x, origin.y, origin.z].every(Number.isSafeInteger) ? { origin: { x: origin.x, y: origin.y, z: origin.z }, done: value.done === true, spawn: value.spawn === true } : null
+    const left = value?.left && typeof value.left === 'object' && Object.values(value.left).every(Number.isSafeInteger) ? { ...value.left } : null
+    return origin && [origin.x, origin.y, origin.z].every(Number.isSafeInteger) ? { origin: { x: origin.x, y: origin.y, z: origin.z }, done: value.done === true, spawn: value.spawn === true, ...(left ? { left } : {}) } : null
   } catch { return null }
 }
 
