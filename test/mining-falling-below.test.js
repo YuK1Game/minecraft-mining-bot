@@ -53,3 +53,18 @@ test('the starter house door may be taken down on request; an iron door, another
   const rock = fixture(); rock.set(rock.target, 'stone')
   assert.equal(rock.mining.preview([{ ...rock.target, accessPreparation: 'house_door', expectedName: 'minecraft:oak_door' }]).ready, false)
 })
+
+// Live 2026-11-17: the house's glass sand was never dug; every plan was refused
+// 「このブロックは自動採掘の対象外です: sand」.
+test('house sand with open air above may be dug on request, beside other sand; sand above or a plain request may not', () => {
+  const beach = fixture(); beach.set(beach.target, 'sand'); beach.set({ x: 1, y: 64, z: 0 }, 'sand'); beach.set({ x: 2, y: 65, z: 0 }, 'sand'); beach.set({ x: 2, y: 64, z: 0 }, 'sand')
+  assert.equal(beach.mining.preview([beach.target]).ready, false)
+  const ok = beach.mining.preview([{ ...beach.target, accessPreparation: 'house_sand' }])
+  assert.equal(ok.ready, true, JSON.stringify(ok.errors))
+  const red = fixture(); red.set(red.target, 'red_sand')
+  assert.equal(red.mining.preview([{ ...red.target, accessPreparation: 'house_sand' }]).ready, true)
+  const buried = fixture(); buried.set(buried.target, 'sand'); buried.set({ x: 1, y: 66, z: 0 }, 'sand')
+  assert.equal(buried.mining.preview([{ ...buried.target, accessPreparation: 'house_sand' }]).ready, false, 'sand above still refuses')
+  const gravel = fixture(); gravel.set(gravel.target, 'gravel')
+  assert.equal(gravel.mining.preview([{ ...gravel.target, accessPreparation: 'house_sand' }]).ready, false)
+})

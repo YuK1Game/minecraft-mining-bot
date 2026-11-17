@@ -47,6 +47,9 @@ function targetList (targets) {
     } else if (position.accessPreparation === 'house_door') {
       if (typeof position.expectedName !== 'string' || !/^minecraft:[a-z_]+_door$/.test(position.expectedName) || /iron/.test(position.expectedName)) throw new Error('House door mining needs the expected wooden door')
       Object.assign(target, { accessPreparation: 'house_door', expectedName: position.expectedName })
+    } else if (position.accessPreparation === 'house_sand') {
+      // Player mode's house glass: sand or red sand with open air above (checked in validate).
+      Object.assign(target, { accessPreparation: 'house_sand' })
     } else if (position.accessPreparation === 'hand_dig') {
       // The player's climb with every pickaxe worn out: plain rock by hand,
       // slowly and without a drop (checked in validate).
@@ -240,7 +243,12 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     // Player mode's starter house only: its own wooden door, taken down while
     // work inside is left (src/modes/house/house-build.js openDoorway).
     const houseDoor = target.accessPreparation === 'house_door' && /^minecraft:[a-z_]+_door$/.test(block.name ?? '') && !/iron/.test(block.name ?? '') && block.name === target.expectedName
-    if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !logAllowed && !leafDown && !houseDoor) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
+    // Player mode's house glass (src/modes/house/house-supply.js): sand or red
+    // sand only, never other falling blocks (live 2026-11-17: every sand plan
+    // was refused 「このブロックは自動採掘の対象外です: sand」).
+    const houseSand = target.accessPreparation === 'house_sand' && /^(?:red_)?sand$/.test(name)
+    if (target.accessPreparation === 'house_sand' && !houseSand) throw new Error(`砂だけを掘ります: ${name}`)
+    if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !logAllowed && !leafDown && !houseDoor && !houseSand) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
     if (clearance && (block.name !== 'minecraft:stone' || block.runtimeId !== target.expectedRuntimeId || block.protected === true || block.protectionSource || block.natural === false || isProtected(target, state, block))) throw new Error('Stone clearance target changed or is protected')
     const handDig = target.accessPreparation === 'hand_dig'
     if (handDig && !HAND_ROCK.has(name)) throw new Error(`素手で掘るのは普通の石だけです: ${name}`)
@@ -264,6 +272,8 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
       // non-falling block also stays: the target is not what holds it (real
       // Realm 2026-11-16 08:39 JST: the climb to the surface stopped under a
       // stone with gravel on one side, five times in twenty minutes).
+      // Sand beside sand being dug: it rests on its own column, not on the target.
+      if (target.accessPreparation === 'house_sand' && offset.y === 0 && FALLING_BELOW.test(blockName(neighbour)) && !neighbour.extra?.some(layer => !AIR.has(blockName(layer)))) continue
       if (!quarry && offset.y === 0 && FALLING_BELOW.test(blockName(neighbour)) && !neighbour.extra?.some(layer => !AIR.has(blockName(layer)))) {
         const rest = world.getBlock(target.x + offset.x, target.y - 1, target.z + offset.z)
         if (rest?.known === true && rest.boundingBox === 'block' && !AIR.has(blockName(rest)) && !HAZARDS.test(blockName(rest)) && !rest.extra?.some(layer => !AIR.has(blockName(layer)))) continue
