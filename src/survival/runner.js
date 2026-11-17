@@ -5,7 +5,7 @@ const { sameStarterGearScope, validateStarterGearTarget } = require('./starter-g
 
 const { setTimeout: sleep } = require('node:timers/promises')
 const { createExploration, knownStandpoints, rankRetreatTargets } = require('./exploration')
-const { evaluateThreats } = require('../combat/threats')
+const { threatEntitiesOf, threatEvaluationOf } = require('./work-threats')
 const { naturalLogCandidates } = require('./planner')
 const { blockRule: harvestRule } = require('../quarry/quarry-rules')
 const { soilCandidates } = require('./soil-gathering')
@@ -33,24 +33,6 @@ function checkAbort (signal) {
 function itemCount (state, names) {
   const wanted = typeof names === 'function' ? names : new Set((Array.isArray(names) ? names : [names]).map(nameOf))
   return (state.inventory?.items ?? []).reduce((total, item) => total + (typeof wanted === 'function' ? wanted(item.name) : wanted.has(item.name)) * (Number.isSafeInteger(item.count) && item.count > 0 ? item.count : 0), 0)
-}
-
-function threatEntitiesOf (state) {
-  return [state.entities, state.hostiles, state.nearbyHostiles, state.hostileEntities, state.threats].find(Array.isArray)
-}
-
-function threatEvaluationOf (state) {
-  const evaluation = evaluateThreats(state, threatEntitiesOf(state), { observationRadius: 32 })
-  const reported = state.entityStats?.unknownPositions
-  if (Number.isSafeInteger(reported) && reported > evaluation.unknownPositions.length) {
-    evaluation.hostUnknownPositionCount = reported
-    evaluation.requiresObservation = true
-    if (!evaluation.threats.length) {
-      evaluation.recommendation = 'observe'
-      evaluation.reason = 'ホストに位置不明のactorがあるため、近接関係や安全を確認できません。'
-    }
-  }
-  return evaluation
 }
 
 function threatsOf (state) { return threatEvaluationOf(state).threats }

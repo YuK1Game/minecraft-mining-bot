@@ -3,6 +3,7 @@
 const { equipmentReady } = require('../inventory/equipment-readiness')
 const { setTimeout: sleep } = require('node:timers/promises')
 const { evaluateThreats } = require('../combat/threats')
+const { workThreats } = require('./work-threats')
 const { resourceMinHealth } = require('../safety/learning-health')
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
@@ -50,7 +51,7 @@ function createDiamondActions ({ request, refreshState, getState, baseActions = 
     if (baseline && ['startedAt', 'connectionId', 'dimension'].some(field => baseline[field] != null && state[field] != null && baseline[field] !== state[field])) throw new DiamondActionError('作業中に接続またはディメンションが変わりました。', 'STALE_SESSION')
     if (inventoryRequired && (state.inventory?.known !== true || state.inventory.uncertain === true)) throw new DiamondActionError('サーバーで確定した持ち物の一覧が必要です。', 'INVENTORY_UNKNOWN')
     const source = [state.entities, state.hostiles, state.nearbyHostiles, state.hostileEntities, state.threats].find(Array.isArray)
-    const evaluation = evaluateThreats(state, source ?? null, { observationRadius: 32 })
+    const evaluation = workThreats(state, evaluateThreats(state, source ?? null, { observationRadius: 32 }))
     if (evaluation.threats.length) throw new DiamondActionError('敵が危険な範囲に入ったため作業を中断します。', 'NEARBY_THREAT')
     if (evaluation.requiresObservation || state.entityStats?.unknownPositions > evaluation.unknownPositions.length) throw new DiamondActionError('位置不明のキャラクターがいるため追加の観測が必要です。', 'THREAT_OBSERVATION_UNKNOWN')
   }
