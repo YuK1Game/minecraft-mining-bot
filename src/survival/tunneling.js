@@ -199,6 +199,40 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
     return under?.known === true && ground(under, cx, level - 1, cz)
   }
 
+  // The rim of a hole: grounded with the centre over received air and an edge
+  // on received ground. The supporting cell next to it (2 clear body cells)
+  // is where the tunnel can start (live 2026-11-17 22:04-22:08 JST: 105
+  // tunnel decisions in 4 minutes, all SETTLE_REQUIRED, on the rim of a hole).
+  function rimCell (state) {
+    const level = Math.round(state.position.y - 1.62)
+    const physics = state.predicted?.physicsState ?? state.predicted ?? state.physicsState
+    if (Math.abs(state.position.y - 1.62 - level) > CONTACT || physics?.onGround !== true || physics?.isInWater === true) return null
+    const cx = Math.floor(state.position.x), cz = Math.floor(state.position.z)
+    let best = null
+    for (const dx of [-0.3 + SKIN, 0.3 - SKIN]) for (const dz of [-0.3 + SKIN, 0.3 - SKIN]) {
+      const x = Math.floor(state.position.x + dx), z = Math.floor(state.position.z + dz)
+      if (x === cx && z === cz) continue
+      const blocks = [level - 1, level, level + 1].map(y => world.getBlock(x, y, z))
+      if (!blocks.every(block => block?.known === true) || !ground(blocks[0], x, level - 1, z) || !clear(blocks[1]) || !clear(blocks[2])) continue
+      const distance = Math.hypot(x + 0.5 - state.position.x, z + 0.5 - state.position.z)
+      if (!best || distance < best.distance) best = { cell: { x, y: level, z }, distance }
+    }
+    return best?.cell ?? null
+  }
+  async function settleOnRim (run) {
+    const { state } = read(run)
+    if (standing(state)) return
+    const cell = rimCell(state)
+    if (!cell) return
+    const target = center(cell)
+    const moveOptions = () => ({ allowWater: false, maxDistance: 2, signal: run.signal, avoidance: read(run).avoidance })
+    const live = await call(run, 'Rim movement preview', () => movement.preview(copy(target), moveOptions()))
+    if (!live?.ready) return
+    report('moving', { target, blocksToMine: [], resource: run.ore.resource, rim: true })
+    await call(run, 'Rim movement start', () => movement.start(copy(target), moveOptions()))
+    await awaitArrival(run, { target }, state)
+  }
+
   function footprintFloors (state) {
     const level = Math.round(state.position.y - 1.62)
     const points = new Map()
@@ -526,6 +560,7 @@ function createTunneling ({ getState, world, excavation, movement, getMovement, 
       run.baseline = initial.state
       run.stoneScope = run.ore.resource === 'stone' ? stoneScope(initial.state) : null
       run.tool = initial.tool
+      await settleOnRim(run)
       for (let index = 0; index < maxSteps; index++) {
         if (await accessibleNow(run)) { const result = finish(run, true, run.ore.resource === 'stone' ? 'The live mining preview can reach the unchanged stone; leave mining to mine_stone' : 'The live mining preview can reach the unchanged ore; leave mining to mine_ore'); completed = true; return result }
         let plan = preview(decision, options)
