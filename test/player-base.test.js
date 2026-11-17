@@ -225,3 +225,40 @@ test('a climb a fight cut short is tried again in two minutes, not ten (live 202
   assert.equal(await api.tick(), false)
   assert.deepEqual(calls, ['climb', 'climb'])
 })
+
+test('a long trip that keeps getting closer is not cut at five minutes; a short-fallen trip retries in two (live 2026-11-17 20:41 JST)', async () => {
+  let clock = 0, busy = false, x = 405, cancelled = 0
+  const shared = { playerWanted: true, playerBase: { x: 5, y: 64, z: 0 } }
+  const logs = []
+  const api = createPlayerBase({
+    getMode: () => 'player', shared, getBlock: world({ '5,64,0': 'minecraft:chest' }), getPosition: () => ({ x, y: 65.62, z: 0.5 }), getFeet: () => ({ x, y: 64, z: 0.5 }), getInventory: () => inv([[0, 'diamond', 40]]),
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    hands: { store: async () => 32, room: () => 10 }, chest: async () => null, climb: async () => ({ ok: true }),
+    // 1 m every second: 400 s for the whole walk, past the old five-minute cap.
+    travel: { to: async () => { busy = true }, status: () => ({ busy }), cancel: async () => { cancelled++; busy = false } },
+    walk: async target => { x = target.x; return true }, approach: async () => true, log: line => logs.push(line),
+    sleep: async ms => { clock += ms; if (busy) { x -= 1; if (x <= 25) busy = false } }, now: () => clock
+  })
+  assert.equal(await api.tick(), true)
+  assert.equal(cancelled, 0)
+  assert.ok(clock > 300000)
+
+  // A trip that stops getting closer is ended after two minutes and tried again in two.
+  x = 405; clock = 10_000_000
+  const stuck = createPlayerBase({
+    getMode: () => 'player', shared, getBlock: world({ '5,64,0': 'minecraft:chest' }), getPosition: () => ({ x, y: 65.62, z: 0.5 }), getFeet: () => ({ x, y: 64, z: 0.5 }), getInventory: () => inv([[0, 'diamond', 40]]),
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    hands: { store: async () => 32, room: () => 10 }, chest: async () => null, climb: async () => ({ ok: true }),
+    travel: { to: async () => { busy = true }, status: () => ({ busy }), cancel: async () => { cancelled++; busy = false } },
+    walk: async () => false, approach: async () => false, log: line => logs.push(line),
+    sleep: async ms => { clock += ms }, now: () => clock
+  })
+  const start = clock
+  assert.equal(await stuck.tick(), false)
+  assert.equal(cancelled, 1)
+  assert.ok(clock - start <= 125000)
+  assert.ok(logs.some(line => /2分後にやり直します/.test(line)))
+  const after = clock
+  clock = after + 119000
+  assert.equal(await stuck.tick(), null)
+})

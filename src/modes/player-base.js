@@ -27,7 +27,7 @@ const { bankableAll, restockable } = require('./player-base-kit')
 
 const CHEST = 'minecraft:chest'
 const DIAMOND = 'minecraft:diamond'
-const KEEP = 8, BANK_AT = 16, NEAR_M = 96, DEEP_DIAMONDS = 8, DEEP_VALUABLES = 32, NEAR_STACKS = 4, FAR_M = 1024, AGAIN_MS = 600000, SOON_MS = 120000, TRAVEL_MS = 300000
+const KEEP = 8, BANK_AT = 16, NEAR_M = 96, DEEP_DIAMONDS = 8, DEEP_VALUABLES = 32, NEAR_STACKS = 4, FAR_M = 1024, AGAIN_MS = 600000, SOON_MS = 120000, TRAVEL_MS = 300000, TRAVEL_MAX_MS = 1200000, STALL_MS = 120000, STALL_M = 8, MS_PER_M = 2000
 const VALUABLE = /^minecraft:(?:emerald|lapis_lazuli|redstone|raw_gold|gold_ingot|gold_nugget|amethyst_shard|quartz)$/
 const PRECIOUS = /^minecraft:(?:diamond|emerald|lapis_lazuli|redstone|raw_gold|gold_ingot|gold_nugget|amethyst_shard|quartz|iron_ingot|raw_iron|raw_copper|copper_ingot|gold_block|iron_block|diamond_block)$/
 
@@ -143,10 +143,20 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
       if (flat(base, getPosition()) > 20) {
         say(`拠点 (${base.x}, ${base.y}, ${base.z}) へ移動しています。`)
         try { await travel.to({ destination: { x: base.x, z: base.z } }) } catch (error) { say(`拠点へ移動を始められません ${String(error?.message ?? error).slice(0, 80)}`); return false }
-        const until = now() + TRAVEL_MS
-        while (!aborted() && now() < until && travel.status()?.busy) await sleep(1000)
+        // The time allowed grows with the distance and the trip goes on while it
+        // gets closer (live 2026-11-17 20:36〜20:41 JST: a 407 m trip slowed by
+        // skeletons and a meal was cancelled at five minutes with 311 m left, and
+        // the next try came ten minutes later, by when the bot was back underground).
+        const until = now() + Math.min(TRAVEL_MAX_MS, Math.max(TRAVEL_MS, flat(base, getPosition()) * MS_PER_M))
+        let best = flat(base, getPosition()), bestAt = now()
+        while (!aborted() && now() < until && now() - bestAt < STALL_MS && travel.status()?.busy) {
+          await sleep(1000)
+          const left = flat(base, getPosition())
+          if (left < best - STALL_M) { best = left; bestAt = now() }
+        }
         if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
         if (aborted()) return false
+        if (flat(base, getPosition()) > 20) soon = true
       }
       if (flat(base, getPosition()) > 6) await approach(base, 6)
       // Any received stand beside the chest that a walk reaches (inside the house the nearest may be walled off).
@@ -154,7 +164,7 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
       try { await door() } catch {}
       for (const stand of standsBeside(getBlock, base).slice(0, 4)) { if (aborted() || flat(stand, getFeet()) <= 0.45) break; if (await walk(stand)) break }
       if (aborted()) return false
-      if (flat(base, getPosition()) > 4) { say(`拠点のチェストのそばまで行けません（残り ${Math.round(flat(base, getPosition()))}m）`); return false }
+      if (flat(base, getPosition()) > 4) { say(`拠点のチェストのそばまで行けません（残り ${Math.round(flat(base, getPosition()))}m）${soon ? '。2分後にやり直します' : ''}`); return false }
       // A chest that is gone (received as something else) is made again here.
       if (getBlock(base.x, base.y, base.z)?.known === true && !isChest(base)) { say('拠点のチェストがなくなっていたため、作り直します'); base = null }
     }
