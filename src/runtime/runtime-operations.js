@@ -567,7 +567,7 @@ function createRuntimeOperations (rt) {
       lastInventoryUpdate: () => structuredClone(rt.host.shared.lastInventoryUpdate ?? null),
       shelterEvents: () => structuredClone(rt.host.shared.shelterEvents ?? []),
       inventoryEvents: () => structuredClone(rt.host.shared.inventoryEvents ?? []),
-      permissions: () => ({ permissionLevel: rt.host.meta.startGame?.permission_level, playerGameMode: rt.host.meta.startGame?.player_gamemode, worldGameMode: rt.host.meta.startGame?.world_gamemode, serverAuthoritativeInventory: rt.host.meta.startGame?.server_authoritative_inventory, serverAuthoritativeBlockBreaking: rt.host.meta.startGame?.server_authoritative_block_breaking, playerName: rt.raw().playerName, runtimeEntityId: rt.raw().runtimeEntityId }),
+      permissions: () => ({ worldSeed: rt.host.meta.startGame?.seed == null ? null : String(BigInt.asIntN(64, BigInt(rt.host.meta.startGame.seed))), permissionLevel: rt.host.meta.startGame?.permission_level, playerGameMode: rt.host.meta.startGame?.player_gamemode, worldGameMode: rt.host.meta.startGame?.world_gamemode, serverAuthoritativeInventory: rt.host.meta.startGame?.server_authoritative_inventory, serverAuthoritativeBlockBreaking: rt.host.meta.startGame?.server_authoritative_block_breaking, playerName: rt.raw().playerName, runtimeEntityId: rt.raw().runtimeEntityId }),
       threatReachability: () => rt.threatReachability.snapshot(),
       combatSearchBudget: () => rt.combatExposure.snapshot(),
       combatCandidates: () => rt.userBehaviors?.explainCombat?.() ?? null,
