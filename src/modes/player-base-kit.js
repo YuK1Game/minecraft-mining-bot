@@ -12,7 +12,7 @@
 //   a furnace, two chests, cobblestone 72 (the house), dirt 32, sand 6, wool 3,
 //   iron ingots 8, raw iron 8;
 // - the diamonds the missing diamond gear still takes (diamond-gear.js).
-const { GEAR } = require('../survival/diamond-gear')
+const { GEAR, WORN } = require('../survival/diamond-gear')
 
 const bare = name => String(name ?? '').replace(/^minecraft:/, '')
 const ALL = /^(?:.*_helmet|.*_chestplate|.*_leggings|.*_boots|bow|crossbow|arrow|spectral_arrow|tipped_arrow|shield|totem_of_undying|bucket|.*_bucket|flint_and_steel|shears|ender_pearl|.*_bed|torch|soul_torch)$/
@@ -33,7 +33,13 @@ function diamondsNeeded (items, worn) {
   const owned = new Set()
   for (const item of items) if (/^(?:diamond|netherite)_/.test(bare(item.name))) owned.add(bare(item.name).replace(/^(?:diamond|netherite)_/, ''))
   if (worn?.known === true && Array.isArray(worn.worn)) for (const piece of worn.worn) if (/^(?:diamond|netherite)_/.test(bare(piece?.name))) owned.add(bare(piece.name).replace(/^(?:diamond|netherite)_/, ''))
-  return GEAR.filter(piece => !owned.has(piece.output.replace(/^diamond_/, ''))).reduce((sum, piece) => sum + piece.diamonds, 0)
+  // A worn pickaxe is not owned (diamond-gear.js remakes it), and with one good pickaxe the
+  // diamonds of the next stay in hand (live 2026-11-17 18:08-18:13 JST: the only diamond
+  // pickaxe went 545 -> 327 uses in four minutes underground, all diamonds were banked).
+  const good = items.filter(item => /^(?:diamond|netherite)_pickaxe$/.test(bare(item.name)) && (uses(item) ?? Infinity) >= WORN).length
+  if (good === 0) owned.delete('pickaxe')
+  const spare = good === 1 ? GEAR.find(piece => piece.output === 'diamond_pickaxe')?.diamonds ?? 3 : 0
+  return spare + GEAR.filter(piece => !owned.has(piece.output.replace(/^diamond_/, ''))).reduce((sum, piece) => sum + piece.diamonds, 0)
 }
 
 // The stacks to bank: [{ slot, name, count }], kept items left in the largest stacks.

@@ -43,4 +43,4 @@ function nextGear ({ items = [], worn = null, diamonds = 0 } = {}) {
   return null
 }
 
-module.exports = { nextGear, GEAR }
+module.exports = { nextGear, GEAR, WORN }
