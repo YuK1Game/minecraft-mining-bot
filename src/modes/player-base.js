@@ -23,7 +23,7 @@ const { writeDurableJson } = require('../common/durable-json')
 const { normalizeMode } = require('./bot-mode')
 const { storable } = require('./player-storage-rubble')
 const { underCover } = require('./player-surface')
-const { bankableAll } = require('./player-base-kit')
+const { bankableAll, restockable } = require('./player-base-kit')
 
 const CHEST = 'minecraft:chest'
 const DIAMOND = 'minecraft:diamond'
@@ -94,9 +94,19 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
   // from a tunnel with 8 diamonds or 32 other valuables to bank; on the surface
   // within 96 m of the base with any valuable or 4 stacks to bank.
   const stacksNow = () => bankableAll(getInventory(), { worn: getWorn() })
+  // Diamonds and supplies to take back out (player-base-kit.js): from a chest
+  // whose received slots hold them, or one not opened yet while diamonds are short.
+  const chests = () => shared.playerBase ? [shared.playerBase, ...spares()] : []
+  const takeable = slots => restockable(getInventory(), getWorn(), slots)
+  function short () {
+    const inventory = getInventory()
+    const lacking = restockable(inventory, getWorn(), [{ slot: 0, known: true, name: DIAMOND, count: 64 }]).length > 0
+    return chests().filter(isChest).some(at => { const slots = hands.contents?.(at); return slots ? takeable(slots).some(want => want.name === DIAMOND) : lacking })
+  }
   function due () {
     const inventory = getInventory(), position = getPosition()
     if (!inventory || !position) return false
+    if (shared.playerBase && flat(shared.playerBase, position) <= NEAR_M && !underCover(getBlock, position) && hands.take && short()) return true
     const stacks = stacksNow()
     const banked = name => stacks.filter(stack => stack.name === name).reduce((sum, stack) => sum + stack.count, 0)
     const spare = banked(DIAMOND), precious = stacks.filter(stack => PRECIOUS.test(stack.name)).reduce((sum, stack) => sum + stack.count, 0)
@@ -170,9 +180,12 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
       if (extra) { moved += await hands.store(extra, stacksNow()); base = await record(extra) } else say('拠点のチェストが満杯で、新しいチェストを置けません')
     }
     banked += moved
+    let taken = 0
+    if (hands.take) for (const at of [base, ...spares()]) { if (aborted() || !isChest(at)) continue; taken += await hands.take(at, takeable) }
+    if (taken > 0) say(`拠点のチェストから ${taken} 個取り出しました（手元のダイヤ ${diamonds(getInventory())} 個）`)
     const room = hands.room(base)
     say(`拠点のチェスト (${base.x}, ${base.y}, ${base.z}) に ${moved} 個預けました（預ける物 ${total} 個、チェストの空き ${room ?? '開けられず不明'} 枠、手元のダイヤ ${diamonds(getInventory())} 個）`)
-    return moved > 0
+    return moved > 0 || taken > 0
   }
 
   async function tick () {
