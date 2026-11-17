@@ -22,6 +22,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { writeDurableJson } = require('../common/durable-json')
 const { storable } = require('./player-storage-rubble')
+const { chestsNear } = require('./player-storage')
 const { underCover } = require('./player-surface')
 const { bankableAll, restockable } = require('./player-base-kit')
 const { createReturnRunner } = require('./return/return-runner')
@@ -77,7 +78,11 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
   // 「必要最低限のアイテム以外はチェストに格納するようにして」). The trip starts:
   // from a tunnel with 8 diamonds or 32 other valuables to bank; on the surface
   // within 96 m of the base with any valuable or 4 stacks to bank.
-  const stacksNow = () => bankableAll(getInventory(), { worn: getWorn() })
+  // Diamonds first, then the other valuables, then the rest: when the chest
+  // fills up on the way, the rubble is what stays out (live 2026-11-18 03:16 JST:
+  // 112 items of rubble went in, the chest was full, 17 diamonds were not banked).
+  const rank = stack => stack.name === DIAMOND ? 0 : PRECIOUS.test(stack.name) ? 1 : 2
+  const stacksNow = () => bankableAll(getInventory(), { worn: getWorn() }).map((stack, index) => ({ stack, index })).sort((a, b) => rank(a.stack) - rank(b.stack) || a.index - b.index).map(entry => entry.stack)
   // Diamonds and supplies to take back out (player-base-kit.js): from a chest
   // whose received slots hold them, or one not opened yet while diamonds are short.
   const chests = () => shared.playerBase ? [shared.playerBase, ...spares()] : []
@@ -113,7 +118,7 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
   const runner = createReturnRunner({
     getMode, shared, agent: { objective: agent?.objective, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agent.running ? agent.running() : true }, settled: () => agent?.settled?.() !== false,
     policy: { due: () => dueReason() !== null, reason: () => dueReason() ?? '拠点へ預けます', cargo: stacksNow, restockWanted, restock: takeable, canBuild, record, supplies },
-    ports: { getBlock, getPosition, getFeet, getInventory, dimension, moves: { climb, water, house, travel, approach, porchWalk, door, walk }, chests: { hands, spares, porch, make: options => chest(options) } },
+    ports: { getBlock, getPosition, getFeet, getInventory, dimension, moves: { climb, water, house, travel, approach, porchWalk, door, walk }, chests: { hands, spares, porch, make: options => chest(options), near: () => { const feet = getFeet(); return feet ? chestsNear(getBlock, feet).map(found => found.position) : [] } } },
     scope, interrupter: interrupter ?? (() => blocked() ? 'ほかの作業' : null), hostile, travelBusy: () => travel?.status()?.busy === true,
     file: returnFile, write, disposed, log, now, sleep
   })

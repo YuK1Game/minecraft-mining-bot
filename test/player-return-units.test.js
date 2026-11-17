@@ -101,8 +101,29 @@ test('a held goal wakes for what it waits for, or at the latest when its time is
   assert.equal(wakeReason(goal, seen({ supplies: '2/0/0/1' })), 'SUPPLIES_CHANGED')
   assert.equal(wakeReason(goal, seen({ position: { x: 20, y: 64, z: 0 } })), null, 'a few steps are not another place')
   assert.equal(wakeReason(goal, seen({ position: { x: 40, y: 64, z: 0 } })), 'POSITION_CHANGED')
-  assert.equal(wakeReason(goal, seen({ position: { x: 0, y: 75, z: 0 } })), 'POSITION_CHANGED')
+  assert.equal(wakeReason(goal, seen({ position: { x: 0, y: 40, z: 0 } })), null, 'deeper is not another place for a chest or a trip')
+  goal.hold.vertical = true
+  assert.equal(wakeReason(goal, seen({ position: { x: 0, y: 75, z: 0 } })), 'POSITION_CHANGED', 'for the way out of a tunnel it is')
+  goal.hold.kinds = ['supplies_changed']
+  assert.equal(wakeReason(goal, seen({ position: { x: 90, y: 20, z: 0 } })), null, 'a hold that does not depend on the place is not woken by it')
+  goal.hold.kinds = ['supplies_changed', 'position_changed']
   assert.equal(wakeReason(goal, seen({ scope: 't' })), 'SCOPE_CHANGED')
   assert.equal(wakeReason(goal, seen({ now: 600000 })), 'HOLD_TIME')
   assert.equal(wakeReason(goal, seen({ supplies: null })), 'SUPPLIES_CHANGED')
+})
+
+test('the open click: the face towards the eye, within reach, with a clear line; the code says which of them failed', () => {
+  const { containerFace, openAccess } = require('../src/actions/open-face')
+  const solid = new Set()
+  const read = pos => ({ known: true, name: pos.y < 64 || solid.has(`${pos.x},${pos.y},${pos.z}`) ? 'minecraft:stone' : 'minecraft:air', boundingBox: pos.y < 64 ? 'block' : 'empty' })
+  const chest = { x: 0, y: 64, z: 0 }, eyeAt = (x, y, z) => ({ x, y: y + 1.62, z })
+  assert.equal(containerFace(eyeAt(1.5, 64, 0.5), chest).face, 1, 'from the cell beside it, the eye is higher than it is far: the top face')
+  assert.equal(containerFace(eyeAt(2.5, 64, 0.5), chest).face, 5)
+  assert.equal(containerFace(eyeAt(0.5, 63, -1.5), chest).face, 2)
+  assert.equal(openAccess(read, eyeAt(1.5, 64, 0.5), chest), null)
+  assert.equal(openAccess(read, eyeAt(6.5, 64, 0.5), chest).code, 'OUT_OF_REACH')
+  solid.add('0,65,0')
+  assert.equal(openAccess(read, eyeAt(1.5, 64, 0.5), chest).code, 'SIGHT_BLOCKED', 'a block on the chest hides its top face')
+  assert.equal(openAccess(read, eyeAt(2.5, 64, 0.5), chest), null, 'two cells away the click goes to the side face')
+  assert.equal(openAccess(pos => pos.x === 1 ? { known: false } : read(pos), eyeAt(2.5, 64, 0.5), chest).code, 'SIGHT_BLOCKED', 'an unreceived cell on the line is not a clear line')
 })

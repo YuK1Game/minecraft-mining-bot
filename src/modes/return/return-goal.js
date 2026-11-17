@@ -29,8 +29,10 @@
 //   48 m to one side and then to the other, before the goal is held.
 // - HOSTILE_WAIT_MS 1 min: a hostile nearby that starts no fight delays the
 //   start of a goal this long, then the trip starts anyway.
-// - A held goal wakes when what it waits for changes (the place, the supplies,
-//   the life) or, at the latest, after HOLD_MS 10 min (hostiles and danger
+// - A held goal wakes when what its failure depends on changes (the supplies,
+//   the life; the place, 32 m away, only for a failure of getting somewhere,
+//   and 8 blocks up or down only for the way out of a tunnel) or, at the
+//   latest, after HOLD_MS 10 min (hostiles and danger
 //   zones move by themselves). Each wake allows WAKE_ATTEMPTS 4 more tries;
 //   after MAX_WAKES 6 the goal is given up and a new one waits GIVE_UP_MS.
 //   The failure memory (return-failures.js) outlives the goal either way.
@@ -73,7 +75,7 @@ function restoreGoal (value) {
     remaining: null,
     full: chestList(value.full), unopened: [], unreached: [], built: number(value.built), detour: null, detours: number(value.detours),
     budget: { attempts: number(value.budget?.attempts), activeMs: number(value.budget?.activeMs), wakes: number(value.budget?.wakes), interrupts: 0 },
-    wait: null, hold: value.state === 'held' && value.hold && typeof value.hold === 'object' ? { code: String(value.hold.code ?? 'UNKNOWN'), at: number(value.hold.at), until: number(value.hold.until), position: cell(value.hold.position), supplies: typeof value.hold.supplies === 'string' ? value.hold.supplies : null, kinds: Array.isArray(value.hold.kinds) ? value.hold.kinds.filter(kind => typeof kind === 'string') : [] } : null,
+    wait: null, hold: value.state === 'held' && value.hold && typeof value.hold === 'object' ? { code: String(value.hold.code ?? 'UNKNOWN'), at: number(value.hold.at), until: number(value.hold.until), position: cell(value.hold.position), supplies: typeof value.hold.supplies === 'string' ? value.hold.supplies : null, kinds: Array.isArray(value.hold.kinds) ? value.hold.kinds.filter(kind => typeof kind === 'string') : [], vertical: value.hold.vertical === true } : null,
     interrupt: null, last: null, saved: true, resumed: true
   }
 }
@@ -88,7 +90,7 @@ function wakeReason (goal, seen) {
   if (!hold) return 'NOT_HELD'
   if (seen.scope !== goal.scope) return 'SCOPE_CHANGED'
   const kinds = hold.kinds ?? []
-  if (kinds.includes('position_changed') && hold.position && seen.position && (Math.hypot(seen.position.x - hold.position.x, seen.position.z - hold.position.z) >= BUDGET.MOVED_M || Math.abs(seen.position.y - hold.position.y) >= BUDGET.MOVED_UP)) return 'POSITION_CHANGED'
+  if (kinds.includes('position_changed') && hold.position && seen.position && (Math.hypot(seen.position.x - hold.position.x, seen.position.z - hold.position.z) >= BUDGET.MOVED_M || (hold.vertical === true && Math.abs(seen.position.y - hold.position.y) >= BUDGET.MOVED_UP))) return 'POSITION_CHANGED'
   if (kinds.includes('supplies_changed') && hold.supplies !== null && seen.supplies !== hold.supplies) return 'SUPPLIES_CHANGED'
   if (kinds.includes('inventory_update') && seen.inventoryKnown === true) return 'INVENTORY_RECEIVED'
   if (kinds.includes('owner_released') && seen.settled === true) return 'OWNER_RELEASED'

@@ -95,7 +95,7 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held
   // The chest window: opening, reading, depositing and taking out (return/container-ports.js).
   const box = createContainerPorts({ operations, getInventory, held, disposed, sleep, now })
 
-  return { craftSmall, craftPlanks, tableNear, place, hold, drop, placeTable, craftAtTable, room: box.room, contents: box.contents, store: box.store, take: box.take, inspect: box.inspect, deposit: box.deposit, refusal: () => refusal }
+  return { craftSmall, craftPlanks, tableNear, place, hold, drop, placeTable, craftAtTable, room: box.room, contents: box.contents, store: box.store, take: box.take, inspect: box.inspect, deposit: box.deposit, access: box.access, refusal: () => refusal }
 }
 
 module.exports = { createStoragePorts }

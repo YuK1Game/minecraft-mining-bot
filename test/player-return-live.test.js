@@ -171,3 +171,101 @@ test('a new chest that fills too: another new chest takes the rest (live 2026-11
   assert.deepEqual(sim.shared.playerBase, placed[1])
   assert.equal(runtime.base.status().banked, 30 * 64)
 })
+
+// Live 2026-11-18 03:12-03:20 JST, the first return under the goal: 112 items of
+// rubble went into the base chest until it was full, the 17 diamonds stayed in
+// the hands; the chests outside the south wall were then clicked from inside
+// the house (out of reach, no line), 27 tries from one place; the held goal was
+// woken every 20 s by the mining below the base and given up after 3 minutes.
+const opens = (sim, at) => sim.events.filter(event => event.kind === 'open' && event.detail.x === at.x && event.detail.y === at.y && event.detail.z === at.z).length
+const refusedOpens = sim => sim.events.filter(event => event.kind === 'open_refused').length
+
+test('diamonds go in first: a base chest with one free slot takes them, the rubble goes to the next chest (live 2026-11-18 03:16 JST)', async () => {
+  const rubble = Array.from({ length: 6 }, (_, index) => [index + 2, 'tuff', 64])
+  const { sim, A, B } = home([...KIT, ...rubble, [20, 'diamond', 25]])
+  sim.placeChest(A.x, A.y, A.z, { fill: sim.storeOf(A).length - 1 })
+  const runtime = sim.mount()
+  assert.equal(await sim.run(runtime, { until: done, ms: 900000 }), true, sim.log.join('\n'))
+  assert.equal(sim.stored(A, 'diamond'), 22, 'the one free slot of the base chest holds the diamonds')
+  assert.equal(sim.stored(B, 'tuff'), 6 * 64)
+  assert.equal(sim.held('tuff'), 0)
+})
+
+test('the house chests full, a chest outside the wall: not clicked from inside, out through the door, opened from beside it (live 2026-11-18 03:16-03:20 JST)', async () => {
+  const rubble = Array.from({ length: 6 }, (_, index) => [index + 2, 'tuff', 64])
+  const { sim, A, B, o } = home([...KIT, ...rubble, [20, 'diamond', 25], [30, 'chest', 2]])
+  fill(sim, A); fill(sim, B)
+  const outside = sim.placeChest(o.x + 5, GROUND, o.z + 8)
+  sim.indoorWalkM = 3
+  const runtime = sim.mount()
+  assert.equal(await sim.run(runtime, { until: done, ms: 900000 }), true, sim.log.join('\n'))
+  assert.equal(refusedOpens(sim), 0, 'no click is sent from a place the chest does not open from')
+  assert.equal(sim.stored(outside, 'diamond'), 22)
+  assert.equal(sim.stored(outside, 'tuff'), 6 * 64)
+  assert.equal(lines(sim, /家のドアから外へ出ました/).length, 1)
+  assert.equal(sim.events.filter(event => event.kind === 'place_chest').length, 0, 'a chest standing there is used; none is built')
+  assert.equal(sim.held('chest'), 2)
+  assert.equal(lines(sim, /に失敗/).length, 0, sim.log.join('\n'))
+  // Standing by chest B, the chest outside is one of the chests near the Bot (as on the
+  // Realm): it is chosen from inside, and the approach goes out through the door to it.
+  const second = home([...KIT, ...rubble, [20, 'diamond', 25]])
+  fill(second.sim, second.A); fill(second.sim, second.B)
+  second.sim.shared.playerBase = second.B
+  const near = second.sim.placeChest(second.o.x + 5, GROUND, second.o.z + 8)
+  second.sim.indoorWalkM = 3
+  const other = second.sim.mount()
+  assert.equal(await second.sim.run(other, { until: done, ms: 900000 }), true, second.sim.log.join('\n'))
+  assert.equal(lines(second.sim, /チェストの確認 → チェストへ接近（CHEST_CHOSEN）/).length >= 1, true, second.sim.log.join('\n'))
+  assert.equal(refusedOpens(second.sim), 0)
+  assert.equal(lines(second.sim, /家のドアから外へ出ました/).length, 1)
+  assert.equal(second.sim.stored(near, 'diamond'), 22)
+  assert.equal(lines(second.sim, /に失敗/).length, 0, second.sim.log.join('\n'))
+})
+
+test('a chest that opens from nowhere is never clicked and never called full; beside a chest confirmed full a new one is placed', async () => {
+  const sim = createReturnSim({ feet: { x: 10.5, y: GROUND, z: 0.5 }, items: [...KIT, [2, 'diamond', 40], [3, 'chest', 2]] })
+  const old = sim.placeChest(5, GROUND, 0, { fill: 27 })
+  // Walled in on four sides and from above: no cell beside it has a line to the face the click goes to.
+  const buried = sim.placeChest(7, GROUND, 3)
+  for (const [x, y, z] of [[6, GROUND, 3], [8, GROUND, 3], [7, GROUND, 2], [7, GROUND, 4], [7, GROUND + 1, 3]]) sim.setBlock(x, y, z, 'minecraft:stone')
+  sim.shared.playerBase = old
+  sim.agent.running = true
+  const runtime = sim.mount()
+  assert.equal(await sim.run(runtime, { until: done, ms: 1800000 }), true, sim.log.join('\n'))
+  assert.equal(opens(sim, buried) + refusedOpens(sim), 0, 'never clicked')
+  assert.equal(lines(sim, /満杯です/).length, 1, 'only the chest whose received slots showed it')
+  assert.equal(lines(sim, /CHEST_UNREACHED/).length >= 3, true)
+  assert.equal(sim.events.filter(event => event.kind === 'place_chest').length, 1)
+  assert.equal(sim.stored(sim.shared.playerBase, 'diamond'), 37)
+  assert.equal(sim.stored(buried, 'diamond'), 0)
+})
+
+test('held for a chest, the goal is not woken by the mining below the base; held on the way out of a tunnel, it is', async () => {
+  // No chest can be built: held for the supplies. Deeper and farther changes nothing about that.
+  const sim = createReturnSim({ feet: { x: 8.5, y: GROUND, z: 3.5 }, items: [...KIT, [2, 'diamond', 40]] })
+  sim.shared.playerBase = sim.placeChest(5, GROUND, 0, { fill: 27 })
+  sim.agent.running = true
+  const runtime = sim.mount()
+  await sim.run(runtime, { until: () => sim.goal(runtime)?.state === 'held', ms: 600000 })
+  assert.equal(sim.goal(runtime)?.hold.code, 'NO_CHEST_MATERIAL', sim.log.join('\n'))
+  assert.deepEqual(sim.goal(runtime).hold.kinds, ['supplies_changed'])
+  const before = sim.events.length
+  pocket(sim, 40, GROUND - 30, 40)
+  await sim.run(runtime, { ms: 300000 })
+  assert.equal(sim.goal(runtime)?.state, 'held')
+  assert.equal(sim.goal(runtime).wakes, 0)
+  assert.equal(sim.events.length, before, 'nothing was tried')
+  // The climb fails: held for the place, and eight blocks deeper is another place.
+  const deep = createReturnSim({ items: [...KIT, [2, 'diamond', 40], [3, 'chest', 2]] })
+  pocket(deep, 0, GROUND - 12, 0)
+  deep.agent.running = true
+  deep.fail.climb = 'NO_DIRT'
+  const other = deep.mount()
+  await deep.run(other, { until: () => deep.goal(other)?.state === 'held', ms: 600000 })
+  assert.equal(deep.goal(other)?.hold.code, 'CLIMB_FAILED', deep.log.join('\n'))
+  assert.ok(deep.goal(other).hold.kinds.includes('position_changed'))
+  deep.fail.climb = null
+  pocket(deep, 0, GROUND - 22, 0)
+  assert.equal(await deep.run(other, { until: done, ms: 600000 }), true, deep.log.join('\n'))
+  assert.equal(lines(deep, /再開します（POSITION_CHANGED/).length, 1)
+})

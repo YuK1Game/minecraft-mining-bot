@@ -14,6 +14,11 @@
 //   waits for the inventory to be received again.
 // - Why a refusal happened is read from the state (the controls are held, the
 //   chest is busy, the inventory is uncertain), not from the message.
+// - A chest out of reach, or with no clear line to the face the click goes to,
+//   is not clicked at all: the open operation's own preview says so before
+//   anything is sent (CONTAINER_NOT_IN_REACH, CONTAINER_NOT_VISIBLE), and the
+//   caller stands somewhere else (live 2026-11-18 03:16-03:20 JST: 27 tries
+//   from one place at chests it could not see, 17 diamonds not banked).
 const { completed, partial, blocked, failed, interrupted } = require('./return-result')
 
 const WAIT = /待って|待機|使用中|確認しています/
@@ -49,6 +54,15 @@ function createContainerPorts ({ operations, getInventory, held = () => false, d
     seen.set(key(position), slots.map(slot => ({ ...slot })))
   }
   const chestOf = position => ({ x: position.x, y: position.y, z: position.z })
+  const at = (window, position) => !!window?.position && window.position.x === position.x && window.position.y === position.y && window.position.z === position.z
+
+  // Whether the open click can be sent from where the Bot stands: null, or the code of why not.
+  const AWAY = { OUT_OF_REACH: 'CONTAINER_NOT_IN_REACH', SIGHT_BLOCKED: 'CONTAINER_NOT_VISIBLE' }
+  function access (position) {
+    let seen = null
+    try { seen = operations.interactions?.previewOpenChest?.(position) } catch { return null }
+    return seen?.ready === false ? AWAY[seen.code] ?? null : null
+  }
 
   // Why the chest did not open, from the state.
   function refusal (position, error) {
@@ -56,13 +70,15 @@ function createContainerPorts ({ operations, getInventory, held = () => false, d
     if (held()) return interrupted('CONTROLS_HELD', { evidence, detail })
     if (getInventory() == null || view()?.inventoryUncertain === true) return blocked('INVENTORY_UNKNOWN', { kind: 'inventory_update', timeoutMs: 30000 }, { evidence, detail })
     if (view()?.busy === true) return blocked('CONTAINER_BUSY', { kind: 'owner_released', timeoutMs: PATIENT_MS }, { evidence, detail })
-    // The window opened and its slots did not all arrive: unknown, to be read again.
-    if (view()?.window && view().contentsKnown !== true) return blocked('CONTAINER_CONTENTS_UNKNOWN', { kind: 'container_update', timeoutMs: SLOT_MS }, { evidence, detail })
+    // The window of this chest opened and its slots did not all arrive: unknown, to be read again.
+    if (at(view()?.window, position) && view().contentsKnown !== true) return blocked('CONTAINER_CONTENTS_UNKNOWN', { kind: 'container_update', timeoutMs: SLOT_MS }, { evidence, detail })
     return failed(typeof error?.code === 'string' ? error.code : 'CONTAINER_OPEN_REFUSED', { evidence, detail })
   }
 
   // The chest open with its contents received.
   async function open (position) {
+    const away = access(position)
+    if (away) return failed(away, { evidence: { chest: chestOf(position) } })
     try { await patient(() => operations.chest.open(position), held) } catch (error) { return refusal(position, error) }
     if (!await until(() => view()?.contentsKnown === true, OPEN_MS)) return blocked('CONTAINER_CONTENTS_UNKNOWN', { kind: 'container_update', timeoutMs: SLOT_MS }, { evidence: { chest: chestOf(position) } })
     remember(position)
@@ -137,7 +153,7 @@ function createContainerPorts ({ operations, getInventory, held = () => false, d
   // The count alone, for the callers that only add it up (player-storage.js).
   const store = async (position, stacks) => (await deposit(position, stacks)).progress?.confirmedTransferred ?? 0
 
-  return { open, inspect, deposit, take, store, room, contents, patient }
+  return { open, inspect, deposit, take, store, room, contents, patient, access }
 }
 
 module.exports = { createContainerPorts }
