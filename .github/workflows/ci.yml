@@ -29,6 +29,8 @@ jobs:
       - run: npm run check
       - name: New safety tests and existing compatibility tests
         run: npm run test:review
+      - name: Player mode lane (the return to the base; every test must run and pass)
+        run: npm run test:player
       - name: Synthetic combat budget benchmark (not live Realm)
         run: npm run benchmark:combat
   legacy-comparison:

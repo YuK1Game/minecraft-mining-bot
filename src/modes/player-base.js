@@ -1,7 +1,5 @@
 'use strict'
 
-const { low } = require('./low-block')
-
 // Player mode: a base on the surface. Everything carried was lost at every
 // death (real Realm 2026-11-16: 12 diamonds at 16:23, 11 at 19:30 JST; 111
 // held at 01:34 JST 2026-11-17 with no chest anywhere; user 01:32 JST:
@@ -17,17 +15,21 @@ const { low } = require('./low-block')
 //   storage chest is (player-storage.js). Without that wood the trip only
 //   climbs out, and the base is made on the surface once wood is held.
 // - A deposit counts by the received inventory, the chest by the received block.
+// - This file decides when a trip is due and what is banked. The trip itself is
+//   one goal kept through failures, fights, reloads and restarts
+//   (return/return-runner.js, docs/player-return.md).
 const fs = require('node:fs')
 const path = require('node:path')
 const { writeDurableJson } = require('../common/durable-json')
-const { normalizeMode } = require('./bot-mode')
 const { storable } = require('./player-storage-rubble')
 const { underCover } = require('./player-surface')
 const { bankableAll, restockable } = require('./player-base-kit')
+const { createReturnRunner } = require('./return/return-runner')
+const { standsBeside } = require('./return/return-steps')
 
 const CHEST = 'minecraft:chest'
 const DIAMOND = 'minecraft:diamond'
-const KEEP = 8, BANK_AT = 16, NEAR_M = 96, DEEP_DIAMONDS = 8, DEEP_VALUABLES = 32, NEAR_STACKS = 4, FAR_M = 1024, AGAIN_MS = 600000, SOON_MS = 120000, TRAVEL_MS = 300000, TRAVEL_MAX_MS = 1200000, STALL_MS = 240000, QUICK_MS = 30000, STALL_M = 8, MS_PER_M = 2000
+const KEEP = 8, BANK_AT = 16, NEAR_M = 96, DEEP_DIAMONDS = 8, DEEP_VALUABLES = 32, NEAR_STACKS = 4, FAR_M = 1024
 const VALUABLE = /^minecraft:(?:emerald|lapis_lazuli|redstone|raw_gold|gold_ingot|gold_nugget|amethyst_shard|quartz)$/
 const PRECIOUS = /^minecraft:(?:diamond|emerald|lapis_lazuli|redstone|raw_gold|gold_ingot|gold_nugget|amethyst_shard|quartz|iron_ingot|raw_iron|raw_copper|copper_ingot|gold_block|iron_block|diamond_block)$/
 
@@ -40,7 +42,6 @@ function loadBaseSync (file, { io = fs } = {}) {
 }
 
 const slotItems = inventory => (inventory?.items ?? []).filter(item => item?.count > 0 && Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36)
-const diamonds = inventory => slotItems(inventory).filter(item => item.name === DIAMOND).reduce((sum, item) => sum + item.count, 0)
 
 // What goes into the base: diamonds beyond the kept 8 (kept in the largest
 // stacks), other valuables, and what the storage chest takes (rubble, worn pickaxes).
@@ -57,28 +58,11 @@ function bankable (inventory, keep = KEEP) {
   return [...out, ...storable(inventory).filter(stack => !taken.has(stack.slot))]
 }
 
-// A cell to stand in beside the chest: received solid ground and two received open cells.
-function standBeside (getBlock, chest) { return standsBeside(getBlock, chest)[0] ?? null }
-function standsBeside (getBlock, chest) {
-  const out = []
-  const open = (x, y, z) => { const found = getBlock(x, y, z); return found?.known === true && found.boundingBox !== 'block' && !/water|lava/.test(found.name ?? '') }
-  // Not on a chest (the other half of the large chest) or another low block (modes/low-block.js).
-  const solid = (x, y, z) => { const found = getBlock(x, y, z); return found?.known === true && found.boundingBox === 'block' && !low(found) }
-  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
-    for (const dy of [0, -1, 1]) {
-      const x = chest.x + dx, y = chest.y + dy, z = chest.z + dz
-      if (solid(x, y - 1, z) && open(x, y, z) && open(x, y + 1, z)) { out.push({ x: x + 0.5, y, z: z + 0.5 }); break }
-    }
-  }
-  return out
-}
+// A cell to stand in beside the chest (return/return-steps.js).
+const standBeside = (getBlock, chest) => standsBeside(getBlock, chest)[0] ?? null
 
-function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, door = async () => true, porchWalk = async () => false, spares = () => [], porch = () => null, climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
-  let busy = false, waitUntil = 0, banked = 0, soon = false, quick = false
-  const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
+function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, door = async () => true, porchWalk = async () => false, spares = () => [], porch = () => null, climb, travel, walk, approach, water = { needed: () => false, exit: async () => ({ ok: true }) }, house = { inside: () => false, leave: async () => true }, scope = () => null, dimension = () => null, interrupter = null, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, returnFile = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   const say = text => log(`プレイヤーモード: ${text}`)
-  const restart = async () => { for (let attempt = 0; attempt < 5 && live(); attempt++) { try { await agent.start({ ...agent.objective }); return true } catch { await sleep(2000) } } return false }
-  const settle = async () => { for (let i = 0; i < 40 && agent.settled?.() === false && !disposed(); i++) await sleep(200) }
   const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
   const isChest = at => { const found = getBlock(at.x, at.y, at.z); return found?.known === true && found.name === CHEST }
 
@@ -103,10 +87,12 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
     const lacking = restockable(inventory, getWorn(), [{ slot: 0, known: true, name: DIAMOND, count: 64 }]).length > 0
     return chests().filter(isChest).some(at => { const slots = hands.contents?.(at); return slots ? takeable(slots).some(want => want.name === DIAMOND) : lacking })
   }
-  function due () {
+  const restockWanted = () => { const position = getPosition(); return !!position && !!shared.playerBase && flat(shared.playerBase, position) <= NEAR_M && !underCover(getBlock, position) && !!hands.take && short() }
+  // Why a trip is due now, or null.
+  function dueReason () {
     const inventory = getInventory(), position = getPosition()
-    if (!inventory || !position) return false
-    if (shared.playerBase && flat(shared.playerBase, position) <= NEAR_M && !underCover(getBlock, position) && hands.take && short()) return true
+    if (!inventory || !position) return null
+    if (restockWanted()) return '拠点のチェストからダイヤと資材を取り出します'
     const stacks = stacksNow()
     const banked = name => stacks.filter(stack => stack.name === name).reduce((sum, stack) => sum + stack.count, 0)
     const spare = banked(DIAMOND), precious = stacks.filter(stack => PRECIOUS.test(stack.name)).reduce((sum, stack) => sum + stack.count, 0)
@@ -116,129 +102,23 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
     // of the tunnel: on the surface the wood is gathered before going down
     // again (player-supply.js), and the base is made once it is held (live
     // 2026-11-17 01:57-02:03 JST: 145 diamonds, no wood, the trip never began).
-    if ((!base || flat(base, position) > FAR_M) && !canBuild()) return spare >= BANK_AT && covered
-    if (spare >= DEEP_DIAMONDS || precious - spare >= DEEP_VALUABLES) return true
-    return !!base && flat(base, position) <= NEAR_M && !covered && (precious > 0 || stacks.length >= NEAR_STACKS)
+    if ((!base || flat(base, position) > FAR_M) && !canBuild()) return spare >= BANK_AT && covered ? '大事な物が増えたため、地上へ出ます（拠点を作る木がありません）' : null
+    if (spare >= DEEP_DIAMONDS || precious - spare >= DEEP_VALUABLES) return `大事な物が増えたため、拠点のチェストに預けます（ダイヤ ${spare} 個・ほかの貴重品 ${precious - spare} 個）`
+    return !!base && flat(base, position) <= NEAR_M && !covered && (precious > 0 || stacks.length >= NEAR_STACKS) ? `拠点の近くにいるため、手元に残す物以外を預けます（${stacks.length} 枠）` : null
   }
+  // What a new chest is made of: a held goal is looked at again when this changes.
+  const supplies = () => { const items = getInventory()?.items; if (!items) return null; const held = pattern => items.filter(item => pattern.test(item?.name ?? '') && item.count > 0).reduce((sum, item) => sum + item.count, 0); return `${held(/^minecraft:chest$/)}/${held(/_planks$/)}/${held(/_(?:log|stem|wood|hyphae)$/)}/${canBuild() ? 1 : 0}` }
 
-  async function trip () {
-    const aborted = () => !live() || blocked()
-    if (underCover(getBlock, getPosition())) {
-      say('大事な物が増えたため、地上へ出て拠点のチェストに預けます。')
-      let out = null
-      try { out = await climb(aborted) } catch (error) { out = { ok: false, reason: String(error?.message ?? error).slice(0, 80) } }
-      if (aborted()) return false
-      if (underCover(getBlock, getPosition())) {
-        // A climb a fight cut short is tried again in two minutes, not ten (live
-        // 2026-11-17 20:16 JST: 24 steps up, PILLAR_ASCENT_COMBAT_INTERRUPTED, then
-        // ten minutes underground with the diamonds going 15 -> 33 and no food).
-        soon = /COMBAT|INTERRUPT|戦闘/.test(String(out?.reason ?? '') + String(out?.code ?? ''))
-        say(`地上へ出られないため、拠点へ預けに行けません（${out?.reason ?? '不明'}）${soon ? '。2分後にやり直します' : ''}`)
-        return false
-      }
-    }
-    let base = shared.playerBase
-    if (base && flat(base, getPosition()) > FAR_M) { say(`拠点 (${base.x}, ${base.z}) が ${FAR_M}m より遠いため、ここに新しい拠点を作ります`); base = null }
-    if (base) {
-      if (flat(base, getPosition()) > 20) {
-        say(`拠点 (${base.x}, ${base.y}, ${base.z}) へ移動しています。`)
-        try { await travel.to({ destination: { x: base.x, z: base.z } }) } catch (error) { say(`拠点へ移動を始められません ${String(error?.message ?? error).slice(0, 80)}`); return false }
-        // The time allowed grows with the distance and the trip goes on while it
-        // gets closer (live 2026-11-17 20:36〜20:41 JST: a 407 m trip slowed by
-        // skeletons and a meal was cancelled at five minutes with 311 m left, and
-        // the next try came ten minutes later, by when the bot was back underground).
-        // A trip that falls short is tried again in 30 s: while it waited two
-        // minutes the work walked 100 m back west (live 21:02 JST).
-        const until = now() + Math.min(TRAVEL_MAX_MS, Math.max(TRAVEL_MS, flat(base, getPosition()) * MS_PER_M))
-        let best = flat(base, getPosition()), bestAt = now()
-        while (!aborted() && now() < until && now() - bestAt < STALL_MS && travel.status()?.busy) {
-          await sleep(1000)
-          const left = flat(base, getPosition())
-          if (left < best - STALL_M) { best = left; bestAt = now() }
-        }
-        if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
-        if (aborted()) return false
-        if (flat(base, getPosition()) > 20) quick = true
-      }
-      if (flat(base, getPosition()) > 6) await approach(base, 6)
-      // The greedy hops stop at a slope; the house's porch walk tries stands at
-      // every height between (live 2026-11-18 01:14-01:15 JST: 8 blocks below
-      // the house, 「拠点のチェストのそばまで行けません（残り 25m）」 twice).
-      if (flat(base, getPosition()) > 6) { try { await porchWalk() } catch {} }
-      // Any received stand beside the chest that a walk reaches (inside the house the nearest may be walled off).
-      // Into the starter house: its door opened first (house/house-door.js).
-      try { await door() } catch {}
-      for (const stand of standsBeside(getBlock, base).slice(0, 4)) { if (aborted() || flat(stand, getFeet()) <= 0.45) break; if (await walk(stand)) break }
-      if (aborted()) return false
-      if (flat(base, getPosition()) > 4) { say(`拠点のチェストのそばまで行けません（残り ${Math.round(flat(base, getPosition()))}m）${quick ? '。30秒後にやり直します' : ''}`); return false }
-      // A chest that is gone (received as something else) is made again here.
-      if (getBlock(base.x, base.y, base.z)?.known === true && !isChest(base)) { say('拠点のチェストがなくなっていたため、作り直します'); base = null }
-    }
-    if (!base && !canBuild()) { say('拠点のチェストを作る木がないため、地上で木を集めてから拠点を作ります'); return false }
-    if (!base) {
-      const at = await chest()
-      if (!at) { say('拠点のチェストを置けません'); return false }
-      base = await record(at)
-    }
-    const stacks = stacksNow()
-    const total = stacks.reduce((sum, stack) => sum + stack.count, 0)
-    let moved = await hands.store(base, stacks)
-    // A full base chest: the house's other large chest takes the rest, then a
-    // new large chest beside it (live 2026-11-17 15:50 JST: 「0 個預けました」,
-    // chest A full, no flat spot for a new chest, 208 cobblestone thrown away).
-    for (const spare of spares()) {
-      if (moved >= total || aborted() || hands.room(base) > 0 || !isChest(spare)) break
-      moved += await hands.store(spare, stacksNow())
-    }
-    // The new chest skips the full ones (an unopened full chest reads as room
-    // unknown, so the house's chest B was picked again and took nothing) and,
-    // with no flat pair inside the house, stands outside its door. It becomes
-    // the base, so the next trip does not open the full chest first (live
-    // 2026-11-17 18:43-18:46 JST: 「0 個預けました（預ける物 10 個、チェストの空き 0 枠）」).
-    // A chest that would not open (room unknown) counts as full too (live
-    // 2026-11-18 01:02 JST: 「0 個預けました（…空き 開けられず不明 枠）」 and no new chest).
-    // The new chest can fill too (a nearby chest of unknown room took 345 of
-    // 367 and was full; live 2026-11-18 01:54 JST: 22 left in the pack): up to
-    // three chests in a row, each skipping every full one before it.
-    const full = [base, ...spares()]
-    for (let round = 0; round < 3 && moved < total && !aborted() && !(hands.room(base) > 0); round++) {
-      let extra = await chest({ full: [...full] })
-      const out = !extra && porch()
-      if (out && !aborted()) { await approach(out.stand, 1.5); extra = await chest({ full: [...full], avoid: out.avoid }) }
-      if (!extra) { say('拠点のチェストが満杯で、新しいチェストを置けません'); break }
-      moved += await hands.store(extra, stacksNow()); base = await record(extra)
-      full.push(extra)
-    }
-    banked += moved
-    let taken = 0
-    if (hands.take) for (const at of [base, ...spares()]) { if (aborted() || !isChest(at)) continue; taken += await hands.take(at, takeable) }
-    if (taken > 0) say(`拠点のチェストから ${taken} 個取り出しました（手元のダイヤ ${diamonds(getInventory())} 個）`)
-    const room = hands.room(base)
-    say(`拠点のチェスト (${base.x}, ${base.y}, ${base.z}) に ${moved} 個預けました（預ける物 ${total} 個、チェストの空き ${room ?? '開けられず不明'} 枠、手元のダイヤ ${diamonds(getInventory())} 個）`)
-    return moved > 0 || taken > 0
-  }
+  // The trip itself: one goal kept through failures and interruptions (return/return-runner.js).
+  const runner = createReturnRunner({
+    getMode, shared, agent: { objective: agent?.objective, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agent.running ? agent.running() : true }, settled: () => agent?.settled?.() !== false,
+    policy: { due: () => dueReason() !== null, reason: () => dueReason() ?? '拠点へ預けます', cargo: stacksNow, restockWanted, restock: takeable, canBuild, record, supplies },
+    ports: { getBlock, getPosition, getFeet, getInventory, dimension, moves: { climb, water, house, travel, approach, porchWalk, door, walk }, chests: { hands, spares, porch, make: options => chest(options) } },
+    scope, interrupter: interrupter ?? (() => blocked() ? 'ほかの作業' : null), hostile, travelBusy: () => travel?.status()?.busy === true,
+    file: returnFile, write, disposed, log, now, sleep
+  })
 
-  async function tick () {
-    if (!live() || busy || blocked() || hostile() || travel.status()?.busy || now() < waitUntil || !due()) return null
-    busy = true
-    let ok = false
-    try {
-      agent.stop('拠点へ資材を預けに行きます。')
-      await settle()
-      ok = await trip()
-      return ok
-    } catch (error) {
-      say(`拠点へ預けられません ${String(error?.message ?? error).slice(0, 120)}`)
-      return false
-    } finally {
-      waitUntil = now() + (ok ? 30000 : quick ? QUICK_MS : soon ? SOON_MS : AGAIN_MS)
-      soon = false; quick = false
-      busy = false
-      await restart()
-    }
-  }
-
-  return { tick, status: () => ({ active: busy, reason: busy ? '拠点へ資材を預けに行きます。' : null, banked, base: shared.playerBase ?? null }) }
+  return { tick: runner.tick, cancel: runner.cancel, status: runner.status }
 }
 
 module.exports = { createPlayerBase, bankable, standBeside, baseFile, loadBaseSync, KEEP, BANK_AT }

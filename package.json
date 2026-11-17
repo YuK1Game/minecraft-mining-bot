@@ -15,6 +15,7 @@
     "check": "node scripts/check.js",
     "dashboard": "node --env-file-if-exists=.env scripts/dashboard.js",
     "test:review": "node scripts/review-tests.js",
+    "test:player": "node scripts/player-tests.js",
     "benchmark:combat": "node scripts/benchmark-combat-search.js",
     "benchmark:world": "node scripts/benchmark-world.js",
     "test:compare": "node scripts/compare-tests.js",
