@@ -69,7 +69,10 @@ function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure 
       if (typeof verdict?.unknown !== 'boolean' || verdict.intercept !== false || !resolve(entry, pins.get(id(entry.runtimeId)))) return false
       // Far outside actors can have an intentionally unsearched attack route.
       // Only that case retains the existing complete outside-circle corridor.
-      if (verdict.unknown && !(group === 'outsideDanger' && Number.isFinite(verdict.distance) && Number.isFinite(verdict.recognitionRadius) && verdict.recognitionRadius >= 0 &&
+      // Actors set aside by terrain or as unreachable get the same corridor
+      // (live 2026-11-17 21:13-21:14 JST: zombies 31 m off and 20 blocks below,
+      // beyond their 12 m recognition, refused every step of a base trip).
+      if (verdict.unknown && !(group !== 'threats' && Number.isFinite(verdict.distance) && Number.isFinite(verdict.recognitionRadius) && verdict.recognitionRadius >= 0 &&
         verdict.distance > verdict.recognitionRadius && Math.hypot(position.x - before.position.x, position.y - before.position.y, position.z - before.position.z) >= entry.dangerRadius - 1e-4 &&
         segmentDistance(before.position, previous, next) >= entry.dangerRadius - 1e-4)) return false
     }

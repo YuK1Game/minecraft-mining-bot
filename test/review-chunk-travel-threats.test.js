@@ -121,7 +121,7 @@ test('unknown access cannot approach the legacy circle even while outside canoni
   assert.equal(f.clear({ next: point(2), attackExposure: (_actor, projected) => ({ intercept: false, unknown: true, distance: 15 - projected.position.x, recognitionRadius: 12 }) }), false)
   assert.equal(f.clear({ next: point(2) }), true, 'known blocked access still uses the canonical decision')
 })
-for (const group of ['threats', 'suppressedByTerrain', 'unreachable']) test(`far unknown fallback is not granted to ${group}`, () => {
+for (const group of ['threats']) test(`far unknown fallback is not granted to ${group}`, () => {
   const f = fixture(actor('zombie', 50)); regroup(f, group)
   assert.equal(f.clear({ attackExposure: () => ({ intercept: false, unknown: true, distance: 50, recognitionRadius: 12 }) }), false)
 })
@@ -137,4 +137,11 @@ test('a creeper that has not moved for minutes lets the Bot walk inside its circ
   assert.equal(still.clear({ previous: point(3), next: point(3.5) }), false, 'a step that ends 4.28 m from it')
   const moving = fixture(actor('creeper', 7.78, { positionUpdatedAt: new Date().toISOString() }))
   assert.equal(moving.clear(), false)
+})
+
+for (const group of ['suppressedByTerrain', 'unreachable']) test(`a far unsearched zombie set aside as ${group} keeps the outside-circle corridor (live 2026-11-17 21:13 JST)`, () => {
+  const f = fixture(actor('zombie', 31)); regroup(f, group)
+  assert.equal(f.clear({ attackExposure: (_actor, projected) => ({ intercept: false, unknown: true, distance: 31 - projected.position.x, recognitionRadius: 12, reason: 'ATTACK_ACCESS_UNKNOWN' }) }), true)
+  assert.equal(f.clear({ attackExposure: (_actor, projected) => ({ intercept: false, unknown: true, distance: 11, recognitionRadius: 12 }) }), false, 'inside recognition')
+  assert.equal(f.clear({ attackExposure: () => ({ intercept: true, unknown: false }) }), false)
 })
