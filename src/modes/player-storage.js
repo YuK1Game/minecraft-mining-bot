@@ -117,9 +117,12 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
 
   // A large chest beside the Bot (or one already there): its position, true
   // when junk was thrown away instead (discard), or null.
-  async function ensure (discard = false) {
+  // full: chest cells known full (the base's), skipped with their pairs; avoid:
+  // cells no new chest stands in (the path to the house door).
+  async function ensure (discard = false, { full = [], avoid = [] } = {}) {
     const feet = getFeet()
-    let chests = chestsNear(getBlock, feet)
+    const key = p => `${p.x},${p.y},${p.z}`, fullSet = new Set(full.map(key))
+    let chests = chestsNear(getBlock, feet).filter(chest => !fullSet.has(key(chest.position)) && !(chest.pair && fullSet.has(key(chest.pair))))
     let target = chests.find(chest => chest.pair && hands.room(chest.position) !== 0) ?? null
     // A single chest is made large first (user: large chests first).
     const single = !target ? chests.find(chest => !chest.pair) ?? null : null
@@ -132,7 +135,7 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
       target = { position: single.position }
     }
     if (!target) {
-      const cells = chestCells(getBlock, feet)
+      const cells = chestCells(getBlock, feet, null, new Set(avoid.map(key)))
       if (cells.length < 2) { say('ラージチェストを置ける平らな場所がありません'); return null }
       // One chest held and no wood for a second: the single chest is used now
       // and made large once wood is held (real Realm 2026-11-16 21:24 JST:
@@ -147,7 +150,7 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
       }
       // A refused first cell is skipped and another pair tried (3 pairs at most);
       // after one chest stands, the next run makes it large as a single chest.
-      const skip = new Set()
+      const skip = new Set(avoid.map(key))
       let pair = cells
       for (let attempt = 0; attempt < 3 && pair.length === 2 && !target; attempt++) {
         if (await hands.place(pair[0], CHEST)) {
@@ -220,7 +223,7 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
   }
 
   // The base's large chest (player-base.js), made like the storage chest.
-  async function chest () { if (busy) return null; busy = true; try { const got = await ensure(false); return got && got !== true ? got : null } finally { busy = false } }
+  async function chest (options = {}) { if (busy) return null; busy = true; try { const got = await ensure(false, options); return got && got !== true ? got : null } finally { busy = false } }
 
   return { tick, chest, woodFor, status: () => ({ active: busy, reason: busy ? '持ち物をチェストにしまっています。' : null, stored }) }
 }

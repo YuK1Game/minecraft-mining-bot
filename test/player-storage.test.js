@@ -203,3 +203,16 @@ test('no chest can be made (table or craft refused): the rubble is thrown away e
   assert.ok(drops.length >= 2, JSON.stringify(drops))
   assert.match(f.lines.join('\n'), /いらない物を \d+ 枠捨てました/)
 })
+
+test('the base chest: full chests and their pairs are skipped and a new pair avoids the door path (live 2026-11-17 18:43-18:46 JST)', async () => {
+  const a = { x: 2, y: 64, z: 0 }, b = { x: 2, y: 64, z: 1 }
+  const f = job({ inventory: inv([['oak_planks', 20, 0]]), chests: [a, b] })
+  // Without the full list the unopened (room unknown) full chest is picked again.
+  assert.deepEqual(await f.storage.chest(), a)
+  const avoid = [{ x: 1, y: 64, z: 0 }, { x: -1, y: 64, z: 0 }, { x: 0, y: 64, z: 1 }, { x: 0, y: 64, z: -1 }]
+  const at = await f.storage.chest({ full: [a], avoid })
+  assert.ok(at && !(at.x === 2 && (at.z === 0 || at.z === 1)))
+  const placed = f.calls.filter(call => call[0] === 'place' && call[2] === mc('chest')).map(call => call[1])
+  assert.equal(placed.length, 2)
+  assert.ok(placed.every(cell => !avoid.some(p => p.x === cell.x && p.y === cell.y && p.z === cell.z)))
+})

@@ -73,7 +73,7 @@ function standsBeside (getBlock, chest) {
   return out
 }
 
-function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, door = async () => true, spares = () => [], climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, door = async () => true, spares = () => [], porch = () => null, climb, travel, walk, approach, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, banked = 0
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const say = text => log(`プレイヤーモード: ${text}`)
@@ -157,9 +157,17 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
       if (moved >= total || aborted() || hands.room(base) !== 0 || !isChest(spare)) break
       moved += await hands.store(spare, stacksNow())
     }
+    // The new chest skips the full ones (an unopened full chest reads as room
+    // unknown, so the house's chest B was picked again and took nothing) and,
+    // with no flat pair inside the house, stands outside its door. It becomes
+    // the base, so the next trip does not open the full chest first (live
+    // 2026-11-17 18:43-18:46 JST: 「0 個預けました（預ける物 10 個、チェストの空き 0 枠）」).
     if (moved < total && hands.room(base) === 0) {
-      const extra = await chest()
-      if (extra) moved += await hands.store(extra, stacksNow())
+      const full = [base, ...spares()]
+      let extra = await chest({ full })
+      const out = !extra && porch()
+      if (out && !aborted()) { await approach(out.stand, 1.5); extra = await chest({ full, avoid: out.avoid }) }
+      if (extra) { moved += await hands.store(extra, stacksNow()); base = await record(extra) } else say('拠点のチェストが満杯で、新しいチェストを置けません')
     }
     banked += moved
     const room = hands.room(base)
