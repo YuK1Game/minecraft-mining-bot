@@ -2844,17 +2844,18 @@ function createRuntime (host) {
     if(options?.allowWater!==true||options.beforeInput!=null)return options
     const initial=lightweightUserState();initial.lifecycle={...initial.lifecycle,deathId:movementKnownLife()};const scope=continuationScope(initial),controller=movement,generation=inputHistoryGeneration,serial=portableMovementSerial,force=userBehaviorForceRevision
     if(!scope||!controller||!idlePhysics)throw Object.assign(new Error(!scope?'Botの生存状態をまだ確認できていません。数秒待ってからもう一度お試しください。':'移動の準備ができていません。数秒待ってからもう一度お試しください。'),{code:!scope?'MOVE_LIFE_UNKNOWN':'MOVE_NOT_READY'})
-    let previous={...initial.position}
+    let previous={...initial.position};const G=r=>(host.shared.waterGuardWhy=r,false)
     return {...options,continueAfterReplay:options.continueAfterReplay??true,beforeInput:frame=>{
       const current=lightweightUserState();current.lifecycle={...current.lifecycle,deathId:movementKnownLife()};const p=frame?.packetPosition,n=frame?.predictedState
-      if(disposed||disposing||movement!==controller||inputHistoryGeneration!==generation||portableMovementSerial!==serial||userBehaviorForceRevision!==force||controller.snapshot().phase!=='moving'||JSON.stringify(continuationScope(current))!==JSON.stringify(scope)||current.emptyHandedPrep!==true&&(current.health<initial.health||current.entityStats?.unknownPositions!==0)||!p||!n?.position||!['x','y','z'].every(k=>Number.isFinite(p[k])&&Number.isFinite(n.position[k]))||Math.hypot(p.x-n.position.x,p.y-n.position.y-1.62,p.z-n.position.z)>1e-4||n.isInLava)return false
+      if(disposed||disposing||movement!==controller||inputHistoryGeneration!==generation||portableMovementSerial!==serial||userBehaviorForceRevision!==force||controller.snapshot().phase!=='moving'||JSON.stringify(continuationScope(current))!==JSON.stringify(scope))return G('scope')
+      if(current.emptyHandedPrep!==true){if(current.health<initial.health)return G('hurt');if(current.entityStats?.unknownPositions!==0)return G('unknown')}
+      if(!p||!n?.position||!['x','y','z'].every(k=>Number.isFinite(p[k])&&Number.isFinite(n.position[k]))||Math.hypot(p.x-n.position.x,p.y-n.position.y-1.62,p.z-n.position.z)>1e-4||n.isInLava)return G('packet')
       const risk=evaluateThreats(current,current.entities,{observationRadius:32})
-      // Empty-handed long-trip preparation (2026-11-14 decision): nothing can be
-      // lost, so hostiles near the water do not hold the bot in place (live
-      // 10:19: a drowned kept every swim out of the spawn hollow refused).
+      // Empty-handed trip prep (2026-11-14): nothing to lose, so hostiles near
+      // the water do not hold the bot (live 10:19: a drowned refused every swim).
       if (current.emptyHandedPrep === true) {}
       else if (combatAware) {
-        if (!chunkTravelThreatsClear({ state: current, previous, next: p, risk, attackExposure: combatAttackExposure })) return false
+        if (!chunkTravelThreatsClear({ state: current, previous, next: p, risk, attackExposure: combatAttackExposure })) return G('threat')
       } else {
         if(risk.requiresObservation||risk.threats.length)return false
         for(const a of [...risk.outsideDanger,...risk.suppressedByTerrain]){
@@ -2864,7 +2865,7 @@ function createRuntime (host) {
         }
       }
       try{for(let x=Math.floor(n.position.x-.3+1e-6);x<=Math.floor(n.position.x+.3-1e-6);x++)for(let z=Math.floor(n.position.z-.3+1e-6);z<=Math.floor(n.position.z+.3-1e-6);z++)for(let y=Math.floor(n.position.y+1e-6);y<=Math.floor(n.position.y+1.8-1e-6);y++){
-        const b=idlePhysics.blockAt({x,y,z});if(!b||b.known===false||['lava','flowing_lava','fire','soul_fire','magma','magma_block','cactus'].includes(String(b.name).replace(/^minecraft:/,''))||!Array.isArray(b.shapes))return false
+        const b=idlePhysics.blockAt({x,y,z});if(!b||b.known===false||['lava','flowing_lava','fire','soul_fire','magma','magma_block','cactus'].includes(String(b.name).replace(/^minecraft:/,''))||!Array.isArray(b.shapes))return G('body')
         for(const box of b.shapes)if(n.position.x+.3>x+box[0]+1e-4&&n.position.x-.3<x+box[3]-1e-4&&n.position.z+.3>z+box[2]+1e-4&&n.position.z-.3<z+box[5]-1e-4&&n.position.y+1.8>y+box[1]+1e-4&&n.position.y<y+box[4]-1e-4)return false
       }}catch{return false}
       previous={...p};return true
