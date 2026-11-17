@@ -497,6 +497,7 @@ function createLongTravelRuntime (rt) {
       // runtime resumed the live trip from the shared file and never exited).
       if (['moving', 'cancelled'].includes(doc?.phase) && doc.realmId != null && doc.realmId === String(rt.raw().realm?.id ?? '') && doc.profile === (rt.raw().profile ?? null) && doc.destination && Date.now() - Date.parse(doc.savedAt) < 900000) rt.host.shared.longTravelResume = { destination: { x: doc.destination.x, z: doc.destination.z }, at: Date.now() } } catch {}
     }
+    if (rt.host.shared.longTravelResume && !rt.require('./travel/travel-resume').resumeTrip(rt.host.shared)) rt.host.shared.longTravelResume = null
     const r = rt.host.shared.longTravelResume
     if (!r) { if (travelFileChecked) clearInterval(travelResumeTimer); return }
     if (Date.now() - r.at > 600000) { rt.host.shared.longTravelResume = null; return }
