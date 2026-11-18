@@ -45,6 +45,12 @@ function hands (world, feet, { fill = 0, refuse = () => false } = {}) {
       world.setBlock(cell.x, cell.y, cell.z, 'air'); body.y -= 1; did.push({ kind: 'descend', ...cell })
       return true
     },
+    // A floor block into a gap beside the feet, from the blocks carried.
+    async bridge (cell) {
+      if (fill < 1 || refuse(cell) || !open(cell.x, cell.y, cell.z)) return false
+      fill--; world.setBlock(cell.x, cell.y, cell.z, 'cobblestone'); did.push({ kind: 'bridge', ...cell })
+      return true
+    },
     async pillar (column, feetY) {
       if (fill < 1 || !open(column.x, feetY + 2, column.z)) return { ok: false, reason: 'BLOCKED' }
       fill--; world.setBlock(column.x, feetY, column.z, 'cobblestone'); body.y = feetY + 1; did.push({ kind: 'pillar', x: column.x, y: feetY, z: column.z })
@@ -113,6 +119,43 @@ test('stacking: up a face that cannot be mined, from the blocks carried; with no
   const out = await buildWalk({ ports: bot.ports, target, done, limits: { pad: 4 } })
   assert.equal(out.ok, true)
   assert.deepEqual([out.stacked, bot.cell().y], [3, 68])
+})
+
+test('bridging: level over a gap on blocks carried; with none carried, over lava or beside an unreceived cell there is no way', async () => {
+  // A chasm three cells wide and deep, across the whole way.
+  const chasm = () => { const world = flatWorld(); for (let z = -30; z <= 30; z++) for (let y = 40; y < 64; y++) for (const x of [3, 4, 5]) world.set(x, y, z, 'air'); return world }
+  const start = { x: 0, y: 64, z: 0 }, target = { x: 8, y: 64, z: 0 }, done = cell => cell.x === 8 && cell.z === 0 && cell.y === 64
+  const none = planBuildRoute({ getBlock: chasm().getBlock, start, target, done, blocks: 0, pad: 4 })
+  assert.deepEqual([none.ok, none.code], [false, 'NO_BUILD_ROUTE'])
+  const world = chasm()
+  assert.equal(planBuildRoute({ getBlock: world.getBlock, start, target, done, blocks: 8, pad: 4 }).ok, false, 'not unless asked for')
+  const route = planBuildRoute({ getBlock: world.getBlock, start, target, done, blocks: 8, pad: 4, allowBridge: true })
+  assert.equal(route.ok, true, route.code)
+  assert.deepEqual([route.bridge, route.stack, route.dig], [3, 0, 0])
+  assert.deepEqual(route.steps.filter(step => step.kind === 'bridge').map(step => step.place), [3, 4, 5].map(x => ({ x, y: 63, z: 0 })))
+  // Two blocks carried do not cross three cells.
+  assert.equal(planBuildRoute({ getBlock: chasm().getBlock, start, target, done, blocks: 2, pad: 4, allowBridge: true }).ok, false)
+  // Lava under the gap, or a cell not received beside it: no floor is placed there.
+  const lava = chasm(); for (let z = -30; z <= 30; z++) for (let y = 40; y <= 62; y++) for (const x of [3, 4, 5]) lava.set(x, y, z, 'lava', { boundingBox: 'empty' })
+  assert.equal(planBuildRoute({ getBlock: lava.getBlock, start, target, done, blocks: 3, pad: 4, allowBridge: true }).ok, false, 'no floor right over the lava')
+  const over = planBuildRoute({ getBlock: lava.getBlock, start, target, done, blocks: 8, pad: 4, allowBridge: true })
+  assert.equal(over.ok && over.steps.filter(step => step.kind === 'bridge').every(step => step.place.y === 64), true, 'one pillar step up, then the floor a block clear of the lava')
+  const unseen = chasm(); for (let z = -30; z <= 30; z++) for (let y = 40; y <= 80; y++) unseen.set(4, y, z, null)
+  assert.equal(planBuildRoute({ getBlock: unseen.getBlock, start, target, done, blocks: 8, pad: 4, allowBridge: true }).ok, false)
+  // Carried out: each floor block is received before the step onto it.
+  const bot = hands({ getBlock: world.getBlock, setBlock: world.set }, start, { fill: 8 })
+  const log = []
+  const out = await buildWalk({ ports: bot.ports, target, done, limits: { pad: 4 }, log: line => log.push(line) })
+  assert.equal(out.ok, true, log.join('\n'))
+  assert.deepEqual(bot.did.filter(step => step.kind === 'bridge').map(step => step.x), [3, 4, 5])
+  assert.equal(bot.cell().x, 8)
+  assert.match(log[0], /足場を置く 3 個/)
+  assert.match(log.at(-1), /置いた足場 3 個/)
+  // A placement the server refuses: that step is left out, and with no other way the answer is the reason.
+  const stuck = chasm(), refused = hands({ getBlock: stuck.getBlock, setBlock: stuck.set }, start, { fill: 8, refuse: cell => cell.x === 4 })
+  const failed = await buildWalk({ ports: refused.ports, target, done, limits: { pad: 4, maxNodes: 3000 } })
+  assert.equal(failed.ok, false)
+  assert.equal(refused.cell().x <= 3, true)
 })
 
 test('digging: through a wall that spans the way, never through water, unreceived cells, a base\'s blocks or a container', () => {

@@ -16,6 +16,14 @@
 //   pillar it stacked (user 2026-11-18: 「積み上げて登ってきたブロックの箇所を
 //   掘っていけばいいのでは？」).
 // - stack: one pillar step up on the spot, from the blocks it carries.
+// - bridge: level over a gap, one carried block placed as the floor of the cell
+//   beside the feet first (against the block under the feet, or a block beside
+//   the gap; the walk carries it out and confirms the received block). Only
+//   over received air with nothing unreceived and no lava touching it (real
+//   Realm 2026-11-18 20:42 JST: on the same layer, four cells of air lay between
+//   the Bot and the pillar it had stacked; every cell round was received).
+//   Off unless asked for (`allowBridge`): the walk asks only after a plan
+//   without it found no way, so the wider search never costs a way that exists.
 // Never: an unreceived cell, liquid, leaves, logs, a container, a bed, a
 // door, a block a base protects (`natural: false`), a drop of more than one.
 // The search is bounded (a box round the start and the target, a node limit
@@ -34,11 +42,12 @@ const FALLING = /gravel|(?:^|:|_)sand$|concrete_powder|anvil/
 const OWN = /^minecraft:(?:dirt|grass_block|cobblestone|cobbled_deepslate)$/
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]]
 const AROUND = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0]]
-const COST = { walk: 1, step: 1.5, soft: 2, hard: 5, shaft: 3, stack: 5 }
+const COST = { walk: 1, step: 1.5, soft: 2, hard: 5, shaft: 3, stack: 5, bridge: 6 }
+const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 
 const keyOf = (x, y, z) => `${x},${y},${z}`
 
-function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = true, refused = null, barred = null, pad = 12, rise = 8, maxNodes = 12000, maxMs = 1500, now = Date.now }) {
+function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = true, allowBridge = false, refused = null, barred = null, pad = 12, rise = 8, maxNodes = 12000, maxMs = 1500, now = Date.now }) {
   const lo = { x: Math.min(start.x, target.x) - pad, y: Math.min(start.y, target.y) - rise, z: Math.min(start.z, target.z) - pad }
   const hi = { x: Math.max(start.x, target.x) + pad, y: Math.max(start.y, target.y) + rise, z: Math.max(start.z, target.z) + pad }
   const inside = (x, y, z) => x >= lo.x && x <= hi.x && y >= lo.y && y <= hi.y && z >= lo.z && z <= hi.z
@@ -59,6 +68,8 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
     if (FALLING.test(at(x, y + 1, z).name)) return false
     return AROUND.every(([dx, dy, dz]) => { const near = at(x + dx, y + dy, z + dz); return near.kind !== 'unknown' && near.kind !== 'water' && near.kind !== 'hazard' }) && at(x, y - 1, z).kind !== 'unknown'
   }
+  // A cell a floor block may be placed into: received air, nothing unreceived and no lava beside or under it.
+  const gap = (x, y, z) => AIR.test(at(x, y, z).name) && [...SIDES.map(([dx, dz]) => [dx, 0, dz]), [0, -1, 0]].every(([dx, dy, dz]) => { const near = at(x + dx, y + dy, z + dz); return near.kind !== 'unknown' && near.kind !== 'hazard' })
   // The cells the body passes: each open or minable. Returns the ones to mine, or null.
   const through = cells => {
     const dig = []
@@ -107,6 +118,10 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
       if (at(nx, y - 1, nz).floor) {
         const dig = through([[nx, y + 1, nz], [nx, y, nz]])
         if (dig) offer(node, nx, y, nz, COST.walk + digCost(dig), { kind: 'walk', dig })
+      } else if (allowBridge && node.used < blocks && gap(nx, y - 1, nz)) {
+        // Level over a gap: a carried block becomes the floor there first.
+        const dig = through([[nx, y + 1, nz], [nx, y, nz]])
+        if (dig) offer(node, nx, y, nz, COST.bridge + digCost(dig), { kind: 'bridge', dig, place: { x: nx, y: y - 1, z: nz } }, node.used + 1)
       }
       // One up: the block beside the feet is the floor; the room over the own head and over that floor.
       if (at(nx, y, nz).floor) {
@@ -132,7 +147,7 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
   for (let k = keyOf(end.x, end.y, end.z); from.has(k); k = from.get(k).prev) steps.push(from.get(k).step)
   steps.reverse()
   const count = kind => steps.filter(step => step.kind === kind).length
-  return { ok: true, code: 'BUILD_ROUTE', expanded, steps, cost: end.g, dig: steps.reduce((sum, step) => sum + step.dig.length, 0), shaft: count('shaft'), stack: count('stack') }
+  return { ok: true, code: 'BUILD_ROUTE', expanded, steps, cost: end.g, dig: steps.reduce((sum, step) => sum + step.dig.length, 0), shaft: count('shaft'), stack: count('stack'), bridge: count('bridge') }
 }
 
 function planBuildRoute (options) {
