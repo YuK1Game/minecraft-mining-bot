@@ -135,7 +135,9 @@ function world (t, { own }) {
   const moving = () => !!leg && Date.now() < leg.ends
   // A pause between two legs, as the real trip has (terrain requests, planning).
   const travel = createLongTravel({ getState: () => raw, chunkTravel, log: () => {}, save: async () => {}, damagePauseMs: 0, pollMs: 2, stopWhenBlocked: true,
-    beforeLeg: () => new Promise(resolve => setTimeout(resolve, 8)) })
+    // The gap is several scheduler ticks long, so that a tick always falls inside it (Windows timers are ~15 ms coarse:
+    // with an 8 ms gap every tick could land on a walking leg, and the hunt then started only after the trip).
+    beforeLeg: () => new Promise(resolve => setTimeout(resolve, 60)) })
   const quarry = { travelStatus: () => travel.status(), cancelTravel: () => travel.cancel('MANUAL_STOP') }
   const foraging = {
     preview: () => sheep ? { ready: true } : { ready: false, code: 'NO_KNOWN_FOOD_SOURCE' },
