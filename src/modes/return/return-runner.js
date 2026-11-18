@@ -54,7 +54,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
   const restart = async mine => { for (let attempt = 0; attempt < 5 && mine === generation && live(); attempt++) { try { await agent.start({ ...agent.objective }); return true } catch { await sleep(2000) } } return false }
   const supplies = () => { try { return policy.supplies() } catch { return null } }
   const terrain = () => { const feet = ports.getFeet?.(); return !!feet && ports.getBlock(Math.floor(feet.x), Math.floor(feet.y + 0.05) - 1, Math.floor(feet.z))?.known === true }
-  const seenNow = () => ({ position: ports.getPosition(), supplies: supplies(), inventoryKnown: !!ports.getInventory(), terrain: terrain(), settled: settled(), scope: scope(), now: now() })
+  const seenNow = () => ({ position: ports.getPosition(), supplies: supplies(), inventoryKnown: !!ports.getInventory(), terrain: terrain(), settled: settled(), owner: interrupter() ?? null, scope: scope(), now: now() })
 
   function end (state, code, text) {
     say(`${text}（${code}・収納済み ${goal.progress.banked} 個${goal.progress.taken ? `・取り出し ${goal.progress.taken} 個` : ''}・試行 ${goal.budget.attempts} 回）`)
@@ -81,6 +81,21 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     commit()
     await restart(mine)
     return false
+  }
+
+  // Whoever has the controls does not let go (live 2026-11-18 05:49-06:07 JST: a
+  // recovery that never ended; the goal waited for it for eighteen minutes with
+  // one line in the log, and by being active kept the other jobs waiting too).
+  // The goal is held instead: nothing is started here, the work is left to its
+  // owner, and the goal wakes when the controls are free.
+  function park (who, waitedMs) {
+    const text = `${who}が ${Math.round(waitedMs / 60000)} 分たっても終わりません`
+    if (goal.budget.wakes >= BUDGET.MAX_WAKES) { end('abandoned', 'OWNER_NOT_RELEASED', `をあきらめます: ${text}`); quietUntil = now() + BUDGET.GIVE_UP_MS; return null }
+    goal.state = 'held'; goal.wait = null; goal.interrupt = null
+    goal.hold = { code: 'OWNER_NOT_RELEASED', at: now(), until: now() + BUDGET.HOLD_MS, position: cell(ports.getPosition()), supplies: supplies(), kinds: ['owner_free'], vertical: false }
+    say(`を保留します: ${text}（OWNER_NOT_RELEASED・再評価の条件 owner_free・遅くとも ${Math.round(BUDGET.HOLD_MS / 60000)} 分後）。操作は始めていません`)
+    commit()
+    return null
   }
 
   // Asks the autonomy to stop and waits until its last operation has ended.
@@ -187,6 +202,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
       const who = interrupter()
       if (who) {
         if (goal.interrupt?.who !== who) { goal.interrupt = { who, at: now() }; say(`${LABEL[goal.stage]}を中断して待ちます（${who}）。目的は保持します`) }
+        else if (now() - goal.interrupt.at >= BUDGET.OWNER_WAIT_MS) return park(who, now() - goal.interrupt.at)
         return null
       }
       if (goal.interrupt) { say(`中断が終わったため、${LABEL[goal.stage]}から計画し直します（${goal.interrupt.who}・${Math.round((now() - goal.interrupt.at) / 1000)} 秒）`); goal.interrupt = null; if (!['observe', 'replan'].includes(goal.stage)) goal.stage = goal.stage === 'travel' || goal.stage === 'surface' ? 'surface' : 'approach' }

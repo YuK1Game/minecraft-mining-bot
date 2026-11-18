@@ -411,6 +411,29 @@ test('S12 a trip that never gets closer: detours, a hold, a few re-evaluations, 
   assert.ok(sim.trips - trips <= 3, `${sim.trips - trips} trips for the new goal`)
 })
 
+test('S12 an owner that never lets go: the goal is held after five minutes, starts nothing, and goes on when the controls are free (live 2026-11-18 05:49-06:07 JST)', async () => {
+  const sim = far()
+  const runtime = sim.mount()
+  // Another job takes the controls on the way and does not end.
+  sim.later(12000, () => { runtime.jobs.other = 'ほかの作業' })
+  const starts = () => sim.agent.starts.length
+  let activeWhileHeld = 0, before = null
+  assert.equal(await sim.run(runtime, { until: () => { if (sim.goal(runtime)?.state === 'held') { before ??= { starts: starts(), trips: sim.trips }; if (runtime.base.status().active) activeWhileHeld++ } return lines(sim, /OWNER_NOT_RELEASED/).length > 0 && sim.clock > 12000 + 9 * 60000 }, ms: 3600000 }), null, sim.log.join('\n'))
+  assert.equal(lines(sim, /中断して待ちます（ほかの作業）/).length, 1, sim.log.join('\n'))
+  assert.equal(lines(sim, /を保留します: ほかの作業が 5 分たっても終わりません（OWNER_NOT_RELEASED・再評価の条件 owner_free/).length, 1, sim.log.join('\n'))
+  assert.equal(activeWhileHeld, 0, 'a held goal does not keep the other jobs waiting')
+  assert.equal(starts(), before.starts, 'the goal starts nothing while another owner has the controls')
+  assert.equal(sim.trips, before.trips, 'no trip while held')
+  assert.equal(failures(sim).length, 0, 'waiting for an owner is not a failure')
+  assert.equal(ids(sim).size, 1)
+  // The owner ends: the same goal wakes and banks.
+  runtime.jobs.other = null
+  assert.equal(await sim.run(runtime, { until: done }), true, sim.log.join('\n'))
+  assert.equal(lines(sim, /を再開します（OWNER_FREE/).length, 1, sim.log.join('\n'))
+  assert.equal(ids(sim).size, 1, 'one goal from the decision to the end')
+  assert.equal(sim.stored(sim.shared.playerBase, 'diamond'), 37)
+})
+
 test('S13 a hostile that only stands nearby delays the start for a minute, not for good; one that appears on the way does not stop the trip', async () => {
   const sim = far()
   sim.hostileNear = true

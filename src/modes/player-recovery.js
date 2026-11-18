@@ -118,6 +118,17 @@ function createPlayerRecovery ({ getMode, shared, agent, travel, climb = null, p
         if (shared.autoOptions) { delete shared.autoOptions.freshExploration; delete shared.autoOptions.freshExclusions }
         return true
       } catch (error) {
+        // Refused because it runs already: the start that was refused had set the
+        // wish to play, and the runtime started the run itself. That is the restart
+        // (live 2026-11-18 05:44-06:07 JST: 「再開を待っています: すでに実行中…」 was
+        // tried for 22 minutes while the run mined; this recovery stayed active, so
+        // the return to the base and every other job waited for it, and the stops
+        // of that run were not answered).
+        if (agent.running?.() === true) {
+          if (attempt > 0) log('プレイヤーモード: 自律作業はもう動いているので、再開の待ちを終えます')
+          if (shared.autoOptions) { delete shared.autoOptions.freshExploration; delete shared.autoOptions.freshExclusions }
+          return true
+        }
         reason = `再開を待っています: ${text(error?.message)}`
         if (attempt === 0) log(`プレイヤーモード: ${reason}`)
         if (!await wait(token, attempt < 10 ? 3000 : 15000)) return false
