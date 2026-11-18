@@ -58,7 +58,7 @@
   const stageState = (stage, player) => stage.reached ? 'done' : stage.id === player.current ? 'current' : 'next'
   const labelsForStatus = { done: '達成', current: '現在の目標', next: '未達成' }
   const labelsForCheck = { done: '確認済み', skipped: '対象外', pending: '未確認' }
-  let selected = null, currentStage = null, initialized = false, signature = null
+  let selected = null, signature = null
   const stageButtons = new Map()
 
   function renderDetail (player) {
@@ -93,7 +93,7 @@
     goal.textContent = active?.label ?? (player.stages.length && reached === player.stages.length ? 'すべて達成' : '進捗の受信待ち')
     total.textContent = player.stages.length ? `${reached} / ${player.stages.length} 達成` : ''
     const nextIds = player.stages.map(stage => stage.id)
-    // Keep the buttons mounted while polling so keyboard focus and scroll persist.
+    // Keep the buttons mounted while polling to preserve keyboard focus.
     if (nextIds.join(' ') !== [...stageButtons.keys()].join(' ')) {
       stageButtons.clear()
       stages.replaceChildren(...player.stages.map(stage => {
@@ -110,7 +110,6 @@
         stageButtons.set(stage.id, button)
         return item
       }))
-      initialized = false
     }
     for (const stage of player.stages) {
       const button = stageButtons.get(stage.id)
@@ -121,16 +120,6 @@
       button.setAttribute('aria-label', `${stage.label}、${labelsForStatus[state]}`)
       if (state === 'current') button.setAttribute('aria-current', 'step')
       else button.removeAttribute('aria-current')
-    }
-    if (!initialized || currentStage !== player.current) {
-      const button = stageButtons.get(player.current)
-      if (button) {
-        const list = stages.getBoundingClientRect(), step = button.getBoundingClientRect()
-        if (step.right > list.right) stages.scrollLeft += step.right - list.right + 3
-        else if (step.left < list.left) stages.scrollLeft -= list.left - step.left + 3
-      } else if (!initialized) stages.scrollLeft = 0
-      initialized = true
-      currentStage = player.current
     }
     if (selected && detail.open) renderDetail(player)
   }
@@ -146,7 +135,6 @@
     panel.dataset.mode = current
     if (roadmap.hidden === player) {
       roadmap.hidden = !player
-      initialized = false
       signature = null
     }
     if (!player && detail.open) detail.close()
