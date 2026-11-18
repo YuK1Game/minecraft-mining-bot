@@ -44,6 +44,8 @@ function createDragonSupplies (ctx) {
   const deps = { operations, getFeet: ctx.getFeet, getBlock, getInventory, disposed: cancelled }
   const bench = createStoragePorts(deps), house = createHousePorts(deps), box = createContainerPorts(deps)
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+  // Why the last step of this run did nothing (a refused open click, …): shown with the reason, so a stall is not silent.
+  let trouble = null
 
   async function station (name) {
     const saved = ctx.memory?.early
@@ -108,7 +110,7 @@ function createDragonSupplies (ctx) {
         const furnace = await station('furnace')
         const plank = rows().find(i => matches('planks', i))
         const fuel = held('coal') ? 'minecraft:coal' : held('charcoal') ? 'minecraft:charcoal' : plank?.name
-        if (furnace && fuel && !cancelled()) await house.smelt(furnace, full(material), 1, fuel, 1, full(name))
+        if (furnace && fuel && !cancelled()) { house.reset(); if (!await house.smelt(furnace, full(material), 1, fuel, 1, full(name)) && house.why()) trouble = 'かまど: ' + house.why() }
       }
     } else if (recipe) {
       const missing = Object.entries(recipe).find(([part, need]) => held(part) < need)
@@ -125,7 +127,7 @@ function createDragonSupplies (ctx) {
     } else if (SOURCES[name] || MOBS[name]) await collect(ctx, name)
     else return { ...pending(full(name) + ' の回収を待っています。'), missing: { name, count: target } }
     const current = held(name)
-    return current >= target ? done(name + ' の所持数を確認しました。') : pending(name + ' を準備しています（' + current + '/' + target + '）。')
+    return current >= target ? done(name + ' の所持数を確認しました。') : pending(name + ' を準備しています（' + current + '/' + target + '）。' + (trouble ? '（' + trouble + '）' : ''))
   }
 
   async function inspect (pos) {

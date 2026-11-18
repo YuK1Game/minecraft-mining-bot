@@ -212,7 +212,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
       if (!visible) throw Object.assign(new Error('作業台への既知の視線がありません。安全な足場から再確認してください。'), { code: 'INTERACTION_ACCESS_REQUIRED' })
       return { target, clicked: target, face: visible.face, clickPos: visible.clickPos, point: visible.point, blockRuntimeId: block.runtimeId, expectedBlock: block.name, container, slot, raw }
     }
-    const { face, point, clickPos } = containerFace(state.position, target)
+    const { face, point, clickPos } = containerFace(state.position, target, pos => world.getBlock(pos.x, pos.y, pos.z))
     lineOfSight(point, target)
     return { target, clicked: target, face, clickPos, point, blockRuntimeId: block.runtimeId, expectedBlock: block.name, container, slot, raw }
   }
