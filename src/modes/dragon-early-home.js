@@ -74,6 +74,25 @@ async function approachHome (ctx, destination, { open = false } = {}) {
   if (cancelled()) return false
   if (!await openDoor({ origin, getBlock, getFeet, walk: hands.walk, useDoor: at => operations.interactions.useDoor(at), log: ctx.log }) || cancelled()) return false
   if (!close(getFeet(), destination, 4)) await hands.approach(destination, 3)
+  // At the house and still not at the thing (a floor the creeper opened, between the porch and the furnace): the
+  // way that digs and stacks goes to the thing itself, with floor blocks over the gaps. The way to the porch from
+  // here only leads back out (live 2026-11-19 04:42-05:01 JST: 「掘る・積む道で着きました（12 歩…）」 61 times in
+  // twenty minutes around the door, feet at y 73-75 under the floor, and no cook).
+  const near = () => { const feet = getFeet(); return inside() || close(feet, porch, 6) || close(feet, destination, 10) }
+  if (!cancelled() && !close(getFeet(), destination, 4) && near()) {
+    const state = shared.dragonHomeInner
+    if (!state || now() >= state.until) {
+      const beside = cell => Math.max(Math.abs(cell.x - destination.x), Math.abs(cell.z - destination.z)) <= 2 && Math.abs(cell.y - destination.y) <= 1 && !(cell.x === destination.x && cell.z === destination.z)
+      const out = await createBuildWalk({ hands, getHouse: () => shared.playerHouse, log: ctx.log })(destination, { done: beside, aborted: cancelled })
+      if (out.ok || cancelled()) shared.dragonHomeInner = null
+      else {
+        shared.dragonHomeInner = { until: now() + RETRY_MS }
+        const feet = getFeet()
+        ctx.log?.(`プレイヤーモード: 本拠点の中の ${destination.x}, ${destination.y}, ${destination.z} へ、掘る・積む道でも行けませんでした（${out.code}。足元 ${feet ? `${Math.floor(feet.x)}, ${Math.floor(feet.y)}, ${Math.floor(feet.z)}` : '?'}）。1分後にもう一度試します`)
+      }
+    }
+    return !cancelled() && close(getFeet(), destination, 4) && (!open || createOpenStand({ getBlock, getFeet, walk: hands.walk }).go(destination, cancelled))
+  }
   // No walk got there (the roof, a ledge beside the house): the same way once, then the walk again.
   if (!cancelled() && !close(getFeet(), destination, 4) && !inside() && await byBuild() && !cancelled()) await hands.approach(destination, 3)
   if (cancelled() || !close(getFeet(), destination, 4)) return false

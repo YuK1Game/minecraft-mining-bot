@@ -204,3 +204,33 @@ test('a trip that moved is not followed by a dug way', async () => {
   assert.deepEqual(f.did, [])
   assert.equal(f.logs.length, 0)
 })
+
+test('under the opened floor at the door: the way that digs and stacks goes to the thing inside, not back to the porch', async () => {
+  // Live 2026-11-19 04:42-05:01 JST: the creeper of 01:34 took the door and the floor behind it. The walk to the
+  // furnace ended in the hole (feet y 73-75), the way to the porch led out again, 61 times in twenty minutes.
+  const world = createOverhangWorld()
+  for (let x = origin.x + 1; x <= origin.x + 5; x++) for (let z = origin.z + 1; z <= origin.z + 5; z++) for (let y = origin.y + 1; y <= origin.y + 3; y++) world.setBlock(x, y, z, 'air')
+  for (let y = origin.y + 1; y <= origin.y + 2; y++) world.setBlock(origin.x + 3, y, origin.z + 6, 'air')
+  for (let x = origin.x + 2; x <= origin.x + 4; x++) for (let z = origin.z + 5; z <= origin.z + 8; z++) {
+    world.setBlock(x, origin.y - 3, z, 'stone')
+    for (let y = origin.y - 2; y <= origin.y + 2; y++) world.setBlock(x, y, z, 'air')
+  }
+  const f = bot(world, { x: origin.x + 3, y: origin.y - 2, z: origin.z + 7 }, { fill: 20 })
+  f.ctx.hands.approach = async () => { f.did.push('approach'); return false }
+  const chest = chestOf(origin)
+  assert.equal(await approachHome(f.ctx, chest), true, f.logs.join('\n'))
+  assert.deepEqual(f.trips, [])
+  assert.ok(Math.hypot(f.body.x - (chest.x + 0.5), f.body.z - (chest.z + 0.5)) <= 3 && Math.abs(f.body.y - chest.y) <= 1, JSON.stringify(f.body))
+  assert.ok(!f.logs.some(line => /入口へ/.test(line)), f.logs.join('\n'))
+
+  // No step can be taken: the reason once, and the next attempt a minute later.
+  const stuck = bot(world, { x: origin.x + 3, y: origin.y - 2, z: origin.z + 7 }, { walkable: false })
+  stuck.ctx.hands.approach = async () => false
+  stuck.ctx.hands.canMine = () => false
+  assert.equal(await approachHome(stuck.ctx, chest), false)
+  assert.equal(stuck.logs.filter(line => /本拠点の中の .* へ、掘る・積む道でも行けませんでした/.test(line)).length, 1, stuck.logs.join('\n'))
+  const before = stuck.logs.length
+  stuck.tick(2000)
+  assert.equal(await approachHome(stuck.ctx, chest), false)
+  assert.equal(stuck.logs.length, before)
+})
