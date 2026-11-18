@@ -33,6 +33,7 @@ const { createStoragePorts } = require('./player-storage-ports')
 const { nextObjective } = require('./player-goal')
 const { pruneTunnelFloors } = require('./player-floor-prune')
 const { noteDamage } = require('./damage-note')
+const { createGroundRefresh } = require('../movement/ground-refresh')
 const { playFile, createPlayerResume } = require('./player-resume')
 const { createPlayerBase, baseFile, loadBaseSync } = require('./player-base')
 const { returnFile, loadReturnSync } = require('./return/return-goal')
@@ -310,11 +311,15 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const defenseNote = () => { const safe = (() => { try { return operations.safety.snapshot() } catch { return null } })(); return `離れる ${flee.status().skip ?? (flee.status().active ? '実行中' : '-')}・射線 ${cover.status().skip ?? (cover.status().active ? '実行中' : '-')}・待機保護 ${safe?.phase ?? '?'}${safe?.active ? `/${safe.active}` : ''}・プレイ ${shared.playerWanted === true ? '中' : '外'}` }
   const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else { void flee.tick().catch(() => {}); void cover.tick().catch(() => {}); try { noteDamage({ shared, health: runtime.raw().health, position: where(), actors: runtime.host().entities.snapshot({ kind: 'all' }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, why: defenseNote }) } catch { /* A log line only. */ } } }), 500)
   fleeTimer.unref?.()
+  // The received world behind the server under the feet: the terrain there is asked for again
+  // (live 2026-11-18 07:09-09:48 JST, movement/ground-refresh.js).
+  const ground = createGroundRefresh({ getCorrection: () => shared.lastServerCorrection, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getDimension: () => runtime.raw().dimension, send: request => runtime.host().client.queue('subchunk_request', request), log })
   // The shelter is checked every two seconds; a reloaded runtime's timer ends itself.
   const timer = setInterval(require('../common/work-spans').wrap('player-mode.tick', () => {
     if (disposed()) return clearInterval(timer)
     void resume.note()
     try { const gone = control.get() === 'player' ? pruneTunnelFloors(shared, runtime.raw(), where()) : 0; if (gone) log(`プレイヤーモード: 帰路の床の記録が多いため、遠いものから ${gone} 個を外しました`) } catch { /* The next tick retries. */ }
+    try { if (shared.playerWanted === true) ground.tick() } catch { /* The next tick retries. */ }
     keepAim()
     void shelter.tick()
     void scaffold.tick().catch(() => {})

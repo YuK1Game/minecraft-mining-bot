@@ -12,7 +12,7 @@ const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 
 const root = path.resolve(__dirname, '..')
-const IN_LANE = /^(?:player-|house-|bot-mode|mode-|travel-dry-start|damage-note|low-block).*\.test\.js$/
+const IN_LANE = /^(?:player-|house-|bot-mode|mode-|travel-dry-start|damage-note|low-block|ground-refresh).*\.test\.js$/
 const EXCLUDED = {
   'player-drop-access.test.js': '2 failures on main before this lane existed (e275fd0): the way to a dropped item, not the return to the base'
 }
