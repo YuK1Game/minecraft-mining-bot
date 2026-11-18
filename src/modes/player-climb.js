@@ -12,6 +12,10 @@
 // through. The mining preview refuses liquid, falling blocks and unreceived
 // terrain above; the climb then stops with the reason. Leaves are never cut.
 // The dirt column stays behind as the filled shaft.
+// It also ends where it has come out of the ground and a walk from there
+// leads to the open sky, although more ground lies far overhead (`wayOut`;
+// real Realm 2026-11-18 12:06-12:10 JST: 87 steps, the last 18 through the
+// open air under an overhang, up onto ground with no way down to the house).
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const LEAVES = /_leaves$/
 const TREE = /_(?:leaves|log|wood|stem)$|leaf_litter/
@@ -19,7 +23,7 @@ const SCAN_UP = 64
 const MAX_STEPS = 96
 
 // ports: the scaffold's hands (player-scaffold-ports.js).
-async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), maxSteps = MAX_STEPS }) {
+async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), maxSteps = MAX_STEPS, wayOut = null }) {
   const { feet, block, dirt, walk, canMine, mine, pillar } = ports
   // Dirt, or the cobblestone mined on the way up (real Realm 2026-11-16 08:39
   // JST: 64 blocks under the surface with 34 dirt).
@@ -38,7 +42,7 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
     }
     return 'open'
   }
-  let steps = 0, top = null, reason = null, detail = null
+  let steps = 0, top = null, reason = null, detail = null, walkable = false
   if (above(Math.floor(start.y + 0.001)) !== 'cover') return { ok: false, reason: 'NOT_UNDER_COVER', steps }
   const base = Math.floor(start.y + 0.001), centre = { x: column.x + 0.5, y: base, z: column.z + 0.5 }
   await walk(centre)
@@ -77,6 +81,10 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
     if (at === null) { reason = 'LEFT_COLUMN'; break }
     const sky = above(at)
     if (sky !== 'cover' && top !== null && at > top) break // feet level with the ground dug through
+    // Out of the ground with more ground far overhead (an overhang, a cave with
+    // a mouth): where a walk leads to the open sky, the climb ends here and
+    // does not stack its pillar through the open air (player-sky-walk.js).
+    if (sky === 'cover' && top !== null && at > top && wayOut?.()) { walkable = true; break }
     if (sky === 'unknown' && top === null) { reason = 'UNKNOWN_ABOVE'; break }
     if (steps >= maxSteps) { reason = 'TOO_HIGH'; break }
     for (const y of [at + 2, at + 3]) {
@@ -104,8 +112,8 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
   }
   if (aborted() && !reason) reason = 'INTERRUPTED'
   if (reason) detail ??= ports.why?.() ?? null
-  log(reason ? `プレイヤーモード: 真上へ掘る途中で止まりました（${steps}段、${reason}${detail ? `、${detail}` : ''}）` : `プレイヤーモード: 真上へ${steps}段のぼって地上へ出ました（土の柱は残します）`)
-  return { ok: !reason, reason, steps, detail }
+  log(reason ? `プレイヤーモード: 真上へ掘る途中で止まりました（${steps}段、${reason}${detail ? `、${detail}` : ''}）` : walkable ? `プレイヤーモード: 真上へ${steps}段のぼりました。ここから空の見える場所へ歩いて出られるので、頭上の地面へは登りません（土の柱は残します）` : `プレイヤーモード: 真上へ${steps}段のぼって地上へ出ました（土の柱は残します）`)
+  return { ok: !reason, reason, steps, detail, walkable }
 }
 
 module.exports = { climbOut }
