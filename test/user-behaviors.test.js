@@ -101,3 +101,18 @@ test('pre-existing ranged cleanup blocks bed work, and packet forwarding sees al
   f.facade.applyPacket('update_attributes', { runtime_entity_id: 1n })
   assert.ok(f.controllerPackets.every(packet => packet.health === 3))
 })
+
+test('one scoped expedition shot shares the ordinary combat lease and rejects a changed crystal identity', async () => {
+  const f = fixture()
+  f.state.dimension = 'end'
+  f.state.health = 20
+  const actor = { ...f.hostile('123'), dimension:'end', kind:'entity', hostile:false, entityType:'minecraft:ender_crystal' }
+  f.actors.push(actor)
+  await assert.rejects(f.facade.expeditionStrike({ ...actor, uniqueId:'-987' }, 'bow'))
+  await assert.rejects(f.facade.expeditionStrike(actor, 'melee'))
+  assert.equal(f.rootCalls.length, 0)
+  const result = await f.facade.expeditionStrike(actor, 'bow')
+  assert.equal(result.targetRuntimeId, '123')
+  assert.deepEqual(f.events, ['acquire_combat','engage_ranged','resume_combat'])
+  assert.equal(f.held(), null)
+})

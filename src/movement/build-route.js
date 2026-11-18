@@ -38,7 +38,7 @@ const COST = { walk: 1, step: 1.5, soft: 2, hard: 5, shaft: 3, stack: 5 }
 
 const keyOf = (x, y, z) => `${x},${y},${z}`
 
-function * search ({ getBlock, start, done, target, blocks = 0, refused = null, barred = null, pad = 12, rise = 8, maxNodes = 12000, maxMs = 1500, now = Date.now }) {
+function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = true, refused = null, barred = null, pad = 12, rise = 8, maxNodes = 12000, maxMs = 1500, now = Date.now }) {
   const lo = { x: Math.min(start.x, target.x) - pad, y: Math.min(start.y, target.y) - rise, z: Math.min(start.z, target.z) - pad }
   const hi = { x: Math.max(start.x, target.x) + pad, y: Math.max(start.y, target.y) + rise, z: Math.max(start.z, target.z) + pad }
   const inside = (x, y, z) => x >= lo.x && x <= hi.x && y >= lo.y && y <= hi.y && z >= lo.z && z <= hi.z
@@ -120,7 +120,7 @@ function * search ({ getBlock, start, done, target, blocks = 0, refused = null, 
       }
     }
     // Down the own pillar: the block under the feet, a received solid block under it.
-    if (OWN.test(at(x, y - 1, z).name) && minable(x, y - 1, z) && at(x, y - 2, z).floor && SIDES.every(([dx, dz]) => !['water', 'hazard', 'unknown'].includes(at(x + dx, y, z + dz).kind))) offer(node, x, y - 1, z, COST.shaft, { kind: 'shaft', dig: [] })
+    if (allowShaft && OWN.test(at(x, y - 1, z).name) && minable(x, y - 1, z) && at(x, y - 2, z).floor && SIDES.every(([dx, dz]) => !['water', 'hazard', 'unknown'].includes(at(x + dx, y, z + dz).kind))) offer(node, x, y - 1, z, COST.shaft, { kind: 'shaft', dig: [] })
     // One pillar step up, from the blocks carried.
     if (node.used < blocks) {
       const dig = through([[x, y + 2, z]])

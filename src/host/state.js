@@ -42,13 +42,14 @@ function createState (profile, clock = () => new Date().toISOString()) {
   function applyPacket (name, packet) {
     switch (name) {
       case 'start_game':
+        state.chunkPublisher = null
         state.healthSource = null
         state.spawnPending = false
         resetBreath()
         state.runtimeEntityId = String(packet.runtime_entity_id)
         uniqueEntityId = packet.entity_id == null ? null : String(packet.entity_id)
         worldGameMode = packet.world_gamemode
-        state.dimension = packet.dimension
+        state.dimension = ['overworld', 'nether', 'end'][packet.dimension] ?? packet.dimension
         state.spawnPosition = vector(packet.spawn_position)
         state.rotation = packet.rotation ? { pitch: packet.rotation.x, yaw: packet.rotation.z } : null
         state.gameMode = packet.player_gamemode === 'fallback' || packet.player_gamemode === 5 ? packet.world_gamemode : packet.player_gamemode ?? null
@@ -65,13 +66,19 @@ function createState (profile, clock = () => new Date().toISOString()) {
       case 'server_post_move':
         setPosition(packet.position, name)
         break
+      case 'network_chunk_publisher_update': {
+        const center = vector(packet.coordinates)
+        state.chunkPublisher = center && Number.isSafeInteger(packet.radius) && packet.radius > 0 ? { center, radius: packet.radius, dimension: state.dimension } : null
+        break
+      }
       case 'change_dimension':
+        state.chunkPublisher = null
         resetBreath()
         state.dimension = ['overworld', 'nether', 'end'][packet.dimension] ?? packet.dimension
         setPosition(packet.position, name)
         break
       case 'respawn':
-        if (ownEntity(packet.runtime_entity_id) && packet.state === 1) { resetBreath(); setPosition(packet.position, name) }
+        if (ownEntity(packet.runtime_entity_id) && packet.state === 1) { state.chunkPublisher = null; resetBreath(); setPosition(packet.position, name) }
         break
       case 'set_entity_data': {
         if (!ownEntity(packet.runtime_entity_id) || !Array.isArray(packet.metadata)) break

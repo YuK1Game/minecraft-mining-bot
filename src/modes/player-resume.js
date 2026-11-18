@@ -22,7 +22,7 @@ function createPlayerResume ({ file, shared, getMode, log = () => {}, load = loa
   function restore () {
     if (typeof shared.playerWanted === 'boolean') { saved = load(file); return false }
     saved = load(file)
-    const resume = saved && normalizeMode(getMode()) === 'player' && shared.quarryRestoreDisabled !== true
+    const resume = (saved || shared.autoWanted === true) && normalizeMode(getMode()) === 'player' && shared.quarryRestoreDisabled !== true
     shared.playerWanted = resume
     if (!resume) return false
     // Idle protection belongs to playing, as in a normal start.

@@ -423,3 +423,29 @@ test('pillar descent also takes down a cobblestone pillar, with no pickaxe in th
   const preview = f.mining.preview([{ ...below, accessPreparation: 'pillar_descent', expectedName: 'minecraft:cobblestone', expectedRuntimeId: 9 }])
   assert.equal(preview.ready, true, JSON.stringify(preview.errors))
 })
+
+test('farm harvest rechecks actual crop growth, dimension and block runtime before sending mining input', () => {
+  const f = fixture()
+  const t = { ...f.target, accessPreparation: 'farm_harvest', expectedName: 'minecraft:wheat', expectedRuntimeId: 84 }
+  const setGrowth = growth => f.blocks.set(f.id(t), { known: true, name: 'minecraft:wheat', runtimeId: 84, properties: { growth }, extra: [] })
+  setGrowth(5)
+  assert.equal(f.mining.preview([t]).ready, false)
+  setGrowth(7)
+  assert.equal(f.mining.preview([t]).ready, true)
+  assert.equal(f.mining.preview([{ ...t, expectedRuntimeId: 2 }]).ready, false)
+  f.state.dimension = 'end'
+  assert.equal(f.mining.preview([t]).ready, false)
+  assert.deepEqual(f.actions, [])
+})
+
+test('Nether escape tunnel mines received netherrack with a real pickaxe, refusing new lava beside the cut', () => {
+  const f = fixture()
+  f.state.dimension = 'nether'
+  f.set(f.target, 'netherrack')
+  f.state.selectedSlot = 0
+  f.state.heldItem = { name: 'minecraft:diamond_pickaxe', slot: 0, count: 1 }
+  f.state.inventory.items.push(f.state.heldItem)
+  assert.equal(f.mining.preview([f.target]).ready, true)
+  f.set({ ...f.target, z: 1 }, 'lava')
+  assert.equal(f.mining.preview([f.target]).ready, false)
+})

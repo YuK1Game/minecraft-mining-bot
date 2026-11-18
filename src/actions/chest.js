@@ -402,7 +402,7 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
     const open = craftingStatus().openContainer
     matches = matches && windowId(open?.id) === window?.id && storageWindowMatches(open?.type, storageContainerType(window?.blockName))
     const result = { version, window: copy(window), kind: window?.kind ?? null, blockName: window?.blockName ?? null, slotCount: window?.slotCount ?? null, contentsKnown: matches && contentsKnown, needsOpen: !matches || !contentsKnown || window?.replayed === true, inventoryUncertain, busy: pending !== null, pendingRequestId: pending?.id ?? null, observationSource, lastResult: copy(lastResult) }
-    if (includeSlots) result.slots = Array.from({ length: window?.slotCount ?? window?.expectedSlots ?? 27 }, (_, slot) => { const raw = slots.get(slot); return { slot, known: matches && validRaw(raw), name: raw && !rawEmpty(raw) ? names.get(raw.network_id) ?? null : null, count: matches && raw ? raw.count : null, stackId: matches && validRaw(raw) && !rawEmpty(raw) ? raw.stack_id : null } })
+    if (includeSlots) result.slots = Array.from({ length: window?.slotCount ?? window?.expectedSlots ?? 27 }, (_, slot) => { const raw = slots.get(slot); return { slot, known: matches && validRaw(raw), name: raw && !rawEmpty(raw) ? names.get(raw.network_id) ?? null : null, metadata: matches && raw ? raw.metadata : null, count: matches && raw ? raw.count : null, stackId: matches && validRaw(raw) && !rawEmpty(raw) ? raw.stack_id : null } })
     return result
   }
   const status = () => readState(false)

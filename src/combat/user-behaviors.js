@@ -1,6 +1,7 @@
 'use strict'
 
 const { performance } = require('node:perf_hooks')
+const { permittedTarget } = require('./expedition-target')
 const { createMeleeCombat } = require('./melee-combat')
 const { createRangedCombat } = require('./ranged-combat')
 const { createCombatCoordinator } = require('./combat-coordinator')
@@ -39,8 +40,15 @@ function createUserBehaviors ({ client, getState, getRawState, world, entities, 
   }
   const equipCombat = (slot, options = {}) => { requireLease('combat', options.signal); return inventory.equipForCombat(slot, options) }
   const cancelCombatEquip = reason => { if (control?.kind === 'combat') inventory.cancel?.(reason) }
-  const melee = controllers.melee ?? createMeleeCombat({ ...meleeOptions, client, getState, getRawState, world, entities, crafting, equip: equipCombat, cancelEquip: cancelCombatEquip, getInput, previewHop, startHop, getMovement, stopHop, getItemComponents, getTargetWet, isBusy: combatBusy, version, now, wallNow, ...(sleep ? { sleep } : {}) })
-  const ranged = controllers.ranged ?? createRangedCombat({ ...rangedOptions, client, getState, world, entities, crafting, equip: equipCombat, cancelEquip: cancelCombatEquip, getInput, getSelfUniqueId: getSelfUniqueId ?? (() => getRawState()?.uniqueEntityId ?? null), isBusy: combatBusy, onUncertain, version, now, ...(sleep ? { sleep } : {}) })
+  // A single received identity and weapon, for the duration of one player expedition input.
+  const missionTarget = weapon => actor => {
+    const grant = control?.expedition
+    return control?.acquired === true && !control.cancelled && grant?.weapon === weapon &&
+      actor.runtimeId === grant.actor.runtimeId && actor.uniqueId === grant.actor.uniqueId &&
+      actor.entityType === grant.actor.entityType && permittedTarget(actor, getState().dimension, weapon)
+  }
+  const melee = controllers.melee ?? createMeleeCombat({ ...meleeOptions, missionTarget: missionTarget('melee'), client, getState, getRawState, world, entities, crafting, equip: equipCombat, cancelEquip: cancelCombatEquip, getInput, previewHop, startHop, getMovement, stopHop, getItemComponents, getTargetWet, isBusy: combatBusy, version, now, wallNow, ...(sleep ? { sleep } : {}) })
+  const ranged = controllers.ranged ?? createRangedCombat({ ...rangedOptions, missionTarget: missionTarget('bow'), client, getState, world, entities, crafting, equip: equipCombat, cancelEquip: cancelCombatEquip, getInput, getSelfUniqueId: getSelfUniqueId ?? (() => getRawState()?.uniqueEntityId ?? null), isBusy: combatBusy, onUncertain, version, now, ...(sleep ? { sleep } : {}) })
 
   async function cleanupBed (lease, reason) {
     if (!lease || lease.kind !== 'bed' || control !== lease) return
@@ -130,6 +138,25 @@ function createUserBehaviors ({ client, getState, getRawState, world, entities, 
     retreat: retreat ? (actor, options) => { const lease = requireLease('combat', options.signal); if (lease.engineId !== options.claimId) throw new Error('Combat retreat claim changed'); return retreat(actor, context(lease, { ...options, kind: 'combat', claimId: lease.id, coordinatorClaimId: options.claimId, token: lease.token })) } : null,
     canAct: options => !bedStatus.sleeping && allowed('combat', { ...options, claimId: options.claimId == null ? null : `combat:${options.claimId}`, coordinatorClaimId: options.claimId, token: control?.kind === 'combat' ? control.token : null }), now, ...(sleep ? { sleep } : {}) })
 
+  async function expeditionStrike (actor, weapon, { signal } = {}) {
+    const state = getState()
+    const current = entities.snapshot({ kind: 'all' }).find(e => e.runtimeId === actor?.runtimeId && e.uniqueId === actor.uniqueId && e.entityType === actor.entityType)
+    if (signal?.aborted || !live(state) || !(state.health > 10) || !permittedTarget(current, state.dimension, weapon) ||
+        !allowed('combat') || control || combatHeld() || bedWorker || refreshBed().sleeping) throw Error('遠征の交戦条件を再確認します。')
+    const claimId = `expedition-${++sequence}`, claimScope = scope(state)
+    const admission = await acquireCombat({ claimId, scope: claimScope, signal })
+    if (!admission.acquired) throw Error('別の操作が進行しています。')
+    const lease = control
+    lease.expedition = { weapon, actor: current }
+    try {
+      if (signal?.aborted || scopeKey(getState()) !== JSON.stringify(claimScope) || !missionTarget(weapon)(current)) throw Error('遠征の対象または次元が変わりました。')
+      const options = { signal, boundTarget: current, critical: false, maxShots: 1, maxHits: 1, durationMs: 4200 }
+      return await (weapon === 'melee' ? melee : ranged).engage(current.runtimeId, options)
+    } finally {
+      await resumeCombat({ token: admission.token, claimId, reason: '遠征の攻撃入力終了', canActNow: false })
+    }
+  }
+
   function startBed (observedSleep = false) {
     if (bedWorker || combatHeld() || control?.kind === 'combat') return
     let lease = control
@@ -179,6 +206,7 @@ function createUserBehaviors ({ client, getState, getRawState, world, entities, 
       if (control?.kind === 'bed' && control.blocked) {
         if (!stoppingBed && clock() >= (control.retryAt ?? 0)) { const task = stopBed('Retry confirmed bed cleanup'); stoppingBed = task; void task.finally(() => { if (stoppingBed === task) stoppingBed = null }) }
       }
+      if (control?.expedition) return Promise.resolve(snapshot())
       const nextCombat = combat.tick()
       if (combatTask !== nextCombat) { combatTask = nextCombat; void Promise.resolve(nextCombat).catch(error => { lastError = message(error) }).finally(() => { if (combatTask === nextCombat) combatTask = null; publish() }) }
       if (combatHeld()) return Promise.resolve(snapshot())
@@ -201,6 +229,10 @@ function createUserBehaviors ({ client, getState, getRawState, world, entities, 
     publish()
   }
   function cancel (reason = 'User behaviors cancelled', code = 'CANCELLED') {
+    if (control?.expedition) {
+      melee.cancel(reason, code)
+      ranged.cancel(reason, code)
+    }
     if (control) control.cancelled = true
     try { combat?.cancel(reason, code) } catch (error) { lastError = message(error) }
     const task = stopBed(reason)
@@ -214,7 +246,7 @@ function createUserBehaviors ({ client, getState, getRawState, world, entities, 
     const pending = !control && c.claim ? { kind: 'combat', claimId: `combat:${c.claim.claimId}`, phase: c.phase, acquired: false, blocked: c.blocked === true, hasToken: false, token: null, scope: c.claim.scope } : null
     return { busy: !!(control || c.busy || bedWorker || sleeping || cleanupUnconfirmed), claim: publicClaim(control) ?? pending, activeKind: sleeping ? 'sleeping' : control?.kind ?? (c.busy || cleanupUnconfirmed ? 'combat' : null), sleeping, blocked: control?.blocked === true || c.blocked === true || cleanupUnconfirmed, cleanupUnconfirmed, combat: c, melee: m, ranged: r, bed: { ...bedStatus }, lastError }
   }
-  return { tick, applyPacket, cancel, drain, snapshot, explainCombat: () => combat?.explain?.() ?? null, ownsBedTarget: (state, target, block) => control?.kind === 'bed' && control.acquired && !control.cancelled && !control.blocked && bed.ownsTarget(state, target, block) === true }
+  return { tick, expeditionStrike, applyPacket, cancel, drain, snapshot, explainCombat: () => combat?.explain?.() ?? null, ownsBedTarget: (state, target, block) => control?.kind === 'bed' && control.acquired && !control.cancelled && !control.blocked && bed.ownsTarget(state, target, block) === true }
 }
 
 module.exports = { createUserBehaviors }

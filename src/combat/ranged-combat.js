@@ -12,6 +12,7 @@ const STRAFING_ARCHERS = new Set(['minecraft:skeleton', 'minecraft:stray', 'mine
 // The server never echoes our own cancel-slot switch, so this bound is what
 // actually ends a cleanup; the next draw re-sends the bow selection anyway.
 const CLEANUP_SETTLE_MAX_MS = 250
+const { crystal } = require('./expedition-target')
 const { isAttackableHostileType } = require('./mob-catalog')
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const copy = value => structuredClone(value)
@@ -64,7 +65,7 @@ function bowBodyAim (eye, entity) {
 // The local 1.26.60 schema provides click_air and item_release/release. The
 // primary Bedrock PMMP handler maps those to useHeldItem/releaseHeldItem, and
 // Bow.php reaches normal full draw at 20 ticks, with no synthetic consume action.
-function createRangedCombat ({ client, getState, world, entities, crafting, equip, cancelEquip = null, onSelectionSent = null, getInput, getSelfUniqueId, isBusy = () => false, onUncertain = () => {}, version = VERSION, minDistance = 4, maxDistance = 32, cooldownMs = 50, shotTimeoutMs = 2500, fullDrawTicks = 20, fullDrawMs = 1000, latencyTicks = BOW_DEFAULTS.latencyTicks, ballistic = true, now = () => performance.now(), sleep = (ms, signal) => delay(ms, undefined, { signal }), log = () => {} }) {
+function createRangedCombat ({ client, getState, world, entities, crafting, equip, cancelEquip = null, onSelectionSent = null, getInput, getSelfUniqueId, isBusy = () => false, onUncertain = () => {}, version = VERSION, missionTarget = () => false, minDistance = 4, maxDistance = 32, cooldownMs = 50, shotTimeoutMs = 2500, fullDrawTicks = 20, fullDrawMs = 1000, latencyTicks = BOW_DEFAULTS.latencyTicks, ballistic = true, now = () => performance.now(), sleep = (ms, signal) => delay(ms, undefined, { signal }), log = () => {} }) {
   if (version !== VERSION) throw new Error('Ranged combat supports Bedrock 1.26.60 only')
   if ([getState, equip, getInput, getSelfUniqueId, isBusy, onUncertain, now, sleep].some(f => typeof f !== 'function') || typeof client?.queue !== 'function' || typeof world?.getBlock !== 'function' || typeof entities?.snapshot !== 'function' || typeof crafting?.snapshot !== 'function' || typeof crafting?.rawItem !== 'function' || cancelEquip != null && typeof cancelEquip !== 'function') throw new Error('Ranged combat requires live state, terrain, actors, confirmed equipment and normal input')
   if (!(minDistance >= 3.2 && maxDistance > minDistance && maxDistance <= 40) || !(cooldownMs >= 50 && cooldownMs <= 5000) || !(shotTimeoutMs >= 500 && shotTimeoutMs <= 10000)) throw new Error('Invalid ranged combat limits')
@@ -142,11 +143,12 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
       // target. Also keep the launch area clear, including just behind the
       // shooter. A known player farther to the side does not intersect it.
       if (player && Math.hypot(center.x - origin.x, center.z - origin.z) <= 1.25 && Math.abs(center.y - origin.y) <= 2.5) throw failure('Another player is within the arrow launch area', 'OTHER_PLAYER')
+      if (player && crystal(target.entityType) && distance(other.position, target.position) <= 14) throw failure('A player is near the crystal explosion', 'OTHER_PLAYER')
       if (other.hostile === true && d <= 3.2) throw failure('Another hostile is already within melee range', 'SECONDARY_MELEE_THREAT')
       // Protect friends/passives/unknown types behind the target too: a missed
       // arrow can continue. The broad vertical corridor also covers arrow drop.
       const projection = (center.x - origin.x) * direction.x + (center.y - origin.y) * direction.y + (center.z - origin.z) * direction.z
-      if (projection < 0 || projection > maxDistance + 4) continue
+      if (projection < 0 || projection > Math.max(maxDistance, aim.distance) + 4) continue
       const p = { x: origin.x + direction.x * projection, y: origin.y + direction.y * projection, z: origin.z + direction.z * projection }
       // Another hostile mob in the corridor (two zombies walking in together)
       // only takes the arrow instead of the target; players, passives and
@@ -168,7 +170,7 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
     // half the lead (smallest error whether they keep going or turn back).
     const leadScale = STRAFING_ARCHERS.has(target.entityType) ? 0.5 : 1
     if (velocity && leadScale !== 1) velocity = { x: velocity.x * leadScale, y: velocity.y * leadScale, z: velocity.z * leadScale }
-    const solution = solveBowAim({ eye, point: body.point, velocity, speed: observedArrowSpeed ?? BOW_DEFAULTS.speed, latencyTicks })
+    const solution = solveBowAim({ eye, point: body.point, velocity, elevatedTarget: crystal(target.entityType) && missionTarget(target), speed: observedArrowSpeed ?? BOW_DEFAULTS.speed, latencyTicks })
     if (!solution) throw failure('No full-draw arrow trajectory reaches the target', 'RANGE')
     return { point: solution.intercept, bodyPoint: copy(body.point), lookPoint: solution.lookPoint, yaw: solution.yaw, pitch: solution.pitch, distance: body.distance, interceptDistance: distance(eye, solution.intercept), flightTicks: solution.flightTicks, leadTicks: solution.leadTicks, lead: solution.lead, origin: solution.origin, speed: solution.speed, mode: 'ballistic_lead', ballisticHitConfirmed: false }
   }
@@ -182,10 +184,10 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
     const s = inventory(); const all = entities.snapshot({ kind: 'all' })
     if (id(runtimeId) === null) throw failure('Valid target runtime ID required', 'INVALID_TARGET')
     const target = all.find(e => id(e.runtimeId) === id(runtimeId))
-    if (!target || target.kind !== 'mob' || target.hostile !== true || !isAttackableHostileType(target.entityType) || target.alive !== true || target.positionKnown !== true || !finite(target.position) || target.dimension !== s.state.dimension || id(target.uniqueId, true) === null || id(target.runtimeId) === String(s.state.runtimeEntityId)) throw failure('Only an identified live hostile mob may be targeted', 'INVALID_TARGET')
+    if (!target || (!(target.kind === 'mob' && target.hostile === true && isAttackableHostileType(target.entityType)) && !missionTarget(target)) || target.alive !== true || target.positionKnown !== true || !finite(target.position) || target.dimension !== s.state.dimension || id(target.uniqueId, true) === null || id(target.runtimeId) === String(s.state.runtimeEntityId)) throw failure('Only an identified live hostile mob may be targeted', 'INVALID_TARGET')
     if (expected && (target.runtimeId !== expected.runtimeId || id(target.uniqueId, true) !== id(expected.uniqueId, true) || target.entityType !== expected.entityType)) throw failure('Target runtime/unique identity changed', 'TARGET_CHANGED')
     const aim = bowAim(s.state.position, target)
-    if (aim.distance <= minDistance || aim.distance > maxDistance || Math.abs(aim.pitch) > 80) throw failure('Target must remain beyond melee reach and within the bow sight range', 'RANGE')
+    if (aim.distance <= (crystal(target.entityType) ? 14 : minDistance) || aim.distance > (missionTarget(target) ? 84 : maxDistance) || Math.abs(aim.pitch) > 80) throw failure('Target must remain beyond melee reach and within the bow sight range', 'RANGE')
     if (!s.bow) throw failure('No owned bow in the server inventory', 'NO_BOW')
     if (requireAmmo && s.arrows < 1) throw failure('No owned arrows remain', 'NO_AMMO')
     trajectoryClear(s.state.position, aim); guards(s, target, aim, all)
@@ -328,7 +330,7 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
     if (shot.infinity && !shot.inventoryConfirmed) recentShot = shot
     return true
   }
-  function engage (runtimeId, { signal, durationMs = 120000, maxShots = 64 } = {}) {
+  function engage (runtimeId, { signal, boundTarget = null, durationMs = 120000, maxShots = 64 } = {}) {
     settleCleanup()
     if (cleanup) return Promise.reject(failure('Server confirmation of draw cancellation is pending', 'CLEANUP_PENDING'))
     if (run || isBusy()) return Promise.reject(failure('Another action owns ranged combat', 'BUSY'))
@@ -336,7 +338,7 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
     if (signal?.aborted) return Promise.reject(failure('Ranged engagement cancelled', 'CANCELLED'))
     let p; let input
     try {
-      p = plan(runtimeId); input = getInput()
+      p = plan(runtimeId, boundTarget); input = getInput()
       if (!input || ['start', 'stop', 'stats', 'lookAt', 'sendTransaction'].some(k => typeof input[k] !== 'function') || input.stats().running || input.stats().target || !Number.isFinite(input.stats().sent)) throw failure('Exclusive normal item-use input required', 'INPUT_BUSY')
     } catch (error) { return Promise.reject(error) }
     const r = run = { pending: [], inputHeld: false, unconfirmedShots: 0, scope: p.scope, origin: copy(p.state.position), target: p.target, input, controller: new AbortController(), deadline: clock() + durationMs, shotsRequested: 0, shotsConfirmed: 0, attempts: [], seenArrows: new Set(), terminal: null, cancelReason: null, code: null, shot: null, cleanupUnconfirmed: false, equipping: true }
@@ -540,7 +542,7 @@ function createRangedCombat ({ client, getState, world, entities, crafting, equi
       // Mid-draw kill (an earlier arrow landed): keep the drawn bow and swing to
       // another shootable hostile within range; with none, cancel the draw so
       // no arrow is spent.
-      const next = r.shot && r.shot.startSent != null && !r.shot.released ? retargetCandidate(r) : null
+      const next = !missionTarget(r.target) && r.shot && r.shot.startSent != null && !r.shot.released ? retargetCandidate(r) : null
       if (next) { r.kills = (r.kills ?? 0) + 1; r.retargets = (r.retargets ?? 0) + 1; try { log(`引き絞りを保ったまま標的を切替: ${String(r.target.entityType).replace('minecraft:', '')} → ${String(next.entityType).replace('minecraft:', '')} context=${JSON.stringify({ ...logBinding(getState(), r.target), nextRuntimeId: id(next.runtimeId), nextUniqueId: id(next.uniqueId, true) })}`) } catch {} r.target = next; return }
       r.terminal = { dead: true, by }; cancelDraw(r); r.controller.abort(); return
     }

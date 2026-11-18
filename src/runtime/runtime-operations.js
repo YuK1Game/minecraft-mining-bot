@@ -1,5 +1,7 @@
 'use strict'
 
+const { createDragonRuntimePorts } = require('../modes/dragon-ports')
+
 // Moved out of runtime.js unchanged by scripts/extract-runtime-block.js.
 // `rt` exposes the bindings of that closure this code uses; each read or write
 // of rt.<name> reads or writes the closure's own variable at that moment.
@@ -782,6 +784,7 @@ function createRuntimeOperations (rt) {
       closeContainer: () => rt.crafting.closeContainer()
     },
     interactions: {
+      useDragonItem: options => { rt.requireIdle(); rt.crafting.closeContainer(); return rt.interactions.useDragonItem(options) },
       cancel: reason => rt.interactions.cancel(reason),
       equip: slot => { rt.requireIdle(); const result = rt.interactions.equip(slot); rt.host.setEquipmentPrediction(slot); return result },
       placeCraftingTable: data => {
@@ -884,7 +887,7 @@ function createRuntimeOperations (rt) {
     }
   }
   operations.playerWorkstations = rt.require('./modes/player-workstation-runtime').createPlayerWorkstationRuntime({ shared: rt.host.shared, getState: () => ({ ...rt.working(), lifecycle: { deathId: rt.actualLifeId() } }), getBlock: (x, y, z) => rt.host.world.getBlock(x, y, z), getMotion: () => rt.movement?.snapshot(), getFurnace: () => rt.furnace.snapshot(), operations, held: () => rt.userBehaviorOwns() === true, disposed: () => !!rt.disposed || !!rt.disposing, log: text => rt.host.log(text) })
-  rt.require('./modes/mode-runtime').attachModeOperations(operations, { host: () => rt.host, autonomy: () => rt.autonomy, manualChestStorage: () => rt.manualChestStorage, chunkMoveHeld: () => rt.chunkMoveHeld(), resetHeld: () => rt.resetHeld(), raw: () => rt.raw(), disposed: () => !!rt.disposed || !!rt.disposing, travel: () => rt.travelRuntime, nearestHostile: () => rt.nearestHostileDistance(), hostiles: () => rt.allActors().filter(actor => actor?.hostile === true && actor.alive !== false), totem: () => rt.working().totemGuard === true, position: () => rt.working().position, inventory: () => rt.working().inventory, motion: () => rt.movement?.snapshot() ?? {}, pillarStep: (step, settings) => rt.quarryPorts.pillarStep(step, settings), armor: () => rt.armor?.snapshot() ?? null, scope: () => rt.userScope(rt.rawScope()), combatOwns: () => rt.userBehaviorOwns() === true })
+  rt.require('./modes/mode-runtime').attachModeOperations(operations, { ...createDragonRuntimePorts(rt), host: () => rt.host, autonomy: () => rt.autonomy, manualChestStorage: () => rt.manualChestStorage, chunkMoveHeld: () => rt.chunkMoveHeld(), resetHeld: () => rt.resetHeld(), raw: () => rt.raw(), disposed: () => !!rt.disposed || !!rt.disposing, travel: () => rt.travelRuntime, nearestHostile: () => rt.nearestHostileDistance(), hostiles: () => rt.allActors().filter(actor => actor?.hostile === true && actor.alive !== false), totem: () => rt.working().totemGuard === true, position: () => rt.working().position, inventory: () => rt.working().inventory, motion: () => rt.movement?.snapshot() ?? {}, pillarStep: (step, settings) => rt.quarryPorts.pillarStep(step, settings), armor: () => rt.armor?.snapshot() ?? null, scope: () => rt.userScope(rt.rawScope()), combatOwns: () => rt.userBehaviorOwns() === true })
   return {
     get operations () { return operations }
   }

@@ -43,7 +43,7 @@ function descendingCriticalFrame (movement, criticalHopId, { wallNow = Date.now(
   return finite(workingPosition) && distance(eye, workingPosition) <= 0.02
 }
 
-function createMeleeCombat ({ log = () => {}, client, getState, getRawState, world, entities, crafting, equip, cancelEquip = null, getInput, previewHop = null, startHop = null, getMovement = null, stopHop = null, getItemComponents = null, getTargetWet = null, isBusy = () => false, version = '1.26.60', reach = 3.0, cooldownMs = 100, now = () => performance.now(), wallNow = Date.now, sleep = (ms, signal) => delay(ms, undefined, { signal }) }) {
+function createMeleeCombat ({ log = () => {}, client, getState, getRawState, world, entities, crafting, equip, cancelEquip = null, getInput, previewHop = null, startHop = null, getMovement = null, stopHop = null, getItemComponents = null, getTargetWet = null, missionTarget = () => false, isBusy = () => false, version = '1.26.60', reach = 3.0, cooldownMs = 100, now = () => performance.now(), wallNow = Date.now, sleep = (ms, signal) => delay(ms, undefined, { signal }) }) {
   if (version !== '1.26.60') throw new Error('Melee combat supports Bedrock 1.26.60 only')
   if ([getState, getRawState, equip, getInput, isBusy, now, wallNow, sleep].some(f => typeof f !== 'function') || typeof client?.queue !== 'function' || typeof world?.getBlock !== 'function' || typeof entities?.snapshot !== 'function' || typeof crafting?.snapshot !== 'function' || typeof crafting?.rawItem !== 'function') throw new Error('Melee combat requires authoritative/working poses, terrain, actors, confirmed equipment and input')
   if ([cancelEquip, previewHop, startHop, getMovement, stopHop, getItemComponents, getTargetWet].some(f => f != null && typeof f !== 'function') || !(reach > 0 && reach <= 3.0) || !(cooldownMs >= 50 && cooldownMs <= 750)) throw new Error('Invalid melee callbacks, reach or Bedrock cooldown')
@@ -121,7 +121,7 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
     const limit = limitOf(reachLimit) ?? run?.reachLimit ?? reach
     const s = session(); const targetId = id(runtimeId); const all = entities.snapshot({ kind: 'all' })
     const target = targetId === null ? null : all.find(e => id(e.runtimeId) === targetId)
-    if (!target || target.kind !== 'mob' || target.hostile !== true || !isAttackableHostileType(target.entityType) || target.alive !== true || target.positionKnown !== true || !finite(target.position) || target.dimension !== s.state.dimension || id(target.uniqueId, true) === null || id(target.runtimeId) === id(s.state.runtimeEntityId) || target.positionSource === 'client_prediction') throw failure('Only a known living hostile NPC may be attacked', 'INVALID_TARGET')
+    if (!target || (!(target.kind === 'mob' && target.hostile === true && isAttackableHostileType(target.entityType)) && !missionTarget(target)) || target.alive !== true || target.positionKnown !== true || !finite(target.position) || target.dimension !== s.state.dimension || id(target.uniqueId, true) === null || id(target.runtimeId) === id(s.state.runtimeEntityId) || target.positionSource === 'client_prediction') throw failure('Only a known living hostile NPC may be attacked', 'INVALID_TARGET')
     if (expected && (id(target.runtimeId) !== id(expected.runtimeId) || id(target.uniqueId, true) !== id(expected.uniqueId, true) || target.entityType !== expected.entityType)) throw failure('The bound target identity changed', 'TARGET_CHANGED')
     const aimPoint = bodyAim(target); const workingDistance = distance(s.state.position, aimPoint); const rawDistance = distance(s.rawPosition, aimPoint)
     const tracking = hopTracking && run && expected && (run.hopId != null || run.hopStarting === true) && id(expected.runtimeId) === id(run.target.runtimeId) && id(expected.uniqueId, true) === id(run.target.uniqueId, true)
@@ -329,13 +329,13 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
     }
   }
   function stoppedOutOfReach (error) { return { phase: 'stopped', code: error.code, outcome: 'out_of_reach', reason: error.message, targetDead: false, serverConfirmed: false, hitsRequested: 0, attempts: [], botCausedDamage: null, botCausedDeath: null, attribution: 'unconfirmed' } }
-  function engage (runtimeId, { signal, durationMs = 120000, maxHits = 128, critical: useCritical = true, poseSettled = false, reachLimit = null } = {}) {
+  function engage (runtimeId, { signal, boundTarget = null, durationMs = 120000, maxHits = 128, critical: useCritical = true, poseSettled = false, reachLimit = null } = {}) {
     if (run || isBusy({ criticalHopId: null })) return Promise.reject(failure('Another melee engagement is active', 'BUSY'))
     if (!Number.isInteger(durationMs) || durationMs < 100 || durationMs > 120000 || !Number.isInteger(maxHits) || maxHits < 1 || maxHits > 256 || typeof useCritical !== 'boolean' || signal && (typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function')) return Promise.reject(failure('Invalid melee engagement bounds', 'INVALID_OPTIONS'))
     if (signal?.aborted) return Promise.reject(failure('Melee cancelled', 'CANCELLED'))
     let initial
-    try { initial = plan(runtimeId, null, { reachLimit }) } catch (error) {
-      if (error.code === 'POSE_UNTRUSTED' && !poseSettled) return settlePose(signal).then(() => engage(runtimeId, { signal, durationMs, maxHits, critical: useCritical, poseSettled: true, reachLimit }))
+    try { initial = plan(runtimeId, boundTarget, { reachLimit }) } catch (error) {
+      if (error.code === 'POSE_UNTRUSTED' && !poseSettled) return settlePose(signal).then(() => engage(runtimeId, { signal, boundTarget, durationMs, maxHits, critical: useCritical, poseSettled: true, reachLimit }))
       return error.code === 'OUT_OF_REACH' ? Promise.resolve(stoppedOutOfReach(error)) : Promise.reject(error)
     }
     const r = run = { reachLimit: limitOf(reachLimit), target: initial.target, scope: initial.scope, deadline: clock() + durationMs, maxHits, controller: new AbortController(), input: null, hopId: null, hopStarting: false, equipping: false, phase: 'starting', hitsRequested: 0, attempts: [], terminal: null, cancelReason: null, code: null, lastHopReason: null }

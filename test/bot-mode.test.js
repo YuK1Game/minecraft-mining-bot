@@ -55,7 +55,7 @@ test('player mode starts the survival autonomy with idle protection only in play
   const started = player.start()
   assert.deepEqual(calls, [['safety'], ['start', 'diamond']])
   assert.equal(started.running, true)
-  assert.equal(started.current, 'diamond')
+  assert.equal(started.current, 'home_reserve')
   assert.equal((await player.stop()).running, false)
 })
 
@@ -71,14 +71,19 @@ test('stages are reached only from a received inventory', () => {
   const stone = playerStages({ known: true, items: [{ name: 'minecraft:stone_pickaxe', count: 1 }] }, null, built)
   assert.deepEqual(stone.stages.filter(s => s.reached).map(s => s.id), ['wood', 'base', 'stone'])
   assert.equal(stone.current, 'iron')
+  const reserve = { early: { reserveReady: true } }
+  const iron = { known: true, items: [{ name: 'minecraft:iron_pickaxe', count: 1 }] }
+  assert.equal(playerStages(iron, null, built).current, 'home_reserve')
+  assert.equal(playerStages(iron, null, built, { early: { spawnReady: true } }).current, 'home_reserve')
+  assert.equal(playerStages(iron, null, built, reserve).current, 'diamond')
   // Diamonds alone are not the diamond stage: the pickaxe and the sword are.
-  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:iron_pickaxe', count: 1 }, { name: 'minecraft:diamond', count: 18 }] }, null, built).current, 'diamond')
-  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:diamond_pickaxe', count: 1 }] }, null, built).current, 'diamond')
+  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:iron_pickaxe', count: 1 }, { name: 'minecraft:diamond', count: 18 }] }, null, built, reserve).current, 'diamond')
+  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:diamond_pickaxe', count: 1 }] }, null, built, reserve).current, 'diamond')
   // Pickaxe, sword and a worn chestplate are not the full set (user 21:39 JST).
   const tools = [{ name: 'minecraft:diamond_pickaxe', count: 1 }, { name: 'minecraft:diamond_sword', count: 1 }]
-  assert.equal(playerStages({ known: true, items: tools }, { known: true, worn: [{ piece: 'chest', name: 'minecraft:diamond_chestplate' }] }, built).current, 'diamond')
+  assert.equal(playerStages({ known: true, items: tools }, { known: true, worn: [{ piece: 'chest', name: 'minecraft:diamond_chestplate' }] }, built, reserve).current, 'diamond')
   const set = { known: true, worn: ['helmet', 'chestplate', 'leggings'].map(piece => ({ name: `minecraft:diamond_${piece}` })) }
-  assert.equal(playerStages({ known: true, items: [...tools, { name: 'minecraft:diamond_boots', count: 1 }] }, set, built).current, 'nether')
+  assert.equal(playerStages({ known: true, items: [...tools, { name: 'minecraft:diamond_boots', count: 1 }] }, set, built, reserve).current, 'nether')
   // Unreceived armour counts as nothing worn.
-  assert.equal(playerStages({ known: true, items: [...tools, { name: 'minecraft:diamond_boots', count: 1 }] }, { known: false, worn: set.worn }, built).current, 'diamond')
+  assert.equal(playerStages({ known: true, items: [...tools, { name: 'minecraft:diamond_boots', count: 1 }] }, { known: false, worn: set.worn }, built, reserve).current, 'diamond')
 })
