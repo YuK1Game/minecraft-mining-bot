@@ -131,7 +131,16 @@ test('the open click: the face towards the eye, within reach, with a clear line;
   assert.equal(openAccess(read, eyeAt(1.5, 64, 0.5), chest), null)
   assert.equal(openAccess(read, eyeAt(6.5, 64, 0.5), chest).code, 'OUT_OF_REACH')
   solid.add('0,65,0')
-  assert.equal(openAccess(read, eyeAt(1.5, 64, 0.5), chest).code, 'SIGHT_BLOCKED', 'a block on the chest hides its top face')
+  // Changed 2026-11-18 (was SIGHT_BLOCKED while only the face most towards the eye
+  // was tried): with the top hidden the click goes to the side that looks towards
+  // the eye. A furnace in a wall niche is opened that way (live 20:13 JST). A chest
+  // whose lid cannot open under a block is left out by chest-lid.js, not by this line.
+  assert.equal(containerFace(eyeAt(1.5, 64, 0.5), chest).face, 1, 'without the received blocks the choice is as before')
+  assert.equal(containerFace(eyeAt(1.5, 64, 0.5), chest, read).face, 5, 'a block on the chest hides its top face: the side towards the eye')
+  assert.equal(openAccess(read, eyeAt(1.5, 64, 0.5), chest), null)
+  solid.add('1,64,0'); solid.add('1,65,0')
+  assert.equal(openAccess(read, eyeAt(2.5, 64, 0.5), chest).code, 'SIGHT_BLOCKED', 'every face towards the eye is hidden')
+  solid.delete('1,64,0'); solid.delete('1,65,0')
   assert.equal(openAccess(read, eyeAt(2.5, 64, 0.5), chest), null, 'two cells away the click goes to the side face')
   assert.equal(openAccess(pos => pos.x === 1 ? { known: false } : read(pos), eyeAt(2.5, 64, 0.5), chest).code, 'SIGHT_BLOCKED', 'an unreceived cell on the line is not a clear line')
 })
