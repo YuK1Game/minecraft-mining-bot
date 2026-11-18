@@ -24,20 +24,115 @@
   }))
   panel.querySelector('summary').append(switcher)
 
-  // The road to the Ender Dragon, shown in place of the mining area.
+  const roadmap = element('div', 'mode-roadmap')
+  const summary = element('div', 'mode-roadmap-summary')
+  const goal = element('strong', 'mode-goal')
+  const total = element('span', 'mode-roadmap-total')
   const stages = element('ol', 'mode-stages')
-  stages.hidden = true
-  $('target-heading').after(stages)
-  function renderStages (player) {
-    const signature = JSON.stringify([player.current, player.known, player.stages])
-    if (stages.dataset.signature === signature) return
-    stages.dataset.signature = signature
-    stages.replaceChildren(...player.stages.map(stage => {
-      const item = element('li', '', stage.label)
-      item.dataset.state = stage.reached ? 'done' : stage.id === player.current ? 'current' : stage.implemented ? 'next' : 'later'
-      if (stage.id === player.current) item.setAttribute('aria-current', 'step')
-      return item
+  summary.append(goal, total)
+  roadmap.append(summary, stages)
+  roadmap.hidden = true
+  $('target-heading').after(roadmap)
+
+  const detail = element('dialog', 'mode-stage-detail')
+  detail.setAttribute('aria-labelledby', 'mode-stage-title')
+  const heading = element('div', 'mode-stage-heading')
+  const title = element('h3', '')
+  title.id = 'mode-stage-title'
+  const close = element('button', 'mode-stage-close', '閉じる')
+  close.type = 'button'
+  close.addEventListener('click', () => detail.close())
+  const status = element('p', 'mode-stage-status')
+  const checks = element('ul', 'mode-stage-checks')
+  const reason = element('p', 'mode-stage-reason')
+  heading.append(title, close)
+  detail.append(heading, status, checks, reason)
+  detail.addEventListener('click', event => {
+    if (event.target !== detail) return
+    const bounds = detail.getBoundingClientRect()
+    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) detail.close()
+  })
+  detail.addEventListener('close', () => { if (!detail.open) selected = null })
+  document.body.append(detail)
+
+  const stageState = (stage, player) => stage.reached ? 'done' : stage.id === player.current ? 'current' : 'next'
+  const labelsForStatus = { done: '達成', current: '現在の目標', next: '未達成' }
+  const labelsForCheck = { done: '確認済み', skipped: '対象外', pending: '未確認' }
+  let selected = null, currentStage = null, initialized = false, signature = null
+  const stageButtons = new Map()
+
+  function renderDetail (player) {
+    const stage = player.stages.find(stage => stage.id === selected)
+    if (!stage) { if (detail.open) detail.close(); return }
+    title.textContent = stage.label
+    status.dataset.state = stageState(stage, player)
+    status.textContent = labelsForStatus[status.dataset.state]
+    const rows = stage.checks ?? []
+    checks.hidden = !rows.length
+    checks.replaceChildren(...rows.map(check => {
+      const row = element('li', '')
+      const state = labelsForCheck[check.status] ? check.status : 'pending'
+      row.dataset.state = state
+      row.append(element('span', 'mode-check-label', check.label))
+      const receipt = element('span', 'mode-check-state', check.value || labelsForCheck[state])
+      if (check.value) receipt.setAttribute('aria-label', check.value + '、' + labelsForCheck[state])
+      row.append(receipt)
+      return row
     }))
+    const activity = stage.id === player.current ? player.reason : null
+    reason.hidden = !activity
+    reason.textContent = activity || ''
+  }
+
+  function renderStages (player) {
+    const nextSignature = JSON.stringify([player.current, player.reason, player.stages])
+    if (signature === nextSignature) return
+    signature = nextSignature
+    const active = player.stages.find(stage => stage.id === player.current)
+    const reached = player.stages.filter(stage => stage.reached).length
+    goal.textContent = active?.label ?? (player.stages.length && reached === player.stages.length ? 'すべて達成' : '進捗の受信待ち')
+    total.textContent = player.stages.length ? `${reached} / ${player.stages.length} 達成` : ''
+    const nextIds = player.stages.map(stage => stage.id)
+    // Keep the buttons mounted while polling so keyboard focus and scroll persist.
+    if (nextIds.join(' ') !== [...stageButtons.keys()].join(' ')) {
+      stageButtons.clear()
+      stages.replaceChildren(...player.stages.map(stage => {
+        const item = element('li', '')
+        const button = element('button', 'mode-stage-button')
+        button.type = 'button'
+        button.setAttribute('aria-haspopup', 'dialog')
+        button.addEventListener('click', () => {
+          selected = stage.id
+          renderDetail(live.mode.player)
+          detail.showModal()
+        })
+        item.append(button)
+        stageButtons.set(stage.id, button)
+        return item
+      }))
+      initialized = false
+    }
+    for (const stage of player.stages) {
+      const button = stageButtons.get(stage.id)
+      const state = stageState(stage, player)
+      button.dataset.state = state
+      button.textContent = stage.shortLabel ?? stage.label
+      button.title = stage.label
+      button.setAttribute('aria-label', `${stage.label}、${labelsForStatus[state]}`)
+      if (state === 'current') button.setAttribute('aria-current', 'step')
+      else button.removeAttribute('aria-current')
+    }
+    if (!initialized || currentStage !== player.current) {
+      const button = stageButtons.get(player.current)
+      if (button) {
+        const list = stages.getBoundingClientRect(), step = button.getBoundingClientRect()
+        if (step.right > list.right) stages.scrollLeft += step.right - list.right + 3
+        else if (step.left < list.left) stages.scrollLeft -= list.left - step.left + 3
+      } else if (!initialized) stages.scrollLeft = 0
+      initialized = true
+      currentStage = player.current
+    }
+    if (selected && detail.open) renderDetail(player)
   }
 
   function render () {
@@ -49,7 +144,12 @@
       button.disabled = !mode || !idle || working && name !== current
     }
     panel.dataset.mode = current
-    stages.hidden = !player
+    if (roadmap.hidden === player) {
+      roadmap.hidden = !player
+      initialized = false
+      signature = null
+    }
+    if (!player && detail.open) detail.close()
     $('step-area').textContent = player ? '02 目標' : quarryText.stepArea
     $('target-heading').textContent = player ? '02 目標' : quarryText.target
     if (!player) { if ($('start').dataset.mode) { $('start').innerHTML = quarryText.start; delete $('start').dataset.mode } return }
