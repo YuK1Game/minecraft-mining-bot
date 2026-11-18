@@ -17,9 +17,10 @@
 const WAIT_MS = 20000, GAP_MS = 6000
 
 // True while the step should go on waiting.
-function threatWait (shared, key, { now = Date.now, fighting = false } = {}) {
-  const at = now(), held = shared.dragonThreatWait
-  if (!held || held.key !== key || at - held.seen > GAP_MS || fighting) { shared.dragonThreatWait = { key, since: at, seen: at }; return true }
+// `slot` keeps a second wait apart from the first (the low-health retreat in dragon-runtime.js).
+function threatWait (shared, key, { now = Date.now, fighting = false, slot = 'dragonThreatWait' } = {}) {
+  const at = now(), held = shared[slot]
+  if (!held || held.key !== key || at - held.seen > GAP_MS || fighting) { shared[slot] = { key, since: at, seen: at }; return true }
   held.seen = at
   return at - held.since < WAIT_MS
 }

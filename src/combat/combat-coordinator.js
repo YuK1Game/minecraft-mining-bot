@@ -147,6 +147,8 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
   // ~4m) for a short window instead of only evading until they explode.
   const corneredCreepers = new Map()
   const cornered = (e, scope) => scope != null && (corneredCreepers.get(targetKey(scope, e)) ?? 0) > clock()
+  // A cornered creeper inside the cornered strike band is fought at any health: there is nowhere to go, and stopping only waits for the blast.
+  const corneredStrike = (e, scope, range) => e?.entityType === 'minecraft:creeper' && cornered(e, scope) && range <= (profiles.CREEPER_CORNERED_STRIKE ?? 4.5)
   function crowdedLowHp (s) { return updateHpRetreat(s) && closeHostiles(s) >= 2 && !allActors().some(e => eligible(e, s) && distance(s.position, bodyAim(e)) <= MELEE_SELECT_REACH) }
   function provokedBy (s, e) {
     const at = Number(getRecentDamageAt?.() ?? NaN)
@@ -179,7 +181,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       const preferred = preferredMode(s, actor), key = targetKey(scope, actor)
       // Reject distance and retry holds before route, work and bow surveys.
       const immediate = typeof canEngage === 'function' && (preferred.distance <= MELEE_SELECT_REACH || actor.entityType === 'minecraft:creeper' && (actor.primed === true || preferred.distance < creeperShotDistance(actor, s)))
-      if (preferred.distance > engageRadius || retreating && preferred.distance > retreatDefenseRange() || !immediate && (backoffs.get(key) ?? -Infinity) > clock()) continue
+      if (preferred.distance > engageRadius || retreating && preferred.distance > retreatDefenseRange() && !corneredStrike(actor, scope, preferred.distance) || !immediate && (backoffs.get(key) ?? -Infinity) > clock()) continue
       const target = { ...copy(actor), runtimeId: id(actor.runtimeId), uniqueId: id(actor.uniqueId, true) }
       if (workAllows('canSelectTarget', target, s, { distance: preferred.distance, provoked: provokedBy(s, target) }).allowed !== true) continue
       if (!engageable(target, s)) continue
@@ -283,7 +285,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
         if (unsafeStart || (drawing || !cornered(lease.target, lease.scope)) && (drawing && observed.distance < shotFloor || observed.distance - closing * lookahead < shotFloor)) return { outcome: stop('CREEPER_CLOSING', `Creeper at ${observed.distance.toFixed(1)}m cannot retain the ${drawing ? 'draw' : 'shot start'} and ${shotFloor}-block finish margin`, { creeperDistance: observed.distance, closingSpeed: closing }) }
       }
       if (crowdedLowHp(s)) return { outcome: stop('HP_DISENGAGE', 'Low health among several close hostiles: disengage and recover before fighting again') }
-      if (updateHpRetreat(s) && observed.distance > retreatDefenseRange()) return { outcome: stop('HP_RETREAT', 'Health is below the retreat threshold; only immediate defence within the approach range continues') }
+      if (updateHpRetreat(s) && observed.distance > retreatDefenseRange() && !corneredStrike(lease.target, lease.scope, observed.distance)) return { outcome: stop('HP_RETREAT', 'Health is below the retreat threshold; only immediate defence within the approach range continues') }
       if (!preparing) {
         const modes = profiles.allowedModes(lease.target.entityType, { hasBow: hasBowAndArrows(s), distance: observed.distance, elevated: elevatedFrom(lease.target, s), cornered: cornered(lease.target, lease.scope) })
         if (drawingAtBoundTarget(lease) && observed.distance >= Math.min(creeperShotDistance(observed.actor, s), profiles.CREEPER_DRAWING_MIN_DISTANCE ?? 5) && !modes.includes('ranged')) modes.push('ranged')
