@@ -187,7 +187,7 @@ function createReturnSteps ({ goal, ports, flow }) {
     // Closer by a real distance: the rest of the way is planned again from here.
     if (moved >= STALL_M) return partial('TRAVEL_SHORT', { progress: { moved: Math.round(moved) }, remaining: { distance: Math.round(left) }, evidence: { reason: why } })
     // No way on by walking, and the base is near: a route that digs and stacks (movement/build-route.js).
-    if (left <= BUILD_M && await built(base, cell => flat(cell, base) <= ARRIVE_M - 4 && Math.abs(cell.y - base.y) <= LEVEL_M)) return completed('NEAR_BASE', { progress: { moved: Math.round(from - flat(base, getPosition())) }, evidence: { distance: Math.round(flat(base, getPosition())), by: 'build_route' } })
+    if (left <= BUILD_M && await built(base, cell => flat(cell, base) <= ARRIVE_M - 4 && Math.abs(cell.y - base.y) <= LEVEL_M) && flat(base, getPosition()) <= ARRIVE_M) return completed('NEAR_BASE', { progress: { moved: Math.round(from - flat(base, getPosition())) }, evidence: { distance: Math.round(flat(base, getPosition())), by: 'build_route' } })
     if (aborted()) return stopped('TRAVEL_INTERRUPTED')
     return failed('TRAVEL_NO_PROGRESS', { remaining: { distance: Math.round(left) }, detail: why, evidence: { reason: why, state: { at: area(getPosition(), 16), why } } })
   }
@@ -203,7 +203,11 @@ function createReturnSteps ({ goal, ports, flow }) {
     if (aborted()) return stopped('APPROACH_INTERRUPTED')
     const goalNow = g(), at = goalNow.target ?? goalNow.base
     if (!at) return { ...completed('NO_BASE_YET'), next: 'container' }
-    if (flat(at, getPosition()) > ARRIVE_M) return { ...completed('TOO_FAR'), next: 'travel' }
+    // The trip ends by the base chest, so "too far" is measured from it as well: a
+    // chosen chest behind the base is walked to from here (live 2026-11-18 17:18 JST:
+    // 17 m from the base chest and 21 m from the chosen one, TOO_FAR and NEAR_BASE
+    // answered each other without end).
+    if (goalNow.base && flat(goalNow.base, getPosition()) > ARRIVE_M && flat(at, getPosition()) > ARRIVE_M) return { ...completed('TOO_FAR'), next: 'travel' }
     if (!received(at)) return unseen(at)
     if (gone(at)) {
       if (same(at, goalNow.base)) { say('拠点のチェストがなくなっていたため、作り直します'); goalNow.base = null }

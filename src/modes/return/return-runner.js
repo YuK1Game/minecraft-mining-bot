@@ -26,6 +26,7 @@ const { createReturnSteps } = require('./return-steps')
 const { queueReturnWrite } = require('./return-persistence')
 const { newGoal, restoreGoal, exhausted, attemptLimit, wakeReason, LABEL, BUDGET, cell, terrainCells } = require('./return-goal')
 const { sidePoint } = require('./return-side')
+const { createLaps, isBack } = require('./return-laps')
 
 const NEXT = Object.freeze({ observe: 'surface', surface: 'travel', travel: 'approach', approach: 'container', container: 'store', store: 'verify', verify: 'replan' })
 const DONE_MS = 30000, CLOSE_M = 6
@@ -34,6 +35,7 @@ const brief = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 
 function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = () => null, settled = () => true, interrupter = () => null, hostile = () => false, travelBusy = () => false, file = null, write = writeDurableJson, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), newId = () => `r${now().toString(36)}` }) {
   let goal = restoreGoal(shared.playerReturn), hostileSince = null, running = false, generation = 0, quietUntil = 0, banked = 0, saidUnsaved = false
   const memory = createFailureMemory({ now, saved: shared.playerReturnFailures })
+  const laps = createLaps({ now })
   const playing = () => normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const live = () => !disposed() && playing()
   const say = text => log(`プレイヤーモード: 帰還${goal ? `[${goal.id}]` : ''} ${text}`)
@@ -248,6 +250,12 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
         goal.budget.interrupts = 0
         if (to !== stage) { say(`${LABEL[stage]} → ${LABEL[to]}（${out.code}）`); goal.stage = to; goal.stageAt = now() }
         commit()
+        // A step back is never taken in the same instant, and the same one from the same place is a loop (return-laps.js).
+        if (isBack(stage, to)) {
+          if (laps.back({ from: stage, to, code: out.code, target: goal.target, position: ports.getPosition() })) return hold(mine, 'STAGE_LOOP', ['position_changed'], `${LABEL[stage]}と${LABEL[to]}の間を進まずに行き来しています（${out.code}）`, stage)
+          await sleep(BUDGET.LAP_WAIT_MS)
+          if (!current() || goal !== owner) return null
+        }
         continue
       }
       if (out.status === 'interrupted') {

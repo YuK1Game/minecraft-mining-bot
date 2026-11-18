@@ -152,3 +152,37 @@ test('writes from a reloaded runner finish before the newer cancellation on the 
   assert.equal(JSON.parse(await fs.readFile(file, 'utf8')).goal, null, 'a completed cancellation cannot be overwritten by the old runtime')
   assert.equal(f.shared.playerReturn, null)
 })
+
+// Live 2026-11-18 17:18 JST: two stages answered each other at once, both "completed", and the
+// process never breathed again. Whatever the stages answer, a step back takes time, and the same
+// step back from the same place three times holds the goal.
+test('stages that send each other back without progress are held as a loop, and every step back takes time', async () => {
+  const f = fixture()
+  let asked = 0
+  // In the water when the trip asks, out of it when the start is checked: travel -> surface -> travel ...
+  f.ports.moves.water = { needed: () => asked++ % 2 === 0, exit: async () => ({ ok: true }) }
+  const runner = createReturnRunner(f.config)
+  await runner.tick()
+  const goal = runner.status().goal
+  assert.equal(goal.state, 'held', f.log.join('\n'))
+  assert.equal(goal.hold.code, 'STAGE_LOOP')
+  assert.equal(f.log.filter(text => /拠点へ移動 → 出発位置の確保（START_LOST）/.test(text)).length, 3, f.log.join('\n'))
+  assert.ok(f.state.now >= 500, 'the steps back did not happen in one instant')
+  assert.equal(f.calls.length, 0, 'no trip was started')
+})
+
+test('laps: only the same step back, to the same chest, from the same place, in a row within a minute', () => {
+  const { createLaps } = require('../src/modes/return/return-laps')
+  let now = 0
+  const laps = createLaps({ now: () => now }), at = { x: 10.5, y: 64, z: 3.5 }, chest = { x: 1, y: 64, z: 1 }
+  const lap = (extra = {}) => laps.back({ from: 'approach', to: 'travel', code: 'TOO_FAR', target: chest, position: at, ...extra })
+  assert.equal(laps.back({ from: 'travel', to: 'approach', code: 'NEAR_BASE', target: chest, position: at }), false, 'a step forward is not a lap')
+  assert.deepEqual([lap(), lap(), lap()], [false, false, true])
+  laps.clear()
+  // Another chest, another place and another code are other laps (thirteen full chests in a row are not a loop).
+  assert.deepEqual([lap(), lap({ target: { x: 2, y: 64, z: 1 } }), lap({ position: { x: 30.5, y: 64, z: 3.5 } }), lap({ code: 'START_LOST' }), lap()], [false, false, false, false, false])
+  laps.clear()
+  // Slowly is not a loop.
+  assert.equal(lap(), false); now += 40000; assert.equal(lap(), false); now += 40000
+  assert.equal(lap(), false)
+})
