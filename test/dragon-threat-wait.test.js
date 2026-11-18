@@ -85,3 +85,16 @@ test('the enemy leaves before the time is up: no trip, and the hunt check is use
   assert.equal(f.trips.length, 1, 'nothing to hunt here: the ordinary search trip')
   assert.equal(f.logs.filter(line => /近くの敵/.test(line)).length, 0)
 })
+
+// The low-health retreat (dragon-runtime.js) counts its own wait beside the food step's.
+// Live 2026-11-19 01:21-01:34 JST: thirteen minutes at health 7 with no food while enemies stood near.
+test('a second slot keeps its own count, and a hit starts it again', () => {
+  let clock = 0
+  const shared = {}, now = () => clock, slot = 'dragonRecoverWait'
+  assert.equal(threatWait(shared, 'recover', { now, slot }), true)
+  clock += 2000; assert.equal(threatWait(shared, 'NEARBY_THREAT', { now }), true, 'the food step in between')
+  clock += WAIT_MS; assert.equal(threatWait(shared, 'recover', { now, slot }), true, 'a gap starts the count again')
+  for (let i = 0; i < WAIT_MS / 2000 - 1; i++) { clock += 2000; assert.equal(threatWait(shared, 'recover', { now, slot }), true) }
+  clock += 2000; assert.equal(threatWait(shared, 'recover', { now, slot }), false, 'twenty seconds without a hit: the meal and the hunt go on')
+  clock += 2000; assert.equal(threatWait(shared, 'recover', { now, slot, fighting: true }), true, 'a hit: retreat again')
+})

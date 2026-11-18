@@ -10,6 +10,7 @@ const { hasFood } = require('./player-food')
 const { recoverDragon } = require('./dragon-recovery')
 const { createDragonSupplies } = require('./dragon-supplies')
 const { nightHome } = require('./dragon-night')
+const { threatWait } = require('./dragon-threat-wait')
 
 function createDragonRuntime (ports) {
   const { runtime, shared, root, getBlock } = ports
@@ -32,7 +33,10 @@ function createDragonRuntime (ports) {
       if (night) return night
     }
     if (recoverHealth && dim !== 'end') {
-      if (ports.threatened()) {
+      // An enemy that stands near without hitting for twenty seconds no longer holds the meal and the hunt
+      // (live 2026-11-19 01:21-01:34 JST: thirteen minutes at health 7 with no food, then a creeper).
+      const hit = Date.now() - Number(shared.travelLastDamageAt ?? 0) < 10000
+      if (ports.threatened() && threatWait(shared, 'recover', { fighting: hit, slot: 'dragonRecoverWait' })) {
         await runtime.travel().retreatFromHostiles()
         return { phase: 'recovering', reason: '被弾したため、攻撃を中断して退避します。' }
       }

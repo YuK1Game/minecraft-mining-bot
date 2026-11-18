@@ -144,3 +144,19 @@ test('a creeper that is not cornered keeps the normal 3.0m melee reach', async (
   const first = await f.coordinator.tick()
   assert.equal(f.attacks.some(a => a.reachLimit === 3.5), false, JSON.stringify(first))
 })
+
+// Live 2026-11-19 01:34:32 JST: health 7.3 (below the retreat line), no evade route, the creeper 3.4-3.8 m
+// away. One hit pushed it past the low-health defence range, the fight ended HP_RETREAT, and it exploded.
+test('low health does not end the fight with a cornered creeper inside the cornered strike band', async () => {
+  const f = fixture({ range: 4.2 }); await corner(f); f.state.health = 7
+  const result = await f.coordinator.tick()
+  assert.notEqual(result.code, 'HP_RETREAT')
+  assert.ok(f.approaches.length >= 1, 'the step in for the hit is tried')
+})
+
+test('low health still starts nothing against a walker outside the defence range', async () => {
+  const f = fixture({ range: 4.2, type: 'zombie' }); f.state.health = 7
+  const result = await f.coordinator.tick()
+  assert.equal(f.attacks.length, 0)
+  assert.notEqual(result?.code, 'TARGET_DEAD')
+})
