@@ -58,26 +58,39 @@ function wayUp ({ floors, block, feet }) {
   return { ready: true, path, rise, connected: queue.length }
 }
 
+// A way of stands (feet cells, each one step from the one before) walked a few
+// at a time by the ordinary walk. A stretch that fails is tried one cell at a
+// time. Returns how far it came and, where even one cell failed, that cell.
+async function follow ({ ports, path, aborted = () => false, done = () => false, stride = STRIDE }) {
+  const { feet, walk } = ports
+  const at = () => { const now = feet(); return now ? { x: Math.floor(now.x), y: Math.floor(now.y + 0.001), z: Math.floor(now.z) } : null }
+  const on = point => { const now = at(); return !!now && now.x === point.x && now.z === point.z && now.y === point.y }
+  const go = async point => { await walk({ x: point.x + 0.5, y: point.y, z: point.z + 0.5 }); return on(point) }
+  let index = 0
+  while (index < path.length - 1 && !aborted()) {
+    if (done()) break
+    const far = Math.min(index + stride, path.length - 1)
+    if (await go(path[far])) { index = far; continue }
+    if (aborted()) break
+    // The stretch failed: the cell it is standing on now, then one cell further.
+    const now = at(), here = now ? path.findIndex((point, i) => i >= index && i <= far && point.x === now.x && point.y === now.y && point.z === now.z) : -1
+    if (here > index) { index = here; continue }
+    if (await go(path[index + 1])) { index++; continue }
+    return { index, stuck: path[index + 1] }
+  }
+  return { index, stuck: null }
+}
+
 async function walkOut ({ ports, floors, log = () => {}, aborted = () => false, open = () => false }) {
-  const { feet, block, walk } = ports
+  const { feet, block } = ports
   const plan = wayUp({ floors, block, feet: feet() })
   if (!plan.ready) { log(`プレイヤーモード: 掘った坑道を歩いて戻る道がありません（${plan.reason}${plan.rise != null ? `、上へ${plan.rise}段` : ''}、記録した床 ${floors.length}・使える床 ${plan.usable ?? '-'}・つながる床 ${plan.connected ?? '-'}）`); return { ok: false, reason: plan.reason } }
   log(`プレイヤーモード: 掘った坑道を歩いて戻ります（${plan.path.length - 1}マス、上へ${plan.rise}段）`)
   const at = () => { const now = feet(); return now ? { x: Math.floor(now.x), y: Math.floor(now.y + 0.001), z: Math.floor(now.z) } : null }
-  const on = point => { const now = at(); return !!now && now.x === point.x && now.z === point.z && now.y === point.y }
-  const go = async point => { await walk({ x: point.x + 0.5, y: point.y, z: point.z + 0.5 }); return on(point) }
-  let index = 0, startY = at()?.y ?? plan.path[0].y
-  while (index < plan.path.length - 1 && !aborted()) {
-    // Under the open sky the tunnel has done its work.
-    if (open()) break
-    const far = Math.min(index + STRIDE, plan.path.length - 1)
-    if (await go(plan.path[far])) { index = far; continue }
-    if (aborted()) break
-    // The stretch failed: the floor it is standing on now, then one floor further.
-    const now = at(), here = now ? plan.path.findIndex((point, i) => i >= index && i <= far && point.x === now.x && point.y === now.y && point.z === now.z) : -1
-    if (here > index) { index = here; continue }
-    if (await go(plan.path[index + 1])) { index++; continue }
-    const stuck = plan.path[index + 1]
+  const startY = at()?.y ?? plan.path[0].y
+  // Under the open sky the tunnel has done its work.
+  const { index, stuck } = await follow({ ports, path: plan.path, aborted, done: open })
+  if (stuck) {
     log(`プレイヤーモード: 坑道を戻る途中で歩けなくなりました（${index}/${plan.path.length - 1}マス、次の床 ${stuck.x},${stuck.y - 1},${stuck.z}${ports.why?.() ? `、${ports.why()}` : ''}）`)
     return { ok: false, reason: 'WALK_FAILED', walked: index, rose: (at()?.y ?? startY) - startY }
   }
@@ -87,4 +100,4 @@ async function walkOut ({ ports, floors, log = () => {}, aborted = () => false, 
   return { ok: true, walked: index, rose }
 }
 
-module.exports = { walkOut, wayUp, recordedFloors }
+module.exports = { walkOut, wayUp, recordedFloors, follow }
