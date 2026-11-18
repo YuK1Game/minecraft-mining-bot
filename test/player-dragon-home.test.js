@@ -234,3 +234,33 @@ test('under the opened floor at the door: the way that digs and stacks goes to t
   assert.equal(await approachHome(stuck.ctx, chest), false)
   assert.equal(stuck.logs.length, before)
 })
+
+test('three metres from the furnace through the west wall is not at the furnace: round by the door and in', async () => {
+  // Live 2026-11-19 05:47-05:52 JST: the way that digs and stacks ended at (-4902, 76, -4987), outside the
+  // south-west corner, two cells from the furnace. The home step counted that as arrived, the open stand found
+  // no walk in, and nothing was said or done for five minutes.
+  const world = createOverhangWorld()
+  for (let x = origin.x + 1; x <= origin.x + 5; x++) for (let z = origin.z + 1; z <= origin.z + 5; z++) for (let y = origin.y + 1; y <= origin.y + 3; y++) world.setBlock(x, y, z, 'air')
+  for (let y = origin.y + 1; y <= origin.y + 2; y++) world.setBlock(origin.x + 3, y, origin.z + 6, 'air')
+  for (let x = origin.x - 2; x <= origin.x + 5; x++) for (let z = origin.z + 5; z <= origin.z + 9; z++) {
+    if (x >= origin.x && z <= origin.z + 6) continue
+    world.setBlock(x, origin.y, z, 'stone')
+    for (let y = origin.y + 1; y <= origin.y + 4; y++) world.setBlock(x, y, z, 'air')
+  }
+  const furnace = { x: origin.x + 1, y: origin.y + 1, z: origin.z + 4 }
+  world.setBlock(furnace.x, furnace.y, furnace.z, 'furnace')
+  const f = bot(world, { x: origin.x - 1, y: origin.y + 1, z: origin.z + 5 })
+  f.ctx.hands.approach = async () => { f.did.push('approach'); return false }
+  assert.ok(Math.hypot(f.body.x - (furnace.x + 0.5), f.body.z - (furnace.z + 0.5)) < 4, 'within four blocks, outside the wall')
+  assert.equal(await approachHome(f.ctx, furnace, { open: true }), true, f.logs.join('\n'))
+  assert.ok(f.body.x > origin.x + 1 && f.body.x < origin.x + 6 && f.body.z > origin.z + 1 && f.body.z < origin.z + 6, JSON.stringify(f.body))
+  assert.ok([...world.changed.keys()].length > 0)
+  assert.ok(f.did.includes('walk'))
+
+  // Walled in outside with no way: said once, not silently every two seconds.
+  const stuck = bot(world, { x: origin.x - 1, y: origin.y + 1, z: origin.z + 5 }, { walkable: false })
+  stuck.ctx.hands.approach = async () => false
+  stuck.ctx.hands.canMine = () => false
+  assert.equal(await approachHome(stuck.ctx, furnace, { open: true }), false)
+  assert.equal(stuck.logs.filter(line => /本拠点の中の .* へ、掘る・積む道でも行けませんでした/.test(line)).length, 1, stuck.logs.join('\n'))
+})
