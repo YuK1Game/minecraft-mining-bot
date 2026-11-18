@@ -72,6 +72,24 @@ test('full columns and subchunks respect negative coordinates and block updates 
   assert.equal(world.getBlock(-1, -64, -1).known, false)
 })
 
+test('a falling block: update_block_synced removes it where it was and puts it where it landed (live 2026-11-18 07:09-10:10 JST)', () => {
+  // Gravel over a shaft: the server sends the block-to-entity transition (air)
+  // and, where the entity lands, the entity-to-block transition (the block).
+  const world = ready()
+  const section = (y, id) => world.applyPacket('subchunk', { dimension: 0, cache_enabled: false, origin: { x: -307, y, z: -312 }, entries: [{ dx: 0, dy: 0, dz: 0, result: 'success', payload: uniform(y, id) }] })
+  section(4, 0)
+  world.applyPacket('update_block', { position: { x: -4901, y: 70, z: -4985 }, block_runtime_id: 1, layer: 0 })
+  const before = world.revision()
+  world.applyPacket('update_block_synced', { position: { x: -4901, y: 70, z: -4985 }, block_runtime_id: 0, flags: 3, layer: 0, entity_unique_id: -4294967295n, transition_type: 'entity' })
+  world.applyPacket('update_block_synced', { position: { x: -4901, y: 64, z: -4985 }, block_runtime_id: 1, flags: 3, layer: 0, entity_unique_id: -4294967295n, transition_type: 'create' })
+  assert.equal(world.getBlock(-4901, 70, -4985).name, 'minecraft:air', 'gone where it fell from')
+  assert.equal(world.getBlock(-4901, 64, -4985).boundingBox, 'block', 'there where it landed')
+  assert.ok(world.revision() > before, 'derived caches see the change')
+  // The host subscribes to the packet: without the event the world never sees it.
+  const host = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'host', 'host.js'), 'utf8')
+  assert.match(/const PACKET_EVENTS = \[[^\]]*\]/.exec(host)[0], /'update_block_synced'/)
+})
+
 test('paletted bit words use XZY order and request-mode level chunks remain unknown', () => {
   const world = ready()
   const words = Buffer.alloc(512)
