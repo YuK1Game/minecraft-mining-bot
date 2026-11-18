@@ -23,6 +23,11 @@ const SETTINGS = settingsOf({ concurrency: CONCURRENCY, shard: SHARD })
 // 2026-11-15: a run on CI ended normally but its report had no totals (the
 // forced exit after the last test can cut the reporter's final output). Such
 // a run says nothing, so it is repeated once before the comparison gives up.
+// 2026-11-18: the cut is the forced exit dropping what is still in a pipe;
+// lib/blocking-output.js closes it for the runner and for every test file.
+const BLOCKING_OUTPUT = path.join(__dirname, 'lib', 'blocking-output.js')
+// NODE_OPTIONS reaches the runner and the test file processes it starts.
+const nodeOptions = () => [process.env.NODE_OPTIONS, `--require="${BLOCKING_OUTPUT.split(path.sep).join('/')}"`].filter(Boolean).join(' ')
 async function runSuite (directory, filename, files = []) {
   try { return await runSuiteOnce(directory, filename, files) } catch (error) {
     if (!/Test report is incomplete/.test(String(error?.message))) throw error
@@ -36,7 +41,7 @@ async function runSuiteOnce (directory, filename, files = []) {
   const output = createWriteStream(filename, { flags: 'w' })
   // Failed legacy tests can leave intervals/polling alive. Preserve their
   // reported failures and timeouts, then exit after all test results exist.
-  const child = spawn(process.execPath, ['--test', '--test-force-exit', `--test-concurrency=${CONCURRENCY}`, '--test-timeout=30000', '--test-reporter=tap', ...files], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(process.execPath, ['--test', '--test-force-exit', `--test-concurrency=${CONCURRENCY}`, '--test-timeout=30000', '--test-reporter=tap', ...files], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_OPTIONS: nodeOptions() } })
   child.stdout.pipe(output, { end: false }); child.stderr.pipe(output, { end: false })
   let expired = false
   const timeout = setTimeout(() => { expired = true; child.kill('SIGTERM') }, SUITE_LIMIT_MS)
@@ -120,4 +125,4 @@ async function main () {
   }
 }
 if (require.main === module) main().catch(error => { console.error(error.stack); process.exitCode = 1 })
-module.exports = { runSuite }
+module.exports = { runSuite, nodeOptions }

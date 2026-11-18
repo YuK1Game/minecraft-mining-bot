@@ -6,7 +6,8 @@
 // pushes, so its report is kept and read again; and the files of the suite are
 // divided into shards that run on separate machines.
 // A kept report is used only when it was made for the same commit, shard and
-// settings (Node major version, platform, concurrency, way of choosing files).
+// settings (Node major version, platform, concurrency, way of choosing files,
+// way of collecting the output).
 // Anything else is not a report of this comparison and the suite runs again.
 const fs = require('node:fs')
 const path = require('node:path')
@@ -50,7 +51,10 @@ function testFiles (directory) {
 }
 const shardFiles = (directory, shard) => testFiles(directory).filter(file => shardOf(file, shard.count) === shard.index)
 
-const settingsOf = ({ concurrency, shard }) => ({ selection: SELECTION, node: process.versions.node.split('.')[0], platform: process.platform, concurrency, shard: `${shard.index}/${shard.count}` })
+// 'blocking-pipes-v1': how the suite's output is collected (blocking-output.js).
+// A report made before that can lack tests, so it is not read again.
+const OUTPUT = 'blocking-pipes-v1'
+const settingsOf = ({ concurrency, shard }) => ({ selection: SELECTION, output: OUTPUT, node: process.versions.node.split('.')[0], platform: process.platform, concurrency, shard: `${shard.index}/${shard.count}` })
 const fileOf = (directory, sha, shard) => path.join(directory, `${sha}.${shard.index}of${shard.count}.json`)
 const sound = report => Number.isSafeInteger(report?.counts?.tests) && Number.isSafeInteger(report?.counts?.fail) && Array.isArray(report?.failures) && Array.isArray(report?.reported) && Array.isArray(report?.unreported)
 

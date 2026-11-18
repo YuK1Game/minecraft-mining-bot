@@ -7,6 +7,7 @@ const os = require('node:os')
 const path = require('node:path')
 const { parseShard, shardOf, testFiles, shardFiles, settingsOf, readStored, writeStored, prune } = require('../scripts/lib/suite-store')
 const { reviewNames, playerNames, strictFiles } = require('../scripts/lib/test-lanes')
+const { runSuite, nodeOptions } = require('../scripts/compare-tests')
 
 const root = path.resolve(__dirname, '..')
 const sha = letter => letter.repeat(40)
@@ -106,4 +107,24 @@ test('review: the workflow runs the comparison in the parts the script is told a
   assert.deepEqual(parts, parts.map((_, index) => index + 1))
   assert.ok(workflow.includes(`SUITE_SHARD: \${{ matrix.part }}/${parts.length}`))
   assert.equal(workflow.split(`of${parts.length}-`).length - 1, 3, 'the three cache keys name the same number of parts')
+})
+
+test('review: the comparison reports every test of a file that ends in a burst of results, and the totals', async t => {
+  // 2026-11-18: with --test-force-exit a test file's last results, and the
+  // runner's totals, were dropped when more than a pipe's 64 KB was still
+  // unread at the exit (481 small tests reported as 436 to 457, exit code 0).
+  const names = Array.from({ length: 6 }, (_, index) => `test/burst${index}.test.js`)
+  const directory = tree(t, names)
+  const body = "const { test } = require('node:test')\nfor (let i = 0; i < 60; i++) test(`case ${i} ${'x'.repeat(400)}`, () => {})\n"
+  for (const name of names) fs.writeFileSync(path.join(directory, name), body)
+  assert.match(nodeOptions(), /--require="[^"\\]*scripts\/lib\/blocking-output\.js"$/, 'the path is quoted and has no backslashes')
+  // Inside a test process Node marks the environment so that a nested runner
+  // reports to its parent; the comparison is never started from a test.
+  const context = process.env.NODE_TEST_CONTEXT
+  delete process.env.NODE_TEST_CONTEXT
+  t.after(() => { if (context !== undefined) process.env.NODE_TEST_CONTEXT = context })
+  for (let round = 0; round < 3; round++) {
+    const report = await runSuite(directory, path.join(directory, 'report.tap'), names)
+    assert.deepEqual({ tests: report.counts.tests, pass: report.counts.pass, fail: report.counts.fail, unreported: report.unreported.length }, { tests: 360, pass: 360, fail: 0, unreported: 0 }, `round ${round}`)
+  }
 })
