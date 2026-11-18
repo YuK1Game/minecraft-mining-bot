@@ -9,6 +9,7 @@ const { runDragonEndStep } = require('./dragon-end')
 const { hasFood } = require('./player-food')
 const { recoverDragon } = require('./dragon-recovery')
 const { createDragonSupplies } = require('./dragon-supplies')
+const { nightHome } = require('./dragon-night')
 
 function createDragonRuntime (ports) {
   const { runtime, shared, root, getBlock } = ports
@@ -25,6 +26,11 @@ function createDragonRuntime (ports) {
     const supplies = createDragonSupplies(ctx)
     Object.assign(ctx, { supplies, memory: record, rt: runtime, ports: ctx.hands, active: () => !ctx.cancelled(), ...opts })
     const stronghold = createDragonStronghold(ctx)
+    // From dusk the overworld part before the Nether goes home to its bed (dragon-night.js).
+    if (dim === 'overworld' && record.stage === 'early' && !record.recovery && !(recoverHealth && ports.threatened())) {
+      const night = await nightHome(ctx, { clock: () => runtime.travel?.()?.travelClock?.() })
+      if (night) return night
+    }
     if (recoverHealth && dim !== 'end') {
       if (ports.threatened()) {
         await runtime.travel().retreatFromHostiles()
