@@ -164,3 +164,13 @@ test('far from the house on the map the trip is started; beside the house on its
   assert.equal(await approachHome(near.ctx, chestOf(origin)), true)
   assert.deepEqual(near.did, ['approach'])
 })
+
+test('a bot the trip already counts as arrived at the porch does not start the trip again', async () => {
+  // Live 2026-11-18 22:55 JST: about 20 m from the porch (-4898, -4984), which the trip calls arrived, and farther than that from the chest inside.
+  const f = bot(createOverhangWorld(), { x: -4885, y: 77, z: -4970 })
+  for (let i = 0; i < 3; i++) await approachHome(f.ctx, chestOf(origin))
+  assert.deepEqual(f.trips, [])
+  const farther = bot(createOverhangWorld(), { x: -4883, y: 77, z: -4969 })
+  await approachHome(farther.ctx, chestOf(origin))
+  assert.equal(farther.trips.length, 1)
+})
