@@ -534,6 +534,9 @@ function createUserControlRuntime (rt) {
         }
         return {ready:false,reason:'No known safe short creeper counterstep'}
       }
+      // An airborne body lands first (combat/approach-landing.js): the planner refuses every route from it.
+      await rt.require('./combat/approach-landing').landFirst({ feetY: () => requireUserLease(context).position.y - 1.62, running: () => rt.generationMovement.snapshot().running === true, delay: ms => rt.delay(ms, undefined, { signal: context.signal }),
+        settle: () => { requireUserLease(context); rt.stopOrdinaryUserStream(); rt.motionOrigin = rt.working(); rt.host.shared.motionSource = 'navigation_settle'; rt.generationMovement.settle({ maxTicks: 40, maxDrop: 1, maxHorizontal: 1, emergency: true }) } })
       const surface = await approachSurfaceMelee(target, context)
       if (surface) return surface
       validateHealthyMeleeApproach(requireUserLease(context), target)
