@@ -267,7 +267,8 @@ function createAutonomyRuntime (rt) {
       const survivalOptions = localWork.eligible && !nightShelter ? { ...options, deferOptionalShelter: true } : options
       if (rt.host.shared.startupPriority) Object.assign(rt.host.shared.startupPriority, { bodyProof: localWork.bodyProof, localWorkEligible: localWork.eligible, deferOptionalShelter: localWork.eligible && !nightShelter })
       if(nightShelter)return nightShelter
-      const plannedDiamond = rt.nextDiamondAction(state, observations, options)
+      // A question to the runtime that this observation left unanswered is not what the run ends with (asked-question.js).
+      const plannedDiamond = rt.require('./survival/asked-question').planWithoutOpenQuestion(rt.nextDiamondAction, state, observations, options)
       // Player mode: an ore (coal, iron, diamond) that the pickaxe reaches now comes before a tunnel to an enclosed one.
       // Player mode: a wanted item one dig away (the stone over a step down) gets its way opened first.
       const dropWay = rt.require('./modes/player-drop-access').openWayToDrop({ mode: rt.host.shared.botMode, shared: rt.host.shared, state, decision: plannedDiamond, drops: allDrops, getBlock: (x, y, z) => rt.planningWorld.getBlock(x, y, z), preview: targets => rt.mining.preview(targets), log: text => rt.host.log(text) })

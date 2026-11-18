@@ -17,6 +17,7 @@ const point = value => ({ x: value.x, y: value.y, z: value.z })
 // adjacent ledge existed; the tape may swim up to six blocks toward a ledge.
 const MAX_TICKS = 120
 const MAX_REACH = 6
+const MAX_DEPTH = 8
 const HAZARD = /lava|fire|magma|cactus|campfire|powder_snow|cobweb|wither_rose|dripstone/
 
 function ledgeCellsKnown (physics, cell) {
@@ -40,7 +41,15 @@ function planWaterExit ({ physics, initial, target }) {
   if (!target || ![target.x, target.y, target.z].every(Number.isFinite)) return empty('Water exit needs an exact ledge cell')
   const cell = { x: Math.floor(target.x), y: Math.round(target.y), z: Math.floor(target.z) }
   const feet = initial.position
-  if (Math.hypot(cell.x + 0.5 - feet.x, cell.z + 0.5 - feet.z) > MAX_REACH || cell.y - feet.y > 1.6 || cell.y - feet.y < -0.6) return empty('Water exit reaches only a ledge within six blocks, at most one block up')
+  // The rise is measured from the water surface above a sunken body (live
+  // 2026-11-18 16:44 JST: feet on the lake bottom at y=61, the top water block
+  // at y=62, the shore a standing cell at y=63; forward+jump first swims up).
+  const column = y => { try { return /water/.test(physics.blockAt({ x: Math.floor(feet.x), y, z: Math.floor(feet.z) })?.name ?? '') } catch { return false } }
+  let top = Math.floor(feet.y + 1e-6)
+  if (!column(top)) top -= 1
+  for (let i = 0; i < MAX_DEPTH && column(top + 1); i++) top += 1
+  const from = Math.max(feet.y, top)
+  if (Math.hypot(cell.x + 0.5 - feet.x, cell.z + 0.5 - feet.z) > MAX_REACH || cell.y - from > 1.6 || cell.y - feet.y < -0.6) return empty('Water exit reaches only a ledge within six blocks, at most one block up')
   if (!ledgeCellsKnown(physics, cell)) return empty('Water exit ledge, its floor and head room must be received and passable')
   const yaw = Math.atan2(-(cell.x + 0.5 - feet.x), cell.z + 0.5 - feet.z) * 180 / Math.PI
   let predicted = copy(initial)

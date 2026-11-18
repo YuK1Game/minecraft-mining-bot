@@ -106,6 +106,19 @@ test('S4 from a pond: out of the water first, by the received position, and only
   assert.equal(sim.stored(sim.shared.playerBase, 'diamond'), 37)
 })
 
+// Live 2026-11-18 16:44-17:03 JST: a body that is not swimming sinks. On the bottom of a lake two
+// blocks deep the ledge search looked at the level of the feet, found no shore 1.7 m away, and the
+// return failed four times with WATER_EXIT_FAILED NO_LEDGE.
+test('S4 sunk to the bottom where the pond is two blocks deep: the shore is found from the surface, and the trip starts on land', async () => {
+  const sim = far(CARGO, { x: 150.5, y: GROUND - 2, z: 0.5 })
+  pond(sim, 150, 0); sim.water(150, GROUND - 2, 0)
+  const runtime = sim.mount()
+  assert.equal(await sim.run(runtime, { until: done }), true, sim.log.join('\n'))
+  assert.equal(failures(sim).filter(line => /WATER_EXIT_FAILED/.test(line)).length, 0, sim.log.join('\n'))
+  assert.equal(sim.events.find(event => event.kind === 'travel').wet, false, 'the trip starts on dry land')
+  assert.equal(sim.stored(sim.shared.playerBase, 'diamond'), 37)
+})
+
 test('S4 the water exit fails: no long trip from the water, the goal is held and wakes when the Bot stands elsewhere', async () => {
   const sim = far(CARGO, { x: 150.5, y: GROUND - 1, z: 0.5 })
   pond(sim, 150, 0)

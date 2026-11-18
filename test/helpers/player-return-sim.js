@@ -101,7 +101,10 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
   let motion = { phase: 'idle', reason: null }, path = [], trips = 0
   const fail = { walk: null, waterExit: false, climb: null, travel: null, approach: false }
   function route (to, { wet = false, max = 16 } = {}) {
-    const from = cellOf(), goal = { x: Math.floor(to.x), y: Math.floor(to.y + 0.05), z: Math.floor(to.z) }
+    let from = cellOf()
+    const goal = { x: Math.floor(to.x), y: Math.floor(to.y + 0.05), z: Math.floor(to.z) }
+    // The water exit holds forward and jump: a sunken body first swims up its own column.
+    if (wet) while (isWater(from.x, from.y + 1, from.z)) from = { ...from, y: from.y + 1 }
     if (Math.hypot(goal.x - from.x, goal.z - from.z) > max) throw new Error('Target lies outside the bounded search area')
     if (!standable(goal.x, goal.y, goal.z, wet)) throw new Error('No known safe standing position has a valid route')
     const seen = new Map([[key(from.x, from.y, from.z), null]]), queue = [from]
