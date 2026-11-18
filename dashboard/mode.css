@@ -6,7 +6,7 @@ body.v2 .control-panel .mode-switch button:disabled{cursor:default;opacity:.55}
 body.v2 .control-panel .mode-switch button[aria-pressed=true]:disabled{opacity:1}
 #control[data-mode=player] .control-target > :not(.col-title, .mode-roadmap) { display: none; }
 
-.mode-roadmap { min-width: 0; padding: 0 3px; }
+.mode-roadmap { min-width: 0; padding: 0 3px; container-type: inline-size; }
 .mode-roadmap-summary {
   display: flex;
   align-items: baseline;
@@ -17,30 +17,44 @@ body.v2 .control-panel .mode-switch button[aria-pressed=true]:disabled{opacity:1
 .mode-goal { overflow-wrap: anywhere; font-size: 15px; }
 .mode-roadmap-total { white-space: nowrap; color: var(--sub); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .mode-stages {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px 6px;
   margin: 0;
-  padding: 4px 2px 7px;
+  padding: 4px 2px 3px;
   list-style: none;
-  scrollbar-width: thin;
-  scrollbar-color: var(--g-line) transparent;
 }
-.mode-stages li { flex: none; }
+.mode-stages li { display: flex; min-width: 0; }
+@container (min-width: 316px) {
+  .mode-stages { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@container (min-width: 560px) {
+  .mode-stages { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
 #control[data-mode=player] .mode-stage-button {
-  display: inline-flex;
+  display: flex;
+  flex: 1;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
   min-height: 32px;
-  padding: 4px 8px;
+  padding: 3px;
   border: 1px solid var(--edge);
   border-radius: 8px;
   background: #fff;
   color: var(--sub);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  white-space: nowrap;
+  line-height: 1.2;
+  text-align: center;
+  overflow-wrap: anywhere;
   cursor: pointer;
+}
+@container (max-width: 315px) {
+  .mode-goal { font-size: 12px; }
+  .mode-stages { row-gap: 4px; }
+  #control[data-mode=player] .mode-stage-button { min-height: 30px; }
 }
 #control[data-mode=player] .mode-stage-button[data-state=done] { border-color: var(--g-line); color: var(--g-dark); }
 .mode-stage-button[data-state=done]::before { content: '✓'; }
