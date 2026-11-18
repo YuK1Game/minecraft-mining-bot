@@ -43,6 +43,7 @@ const { createHouseSand } = require('./house/house-sand')
 const { createPlayerFood, hasFood } = require('./player-food')
 const { createPlayerWater } = require('./player-water')
 const { dryStart } = require('./travel-dry-start')
+const { departPlayer } = require('./player-departure')
 const { createHouseBuild, houseFile, loadHouseSync } = require('./house/house-build')
 const { createHousePorts } = require('./house/house-ports')
 const { chestOf, bedOf, setSpawn } = require('./house/house-spawn')
@@ -108,7 +109,17 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   })
   // A long trip from inside the starter house first walks out through its door (house/house-exit.js).
   // Still in the water after the exit: the land trip is not started (it only fails leg after leg from there).
-  const travelTo = async input => { if (runtime.raw().health > 10 && !danger() && !hungryWithoutFood() && !flee.status().active && !shelter.status().active && !water.needed()) await operations.playerWorkstations?.recoverNearby(); try { await leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => hands.walk(target), door: () => houseDoor(), log }) } catch {} if (shared.playerWanted === true) { await dryStart({ needed: () => water.needed(), exit: () => water.exit(() => flee.status().active || shelter.status().active), ready: idle, log }); if (water.needed()) throw Object.assign(new Error('水から上がれないため、長距離移動を始めません。'), { code: 'WATER_EXIT_FAILED' }) } return quarry.travelTo(input) }
+  const travelTo = (input, { aborted: cancelled = () => false } = {}) => {
+    const aborted = () => cancelled() || disposed() || shared.botMode !== 'player' || shared.playerWanted !== true
+    const check = () => { if (aborted()) throw Object.assign(new Error('長距離移動を中断しました。'), { code: 'LONG_TRAVEL_CANCELLED' }) }
+    return departPlayer({
+      input, aborted, canPack: () => runtime.raw().health > 10 && !danger() && !hungryWithoutFood() && !flee.status().active && !shelter.status().active && !water.needed(),
+      pack: () => operations.playerWorkstations?.recoverNearby(),
+      leave: () => leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => { check(); return hands.walk(target) }, door: () => { check(); return houseDoor() }, log }),
+      dry: () => dryStart({ needed: () => water.needed(), exit: () => { check(); return water.exit(() => aborted() || flee.status().active || shelter.status().active) }, ready: () => aborted() || idle(), log }),
+      waterNeeded: () => water.needed(), travel: (value, options) => quarry.travelTo(value, options)
+    })
+  }
   // Out of a tunnel to the open sky, shared by the recovery and the base trip.
   async function climbUp (aborted) {
     for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))

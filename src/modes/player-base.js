@@ -118,7 +118,7 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
   const runner = createReturnRunner({
     getMode, shared, agent: { objective: agent?.objective, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agent.running ? agent.running() : true }, settled: () => agent?.settled?.() !== false,
     policy: { due: () => dueReason() !== null, reason: () => dueReason() ?? '拠点へ預けます', cargo: stacksNow, restockWanted, restock: takeable, canBuild, record, supplies },
-    ports: { getBlock, getPosition, getFeet, getInventory, dimension, moves: { climb, water, house, travel, approach, porchWalk, door, walk }, chests: { hands, spares, porch, pending: pendingChest, make: options => chest(options), near: () => { const feet = getFeet(); return feet ? chestsNear(getBlock, feet).map(found => found.position) : [] } } },
+    ports: { getBlock, getPosition, getFeet, getInventory, dimension, moves: { climb, water, house, travel, approach, porchWalk, door, walk }, chests: { hands, spares, porch, pending: pendingChest, make: options => chest(options), near: () => { const feet = getFeet(); return feet ? chestsNear(getBlock, feet, undefined, { shut: true }).map(found => found.position) : [] } } },
     scope, interrupter: interrupter ?? (() => blocked() ? 'ほかの作業' : null), hostile, travelBusy: () => travel?.status()?.busy === true,
     file: returnFile, write, disposed, log, now, sleep
   })
