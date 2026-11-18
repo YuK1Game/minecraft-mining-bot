@@ -25,6 +25,7 @@ const { createFailureMemory } = require('./return-failures')
 const { createReturnSteps } = require('./return-steps')
 const { queueReturnWrite } = require('./return-persistence')
 const { newGoal, restoreGoal, exhausted, attemptLimit, wakeReason, LABEL, BUDGET, cell, terrainCells } = require('./return-goal')
+const { sidePoint } = require('./return-side')
 
 const NEXT = Object.freeze({ observe: 'surface', surface: 'travel', travel: 'approach', approach: 'container', container: 'store', store: 'verify', verify: 'replan' })
 const DONE_MS = 30000, CLOSE_M = 6
@@ -137,10 +138,8 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     const away = here ? Math.hypot(at.x + 0.5 - here.x, at.y + 0.5 - here.y, at.z + 0.5 - here.z) : 0
     if (goal.stage === 'approach' && out.code === 'CHEST_UNREACHED' && away > CLOSE_M && goal.sides < BUDGET.SIDES) {
       const porch = ports.chests.porch?.()?.stand ?? null
-      const towards = goal.sides === 0 && porch && Math.hypot(porch.x - here.x, porch.z - here.z) > CLOSE_M * 2 ? { x: porch.x - at.x, z: porch.z - at.z } : { x: at.x + 0.5 - here.x, z: at.z + 0.5 - here.z }
-      const length = Math.hypot(towards.x, towards.z) || 1
       goal.sides++
-      goal.detour = { x: Math.floor(at.x + towards.x / length * BUDGET.SIDE_M), z: Math.floor(at.z + towards.z / length * BUDGET.SIDE_M) }
+      goal.detour = sidePoint(at, here, goal.sides === 1 && porch && Math.hypot(porch.x - here.x, porch.z - here.z) > CLOSE_M * 2 ? porch : null)
       goal.stage = 'travel'
       say(`ここからはチェストへ近づけないため、別の側から近づきます（(${goal.detour.x}, ${goal.detour.z}) 経由・${goal.sides} 回目）`)
       return true

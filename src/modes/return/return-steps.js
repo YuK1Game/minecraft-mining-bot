@@ -15,6 +15,10 @@ const CHEST = 'minecraft:chest'
 const ARRIVE_M = 20, REACH_M = 4, CLOSE_M = 6, FAR_M = 1024, MAX_BUILT = 3, EYE = 1.62, STANDS = 6
 // A trip may take 2 s per metre, between 5 and 20 minutes, and goes on while it
 // gets 8 m closer every 4 minutes (player-base.js history: live 2026-11-17 20:36 JST).
+// More than this over or under the chest, "within 20 m" is not at the base: the
+// way there is one that digs and stacks. A trip that ends with no way on within
+// BUILD_M of the base is followed by the same.
+const LEVEL_M = 6, BUILD_M = 48
 const TRAVEL_MS = 300000, TRAVEL_MAX_MS = 1200000, STALL_MS = 240000, STALL_M = 8, MS_PER_M = 2000
 
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
@@ -56,6 +60,13 @@ function createReturnSteps ({ goal, ports, flow }) {
   const stopped = code => !ok() ? cancelled('RETURN_CANCELLED') : interrupter() ? interrupted(code, { detail: interrupter() }) : null
   const inList = (list, at) => list.some(entry => same(entry, at))
   const received = at => getBlock(at.x, at.y, at.z)?.known === true
+  // To `target` by a route that digs and stacks; true when `done` holds for the cell the Bot then stands in.
+  const built = async (target, done) => {
+    if (typeof moves.build !== 'function') return false
+    let out = null
+    try { out = await moves.build({ x: target.x, y: target.y, z: target.z }, { done, aborted }) } catch { out = null }
+    return out?.ok === true
+  }
   // The cells the Bot stands in and on are received.
   const standingCells = () => { const feet = getFeet(); if (!feet) return []; const x = Math.floor(feet.x), y = Math.floor(feet.y + 0.05), z = Math.floor(feet.z); return [-1, 0, 1].map(dy => ({ x, y: y + dy, z })) }
   const unseen = at => blocked('TERRAIN_UNKNOWN', { kind: 'terrain_received', timeoutMs: 10000, terrainCells: [{ x: at.x, y: at.y, z: at.z }] }, { evidence: { chest: at, state: { at: area(getFeet(), 16) } } })
@@ -175,6 +186,9 @@ function createReturnSteps ({ goal, ports, flow }) {
     if (cut) return { ...cut, progress: { moved: Math.round(moved) } }
     // Closer by a real distance: the rest of the way is planned again from here.
     if (moved >= STALL_M) return partial('TRAVEL_SHORT', { progress: { moved: Math.round(moved) }, remaining: { distance: Math.round(left) }, evidence: { reason: why } })
+    // No way on by walking, and the base is near: a route that digs and stacks (movement/build-route.js).
+    if (left <= BUILD_M && await built(base, cell => flat(cell, base) <= ARRIVE_M - 4 && Math.abs(cell.y - base.y) <= LEVEL_M)) return completed('NEAR_BASE', { progress: { moved: Math.round(from - flat(base, getPosition())) }, evidence: { distance: Math.round(flat(base, getPosition())), by: 'build_route' } })
+    if (aborted()) return stopped('TRAVEL_INTERRUPTED')
     return failed('TRAVEL_NO_PROGRESS', { remaining: { distance: Math.round(left) }, detail: why, evidence: { reason: why, state: { at: area(getPosition(), 16), why } } })
   }
 
@@ -199,13 +213,21 @@ function createReturnSteps ({ goal, ports, flow }) {
     // Blocked from above since it was chosen (or the base's own chest): another one is chosen.
     if (shut(at)) { goalNow.target = null; return { ...completed('CHEST_SHUT'), next: 'container' } }
     if (moves.water.needed()) return { ...completed('START_LOST'), next: 'surface' }
+    // Arrived by the flat distance only, far over or under the chest (live
+    // 2026-11-18 15:30:43 JST: 17 m from it and 14 blocks over it, on ground
+    // with no walk down): the way to its level digs and stacks.
+    const beside = cell => flat(cell, at) <= 2.5 && Math.abs(cell.y - at.y) <= 1
+    let tried = false
+    const byBuild = async () => { if (tried || !away(at) || aborted()) return; tried = true; await built(at, beside) }
+    if (Math.abs((getFeet()?.y ?? at.y) - at.y) > LEVEL_M) await byBuild()
+    if (aborted()) return stopped('APPROACH_INTERRUPTED')
     if (away(at) && flat(at, getPosition()) > CLOSE_M) { try { await moves.approach(at, CLOSE_M) } catch {} }
     if (aborted()) return stopped('APPROACH_INTERRUPTED')
     if (away(at) && flat(at, getPosition()) > CLOSE_M && !aborted()) { try { await moves.porchWalk() } catch {} }
     if (aborted()) return stopped('APPROACH_INTERRUPTED')
     if (away(at) && !aborted()) { try { await moves.door() } catch {} }
     if (aborted()) return stopped('APPROACH_INTERRUPTED')
-    const beside = async () => {
+    const stands = async () => {
       const all = standsBeside(getBlock, at)
       for (const stand of [...all.filter(stand => opensFrom(stand, at)), ...all.filter(stand => !opensFrom(stand, at))].slice(0, STANDS)) {
         if (aborted() || !away(at)) return
@@ -213,13 +235,15 @@ function createReturnSteps ({ goal, ports, flow }) {
         try { await moves.walk(stand) } catch {}
       }
     }
-    await beside()
+    await stands()
     if (aborted()) return stopped('APPROACH_INTERRUPTED')
     if (away(at) && !aborted() && moves.house.inside()) {
       try { await moves.house.leave() } catch {}
       if (aborted()) return stopped('APPROACH_INTERRUPTED')
-      if (!moves.house.inside()) await beside()
+      if (!moves.house.inside()) await stands()
     }
+    // No walk got there: a route that digs and stacks, then the cells beside the chest once more.
+    if (away(at) && !tried && !moves.house.inside()) { await byBuild(); if (!aborted()) await stands() }
     if (aborted()) return stopped('APPROACH_INTERRUPTED')
     const why = away(at)
     if (!why) return completed('AT_CHEST', { evidence: { chest: at, distance: Math.round(reach(at, getPosition()) * 10) / 10 } })

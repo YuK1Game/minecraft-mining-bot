@@ -321,6 +321,64 @@ test('arrived on the hill over the base with no way down: round to another side 
   assert.equal(sim.events.filter(event => event.kind === 'place_chest').length, 0)
 })
 
+test('on a height over the house with the base chest by the porch: the first way round is a real trip (live 2026-11-18 15:30 JST)', async () => {
+  // Then: "from the chest towards the porch" was a point 19 m from the Bot; the trip counted it as reached and the first way round was spent without a step.
+  const feet = { x: -11.5, y: GROUND + 6, z: 8.5 }
+  const sim = createReturnSim({ feet: { ...feet }, items: [...KIT, [2, 'diamond', 40]] })
+  const house = sim.buildHouse({ x: 0, y: GROUND, z: 0 })
+  // A ledge six blocks high west of the house: within 20 m of the chest, more than 12 m from the porch, and no walk down.
+  for (let x = -13; x <= -11; x++) for (let z = 7; z <= 9; z++) for (let y = GROUND; y < GROUND + 6; y++) sim.setBlock(x, y, z, 'minecraft:stone')
+  const chest = sim.placeChest(house.origin.x + 5, GROUND, house.origin.z + 10)
+  sim.shared.playerBase = chest
+  sim.agent.running = true
+  const runtime = sim.mount()
+  assert.equal(await sim.run(runtime, { until: done, ms: 1800000 }), true, sim.log.join('\n'))
+  const rounds = lines(sim, /別の側から近づきます/)
+  assert.equal(rounds.length, 1, sim.log.join('\n'))
+  const [, x, z] = rounds[0].match(/（\((-?\d+), (-?\d+)\) 経由/).map(Number)
+  assert.ok(Math.hypot(x - feet.x, z - feet.z) > 24, `the way round (${x}, ${z}) is a trip away from the ledge`)
+  assert.equal(lines(sim, /回り道の地点 .* へ移動しています/).length, 1, 'the trip round was made')
+  assert.equal(sim.stored(chest, 'diamond'), 37)
+})
+
+test('arrived far over the chest on a layer with no walk down: down the pillar the Bot stacked, then the chest (live 2026-11-18 15:30 JST, user: 「積み上げて登ってきたブロックの箇所を掘っていけばいいのでは？」)', async () => {
+  // Then: 17 m from the base chest and 14 blocks over it; three approaches and two ways round failed, and the goal was held with the cargo.
+  const sim = createReturnSim({ feet: { x: -7.5, y: GROUND + 10, z: 1.5 }, items: [...KIT, [2, 'diamond', 40]] })
+  sim.digging = true
+  // A layer of dirt one block thick, ten blocks over the ground, and the cobblestone pillar that reaches it.
+  for (let x = -12; x <= -3; x++) for (let z = -4; z <= 4; z++) sim.setBlock(x, GROUND + 9, z, 'minecraft:dirt')
+  for (let y = GROUND; y <= GROUND + 9; y++) sim.setBlock(-4, y, 0, 'minecraft:cobblestone')
+  const chest = sim.placeChest(5, GROUND, 0)
+  sim.shared.playerBase = chest
+  sim.agent.running = true
+  const runtime = sim.mount()
+  assert.equal(await sim.run(runtime, { until: done, ms: 600000 }), true, sim.log.join('\n'))
+  const mined = sim.events.filter(event => event.kind === 'mine')
+  assert.equal(mined.length, 9, sim.log.join('\n')) // from the last pillar block the Bot steps down to the ground
+  assert.ok(mined.every(event => event.detail.how === 'pillar_descent' && event.detail.x === -4 && event.detail.z === 0), 'only the pillar, each block from under the feet')
+  assert.equal(lines(sim, /掘る・積む道で進みます/).length, 1, sim.log.join('\n'))
+  assert.equal(lines(sim, /に失敗|別の側から|を保留します/).length, 0, sim.log.join('\n'))
+  assert.equal(sim.trips, 0, 'no long trip: the Bot was within 20 m all along')
+  assert.equal(sim.stored(chest, 'diamond'), 37)
+})
+
+test('a trip that finds no way on near the base is followed by a way that digs and stacks, not by the same trip again (user 2026-11-18: 「永遠にルート探す仕様は辞めてください」)', async () => {
+  const sim = createReturnSim({ feet: { x: 34.5, y: GROUND, z: 0.5 }, items: [...KIT, [2, 'diamond', 40], [3, 'dirt', 16]] })
+  sim.digging = true
+  // A wall across the way, higher than a step and too long to walk round within the trip's reach.
+  for (let z = -40; z <= 40; z++) for (let y = GROUND; y < GROUND + 3; y++) sim.setBlock(24, y, z, 'minecraft:stone')
+  const chest = sim.placeChest(5, GROUND, 0)
+  sim.shared.playerBase = chest
+  sim.agent.running = true
+  const runtime = sim.mount()
+  assert.equal(await sim.run(runtime, { until: done, ms: 900000 }), true, sim.log.join('\n'))
+  assert.equal(sim.trips, 1, 'one trip; what follows is the built way')
+  assert.equal(lines(sim, /掘る・積む道で進みます/).length >= 1, true, sim.log.join('\n'))
+  assert.ok(sim.events.some(event => event.kind === 'mine' || event.kind === 'pillar'), 'the wall was mined through or stacked over')
+  assert.equal(lines(sim, /回り道をします|を保留します/).length, 0, sim.log.join('\n'))
+  assert.equal(sim.stored(chest, 'diamond'), 37)
+})
+
 test('nothing is decided before the terrain at the Bot is received (live 2026-11-18 03:28:43 JST, before the world was joined)', async () => {
   const sim = createReturnSim({ feet: { x: 30.5, y: GROUND, z: 0.5 }, items: [...KIT, [2, 'diamond', 40]] })
   const chest = sim.placeChest(5, GROUND, 0)

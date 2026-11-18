@@ -28,6 +28,7 @@ const { underCover } = require('../../src/modes/player-surface')
 const { low } = require('../../src/modes/low-block')
 const { openAccess } = require('../../src/actions/open-face')
 const { chestsNear } = require('../../src/modes/player-storage')
+const { createBuildWalk } = require('../../src/modes/player-build-walk')
 
 const EYE = 1.62, WALK = 4.3, TRAVEL = 4, GROUND = 64
 const extra = () => ({ has_nbt: 'false', can_place_on: [], can_destroy: [] })
@@ -303,7 +304,19 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     chest: { open: position => { requireIdle(); crafting.closeContainer(); return chest.open(position) }, depositItem: options => { requireIdle(); return chest.depositItem(options) }, withdrawItem: options => { requireIdle(); return chest.withdrawItem(options) }, snapshot: () => chest.snapshot(), cancel: reason => chest.cancel(reason) },
     crafting: { closeContainer: () => crafting.closeContainer() },
     interactions: { previewOpenChest: target => { const refused = openAccess(pos => getBlock(pos.x, pos.y, pos.z), getPosition(), target); return refused ? { ready: false, code: refused.code, errors: [refused.message] } : { ready: true } }, useDoor: async at => { requireIdle(); began('door', { ...at }); later(200, () => { for (const dy of [0, 1]) { const found = getBlock(at.x, at.y + dy, at.z); if (/door$/.test(found?.name ?? '')) blocks.set(key(at.x, at.y + dy, at.z), empty(found.name, { open_bit: true })) } }) } },
-    mining: { preview: () => ({ ready: false }), start () { throw new Error('not simulated') } },
+    // Ordinary mining, only when a scenario turns it on (sim.digging): a received
+    // plain block becomes air after its time; the block under the feet lowers the Bot by one.
+    mining: {
+      preview: cells => ({ ready: sim.digging === true && cells.every(cell => { const found = getBlock(cell.x, cell.y, cell.z); return found?.known === true && found.boundingBox === 'block' && /stone|dirt|grass_block|cobble/.test(found.name) }) }),
+      start (cells) {
+        requireIdle()
+        if (!this.preview(cells).ready) throw new Error('not simulated')
+        for (const cell of cells) {
+          began('mine', { x: cell.x, y: cell.y, z: cell.z, how: cell.accessPreparation ?? null })
+          later(600, () => { blocks.set(key(cell.x, cell.y, cell.z), AIR); if (cell.accessPreparation === 'pillar_descent') body.y = cell.y })
+        }
+      }
+    },
     inventory: {}
   }
 
@@ -346,7 +359,22 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     let gone = false
     const disposed = () => gone
     const say = line => log.push(line)
-    const hands = createScaffoldPorts({ operations, disposed, getBlock, getFeet, getInventory: inventory, getMotion: () => motion, pillarStep: async () => ({ ok: false }), sleep, now })
+    // One pillar step (the quarry's): a block from the bag under the feet, the Bot one higher.
+    const pillarStep = async ({ column, feetY, material = 'minecraft:dirt' }) => {
+      const slot = sim.digging === true ? bag.findIndex(item => item.network_id === idOf(material)) : -1
+      if (slot < 0) return { ok: false }
+      requireIdle()
+      began('pillar', { x: column.x, y: feetY, z: column.z })
+      await sleep(800)
+      bag[slot] = bag[slot].count > 1 ? { ...bag[slot], count: bag[slot].count - 1 } : air()
+      sendInventory()
+      setBlock(column.x, feetY, column.z, material)
+      body.y = feetY + 1
+      return { status: 'completed', serverConfirmed: true }
+    }
+    const hands = createScaffoldPorts({ operations, disposed, getBlock, getFeet, getInventory: inventory, getMotion: () => motion, pillarStep, sleep, now })
+    // The route that digs and stacks (player-build-walk.js), only when a scenario turns it on.
+    const build = sim.digging === true ? createBuildWalk({ hands, getHouse: () => sim.house, log: say }) : null
     const storagePorts = createStoragePorts({ operations, disposed, getBlock, getFeet, getInventory: inventory, held: combatOwns, sleep, now })
     const waterJob = createPlayerWater({ getMode: () => sim.mode, shared, agent: { objective: {}, start: async () => {}, stop () {}, settled }, getPosition: getFeet, getBlock, start: (target, options) => movement.start(target, options), moving: () => motion.phase === 'moving', why: () => motion.reason, disposed, log: say, now, sleep })
     const door = () => sim.house?.origin ? openDoor({ origin: sim.house.origin, getBlock, useDoor: at => operations.interactions.useDoor(at), walk: target => hands.walk(target), getFeet, log: say, now, sleep }) : Promise.resolve(true)
@@ -357,7 +385,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
       hands: storagePorts, chest: chestMaker ?? (async options => makeChest(options, at => storagePorts.room(at))), canBuild: mayBuild, pendingChest,
       porch: () => { const o = sim.house?.origin; return o ? { stand: { x: o.x + 3.5, y: o.y, z: o.z + 10.5 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null },
       spares: () => { const o = sim.house?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] },
-      climb, door, walk: target => hands.walk(target), approach: (target, within) => fail.approach ? Promise.resolve(false) : hands.approach(target, within),
+      climb, door, build, walk: target => hands.walk(target), approach: (target, within) => fail.approach ? Promise.resolve(false) : hands.approach(target, within),
       // The house's own walk to its porch (house-build.js closeIn): a longer walk, which takes its time too.
       porchWalk: async () => { const o = sim.house?.origin ?? sim.porch; if (!o) return false; began('porch'); movement.start({ x: o.x + 3.5, y: o.y, z: o.z + 10.5 }, { maxDistance: 48 }); while (motion.phase === 'moving') await sleep(200); return true },
       travel: travelApi, water: { needed: () => waterJob.needed(), exit: aborted => waterJob.exit(aborted) },
@@ -382,7 +410,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
   }
 
   const sim = {
-    mode: 'player', worn: { known: true, worn: ['helmet', 'chestplate', 'leggings', 'boots'].map(piece => ({ piece, name: `minecraft:diamond_${piece}` })) }, hostileNear: false, stopLagMs, writeFails: false, files: {}, house: null, porch: null, indoorWalkM: Infinity,
+    mode: 'player', worn: { known: true, worn: ['helmet', 'chestplate', 'leggings', 'boots'].map(piece => ({ piece, name: `minecraft:diamond_${piece}` })) }, hostileNear: false, stopLagMs, writeFails: false, files: {}, house: null, porch: null, indoorWalkM: Infinity, digging: false,
     now, sleep, later, getBlock, setBlock, water, placeChest, stored, storeOf, buildHouse, unknown, body, state, shared, agent, log, events, server, fail, travel, bag, held, inventory, chest, operations, mount, run, getFeet, getPosition, scope, settled, combatOwns,
     get clock () { return clock }, get trips () { return trips },
     set uncertain (value) { uncertain = value }, get uncertain () { return uncertain },

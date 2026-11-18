@@ -38,6 +38,10 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
   legM = LEG_M, arriveM = 20, chunkTries = 3, stopWhenBlocked = false, blockedBackoffMs = 10000, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 25000, pollMs = 250 } = {}) {
   if (typeof getState !== 'function' || typeof chunkTravel?.start !== 'function' || typeof chunkTravel?.status !== 'function') throw new TypeError('Long travel needs getState and chunk travel')
   let run = null, task = null
+  // Whether a trip with no way on in any direction ends with the reason. A
+  // function is asked each time (in player mode the job that asked for the
+  // trip decides what comes next; user 2026-11-18: 「永遠にルート探す仕様は辞めてください」).
+  const stops = () => typeof stopWhenBlocked === 'function' ? stopWhenBlocked() === true : stopWhenBlocked === true
   const status = () => run ? copy({ operationId: run.operationId, timing: run.timing ?? {}, busy: !!task, phase: run.phase, destination: run.destination, remaining: run.remaining, legs: run.legs, failures: run.failures, reason: run.reason, message: run.message, startedAt: run.startedAt, lastLegAt: run.lastLegAt })
     : { operationId: null, busy: false, phase: 'idle', destination: null, remaining: null, legs: 0, failures: 0, reason: null, message: null }
   const say = text => { run.message = text; try { log(`長距離移動: ${text}`) } catch {} }
@@ -170,7 +174,7 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
         run.reason = last?.code ?? null
         say(`区間を進めませんでした（${last?.code ?? '不明'}${last?.message ? `: ${String(last.message).slice(0, 80)}` : ''}）。${run.failures}回目`)
         if (run.failures >= maxFailuresInRow) {
-          if (stopWhenBlocked) throw fail('LONG_TRAVEL_BLOCKED', `${reasons.LONG_TRAVEL_BLOCKED}（最後の理由: ${last?.code ?? '不明'}）`)
+          if (stops()) throw fail('LONG_TRAVEL_BLOCKED', `${reasons.LONG_TRAVEL_BLOCKED}（最後の理由: ${last?.code ?? '不明'}）`)
           // Coordinator 2026-11-14: the trip does not stop by itself; it backs off
           // and tries again (the terrain and the threats change meanwhile).
           say(`${reasons.LONG_TRAVEL_BLOCKED}。${blockedBackoffMs / 1000}秒後にもう一度試します（最後の理由: ${last?.code ?? '不明'}）`)
@@ -182,7 +186,7 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
       }
       // Progress guard: the received position must keep getting closer.
       const here = after ? Math.round(horizontal(after, run.destination) / 8) : null
-      if (here != null && here === stuckAt) { if (++stuckCount >= 12) { if (stopWhenBlocked) throw fail('LONG_TRAVEL_NO_PROGRESS'); say(`${reasons.LONG_TRAVEL_NO_PROGRESS}。${blockedBackoffMs / 1000}秒後にもう一度試します`); stuckCount = 0; await timedSleep('backoff', blockedBackoffMs) } } else { stuckAt = here; stuckCount = 0 }
+      if (here != null && here === stuckAt) { if (++stuckCount >= 12) { if (stops()) throw fail('LONG_TRAVEL_NO_PROGRESS'); say(`${reasons.LONG_TRAVEL_NO_PROGRESS}。${blockedBackoffMs / 1000}秒後にもう一度試します`); stuckCount = 0; await timedSleep('backoff', blockedBackoffMs) } } else { stuckAt = here; stuckCount = 0 }
     }
     throw fail('LONG_TRAVEL_CANCELLED')
   }

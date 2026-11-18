@@ -69,3 +69,25 @@ test('review: a new failure that passes when its file is run again is not counte
   const other = parse(fail(1, 'slow', 'test/a.test.js') + tail(1))
   assert.deepEqual(confirmedByRerun(introduced.slice(0, 1), other).confirmed.map(item => item.name), ['slow'])
 })
+// CI 2026-11-18 (PR #329): "uid change after selection stops the shore executor
+// before any movement queue" fails on main whenever its file runs alone; the
+// base's whole-suite report had it passing, and the comparison called the
+// failure of the current code new.
+test('review: a failure that the base also has when the file runs alone is not counted as new; one the base passes or does not have is', () => {
+  const { alsoOnBase } = require('../scripts/lib/test-report')
+  const fail = (n, name, file, code = 'ERR_ASSERTION') => `# Subtest: ${name}\nnot ok ${n} - ${name}\n  ---\n  location: '/r/${file}:${n}:1'\n  failureType: 'testCodeFailure'\n  code: '${code}'\n  ...\n`
+  const pass = (n, name) => `# Subtest: ${name}\nok ${n} - ${name}\n  ---\n  duration_ms: 1\n  ...\n`
+  const tail = n => `1..${n}\n# tests ${n}\n# pass 0\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n`
+  const parse = text => parseTap('TAP version 13\n' + text, { root: '/r' })
+  const baseline = parse(pass(1, 'uid') + pass(2, 'broken') + pass(3, 'other code') + tail(3))
+  const current = parse(fail(1, 'uid', 'test/a.test.js') + fail(2, 'broken', 'test/a.test.js') + fail(3, 'other code', 'test/a.test.js') + fail(4, 'new file', 'test/new.test.js') + tail(4))
+  const confirmed = compareReports(baseline, current).introduced
+  assert.equal(confirmed.length, 4)
+  // The file alone on the base: "uid" fails the same way, "broken" passes, "other code" fails another way; test/new.test.js is not there.
+  const alone = parse(fail(1, 'uid', 'test/a.test.js') + pass(2, 'broken') + fail(3, 'other code', 'test/a.test.js', 'ERR_TEST_FAILURE') + tail(3))
+  const settled = alsoOnBase(confirmed, alone)
+  assert.deepEqual(settled.onBase.map(item => item.name), ['uid'])
+  assert.deepEqual(settled.introduced.map(item => item.name), ['broken', 'other code', 'new file'])
+  // One failure on the base covers one failure of the current code, not two of the same key.
+  assert.deepEqual(alsoOnBase([confirmed[0], confirmed[0]], alone).introduced.length, 1)
+})
