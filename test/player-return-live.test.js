@@ -275,6 +275,40 @@ test('a chest under a whole block is not walked to, clicked or charged; the next
   assert.equal(bare.sim.held('diamond'), 40)
 })
 
+// Real Realm 2026-11-18 16:20-16:25 JST (after #328): held for wood with 8
+// planks, the goal woke as SUPPLIES_CHANGED three times in eight minutes and
+// walked to the full base chests each time. What woke it was canBuild(), which
+// reads the chests near the feet, inside the supplies it compared.
+test('held for wood, the goal is not woken by where the Bot stands or by planks it used; more wood wakes it', async () => {
+  const sim = createReturnSim({ feet: { x: 8.5, y: GROUND, z: 3.5 }, items: [...KIT, [2, 'diamond', 40], [3, 'oak_planks', 8]] })
+  sim.shared.playerBase = sim.placeChest(5, GROUND, 0, { fill: 27 })
+  sim.agent.running = true
+  // What the place says about building (storage.canMakeChest reads the chests near the feet) is not the supplies.
+  let asked = 0
+  const runtime = sim.mount({ canBuild: () => { asked++; return false } })
+  await sim.run(runtime, { until: () => sim.goal(runtime)?.state === 'held', ms: 600000 })
+  assert.equal(sim.goal(runtime)?.hold.code, 'NO_CHEST_MATERIAL', sim.log.join('\n'))
+  assert.equal(sim.shared.playerReturn.hold.supplies, 1, 'eight planks are one chest')
+  const before = sim.events.length
+  // The Bot walks off and back, and two planks go into sticks.
+  const askedBefore = asked
+  Object.assign(sim.body, { x: 20.5, z: 3.5 })
+  await sim.run(runtime, { ms: 60000 })
+  sim.bag[3].count = 6
+  Object.assign(sim.body, { x: 8.5, z: 3.5 })
+  await sim.run(runtime, { ms: 180000 })
+  assert.equal(sim.goal(runtime)?.state, 'held', sim.log.join('\n'))
+  assert.equal(sim.goal(runtime).wakes, 0)
+  assert.equal(sim.events.length, before, 'nothing was tried')
+  assert.equal(asked, askedBefore, 'a held goal does not ask the place whether it can build')
+  assert.equal(lines(sim, /SUPPLIES_CHANGED/).length, 0)
+  // Wood for a second chest is held: now it is looked at again.
+  sim.bag[3].count = 16
+  await sim.run(runtime, { until: () => sim.goal(runtime)?.wakes === 1, ms: 30000 })
+  assert.equal(sim.goal(runtime)?.wakes, 1, sim.log.join('\n'))
+  assert.equal(lines(sim, /SUPPLIES_CHANGED/).length, 1)
+})
+
 test('held for a chest, the goal is not woken by the mining below the base; held on the way out of a tunnel, it is', async () => {
   // No chest can be built: held for the supplies. Deeper and farther changes nothing about that.
   const sim = createReturnSim({ feet: { x: 8.5, y: GROUND, z: 3.5 }, items: [...KIT, [2, 'diamond', 40]] })
