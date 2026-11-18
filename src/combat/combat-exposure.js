@@ -26,9 +26,14 @@ function createCombatExposure ({ world, entities, scopeOf, solidCover = false })
   function sightEvidence (from, to) {
     if (!from || !to || !['x', 'y', 'z'].every(k => Number.isFinite(from[k]) && Number.isFinite(to[k]))) return null
     const steps = Math.ceil(Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z) / 0.25)
-    let unknown = false
+    let unknown = false, lastX, lastY, lastZ
     for (let i = 1; i < steps; i++) {
-      const f = i / steps, b = world.getBlock(Math.floor(from.x + (to.x - from.x) * f), Math.floor(from.y + (to.y - from.y) * f), Math.floor(from.z + (to.z - from.z) * f))
+      const f = i / steps, x = Math.floor(from.x + (to.x - from.x) * f), y = Math.floor(from.y + (to.y - from.y) * f), z = Math.floor(from.z + (to.z - from.z) * f)
+      // Quarter-block samples often repeat a cell. Read its received state
+      // once within this synchronous ray; the next ray still observes anew.
+      if (x === lastX && y === lastY && z === lastZ) continue
+      lastX = x; lastY = y; lastZ = z
+      const b = world.getBlock(x, y, z)
       if (b?.known !== true) { unknown = true; continue }
       if (solidCover ? b.boundingBox !== 'empty' && !/^minecraft:(?:air|cave_air|void_air)$/.test(b.name) : b.extra?.length || !(/^minecraft:(?:air|cave_air|void_air)$/.test(b.name) || b.boundingBox === 'empty' && !/water|lava|bubble|powder_snow|cobweb|portal/.test(String(b.name)))) return false
     }

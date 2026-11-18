@@ -29,3 +29,20 @@ test('an archer behind a full wall has no attack sight', () => {
   assert.equal(result.evidence.sight, false)
   assert.equal(result.intercept, false)
 })
+
+test('one sight ray reads each sampled cell once and observes changes on its next call', () => {
+  const blocks = new Map(), reads = []
+  const world = { getBlock: (x, y, z) => { const key = `${x},${y},${z}`; reads.push(key); return blocks.get(key) ?? air } }
+  const exposure = createCombatExposure({ world, entities: {}, scopeOf: () => 'scope' })
+  const from = { x: 0.5, y: 65.62, z: 0.5 }, to = { x: 8.5, y: 65.62, z: 0.5 }
+  assert.equal(exposure.sight(from, to), true)
+  assert.ok(reads.length <= 9, `Eight-block ray did ${reads.length} terrain reads`)
+  assert.equal(reads.length, new Set(reads).size)
+  // A cache must not outlive this synchronous ray, even without a world revision.
+  blocks.set('4,65,0', { known: false })
+  assert.equal(exposure.sight(from, to), null)
+  blocks.set('2,65,0', stone)
+  assert.equal(exposure.sight(from, to), false)
+  blocks.clear()
+  assert.equal(exposure.sight(from, to), true)
+})

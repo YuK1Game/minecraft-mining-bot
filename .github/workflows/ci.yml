@@ -64,12 +64,15 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: Identify the suite dependencies, runtime and comparison code
+        id: suite_inputs
+        run: node scripts/compare-tests.js --cache-key >> "$GITHUB_OUTPUT"
       - name: Kept report of the base commit
         id: kept
         uses: actions/cache/restore@v4
         with:
           path: .suite-reports
-          key: suite-report-v1-${{ runner.os }}-part${{ matrix.part }}of3-${{ env.CI_BASE_SHA }}
+          key: suite-report-v2-${{ runner.os }}-part${{ matrix.part }}of3-${{ steps.suite_inputs.outputs.key }}-${{ env.CI_BASE_SHA }}
       - name: Fail on new failures; retain pre-existing failures in report
         run: npm run test:compare
       - name: Keep this commit's report for the pull requests based on it (main)
@@ -77,13 +80,13 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .suite-reports
-          key: suite-report-v1-${{ runner.os }}-part${{ matrix.part }}of3-${{ github.sha }}
+          key: suite-report-v2-${{ runner.os }}-part${{ matrix.part }}of3-${{ steps.suite_inputs.outputs.key }}-${{ github.sha }}
       - name: Keep the base report this pull request had to make
         if: always() && github.event_name == 'pull_request' && steps.kept.outputs.cache-hit != 'true' && hashFiles(format('.suite-reports/{0}.*.json', env.CI_BASE_SHA)) != ''
         uses: actions/cache/save@v4
         with:
           path: .suite-reports
-          key: suite-report-v1-${{ runner.os }}-part${{ matrix.part }}of3-${{ env.CI_BASE_SHA }}
+          key: suite-report-v2-${{ runner.os }}-part${{ matrix.part }}of3-${{ steps.suite_inputs.outputs.key }}-${{ env.CI_BASE_SHA }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

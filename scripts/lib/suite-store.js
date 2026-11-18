@@ -6,8 +6,8 @@
 // pushes, so its report is kept and read again; and the files of the suite are
 // divided into shards that run on separate machines.
 // A kept report is used only when it was made for the same commit, shard and
-// settings (Node major version, platform, concurrency, way of choosing files,
-// way of collecting the output).
+// settings (dependencies, exact Node runtime, concurrency, and the code that
+// chooses, runs and reads the tests).
 // Anything else is not a report of this comparison and the suite runs again.
 const fs = require('node:fs')
 const path = require('node:path')
@@ -15,8 +15,9 @@ const crypto = require('node:crypto')
 
 const { strictFiles } = require('./test-lanes')
 
-const SELECTION = 'test-files-outside-strict-lanes-v1'
+const SELECTION = 'test-families-outside-strict-lanes-v2'
 const posix = name => name.split(path.sep).join('/')
+const familyOf = file => posix(file).replace(/\.part\d+(?=\.test\.[cm]?js$)/, '')
 
 // 'k/n' (1 <= k <= n <= 16); nothing means the whole suite.
 function parseShard (text) {
@@ -26,10 +27,27 @@ function parseShard (text) {
   if (!match || index < 1 || count < 1 || count > 16 || index > count) throw new Error(`SUITE_SHARD must look like 1/3, got ${JSON.stringify(text)}`)
   return { index, count }
 }
-// A file stays in its shard when other files are added or removed: the shard
-// comes from the name alone. (By position in the sorted list, one new file
-// would move others between shards and their known failures would look new.)
-const shardOf = (file, count) => crypto.createHash('md5').update(`suite:${posix(file)}`).digest().readUInt32BE(0) % count + 1
+// All parts of a file stay together. Their tests are assigned by ordinal, so
+// inserting one test can move an existing failure to another part. Splitting
+// those parts between CI shards would make that old failure look new.
+const shardOf = (file, count) => crypto.createHash('md5').update(`suite:${familyOf(file)}`).digest().readUInt32BE(0) % count + 1
+
+// A result names the file that registered the test, not its part wrapper.
+// Rerunning that file alone runs only its first part; include every sibling
+// part on the side being rerun (the base can have a different part count).
+function expandTestFiles (directory, files) {
+  const out = new Set()
+  for (const file of files) {
+    const family = familyOf(file), folder = path.posix.dirname(family)
+    let entries
+    try { entries = fs.readdirSync(path.join(directory, folder), { withFileTypes: true }) } catch (error) { if (error.code === 'ENOENT') continue; throw error }
+    for (const entry of entries) {
+      const candidate = `${folder}/${entry.name}`
+      if ((entry.isFile() || entry.isSymbolicLink()) && familyOf(candidate) === family) out.add(candidate)
+    }
+  }
+  return [...out].sort()
+}
 
 // Every *.test.js (.cjs, .mjs) under test/ that no strict lane runs, sorted,
 // relative to the directory, with forward slashes. The strict lanes (review,
@@ -54,7 +72,21 @@ const shardFiles = (directory, shard) => testFiles(directory).filter(file => sha
 // 'blocking-pipes-v1': how the suite's output is collected (blocking-output.js).
 // A report made before that can lack tests, so it is not read again.
 const OUTPUT = 'blocking-pipes-v1'
-const settingsOf = ({ concurrency, shard }) => ({ selection: SELECTION, output: OUTPUT, node: process.versions.node.split('.')[0], platform: process.platform, concurrency, shard: `${shard.index}/${shard.count}` })
+const digest = value => crypto.createHash('sha256').update(value).digest('hex')
+function filesDigest (directory, files) {
+  return digest(JSON.stringify(files.map(file => {
+    try { return [file, fs.readFileSync(path.join(directory, file), 'utf8').replace(/\r\n/g, '\n')] } catch (error) { if (error.code === 'ENOENT') return [file, null]; throw error }
+  })))
+}
+// A fresh baseline shares the current node_modules. A report made with older
+// dependencies, selection rules or runtime flags cannot stand in for that run.
+const settingsOf = ({ concurrency, shard, directory = path.resolve(__dirname, '../..') }) => ({
+  selection: SELECTION, output: OUTPUT, node: process.versions.node, platform: process.platform, arch: process.arch,
+  concurrency, shard: `${shard.index}/${shard.count}`, nodeOptions: digest(process.env.NODE_OPTIONS ?? ''),
+  dependencies: filesDigest(directory, ['package.json', 'package-lock.json', 'npm-shrinkwrap.json']),
+  implementation: filesDigest(directory, ['scripts/lib/test-lanes.js', 'scripts/lib/suite-store.js', 'scripts/lib/test-report.js', 'scripts/compare-tests.js', 'scripts/lib/blocking-output.js'])
+})
+const settingsKey = settings => digest(JSON.stringify(settings))
 const fileOf = (directory, sha, shard) => path.join(directory, `${sha}.${shard.index}of${shard.count}.json`)
 const sound = report => Number.isSafeInteger(report?.counts?.tests) && Number.isSafeInteger(report?.counts?.fail) && Array.isArray(report?.failures) && Array.isArray(report?.reported) && Array.isArray(report?.unreported)
 
@@ -85,4 +117,4 @@ function prune (directory, keep) {
   return removed
 }
 
-module.exports = { parseShard, shardOf, testFiles, shardFiles, settingsOf, readStored, writeStored, prune }
+module.exports = { parseShard, shardOf, testFiles, shardFiles, expandTestFiles, settingsOf, settingsKey, readStored, writeStored, prune }

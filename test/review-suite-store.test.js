@@ -5,7 +5,8 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
-const { parseShard, shardOf, testFiles, shardFiles, settingsOf, readStored, writeStored, prune } = require('../scripts/lib/suite-store')
+const { execFileSync } = require('node:child_process')
+const { parseShard, shardOf, testFiles, shardFiles, expandTestFiles, settingsOf, settingsKey, readStored, writeStored, prune } = require('../scripts/lib/suite-store')
 const { reviewNames, playerNames, strictFiles } = require('../scripts/lib/test-lanes')
 const { runSuite, nodeOptions } = require('../scripts/compare-tests')
 
@@ -59,6 +60,16 @@ test('review: the files of the strict lanes are not run again by the comparison,
   assert.ok(reviewNames(root).includes('quarry-job.test.js') && reviewNames(root).indexOf('review-suite-store.test.js') < reviewNames(root).indexOf('quarry-job.test.js'))
 })
 
+test('review: split files share one shard and a rerun includes the parts present on that side', t => {
+  const family = ['test/deep/a.test.js', 'test/deep/a.part2.test.js', 'test/deep/a.part3.test.js']
+  const before = tree(t, [...family, 'test/deep/another.test.js'])
+  const after = tree(t, [...family, 'test/deep/a.part4.test.js', 'test/deep/a.partly.test.js'])
+  const shard = { index: shardOf(family[0], 3), count: 3 }
+  assert.ok(family.every(file => shardFiles(before, shard).includes(file)))
+  assert.deepEqual(expandTestFiles(before, [family[0], family[1], 'test/missing.test.js']), family.slice().sort())
+  assert.deepEqual(expandTestFiles(after, [family[1]]), [...family, 'test/deep/a.part4.test.js'].sort())
+})
+
 test('review: a kept report is read back only for the same commit, shard and settings', t => {
   const directory = scratch(t)
   const settings = settingsOf({ concurrency: 4, shard: { index: 2, count: 3 } })
@@ -90,6 +101,25 @@ test('review: a damaged or incomplete kept report is not a report', t => {
   assert.equal(readStored(directory, sha('a'), settings), null, 'cut short')
 })
 
+test('review: dependency and comparison-code changes invalidate both a kept report and its Actions key', t => {
+  const inputs = ['package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'scripts/lib/test-lanes.js', 'scripts/lib/suite-store.js', 'scripts/lib/test-report.js', 'scripts/compare-tests.js', 'scripts/lib/blocking-output.js']
+  const directory = tree(t, inputs), stored = scratch(t)
+  const options = { directory, concurrency: 4, shard: { index: 1, count: 3 } }
+  const settings = settingsOf(options), key = settingsKey(settings)
+  assert.equal(settings.node, process.versions.node, 'patch versions can change test behavior too')
+  writeStored(stored, sha('a'), settings, report())
+  for (const file of inputs) {
+    fs.writeFileSync(path.join(directory, file), 'changed\n')
+    const changed = settingsOf(options)
+    assert.equal(readStored(stored, sha('a'), changed), null, file)
+    assert.notEqual(settingsKey(changed), key, `${file} also changes the immutable Actions cache key`)
+    fs.writeFileSync(path.join(directory, file), '')
+  }
+  assert.deepEqual(readStored(stored, sha('a'), settingsOf(options)).report, report(), 'unchanged inputs still reuse the report')
+  assert.equal(readStored(stored, sha('a'), { ...settings, node: `${settings.node}.different-build` }), null)
+  assert.equal(readStored(stored, sha('a'), { ...settings, arch: 'another-architecture' }), null)
+})
+
 test('review: reports of other commits are removed, those of the base and the change stay', t => {
   const directory = scratch(t)
   for (const letter of ['a', 'b', 'c']) for (const index of [1, 2]) writeStored(directory, sha(letter), settingsOf({ concurrency: 4, shard: { index, count: 2 } }), report())
@@ -107,6 +137,15 @@ test('review: the workflow runs the comparison in the parts the script is told a
   assert.deepEqual(parts, parts.map((_, index) => index + 1))
   assert.ok(workflow.includes(`SUITE_SHARD: \${{ matrix.part }}/${parts.length}`))
   assert.equal(workflow.split(`of${parts.length}-`).length - 1, 3, 'the three cache keys name the same number of parts')
+  assert.match(workflow, /id: suite_inputs\n\s+run: node scripts\/compare-tests\.js --cache-key >> "\$GITHUB_OUTPUT"/)
+  assert.equal(workflow.split('${{ steps.suite_inputs.outputs.key }}').length - 1, 3, 'restore and both saves use the current suite inputs')
+})
+
+test('review: the cache-key command uses the same runtime and settings as a comparison without starting it', () => {
+  const shard = { index: 2, count: 3 }, concurrency = Math.max(2, Math.min(8, os.availableParallelism()))
+  const expected = settingsKey(settingsOf({ directory: root, concurrency, shard }))
+  const output = execFileSync(process.execPath, ['scripts/compare-tests.js', '--cache-key'], { cwd: root, env: { ...process.env, SUITE_SHARD: '2/3', CI_BASE_SHA: 'not-a-commit' }, encoding: 'utf8' })
+  assert.equal(output.trim(), `key=${expected}`)
 })
 
 test('review: the comparison reports every test of a file that ends in a burst of results, and the totals', async t => {

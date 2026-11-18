@@ -20,12 +20,16 @@ function createRuntimeOperations (rt) {
       moveToChunk: input => rt.ensureChunkTravel().start({ area: rt.normalizeChunkArea(input?.area) }),
       // Long-distance travel (2026-11-14): repeated chunk-travel legs toward a far
       // destination; never while quarry work runs. Continues saved progress.
-      travelTo: async input => {
+      travelTo: async (input, { aborted = () => false } = {}) => {
+        const ensure = () => { if (aborted() || rt.disposed || rt.disposing) throw Object.assign(new Error('長距離移動を中断しました。'), { code: 'LONG_TRAVEL_CANCELLED' }) }
+        ensure()
         if (rt.quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
         const d = input?.destination
         if (!d || ![d.x, d.z].every(Number.isFinite)) throw new Error('目的地 {x, z} を指定してください。')
         let resume = null
         try { const prior = JSON.parse(await rt.require('node:fs/promises').readFile(rt.travelRuntime.longTravelFile(), 'utf8')); if (prior?.destination && Math.hypot(prior.destination.x - d.x, prior.destination.z - d.z) < 1 && prior.phase !== 'arrived') resume = prior } catch {}
+        // Loading a saved route can finish after the requesting goal was stopped.
+        ensure()
         return rt.ensureLongTravel().start({ destination: { x: d.x, y: d.y, z: d.z }, resume })
       },
       travelStatus: () => rt.travelRuntime.longTravel?.status() ?? { busy: false, phase: 'idle' },

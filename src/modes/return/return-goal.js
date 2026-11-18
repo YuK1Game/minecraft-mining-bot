@@ -51,6 +51,9 @@ const BUDGET = Object.freeze({ STAGE_ATTEMPTS: 3, GOAL_ATTEMPTS: 12, WAKE_ATTEMP
 const cell = point => point && [point.x, point.y, point.z].every(Number.isFinite) ? { x: Math.floor(point.x), y: Math.floor(point.y), z: Math.floor(point.z) } : null
 const chestCell = value => value && [value.x, value.y, value.z].every(Number.isSafeInteger) ? { x: value.x, y: value.y, z: value.z } : null
 const chestList = value => Array.isArray(value) ? value.map(chestCell).filter(Boolean).slice(0, 16) : []
+// Required observations are all-or-nothing: dropping an invalid cell would
+// silently weaken the condition that originally blocked the step.
+const terrainCells = value => Array.isArray(value) && value.length > 0 && value.length <= 16 && value.every(entry => chestCell(entry)) ? value.map(chestCell) : null
 
 function newGoal ({ id, reason, base = null, scope = null, origin = null, now = Date.now() }) {
   return {
@@ -80,7 +83,7 @@ function restoreGoal (value) {
     remaining: null,
     full: chestList(value.full), unopened: [], unreached: [], visited: [], built: number(value.built), detour: null, detours: number(value.detours), sides: 0,
     budget: { attempts: number(value.budget?.attempts), activeMs: number(value.budget?.activeMs), wakes: number(value.budget?.wakes), interrupts: 0 },
-    wait: null, hold: value.state === 'held' && value.hold && typeof value.hold === 'object' ? { code: String(value.hold.code ?? 'UNKNOWN'), at: number(value.hold.at), until: number(value.hold.until), position: cell(value.hold.position), supplies: typeof value.hold.supplies === 'string' ? value.hold.supplies : null, kinds: Array.isArray(value.hold.kinds) ? value.hold.kinds.filter(kind => typeof kind === 'string') : [], vertical: value.hold.vertical === true } : null,
+    wait: null, hold: value.state === 'held' && value.hold && typeof value.hold === 'object' ? { code: String(value.hold.code ?? 'UNKNOWN'), at: number(value.hold.at), until: number(value.hold.until), position: cell(value.hold.position), supplies: typeof value.hold.supplies === 'string' ? value.hold.supplies : null, kinds: Array.isArray(value.hold.kinds) ? value.hold.kinds.filter(kind => typeof kind === 'string') : [], vertical: value.hold.vertical === true, terrainCells: terrainCells(value.hold.terrainCells) } : null,
     interrupt: null, last: null, saved: true, resumed: true
   }
 }
@@ -113,4 +116,4 @@ function loadReturnSync (file, { io = fs } = {}) {
   } catch { return { goal: null, failures: null } }
 }
 
-module.exports = { STAGES, LABEL, BUDGET, newGoal, restoreGoal, exhausted, attemptLimit, activeLimit, wakeReason, returnFile, loadReturnSync, cell }
+module.exports = { STAGES, LABEL, BUDGET, newGoal, restoreGoal, exhausted, attemptLimit, activeLimit, wakeReason, returnFile, loadReturnSync, cell, terrainCells }
