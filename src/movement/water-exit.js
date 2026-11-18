@@ -11,6 +11,8 @@
 //   MAX_TICKS; nothing is sent beyond the tape;
 // - arrival is judged from the server's received position by the caller.
 
+const swim = require('./water-swim')
+
 const copy = value => structuredClone(value)
 const point = value => ({ x: value.x, y: value.y, z: value.z })
 // Live 2026-11-14 20:00: in a lake the shore was three blocks away and no
@@ -39,6 +41,8 @@ function planWaterExit ({ physics, initial, target }) {
   const wet = p => { try { const b = physics.blockAt({ x: Math.floor(p.x), y: Math.floor(p.y + 1e-6), z: Math.floor(p.z) }), u = physics.blockAt({ x: Math.floor(p.x), y: Math.floor(p.y + 1e-6) - 1, z: Math.floor(p.z) }); return /water/.test(b?.name ?? '') || /water/.test(u?.name ?? '') } catch { return false } }
   if (!initial?.isInWater && !(initial?.position && wet(initial.position))) return empty('Water exit starts only in water')
   if (!target || ![target.x, target.y, target.z].every(Number.isFinite)) return empty('Water exit needs an exact ledge cell')
+  // A water cell as the target is a swim across open water toward a far shore (water-swim.js).
+  if (swim.target(physics, target)) return swim.plan({ physics, initial, target })
   const cell = { x: Math.floor(target.x), y: Math.round(target.y), z: Math.floor(target.z) }
   const feet = initial.position
   // The rise is measured from the water surface above a sunken body (live
@@ -74,6 +78,7 @@ function planWaterExit ({ physics, initial, target }) {
 // continues (Bedrock lifts the swimmer while it presses the ledge); the
 // received position decides arrival.
 function createWaterExitStepper ({ route, initial, physics, maxTicks = 160 }) {
+  if (route.waterExit?.swim === true) return swim.stepper({ route, initial, physics })
   let predicted = copy(initial); let index = 0; let phase = 'moving'; let reason = null
   const target = route.waypoints[0].position
   const cell = { x: Math.floor(target.x), y: Math.round(target.y), z: Math.floor(target.z) }
