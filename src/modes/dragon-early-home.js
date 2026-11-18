@@ -55,7 +55,7 @@ async function approachHome (ctx, destination) {
   }
   if (Math.abs(getFeet().y - destination.y) > LEVEL_M && !await byBuild()) return false
   // Arrived on the map means up to 20 m away: the short walk to the door stand does not reach that far.
-  if (!close(getFeet(), porch, 6) && !inside()) await hands.approach(porch, 3)
+  if (!close(getFeet(), destination, 4) && !close(getFeet(), porch, 6) && !inside()) await hands.approach(porch, 3)
   if (cancelled()) return false
   if (!await openDoor({ origin, getBlock, getFeet, walk: hands.walk, useDoor: at => operations.interactions.useDoor(at), log: ctx.log }) || cancelled()) return false
   if (!close(getFeet(), destination, 4)) await hands.approach(destination, 3)
