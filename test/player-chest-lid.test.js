@@ -56,11 +56,12 @@ test('a large chest with a block on one half does not open from either half', ()
 })
 
 test('no chest is placed in a cell under a whole block', () => {
-  // A tunnel two high: stone at y 66 over the cells beside the feet, except over the strip x = 1.
-  const tunnel = (x, y, z) => y <= 63 ? solid('stone') : y >= 66 ? solid('stone') : y === 65 && x !== 1 && !(x === 0 && z === 0) ? solid('stone') : air
+  // x = 2 leaves both lids free and both clicks facing the same way;
+  // x = 1 would put the second click on the excluded 45-degree boundary.
+  const tunnel = (x, y, z) => y <= 63 ? solid('stone') : y >= 66 ? solid('stone') : y === 65 && x !== 2 && !(x === 0 && z === 0) ? solid('stone') : air
   const pair = chestCells(tunnel, { x: 0.5, y: 64, z: 0.5 })
   assert.equal(pair.length, 2)
-  assert.ok(pair.every(cell => cell.x === 1), JSON.stringify(pair))
+  assert.ok(pair.every(cell => cell.x === 2), JSON.stringify(pair))
   // Every cell under rock: none.
   const low = (x, y, z) => y <= 63 || y >= 65 ? (x === 0 && z === 0 && y === 65 ? air : solid('stone')) : air
   assert.deepEqual(chestCells(low, { x: 0.5, y: 64, z: 0.5 }), [])

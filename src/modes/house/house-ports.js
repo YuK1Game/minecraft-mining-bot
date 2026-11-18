@@ -1,5 +1,7 @@
 'use strict'
 
+const { createContainerPorts } = require('../return/container-ports')
+
 // The game operations the starter house is built with: ordinary placement on
 // any face (operations.interactions.placeHouseBlock), crafting in the inventory
 // or at a crafting table, and smelting in a furnace. Everything counts by the
@@ -10,11 +12,11 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
   const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
   let why = null
   const refused = error => { why = String(error?.message ?? error).slice(0, 160); return false }
-  async function patient (run) {
+  async function patient (run, retry = () => true) {
     const end = now() + 10000
     for (;;) {
       try { return await run() } catch (error) {
-        if (!/待って|待機|使用中|確認しています/.test(String(error?.message ?? '')) || now() >= end || disposed()) throw error
+        if (!retry() || !/待って|待機|使用中|確認しています/.test(String(error?.message ?? '')) || now() >= end || disposed()) throw error
         await sleep(300)
       }
     }
@@ -27,13 +29,26 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
     if (!item && stacks().length) { try { await patient(() => operations.inventory.equip(stacks()[0].slot)) } catch (error) { return refused(error) } item = stacks().find(stack => stack.slot <= 8) }
     return item ? item.slot : null
   }
+  let placementRetrySafe = true
   async function place (name, plan) {
+    placementRetrySafe = true
     const slot = await inHand(name)
     if (slot == null || slot === false) { why ??= `${name} を手に持てません`; return false }
     const options = { position: plan.position, slot, clicked: plan.clicked, face: plan.face, clickY: plan.clickY, head: plan.head ?? null, alignFacing: plan.alignFacing === true }
     const preview = operations.interactions.previewHouseBlock(options)
     if (preview?.ready !== true) { why = String(preview?.errors?.[0] ?? '設置できません').slice(0, 160); return false }
-    try { await patient(() => operations.interactions.placeHouseBlock(options)) } catch (error) { return refused(error) }
+    try {
+      await patient(() => {
+        placementRetrySafe = false
+        let result
+        try { result = operations.interactions.placeHouseBlock(options) } catch (error) { placementRetrySafe = !error?.details?.placementFailure; throw error }
+        return Promise.resolve(result).catch(error => {
+          const receipt = error?.details?.placementFailure
+          placementRetrySafe = !!receipt && (receipt.serverRejected === true || receipt.notSent === true && receipt.transactionQueued === false && receipt.wireSent === false)
+          throw error
+        })
+      }, () => placementRetrySafe)
+    } catch (error) { return refused(error) }
     return true
   }
   const preview = (name, plan) => {
@@ -75,7 +90,8 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
     try { await patient(() => operations.mining.start([extra ? { ...cell, ...extra } : cell])) } catch (error) { return refused(error) }
     return until(() => { const found = getBlock(cell.x, cell.y, cell.z); return found?.known === true && /air$/.test(found.name ?? '') }, 10000)
   }
-  return { place, preview, craft, smelt, mine, count, why: () => why, reset: () => { why = null } }
+  const containers = createContainerPorts({ operations, getInventory, disposed, sleep, now })
+  return { place, preview, craft, smelt, mine, count, inspectChest: containers.inspect, placementRetrySafe: () => placementRetrySafe, why: () => why, reset: () => { why = null } }
 }
 
 module.exports = { createHousePorts }

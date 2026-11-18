@@ -82,6 +82,10 @@ function nextDiamondAction (state, observations = {}, options = {}) {
   const requireAction = (capability, action, aliases = []) => has(capability, aliases) ? action : result('capability_required', action.stage, `次の工程には未実装の機能が必要です: ${capability}`, { capability, proposedAction: action })
   const wrap = (action, subgoal) => ({ ...action, goal: { ...goal }, counts: { ...counts }, ...(action.type === 'mine_stone' ? { requiresKnownDurability: true } : {}), ...(subgoal ? { subgoal } : {}) })
   const wait = (stage, code, reason, data = {}) => result('wait', stage, reason, { code, ...data })
+  const recoverStation = kind => {
+    const action = observations.playerWorkstations?.enabled === true && observations.playerWorkstations[kind === 'table' ? 'recoverTable' : 'recoverFurnace']
+    return action ? wrap(action) : null
+  }
 
   if (options.reserveResource != null && (!reserveIron || !Number.isSafeInteger(reserveCount) || reserveCount < 1 || reserveCount > 4096)) return wait('iron_reserve', 'invalid_reserve_goal', 'A bounded explicit iron reserve count is required.')
   if (state.phase !== 'spawned') return wait('observation', 'not_spawned', 'ワールドへの参加を待ちます。')
@@ -293,6 +297,8 @@ function nextDiamondAction (state, observations = {}, options = {}) {
     if (placed && (placed.access.ready || placed.access.standpoint)) return approachStation(placed, 'crafting_table')
     const held = items.find(item => nameOf(item.name) === 'crafting_table' && amount(item.count))
     if (held) return placement('crafting_table', held)
+    const recovery = recoverStation('table')
+    if (recovery) return recovery
     if (placed && tableMaterialShortfall(state) && state.position.y - 1.62 < placed.position.y - 2 - 1e-4 && !(observations.supplyReturn?.localSupplyFallback === true && observations.supplyReturn.scope === supplyScope(state) && observations.supplyReturn.reason === 'at_supply_exit' && observations.supplyReturn.source === 'current_scoped_preserved_tunnel_floor_graph')) {
       const back = observations.supplyReturn
       if (back?.ready === true && back.scope === supplyScope(state) && integer(back.stationTarget) && key(back.stationTarget) === key(placed.position) && Array.isArray(back.waypoints) && back.waypoints.length > 0 && back.waypoints.length <= 2 && back.waypoints.every(point => finite(point) && Math.abs(point.y - Math.round(point.y)) < 1e-4) && finite(back.target) && key(back.target) === key(back.waypoints.at(-1)) && back.nativePreview?.ready === true && back.source === 'current_scoped_preserved_tunnel_floor_graph') return requireAction('move', result('move_to', 'crafting_table', '資材を補うため、既知の坑道を短い区間ずつ戻ります。', { target: copyPoint(back.target), stationTarget: copyPoint(placed.position), supplyReturn: true, resource: 'crafting_table', allowWater: false, requiresReobservation: true, requiresLivePreview: true, predictionOnly: true, serverConfirmed: false }), ['movement', 'walking'])
@@ -405,13 +411,21 @@ function nextDiamondAction (state, observations = {}, options = {}) {
       if (portable.step) return { ...portable.step, goal: { ...goal }, counts: { ...counts } }
       return wait('portable_worksite', 'portable_site_required', '帰路を塞がない地下の作業場所を確認します。')
     }
-    if (counts.rawIron < 3) {
+    // Player ownership comes from the runtime. Recover an empty portable
+    // furnace before funding another; a usable furnace with unconfirmed or
+    // remaining contents stays on the ordinary inspection/smelting path.
+    const existingFurnace = observations.playerWorkstations?.enabled === true && kit.furnace < 1 && station('furnace')
+    if (counts.rawIron < 3 && kit.furnace < 1) {
+      const recovery = recoverStation('furnace')
+      if (recovery) return recovery
+    }
+    if (counts.rawIron < 3 && !existingFurnace) {
       if (kit.furnace < 1) {
         const stone = baseSubstep(8, 'portable_furnace')
         if (stone) return stone
         const knownTable = station('table')
         if (kit.table > 0 && !knownTable?.access?.ready && !knownTable?.access?.standpoint) {
-          if (portable.preparationTarget) return result('place_crafting_table', 'portable_station_kit', '帰路を塞がない確認済みの場所に準備用の作業台を置き、携帯用は後で作り直します。', { target: copyPoint(portable.preparationTarget), requiresLivePreview: true })
+          if (portable.preparationTarget) return result('place_crafting_table', 'portable_station_kit', 'かまどを用意するため、帰路を塞がない確認済みの場所に作業台を置きます。', { target: copyPoint(portable.preparationTarget), requiresLivePreview: true })
           // No prepared place and no stop on the way back to walk to: the held
           // table goes down by the ordinary placement below (real Realm 2026-11-16
           // 16:37-16:47 JST: on the surface with a table and 8 cobblestone held,
@@ -428,6 +442,10 @@ function nextDiamondAction (state, observations = {}, options = {}) {
         if (access) return access
         return craft('furnace', 1, 'portable_station_kit')
       }
+      // The table used to craft the furnace is the table to carry. Recovery
+      // must finish in actual inventory before it can satisfy the kit budget.
+      const recovery = kit.table < 1 ? recoverStation('table') : null
+      if (recovery) return recovery
       const boards = (kit.table ? 0 : 4) + (kit.coal ? 0 : 3) + (kit.sticks >= 2 ? 0 : 2)
       const material = planks(boards, 'portable_station_kit')
       if (material) return material
@@ -443,6 +461,8 @@ function nextDiamondAction (state, observations = {}, options = {}) {
   if (!placedFurnace) {
     const held = items.find(item => nameOf(item.name) === 'furnace' && amount(item.count))
     if (held) return placement('furnace', held)
+    const recovery = recoverStation('furnace')
+    if (recovery) return recovery
     const stone = baseSubstep(8, 'cobblestone_for_furnace')
     if (stone) return stone
     const stationAction = table()

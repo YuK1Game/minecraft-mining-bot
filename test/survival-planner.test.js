@@ -428,3 +428,27 @@ test('a table whose standing place had no route is not walked to again; a new on
   assert.notEqual((next.proposedAction ?? next).type, 'move_to')
   assert.equal((next.proposedAction ?? next).output, 'minecraft:crafting_table')
 })
+
+test('player sword preparation reclaims a table before funding another and does not reclaim its current crafting table', () => {
+  const f = fixture(), target = { x: -1, y: 65, z: 1 }
+  f.items([['oak_planks', 2], ['stick', 1]])
+  const recovery = { type: 'recover_workstation', stage: 'portable_worksite', item: 'minecraft:crafting_table', workstationId: 'sword-table', target }
+  f.observations.playerWorkstations = { enabled: true, recoverTable: recovery }
+  const next = f.next({ firstWoodenSwordOnly: true })
+  assert.equal(next.type, 'recover_workstation'); assert.equal(next.workstationId, recovery.workstationId)
+  assert.deepEqual(next.target, target)
+  f.observations.playerWorkstations.enabled = false
+  assert.notEqual(f.next({ firstWoodenSwordOnly: true }).type, 'recover_workstation')
+  f.observations.playerWorkstations.enabled = true
+  f.items([['oak_planks', 2], ['stick', 1], ['crafting_table', 1]])
+  assert.equal(f.next({ firstWoodenSwordOnly: true }).type, 'place_crafting_table')
+  f.items([['oak_planks', 2], ['stick', 1]]); f.table(); f.preview('wooden_sword')
+  assert.equal(f.next({ firstWoodenSwordOnly: true }).output, 'minecraft:wooden_sword')
+})
+
+test('player stone sword preparation recovers a missing table without converting available logs', () => {
+  const f = fixture(); f.base(); f.items([['cobblestone', 5], ['stick', 1], ['oak_log', 1]])
+  f.observations.playerWorkstations = { enabled: true, recoverTable: { type: 'recover_workstation', stage: 'portable_worksite', item: 'minecraft:crafting_table', workstationId: 'stone-sword-table', target: { x: -1, y: 65, z: 1 } } }
+  assert.equal(f.next().type, 'recover_workstation')
+  assert.equal(f.next().workstationId, 'stone-sword-table')
+})

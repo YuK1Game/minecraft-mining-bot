@@ -74,11 +74,11 @@ function bankableAll (inventory, { worn = null } = {}) {
 }
 
 // What to take back out of a base chest (its received slots) up to the kit:
-// the diamonds the missing gear takes, and coal, sticks, wood and iron up to
-// their caps. After a death the gear is gone and the diamonds sit in the chest
+// the diamonds the missing gear takes, and fuel, materials and portable
+// workstations up to their caps. After a death the gear is gone and the diamonds sit in the chest
 // (live 2026-11-17 19:09 JST: died with the diamond gear, respawned at the
 // house with a wooden pickaxe while the base chest held the banked diamonds).
-const TAKE = [[/^diamond$/, null], ...CAPS.filter(([pattern]) => ['coal', 'stick', 'oak_log', 'oak_planks', 'iron_ingot'].some(name => pattern.test(name)))]
+const TAKE = [[/^diamond$/, null], ...CAPS.filter(([pattern]) => ['coal', 'stick', 'oak_log', 'oak_planks', 'iron_ingot', 'crafting_table', 'furnace', 'chest'].some(name => pattern.test(name)))]
 function restockable (inventory, worn, slots) {
   if (inventory?.known !== true || inventory.uncertain || !Array.isArray(slots)) return []
   const items = (inventory.items ?? []).filter(item => item?.count > 0)

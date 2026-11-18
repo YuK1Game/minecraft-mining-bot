@@ -18,7 +18,7 @@ const SAFETY_REASONS = {
 const positive = (number, fallback, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(number) && number > 0 && number <= max ? number : fallback
 const deadState = state => state.dead === true || state.isDead === true || state.lifecycle?.dead === true || state.phase === 'dead' || (Number.isFinite(state.health) && state.health <= 0)
 const PROTECTION_WAIT_PHASES = new Set(['escape_replan', 'recovering', 'grace', 'loading', 'not_ready', 'observation_unknown', 'yielding', 'work_clearance_pending', 'work_clearance'])
-const WORK_CLEARANCE_ACTIONS = new Set(['move_to', 'break_block', 'collect_drops', 'craft', 'equip', 'forage', 'eat', 'explore', 'gather_dirt', 'gather_soil', 'mine_ore', 'tunnel', 'place_block', 'place_table', 'place_furnace', 'open_furnace', 'put_furnace_input', 'put_furnace_fuel', 'take_furnace_output', 'use_table', 'build_shelter', 'leave_shelter'])
+const WORK_CLEARANCE_ACTIONS = new Set(['move_to', 'break_block', 'collect_drops', 'craft', 'equip', 'forage', 'eat', 'explore', 'gather_dirt', 'gather_soil', 'mine_ore', 'tunnel', 'place_block', 'place_table', 'place_furnace', 'open_furnace', 'put_furnace_input', 'put_furnace_fuel', 'take_furnace_output', 'use_table', 'recover_workstation', 'build_shelter', 'leave_shelter'])
 const COVERED_STATIONARY_ACTIONS = new Set(['eat', 'craft', 'preview_craft', 'equip', 'wait', 'stop', 'complete', 'capability_required', 'scan_blocks', 'prospect'])
 function verifiedCoveredRoom (state, current = observedThreats(state, {})) {
   const protection = state.idleProtection

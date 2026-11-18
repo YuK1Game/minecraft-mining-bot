@@ -107,7 +107,7 @@ function createContainerPorts ({ operations, getInventory, held = () => false, d
     if (mine.stop()) return cut(mine, 'CONTAINER_INTERRUPTED')
     if (!received) return blocked('CONTAINER_CONTENTS_UNKNOWN', { kind: 'container_update', timeoutMs: SLOT_MS }, { evidence: { chest: chestOf(position) } })
     remember(position)
-    return completed('CONTAINER_OPEN', { evidence: { chest: chestOf(position), room: room(position) } })
+    return completed('CONTAINER_OPEN', { evidence: { chest: chestOf(position), room: room(position), slotCount: view()?.window?.slotCount ?? null } })
   }
 
   // Opens the chest, reads it and closes it again.

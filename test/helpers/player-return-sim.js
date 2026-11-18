@@ -65,7 +65,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     if (unknown.has(`${Math.floor(x / 16)},${Math.floor(z / 16)}`)) return { known: false }
     return blocks.get(key(x, y, z)) ?? (y < GROUND ? STONE : AIR)
   }
-  const setBlock = (x, y, z, name, { passable = false, properties = null } = {}) => blocks.set(key(x, y, z), passable ? empty(name, properties) : solid(name))
+  const setBlock = (x, y, z, name, { passable = false, properties = null } = {}) => blocks.set(key(x, y, z), passable ? empty(name, properties) : { ...solid(name), ...(properties ? { properties } : {}) })
   const water = (x, y, z) => setBlock(x, y, z, 'minecraft:water', { passable: true })
   const isWater = (x, y, z) => /water/.test(getBlock(x, y, z)?.name ?? '')
   const closedDoor = (x, y, z) => { const found = getBlock(x, y, z); return /door$/.test(found?.name ?? '') && ![true, 1].includes(found.properties?.open_bit) }
@@ -209,7 +209,13 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
   const inventory = () => uncertain ? null : ({ known: true, items: bag.map((item, slot) => item.network_id ? { slot, name: nameOf(item.network_id), count: item.count } : null).filter(Boolean) })
   const held = name => bag.filter(item => item.network_id === idOf(name)).reduce((sum, item) => sum + item.count, 0)
   const stores = new Map() // one store per container; the halves of a large chest share it
-  const pairOf = at => [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ x: at.x + dx, y: at.y, z: at.z + dz })).find(p => getBlock(p.x, p.y, p.z)?.name === 'minecraft:chest') ?? null
+  const pairOf = at => [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ x: at.x + dx, y: at.y, z: at.z + dz })).find(p => {
+    const first = getBlock(at.x, at.y, at.z), second = getBlock(p.x, p.y, p.z)
+    if (second?.name !== 'minecraft:chest') return false
+    const facing = first.properties?.facing_direction, other = second.properties?.facing_direction
+    if (facing == null && other == null) return true // older geometry-only return fixtures
+    return facing === other && ([2, 3].includes(facing) ? p.z === at.z : [4, 5].includes(facing) && p.x === at.x)
+  }) ?? null
   const storeKey = at => { const pair = pairOf(at); const first = !pair || at.x < pair.x || (at.x === pair.x && at.z < pair.z) ? at : pair; return key(first.x, first.y, first.z) }
   function storeOf (at) {
     const id = storeKey(at), size = pairOf(at) ? 54 : 27
@@ -336,7 +342,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     }
     return null
   }
-  function mount () {
+  function mount ({ chest: chestMaker = null, canBuild: mayBuild = canBuild, pendingChest = () => false } = {}) {
     let gone = false
     const disposed = () => gone
     const say = line => log.push(line)
@@ -348,7 +354,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     const base = createPlayerBase({
       getMode: () => sim.mode, shared, log: say, disposed, getFeet, getPosition, getBlock, getInventory: inventory, getWorn: () => sim.worn, now, sleep,
       agent: { objective: { objective: 'diamond' }, start: async options => { if (gone) throw new Error('reloaded'); agent.running = true; agent.starts.push({ at: clock, options }) }, stop: reason => { agent.running = false; agent.stopUntil = clock + sim.stopLagMs; agent.stops.push({ at: clock, reason }); path = []; motion = { phase: 'idle', reason: null } }, settled, running: () => agent.running },
-      hands: storagePorts, chest: async options => makeChest(options, at => storagePorts.room(at)), canBuild,
+      hands: storagePorts, chest: chestMaker ?? (async options => makeChest(options, at => storagePorts.room(at))), canBuild: mayBuild, pendingChest,
       porch: () => { const o = sim.house?.origin; return o ? { stand: { x: o.x + 3.5, y: o.y, z: o.z + 10.5 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null },
       spares: () => { const o = sim.house?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] },
       climb, door, walk: target => hands.walk(target), approach: (target, within) => fail.approach ? Promise.resolve(false) : hands.approach(target, within),

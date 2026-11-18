@@ -853,7 +853,7 @@ function createRuntime (host) {
   // fight that interrupted it, so it is recorded on its own.
   const food = createFood({ client: host.client, getState: () => { const state = working(); return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: foodKnownLife() } } }, crafting, getInput: () => input, equip: (slot, options) => inventory.equipForFood(slot, options), allocateLegacyId: () => host.allocate('interaction'), canEmergencyEat: canEmergencyEatHere, onUncertain: details => { host.shared.foodUncertain = { ...details, at: new Date().toISOString() }; try { host.log(`食事の結果が未確認です（持ち物全体は不明扱いにしません）: ${String(details?.reason ?? '').slice(0, 80)}`) } catch {} }, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
   // Bare-hand deepslate takes about 15 s (2026-11-14 cave exit): 30 s per block.
-  const mining = createMining({ blockTimeoutMs: 30000, logAllowance: () => longTravelLogAllowance(), travelDownAllowance: () => Date.now() < (host.shared.travelDownUntil ?? 0), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true || travelBedOwns(target, block), verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true || travelShulkerOwns(target, block) })
+  const mining = createMining({ blockTimeoutMs: 30000, logAllowance: () => longTravelLogAllowance(), travelDownAllowance: () => Date.now() < (host.shared.travelDownUntil ?? 0), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedStation: (state, target, block) => require('./modes/player-workstations').ownsStation({ shared: host.shared, state, target, block }), verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true || travelBedOwns(target, block), verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true || travelShulkerOwns(target, block) })
   const interactions = createInteractions({ client: host.client, getState: () => ({ ...working(), lifecycle: { deathId: actualLifeId() } }), world: host.world, crafting, getInput: () => input, version: host.meta.version, onInventory, onUncertain, allocateLegacyId: () => host.allocate('interaction') })
 
   function commitChestMainDelta (delta) {
@@ -1772,37 +1772,25 @@ function createRuntime (host) {
     } catch (error) { if (options?.signal?.aborted) throw error; return observed }
   }
 
-  async function observeStationSupplies (observed, options) {
-    const state = observed.state, life = host.shared.deathRespawn?.deathId
-    const current = () => ({ ...working(), entities: host.entities.snapshot({ kind: 'all' }), lifecycle: { deathId: Number.isSafeInteger(host.shared.deathRespawn?.deathId) ? host.shared.deathRespawn.deathId : null } })
-    if (state.phase !== 'spawned' || state.dead || state.isDead || state.lifecycle?.dead || !(state.health > 0) || !supplyScope(state) || !Number.isSafeInteger(life) || supplyScope(state) !== supplyScope(current())) return observed
-    host.shared.stationCatalog = updateStationCatalog({ state, blocks: observed.blocks, catalog: host.shared.stationCatalog })
-    const stationPages = readStationPages({ state, stations: host.shared.stations, catalog: host.shared.stationCatalog, world: planningWorld })
-    const enriched = { ...observed, stationPages }
-    if (!tableMaterialShortfall(state) || !stationPages.craftingTable) return enriched
-    const requested = nextDiamondAction(state, enriched, { diamondCount: options?.goal?.diamond ?? 1 })
-    if (requested.supplyReturnRequested !== true) return enriched
-    let supplyReturn = planSupplyReturn({ state, floors: readCurrentTunnelFloors(), floorScope: { profile: state.profile, realmId: String(state.realm.id), dimension: state.dimension }, stationPage: stationPages.craftingTable, world: planningWorld })
-    if (supplyReturn.ready) {
-      await new Promise(resolve => setImmediate(resolve))
-      const fresh = current()
-      if (fresh.phase !== 'spawned' || fresh.dead || fresh.isDead || fresh.spawnPending || supplyScope(fresh) !== supplyReturn.scope || fresh.health < state.health || Math.hypot(fresh.position.x - state.position.x, fresh.position.y - state.position.y, fresh.position.z - state.position.z) > 0.1 || !idlePhysics) supplyReturn = { ...supplyReturn, ready: false, reason: 'supply_origin_changed' }
-      else {
-        const threats = evaluateThreats(fresh, fresh.entities, { observationRadius: 32 })
-        if (threats.requiresObservation || threats.threats.length || threats.outsideDanger.length > 64 || (host.entities.stats?.().unknownPositions ?? 0) > threats.unknownPositions.length) supplyReturn = { ...supplyReturn, ready: false, reason: 'supply_threat_observation' }
-        else {
-          const avoidance = threats.outsideDanger.map(actor => ({ id: actor.runtimeId, position: actor.position, minDistance: actor.dangerRadius, padding: 0.5 }))
-          try {
-            const navigator = createNavigator({ world: planningWorld, version: host.meta.version, physics: idlePhysics.withWorld(planningWorld, { allowWater: false }) })
-            const preview = navigator.plan(navigator.physics.fromServer(fresh), supplyReturn.target, { maxDistance: 12, maxExpanded: 500, avoidance })
-            const prefixOnly = preview.ready && preview.waypoints.length <= 2 && preview.waypoints.every(step => supplyReturn.waypoints.some(point => Math.hypot(step.position.x - point.x, step.position.y - point.y, step.position.z - point.z) < 1e-4))
-            supplyReturn = { ...supplyReturn, ready: !!prefixOnly, ...(prefixOnly ? {} : { reason: preview.reason ?? 'return_prefix_not_native' }), nativePreview: { ready: !!prefixOnly, waypoints: preview.waypoints, predictionOnly: true, serverConfirmed: false } }
-          } catch (error) { supplyReturn = { ...supplyReturn, ready: false, reason: 'return_native_preview_failed' } }
-        }
-      }
-    }
-    return { ...enriched, supplyReturn }
-  }
+  // This part lives in station-observation-runtime.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const stationObservationRuntime = require('./runtime/station-observation-runtime').createStationObservationRuntime({
+    get createNavigator () { return createNavigator },
+    get evaluateThreats () { return evaluateThreats },
+    get host () { return host }, set host ($value) { host = $value },
+    get idlePhysics () { return idlePhysics }, set idlePhysics ($value) { idlePhysics = $value },
+    get nextDiamondAction () { return nextDiamondAction },
+    get planningWorld () { return planningWorld },
+    get planSupplyReturn () { return planSupplyReturn },
+    get readCurrentTunnelFloors () { return readCurrentTunnelFloors }, set readCurrentTunnelFloors ($value) { readCurrentTunnelFloors = $value },
+    get readStationPages () { return readStationPages },
+    get supplyScope () { return supplyScope },
+    get tableMaterialShortfall () { return tableMaterialShortfall },
+    get updateStationCatalog () { return updateStationCatalog },
+    get working () { return working }
+  })
+  function observeStationSupplies (...args) { return stationObservationRuntime.observeStationSupplies(...args) }
   // This part lives in autonomy-runtime.js. It reads and writes these bindings of
   // this closure through accessors, so each use sees the current value exactly
   // as the code did when it was written here.
@@ -1846,7 +1834,7 @@ function createRuntime (host) {
     get nutritionSword () { return nutritionSword },
     get nutritionTarget () { return nutritionTarget },
     get observedState () { return observedState },
-    get observePortableWorksite () { return observePortableWorksite },
+    get runtimeOperations () { return runtimeOperations }, get observePortableWorksite () { return observePortableWorksite },
     get observeStationSupplies () { return observeStationSupplies },
     get observeStoneAccess () { return observeStoneAccess },
     get planningWorld () { return planningWorld },
@@ -2935,7 +2923,7 @@ function createRuntime (host) {
   // as the code did when it was written here.
   const runtimeOperations = require('./runtime/runtime-operations').createRuntimeOperations({
     get activeBase () { return activeBase },
-    get allActors () { return allActors },
+    get actualLifeId () { return actualLifeId }, get allActors () { return allActors },
     get armor () { return armor },
     get armorAutoAllowed () { return armorAutoAllowed },
     get armorTask () { return armorTask }, set armorTask (value) { armorTask = value },

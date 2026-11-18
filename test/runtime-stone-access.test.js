@@ -1,4 +1,5 @@
 'use strict'
+const { runtimeSourceOr } = require('./helpers/runtime-source')
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
 const {nextDiamondAction}=require('../src/survival/diamond-planner'),{nextSurvivalAction}=require('../src/survival/survival-planner'),{supplyScope}=require('../src/survival/supply-return'),{resourceMinHealth}=require('../src/safety/learning-health'),{evaluateThreats}=require('../src/combat/threats'),{createDurabilityReader}=require('../src/inventory/durability'),{createDiamondActions}=require('../src/survival/diamond-actions')
 const copy=v=>structuredClone(v),key=p=>`${p.x},${p.y},${p.z}`
@@ -10,7 +11,7 @@ function nativeFixture(t){
   f.state.inventory.items.push({slot:1,name:'minecraft:stone_sword',count:1});return f
 }
 function runtimeFixture(t,{direct=false,unreadyFirst=false,zeroSteps=false,mutateRead=null,omitObservedLife=false}={}){
-  const f=nativeFixture(t),source=fs.readFileSync(process.env.RUNTIME_TEST_SOURCE??path.join(__dirname,'../src/runtime.js'),'utf8'),start=source.indexOf('  function stoneAccessKey ('),end=source.indexOf('  async function observeStationSupplies (',start)
+  const f=nativeFixture(t),source=runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE),start=source.indexOf('  function stoneAccessKey ('),end=source.indexOf('  async function observeStationSupplies (',start)
   assert.ok(start>=0&&end>start)
   const ctorStart=source.indexOf('  const diamondActions = createDiamondActions('),ctorEnd=source.indexOf('  async function executeShelterBatch ',ctorStart)
   const raw=()=>({network_id:316,count:1,metadata:0,has_stack_id:true,stack_id:42,block_runtime_id:0,extra:{has_nbt:'true',nbt:{version:1,nbt:{type:'compound',name:'',value:{Damage:{type:'int',value:f.tool.durabilityUsed}}}},can_place_on:[],can_destroy:[]}})
@@ -80,7 +81,7 @@ test('production observedState without API lifecycle gets only the actual Host l
   t.mock.timers.enable({apis:['setInterval']})
   const h=runtimeFixture(t,{omitObservedLife:true});assert.equal(h.api.stoneAccessObservedState().lifecycle.deathId,0)
   const e=await h.api.observeStoneAccess(h.obs,h.options);assert.equal(e.stoneAccess?.ready,true)
-  const source=fs.readFileSync(process.env.RUNTIME_TEST_SOURCE??path.join(__dirname,'../src/runtime.js'),'utf8'),getter=source.match(/tunneling = createTunneling\(\{ getState: ([\s\S]*?), world: planningWorld,/)
+  const source=runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE),getter=source.match(/tunneling = createTunneling\(\{ getState: ([\s\S]*?), world: planningWorld,/)
   assert.ok(getter,'use the actual Runtime createTunneling getState wiring')
   const getState=Function('requireGeneration','stoneAccessObservedState','return '+getter[1])(()=>{},h.api.stoneAccessObservedState)
   const strict=h.f.makeTunneling({getState}),decision=h.api.applyStoneAccess(h.f.state,h.chosen(),e.stoneAccess)

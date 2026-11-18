@@ -1,4 +1,5 @@
 'use strict'
+const { runtimeSourceOr } = require('./helpers/runtime-source')
 const { test } = require('node:test'), assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
 const { setImmediate: turn, setTimeout: sleep } = require('node:timers/promises')
@@ -49,6 +50,43 @@ test('real material budget prepares furnace first, spare table last and reserves
   assert.equal(portable.portableKit(f.state).ready, false); assert.notEqual(f.next().resource, 'iron')
   const reserve = plannerFixture(); reserve.items([['stone_pickaxe', 1], ['cobblestone', 24], ['oak_planks', 3], ['stick', 2], ['crafting_table', 1]]); reserve.hold('stone_pickaxe')
   assert.notEqual(reserve.next().type, 'place_crafting_table')
+})
+test('player carries the preparation table after crafting the furnace without funding or crafting a duplicate', () => {
+  const f = plannerFixture(); f.table(); f.items([['stone_pickaxe', 1], ['cobblestone', 8], ['oak_planks', 3], ['stick', 2]]); f.hold('stone_pickaxe'); f.preview('furnace')
+  const target = { ...f.observations.craftingTable.position }
+  const recovery = { type: 'recover_workstation', stage: 'portable_worksite', workstationId: 'player-table', item: 'minecraft:crafting_table', target, reason: 'Carry the owned preparation table.' }
+  f.observations.playerWorkstations = { enabled: true, recoverTable: recovery, recoverFurnace: null }
+  assert.equal(f.next().output, 'minecraft:furnace', 'finish the recipe that still needs the placed table')
+  f.items([['stone_pickaxe', 1], ['oak_planks', 3], ['stick', 2], ['furnace', 1]]); f.hold('stone_pickaxe')
+  const next = f.next()
+  assert.equal(next.type, 'recover_workstation'); assert.equal(next.workstationId, recovery.workstationId)
+  assert.deepEqual(next.target, target); assert.deepEqual(next.goal, { diamond: 1 })
+  assert.equal(f.next().type, 'recover_workstation', 'a recovery request does not make an inventory table')
+  f.set(target.x, target.y, target.z, 'air'); f.refresh(); delete f.observations.craftingTable
+  f.items([['stone_pickaxe', 1], ['oak_planks', 3], ['stick', 2], ['furnace', 1], ['crafting_table', 1]]); f.hold('stone_pickaxe')
+  const carried = f.next()
+  assert.equal(carried.resource, 'iron'); assert.ok(['prospect', 'tunnel', 'mine_ore'].includes(carried.type))
+  assert.equal(portable.portableKit(f.state).ready, true)
+  assert.equal(f.state.inventory.items.find(item => item.name === 'minecraft:oak_planks').count, 3)
+})
+test('player kit recovers an owned empty furnace before gathering eight more stone', () => {
+  const f = plannerFixture(); f.furnace(); f.items([['stone_pickaxe', 1], ['coal', 1], ['stick', 2]]); f.hold('stone_pickaxe')
+  const recovery = { type: 'recover_workstation', stage: 'portable_worksite', workstationId: 'player-furnace', item: 'minecraft:furnace', target: { ...f.observations.stations.furnace.position } }
+  f.observations.playerWorkstations = { enabled: true, recoverTable: null, recoverFurnace: recovery }
+  assert.equal(f.next().type, 'recover_workstation')
+  assert.equal(f.next().workstationId, 'player-furnace')
+  f.observations.playerWorkstations.enabled = false
+  assert.equal(f.next().type, 'mine_stone', 'legacy portable preparation retains its existing policy')
+})
+test('player inspects and reuses a received furnace with unknown contents instead of making a spare', () => {
+  const f = plannerFixture(); f.furnace(); f.items([['stone_pickaxe', 1], ['coal', 1], ['stick', 2]]); f.hold('stone_pickaxe')
+  f.observations.furnace.contentsKnown = false; f.observations.furnace.needsOpen = true
+  f.observations.playerWorkstations = { enabled: true, recoverTable: null, recoverFurnace: null }
+  const collect = f.next()
+  assert.equal(collect.resource, 'iron'); assert.ok(['prospect', 'tunnel', 'mine_ore'].includes(collect.type))
+  f.items([['stone_pickaxe', 1], ['coal', 1], ['stick', 2], ['raw_iron', 3]]); f.hold('stone_pickaxe')
+  assert.equal(f.next().type, 'open_furnace')
+  assert.deepEqual(f.next().target, f.observations.stations.furnace.position)
 })
 test('missing existing table gets a validated preparation target or bounded native continuation, not an endless scan', () => {
   const f = plannerFixture(); f.items([['stone_pickaxe', 1], ['cobblestone', 24], ['oak_planks', 3], ['stick', 2], ['crafting_table', 1]]); f.hold('stone_pickaxe')
@@ -143,7 +181,7 @@ function integration (options = {}) {
   }
   const runner = { actions: makeActions({ request, refreshState: async () => state(), getState: state, observe: async () => ({}), timeoutMs: 2000, pollIntervalMs: 1 }) }
   const diamondActions = createDiamondActions({ request, refreshState: async () => state(), getState: state, baseActions: runner.actions, timeoutMs: 2500, pollIntervalMs: 1 })
-  const source = fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? path.join(__dirname, '../src/runtime.js'), 'utf8'), start = source.indexOf('  function portablePolicyError (' ), end = source.indexOf('  async function observeStationSupplies (', start)
+  const source = runtimeSourceOr(process.env.RUNTIME_TEST_SOURCE), start = source.indexOf('  function portablePolicyError (' ), end = source.indexOf('  async function observeStationSupplies (', start)
   assert.ok(start >= 0 && end > start)
   const bindings = { host, observedState: state, resourceMinHealth, evaluateThreats: options.evaluateThreats ?? evaluateThreats, supplyScope, readStationPages: require('../src/survival/supply-return').readStationPages, nextDiamondAction, planningWorld: f.world, working: state, userBehaviorOwns: () => false, recoveryMotionDepth: 0, movement, requireIdle: () => {}, excavation, runner, diamondActions, interactions, ...portable, readCurrentTunnelFloors: () => f.floors, idlePhysics: f.physics }
   if (options.selectPortableWorksite) bindings.selectPortableWorksite = options.selectPortableWorksite
