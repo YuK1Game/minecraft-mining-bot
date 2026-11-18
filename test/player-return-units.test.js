@@ -106,10 +106,18 @@ test('a held goal wakes for what it waits for, or at the latest when its time is
   assert.equal(wakeReason(goal, seen({ position: { x: 0, y: 75, z: 0 } })), 'POSITION_CHANGED', 'for the way out of a tunnel it is')
   goal.hold.kinds = ['supplies_changed']
   assert.equal(wakeReason(goal, seen({ position: { x: 90, y: 20, z: 0 } })), null, 'a hold that does not depend on the place is not woken by it')
+  // Supplies counted as the chests the held material makes (player-base.js): only more of them wakes.
+  goal.hold.supplies = 1
+  assert.equal(wakeReason(goal, seen({ supplies: 1 })), null)
+  assert.equal(wakeReason(goal, seen({ supplies: 0 })), null, 'planks used for something else are not a reason to go back')
+  assert.equal(wakeReason(goal, seen({ supplies: null })), null, 'an inventory that is not received says nothing')
+  assert.equal(wakeReason(goal, seen({ supplies: 2 })), 'SUPPLIES_CHANGED')
   goal.hold.kinds = ['supplies_changed', 'position_changed']
   assert.equal(wakeReason(goal, seen({ scope: 't' })), 'SCOPE_CHANGED')
   assert.equal(wakeReason(goal, seen({ now: 600000 })), 'HOLD_TIME')
-  assert.equal(wakeReason(goal, seen({ supplies: null })), 'SUPPLIES_CHANGED')
+  assert.equal(wakeReason(goal, seen({ supplies: 3 })), 'SUPPLIES_CHANGED')
+  goal.hold.supplies = '1/0/0/0'
+  assert.equal(wakeReason(goal, seen({ supplies: 1 })), 'SUPPLIES_CHANGED', 'a hold stored before the count was a number wakes once and is stored again as a number')
 })
 
 test('the open click: the face towards the eye, within reach, with a clear line; the code says which of them failed', () => {

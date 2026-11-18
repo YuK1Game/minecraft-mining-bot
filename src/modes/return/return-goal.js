@@ -83,7 +83,7 @@ function restoreGoal (value) {
     remaining: null,
     full: chestList(value.full), unopened: [], unreached: [], visited: [], built: number(value.built), detour: null, detours: number(value.detours), sides: 0,
     budget: { attempts: number(value.budget?.attempts), activeMs: number(value.budget?.activeMs), wakes: number(value.budget?.wakes), interrupts: 0 },
-    wait: null, hold: value.state === 'held' && value.hold && typeof value.hold === 'object' ? { code: String(value.hold.code ?? 'UNKNOWN'), at: number(value.hold.at), until: number(value.hold.until), position: cell(value.hold.position), supplies: typeof value.hold.supplies === 'string' ? value.hold.supplies : null, kinds: Array.isArray(value.hold.kinds) ? value.hold.kinds.filter(kind => typeof kind === 'string') : [], vertical: value.hold.vertical === true, terrainCells: terrainCells(value.hold.terrainCells) } : null,
+    wait: null, hold: value.state === 'held' && value.hold && typeof value.hold === 'object' ? { code: String(value.hold.code ?? 'UNKNOWN'), at: number(value.hold.at), until: number(value.hold.until), position: cell(value.hold.position), supplies: typeof value.hold.supplies === 'string' || Number.isFinite(value.hold.supplies) ? value.hold.supplies : null, kinds: Array.isArray(value.hold.kinds) ? value.hold.kinds.filter(kind => typeof kind === 'string') : [], vertical: value.hold.vertical === true, terrainCells: terrainCells(value.hold.terrainCells) } : null,
     interrupt: null, last: null, saved: true, resumed: true
   }
 }
@@ -99,7 +99,9 @@ function wakeReason (goal, seen) {
   if (seen.scope !== goal.scope) return 'SCOPE_CHANGED'
   const kinds = hold.kinds ?? []
   if (kinds.includes('position_changed') && hold.position && seen.position && (Math.hypot(seen.position.x - hold.position.x, seen.position.z - hold.position.z) >= BUDGET.MOVED_M || (hold.vertical === true && Math.abs(seen.position.y - hold.position.y) >= BUDGET.MOVED_UP))) return 'POSITION_CHANGED'
-  if (kinds.includes('supplies_changed') && hold.supplies !== null && seen.supplies !== hold.supplies) return 'SUPPLIES_CHANGED'
+  // Supplies as a number (the chests the held material makes) wake only by growing; an unknown inventory says nothing.
+  const more = typeof hold.supplies === 'number' && typeof seen.supplies === 'number' ? seen.supplies > hold.supplies : typeof hold.supplies === 'number' ? false : seen.supplies !== hold.supplies
+  if (kinds.includes('supplies_changed') && hold.supplies !== null && hold.supplies !== undefined && more) return 'SUPPLIES_CHANGED'
   if (kinds.includes('inventory_update') && seen.inventoryKnown === true) return 'INVENTORY_RECEIVED'
   if (kinds.includes('terrain_received') && seen.terrain === true) return 'TERRAIN_RECEIVED'
   if (kinds.includes('owner_released') && seen.settled === true) return 'OWNER_RELEASED'

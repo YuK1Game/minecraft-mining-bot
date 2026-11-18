@@ -111,8 +111,16 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
     if (spare >= DEEP_DIAMONDS || precious - spare >= DEEP_VALUABLES) return `大事な物が増えたため、拠点のチェストに預けます（ダイヤ ${spare} 個・ほかの貴重品 ${precious - spare} 個）`
     return !!base && flat(base, position) <= NEAR_M && !covered && (precious > 0 || stacks.length >= NEAR_STACKS) ? `拠点の近くにいるため、手元に残す物以外を預けます（${stacks.length} 枠）` : null
   }
-  // What a new chest is made of: a held goal is looked at again when this changes.
-  const supplies = () => { const items = getInventory()?.items; if (!items) return null; const held = pattern => items.filter(item => pattern.test(item?.name ?? '') && item.count > 0).reduce((sum, item) => sum + item.count, 0); return `${held(/^minecraft:chest$/)}/${held(/_planks$/)}/${held(/_(?:log|stem|wood|hyphae)$/)}/${canBuild() ? 1 : 0}` }
+  // What a new chest is made of, as the number of chests the held material
+  // makes (a chest held, eight planks, two logs): a held goal is looked at
+  // again when this grows. Nothing of the place the Bot stands at is in it, and
+  // planks used for something else are not a reason to go back.
+  // Real Realm 2026-11-18 16:20-16:25 JST: this was the plank and log counts
+  // and canBuild(), and canBuild() (storage.canMakeChest) reads the chests
+  // near the feet. Held for wood with 8 planks, the goal woke as
+  // SUPPLIES_CHANGED each time the Bot walked off from the base chests and
+  // back, went to the base, and was held again (three trips in eight minutes).
+  const supplies = () => { const items = getInventory()?.items; if (!items) return null; const held = pattern => items.filter(item => pattern.test(item?.name ?? '') && item.count > 0).reduce((sum, item) => sum + item.count, 0); return held(/^minecraft:chest$/) + Math.floor((held(/_planks$/) + 4 * held(/_(?:log|stem|wood|hyphae)$/)) / 8) }
 
   // The trip itself: one goal kept through failures and interruptions (return/return-runner.js).
   const runner = createReturnRunner({
