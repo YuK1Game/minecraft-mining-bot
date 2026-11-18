@@ -76,11 +76,18 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
       await patient(() => operations.interactions.openFurnace(at))
       await until(() => operations.furnace.snapshot?.()?.contentsKnown === true, 4000)
       if (slotOf(input) == null || slotOf(fuel) == null) { close(); why = '精錬の材料がありません'; return 0 }
-      await operations.furnace.putInput(slotOf(input), inputCount)
-      await operations.furnace.putFuel(slotOf(fuel), fuelCount)
-      try { await operations.furnace.waitOutput(output, inputCount, { timeoutMs: inputCount * 11000 + 5000 }) } catch { /* Take what is there. */ }
-      const ready = operations.furnace.snapshot?.()?.slots?.find(slot => slot.slot === 2)
-      if (ready?.count > 0) await operations.furnace.takeOutput({ count: ready.count, expectedName: output })
+      // What an interrupted smelt left behind comes out first: a result of
+      // another kind blocks the furnace, and another kind of input or fuel in
+      // its slot refuses ours.
+      const held = n => operations.furnace.snapshot?.()?.slots?.find(slot => slot.slot === n)
+      const empty = async () => { const ready = held(2); if (ready?.count > 0) await operations.furnace.takeOutput({ count: ready.count }) }
+      await empty()
+      const left = held(0)?.count > 0 && held(0).name !== input ? held(0) : null
+      if (!left) await operations.furnace.putInput(slotOf(input), inputCount)
+      if (!(held(1)?.count > 0) || held(1).name === fuel) await operations.furnace.putFuel(slotOf(fuel), fuelCount)
+      if (left) { await until(() => !(held(0)?.count > 0), left.count * 11000 + 5000); why = `かまどに残っていた ${left.name} を先に焼きました` }
+      else { try { await operations.furnace.waitOutput(output, inputCount, { timeoutMs: inputCount * 11000 + 5000 }) } catch { /* Take what is there. */ } }
+      await empty()
     } catch (error) { refused(error) }
     close()
     await until(() => count(name => name === output) > before, 3000)
