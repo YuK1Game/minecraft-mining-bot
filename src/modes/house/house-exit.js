@@ -16,7 +16,13 @@ function inside (origin, feet) {
   return feet.x >= origin.x && feet.x < origin.x + SIZE && feet.z >= origin.z && feet.z < origin.z + SIZE && feet.y >= origin.y && feet.y < origin.y + HEIGHT
 }
 
-async function leaveHouse ({ house, getFeet, getBlock, walk, door = async () => true, log = () => {} }) {
+// The door walk can fail on a damaged house (real Realm 2026-11-19 02:36-02:44
+// JST: a creeper blast had taken the door and the floor under it; the walk
+// across the gap was refused, 「家のドアから外へ出られませんでした」 twice, and
+// the trip from under the roof found no relay for eight minutes). Then the
+// route that digs, stacks and bridges (`build`, modes/player-build-walk.js)
+// takes the Bot to the first cell outside, in front of the door.
+async function leaveHouse ({ house, getFeet, getBlock, walk, door = async () => true, why = () => null, build = null, log = () => {} }) {
   const origin = house?.origin
   if (!inside(origin, getFeet())) return false
   const at = doorOf(origin)
@@ -25,10 +31,15 @@ async function leaveHouse ({ house, getFeet, getBlock, walk, door = async () => 
   const centre = { x: origin.x + SIZE / 2, z: origin.z + SIZE / 2 }
   const away = stand => Math.hypot(stand.x - centre.x, stand.z - centre.z)
   const stands = doorStands(getBlock, at).sort((a, b) => away(a) - away(b))
-  if (stands.length < 2) { log('プレイヤーモード: 家のドアの前後に立てる場所がないため、そのまま移動します'); return false }
-  for (const stand of stands) { try { await walk(stand) } catch {} }
+  // The refusal of the walk is kept for the log: without it the stall cannot be told apart.
+  let refused = stands.length < 2 ? 'ドアの前後に立てる場所がありません' : null
+  if (stands.length >= 2) for (const stand of stands) { try { if (!await walk(stand)) refused = why() ?? refused } catch (error) { refused = error?.message ?? refused } }
+  if (inside(origin, getFeet()) && typeof build === 'function') {
+    const outside = cell => !inside(origin, cell) && cell.y >= origin.y && cell.y <= origin.y + 2 && Math.abs(cell.x - at.x) <= 3 && Math.abs(cell.z - at.z) <= 4
+    try { const went = await build({ x: at.x, y: at.y, z: origin.z + SIZE + 1 }, outside); if (!went?.ok) refused = `${refused ?? '歩けません'}、掘る・積む道 ${went?.code ?? '不明'}` } catch (error) { refused = error?.message ?? refused }
+  }
   const out = !inside(origin, getFeet())
-  log(out ? 'プレイヤーモード: 家のドアから外へ出ました' : 'プレイヤーモード: 家のドアから外へ出られませんでした')
+  log(out ? 'プレイヤーモード: 家のドアから外へ出ました' : `プレイヤーモード: 家のドアから外へ出られませんでした${refused ? `（${String(refused).slice(0, 120)}）` : ''}`)
   return out
 }
 

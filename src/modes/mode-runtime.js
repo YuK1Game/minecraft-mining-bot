@@ -25,6 +25,7 @@ const { boxedIn, stepOut } = require('./player-pit')
 const { settle, offCentre, offGrid } = require('./player-settle')
 const { openDoor } = require('./house/house-door')
 const { leaveHouse } = require('./house/house-exit')
+const { createBuildWalk } = require('./player-build-walk')
 const { createPlayerTorch } = require('./player-torch')
 const { createTorchPorts } = require('./player-torch-ports')
 const { createPlayerStorage } = require('./player-storage')
@@ -112,6 +113,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
   })
   const hands = buildHands(disposed)
+  const houseWayOut = (target, done) => createBuildWalk({ hands, getHouse: () => shared.playerHouse, log })(target, { done, aborted: () => disposed() })
   // A long trip from inside the starter house first walks out through its door (house/house-exit.js).
   // Still in the water after the exit: the land trip is not started (it only fails leg after leg from there).
   const travelTo = (input, { aborted: cancelled = () => false } = {}) => {
@@ -120,7 +122,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     return departPlayer({
       input, aborted, canPack: () => runtime.raw().health > 10 && !danger() && !hungryWithoutFood() && !flee.status().active && !shelter.status().active && !water.needed(),
       pack: () => operations.playerWorkstations?.recoverNearby(),
-      leave: () => leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => { check(); return hands.walk(target) }, door: () => { check(); return houseDoor() }, log }),
+      leave: () => leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => { check(); return hands.walk(target) }, door: () => { check(); return houseDoor() }, why: () => hands.why(), build: houseWayOut, log }),
       dry: () => dryStart({ needed: () => water.needed(), exit: () => { check(); return water.exit(() => aborted() || flee.status().active || shelter.status().active) }, ready: () => aborted() || idle(), log }),
       waterNeeded: () => water.needed(), travel: (value, options) => quarry.travelTo(value, options)
     })
@@ -252,7 +254,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     // The return checks each precondition itself: out of the water, out of the house, then the raw long travel.
     travel: { to: (input, options) => quarry.travelTo(input, options), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     water: { needed: () => water.needed(), exit: aborted => water.exit(aborted) },
-    house: { inside: () => insideHouse(shared.playerHouse?.origin, feetNow()), leave: () => leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => hands.walk(target), door: () => houseDoor(), log }) },
+    house: { inside: () => insideHouse(shared.playerHouse?.origin, feetNow()), leave: () => leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => hands.walk(target), door: () => houseDoor(), why: () => hands.why(), build: houseWayOut, log }) },
     scope: () => { try { return runtime.scope?.() ?? null } catch { return null } }, dimension: () => { try { return runtime.raw()?.dimension ?? null } catch { return null } }, interrupter: ahead,
     hostile: () => danger()
   })
