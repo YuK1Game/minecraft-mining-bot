@@ -387,7 +387,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
       agent: { objective: { objective: 'diamond' }, start: async options => { if (gone) throw new Error('reloaded'); agent.running = true; agent.starts.push({ at: clock, options }) }, stop: reason => { agent.running = false; agent.stopUntil = clock + sim.stopLagMs; agent.stops.push({ at: clock, reason }); path = []; motion = { phase: 'idle', reason: null } }, settled, running: () => agent.running },
       hands: storagePorts, chest: chestMaker ?? (async options => makeChest(options, at => storagePorts.room(at))), canBuild: mayBuild, pendingChest,
       porch: () => { const o = sim.house?.origin; return o ? { stand: { x: o.x + 3.5, y: o.y, z: o.z + 10.5 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null },
-      spares: () => { const o = sim.house?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] },
+      spares: () => { const o = sim.house?.origin; return [...(o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : []), ...sim.spares] },
       climb, door, build, walk: target => hands.walk(target), approach: (target, within) => fail.approach ? Promise.resolve(false) : hands.approach(target, within),
       // The house's own walk to its porch (house-build.js closeIn): a longer walk, which takes its time too.
       porchWalk: async () => { const o = sim.house?.origin ?? sim.porch; if (!o) return false; began('porch'); movement.start({ x: o.x + 3.5, y: o.y, z: o.z + 10.5 }, { maxDistance: 48 }); while (motion.phase === 'moving') await sleep(200); return true },
@@ -413,7 +413,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
   }
 
   const sim = {
-    mode: 'player', worn: { known: true, worn: ['helmet', 'chestplate', 'leggings', 'boots'].map(piece => ({ piece, name: `minecraft:diamond_${piece}` })) }, hostileNear: false, stopLagMs, writeFails: false, files: {}, house: null, porch: null, indoorWalkM: Infinity, digging: false,
+    mode: 'player', worn: { known: true, worn: ['helmet', 'chestplate', 'leggings', 'boots'].map(piece => ({ piece, name: `minecraft:diamond_${piece}` })) }, hostileNear: false, stopLagMs, writeFails: false, files: {}, house: null, porch: null, indoorWalkM: Infinity, digging: false, spares: [],
     now, sleep, later, getBlock, setBlock, water, placeChest, stored, storeOf, buildHouse, unknown, body, state, shared, agent, log, events, server, fail, travel, bag, held, inventory, chest, operations, mount, run, getFeet, getPosition, scope, settled, combatOwns,
     get clock () { return clock }, get trips () { return trips },
     set uncertain (value) { uncertain = value }, get uncertain () { return uncertain },

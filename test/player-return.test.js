@@ -171,6 +171,34 @@ test('S6 a chest confirmed full by its received slots: a new one is placed and u
   assert.equal(sim.stored(old, 'diamond'), 0)
 })
 
+// Live 2026-11-18 17:18:00 JST: the chosen chest stood 7 m behind the full base chest. A flee left
+// the Bot 17 m from the base chest and 21 m from the chosen one: 「チェストへ接近」 said TOO_FAR,
+// 「拠点へ移動」 said NEAR_BASE, both at once and without end. The process used a whole core, wrote
+// no log line and answered nothing until it was restarted.
+test('S6 near the base chest but more than 20 m from the chosen chest behind it: walked to, not sent back to the trip', async () => {
+  const sim = far(CARGO, { x: 40.5, y: GROUND, z: 0.5 })
+  const old = sim.placeChest(5, GROUND, 0, { fill: 27 })
+  sim.spares.push(sim.placeChest(-2, GROUND, 0))
+  const runtime = sim.mount()
+  // Once another chest is chosen, a fight takes the controls and leaves the Bot on the far side of the base chest (live: a flee).
+  let moved = null
+  const watch = () => {
+    const target = sim.shared.playerReturn?.target
+    if (!target || (target.x === old.x && target.z === old.z)) return sim.later(50, watch)
+    const dx = old.x - target.x, dz = old.z - target.z, far = Math.hypot(dx, dz)
+    moved = { x: old.x + 0.5 + dx / far * 19, y: GROUND, z: old.z + 0.5 + dz / far * 19 }
+    sim.fight(3000)
+    Object.assign(sim.body, moved)
+  }
+  sim.later(50, watch)
+  assert.equal(await sim.run(runtime, { until: done }), true, sim.log.join('\n'))
+  assert.ok(moved, 'the Bot was moved away after the other chest was chosen')
+  assert.ok(Math.hypot(moved.x - old.x - 0.5, moved.z - old.z - 0.5) <= 20 && Math.hypot(moved.x + 1.5, moved.z - 0.5) > 20, JSON.stringify(moved))
+  assert.equal(lines(sim, /TOO_FAR|STAGE_LOOP/).length, 0, sim.log.join('\n'))
+  assert.equal(lines(sim, /中断して待ちます（戦闘）/).length, 1, sim.log.join('\n'))
+  assert.equal(sim.stored(sim.spares[0], 'diamond'), 37)
+})
+
 test('S6 a chest whose contents never arrive is unknown, not full', async () => {
   const sim = far(CARGO, { x: 40.5, y: GROUND, z: 0.5 })
   sim.server.contents = 'none'
