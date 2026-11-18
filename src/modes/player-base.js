@@ -25,12 +25,15 @@ const { storable } = require('./player-storage-rubble')
 const { chestsNear } = require('./player-storage')
 const { underCover } = require('./player-surface')
 const { bankableAll, restockable } = require('./player-base-kit')
+const { baseChests, knownSlots } = require('./base-chests')
 const { createReturnRunner } = require('./return/return-runner')
 const { standsBeside } = require('./return/return-steps')
 
 const CHEST = 'minecraft:chest'
 const DIAMOND = 'minecraft:diamond'
 const KEEP = 8, BANK_AT = 16, NEAR_M = 96, DEEP_DIAMONDS = 8, DEEP_VALUABLES = 32, NEAR_STACKS = 4, FAR_M = 1024
+// The chests at the base are looked for again after SCAN_MS; one that was tried and is still unknown rests TRIED_MS.
+const SCAN_MS = 5000, TRIED_MS = 30 * 60000
 const VALUABLE = /^minecraft:(?:emerald|lapis_lazuli|redstone|raw_gold|gold_ingot|gold_nugget|amethyst_shard|quartz)$/
 const PRECIOUS = /^minecraft:(?:diamond|emerald|lapis_lazuli|redstone|raw_gold|gold_ingot|gold_nugget|amethyst_shard|quartz|iron_ingot|raw_iron|raw_copper|copper_ingot|gold_block|iron_block|diamond_block)$/
 
@@ -87,10 +90,19 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
   // whose received slots hold them, or one not opened yet while diamonds are short.
   const chests = () => shared.playerBase ? [shared.playerBase, ...spares()] : []
   const takeable = slots => restockable(getInventory(), getWorn(), slots)
+  // The other chests standing at the base (base-chests.js) may hold them too:
+  // each is opened once. One that was tried and is still not known (it did not
+  // open, no way to it) is not a reason for another trip for TRIED_MS.
+  let scan = { at: -Infinity, list: [] }
+  const around = () => { if (!shared.playerBase) return []; if (now() - scan.at >= SCAN_MS) scan = { at: now(), list: baseChests(getBlock, [shared.playerBase, ...spares()]) }; return scan.list }
+  const cell = at => `${at.x},${at.y},${at.z}`
+  const tried = at => ((shared.playerChestTried ??= {})[cell(at)] ?? 0) > now()
+  const noteTried = at => { (shared.playerChestTried ??= {})[cell(at)] = now() + TRIED_MS }
+  const lacking = () => restockable(getInventory(), getWorn(), [{ slot: 0, known: true, name: DIAMOND, count: 64 }]).length > 0
   function short () {
-    const inventory = getInventory()
-    const lacking = restockable(inventory, getWorn(), [{ slot: 0, known: true, name: DIAMOND, count: 64 }]).length > 0
-    return chests().filter(isChest).some(at => { const slots = hands.contents?.(at); return slots ? takeable(slots).some(want => want.name === DIAMOND) : lacking })
+    if (!lacking()) return false
+    const holds = at => { const slots = knownSlots(getBlock, hands.contents, at); return slots ? takeable(slots).some(want => want.name === DIAMOND) : null }
+    return chests().filter(isChest).some(at => holds(at) ?? true) || around().some(at => isChest(at) && (holds(at) ?? !tried(at)))
   }
   const restockWanted = () => { const position = getPosition(); return !!position && !!shared.playerBase && flat(shared.playerBase, position) <= NEAR_M && !underCover(getBlock, position) && !!hands.take && short() }
   // Why a trip is due now, or null.
@@ -125,8 +137,8 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
   // The trip itself: one goal kept through failures and interruptions (return/return-runner.js).
   const runner = createReturnRunner({
     getMode, shared, agent: { objective: agent?.objective, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agent.running ? agent.running() : true }, settled: () => agent?.settled?.() !== false,
-    policy: { due: () => dueReason() !== null, reason: () => dueReason() ?? '拠点へ預けます', cargo: stacksNow, restockWanted, restock: takeable, canBuild, record, supplies },
-    ports: { getBlock, getPosition, getFeet, getInventory, dimension, moves: { climb, water, house, travel, approach, porchWalk, door, walk, build }, chests: { hands, spares, porch, pending: pendingChest, make: options => chest(options), near: () => { const feet = getFeet(); return feet ? chestsNear(getBlock, feet, undefined, { shut: true }).map(found => found.position) : [] } } },
+    policy: { due: () => dueReason() !== null, reason: () => dueReason() ?? '拠点へ預けます', cargo: stacksNow, restockWanted, lacking, restock: takeable, canBuild, record, supplies },
+    ports: { getBlock, getPosition, getFeet, getInventory, dimension, moves: { climb, water, house, travel, approach, porchWalk, door, walk, build }, chests: { hands, spares, all: around, tried: noteTried, porch, pending: pendingChest, make: options => chest(options), near: () => { const feet = getFeet(); return feet ? chestsNear(getBlock, feet, undefined, { shut: true }).map(found => found.position) : [] } } },
     scope, interrupter: interrupter ?? (() => blocked() ? 'ほかの作業' : null), hostile, travelBusy: () => travel?.status()?.busy === true,
     file: returnFile, write, disposed, log, now, sleep
   })

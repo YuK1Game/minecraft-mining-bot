@@ -226,7 +226,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     hands: createTorchPorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
   })
   // A full inventory goes into a large chest beside the Bot (player-storage.js).
-  const storagePorts = createStoragePorts({ operations, disposed, held: () => runtime.combatOwns?.() === true, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
+  const storagePorts = createStoragePorts({ operations, disposed, held: () => runtime.combatOwns?.() === true, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), memory: shared.playerChestMemory ??= { seen: new Map() } })
   const storage = createPlayerStorage({
     file: path.join(root, '.local', 'player-chest-pairs.json'), write: writeDurableJson, worldScope: () => stationWorldScope(runtime.raw()),
     getMode: control.get, shared, log, disposed, getFeet: feetNow, mine: async cell => (await hands.pick()) && hands.mine(cell), dig: cell => hands.dig(cell), why: () => hands.why(), walk: target => hands.walk(target), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null },

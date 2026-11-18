@@ -25,7 +25,7 @@ const { completed, partial, blocked, failed, interrupted } = require('./return-r
 const WAIT = /待って|待機|使用中|確認しています/
 const OPEN_MS = 4000, SLOT_MS = 3000, PATIENT_MS = 10000, MAX_TRANSFERS = 72
 
-function createContainerPorts ({ operations, getInventory, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+function createContainerPorts ({ operations, getInventory, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now, memory = null }) {
   const items = () => getInventory()?.items ?? []
   const count = name => items().filter(item => item?.name === name && item.count > 0).reduce((sum, item) => sum + item.count, 0)
   const until = async (test, ms, stop = () => false) => { const end = now() + ms; while (now() < end && !disposed() && !stop()) { if (test()) return true; await sleep(200) } return !disposed() && !stop() && test() }
@@ -61,7 +61,10 @@ function createContainerPorts ({ operations, getInventory, held = () => false, d
   }
 
   // Empty slots and received slots per chest cell (null until it was opened here).
-  const rooms = new Map(), seen = new Map()
+  // With `memory` (a map kept by the caller) the received slots stay known
+  // when this module is loaded again; each opening replaces them. The room is
+  // not kept: after a reload a chest is opened before it is called full.
+  const rooms = new Map(), seen = memory?.seen ?? new Map()
   const key = position => `${position.x},${position.y},${position.z}`
   const room = position => rooms.get(key(position)) ?? null
   const contents = position => seen.get(key(position)) ?? null
