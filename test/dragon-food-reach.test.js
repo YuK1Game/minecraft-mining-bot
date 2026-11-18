@@ -75,3 +75,23 @@ test('a hunt that gains food or lands a hit keeps hunting, with no trip', async 
   assert.equal(f.hunts, 12)
   assert.deepEqual(f.trips, [])
 })
+
+// Live 2026-11-19 02:15-02:27 JST: a pig in a one-deep ditch under vines; every hunt walked, none hit.
+test('hunts that walk without a hit give the source up after three in a row, without a trip', async () => {
+  const { CHASES } = require('../src/modes/dragon-food-reach')
+  let clock = 0
+  const shared = {}, now = () => clock, reach = () => foodReach(shared, { now }), chase = { ...miss(), steps: 5 }
+  for (let i = 1; i < CHASES; i++) assert.equal(reach().note(chase), null)
+  assert.equal(reach().note({ ...chase, hits: 1 }), null, 'a hit starts the count again')
+  for (let i = 1; i < CHASES; i++) assert.equal(reach().note(chase), null)
+  assert.equal(reach().note(chase)?.chased, true)
+  assert.equal(reach().given(COW.runtimeId), true)
+  assert.equal(reach().trip(COW, { x: 40.5, y: 64, z: 0.5 }), null, 'no trip: the bot is beside it')
+  clock += REST_MS
+  assert.equal(reach().given(COW.runtimeId), false)
+
+  const f = scene({ hunt: () => ({ ...miss(), steps: 4 }) })
+  await f.steps(CHASES + 2)
+  assert.equal(f.hunts, CHASES, 'not hunted again after the give-up')
+  assert.ok(f.logs.some(line => line.includes('歩いても当てられない')))
+})
