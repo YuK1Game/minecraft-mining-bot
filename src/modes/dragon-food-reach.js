@@ -16,7 +16,13 @@
 // source. After MISSES misses the source is walked to once by a long trip, the
 // hunt is tried again from there, and after MISSES more misses the source is
 // left alone for REST_MS: it is no longer "in view" for the search.
-const MISSES = 2, REST_MS = 5 * 60000, NEAR_M = 6
+//
+// A hunt that walked but neither hit nor gained food is a chase. CHASES chases
+// in a row for one source leave it alone the same way, without the trip (the
+// bot is already beside it). Real Realm 2026-11-19 02:15-02:27 JST: a pig in a
+// one-deep ditch under vines; the bot walked round it for minutes, every hunt
+// "walked", so no miss was ever counted.
+const MISSES = 2, CHASES = 3, REST_MS = 5 * 60000, NEAR_M = 6
 
 function foodReach (shared, { now = Date.now } = {}) {
   const held = shared.dragonFoodMiss ??= {}
@@ -29,8 +35,14 @@ function foodReach (shared, { now = Date.now } = {}) {
     const target = result?.target
     if (target?.runtimeId == null) return null
     const id = String(target.runtimeId)
-    if (result.foodGained > 0 || result.hits > 0 || result.steps > 0) { if (held[id]) held[id].count = 0; return null }
-    const seen = held[id] ??= { count: 0, at: now(), tripped: false }
+    if (result.foodGained > 0 || result.hits > 0) { if (held[id]) { held[id].count = 0; held[id].chases = 0 } return null }
+    const seen = held[id] ??= { count: 0, chases: 0, at: now(), tripped: false }
+    if (result.steps > 0) {
+      seen.count = 0; seen.chases = (seen.chases ?? 0) + 1; seen.at = now()
+      if (seen.chases < CHASES) return null
+      Object.assign(seen, { count: MISSES, chases: 0, tripped: true, chased: true })
+      return seen
+    }
     seen.count++; seen.at = now()
     return seen.count === MISSES ? seen : null
   }
@@ -45,4 +57,4 @@ function foodReach (shared, { now = Date.now } = {}) {
   return { given, note, trip, walked }
 }
 
-module.exports = { foodReach, MISSES, REST_MS, NEAR_M }
+module.exports = { foodReach, MISSES, CHASES, REST_MS, NEAR_M }
