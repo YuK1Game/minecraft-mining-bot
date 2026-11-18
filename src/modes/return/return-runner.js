@@ -23,14 +23,15 @@ const { normalizeMode } = require('../bot-mode')
 const { writeDurableJson } = require('../../common/durable-json')
 const { createFailureMemory } = require('./return-failures')
 const { createReturnSteps } = require('./return-steps')
-const { newGoal, restoreGoal, exhausted, attemptLimit, wakeReason, LABEL, BUDGET, cell } = require('./return-goal')
+const { queueReturnWrite } = require('./return-persistence')
+const { newGoal, restoreGoal, exhausted, attemptLimit, wakeReason, LABEL, BUDGET, cell, terrainCells } = require('./return-goal')
 
 const NEXT = Object.freeze({ observe: 'surface', surface: 'travel', travel: 'approach', approach: 'container', container: 'store', store: 'verify', verify: 'replan' })
 const DONE_MS = 30000, CLOSE_M = 6
 const brief = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 100)
 
 function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = () => null, settled = () => true, interrupter = () => null, hostile = () => false, travelBusy = () => false, file = null, write = writeDurableJson, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), newId = () => `r${now().toString(36)}` }) {
-  let goal = restoreGoal(shared.playerReturn), hostileSince = null, running = false, generation = 0, quietUntil = 0, banked = 0, saving = Promise.resolve(), saidUnsaved = false
+  let goal = restoreGoal(shared.playerReturn), hostileSince = null, running = false, generation = 0, quietUntil = 0, banked = 0, saidUnsaved = false
   const memory = createFailureMemory({ now, saved: shared.playerReturnFailures })
   const playing = () => normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const live = () => !disposed() && playing()
@@ -44,17 +45,21 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     shared.playerReturnFailures = memory.serialize()
     if (!file) return
     const doc = { version: 1, goal: shared.playerReturn, failures: shared.playerReturnFailures, savedAt: new Date(now()).toISOString() }, owner = goal
-    saving = saving.then(() => write(file, doc)).then(() => { if (owner) owner.saved = true; saidUnsaved = false }, error => {
+    void queueReturnWrite(shared, file, doc, write).then(() => { if (owner) owner.saved = true; saidUnsaved = false }, error => {
       // Not saved: the goal goes on from shared; a restart would not know it.
       if (owner) owner.saved = false
       if (!saidUnsaved) { saidUnsaved = true; log(`プレイヤーモード: 帰還の記録を保存できません（再起動すると引き継げません） ${brief(error?.message)}`) }
     })
   }
 
-  const restart = async mine => { for (let attempt = 0; attempt < 5 && mine === generation && live(); attempt++) { try { await agent.start({ ...agent.objective }); return true } catch { await sleep(2000) } } return false }
+  const restart = async mine => { const startingScope = scope(); for (let attempt = 0; attempt < 5 && mine === generation && live() && scope() === startingScope; attempt++) { try { await agent.start({ ...agent.objective }); return true } catch { await sleep(2000) } } return false }
   const supplies = () => { try { return policy.supplies() } catch { return null } }
-  const terrain = () => { const feet = ports.getFeet?.(); return !!feet && ports.getBlock(Math.floor(feet.x), Math.floor(feet.y + 0.05) - 1, Math.floor(feet.z))?.known === true }
-  const seenNow = () => ({ position: ports.getPosition(), supplies: supplies(), inventoryKnown: !!ports.getInventory(), terrain: terrain(), settled: settled(), owner: interrupter() ?? null, scope: scope(), now: now() })
+  const terrain = required => {
+    const feet = ports.getFeet?.(), at = feet && cell({ ...feet, y: feet.y + 0.05 })
+    const cells = terrainCells(required) ?? (at ? [-1, 0, 1].map(dy => ({ ...at, y: at.y + dy })) : null)
+    return !!cells && cells.every(point => ports.getBlock(point.x, point.y, point.z)?.known === true)
+  }
+  const seenNow = () => ({ position: ports.getPosition(), supplies: supplies(), inventoryKnown: !!ports.getInventory(), terrain: terrain(goal?.hold?.terrainCells), settled: settled(), owner: interrupter() ?? null, scope: scope(), now: now() })
 
   function end (state, code, text) {
     say(`${text}（${code}・収納済み ${goal.progress.banked} 個${goal.progress.taken ? `・取り出し ${goal.progress.taken} 個` : ''}・試行 ${goal.budget.attempts} 回）`)
@@ -64,7 +69,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
   }
 
   // The controls are released and the work is planned again; the goal waits for a change.
-  async function hold (mine, code, kinds, text, stage = goal.stage) {
+  async function hold (mine, code, kinds, text, stage = goal.stage, retry = null) {
     if (goal.budget.wakes >= BUDGET.MAX_WAKES) { end('abandoned', code, `をあきらめます: ${text}`); quietUntil = now() + BUDGET.GIVE_UP_MS; await restart(mine); return false }
     // What the failure depends on decides what wakes the goal. A failure of
     // getting somewhere (out of the tunnel, the trip, the walk to the chest)
@@ -76,7 +81,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     const all = [...new Set([...kinds, ...(moving ? ['position_changed'] : [])])]
     goal.state = 'held'; goal.wait = null; goal.interrupt = null
     // Deeper or higher counts as another place only for the way out of a tunnel.
-    goal.hold = { code, at: now(), until: now() + BUDGET.HOLD_MS, position: cell(ports.getPosition()), supplies: supplies(), kinds: all, vertical: stage === 'surface' }
+    goal.hold = { code, at: now(), until: now() + BUDGET.HOLD_MS, position: cell(ports.getPosition()), supplies: supplies(), kinds: all, vertical: stage === 'surface', terrainCells: terrainCells(retry?.terrainCells) }
     say(`を保留します: ${text}（${code}・再評価の条件 ${all.join('/')}・遅くとも ${Math.round(BUDGET.HOLD_MS / 60000)} 分後）`)
     commit()
     await restart(mine)
@@ -151,7 +156,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
   function waitOver () {
     const wait = goal.wait
     if (!wait) return true
-    const met = wait.kind === 'owner_released' ? settled() && !interrupter() : wait.kind === 'inventory_update' ? !!ports.getInventory() : wait.kind === 'terrain_received' ? terrain() : false
+    const met = wait.kind === 'owner_released' ? settled() && !interrupter() : wait.kind === 'inventory_update' ? !!ports.getInventory() : wait.kind === 'terrain_received' ? terrain(wait.terrainCells) : false
     if (!met && now() < wait.until) return false
     goal.wait = null
     return true
@@ -170,7 +175,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
   }
 
   async function drive (mine) {
-    const ok = () => mine === generation && live()
+    const current = () => mine === generation && live()
     if (!goal) {
       if (now() < quietUntil || interrupter() || travelBusy() || !policy.due()) { hostileSince = null; return null }
       // A hostile nearby delays the start, not for good: one that only stands there
@@ -195,10 +200,14 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
       say(`を再開します（${why}・${goal.budget.wakes} 回目の再評価）`)
       commit()
     }
-    const steps = createReturnSteps({ goal: () => goal, ports: { ...ports, policy }, flow: { ok, interrupter, say, now, sleep } })
     for (;;) {
-      if (!ok()) return null
+      if (!current()) return null
       rescope()
+      // A purpose can survive a new life or connection; an operation cannot.
+      // Keep this authority fixed through every await of this step. Creating a
+      // new step after rescope is the only way to acquire the new scope.
+      const owner = goal, ownerScope = goal.scope
+      const ok = () => current() && goal === owner && scope() === ownerScope
       const who = interrupter()
       if (who) {
         if (goal.interrupt?.who !== who) { goal.interrupt = { who, at: now() }; say(`${LABEL[goal.stage]}を中断して待ちます（${who}）。目的は保持します`) }
@@ -210,12 +219,15 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
       const spent = exhausted(goal)
       if (spent) return hold(mine, spent, ['supplies_changed'], '試行または時間の予算を使い切りました')
       if (!await takeControls(ok)) {
-        if (!ok()) return null
+        if (!current() || goal !== owner) return null
+        if (!ok()) continue
         const seen = failure({ code: 'STOP_UNCONFIRMED', retry: { kind: 'owner_released' }, detail: '前の操作の終了を確認できません' })
         if (seen.count >= BUDGET.STAGE_ATTEMPTS) return hold(mine, 'STOP_UNCONFIRMED', ['owner_released'], '前の操作の終了を確認できません', null)
         goal.wait = { kind: 'owner_released', until: now() + BUDGET.WAIT_MS }
         return null
       }
+      if (!current() || goal !== owner) return null
+      if (!ok() || interrupter()) continue
       if (goal.stage === 'replan') {
         end('done', 'RETURN_DONE', 'が完了しました。作業を計画し直します')
         quietUntil = now() + DONE_MS
@@ -223,11 +235,12 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
         return true
       }
       const stage = goal.stage, began = now()
+      const steps = createReturnSteps({ goal: () => owner, ports: { ...ports, policy }, flow: { ok, interrupter, say, now, sleep } })
       let out = null
       try { out = await steps[stage]() } catch (error) { out = { status: 'failed', code: 'STEP_THREW', detail: error?.message, progress: {}, evidence: null, retry: null } }
-      if (!ok() || goal?.stage !== stage) return null
+      if (!current() || goal !== owner || goal.stage !== stage) return null
       // The step began in another connection, dimension or life: its answer is not used.
-      if (goal.scope !== scope()) continue
+      if (!ok()) continue
       if (out.status !== 'interrupted') goal.budget.activeMs += now() - began
       if (out.status === 'cancelled') return null
       if (out.status === 'completed' || out.status === 'partial') {
@@ -255,9 +268,9 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
       if (out.hold === true) return hold(mine, out.code, [], `${LABEL[stage]}を続けられません`, stage)
       if (seen.count >= BUDGET.STAGE_ATTEMPTS || seen.cycle) {
         if (alternative(out)) { commit(); continue }
-        return hold(mine, out.code, out.retry?.kind && out.retry.kind !== 'now' && out.retry.kind !== 'time' ? [out.retry.kind] : [], seen.cycle ? '同じ失敗を繰り返しています' : `${LABEL[stage]}が同じ条件で ${seen.count} 回失敗しました`, stage)
+        return hold(mine, out.code, out.retry?.kind && out.retry.kind !== 'now' && out.retry.kind !== 'time' ? [out.retry.kind] : [], seen.cycle ? '同じ失敗を繰り返しています' : `${LABEL[stage]}が同じ条件で ${seen.count} 回失敗しました`, stage, out.retry)
       }
-      if (out.status === 'blocked' && out.retry && out.retry.kind !== 'now') goal.wait = { kind: out.retry.kind, until: now() + (out.retry.timeoutMs ?? out.retry.ms ?? BUDGET.WAIT_MS) }
+      if (out.status === 'blocked' && out.retry && out.retry.kind !== 'now') goal.wait = { kind: out.retry.kind, terrainCells: terrainCells(out.retry.terrainCells), until: now() + (out.retry.timeoutMs ?? out.retry.ms ?? BUDGET.WAIT_MS) }
       // The same step again, but not in the same instant.
       else if (out.status === 'failed') goal.wait = { kind: 'time', until: now() + BUDGET.RETRY_MS }
     }

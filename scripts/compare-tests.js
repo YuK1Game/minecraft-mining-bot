@@ -6,10 +6,10 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { spawn, execFileSync } = require('node:child_process')
-const { createWriteStream, existsSync } = require('node:fs')
+const { createWriteStream } = require('node:fs')
 const { finished } = require('node:stream/promises')
 const { parseTap, compareReports, baselineGaps, withRerun, confirmedByRerun } = require('./lib/test-report')
-const { parseShard, shardFiles, settingsOf, readStored, writeStored, prune } = require('./lib/suite-store')
+const { parseShard, shardFiles, expandTestFiles, settingsOf, settingsKey, readStored, writeStored, prune } = require('./lib/suite-store')
 const root = path.resolve(__dirname, '..')
 // Both runs use the same settings, so the comparison stays like for like.
 const CONCURRENCY = Math.max(2, Math.min(8, os.availableParallelism()))
@@ -19,7 +19,7 @@ const SUITE_LIMIT_MS = 25 * 60 * 1000
 // base is not run again on the next push ('none' turns that off).
 const SHARD = parseShard(process.env.SUITE_SHARD)
 const STORE = process.env.SUITE_REPORT_DIR === 'none' ? null : path.resolve(root, process.env.SUITE_REPORT_DIR || path.join('test-results', 'suite-reports'))
-const SETTINGS = settingsOf({ concurrency: CONCURRENCY, shard: SHARD })
+const SETTINGS = settingsOf({ concurrency: CONCURRENCY, shard: SHARD, directory: root })
 // 2026-11-15: a run on CI ended normally but its report had no totals (the
 // forced exit after the last test can cut the reporter's final output). Such
 // a run says nothing, so it is repeated once before the comparison gives up.
@@ -94,7 +94,7 @@ async function main () {
     // alone; a file the baseline does not have keeps its failures as new.
     const gaps = baselineGaps(baseline, compareReports(baseline, current).introduced)
     if (gaps.length) await baseTree()
-    const rerunFiles = gaps.filter(file => existsSync(path.join(worktree, file)))
+    const rerunFiles = expandTestFiles(worktree, gaps)
     if (rerunFiles.length) {
       console.warn(`Baseline recorded no result for tests in ${rerunFiles.length} file(s); running them again on the baseline: ${rerunFiles.join(', ')}`)
       baseline = withRerun(baseline, await runSuite(worktree, path.join(reports, 'baseline-rerun.tap'), rerunFiles), rerunFiles)
@@ -104,7 +104,7 @@ async function main () {
     // current run only and turned the gate red; it passes when run alone. A
     // new failure is confirmed by running its file once more on the current
     // code: a test that fails again, or has no result there, stays new.
-    const suspectFiles = [...new Set(comparison.introduced.map(item => item.file).filter(file => /^test\/.+\.[cm]?js$/.test(file) && existsSync(path.join(root, file))))].sort()
+    const suspectFiles = expandTestFiles(root, comparison.introduced.map(item => item.file).filter(file => /^test\/.+\.[cm]?js$/.test(file)))
     if (suspectFiles.length) {
       console.warn(`Running ${suspectFiles.length} file(s) with new failures once more on the current code: ${suspectFiles.join(', ')}`)
       const settled = confirmedByRerun(comparison.introduced, await runSuite(root, path.join(reports, 'current-rerun.tap'), suspectFiles))
@@ -124,5 +124,10 @@ async function main () {
     await fs.rm(temporary, { recursive: true, force: true })
   }
 }
-if (require.main === module) main().catch(error => { console.error(error.stack); process.exitCode = 1 })
+if (require.main === module) {
+  // Actions uses the same identity as readStored, including this runner's
+  // exact Node version and concurrency. This mode runs no tests or Git commands.
+  if (process.argv[2] === '--cache-key') console.log(`key=${settingsKey(SETTINGS)}`)
+  else main().catch(error => { console.error(error.stack); process.exitCode = 1 })
+}
 module.exports = { runSuite, nodeOptions }

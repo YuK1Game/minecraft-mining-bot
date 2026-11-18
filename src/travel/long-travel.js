@@ -15,6 +15,7 @@
 //   the next one starts after a short pause.
 // Nothing here moves the bot by command or marks terrain as received.
 
+const { randomUUID } = require('node:crypto')
 const copy = value => structuredClone(value)
 const finite = p => p && ['x', 'z'].every(k => Number.isFinite(p[k]))
 const feetOf = s => s?.position && Number.isFinite(s.position.x) ? { x: s.position.x, y: s.position.y - 1.62, z: s.position.z } : null
@@ -37,8 +38,8 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
   legM = LEG_M, arriveM = 20, chunkTries = 3, stopWhenBlocked = false, blockedBackoffMs = 10000, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 25000, pollMs = 250 } = {}) {
   if (typeof getState !== 'function' || typeof chunkTravel?.start !== 'function' || typeof chunkTravel?.status !== 'function') throw new TypeError('Long travel needs getState and chunk travel')
   let run = null, task = null
-  const status = () => run ? copy({ timing: run.timing ?? {}, busy: !!task, phase: run.phase, destination: run.destination, remaining: run.remaining, legs: run.legs, failures: run.failures, reason: run.reason, message: run.message, startedAt: run.startedAt, lastLegAt: run.lastLegAt })
-    : { busy: false, phase: 'idle', destination: null, remaining: null, legs: 0, failures: 0, reason: null, message: null }
+  const status = () => run ? copy({ operationId: run.operationId, timing: run.timing ?? {}, busy: !!task, phase: run.phase, destination: run.destination, remaining: run.remaining, legs: run.legs, failures: run.failures, reason: run.reason, message: run.message, startedAt: run.startedAt, lastLegAt: run.lastLegAt })
+    : { operationId: null, busy: false, phase: 'idle', destination: null, remaining: null, legs: 0, failures: 0, reason: null, message: null }
   const say = text => { run.message = text; try { log(`長距離移動: ${text}`) } catch {} }
   function chunkAhead (feet, destination, angleDeg, distanceM) {
     const heading = Math.atan2(destination.z - feet.z, destination.x - feet.x) + angleDeg * Math.PI / 180
@@ -190,7 +191,9 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
     if (task) throw fail('LONG_TRAVEL_BUSY', reasons.LONG_TRAVEL_BUSY)
     if (!finite(destination)) throw fail('LONG_TRAVEL_DESTINATION_INVALID', '目的地の座標が不正です')
     const controller = new AbortController()
-    run = { destination: { x: destination.x, y: Number.isFinite(destination.y) ? destination.y : null, z: destination.z }, legs: resume?.legs ?? 0, failures: 0, remaining: null, phase: 'starting', reason: null, message: null,
+    // A saved journey keeps its start time, never the previous caller's
+    // authority to cancel it. The operation identity is new on every start.
+    run = { operationId: randomUUID(), destination: { x: destination.x, y: Number.isFinite(destination.y) ? destination.y : null, z: destination.z }, legs: resume?.legs ?? 0, failures: 0, remaining: null, phase: 'starting', reason: null, message: null,
       startedAt: resume?.startedAt ?? new Date(now()).toISOString(), lastLegAt: null, controller, timing: { ...(resume?.timing ?? {}) } }
     say(`出発: 目的地 (${Math.round(destination.x)}, ${Math.round(destination.z)})${resume ? `（${run.legs}区間目から再開）` : ''}`)
     task = loop(controller.signal).catch(async error => {
