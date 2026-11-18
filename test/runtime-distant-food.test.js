@@ -66,7 +66,9 @@ test('night preparation does not equip a sword only for a deferred distant prey'
   assert.equal(f.safety(),null);assert.equal(f.host.shared.startupPriority.distantFoodDeferred,true);assert.equal(f.host.shared.startupPriority.foodReady.source,true)
 })
 
-test('an owned near-food forage action remains active and only a later normal replan defers its new distant source',async t=>{
+// Known failure (2026-11-18): this test waits for something that no longer happens and used to hold a worker
+// until the suite's 30 s limit. It still ends as a timeout, after 3 s. Remove the limit when the test is repaired.
+test('an owned near-food forage action remains active and only a later normal replan defers its new distant source',{timeout:3000},async t=>{
   const f=prepare(t,{distance:4});let finish,markStarted,entered=0
   const pending=new Promise(resolve=>{finish=resolve}),started=new Promise(resolve=>{markStarted=resolve})
   f.autonomous[0].actions.forage=()=>{entered++;markStarted();return pending};f.runtime.operations.agent.start({objective:'diamond'});await started

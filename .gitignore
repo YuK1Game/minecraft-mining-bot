@@ -23,3 +23,4 @@ Thumbs.db
 
 # Local comparison reports (CI uploads them separately).
 test-results/
+.suite-reports/

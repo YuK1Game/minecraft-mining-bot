@@ -384,13 +384,21 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
   // A placement can trigger neighbouring gravity blocks. Walking on a
   // received gravel floor remains legal, but it is never a sealing stance.
   const safeSealStance = p => standable(p) && !isGravityName(read(add(p, { x: 0, y: -1, z: 0 })).name)
-  function neighboursOf (p) {
+  // walked: inside one search, whether each cell already looked at can be
+  // stood on. A cell is asked about from up to twelve neighbours; the answer
+  // is the same each time (the search reads one state of the world).
+  function neighboursOf (p, walked = null) {
     const out = []
     for (const h of HORIZONTAL) {
       for (const dy of [0, 1, -1]) {
         if (dy < -cfg.maxStepDown) continue
         const n = { x: p.x + h.x, y: p.y + dy, z: p.z + h.z }
-        if (!travelOk(n) || !standable(n)) continue
+        if (walked) {
+          const k = key(n.x, n.y, n.z)
+          let ok = walked.get(k)
+          if (ok === undefined) { ok = travelOk(n) && standable(n); walked.set(k, ok) }
+          if (!ok) continue
+        } else if (!travelOk(n) || !standable(n)) continue
         if (dy === 1 && !passable(read(add(p, { x: 0, y: 2, z: 0 })))) continue // jump headroom
         if (dy === -1 && !passable(read(add(n, { x: 0, y: 2, z: 0 })))) continue // step-down headroom
         out.push(n)
@@ -402,9 +410,10 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
     const dist = new Map(); if (!origin) return dist
     const queue = [origin]; dist.set(key(origin.x, origin.y, origin.z), 0)
     let slice = performance.now()
+    const walked = new Map()
     for (let head = 0; head < queue.length && dist.size < cfg.bfsLimit; head++) {
       const p = queue[head]; const d = dist.get(key(p.x, p.y, p.z))
-      for (const n of neighboursOf(p)) { const k = key(n.x, n.y, n.z); if (!dist.has(k)) { dist.set(k, d + 1); queue.push(n) } }
+      for (const n of neighboursOf(p, walked)) { const k = key(n.x, n.y, n.z); if (!dist.has(k)) { dist.set(k, d + 1); queue.push(n) } }
       if ((head & 31) === 31 && performance.now() - slice >= 8) { yield; slice = performance.now() }
     }
     return dist
@@ -427,10 +436,11 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
     if (!origin || !goal) return null
     const gk = key(goal.x, goal.y, goal.z); const start = key(origin.x, origin.y, origin.z)
     const parent = new Map([[start, null]]); const queue = [origin]
+    const walked = new Map()
     for (let head = 0; head < queue.length && parent.size < cfg.bfsLimit; head++) {
       const p = queue[head]; const pk = key(p.x, p.y, p.z)
       if (pk === gk) break
-      for (const n of neighboursOf(p)) { const k = key(n.x, n.y, n.z); if (!parent.has(k)) { parent.set(k, pk); queue.push(n) } }
+      for (const n of neighboursOf(p, walked)) { const k = key(n.x, n.y, n.z); if (!parent.has(k)) { parent.set(k, pk); queue.push(n) } }
     }
     if (!parent.has(gk)) return null
     const out = []

@@ -44,5 +44,5 @@
 - 構文と大きいファイルの増加: `npm run check`
 - 安全回帰: `npm run test:review`
 - プレイヤーモード: `npm run test:player`（全テストが実行されて合格した時だけ成功。既存の失敗で外しているファイルは実行のたびに理由と一緒に表示する）
-- 全件の失敗の比較: 変更の前後で `node --test --test-force-exit --test-concurrency=2 --test-timeout=30000 --test-reporter=tap` を実行し、失敗したテストの一覧を比べる（`npm run test:compare` は一時的な Git ワークツリーを作るため、この PC では使わない。CI では使う）
+- 全件の失敗の比較: 変更の前後で `node --test --test-force-exit --test-concurrency=2 --test-timeout=30000 --test-reporter=tap` を実行し、失敗したテストの一覧を比べる（`npm run test:compare` は、基準の結果が残っていない時に一時的な Git ワークツリーを作るため、この PC では使わない。CI では使う。仕組みは `ci.md`）
 - `runtime.js` から移した部分が元のソースと一致すること: `test/runtime-source-helper.test.js`

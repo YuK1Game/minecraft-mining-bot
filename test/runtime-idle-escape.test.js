@@ -1,7 +1,14 @@
 'use strict'
 
 // Integration regressions for the actual saved Runtime and native Guard.
-const { test } = require('node:test')
+// 196 tests of the real Runtime, each waiting on real timers: alone the file took about three minutes (2026-11-18).
+// This file runs as 4 processes: itself and its part files (runtime-idle-escape.partN.test.js),
+// which load it again. Each process keeps every 4th test, so each test runs
+// once. The tests are registered from this file, so a result keeps this file's name.
+const { test: register } = require('node:test')
+const PARTS = 4, PART = Number(globalThis.testFilePart ?? 0)
+let ordinal = 0
+const test = (...args) => (ordinal++ % PARTS === PART ? register(...args) : undefined)
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -9,6 +16,22 @@ const vm = require('node:vm')
 const Module = require('node:module')
 const { evaluateThreats } = require('../src/combat/threats')
 const { buildTerrainThreatEvidence, terrainOcclusionApplies } = require('../src/combat/terrain-threats')
+// Every read of the captured terrain hands out a fresh copy, so the code under
+// test cannot change the capture, and the sight and route checks read it
+// hundreds of thousands of times. Plain data (objects, arrays, values) is
+// copied here by hand; anything else still goes to the platform's
+// structuredClone. (2026-11-18: the platform's copy was about half of the busy
+// time of this file, which took over two minutes alone.)
+const platformClone = globalThis.structuredClone
+function structuredClone (value) {
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) { const out = new Array(value.length); for (let i = 0; i < value.length; i++) out[i] = structuredClone(value[i]); return out }
+  const proto = Object.getPrototypeOf(value)
+  if (proto !== Object.prototype && proto !== null) return platformClone(value)
+  const out = {}
+  for (const name of Object.keys(value)) out[name] = structuredClone(value[name])
+  return out
+}
 const root = path.resolve(__dirname, '..')
 const runtimeFile = path.join(root, 'src/runtime.js')
 const originalRuntime = fs.readFileSync(runtimeFile, 'utf8').replace(/\r\n/g, '\n')

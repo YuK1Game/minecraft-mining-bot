@@ -6,7 +6,25 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const Module = require('node:module')
-const copy = value => structuredClone(value)
+// Every read of the fixture's terrain hands out a fresh copy, so the code under
+// test cannot change the fixture, and the sight and route checks read it tens
+// of thousands of times inside one synchronous step. With the platform's
+// structuredClone those steps took 150 to 250 ms, the input timer missed its
+// ticks, and the tests of this fixture that watch real time (consecutive input
+// ticks, queue gaps) passed or failed with the speed of the machine
+// (2026-11-18, CI: runtime-close-creeper-choice passed on the base's machine
+// and failed twice on the next one; here it failed 2 runs in 3 on both).
+// Plain data is copied by hand; anything else still goes to the platform.
+const platformCopy = globalThis.structuredClone
+function copy (value) {
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) { const out = new Array(value.length); for (let i = 0; i < value.length; i++) out[i] = copy(value[i]); return out }
+  const proto = Object.getPrototypeOf(value)
+  if (proto !== Object.prototype && proto !== null) return platformCopy(value)
+  const out = {}
+  for (const name of Object.keys(value)) out[name] = copy(value[name])
+  return out
+}
 const immediate = () => new Promise(resolve => setImmediate(resolve))
 function deferred () { let resolve; const promise = new Promise(r => { resolve = r }); return { promise, resolve } }
 

@@ -1,5 +1,12 @@
 'use strict'
-const { test } = require('node:test')
+// 35 runs of the whole job on the simulator: alone the file took over three minutes on Node 24 (2026-11-18).
+// This file runs as 3 processes: itself and its part files (quarry-job.partN.test.js),
+// which load it again. Each process keeps every 3th test, so each test runs
+// once. The tests are registered from this file, so a result keeps this file's name.
+const { test: register } = require('node:test')
+const PARTS = 3, PART = Number(globalThis.testFilePart ?? 0)
+let ordinal = 0
+const test = (...args) => (ordinal++ % PARTS === PART ? register(...args) : undefined)
 const assert = require('node:assert/strict')
 const { createSim, flatTerrain } = require('./helpers/quarry-sim')
 const { createQuarryJob } = require('../src/quarry/quarry-job')
