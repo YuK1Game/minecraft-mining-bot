@@ -273,7 +273,13 @@ function createWorld ({ version = '1.26.60', registry, maxSections = DEFAULT_MAX
           subchunkResult(id, true)
         } catch (error) { fail(error); subchunkResult(id, false) }
       }
-    } else if (name === 'update_block') {
+    } else if (name === 'update_block' || name === 'update_block_synced') {
+      // update_block_synced is the same change for a falling block: the block that
+      // became an entity (air there) and the block the entity became where it landed.
+      // It was counted as a world packet but never applied (and never subscribed
+      // to in host.js), so fallen gravel and sand stayed where they had been in
+      // the received world and were missing where they lay (real Realm 2026-11-18
+      // 07:09-10:10 JST: the Bot stood on fallen gravel the world held as air).
       updateBlock(packet)
     } else if (name === 'update_subchunk_blocks') {
       for (const entry of packet.blocks ?? []) updateBlock({ ...entry, block_runtime_id: entry.runtime_id, layer: 0 })
