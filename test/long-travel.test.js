@@ -100,7 +100,8 @@ test('sprinting applies only while empty-handed; shooters are avoided on every t
   assert.match(source, /const sprint = working\(\)\.emptyHandedPrep === true && Number\.isFinite\(hunger\) && hunger > 6/)
   assert.match(source, /const st0 = working\(\), fleeing = true/)
   assert.match(source, /if \(fleeing && shooters\.some\(/)
-  assert.match(source, /longTravel\?\.status\?\.\(\)\.busy && \/witch\/\.test\(/)
+  // The witch rule is travel-shooters.js tripKeepsCombatOffWitch since 2026-11-18 (an armed player in play fights it; test/travel-shooters.test.js).
+  assert.match(source, /tripKeepsCombatOffWitch\(\{ travelBusy: [^,]*longTravel\?\.status\?\.\(\)\.busy === true, target, armedInPlay: playerArmed\(state\) \}\)\) return \{ allowed: false, reason: 'TRAVEL_AVOID_WITCH' \}/)
 })
 
 test('raw chicken is food below hunger 18 when nothing else edible is held', () => {
