@@ -174,3 +174,33 @@ test('a bot the trip already counts as arrived at the porch does not start the t
   await approachHome(farther.ctx, chestOf(origin))
   assert.equal(farther.trips.length, 1)
 })
+
+test('a trip that ends where it began, near the house, is followed by the way that digs and stacks', async () => {
+  // Live 2026-11-19 03:04-03:22 JST: 31 m east of the porch on the house's level; every trip ended at the same
+  // feet (LONG_TRAVEL_BLOCKED) and the next began ten seconds later.
+  const world = createOverhangWorld()
+  const porch = { x: origin.x + 3, y: origin.y, z: origin.z + 9 }
+  for (let x = porch.x - 2; x <= porch.x + 34; x++) for (let z = porch.z - 2; z <= porch.z + 2; z++) {
+    world.setBlock(x, porch.y - 1, z, 'grass_block')
+    for (let y = porch.y; y <= porch.y + 3; y++) world.setBlock(x, y, z, 'air')
+  }
+  // A wall across the way: nothing walks through, the route digs.
+  for (let z = porch.z - 2; z <= porch.z + 2; z++) for (let y = porch.y; y <= porch.y + 1; y++) world.setBlock(porch.x + 15, y, z, 'stone')
+  const f = bot(world, { x: porch.x + 30, y: porch.y, z: porch.z })
+  assert.equal(await approachHome(f.ctx, chestOf(origin)), false)
+  assert.equal(f.trips.length, 1)
+  assert.ok(f.logs.some(line => /長距離移動が進まなかったため、掘る・積む道で入口へ行きます/.test(line)), f.logs.join('\n'))
+  assert.ok(f.did.includes('mine') && f.did.includes('walk'), f.did.join(','))
+  assert.ok(Math.hypot(f.body.x - (porch.x + 0.5), f.body.z - (porch.z + 0.5)) <= 4, JSON.stringify(f.body))
+  assert.equal(await approachHome(f.ctx, chestOf(origin)), true, f.logs.join('\n'))
+  assert.equal(f.trips.length, 1, 'no second trip')
+})
+
+test('a trip that moved is not followed by a dug way', async () => {
+  const world = createOverhangWorld()
+  const f = bot(world, { x: origin.x + 3 + 30, y: origin.y, z: origin.z + 9 })
+  f.ctx.travelTo = async () => { f.body.x -= 6 }
+  assert.equal(await approachHome(f.ctx, chestOf(origin)), false)
+  assert.deepEqual(f.did, [])
+  assert.equal(f.logs.length, 0)
+})

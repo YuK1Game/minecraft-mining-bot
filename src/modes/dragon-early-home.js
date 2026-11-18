@@ -10,7 +10,11 @@ const { createOpenStand } = require('./open-stand')
 // in: the way to the porch digs and stacks (movement/build-route.js), as the
 // return to the base does. One failed attempt rests RETRY_MS before the next,
 // with its reason in the log.
-const ARRIVE_M = 20, LEVEL_M = 6, RETRY_MS = 60000
+// Within NEAR_M of the porch, a trip that ended without moving STUCK_M goes the same way instead of starting again
+// (live 2026-11-19 03:04-03:22 JST: 31 m east of the porch on the house's level, the trip's carved step was the
+// block under the own feet, 「DIG_START_FAILED … 自分の足元は掘れません。」, 「どの方向にも進めませんでした」,
+// and the same trip began again every ten seconds for eighteen minutes with raw meat in hand).
+const ARRIVE_M = 20, LEVEL_M = 6, RETRY_MS = 60000, NEAR_M = 48, STUCK_M = 4
 const close = (from, to, range) => from && Math.hypot(to.x + 0.5 - from.x, to.y - from.y, to.z + 0.5 - from.z) <= range
 
 // `open`: the destination is a block to be opened (a furnace, a chest): the Bot ends where the open click has a line to it.
@@ -19,24 +23,6 @@ async function approachHome (ctx, destination, { open = false } = {}) {
   const origin = shared.playerHouse.origin
   const now = ctx.now ?? Date.now
   if (!getFeet() || cancelled()) return false
-  if (!close(getFeet(), destination, 22)) {
-    if (ctx.climbUp && getFeet().y < origin.y - 5 && underCover(getBlock, ctx.where())) {
-      await ctx.climbUp(cancelled)
-      return false
-    }
-    // Measured as the trip measures its own arrival (rounded metres to its own destination, the porch): measured to
-    // the thing inside the house, a bot 20.5 m from the porch started a trip that arrived at once, every 2 s
-    // (live 2026-11-18 22:55 JST: 「出発」「目的地に着きました（残り 20m・0区間）」 22 times in 40 s).
-    const stop = { x: origin.x + 3, z: origin.z + 9 }
-    if (Math.round(Math.hypot(getFeet().x - stop.x, getFeet().z - stop.z)) > ARRIVE_M) {
-      if (!operations.quarry.travelStatus().busy) {
-        // Travel stops near the porch; the next dispatch uses the actual door.
-        await ctx.travelTo({ destination: stop }, { aborted: cancelled })
-      }
-      return false
-    }
-    // Arrived on the map, but far over or under the house: the trip would only "arrive" again.
-  }
   // The ground in front of the door, outside the walls (the floor is one block over the highest ground the house stands on).
   const porch = { x: origin.x + 3, y: origin.y, z: origin.z + 9 }
   const atPorch = cell => Math.hypot(cell.x - porch.x, cell.z - porch.z) <= 3 && Math.abs(cell.y - porch.y) <= 2 && cell.z > origin.z + 7
@@ -54,6 +40,33 @@ async function approachHome (ctx, destination, { open = false } = {}) {
     const feet = getFeet()
     ctx.log?.(`プレイヤーモード: 本拠点の入口へ、掘る・積む道でも行けませんでした（${out.code}。足元 ${feet ? `${Math.floor(feet.x)}, ${Math.floor(feet.y)}, ${Math.floor(feet.z)}` : '?'}）。1分後にもう一度試します`)
     return false
+  }
+  if (!close(getFeet(), destination, 22)) {
+    if (ctx.climbUp && getFeet().y < origin.y - 5 && underCover(getBlock, ctx.where())) {
+      await ctx.climbUp(cancelled)
+      return false
+    }
+    // Measured as the trip measures its own arrival (rounded metres to its own destination, the porch): measured to
+    // the thing inside the house, a bot 20.5 m from the porch started a trip that arrived at once, every 2 s
+    // (live 2026-11-18 22:55 JST: 「出発」「目的地に着きました（残り 20m・0区間）」 22 times in 40 s).
+    const stop = { x: origin.x + 3, z: origin.z + 9 }
+    if (Math.round(Math.hypot(getFeet().x - stop.x, getFeet().z - stop.z)) > ARRIVE_M) {
+      if (!operations.quarry.travelStatus().busy) {
+        // Travel stops near the porch; the next dispatch uses the actual door.
+        const from = getFeet()
+        await ctx.travelTo({ destination: stop }, { aborted: cancelled })
+        // The trip ended where it began, near the house (no leg went on in any direction): the same trip
+        // again finds the same nothing. The way that digs and stacks leads to the porch from there.
+        const feet = getFeet()
+        const left = feet ? Math.hypot(feet.x - stop.x, feet.z - stop.z) : Infinity
+        if (!cancelled() && !operations.quarry.travelStatus().busy && left > ARRIVE_M && left <= NEAR_M && Math.hypot(feet.x - from.x, feet.z - from.z) < STUCK_M) {
+          if (!shared.dragonHomeWalk || now() >= shared.dragonHomeWalk.until) ctx.log?.(`プレイヤーモード: 本拠点への長距離移動が進まなかったため、掘る・積む道で入口へ行きます（あと ${Math.round(left)}m）`)
+          await byBuild()
+        }
+      }
+      return false
+    }
+    // Arrived on the map, but far over or under the house: the trip would only "arrive" again.
   }
   if (Math.abs(getFeet().y - destination.y) > LEVEL_M && !await byBuild()) return false
   // Arrived on the map means up to 20 m away: the short walk to the door stand does not reach that far.
