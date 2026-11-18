@@ -9,6 +9,7 @@ const { createDragonBrewing } = require('./dragon-brew')
 const { home, end, nether, spare, combined, matches, count, full, bare, homeCarryNeed, hasWorkingPick } = require('./dragon-supply-kit')
 const { provisionFood } = require('./dragon-early-food')
 const { placeStation } = require('./station-room')
+const { reserveRoom } = require('./dragon-reserve-room')
 
 const ingredient = {
   iron_helmet: { iron_ingot: 5 }, iron_chestplate: { iron_ingot: 8 }, iron_leggings: { iron_ingot: 7 }, iron_boots: { iron_ingot: 4 },
@@ -176,6 +177,16 @@ function createDragonSupplies (ctx) {
       if (available < 1) {
         const target = recovering ? amount - equipped : wanted + keep
         return { ...pending(name + ' を予備用に補給します。'), missing:{name, count:target} }
+      }
+      if (!recovering) {
+        // A full chest takes nothing: one stack of rubble comes out first (dragon-reserve-room.js).
+        const room = reserveRoom(slots, select(rows(), name, Math.min(wanted, available), false))
+        if (!room.fits && !room.evict) return pending('予備のラージチェストが満杯で、取り出せる石材もありません（' + name + ' を入れられません）。')
+        if (!room.fits) {
+          const out = await box.withdraw(pos, seen => seen.filter(slot => slot.slot === room.evict.slot && slot.name === room.evict.name && slot.count > 0).map(slot => ({ chestSlot: slot.slot, name: slot.name, count: slot.count })), { aborted: cancelled })
+          const taken = out.progress?.confirmedTransferred ?? 0
+          return pending('予備のラージチェストが満杯のため、' + bare(room.evict.name) + ' を取り出して ' + name + ' の場所を空けます（' + taken + ' 個' + (taken ? '' : '・' + (out.detail ?? out.code ?? '取り出せませんでした')) + '）。')
+        }
       }
       await moveStock(pos, name, Math.min(wanted, available), recovering)
       return pending(name + ' の予備装備の移動を確認します。')

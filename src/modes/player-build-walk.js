@@ -14,7 +14,7 @@
 //   the Bot stands, at most ROUNDS times; then the answer is the reason.
 // - No plan: the answer is NO_BUILD_ROUTE (or the search limit) at once.
 // ports: the scaffold's hands (player-scaffold-ports.js): feet, block, walk,
-// canMine, mine, canDig, dig, pick, descend, pillar, fill, reason.
+// canMine, mine, canDig, dig, pick, descend, pillar, bridge, fill, reason.
 const { planBuildRouteAsync, keyOf } = require('../movement/build-route')
 const { createHouseProtection } = require('../safety/house-protection')
 
@@ -31,7 +31,7 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
   const refused = new Set(), barred = new Set()
   const bar = (a, b) => barred.add(`${keyOf(a.x, a.y, a.z)}>${keyOf(b.x, b.y, b.z)}`)
   const say = text => log(`プレイヤーモード: ${text}`)
-  let moved = 0, mined = 0, stacked = 0, why = null
+  let moved = 0, mined = 0, stacked = 0, bridged = 0, why = null
 
   // The blocks in the way of one step: mined by the ordinary mining, by hand where no pickaxe may be used.
   async function clear (cells) {
@@ -50,12 +50,18 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
     const start = cell()
     if (!start) return { ok: false, code: 'NO_POSITION', moved, mined, stacked }
     if (done(start)) return { ok: true, code: 'BUILD_ROUTE_DONE', moved, mined, stacked }
-    const route = await plan({ getBlock: block, start, target, done, blocks: ports.fill?.() ?? 0, refused, barred, ...limits })
+    const carried = ports.fill?.() ?? 0
+    let route = await plan({ getBlock: block, start, target, done, blocks: carried, refused, barred, ...limits })
+    // No way by walking, digging and stacking: once more with floor blocks placed over gaps.
+    if (!route.ok && carried > 0 && typeof ports.bridge === 'function' && !aborted()) {
+      const wider = await plan({ getBlock: block, start, target, done, blocks: carried, refused, barred, ...limits, allowBridge: true })
+      if (wider.ok) route = wider; else route = { ...route, expanded: route.expanded + wider.expanded }
+    }
     if (!route.ok) {
       say(`掘る・積む道もありません（${route.code}・調べたマス ${route.expanded}${why ? `・${String(why).slice(0, 60)}` : ''}）`)
       return { ok: false, code: route.code, moved, mined, stacked, expanded: route.expanded }
     }
-    say(`歩ける道がないため、掘る・積む道で進みます（${route.steps.length} 歩・掘る ${route.dig} 個・自分の柱を下りる ${route.shaft} 段・積む ${route.stack} 段${round ? `・${round + 1} 回目の計画` : ''}）`)
+    say(`歩ける道がないため、掘る・積む道で進みます（${route.steps.length} 歩・掘る ${route.dig} 個・自分の柱を下りる ${route.shaft} 段・積む ${route.stack} 段${route.bridge ? `・足場を置く ${route.bridge} 個` : ''}${round ? `・${round + 1} 回目の計画` : ''}）`)
     let at = start, failed = false
     for (let i = 0; i < route.steps.length && !failed; i++) {
       if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }
@@ -73,6 +79,12 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
       if (step.kind === 'walk') {
         if (await walk(centre(step.to)) && there(step.to)) { moved++; at = step.to; continue }
         bar(at, step.to); why = ports.why?.() ?? 'WALK_FAILED'; failed = true
+      } else if (step.kind === 'bridge') {
+        // A floor block over the gap first (received), then the step onto it.
+        const floor = () => { const found = block(step.place.x, step.place.y, step.place.z); return found?.known === true && found.boundingBox === 'block' }
+        const laid = floor() || (typeof ports.bridge === 'function' && await ports.bridge(step.place, at) && floor())
+        if (laid && await walk(centre(step.to)) && there(step.to)) { moved++; bridged++; at = step.to; continue }
+        bar(at, step.to); why = laid ? ports.why?.() ?? 'WALK_FAILED' : ports.why?.() ?? 'BRIDGE_FAILED'; failed = true
       } else if (step.kind === 'shaft') {
         if (await ports.descend({ x: at.x, y: at.y - 1, z: at.z }) && there(step.to)) { moved++; mined++; at = step.to; continue }
         bar(at, step.to); why = ports.why?.() ?? 'DESCEND_FAILED'; failed = true
@@ -86,7 +98,7 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
       }
     }
     const now = cell()
-    if (!failed && now && done(now)) { say(`掘る・積む道で着きました（${moved} 歩・掘った ${mined} 個・積んだ ${stacked} 段）`); return { ok: true, code: 'BUILD_ROUTE_DONE', moved, mined, stacked } }
+    if (!failed && now && done(now)) { say(`掘る・積む道で着きました（${moved} 歩・掘った ${mined} 個・積んだ ${stacked} 段${bridged ? `・置いた足場 ${bridged} 個` : ''}）`); return { ok: true, code: 'BUILD_ROUTE_DONE', moved, mined, stacked } }
     if (failed) say(`掘る・積む道の途中で進めなくなりました（${moved} 歩目のあと・${String(why ?? '不明').slice(0, 80)}）。そこを外して計画し直します`)
   }
   if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }

@@ -1,0 +1,166 @@
+'use strict'
+// The expedition's way back into the home (src/modes/dragon-early-home.js).
+// Live 2026-11-18 20:42-20:52 JST: the trip home "arrived" 11 m from the house on
+// the map, on the overhang west of it at y 89 (the house floor is at y 76). The
+// home step then tried the door and a walk every two seconds, silently, for ten
+// minutes; nothing led down.
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { approachHome } = require('../src/modes/dragon-early-home')
+const { chestOf } = require('../src/modes/house/house-spawn')
+const { createOverhangWorld, PILLAR, HOUSE } = require('./helpers/overhang-world')
+
+const origin = { x: HOUSE.x, y: HOUSE.y, z: HOUSE.z }
+const inHouse = cell => cell.x >= HOUSE.x && cell.x <= HOUSE.x + 6 && cell.z >= HOUSE.z && cell.z <= HOUSE.z + 6 && cell.y >= HOUSE.y
+
+// The layer round the Bot as received at 20:55 JST (GET /blocks, every cell received): [top y, thickness],
+// 'L' leaves at y 92 only, null nothing at y 84..92. Columns x -4910..-4902 per row z.
+// Since the height map of 12:45 the floor between the Bot and its pillar is gone.
+const L = 'L'
+const READ = {
+  [-4996]: [[89, 3], [89, 2], [89, 6], [86, 2, 'stone'], L, 'pillar', [88, 1], null, null],
+  [-4995]: [[89, 8], [89, 6], [89, 5], L, L, L, null, null, null],
+  [-4994]: [[89, 6], [89, 5], L, L, [88, 1], L, L, null, null],
+  [-4993]: [[88, 3], [88, 3], [88, 3], L, L, L, null, null, null],
+  [-4992]: [[88, 3], [87, 1], [88, 2], [88, 1], L, null, null, null, null],
+  [-4991]: [[88, 1], [88, 1], [88, 1], [88, 1], null, null, null, null, null],
+  [-4990]: [null, [88, 1], [88, 1], null, null, null, null, null, null],
+  [-4989]: Array(9).fill(null),
+  [-4988]: Array(9).fill(null)
+}
+function asRead (world) {
+  for (const [row, columns] of Object.entries(READ)) {
+    columns.forEach((column, index) => {
+      const x = -4910 + index, z = Number(row)
+      if (column === 'pillar') return
+      for (let y = 78; y <= 93; y++) world.setBlock(x, y, z, 'air')
+      if (column === L) world.setBlock(x, 92, z, 'oak_leaves')
+      else if (column) for (let y = column[0]; y > column[0] - column[1]; y--) world.setBlock(x, y, z, column[2] ?? (y === column[0] ? 'grass_block' : 'dirt'))
+    })
+  }
+  return world
+}
+
+// The ordinary hands over the block world: a short walk, the mining, the pillar descent.
+function bot (world, feet, { walkable = true, fill = 0 } = {}) {
+  const body = { x: feet.x + 0.5, y: feet.y, z: feet.z + 0.5 }, did = [], trips = [], logs = [], placed = []
+  const open = (x, y, z) => world.getBlock(x, y, z).boundingBox !== 'block'
+  const firm = (x, y, z) => world.getBlock(x, y, z).boundingBox === 'block'
+  const stand = (x, y, z) => firm(x, y - 1, z) && open(x, y, z) && open(x, y + 1, z)
+  const hands = {
+    feet: () => ({ ...body }), block: world.getBlock, fill: () => fill, why: () => null, reason: () => 'refused by the mining check',
+    async walk (to) {
+      const x = Math.floor(to.x), z = Math.floor(to.z), cx = Math.floor(body.x), cz = Math.floor(body.z)
+      if (!walkable || !stand(x, to.y, z) || Math.abs(x - cx) + Math.abs(z - cz) > 4 || Math.abs(to.y - body.y) > Math.abs(x - cx) + Math.abs(z - cz)) return false
+      Object.assign(body, { x: to.x, y: to.y, z: to.z }); did.push('walk')
+      return true
+    },
+    canMine: cell => firm(cell.x, cell.y, cell.z),
+    async mine (cell) { world.setBlock(cell.x, cell.y, cell.z, 'air'); did.push('mine'); return true },
+    async descend (cell) {
+      if (cell.x !== Math.floor(body.x) || cell.z !== Math.floor(body.z) || cell.y !== body.y - 1 || !firm(cell.x, cell.y - 1, cell.z)) return false
+      world.setBlock(cell.x, cell.y, cell.z, 'air'); body.y -= 1; did.push('descend')
+      return true
+    },
+    async pillar (column, feetY) {
+      if (fill < 1 || !open(column.x, feetY + 2, column.z)) return { ok: false, reason: 'BLOCKED' }
+      fill--; world.setBlock(column.x, feetY, column.z, 'cobblestone'); body.y = feetY + 1; did.push('pillar')
+      return { ok: true }
+    },
+    // A floor block into the gap beside the feet, from the blocks carried.
+    async bridge (cell) {
+      if (fill < 1 || !open(cell.x, cell.y, cell.z)) return false
+      fill--; world.setBlock(cell.x, cell.y, cell.z, 'cobblestone'); did.push('bridge'); placed.push(cell)
+      return true
+    },
+    // The last walk to the chest: only from near its own level (the door and the floor are not in this world).
+    async approach (target) {
+      did.push('approach')
+      if (Math.abs(body.y - target.y) > 3 || Math.hypot(target.x + 0.5 - body.x, target.z + 0.5 - body.z) > 12) return false
+      Object.assign(body, { x: target.x + 0.5, y: target.y, z: target.z + 2.5 })
+      return true
+    }
+  }
+  let clock = 0
+  const ctx = { shared: { playerHouse: { origin, done: true } }, hands, getBlock: world.getBlock, getFeet: () => ({ ...body }), where: () => ({ x: body.x, y: body.y + 1.62, z: body.z }),
+    cancelled: () => false, log: line => logs.push(line), now: () => clock,
+    operations: { quarry: { travelStatus: () => ({ busy: false }) }, interactions: { useDoor: async () => {} } },
+    travelTo: async input => { trips.push(input.destination) } }
+  return { ctx, body, did, trips, logs, placed, tick: ms => { clock += ms } }
+}
+
+test('the real overhang: from where the trip "arrived", down by the way that digs, and in to the chest', async () => {
+  const world = createOverhangWorld()
+  const f = bot(world, { x: -4907, y: 89, z: -4992 })
+  const chest = chestOf(origin)
+  assert.equal(await approachHome(f.ctx, chest), true, f.logs.join('\n'))
+  assert.deepEqual(f.trips, [], 'no trip is started again from inside its arrival distance')
+  assert.ok(f.did.filter(step => step === 'descend').length >= 10, 'down through the blocks it stands on')
+  assert.ok(Math.abs(f.body.y - chest.y) <= 3)
+  assert.ok([...world.changed.keys()].every(k => { const [x, y, z] = k.split(',').map(Number); return !inHouse({ x, y, z }) }), 'no house block was changed')
+  assert.ok(f.logs.some(line => /掘る・積む道で着きました/.test(line)), f.logs.join('\n'))
+})
+
+test('the overhang as received at 20:55 JST: round by the row north of the read, down its own pillar, and in', async () => {
+  // The row z -4997 was not read at 20:55; it is as the height map of 12:45 has it (a floor at y 88-89).
+  const f = bot(asRead(createOverhangWorld()), { x: -4907, y: 89, z: -4992 })
+  const chest = chestOf(origin)
+  assert.equal(await approachHome(f.ctx, chest), true, f.logs.join('\n'))
+  assert.deepEqual([f.trips.length, f.placed.length], [0, 0])
+  assert.ok(f.did.filter(step => step === 'descend').length >= 18, 'down the pillar it stacked')
+  assert.ok(Math.abs(f.body.y - chest.y) <= 3)
+})
+
+test('a gap all round and blocks carried: floor blocks over the gap to the pillar; with nothing to place, the reason', async () => {
+  // The layer cut off on every side but the gap to the pillar (the row north of the read and the hillside west of it gone).
+  const island = () => {
+    const world = asRead(createOverhangWorld())
+    for (let x = -4925; x <= -4902; x++) for (let z = -5010; z <= -4985; z++) {
+      if (x >= -4910 && z >= -4996 && z <= -4990) continue
+      if (x === PILLAR.x && z === PILLAR.z) continue
+      for (let y = 75; y <= 93; y++) world.setBlock(x, y, z, 'air')
+    }
+    return world
+  }
+  const chest = chestOf(origin)
+  const empty = bot(island(), { x: -4907, y: 89, z: -4992 })
+  assert.equal(await approachHome(empty.ctx, chest), false)
+  assert.ok(empty.logs.some(line => /本拠点の入口へ、掘る・積む道でも行けませんでした/.test(line)), empty.logs.join('\n'))
+  // As on the Realm: 130 cobblestone and 17 dirt carried.
+  const f = bot(island(), { x: -4907, y: 89, z: -4992 }, { fill: 147 })
+  assert.equal(await approachHome(f.ctx, chest), true, f.logs.join('\n'))
+  assert.deepEqual(f.trips, [])
+  assert.ok(f.placed.length >= 1 && f.placed.length <= 12, `floor blocks placed: ${f.placed.length}`)
+  assert.ok(f.did.filter(step => step === 'descend').length >= 10, 'down the pillar it stacked')
+  assert.ok(Math.abs(f.body.y - chest.y) <= 3)
+  assert.ok(f.logs.some(line => /足場を置く \d+ 個/.test(line)), f.logs.join('\n'))
+})
+
+test('no way down: one attempt, its reason in the log, and the next only a minute later', async () => {
+  const world = createOverhangWorld()
+  // Nothing under the feet may be dug (the pillar and the layer are refused): no route.
+  const f = bot(world, { x: -4907, y: 89, z: -4992 })
+  f.ctx.hands.canMine = () => false
+  f.ctx.hands.descend = async () => false
+  const chest = chestOf(origin)
+  assert.equal(await approachHome(f.ctx, chest), false)
+  assert.equal(f.logs.filter(line => /本拠点の入口へ、掘る・積む道でも行けませんでした/.test(line)).length, 1, f.logs.join('\n'))
+  const before = f.logs.length
+  for (let i = 0; i < 5; i++) { f.tick(2000); assert.equal(await approachHome(f.ctx, chest), false) }
+  assert.equal(f.logs.length, before, 'nothing is planned or logged again within the minute')
+  assert.deepEqual(f.trips, [])
+  f.tick(60000)
+  assert.equal(await approachHome(f.ctx, chest), false)
+  assert.ok(f.logs.length > before, 'tried again after the rest')
+})
+
+test('far from the house on the map the trip is started; beside the house on its level nothing is dug', async () => {
+  const world = createOverhangWorld()
+  const far = bot(world, { x: -4907, y: 89, z: -4992 })
+  far.body.x -= 40
+  assert.equal(await approachHome(far.ctx, chestOf(origin)), false)
+  assert.deepEqual(far.trips, [{ x: origin.x + 3, z: origin.z + 9 }])
+  const near = bot(world, { x: -4897, y: 76, z: -4981 })
+  assert.equal(await approachHome(near.ctx, chestOf(origin)), true)
+  assert.deepEqual(near.did, ['approach'])
+})

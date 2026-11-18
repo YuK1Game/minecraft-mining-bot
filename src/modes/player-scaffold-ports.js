@@ -162,6 +162,33 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     try { await operations.interactions.placeBlock({ position: cell, slot: item.slot }) } catch { return false }
     return until(() => { const found = block(cell.x, cell.y, cell.z); return found?.known === true && found.boundingBox === 'block' }, 5000)
   }
+  // A floor block into the gap `cell` beside the feet (modes/player-build-walk.js): the ordinary
+  // placement against a side face, the block under the feet first, then a block beside the gap.
+  // It counts by the received block; a placement sent and not answered is not sent a second time.
+  const FACES = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]]
+  async function bridge (cell, from) {
+    const solid = () => { const found = block(cell.x, cell.y, cell.z); return found?.known === true && found.boundingBox === 'block' }
+    if (solid()) return true
+    const material = FILL.find(name => held(name) > 0)
+    const have = () => (getInventory()?.items ?? []).filter(item => item?.name === material && item.count > 0)
+    let item = have().find(stack => stack.slot <= 8)
+    if (!item && have().length) { try { await operations.inventory.equip(have()[0].slot) } catch (error) { return refused(error) } item = have().find(stack => stack.slot <= 8) }
+    if (!item) { why = 'NO_BLOCK'; return false }
+    const beside = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ x: cell.x + dx, y: cell.y, z: cell.z + dz }))
+    const under = { x: from.x, y: from.y - 1, z: from.z }
+    for (const clicked of [under, ...beside.filter(at => !(at.x === under.x && at.z === under.z))]) {
+      const face = FACES.findIndex(([dx, dy, dz]) => clicked.x + dx === cell.x && clicked.y + dy === cell.y && clicked.z + dz === cell.z)
+      if (face < 0) continue
+      const options = { position: cell, slot: item.slot, clicked, face }
+      let preview = null
+      try { preview = operations.interactions.previewPlaceAgainst(options) } catch (error) { refused(error); continue }
+      if (preview?.ready !== true) { why = String(preview?.errors?.[0] ?? 'PLACE_REFUSED'); continue }
+      let sent = false
+      if (!await begin(() => { const run = operations.interactions.placeAgainst(options); sent = true; Promise.resolve(run).catch(refused) })) { if (sent) return false; continue }
+      return until(solid, 5000)
+    }
+    return false
+  }
   // The pickaxe with the most uses left into the hand (the pillar step leaves
   // dirt there; real Realm 2026-11-16 06:41 JST: stone overhead was refused
   // with a sword in hand, 「適切なツルハシの装備を確認できません」).
@@ -177,7 +204,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     await sleep(250)
     return true
   }
-  return { feet: getFeet, block, dirt, fill, walk, stepOff, land, approach, canMine, mine, canDig, dig, descend, pillar, place, pick, reason, why: () => why }
+  return { feet: getFeet, block, dirt, fill, walk, stepOff, land, approach, canMine, mine, canDig, dig, descend, pillar, bridge, place, pick, reason, why: () => why }
 }
 
 module.exports = { createScaffoldPorts }
