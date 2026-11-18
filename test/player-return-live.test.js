@@ -309,6 +309,46 @@ test('held for wood, the goal is not woken by where the Bot stands or by planks 
   assert.equal(lines(sim, /SUPPLIES_CHANGED/).length, 1)
 })
 
+// Live 2026-11-18 16:20-16:39 JST: after four deaths the diamonds were in the
+// base's chests, every chest was full and the Bot held stone and 5-8 planks.
+// Two goals "to take the diamonds out" ended held for a chest
+// (NO_CHEST_MATERIAL) with nothing taken: the kit was only taken after the
+// last stack was stored.
+test('a full base and no wood for a chest: the kit is taken first, and what it frees is the room for the cargo', async () => {
+  const sim = createReturnSim({ feet: { x: 8.5, y: GROUND, z: 3.5 }, items: [[0, 'diamond', 20], [1, 'oak_log', 6], [2, 'tuff', 64]] })
+  const base = sim.placeChest(5, GROUND, 0, { fill: 27 })
+  // The chest: 20 diamonds, 6 logs, and 25 full stacks of stone.
+  for (const slot of [0, 1]) { sim.storeOf(base)[slot] = structuredClone(sim.bag[slot]); sim.bag[slot] = structuredClone(sim.bag[30]) }
+  sim.shared.playerBase = base
+  sim.worn = { known: true, worn: [] }
+  sim.agent.running = true
+  const runtime = sim.mount()
+  assert.equal(await sim.run(runtime, { until: done, ms: 300000 }), true, sim.log.join('\n'))
+  assert.equal(sim.held('diamond'), 20, sim.log.join('\n'))
+  assert.equal(sim.held('oak_log'), 6)
+  assert.equal(sim.held('tuff'), 0, 'the stone went into the slots the kit left')
+  assert.equal(sim.stored(base, 'tuff'), 26 * 64)
+  assert.equal(lines(sim, /KIT_BEFORE_STORE/).length, 1, sim.log.join('\n'))
+  assert.equal(lines(sim, /保留|NO_CHEST_MATERIAL/).length, 0, sim.log.join('\n'))
+})
+
+test('a full base and no wood: the kit is taken even when it frees no slot, once, and the goal is then held for the wood', async () => {
+  const sim = createReturnSim({ feet: { x: 8.5, y: GROUND, z: 3.5 }, items: [[0, 'diamond', 64], [2, 'tuff', 64]] })
+  const base = sim.placeChest(5, GROUND, 0, { fill: 27 })
+  sim.storeOf(base)[0] = structuredClone(sim.bag[0]); sim.bag[0] = structuredClone(sim.bag[30])
+  sim.shared.playerBase = base
+  sim.worn = { known: true, worn: [] }
+  sim.agent.running = true
+  const runtime = sim.mount()
+  await sim.run(runtime, { until: () => sim.goal(runtime)?.state === 'held', ms: 600000 })
+  assert.equal(sim.goal(runtime)?.hold.code, 'NO_CHEST_MATERIAL', sim.log.join('\n'))
+  const taken = sim.held('diamond')
+  assert.ok(taken >= 29 && taken < 64, `the diamonds for the gear are held (${taken})`)
+  assert.equal(sim.stored(base, 'diamond'), 64 - taken)
+  assert.equal(sim.held('tuff'), 64, 'the stone stays held: no chest has room')
+  assert.equal(lines(sim, /KIT_BEFORE_STORE/).length, 1, sim.log.join('\n'))
+})
+
 test('held for a chest, the goal is not woken by the mining below the base; held on the way out of a tunnel, it is', async () => {
   // No chest can be built: held for the supplies. Deeper and farther changes nothing about that.
   const sim = createReturnSim({ feet: { x: 8.5, y: GROUND, z: 3.5 }, items: [...KIT, [2, 'diamond', 40]] })

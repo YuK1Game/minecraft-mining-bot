@@ -195,7 +195,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     if (goal.state === 'held') {
       const why = wakeReason(goal, seenNow())
       if (!why) return null
-      goal.state = 'active'; goal.hold = null; goal.stage = 'observe'; goal.unopened = []; goal.unreached = []; goal.visited = []; goal.sides = 0; goal.budget.wakes++
+      goal.state = 'active'; goal.hold = null; goal.stage = 'observe'; goal.unopened = []; goal.unreached = []; goal.visited = []; goal.kit = null; goal.sides = 0; goal.budget.wakes++
       say(`を再開します（${why}・${goal.budget.wakes} 回目の再評価）`)
       commit()
     }
