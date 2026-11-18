@@ -1,5 +1,6 @@
 'use strict'
 const { threatFields } = require('../safety/threat-policy')
+const { splitExposed } = require('../safety/exposed-actors')
 
 // Moved from runtime.js by scripts/extract-runtime-block.js.
 // `rt` exposes the runtime closure bindings this code uses; each read or write
@@ -87,26 +88,16 @@ function createIdleSafetyRuntime (rt) {
       try { const result = await rt.own(fn)(); requireSafety(); return result } finally { if (owners[kind] === record) owners[kind] = null }
     }
     let recentUserSafetyObservation = null
-    function safetyActors (state, actors = state.entities) {
-      // Planning and live inspection use the same current attack-access view.
-      // Unknown access stays visible; this never proves future path safety.
-      return actors.filter(actor => {
-        if (actor.hostile !== true || actor.alive === false || actor.primed === true) return true
-        const exposure = rt.combatAttackExposure(actor, state)
-        // A forbidden combat profile (boss/avoid-only) is still dangerous.
-        // Only current, known attack-access/recognition negatives suppress it.
-        if (exposure.reason === 'PROFILE_DISALLOWS_ENGAGEMENT') return true
-        if (!exposure.unknown && exposure.evidence.sight === false) return false
-        return exposure.unknown || !['ENEMY_ATTACK_ROUTE_BLOCKED', 'PROJECTILE_SIGHT_BLOCKED', 'NO_CURRENT_RECOGNITION'].includes(exposure.reason)
-      })
-    }
+    // The safety view (safety/exposed-actors.js): planning and live inspection use the same current attack-access view.
+    const safetyActors = (state, actors = state.entities) => splitExposed(actors, state, rt.combatAttackExposure).exposed
     const safetyObservation = () => {
       requireSafety()
       const state = { ...rt.routeState(), loading: !rt.host.shared.loadingScreenEnded, loadingScreenEnded: rt.host.shared.loadingScreenEnded === true, world: rt.host.world.stats(), totemGuard: rt.offhandTotem() }
       // Keep both views from this one observation. A currently occluded actor
       // still has an identity and position that bound an active retreat.
       const observedEntities = state.entities
-      state.entities = safetyActors(state)
+      const view = splitExposed(observedEntities, state, rt.combatAttackExposure)
+      state.entities = view.exposed; state.unexposedEntities = view.unexposed
       recentUserSafetyObservation = { state, at: Date.now(), scope: rt.userScope(state) }
       return { state, observedEntities }
     }

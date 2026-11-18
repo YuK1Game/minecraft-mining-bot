@@ -5,6 +5,8 @@
 // of st.<name> reads or writes the caller's own variable at that moment.
 // It returns { value } where the caller returns that value.
 
+const { exposedView } = require('../../safety/exposed-actors')
+
 async function prepareEscapePort (rt, st) {
           const controller = new AbortController(); st.controller = controller
           const signal = st.context.signal ? AbortSignal.any([st.context.signal, controller.signal]) : controller.signal; st.signal = signal
@@ -52,7 +54,9 @@ async function prepareEscapePort (rt, st) {
             const actors = st.safetyActors(state, state.entities ?? [])
             const canonical = rt.evaluateThreats(state, actors, { observationRadius: 32 })
             if (canonical.requiresObservation || state.entityStats?.unknownPositions > canonical.unknownPositions.length) throw new Error('Idle escape actor positions are unknown')
-            const retained = rt.resolveWorkActors(state, canonical, retainedActors)
+            // This pass may leave out an actor the observation kept (the route search
+            // behind the view is budgeted): it is released there, not an identity change.
+            const retained = rt.resolveWorkActors(exposedView(state, actors), canonical, retainedActors)
             if (retained.invalid.length) throw new Error('Idle escape retained actor identity, policy or scope changed')
             const value = rt.workEscapeEvaluation(canonical, retained.actors)
             // Match Guard: actual threats keep their distance; an outside actor

@@ -8,6 +8,7 @@ const { approach, findCells, collect, SOURCES, MOBS } = require('./dragon-supply
 const { createDragonBrewing } = require('./dragon-brew')
 const { home, end, nether, spare, combined, matches, count, full, bare, homeCarryNeed, hasWorkingPick } = require('./dragon-supply-kit')
 const { provisionFood } = require('./dragon-early-food')
+const { placeStation } = require('./station-room')
 
 const ingredient = {
   iron_helmet: { iron_ingot: 5 }, iron_chestplate: { iron_ingot: 8 }, iron_leggings: { iron_ingot: 7 }, iron_boots: { iron_ingot: 4 },
@@ -67,14 +68,9 @@ function createDragonSupplies (ctx) {
     const near = findCells(ctx, b => b.name === full(name) || name === 'furnace' && b.name === 'minecraft:lit_furnace', 8, 3)[0]
     if (near) { await approach(ctx, near); return remember(near) }
     if (!held(name)) { await acquire(name, 1); return null }
-    const feet = ctx.getFeet()
-    for (const [dx, dz] of [[2,0],[-2,0],[0,2],[0,-2],[1,1]]) {
-      if (cancelled()) return null
-      const pos = { x: Math.floor(feet.x) + dx, y: Math.floor(feet.y), z: Math.floor(feet.z) + dz }
-      if (await bench.place(pos, full(name))) return remember(pos)
-      if (!bench.placementRetrySafe()) break
-    }
-    return null
+    // Open cells first; in a one-wide tunnel a niche is mined for it (station-room.js).
+    const pos = await placeStation({ getBlock, feet: ctx.getFeet(), place: cell => bench.place(cell, full(name)), retrySafe: () => bench.placementRetrySafe(), hands: ctx.hands, cancelled, log: ctx.log, label: name === 'crafting_table' ? '作業台' : name === 'furnace' ? 'かまど' : name })
+    return pos ? remember(pos) : null
   }
 
   async function useWater (item, pos) {

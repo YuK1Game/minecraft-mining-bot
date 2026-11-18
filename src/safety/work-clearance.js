@@ -14,7 +14,12 @@ function learningArcherMargin (state, actor) {
   return state?.threatPolicy === 'online_learning' && Number.isFinite(state.health) && state.health > 0 && !state.dead && !state.isDead && !state.lifecycle?.dead && SPAWN_RANGED.has(actor?.name) && Number.isFinite(actor.dangerRadius) ? Math.max(0,18-actor.dangerRadius) : null
 }
 const archerWorkFloor = (state, actor) => Number.isFinite(actor?.dangerRadius) ? actor.dangerRadius + (learningArcherMargin(state,actor) ?? WORK_MARGIN) : null
-const workMargin = (state, actor = null) => learningArcherMargin(state,actor) ?? (state?.survivalWorkClearance === true ? WORK_MARGIN : state?.threatPolicy === 'online_learning' ? state.spawnRangedClearance === true && (!actor || SPAWN_RANGED.has(actor.name)) ? WORK_MARGIN : 0 : WORK_MARGIN)
+// Player play leaves a hostile outside its (capped) danger radius to combat
+// mode: no extra work band around it (real Realm 2026-11-18 17:43-18:17 JST: a
+// zombie 11.5 m away that never came closer was held as a pursuer the work had
+// to get clear of, and idle protection started a retreat about ten times a
+// second for 34 minutes).
+const workMargin = (state, actor = null) => state?.playerPlay === true ? 0 : learningArcherMargin(state,actor) ?? (state?.survivalWorkClearance === true ? WORK_MARGIN : state?.threatPolicy === 'online_learning' ? state.spawnRangedClearance === true && (!actor || SPAWN_RANGED.has(actor.name)) ? WORK_MARGIN : 0 : WORK_MARGIN)
 const actorId = actor => String(actor.runtimeId ?? actor.runtimeEntityId ?? actor.entityId ?? actor.id)
 const workScope = state => JSON.stringify([state.profile ?? null, state.realm?.id == null ? null : String(state.realm.id), state.dimension ?? null, state.connectionId ?? null, state.runtimeEntityId == null ? null : String(state.runtimeEntityId), state.startedAt ?? null])
 const timestamp = value => typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) : NaN
@@ -28,6 +33,16 @@ function captureWorkActors (state, evaluation, actors = evaluation.threats, now 
   })
 }
 
+// The canonical evaluation left this actor out itself: nothing received about
+// it for minutes, it stands still out of its own reach, no route, or terrain
+// in between. It is not a pursuer now; a record kept for it is released.
+function setAside (evaluation, runtimeId) {
+  const still = (evaluation.unreachable ?? []).find(actor => actor.runtimeId === runtimeId)
+  if (still) return still.standingStill === true ? 'standing_still' : 'unreachable'
+  if ((evaluation.suppressedByTerrain ?? []).some(actor => actor.runtimeId === runtimeId)) return 'terrain'
+  return (evaluation.ignored ?? []).some(actor => actor.runtimeId === runtimeId && actor.reason === 'stale') ? 'stale' : null
+}
+
 function resolveWorkActors (state, evaluation, records) {
   const actors = []; const retained = []; const invalid = []; const released = []
   const entities = state.entities ?? state.hostiles ?? []
@@ -37,9 +52,15 @@ function resolveWorkActors (state, evaluation, records) {
     const same = entity && String(entity.uniqueId) === record.uniqueId && entity.entityType === record.name
     if (same && (entity.alive === false || entity.dead === true || entity.health === 0)) { released.push({ runtimeId: record.runtimeId, reason: 'dead' }); continue }
     if (!entity && !entities.some(value => value.uniqueId != null && String(value.uniqueId) === record.uniqueId) && (state.removedEntities ?? []).some(receipt => String(receipt.runtimeId) === record.runtimeId && String(receipt.uniqueId) === record.uniqueId && receipt.entityType === record.name && timestamp(receipt.removedAt) >= record.observedAt)) { released.push({ runtimeId: record.runtimeId, reason: 'removed' }); continue }
+    // Left out of the safety view because its attack cannot reach the Bot now
+    // (safety/exposed-actors.js): the same actor, known, and not a pursuer.
+    const hidden = entity ? null : (state.unexposedEntities ?? []).find(value => actorId(value) === record.runtimeId)
+    if (hidden && String(hidden.uniqueId) === record.uniqueId && hidden.entityType === record.name) { released.push({ runtimeId: record.runtimeId, reason: 'no_attack_access' }); continue }
     if (same && terrainOcclusionApplies(state, entity)) { released.push({ runtimeId: record.runtimeId, reason: 'terrain' }); continue }
     if (same && knownUnreachable(state, entity)) { released.push({ runtimeId: record.runtimeId, reason: 'unreachable' }); continue }
     const actor = [...evaluation.threats, ...evaluation.outsideDanger].find(value => value.runtimeId === record.runtimeId)
+    const aside = same && !actor ? setAside(evaluation, record.runtimeId) : null
+    if (aside) { released.push({ runtimeId: record.runtimeId, reason: aside }); continue }
     if (!same || !actor || actor.name !== record.name || actor.dangerRadius > record.dangerRadius) { invalid.push(record.runtimeId); continue }
     if (actor.distance >= actor.dangerRadius + workMargin(state, actor)) { released.push({ runtimeId: record.runtimeId, reason: 'clearance' }); continue }
     const current = { ...record, dangerRadius: actor.dangerRadius }
