@@ -116,11 +116,8 @@ function createUserControlRuntime (rt) {
         rt.manualShulkerRecovery?.cancel('COMBAT_PRIORITY')
         if (!rt.host.shared.autoWanted && rt.quarryJob?.holdsWork()) lease.defenseAnchor = rt.createDefenseAnchor(rt.lightweightUserState())
         else if (!rt.host.shared.autoWanted) {
-          const state = rt.lightweightUserState(), anchor = rt.host.shared.combatDefenseAnchor
-          // Player mode walks on purpose between runs (trips, recovery): each fight is anchored where it starts
-          // (live 2026-11-16 10:00 JST: 「Defense movement refused: BEYOND_ANCHOR_RADIUS」 ended the fight after one swing).
-          if (!anchor || rt.host.shared.playerWanted === true || !rt.defenseMovementAllowed({ anchor, state, position: anchor.feet, retreating: true }).allowed) rt.host.shared.combatDefenseAnchor = rt.createDefenseAnchor(state)
-          lease.defenseAnchor = rt.host.shared.combatDefenseAnchor
+          // Player mode fights without the fixed anchor (combat-defense-policy.js fightAnchor).
+          lease.defenseAnchor = rt.require('./combat/combat-defense-policy').fightAnchor(rt.host.shared, rt.lightweightUserState())
         }
       }
       rt.userBehaviorLease = lease
