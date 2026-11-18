@@ -438,6 +438,11 @@ function createUserControlRuntime (rt) {
       // current melee reach, the existing positive-health fight keeps its lease.
       if (!admission.engagementReached && !healthyMeleeReady(actor, state)) throw new Error('Healthy melee approach admission was revoked before engagement')
     }
+    // Playing, a sword and no bow: a shooter that just hit the Bot is charged (combat/shooter-charge.js).
+    function canChargeShooter (target, state) {
+      const aim = meleeApproachAim(target)
+      return !!aim && rt.require('./combat/shooter-charge').shooterCharge({ playing: rt.host.shared.playerWanted === true, sword: knownUserSword(state), bow: userHasBowAndAmmo(state), entityType: target?.entityType, range: Math.hypot(state.position.x - aim.x, state.position.y - aim.y, state.position.z - aim.z), health: state.health, hurtAt: rt.host.shared.travelLastDamageAt })
+    }
     function canAcquireStuckMeleeApproach (target, state) {
       if (!rt.currentGeneration() || rt.replaying || rt.host.shared.autoWanted !== true || rt.host.shared.userBehaviorsEnabled !== true || rt.resourceMinHealth(state) !== 0 || rt.host.shared.respawnTerrain?.pending || rt.userBehaviorSleeping || rt.userBehaviorWakePending) return false
       const protection = rt.generationSafety.snapshot(), result = protection.lastResult
@@ -622,7 +627,7 @@ function createUserControlRuntime (rt) {
         acquireControl: acquireUserControl, resumeControl: resumeUserControl, approach: approachUserTarget, retreat: retreatUserTarget,
         rangedOptions: { log: rt.host.log, onSelectionSent: slot => rt.host.commitSelection(slot) },
         meleeOptions: { log: rt.host.log },
-        coordinatorOptions: { log: rt.host.log, withDecision: fn => rt.combatExposure.withDecision(fn), controlReady: ({ claimId, token }) => !(rt.userBehaviorLease?.kind === 'combat' && rt.userBehaviorLease.claimId === `combat:${claimId}` && rt.userBehaviorLease.token === token && rt.userBehaviorLease.receiptsReady === false), canAcquireMeleeApproach: (target, state) => canAcquireStuckMeleeApproach(target, state) || canAcquireHealthyMeleeApproach(target, state), canEngage: (target, state) => rt.combatAttackExposure(target, state).intercept, engageRadius: rt.threatReachability.ENGAGE_RADIUS, getRecentDamageAt: () => rt.host.shared.recentDamageNoPrimary?.at ?? null, workGuard: { canSelectTarget: rt.quarryCanSelectTarget, canContinue: rt.quarryCanContinue } },
+        coordinatorOptions: { log: rt.host.log, withDecision: fn => rt.combatExposure.withDecision(fn), controlReady: ({ claimId, token }) => !(rt.userBehaviorLease?.kind === 'combat' && rt.userBehaviorLease.claimId === `combat:${claimId}` && rt.userBehaviorLease.token === token && rt.userBehaviorLease.receiptsReady === false), canAcquireMeleeApproach: (target, state) => canAcquireStuckMeleeApproach(target, state) || canAcquireHealthyMeleeApproach(target, state) || canChargeShooter(target, state), canEngage: (target, state) => rt.combatAttackExposure(target, state).intercept, engageRadius: rt.threatReachability.ENGAGE_RADIUS, getRecentDamageAt: () => rt.host.shared.recentDamageNoPrimary?.at ?? null, workGuard: { canSelectTarget: rt.quarryCanSelectTarget, canContinue: rt.quarryCanContinue } },
         // Defense remains available while work is paused; other behaviors keep
         // their original work permission. An eligible enemy preempts meals.
         canAct: ({ kind } = {}) => !rt.resetHeld() && rt.currentGeneration() && !rt.replaying && rt.host.shared.loadingScreenEnded === true && !rt.host.shared.respawnTerrain?.pending && !rt.userBehaviorWakePending && (kind === 'combat' ? rt.defenseEnabled(rt.host.shared) : !rt.manualChestStorage?.isBusy() && !rt.chunkMoveHeld() && !rt.quarryPlacementPreparation && !rt.surfaceReturnOwner && rt.host.shared.userBehaviorsEnabled === true && (rt.host.shared.autoWanted === true || rt.quarryCombatArmed)),
