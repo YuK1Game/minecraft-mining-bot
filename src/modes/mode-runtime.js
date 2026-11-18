@@ -33,6 +33,7 @@ const { stationWorldScope } = require('../survival/supply-return')
 const { nextObjective } = require('./player-goal')
 const { guardDragonOperations } = require('./dragon-ports')
 const { createDragonRuntime } = require('./dragon-runtime')
+const { expeditionTrip } = require('./dragon-trip')
 const { pruneTunnelFloors } = require('./player-floor-prune')
 const { noteDamage } = require('./damage-note')
 const { createGroundRefresh } = require('../movement/ground-refresh')
@@ -332,7 +333,9 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       const cancelled = () => signal.aborted || !active() || lifeKey() !== owner || shared.loadingScreenEnded === false
       const travel = (input, options = {}) => {
         if (cancelled() || runtime.raw().dimension !== 'overworld') throw Error('地上の長距離移動は現世でのみ開始できます。')
-        return travelTo(input, { aborted: () => cancelled() || options.aborted?.() === true })
+        // The step keeps its trip until it ends (dragon-trip.js); nothing else of the expedition starts between two legs.
+        const aborted = () => cancelled() || options.aborted?.() === true
+        return expeditionTrip({ start: () => travelTo(input, { aborted }), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel(), cancelled: aborted, until: options.until, resting: () => !!shared.travelNight?.cover, log })
       }
       const actions = guardDragonOperations(operations, cancelled)
       const hands = buildHands(cancelled, actions)

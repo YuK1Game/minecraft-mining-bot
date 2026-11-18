@@ -126,7 +126,8 @@ async function provisionFood (ctx, wanted = 32) {
     const index = state.foodSearch ?? 0
     // Return to the plots regularly so they are loaded and can grow.
     const destination = index % 3 === 2 ? { x: origin.x + 3, z: origin.z + 9 } : spiralPoint(origin, index % 6)
-    await ctx.travelTo({ destination }, { aborted: ctx.cancelled })
+    // The search trip ends as soon as a food source comes into view (dragon-trip.js).
+    await ctx.travelTo({ destination }, { aborted: ctx.cancelled, until: () => forage.preview({ stockpile: true }).ready === true })
     state.foodSearch = index + 1
   }
   return pending('畑の成長を待ちながら、周囲の食料源を探します。')
