@@ -108,3 +108,34 @@ test('runtime wiring: a stop from outside the modes (terminal /stop, local API) 
   await f.mode.stopPlayer()
   assert.equal(f.mode.status().player.wanted, false)
 })
+
+test('player start resumes a witnessed End exit through the real mode dispatcher, persists return, and releases the mode switch', async t => {
+  const { createDragonState } = require('../src/modes/dragon-state')
+  const initial = runtime(), host = initial.rt.host()
+  t.after(() => fs.rmSync(initial.root, { recursive: true, force: true }))
+  const world = { ...state(), inventory: { known: true, items: [] }, runtimeEntityId: '1', position: { x: 1, y: 65, z: 1 } }
+  host.world = { getBlock: () => ({ known: false }) }
+  host.shared.dragonDimensionTransition = { connectionId: world.connectionId, sequence: 2, from: 'end', to: 'overworld', deathId: 0, respawn: false }
+  host.shared.loadingScreenEnded = true
+  const rt = { ...initial.rt, raw: () => world, inventory: () => world.inventory, armor: () => null }
+  const checkpoint = createDragonState({ shared: host.shared, root: initial.root, getState: rt.raw })
+  await checkpoint.observe()
+  const record = checkpoint.record()
+  record.stage = 'end'
+  record.end.victory = { by: 'active_exit_after_observed_fight' }
+  record.end.returnAttempt = { connectionId: world.connectionId, life: 0, sequence: 1 }
+  await checkpoint.save(record)
+  // A reload recreates the mode and its actions; observations belong to the host.
+  const mode = attachModeOperations(initial.operations, rt, { root: initial.root })
+  mode.set('player')
+  const before = mode.startPlayer()
+  assert.ok(before.running)
+  const deadline = Date.now() + 1500
+  while (Date.now() < deadline && mode.status().player.phase !== 'completed') await new Promise(resolve => setTimeout(resolve, 10))
+  const returned = mode.status().player
+  assert.equal(returned.phase, 'completed', returned.reason)
+  assert.equal(returned.running, false)
+  assert.equal(checkpoint.record().stage, 'complete')
+  assert.equal(initial.calls.includes('agent.start:diamond'), false)
+  assert.equal(mode.set('quarry').changed, true)
+})

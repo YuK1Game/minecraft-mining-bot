@@ -502,3 +502,14 @@ test('a prey hit in this batch that runs off is chased again after a short rest,
   f.advance(2000)
   assert.equal(f.foraging.preview().target?.runtimeId, '2')
 })
+
+test('stocking provisions can pick up food while already carrying a meal, and credits only the observed gain', async () => {
+  const f = fixture({ initialActors: [drop(1.5)], onMove: ({ state }) => {
+    state.inventory.items.find(item => item.name === 'minecraft:porkchop').count++
+  } })
+  f.addFood(1)
+  assert.equal(f.foraging.preview().code, 'FOOD_ALREADY_AVAILABLE')
+  assert.equal(f.foraging.preview({ stockpile: true }).ready, true)
+  const out = await f.foraging.execute({ stockpile: true })
+  assert.equal(out.foodGained, 1)
+})

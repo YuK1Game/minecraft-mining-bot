@@ -56,12 +56,14 @@
     renderStages(mode.player)
     if (!$('start').dataset.mode) { $('start').textContent = '▶ プレイ開始'; $('start').dataset.mode = 'player' }
     const ready = live?.ready === true
-    $('start').disabled = !idle || !ready || playing
+    const completed = mode.player.phase === 'completed'
+    $('start').disabled = !idle || !ready || playing || completed
     $('pause').disabled = !idle || !playing
     for (const id of ['plan', 'resume', 'cancel']) $(id).disabled = true
-    $('live').textContent = playing ? 'プレイ中' : '停止中'
+    $('live').textContent = completed ? '遠征完了' : playing ? 'プレイ中' : '停止中'
+    $('live').title = mode.player.reason || ''
     $('live').className = 'badge run-state' + (playing ? ' live' : '')
-    $('step-area').className = !playing ? 'active' : ''
+    $('step-area').className = !playing && !completed ? 'active' : ''
     $('step-run').className = playing ? 'active' : ''
   }
   window.addEventListener('dashboard-control-live', event => { live = event.detail && typeof event.detail === 'object' ? event.detail : null; render() })

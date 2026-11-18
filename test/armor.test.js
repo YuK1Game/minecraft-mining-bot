@@ -3,8 +3,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createArmor, armorInfo } = require('../src/actions/armor')
 
-const NAMES = new Map([[1, 'minecraft:iron_chestplate'], [2, 'minecraft:leather_chestplate'], [3, 'minecraft:iron_sword'], [4, 'minecraft:diamond_helmet']])
-function fixture ({ inventory = [], respond = 'ok' } = {}) {
+const NAMES = new Map([[1, 'minecraft:iron_chestplate'], [2, 'minecraft:leather_chestplate'], [3, 'minecraft:iron_sword'], [4, 'minecraft:diamond_helmet'], [5, 'minecraft:golden_boots'], [6, 'minecraft:diamond_boots']])
+function fixture ({ inventory = [], respond = 'ok', preferGoldBoots = () => false } = {}) {
   const sent = []; let open = null
   const raws = new Map(inventory.map(i => [i.slot, { network_id: i.id, count: 1, has_stack_id: true, stack_id: 100 + i.slot, metadata: 0 }]))
   const crafting = {
@@ -17,7 +17,7 @@ function fixture ({ inventory = [], respond = 'ok' } = {}) {
   let armor
   const client = { queue: (name, params) => { sent.push({ name, params }); if (name === 'item_stack_request' && respond) { const r = params.requests[0]; queueMicrotask(() => armor.applyPacket('item_stack_response', { responses: [{ request_id: r.request_id, status: respond, containers: [{ slot_type: { container_id: 'armor' }, slots: [{ slot: r.actions[0].destination.slot, count: 1, item_stack_id: 500 }] }] }] })) } } }
   let rid = -1
-  armor = createArmor({ client, crafting, getState: () => ({ phase: 'spawned', health: 20, gameMode: 'survival', inventory: { known: true } }), allocateRequestId: () => (rid -= 2), timeoutMs: 200 })
+  armor = createArmor({ client, crafting, preferGoldBoots, getState: () => ({ phase: 'spawned', health: 20, gameMode: 'survival', inventory: { known: true } }), allocateRequestId: () => (rid -= 2), timeoutMs: 200 })
   return { armor, sent, crafting, isOpen: () => open }
 }
 
@@ -58,4 +58,16 @@ test('an accepted move commits the emptied source slot to the inventory model', 
   armor.applyPacket('inventory_content', { window_id: 'armor', input: [0, 0, 0, 0].map(() => ({ network_id: 0, count: 0 })) })
   await armor.equipBest({ maxMoves: 1 })
   assert.equal(commits.length, 1); assert.equal(commits[0].input[7].network_id, 0); assert.equal(commits[0].input.length, 36)
+})
+
+test('gold boots on Nether trips are preferred over diamond and kept until the expedition leaves', () => {
+  let scout = true
+  const f = fixture({ inventory: [{ slot: 8, id: 5 }, { slot: 9, id: 6 }], preferGoldBoots: () => scout })
+  const worn = id => f.armor.applyPacket('inventory_content', { window_id: 120, input: [{}, {}, {}, { network_id: id, count: 1, stack_id: 155, has_stack_id: true }] })
+  worn(6)
+  assert.equal(f.armor.preview().name, 'minecraft:golden_boots')
+  worn(5)
+  assert.equal(f.armor.preview(), null)
+  scout = false
+  assert.equal(f.armor.preview().name, 'minecraft:diamond_boots')
 })

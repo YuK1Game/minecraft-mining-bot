@@ -4,6 +4,7 @@
 // server recipe/stack IDs and open-container state belong to this connection.
 function createSessionCache () {
   let startGame = null
+  let dimension = null
   let registry = null
   let recipes = []
   let inventory = null
@@ -14,8 +15,9 @@ function createSessionCache () {
     revision++
     if (name === 'start_game') {
       startGame = packet
-      registry = null; recipes = []; inventory = null; container = null; hotbar = null
-    } else if (name === 'item_registry') registry = packet
+      dimension = null; registry = null; recipes = []; inventory = null; container = null; hotbar = null
+    } else if (name === 'change_dimension') { dimension = packet; container = null }
+    else if (name === 'item_registry') registry = packet
     else if (name === 'crafting_data') {
       if (packet.clear_recipes) recipes = []
       if (recipes.length >= 32) throw new Error('レシピの更新数が多すぎるため行動の再読み込みを停止します。')
@@ -30,6 +32,7 @@ function createSessionCache () {
   }
   function replay (receive) {
     if (startGame) receive('start_game', startGame)
+    if (dimension) receive('change_dimension', dimension)
     if (registry) receive('item_registry', registry)
     for (const recipe of recipes) receive('crafting_data', recipe)
     if (inventory) receive('inventory_content', { ...inventory, input: [...inventory.input] })

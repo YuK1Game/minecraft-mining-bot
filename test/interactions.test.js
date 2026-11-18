@@ -655,3 +655,18 @@ test('plain stone blocks such as andesite are placed as themselves', () => {
   f.names.set(777, 'minecraft:gravel')
   assert.equal(f.interactions.previewPlace({ position: f.target, slot: 0 }).ready, false)
 })
+
+test('placing an obsidian portal frame block needs both the real terrain update and the inventory decrease', async () => {
+  const f = fixture()
+  f.names.set(777, 'minecraft:obsidian')
+  const { x, y, z } = f.target
+  const options = { position: f.target, clicked: { x, y: y - 1, z }, face: 1, slot: 0 }
+  assert.equal(f.interactions.previewQuarryPlace(options).ready, true)
+  const placed = f.interactions.placeQuarryBlock(options)
+  f.setBlock(f.target, 'obsidian')
+  f.interactions.applyPacket('update_block', {})
+  assert.equal(f.interactions.snapshot().pendingOperation, 'place')
+  f.raw.set(0, emptyItem())
+  f.interactions.applyPacket('inventory_slot', { window_id: 'inventory', slot: 0, item: emptyItem() })
+  assert.equal((await placed).confirmedBy, 'server_block_and_inventory')
+})
