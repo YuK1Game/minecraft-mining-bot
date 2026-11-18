@@ -51,6 +51,7 @@ function createQuarryRuntime (rt) {
   // it repeats up to 20. requireIdle() keeps it out of combat, box work and any
   // other operation; refused attempts just wait for the next check.
   const idleEat = { timer: null, toFull: false, busy: false, refusedAt: 0 }
+  const mealRefused = rt.require('./actions/meal-resync').createMealResync({ request: source => rt.requestInventoryResyncWithReceipt(source), log: line => rt.host.log(line) })
   const idleEatTick = async () => {
     if (rt.disposed || rt.disposing) { clearInterval(idleEat.timer); return }
     if (idleEat.busy || rt.quarryJob?.holdsWork()) return
@@ -69,13 +70,14 @@ function createQuarryRuntime (rt) {
       const snack = keep.snackItems(rt.host.shared, { hunger, health: s.health }, s.inventory.items ?? []).find(i => i.count > 0 && isFood(i.name))
       if (!snack) return
       idleEat.busy = true
-      try { await rt.operations.food.eat({ slot: snack.slot }); rt.host.log(`待機中の食事: 満腹度 ${hunger} → 食事しました（生肉はかまど用に残します）`) } catch { /* The next check tries again. */ } finally { idleEat.busy = false }
+      try { await rt.operations.food.eat({ slot: snack.slot }); rt.host.log(`待機中の食事: 満腹度 ${hunger} → 食事しました（生肉はかまど用に残します）`) } catch (error) { mealRefused(error) } finally { idleEat.busy = false }
       return
     }
     const hasFood = (s.inventory.items ?? []).some(i => i.count > 0 && isFood(i.name)), hasRotten = (s.inventory.items ?? []).some(i => i.count > 0 && i.name === 'minecraft:rotten_flesh')
     if (!hasFood && !(hasRotten && hunger < 18)) { idleEat.toFull = false; return }
     idleEat.busy = true
     try { await rt.operations.food.eat(hasFood ? {} : { allowEmergencyRotten: true }); rt.host.log(`待機中の食事: 満腹度 ${hunger} → 食事しました`) } catch (error) {
+      mealRefused(error)
       if (Date.now() - idleEat.refusedAt > 60000) { idleEat.refusedAt = Date.now(); rt.host.log(`待機中の食事を見送り: 満腹度 ${hunger} (${String(error.message ?? error).slice(0, 80)})`) }
     } finally { idleEat.busy = false }
   }
