@@ -26,6 +26,8 @@ test('creeper is never chased: one in-reach hit, evade inside the shot distance,
   assert.deepEqual(p.allowedModes('minecraft:creeper', { hasBow: true, distance: 2 }), ['melee'])
   assert.deepEqual(p.allowedModes('minecraft:creeper', { hasBow: true, distance: 5 }), ['evade'])
   assert.deepEqual(p.allowedModes('minecraft:creeper', { hasBow: false, distance: 12 }), [])
+  assert.deepEqual(p.allowedModes('minecraft:creeper', { hasBow: false, distance: 10.7, cornered: true }), [], 'a cornered evade is not claimed where it would end at once')
+  assert.deepEqual(p.allowedModes('minecraft:creeper', { hasBow: false, distance: 7, cornered: true }), ['evade'])
   assert.deepEqual(p.allowedModes('minecraft:creeper', { hasBow: true, distance: 12 }), ['ranged'])
   assert.equal(p.meleeHitLimit('minecraft:creeper'), 1); assert.equal(p.meleeHitLimit('minecraft:zombie'), null)
   assert.deepEqual(p.allowedModes('minecraft:enderman', { hasBow: true, distance: 10 }), ['melee'])
