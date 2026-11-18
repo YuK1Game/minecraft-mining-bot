@@ -537,6 +537,7 @@ function createUserControlRuntime (rt) {
       const surface = await approachSurfaceMelee(target, context)
       if (surface) return surface
       validateHealthyMeleeApproach(requireUserLease(context), target)
+      const why = rt.require('./combat/approach-why').approachWhy(), look = (point, options) => why.note(rt.generationMovement.preview(point, options))
       const state = requireUserLease(context), dx = state.position.x - target.position.x, dz = state.position.z - target.position.z, d = Math.hypot(dx, dz)
       if (!d) return { ready: false, reason: 'Approach direction is unknown' }
       const candidates = []
@@ -544,7 +545,7 @@ function createUserControlRuntime (rt) {
       for (const candidate of candidates) {
         if (Math.hypot(candidate.x - state.position.x, candidate.y - state.position.y + 1.62, candidate.z - state.position.z) > 6) continue
         rt.motionOrigin = rt.working()
-        if (rt.generationMovement.preview(candidate, { emergency: true, allowWater: false, maxDistance: 6, maxExpanded: 300, avoidance: userAvoidance(state, target) })?.ready) return moveUserNative(candidate, context, target)
+        if (look(candidate, { emergency: true, allowWater: false, maxDistance: 6, maxExpanded: 300, avoidance: userAvoidance(state, target) })?.ready) return moveUserNative(candidate, context, target)
       }
       for (const candidate of candidates) {
         const range = Math.hypot(candidate.x - state.position.x, candidate.y - state.position.y + 1.62, candidate.z - state.position.z)
@@ -552,7 +553,7 @@ function createUserControlRuntime (rt) {
         requireUserLease(context)
         rt.motionOrigin = rt.working()
         const options = { emergency: true, allowWater: false, maxDistance: 12, maxExpanded: 600, avoidance: userAvoidance(state, target) }
-        const route = rt.generationMovement.preview(candidate, options)
+        const route = look(candidate, options)
         if (!route?.ready || !Array.isArray(route.waypoints)) continue
         const relays = route.waypoints.filter(waypoint => {
           const p = waypoint.position
@@ -567,7 +568,7 @@ function createUserControlRuntime (rt) {
         for (const relay of relays) {
           requireUserLease(context)
           rt.motionOrigin = rt.working()
-          if (!rt.generationMovement.preview(relay.position, { ...options, maxDistance: 6, maxExpanded: 300 })?.ready) continue
+          if (!look(relay.position, { ...options, maxDistance: 6, maxExpanded: 300 })?.ready) continue
           const result = await moveUserNative(relay.position, context, target)
           return { ...result, code: 'PARTIAL_APPROACH', partialApproach: true, targetReached: false, serverConfirmed: false }
         }
@@ -583,9 +584,9 @@ function createUserControlRuntime (rt) {
         if (nextRange >= initialRange - 0.25) continue
         requireUserLease(context)
         const probe = { ...state, position: { x: point.x, y: point.y + 1.62, z: point.z }, predicted: null, physicsState: null }
-        if (!rt.fullStandingGeometry(probe, point)) continue
+        if (!rt.fullStandingGeometry(probe, point)) { why.stand(); continue }
         rt.motionOrigin = rt.working()
-        if (!rt.generationMovement.preview(point, { emergency: true, allowWater: false, maxDistance: 6, maxExpanded: 300, avoidance: userAvoidance(state, target) })?.ready) continue
+        if (!look(point, { emergency: true, allowWater: false, maxDistance: 6, maxExpanded: 300, avoidance: userAvoidance(state, target) })?.ready) continue
         const result = await moveUserNative(point, context, target)
         return { ...result, code: 'PARTIAL_APPROACH', partialApproach: true, targetReached: false, serverConfirmed: false }
       }
@@ -607,13 +608,13 @@ function createUserControlRuntime (rt) {
       for (const { point } of centres.sort((a, b) => a.nextRange - b.nextRange).slice(0, 24)) {
         requireUserLease(context)
         const probe = { ...state, position: { x: point.x, y: point.y + 1.62, z: point.z }, predicted: null, physicsState: null }
-        if (!rt.fullStandingGeometry(probe, point)) continue
+        if (!rt.fullStandingGeometry(probe, point)) { why.stand(); continue }
         rt.motionOrigin = rt.working()
-        if (!rt.generationMovement.preview(point, { emergency: true, allowWater: false, maxDistance: 6, maxExpanded: 300, avoidance: userAvoidance(state, target) })?.ready) continue
+        if (!look(point, { emergency: true, allowWater: false, maxDistance: 6, maxExpanded: 300, avoidance: userAvoidance(state, target) })?.ready) continue
         const result = await moveUserNative(point, context, target)
         return { ...result, code: 'PARTIAL_APPROACH', partialApproach: true, targetReached: false, serverConfirmed: false }
       }
-      return { ready: false, reason: 'No known bounded melee stance' }
+      return { ready: false, reason: 'No known bounded melee stance' + why.text() }
     }
     try {
       rt.userBehaviors = rt.createUserBehaviors({ client: rt.host.client, getState: () => { rt.requireGeneration(); return rt.lightweightUserState() }, getRawState: () => { rt.requireGeneration(); return rt.lightweightRawState() }, world: rt.host.world, entities: rt.host.entities, crafting: rt.crafting, inventory: rt.inventory,
