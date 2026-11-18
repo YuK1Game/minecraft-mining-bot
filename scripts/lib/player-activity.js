@@ -1,5 +1,7 @@
 'use strict'
 
+const { playerStageView } = require('../../src/modes/player-stage-view')
+
 // Player mode on the dashboard: the sanitized mode status and the one line it
 // puts in the activity band ("今していること").
 const text = (value, max = 160) => typeof value === 'string' && value ? value.replace(/[\p{C}§]/gu, ' ').slice(0, max) : null
@@ -7,8 +9,7 @@ const text = (value, max = 160) => typeof value === 'string' && value ? value.re
 function modeState (input) {
   if (!input || typeof input !== 'object' || !['quarry', 'player'].includes(input.mode)) return null
   const player = input.player && typeof input.player === 'object' ? input.player : {}
-  const stages = (Array.isArray(player.stages) ? player.stages : []).slice(0, 12).map(stage => ({ id: text(stage?.id, 40), label: text(stage?.label, 40), implemented: stage?.implemented === true, reached: stage?.reached === true }))
-  return { mode: input.mode, player: { running: player.running === true, phase: text(player.phase, 40), reason: text(player.reason), current: text(player.current, 40), stages } }
+  return { mode: input.mode, player: { running: player.running === true, phase: text(player.phase, 40), reason: text(player.reason), current: text(player.current, 40), stages: playerStageView(player.stages) } }
 }
 
 // null unless player mode is selected; the quarry lines apply otherwise.

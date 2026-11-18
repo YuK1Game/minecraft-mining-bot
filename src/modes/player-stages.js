@@ -1,12 +1,12 @@
 'use strict'
 
+const { shortLabels, diamondEquipment, stageChecks } = require('./player-stage-checks')
+
 // The player mode's road to the Ender Dragon, as ordered stages. A stage counts
 // as reached from received equipment, the house record, or a scoped expedition receipt.
 const TIERS = ['wooden', 'stone', 'iron', 'diamond', 'netherite']
 const bare = name => String(name ?? '').replace(/^minecraft:/, '')
 const pickaxeTier = name => { const match = /^(\w+)_pickaxe$/.exec(bare(name)); return match ? TIERS.indexOf(match[1] === 'golden' ? 'wooden' : match[1]) : -1 }
-const has = (items, test) => items.some(item => Number.isSafeInteger(item?.count) && item.count > 0 && test(bare(item.name)))
-const FULL_SET = ['sword', 'helmet', 'chestplate', 'leggings', 'boots']
 const pickaxeAtLeast = tier => items => items.some(item => item?.count > 0 && pickaxeTier(item.name) >= TIERS.indexOf(tier))
 
 const STAGES = Object.freeze([
@@ -22,7 +22,7 @@ const STAGES = Object.freeze([
   // The full diamond set, held or worn: pickaxe, sword and all four armour pieces
   // (user 2026-11-16 20:37 JST: 「ダイヤ装備できてないのに、目標が『ネザー』になってる」;
   // 21:39 JST: 「ダイヤ一式くらい揃えないとBotでネザーは厳しいでしょ」).
-  { id: 'diamond', label: 'ダイヤ', implemented: true, reached: items => pickaxeAtLeast('diamond')(items) && FULL_SET.every(piece => has(items, name => name === `diamond_${piece}` || name === `netherite_${piece}`)) },
+  { id: 'diamond', label: 'ダイヤ', implemented: true, reached: items => diamondEquipment(items).every(piece => piece.done) },
   { id: 'nether', label: 'ネザー遠征の準備・ゲート往復', expedition: true, reached: record => record.nether?.roundTrip === true || record.nether?.finished === true },
   { id: 'rods', label: 'ネザー要塞・耐火・ロッド', expedition: true, reached: record => record.nether?.finished === true },
   { id: 'stronghold', label: '地下要塞と再出撃拠点', expedition: true, reached: record => record.stronghold?.prepared === true },
@@ -54,7 +54,14 @@ function playerStages (inventory, worn = null, house = null, record = null) {
   const gear = stages.filter((stage, index) => !STAGES[index].record && !STAGES[index].expedition)
   for (let i = gear.length - 2; i >= 0; i--) if (gear[i + 1].reached) gear[i].reached = true
   const current = known || record?.early?.finished ? stages.find(stage => !stage.reached)?.id ?? null : null
-  return { known, current, stages }
+  return {
+    known, current,
+    stages: stages.map(stage => ({
+      ...stage,
+      shortLabel: shortLabels[stage.id],
+      checks: stageChecks(stage, items, house, record)
+    }))
+  }
 }
 
 module.exports = { STAGES, playerStages }

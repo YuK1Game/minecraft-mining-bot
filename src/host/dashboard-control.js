@@ -3,6 +3,7 @@
 // Narrow, host-side command boundary. Never expose the arbitrary /action API to
 // a browser. A start receipt belongs to one live connection, job and code generation.
 const { createHash, randomUUID } = require('node:crypto')
+const { playerStageView } = require('../modes/player-stage-view')
 const { observedScope } = require('../movement/server-position-verifier')
 const { normalizeChunkArea, areaContainsFeet, chunkAreaKey } = require('../common/chunk-area')
 const error = (code, message, status = 409) => Object.assign(new Error(message), { code, status })
@@ -69,7 +70,7 @@ function modeStatus (mode) {
   if (!value) return null
   const player = value.player ?? {}
   return { current: text(value.mode), player: { running: player.running === true, phase: text(player.phase), reason: text(player.reason), known: player.known === true, current: player.current == null ? null : text(player.current),
-    stages: (Array.isArray(player.stages) ? player.stages : []).slice(0, 12).map(stage => ({ id: text(stage.id), label: text(stage.label), implemented: stage.implemented === true, reached: stage.reached === true })) } }
+    stages: playerStageView(player.stages) } }
 }
 function createDashboardControl ({ getState, getQuarry, getReset = () => null, getStorage = () => null, getMode = () => null, getGeneration = () => 0, disconnect, now = Date.now, uuid = randomUUID }) {
   let receipt = null, resetReceipt = null, revision = 0, busy = 0
