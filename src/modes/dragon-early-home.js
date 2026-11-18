@@ -3,6 +3,7 @@
 const { openDoor } = require('./house/house-door')
 const { underCover } = require('./player-surface')
 const { createBuildWalk } = require('./player-build-walk')
+const { createOpenStand } = require('./open-stand')
 
 // A long trip counts as arrived within ARRIVE_M of its destination on the map,
 // whatever the height. More than LEVEL_M over or under the house, no walk leads
@@ -12,7 +13,8 @@ const { createBuildWalk } = require('./player-build-walk')
 const ARRIVE_M = 20, LEVEL_M = 6, RETRY_MS = 60000
 const close = (from, to, range) => from && Math.hypot(to.x + 0.5 - from.x, to.y - from.y, to.z + 0.5 - from.z) <= range
 
-async function approachHome (ctx, destination) {
+// `open`: the destination is a block to be opened (a furnace, a chest): the Bot ends where the open click has a line to it.
+async function approachHome (ctx, destination, { open = false } = {}) {
   const { shared, hands, getBlock, getFeet, cancelled, operations } = ctx
   const origin = shared.playerHouse.origin
   const now = ctx.now ?? Date.now
@@ -61,7 +63,9 @@ async function approachHome (ctx, destination) {
   if (!close(getFeet(), destination, 4)) await hands.approach(destination, 3)
   // No walk got there (the roof, a ledge beside the house): the same way once, then the walk again.
   if (!cancelled() && !close(getFeet(), destination, 4) && !inside() && await byBuild() && !cancelled()) await hands.approach(destination, 3)
-  return !cancelled() && close(getFeet(), destination, 4)
+  if (cancelled() || !close(getFeet(), destination, 4)) return false
+  if (!open) return true
+  return createOpenStand({ getBlock, getFeet, walk: hands.walk }).go(destination, cancelled)
 }
 
 module.exports = { approachHome }

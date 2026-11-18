@@ -95,7 +95,7 @@ async function provisionFood (ctx, wanted = 32) {
   if (raw || wheat >= 3) {
     const stationType = raw ? 'furnace' : 'crafting_table'
     const station = placements(origin).find(step => step.item === stationType).position
-    if (!await approachHome(ctx, station)) return pending('集めた材料を本拠点で調理します。')
+    if (!await approachHome(ctx, station, { open: true })) return pending('集めた材料を本拠点で調理します。')
     if (!matches(stationType, ctx.getBlock(station.x, station.y, station.z))) return pending('調理設備のブロックを確認します。')
     const house = createHousePorts({ operations: ctx.operations, getBlock: ctx.getBlock, getInventory: ctx.runtime.inventory, disposed: ctx.cancelled, ...(ctx.sleep ? { sleep: ctx.sleep, now: ctx.now } : {}) })
     if (!raw) await house.craft('minecraft:bread', Math.min(Math.floor(wheat / 3), wanted - count, 16), station)
