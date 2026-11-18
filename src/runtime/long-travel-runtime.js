@@ -9,6 +9,8 @@
 
 function createLongTravelRuntime (rt) {
   let longTravel = null
+  let playerCrafting = null
+  const playerTravelCrafting = () => playerCrafting ??= rt.require('./travel/player-travel-crafting').createPlayerTravelCrafting(rt)
   const longTravelFile = () => rt.require('node:path').resolve(rt.__dirname, '..', '.local', 'long-travel', 'current.json')
   // Received overworld clock only (sync_world_clocks, else set_time).
   function travelClock () {
@@ -325,18 +327,23 @@ function createLongTravelRuntime (rt) {
     const wool = () => items().filter(i => WOOL.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
     if (!bed()) {
       if (wool() < 3) { await rt.operations.quarry.prepGather({ logs: 0, wool: 3, maxMs: 120000 }); if (wool() < 3) return { ok: false, reason: 'NO_WOOL' } }
-      const LOGS = /^minecraft:([a-z_]+)_log$/, PLANKS = /^minecraft:([a-z_]+)_planks$/
-      const planks = () => items().filter(i => PLANKS.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
-      const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
-      if (planks() < 7 && !log) return { ok: false, reason: 'NO_WOOD' }
-      rt.host.log('長距離移動: ベッドを作ります')
-      await rt.crafting.openInventory()
-      try { if (planks() < 7) await rt.crafting.craft(`minecraft:${LOGS.exec(log.name)[1]}_planks`, { times: Math.min(log.count, 2) }); await rt.crafting.craft('minecraft:crafting_table', { times: 1 }) } finally { try { rt.crafting.closeContainer() } catch {} }
-      const placed = await travelPlaceTable()
-      if (!placed) return { ok: false, reason: 'TABLE_NOT_PLACED' }
-      await rt.interactions.openCraftingTable(placed)
-      try { await rt.crafting.craft('minecraft:bed', { times: 1 }) } finally { try { rt.crafting.closeContainer() } catch {} }
-      if (!bed()) return { ok: false, reason: 'BED_NOT_CRAFTED' }
+      if (rt.host.shared.botMode === 'player') {
+        const made = await playerTravelCrafting().makeBed(signal)
+        if (!made.ok || !bed()) return { ok: false, reason: 'BED_NOT_CRAFTED' }
+      } else {
+        const LOGS = /^minecraft:([a-z_]+)_log$/, PLANKS = /^minecraft:([a-z_]+)_planks$/
+        const planks = () => items().filter(i => PLANKS.test(i.name ?? '')).reduce((n, i) => n + i.count, 0)
+        const log = items().filter(i => LOGS.test(i.name ?? '')).sort((a, b) => b.count - a.count)[0]
+        if (planks() < 7 && !log) return { ok: false, reason: 'NO_WOOD' }
+        rt.host.log('長距離移動: ベッドを作ります')
+        await rt.crafting.openInventory()
+        try { if (planks() < 7) await rt.crafting.craft(`minecraft:${LOGS.exec(log.name)[1]}_planks`, { times: Math.min(log.count, 2) }); await rt.crafting.craft('minecraft:crafting_table', { times: 1 }) } finally { try { rt.crafting.closeContainer() } catch {} }
+        const placed = await travelPlaceTable()
+        if (!placed) return { ok: false, reason: 'TABLE_NOT_PLACED' }
+        await rt.interactions.openCraftingTable(placed)
+        try { await rt.crafting.craft('minecraft:bed', { times: 1 }) } finally { try { rt.crafting.closeContainer() } catch {} }
+        if (!bed()) return { ok: false, reason: 'BED_NOT_CRAFTED' }
+      }
     }
     // Place: a foot cell beside the bot with its head cell, both received air on solid ground.
     let item = bed(); if (item.slot > 8) { await rt.operations.inventory.equip(item.slot); item = items().find(i => i.name === 'minecraft:bed' && i.slot <= 8) }
@@ -369,7 +376,8 @@ function createLongTravelRuntime (rt) {
     rt.host.log(`長距離移動: ベッド${bed() ? 'を回収しました（受信した持ち物で確認）' : 'の回収を確認できません'}`)
     return { ok: confirmed, recovered: !!bed() }
   }
-  async function travelPlaceTable () {
+  async function travelPlaceTable (signal) {
+    if (rt.host.shared.botMode === 'player') return playerTravelCrafting().placeTable(signal)
     const items = () => rt.working().inventory?.items ?? []
     let t = items().find(i => i.name === 'minecraft:crafting_table')
     if (!t) return null
@@ -449,6 +457,7 @@ function createLongTravelRuntime (rt) {
     return { ok: true, got }
   }
   async function travelMakeBoat (signal) {
+    if (rt.host.shared.botMode === 'player') return playerTravelCrafting().makeBoat(signal)
     const items = () => rt.working().inventory?.items ?? []
     if (items().some(i => /_boat$/.test(i.name ?? '') && i.count > 0)) return { ok: true, have: true }
     if (!rt.longTravelLogAllowance()) return { ok: false, reason: 'NO_ALLOWANCE' }

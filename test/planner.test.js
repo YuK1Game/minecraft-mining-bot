@@ -476,3 +476,20 @@ test('without the long-trip allowance no log is planned; with it only a natural 
   const refused = nextBootstrapAction(built.snapshot, built.observations, { allowLogs: true })
   assert.notEqual(refused.type, 'gather_logs'); assert.notEqual(refused.type, 'move_to')
 })
+
+test('player bootstrap reclaims an owned table before budgeting a replacement but keeps using a table already available', () => {
+  const f = fixture(), target = { x: -1, y: 65, z: 1 }
+  f.items([['oak_planks', 3], ['stick', 2]])
+  const recovery = { type: 'recover_workstation', stage: 'portable_worksite', item: 'minecraft:crafting_table', workstationId: 'bootstrap-table', target }
+  f.observations.playerWorkstations = { enabled: true, recoverTable: recovery }
+  const next = f.next()
+  assert.equal(next.type, 'recover_workstation'); assert.equal(next.workstationId, recovery.workstationId)
+  assert.deepEqual(next.target, target)
+  f.observations.playerWorkstations.enabled = false
+  assert.notEqual(f.next().type, 'recover_workstation', 'a legacy planner cannot consume the player recovery proposal')
+  f.observations.playerWorkstations.enabled = true
+  f.items([['oak_planks', 3], ['stick', 2], ['crafting_table', 1]])
+  assert.equal(f.next().type, 'place_crafting_table', 'an inventory table takes precedence over another recovery')
+  f.items([['oak_planks', 3], ['stick', 2]]); f.set(target.x, target.y, target.z, 'crafting_table'); f.refresh(); f.preview('wooden_pickaxe')
+  assert.equal(f.next().output, 'minecraft:wooden_pickaxe', 'the in-use table is retained until the recipe has completed')
+})

@@ -133,6 +133,7 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
     return null
   }
   const station = table()
+  const recoverTable = !station && counts.craftingTables < 1 && observations.playerWorkstations?.enabled === true ? observations.playerWorkstations.recoverTable : null
   function craft (output, times = 1) {
     const proposal = result('craft', preparationStage, `${nameOf(output)}を実際の材料と受信済みのレシピで作ります。`, { output: fullName(output), times, requiresLivePreview: true })
     if (!has('craft', ['crafting'])) return required('craft', proposal, ['crafting'])
@@ -154,6 +155,7 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
     return result('wait', 'materials', '手持ちの木材が不足しています。木の採取や探索は行いません。', { code: 'wood_harvest_disabled', missingMaterials: { planks: needed - counts.planks }, woodCollectionDisabled: true })
   }
   function prepareTable () {
+    if (recoverTable) return { ...recoverTable, goal: { ...goal }, counts: { ...counts } }
     if (station?.action) return station.action
     if (!station) {
       if (counts.craftingTables < 1) return planks(4) ?? craft('crafting_table')
@@ -177,6 +179,7 @@ function nextSurvivalAction (state = {}, observations = {}, options = {}) {
     return null
   }
   function woodenSwordPreparation () {
+    if (recoverTable) return { ...recoverTable, goal: { ...goal }, counts: { ...counts } }
     const tableOwned = !!station || counts.craftingTables > 0
     const neededPlanks = (tableOwned ? 0 : 4) + (counts.sticks >= 1 ? 0 : 2) + 2
     if (counts.planks < neededPlanks) return planks(neededPlanks)

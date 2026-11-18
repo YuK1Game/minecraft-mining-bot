@@ -229,7 +229,7 @@ function createReturnSteps ({ goal, ports, flow }) {
     // (full, would not open, could not be got to) holds for the other.
     const either = (list, at) => { const pair = pairOf(getBlock, at); return inList(list, at) || (!!pair && inList(list, pair)) }
     const full = at => either(goalNow.full, at)
-    const usable = known.filter(at => isChest(at) && !full(at) && !either(goalNow.unopened, at) && !either(goalNow.unreached, at))
+    const usable = known.filter(at => isChest(at) && !chests.pending?.(at) && !full(at) && !either(goalNow.unopened, at) && !either(goalNow.unreached, at))
     for (const at of usable) {
       if (aborted()) return stopped('CONTAINER_INTERRUPTED')
       if (full(at)) continue // the other half of one found full just now
@@ -255,7 +255,7 @@ function createReturnSteps ({ goal, ports, flow }) {
     // it was not told to skip; only a chest that was not there before counts as built.
     const skip = [...goalNow.full, ...goalNow.unopened, ...goalNow.unreached]
     let stood = chests.near?.() ?? []
-    let made = await chests.make({ full: skip })
+    let made = await chests.make({ full: skip, aborted })
     if (aborted()) return stopped('CONTAINER_INTERRUPTED')
     const out = !made && goalNow.base ? chests.porch() : null
     // No room for a chest here (inside the house): out through the door to the porch, and there.
@@ -265,7 +265,7 @@ function createReturnSteps ({ goal, ports, flow }) {
       try { await moves.approach(out.stand, 1.5) } catch {}
       if (aborted()) return stopped('CONTAINER_INTERRUPTED')
       stood = chests.near?.() ?? []
-      made = await chests.make({ full: skip, avoid: out.avoid })
+      made = await chests.make({ full: skip, avoid: out.avoid, aborted })
       if (aborted()) return stopped('CONTAINER_INTERRUPTED')
     }
     if (!made) return stopped('CONTAINER_INTERRUPTED') ?? failed('CHEST_PLACE_FAILED', { retry: { kind: 'position_changed' }, evidence: { state: { at: area(getFeet(), 4) } } })

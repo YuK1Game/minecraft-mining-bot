@@ -12,11 +12,11 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held
   const items = () => getInventory()?.items ?? []
   const count = name => items().filter(item => item?.name === name && item.count > 0).reduce((sum, item) => sum + item.count, 0)
   const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
-  async function patient (run) {
+  async function patient (run, canRetry = () => true) {
     const end = now() + 10000
     for (;;) {
       try { return await run() } catch (error) {
-        if (!/待って|待機|使用中|確認しています/.test(String(error?.message ?? '')) || now() >= end || disposed()) throw error
+        if (!canRetry() || !/待って|待機|使用中|確認しています/.test(String(error?.message ?? '')) || now() >= end || disposed()) throw error
         await sleep(300)
       }
     }
@@ -60,15 +60,36 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held
   }
 
   let refusal = null // the last placement refusal, for the log
+  let retrySafe = true
   // Normal placement of a held block on the floor of a cell; it counts when the block is received.
   async function place (cell, name) {
+    retrySafe = true
     const stacks = () => items().filter(item => item?.name === name && item.count > 0)
     let item = stacks().find(stack => stack.slot <= 8)
     try {
       if (!item && stacks().length) { await patient(() => operations.inventory.equip(stacks()[0].slot)); item = stacks().find(stack => stack.slot <= 8) }
       if (!item) return false
-      await patient(() => operations.interactions.placeBlock({ position: cell, slot: item.slot, face: 1 }))
-    } catch (error) { refusal = String(error?.message ?? error).slice(0, 120); return false }
+      await patient(() => {
+        retrySafe = false
+        let result
+        try {
+          result = operations.interactions.placeBlock({ position: cell, slot: item.slot, face: 1, alignFacing: name === 'minecraft:chest' })
+        } catch (error) {
+          // A synchronous preflight refusal has not queued a transaction.
+          retrySafe = !error?.details?.placementFailure
+          throw error
+        }
+        return Promise.resolve(result).catch(error => {
+          const receipt = error?.details?.placementFailure
+          retrySafe = !!receipt && (receipt.serverRejected === true || receipt.notSent === true && receipt.transactionQueued === false && receipt.wireSent === false)
+          throw error
+        })
+      }, () => retrySafe)
+    } catch (error) {
+      const receipt = error?.details?.placementFailure
+      if (receipt) retrySafe = receipt.serverRejected === true || receipt.notSent === true && receipt.transactionQueued === false && receipt.wireSent === false
+      refusal = String(error?.message ?? error).slice(0, 120); return false
+    }
     return until(() => { const found = getBlock(cell.x, cell.y, cell.z); return found?.known === true && found.name === name }, 5000)
   }
 
@@ -79,6 +100,7 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held
       const cell = { x: at.x + dx, y: at.y + dy, z: at.z + dz }, here = getBlock(cell.x, cell.y, cell.z), below = getBlock(cell.x, cell.y - 1, cell.z)
       if (here?.known !== true || !AIR.test(here.name ?? '') || below?.known !== true || below.boundingBox !== 'block') continue
       if (await place(cell, TABLE)) return cell
+      if (!retrySafe) return null
     }
     return null
   }
@@ -88,14 +110,17 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held
     try {
       await patient(() => operations.interactions.openCraftingTable(table))
       await operations.crafting.craft(output, { times })
-    } catch { return false } finally { close() }
-    return until(() => count(output) >= before + times, 4000)
+      return await until(() => count(output) >= before + times, 4000)
+    } catch { return false } finally {
+      close()
+      try { await operations.playerWorkstations?.recoverAt(table) } catch { /* Pending recovery survives interruption. */ }
+    }
   }
 
   // The chest window: opening, reading, depositing and taking out (return/container-ports.js).
   const box = createContainerPorts({ operations, getInventory, held, disposed, sleep, now })
 
-  return { craftSmall, craftPlanks, tableNear, place, hold, drop, placeTable, craftAtTable, room: box.room, contents: box.contents, store: box.store, take: box.take, withdraw: box.withdraw, inspect: box.inspect, deposit: box.deposit, access: box.access, refusal: () => refusal }
+  return { craftSmall, craftPlanks, tableNear, place, hold, drop, placeTable, craftAtTable, recoverTables: () => operations.playerWorkstations?.recoverNearby({ tablesOnly: true }), placementRetrySafe: () => retrySafe, room: box.room, contents: box.contents, store: box.store, take: box.take, withdraw: box.withdraw, inspect: box.inspect, deposit: box.deposit, access: box.access, refusal: () => refusal }
 }
 
 module.exports = { createStoragePorts }

@@ -23,7 +23,9 @@ test('rubble, the stone over the reserve and worn pickaxes are stored; valuables
 // Flat stone floor at y=63; feet at y=64.
 function world (chests = []) {
   const set = new Map(chests.map(p => [`${p.x},${p.y},${p.z}`, mc('chest')]))
-  return (x, y, z) => set.has(`${x},${y},${z}`) ? { known: true, name: set.get(`${x},${y},${z}`), boundingBox: 'block' } : y <= 63 ? { known: true, name: mc('stone'), boundingBox: 'block' } : { known: true, name: mc('air'), boundingBox: 'empty' }
+  const read = (x, y, z) => { const placed = set.get(`${x},${y},${z}`); return placed ? { known: true, name: typeof placed === 'string' ? placed : placed.name, boundingBox: 'block', properties: { facing_direction: placed.facing ?? 4 } } : y <= 63 ? { known: true, name: mc('stone'), boundingBox: 'block' } : { known: true, name: mc('air'), boundingBox: 'empty' } }
+  read.place = (at, name) => set.set(`${at.x},${at.y},${at.z}`, { name, facing: Math.abs(at.x) > Math.abs(at.z) ? (at.x > 0 ? 4 : 5) : (at.z > 0 ? 2 : 3) })
+  return read
 }
 const feet = { x: 0.5, y: 64, z: 0.5 }
 
@@ -45,6 +47,7 @@ test('a new large chest takes two cells side by side; a single chest gets a neig
 
 function job ({ chests = [], inventory, makes = true, drop = null, room = () => null }) {
   const lines = [], calls = []
+  const getBlock = world(chests)
   let items = inventory
   const hands = {
     tableNear: () => ({ x: -1, y: 64, z: 0 }),
@@ -58,14 +61,16 @@ function job ({ chests = [], inventory, makes = true, drop = null, room = () => 
     craftAtTable: async (table, output, times) => { calls.push(['craft', output, times]); if (makes) items = { ...items, items: [...items.items, { name: output, count: times, slot: 30 }] }; return makes },
     place: async (cell, name) => {
       calls.push(['place', cell, name])
+      if (name === mc('chest')) getBlock.place(cell, name)
       if (name !== mc('chest')) items = { ...items, items: items.items.map(item => item.name === name ? { ...item, count: item.count - 1 } : item).filter(item => item.count > 0) }
       return true
     },
     room,
+    inspect: async position => ({ status: 'completed', evidence: { slotCount: chestsNear(getBlock, position, 0)[0]?.pair ? 54 : 27, room: room(position) ?? 1 } }),
     drop,
     store: async (position, stacks) => { calls.push(['store', position, stacks.length]); return stacks.reduce((sum, stack) => sum + stack.count, 0) }
   }
-  const storage = createPlayerStorage({ getMode: () => 'player', shared: { playerWanted: true }, agent: { objective: {}, start: async () => {}, stop: () => {} }, hands, getBlock: world(chests), getFeet: () => feet, getInventory: () => items, log: text => lines.push(text), sleep: async () => {} })
+  const storage = createPlayerStorage({ getMode: () => 'player', shared: { playerWanted: true }, agent: { objective: {}, start: async () => {}, stop: () => {} }, hands, getBlock, getFeet: () => feet, getInventory: () => items, log: text => lines.push(text), sleep: async () => {} })
   return { storage, lines, calls }
 }
 const full = () => inv([...Array.from({ length: 30 }, (_, slot) => ['diamond', 1, slot]), ['oak_planks', 20, 30], ['diorite', 20, 31], ['granite', 16, 32], ['andesite', 13, 33], ['dirt', 20, 34], ['leaf_litter', 8, 35]])
@@ -118,22 +123,25 @@ test('no empty slot and no small stone stack: the job says why and stops', async
 
 test('a refused chest cell is skipped and another pair is tried', async () => {
   const calls = []
+  const getBlock = world()
   let refused = 0
   const items = { known: true, items: [...inv([...Array.from({ length: 33 }, (_, slot) => ['diamond', 1, slot]), ['oak_planks', 20, 33], ['diorite', 20, 34]]).items, { name: mc('chest'), count: 2, slot: 35 }] }
   const hands = {
     tableNear: () => ({ x: -1, y: 64, z: 0 }), craftPlanks: async () => true, craftSmall: async () => true, placeTable: async () => null,
     craftAtTable: async () => true, room: () => null, refusal: () => '設置できません',
-    place: async (cell, name) => { calls.push([cell, name]); if (name === mc('chest') && refused === 0) { refused++; return false } return true },
+    placementRetrySafe: () => true,
+    inspect: async () => ({ status: 'completed', evidence: { slotCount: 54, room: 54 } }),
+    place: async (cell, name) => { calls.push([cell, name]); if (name === mc('chest') && refused === 0) { refused++; return false } getBlock.place(cell, name); return true },
     store: async () => 5
   }
-  const storage = createPlayerStorage({ getMode: () => 'player', shared: { playerWanted: true }, agent: { objective: {}, start: async () => {}, stop: () => {} }, hands, getBlock: world(), getFeet: () => feet, getInventory: () => items, log: () => {}, sleep: async () => {} })
+  const storage = createPlayerStorage({ getMode: () => 'player', shared: { playerWanted: true }, agent: { objective: {}, start: async () => {}, stop: () => {} }, hands, getBlock, getFeet: () => feet, getInventory: () => items, log: () => {}, sleep: async () => {} })
   assert.equal(await storage.tick(), true)
   const chests = calls.filter(call => call[1] === mc('chest')).map(([cell]) => `${cell.x},${cell.y},${cell.z}`)
   assert.equal(chests.length, 3)
   assert.ok(!chests.slice(1).includes(chests[0]))
 })
 
-test('one chest in hand and no wood for a second: the single chest is placed and used', async () => {
+test('one chest in hand and no wood for a second: a new single chest is not placed', async () => {
   const calls = []
   const items = { known: true, items: [...inv([...Array.from({ length: 33 }, (_, slot) => ['diamond', 1, slot]), ['oak_planks', 4, 33], ['diorite', 20, 34]]).items, { name: mc('chest'), count: 1, slot: 35 }] }
   const hands = {
@@ -144,10 +152,10 @@ test('one chest in hand and no wood for a second: the single chest is placed and
   }
   const lines = []
   const storage = createPlayerStorage({ getMode: () => 'player', shared: { playerWanted: true }, agent: { objective: {}, start: async () => {}, stop: () => {} }, hands, getBlock: world(), getFeet: () => feet, getInventory: () => items, log: text => lines.push(text), sleep: async () => {} })
-  assert.equal(await storage.tick(), true)
-  assert.equal(calls.filter(call => call[0] === 'place').length, 1)
-  assert.deepEqual(calls.find(call => call[0] === 'store')[1], calls[0][1])
-  assert.match(lines.join('\n'), /チェストを1つ置きました/)
+  assert.equal(await storage.tick(), false)
+  assert.equal(calls.filter(call => call[0] === 'place').length, 0)
+  assert.equal(calls.filter(call => call[0] === 'store').length, 0)
+  assert.doesNotMatch(lines.join('\n'), /チェストを1つ置きました/)
 })
 
 test('a full inventory in a 1-wide stair tunnel sets stone down on a step above', () => {
@@ -188,12 +196,12 @@ test('with no open cell for the stack, wall rock is dug with the stack in hand (
   assert.equal(items.find(item => item.name === 'minecraft:tuff').count, 0)
 })
 
-test('wood for one chest only: one chest is made, placed and used (live 2026-11-17: no base without wood for two)', async () => {
+test('wood for one chest only: the pair waits without placing a single chest', async () => {
   const f = job({ inventory: inv([...Array.from({ length: 30 }, (_, slot) => ['diamond', 1, slot]), ['oak_planks', 10, 30], ['diorite', 20, 31], ['granite', 16, 32], ['andesite', 13, 33], ['dirt', 20, 34], ['leaf_litter', 8, 35]]) })
-  assert.equal(await f.storage.tick(), true)
-  assert.deepEqual(f.calls.filter(call => call[0] === 'craft').map(call => call.slice(1)), [['minecraft:chest', 1]])
-  assert.equal(f.calls.filter(call => call[0] === 'place' && call[2] === mc('chest')).length, 1)
-  assert.match(f.lines.join('\n'), /チェストを1つ置きました/)
+  assert.equal(await f.storage.tick(), false)
+  assert.equal(f.calls.filter(call => call[0] === 'craft').length, 0)
+  assert.equal(f.calls.filter(call => call[0] === 'place' && call[2] === mc('chest')).length, 0)
+  assert.doesNotMatch(f.lines.join('\n'), /チェストを1つ置きました/)
 })
 
 test('no chest can be made (table or craft refused): the rubble is thrown away even with wood (live 2026-11-17 05:12-05:24 JST)', async () => {

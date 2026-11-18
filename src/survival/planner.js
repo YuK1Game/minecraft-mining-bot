@@ -341,6 +341,7 @@ function nextBootstrapAction (snapshot, observations = {}, options = {}) {
   const tablePosition = observedTable?.known === true && observedTable.usable === true && integerPosition(observedTable.position) && distance(eye, observedTable.position) <= reach ? observedTable.position : nearbyTable?.position
   const tableAvailable = Boolean(tablePosition)
   const tableOwned = tableAvailable || counts.craftingTables > 0
+  if (!tableOwned && observations.playerWorkstations?.enabled === true && observations.playerWorkstations.recoverTable) return { ...observations.playerWorkstations.recoverTable, goal: { ...goal }, counts: { ...counts } }
 
   function craft (output, times, stage) {
     const action = result('craft', stage, `${nameOf(output)}をサーバーのレシピで作成します。`, { output: fullName(output), times, requiresLivePreview: true })
