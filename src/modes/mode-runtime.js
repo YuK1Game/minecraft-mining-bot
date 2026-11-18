@@ -196,16 +196,17 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     hostiles: () => { const state = runtime.raw(), at = where(), seen = createCombatExposure({ world: runtime.host().world, entities: {}, scopeOf: () => null, solidCover: true }); return fleeThreats({ hostiles: runtime.hostiles(), unreachable: actor => knownUnreachable(state, actor), sight: actor => at && actor?.position ? seen.evaluate(actor, { position: at }).evidence.sight : null }) },
     retreat: () => runtime.travel().retreatFromHostiles()
   })
-  // Shot by an archer it cannot walk to: behind the nearest block (player-cover.js).
+  // Shot by an archer it cannot walk to: behind the nearest block (player-cover.js), under the expedition too (cover-ports.js).
+  const coverHold = require('./cover-ports').createCoverPorts({ expedition: { owns: () => expedition?.owns() === true, busy: () => expedition?.busy() === true }, cancelExpedition: () => cancelExpedition(), agent, agentRunning: () => agentStatus().running === true, travelStatus: () => quarry.travelStatus(), walk: target => hands.walk(target), reachable: actor => knownReachable(runtime.raw(), actor), combatOwns: () => runtime.combatOwns?.() === true })
   const cover = createPlayerCover({
     getMode: control.get, shared, log, disposed,
-    agent: { stop: reason => agent.stop(reason), running: () => agentStatus().running === true },
+    agent: coverHold.agent,
     getState: () => { const state = runtime.raw(); return { health: state.health, position: where(), inventory: shared.inventoryUncertain ? null : state.inventory } },
-    hostiles: () => runtime.hostiles(), reachable: actor => knownReachable(runtime.raw(), actor),
+    hostiles: () => runtime.hostiles(), reachable: coverHold.reachable,
     sight: (from, to) => createCombatExposure({ world: runtime.host().world, entities: {}, scopeOf: () => null }).sight(from, to),
     cells: position => walkableCells(position, (x, y, z) => runtime.host().world.getBlock(x, y, z)).values(),
-    walk: target => hands.walk(target),
-    blocked: () => shelter.status().active || flee.status().active || scaffold.status().active || quarry.travelStatus().busy === true
+    walk: coverHold.walk,
+    blocked: () => shelter.status().active || flee.status().active || scaffold.status().active || coverHold.tripBlocks()
   })
   // Logs out of reach: a dirt pillar in the trunk's place, taken down again afterwards.
   const scaffold = createPlayerScaffold({
@@ -348,7 +349,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // What the defenses were doing at a hit (live 2026-11-17 23:13-23:16 JST: three
   // minutes of arrows with no flee, cover or combat line in the log).
   const defenseNote = () => { const safe = (() => { try { return operations.safety.snapshot() } catch { return null } })(); return `離れる ${flee.status().skip ?? (flee.status().active ? '実行中' : '-')}・射線 ${cover.status().skip ?? (cover.status().active ? '実行中' : '-')}・待機保護 ${safe?.phase ?? '?'}${safe?.active ? `/${safe.active}` : ''}・プレイ ${shared.playerWanted === true ? '中' : '外'}` }
-  const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else if (expedition.owns()) expedition.guard(); else { void flee.tick().catch(() => {}); void cover.tick().catch(() => {}); try { noteDamage({ shared, health: runtime.raw().health, position: where(), actors: runtime.host().entities.snapshot({ kind: 'all' }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, why: defenseNote }) } catch { /* A log line only. */ } } }), 500)
+  const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else { coverHold.sample(); if (expedition.owns()) expedition.guard(); else void flee.tick().catch(() => {}); void cover.tick().catch(() => {}); try { noteDamage({ shared, health: runtime.raw().health, position: where(), actors: runtime.host().entities.snapshot({ kind: 'all' }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, why: defenseNote }) } catch { /* A log line only. */ } } }), 500)
   fleeTimer.unref?.()
   // The received world behind the server under the feet: the terrain there is asked for again
   // (live 2026-11-18 07:09-09:48 JST, movement/ground-refresh.js).
