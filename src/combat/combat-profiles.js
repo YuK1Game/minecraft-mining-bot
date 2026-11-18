@@ -73,7 +73,10 @@ function allowedModes (entityType, { hasBow = false, distance = Infinity, elevat
   // blast - one knockback hit in reach, otherwise the bow down to its minimum.
   // Inside CREEPER_CORNERED_STRIKE a short step in for the knockback hit is
   // allowed (it interrupts the fuse); the bow cannot shoot that close.
-  if (routine === 'special_objective' && entityType === 'minecraft:creeper' && cornered) return distance <= MELEE_REACH ? ['melee'] : distance <= CREEPER_CORNERED_STRIKE ? ['melee', 'approach'] : hasBow ? ['ranged'] : ['evade']
+  // Without a bow, beyond the distance at which an evade counts as complete there is nothing to do: an evade
+  // claimed there ended at once (CREEPER_EVADED has no backoff) and was claimed again every 50 ms, each claim
+  // cancelling the travel in progress (live 2026-11-18 23:12 JST: 31 starts in a minute at 10.7-12.3 m).
+  if (routine === 'special_objective' && entityType === 'minecraft:creeper' && cornered) return distance <= MELEE_REACH ? ['melee'] : distance <= CREEPER_CORNERED_STRIKE ? ['melee', 'approach'] : hasBow ? ['ranged'] : distance < CREEPER_EVADED_DISTANCE ? ['evade'] : []
   if (routine === 'special_objective' && entityType === 'minecraft:creeper') return distance <= MELEE_REACH ? ['melee'] : distance < (elevated ? CREEPER_ELEVATED_SHOT_DISTANCE : CREEPER_MIN_SHOT_DISTANCE) ? ['evade'] : hasBow ? ['ranged'] : []
   if (routine === 'no_ranged_no_gaze') return ['melee']
   return ['melee', 'ranged', 'approach']
