@@ -97,13 +97,21 @@ async function provisionFood (ctx, wanted = 32) {
     const station = placements(origin).find(step => step.item === stationType).position
     if (!await approachHome(ctx, station)) return pending('集めた材料を本拠点で調理します。')
     if (!matches(stationType, ctx.getBlock(station.x, station.y, station.z))) return pending('調理設備のブロックを確認します。')
-    const house = createHousePorts({ operations: ctx.operations, getBlock: ctx.getBlock, getInventory: ctx.runtime.inventory, disposed: ctx.cancelled })
+    const house = createHousePorts({ operations: ctx.operations, getBlock: ctx.getBlock, getInventory: ctx.runtime.inventory, disposed: ctx.cancelled, ...(ctx.sleep ? { sleep: ctx.sleep, now: ctx.now } : {}) })
     if (!raw) await house.craft('minecraft:bread', Math.min(Math.floor(wheat / 3), wanted - count, 16), station)
     else {
       const fuel = items.find(item => /^minecraft:(?:coal|charcoal)$/.test(item.name) && item.count > 0)
       if (!fuel) return pending((await ctx.supplies.acquire('coal', 1)).reason)
       const amount = Math.min(3, raw.count, wanted - count)
-      await house.smelt(station, raw.name, amount, fuel.name, 1, raw.name.replace('minecraft:', 'minecraft:cooked_'))
+      const cooked = await house.smelt(station, raw.name, amount, fuel.name, 1, raw.name.replace('minecraft:', 'minecraft:cooked_'))
+      // A cook that gained nothing says why (live 2026-11-18 23:15-23:19 JST: four minutes at the door with this step's
+      // text and no log line).
+      if (!(cooked > 0) && !ctx.cancelled()) {
+        const why = house.why() ?? '焼いた肉が増えません'
+        const at = (ctx.now ?? Date.now)()
+        if (!(at - (state.cookSaidAt ?? -Infinity) < 20000)) { state.cookSaidAt = at; ctx.log?.(`プレイヤーモード: 本拠点のかまどで調理できません（${why}。足元 ${Math.floor(feet.x)}, ${Math.floor(feet.y)}, ${Math.floor(feet.z)}）`) }
+        return pending(`本拠点のかまどで調理をやり直します。（かまど: ${why}）`)
+      }
     }
     return pending('調理後の食料数を確認します。')
   }
