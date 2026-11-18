@@ -68,21 +68,31 @@ async function approachHome (ctx, destination, { open = false } = {}) {
     }
     // Arrived on the map, but far over or under the house: the trip would only "arrive" again.
   }
+  // Within four blocks of a thing inside the house counts only from inside the walls: through the west wall the
+  // furnace is 3 m away and cannot be opened (live 2026-11-19 05:47-05:52 JST: the way that digs and stacks ended
+  // at (-4902, 76, -4987), outside the south-west corner, "beside" the furnace; every 2 s the open stand found no
+  // walk in, said nothing, and 「集めた材料を本拠点で調理します。」 stood for five minutes with raw mutton in hand).
+  const room = cell => cell.x > origin.x && cell.x < origin.x + 6 && cell.z > origin.z && cell.z < origin.z + 6 && cell.y >= origin.y
+  const indoors = room(destination)
+  const at = () => { const feet = getFeet(); return close(feet, destination, 4) && (!indoors || room({ x: Math.floor(feet.x), y: Math.floor(feet.y + 0.2), z: Math.floor(feet.z) })) }
+  const stand = createOpenStand({ getBlock, getFeet, walk: hands.walk })
+  const there = () => at() && (!open || stand.here(destination))
   if (Math.abs(getFeet().y - destination.y) > LEVEL_M && !await byBuild()) return false
   // Arrived on the map means up to 20 m away: the short walk to the door stand does not reach that far.
-  if (!close(getFeet(), destination, 4) && !close(getFeet(), porch, 6) && !inside()) await hands.approach(porch, 3)
+  if (!at() && !close(getFeet(), porch, 6) && !inside()) await hands.approach(porch, 3)
   if (cancelled()) return false
   if (!await openDoor({ origin, getBlock, getFeet, walk: hands.walk, useDoor: at => operations.interactions.useDoor(at), log: ctx.log }) || cancelled()) return false
-  if (!close(getFeet(), destination, 4)) await hands.approach(destination, 3)
+  if (!at()) await hands.approach(destination, 3)
+  if (!cancelled() && at() && open && !stand.here(destination)) await stand.go(destination, cancelled)
   // At the house and still not at the thing (a floor the creeper opened, between the porch and the furnace): the
   // way that digs and stacks goes to the thing itself, with floor blocks over the gaps. The way to the porch from
   // here only leads back out (live 2026-11-19 04:42-05:01 JST: 「掘る・積む道で着きました（12 歩…）」 61 times in
   // twenty minutes around the door, feet at y 73-75 under the floor, and no cook).
   const near = () => { const feet = getFeet(); return inside() || close(feet, porch, 6) || close(feet, destination, 10) }
-  if (!cancelled() && !close(getFeet(), destination, 4) && near()) {
+  if (!cancelled() && !there() && near()) {
     const state = shared.dragonHomeInner
     if (!state || now() >= state.until) {
-      const beside = cell => Math.max(Math.abs(cell.x - destination.x), Math.abs(cell.z - destination.z)) <= 2 && Math.abs(cell.y - destination.y) <= 1 && !(cell.x === destination.x && cell.z === destination.z)
+      const beside = cell => Math.max(Math.abs(cell.x - destination.x), Math.abs(cell.z - destination.z)) <= 2 && Math.abs(cell.y - destination.y) <= 1 && !(cell.x === destination.x && cell.z === destination.z) && (!indoors || room(cell)) && (!open || stand.opens(cell, destination))
       const out = await createBuildWalk({ hands, getHouse: () => shared.playerHouse, log: ctx.log })(destination, { done: beside, aborted: cancelled })
       if (out.ok || cancelled()) shared.dragonHomeInner = null
       else {
@@ -91,13 +101,13 @@ async function approachHome (ctx, destination, { open = false } = {}) {
         ctx.log?.(`プレイヤーモード: 本拠点の中の ${destination.x}, ${destination.y}, ${destination.z} へ、掘る・積む道でも行けませんでした（${out.code}。足元 ${feet ? `${Math.floor(feet.x)}, ${Math.floor(feet.y)}, ${Math.floor(feet.z)}` : '?'}）。1分後にもう一度試します`)
       }
     }
-    return !cancelled() && close(getFeet(), destination, 4) && (!open || createOpenStand({ getBlock, getFeet, walk: hands.walk }).go(destination, cancelled))
+    return !cancelled() && at() && (!open || stand.go(destination, cancelled))
   }
   // No walk got there (the roof, a ledge beside the house): the same way once, then the walk again.
-  if (!cancelled() && !close(getFeet(), destination, 4) && !inside() && await byBuild() && !cancelled()) await hands.approach(destination, 3)
-  if (cancelled() || !close(getFeet(), destination, 4)) return false
+  if (!cancelled() && !at() && !inside() && await byBuild() && !cancelled()) await hands.approach(destination, 3)
+  if (cancelled() || !at()) return false
   if (!open) return true
-  return createOpenStand({ getBlock, getFeet, walk: hands.walk }).go(destination, cancelled)
+  return stand.go(destination, cancelled)
 }
 
 module.exports = { approachHome }

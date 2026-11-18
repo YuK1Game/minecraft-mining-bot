@@ -41,7 +41,9 @@ function createOpenStand ({ getBlock, getFeet, walk }) {
     }
     return false
   }
-  return { here, stands, go }
+  // The open click has a line from the middle of this standing cell.
+  const opens = (cell, target) => opensFrom({ x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }, target)
+  return { here, stands, go, opens }
 }
 
 module.exports = { createOpenStand }
