@@ -343,7 +343,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       const actions = guardDragonOperations(operations, cancelled)
       const hands = buildHands(cancelled, actions)
       return { operations: actions, runtime, shared, root, log, getBlock, where, feetNow, getFeet: feetNow,
-        hands, walk: hands.walk, travelTo: travel, climbUp: () => climbUp(cancelled), storage, cancelled, signal }
+        hands, walk: hands.walk, drop: (slot, count) => cancelled() ? null : storagePorts.drop(slot, count), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null }, travelTo: travel, climbUp: () => climbUp(cancelled), storage, cancelled, signal }
     }
   })
   // Direct resumes inside the runtime also consult the selected player's owner.

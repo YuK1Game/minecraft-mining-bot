@@ -1,5 +1,6 @@
 'use strict'
 
+const { packRoom, crowded } = require('./dragon-pack-room')
 const { createDragonExpedition } = require('./dragon-expedition')
 const { createDragonState } = require('./dragon-state')
 const { earlyObjective, runDragonEarly } = require('./dragon-early')
@@ -31,6 +32,11 @@ function createDragonRuntime (ports) {
     if (dim === 'overworld' && record.stage === 'early' && !record.recovery && !(recoverHealth && ports.threatened())) {
       const night = await nightHome(ctx, { clock: () => runtime.travel?.()?.travelClock?.() })
       if (night) return night
+    }
+    // A full inventory first throws its rubble away (dragon-pack-room.js): nothing else makes room under the expedition.
+    if (dim === 'overworld' && !recoverHealth && ctx.drop && crowded(shared.inventoryUncertain ? null : runtime.inventory()) && !ports.threatened()) {
+      const packed = await packRoom({ shared, getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getFeet: ctx.getFeet, drop: ctx.drop, walk: ctx.walk, why: () => ctx.hands.why?.(), cells: ctx.cells, log: ctx.log })
+      if (packed) return packed
     }
     if (recoverHealth && dim !== 'end') {
       // An enemy that stands near without hitting for twenty seconds no longer holds the meal and the hunt
