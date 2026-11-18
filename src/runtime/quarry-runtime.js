@@ -63,7 +63,16 @@ function createQuarryRuntime (rt) {
     try { s = rt.working() } catch { return }
     if (s?.phase !== 'spawned' || s.dead || s.isDead || !(s.health > 0) || s.inventory?.known !== true) return
     // Rotten flesh is the last resort below 18 when nothing else is edible (2026-11-15: HP 8.5, hunger 9, no natural healing).
-    const hasFood = (s.inventory.items ?? []).some(i => i.count > 0 && rt.require('./quarry/quarry-inventory').isFood(i.name)), hasRotten = (s.inventory.items ?? []).some(i => i.count > 0 && i.name === 'minecraft:rotten_flesh')
+    // Raw meat on its way to the furnace is not a snack (modes/raw-meat-keep.js): the meal names another food, or waits.
+    const keep = rt.require('./modes/raw-meat-keep'), isFood = rt.require('./quarry/quarry-inventory').isFood
+    if (keep.keeping(rt.host.shared, { hunger, health: s.health }) && (s.inventory.items ?? []).some(i => i.count > 0 && keep.RAW.test(i.name ?? ''))) {
+      const snack = keep.snackItems(rt.host.shared, { hunger, health: s.health }, s.inventory.items ?? []).find(i => i.count > 0 && isFood(i.name))
+      if (!snack) return
+      idleEat.busy = true
+      try { await rt.operations.food.eat({ slot: snack.slot }); rt.host.log(`待機中の食事: 満腹度 ${hunger} → 食事しました（生肉はかまど用に残します）`) } catch { /* The next check tries again. */ } finally { idleEat.busy = false }
+      return
+    }
+    const hasFood = (s.inventory.items ?? []).some(i => i.count > 0 && isFood(i.name)), hasRotten = (s.inventory.items ?? []).some(i => i.count > 0 && i.name === 'minecraft:rotten_flesh')
     if (!hasFood && !(hasRotten && hunger < 18)) { idleEat.toFull = false; return }
     idleEat.busy = true
     try { await rt.operations.food.eat(hasFood ? {} : { allowEmergencyRotten: true }); rt.host.log(`待機中の食事: 満腹度 ${hunger} → 食事しました`) } catch (error) {

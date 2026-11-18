@@ -140,7 +140,8 @@ function createRuntimeOperations (rt) {
             // Live 15:04: a raw chicken matched FOOD but the eat check refused it
             // and the step looped. One refusal ends eating here (emergency rotten
             // flesh is tried once); the step goes on to hunting.
-            if (!eatRefused && count(FOOD) > 0) { try { await operations.food.eat({}); say(`食べました（満腹度 ${hunger()}）`); continue } catch (e) { eatRefused = true; say(`食事を見送り: ${String(e.message ?? e).slice(0, 60)}`) } }
+            const snack = rt.require('./modes/raw-meat-keep').snackItems(rt.host.shared, { hunger: hunger(), health: st.health }, items()).find(i => FOOD.test(i.name ?? '') && i.count > 0)
+            if (!eatRefused && snack) { try { await operations.food.eat(Number.isInteger(snack.slot) ? { slot: snack.slot } : {}); say(`食べました（満腹度 ${hunger()}）`); continue } catch (e) { eatRefused = true; say(`食事を見送り: ${String(e.message ?? e).slice(0, 60)}`) } }
             if (!rottenTried && count(/^minecraft:rotten_flesh$/) > 0) { rottenTried = true; try { await operations.food.eat({ allowEmergencyRotten: true }); say(`非常食として腐った肉を食べました（満腹度 ${hunger()}）`); continue } catch {} }
             const feet = feetOf()
             const animal = rt.allActors().filter(a => a?.kind === 'mob' && a.hostile === false && /^minecraft:(?:cow|pig|sheep|chicken)$/.test(a.entityType ?? '') && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
