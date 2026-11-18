@@ -226,8 +226,10 @@ test('a chest that opens from nowhere is never clicked and never called full; be
   const sim = createReturnSim({ feet: { x: 10.5, y: GROUND, z: 0.5 }, items: [...KIT, [2, 'diamond', 40], [3, 'chest', 2]] })
   const old = sim.placeChest(5, GROUND, 0, { fill: 27 })
   // Walled in on four sides and from above: no cell beside it has a line to the face the click goes to.
+  // Glass above: the lid is free (a whole block there is the case of the next test), the line is not.
   const buried = sim.placeChest(7, GROUND, 3)
-  for (const [x, y, z] of [[6, GROUND, 3], [8, GROUND, 3], [7, GROUND, 2], [7, GROUND, 4], [7, GROUND + 1, 3]]) sim.setBlock(x, y, z, 'minecraft:stone')
+  for (const [x, y, z] of [[6, GROUND, 3], [8, GROUND, 3], [7, GROUND, 2], [7, GROUND, 4]]) sim.setBlock(x, y, z, 'minecraft:stone')
+  sim.setBlock(7, GROUND + 1, 3, 'minecraft:glass')
   sim.shared.playerBase = old
   sim.agent.running = true
   const runtime = sim.mount()
@@ -238,6 +240,39 @@ test('a chest that opens from nowhere is never clicked and never called full; be
   assert.equal(sim.events.filter(event => event.kind === 'place_chest').length, 1)
   assert.equal(sim.stored(sim.shared.playerBase, 'diamond'), 37)
   assert.equal(sim.stored(buried, 'diamond'), 0)
+})
+
+test('a chest under a whole block is not walked to, clicked or charged; the next step is the new chest (live 2026-11-18 14:52-15:02 JST)', async () => {
+  // As at the house door: every chest of the base full, and one more standing
+  // near it under a cobblestone block, open to the east and the south.
+  const world = items => {
+    const sim = createReturnSim({ feet: { x: 10.5, y: GROUND, z: 0.5 }, items })
+    sim.shared.playerBase = sim.placeChest(5, GROUND, 0, { fill: 27 })
+    const shut = sim.placeChest(7, GROUND, 3)
+    sim.setBlock(7, GROUND + 1, 3, 'minecraft:cobblestone'); sim.setBlock(6, GROUND, 3, 'minecraft:dirt'); sim.setBlock(7, GROUND, 2, 'minecraft:dirt')
+    sim.agent.running = true
+    return { sim, shut }
+  }
+  // With a chest to place: one is placed and the cargo goes into it.
+  const { sim, shut } = world([...KIT, [2, 'diamond', 40], [3, 'chest', 2]])
+  const runtime = sim.mount()
+  assert.equal(await sim.run(runtime, { until: done, ms: 900000 }), true, sim.log.join('\n'))
+  assert.equal(opens(sim, shut) + refusedOpens(sim), 0, 'never clicked')
+  assert.equal(lines(sim, /真上 \(7, \d+, 3\) の cobblestone でふたが開かないため使いません/).length, 1, sim.log.join('\n'))
+  assert.equal(lines(sim, /に失敗|別の側から|別のチェストを試します/).length, 0, sim.log.join('\n'))
+  assert.equal(sim.events.filter(event => event.kind === 'place_chest').length, 1)
+  assert.notDeepEqual(sim.shared.playerBase, shut)
+  assert.equal(sim.stored(sim.shared.playerBase, 'diamond'), 37)
+  assert.equal(sim.stored(shut, 'diamond'), 0)
+  // Without one (the Realm: 1 plank): the first and only failure is the missing wood.
+  const bare = world([...KIT, [2, 'diamond', 40]])
+  const other = bare.sim.mount()
+  await bare.sim.run(other, { until: () => bare.sim.goal(other)?.state === 'held', ms: 600000 })
+  assert.equal(bare.sim.goal(other)?.hold.code, 'NO_CHEST_MATERIAL', bare.sim.log.join('\n'))
+  assert.deepEqual(lines(bare.sim, /に失敗/).map(line => /に失敗: (\w+)/.exec(line)[1]).filter(code => code !== 'NO_CHEST_MATERIAL'), [], bare.sim.log.join('\n'))
+  assert.equal(lines(bare.sim, /別の側から|別のチェストを試します/).length, 0)
+  assert.equal(opens(bare.sim, bare.shut) + refusedOpens(bare.sim), 0)
+  assert.equal(bare.sim.held('diamond'), 40)
 })
 
 test('held for a chest, the goal is not woken by the mining below the base; held on the way out of a tunnel, it is', async () => {

@@ -20,6 +20,7 @@ const { normalizeMode } = require('./bot-mode')
 const { makeRoom, free } = require('./player-storage-room')
 const { storable } = require('./player-storage-rubble')
 const { discardJunk } = require('./player-discard')
+const { chestShut, lidFree } = require('./chest-lid')
 
 const CHEST = 'minecraft:chest'
 const TABLE = 'minecraft:crafting_table'
@@ -28,14 +29,16 @@ const START_AT = 34, NEAR = 5, AGAIN_MS = 60000
 
 const occupied = inventory => new Set((inventory?.items ?? []).filter(item => item?.count > 0 && Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36).map(item => item.slot)).size
 
-// Chests within reach: [{ position, pair: position|null }].
-function chestsNear (getBlock, feet, near = NEAR) {
+// Chests within reach: [{ position, pair: position|null }]. One that does not
+// open (a whole block on it or on its other half, chest-lid.js) is listed only
+// for a caller that asks for it (`shut`: the return says why it is not used).
+function chestsNear (getBlock, feet, near = NEAR, { shut = false } = {}) {
   const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.05), fz = Math.floor(feet.z)
   const isChest = (x, y, z) => { const found = getBlock(x, y, z); return found?.known === true && found.name === CHEST }
   const found = []
   for (let dy = -2; dy <= 3; dy++) for (let dx = -near; dx <= near; dx++) for (let dz = -near; dz <= near; dz++) {
     const x = fx + dx, y = fy + dy, z = fz + dz
-    if (!isChest(x, y, z)) continue
+    if (!isChest(x, y, z) || (!shut && chestShut(getBlock, { x, y, z }))) continue
     const pair = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([ox, oz]) => ({ x: x + ox, y, z: z + oz })).find(p => isChest(p.x, p.y, p.z)) ?? null
     found.push({ position: { x, y, z }, pair })
   }
@@ -43,13 +46,13 @@ function chestsNear (getBlock, feet, near = NEAR) {
 }
 
 // A cell a chest can stand in: received air with received solid ground, not
-// the Bot's own cells, beside the feet level.
+// the Bot's own cells, beside the feet level, with room for the lid above it.
 function chestCell (getBlock, feet, cell) {
   const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.05), fz = Math.floor(feet.z)
   if (cell.x === fx && cell.z === fz) return false
   if (Math.abs(cell.y - fy) > 1 || Math.hypot(cell.x + 0.5 - feet.x, cell.z + 0.5 - feet.z) > 3.5) return false
   const here = getBlock(cell.x, cell.y, cell.z), below = getBlock(cell.x, cell.y - 1, cell.z)
-  return here?.known === true && AIR.test(here.name ?? '') && !here.extra?.length && below?.known === true && below.boundingBox === 'block' && !/chest|crafting_table|furnace|leaves|sand$|gravel$/.test(below.name ?? '')
+  return here?.known === true && AIR.test(here.name ?? '') && !here.extra?.length && below?.known === true && below.boundingBox === 'block' && !/chest|crafting_table|furnace|leaves|sand$|gravel$/.test(below.name ?? '') && lidFree(getBlock, cell)
 }
 
 // Two cells side by side for a new large chest, or one beside a single chest.

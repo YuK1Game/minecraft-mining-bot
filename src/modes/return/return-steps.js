@@ -9,6 +9,7 @@ const { completed, partial, blocked, failed, interrupted, cancelled } = require(
 const { low } = require('../low-block')
 const { underCover } = require('../player-surface')
 const { openAccess } = require('../../actions/open-face')
+const { chestShut } = require('../chest-lid')
 
 const CHEST = 'minecraft:chest'
 const ARRIVE_M = 20, REACH_M = 4, CLOSE_M = 6, FAR_M = 1024, MAX_BUILT = 3, EYE = 1.62, STANDS = 6
@@ -64,6 +65,14 @@ function createReturnSteps ({ goal, ports, flow }) {
   const read = pos => getBlock(pos.x, pos.y, pos.z)
   const opensFrom = (stand, at) => !openAccess(read, { x: stand.x, y: stand.y + EYE, z: stand.z }, at)
   const listed = (list, at) => { if (!inList(list, at)) list.push({ x: at.x, y: at.y, z: at.z }) }
+  // A chest under a whole block does not open (chest-lid.js): it is not walked to,
+  // not clicked and not counted as a failure. Said once for each chest.
+  const told = new Set()
+  const shut = at => {
+    const by = chestShut(getBlock, at)
+    if (by && !told.has(`${at.x},${at.y},${at.z}`)) { told.add(`${at.x},${at.y},${at.z}`); say(`チェスト (${at.x}, ${at.y}, ${at.z}) は、真上 (${by.at.x}, ${by.at.y}, ${by.at.z}) の ${String(by.name).replace('minecraft:', '')} でふたが開かないため使いません`) }
+    return !!by
+  }
 
   async function observe () {
     if (aborted()) return stopped('OBSERVE_INTERRUPTED')
@@ -187,6 +196,8 @@ function createReturnSteps ({ goal, ports, flow }) {
       goalNow.target = null
       return { ...completed('CHEST_GONE'), next: 'container' }
     }
+    // Blocked from above since it was chosen (or the base's own chest): another one is chosen.
+    if (shut(at)) { goalNow.target = null; return { ...completed('CHEST_SHUT'), next: 'container' } }
     if (moves.water.needed()) return { ...completed('START_LOST'), next: 'surface' }
     if (away(at) && flat(at, getPosition()) > CLOSE_M) { try { await moves.approach(at, CLOSE_M) } catch {} }
     if (aborted()) return stopped('APPROACH_INTERRUPTED')
@@ -229,7 +240,7 @@ function createReturnSteps ({ goal, ports, flow }) {
     // (full, would not open, could not be got to) holds for the other.
     const either = (list, at) => { const pair = pairOf(getBlock, at); return inList(list, at) || (!!pair && inList(list, pair)) }
     const full = at => either(goalNow.full, at)
-    const usable = known.filter(at => isChest(at) && !full(at) && !either(goalNow.unopened, at) && !either(goalNow.unreached, at))
+    const usable = known.filter(at => isChest(at) && !shut(at) && !full(at) && !either(goalNow.unopened, at) && !either(goalNow.unreached, at))
     for (const at of usable) {
       if (aborted()) return stopped('CONTAINER_INTERRUPTED')
       if (full(at)) continue // the other half of one found full just now
@@ -324,7 +335,7 @@ function createReturnSteps ({ goal, ports, flow }) {
       const may = at => { const slots = chests.hands.contents?.(at); return slots ? policy.restock(slots).length > 0 : policy.restockWanted() }
       for (const at of candidates) {
         if (aborted()) return stopped('RESTOCK_INTERRUPTED')
-        if (!isChest(at) || !may(at)) continue
+        if (!isChest(at) || shut(at) || !may(at)) continue
         if (away(at)) {
           if (inList(goalNow.visited, at) || inList(goalNow.unreached, at)) continue
           listed(goalNow.visited, at); goalNow.target = at
