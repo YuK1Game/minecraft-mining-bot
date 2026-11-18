@@ -42,7 +42,9 @@ test('runtime wiring: quarry work refuses in player mode and player work refuses
 test('runtime wiring: the saved mode is used by the next process; npm run auto means player mode', async () => {
   const f = runtime()
   f.mode.set('player')
-  await new Promise(resolve => setTimeout(resolve, 50))
+  // The save is asynchronous (durable write): wait for the file, not for a fixed time (CI windows-latest 2026-11-18: 50 ms was too short).
+  const saved = path.join(f.root, '.local', 'mode.json')
+  for (let i = 0; i < 200 && !fs.existsSync(saved); i++) await new Promise(resolve => setTimeout(resolve, 25))
   const operations = { quarry: { status: () => null, start () {}, resume () {} }, agent: { start () {}, stop () {} }, safety: { start () {} } }
   assert.equal(attachModeOperations(operations, { ...f.rt, host: () => ({ shared: {}, log: () => {} }) }, { root: f.root }).get(), 'player')
   assert.equal(runtime({ auto: true }).mode.get(), 'player')
