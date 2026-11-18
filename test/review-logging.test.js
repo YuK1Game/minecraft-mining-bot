@@ -58,8 +58,11 @@ test('review: SSE preserves multibyte characters across bounded chunk reads', as
   const stop = streamLog({ filename: name, request, response, intervalMs: 5, chunkBytes: 2 }); t.after(stop)
   await delay(20)
   await fs.appendFile(name, '日本語\n')
-  await delay(100)
-  const lines = response.output.filter(x => x.startsWith('data:')).map(x => JSON.parse(x.slice(6).trim()))
+  // Ten bytes at two bytes a poll are five polls, each opening and reading the file. On a
+  // Windows runner (timer steps of about 16 ms) that passed a fixed 100 ms: waited for, up to 3 s.
+  const read = () => response.output.filter(x => x.startsWith('data:')).map(x => JSON.parse(x.slice(6).trim()))
+  for (let waited = 0; waited < 3000 && !read().includes('日本語'); waited += 10) await delay(10)
+  const lines = read()
   assert.ok(lines.includes('日本語'), JSON.stringify(lines))
   assert.ok(!lines.some(x => x.includes('\ufffd')))
 })
