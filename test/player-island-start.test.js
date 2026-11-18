@@ -79,3 +79,25 @@ test('no received ground with room within reach is said once and nothing is buil
   assert.equal(builds.length, 0)
   assert.equal(logs.length, 1)
 })
+
+test('a second trip from the same cell on wide ground first moves to open ground toward the destination', async () => {
+  const getBlock = world(), feet = { x: 0.5, y: 77, z: 10.5 }
+  let clock = 1000
+  const { leave, logs, builds } = ports(getBlock, feet, { options: { now: () => clock, skyAt: cell => cell.z >= 8 } })
+  assert.equal(await leave({ x: 0, z: 200 }), null)
+  clock += 30000
+  const went = await leave({ x: 0, z: 200 })
+  assert.equal(went.ok, true)
+  assert.equal(builds.length, 1)
+  const { target, done } = builds[0]
+  assert.ok(Math.hypot(target.x - 0, target.z - 10) >= 8)
+  assert.ok(target.z > 10)
+  assert.equal(done(target), true)
+  assert.equal(done({ x: 0, y: 77, z: 10 }), false)
+  assert.match(logs[0], /同じ場所からの長距離移動が進まなかったため/)
+  // After a move the count starts again; a trip three minutes later is a new one.
+  assert.equal(await leave({ x: 0, z: 200 }), null)
+  clock += 200000
+  assert.equal(await leave({ x: 0, z: 200 }), null)
+  assert.equal(builds.length, 1)
+})
