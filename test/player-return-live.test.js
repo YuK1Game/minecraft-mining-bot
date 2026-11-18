@@ -516,12 +516,15 @@ test('after a death the kit is taken from the chest the Bot does not stand besid
   assert.equal(sim.stored(B, 'diamond'), 0)
   assert.equal(lines(sim, /取り出し 20 個/).length, 1, sim.log.join('\n'))
   // Each chest was opened once: the base beside the Bot, then B after the walk through the door.
+  // The 20 diamonds are fewer than the gear takes, so the house's other large chest (A), a chest
+  // of the base too (base-chests.js), is opened once as well: one click for its two halves.
   const opened = sim.events.filter(event => event.kind === 'open')
-  assert.equal(opened.length, 2, JSON.stringify(opened))
+  assert.equal(opened.length, 3, JSON.stringify(opened))
+  assert.deepEqual(opened.slice(0, 2).map(event => event.detail), [base, B])
   // Nothing more is wanted from chests whose slots were received: no second goal.
   await sim.sleep(60000)
   assert.equal(await runtime.base.tick(), null)
-  assert.equal(sim.events.filter(event => event.kind === 'open').length, 2)
+  assert.equal(sim.events.filter(event => event.kind === 'open').length, 3)
 })
 
 test('a chest that is wanted for the kit and gives nothing answers with its own reason, and the goal is held on it', async () => {

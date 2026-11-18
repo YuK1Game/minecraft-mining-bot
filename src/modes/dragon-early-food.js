@@ -4,11 +4,13 @@ const { createHousePorts } = require('./house/house-ports')
 const { placements, matches } = require('./house/house-blueprint')
 const { spiralPoint } = require('./house/house-sand')
 const { approachHome } = require('./dragon-early-home')
+const { threatWait, WAIT_MS } = require('./dragon-threat-wait')
 
 const PROVISIONS = /^minecraft:(?:bread|cooked_(?:beef|porkchop|chicken|rabbit|mutton|salmon|cod)|baked_potato)$/
 const MEAT = /^minecraft:(beef|porkchop|chicken|rabbit|mutton|salmon|cod)$/
 const SEED_GRASS = /^minecraft:(?:short_grass|tallgrass)$/
 const AIR = /^minecraft:(?:air|cave_air)$/
+const THREAT = new Set(['NEARBY_THREAT', 'THREAT_OBSERVATION_UNKNOWN'])
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
 const key = at => [at.x, at.y, at.z].join(',')
 const pending = reason => ({ done: false, reason })
@@ -121,7 +123,12 @@ async function provisionFood (ctx, wanted = 32) {
     try { await forage.execute({ stockpile: true, timeoutMs: 12000 }) } finally { ctx.signal.removeEventListener('abort', stop) }
     return pending('狩りで得た肉を確認して調理します。')
   }
-  if (plan.code !== 'NO_KNOWN_FOOD_SOURCE') return pending(plan.errors?.[0] ?? '食料探しの安全確認を待ちます。')
+  if (plan.code !== 'NO_KNOWN_FOOD_SOURCE') {
+    const reason = plan.errors?.[0] ?? '食料探しの安全確認を待ちます。'
+    // An enemy nobody fights is not waited for without end (dragon-threat-wait.js): the search goes on somewhere else.
+    if (!THREAT.has(plan.code) || threatWait(ctx.shared, 'food', { now: ctx.now, fighting: ctx.runtime.combatOwns?.() === true })) return pending(reason)
+    if (!ctx.operations.quarry.travelStatus().busy && !ctx.cancelled()) ctx.log?.(`プレイヤーモード: 近くの敵が ${WAIT_MS / 1000} 秒たっても離れず、戦闘にもならないため、食料を探す場所を変えます`)
+  }
   if (!ctx.operations.quarry.travelStatus().busy && !ctx.cancelled()) {
     const index = state.foodSearch ?? 0
     // Return to the plots regularly so they are loaded and can grow.

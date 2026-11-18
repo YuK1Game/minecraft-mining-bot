@@ -10,6 +10,7 @@ const { low } = require('../low-block')
 const { underCover } = require('../player-surface')
 const { openAccess } = require('../../actions/open-face')
 const { chestShut } = require('../chest-lid')
+const { knownSlots } = require('../base-chests')
 
 const CHEST = 'minecraft:chest'
 const ARRIVE_M = 20, REACH_M = 4, CLOSE_M = 6, FAR_M = 1024, MAX_BUILT = 3, EYE = 1.62, STANDS = 6
@@ -76,6 +77,8 @@ function createReturnSteps ({ goal, ports, flow }) {
   const read = pos => getBlock(pos.x, pos.y, pos.z)
   const opensFrom = (stand, at) => !openAccess(read, { x: stand.x, y: stand.y + EYE, z: stand.z }, at)
   const listed = (list, at) => { if (!inList(list, at)) list.push({ x: at.x, y: at.y, z: at.z }) }
+  // The received slots of a chest: its own, or those of the other half of a large chest (base-chests.js).
+  const slotsOf = at => knownSlots(getBlock, chests.hands.contents, at)
   // A chest under a whole block does not open (chest-lid.js): it is not walked to,
   // not clicked and not counted as a failure. Said once for each chest.
   const told = new Set()
@@ -364,13 +367,19 @@ function createReturnSteps ({ goal, ports, flow }) {
     // death the kit was wanted from a chest the Bot did not stand beside;
     // nothing was opened, three times, every ten minutes).
     let why = null
-    const candidates = [goalNow.target, goalNow.base, ...chests.spares()].filter((entry, index, all) => entry && all.findIndex(other => same(other, entry)) === index)
+    // The other chests standing at the base come after these (base-chests.js):
+    // the chest on record changes each time one fills up, and what was banked
+    // earlier lies in the ones before it.
+    const candidates = [goalNow.target, goalNow.base, ...chests.spares(), ...(chests.all?.() ?? [])].filter((entry, index, all) => entry && all.findIndex(other => same(other, entry)) === index)
     if (chests.hands.take) {
       goalNow.visited = goalNow.visited ?? []
-      const may = at => { const slots = chests.hands.contents?.(at); return slots ? policy.restock(slots).length > 0 : policy.restockWanted() }
+      // Not opened yet (neither half of a large chest): it may hold the diamonds while they are short.
+      const may = at => { const slots = slotsOf(at); return slots ? policy.restock(slots).length > 0 : policy.lacking ? policy.lacking() : policy.restockWanted() }
       for (const at of candidates) {
         if (aborted()) return stopped('RESTOCK_INTERRUPTED')
         if (!isChest(at) || shut(at) || !may(at)) continue
+        // Once a chest was acted on, it is no reason for another trip by itself until its slots are received.
+        chests.tried?.(at)
         if (away(at)) {
           if (inList(goalNow.visited, at) || inList(goalNow.unreached, at)) continue
           listed(goalNow.visited, at); goalNow.target = at
@@ -397,7 +406,7 @@ function createReturnSteps ({ goal, ports, flow }) {
     // Existing confirmed progress does not erase a failure to take stock that
     // is still known to be here. Missing stock does not create an endless
     // acquisition goal: only existing requests, or a wholly empty trip, wait.
-    const stocked = candidates.some(at => isChest(at) && policy.restock(chests.hands.contents?.(at) ?? []).length > 0)
+    const stocked = candidates.some(at => isChest(at) && policy.restock(slotsOf(at) ?? []).length > 0)
     if (stocked || (!goalNow.progress.taken && !goalNow.progress.banked && policy.restockWanted())) {
       if (why) return { ...why, evidence: { ...why.evidence, state: { at: area(getFeet(), 4) } } }
       return { ...failed('RESTOCK_UNCONFIRMED', { evidence: { chest: goalNow.base, state: { at: area(getFeet(), 4) } } }), hold: true }

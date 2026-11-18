@@ -8,7 +8,7 @@ const TABLE = 'minecraft:crafting_table'
 const AIR = /^minecraft:(?:air|cave_air|void_air|short_grass|fern|leaf_litter)$/
 const { createContainerPorts } = require('./return/container-ports')
 
-function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now, memory = null }) {
   const items = () => getInventory()?.items ?? []
   const count = name => items().filter(item => item?.name === name && item.count > 0).reduce((sum, item) => sum + item.count, 0)
   const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
@@ -118,7 +118,7 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held
   }
 
   // The chest window: opening, reading, depositing and taking out (return/container-ports.js).
-  const box = createContainerPorts({ operations, getInventory, held, disposed, sleep, now })
+  const box = createContainerPorts({ operations, getInventory, held, disposed, sleep, now, memory })
 
   return { craftSmall, craftPlanks, tableNear, place, hold, drop, placeTable, craftAtTable, recoverTables: () => operations.playerWorkstations?.recoverNearby({ tablesOnly: true }), placementRetrySafe: () => retrySafe, room: box.room, contents: box.contents, store: box.store, take: box.take, withdraw: box.withdraw, inspect: box.inspect, deposit: box.deposit, access: box.access, refusal: () => refusal }
 }
