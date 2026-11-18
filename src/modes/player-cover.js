@@ -17,7 +17,14 @@
 //   the flee) and the autonomy is stopped. Behind cover combat fights as
 //   before: an archer that comes round the corner is in sword reach.
 // - No such place: said once in the log; tried again after ten seconds.
+// - An archer it can walk to is fought only with a weapon in the received
+//   inventory. Without one it is "cannot be fought" as well (live 2026-11-18
+//   11:49:05-11:49:53 JST: just respawned, no sword yet, a witch 8-10 m away
+//   on foot; this cover said "reachable", combat had nothing to swing, the
+//   flee waits for health 10 without a weapon, and the Bot went from 19 to 1
+//   in 22 s without a step, then died).
 const { normalizeMode } = require('./bot-mode')
+const { unarmed } = require('./player-flee')
 
 const ARCHER = /^minecraft:(?:skeleton|stray|bogged|pillager|witch)$/
 // A witch throws potions from close by, so it counts from sword reach (3 m).
@@ -64,7 +71,8 @@ function createPlayerCover ({ getMode, shared, agent, getState, hostiles, sight,
     const range = actor => Math.hypot(actor.position.x - feet.x, actor.position.y - feet.y, actor.position.z - feet.z)
     const near = (hostiles() ?? []).filter(actor => actor?.position && ARCHER.test(String(actor.entityType ?? '')) && range(actor) > nearOf(actor) && range(actor) <= FAR_M)
     const exposed = near.length ? exposedTo(feet, near, sight) : []
-    const archers = exposed.filter(actor => !reachable(actor))
+    const armed = !unarmed(state.inventory)
+    const archers = exposed.filter(actor => !(armed && reachable(actor)))
     if (!archers.length) { skip = !near.length ? 'no_archer_4_20m' : !exposed.length ? `unseen_by_${near.length}` : 'reachable'; return false }
     skip = null
     busy = true
@@ -76,7 +84,7 @@ function createPlayerCover ({ getMode, shared, agent, getState, hostiles, sight,
         log(`プレイヤーモード: ${name} の射線から外れられる場所が近くにありません（${range(archers[0]).toFixed(1)}m）`)
         return false
       }
-      log(`プレイヤーモード: 近づけない ${name}（${range(archers[0]).toFixed(1)}m）に撃たれているため、射線から外れます`)
+      log(`プレイヤーモード: ${armed ? '近づけない' : '武器がなく戦えない'} ${name}（${range(archers[0]).toFixed(1)}m）に撃たれているため、射線から外れます`)
       for (const cell of places) {
         if (!inPlay()) break
         shared.playerFlee = { until: now() + 14000 }

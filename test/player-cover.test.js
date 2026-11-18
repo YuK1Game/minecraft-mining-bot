@@ -73,6 +73,21 @@ test('it does not move without a recent hit, with a bow and arrows, for a reacha
   assert.equal(hidden.walks.length, 0)
 })
 
+test('without a weapon a reachable archer cannot be fought either: it takes cover (live 2026-11-18 11:49 JST)', async () => {
+  const witch = { entityType: 'minecraft:witch', hostile: true, position: { x: -8.5, y: 64, z: 0.5 } }
+  const bare = { items: [{ name: 'minecraft:wooden_pickaxe', count: 1 }, { name: 'minecraft:oak_planks', count: 4 }] }
+  const { cover, walks, logs, stops } = setup({ hostiles: [witch], inventory: bare, reachable: () => true })
+  assert.equal(await cover.tick(), true)
+  assert.equal(walks.length, 1)
+  assert.equal(stops.length, 1)
+  assert.match(logs[0], /武器がなく戦えない witch（9\.0m）に撃たれているため、射線から外れます/)
+  // The same witch with a sword in the inventory is combat's.
+  const armed = setup({ hostiles: [witch], reachable: () => true })
+  assert.equal(await armed.cover.tick(), false)
+  assert.equal(armed.cover.status().skip, 'reachable')
+  assert.equal(armed.walks.length, 0)
+})
+
 test('no cover near: said once, then it rests ten seconds', async () => {
   const { cover, logs, stops, advance } = setup({ getBlock: terrain({ wall: false }) })
   assert.equal(await cover.tick(), false)
