@@ -48,6 +48,7 @@ const { createPlayerFood, hasFood } = require('./player-food')
 const { createPlayerWater } = require('./player-water')
 const { dryStart } = require('./travel-dry-start')
 const { departPlayer } = require('./player-departure')
+const { createIslandStart } = require('./island-start')
 const { createHouseBuild, houseFile, loadHouseSync } = require('./house/house-build')
 const { createHousePorts } = require('./house/house-ports')
 const { chestOf, bedOf, setSpawn } = require('./house/house-spawn')
@@ -114,6 +115,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   })
   const hands = buildHands(disposed)
   const houseWayOut = (target, done) => createBuildWalk({ hands, getHouse: () => shared.playerHouse, log })(target, { done, aborted: () => disposed() })
+  const leaveIsland = createIslandStart({ getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }, walkable: feet => walkableCells({ x: feet.x, y: feet.y + 1.62, z: feet.z }, (x, y, z) => runtime.host().world.getBlock(x, y, z)), openSky: () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), build: (target, done) => houseWayOut(target, done), log })
   // A long trip from inside the starter house first walks out through its door (house/house-exit.js).
   // Still in the water after the exit: the land trip is not started (it only fails leg after leg from there).
   const travelTo = (input, { aborted: cancelled = () => false } = {}) => {
@@ -124,7 +126,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       pack: () => operations.playerWorkstations?.recoverNearby(),
       leave: () => leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => { check(); return hands.walk(target) }, door: () => { check(); return houseDoor() }, why: () => hands.why(), build: houseWayOut, log }),
       dry: () => dryStart({ needed: () => water.needed(), exit: () => { check(); return water.exit(() => aborted() || flee.status().active || shelter.status().active) }, ready: () => aborted() || idle(), log }),
-      waterNeeded: () => water.needed(), travel: (value, options) => quarry.travelTo(value, options)
+      waterNeeded: () => water.needed(), travel: (value, options) => quarry.travelTo(value, options),
+      ground: () => { check(); return leaveIsland(input?.destination ?? input ?? null) }
     })
   }
   // Out of a tunnel to the open sky, shared by the recovery and the base trip.

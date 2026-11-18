@@ -2,7 +2,7 @@
 
 // Packing and leaving are asynchronous preparations for the same trip. A
 // stop while either is saving/settling must still cancel the eventual start.
-async function departPlayer ({ input, aborted, canPack, pack, leave, dry, waterNeeded, travel }) {
+async function departPlayer ({ input, aborted, canPack, pack, leave, dry, waterNeeded, travel, ground = null }) {
   const check = () => {
     if (aborted()) throw Object.assign(new Error('長距離移動を中断しました。'), { code: 'LONG_TRAVEL_CANCELLED' })
   }
@@ -13,6 +13,8 @@ async function departPlayer ({ input, aborted, canPack, pack, leave, dry, waterN
   await dry()
   check()
   if (waterNeeded()) throw Object.assign(new Error('水から上がれないため、長距離移動を始めません。'), { code: 'WATER_EXIT_FAILED' })
+  // A ledge no walk leads off is left first (modes/island-start.js).
+  if (typeof ground === 'function') { try { await ground() } catch {} check() }
   const result = await travel(input, { aborted })
   check()
   return result
