@@ -5,6 +5,7 @@ const { placements, matches } = require('./house/house-blueprint')
 const { spiralPoint } = require('./house/house-sand')
 const { approachHome } = require('./dragon-early-home')
 const { threatWait, WAIT_MS } = require('./dragon-threat-wait')
+const { foodReach } = require('./dragon-food-reach')
 
 const PROVISIONS = /^minecraft:(?:bread|cooked_(?:beef|porkchop|chicken|rabbit|mutton|salmon|cod)|baked_potato)$/
 const MEAT = /^minecraft:(beef|porkchop|chicken|rabbit|mutton|salmon|cod)$/
@@ -117,13 +118,27 @@ async function provisionFood (ctx, wanted = 32) {
   }
   const forage = ctx.operations.foraging
   const plan = forage.preview({ stockpile: true })
-  if (plan.ready) {
+  // Sources the hunt could not walk to are walked to once, then left alone (dragon-food-reach.js).
+  const reach = foodReach(ctx.shared, { now: ctx.now })
+  const name = target => String(target?.name ?? '').replace(/^minecraft:/, '')
+  if (plan.ready && !reach.given(plan.target?.runtimeId)) {
     const stop = () => forage.stop('食料集めを中断しました。')
     ctx.signal.addEventListener('abort', stop, { once: true })
-    try { await forage.execute({ stockpile: true, timeoutMs: 12000 }) } finally { ctx.signal.removeEventListener('abort', stop) }
+    let hunt
+    try { hunt = await forage.execute({ stockpile: true, timeoutMs: 12000 }) } finally { ctx.signal.removeEventListener('abort', stop) }
+    if (reach.note(hunt)) ctx.log?.(`プレイヤーモード: 食料源 ${name(hunt.target)} へ歩いて近づけません（${hunt.reason ?? '理由不明'}）`)
     return pending('狩りで得た肉を確認して調理します。')
   }
-  if (plan.code !== 'NO_KNOWN_FOOD_SOURCE') {
+  if (plan.ready) {
+    const near = reach.trip(plan.target, feet)
+    if (near && !ctx.operations.quarry.travelStatus().busy && !ctx.cancelled()) {
+      ctx.log?.(`プレイヤーモード: 食料源 ${name(plan.target)} のそばへ長距離移動で行きます（${Math.round(plan.distance ?? 0)}m）`)
+      await ctx.travelTo({ destination: near }, { aborted: ctx.cancelled })
+      reach.walked(plan.target?.runtimeId)
+      return pending('食料源のそばから狩りをやり直します。')
+    }
+  }
+  if (!plan.ready && plan.code !== 'NO_KNOWN_FOOD_SOURCE') {
     const reason = plan.errors?.[0] ?? '食料探しの安全確認を待ちます。'
     // An enemy nobody fights is not waited for without end (dragon-threat-wait.js): the search goes on somewhere else.
     if (!THREAT.has(plan.code) || threatWait(ctx.shared, 'food', { now: ctx.now, fighting: ctx.runtime.combatOwns?.() === true })) return pending(reason)
@@ -134,7 +149,7 @@ async function provisionFood (ctx, wanted = 32) {
     // Return to the plots regularly so they are loaded and can grow.
     const destination = index % 3 === 2 ? { x: origin.x + 3, z: origin.z + 9 } : spiralPoint(origin, index % 6)
     // The search trip ends as soon as a food source comes into view (dragon-trip.js).
-    await ctx.travelTo({ destination }, { aborted: ctx.cancelled, until: () => forage.preview({ stockpile: true }).ready === true })
+    await ctx.travelTo({ destination }, { aborted: ctx.cancelled, until: () => { const seen = forage.preview({ stockpile: true }); return seen.ready === true && !reach.given(seen.target?.runtimeId) } })
     state.foodSearch = index + 1
   }
   return pending('畑の成長を待ちながら、周囲の食料源を探します。')
