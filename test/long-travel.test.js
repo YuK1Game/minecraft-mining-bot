@@ -53,6 +53,22 @@ test('a blocked direction is passed by turning aside', async () => {
   assert.ok(f.legs.some(a => a.z1 !== 0))
 })
 
+test('stopWhenBlocked may be asked each time: a trip in player play ends with the reason, the same trip by hand keeps trying (user 2026-11-18)', async () => {
+  let playing = true
+  const f = fixture({ blocked: () => true, stopWhenBlocked: () => playing })
+  f.travel.start({ destination: { x: 500, z: 500 } })
+  const s = await finish(f)
+  assert.equal(s.phase, 'stopped'); assert.equal(s.reason, 'LONG_TRAVEL_BLOCKED')
+  assert.ok(!f.logs.some(m => /もう一度試します/.test(m)), 'no second round of the same directions')
+  playing = false
+  const g = fixture({ blocked: () => true, stopWhenBlocked: () => playing })
+  g.travel.start({ destination: { x: 500, z: 500 } })
+  const until = Date.now() + 5000
+  while (Date.now() < until && !g.logs.some(m => /もう一度試します/.test(m))) await new Promise(r => setTimeout(r, 5))
+  assert.ok(g.logs.some(m => /もう一度試します/.test(m)))
+  await g.travel.cancel?.()
+})
+
 test('with stopWhenBlocked, no walkable direction stops with the reason', async () => {
   const f = fixture({ blocked: () => true, stopWhenBlocked: true })
   f.travel.start({ destination: { x: 500, z: 500 } })

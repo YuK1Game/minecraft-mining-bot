@@ -127,3 +127,28 @@ test('the open click: the face towards the eye, within reach, with a clear line;
   assert.equal(openAccess(read, eyeAt(2.5, 64, 0.5), chest), null, 'two cells away the click goes to the side face')
   assert.equal(openAccess(pos => pos.x === 1 ? { known: false } : read(pos), eyeAt(2.5, 64, 0.5), chest).code, 'SIGHT_BLOCKED', 'an unreceived cell on the line is not a clear line')
 })
+
+test('the way round to another side is a trip away: the live case of the chest at the porch (2026-11-18 15:30:43 JST)', () => {
+  const { sidePoint } = require('../src/modes/return/return-side')
+  const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
+  // The house at (-4901, 76, -4993): its porch stand is origin + (3, 10). The base chest stands one block east of it.
+  const porch = { x: -4898, y: 76, z: -4983 }, chest = { x: -4897, y: 75, z: -4983 }
+  // Where the Bot stood is not in the log: 17 m from the chest on the line of the second way round (-4873, -4966).
+  const here = { x: -4910.1, y: 90.6, z: -4992.1 }
+  // Then: the first way round was (-4927, -4983), 19 m from the Bot, which the trip counts as reached.
+  assert.ok(flat({ x: -4927, z: -4983 }, here) <= 24)
+  const side = sidePoint(chest, here, porch)
+  assert.ok(flat(side, here) > 24, `the point is ${Math.round(flat(side, here))} m away`)
+  assert.ok(side.x > chest.x && side.z > chest.z, 'beyond the chest, away from the Bot')
+  assert.ok(Math.abs(flat(side, { x: chest.x + 0.5, z: chest.z + 0.5 }) - 30) < 1.5, '30 m beyond the chest')
+  // A chest inside the house: out through the porch first (the door side), as before.
+  const inside = { x: -4898, y: 77, z: -4992 }, north = { x: -4898.5, y: 90, z: -5010.5 }
+  assert.deepEqual(sidePoint(inside, north, porch), { x: -4898, z: -4962 })
+  // The same chest with the Bot south of the porch already: that point is no trip, so straight beyond the chest.
+  const south = { x: -4898.5, y: 70, z: -4970.5 }
+  const other = sidePoint(inside, south, porch)
+  assert.ok(flat(other, south) > 24 && other.z < inside.z)
+  // No house: beyond the chest.
+  assert.deepEqual(sidePoint({ x: 5, y: 64, z: 0 }, { x: 5.5, y: 69, z: -10.5 }), { x: 5, z: 30 })
+})
+

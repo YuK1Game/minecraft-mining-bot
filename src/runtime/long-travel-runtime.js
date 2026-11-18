@@ -517,6 +517,7 @@ function createLongTravelRuntime (rt) {
       // Only a read request; the chunk travel itself uses received terrain only.
       requestTerrain: async (area, { signal } = {}) => { const st = rt.quarryState(); const y = Math.floor((st.position?.y ?? 65) - 1.62); return rt.requestQuarryTerrain({ config: { target: { chunks: [{ x: area.x1, z: area.z1 }] } }, yTop: Math.min(300, y + 12), yBottom: Math.max(-60, y - 12) }, { signal }) },
       terrainRevision: () => rt.host.world.revision?.() ?? null,
+      stopWhenBlocked: () => rt.require('./travel/travel-blocked').stopsWhenBlocked(rt.host.shared),
       inventoryReady: () => { try { return rt.inventoryStore.missing().length === 0 } catch { return false } },
       // Arrival counts only under open sky (live 12:13: 'arrived' in a cave at y-33).
       onSurface: feet => rt.require('./travel/open-sky').openSky((x, y, z) => rt.host.world.getBlock(x, y, z), feet),
