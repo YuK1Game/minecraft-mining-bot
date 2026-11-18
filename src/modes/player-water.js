@@ -10,13 +10,15 @@
 // - While playing, the feet cell or the one below is received water, and the
 //   Bot has moved less than 1 m for 15 s: the autonomy stops, and the Bot
 //   swims onto a ledge within five blocks (received solid floor, two received
-//   empty dry cells above it, at the water level or one above) with the same
-//   water exit as the long travel (movement/water-exit.js), nearest first, up
-//   to eight ledges. Out of the water counts only from the working position.
+//   empty dry cells above it, at the level of the water surface above the Bot
+//   or one above: movement/water-ledges.js) with the same water exit as the
+//   long travel (movement/water-exit.js), nearest first, up to eight ledges.
+//   Out of the water counts only from the working position.
 // - Not while a hostile is within 12 m or another job runs. 30 s between tries.
 const { normalizeMode } = require('./bot-mode')
+const { ledges } = require('../movement/water-ledges')
 
-const STUCK_MS = 15000, AGAIN_MS = 30000, MOVED_M = 1, REACH = 5.5, TRIES = 8
+const STUCK_MS = 15000, AGAIN_MS = 30000, MOVED_M = 1, TRIES = 8
 
 const finite = p => !!p && [p.x, p.y, p.z].every(Number.isFinite)
 const water = found => /water/.test(found?.name ?? '')
@@ -25,25 +27,6 @@ function wet (getBlock, feet) {
   if (!finite(feet)) return false
   const x = Math.floor(feet.x), y = Math.floor(feet.y + 0.2), z = Math.floor(feet.z)
   return water(getBlock(x, y, z)) || water(getBlock(x, y - 1, z))
-}
-
-// Ledges beside the water, nearest first.
-function ledges (getBlock, feet) {
-  const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.2), fz = Math.floor(feet.z)
-  const out = []
-  for (let dx = -5; dx <= 5; dx++) {
-    for (let dz = -5; dz <= 5; dz++) {
-      if ((!dx && !dz) || Math.hypot(dx, dz) > REACH) continue
-      for (const dy of [0, 1]) {
-        const x = fx + dx, y = fy + dy, z = fz + dz
-        const floor = getBlock(x, y - 1, z), body = getBlock(x, y, z), head = getBlock(x, y + 1, z)
-        if (floor?.known !== true || floor.boundingBox !== 'block' || water(floor)) continue
-        if ([body, head].some(cell => cell?.known !== true || cell.boundingBox !== 'empty' || water(cell) || /lava/.test(cell.name ?? ''))) continue
-        out.push({ x: x + 0.5, y, z: z + 0.5 })
-      }
-    }
-  }
-  return out.sort((a, b) => Math.hypot(a.x - feet.x, a.z - feet.z) - Math.hypot(b.x - feet.x, b.z - feet.z))
 }
 
 function createPlayerWater ({ getMode, shared, agent, getPosition, getBlock, start, moving, why = () => null, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {

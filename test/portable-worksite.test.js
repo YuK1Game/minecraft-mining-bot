@@ -110,6 +110,36 @@ test('missing existing table gets a validated preparation target or bounded nati
   assert.equal(f.next().type, 'place_crafting_table')
   delete f.observations.lastDecision
 })
+// Real Realm 2026-11-18 16:40-17:03 JST: a worksite memo from an earlier descent (table and furnace
+// at y=41, 70 m away) kept the runtime from preparing a place, so the observation carried no answer;
+// with a table in hand and 2 raw iron, every run ended with this question (245 stops in 23 minutes).
+test('a run does not end with the workbench question the observation left unanswered: the held table goes down', () => {
+  const { planWithoutOpenQuestion } = require('../src/survival/asked-question')
+  const f = plannerFixture(); f.items([['stone_pickaxe', 1], ['cobblestone', 107], ['oak_planks', 2], ['birch_planks', 3], ['stick', 2], ['crafting_table', 1], ['raw_iron', 2], ['coal', 1]]); f.hold('stone_pickaxe')
+  const site = { id: 'site-y41', scope: supplyScope(f.state), table: { x: -13, y: 41, z: -82 }, furnace: { x: -14, y: 41, z: -82 } }
+  f.observations.portableWorksite = { enabled: true, scope: supplyScope(f.state), kit: portable.portableKit(f.state), site, deployed: false, step: null }
+  assert.equal(nextDiamondAction(f.state, f.observations).capability, 'known_safe_workbench_placement', 'the plan alone still asks')
+  let calls = 0
+  const plan = (...args) => { calls++; return nextDiamondAction(...args) }
+  const decision = planWithoutOpenQuestion(plan, f.state, f.observations)
+  assert.equal(decision.type, 'place_crafting_table', JSON.stringify(decision))
+  assert.equal(calls, 2)
+  assert.equal(f.observations.lastDecision, undefined, 'the observation is not changed')
+  // An answer in the observation is used as it is, with one plan.
+  calls = 0
+  const world = { getBlock: (x, y, z) => f.map.get(`${x},${y},${z}`) ?? { known: false } }
+  const target = portable.preparationTableTarget({ state: f.state, world, preservedFloors: [] })
+  f.observations.portableWorksite = { enabled: true, scope: supplyScope(f.state), deployed: false, preparationTarget: target }
+  assert.deepEqual(planWithoutOpenQuestion(plan, f.state, f.observations).target, target)
+  assert.equal(calls, 1)
+  // Another question, and a plan with no other answer, pass through unchanged.
+  const other = { type: 'capability_required', capability: 'prospect' }
+  assert.equal(planWithoutOpenQuestion(() => other, f.state, f.observations), other)
+  const only = { type: 'capability_required', capability: 'known_safe_workbench_placement' }
+  assert.equal(planWithoutOpenQuestion(() => only, f.state, f.observations), only)
+  // The autonomy's plan goes through it.
+  assert.match(fs.readFileSync(path.join(__dirname, '../src/runtime/autonomy-runtime.js'), 'utf8'), /asked-question'\)\.planWithoutOpenQuestion\(rt\.nextDiamondAction, state, observations, options\)/)
+})
 test('actual176 terrain supports only a private projected four-cell niche, with intact reserved floor/roof and original passage', () => {
   const f = scene(), before = JSON.stringify([...f.cells]), site = f.site()
   assert.ok(site); assert.deepEqual(site.furnace, { x: -21, y: 57, z: 13 }); assert.deepEqual(site.table, { x: -21, y: 57, z: 14 })
