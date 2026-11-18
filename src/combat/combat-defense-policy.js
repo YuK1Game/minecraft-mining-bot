@@ -70,4 +70,15 @@ function defenseTargetAllowed ({ anchor, state, target, provoked = false, retrea
   return { allowed: true, reason: immediate ? 'IMMEDIATE_DANGER' : 'DEFENSE_TARGET', immediate, distance }
 }
 
-module.exports = { defenseEnabled, behaviorEnabled, createDefenseAnchor, defenseMovementAllowed, defenseTargetAllowed }
+// The anchor that a fight started outside quarry work uses. While playing, the bot roams on purpose and the fixed
+// anchor (8 m, same layer) only ends fights: a skeleton shooting from a slope stays 2 steps up or 10 m away
+// (live 2026-11-18 22:34 JST: 「Defense movement refused: OTHER_LAYER」 after one hit, then seven arrows, health 19 → 0.15).
+function fightAnchor (shared, state) {
+  if (!shared) return null
+  if (shared.playerWanted === true) return (shared.combatDefenseAnchor = null)
+  const anchor = shared.combatDefenseAnchor
+  if (!anchor || !defenseMovementAllowed({ anchor, state, position: anchor.feet, retreating: true }).allowed) shared.combatDefenseAnchor = createDefenseAnchor(state)
+  return shared.combatDefenseAnchor
+}
+
+module.exports = { fightAnchor, defenseEnabled, behaviorEnabled, createDefenseAnchor, defenseMovementAllowed, defenseTargetAllowed }

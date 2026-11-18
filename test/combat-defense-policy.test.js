@@ -82,3 +82,16 @@ test('invalid or missing routes fail closed and all policy checks leave caller s
   assert.equal(defenseMovementAllowed({ anchor: a, state: s }).allowed, false)
   assert.deepEqual({ s, a }, before)
 })
+
+test('a fight in player mode has no fixed anchor; outside it the anchor is kept', () => {
+  const { fightAnchor, createDefenseAnchor } = require('../src/combat/combat-defense-policy')
+  const state = { phase: 'spawned', health: 20, gameMode: 'survival', profile: 'p', realm: { id: 1 }, connectionId: 'c', startedAt: '2026-11-18T00:00:00Z', runtimeEntityId: 5, dimension: 'overworld', deathId: 0, position: { x: 0, y: 65.62, z: 0 } }
+  const kept = createDefenseAnchor(state)
+  assert.ok(kept)
+  const idle = { combatDefenseAnchor: kept }
+  assert.equal(fightAnchor(idle, state), kept)
+  const play = { playerWanted: true, combatDefenseAnchor: kept }
+  assert.equal(fightAnchor(play, state), null)
+  assert.equal(play.combatDefenseAnchor, null)
+  assert.ok(fightAnchor({}, state))
+})
