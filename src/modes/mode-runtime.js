@@ -115,7 +115,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   })
   const hands = buildHands(disposed)
   const houseWayOut = (target, done) => createBuildWalk({ hands, getHouse: () => shared.playerHouse, log })(target, { done, aborted: () => disposed() })
-  const leaveIsland = createIslandStart({ getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }, walkable: feet => walkableCells({ x: feet.x, y: feet.y + 1.62, z: feet.z }, (x, y, z) => runtime.host().world.getBlock(x, y, z)), openSky: () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), build: (target, done) => houseWayOut(target, done), log })
+  const leaveIsland = createIslandStart({ getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }, walkable: feet => walkableCells({ x: feet.x, y: feet.y + 1.62, z: feet.z }, (x, y, z) => runtime.host().world.getBlock(x, y, z)), openSky: () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), skyAt: cell => !insideHouse(shared.playerHouse?.origin, cell) && !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), { x: cell.x + 0.5, y: cell.y + 1.62, z: cell.z + 0.5 }), build: (target, done) => houseWayOut(target, done), log })
   // A long trip from inside the starter house first walks out through its door (house/house-exit.js).
   // Still in the water after the exit: the land trip is not started (it only fails leg after leg from there).
   const travelTo = (input, { aborted: cancelled = () => false } = {}) => {

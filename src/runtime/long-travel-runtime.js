@@ -619,7 +619,7 @@ function createLongTravelRuntime (rt) {
           const firstDig = route.ready ? route.path.findIndex(p => p.dig) : -1
           if (firstDig > 0 && firstDig <= 12) {
             const before = route.path[firstDig - 1], step = route.path[firstDig]
-            if (Math.hypot(before.x - feet.x, before.z - feet.z) > 1.2 || Math.abs(before.y - feet.y) > 0.6) { let pv = null; try { rt.motionOrigin = rt.working(); pv = rt.movement?.preview({ x: before.x, y: before.y, z: before.z }, opts) } catch {} if (pv?.ready === true) return { x: before.x, y: before.y, z: before.z } }
+            if (!rt.require('./travel/carved-step').standsBefore(feet, before, step)) { let pv = null; try { rt.motionOrigin = rt.working(); pv = rt.movement?.preview({ x: before.x, y: before.y, z: before.z }, opts) } catch {} if (pv?.ready === true) return { x: before.x, y: before.y, z: before.z } }
             else return { x: step.x, y: step.y, z: step.z, dig: step.dig }
           }
           if (route.ready) for (const ahead of [12, 9, 6, 4, 3, 2, 1].map(a => firstDig > 0 ? Math.min(a, firstDig - 1) : a)) {
