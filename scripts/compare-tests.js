@@ -8,7 +8,7 @@ const path = require('node:path')
 const { spawn, execFileSync } = require('node:child_process')
 const { createWriteStream } = require('node:fs')
 const { finished } = require('node:stream/promises')
-const { parseTap, compareReports, baselineGaps, withRerun, confirmedByRerun } = require('./lib/test-report')
+const { parseTap, compareReports, baselineGaps, withRerun, confirmedByRerun, alsoOnBase } = require('./lib/test-report')
 const { parseShard, shardFiles, expandTestFiles, settingsOf, settingsKey, readStored, writeStored, prune } = require('./lib/suite-store')
 const root = path.resolve(__dirname, '..')
 // Both runs use the same settings, so the comparison stays like for like.
@@ -64,7 +64,7 @@ async function main () {
   const reports = path.resolve(root, 'test-results')
   await fs.mkdir(reports, { recursive: true })
   // Reports of an earlier comparison are not left beside this one's.
-  for (const name of ['baseline.tap', 'current.tap', 'baseline-rerun.tap', 'current-rerun.tap', 'comparison.json']) await fs.rm(path.join(reports, name), { force: true })
+  for (const name of ['baseline.tap', 'current.tap', 'baseline-rerun.tap', 'current-rerun.tap', 'baseline-alone.tap', 'comparison.json']) await fs.rm(path.join(reports, name), { force: true })
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'minecraft-baseline-'))
   const worktree = path.join(temporary, 'repo')
   let attached = false
@@ -99,7 +99,7 @@ async function main () {
       console.warn(`Baseline recorded no result for tests in ${rerunFiles.length} file(s); running them again on the baseline: ${rerunFiles.join(', ')}`)
       baseline = withRerun(baseline, await runSuite(worktree, path.join(reports, 'baseline-rerun.tap'), rerunFiles), rerunFiles)
     }
-    const comparison = { base, node: process.version, shard: SETTINGS.shard, baselineFrom: kept ? 'kept report' : 'run', ...compareReports(baseline, current), baselineRerunFiles: rerunFiles, currentUnreported: current.unreported, passedWhenRunAgain: [] }
+    const comparison = { base, node: process.version, shard: SETTINGS.shard, baselineFrom: kept ? 'kept report' : 'run', ...compareReports(baseline, current), baselineRerunFiles: rerunFiles, currentUnreported: current.unreported, passedWhenRunAgain: [], failsOnBaseAlone: [] }
     // 2026-11-15: one timing-sensitive test failed under four workers in the
     // current run only and turned the gate red; it passes when run alone. A
     // new failure is confirmed by running its file once more on the current
@@ -109,6 +109,21 @@ async function main () {
       console.warn(`Running ${suspectFiles.length} file(s) with new failures once more on the current code: ${suspectFiles.join(', ')}`)
       const settled = confirmedByRerun(comparison.introduced, await runSuite(root, path.join(reports, 'current-rerun.tap'), suspectFiles))
       comparison.introduced = settled.confirmed; comparison.passedWhenRunAgain = settled.passed
+    }
+    // 2026-11-18: a test that fails on the base whenever its file runs alone
+    // was recorded as passing in the base's whole-suite run (under four
+    // workers its operation ran out of time before the step the test looks
+    // at, test/runtime-learning-shore-executor.test.js "uid change ..."), so
+    // the failure of the current code, alone and twice, was counted as new.
+    // The two sides are settled the same way: a failure that is still new
+    // after the second run is new only when its file, run alone on the base
+    // commit, does not fail the same way.
+    const baseFiles = comparison.introduced.length ? expandTestFiles(await baseTree(), [...new Set(comparison.introduced.map(item => item.file).filter(file => /^test\/.+\.[cm]?js$/.test(file)))]) : []
+    if (baseFiles.length) {
+      console.warn(`Running ${baseFiles.length} file(s) with new failures alone on the base commit: ${baseFiles.join(', ')}`)
+      const settled = alsoOnBase(comparison.introduced, await runSuite(worktree, path.join(reports, 'baseline-alone.tap'), baseFiles))
+      comparison.introduced = settled.introduced; comparison.failsOnBaseAlone = settled.onBase
+      if (settled.onBase.length) console.warn(`${settled.onBase.length} failure(s) are also on the base commit when the file runs alone; they are not counted as new: ${settled.onBase.map(item => `${item.file}: ${item.name}`).join(' | ')}`)
     }
     if (current.unreported.length) console.warn(`Current run recorded no result for ${current.unreported.length} started test(s); a failure among them would not be seen: ${current.unreported.slice(0, 10).join(' | ')}`)
     await fs.writeFile(path.join(reports, 'comparison.json'), JSON.stringify(comparison, null, 2) + '\n')

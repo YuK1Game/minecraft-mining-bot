@@ -95,4 +95,18 @@ function confirmedByRerun (introduced, rerun) {
   for (const item of introduced) (ran.has(item.name) && !failed.has(JSON.stringify([item.file, item.name])) ? passed : confirmed).push(item)
   return { confirmed, passed }
 }
-module.exports = { parseTap, compareReports, baselineGaps, withRerun, confirmedByRerun }
+// Splits confirmed new failures by a run of their files alone on the base
+// commit. One that fails there the same way (same file, name, kind and code)
+// is a failure the base has; only the rest are new. A file the base does not
+// have reports nothing there, so its failures stay new.
+function alsoOnBase (confirmed, baseAlone) {
+  const allowance = new Map()
+  for (const item of baseAlone.failures) allowance.set(item.key, (allowance.get(item.key) ?? 0) + 1)
+  const introduced = [], onBase = []
+  for (const item of confirmed) {
+    const count = allowance.get(item.key) ?? 0
+    if (count) { allowance.set(item.key, count - 1); onBase.push(item) } else introduced.push(item)
+  }
+  return { introduced, onBase }
+}
+module.exports = { parseTap, compareReports, baselineGaps, withRerun, confirmedByRerun, alsoOnBase }
