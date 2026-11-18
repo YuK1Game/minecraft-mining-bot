@@ -100,10 +100,10 @@ async function provisionFood (ctx, wanted = 32) {
     const house = createHousePorts({ operations: ctx.operations, getBlock: ctx.getBlock, getInventory: ctx.runtime.inventory, disposed: ctx.cancelled, ...(ctx.sleep ? { sleep: ctx.sleep, now: ctx.now } : {}) })
     if (!raw) await house.craft('minecraft:bread', Math.min(Math.floor(wheat / 3), wanted - count, 16), station)
     else {
-      const fuel = items.find(item => /^minecraft:(?:coal|charcoal)$/.test(item.name) && item.count > 0)
-      if (!fuel) return pending((await ctx.supplies.acquire('coal', 1)).reason)
       const amount = Math.min(3, raw.count, wanted - count)
-      const cooked = await house.smelt(station, raw.name, amount, fuel.name, 1, raw.name.replace('minecraft:', 'minecraft:cooked_'))
+      const fuel = require('./cook-fuel').cookFuel(items, amount)
+      if (!fuel) return pending((await ctx.supplies.acquire('coal', 1)).reason)
+      const cooked = await house.smelt(station, raw.name, amount, fuel.name, fuel.count, raw.name.replace('minecraft:', 'minecraft:cooked_'))
       // A cook that gained nothing says why (live 2026-11-18 23:15-23:19 JST: four minutes at the door with this step's
       // text and no log line).
       if (!(cooked > 0) && !ctx.cancelled()) {
