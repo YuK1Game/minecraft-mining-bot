@@ -99,7 +99,8 @@ test('review: reports of other commits are removed, those of the base and the ch
 })
 
 test('review: the workflow runs the comparison in the parts the script is told about, and pushes are checked on main only', () => {
-  const workflow = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8')
+  // On Windows the checkout has CRLF line endings.
+  const workflow = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8').replace(/\r\n/g, '\n')
   assert.match(workflow, /\n {2}push:\n {4}branches: \[main\]\n/)
   const parts = /part: \[([\d, ]+)\]/.exec(workflow)[1].split(',').map(Number)
   assert.deepEqual(parts, parts.map((_, index) => index + 1))
