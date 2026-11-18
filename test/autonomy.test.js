@@ -25,7 +25,9 @@ function movementResourceScene (f) {
 
 function safetyError (code) { const error = new Error(`Latest raw guard: ${code}`); error.code = code; return error }
 
-test('ticks coalesce, duplicate start is rejected, and stop forwards an abort signal', async () => {
+// Known failure (2026-11-18): this test waits for something that no longer happens and used to hold a worker
+// until the suite's 30 s limit. It still ends as a timeout, after 3 s. Remove the limit when the test is repaired.
+test('ticks coalesce, duplicate start is rejected, and stop forwards an abort signal', { timeout: 3000 }, async () => {
   let signal
   let release
   const f = fixture({ actions: { scan_blocks: (decision, context) => { signal = context.signal; return new Promise(resolve => { release = resolve }) } } })

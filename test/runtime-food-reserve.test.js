@@ -65,7 +65,9 @@ test('dead/spawn-pending state and invalid or absent flesh counts never enable t
   }
 })
 
-test('an owned forage worker is not interrupted; reserve deferral is observed only at the next normal planning boundary', async t => {
+// Known failure (2026-11-18): this test waits for something that no longer happens and used to hold a worker
+// until the suite's 30 s limit. It still ends as a timeout, after 3 s. Remove the limit when the test is repaired.
+test('an owned forage worker is not interrupted; reserve deferral is observed only at the next normal planning boundary', { timeout: 3000 }, async t => {
   const f=prepare(t,{reserve:1});let finish,markStarted,entered=0
   const pending=new Promise(resolve=>{finish=resolve}),started=new Promise(resolve=>{markStarted=resolve})
   f.autonomous[0].actions.forage=()=>{entered++;markStarted();return pending}

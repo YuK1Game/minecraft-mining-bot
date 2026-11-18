@@ -9,10 +9,17 @@ const { spawn, execFileSync } = require('node:child_process')
 const { createWriteStream, existsSync } = require('node:fs')
 const { finished } = require('node:stream/promises')
 const { parseTap, compareReports, baselineGaps, withRerun, confirmedByRerun } = require('./lib/test-report')
+const { parseShard, shardFiles, settingsOf, readStored, writeStored, prune } = require('./lib/suite-store')
 const root = path.resolve(__dirname, '..')
 // Both runs use the same settings, so the comparison stays like for like.
 const CONCURRENCY = Math.max(2, Math.min(8, os.availableParallelism()))
 const SUITE_LIMIT_MS = 25 * 60 * 1000
+// SUITE_SHARD=k/n runs the k-th of n parts of the suite (CI runs the parts on
+// separate machines). SUITE_REPORT_DIR keeps the report of a commit so the
+// base is not run again on the next push ('none' turns that off).
+const SHARD = parseShard(process.env.SUITE_SHARD)
+const STORE = process.env.SUITE_REPORT_DIR === 'none' ? null : path.resolve(root, process.env.SUITE_REPORT_DIR || path.join('test-results', 'suite-reports'))
+const SETTINGS = settingsOf({ concurrency: CONCURRENCY, shard: SHARD })
 // 2026-11-15: a run on CI ended normally but its report had no totals (the
 // forced exit after the last test can cut the reporter's final output). Such
 // a run says nothing, so it is repeated once before the comparison gives up.
@@ -24,6 +31,8 @@ async function runSuite (directory, filename, files = []) {
   }
 }
 async function runSuiteOnce (directory, filename, files = []) {
+  // Without files Node would look for tests by its own rules; the comparison always names them.
+  if (!files.length) throw new Error(`No test files to run in ${directory}`)
   const output = createWriteStream(filename, { flags: 'w' })
   // Failed legacy tests can leave intervals/polling alive. Preserve their
   // reported failures and timeouts, then exit after all test results exist.
@@ -40,31 +49,52 @@ async function runSuiteOnce (directory, filename, files = []) {
   if (![0, 1].includes(code) || code !== 0 && report.failures.length === 0) throw new Error(`Test process failed without an attributable test failure (${code})`)
   return report
 }
+const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
 async function main () {
   const supplied = process.argv[2] || process.env.CI_BASE_SHA
-  const ref = supplied && /^[0-9a-f]{40}$/i.test(supplied) && !/^0+$/.test(supplied) ? supplied : execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { cwd: root, encoding: 'utf8' }).trim()
-  const base = execFileSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], { cwd: root, encoding: 'utf8' }).trim()
+  const ref = supplied && /^[0-9a-f]{40}$/i.test(supplied) && !/^0+$/.test(supplied) ? supplied : git('merge-base', 'HEAD', 'origin/main')
+  const base = git('rev-parse', '--verify', `${ref}^{commit}`)
+  // The current tree is a commit only when nothing tracked differs from HEAD.
+  const head = git('status', '--porcelain', '--untracked-files=no') === '' ? git('rev-parse', '--verify', 'HEAD^{commit}') : null
   const reports = path.resolve(root, 'test-results')
   await fs.mkdir(reports, { recursive: true })
+  // Reports of an earlier comparison are not left beside this one's.
+  for (const name of ['baseline.tap', 'current.tap', 'baseline-rerun.tap', 'current-rerun.tap', 'comparison.json']) await fs.rm(path.join(reports, name), { force: true })
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'minecraft-baseline-'))
   const worktree = path.join(temporary, 'repo')
   let attached = false
-  try {
+  // The base commit is checked out only when it has to run: no kept report, or a file of it runs again.
+  const baseTree = async () => {
+    if (attached) return worktree
     execFileSync('git', ['worktree', 'add', '--detach', worktree, base], { cwd: root, stdio: 'inherit' }); attached = true
     await fs.symlink(path.join(root, 'node_modules'), path.join(worktree, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir')
-    console.log(`Full suite baseline: ${base}; Node ${process.version}`)
-    let baseline = await runSuite(worktree, path.join(reports, 'baseline.tap'))
-    const current = await runSuite(root, path.join(reports, 'current.tap'))
+    return worktree
+  }
+  try {
+    console.log(`Full suite baseline: ${base}; Node ${process.version}; part ${SETTINGS.shard}; concurrency ${CONCURRENCY}`)
+    const kept = readStored(STORE, base, SETTINGS)
+    let baseline = kept?.report
+    if (kept) console.log(`The base commit's report was kept from an earlier run (${kept.savedAt ?? 'time unknown'}); the base is not run again`)
+    else {
+      const directory = await baseTree()
+      baseline = await runSuite(directory, path.join(reports, 'baseline.tap'), shardFiles(directory, SHARD))
+      if (writeStored(STORE, base, SETTINGS, baseline)) console.log(`Kept the base commit's report in ${path.relative(root, STORE)}`)
+    }
+    const current = await runSuite(root, path.join(reports, 'current.tap'), shardFiles(root, SHARD))
+    if (head && writeStored(STORE, head, SETTINGS, current)) console.log(`Kept this commit's report (${head}) for the comparisons based on it`)
+    prune(STORE, [base, head])
     // 2026-11-14: a baseline test file ended early, eight of its long-failing
     // tests had no result, and the same failures in the current run were
     // counted as new. A file with such a gap is run once more on the baseline
     // alone; a file the baseline does not have keeps its failures as new.
-    const rerunFiles = baselineGaps(baseline, compareReports(baseline, current).introduced).filter(file => existsSync(path.join(worktree, file)))
+    const gaps = baselineGaps(baseline, compareReports(baseline, current).introduced)
+    if (gaps.length) await baseTree()
+    const rerunFiles = gaps.filter(file => existsSync(path.join(worktree, file)))
     if (rerunFiles.length) {
       console.warn(`Baseline recorded no result for tests in ${rerunFiles.length} file(s); running them again on the baseline: ${rerunFiles.join(', ')}`)
       baseline = withRerun(baseline, await runSuite(worktree, path.join(reports, 'baseline-rerun.tap'), rerunFiles), rerunFiles)
     }
-    const comparison = { base, node: process.version, ...compareReports(baseline, current), baselineRerunFiles: rerunFiles, currentUnreported: current.unreported, passedWhenRunAgain: [] }
+    const comparison = { base, node: process.version, shard: SETTINGS.shard, baselineFrom: kept ? 'kept report' : 'run', ...compareReports(baseline, current), baselineRerunFiles: rerunFiles, currentUnreported: current.unreported, passedWhenRunAgain: [] }
     // 2026-11-15: one timing-sensitive test failed under four workers in the
     // current run only and turned the gate red; it passes when run alone. A
     // new failure is confirmed by running its file once more on the current

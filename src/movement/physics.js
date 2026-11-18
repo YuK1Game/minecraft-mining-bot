@@ -47,17 +47,35 @@ function controlsForStep (controls = {}) {
   return Object.fromEntries(CONTROL_NAMES.map(key => [key, controls[key] ?? false]))
 }
 
-function createPhysics ({ world, version = '1.26.60', registry, allowWater = false } = {}, prepared = null) {
-  if (version !== '1.26.60') throw new Error('Experimental physics is restricted to Bedrock 1.26.60')
-  if (typeof world?.getBlock !== 'function') throw new Error('Physics requires a known-block world reader')
-  registry ??= require('prismarine-registry')(`bedrock_${version}`)
-  if (registry.type !== 'bedrock' || registry.version.minecraftVersion !== version) throw new Error('Physics registry version mismatch')
-  const definitions = prepared?.definitions ?? new Map()
-  for (let stateId = 0; !prepared && stateId < registry.blockStates.length; stateId++) {
+// The table from a block state (name and properties) to its id depends on the
+// registry alone and is only read. It is built once for a registry instead of
+// once for every physics (about 0.1 s each; a runtime makes three).
+const DEFINITIONS = new WeakMap()
+// prismarine-registry hands out a new object on every call; one per version is kept so the table above is found again.
+const REGISTRIES = new Map()
+function registryOf (version) {
+  if (!REGISTRIES.has(version)) REGISTRIES.set(version, require('prismarine-registry')(`bedrock_${version}`))
+  return REGISTRIES.get(version)
+}
+function definitionsOf (registry) {
+  let definitions = DEFINITIONS.get(registry)
+  if (definitions) return definitions
+  definitions = new Map()
+  for (let stateId = 0; stateId < registry.blockStates.length; stateId++) {
     const state = registry.blockStates[stateId]
     if (!state) continue
     definitions.set(stateKey(nameOf(state), canonicalProperties(state.states)), stateId)
   }
+  DEFINITIONS.set(registry, definitions)
+  return definitions
+}
+
+function createPhysics ({ world, version = '1.26.60', registry, allowWater = false } = {}, prepared = null) {
+  if (version !== '1.26.60') throw new Error('Experimental physics is restricted to Bedrock 1.26.60')
+  if (typeof world?.getBlock !== 'function') throw new Error('Physics requires a known-block world reader')
+  registry ??= registryOf(version)
+  if (registry.type !== 'bedrock' || registry.version.minecraftVersion !== version) throw new Error('Physics registry version mismatch')
+  const definitions = prepared?.definitions ?? definitionsOf(registry)
   const templates = prepared?.templates ?? new Map()
 
   function templateFor (raw, waterEnabled) {

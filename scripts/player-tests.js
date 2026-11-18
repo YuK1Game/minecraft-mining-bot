@@ -7,18 +7,14 @@
 // stands on (docs/player-return.md). A file with a failure older than the
 // lane is named below with its reason and printed on every run, so it is
 // neither hidden nor counted as passing.
-const fs = require('node:fs')
 const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 
+const { playerNames } = require('./lib/test-lanes')
 const root = path.resolve(__dirname, '..')
-const IN_LANE = /^(?:player-|house-|bot-mode|mode-|travel-dry-start|damage-note|low-block|ground-refresh).*\.test\.js$/
-const EXCLUDED = {
-  'player-drop-access.test.js': '2 failures on main before this lane existed (e275fd0): the way to a dropped item, not the return to the base'
-}
-
-const all = fs.readdirSync(path.join(root, 'test')).filter(name => IN_LANE.test(name)).sort()
-const files = all.filter(name => !EXCLUDED[name]).map(name => path.join('test', name))
+const lane = playerNames(root)
+const EXCLUDED = lane.excluded
+const files = lane.files.map(name => path.join('test', name))
 if (!files.length) { console.error('test:player: no test files found'); process.exit(1) }
 const required = ['player-return.test.js', 'player-return-live.test.js', 'player-return-units.test.js', 'player-base.test.js', 'player-storage.test.js']
 const missing = required.filter(name => !files.includes(path.join('test', name)))

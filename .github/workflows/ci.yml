@@ -1,6 +1,10 @@
 name: Bot regression CI
+# A branch with a pull request used to run everything twice (push and
+# pull_request). Pushes are checked on main only; branches are checked through
+# their pull request.
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -33,13 +37,23 @@ jobs:
         run: npm run test:player
       - name: Synthetic combat budget benchmark (not live Realm)
         run: npm run benchmark:combat
+  # The complete suite, compared with the base commit. It runs in three parts
+  # on separate machines, and the base commit's report is kept between runs:
+  # the run on main keeps the report of each commit, a pull request based on
+  # that commit reads it and runs the suite once instead of twice.
   legacy-comparison:
-    name: Complete suite / compare with base
+    name: Complete suite / compare with base (part ${{ matrix.part }} of 3)
     if: github.event_name != 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      SUITE_SHARD: ${{ matrix.part }}/3
+      SUITE_REPORT_DIR: .suite-reports
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,11 +64,29 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: Kept report of the base commit
+        id: kept
+        uses: actions/cache/restore@v4
+        with:
+          path: .suite-reports
+          key: suite-report-v1-${{ runner.os }}-part${{ matrix.part }}of3-${{ env.CI_BASE_SHA }}
       - name: Fail on new failures; retain pre-existing failures in report
         run: npm run test:compare
+      - name: Keep this commit's report for the pull requests based on it (main)
+        if: always() && github.event_name == 'push' && hashFiles(format('.suite-reports/{0}.*.json', github.sha)) != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .suite-reports
+          key: suite-report-v1-${{ runner.os }}-part${{ matrix.part }}of3-${{ github.sha }}
+      - name: Keep the base report this pull request had to make
+        if: always() && github.event_name == 'pull_request' && steps.kept.outputs.cache-hit != 'true' && hashFiles(format('.suite-reports/{0}.*.json', env.CI_BASE_SHA)) != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .suite-reports
+          key: suite-report-v1-${{ runner.os }}-part${{ matrix.part }}of3-${{ env.CI_BASE_SHA }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: complete-suite-comparison
+          name: complete-suite-comparison-part${{ matrix.part }}
           path: test-results/
           retention-days: 14

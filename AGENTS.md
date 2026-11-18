@@ -159,7 +159,9 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 | `npm run dashboard` | 所持品・露天掘り・ライブログの統合ページ（http://127.0.0.1:3001） |
 | `npm run check` | `src`・`scripts`・`test`・`dashboard` の構文確認（約1秒）と、大きいファイルの増加の表示 |
 | `npm run benchmark:world` | 地形参照（`getBlock`）の速度計測。接続不要 |
+| `npm run test:review` | 安全回帰と互換テスト。失敗が1件でもあれば失敗 |
 | `npm run test:player` | プレイヤーモードの専用テスト（拠点への帰還を含む）。全テストが実行されて合格した時だけ成功 |
+| `npm run test:compare -- <基準のSHA>` | 上の2つのレーンに入っていないテスト全件を、基準のコミットと比べる（新しい失敗があれば失敗）。基準の結果は `test-results/suite-reports/` に残り、同じ基準なら次からは変更後の側だけを実行する |
 | `npm test` | `node --test` による自動テスト |
 
 設定は `.env`（`BOT_PROFILE`、`REALM_ID`、`MINECRAFT_VERSION`、`API_PORT`）。雛形は `.env.example`。
@@ -168,6 +170,7 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 
 - 一部のテストは Git 管理外の `.local/*.cjs` や未コミットのモジュールに依存しており、ユーザーの PC 以外では全件は通りません。**変更前から失敗しているテストがある**ため、変更の前後で失敗数を比較し、新しい失敗を増やしていないことを確認してください。
 - テストの合格はゲーム内での達成の証明ではありません。
+- **CI は速さを保つ**（2026-11-18 ユーザー指示「遅すぎるので不要なテストは減らし、遅すぎるテストは改善して」。1回の push で約19分かかっていた）。仕組みと計測値は `docs/ci.md`。守ること: (1) 1つのテストファイルが単独で30秒を超えたら、原因を直すか、`test/quarry-job.test.js` と同じ形（`*.partN.test.js`）で複数のプロセスに分ける。(2) 待つだけのテスト（来ないものを30秒の上限まで待つ）を足さない。(3) 2つの厳格なレーン（`test:review`・`test:player`）に入れたファイルは、全件比較では実行されない（`scripts/lib/test-lanes.js`）。(4) CI の push は `main` だけ。ブランチは PR で確認される。
 
 ## 作業時のルール
 
@@ -196,7 +199,7 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 
 ## 2026-11-07 レビュー対応の検証
 
-`npm run check` は src/scripts/test とダッシュボード内JSを検査します。`npm run test:review` は今回の安全回帰と互換テスト、`npm run test:compare -- <base SHA>` は既存全件の失敗差分です。既存失敗を隠さず、全件成功と差分なしを区別してください。詳細と実Realmで未実施の確認項目は `docs/review-hardening.md`。`STOPPING` 中や `PERSISTENCE_FAILED` を無理に解除しないでください。
+`npm run check` は src/scripts/test とダッシュボード内JSを検査します。`npm run test:review` は今回の安全回帰と互換テスト、`npm run test:compare -- <base SHA>` は、この2つのレーンに入っていない既存全件の失敗差分です（`docs/ci.md`）。既存失敗を隠さず、全件成功と差分なしを区別してください。詳細と実Realmで未実施の確認項目は `docs/review-hardening.md`。`STOPPING` 中や `PERSISTENCE_FAILED` を無理に解除しないでください。
 
 ## 管理画面の操作機能
 
