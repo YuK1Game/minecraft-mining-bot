@@ -284,6 +284,11 @@ function createReturnSteps ({ goal, ports, flow }) {
     // its received slots showed it full is a new one made beside it.
     if (known.some(at => isChest(at) && either(goalNow.unreached, at)) && !known.some(at => isChest(at) && full(at))) return failed('CHEST_UNREACHED', { retry: { kind: 'position_changed' }, evidence: { state: { at: area(getFeet(), 4) } } })
     if (goalNow.base && gone(goalNow.base)) { say('拠点のチェストがなくなっていたため、作り直します'); goalNow.base = null }
+    // No chest has room and none can be made, and the kit is wanted from these
+    // chests: it is taken first. The wood for the new chest may be in them, and
+    // what is taken out makes room (live 2026-11-18 16:20-16:39 JST: two goals
+    // to take the diamonds out ended held for a chest, with nothing taken).
+    if ((!policy.canBuild() || goalNow.built >= MAX_BUILT) && goalNow.kit !== 'done' && policy.restockWanted()) { goalNow.kit = 'taking'; return { ...completed('KIT_BEFORE_STORE'), next: 'verify' } }
     if (!policy.canBuild()) return failed('NO_CHEST_MATERIAL', { retry: { kind: 'supplies_changed' }, detail: !goalNow.base ? '拠点のチェストを作る木がありません' : goalNow.full.length ? '拠点のチェストが満杯で、新しいチェストを作る木がありません' : '使えるチェストがなく、新しいチェストを作る木がありません' })
     if (goalNow.built >= MAX_BUILT) return failed('CHEST_LIMIT', { retry: { kind: 'supplies_changed' } })
     // The maker answers with a chest standing near the Bot when there is one
@@ -346,7 +351,9 @@ function createReturnSteps ({ goal, ports, flow }) {
     if (!getInventory()) return blocked('INVENTORY_UNKNOWN', { kind: 'inventory_update', timeoutMs: 30000 })
     const cargo = policy.cargo()
     goalNow.remaining = { stacks: cargo.length, items: total(cargo) }
-    if (cargo.length) return { ...failed('CARGO_REMAINS', { remaining: goalNow.remaining, evidence: { chest: goalNow.target, state: { items: goalNow.remaining.items } } }), next: goalNow.target ? 'store' : 'container' }
+    // The kit before the cargo (container): what cannot be stored yet stays held.
+    const first = goalNow.kit === 'taking'
+    if (cargo.length && !first) return { ...failed('CARGO_REMAINS', { remaining: goalNow.remaining, evidence: { chest: goalNow.target, state: { items: goalNow.remaining.items } } }), next: goalNow.target ? 'store' : 'container' }
     // Every chest of the base that may hold what is wanted: its received
     // slots show it, or it was not opened yet. One that does not open from
     // here is walked to first, once (live 2026-11-18 05:11 JST: after a
@@ -369,6 +376,8 @@ function createReturnSteps ({ goal, ports, flow }) {
         if (!ok()) return stopped('RESTOCK_INTERRUPTED')
         const taken = out.progress?.confirmedTransferred ?? 0
         if (taken > 0) { goalNow.progress.taken += taken; goalNow.progress.lastAt = now(); goalNow.progress.last = `${taken} 個を取り出し` }
+        // What was taken out may have made room: the chest is looked at again.
+        if (taken > 0 && first) { const pair = pairOf(getBlock, at); goalNow.full = goalNow.full.filter(other => !same(other, at) && !(pair && same(other, pair))) }
         if (aborted()) return { ...stopped('RESTOCK_INTERRUPTED'), progress: out.progress }
         // A transfer can invalidate inventory after this stage's entry check.
         // Wait for fresh receipts before opening or taking anything else.
@@ -379,6 +388,8 @@ function createReturnSteps ({ goal, ports, flow }) {
     }
     if (aborted()) return stopped('RESTOCK_INTERRUPTED')
     if (!getInventory()) return blocked('INVENTORY_UNKNOWN', { kind: 'inventory_update', timeoutMs: 30000 })
+    // Once per evaluation: back to the chests with what is held now.
+    if (first) { goalNow.kit = 'done'; if (policy.cargo().length) return { ...completed(goalNow.progress.taken ? 'KIT_TAKEN' : 'KIT_NOT_TAKEN'), next: 'container' } }
     // Existing confirmed progress does not erase a failure to take stock that
     // is still known to be here. Missing stock does not create an endless
     // acquisition goal: only existing requests, or a wholly empty trip, wait.
