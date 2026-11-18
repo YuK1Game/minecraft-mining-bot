@@ -239,7 +239,7 @@ function createLongTravelRuntime (rt) {
     const SHOOT = rt.require('./safety/learning-health').SHOOTING
     const p = rt.working().position; if (!p) return false
     const feet = { x: p.x, y: p.y - 1.62, z: p.z }
-    const sh = rt.allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && SHOOT.test(String(a.entityType ?? a.name ?? '')) && !/drowned/.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 20)
+    const sh = rt.require('./combat/trident-throwers').mark(rt.allActors()).filter(a => a?.hostile === true && a.alive !== false && a.position && SHOOT.test(String(a.entityType ?? a.name ?? '')) && (a.tridentThrower === true || !/drowned/.test(String(a.entityType ?? a.name ?? ''))) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 20)
     if (!sh.length) return false
     const nearest = Math.min(...sh.map(a => Math.hypot(a.position.x - feet.x, a.position.z - feet.z)))
     const hurt = Date.now() - (rt.host.shared.travelLastDamageAt ?? 0) < 5000
@@ -538,7 +538,7 @@ function createLongTravelRuntime (rt) {
         const opts = { allowWater: true, allowLowHealth: true, maxDistance: 16 }
         // Shooters (witches included) are avoided on every long trip (coordinator 2026-11-14).
         const st0 = rt.working(), fleeing = true
-        const shooters = fleeing ? rt.allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && rt.require('./safety/learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && !/drowned/.test(String(a.entityType ?? a.name ?? '')) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 48).map(a => a.position) : []
+        const shooters = fleeing ? rt.require('./combat/trident-throwers').mark(rt.allActors()).filter(a => a?.hostile === true && a.alive !== false && a.position && rt.require('./safety/learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && (a.tridentThrower === true || !/drowned/.test(String(a.entityType ?? a.name ?? ''))) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 48).map(a => a.position) : []
         // Avoid zones (coordinator 2026-11-14): 20 m around a received shooter,
         // 32 m around a group of three or more (an outpost), never closer than
         // the bot already is, so the route bends away before the shooter's range.

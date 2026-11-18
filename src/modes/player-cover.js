@@ -69,7 +69,7 @@ function createPlayerCover ({ getMode, shared, agent, getState, hostiles, sight,
     if (hasBow(state.inventory)) { skip = 'bow'; return false }
     const feet = { x: state.position.x, y: state.position.y - 1.62, z: state.position.z }
     const range = actor => Math.hypot(actor.position.x - feet.x, actor.position.y - feet.y, actor.position.z - feet.z)
-    const near = (hostiles() ?? []).filter(actor => actor?.position && ARCHER.test(String(actor.entityType ?? '')) && range(actor) > nearOf(actor) && range(actor) <= FAR_M)
+    const near = (hostiles() ?? []).filter(actor => actor?.position && (ARCHER.test(String(actor.entityType ?? '')) || actor.tridentThrower === true) && range(actor) > nearOf(actor) && range(actor) <= FAR_M)
     const exposed = near.length ? exposedTo(feet, near, sight) : []
     const armed = !unarmed(state.inventory)
     const archers = exposed.filter(actor => !(armed && reachable(actor)))
