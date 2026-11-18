@@ -308,7 +308,7 @@ function createActualQueuedWireClock ({ client, shared, getState }) {
 }
 
 function createRuntime (host) {
-  host.registerPacketEvents?.(['set_spawn_position', 'set_time', 'sync_world_clocks', 'completed_using_item', 'set_entity_motion', 'motion_prediction_hints', 'inventory_transaction', 'update_abilities', 'update_adventure_settings', 'animate', 'set_health', 'mob_effect'])
+  host.registerPacketEvents?.(['set_spawn_position', 'set_time', 'sync_world_clocks', 'completed_using_item', 'set_entity_motion', 'motion_prediction_hints', 'inventory_transaction', 'update_abilities', 'update_adventure_settings', 'animate', 'set_health', 'mob_effect', 'container_set_data'])
   let inventoryLifeReceiptTask = null
   let foodBaselineRefreshTask = null
   const inventoryResyncClient = host.client
@@ -837,7 +837,7 @@ function createRuntime (host) {
   const inventory = createInventory({ client: host.client, getState: working, crafting, allocateRequestId: () => host.allocate('craft'), commitSelection: typeof host.commitSelection === 'function' ? slot => host.commitSelection(slot) : null, selectionStore: host.shared.inventorySelection ??= {}, onUncertain, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
   let armorTask = null
   let manualArmorOwner = null
-  const armor = createArmor({ client: host.client, getState: working, crafting, allocateRequestId: () => host.allocate('craft'), store: host.shared.armorStore ??= {}, inventoryStore, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) }, log: message => host.log(message) })
+  const armor = createArmor({ client: host.client, preferGoldBoots: () => host.shared.botMode === 'player' && host.shared.playerWanted === true && host.shared.dragonGoldBoots === true, getState: working, crafting, allocateRequestId: () => host.allocate('craft'), store: host.shared.armorStore ??= {}, inventoryStore, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) }, log: message => host.log(message) })
   function canEmergencyEatHere () {
     const state = observedState()
     const threats = evaluateThreats(state, state.entities, { observationRadius: 32 })
@@ -856,16 +856,14 @@ function createRuntime (host) {
   const mining = createMining({ blockTimeoutMs: 30000, logAllowance: () => longTravelLogAllowance(), travelDownAllowance: () => Date.now() < (host.shared.travelDownUntil ?? 0), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedStation: (state, target, block) => require('./modes/player-workstations').ownsStation({ shared: host.shared, state, target, block }), verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true || travelBedOwns(target, block), verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true || travelShulkerOwns(target, block) })
   const interactions = createInteractions({ client: host.client, getState: () => ({ ...working(), lifecycle: { deathId: actualLifeId() } }), world: host.world, crafting, getInput: () => input, version: host.meta.version, onInventory, onUncertain, allocateLegacyId: () => host.allocate('interaction') })
 
-  function commitChestMainDelta (delta) {
-    if (!delta || delta.source !== 'server_item_stack_response' || !Number.isInteger(delta.slot) || delta.slot < 0 || delta.slot >= 36 || !delta.item) throw new Error('Chest main-slot response is not an authoritative delta')
-    crafting.applyPacket('inventory_slot', delta)
-    const input = Array.from({ length: 36 }, (_, slot) => crafting.rawItem(slot))
-    if (input.some(item => !item)) throw new Error('Chest response cannot reconcile an unknown inventory baseline')
-    // This is the prior observed baseline plus ONE accepted server response.
-    // It is not a newly received 36-slot refresh and never clears uncertainty.
-    host.commitInventory({ window_id: 'inventory', input, changedSlots: [delta.slot], fullRefresh: false, source: delta.source, requestId: delta.requestId })
-    host.shared.lastChestInventoryUpdate = { source: delta.source, requestId: delta.requestId, changedSlots: [delta.slot], fullRefresh: false, at: new Date().toISOString() }
-  }
+  // This part lives in inventory-response-runtime.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const inventoryResponse = require('./runtime/inventory-response-runtime').createInventoryResponseRuntime({
+    get crafting () { return crafting },
+    get host () { return host }, set host ($value) { host = $value }
+  })
+  function commitChestMainDelta (...args) { return inventoryResponse.commitChestMainDelta(...args) }
   const chest = createChest({ client: host.client, getState: () => { const state = working(); return { ...state, profile: state.profile ?? host.meta.profile, lifecycle: { ...(state.lifecycle ?? {}), deathId: foodKnownLife() } } }, world: host.world, crafting, interactions, version: host.meta.version, allocateRequestId: () => host.allocate('craft'), onUncertain, onInventory: commitChestMainDelta })
   const quarryV22Equipment = createQuarryV22Equipment({
     client: host.client,
@@ -2646,6 +2644,7 @@ function createRuntime (host) {
     inventoryStore.apply(name, packet, { replaying })
     crafting.applyPacket(name, packet)
     inventoryInspection.applyPacket(name, packet, { replaying })
+    if (!replaying) require('./modes/dragon-brew-window').observeBrewing(host, name, packet)
     furnace.applyPacket(name, packet)
     chest.applyPacket(name, packet, { replaying })
     inventory.applyPacket(name, packet, { replaying })
@@ -2922,6 +2921,7 @@ function createRuntime (host) {
   // this closure through accessors, so each use sees the current value exactly
   // as the code did when it was written here.
   const runtimeOperations = require('./runtime/runtime-operations').createRuntimeOperations({
+    get dragonInput () { return input }, commitBrewMainDelta: commitChestMainDelta,
     get activeBase () { return activeBase },
     get actualLifeId () { return actualLifeId }, get allActors () { return allActors },
     get armor () { return armor },
@@ -3244,7 +3244,7 @@ function createRuntime (host) {
       host.shared.ownedCampBootstrap=ownedCampBootstrap.snapshot()
       if(home.handled)return home.result
       const active = autonomyRuntime.autonomy.snapshot()
-      if (!userBehaviorOwns() && !pendingStops.size && !active.running && !active.busy && !active.actionActive && Date.now() >= (host.shared.depotMiningRestartAt ?? 0)) {
+      if (!host.shared.dragonOwnsWork?.() && !userBehaviorOwns() && !pendingStops.size && !active.running && !active.busy && !active.actionActive && Date.now() >= (host.shared.depotMiningRestartAt ?? 0)) {
         host.shared.depotMiningRestartAt = Date.now()+10000
         autonomyRuntime.autonomy.start({objective:'diamond',diamondCount:1,maxRunMs:7200000,maxWaitTicks:1200,...host.shared.autoOptions,progress:host.shared.autonomyProgress})
       }
@@ -3401,7 +3401,7 @@ function createRuntime (host) {
   depotPrebuild=createWorksiteCampPrebuild({getState:prebuildState,getRawItem:slot=>crafting.rawItem(slot),world:host.world,getSurface:()=>host.shared.depotSurfaceAnchor,getBuilder:()=>depotBuilder?{...depotBuilder.snapshot(),protectedCells:depotBuilder.protectedCells()}:null,getStorage:()=>chest.snapshot(),isIdle:prebuildIdle,
     takeover:async({scope,signal})=>{if(signal.aborted || JSON.stringify(continuationScope(prebuildState()))!==JSON.stringify(scope) || !prebuildIdle())return false;host.shared.depotReacquireWanted=false;autonomyRuntime.autonomy.stop('Prepare a real depot before valuable mining');await autonomyRuntime.autonomy.tick();return !signal.aborted && JSON.stringify(continuationScope(prebuildState()))===JSON.stringify(scope) && prebuildIdle()},
     dispatch:(intent,context)=>dispatchDepotIntent(intent,{...context,prebuild:true}),
-    resumeLegacy:async({scope,signal})=>{if(signal.aborted || JSON.stringify(continuationScope(prebuildState()))!==JSON.stringify(scope) || !prebuildIdle())throw Error('Prebuild release owner changed');host.shared.depotReacquireWanted=true;const s=autonomyRuntime.autonomy.snapshot();if(!s.running&&!s.busy&&!s.actionActive)autonomyRuntime.autonomy.start({objective:'diamond',diamondCount:1,maxRunMs:7200000,maxWaitTicks:1200,...host.shared.autoOptions,progress:host.shared.autonomyProgress})},onProgress:value=>{host.shared.depotPrebuildStatus=value}})
+    resumeLegacy:async({scope,signal})=>{if(host.shared.dragonOwnsWork?.() || signal.aborted || JSON.stringify(continuationScope(prebuildState()))!==JSON.stringify(scope) || !prebuildIdle())throw Error('Prebuild release owner changed');host.shared.depotReacquireWanted=true;const s=autonomyRuntime.autonomy.snapshot();if(!s.running&&!s.busy&&!s.actionActive)autonomyRuntime.autonomy.start({objective:'diamond',diamondCount:1,maxRunMs:7200000,maxWaitTicks:1200,...host.shared.autoOptions,progress:host.shared.autonomyProgress})},onProgress:value=>{host.shared.depotPrebuildStatus=value}})
   depotMission = createDepotMission({ getState: () => ({ ...lightweightUserState(), hut: hut?.snapshot(), shelter: shelter?.snapshot(), food: food.snapshot() }), world: host.world, getRawItem: slot => crafting.rawItem(slot), workspaceRoot: host.meta.workspaceRoot, dispatch: dispatchDepotIntent, onProgress: value => { host.shared.depotMissionStatus = value } })
   host.cache.replay(applyPacket)
   replaying = false
@@ -3873,7 +3873,7 @@ function createRuntime (host) {
     const resume = () => {
       if (chunkMoveHeld()) return
       if (manualChestStorage?.isBusy()) return
-      if (logicalWorkHeld()) return
+      if (logicalWorkHeld() || host.shared.dragonOwnsWork?.()) return
       if (depotMission?.isEnabled()) { void depotMission.resume(); return }
       const status = autonomyRuntime.autonomy.snapshot()
       // stop() releases running before the current tick finally drains.

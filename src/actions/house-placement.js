@@ -31,7 +31,8 @@ function createHousePlan ({ session, slotItem, crafting, world, overlapsPlayer, 
     const observed = crafting.snapshot()
     if (observed.inventoryKnown === false || state.inventory?.known === false) throw new Error('設置前にサーバーの持ち物全体を確認してください。')
     const description = observed.inventory.find(item => item.slot === slot)
-    const expectedBlock = description?.name
+    const receivedItem = description?.name
+    const expectedBlock = /^minecraft:[a-z_]+_bed$/.test(receivedItem ?? '') ? 'minecraft:bed' : receivedItem
     if (!HOUSE.test(expectedBlock ?? '') || raw.count < 1 || description.count !== raw.count || description.stackId != null && description.stackId !== raw.stack_id) throw new Error('指定スロットに拠点の家の建材がありません。')
     if (!air(world.getBlock(target.x, target.y, target.z))) throw new Error('設置先は取得済みの空気ブロックである必要があります。')
     if (/_door$/.test(expectedBlock) && !air(world.getBlock(target.x, target.y + 1, target.z))) throw new Error('ドアの上のマスが空いていません。')

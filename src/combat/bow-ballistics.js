@@ -51,7 +51,12 @@ function solvePitch (settings, origin, point) {
   // on the low arc, so bisection is exact enough (< 0.001 deg).
   let lo = -80; let hi = 45
   const errorAt = u => { const r = heightAt(base, -u, horizontal); return r.reached ? r.y - point.y : -Infinity }
-  if (errorAt(hi) < 0) return null
+  if (settings.elevatedTarget && errorAt(hi) < 0) {
+    // A high spike can be reached only by a steeper arc. Find the first
+    // crossing: past its peak a still steeper arrow may no longer reach it.
+    for (hi = 47; hi <= 79 && errorAt(hi) < 0; hi += 2) lo = hi
+    if (hi > 79) return null
+  } else if (errorAt(hi) < 0) return null
   if (errorAt(lo) > 0) return null
   for (let i = 0; i < 48; i++) {
     const mid = (lo + hi) / 2

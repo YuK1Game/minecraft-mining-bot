@@ -377,7 +377,7 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
     outputName = nameOf(outputName)
     return [...recipes.values()].filter(recipe => recipe.output?.length === 1 && itemName(recipe.output[0]) === outputName).map(recipe => ({ kind: recipe.kind, id: recipe.recipe_id, networkId: recipe.network_id, block: recipe.block, width: recipe.width, height: recipe.height, input: copy(recipe.input), output: recipe.output.map(item => ({ name: itemName(item), count: item.count })) }))
   }
-  return { applyPacket, preview, craft, openInventory, closeContainer, rawItem, status, inventorySnapshot, snapshot, describeRecipes, cancel, itemNameOf: networkId => names.get(networkId) ?? null }
+  return { applyPacket, preview, craft, openInventory, closeContainer, rawItem, status, inventorySnapshot, snapshot, describeRecipes, cancel, itemIdOf: name => [...names].find(([, value]) => value === name)?.[0] ?? null, itemNameOf: networkId => names.get(networkId) ?? null }
 }
 
 module.exports = { createCrafting }

@@ -11,6 +11,7 @@ const { fluidRoofNeighbourSafe } = require('../quarry/quarry-fluid-roof-safety')
 const { stationTarget, stationScope, assertOwnedStation } = require('./station-recovery')
 
 const AIR = new Set(['air', 'cave_air', 'void_air'])
+const STRONGHOLD = new Set(['minecraft:mob_spawner', 'minecraft:stonebrick', 'minecraft:stone_bricks', 'minecraft:cracked_stone_bricks', 'minecraft:mossy_stone_bricks'])
 const HAND = new Set(['dirt', 'grass_block', 'grass', 'coarse_dirt', 'rooted_dirt', 'moss_block', 'vine'])
 const PICK = new Map([
   ...['stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', 'netherrack', 'coal_ore', 'deepslate_coal_ore', 'nether_quartz_ore'].map(name => [name, 1]),
@@ -50,6 +51,18 @@ function targetList (targets) {
     } else if (position.accessPreparation === 'house_door') {
       if (typeof position.expectedName !== 'string' || !/^minecraft:[a-z_]+_door$/.test(position.expectedName) || /iron/.test(position.expectedName)) throw new Error('House door mining needs the expected wooden door')
       Object.assign(target, { accessPreparation: 'house_door', expectedName: position.expectedName })
+    } else if (position.accessPreparation === 'stronghold_access') {
+      if (!STRONGHOLD.has(position.expectedName) || !Number.isSafeInteger(position.expectedRuntimeId)) throw Error('受信した要塞の石レンガまたはスポナーが必要です。')
+      Object.assign(target, { accessPreparation: 'stronghold_access', expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId })
+    } else if (position.accessPreparation === 'end_expedition') {
+      if (!['minecraft:iron_bars', 'minecraft:end_stone', 'minecraft:obsidian'].includes(position.expectedName)) throw Error('エンドの鉄格子・エンドストーン・黒曜石だけを掘ります。')
+      Object.assign(target, { accessPreparation: 'end_expedition', expectedName: position.expectedName })
+    } else if (position.accessPreparation === 'nether_ingredient') {
+      if (!['minecraft:nether_wart', 'minecraft:soul_sand'].includes(position.expectedName)) throw new Error('醸造用のネザー素材を指定してください。')
+      Object.assign(target, { accessPreparation: 'nether_ingredient', expectedName: position.expectedName })
+    } else if (position.accessPreparation === 'farm_harvest') {
+      if (!['minecraft:wheat', 'minecraft:short_grass', 'minecraft:tallgrass'].includes(position.expectedName) || !Number.isSafeInteger(position.expectedRuntimeId) || position.expectedRuntimeId < 0) throw new Error('畑には受信した作物か種用の草を指定してください。')
+      Object.assign(target, { accessPreparation: 'farm_harvest', expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId })
     } else if (position.accessPreparation === 'house_sand') {
       // Player mode's house glass: sand or red sand with open air above (checked in validate).
       Object.assign(target, { accessPreparation: 'house_sand' })
@@ -93,8 +106,8 @@ function targetList (targets) {
 
 function pickTier (state) {
   if (!Number.isInteger(state.selectedSlot) || !state.heldItem?.name) return 0
-  const name = state.heldItem.name.replace(/^minecraft:/, '')
-  return { wooden_pickaxe: 1, golden_pickaxe: 1, stone_pickaxe: 2, iron_pickaxe: 3, diamond_pickaxe: 4, netherite_pickaxe: 4 }[name] ?? 0
+  const tool = quarryTool(state.heldItem)
+  return tool?.kind === 'pickaxe' ? tool.tier : 0
 }
 
 function createMining ({ getState, world, getInput, verifyOwnedBed = null, verifyOwnedShulker = null, verifyOwnedStation = null, getRawItem = null, isProtected = () => false, now = Date.now, blockTimeoutMs = 15000, logAllowance = () => false, travelDownAllowance = () => false }) {
@@ -267,7 +280,15 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     // was refused 「このブロックは自動採掘の対象外です: sand」).
     const houseSand = target.accessPreparation === 'house_sand' && /^(?:red_)?sand$/.test(name)
     if (target.accessPreparation === 'house_sand' && !houseSand) throw new Error(`砂だけを掘ります: ${name}`)
-    if (!quarry && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !ownedStation && !logAllowed && !leafDown && !houseDoor && !houseSand) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
+    const stronghold = target.accessPreparation === 'stronghold_access'
+    if (stronghold && (state.dimension !== 'overworld' || block.name !== target.expectedName || block.runtimeId !== target.expectedRuntimeId || pickTier(state) < 1 || block.protected || block.protectionSource || isProtected(target, state, block))) throw Error('要塞の対象・ツルハシを再確認しています。')
+    const endTarget = target.accessPreparation === 'end_expedition'
+    if (endTarget && (state.dimension !== 'end' || block.name !== target.expectedName || pickTier(state) < (block.name === 'minecraft:obsidian' ? 4 : 1) || block.protected || block.protectionSource || isProtected(target, state, block))) throw Error('エンドの対象と手に持ったツルハシを確認します。')
+    const ingredient = target.accessPreparation === 'nether_ingredient'
+    if (ingredient && (state.dimension !== 'nether' || block.name !== target.expectedName || block.protected || block.protectionSource || isProtected(target, state, block))) throw new Error('取得したネザーの素材だけを掘れます。')
+    const farmHarvest = target.accessPreparation === 'farm_harvest'
+    if (farmHarvest && (state.dimension !== 'overworld' || block.name !== target.expectedName || block.runtimeId !== target.expectedRuntimeId || name === 'wheat' && block.properties?.growth !== 7 || block.protected || block.protectionSource || isProtected(target, state, block))) throw new Error('収穫対象が変わったか、作物がまだ育っていません。')
+    if (!farmHarvest && !endTarget && !quarry && !ingredient && !stronghold && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !ownedStation && !logAllowed && !leafDown && !houseDoor && !houseSand) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
     if (clearance && (block.name !== 'minecraft:stone' || block.runtimeId !== target.expectedRuntimeId || block.protected === true || block.protectionSource || block.natural === false || isProtected(target, state, block))) throw new Error('Stone clearance target changed or is protected')
     const handDig = target.accessPreparation === 'hand_dig'
     if (handDig && !HAND_ROCK.has(name)) throw new Error(`素手で掘るのは普通の石だけです: ${name}`)

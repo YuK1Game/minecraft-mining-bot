@@ -514,6 +514,10 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
     let mark = performance.now()
     try {
       if (active()) throw new Error('Movement is already running')
+      if (options.endPortalEntry === true) {
+        const entry = require('./end-portal-entry').portalEntry(world, currentState(), target, version, options.signal)
+        return begin({ ...entry.prepared, beforeInput: options.beforeInput }, entry.stepper, 'moving')
+      }
       const prepared = prepare(target, options)
       timing.prepareMs = performance.now() - mark
       if (!prepared.route.ready) throw new Error(prepared.route.reason ?? 'No safe navigation route')

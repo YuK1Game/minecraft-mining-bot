@@ -44,7 +44,7 @@ function armorInfo (name) {
   return { slot, score: MATERIAL[m[1]].points[slot] * 10 + MATERIAL[m[1]].toughness }
 }
 
-function createArmor ({ client, getState, crafting, allocateRequestId, store = {}, inventoryStore = null, onInventory = () => {}, log = () => {}, now = () => Date.now(), timeoutMs = 3000 }) {
+function createArmor ({ client, getState, crafting, allocateRequestId, store = {}, inventoryStore = null, preferGoldBoots = () => false, onInventory = () => {}, log = () => {}, now = () => Date.now(), timeoutMs = 3000 }) {
   // Hosts without a full inventory controller (test fakes, replay) get an
   // armor helper that never plans a move.
   const capable = typeof client?.queue === 'function' && typeof getState === 'function' && typeof crafting?.rawItem === 'function' && typeof crafting?.snapshot === 'function' && typeof crafting?.openInventory === 'function' && typeof crafting?.closeContainer === 'function' && typeof allocateRequestId === 'function'
@@ -65,7 +65,11 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   let preemptionRevision = 0, runningBatches = 0
 
   const nameOf = raw => empty(raw) ? null : (typeof crafting.itemNameOf === 'function' ? crafting.itemNameOf(raw.network_id) : null)
-  function wornScore (slot) { const raw = worn.get(slot), name = nameOf(raw); return name ? pieceRank(name, raw) : 0 }
+  // The Nether scout deliberately wears gold. Score both the worn and held
+  // pair with the same preference, so auto-equip never oscillates.
+  function rank (name, raw, goldBoots) {
+    return pieceRank(name, raw) + (goldBoots && name === 'minecraft:golden_boots' ? 1e9 : 0)
+  }
   // The offhand (one slot) from the same shared record, when there is one.
   const offhand = shared && typeof shared.map === 'function' ? (() => { try { return shared.map('offhand', 'armor_controller') } catch { return null } })() : null
   const offhandKnown = () => { try { return !!offhand && shared.known('offhand', { loose: true }) } catch { return false } }
@@ -74,11 +78,13 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   function nextUpgrade () {
     if (!isKnown()) return null
     const items = crafting.snapshot().inventory ?? []
+    const goldBoots = preferGoldBoots()
     let best = null
     for (const item of items) {
       const info = armorInfo(item.name)
       if (!info || !Number.isInteger(item.slot) || item.slot < 0 || item.slot > 35) continue
-      const gain = pieceRank(item.name, crafting.rawItem(item.slot)) - wornScore(info.slot)
+      const current = worn.get(info.slot)
+      const gain = rank(item.name, crafting.rawItem(item.slot), goldBoots) - rank(nameOf(current), current, goldBoots)
       if (gain > 0 && (!best || gain > best.gain)) best = { sourceSlot: item.slot, armorSlot: info.slot, name: item.name, gain }
     }
     if (best) return best
@@ -199,7 +205,7 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   }
 
   function snapshot () {
-    return { busy: !!operation, known: isKnown(), worn: PIECES.map(([piece, slot]) => ({ piece, name: nameOf(worn.get(slot)) })), next: isKnown() ? nextUpgrade() : null, lastResult: copy(lastResult) }
+    return { busy: !!operation, known: isKnown(), offhand: offhand?.get(0) ? { name: nameOf(offhand.get(0)) } : null, worn: PIECES.map(([piece, slot]) => ({ piece, name: nameOf(worn.get(slot)) })), next: isKnown() ? nextUpgrade() : null, lastResult: copy(lastResult) }
   }
   return { preview, equipBest, preemptForCombat, applyPacket, snapshot, discard: (slot, count) => discard ? discard.drop(slot, count) : Promise.reject(new Error('持ち物を捨てる操作に対応していません。')) }
 }

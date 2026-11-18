@@ -1,0 +1,194 @@
+'use strict'
+
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { GEAR } = require('../src/survival/diamond-gear')
+const { earlyObjective, runDragonEarly } = require('../src/modes/dragon-early')
+const { farmSites, provisionFood } = require('../src/modes/dragon-early-food')
+const { chestOf } = require('../src/modes/house/house-spawn')
+const house = { done: true, spawn: true, origin: { x: 0, y: 65, z: 0 } }
+const kit = GEAR.map(piece => ({ name: 'minecraft:' + piece.output, count: 1 }))
+const observed = (items = kit) => ({ known: true, items })
+const worn = names => ({ known: true, worn: names.map(name => ({ name })) })
+
+test('reuse the house and survival jobs until actual equipment exists', () => {
+  assert.equal(earlyObjective({ inventory: observed([]), house }).id, 'wood')
+  assert.equal(earlyObjective({ inventory: observed(), house: null }).id, 'base')
+  const inv = tier => observed([{ name: 'minecraft:' + tier + '_pickaxe', count: 1 }])
+  assert.equal(earlyObjective({ inventory: inv('wooden'), house }).id, 'stone')
+  for (const pick of ['stone', 'iron']) {
+    const inventory = inv(pick)
+    const memory = { early: {} }
+    assert.equal(earlyObjective({ inventory, house, memory }).id, 'home_spawn')
+    memory.early.spawnReady = true
+    assert.equal(earlyObjective({ inventory, house, memory }).id, 'home_reserve')
+    memory.early.reserveReady = true
+    const next = earlyObjective({ inventory, house, memory })
+    assert.equal(next.id, 'diamond')
+    assert.equal(next.legacy, true)
+  }
+  assert.equal(earlyObjective({ inventory: observed(kit.slice(0, 2)), worn: worn(kit.slice(2).map(piece => piece.name)), house }).id, 'home_spawn')
+  assert.equal(earlyObjective({ inventory: { ...observed(), uncertain: true }, house }).id, 'observe')
+})
+
+function context (state, supplies, boots = false) {
+  const here = chestOf(house.origin)
+  return {
+    signal: new AbortController().signal, cancelled: () => false,
+    getFeet: () => here, getBlock: () => ({ known: true, name: 'minecraft:air' }),
+    hands: {}, runtime: { armor: () => worn(boots ? ['minecraft:golden_boots'] : []), inventory: () => observed() },
+    shared: { playerHouse: house }, memory: { early: state }, supplies,
+    operations: { interactions: {}, armor: { equipBest: async () => {} } }
+  }
+}
+
+test('acquires missing reserve item away from the chest without re-inspecting on every tick', async () => {
+  const state = { spawnReady: true }
+  let visits = 0, acquisitions = 0
+  const ctx = context(state, {
+    reserve: async () => ++visits > 1 ? { done: true, reason: 'stocked' } : { done: false, missing: { name: 'iron_sword', count: 1 }, reason: 'missing' },
+    acquire: async (name, count) => { assert.equal(name, 'iron_sword'); assert.equal(count, 1); return { done: ++acquisitions === 2, reason: 'craft' } }
+  })
+  ctx.runtime.inventory = () => observed([{ name: 'minecraft:stone_pickaxe', count: 1 }])
+  for (let tick = 0; tick < 3; tick++) assert.equal((await runDragonEarly(ctx)).done, false)
+  assert.equal(visits, 1)
+  assert.equal(state.reserveReady, undefined)
+  assert.equal((await runDragonEarly(ctx)).done, false)
+  assert.equal(state.reserveReady, true)
+  assert.equal(earlyObjective({ inventory: ctx.runtime.inventory(), house, memory: ctx.memory }).legacy, true)
+})
+
+test('Nether handover waits for the worn gold slot and supplies; the reserve stays banked', async () => {
+  const state = { spawnReady: true, reserveReady: true }
+  const ctx = context(state, { prepare: async () => ({ done: true }) })
+  assert.equal((await runDragonEarly(ctx)).done, false)
+  assert.equal(ctx.shared.dragonGoldBoots, true)
+  ctx.runtime.armor = () => worn(['minecraft:diamond_chestplate', 'minecraft:diamond_leggings', 'minecraft:diamond_helmet', 'minecraft:golden_boots'])
+  assert.equal((await runDragonEarly(ctx)).done, true)
+  assert.equal(state.outfitted, true)
+})
+
+test('farm sites have water, received open cells and do not occupy the starter house', () => {
+  const water = 'minecraft:water', dirt = 'minecraft:dirt', air = 'minecraft:air'
+  const get = (x, y, z) => ({ known: true, name: y !== 65 ? air : x === 0 && z === 2 ? water : dirt })
+  const sites = farmSites(get, house.origin)
+  assert.ok(sites.length > 0)
+  assert.ok(sites.every(at => at.x < -1 || at.x > 7 || at.z < -1 || at.z > 10))
+  assert.deepEqual(farmSites(() => ({ known: false }), house.origin), [])
+})
+
+test('food stock is credited from received usable food only', async () => {
+  const ctx = { cancelled: () => false, runtime: { raw: () => ({ dimension: 'nether' }), inventory: () => observed([{ name: 'minecraft:chicken', count: 64 }]) } }
+  assert.equal((await provisionFood(ctx, 32)).done, false)
+  ctx.runtime.inventory = () => observed([{ name: 'minecraft:bread', count: 18 }, { name: 'minecraft:cooked_beef', count: 14 }])
+  assert.equal((await provisionFood(ctx, 32)).done, true)
+})
+
+test('cooled obsidian requires dry high ground and a verified bucket exchange before the source is removed', async () => {
+  const { coolLava } = require('../src/modes/dragon-early-quarry')
+  const id = (x, y, z) => [x, y, z].join(',')
+  const world = new Map(), block = (name, box, more) => ({ known: true, name: 'minecraft:' + name, boundingBox: box, properties: more, extra: [] })
+  const getBlock = (x, y, z) => world.get(id(x, y, z)) ?? block('air', 'empty')
+  const lava = { x: 25, y: 64, z: 0 }
+  world.set('25,64,0', block('lava', 'empty', { liquid_depth: 0 }))
+  world.set('26,64,0', block('stone', 'block'))
+  const inventory = [{ name: 'minecraft:water_bucket', slot: 0, count: 1 }]
+  const ctx = {
+    memory: { early: {} }, cancelled: () => false, shared: {},
+    runtime: { inventory: () => observed(inventory) }, getBlock, getFeet: () => ({ x: 27.5, y: 66, z: 0.5 }),
+    supplies: { waterAt: async () => {
+      world.set('26,65,0', block('water', 'empty', { liquid_depth: 0 }))
+      return { done: true }
+    } },
+    operations: { inventory: { equip: async () => ({ slot: 0 }) }, interactions: { useDragonItem: async cmd => {
+      assert.deepEqual(cmd.position, { x: 26, y: 65, z: 0 })
+      world.delete('26,65,0')
+      inventory[0].name = 'minecraft:water_bucket'
+    } } }
+  }
+  assert.equal(await coolLava(ctx, [lava]), false)
+  world.set('27,65,0', block('stone', 'block'))
+  assert.equal(await coolLava(ctx, [lava]), true)
+  assert.notEqual(ctx.memory.early.mine.pond.placed, true, 'block observation alone does not prove it was our bucket')
+  inventory[0].name = 'minecraft:bucket'
+  world.set('25,64,0', block('obsidian', 'block'))
+  assert.equal(await coolLava(ctx, []), true)
+  assert.equal(ctx.memory.early.mine.pond, undefined)
+  assert.equal(inventory[0].name, 'minecraft:water_bucket')
+})
+
+test('when no ore is exposed the mineral search returns to the recorded stairs of the same Realm', async () => {
+  const { searchMine } = require('../src/modes/dragon-early-quarry')
+  const scope = { profile: 'test', realm: { id: '42' }, dimension: 'overworld' }
+  const floor = { x: 12, y: 53, z: 8 }
+  let walked = null
+  const ctx = {
+    memory: { early: {} }, runtime: { raw: () => scope }, shared: { tunnelFloors: { scopes: {
+      [JSON.stringify(['test', '42', 'overworld'])]: { floors: [floor] }
+    } } }, cancelled: () => false, getFeet: () => ({ x: 12.5, y: 59, z: 8.5 }),
+    getBlock: (x, y, z) => ({ known: true, name: y === floor.y ? 'minecraft:stone' : 'minecraft:air', boundingBox: y === floor.y ? 'block' : 'empty', extra: [] }),
+    hands: { walk: async at => { walked = at; return true } }
+  }
+  assert.equal(await searchMine(ctx, 'raw_gold'), true)
+  assert.deepEqual(walked, { x: 12.5, y: 54, z: 8.5 })
+})
+
+test('physical home reserve keeps a working pick, and can re-equip a bare respawn before diamond mining', async () => {
+  const { createDragonSupplies } = require('../src/modes/dragon-supplies')
+  const { recoverDragon } = require('../src/modes/dragon-recovery')
+  const { home } = require('../src/modes/dragon-supply-kit')
+  const position = chestOf(house.origin)
+  const window = { id: 3, epoch: 1, scope: 'home', position, slotCount: 54 }
+  const slots = Array.from({ length: 54 }, (_, slot) => ({ slot, known: true, count: 0, name: null }))
+  const stack = (slot, name, count) => ({ slot, name: 'minecraft:' + name, count, known: true })
+  const main = [stack(0, 'iron_pickaxe', 1)]
+  const record = { stage: 'early', early: { spawnReady: true }, stronghold: {} }
+  const transfers = []
+  const ctx = context(record.early, {})
+  ctx.memory = record
+  ctx.runtime.inventory = () => observed(main)
+  ctx.runtime.raw = () => ({ dimension: 'overworld', position, health: 20, inventory: observed(main) })
+  ctx.operations.crafting = { closeContainer () {} }
+  const confirmed = count => ({ serverConfirmed: true, inventoryConfirmed: true, containerConfirmed: true, count })
+  ctx.operations.chest = {
+    open: async () => ({ windowId: window.id }),
+    snapshot: () => ({ window, slots, contentsKnown: true }),
+    depositItem: async ({ sourceSlot, count, expectedName }) => {
+      const row = main.find(i => i.slot === sourceSlot && i.name === expectedName)
+      assert.ok(row.count >= count)
+      row.count -= count
+      slots[0] = { ...row, slot: 0, count }
+      transfers.push(['in', expectedName])
+      return confirmed(count)
+    },
+    withdrawItem: async ({ chestSlot, count, expectedName }) => {
+      const row = slots[chestSlot]
+      assert.equal(row.name, expectedName)
+      assert.ok(row.count >= count)
+      row.count -= count
+      main.push({ ...row, slot: main.length, count })
+      transfers.push(['out', expectedName])
+      return confirmed(count)
+    }
+  }
+  ctx.supplies = createDragonSupplies(ctx)
+  const stock = () => ctx.supplies.reserve(position, { mode: 'stock', kit: 'home' })
+  assert.deepEqual((await stock()).missing, { name: 'iron_pickaxe', count: 2 })
+  assert.deepEqual(transfers, [])
+  main.push(stack(1, 'diamond_pickaxe', 1))
+  await stock()
+  assert.deepEqual(transfers, [['in', 'minecraft:iron_pickaxe']])
+  main.length = 0
+  assert.deepEqual((await stock()).missing, { name: 'iron_pickaxe', count: 1 }, 'one banked pick cannot prove a usable main kit')
+
+  for (const [slot, [name, count]] of home.entries()) slots[slot] = stack(slot, name === 'food' ? 'bread' : name, count)
+  record.early.reserveReady = true
+  record.recovery = { dimension: 'overworld', cause: 'lava', at: Date.now() }
+  for (let i = 0; i <= home.length; i++) await recoverDragon(ctx, record)
+  assert.equal(record.recovery, null)
+  assert.ok(main.some(i => i.name === 'minecraft:iron_pickaxe' && i.count === 1))
+  assert.ok(main.some(i => i.name === 'minecraft:iron_chestplate' && i.count === 1))
+  assert.equal(record.early.reserveReady, false)
+  assert.equal(earlyObjective({ inventory: observed(main), house, memory: record }).id, 'home_reserve')
+  assert.ok(slots.every(i => i.count === 0))
+})

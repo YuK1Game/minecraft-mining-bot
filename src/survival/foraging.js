@@ -130,7 +130,7 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
       const observation = observe()
       const selected = initialChoice(observation, targetRuntimeId)
       if (targetRuntimeId !== null && !selected) throw new ForagingError('指定された食料源は未観測・不適格・除外中です。別の動物へは切り替えません。', 'FORAGING_TARGET_UNAVAILABLE')
-      if (foodCount(observation.state)) return { ready: false, code: 'FOOD_ALREADY_AVAILABLE', recommendation: 'eat' }
+      if (options.stockpile !== true && foodCount(observation.state)) return { ready: false, code: 'FOOD_ALREADY_AVAILABLE', recommendation: 'eat' }
       if (!selected) return { ready: false, code: 'NO_KNOWN_FOOD_SOURCE', capability: 'food_source_observation', errors: ['観測済みの対応食料か、保護されていない牛・豚・羊が必要です。'] }
       return { ready: true, ...(targetRuntimeId === null ? {} : { requestedTargetRuntimeId: targetRuntimeId }), kind: selected.kind, target: { runtimeId: String(idOf(selected.entity)), name: selected.kind === 'drop' ? selected.entity.name : typeOf(selected.entity), position: copy(selected.entity.position), ...(selected.kind === 'prey' && chickenYield(selected.entity) ? { yieldRisk: chickenYield(selected.entity) } : {}) }, distance: spatial(observation.state.position, selected.entity.position), maxSteps: BATCH, maxHits: BATCH, maxDurationMs: 30000 }
     } catch (error) { return { ready: false, code: error.code, recommendation: error.recommendation, errors: [error.message] } }
@@ -381,7 +381,7 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
     entry.failures++; entry.blockedUntil = clock() + milliseconds; entry.reason = reason
     if (continuation?.pin.runtimeId === String(idOf(entity))) continuation = null
   }
-  async function execute ({ targetRuntimeId, maxSteps = BATCH, maxHits = BATCH, timeoutMs = 30000 } = {}, { signal } = {}) {
+  async function execute ({ targetRuntimeId, stockpile = false, maxSteps = BATCH, maxHits = BATCH, timeoutMs = 30000 } = {}, { signal } = {}) {
     if (active) throw new ForagingError('前の食料探しが進行中です。', 'BUSY')
     if (!Number.isInteger(maxSteps) || maxSteps < 0 || maxSteps > MAX_BATCH || !Number.isInteger(maxHits) || maxHits < 0 || maxHits > MAX_BATCH || !Number.isFinite(timeoutMs) || timeoutMs < 100 || timeoutMs > 30000) throw new ForagingError(`食料探しは30秒、移動${MAX_BATCH}回・攻撃${MAX_BATCH}打以内です。`, 'INVALID_LIMIT')
     const requestedId = requestedTarget(targetRuntimeId)
@@ -390,7 +390,7 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
     if (requestedId !== null && requestedId !== continuation?.pin.runtimeId || !retainedPrey(initial)) continuation = null
     const initialTarget = initialChoice(initial, requestedId)
     if (requestedId !== null && !initialTarget) throw new ForagingError('指定された食料源は未観測・不適格・除外中です。', 'FORAGING_TARGET_UNAVAILABLE')
-    if (foodCount(initial.state)) return { ok: true, phase: 'observed', foodAvailable: true, foodGained: 0, collected: false, serverConfirmed: true, reason: '対応食料を既に持っています。食事を優先してください。' }
+    if (!stockpile && foodCount(initial.state)) return { ok: true, phase: 'observed', foodAvailable: true, foodGained: 0, collected: false, serverConfirmed: true, reason: '対応食料を既に持っています。食事を優先してください。' }
     const controller = new AbortController()
     const run = { controller, signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal, baseline: initial.state, initialFood: foodCount(initial.state), deadline: clock() + timeoutMs, maxSteps, correctionBudgetExhausted: false, attempted: new Set(), moved: false, predicted: false, cleanup: null }
     run.automatic = requestedId === null; run.continuationScope = preyScope(initial.state)

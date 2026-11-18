@@ -13,13 +13,15 @@ const { createApi } = require('./api')
 const { createWorld } = require('./world')
 const { createEntities } = require('./entities')
 const { createLifecycle } = require('./lifecycle')
+const { createDimensionHandoff } = require('./dimension-handoff')
 const { createSessionCache } = require('./session-cache')
 const { createHotReloader } = require('./hotreload')
 const { normalizePlayerCorrection } = require('../movement/server-physics')
 const { createRespawnSwim } = require('./respawn-swim')
 const { parseQuarryCommand } = require('./quarry-cli')
 
-const PACKET_EVENTS = ['start_game', 'move_player', 'correct_player_move_prediction', 'server_post_move', 'change_dimension', 'respawn', 'update_attributes', 'set_health', 'death_info', 'item_registry', 'inventory_content', 'inventory_slot', 'mob_equipment', 'player_hotbar', 'set_player_game_type', 'update_player_game_type', 'level_chunk', 'subchunk', 'update_block', 'update_subchunk_blocks', 'update_block_synced', 'crafting_data', 'item_stack_response', 'container_open', 'container_close', 'add_item_entity', 'take_item_entity', 'remove_entity', 'move_entity', 'move_entity_delta', 'add_player', 'add_entity', 'entity_event', 'set_entity_data', 'command_output']
+const PACKET_EVENTS = ['start_game', 'network_chunk_publisher_update', 'player_action', 'show_credits', 'move_player', 'correct_player_move_prediction', 'server_post_move', 'change_dimension', 'respawn', 'update_attributes', 'set_health', 'death_info', 'item_registry', 'inventory_content', 'inventory_slot', 'mob_equipment', 'player_hotbar', 'set_player_game_type', 'update_player_game_type', 'level_chunk', 'subchunk', 'update_block', 'update_subchunk_blocks', 'update_block_synced', 'crafting_data', 'item_stack_response', 'container_open', 'container_close', 'add_item_entity', 'take_item_entity', 'remove_entity', 'move_entity', 'move_entity_delta', 'add_player', 'add_entity', 'entity_event', 'set_entity_data', 'command_output']
+const DIMENSION_EVENTS = new Set(['player_action', 'subchunk', 'level_chunk', 'update_block', 'move_player', 'server_post_move', 'correct_player_move_prediction'])
 const CONTROL_EVENTS = new Set(['update_client_input_locks', 'set_movement_authority', 'client_movement_prediction_sync', 'packet_violation_warning'])
 const TRANSPORT_EVENTS = new Set(['error', 'close', 'connect', 'spawn', 'join', 'kick', 'newListener', 'removeListener'])
 
@@ -306,7 +308,7 @@ function createHostPacketEvents ({ receive, onError = () => {} }) {
   return { registerPacketEvents, attachClient, dispose, snapshot: () => ({ registered: [...names], attached: [...listeners.keys()], disposed }) }
 }
 
-function createHostPacketReceiver ({ state, shared, meta, cache, applyState, world, entities, getLifecycle, getCurrent, log = () => {}, clock = () => performance.now() }) {
+function createHostPacketReceiver ({ state, shared, meta, cache, applyState, world, entities, getLifecycle, getCurrent, getDimensionHandoff = () => null, log = () => {}, clock = () => performance.now() }) {
   if (!state || !shared || !meta || typeof cache?.observe !== 'function' || typeof applyState !== 'function' || typeof world?.applyPacket !== 'function' || typeof entities?.applyPacket !== 'function' || [getLifecycle, getCurrent, log, clock].some(value => typeof value !== 'function')) throw new Error('Host packet receiver requires connection-owned observations and current-runtime access')
   // This high-water mark belongs to the raw observation gate, independently of
   // reloadable helpers such as shared.lastPhysicsCorrectionTick.
@@ -327,11 +329,20 @@ function createHostPacketReceiver ({ state, shared, meta, cache, applyState, wor
     const ownMove = name === 'move_player' && String(packet.runtime_id) === state.runtimeEntityId
     if (ownMove || ['correct_player_move_prediction', 'server_post_move', 'change_dimension'].includes(name) || (name === 'respawn' && packet.state === 1 && String(packet.runtime_entity_id) === state.runtimeEntityId)) { shared.prediction = null; shared.motionSource = null }
     if (name === 'player_hotbar' || (name === 'mob_equipment' && String(packet.runtime_entity_id) === state.runtimeEntityId && (packet.window_id === 'inventory' || packet.window_id === 0))) shared.equipment = null
+    const previousDimension = state.dimension
     cache.observe(name, packet)
     applyState(name, packet)
     world.applyPacket(name, packet)
     const entityUpdate = entities.applyPacket(name, packet)
     getLifecycle()?.applyPacket(name, packet)
+    const handoff = meta.version === '1.26.60' ? getDimensionHandoff() : null
+    if (name === 'start_game') handoff?.reset()
+    if (name === 'show_credits') handoff?.credits(packet)
+    if (name === 'change_dimension' && handoff) {
+      handoff.begin(previousDimension, packet)
+      void shared.persistDragonBoundary?.()?.catch(error => log(`遠征の次元移動を保存できません: ${errorText(error)}`))
+    }
+    if (handoff?.pending() && DIMENSION_EVENTS.has(name)) handoff.observe(name, packet)
     getCurrent()?.applyPacket(name, packet, { entityDangerChanged: entityUpdate?.dangerChanged !== false })
     if (shared.loadingScreenEnded && previousHealth > 0 && state.health < previousHealth) {
       state.safety = { reason: 'damage_detected', previousHealth, health: state.health, at: new Date().toISOString() }
@@ -402,7 +413,7 @@ async function main () {
   const onlineEmergency = createOnlineEmergencyHandler({ getState: () => state, getShared: () => shared, getCurrent: current, getLife: () => lifecycle?.stats().deathId, now: Date.now, report: receipt => log(formatOnlineEmergency(receipt)) })
   const deathRespawn = createDeathRespawnReflex({ getState: () => state, getShared: () => shared, getLifecycle: () => lifecycle, getCurrent: current, isStopping: () => stopping, report: result => log(`死亡後の通常リスポーン: ${result.phase}${result.reason ? ` (${result.reason})` : ''}`) })
   const startupCreeperEvents = []
-  const receiver = createHostPacketReceiver({ state, shared, meta, cache, applyState, world, entities, getLifecycle: () => lifecycle, getCurrent: current, log })
+  const receiver = createHostPacketReceiver({ state, shared, meta, cache, applyState, world, entities, getLifecycle: () => lifecycle, getCurrent: current, getDimensionHandoff: () => dimensionHandoff, log })
   const startupFuseGuard = createStartupFuseGuard({ getState: () => state, getShared: () => shared, getActors: () => entities.snapshot({ kind: 'all' }), isStopping: () => stopping, report: danger => {
     log('読み込み中に近くのクリーパーの点火を受信しました。接続を保持し、保護と観測を続けます。')
     if (process.env.MINECRAFT_CAPTURE_EMERGENCY === '1') {
@@ -413,6 +424,11 @@ async function main () {
       console.log(`STARTUP_EMERGENCY_CAPTURE ${JSON.stringify(capture)}`)
     }
   }, onDanger: () => onlineEmergency({ reason: 'Loading-screen Creeper fuse observed', reasonCode: 'STARTUP_CREEPER', connectionId: state.connectionId }) })
+  const dimensionHandoff = createDimensionHandoff({
+    state, shared, getLife: () => lifecycle?.stats(), queue: (name, packet) => connection.queue(name, packet),
+    terrainKnown: position => respawnTerrainKnown(world, position), onError: error => log(`次元移動前の操作の停止を再確認します: ${errorText(error)}`), stopActions: () => current()?.stopActions('次元が切り替わりました。'),
+    ready: () => resumeRuntimeSafely(current(), { shared, source: 'dimension_ready', onError: reportResumeError })
+  })
   const packetEvents = createHostPacketEvents({
     receive: (name, packet) => {
       const perfStart = process.env.MINECRAFT_CAPTURE_EMERGENCY === '1' ? performance.now() : null
@@ -505,7 +521,7 @@ async function main () {
     process.exitCode = code
     const deadline = setTimeout(() => process.exit(code), 5000).unref()
     const finish = () => { clearTimeout(deadline); process.exit(code) }
-    void Promise.all([cleanup, liveLog.close()]).then(finish, error => { console.error(`終了時の記録確認: ${errorText(error)}`); finish() })
+    void Promise.all([Promise.resolve(cleanup).finally(() => shared.flushDragonCheckpoints?.()), liveLog.close()]).then(finish, error => { console.error(`終了時の記録確認: ${errorText(error)}`); finish() })
   }
   process.once('SIGINT', () => stop()); process.once('SIGTERM', () => stop())
   const context = {
@@ -540,7 +556,11 @@ async function main () {
     log(`ログイン用プロフィール: ${config.profile}`)
     if (args.includes('--list')) { printRealms(await RealmAPI.from(authflow, 'bedrock', { minecraftVersion: version }).getRealms()); stop(); return }
     lifecycle = createLifecycle({ client: connection, getState: rawSnapshot, version,
-      onDeath: () => { state.dead = true; respawnTerrainHandoff.cancel('Player died'); shared.prediction = null; shared.equipment = null; current()?.stopActions('死亡を確認しました。'); deathRespawn.observe() },
+      onDeath: ({ deathId, deathInfo }) => {
+        shared.dragonDeathLocation = { dimension: dimensionName(state.dimension), position: finite(state.position) ? { ...state.position } : null, deathId, connectionId: state.connectionId, at: Date.now(), cause: deathInfo?.cause ?? null }
+        state.dead = true
+        void shared.persistDragonBoundary?.()?.catch(error => log(`遠征の死亡地点を保存できません: ${errorText(error)}`))
+        respawnTerrainHandoff.cancel('Player died'); shared.prediction = null; shared.equipment = null; current()?.stopActions('死亡を確認しました。'); deathRespawn.observe() },
       onSpawnPending: () => { state.spawnPending = true; shared.prediction = null; shared.equipment = null; current()?.stopActions('参加位置の確定を待っています。') },
       onRespawn: result => { state.dead = false; state.spawnPending = false; state.health = result.health; shared.prediction = null; applyState('server_post_move', { position: result.position }); respawnTerrainHandoff.begin(result) }
     })
@@ -646,6 +666,7 @@ async function main () {
       }
       const readyFeet = life.spawnPending && life.readyPosition ? { x: Math.floor(life.readyPosition.x), y: Math.floor(life.readyPosition.y - 1.62), z: Math.floor(life.readyPosition.z) } : null
       const destinationKnown = !readyFeet || world.getBlock(readyFeet.x, readyFeet.y, readyFeet.z).known
+      if (dimensionHandoff.pending()) { dimensionHandoff.observe('timer'); return }
       if (!shared.loadingScreenEnded && world.stats().loadedSections > 0 && destinationKnown && meta.version === '1.26.60') {
         connection.queue('serverbound_loading_screen', { type: 2, loading_screen_id: null })
         shared.loadingScreenEnded = state.loadingScreenEnded = true; resumeRuntimeSafely(current(), { shared, source: 'loading_ready', onError: reportResumeError })

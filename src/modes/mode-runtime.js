@@ -31,6 +31,8 @@ const { createPlayerStorage } = require('./player-storage')
 const { createStoragePorts } = require('./player-storage-ports')
 const { stationWorldScope } = require('../survival/supply-return')
 const { nextObjective } = require('./player-goal')
+const { guardDragonOperations } = require('./dragon-ports')
+const { createDragonRuntime } = require('./dragon-runtime')
 const { pruneTunnelFloors } = require('./player-floor-prune')
 const { noteDamage } = require('./damage-note')
 const { createGroundRefresh } = require('../movement/ground-refresh')
@@ -59,7 +61,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // The modes start and stop the autonomy through these. Anyone else (the /stop
   // and /agent commands, the local API) goes through operations.agent, where a
   // stop also means "the player stops playing".
-  const inner = operations.agent, agent = { start: options => { if (flee.status().active) throw Error('敵から離れている間は始めません。'); return inner.start(aimed(options)) }, stop: reason => inner.stop(reason) }
+  let expedition
+  const inner = operations.agent, agent = { start: options => { if (expedition?.owns()) { expedition.tick(); return agentStatus() } if (flee.status().active) throw Error('敵から離れている間は始めません。'); return inner.start(aimed(options)) }, stop: reason => inner.stop(reason) }
   // In player mode every start plays for the next goal (player-goal.js).
   let aim = null
   const aimed = options => {
@@ -69,13 +72,13 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     aim = next?.diamondCount ?? aim
     return next
   }
-  operations.agent = { ...inner, start: options => { if (control.get() === 'player') shared.playerWanted = true; return inner.start(aimed(options)) }, stop: reason => { shared.playerWanted = false; recovery.cancel(); base.cancel('MANUAL_STOP'); return inner.stop(reason) } }
+  operations.agent = { ...inner, start: options => { if (control.get() === 'player') shared.playerWanted = true; return agent.start(options) }, stop: reason => { shared.playerWanted = false; cancelExpedition(); recovery.cancel(); base.cancel('MANUAL_STOP'); return inner.stop(reason) } }
   const agentStatus = () => runtime.autonomy()?.snapshot() ?? { running: false }
   const disposed = () => runtime.disposed?.() === true
   const idle = () => { const value = agentStatus(); return value.running !== true && value.busy !== true && value.actionActive !== true }
   const control = createModeControl({
     shared, save: mode => saveMode(file, mode), log,
-    getQuarryStatus: () => quarry.status(), getAgentStatus: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active ? { running: true } : agentStatus(),
+    getQuarryStatus: () => quarry.status(), getAgentStatus: () => expedition?.busy() || expedition?.owns() || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active ? { running: true } : agentStatus(),
     isBusy: () => runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld()
   })
   // Where the Bot is: the working position. The last received position can be
@@ -102,11 +105,12 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   }
   const where = () => { const position = runtime.position?.(); return position && [position.x, position.y, position.z].every(Number.isFinite) ? position : runtime.raw().position ?? null }
   // Ordinary walking, mining, placement and the pillar step, shared by the scaffold and the climb out of a tunnel.
-  const hands = createScaffoldPorts({
-    operations, disposed, pillarStep: (step, settings) => runtime.pillarStep(step, settings),
+  const buildHands = (done, actions = operations) => createScaffoldPorts({
+    operations: actions, disposed: done, pillarStep: (step, settings) => runtime.pillarStep(step, settings),
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getMotion: () => runtime.motion(),
     getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
   })
+  const hands = buildHands(disposed)
   // A long trip from inside the starter house first walks out through its door (house/house-exit.js).
   // Still in the water after the exit: the land trip is not started (it only fails leg after leg from there).
   const travelTo = (input, { aborted: cancelled = () => false } = {}) => {
@@ -163,7 +167,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     const next = aimed(options).diamondCount
     if (Number.isSafeInteger(next) && next !== options.diamondCount) options.diamondCount = next
   }
-  shared.onAutonomyProgress = snapshot => { keepAim(); return recovery.onProgress(snapshot) }
+  shared.onAutonomyProgress = snapshot => { if (expedition?.owns()) return; keepAim(); return recovery.onProgress(snapshot) }
   const air = cell => { const block = runtime.host().world.getBlock(cell.x, cell.y, cell.z); return block?.known === true && /^minecraft:(?:air|cave_air)$/.test(block.name ?? '') }
   const hunger = () => { const value = shared.vitals?.hunger; return Number.isFinite(value) ? value : Number.isFinite(value?.value) ? value.value : null }
   const shelter = createPlayerShelter({
@@ -309,20 +313,53 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       }
     }
   })
+  const crew = [recovery, shelter, flee, cover, scaffold, torch, storage, base, wool, sand, food, water, house]
+  const lifeKey = () => { const state = runtime.host().getServerFields?.(['connectionId', 'startedAt', 'dimension']) ?? runtime.raw(); return JSON.stringify([state.connectionId, state.startedAt, state.dimension, runtime.host().getLife?.()?.deathId]) }
+  const active = () => !disposed() && control.get() === 'player' && shared.playerWanted === true
+  const getBlock = (x, y, z) => runtime.host().world.getBlock(x, y, z)
+  const cancelExpedition = () => {
+    if (expedition?.busy() && quarry.travelStatus?.()?.busy) void Promise.resolve(quarry.cancelTravel()).catch(() => {})
+    expedition?.cancel()
+  }
+  expedition = createDragonRuntime({
+    operations, runtime, shared, root, active, log, getBlock, lifeKey, loading: () => shared.loadingScreenEnded === false || shared.respawnTerrain?.pending === true || shared.inventoryUncertain === true, threatened: danger,
+    finish: () => { shared.playerWanted = false; shared.autoWanted = false; void resume.note() },
+    legacyIdle: () => idle() && shared.autoWanted !== true,
+    legacyBusy: () => crew.some(task => task.status().active) || runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld() || runtime.combatOwns?.() === true,
+    stopLegacy: reason => inner.stop(reason),
+    stepPorts: signal => {
+      const owner = lifeKey()
+      const cancelled = () => signal.aborted || !active() || lifeKey() !== owner || shared.loadingScreenEnded === false
+      const travel = (input, options = {}) => {
+        if (cancelled() || runtime.raw().dimension !== 'overworld') throw Error('地上の長距離移動は現世でのみ開始できます。')
+        return travelTo(input, { aborted: () => cancelled() || options.aborted?.() === true })
+      }
+      const actions = guardDragonOperations(operations, cancelled)
+      const hands = buildHands(cancelled, actions)
+      return { operations: actions, runtime, shared, root, log, getBlock, where, feetNow, getFeet: feetNow,
+        hands, walk: hands.walk, travelTo: travel, climbUp: () => climbUp(cancelled), storage, cancelled, signal }
+    }
+  })
+  // Direct resumes inside the runtime also consult the selected player's owner.
+  shared.dragonOwnsWork = () => !disposed() && expedition.owns()
   // What the defenses were doing at a hit (live 2026-11-17 23:13-23:16 JST: three
   // minutes of arrows with no flee, cover or combat line in the log).
   const defenseNote = () => { const safe = (() => { try { return operations.safety.snapshot() } catch { return null } })(); return `離れる ${flee.status().skip ?? (flee.status().active ? '実行中' : '-')}・射線 ${cover.status().skip ?? (cover.status().active ? '実行中' : '-')}・待機保護 ${safe?.phase ?? '?'}${safe?.active ? `/${safe.active}` : ''}・プレイ ${shared.playerWanted === true ? '中' : '外'}` }
-  const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else { void flee.tick().catch(() => {}); void cover.tick().catch(() => {}); try { noteDamage({ shared, health: runtime.raw().health, position: where(), actors: runtime.host().entities.snapshot({ kind: 'all' }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, why: defenseNote }) } catch { /* A log line only. */ } } }), 500)
+  const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else if (expedition.owns()) expedition.guard(); else { void flee.tick().catch(() => {}); void cover.tick().catch(() => {}); try { noteDamage({ shared, health: runtime.raw().health, position: where(), actors: runtime.host().entities.snapshot({ kind: 'all' }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, why: defenseNote }) } catch { /* A log line only. */ } } }), 500)
   fleeTimer.unref?.()
   // The received world behind the server under the feet: the terrain there is asked for again
   // (live 2026-11-18 07:09-09:48 JST, movement/ground-refresh.js).
   const ground = createGroundRefresh({ getCorrection: () => shared.lastServerCorrection, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getDimension: () => runtime.raw().dimension, send: request => runtime.host().client.queue('subchunk_request', request), log })
   // The shelter is checked every two seconds; a reloaded runtime's timer ends itself.
   const timer = setInterval(require('../common/work-spans').wrap('player-mode.tick', () => {
-    if (disposed()) return clearInterval(timer)
+    if (disposed()) { expedition.cancel(); return clearInterval(timer) }
     void resume.note()
     try { const gone = control.get() === 'player' ? pruneTunnelFloors(shared, runtime.raw(), where()) : 0; if (gone) log(`プレイヤーモード: 帰路の床の記録が多いため、遠いものから ${gone} 個を外しました`) } catch { /* The next tick retries. */ }
     try { if (shared.playerWanted === true) ground.tick() } catch { /* The next tick retries. */ }
+    if (expedition.tick()) {
+      if (shared.travelNight?.cover && runtime.raw().dimension === 'overworld') void shelter.tick().catch(() => {})
+      return
+    }
     keepAim()
     void shelter.tick()
     void scaffold.tick().catch(() => {})
@@ -338,11 +375,11 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   }), 2000)
   timer.unref?.()
   // The previous runtime was reloaded in the middle of a recovery: play on.
-  if (shared.playerRecovering === true) { shared.playerRecovering = false; if (control.get() === 'player') shared.autoWanted = true }
+  if (shared.playerRecovering === true) { shared.playerRecovering = false; if (control.get() === 'player' && !expedition.owns()) shared.autoWanted = true }
   // The runtime restarts a stopped run with the options it was last started with: a reload brings the player objective's current flags.
   if (control.get() === 'player' && shared.autoOptions && typeof shared.autoOptions === 'object') shared.autoOptions = { ...shared.autoOptions, deferOptionalShelter: true, nearThreatDistance: 8 }
   const player = createPlayerMode({
-    getMode: control.get, log, safety: operations.safety, recovery: { ...recovery, cancel: () => { if (shared.playerWanted !== true) base.cancel('MANUAL_STOP'); return recovery.cancel() } }, shelter, flee, scaffold: { status: () => house.status().active ? house.status() : wool.status().active ? wool.status() : sand.status().active ? sand.status() : food.status().active ? food.status() : base.status().active ? base.status() : storage.status().active ? storage.status() : torch.status().active ? torch.status() : scaffold.status() }, shared,
+    getMode: control.get, log, expedition, safety: operations.safety, recovery: { ...recovery, cancel: () => { if (shared.playerWanted !== true) { cancelExpedition(); base.cancel('MANUAL_STOP') } return recovery.cancel() } }, shelter, flee, scaffold: { status: () => house.status().active ? house.status() : wool.status().active ? wool.status() : sand.status().active ? sand.status() : food.status().active ? food.status() : base.status().active ? base.status() : storage.status().active ? storage.status() : torch.status().active ? torch.status() : scaffold.status() }, shared,
     agent: { start: options => agent.start(options), stop: reason => agent.stop(reason), snapshot: agentStatus },
     getInventory: () => shared.inventoryUncertain ? null : runtime.raw().inventory,
     getWorn: () => { try { return runtime.armor?.() ?? null } catch { return null } }
