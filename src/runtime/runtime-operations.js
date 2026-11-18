@@ -314,16 +314,19 @@ function createRuntimeOperations (rt) {
           try {
             if (log) { await rt.crafting.craft(`minecraft:${LOGS.exec(log.name)[1]}_planks`, { times: log.count }); made.push('planks') }
             if (!has(/^minecraft:stick$/)) { await rt.crafting.craft('minecraft:stick', { times: 1 }); made.push('stick') }
-            if (!has(/^minecraft:crafting_table$/)) { await rt.crafting.craft('minecraft:crafting_table', { times: 1 }); made.push('table') }
+            if (rt.host.shared.botMode !== 'player' && !has(/^minecraft:crafting_table$/)) { await rt.crafting.craft('minecraft:crafting_table', { times: 1 }); made.push('table') }
           } finally { try { rt.crafting.closeContainer() } catch {} }
           const table = await rt.travelPlaceTable()
           if (table) {
-            await rt.interactions.openCraftingTable(table)
             try {
+              await rt.interactions.openCraftingTable(table)
               if (!has(/_sword$/)) { await rt.crafting.craft('minecraft:wooden_sword', { times: 1 }); made.push('wooden_sword') }
               if (!has(/^minecraft:bed$/) && count(/wool$/) >= 3) { try { await rt.crafting.craft('minecraft:bed', { times: 1 }); made.push('bed') } catch (e) { say(`ベッドを作れません: ${String(e.message ?? e).slice(0, 60)}`) } }
               if (!has(/_boat$/)) { const p = items().find(i => PLANKS.test(i.name ?? '') && i.count >= 5); if (p) { try { await rt.crafting.craft(`minecraft:${PLANKS.exec(p.name)[1]}_boat`, { times: 1 }); made.push('boat') } catch {} } }
-            } finally { try { rt.crafting.closeContainer() } catch {} }
+            } finally {
+              try { rt.crafting.closeContainer() } catch {}
+              if (rt.host.shared.botMode === 'player') try { await operations.playerWorkstations.recoverAt(table) } catch { /* The recovery ledger retains unfinished collection. */ }
+            }
           }
         }
         if (rt.travelRuntime.longTravel?.status?.().busy) { try { await rt.travelRuntime.longTravel.cancel('KIT_DONE') } catch {} }
@@ -740,7 +743,8 @@ function createRuntimeOperations (rt) {
         rt.crafting.closeContainer()
         return rt.mining.start(targets)
       },
-      stop: reason => rt.mining.stop(reason)
+      stop: reason => rt.mining.stop(reason),
+      snapshot: () => rt.mining.snapshot()
     },
     walking: {
       preview: target => { rt.requireIdle({ inventoryRequired: false }); rt.motionOrigin = rt.working(); return rt.walker?.preview(target) ?? { ready: false, errors: ['歩行の初期化を待っています。'] } },
@@ -782,9 +786,10 @@ function createRuntimeOperations (rt) {
       equip: slot => { rt.requireIdle(); const result = rt.interactions.equip(slot); rt.host.setEquipmentPrediction(slot); return result },
       placeCraftingTable: data => {
         rt.requireIdle(); rt.crafting.closeContainer()
-        return rt.interactions.placeCraftingTable(data).then(result => {
+        return rt.interactions.placeCraftingTable(data).then(async result => {
           rt.host.shared.stations ??= {}
           rt.host.shared.stations.craftingTable = { known: true, serverConfirmed: true, placedByBot: true, position: result.position }
+          await operations.playerWorkstations?.notePlacement('minecraft:crafting_table', result)
           return result
         })
       },
@@ -792,11 +797,12 @@ function createRuntimeOperations (rt) {
         rt.requireIdle(); rt.crafting.closeContainer()
         const plan = rt.interactions.previewPlace(data)
         if (!plan.ready) throw new Error(plan.errors.join('\n'))
-        return rt.interactions.placeBlock(data).then(result => {
+        return rt.interactions.placeBlock(data).then(async result => {
           const name = plan.expectedBlock
           if (name === 'minecraft:furnace' || name === 'minecraft:crafting_table') {
             rt.host.shared.stations ??= {}
             rt.host.shared.stations[name === 'minecraft:furnace' ? 'furnace' : 'craftingTable'] = { known: true, serverConfirmed: true, placedByBot: true, position: result.position }
+            await operations.playerWorkstations?.notePlacement(name, result)
           }
           return result
         })
@@ -877,6 +883,7 @@ function createRuntimeOperations (rt) {
       tick: () => { if (rt.chunkMoveHeld()) throw Object.assign(new Error('Botの移動が終わるまで待ってください。'), { code: 'CHUNK_MOVE_BUSY' }); if (rt.manualChestStorage?.isBusy()) throw Object.assign(new Error('ラージチェストへの収納操作中です。'), { code: 'STORAGE_BUSY' }); if (rt.resetHeld()) throw Object.assign(new Error('初期アイテムのリセット処理中です。'), { code: 'RESET_BUSY' }); return rt.autonomy.tick() }
     }
   }
+  operations.playerWorkstations = rt.require('./modes/player-workstation-runtime').createPlayerWorkstationRuntime({ shared: rt.host.shared, getState: () => ({ ...rt.working(), lifecycle: { deathId: rt.actualLifeId() } }), getBlock: (x, y, z) => rt.host.world.getBlock(x, y, z), getMotion: () => rt.movement?.snapshot(), getFurnace: () => rt.furnace.snapshot(), operations, held: () => rt.userBehaviorOwns() === true, disposed: () => !!rt.disposed || !!rt.disposing, log: text => rt.host.log(text) })
   rt.require('./modes/mode-runtime').attachModeOperations(operations, { host: () => rt.host, autonomy: () => rt.autonomy, manualChestStorage: () => rt.manualChestStorage, chunkMoveHeld: () => rt.chunkMoveHeld(), resetHeld: () => rt.resetHeld(), raw: () => rt.raw(), disposed: () => !!rt.disposed || !!rt.disposing, travel: () => rt.travelRuntime, nearestHostile: () => rt.nearestHostileDistance(), hostiles: () => rt.allActors().filter(actor => actor?.hostile === true && actor.alive !== false), totem: () => rt.working().totemGuard === true, position: () => rt.working().position, inventory: () => rt.working().inventory, motion: () => rt.movement?.snapshot() ?? {}, pillarStep: (step, settings) => rt.quarryPorts.pillarStep(step, settings), armor: () => rt.armor?.snapshot() ?? null, scope: () => rt.userScope(rt.rawScope()), combatOwns: () => rt.userBehaviorOwns() === true })
   return {
     get operations () { return operations }

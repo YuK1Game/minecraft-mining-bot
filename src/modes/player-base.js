@@ -62,7 +62,7 @@ function bankable (inventory, keep = KEEP) {
 // A cell to stand in beside the chest (return/return-steps.js).
 const standBeside = (getBlock, chest) => standsBeside(getBlock, chest)[0] ?? null
 
-function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, door = async () => true, porchWalk = async () => false, spares = () => [], porch = () => null, climb, travel, walk, approach, build = null, water = { needed: () => false, exit: async () => ({ ok: true }) }, house = { inside: () => false, leave: async () => true }, scope = () => null, dimension = () => null, interrupter = null, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, returnFile = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, pendingChest = () => false, door = async () => true, porchWalk = async () => false, spares = () => [], porch = () => null, climb, travel, walk, approach, build = null, water = { needed: () => false, exit: async () => ({ ok: true }) }, house = { inside: () => false, leave: async () => true }, scope = () => null, dimension = () => null, interrupter = null, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, returnFile = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   const say = text => log(`プレイヤーモード: ${text}`)
   const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
   const isChest = at => { const found = getBlock(at.x, at.y, at.z); return found?.known === true && found.name === CHEST }
@@ -118,7 +118,7 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
   const runner = createReturnRunner({
     getMode, shared, agent: { objective: agent?.objective, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agent.running ? agent.running() : true }, settled: () => agent?.settled?.() !== false,
     policy: { due: () => dueReason() !== null, reason: () => dueReason() ?? '拠点へ預けます', cargo: stacksNow, restockWanted, restock: takeable, canBuild, record, supplies },
-    ports: { getBlock, getPosition, getFeet, getInventory, dimension, moves: { climb, water, house, travel, approach, porchWalk, door, walk, build }, chests: { hands, spares, porch, make: options => chest(options), near: () => { const feet = getFeet(); return feet ? chestsNear(getBlock, feet, undefined, { shut: true }).map(found => found.position) : [] } } },
+    ports: { getBlock, getPosition, getFeet, getInventory, dimension, moves: { climb, water, house, travel, approach, porchWalk, door, walk, build }, chests: { hands, spares, porch, pending: pendingChest, make: options => chest(options), near: () => { const feet = getFeet(); return feet ? chestsNear(getBlock, feet, undefined, { shut: true }).map(found => found.position) : [] } } },
     scope, interrupter: interrupter ?? (() => blocked() ? 'ほかの作業' : null), hostile, travelBusy: () => travel?.status()?.busy === true,
     file: returnFile, write, disposed, log, now, sleep
   })

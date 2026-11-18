@@ -29,6 +29,7 @@ const { createPlayerTorch } = require('./player-torch')
 const { createTorchPorts } = require('./player-torch-ports')
 const { createPlayerStorage } = require('./player-storage')
 const { createStoragePorts } = require('./player-storage-ports')
+const { stationWorldScope } = require('../survival/supply-return')
 const { nextObjective } = require('./player-goal')
 const { pruneTunnelFloors } = require('./player-floor-prune')
 const { noteDamage } = require('./damage-note')
@@ -42,6 +43,7 @@ const { createHouseSand } = require('./house/house-sand')
 const { createPlayerFood, hasFood } = require('./player-food')
 const { createPlayerWater } = require('./player-water')
 const { dryStart } = require('./travel-dry-start')
+const { departPlayer } = require('./player-departure')
 const { createHouseBuild, houseFile, loadHouseSync } = require('./house/house-build')
 const { createHousePorts } = require('./house/house-ports')
 const { chestOf, bedOf, setSpawn } = require('./house/house-spawn')
@@ -107,7 +109,17 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   })
   // A long trip from inside the starter house first walks out through its door (house/house-exit.js).
   // Still in the water after the exit: the land trip is not started (it only fails leg after leg from there).
-  const travelTo = async input => { try { await leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => hands.walk(target), door: () => houseDoor(), log }) } catch {} if (shared.playerWanted === true) { await dryStart({ needed: () => water.needed(), exit: () => water.exit(() => flee.status().active || shelter.status().active), ready: idle, log }); if (water.needed()) throw Object.assign(new Error('水から上がれないため、長距離移動を始めません。'), { code: 'WATER_EXIT_FAILED' }) } return quarry.travelTo(input) }
+  const travelTo = (input, { aborted: cancelled = () => false } = {}) => {
+    const aborted = () => cancelled() || disposed() || shared.botMode !== 'player' || shared.playerWanted !== true
+    const check = () => { if (aborted()) throw Object.assign(new Error('長距離移動を中断しました。'), { code: 'LONG_TRAVEL_CANCELLED' }) }
+    return departPlayer({
+      input, aborted, canPack: () => runtime.raw().health > 10 && !danger() && !hungryWithoutFood() && !flee.status().active && !shelter.status().active && !water.needed(),
+      pack: () => operations.playerWorkstations?.recoverNearby(),
+      leave: () => leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => { check(); return hands.walk(target) }, door: () => { check(); return houseDoor() }, log }),
+      dry: () => dryStart({ needed: () => water.needed(), exit: () => { check(); return water.exit(() => aborted() || flee.status().active || shelter.status().active) }, ready: () => aborted() || idle(), log }),
+      waterNeeded: () => water.needed(), travel: (value, options) => quarry.travelTo(value, options)
+    })
+  }
   // Out of a tunnel to the open sky, shared by the recovery and the base trip.
   async function climbUp (aborted) {
     for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
@@ -211,6 +223,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // A full inventory goes into a large chest beside the Bot (player-storage.js).
   const storagePorts = createStoragePorts({ operations, disposed, held: () => runtime.combatOwns?.() === true, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
   const storage = createPlayerStorage({
+    file: path.join(root, '.local', 'player-chest-pairs.json'), write: writeDurableJson, worldScope: () => stationWorldScope(runtime.raw()),
     getMode: control.get, shared, log, disposed, getFeet: feetNow, mine: async cell => (await hands.pick()) && hands.mine(cell), dig: cell => hands.dig(cell), why: () => hands.why(), walk: target => hands.walk(target), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
@@ -229,7 +242,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: baseFile(root), returnFile: returnFile(root), getWorn: () => { try { return runtime.armor?.() ?? null } catch { return null } },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle, running: () => agentStatus().running === true || shared.autoWanted === true },
-    hands: storagePorts, chest: options => storage.chest(options), porch: () => { const o = shared.playerHouse?.origin; return o ? { stand: { x: o.x + 3, y: o.y, z: o.z + 10 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null }, canBuild: () => shared.playerHouse?.done === true && storage.woodFor(1), climb: climbUp, door: () => houseDoor(), porchWalk: () => shared.playerHouse?.origin ? house.closeIn(shared.playerHouse.origin) : false, spares: () => { const o = shared.playerHouse?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] }, walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within), build: require('./player-build-walk').createBuildWalk({ hands, getHouse: () => shared.playerHouse, log }),
+    hands: storagePorts, pendingChest: at => storage.pendingChest(at), chest: options => storage.chest(options), porch: () => { const o = shared.playerHouse?.origin; return o ? { stand: { x: o.x + 3, y: o.y, z: o.z + 10 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null }, canBuild: () => shared.playerHouse?.done === true && storage.canMakeChest(), climb: climbUp, door: () => houseDoor(), porchWalk: () => shared.playerHouse?.origin ? house.closeIn(shared.playerHouse.origin) : false, spares: () => { const o = shared.playerHouse?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] }, walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within), build: require('./player-build-walk').createBuildWalk({ hands, getHouse: () => shared.playerHouse, log }),
     // The return checks each precondition itself: out of the water, out of the house, then the raw long travel.
     travel: { to: (input, options) => quarry.travelTo(input, options), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     water: { needed: () => water.needed(), exit: aborted => water.exit(aborted) },
@@ -270,6 +283,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // The starter house from the user's blueprint, right after the wooden tools (house/house-build.js).
   if (shared.playerHouse === undefined) shared.playerHouse = loadHouseSync(houseFile(root))
   const house = createHouseBuild({
+    chestWork: storage.chestWork,
     getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: houseFile(root), write: writeDurableJson,
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
@@ -281,9 +295,9 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     // Nor hungry with no food: the forage comes first (live 2026-11-17 08:26-08:29 JST: hunger 12, the build stopped the forage for a cow).
     blocked: () => !(runtime.raw().health > 10) || hungryWithoutFood() || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active,
     // Done: chest A is the base, and the bed sets the respawn point.
-    onDone: async origin => {
+    onDone: async (origin, { largeChests = [] } = {}) => {
       const at = chestOf(origin), here = (x, y, z) => runtime.host().world.getBlock(x, y, z)
-      if (/chest$/.test(here(at.x, at.y, at.z)?.name ?? '') && !(shared.playerBase && shared.playerBase.x === at.x && shared.playerBase.y === at.y && shared.playerBase.z === at.z)) {
+      if (largeChests.some(p => p.x === at.x && p.y === at.y && p.z === at.z) && /chest$/.test(here(at.x, at.y, at.z)?.name ?? '') && !(shared.playerBase && shared.playerBase.x === at.x && shared.playerBase.y === at.y && shared.playerBase.z === at.z)) {
         shared.playerBase = at
         try { await writeDurableJson(baseFile(root), { version: 1, chest: at, savedAt: new Date().toISOString() }) } catch { /* Kept in shared. */ }
         log(`プレイヤーモード: 拠点を家のラージチェスト (${at.x}, ${at.y}, ${at.z}) にしました`)

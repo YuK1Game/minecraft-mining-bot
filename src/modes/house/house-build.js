@@ -14,7 +14,8 @@
 // - Every step is ordinary placement (house-steps.js); it counts when the
 //   received block is what the blueprint draws there. A plant in a cell is cut
 //   first. A step refused three times is left, and the others go on.
-// - The house is done when every step stands; the next play goes on as before.
+// - The house is done when every step stands and both large chests have
+//   received 54-slot windows; the next play goes on as before.
 // - Not while a hostile is within 12 m or another job runs; ten minutes after
 //   a run that placed nothing.
 const fs = require('node:fs')
@@ -26,6 +27,7 @@ const { pending } = require('./house-supply')
 const { findSite, PLANT } = require('./house-site')
 const { clicks, stands, standable } = require('./house-steps')
 const { underCover } = require('../player-surface')
+const { chestPairs, neededChests, verifyHouseChests } = require('./house-large-chests')
 
 const AGAIN_MS = 600000, SHORT_MS = 3000, TRIES = 3, RUN_MS = 20 * 60000
 const BLIND = /視線/
@@ -60,8 +62,9 @@ const order = steps => {
   return [...steps.filter(step => step.phase === 'foundation'), ...EARLY.map(id => steps.find(step => step.id === id)).filter(Boolean), ...rest, ...steps.filter(step => step.id === DOOR)]
 }
 
-function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel, getBlock, getPosition, getFeet, getInventory, file = null, write = null, blocked = () => false, hostile = () => false, onDone = async () => {}, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel, getBlock, getPosition, getFeet, getInventory, chestWork = null, file = null, write = null, blocked = () => false, hostile = () => false, onDone = async () => {}, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, placedTotal = 0
+  const work = { begin: async () => true, complete: async () => true, attempt: async () => true, received: async () => true, retry: async () => true, canAttempt: () => true, ...chestWork }
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const say = text => log(`プレイヤーモード: ${text}`)
   const settle = async () => { for (let i = 0; i < 40 && agent.settled?.() === false && !disposed(); i++) await sleep(200) }
@@ -94,6 +97,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     if (!inventory || !position || !pending({ mode: getMode(), playing: shared.playerWanted === true, shared, state: { inventory } })) return false
     const origin = shared.playerHouse?.origin ?? null
     const left = origin ? remaining(getBlock, origin) : placements()
+    if (origin && !left.length) return shared.playerHouse?.done !== true
     const needs = houseNeeds(inventory, counts(left))
     // Logs and cobblestone start it; the glass waits for sand and the bed for
     // wool, so a house is not held back by a desert-less or sheep-less area
@@ -151,7 +155,8 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   async function openDoorway (origin) {
     const door = placements(origin).find(step => step.id === DOOR)
     const left = remaining(getBlock, origin)
-    if (!door || left.some(step => step.id === DOOR) || !left.some(workable)) return false
+    const needsVerification = !left.length && shared.playerHouse?.done !== true
+    if (!door || left.some(step => step.id === DOOR) || (!left.some(workable) && !needsVerification)) return false
     const at = door.position
     if (!matches('oak_door', getBlock(at.x, at.y, at.z))) return false
     if (!await near(at)) { say('拠点の家: 入口のドアへ近づけません（中の作業が残っています）'); return false }
@@ -180,10 +185,11 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   // Makes what `step` places when none is held. True when one is held.
   async function make (step, origin, left) {
     lack = null
-    if (held(ITEM[step.item]) > 0) return true
+    const needed = step.item === 'chest' ? neededChests(step, origin, getBlock) : 1
+    if (held(ITEM[step.item]) >= needed) return true
     const made = await making(step, origin, left)
     if (!made && !lack) lack = step.item === 'white_bed' && bestWool(items()) < 3 ? '同じ色の羊毛が3個ありません' : step.item === 'oak_log' ? '原木を持っていません' : !tableAt(origin) ? '作業台がありません' : '理由不明'
-    return made
+    return made && held(ITEM[step.item]) >= needed
   }
 
   async function making (step, origin, left) {
@@ -211,7 +217,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       case 'oak_slab': { const times = Math.min(16, Math.ceil(count('oak_slab') / 6)); const as = await planksOf(times * 3, left); return !!as && atTable(`minecraft:${as}_slab`, times) }
       case 'oak_door': { const as = await planksOf(6, left); return !!as && atTable(doorItem(as), 1) }
       // One chest at a time: a batch over mixed plank kinds splits unevenly (live 07:32 JST: 「材料の種類が混在しています。1回ずつクラフトしてください。」).
-      case 'chest': { let made = 0; for (let i = 0; i < Math.min(count('chest'), 4); i++) { if (!(await planks(8, left) && await atTable('minecraft:chest', 1))) break; made++ } return made > 0 }
+      case 'chest': { const missing = Math.min(count('chest') - held(ITEM.chest), 4); for (let i = 0; i < missing; i++) { if (!(await planks(8, left) && await atTable('minecraft:chest', 1))) break } return held(ITEM.chest) >= neededChests(step, origin, getBlock) }
       case 'white_bed': return bestWool(items()) >= 3 && await planks(3, left) && atTable('minecraft:bed', 1)
       case 'furnace': return held(ITEM.cobblestone) >= 8 && (table ? atTable('minecraft:furnace', 1) : false)
       case 'glass': {
@@ -252,16 +258,27 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     const stack = stackOf(ITEM[step.item])
     if (!stack) return false
     const head = step.item === 'white_bed' ? step.cells[1] : null
+    const stopped = () => !live() || blocked() || hostile()
+    const place = async (name, plan) => {
+      if (step.item !== 'chest') return ports.place(name, plan)
+      if (stopped() || !await work.attempt(step.position)) return false
+      if (stopped()) { await work.retry(step.position); return false }
+      const placed = await ports.place(name, plan)
+      if (standing()) { const recorded = await work.received(step.position); return placed && recorded }
+      if (ports.placementRetrySafe?.() === true) await work.retry(step.position)
+      return false
+    }
     for (const click of clicks(getBlock, step)) {
       const plan = { position: step.position, clicked: click.clicked, face: click.face, clickY: click.clickY, head, alignFacing: !!step.look }
       // From here when it reaches; else from the nearest stands.
       // A step drawn facing a way is placed only from a stand behind it.
       const feet = getFeet()
-      if (!step.look && await ports.place(stack.name, plan)) { await sleep(150); if (standing()) return true }
+      if (!step.look && await place(stack.name, plan)) { await sleep(150); if (standing()) return true }
       for (const stand of stands(getBlock, step, click, feet ?? step.position).slice(0, 3)) {
         if (!live() || blocked() || hostile()) return false
+        if (step.item === 'chest' && !work.canAttempt(step.position)) return standing()
         if (!await hands.walk(stand)) { walkWhy = `歩けません: ${String(hands.why?.() ?? '不明').slice(0, 60)}`; continue }
-        if (await ports.place(stackOf(ITEM[step.item])?.name ?? stack.name, plan)) { await sleep(150); if (standing()) return true }
+        if (await place(stackOf(ITEM[step.item])?.name ?? stack.name, plan)) { await sleep(150); if (standing()) return true }
       }
     }
     return standing()
@@ -372,6 +389,8 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     await openDoorway(origin)
     const fails = new Map(), started = now()
     let placed = 0
+    let largeChests = []
+    const verifyChests = async () => { largeChests = await verifyHouseChests({ origin, getBlock, getFeet, hands, ports, aborted, confirmed: largeChests, complete: work.complete }); return largeChests.length === chestPairs(origin).length }
     const reasons = new Map()
     const note = (step, text) => { if (!reasons.has(text)) reasons.set(text, { count: 0, step }); reasons.get(text).count++ }
     // Passes go on while one places something (each step is tried TRIES times at most).
@@ -383,12 +402,17 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
         // The door only once nothing else is left: placed while slabs or glass
         // wait it is taken down again on the next run (live 07:22-07:23 JST).
         if (step.id === DOOR && remaining(getBlock, origin).some(other => other.id !== DOOR && workable(other) && (fails.get(other.id) ?? 0) < TRIES)) continue
+        if (step.id === DOOR && !await verifyChests()) continue
         const left = remaining(getBlock, origin)
         ports.reset?.()
         // The server has not confirmed the last transfer: every further craft or
         // placement would fail the same way (live 06:40 JST: about 90 steps used
         // up their tries within 0.1 s). Stop here and come back shortly.
         const settling = () => UNCONFIRMED.test(String(ports.why() ?? '')) && (limbo.set(step.id, (limbo.get(step.id) ?? 0) + 1), limbo.get(step.id) <= 2)
+        if (step.item === 'chest') {
+          const pair = chestPairs(origin).find(pair => pair.some(other => other.id === step.id))
+          if (!pair || !await work.begin(pair.map(other => other.position)) || !work.canAttempt(step.position) || aborted()) { unsettled = true; break }
+        }
         if (!await make(step, origin, left)) { if (settling()) { unsettled = true; break } fails.set(step.id, (fails.get(step.id) ?? 0) + 1); const lacking = ports.why() ?? lack; note(step, `${step.item} を用意できません${lacking ? `: ${lacking}` : ''}`); if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を用意できません（${step.id}${lacking ? `: ${lacking}` : ''}）`); continue }
         if (await put(step)) { if (step.id !== DOOR) placed++; progress++; continue }
         if (settling()) { unsettled = true; break }
@@ -403,8 +427,9 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     // skeletons by the house, 「0 個置きました」 with no reason at all).
     if (aborted() && live()) { soon = true; say(`拠点の家: ${hostile() ? '敵が近い' : 'ほかの作業が始まった'}ため中断しました（2分後に続けます）`) }
     const left = remaining(getBlock, origin)
+    const chestsVerified = !aborted() && await verifyChests()
     for (const step of left) if ((fails.get(step.id) ?? 0) > 0 && workable(step)) failedAt.set(step.id, now())
-    if (!left.length) {
+    if (!left.length && chestsVerified) {
       shared.playerHouse = { ...shared.playerHouse, origin, done: true }
       await save()
       say(`拠点の家が完成しました (${origin.x}, ${origin.y}, ${origin.z})`)
@@ -413,9 +438,10 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       // Why the rest stayed: the three commonest reasons, with one step each.
       const top = [...reasons].sort((a, b) => b[1].count - a[1].count).slice(0, 3)
       if (top.length) say(`拠点の家: 置けなかった理由 ${top.map(([text, { count, step }]) => `${text}（${count}回、${step.item} (${step.position.x}, ${step.position.y}, ${step.position.z})）`).join(' / ')}`)
+      if (!chestsVerified) say('拠点の家: ラージチェスト2組の54枠を受信するまで完成を保留します')
     }
     // The chest A and the bed are used as soon as they stand, finished or not.
-    try { await onDone(origin) } catch (error) { say(`拠点の家の仕上げ（拠点・ベッド）に失敗しました ${String(error?.message ?? error).slice(0, 80)}`) }
+    try { await onDone(origin, { largeChests }) } catch (error) { say(`拠点の家の仕上げ（拠点・ベッド）に失敗しました ${String(error?.message ?? error).slice(0, 80)}`) }
     return placed
   }
 

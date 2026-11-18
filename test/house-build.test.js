@@ -8,6 +8,9 @@ const { findSite } = require('../src/modes/house/house-site')
 const { clicks } = require('../src/modes/house/house-steps')
 
 const air = { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+// Existing construction fixtures simulate a server-confirmed large window.
+// Real packet size checks are covered in house-large-chests.test.js.
+const largeWindow = async () => ({ status: 'completed', evidence: { slotCount: 54 } })
 // Grass at y 63 everywhere; the Bot on it at (0.5, 64, 0.5).
 function world () {
   const cells = new Map()
@@ -58,6 +61,7 @@ test('with the materials held: builds every step in order and marks the house do
   const crafted = []
   const recipes = { 'minecraft:birch_planks': [4, [['minecraft:birch_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:birch_planks', 4]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:birch_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:birch_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:birch_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
   const ports = {
+    inspectChest: largeWindow,
     craft: async (output, times) => { crafted.push([output, times]); const [yieldCount, parts] = recipes[output]; for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
     smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
     place: async (name, plan) => {
@@ -94,6 +98,7 @@ test('without sand or wool: builds the rest and leaves the glass and the bed', a
   const crafted = []
   const recipes = { 'minecraft:birch_planks': [4, [['minecraft:birch_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:birch_planks', 4]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:birch_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:birch_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:birch_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
   const ports = {
+    inspectChest: largeWindow,
     craft: async (output, times) => { crafted.push([output, times]); const [yieldCount, parts] = recipes[output]; for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
     smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
     place: async (name, plan) => {
@@ -226,6 +231,7 @@ test('an unconfirmed transfer stops the run without using up the steps, and the 
   const recipes = { 'minecraft:birch_planks': [4, [['minecraft:birch_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:birch_planks', 4]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:birch_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:birch_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:birch_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
   let why = null, placedCount = 0, pending = 0
   const ports = {
+    inspectChest: largeWindow,
     craft: async (output, times) => { const [yieldCount, parts] = recipes[output]; for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
     smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
     place: async (name, plan) => {
@@ -266,6 +272,7 @@ test('one block that leaves the transfer unconfirmed every time is passed over a
   const recipes = { 'minecraft:birch_planks': [4, [['minecraft:birch_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:birch_planks', 4]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:birch_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:birch_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:birch_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
   let why = null, placedCount = 0, pending = 0
   const ports = {
+    inspectChest: largeWindow,
     craft: async (output, times) => { const [yieldCount, parts] = recipes[output]; for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
     smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
     place: async (name, plan) => {
@@ -309,6 +316,7 @@ test('mixed planks: slabs are made from the kind held in enough number (live 202
   const recipes = { 'minecraft:oak_planks': [4, [['minecraft:oak_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:oak_planks', 4]]], 'minecraft:oak_slab': [6, [['minecraft:oak_planks', 3]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:oak_door': [3, [['minecraft:oak_planks', 6]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:oak_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:oak_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:oak_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
   const short = []
   const ports = {
+    inspectChest: largeWindow,
     craft: async (output, times) => { const [yieldCount, parts] = recipes[output]; if (parts.some(([name, n]) => total(name) < n * times)) { short.push(output); return false } for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
     smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
     place: async (name, plan) => {
@@ -349,6 +357,7 @@ test('chests over mixed planks are crafted one at a time (live 2026-11-17 07:32 
   const recipes = { 'minecraft:oak_planks': [4, [['minecraft:oak_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:oak_planks', 4]]], 'minecraft:oak_slab': [6, [['minecraft:oak_planks', 3]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:oak_door': [3, [['minecraft:oak_planks', 6]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:oak_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:oak_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:oak_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
   const short = []
   const ports = {
+    inspectChest: largeWindow,
     craft: async (output, times) => { if (output === 'minecraft:chest' && times > 1) { short.push('mixed'); return false } const [yieldCount, parts] = recipes[output]; if (parts.some(([name, n]) => total(name) < n * times)) { short.push(output); return false } for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
     smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
     place: async (name, plan) => {
@@ -390,6 +399,7 @@ test('a bed that cannot be made says why: the walk to the table was refused (liv
   const recipes = { 'minecraft:oak_planks': [4, [['minecraft:oak_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:oak_planks', 4]]], 'minecraft:oak_slab': [6, [['minecraft:oak_planks', 3]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:oak_door': [3, [['minecraft:oak_planks', 6]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:oak_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:oak_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:oak_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
   const short = []
   const ports = {
+    inspectChest: largeWindow,
     craft: async (output, times) => { const [yieldCount, parts] = recipes[output]; if (parts.some(([name, n]) => total(name) < n * times)) { short.push(output); return false } for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
     smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
     place: async (name, plan) => {
@@ -423,6 +433,7 @@ test('the table cannot be seen from the nearest place: crafts from another place
   const recipes = { 'minecraft:birch_planks': [4, [['minecraft:birch_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:birch_planks', 4]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:birch_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:birch_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:birch_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
   let why = null, blindAt = null, blinds = 0
   const ports = {
+    inspectChest: largeWindow,
     craft: async (output, times, table) => {
       // At the table the first place tried each time is blind; the next one sees it.
       if (table) { const here = `${feet.x},${feet.y},${feet.z}`; if (blindAt !== 'used' && (blindAt == null || blindAt === here)) { blindAt = here; blinds++; why = '操作対象への視線が遮られているか、未取得です。'; if (blinds >= 1) blindAt = blindAt ?? here; return false } }
@@ -465,6 +476,7 @@ test('the door goes last; a door already standing with work left is taken down f
   const recipes = { 'minecraft:oak_slab': [6, [['minecraft:oak_planks', 3]]], 'minecraft:oak_door': [3, [['minecraft:oak_planks', 6]]] }
   const mined = [], placedOrder = []
   const ports = {
+    inspectChest: largeWindow,
     craft: async (output, times) => { const [yieldCount, parts] = recipes[output]; for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
     smelt: async () => 0,
     place: async (name, plan) => {
@@ -530,6 +542,7 @@ test('a block it failed on and the door do not call the Bot back from the sand; 
   const recipes = { 'minecraft:birch_planks': [4, [['minecraft:birch_log', 1]]], 'minecraft:crafting_table': [1, [['minecraft:birch_planks', 4]]], 'minecraft:birch_slab': [6, [['minecraft:birch_planks', 3]]], 'minecraft:birch_door': [3, [['minecraft:birch_planks', 6]]], 'minecraft:chest': [1, [['minecraft:birch_planks', 8]]], 'minecraft:bed': [1, [['minecraft:white_wool', 3], ['minecraft:birch_planks', 3]]], 'minecraft:furnace': [1, [['minecraft:cobblestone', 8]]], 'minecraft:stick': [4, [['minecraft:birch_planks', 2]]], 'minecraft:torch': [4, [['minecraft:coal', 1], ['minecraft:stick', 1]]] }
   let stuck = null
   const ports = {
+    inspectChest: largeWindow,
     craft: async (output, times) => { const [yieldCount, parts] = recipes[output]; for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
     smelt: async (at, input, count, fuel, fuelCount, output) => { take(input, count); take(fuel, fuelCount); give(output, count); return count },
     place: async (name, plan) => {

@@ -32,7 +32,7 @@ function createAutonomyRuntime (rt) {
       const access = await rt.observeStoneAccess(supplied, options)
       let wornArmor = null
       try { wornArmor = rt.armor?.snapshot() ?? null } catch {}
-      return access && typeof access === 'object' ? { ...access, wornArmor } : access
+      return access && typeof access === 'object' ? { ...access, wornArmor, playerWorkstations: rt.runtimeOperations?.operations?.playerWorkstations?.observe(access.state) } : access
     },
     observeSafety: async ({ signal }) => {
       const state = rt.observedState()
@@ -44,6 +44,7 @@ function createAutonomyRuntime (rt) {
       return { state, center, radius: 8, blocks, entities: state.entities, threats: evaluated.threats, threatEvaluation: evaluated, capabilities: { move: true, explore: true, respawn: true } }
     },
     actions: rt.continuationActions = { ...rt.runner.actions, ...rt.diamondActions,
+      recover_workstation: (decision, context) => rt.runtimeOperations.operations.playerWorkstations.recover(decision.workstationId, { signal: context.signal }),
       tunnel: (decision, context) => decision.resource === 'stone' ? rt.runStoneTunnel(decision, context) : rt.diamondActions.tunnel(decision, context),
       move_to: (decision, context) => decision.portableSiteId || decision.stage === 'portable_worksite' ? rt.withPortableMovementLease(decision, context, 'move', signal => rt.runner.actions.move_to(decision, { ...context, signal })) : rt.runner.actions.move_to(decision, context),
       excavate_worksite_step: (decision, context) => rt.portablePrimitive(decision, context, 'excavate'),
@@ -293,7 +294,8 @@ function createAutonomyRuntime (rt) {
       const house = rt.require('./modes/house/house-supply'), planner = rt.require('./survival/planner')
       const housed = house.withHouseSupply({ mode: rt.host.shared.botMode, playing: rt.host.shared.playerWanted === true, shared: rt.host.shared, state, decision: supplied, getBlock: (x, y, z) => rt.planningWorld.getBlock(x, y, z), planLogs: count => { const input = house.houseLogInput(state, options, count); return planner.nextBootstrapAction(input.state, observations, input.options) }, planStone: count => { const input = house.houseStoneInput(state, options, count); return planner.nextBootstrapAction(input.state, observations, input.options) }, planSand: count => { const input = house.houseSandInput(state, options, count); return planner.nextBootstrapAction(input.state, observations, input.options) }, log: text => rt.host.log(text) })
       const wooded = rt.require('./modes/player-wood').withPlayerWood({ mode: rt.host.shared.botMode, decision: housed, log: text => rt.host.log(text), planLogs })
-      return rt.require('./modes/player-tree').withPlayerTree({ mode: rt.host.shared.botMode, shared: rt.host.shared, decision: wooded, position: state.position, log: text => rt.host.log(text), readBlock: point => rt.planningWorld.getBlock(point.x, point.y, point.z), planTree: left => { const tree = rt.require('./modes/player-tree').treePlanInput(state, options, left); return rt.require('./survival/planner').nextBootstrapAction(tree.state, observations, tree.options) } })
+      const tree = rt.require('./modes/player-tree').withPlayerTree({ mode: rt.host.shared.botMode, shared: rt.host.shared, decision: wooded, position: state.position, log: text => rt.host.log(text), readBlock: point => rt.planningWorld.getBlock(point.x, point.y, point.z), planTree: left => { const tree = rt.require('./modes/player-tree').treePlanInput(state, options, left); return rt.require('./survival/planner').nextBootstrapAction(tree.state, observations, tree.options) } })
+      return rt.require('./modes/player-workstations').withWorkstationCleanup({ mode: rt.host.shared.botMode, decision: tree, observation: observations.playerWorkstations })
     },
     onDecision: decision => rt.host.log(`次の行動: ${decision.reason}`),
     onProgress: progress => {

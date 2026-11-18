@@ -88,8 +88,10 @@ test('a cancelled return cannot start long travel after its saved route finishes
   const saved = new Promise(resolve => { release = resolve })
   const starts = []
   const runtime = {
+    host: { shared: {} },
     require: name => {
       if (name === './modes/mode-runtime') return { attachModeOperations () {} }
+      if (name === './modes/player-workstation-runtime') return { createPlayerWorkstationRuntime: () => ({}) }
       assert.equal(name, 'node:fs/promises')
       return { readFile: () => { entered(); return saved } }
     },
@@ -122,8 +124,10 @@ test('resuming the same saved route creates a new travel owner that an old retur
   })
   t.after(() => travel.cancel())
   const runtime = {
+    host: { shared: {} },
     require: name => {
       if (name === './modes/mode-runtime') return { attachModeOperations () {} }
+      if (name === './modes/player-workstation-runtime') return { createPlayerWorkstationRuntime: () => ({}) }
       assert.equal(name, 'node:fs/promises')
       return { readFile: async () => JSON.stringify(saved) }
     },
