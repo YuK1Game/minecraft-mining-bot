@@ -13,9 +13,9 @@
 // A stair needs no block: each step is mined out of the rock and walked. The
 // way is the shared one that digs and stacks (movement/build-route.js,
 // carried out by player-build-walk.js), to the nearest ground under the open
-// sky. It reads received terrain only; a column with an unreceived cell above
-// is not the sky.
-const { BUILT } = require('./player-surface')
+// sky. It reads received terrain only; what counts as the sky is
+// player-surface.js openAbove.
+const { BUILT, openAbove } = require('./player-surface')
 
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const TREE = /_(?:leaves|log|wood|stem)$|leaf_litter/
@@ -29,24 +29,19 @@ function skyTarget ({ block, feet, range = RANGE, scanUp = SCAN_UP }) {
   const open = found => found?.known === true && !found.extra?.length && !HAZARD.test(found.name ?? '') && (AIR.test(found.name ?? '') || found.boundingBox === 'empty')
   const ground = found => found?.known === true && found.boundingBox === 'block' && !TREE.test(found.name ?? '') && !HAZARD.test(found.name ?? '')
   // Nothing but received open cells or a tree's crown above the head of who stands at (x, y, z).
-  const sky = (x, y, z) => {
-    for (let up = y + 2; up < y + 2 + scanUp; up++) {
-      const found = block(x, up, z)
-      if (found?.known !== true) return false
-      if (found.boundingBox === 'block' && !TREE.test(found.name ?? '')) return false
-    }
-    return true
-  }
+  const sky = (x, y, z) => openAbove(block, x, y, z, { scanUp })
   const done = cell => ground(block(cell.x, cell.y - 1, cell.z)) && open(block(cell.x, cell.y, cell.z)) && open(block(cell.x, cell.y + 1, cell.z)) && sky(cell.x, cell.y, cell.z)
   let best = null
   for (let dx = -range; dx <= range; dx++) for (let dz = -range; dz <= range; dz++) {
     if (!dx && !dz) continue
     const x = origin.x + dx, z = origin.z + dz
-    // From the top of the scan down to the first ground: every cell on the way received.
-    let top = null
+    // From the top of what is received down to the first ground. The cells high over the hill are not
+    // received from below; an unreceived cell under a received one ends the column.
+    let top = null, received = false
     for (let y = origin.y + scanUp; y >= origin.y - 2; y--) {
       const found = block(x, y, z)
-      if (found?.known !== true) break
+      if (found?.known !== true) { if (received) break; continue }
+      received = true
       if (found.boundingBox !== 'block' || TREE.test(found.name ?? '')) continue
       if (!BUILT.test(found.name ?? '') && ground(found)) top = y
       break

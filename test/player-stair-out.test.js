@@ -14,11 +14,12 @@ const named = name => ({ known: true, name: `minecraft:${name}`, boundingBox: 'b
 
 // The shaft of 2026-11-19 18:45 JST: stone up to y 75, dirt at 76 and 77, the open sky above; the Bot at the
 // bottom of its own shaft (0, 65..68, 0) on two cobblestones. `pickaxe` false: rock is mined by hand and drops nothing.
-function shaft ({ pickaxe = false, pack = {}, extra = {} } = {}) {
+function shaft ({ pickaxe = false, pack = {}, extra = {}, ceiling = Infinity } = {}) {
   const cells = new Map(Object.entries(extra)), at = { x: 0.5, y: 65, z: 0.5 }, held = { ...pack }, calls = []
   const block = (x, y, z) => {
     const set = cells.get(`${x},${y},${z}`)
     if (set) return set
+    if (y > ceiling) return { known: false } // not received from below
     if (x === 0 && z === 0 && y >= 65 && y <= 68) return air
     if (x === 0 && z === 0 && (y === 63 || y === 64)) return named('cobblestone')
     if (y > 77) return air
@@ -103,14 +104,21 @@ test('the nearest ground under the open sky: received columns only, never a roof
   assert.equal(plan.done({ x: 0, y: 65, z: 0 }), false)
   // The run of a straight stair is its rise (13): a target right beside the shaft would cost a spiral.
   assert.ok(Math.abs(plan.target.x) + Math.abs(plan.target.z) >= 10)
-  const dark = (x, y, z) => y > 90 ? { known: false } : sim.block(x, y, z)
+  // Terrain is received one section over the Bot's own (live 19:00 JST: nothing over y 95 from y 65): eight received
+  // open cells with nothing received above them are the sky; two are not.
+  const live = (x, y, z) => y > 95 ? { known: false } : sim.block(x, y, z)
+  assert.equal(skyTarget({ block: live, feet: sim.at }).target.y, 78)
+  const dark = (x, y, z) => y > 81 ? { known: false } : sim.block(x, y, z)
   assert.equal(skyTarget({ block: dark, feet: sim.at }), null)
+  // An unreceived cell under a received one ends the column.
+  const holed = (x, y, z) => y === 85 ? { known: false } : sim.block(x, y, z)
+  assert.equal(skyTarget({ block: holed, feet: sim.at }), null)
   const roofed = (x, y, z) => y === 78 ? named('oak_planks') : sim.block(x, y, z)
   assert.equal(skyTarget({ block: roofed, feet: sim.at }), null)
 })
 
 test('live 2026-11-19 18:45 JST: nothing to stack and no pickaxe: a stair is mined by hand to the surface', async () => {
-  const sim = shaft(), lines = []
+  const sim = shaft({ ceiling: 95 }), lines = []
   const out = await riseToSky({ ports: sim.ports, log: text => lines.push(text), sky: sim.sky, sleep: async () => {}, build: sim.build })
   assert.equal(out.ok, true, lines.join('\n'))
   assert.equal(out.stair, true)
@@ -127,7 +135,7 @@ test('without the way that digs and stacks, or with no sky in reach, the answer 
   const out = await riseToSky({ ports: sim.ports, sky: sim.sky, sleep: async () => {} })
   assert.deepEqual([out.ok, out.reason], [false, 'NO_DIRT'])
   const lines = []
-  const none = await stairOut({ ports: { ...sim.ports, block: (x, y, z) => y > 90 ? { known: false } : sim.block(x, y, z) }, build: sim.build, log: text => lines.push(text) })
+  const none = await stairOut({ ports: { ...sim.ports, block: (x, y, z) => y > 81 ? { known: false } : sim.block(x, y, z) }, build: sim.build, log: text => lines.push(text) })
   assert.deepEqual([none.ok, none.reason], [false, 'NO_SKY_TARGET'])
   assert.match(lines[0], /空の見える地面が受信した範囲にありません/)
   // An interrupted climb is not followed by a stair.

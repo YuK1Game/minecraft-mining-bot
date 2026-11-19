@@ -30,6 +30,26 @@ function underCover (getBlock, position) {
   return false
 }
 
+// Whether who stands at (x, y, z) has the open sky over the head: nothing but
+// received open cells or a tree's crown above (`roof`: built blocks too).
+// Terrain is received 16 to 31 cells over the Bot's own height (one section
+// above its own, host.js), so from below the cells high over a hill are never
+// received: SKY_KNOWN received open cells with nothing received above them
+// count as the sky (real Realm 2026-11-19 19:00 JST: from y 65 under ground at
+// y 79-82, every column ended unreceived at y 96 and none was "the sky").
+// Fewer than that, or ground anywhere in what is received, is not the sky.
+const SKY_KNOWN = 8
+function openAbove (getBlock, x, y, z, { roof = false, scanUp = SCAN_UP, need = SKY_KNOWN } = {}) {
+  let seen = 0
+  for (let up = y + 2; up < y + 2 + scanUp; up++) {
+    const found = getBlock(x, up, z)
+    if (found?.known !== true) return seen >= need
+    if (found.boundingBox === 'block' && !TREE.test(found.name ?? '') && !(roof && BUILT.test(found.name ?? ''))) return false
+    seen++
+  }
+  return true
+}
+
 // A point far enough that the walk has to leave the tunnel: toward the tree when one is known, else along the heading.
 function surfaceAhead (position, tree, heading) {
   const dx = tree ? tree.x + 0.5 - position.x : 0, dz = tree ? tree.z + 0.5 - position.z : 0
@@ -37,4 +57,4 @@ function surfaceAhead (position, tree, heading) {
   return { x: Math.round(position.x + Math.cos(angle) * AHEAD_M), z: Math.round(position.z + Math.sin(angle) * AHEAD_M) }
 }
 
-module.exports = { underCover, surfaceAhead, BUILT }
+module.exports = { underCover, surfaceAhead, openAbove, BUILT, SKY_KNOWN }
