@@ -95,3 +95,64 @@ test('a module first required after the last reload is reloaded when it is saved
   assert.equal(manager.current.late(), 2)
   assert.deepEqual(names(), ['late.js', 'runtime.js'])
 })
+
+// Live 2026-11-20 02:09-02:11 JST: after a start, with no file saved, the behaviour was loaded again four times in
+// two minutes. The first use of a lazily required module raises a directory event for its file (its access time);
+// the file joined the watch list and that alone counted as a change.
+function lazyWorld (t, prefix) {
+  const directory = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
+  const created = new Set()
+  const write = (name, source) => { const file = path.resolve(directory, name); created.add(file); fs.writeFileSync(file, source); return file }
+  const late = write('late.js', 'exports.value = 1\n')
+  const entry = write('runtime.js', "exports.createRuntime = () => ({ late: () => require('./late').value, dispose () {} })\n")
+  const manager = createHotReloader({ entry, watchFiles: [entry], createContext: () => ({}), debounceMs: 20 })
+  t.after(() => { manager.stop(); for (const file of created) { delete require.cache[file]; try { fs.unlinkSync(file) } catch {} } fs.rmdirSync(directory) })
+  const names = () => manager.snapshot().watchFiles.map(file => path.basename(file)).sort()
+  // The access time alone: content and modification time stay.
+  const touch = () => fs.utimesSync(late, new Date(), fs.statSync(late).mtime)
+  return { manager, write, late, names, touch }
+}
+
+test('an event without a save on a lazily required module does not load the behaviour again; a later save does', async t => {
+  const { setTimeout: delay } = require('node:timers/promises')
+  const { manager, write, names, touch } = lazyWorld(t, 'minecraftbot-hotreload-touch-')
+  await delay(30)
+  await manager.loadInitial()
+  manager.watch()
+  assert.equal(manager.current.late(), 1)
+  const running = manager.current
+  touch()
+  for (let i = 0; i < 40 && names().length < 2; i++) await delay(30)
+  await delay(150)
+  assert.deepEqual(names(), ['late.js', 'runtime.js'], 'the module is watched from now on')
+  assert.equal(manager.snapshot().generation, 1, 'nothing was saved')
+  assert.equal(manager.current, running, 'the running behaviour was not replaced')
+  assert.equal(manager.snapshot().lastIgnored?.reason, 'source_unchanged')
+  // A second event of the same kind, now on a watched file.
+  touch()
+  await delay(150)
+  assert.equal(manager.snapshot().generation, 1)
+  write('late.js', 'exports.value = 2\n')
+  for (let i = 0; i < 100 && manager.snapshot().generation < 2; i++) await delay(30)
+  assert.equal(manager.snapshot().generation, 2, 'a save still loads the behaviour again')
+  assert.equal(manager.current.late(), 2)
+})
+
+test('a lazily required module written after the last load is not taken as the running source', async t => {
+  const { setTimeout: delay } = require('node:timers/promises')
+  const { manager, write, names, touch } = lazyWorld(t, 'minecraftbot-hotreload-touch-late-')
+  await manager.loadInitial()
+  manager.watch()
+  await delay(30)
+  // Saved before anything required it: no reload, and the first use reads the new source.
+  write('late.js', 'exports.value = 2\n')
+  await delay(150)
+  assert.equal(manager.snapshot().generation, 1)
+  assert.equal(manager.current.late(), 2)
+  // When it was written relative to its first use is not known here, so the event loads everything again.
+  touch()
+  for (let i = 0; i < 100 && manager.snapshot().generation < 2; i++) await delay(30)
+  assert.equal(manager.snapshot().generation, 2)
+  assert.deepEqual(names(), ['late.js', 'runtime.js'])
+  assert.equal(manager.current.late(), 2)
+})

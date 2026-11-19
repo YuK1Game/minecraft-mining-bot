@@ -46,6 +46,8 @@ function createHotReloader ({ entry, watchFiles = [], createContext, onSwap = ()
   let stopped = false
   let revision = 0
   let loadedSources = null
+  let swappedAt = 0
+  let cachedAtSwap = new Set()
   let activeRequest = null
   const status = { generation: 0, phase: 'idle', pending: false, watching: false, lastReload: null, lastError: null, lastErrorAt: null, recoveryFailed: false }
 
@@ -114,10 +116,25 @@ function createHotReloader ({ entry, watchFiles = [], createContext, onSwap = ()
     if (relative.startsWith('..') || path.isAbsolute(relative)) return false
     return Object.keys(require.cache).some(name => keyOf(name) === keyOf(file))
   }
+  // A directory event is not a save. Live 2026-11-20 02:09-02:11 JST: with no file saved, the behaviour was loaded
+  // again four times in the first minutes after a start, twice inside one fight (one ended a walk out of a line of
+  // fire). Each first use of a lazily required module raised an event for its file (reading a file can change its
+  // access time, which the Windows directory watch reports); the file joined the watch list, and because the list
+  // had grown, "nothing changed" no longer held and everything was loaded again.
+  // A file that came into the module cache after the last swap, and was last written before that swap, is the
+  // source that is running: it joins the watch list as already loaded. Anything else is loaded again as before.
+  function runningSource (file) {
+    if (!loadedSources || cachedAtSwap.has(keyOf(file))) return null
+    const digest = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+    return fs.statSync(file).mtimeMs < swappedAt ? digest : null
+  }
   function adoptLazyFiles () {
     for (const file of [...lazy]) {
       lazy.delete(file)
-      try { registerFile(file) } catch { /* Not a file this reloader may watch. */ }
+      try {
+        const real = validateFile(file), digest = runningSource(real)
+        if (registerFile(real) && digest) loadedSources.set(keyOf(real), digest)
+      } catch { /* Not a file this reloader may watch. */ }
     }
   }
   function validateSyntax () {
@@ -251,6 +268,7 @@ function createHotReloader ({ entry, watchFiles = [], createContext, onSwap = ()
         current = next
         currentFactory = exported.createRuntime
         loadedSources=candidateSources
+        swappedAt=Date.now();cachedAtSwap=new Set(Object.keys(require.cache).map(keyOf))
         status.generation++
         status.phase = 'ready'
         status.lastError = null
