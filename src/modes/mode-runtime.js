@@ -10,10 +10,8 @@ const { createModeControl } = require('./mode-control')
 const { createPlayerMode, OBJECTIVE } = require('./player-mode')
 const { createPlayerRecovery } = require('./player-recovery')
 const { createPlayerShelter } = require('./player-shelter')
-const { createPlayerFlee } = require('./player-flee')
-const { fleeThreats } = require('./player-flee-threats')
+const { createDefenseWalks } = require('./defense-walks')
 const { knownUnreachable } = require('../combat/threat-reachability')
-const { createPlayerCover } = require('./player-cover')
 const { walkableCells } = require('./player-drops')
 const { createCombatExposure } = require('../combat/combat-exposure')
 const { createPlayerScaffold } = require('./player-scaffold')
@@ -201,30 +199,13 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       return air(cover)
     }
   })
-  // Who holds the input near enemies: the fight, a walk away, or the work (control-owner.js).
-  const owner = require('./control-owner').createControlOwner({ shared, fight: () => runtime.combatFight?.() ?? null, held: () => runtime.combatOwns?.() === true })
-  const flee = createPlayerFlee({
-    getMode: control.get, shared, log, disposed, owner,
-    agent: { stop: reason => agent.stop(reason), running: () => agentStatus().running === true },
-    travel: { status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
-    getState: () => { const state = runtime.raw(); return { health: state.health, position: where(), inventory: shared.inventoryUncertain ? null : state.inventory, totem: () => runtime.totem(), healing: require('./flee-healing').healing({ hunger: hunger(), inventory: shared.inventoryUncertain ? null : runtime.inventory(), hasFood }) } },
-    // A hostile with fresh evidence that it cannot walk to the Bot (shut in a
-    // deep pit, no route) is not run from; creepers always are.
-    // Nor is a shooter or a flyer behind received blocks (player-flee-threats.js).
-    hostiles: () => { const state = runtime.raw(), at = where(), seen = createCombatExposure({ world: runtime.host().world, entities: {}, scopeOf: () => null, solidCover: true }); return fleeThreats({ hostiles: runtime.hostiles(), unreachable: actor => knownUnreachable(state, actor), sight: actor => at && actor?.position ? seen.evaluate(actor, { position: at }).evidence.sight : null }) },
-    retreat: () => runtime.travel().retreatFromHostiles()
-  })
-  // Shot by an archer it cannot walk to: behind the nearest block (player-cover.js), under the expedition too (cover-ports.js).
-  const coverHold = require('./cover-ports').createCoverPorts({ expedition: { owns: () => expedition?.owns() === true, busy: () => expedition?.busy() === true }, cancelExpedition: () => cancelExpedition(), agent, agentRunning: () => agentStatus().running === true, travelStatus: () => quarry.travelStatus(), walk: target => hands.walk(target) })
-  const cover = createPlayerCover({
-    getMode: control.get, shared, log, disposed, owner,
-    agent: coverHold.agent,
-    getState: () => { const state = runtime.raw(); return { health: state.health, position: where(), inventory: shared.inventoryUncertain ? null : state.inventory } },
-    hostiles: () => runtime.hostiles(),
-    sight: (from, to) => createCombatExposure({ world: runtime.host().world, entities: {}, scopeOf: () => null }).sight(from, to),
+  // The flee and the cover, and who holds the input near enemies (defense-walks.js, control-owner.js).
+  const { owner, flee, cover } = createDefenseWalks({
+    shared, getMode: control.get, log, disposed, runtime, agent, agentStatus, quarry, where, hunger: () => hunger(), expedition: () => expedition, cancelExpedition: () => cancelExpedition(),
+    walk: target => hands.walk(target), unreachable: knownUnreachable,
+    exposure: options => createCombatExposure({ world: runtime.host().world, entities: {}, scopeOf: () => null, ...options }),
     cells: position => walkableCells(position, (x, y, z) => runtime.host().world.getBlock(x, y, z)).values(),
-    walk: coverHold.walk,
-    blocked: () => shelter.status().active || flee.status().active || scaffold.status().active || coverHold.tripBlocks()
+    blocked: () => shelter.status().active || scaffold.status().active
   })
   // Logs out of reach: a dirt pillar in the trunk's place, taken down again afterwards.
   const scaffold = createPlayerScaffold({
@@ -334,7 +315,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     }
   })
   const crew = [recovery, shelter, flee, cover, scaffold, torch, storage, base, wool, sand, food, water, house]
-  const lifeKey = () => { const state = runtime.host().getServerFields?.(['connectionId', 'startedAt', 'dimension']) ?? runtime.raw(); return JSON.stringify([state.connectionId, state.startedAt, state.dimension, runtime.host().getLife?.()?.deathId]) }
+  const lifeKey = () => require('../common/life-key').lifeKey(runtime.host(), () => runtime.raw())
   const active = () => !disposed() && control.get() === 'player' && shared.playerWanted === true
   const getBlock = (x, y, z) => runtime.host().world.getBlock(x, y, z)
   const cancelExpedition = () => {
