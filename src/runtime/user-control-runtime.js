@@ -320,7 +320,7 @@ function createUserControlRuntime (rt) {
       }
       checkDefenseRoute(initial, target)
       let waterSerial = null
-      if (!target || !['x', 'y', 'z'].every(k => Number.isFinite(target[k])) || Math.hypot(target.x - initial.position.x, target.y - initial.position.y + 1.62, target.z - initial.position.z) > 6) throw new Error('User movement exceeds its known six-block step')
+      if (!rt.require('./combat/approach-steps').inStep(initial, target)) throw new Error('User movement exceeds its known six-block step')
       const ensure = () => {
         const fresh = requireUserLease(context)
         if (rt.userScope(fresh) !== expectedScope || rt.userBehaviorLease !== owner || controller !== rt.movement || surface && waterSerial != null && waterSerial !== rt.portableMovementSerial) throw new Error('User movement life or owner changed')
@@ -579,39 +579,10 @@ function createUserControlRuntime (rt) {
           return { ...result, code: 'PARTIAL_APPROACH', partialApproach: true, targetReached: false, serverConfirmed: false }
         }
       }
-      const initialRange = Math.hypot(state.position.x - target.position.x, state.position.y - (target.position.y + 0.9), state.position.z - target.position.z)
-      // Slopes: the straight-line step at the current feet height is buried or
-      // floating on a hillside, so each step also tries standing heights a few
-      // blocks up and down (nearest first).
-      const feetY = Math.round(state.position.y - 1.62)
-      for (const step of [5.5, 4, 2, 1]) for (const dy of [0, 1, -1, 2, -2, 3, -3]) {
-        const point = { x: state.position.x - dx / d * step, y: feetY + dy, z: state.position.z - dz / d * step }
-        const nextRange = Math.hypot(point.x - target.position.x, point.y + 1.62 - (target.position.y + 0.9), point.z - target.position.z)
-        if (nextRange >= initialRange - 0.25) continue
-        requireUserLease(context)
-        const probe = { ...state, position: { x: point.x, y: point.y + 1.62, z: point.z }, predicted: null, physicsState: null }
-        if (!rt.fullStandingGeometry(probe, point)) { why.stand(); continue }
-        rt.motionOrigin = rt.working()
-        if (!look(point, { emergency: true, allowWater: false, maxDistance: 6, maxExpanded: 300, avoidance: userAvoidance(state, target) })?.ready) continue
-        const result = await moveUserNative(point, context, target)
-        return { ...result, code: 'PARTIAL_APPROACH', partialApproach: true, targetReached: false, serverConfirmed: false }
-      }
-      // Steep slopes: the straight-line points above stand half on a step and
-      // fail the full standing check, so the centres of the cells around the
-      // body (one or two blocks over, a step up or down) are tried too, closest
-      // to the hostile first (live 2026-11-17 03:37-03:38 JST: a witch 3-4 m
-      // away, one block up a grass slope, was never hit; both approaches ended
-      // with this reason while its potions took the bot from 20 to 0).
-      const centres = []
-      const fx = Math.floor(state.position.x), fz = Math.floor(state.position.z)
-      for (let ox = -2; ox <= 2; ox++) for (let oz = -2; oz <= 2; oz++) for (const dy of [0, 1, -1, 2, -2]) {
-        if (!ox && !oz) continue
-        const point = { x: fx + ox + 0.5, y: feetY + dy, z: fz + oz + 0.5 }
-        const nextRange = Math.hypot(point.x - target.position.x, point.y + 1.62 - (target.position.y + 0.9), point.z - target.position.z)
-        if (nextRange >= initialRange - 0.25 || Math.hypot(point.x - target.position.x, point.z - target.position.z) < 0.9) continue
-        centres.push({ point, nextRange })
-      }
-      for (const { point } of centres.sort((a, b) => a.nextRange - b.nextRange).slice(0, 24)) {
+      // The points one move can reach, straight toward the hostile and then around the body (combat/approach-steps.js:
+      // slopes, steep slopes, and the mover's own bound on one move).
+      const steps = rt.require('./combat/approach-steps')
+      for (const point of [...steps.towards(state, target), ...steps.around(state, target)]) {
         requireUserLease(context)
         const probe = { ...state, position: { x: point.x, y: point.y + 1.62, z: point.z }, predicted: null, physicsState: null }
         if (!rt.fullStandingGeometry(probe, point)) { why.stand(); continue }
