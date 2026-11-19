@@ -7,7 +7,8 @@
 // after dusk (real Realm 2026-11-18 22:03-22:07 JST: beside the house a
 // phantom, a skeleton and two creepers took health from 19.1 to 3.6 in nine
 // hits; the creeper evasion found no retreat 62 times and the idle escape was
-// cancelled 53 times). The house is finished and has a bed.
+// cancelled 53 times). The house has a bed: it is the night's place while the house is whole or its repair is held
+// (house/house-repair.js); a bed received as gone is asked for like any other thing of the house (dragon-home-use.js).
 //
 // From dusk by the received world clock (travel/night-stop.js), in the
 // overworld part before the Nether: walk home, use the bed, and wait for the
@@ -17,6 +18,8 @@
 const { dayPhase } = require('../travel/night-stop')
 const { bedOf, bedStands } = require('./house/house-spawn')
 const { approachHome } = require('./dragon-early-home')
+const { houseDuty } = require('./house/house-repair')
+const { homeUse } = require('./dragon-home-use')
 
 const TRY_MS = 30000, SLEEP_MS = 12000, POLL_MS = 500
 const waiting = reason => ({ phase: 'waiting', reason })
@@ -26,12 +29,14 @@ const dawn = reason => ({ phase: 'waiting', reason, wait: { code: 'DAWN' } })
 async function nightHome (ctx, { clock, approach = approachHome, now = ctx.now ?? Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   const house = ctx.shared.playerHouse
   const night = () => { const phase = dayPhase(clock()); return phase.known && phase.shelter }
-  if (!night() || !house?.done || !house.origin) return null
+  if (!night() || !house?.origin || houseDuty(house)) return null
   const bed = bedOf(house.origin)
   if (!bed) return null
   if (!await approach(ctx, bed)) return waiting('夜のため、本拠点へ戻ります。')
   const block = ctx.getBlock(bed.x, bed.y, bed.z)
   const state = ctx.shared.dragonNight ??= {}
+  // Received as something else: the bed's repair is asked for; this night is waited out in the house.
+  if (block?.known === true && !/bed$/.test(block.name)) homeUse(ctx, 'bed')
   if (block?.known !== true || !/bed$/.test(block.name) || now() - (state.triedAt ?? -Infinity) < TRY_MS) return dawn('夜のため、本拠点の中で朝を待ちます。')
   state.triedAt = now()
   const use = ctx.operations.interactions

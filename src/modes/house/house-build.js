@@ -15,7 +15,11 @@
 //   received block is what the blueprint draws there. A plant in a cell is cut
 //   first. A step refused three times is left, and the others go on.
 // - The house is done when every step stands and both large chests have
-//   received 54-slot windows; the next play goes on as before.
+//   received 54-slot windows; the next play goes on as before. This is the only
+//   place that writes `done: true` (house-repair.js says what the record means).
+// - A repair asked for one thing of the house (house-repair.js `focusOf`) makes
+//   and places only that thing's steps; the keeper (house-damage.js) holds the
+//   rest as soon as the thing stands.
 // - Not while a hostile is within 12 m or another job runs; ten minutes after
 //   a run that placed nothing.
 const fs = require('node:fs')
@@ -28,6 +32,7 @@ const { findSite, PLANT } = require('./house-site')
 const { clicks, stands, standable } = require('./house-steps')
 const { underCover } = require('../player-surface')
 const { chestPairs, neededChests, verifyHouseChests } = require('./house-large-chests')
+const { focusOf } = require('./house-repair')
 
 const AGAIN_MS = 600000, SHORT_MS = 3000, TRIES = 3, RUN_MS = 20 * 60000
 const BLIND = /視線/
@@ -89,15 +94,19 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     if (!file || !write) return
     const left = shared.playerHouse.left
     savedLeft = JSON.stringify(left ?? null)
-    try { await write(file, { version: 1, origin: shared.playerHouse.origin, done: shared.playerHouse.done === true, spawn: shared.playerHouse.spawn === true, ...(left ? { left } : {}), savedAt: new Date(now()).toISOString() }) } catch { /* Kept in shared until the next save. */ }
+    try { await write(file, houseDoc(shared.playerHouse, now())) } catch { /* Kept in shared until the next save. */ }
   }
 
   function due () {
     const inventory = getInventory(), position = getPosition()
     if (!inventory || !position || !pending({ mode: getMode(), playing: shared.playerWanted === true, shared, state: { inventory } })) return false
     const origin = shared.playerHouse?.origin ?? null
-    const left = origin ? remaining(getBlock, origin) : placements()
-    if (origin && !left.length) return shared.playerHouse?.done !== true
+    const all = origin ? remaining(getBlock, origin) : placements()
+    if (origin && !all.length) return shared.playerHouse?.done !== true
+    // One thing of the house asked for: only its steps bring the Bot back, and only their materials are waited for.
+    const focus = focusOf(shared.playerHouse)
+    const left = focus ? all.filter(step => focus.has(step.id)) : all
+    if (!left.length) return false
     const needs = houseNeeds(inventory, counts(left))
     // Logs and cobblestone start it; the glass waits for sand and the bed for
     // wool, so a house is not held back by a desert-less or sheep-less area
@@ -152,11 +161,11 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     return true
   }
 
-  async function openDoorway (origin) {
+  async function openDoorway (origin, todo = null) {
     const door = placements(origin).find(step => step.id === DOOR)
     const left = remaining(getBlock, origin)
     const needsVerification = !left.length && shared.playerHouse?.done !== true
-    if (!door || left.some(step => step.id === DOOR) || (!left.some(workable) && !needsVerification)) return false
+    if (!door || left.some(step => step.id === DOOR) || (!(todo ?? left).some(workable) && !needsVerification)) return false
     const at = door.position
     if (!matches('oak_door', getBlock(at.x, at.y, at.z))) return false
     if (!await near(at)) { say('拠点の家: 入口のドアへ近づけません（中の作業が残っています）'); return false }
@@ -386,7 +395,10 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       return 0
     }
     unreached = 0
-    await openDoorway(origin)
+    // The steps of this run: the whole blueprint, or the one thing a job asked for (and the door again when this run took it down).
+    const focus = focusOf(shared.playerHouse)
+    const todo = () => { const all = remaining(getBlock, origin); return focus ? all.filter(step => focus.has(step.id)) : all }
+    if (await openDoorway(origin, todo()) && focus) focus.add(DOOR)
     const fails = new Map(), started = now()
     let placed = 0
     let largeChests = []
@@ -396,14 +408,14 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     // Passes go on while one places something (each step is tried TRIES times at most).
     for (let pass = 0; !aborted() && now() - started < RUN_MS; pass++) {
       let progress = 0
-      for (const step of order(remaining(getBlock, origin))) {
+      for (const step of order(todo())) {
         if (aborted() || now() - started > RUN_MS) break
         if ((fails.get(step.id) ?? 0) >= TRIES) continue
         // The door only once nothing else is left: placed while slabs or glass
         // wait it is taken down again on the next run (live 07:22-07:23 JST).
-        if (step.id === DOOR && remaining(getBlock, origin).some(other => other.id !== DOOR && workable(other) && (fails.get(other.id) ?? 0) < TRIES)) continue
+        if (step.id === DOOR && todo().some(other => other.id !== DOOR && workable(other) && (fails.get(other.id) ?? 0) < TRIES)) continue
         if (step.id === DOOR && !await verifyChests()) continue
-        const left = remaining(getBlock, origin)
+        const left = todo()
         ports.reset?.()
         // The server has not confirmed the last transfer: every further craft or
         // placement would fail the same way (live 06:40 JST: about 90 steps used
@@ -430,7 +442,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     const chestsVerified = !aborted() && await verifyChests()
     for (const step of left) if ((fails.get(step.id) ?? 0) > 0 && workable(step)) failedAt.set(step.id, now())
     if (!left.length && chestsVerified) {
-      shared.playerHouse = { ...shared.playerHouse, origin, done: true }
+      shared.playerHouse = { ...shared.playerHouse, origin, done: true, built: true }
       await save()
       say(`拠点の家が完成しました (${origin.x}, ${origin.y}, ${origin.z})`)
     } else {
@@ -445,8 +457,12 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     return placed
   }
 
+  let repairSince = shared.playerHouse?.repair?.since ?? null
   async function tick () {
     if (shared.playerHouse?.origin && JSON.stringify(shared.playerHouse.left ?? null) !== savedLeft) await save()
+    // A repair begun or begun again is a new start: the wait after the last run that placed nothing belongs to the one before.
+    const since = shared.playerHouse?.repair?.state === 'running' ? shared.playerHouse.repair.since : null
+    if (since !== repairSince) { repairSince = since; if (since !== null) { waitUntil = 0; failedAt.clear() } }
     if (!live() || busy || blocked() || hostile() || travel.status()?.busy || now() < waitUntil || !due()) return null
     busy = true
     let placed = 0
@@ -474,15 +490,38 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   return { tick, closeIn, status: () => ({ active: busy, reason: busy ? '拠点の家を建てています。' : null, placed: placedTotal, house: shared.playerHouse ?? null }) }
 }
 
-// The house's record: .local/player-house.json ({ origin, done }).
+// The house's record: .local/player-house.json (house-repair.js says what each field means).
 const houseFile = root => path.resolve(root, '.local', 'player-house.json')
+function houseDoc (house, at = Date.now()) {
+  const { left, repair } = house
+  return { version: 1, origin: house.origin, done: house.done === true, spawn: house.spawn === true, ...(house.built === true ? { built: true } : {}), ...(left ? { left } : {}), ...(repair ? { repair } : {}), savedAt: new Date(at).toISOString() }
+}
+// A repair read back: only a shape this code wrote. A file of the code before has none, and its `done: true` is
+// what was last observed then, not what stands now (the keeper and every job read the blocks again).
+function repairOf (value) {
+  if (!value || !['running', 'held'].includes(value.state) || !Number.isFinite(value.since)) return null
+  const names = list => Array.isArray(list) ? list.filter(id => typeof id === 'string').slice(0, 64) : null
+  const out = { state: value.state, since: value.since }
+  if (typeof value.need === 'string') out.need = value.need
+  if (names(value.focus)?.length) out.focus = names(value.focus)
+  if (value.tried && typeof value.tried === 'object') out.tried = Object.fromEntries(Object.entries(value.tried).filter(([, at]) => Number.isFinite(at)))
+  if (value.state === 'held') {
+    if (!Number.isFinite(value.until)) return null
+    out.heldAt = Number.isFinite(value.heldAt) ? value.heldAt : value.since
+    out.until = value.until
+    const basis = value.basis ?? {}
+    out.basis = { missing: Number.isFinite(basis.missing) ? basis.missing : null, short: basis.short && typeof basis.short === 'object' ? { ...basis.short } : null, seen: basis.seen === true }
+  }
+  return out
+}
 function loadHouseSync (file, { io = fs } = {}) {
   try {
     const value = JSON.parse(String(io.readFileSync(file, 'utf8')).replace(/^\uFEFF/, ''))
     const origin = value?.origin
     const left = value?.left && typeof value.left === 'object' && Object.values(value.left).every(Number.isSafeInteger) ? { ...value.left } : null
-    return origin && [origin.x, origin.y, origin.z].every(Number.isSafeInteger) ? { origin: { x: origin.x, y: origin.y, z: origin.z }, done: value.done === true, spawn: value.spawn === true, ...(left ? { left } : {}) } : null
+    const repair = repairOf(value?.repair)
+    return origin && [origin.x, origin.y, origin.z].every(Number.isSafeInteger) ? { origin: { x: origin.x, y: origin.y, z: origin.z }, done: value.done === true, spawn: value.spawn === true, ...(value.built === true ? { built: true } : {}), ...(left ? { left } : {}), ...(repair ? { repair } : {}) } : null
   } catch { return null }
 }
 
-module.exports = { createHouseBuild, order, ITEM, doorItem, houseFile, loadHouseSync }
+module.exports = { createHouseBuild, order, ITEM, doorItem, houseFile, houseDoc, loadHouseSync }

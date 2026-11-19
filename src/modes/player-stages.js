@@ -13,9 +13,9 @@ const STAGES = Object.freeze([
   { id: 'wood', label: '木の道具', implemented: true, reached: pickaxeAtLeast('wooden') },
   // The house of the user's blueprint, built right after the wooden tools
   // (house/; user 2026-11-17 03:06-03:07 JST). Reached only from the house record
-  // (shared.playerHouse.done, set when every received block matches), never
+  // (finished once: `built`, or `done` in a record of before 2026-11-19; a damaged house stays reached), never
   // implied by a later stage (user 23:16 JST: 「02目標に『拠点の作成』も追加しといて」).
-  { id: 'base', label: '拠点の作成', implemented: true, record: true, reached: (items, house) => house?.done === true },
+  { id: 'base', label: '拠点の作成', implemented: true, record: true, reached: (items, house) => house?.built === true || house?.done === true },
   { id: 'stone', label: '石の道具', implemented: true, reached: pickaxeAtLeast('stone') },
   { id: 'iron', label: '鉄の道具', implemented: true, reached: pickaxeAtLeast('iron') },
   { id: 'home_reserve', label: '本拠点に予備の鉄装備と食料を備蓄', expedition: true, reached: record => record.early?.reserveReady === true },
@@ -35,7 +35,7 @@ const STAGES = Object.freeze([
 // or the inventory is not known.
 // `worn` is the armour snapshot ({ known, worn: [{ name }] }); worn pieces count
 // as held. Unreceived armour counts as nothing worn.
-// `house` is the house record (shared.playerHouse: { origin, done }).
+// `house` is the house record (shared.playerHouse: { origin, done, built }).
 function playerStages (inventory, worn = null, house = null, record = null) {
   const known = inventory?.known === true && inventory.uncertain !== true && Array.isArray(inventory.items)
   const wearing = worn?.known === true && Array.isArray(worn.worn) ? worn.worn.filter(piece => piece?.name).map(piece => ({ name: piece.name, count: 1 })) : []

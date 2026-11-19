@@ -33,9 +33,12 @@ test('reuse the house and survival jobs until actual equipment exists', () => {
 
 function context (state, supplies, boots = false) {
   const here = chestOf(house.origin)
+  // The house's large chest A stands (since 2026-11-19 the reserve step reads the chest's received blocks before it
+  // uses it; before, an all-air world was enough because only the record's `done` was read).
+  const chest = require('../src/modes/house/house-large-chests').chestPairs(house.origin)[0].flatMap(step => step.cells)
   return {
     signal: new AbortController().signal, cancelled: () => false,
-    getFeet: () => here, getBlock: () => ({ known: true, name: 'minecraft:air' }),
+    getFeet: () => here, getBlock: (x, y, z) => ({ known: true, name: chest.some(cell => cell.x === x && cell.y === y && cell.z === z) ? 'minecraft:chest' : 'minecraft:air' }),
     hands: {}, runtime: { armor: () => worn(boots ? ['minecraft:golden_boots'] : []), inventory: () => observed() },
     shared: { playerHouse: house }, memory: { early: state }, supplies,
     operations: { interactions: {}, armor: { equipBest: async () => {} } }

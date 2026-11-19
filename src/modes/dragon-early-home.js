@@ -4,6 +4,7 @@ const { openDoor } = require('./house/house-door')
 const { underCover } = require('./player-surface')
 const { createBuildWalk } = require('./player-build-walk')
 const { createOpenStand } = require('./open-stand')
+const { entranceNeed } = require('./dragon-home-use')
 
 // A long trip counts as arrived within ARRIVE_M of its destination on the map,
 // whatever the height. More than LEVEL_M over or under the house, no walk leads
@@ -22,6 +23,8 @@ async function approachHome (ctx, destination, options = {}) {
   const arrived = await reach(ctx, destination, options)
   // At the thing in the house (and, for a furnace or a chest, where it opens): one confirmed step of the goal.
   if (arrived === true) ctx.goal?.step?.(`home:${destination.x},${destination.y},${destination.z}`)
+  // Not in, beside a doorway whose floor is received as gone: the entrance's repair is asked for (dragon-home-use.js).
+  else if (!ctx.cancelled()) entranceNeed(ctx)
   return arrived
 }
 

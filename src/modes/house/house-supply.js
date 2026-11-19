@@ -4,7 +4,8 @@
 // 2026-11-17 03:06 JST: 「序盤にこの設計で拠点を作るようにしてほしい、最優先で」;
 // 03:07 JST: 「木の道具を次くらいじゃないと立てられないよね？」 - its floor and
 // furnaces take 68 cobblestone, so a pickaxe comes first).
-// - While a pickaxe is held and the house is not finished (shared.playerHouse.done),
+// - While a pickaxe is held and the house is being built or repaired (house-repair.js `houseDuty`:
+//   not while it is whole, and not while its repair is held),
 //   the plan's next work is replaced by gathering what the house still needs
 //   (house-needs.js): logs from whole natural trees first, then cobblestone.
 // - Logs: the base wood plan, asked as if no wood were held, so it goes on
@@ -15,7 +16,8 @@
 // - Wool comes from sheep (house-wool.js); coal, the crafting and the build
 //   itself come next (docs/player-roadmap.md).
 const { normalizeMode } = require('../bot-mode')
-const { counts, remaining, placements } = require('./house-blueprint')
+const { counts, remaining, placements, matches } = require('./house-blueprint')
+const { houseDuty, focusOf } = require('./house-repair')
 const { houseNeeds } = require('./house-needs')
 
 const short = name => String(name ?? '').replace(/^minecraft:/, '')
@@ -43,7 +45,7 @@ function houseSandInput (state, options, sand) {
 }
 
 function pending ({ mode, playing, shared, state }) {
-  return normalizeMode(mode) === 'player' && playing === true && shared?.playerHouse?.done !== true && hasPickaxe(state?.inventory)
+  return normalizeMode(mode) === 'player' && playing === true && houseDuty(shared?.playerHouse) !== null && hasPickaxe(state?.inventory)
 }
 
 // Away from the house its chunks are not received and every step looks
@@ -55,6 +57,9 @@ function needsNow ({ shared, state, getBlock }) {
   if (!origin || !getBlock) return houseNeeds(state?.inventory, counts(remaining(null, null)))
   const seen = placements(origin).every(step => step.cells.every(cell => getBlock(cell.x, cell.y, cell.z)?.known === true))
   if (seen) house.left = counts(remaining(getBlock, origin))
+  // One thing of the house asked for (house-repair.js): only its steps' materials, less the steps received standing.
+  const focus = focusOf(house)
+  if (focus) return houseNeeds(state?.inventory, counts(placements(origin).filter(step => focus.has(step.id) && !step.cells.every(cell => matches(step.item, getBlock(cell.x, cell.y, cell.z))))))
   if (seen) return houseNeeds(state?.inventory, house.left)
   if (house.left) return houseNeeds(state?.inventory, house.left)
   // Never read whole yet (a house recorded before this was kept): only the steps

@@ -6,15 +6,22 @@ const { pinned } = require('./dragon-gather-pin')
 const { bedOf, chestOf, setSpawn } = require('./house/house-spawn')
 const { approachHome } = require('./dragon-early-home')
 const { provisionFood } = require('./dragon-early-food')
+const { houseDuty } = require('./house/house-repair')
+const { homeTarget, homeUse, same } = require('./dragon-home-use')
+const { failed } = require('./return/return-result')
 
 // The starter jobs build the house and tools. Before mining for diamonds,
 // establish the respawn point and physically stock the first recovery kit.
+// The house is the starter jobs' while it is being built or repaired (house/house-repair.js `houseDuty`); a
+// damaged house whose repair is held is not: each step then asks for the one thing it needs, from that thing's
+// received blocks (dragon-home-use.js), and goes on when it stands.
 function earlyObjective ({ inventory, worn, house, memory = {} }) {
   const step = (id, label, legacy = false, ready = false) => ({ id, label, next: label, legacy, ready })
   if (inventory?.known !== true || inventory.uncertain || !Array.isArray(inventory.items)) return step('observe', '持ち物の受信を待ちます。')
   const held = inventory.items.filter(item => item?.count > 0 && item.durabilityRemaining !== 0)
   if (!held.some(item => /_pickaxe$/.test(item.name))) return step('wood', '原木から最初の道具を作ります。', true)
-  if (!house?.done || !house.origin) return step('base', 'ベッドとラージチェストのある本拠点を作ります。', true)
+  const duty = house?.origin ? houseDuty(house) : 'build'
+  if (duty) return step('base', duty === 'repair' ? '壊れた本拠点を直します。' : 'ベッドとラージチェストのある本拠点を作ります。', true)
   if (!hasWorkingPick(held, 'stone')) return step('stone', '鉄鉱石を採れる石以上のツルハシを用意します。', true)
   if (!memory.early?.spawnReady) return step('home_spawn', '本拠点へ戻り、復帰ベッドを確認します。')
   if (!memory.early.reserveReady) return step('home_reserve', '本拠点のラージチェストに再出発用の装備を揃えます。')
@@ -47,8 +54,10 @@ async function runDragonEarly (ctx) {
     const block = ctx.getBlock(bed.x, bed.y, bed.z)
     if (block?.known !== true) return result('本拠点のベッドの受信を待ちます。')
     if (!/bed$/.test(block.name)) {
-      shared.playerHouse = { ...shared.playerHouse, done: false, spawn: false }
-      return result('ベッドを失ったため、本拠点の建築を再開します。')
+      // Received as gone: the respawn point is no longer this bed, and the bed alone is asked for (not the whole house).
+      const use = homeUse(ctx, 'bed')
+      shared.playerHouse = { ...shared.playerHouse, spawn: false }
+      return use.ok ? result('本拠点のベッドの受信を待ちます。') : { ...result(use.reason), result: use.result }
     }
     const last = shared.lastSpawnSet
     if (shared.playerHouse.spawn && atHomeBed(last, bed)) {
@@ -72,9 +81,24 @@ async function runDragonEarly (ctx) {
       // The step's own outcome (return-result.js) goes up with the text.
       return item.result ? { ...result(item.reason), result: item.result } : result(item.reason)
     }
-    const chest = chestOf(origin)
+    // One of the house's two large chests, the one used before first (the kit is not split over both); the other
+    // one while the first is broken or was not read three times.
+    const unread = at => ({ stage: 'reserve', target: [at.x, at.y, at.z].join(','), code: 'CHEST_NOT_READ' })
+    const choice = { prefer: state.reserveAt ?? null, spent: at => ctx.goal?.spent?.(unread(at)) === true }
+    const chest = homeTarget(ctx, 'chest', choice).at
     if (!await approachHome(ctx, chest)) return result('本拠点の予備装備チェストへ戻っています。')
+    const use = homeUse(ctx, 'chest', choice)
+    if (!use.ok) return { ...result(use.reason), result: use.result }
+    if (!same(use.at, chest)) return result('本拠点の使えるラージチェストへ移ります。')
+    if (use.alternative && !same(state.reserveAt, use.at)) ctx.log?.(`プレイヤーモード: 本拠点のラージチェストのうち、使えるほう (${use.at.x}, ${use.at.y}, ${use.at.z}) に予備装備を置きます`)
+    if (!cancelled()) state.reserveAt = { ...use.at }
     const stock = await supplies.reserve(chest, { mode: 'stock', kit: 'home' })
+    // The chest stands and its 54 slots did not come: one failure of this chest, for the goal's ledger.
+    if (stock.unread && !cancelled()) {
+      const noted = ctx.goal?.fail?.(unread(chest), { paceMs: 20000 })
+      if (noted?.exhausted) ctx.log?.(`プレイヤーモード: 本拠点のラージチェスト (${chest.x}, ${chest.y}, ${chest.z}) の54枠を ${noted.count} 回とも受信できなかったため、このチェストは使いません（${stock.unread}）`)
+      return { ...result(stock.reason), result: failed('CHEST_NOT_READ', { detail: stock.unread }) }
+    }
     if (!cancelled()) {
       if (stock.done) state.reserveReady = true
       else if (stock.missing) state.gather = { ...stock.missing, since: Date.now() }
@@ -90,7 +114,7 @@ async function runDragonEarly (ctx) {
     await ctx.operations.armor.equipBest()
     return result('金のブーツと残り3部位のダイヤ以上の防具を装着します。')
   }
-  if (!await approachHome(ctx, chestOf(origin))) return result('ネザー偵察の出発点になる本拠点へ戻っています。')
+  if (!await approachHome(ctx, state.reserveAt ?? chestOf(origin))) return result('ネザー偵察の出発点になる本拠点へ戻っています。')
   if (playerSpawn(shared.lastSpawnSet) && !atHomeBed(shared.lastSpawnSet, bedOf(origin))) {
     state.spawnReady = false
     return result('遠征中に変更された復帰地点を本拠点に戻します。')

@@ -121,10 +121,15 @@ function createDragonSupplies (ctx) {
     return current >= target ? done(name + ' の所持数を確認しました。') : pending(name + ' を準備しています（' + current + '/' + target + '）。' + (trouble ? '（' + trouble + '）' : ''))
   }
 
+  // Why the last chest gave no 54 slots, when the chest itself answered so (not a walk, a pause or a fight in between).
+  let unread = null
   async function inspect (pos) {
+    unread = null
     if (!pos || cancelled() || !getInventory() || !await approach(ctx, pos) || cancelled()) return null
     const result = await box.inspect(pos, { aborted: cancelled })
-    return result.status === 'completed' && result.evidence.slotCount === 54 ? box.contents(pos) : null
+    if (result.status === 'completed' && result.evidence.slotCount === 54) return box.contents(pos)
+    if (!cancelled() && ['completed', 'failed', 'blocked'].includes(result.status)) unread = result.status === 'completed' ? `${result.evidence.slotCount ?? '?'}枠` : String(result.code ?? result.status)
+    return null
   }
   function select (stacks, name, wanted, chest) {
     const result = []
@@ -151,7 +156,7 @@ function createDragonSupplies (ctx) {
   async function reserve (pos, { mode, kit, keepReserve = false } = {}) {
     const recovering = mode === 'recover', desired = kit === 'end' ? spare : home
     const slots = await inspect(pos)
-    if (!slots) return pending('予備のラージチェスト54枠と持ち物を確認します。')
+    if (!slots) return unread ? { ...pending('予備のラージチェストの54枠を受信できません（' + unread + '）。'), unread } : pending('予備のラージチェスト54枠と持ち物を確認します。')
     // What the reserve chest holds, as received just now: part of what the goal has (dragon-goal-measure.js).
     ctx.shared.dragonReserveSeen = { counts: Object.fromEntries(desired.map(([name]) => [name, count(name, slots)])) }
     for (const [name, amount] of desired) {
