@@ -17,7 +17,8 @@ test('away from home with one raw piece and an animal in view, the food step hun
   const origin = { x: 0, y: 64, z: 0 }
   const calls = []
   let ready = true
-  const items = [{ name: 'minecraft:mutton', count: 1, slot: 0 }]
+  // Fuel in hand: without it the fuel is fetched before the walk home (dragon-food-cook.test.js).
+  const items = [{ name: 'minecraft:mutton', count: 1, slot: 0 }, { name: 'minecraft:coal', count: 1, slot: 1 }]
   const ctx = {
     shared: { playerHouse: { origin, done: true } }, memory: {}, cancelled: () => false, log: () => {}, now: () => 0, signal: new AbortController().signal,
     getFeet: () => ({ x: 80.5, y: 64, z: 80.5 }), getBlock: () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty' }),
