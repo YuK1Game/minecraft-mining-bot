@@ -234,7 +234,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
   }
   const stored = (at, name) => storeOf(at).filter(item => item.network_id === idOf(name)).reduce((sum, item) => sum + item.count, 0)
 
-  const server = { contents: 'send', transfer: 'ok', requests: [], window: null }, truth = []
+  const server = { contents: 'send', transfer: 'ok', requests: [], window: null, hand: null }, truth = []
   const observed = { authority: true, inventoryKnown: true, pendingRequestId: null, openContainer: null }
   const crafting = {
     snapshot: () => structuredClone(observed), rawItem: slot => bag[slot] ? structuredClone(bag[slot]) : null,
@@ -281,6 +281,8 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     // The real rule of the open click (actions/open-face.js): within reach of the
     // face towards the eye, with a clear line to it.
     async openChest (target) {
+      // A refusal that is not about the place (server.hand: its message), as the real session check gives.
+      if (server.hand) { began('open_refused', { ...target, code: null, from: getFeet() }); throw new Error(server.hand) }
       const refused = openAccess(pos => getBlock(pos.x, pos.y, pos.z), getPosition(), target)
       if (refused) { began('open_refused', { ...target, code: refused.code }); throw new Error(refused.message) }
       began('open', { ...target })
@@ -306,7 +308,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     movement,
     chest: { open: position => { requireIdle(); crafting.closeContainer(); return chest.open(position) }, depositItem: options => { requireIdle(); return chest.depositItem(options) }, withdrawItem: options => { requireIdle(); return chest.withdrawItem(options) }, snapshot: () => chest.snapshot(), cancel: reason => chest.cancel(reason) },
     crafting: { closeContainer: () => crafting.closeContainer() },
-    interactions: { previewOpenChest: target => { const refused = openAccess(pos => getBlock(pos.x, pos.y, pos.z), getPosition(), target); return refused ? { ready: false, code: refused.code, errors: [refused.message] } : { ready: true } }, useDoor: async at => { requireIdle(); began('door', { ...at }); later(200, () => { for (const dy of [0, 1]) { const found = getBlock(at.x, at.y + dy, at.z); if (/door$/.test(found?.name ?? '')) blocks.set(key(at.x, at.y + dy, at.z), empty(found.name, { open_bit: true })) } }) } },
+    interactions: { previewOpenChest: target => { if (server.hand) return { ready: false, code: null, errors: [server.hand] }; const refused = openAccess(pos => getBlock(pos.x, pos.y, pos.z), getPosition(), target); return refused ? { ready: false, code: refused.code, errors: [refused.message] } : { ready: true } }, useDoor: async at => { requireIdle(); began('door', { ...at }); later(200, () => { for (const dy of [0, 1]) { const found = getBlock(at.x, at.y + dy, at.z); if (/door$/.test(found?.name ?? '')) blocks.set(key(at.x, at.y + dy, at.z), empty(found.name, { open_bit: true })) } }) } },
     // Ordinary mining, only when a scenario turns it on (sim.digging): a received
     // plain block becomes air after its time; the block under the feet lowers the Bot by one.
     mining: {

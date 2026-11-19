@@ -88,6 +88,19 @@ function createReturnSteps ({ goal, ports, flow }) {
     return !!by
   }
 
+  // The base is the chests standing there, not the one cell on record. When the
+  // chest on record is gone, another chest of the base takes its place on the
+  // record; a new one is made only when none stands (live 2026-11-19 18:26 JST:
+  // the chest on record had been blown up, four chests stood in the house 10 m
+  // away, and every trip ended 「拠点のチェストを作る木がありません」).
+  async function moved (at) {
+    const next = [...chests.spares(), ...(chests.all?.() ?? [])].find(other => !same(other, at) && isChest(other) && !shut(other)) ?? null
+    if (!next) { say('拠点のチェストがなくなっていたため、作り直します'); return null }
+    say(`拠点のチェスト (${at.x}, ${at.y}, ${at.z}) がなくなっていたため、拠点に立っているチェスト (${next.x}, ${next.y}, ${next.z}) を使います`)
+    const recorded = typeof policy.record === 'function' ? await policy.record(next) : null
+    return recorded ?? { x: next.x, y: next.y, z: next.z }
+  }
+
   async function observe () {
     if (aborted()) return stopped('OBSERVE_INTERRUPTED')
     const position = getPosition()
@@ -213,7 +226,7 @@ function createReturnSteps ({ goal, ports, flow }) {
     if (goalNow.base && flat(goalNow.base, getPosition()) > ARRIVE_M && flat(at, getPosition()) > ARRIVE_M) return { ...completed('TOO_FAR'), next: 'travel' }
     if (!received(at)) return unseen(at)
     if (gone(at)) {
-      if (same(at, goalNow.base)) { say('拠点のチェストがなくなっていたため、作り直します'); goalNow.base = null }
+      if (same(at, goalNow.base)) goalNow.base = await moved(at)
       goalNow.target = null
       return { ...completed('CHEST_GONE'), next: 'container' }
     }
@@ -266,6 +279,7 @@ function createReturnSteps ({ goal, ports, flow }) {
     if (!policy.cargo().length && getInventory()) return { ...completed('NOTHING_TO_STORE'), next: 'verify' }
     // The base's chest, the house's second one, the one in use, and any other standing near the Bot.
     if (goalNow.base && !received(goalNow.base)) return unseen(goalNow.base)
+    if (goalNow.base && gone(goalNow.base)) { goalNow.base = await moved(goalNow.base); if (aborted()) return stopped('CONTAINER_INTERRUPTED') }
     const known = goalNow.base ? [goalNow.base, ...chests.spares(), ...(goalNow.target ? [goalNow.target] : []), ...(chests.near?.() ?? [])].filter((at, index, all) => all.findIndex(other => same(other, at)) === index) : []
     // The halves of a large chest are one container: what is known of one half
     // (full, would not open, could not be got to) holds for the other.
@@ -290,7 +304,6 @@ function createReturnSteps ({ goal, ports, flow }) {
     // the place is planned again later. Only where a chest was opened and
     // its received slots showed it full is a new one made beside it.
     if (known.some(at => isChest(at) && either(goalNow.unreached, at)) && !known.some(at => isChest(at) && full(at))) return failed('CHEST_UNREACHED', { retry: { kind: 'position_changed' }, evidence: { state: { at: area(getFeet(), 4) } } })
-    if (goalNow.base && gone(goalNow.base)) { say('拠点のチェストがなくなっていたため、作り直します'); goalNow.base = null }
     // No chest has room and none can be made, and the kit is wanted from these
     // chests: it is taken first. The wood for the new chest may be in them, and
     // what is taken out makes room (live 2026-11-18 16:20-16:39 JST: two goals
@@ -396,7 +409,8 @@ function createReturnSteps ({ goal, ports, flow }) {
         // Wait for fresh receipts before opening or taking anything else.
         if (!getInventory()) return blocked('TRANSFER_UNCONFIRMED', { kind: 'inventory_update', timeoutMs: 30000 }, { progress: out.progress, evidence: out.evidence, detail: out.detail })
         if (out.status === 'blocked' || out.status === 'interrupted' || out.status === 'cancelled') return out
-        if (out.status !== 'completed') why = why ?? out
+        // Never in silence: which chest did not give, and why.
+        if (out.status !== 'completed') { why = why ?? out; say(`チェスト (${at.x}, ${at.y}, ${at.z}) から取り出せませんでした（${out.code}${out.detail ? `: ${out.detail}` : ''}）`) }
       }
     }
     if (aborted()) return stopped('RESTOCK_INTERRUPTED')
