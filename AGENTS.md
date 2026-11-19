@@ -16,7 +16,7 @@
 | 分野 | 内容 | 主なファイル |
 | --- | --- | --- |
 | 接続・認証 | Microsoft 認証（`.auth/` にキャッシュ）、Realm 一覧・選択、異常終了時の自動再接続（指数バックオフ、10分で最大5回） | `src/host/host.js`, `src/host/realms.js`, `scripts/keep-alive.js` |
-| ホットリロード | 行動コード保存で自動反映。構文・初期化エラー時は旧コードを維持。クラフト・設置中は安全な切替点まで待つ。削除・改名したモジュールは監視から外し、スポーン後に初めて読み込まれたモジュールも保存時に反映する（2026-11-15。`hotreload.js` の変更は Bot の再起動後に有効） | `src/host/hotreload.js`, `src/host/lifecycle.js` |
+| ホットリロード | 行動コード保存で自動反映。構文・初期化エラー時は旧コードを維持。クラフト・設置中は安全な切替点まで待つ。削除・改名したモジュールは監視から外し、スポーン後に初めて読み込まれたモジュールも保存時に反映する（2026-11-15。`hotreload.js` の変更は Bot の再起動後に有効）。保存のないフォルダの通知（初めて読み込まれたモジュールの読み取りなど）では反映し直さない: 前回の反映のあとに読み込まれ、前回の反映より前に書かれたままのファイルは、動いているソースとして監視に加えるだけにする（2026-11-20 02:09〜02:11 JST 実Realm: 起動後、何も保存していないのに行動コードが2分で4回反映し直され、1回は戦闘中の「射線から外れる」歩きを終わらせた） | `src/host/hotreload.js`, `src/host/lifecycle.js` |
 | 観測 | エンティティ・敵・地形（サブチャンク）・持ち物・体力/空腹の受信。未受信ブロック（`known:false`）を空気扱いしない | `src/host/entities.js`, `src/combat/threats.js`, `src/host/world.js`, `src/inventory/inventory.js` |
 | 持ち物の一元記録 | メイン36・防具4・オフハンド・カーソルを1つの記録（`host.shared.inventoryStore`）に枠ごとの受信元・リビジョン付きで保持。クラフト・防具・画面・採掘ゲートは全てここを読む。未受信の枠は空ではなく「?」。待機中は未受信枠を `inventory_mismatch` で自動再取得 | `src/inventory/inventory-store.js`, `src/inventory/inventory-inspection.js` |
 | 移動 | 経路探索、物理予測（実験的 Bedrock 版 prismarine-physics）、段差・ジャンプ、水際、警戒付き経路移動と退避 | `src/movement/navigation.js`, `src/movement/movement.js`, `src/movement/physics.js`, `src/movement/guarded-route.js`, `src/movement/escape-policy.js` |
