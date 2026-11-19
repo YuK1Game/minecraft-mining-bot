@@ -106,7 +106,11 @@ function createDragonSupplies (ctx) {
       else await bench.craftPlanks(log.name, 1)
     } else if (material) {
       if (!held(material)) await acquire(material, 1)
-      else if (!held('coal') && !held('charcoal') && !held('planks')) await acquire('planks', 2)
+      else if (!held('coal') && !held('charcoal') && !held('planks')) {
+        // Fuel: coal ore already in view (underground) before a walk to the trees.
+        const coalNear = findCells(ctx, b => SOURCES.coal.test(bare(b.name))).length > 0
+        await acquire(coalNear ? 'coal' : 'planks', coalNear ? 1 : 2)
+      }
       else {
         const furnace = await station('furnace')
         const plank = rows().find(i => matches('planks', i))

@@ -3,6 +3,7 @@
 const { standable } = require('./house/house-steps')
 const { full, bare, workingPickTier } = require('./dragon-supply-kit')
 const { approachOre, searchMine, coolLava, lake, DEPTH } = require('./dragon-early-quarry')
+const { roam } = require('./supply-roam')
 
 const SOURCES = {
   raw_iron: /^(?:deepslate_)?iron_ore$/, raw_gold: /^(?:deepslate_)?gold_ore$/,
@@ -45,11 +46,13 @@ async function explore (ctx, resource) {
     const x = Math.floor(feet.x) + direction[0] * distance, z = Math.floor(feet.z) + direction[1] * distance
     for (const dy of [0, 1, -1, 2, -2]) {
       const y = Math.floor(feet.y) + dy
-      if (standable(ctx.getBlock, x, y, z) && await ctx.hands.approach({ x, y, z }, 1.5)) { step[resource] = offset + 1; return }
+      if (standable(ctx.getBlock, x, y, z) && await ctx.hands.approach({ x, y, z }, 1.5)) { step[resource] = offset + 1; step[resource + ':miss'] = 0; return }
       if (ctx.cancelled()) return
     }
   }
   step[resource] = (Math.floor(offset / 7) + 1) * 7
+  // No heading had a place to walk to (a tunnel underground has none): the long trip goes instead (supply-roam.js).
+  await roam(ctx, resource, step, feet, () => SOURCES[resource] ? findCells(ctx, b => SOURCES[resource].test(bare(b.name))).length > 0 : false)
 }
 
 function protectedAt (ctx, p) {
