@@ -213,6 +213,7 @@ Node.js **24 以降**が必要です（`--env-file-if-exists` を使用）。
 - Host/Origin/一時トークンの検査、固定コマンドの許可リスト、プロフィール・チャンク範囲の検証を維持してください。汎用 `/action` のブラウザープロキシやシェルコマンド実行を追加しません。
 - 開始は2分有効の一度きりの計画確認（計画ボタンで得るトークン）に限定し、ブラウザーの確認ウィンドウは出さない（2026-11-13 ユーザー指示。再開・一時停止も同様）。接続先・生存回・ジョブ・設定・コード世代の変更で失効させます。例外の自動承認はしません。
 - Microsoftの一時デバイスコード以外の認証情報を画面へ返しません。`.env` は変更しません。詳細・停止時のプロセス所有権・未実施検証は `docs/dashboard-controls.md`。
+- **デバッグツール**（2026-11-19 ユーザー依頼「リスポーン地点変更機能と、所持アイテムリセット機能と、管理者コマンドを打てる機能」）: 「03 実行」の下の DEBUG 欄の3つ（`/spawnpoint @s ~ ~ ~`、2回押しの `/clear @s`、入力した1行のゲーム内コマンド）。経路は `debug` の固定コマンド（`debugSpawn`・`debugClear`・`debugCommand`）だけで、送信と結果の読み取りは `src/host/dashboard-debug.js`（ランタイムの `diagnostics.command`）。結果はサーバーの `command_output` だけで判断し、拒否・無応答（オペレーター権限のないRealm）は失敗として「今していること」欄とログに出す。Botが自分で呼ぶ経路を作らない。画面は `dashboard/debug.js`・`debug.css`（`index.html` は変えない）。テストは `test/dashboard-debug.test.js`。
 - 変更時は `test/dashboard-control*.test.js` と `npm run test:review` を実行してください。`host.js`/`api.js` の更新はBot本体の再起動が必要です。
 
 ## シュルカー専用・初期セットリセット

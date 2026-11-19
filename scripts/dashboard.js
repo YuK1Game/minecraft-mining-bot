@@ -172,7 +172,7 @@ function createDashboard ({ controls = null, workspaceRoot = path.resolve(__dirn
       if (request.headers['x-bot-control'] !== controlToken || method === 'POST' && request.headers.origin !== canonical) { request.resume?.(); send(403, { error: '画面を再読み込みしてから操作してください。' }); return }
       if (method === 'GET' && url.pathname === '/api/control/state') { send(200, await controls.snapshot()); return }
       const route = url.pathname.slice('/api/control/'.length)
-      if (method !== 'POST' || !['realms', 'connect', 'disconnect', 'quarry', 'mode', 'loadout', 'storage'].includes(route) || request.url !== url.pathname) { request.resume?.(); send(404, { error: 'Not found' }); return }
+      if (method !== 'POST' || !['realms', 'connect', 'disconnect', 'quarry', 'mode', 'loadout', 'storage', 'debug'].includes(route) || request.url !== url.pathname) { request.resume?.(); send(404, { error: 'Not found' }); return }
       if (request.headers['content-type']?.split(';')[0].trim() !== 'application/json') { request.resume?.(); send(415, { error: 'application/json が必要です。' }); return }
       try {
         const chunks = []; let bytes = 0
@@ -184,7 +184,7 @@ function createDashboard ({ controls = null, workspaceRoot = path.resolve(__dirn
       return
     }
     if (method === 'POST') { request.resume?.(); send(405, { error: 'この経路は読み取り専用です。' }, undefined, { Allow: 'GET, HEAD' }); return }
-    if (['/control.js', '/control.css', '/mode.js', '/mode.css'].includes(url.pathname)) {
+    if (['/control.js', '/control.css', '/mode.js', '/mode.css', '/debug.js', '/debug.css'].includes(url.pathname)) {
       try { send(200, await readAsset(path.resolve(workspaceRoot, 'dashboard', url.pathname.slice(1)), 128 * 1024), url.pathname.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8') } catch { send(404, { error: 'Not found' }) }
     } else if (url.pathname.startsWith('/assets/minecraft/')) {
       if (request.url.split('?')[0] !== url.pathname) { send(404, { error: 'Not found' }); return }

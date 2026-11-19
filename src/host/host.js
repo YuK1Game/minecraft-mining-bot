@@ -594,7 +594,7 @@ async function main () {
     }
     const dashboardControl = require('./dashboard-control').createDashboardControl({
       getState: () => { const observed = rawSnapshot(); return { ...observed, lifecycle: lifecycle.stats(), loadingScreenEnded: shared.loadingScreenEnded, inventory: shared.inventoryUncertain ? { ...observed.inventory, known: false, uncertain: true } : observed.inventory } },
-      getQuarry: () => current()?.operations.quarry, getReset: () => current()?.operations.loadout, getStorage: () => current()?.operations.storage, getMode: () => current()?.operations.mode, getGeneration: () => reloader.snapshot().generation, disconnect: () => stop()
+      getQuarry: () => current()?.operations.quarry, getReset: () => current()?.operations.loadout, getStorage: () => current()?.operations.storage, getMode: () => current()?.operations.mode, getGeneration: () => reloader.snapshot().generation, getDiagnostics: () => current()?.operations.diagnostics, log, disconnect: () => stop()
     })
     api = createApi({ dashboardControl, snapshot: fullSnapshot, disconnect: () => stop(), lifecycle: { ...lifecycle, respawn: options => deathRespawn.request(options) },
       mining: invoke('mining'), walking: invoke('walking'), movement: invoke('movement'), crafting: invoke('crafting'), interactions: invoke('interactions'), combat: invoke('combat'), agent: invoke('agent'), reload: () => reloader.reload({ reason: 'api' }),
