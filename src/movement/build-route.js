@@ -24,6 +24,13 @@
 //   the Bot and the pillar it had stacked; every cell round was received).
 //   Off unless asked for (`allowBridge`): the walk asks only after a plan
 //   without it found no way, so the wider search never costs a way that exists.
+// - drop: off an edge onto a received floor two or three lower in the cell beside
+//   the feet (no fall damage up to three), every cell the body falls through
+//   received and open; nothing is mined. The walk carries it out with the
+//   navigation's predicted controlled drop. Off unless asked for (`allowDrop`),
+//   like the bridge (real Realm 2026-11-19 12:05-12:07 JST: respawned with empty
+//   hands on the two-block entrance step of the house, the ground three lower;
+//   no block to bridge with, the search ended after 21 cells, six times).
 // Never: an unreceived cell, liquid, leaves, logs, a container, a bed, a
 // door, a block a base protects (`natural: false`), a drop of more than one.
 // The search is bounded (a box round the start and the target, a node limit
@@ -42,12 +49,12 @@ const FALLING = /gravel|(?:^|:|_)sand$|concrete_powder|anvil/
 const OWN = /^minecraft:(?:dirt|grass_block|cobblestone|cobbled_deepslate)$/
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]]
 const AROUND = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0]]
-const COST = { walk: 1, step: 1.5, soft: 2, hard: 5, shaft: 3, stack: 5, bridge: 6 }
+const COST = { walk: 1, step: 1.5, soft: 2, hard: 5, shaft: 3, stack: 5, bridge: 6, drop: 4 }
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 
 const keyOf = (x, y, z) => `${x},${y},${z}`
 
-function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = true, allowBridge = false, refused = null, barred = null, pad = 12, rise = 8, maxNodes = 12000, maxMs = 1500, now = Date.now }) {
+function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = true, allowBridge = false, allowDrop = false, refused = null, barred = null, pad = 12, rise = 8, maxNodes = 12000, maxMs = 1500, now = Date.now }) {
   const lo = { x: Math.min(start.x, target.x) - pad, y: Math.min(start.y, target.y) - rise, z: Math.min(start.z, target.z) - pad }
   const hi = { x: Math.max(start.x, target.x) + pad, y: Math.max(start.y, target.y) + rise, z: Math.max(start.z, target.z) + pad }
   const inside = (x, y, z) => x >= lo.x && x <= hi.x && y >= lo.y && y <= hi.y && z >= lo.z && z <= hi.z
@@ -133,6 +140,13 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
         const dig = through([[nx, y + 1, nz], [nx, y, nz], [nx, y - 1, nz]])
         if (dig) offer(node, nx, y - 1, nz, COST.step + digCost(dig), { kind: 'walk', dig })
       }
+      // Off the edge: two or three down onto a received floor, through open cells only.
+      if (allowDrop && at(nx, y + 1, nz).open && at(nx, y, nz).open && at(nx, y - 1, nz).open) {
+        for (const d of [2, 3]) {
+          if (!at(nx, y - d, nz).open) break
+          if (at(nx, y - d - 1, nz).floor) { offer(node, nx, y - d, nz, COST.drop, { kind: 'drop', dig: [], fall: d }); break }
+        }
+      }
     }
     // Down the own pillar: the block under the feet, a received solid block under it.
     if (allowShaft && OWN.test(at(x, y - 1, z).name) && minable(x, y - 1, z) && at(x, y - 2, z).floor && SIDES.every(([dx, dz]) => !['water', 'hazard', 'unknown'].includes(at(x + dx, y, z + dz).kind))) offer(node, x, y - 1, z, COST.shaft, { kind: 'shaft', dig: [] })
@@ -147,7 +161,7 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
   for (let k = keyOf(end.x, end.y, end.z); from.has(k); k = from.get(k).prev) steps.push(from.get(k).step)
   steps.reverse()
   const count = kind => steps.filter(step => step.kind === kind).length
-  return { ok: true, code: 'BUILD_ROUTE', expanded, steps, cost: end.g, dig: steps.reduce((sum, step) => sum + step.dig.length, 0), shaft: count('shaft'), stack: count('stack'), bridge: count('bridge') }
+  return { ok: true, code: 'BUILD_ROUTE', expanded, steps, cost: end.g, dig: steps.reduce((sum, step) => sum + step.dig.length, 0), shaft: count('shaft'), stack: count('stack'), bridge: count('bridge'), drop: count('drop') }
 }
 
 function planBuildRoute (options) {

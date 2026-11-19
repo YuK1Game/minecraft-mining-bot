@@ -198,3 +198,32 @@ test('a long trip with no way on ends with its reason in player play; a trip sta
   assert.equal(stopsWhenBlocked({}), false)
   assert.equal(stopsWhenBlocked(null), false)
 })
+
+test('with empty hands on a step three over the ground, the route drops off the edge (live 2026-11-19 12:05 JST)', async () => {
+  const world = flatWorld()
+  for (const y of [64, 65, 66]) world.set(0, y, 0, 'oak_planks')
+  const start = { x: 0, y: 67, z: 0 }, target = { x: 6, y: 64, z: 0 }, done = cell => cell.y === 64 && cell.x >= 3
+  const plain = planBuildRoute({ getBlock: world.getBlock, start, target, done })
+  assert.equal(plain.ok, false)
+  const wider = planBuildRoute({ getBlock: world.getBlock, start, target, done, allowDrop: true })
+  assert.equal(wider.ok, true)
+  assert.equal(wider.drop, 1)
+  assert.deepEqual(wider.steps[0], { kind: 'drop', dig: [], fall: 3, to: { x: 1, y: 64, z: 0 } })
+  // Four down is not offered, nor a drop into water or onto an unreceived floor.
+  world.set(0, 67, 0, 'oak_planks')
+  assert.equal(planBuildRoute({ getBlock: world.getBlock, start: { x: 0, y: 68, z: 0 }, target, done, allowDrop: true }).ok, false)
+  world.set(0, 67, 0, 'air')
+  for (const [x, z] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) world.set(x, 64, z, 'water')
+  assert.equal(planBuildRoute({ getBlock: world.getBlock, start, target, done, allowDrop: true }).ok, false)
+
+  // The walk carries it out with the drop port and counts the received feet.
+  const land = flatWorld()
+  for (const y of [64, 65, 66]) land.set(0, y, 0, 'oak_planks')
+  const h = hands(land, start)
+  let drops = 0
+  h.ports.drop = async to => { drops++; Object.assign(h.body, { x: to.x, y: to.y, z: to.z }); return true }
+  const result = await buildWalk({ ports: h.ports, target, done, sleep: async () => {} })
+  assert.equal(result.ok, true, result.code)
+  assert.equal(drops, 1)
+  assert.ok(done(h.cell()))
+})

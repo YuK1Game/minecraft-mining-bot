@@ -204,7 +204,16 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     await sleep(250)
     return true
   }
-  return { feet: getFeet, block, dirt, fill, walk, stepOff, land, approach, canMine, mine, canDig, dig, descend, pillar, bridge, place, pick, reason, why: () => why }
+  // Off an edge onto a floor two or three lower in the next cell: the navigation's predicted controlled drop
+  // (movement/navigation.js `controlledDrop`). It counts when the feet are received at the lower cell.
+  async function drop (target) {
+    if (!await begin(() => operations.movement.start(target, { controlledDrop: true, maxDistance: 2, maxTicks: 80 }))) return false
+    await sleep(300)
+    await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 6000)
+    const at = getFeet()
+    return !!at && Math.floor(at.x) === Math.floor(target.x) && Math.floor(at.z) === Math.floor(target.z) && Math.abs(at.y - target.y) < 0.3
+  }
+  return { feet: getFeet, block, dirt, fill, walk, stepOff, land, approach, canMine, mine, canDig, dig, descend, pillar, bridge, drop, place, pick, reason, why: () => why }
 }
 
 module.exports = { createScaffoldPorts }
