@@ -2,14 +2,15 @@
 
 // A controller may have been awaiting a walk, a chest receipt or hotbar equip
 // when play stopped. Check the owner again at the point of its next action.
-function guardDragonOperations (operations, cancelled) {
+// The walks near enemies use the same guard with their lease (control-owner.js); `refuse` is their error.
+function guardDragonOperations (operations, cancelled, refuse = () => Object.assign(new Error('遠征の操作を中断しました。'), { code: 'EXPEDITION_CANCELLED' })) {
   const guarded = {}
   for (const [group, methods] of Object.entries(operations)) {
     if (!methods || typeof methods !== 'object') continue
     guarded[group] = {}
     for (const [name, fn] of Object.entries(methods)) {
       if (typeof fn === 'function') guarded[group][name] = (...args) => {
-        if (cancelled()) throw Object.assign(new Error('遠征の操作を中断しました。'), { code: 'EXPEDITION_CANCELLED' })
+        if (cancelled()) throw refuse()
         return fn.apply(methods, args)
       }
     }

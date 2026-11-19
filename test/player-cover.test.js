@@ -26,16 +26,18 @@ const eye = { x: 0.5, y: 65.62, z: 0.5 }
 const FIGHT = { busy: true, claim: { claimId: 7 }, lastResult: null }
 
 function setup ({ getBlock = terrain(), hostiles = [skeleton(-10.5, 0.5)], inventory = { items: [{ name: 'minecraft:stone_sword', count: 1 }] }, hitAgo = 1000, walk, fight = null } = {}) {
-  let time = 100000
-  const logs = [], walks = [], stops = []
+  let time = 100000, running = true
+  const logs = [], walks = [], stops = [], at = { ...eye }
   const shared = { playerWanted: true, recentDamageNoPrimary: { at: time - hitAgo } }
+  const sleep = async ms => { time += ms }
   const cover = createPlayerCover({
-    getMode: () => 'player', shared, log: text => logs.push(text), now: () => time, owner: createControlOwner({ shared, now: () => time, fight: () => fight }),
-    agent: { running: () => true, stop: reason => stops.push(reason) },
-    getState: () => ({ health: 12, position: eye, inventory }), hostiles: () => hostiles, ...real(getBlock),
-    walk: walk ?? (async target => { walks.push({ target, flee: shared.playerFlee }); return true })
+    getMode: () => 'player', shared, log: text => logs.push(text), now: () => time, sleep, owner: createControlOwner({ shared, now: () => time, fight: () => fight, sleep }),
+    // The work stops when it is told to; a walk that arrives stands at its target.
+    agent: { running: () => running, stop: reason => { running = false; stops.push(reason) } },
+    getState: () => ({ health: 12, position: at, inventory }), hostiles: () => hostiles, ...real(getBlock),
+    walk: walk ?? (async target => { walks.push({ target, flee: shared.playerFlee }); Object.assign(at, { x: target.x, y: target.y + 1.62, z: target.z }); return true })
   })
-  return { cover, shared, logs, walks, stops, advance: ms => { time += ms } }
+  return { cover, shared, logs, walks, stops, at, advance: ms => { time += ms } }
 }
 
 test('the wall hides the body: cells behind it are cover, open cells are not', () => {

@@ -87,7 +87,7 @@ test('a walk\'s claim holds combat off, except from a hostile in contact while a
   const state = { position: { x: 0, y: 65.62, z: 0 } }
   const near = { position: { x: 2, y: 64, z: 0 } }, far = { position: { x: 7.8, y: 64, z: 0 } }
   assert.equal(standsDown({ shared: world.shared, target: far, state, armed: true, now: world.clock }), false, 'no claim')
-  owner.claim('flee', 9000)
+  const { lease } = owner.acquire('flee', { ms: 9000 })
   assert.equal(owner.walking(), 'flee')
   assert.equal(standsDown({ shared: world.shared, target: far, state, armed: true, now: world.clock }), true)
   assert.equal(standsDown({ shared: world.shared, target: near, state, armed: () => true, now: world.clock }), false)
@@ -96,9 +96,9 @@ test('a walk\'s claim holds combat off, except from a hostile in contact while a
   standsDown({ shared: world.shared, target: far, state, armed: () => { asked++; return true }, now: world.clock })
   assert.equal(asked, 0, 'the weapon is only asked in contact')
   assert.equal(standsDown({ shared: world.shared, target: far, state, armed: true, now: world.clock + 9001 }), false, 'the claim ran out')
-  owner.release('cover')
+  assert.deepEqual(owner.acquire('cover', { ms: 14000 }), { acquired: false, code: 'INPUT_HELD', holder: { who: 'flee', id: lease.id } })
   assert.equal(owner.walking(), 'flee', 'only the walk that claimed releases')
-  owner.release('flee')
+  assert.equal(lease.release(), true)
   assert.equal(owner.walking(), null)
   assert.equal(inContact(near, state), true)
   assert.equal(inContact(far, state), false)
@@ -120,7 +120,7 @@ function fleeScene (combat) {
   const owner = createControlOwner({ shared: s.shared, fight: () => s.combat, now: () => s.clock })
   s.flee = createPlayerFlee({
     getMode: () => 'player', shared: s.shared, owner, log: text => s.logs.push(text), now: () => s.clock, sleep: async ms => { s.clock += ms },
-    agent: { running: () => true, stop: reason => s.stops.push(reason) },
+    agent: { running: () => s.stops.length === 0, stop: reason => s.stops.push(reason) },
     getState: () => ({ health: 6.5, position: { x: 0, y: 65.62, z: 0 }, totem: false, inventory: { items: [{ name: 'minecraft:stone_sword', count: 1 }] } }),
     hostiles: () => [{ entityType: 'minecraft:skeleton', hostile: true, position: { x: 7.8, y: 64, z: 0 } }],
     retreat: async () => { s.steps++; s.clock += 1000; return true }

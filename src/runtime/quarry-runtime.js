@@ -88,7 +88,7 @@ function createQuarryRuntime (rt) {
   // killed the bot at 18:48 while it would not fight back); never from the water.
   function drownedOnLand (target, state) { return /drowned/.test(String(target?.entityType ?? target?.name ?? '')) && state?.isInWater !== true && state?.phase === 'spawned' }
   // Player mode walking away from enemies or out of a line of fire: combat stands down for those seconds (src/modes/control-owner.js).
-  const playerFleeing = (target, state) => rt.require('./modes/control-owner').standsDown({ shared: rt.host.shared, target, state, armed: () => playerArmed(state) })
+  const playerFleeing = (target, state) => rt.require('./modes/control-owner').standsDown({ shared: rt.host.shared, target, state, armed: () => playerArmed(state), scope: () => rt.require('./common/life-key').lifeKey(rt.host, () => rt.raw()) })
   // Player mode in play with a weapon in the received inventory fights as usual:
   // the "nothing to lose" rule is for the long-trip preparation (real Realm
   // 2026-11-16 16:23-16:27 JST: with a wooden sword, a witch was never

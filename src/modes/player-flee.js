@@ -31,9 +31,15 @@
 //   wait the hostile it could not leave behind does not start a new run,
 //   however near it comes: combat has it.
 // - Who holds the input is decided in control-owner.js: no run starts while
-//   an armed fight is on, and the stand-down of combat is the owner's claim.
+//   an armed fight is on or another walk (the cover) holds the input, and the
+//   stand-down of combat is the owner's lease. The run acquires the lease,
+//   sees the old input returned (the work, a trip, a motion in flight) before
+//   its first step, and sends each step only while it still holds the lease.
+//   A run that could not take the input, or lost it, says nothing about the
+//   way: it is not counted as "no step could start".
 const { normalizeMode } = require('./bot-mode')
-const { createControlOwner, inContact, CONTACT_M } = require('./control-owner')
+const { createControlOwner, holdOf, inContact, CONTACT_M } = require('./control-owner')
+const { blocked: blockedResult, interrupted, completed, partial, failed: failedResult } = require('./return/return-result')
 
 const FLEE_AT = 8, UNARMED_FLEE_AT = 10, CREEPER_M = 8, GAIN_M = 2
 // With no weapon an archer or a witch is run from at any health within
@@ -42,6 +48,8 @@ const FLEE_AT = 8, UNARMED_FLEE_AT = 10, CREEPER_M = 8, GAIN_M = 2
 // waited for health 10, the potions took it from 19 to 4 in six seconds, and
 // the run that started then was too late).
 const RANGED = /skeleton|stray|bogged|pillager|witch|blaze|ghast/, RANGED_M = 12, STRUCK_MS = 4000
+// One step: 1.5 s of planning and at most 8 s of walking (long-travel-runtime.js retreatStep).
+const STEP_MS = 12000
 const WEAPON = /_sword$|_axe$|^minecraft:(?:bow|crossbow|trident|mace)$/
 // Unreceived items are not a weapon in hand.
 const unarmed = inventory => !(inventory?.items ?? []).some(item => item?.count > 0 && WEAPON.test(item.name ?? ''))
@@ -74,8 +82,15 @@ function fleeWanted ({ health, totem, hostiles, position, weaponless = false, he
   return nearest && (typeof totem === 'function' ? totem() : totem) !== true ? nearest : null
 }
 
-function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, hostiles, retreat, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), owner = createControlOwner({ shared, now }) }) {
-  let busy = false, restUntil = 0, stuck = 0, stuckHealth = null, stuckDistance = null
+function createPlayerFlee ({ getMode, shared, agent, travel = null, motion = null, getState, hostiles, retreat, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), owner = createControlOwner({ shared, now, sleep }) }) {
+  let busy = false, restUntil = 0, stuck = 0, stuckHealth = null, stuckDistance = null, last = null, saidAt = -Infinity
+  // What can still send when a run takes the input, and how each is asked to stop (control-owner.js handoff).
+  const input = holdOf({
+    work: { on: () => agent.running(), stop: reason => agent.stop(reason) },
+    trip: { on: () => travel?.status()?.busy === true, stop: () => travel.cancel() },
+    motion: { on: () => motion?.moving() === true, stop: reason => motion.stop(reason) },
+    fight: { on: () => owner.held() }
+  })
   // The hostiles the last runs walked from without leaving them behind.
   const kept = new Set()
   const others = () => kept.size ? (hostiles() ?? []).filter(actor => idOf(actor) == null || !kept.has(String(idOf(actor)))) : hostiles()
@@ -106,13 +121,19 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
     // (live 2026-11-16 13:08 JST: during the wait a creeper walked up to 3.8 m
     // and its blast killed the Bot at health 2).
     if (resting && !(state.health < stuckHealth - 0.5) && !(threat.distance <= stuckDistance - 2)) { skip = 'stuck_rest'; return false }
+    // Check and record in one step: the run that is refused sends nothing.
+    const got = owner.acquire('flee', { ms: STEP_MS, armed: !unarmed(state.inventory) })
+    if (!got.acquired) { skip = got.code === 'FIGHT_ON' ? 'fighting' : got.code === 'INPUT_HELD' ? `${got.holder.who}_walking` : got.code.toLowerCase(); return false }
+    const lease = got.lease
     skip = null
     busy = true
-    let steps = 0, failed = 0
+    let steps = 0, failed = 0, stopped = null
     try {
-      log(`プレイヤーモード: ${state.health <= FLEE_AT ? '体力が少ないため' : '武器がないため'}敵から離れます（体力 ${Math.round(state.health * 10) / 10}、${threat.name} ${threat.distance.toFixed(1)}m）`)
+      // The work, a trip in progress and a motion in flight are stopped, and seen stopped, first.
+      const taken = await owner.handoff(lease, input, { reason: '敵から離れます。' })
+      if (!taken.ok) { stopped = taken; restUntil = Math.max(restUntil, now() + 1000) } else log(`プレイヤーモード: ${state.health <= FLEE_AT ? '体力が少ないため' : '武器がないため'}敵から離れます（体力 ${Math.round(state.health * 10) / 10}、${threat.name} ${threat.distance.toFixed(1)}m）`)
       const until = now() + 20000
-      while (inPlay() && now() < until && failed < 3) {
+      while (!stopped && inPlay() && now() < until && failed < 3) {
         const current = getState()
         if (!(current.health > 0)) break
         const near = (hostiles() ?? []).filter(actor => actor?.position && current.position && Math.hypot(actor.position.x - current.position.x, actor.position.z - current.position.z) <= 16)
@@ -120,12 +141,21 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
         // Caught up with while armed: combat takes the fight back.
         if (steps + failed > 0 && !unarmed(current.inventory) && near.some(actor => Math.hypot(actor.position.x - current.position.x, actor.position.y - (current.position.y - 1.62), actor.position.z - current.position.z) <= CONTACT_M)) break
         // Combat stands down only while a step is being tried or walked.
-        owner.claim('flee', 9000)
-        if (agent.running()) agent.stop('敵から離れます。')
-        if (travel?.status()?.busy) { try { await travel.cancel() } catch { /* The step below fails and is retried. */ } }
+        if (!lease.renew(STEP_MS)) { stopped = { code: lease.lost() ?? 'LEASE_RELEASED' }; break }
         let moved = false
-        try { moved = await retreat() === true } catch { moved = false }
+        try { moved = await retreat(lease) === true } catch { moved = false }
+        // The input was lost during the step: what it walked stays walked, nothing more is sent.
+        const code = lease.lost()
+        if (code) { if (moved) steps++; stopped = { code }; break }
         if (moved) { steps++; failed = 0 } else { failed++; await sleep(250) }
+      }
+      if (stopped) {
+        last = stopped.code === 'HANDOFF_INCOMPLETE' ? blockedResult(stopped.code, { kind: 'owner_released' }, { progress: { steps }, evidence: { lease: lease.id, holding: stopped.holding } }) : interrupted(stopped.code, { progress: { steps }, evidence: { lease: lease.id } })
+        if (now() - saidAt >= 10000) {
+          saidAt = now()
+          log(stopped.code === 'HANDOFF_INCOMPLETE' ? `プレイヤーモード: 前の操作（${stopped.holding.join('・')}）がまだ入力を持っているため、離れる歩きを始めません（HANDOFF_INCOMPLETE、操作権 ${lease.id}）` : `プレイヤーモード: 離れる歩きをやめました（${steps}歩、${stopped.code}、操作権 ${lease.id}）`)
+        }
+        return steps > 0
       }
       // Walked, and the hostile is as near as it was: it flies, or it keeps up.
       const end = getState()
@@ -145,11 +175,13 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
         stuck = 0; stuckHealth = null; stuckDistance = null; kept.clear()
         if (failed >= 3) restUntil = now() + 5000
       }
+      const progress = { steps }, evidence = { lease: lease.id }
+      last = keptUp ? partial('KEPT_UP', { progress, evidence }) : failed >= 3 ? failedResult('NO_STEP', { progress, evidence }) : completed('LEFT', { progress, evidence })
       return true
-    } finally { owner.release('flee'); busy = false }
+    } finally { lease.release(); busy = false }
   }
 
-  return { tick, status: () => ({ active: busy, reason: busy ? '敵から離れています。' : null, skip }) }
+  return { tick, status: () => ({ active: busy, reason: busy ? '敵から離れています。' : null, skip, last }) }
 }
 
 // In play with a weapon in the received inventory: combat fights as usual, the

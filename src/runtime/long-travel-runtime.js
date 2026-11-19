@@ -274,6 +274,8 @@ function createLongTravelRuntime (rt) {
         await new Promise(resolve => setImmediate(resolve))
         if (pv?.ready !== true) continue
         if (low && !covered(t) && Date.now() < until - 700) continue
+        // Whoever asked may have lost the input during the preview (control-owner.js): nothing is sent then.
+        if (signal?.aborted) return false
         try { rt.requireIdle({ inventoryRequired: false }); rt.startMotion('navigation', t, opts) } catch { return false }
         if (label) rt.host.log(label)
         const stop = Date.now() + 8000
