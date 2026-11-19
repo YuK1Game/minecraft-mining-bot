@@ -202,7 +202,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // The flee and the cover, and who holds the input near enemies (defense-walks.js, control-owner.js).
   const { owner, flee, cover } = createDefenseWalks({
     shared, getMode: control.get, log, disposed, runtime, agent, agentStatus, quarry, where, hunger: () => hunger(), expedition: () => expedition, cancelExpedition: () => cancelExpedition(),
-    walk: target => hands.walk(target), unreachable: knownUnreachable,
+    hands: lease => buildHands(() => disposed() || !lease.live(), lease.guard(operations)), stopMotion: reason => operations.movement.stop(reason), scope: () => lifeKey(), unreachable: knownUnreachable,
     exposure: options => createCombatExposure({ world: runtime.host().world, entities: {}, scopeOf: () => null, ...options }),
     cells: position => walkableCells(position, (x, y, z) => runtime.host().world.getBlock(x, y, z)).values(),
     blocked: () => shelter.status().active || scaffold.status().active

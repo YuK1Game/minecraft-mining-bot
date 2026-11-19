@@ -119,7 +119,10 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
     stopLegacy(reason)
     return true
   }
-  return { owns, tick, guard, cancel, abandon, status, busy: () => Boolean(job), stepMs: () => job ? Date.now() - stepSince : 0, settled: () => job ?? Promise.resolve() }
+  // Whether a step can still send: it runs, and was not aborted. A step that only observes, saves or
+  // cleans up sends nothing, so nobody who takes the input waits for it (control-owner.js handoff).
+  const sending = () => Boolean(job) && acting && !!currentController && !currentController.signal.aborted
+  return { owns, tick, guard, cancel, abandon, status, sending, busy: () => Boolean(job), stepMs: () => job ? Date.now() - stepSince : 0, settled: () => job ?? Promise.resolve() }
 }
 
 module.exports = { createDragonExpedition }
