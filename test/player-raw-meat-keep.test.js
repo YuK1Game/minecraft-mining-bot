@@ -6,7 +6,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { snackItems, keeping } = require('../src/modes/raw-meat-keep')
 
-const play = { playerWanted: true, botMode: 'player', playerHouse: { origin: { x: 0, y: 64, z: 0 } } }
+const play = { playerWanted: true, botMode: 'player', playerHouse: { origin: { x: 0, y: 64, z: 0 } }, dragonOwnsWork: () => true }
 const bag = [{ slot: 3, name: 'minecraft:beef', count: 1 }, { slot: 5, name: 'minecraft:carrot', count: 1 }, { slot: 6, name: 'minecraft:cooked_beef', count: 2 }]
 const names = items => items.map(item => item.name)
 
@@ -24,6 +24,9 @@ test('hungry or hurt: the raw meat is eaten as before', () => {
 
 test('no house (no furnace to cook at), not playing, or the quarry mode: as before', () => {
   assert.equal(keeping({ ...play, playerHouse: null }, { hunger: 15, health: 18 }), false)
+  // The ordinary work cooks nothing: the meat is eaten (live 15:40-15:55 JST, raw 6, cooked 0, hunger 12).
+  assert.equal(keeping({ ...play, dragonOwnsWork: () => false }, { hunger: 15, health: 18 }), false)
+  assert.equal(keeping({ ...play, dragonOwnsWork: undefined }, { hunger: 15, health: 18 }), false)
   assert.equal(keeping({ ...play, playerWanted: false }, { hunger: 15, health: 18 }), false)
   assert.equal(keeping({ ...play, botMode: 'quarry' }, { hunger: 15, health: 18 }), false)
   assert.equal(keeping(undefined, { hunger: 15, health: 18 }), false)
