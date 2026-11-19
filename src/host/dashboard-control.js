@@ -6,6 +6,7 @@ const { createHash, randomUUID } = require('node:crypto')
 const { playerStageView } = require('../modes/player-stage-view')
 const { observedScope } = require('../movement/server-position-verifier')
 const { normalizeChunkArea, areaContainsFeet, chunkAreaKey } = require('../common/chunk-area')
+const { createDashboardDebug, DEBUG_COMMANDS } = require('./dashboard-debug')
 const error = (code, message, status = 409) => Object.assign(new Error(message), { code, status })
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const text = value => String(value ?? '').replace(/[\p{C}\u00a7]/gu, ' ').slice(0, 240)
@@ -72,7 +73,8 @@ function modeStatus (mode) {
   return { current: text(value.mode), player: { running: player.running === true, phase: text(player.phase), reason: text(player.reason), known: player.known === true, current: player.current == null ? null : text(player.current),
     stages: playerStageView(player.stages) } }
 }
-function createDashboardControl ({ getState, getQuarry, getReset = () => null, getStorage = () => null, getMode = () => null, getGeneration = () => 0, disconnect, now = Date.now, uuid = randomUUID }) {
+function createDashboardControl ({ getState, getQuarry, getReset = () => null, getStorage = () => null, getMode = () => null, getGeneration = () => 0, getDiagnostics = () => null, log = () => {}, debugWait, disconnect, now = Date.now, uuid = randomUUID }) {
+  const debug = createDashboardDebug({ getDiagnostics, log, now, ...(debugWait ? { wait: debugWait } : {}) })
   let receipt = null, resetReceipt = null, revision = 0, busy = 0
   const invalidate = () => { receipt = null; resetReceipt = null; revision++ }
   const areaOf = value => { try { return normalizeChunkArea(value) } catch { throw error('INVALID_INPUT', '移動・初期チェストのチャンク範囲が不正です。', 400) } }
@@ -174,6 +176,14 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
     if (!current || input.session !== current) throw error('STALE_SESSION', '接続先または生存状態が変わりました。状態を更新して操作してください。')
   }
   async function execute (input) {
+    // Debug tools: pressed by the user on the page, sent as the Bot player.
+    if (DEBUG_COMMANDS.includes(input?.command)) {
+      object(input, input.command === 'debugCommand' ? ['command', 'session', 'text'] : ['command', 'session'])
+      checkSession(input)
+      if (input.command === 'debugClear' && getReset()?.status().busy) throw error('RESET_BUSY', 'デバッグ操作の終了を待ってください。')
+      if (input.command === 'debugClear' && getStorage()?.status().busy) throw error('STORAGE_BUSY', '収納操作の終了を待ってください。')
+      return { debug: await debug.run(input), state: snapshot() }
+    }
     object(input, input?.command === 'setMode' ? ['command', 'session', 'mode'] : ['playerStart', 'playerStop'].includes(input?.command) ? ['command', 'session'] : input?.command === 'moveToChunk' ? ['command', 'session', 'area'] : input?.command === 'cancelChunkMove' ? ['command', 'session', 'operationId'] : input?.command === 'resetPreview' ? ['command', 'session', 'area'] : input?.command === 'resetStart' ? ['command', 'session', 'resetToken', 'confirm', 'area'] : input?.command === 'resetCancel' ? ['command', 'session'] : storageCommands.includes(input?.command)
       ? ['command', 'session', 'operationId', 'storageToken', 'confirm']
       : ['command', 'session', 'config', 'planToken', 'jobId', 'resetToken', 'confirm'])
