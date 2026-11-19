@@ -1,12 +1,12 @@
 'use strict'
 
 const { createHousePorts } = require('./house/house-ports')
-const { placements, matches } = require('./house/house-blueprint')
 const { spiralPoint } = require('./house/house-sand')
 const { approachHome } = require('./dragon-early-home')
 const { threatWait, WAIT_MS } = require('./dragon-threat-wait')
 const { foodReach } = require('./dragon-food-reach')
 const { partial, failed, blocked } = require('./return/return-result')
+const { homeTarget, homeUse, same } = require('./dragon-home-use')
 
 const PROVISIONS = /^minecraft:(?:bread|cooked_(?:beef|porkchop|chicken|rabbit|mutton|salmon|cod)|baked_potato)$/
 const MEAT = /^minecraft:(beef|porkchop|chicken|rabbit|mutton|salmon|cod)$/
@@ -104,16 +104,21 @@ async function provisionFood (ctx, wanted = 32) {
   // The way home and the cook are each one way of the goal (goal/goal-ledger.js): three failures from the same
   // state and it is spent, and the step gathers on instead of standing at it. Another place, another count of raw
   // meat or another fuel is another state. One failure of the way home is a minute of not arriving from one
-  // 16-block cell, one failure of the cook is a cook that gained nothing (20 s apart at least).
+  // 16-block cell, one failure of the cook is a cook that gained nothing (20 s apart at least), at one furnace: the
+  // house has two, and the other one is another way.
   const homeFailure = { stage: 'cook_return', code: 'HOME_NOT_REACHED', state: { from: cell16(feet) } }
-  const cookFailure = fuel => ({ stage: 'cook', code: 'COOK_NOTHING', state: { raw: rawCount, fuel: fuel ?? null } })
+  const cookFailure = (fuel, at) => ({ stage: 'cook', target: key(at), code: 'COOK_NOTHING', state: { raw: rawCount, fuel: fuel ?? null } })
   const spent = ctx.goal?.spent?.(homeFailure) === true
   if ((wheat >= 3 || require('./cook-trip').cookNow({ raw: rawCount, here, huntReady })) && !spent) {
-    const stationType = raw ? 'furnace' : 'crafting_table'
+    // The thing the cook needs, from its received blocks now (dragon-home-use.js): never from the house's record.
+    const thing = raw ? 'furnace' : 'table'
+    const amount = raw ? Math.min(3, raw.count, wanted - count) : 0
     // No fuel in hand: the fuel comes first, before the walk to the furnace (cook-fuel.js).
-    const lack = raw && !wheat ? require('./cook-fuel').fuelWanted(items, Math.min(3, raw.count, wanted - count), ctx) : null
+    const lack = raw && !wheat ? require('./cook-fuel').fuelWanted(items, amount, ctx) : null
     if (lack) return pending((await ctx.supplies.acquire(lack.name, lack.count)).reason)
-    const station = placements(origin).find(step => step.item === stationType).position
+    const fuel = raw ? require('./cook-fuel').cookFuel(items, amount) : null
+    const choice = { spent: at => !!fuel && ctx.goal?.spent?.(cookFailure(fuel.name, at)) === true }
+    const station = homeTarget(ctx, thing, choice).at
     if (!await approachHome(ctx, station, { open: true })) {
       if (ctx.cancelled()) return pending('集めた材料を本拠点で調理します。')
       const moved = cell16(ctx.getFeet()) !== homeFailure.state.from
@@ -121,14 +126,15 @@ async function provisionFood (ctx, wanted = 32) {
       if (noted?.exhausted) ctx.log?.(`プレイヤーモード: この場所から本拠点の調理場所へ ${noted.count} 回とも着けなかったため、場所が変わるまで調理に戻らず、食料集めを続けます`)
       return pending('集めた材料を本拠点で調理します。', moved ? partial('COOK_RETURN', { remaining: left('return') }) : failed('HOME_NOT_REACHED', { remaining: left('return') }))
     }
-    if (!matches(stationType, ctx.getBlock(station.x, station.y, station.z))) return pending('調理設備のブロックを確認します。')
+    const use = homeUse(ctx, thing, choice)
+    if (!use.ok && use.state === 'spent') return pending('本拠点のかまどで焼けないため、材料か燃料が変わるまで調理を保留します。', blocked('COOK_SPENT', { kind: 'supplies_changed' }, { remaining: left('cook') }))
+    if (!use.ok) return pending(use.reason, { ...use.result, remaining: left('cook') })
+    // The other furnace stands and this one does not: the next look walks to it.
+    if (!same(use.at, station)) return pending('本拠点の使える調理設備へ移ります。', partial('COOK_STATION', { remaining: left('cook') }))
     const house = createHousePorts({ operations: ctx.operations, getBlock: ctx.getBlock, getInventory: ctx.runtime.inventory, disposed: ctx.cancelled, ...(ctx.sleep ? { sleep: ctx.sleep, now: ctx.now } : {}) })
     if (!raw) await house.craft('minecraft:bread', Math.min(Math.floor(wheat / 3), wanted - count, 16), station)
     else {
-      const amount = Math.min(3, raw.count, wanted - count)
-      const fuel = require('./cook-fuel').cookFuel(items, amount)
       if (!fuel) return pending((await ctx.supplies.acquire('coal', 1)).reason) // raw meat beside wheat: bread first
-      if (ctx.goal?.spent?.(cookFailure(fuel.name))) return pending('本拠点のかまどで焼けないため、材料か燃料が変わるまで調理を保留します。', blocked('COOK_SPENT', { kind: 'supplies_changed' }, { remaining: left('cook') }))
       const cooked = await house.smelt(station, raw.name, amount, fuel.name, fuel.count, raw.name.replace('minecraft:', 'minecraft:cooked_'))
       // A cook that gained nothing says why (live 2026-11-18 23:15-23:19 JST: four minutes at the door with this step's
       // text and no log line).
@@ -136,7 +142,7 @@ async function provisionFood (ctx, wanted = 32) {
         const why = house.why() ?? '焼いた肉が増えません'
         const at = (ctx.now ?? Date.now)()
         if (!(at - (state.cookSaidAt ?? -Infinity) < 20000)) { state.cookSaidAt = at; ctx.log?.(`プレイヤーモード: 本拠点のかまどで調理できません（${why}。足元 ${Math.floor(feet.x)}, ${Math.floor(feet.y)}, ${Math.floor(feet.z)}）`) }
-        const noted = ctx.goal?.fail?.(cookFailure(fuel.name), { paceMs: 20000 })
+        const noted = ctx.goal?.fail?.(cookFailure(fuel.name, station), { paceMs: 20000 })
         if (noted?.exhausted) ctx.log?.(`プレイヤーモード: 同じ材料と燃料の調理が ${noted.count} 回とも焼けなかったため、材料か燃料が変わるまで調理をやめます`)
         return pending(`本拠点のかまどで調理をやり直します。（かまど: ${why}）`, failed('COOK_NOTHING', { remaining: left('cook'), detail: why }))
       }

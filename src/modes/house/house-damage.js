@@ -1,59 +1,114 @@
 'use strict'
 
-// Player mode: a finished house that lost blocks is built again.
+// Player mode: the keeper of the starter house. It looks at the house's blocks, and it runs the clock of the
+// repair. The two are kept apart (house-repair.js says what each field of the record means).
 //
-// The house record says done once and nothing looked at the blocks again. A
-// creeper blast (real Realm 2026-11-19 01:34 JST) took the door, the floor
-// behind it and the ground in front; for ten hours every walk in and out of
-// the house was a special case (door exit by a dug way, the door step as an
-// island, the furnace reached by a bridge) and the house stayed broken.
-// - Near the house (NEAR_M), with every blueprint cell received, the steps
-//   not standing are counted (house-blueprint.js `remaining`).
-// - Missing steps seen twice, CONFIRM_MS apart, reopen the build: the record
-//   is set to not done and the ordinary build (house-build.js, the same
-//   placements and materials) puts the blocks back.
-// - A repair not finished within GIVE_UP_MS is closed again (done), so the
-//   rest of the play is not held by a block that cannot be placed; it is
-//   looked at again after AGAIN_MS.
-// - Unreceived cells are never counted as missing.
-const { placements, remaining } = require('./house-blueprint')
+// A creeper blast (real Realm 2026-11-19 01:34 JST) took the door, the floor behind it and the ground in
+// front; for ten hours every walk in and out of the house was a special case. A finished house that lost
+// blocks is therefore built again. Until 2026-11-19 a repair that did not finish in twenty minutes wrote the
+// house back to "done" with the blocks still missing, and nothing looked for an hour: every reader took a
+// broken house for whole.
+//
+// What is observed:
+// - Near the house (NEAR_M), in the overworld, with every blueprint cell received, the steps not standing are
+//   counted (house-blueprint.js `remaining`). The same count twice, CONFIRM_MS apart, is the observation
+//   (shared.playerHouseSeen: complete or damaged). Away, with a cell unreceived, or after another connection,
+//   dimension or life it is unknown, and nothing is decided from it: unreceived is neither damage nor whole.
+// - Observed damage on a house recorded done sets `done: false` and starts the repair (the ordinary build,
+//   house-build.js, the same placements and materials).
+// - `done: true` is written by the build alone, from received blocks and both chests' 54 slots.
+//
+// The repair's clock:
+// - A repair that runs GIVE_UP_MS is held: the rest of the play is not stopped by a block that cannot be
+//   placed. `done` stays false. The hold says what was missing and which materials were short.
+// - A held repair runs again when its time is up (AGAIN_MS), when the house is received whole for the first
+//   time since, when the count of missing steps has changed, or when a kind of material that was short is all
+//   there (house-repair.js `review`).
+// - A repair a job asked for (one thing of the house, house-repair.js `needHouse`) is held as soon as that
+//   thing stands again, so the job goes on; the walls wait for the next look.
+const { placements, remaining, counts } = require('./house-blueprint')
+const { houseNeeds } = require('./house-needs')
+const { facility, LABEL } = require('./house-facilities')
+const { hold, review, resume, running, GIVE_UP_MS, AGAIN_MS } = require('./house-repair')
 
-const NEAR_M = 16, CONFIRM_MS = 4000, GIVE_UP_MS = 20 * 60000, AGAIN_MS = 60 * 60000
+const NEAR_M = 16, CONFIRM_MS = 4000
+const WHY = Object.freeze({ TIME: '時間', SEEN: '家全体を受信', OBSERVED: '家の様子が変化', MATERIALS: '材料がそろった' })
 
-function createHouseDamage ({ shared, getBlock, getFeet, log = () => {}, now = Date.now } = {}) {
-  let seenAt = null, seenCount = 0
+function createHouseDamage ({ shared, getBlock, getFeet, getInventory = () => null, dimension = () => 'overworld', scope = () => null, save = () => {}, log = () => {}, now = Date.now } = {}) {
+  let first = null, seenScope
+  const say = text => log(`プレイヤーモード: ${text}`)
+  const minutes = ms => Math.round(ms / 60000)
+  function write (house) {
+    shared.playerHouse = house
+    try { void Promise.resolve(save(house)).catch(() => {}) } catch { /* Kept in shared until the next save. */ }
+  }
+
+  // The steps not standing, as received now; null unless near, in the overworld, with every blueprint cell received.
+  function reading (origin) {
+    const feet = getFeet()
+    if (dimension() !== 'overworld' || !feet || Math.hypot(feet.x - (origin.x + 3.5), feet.z - (origin.z + 3.5)) > NEAR_M) return null
+    if (!placements(origin).every(step => step.cells.every(cell => getBlock(cell.x, cell.y, cell.z)?.known === true))) return null
+    return remaining(getBlock, origin)
+  }
+  // The observation: the same count twice, CONFIRM_MS apart. Null while there is none.
+  function look (left) {
+    const key = scope()
+    if (key !== seenScope) { seenScope = key; first = null; shared.playerHouseSeen = { state: 'unknown', missing: null, at: now() } }
+    if (!left) { first = null; return null }
+    if (!first || first.missing !== left.length) { first = { at: now(), missing: left.length }; return null }
+    if (now() - first.at < CONFIRM_MS) return null
+    shared.playerHouseSeen = { state: left.length ? 'damaged' : 'complete', missing: left.length, at: now() }
+    return { missing: left.length, left }
+  }
+  // The raw materials short for what the repair still has to place; null while they cannot be told.
+  function shortNow (house, left) {
+    const focus = Array.isArray(house.repair?.focus) && house.repair.focus.length ? new Set(house.repair.focus) : null
+    const steps = left ? (focus ? left.filter(step => focus.has(step.id)) : left) : focus ? placements(house.origin).filter(step => focus.has(step.id)) : null
+    const wanted = steps ? counts(steps) : house.left ?? null
+    return wanted ? houseNeeds(getInventory(), wanted)?.need ?? null : null
+  }
+
   function tick () {
-    const house = shared.playerHouse
+    let house = shared.playerHouse
     if (!house?.origin) return null
-    const repair = shared.playerHouseRepair ?? null
-    if (house.done !== true) {
-      // Reopened before a reload or a restart (the record keeps `spawn` from the finished house): the same time limit, counted from now.
-      if (!repair && house.spawn === true) { shared.playerHouseRepair = { open: true, since: now() }; return null }
-      // An open repair that ran out of time is closed; the build's own record of what is left stays.
-      if (repair?.open === true && now() - repair.since >= GIVE_UP_MS) {
-        shared.playerHouse = { ...house, done: true }
-        shared.playerHouseRepair = { open: false, since: repair.since, gaveUpAt: now() }
-        log(`プレイヤーモード: 家の修理が ${Math.round(GIVE_UP_MS / 60000)} 分で終わらないため、いったん打ち切ります（${Math.round(AGAIN_MS / 60000)} 分後に見直します）`)
-        return 'gave_up'
-      }
+    // The record of the code before 2026-11-19 (shared.playerHouseRepair), read once after a reload.
+    if (shared.playerHouseRepair !== undefined) {
+      const old = shared.playerHouseRepair
+      delete shared.playerHouseRepair
+      if (!house.repair && old?.open === true && house.done !== true) { house = { ...house, built: true, repair: running(Number.isFinite(old.since) ? old.since : now()) }; write(house) }
+    }
+    const left = reading(house.origin), sight = look(left), repair = house.repair ?? null
+    if (house.done === true) {
+      if (repair) { write({ ...house, built: true, repair: null }); say('家の修理が終わりました'); return 'repaired' }
+      if (!sight?.missing) return null
+      write({ ...house, done: false, built: true, repair: running(now(), { steps: sight.missing }) })
+      const items = [...new Set(sight.left.map(step => step.item))].slice(0, 5).join('・')
+      say(`家が壊れています（${sight.missing} 手: ${items}）。設計図どおりに直します`)
+      return 'reopened'
+    }
+    if (!repair) {
+      // Not done and finished once: a repair, with the repair's limit, counted from now. Not finished once (a first
+      // build, or a file of the code before, which did not write `built`; a bed that stands says nothing, it is
+      // used before the house is finished): the ordinary build, which has no limit.
+      if (house.built === true) write({ ...house, repair: running(now()) })
       return null
     }
-    if (repair?.open === true) { shared.playerHouseRepair = { open: false, since: repair.since, finishedAt: now() }; log('プレイヤーモード: 家の修理が終わりました'); return 'repaired' }
-    if (repair?.gaveUpAt != null && now() - repair.gaveUpAt < AGAIN_MS) return null
-    const feet = getFeet(), o = house.origin
-    if (!feet || Math.hypot(feet.x - (o.x + 3.5), feet.z - (o.z + 3.5)) > NEAR_M) { seenAt = null; return null }
-    const steps = placements(o)
-    if (!steps.every(step => step.cells.every(cell => getBlock(cell.x, cell.y, cell.z)?.known === true))) { seenAt = null; return null }
-    const left = remaining(getBlock, o)
-    if (!left.length) { seenAt = null; return null }
-    if (seenAt === null || left.length !== seenCount) { seenAt = now(); seenCount = left.length; return null }
-    if (now() - seenAt < CONFIRM_MS) return null
-    seenAt = null
-    shared.playerHouse = { ...house, done: false }
-    shared.playerHouseRepair = { open: true, since: now(), steps: left.length }
-    const items = [...new Set(left.map(step => step.item))].slice(0, 5).join('・')
-    log(`プレイヤーモード: 家が壊れています（${left.length} 手: ${items}）。設計図どおりに直します`)
-    return 'reopened'
+    if (repair.state === 'running') {
+      const met = !!repair.need && facility(getBlock, house.origin, repair.need).state === 'standing'
+      if (!met && now() - repair.since < GIVE_UP_MS) return null
+      const next = hold(house, { now: now(), missing: left ? left.length : null, short: shortNow(house, left), met })
+      write(next)
+      const seen = left ? `残り ${left.length} 手` : '家は未確認'
+      const thing = repair.need ? `家の${LABEL[repair.need]}` : '家'
+      say(met ? `${thing}が直ったため、残りの修理は保留して作業に戻ります（${seen}。見直し: ${minutes(AGAIN_MS)} 分後、または材料・家の様子が変わった時）`
+        : `${thing}の修理が ${minutes(GIVE_UP_MS)} 分で終わらないため保留します（観測は破損のまま: ${seen}。見直し: ${minutes(AGAIN_MS)} 分後、または材料・家の様子が変わった時）`)
+      return 'held'
+    }
+    const why = review(repair, { now: now(), sight, short: shortNow(house, left) })
+    if (!why) return null
+    write(resume(house, { now: now(), getBlock }))
+    say(`保留していた家の修理を見直します（${WHY[why]}${sight ? `・残り ${sight.missing} 手` : ''}）`)
+    return 'resumed'
   }
   return { tick }
 }

@@ -23,7 +23,7 @@ function stageChecks (stage, items, house, record) {
   const check = (label, done, value) => ({ label, status: done ? 'done' : 'pending', ...(value == null ? {} : { value }) })
   switch (stage.id) {
     case 'wood': return [check('木以上のツルハシを確保', stage.reached)]
-    case 'base': return [check('設計図どおりの本拠点を建築', house?.done || stage.reached)]
+    case 'base': return [check('設計図どおりの本拠点を建築', house?.built || house?.done || stage.reached)]
     case 'stone': return [check('石以上のツルハシを確保', stage.reached)]
     case 'iron': return [check('鉄以上のツルハシを確保', stage.reached)]
     case 'home_reserve': return [

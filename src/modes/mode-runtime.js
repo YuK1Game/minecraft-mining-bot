@@ -47,7 +47,7 @@ const { createPlayerWater } = require('./player-water')
 const { dryStart } = require('./travel-dry-start')
 const { departPlayer } = require('./player-departure')
 const { createIslandStart } = require('./island-start')
-const { createHouseBuild, houseFile, loadHouseSync } = require('./house/house-build')
+const { createHouseBuild, houseFile, houseDoc, loadHouseSync } = require('./house/house-build')
 const { createHousePorts } = require('./house/house-ports')
 const { chestOf, bedOf, setSpawn } = require('./house/house-spawn')
 const { writeDurableJson } = require('../common/durable-json')
@@ -139,8 +139,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     // The tunnel it dug itself on foot, a walk to the open sky, or straight up (player-rise.js).
     return riseToSky({ ports: hands, floors: recordedFloors(shared, runtime.raw()), log, aborted: stop, sky: () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), build: createBuildWalk({ hands, getHouse: () => shared.playerHouse, log }) })
   }
-  // A finished house that lost blocks is built again (house/house-damage.js).
-  const houseDamage = require('./house/house-damage').createHouseDamage({ shared, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getFeet: () => feetNow(), log })
+  // The keeper of the house: observed damage starts the repair, a repair out of time is held (house/house-damage.js).
+  const houseDamage = require('./house/house-damage').createHouseDamage({ shared, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getFeet: () => feetNow(), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), dimension: () => runtime.raw().dimension, scope: () => lifeKey(), save: house => writeDurableJson(houseFile(root), houseDoc(house)), log })
   // The long trip's own way on when no walk leads on (travel/travel-detour.js): lent only while the play mode plays.
   const tripDetour = require('../travel/travel-detour').createTravelDetour({ getFeet: () => feetNow(), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), covered: () => underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), climb: aborted => climbUp(aborted), wet: () => water.needed(), dry: aborted => water.exit(aborted), build: (target, options) => createBuildWalk({ hands, getHouse: () => shared.playerHouse, log })(target, options), log })
   shared.travelDetour = (destination, { signal } = {}) => disposed() || control.get() !== 'player' || shared.playerWanted !== true ? null : tripDetour(destination, { aborted: () => signal?.aborted === true || disposed() || shared.playerWanted !== true })
@@ -247,7 +247,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: baseFile(root), returnFile: returnFile(root), getWorn: () => { try { return runtime.armor?.() ?? null } catch { return null } },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle, running: () => agentStatus().running === true || shared.autoWanted === true },
-    hands: storagePorts, pendingChest: at => storage.pendingChest(at), chest: options => storage.chest(options), porch: () => { const o = shared.playerHouse?.origin; return o ? { stand: { x: o.x + 3, y: o.y, z: o.z + 10 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null }, canBuild: () => shared.playerHouse?.done === true && storage.canMakeChest(), climb: climbUp, door: () => houseDoor(), porchWalk: () => shared.playerHouse?.origin ? house.closeIn(shared.playerHouse.origin) : false, spares: () => { const o = shared.playerHouse?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] }, walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within), build: require('./player-build-walk').createBuildWalk({ hands, getHouse: () => shared.playerHouse, log }),
+    hands: storagePorts, pendingChest: at => storage.pendingChest(at), chest: options => storage.chest(options), porch: () => { const o = shared.playerHouse?.origin; return o ? { stand: { x: o.x + 3, y: o.y, z: o.z + 10 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null }, canBuild: () => !!shared.playerHouse?.origin && require('./house/house-repair').houseDuty(shared.playerHouse) === null && storage.canMakeChest(), climb: climbUp, door: () => houseDoor(), porchWalk: () => shared.playerHouse?.origin ? house.closeIn(shared.playerHouse.origin) : false, spares: () => { const o = shared.playerHouse?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] }, walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within), build: require('./player-build-walk').createBuildWalk({ hands, getHouse: () => shared.playerHouse, log }),
     // The return checks each precondition itself: out of the water, out of the house, then the raw long travel.
     travel: { to: (input, options) => quarry.travelTo(input, options), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     water: { needed: () => water.needed(), exit: aborted => water.exit(aborted) },

@@ -79,7 +79,7 @@ async function recoverDragon (ctx, record) {
   const outpost = record.stronghold.outpostChest
   const useOutpost = outpost && record.stage === 'end'
   const home = ctx.shared.playerHouse?.origin
-  const chest = useOutpost ? outpost : record.early.reserveReady && (home ? chestOf(home) : ctx.shared.playerBase)
+  const chest = useOutpost ? outpost : record.early.reserveReady && (home ? record.early.reserveAt ?? chestOf(home) : ctx.shared.playerBase)
   if (!chest) {
     record.recovery = null
     return { done: true }
