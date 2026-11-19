@@ -26,8 +26,13 @@ function createProgress ({ shared = {}, now = Date.now, log = () => {}, onReset 
   // Called after every step. Returns how long nothing has changed.
   function note (seen, { reason = '', waiting = false } = {}) {
     const at = now(), sig = signature(seen)
+    // A stall noted before a reload of the behaviour code goes on from where it stood (the note is kept in `shared`;
+    // live 2026-11-19 19:10 JST: after a reload 「進み始めました（29918050 分止まっていました）」, counted from zero).
+    const kept = shared.dragonStall
+    if (last === null && kept?.sig === sig && Number.isFinite(kept.since)) { last = sig; since = kept.since }
     if (sig !== last) {
-      if (shared.dragonStall) log('遠征: 進み始めました（' + Math.round((at - since) / 60000) + ' 分止まっていました）。')
+      const from = Number.isFinite(kept?.since) ? kept.since : since
+      if (kept) log('遠征: 進み始めました（' + Math.round((at - from) / 60000) + ' 分止まっていました）。')
       clear()
       last = sig; since = at
       return 0
@@ -35,7 +40,7 @@ function createProgress ({ shared = {}, now = Date.now, log = () => {}, onReset 
     const idle = at - since
     // A wait on purpose (a night in bed is about ten minutes) is given three times as long, and nothing is dropped for it.
     if (idle < (waiting ? stallMs * WAIT_FACTOR : stallMs)) return idle
-    shared.dragonStall = { since, reason }
+    shared.dragonStall = { since, reason, sig }
     if (at - saidAt >= stallMs) {
       saidAt = at
       log('遠征: ' + Math.round(idle / 60000) + ' 分、場所・持ち物・体力が変わっていません（' + reason + '）。')
