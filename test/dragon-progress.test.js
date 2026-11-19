@@ -57,6 +57,29 @@ test('a received change is progress: items, armour, health, a new cell; waiting 
   assert.match(h.lines.at(-1), /進み始めました/)
 })
 
+test('a stall noted before a reload of the behaviour code goes on, and its end is counted from its own start', () => {
+  const h = harness()
+  h.progress.note(seen(), { reason: 'r' })
+  h.pass(STALL_MS); h.progress.note(seen(), { reason: 'r' })
+  assert.equal(h.lines.length, 1)
+  // The reload: a new progress over the same shared state, at a later time.
+  let at = 1000000 + STALL_MS + 60000
+  const lines = []
+  const again = createProgress({ shared: h.shared, now: () => at, log: line => lines.push(line) })
+  again.note(seen(), { reason: 'r' })
+  assert.deepEqual(lines.map(line => /(\d+) 分、場所・持ち物・体力が変わっていません/.exec(line)?.[1]), ['6'], 'the same state is still the same stall')
+  assert.equal(h.shared.dragonStall.since, 1000000)
+  at += 60000
+  again.note(seen({ feet: { x: -4870, y: 72, z: -5034 } }), { reason: 'r' })
+  assert.match(lines.at(-1), /進み始めました（7 分止まっていました）/)
+  assert.equal(h.shared.dragonStall, undefined)
+  // Another state after the reload: the stall has ended, counted from its own start.
+  const other = harness()
+  other.shared.dragonStall = { since: 1000000 - 180000, reason: 'r', sig: 'something else' }
+  other.progress.note(seen(), { reason: 'r' })
+  assert.match(other.lines.at(-1), /進み始めました（3 分止まっていました）/)
+})
+
 test('a step that never returns is given up: the next tick starts a new one, and the old one cannot clear it', async () => {
   const { createDragonExpedition } = require('../src/modes/dragon-expedition')
   const record = { stage: 'early', early: {} }
