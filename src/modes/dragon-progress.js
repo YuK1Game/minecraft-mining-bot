@@ -6,9 +6,12 @@
 // (8-block cell), what it holds, what it wears, its health, or the stage. The text of the step is not progress.
 // After STALL_MS without progress the stall is written to the log (once per STALL_MS) and to `shared.dragonStall`;
 // after RESET_MS the step's remembered choices are dropped (`onReset`) so the step decides again from what is received.
-// Waiting on purpose (night in bed, loading) is not counted.
+// It is looked at on every tick of the expedition, so a step that never returns is seen as well; that step is
+// let go at RESET_MS (`abandon`). Waiting on purpose (night in bed, loading) is reported after three times as long
+// and drops nothing.
 const STALL_MS = 5 * 60000
 const RESET_MS = 10 * 60000
+const WAIT_FACTOR = 3
 
 const cell = feet => feet && Number.isFinite(feet.x) ? [feet.x, feet.y, feet.z].map(v => Math.floor(v / 8)).join(',') : '?'
 const stock = items => (items ?? []).filter(row => row?.name && row.count > 0).map(row => row.name + ':' + row.count).sort().join('|')
@@ -23,20 +26,21 @@ function createProgress ({ shared = {}, now = Date.now, log = () => {}, onReset 
   // Called after every step. Returns how long nothing has changed.
   function note (seen, { reason = '', waiting = false } = {}) {
     const at = now(), sig = signature(seen)
-    if (waiting || sig !== last) {
+    if (sig !== last) {
       if (shared.dragonStall) log('遠征: 進み始めました（' + Math.round((at - since) / 60000) + ' 分止まっていました）。')
       clear()
-      if (!waiting) { last = sig; since = at }
+      last = sig; since = at
       return 0
     }
     const idle = at - since
-    if (idle < stallMs) return idle
+    // A wait on purpose (a night in bed is about ten minutes) is given three times as long, and nothing is dropped for it.
+    if (idle < (waiting ? stallMs * WAIT_FACTOR : stallMs)) return idle
     shared.dragonStall = { since, reason }
     if (at - saidAt >= stallMs) {
       saidAt = at
       log('遠征: ' + Math.round(idle / 60000) + ' 分、場所・持ち物・体力が変わっていません（' + reason + '）。')
     }
-    if (idle >= resetMs && at - resetAt >= resetMs) {
+    if (!waiting && idle >= resetMs && at - resetAt >= resetMs) {
       resetAt = at
       const dropped = onReset()
       log('遠征: 覚えていた選択を捨てて、受信した状態から決め直します' + (dropped ? '（' + dropped + '）' : '') + '。')
@@ -46,4 +50,4 @@ function createProgress ({ shared = {}, now = Date.now, log = () => {}, onReset 
   return { note, clear }
 }
 
-module.exports = { createProgress, signature, STALL_MS, RESET_MS }
+module.exports = { createProgress, signature, STALL_MS, RESET_MS, WAIT_FACTOR }

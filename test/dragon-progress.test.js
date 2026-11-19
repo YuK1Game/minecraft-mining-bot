@@ -45,13 +45,45 @@ test('a received change is progress: items, armour, health, a new cell; waiting 
     assert.equal(h.lines.length, 0, JSON.stringify(change))
   }
   const h = harness()
-  h.progress.note(seen())
-  h.pass(STALL_MS); h.progress.note(seen(), { reason: 'r' })
-  assert.ok(h.shared.dragonStall)
-  h.pass(2000); h.progress.note(seen(), { reason: 'bed', waiting: true })
+  h.progress.note(seen(), { reason: 'bed', waiting: true })
+  h.pass(STALL_MS * 2); h.progress.note(seen(), { reason: 'bed', waiting: true })
+  assert.equal(h.shared.dragonStall, undefined)
+  h.pass(STALL_MS); h.progress.note(seen(), { reason: 'bed', waiting: true })
+  assert.match(h.lines.at(-1), /15 分、場所・持ち物・体力が変わっていません（bed）/)
+  h.pass(RESET_MS); h.progress.note(seen(), { reason: 'bed', waiting: true })
+  assert.equal(h.resets(), 0)
+  h.pass(2000); h.progress.note(seen({ health: 10 }), { reason: 'r' })
   assert.equal(h.shared.dragonStall, undefined)
   assert.match(h.lines.at(-1), /進み始めました/)
-  h.pass(STALL_MS * 3); h.progress.note(seen(), { reason: 'bed', waiting: true })
-  h.pass(STALL_MS - 1000); h.progress.note(seen(), { reason: 'r' })
-  assert.equal(h.shared.dragonStall, undefined)
+})
+
+test('a step that never returns is given up: the next tick starts a new one, and the old one cannot clear it', async () => {
+  const { createDragonExpedition } = require('../src/modes/dragon-expedition')
+  const record = { stage: 'early', early: {} }
+  const raw = { phase: 'spawned', health: 20, dimension: 'overworld', inventory: { known: true, items: [] } }
+  const stops = [], release = []
+  let runs = 0
+  const job = createDragonExpedition({ state: { observe: async () => {}, record: () => record, save: async () => true }, raw: () => raw, active: () => true,
+    legacyNeeded: () => false, legacyBusy: () => false, legacyIdle: () => true, stopLegacy: reason => stops.push(reason),
+    run: (r, signal) => { runs++; return new Promise(resolve => release.push(() => resolve({ reason: 'late ' + signal.aborted }))) } })
+  assert.equal(job.tick(), true)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(runs, 1)
+  assert.equal(job.busy(), true)
+  assert.equal(job.abandon('やめます'), true)
+  assert.deepEqual(stops, ['やめます'])
+  assert.equal(job.busy(), false)
+  assert.equal(job.abandon('again'), false)
+  assert.equal(job.tick(), true)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(runs, 2)
+  // The abandoned step answers at last: the new step stays the owner.
+  release[0]()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(job.busy(), true)
+  assert.notEqual(job.status()?.reason, 'late true')
+  release[1]()
+  await job.settled()
+  assert.equal(job.busy(), false)
+  assert.equal(job.status().reason, 'late false')
 })

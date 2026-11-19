@@ -4,7 +4,7 @@
 // keeps its existing scheduler until its house and equipment goals are met.
 function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy, legacyIdle, stopLegacy, run, lifeKey = () => null, loading = () => false, finish = () => {}, log = () => {} }) {
   let job = null, displayed = null, recoveringHealth = false, previousHealth = null
-  let currentController = null, fence = null, acting = false
+  let currentController = null, fence = null, acting = false, stepSince = 0
   const status = () => displayed
   function owns () {
     if (!active()) return false
@@ -69,6 +69,8 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
     const before = JSON.stringify(record)
     acting = true
     const result = await run(record, controller.signal, recoveringHealth)
+    // Given up while it ran (abandon): another step owns the flags now.
+    if (controller !== currentController) return
     // The worker can finish between timer ticks. Recheck the same receipts at
     // the commit boundary, including the inventory and loading state.
     guard()
@@ -93,16 +95,31 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
     const controller = new AbortController()
     currentController = controller
     fence = lifeKey()
-    job = execute(controller).catch(error => {
+    const mine = execute(controller).catch(error => {
       if (active() && !controller.signal.aborted) show('waiting', String(error.message ?? error).slice(0, 160))
     }).finally(() => {
+      // A step that was given up (abandon) must not clear the one that replaced it.
+      if (job !== mine) return
       acting = false
       job = null
       currentController = null
     })
+    job = mine
+    stepSince = Date.now()
     return true
   }
-  return { owns, tick, guard, cancel, status, busy: () => Boolean(job), settled: () => job ?? Promise.resolve() }
+  // A step that never returns (an await nothing answers) is let go: its signal is aborted, every
+  // operation it still holds is stopped, and the next tick starts a new step (dragon-progress.js).
+  function abandon (reason) {
+    if (!job) return false
+    currentController?.abort()
+    job = null
+    currentController = null
+    acting = false
+    stopLegacy(reason)
+    return true
+  }
+  return { owns, tick, guard, cancel, abandon, status, busy: () => Boolean(job), stepMs: () => job ? Date.now() - stepSince : 0, settled: () => job ?? Promise.resolve() }
 }
 
 module.exports = { createDragonExpedition }

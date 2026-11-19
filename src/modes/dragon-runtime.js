@@ -22,20 +22,9 @@ function createDragonRuntime (ports) {
   const legacyNeeded = memory => earlyObjective({ inventory: shared.inventoryUncertain ? null : raw().inventory,
     worn: runtime.armor?.(), house: shared.playerHouse, memory }).legacy === true
   let stepRecord = null
-  // What a stalled step forgets (dragon-progress.js): the pinned kit item and the home-approach rests.
-  const progress = createProgress({ shared, log: ports.log, onReset: () => {
-    const dropped = [stepRecord?.early?.gather && 'gather ' + stepRecord.early.gather.name, shared.dragonHomeWalk && 'homeWalk', shared.dragonHomeInner && 'homeInner'].filter(Boolean)
-    if (stepRecord?.early) delete stepRecord.early.gather
-    delete shared.dragonHomeWalk; delete shared.dragonHomeInner
-    return dropped.join('・')
-  } })
   async function run (record, signal, recoverHealth) {
-    const result = await step(record, signal, recoverHealth)
     stepRecord = record
-    const now = raw(), armor = runtime.armor?.()
-    progress.note({ feet: now?.position, items: shared.inventoryUncertain ? null : now?.inventory?.items, worn: armor?.known ? armor.worn : null, health: now?.health, stage: record.stage },
-      { reason: result?.reason ?? '', waiting: result?.phase === 'waiting' || result?.phase === 'completed' })
-    return result
+    return step(record, signal, recoverHealth)
   }
   async function step (record, signal, recoverHealth) {
     const ctx = ports.stepPorts(signal)
@@ -109,6 +98,23 @@ function createDragonRuntime (ports) {
     return result
   }
   const expedition = createDragonExpedition({ ...ports, state, raw, run, legacyNeeded })
-  return { ...expedition, record: state.record }
+  // What a stalled step forgets (dragon-progress.js): the pinned kit item, the home-approach rests, and the step itself.
+  const progress = createProgress({ shared, log: ports.log, onReset: () => {
+    const dropped = [stepRecord?.early?.gather && 'gather ' + stepRecord.early.gather.name, shared.dragonHomeWalk && 'homeWalk', shared.dragonHomeInner && 'homeInner',
+      expedition.abandon('進まない遠征の1歩をやめて、状態を再確認します。') && 'step'].filter(Boolean)
+    if (stepRecord?.early) delete stepRecord.early.gather
+    delete shared.dragonHomeWalk; delete shared.dragonHomeInner
+    return dropped.join('・')
+  } })
+  // Looked at on every tick, not after a step: a step that never returns is a stall too.
+  function tick () {
+    const owned = expedition.tick()
+    if (!owned) { progress.clear(); return owned }
+    const now = raw(), armor = runtime.armor?.(), shown = expedition.status(), stepMs = expedition.stepMs()
+    progress.note({ feet: now?.position, items: shared.inventoryUncertain ? null : now?.inventory?.items, worn: armor?.known ? armor.worn : null, health: now?.health, stage: stepRecord?.stage },
+      { reason: (shown?.reason ?? '') + (stepMs >= 60000 ? '・同じ1歩が ' + Math.round(stepMs / 1000) + ' 秒' : ''), waiting: shown?.phase === 'waiting' || shown?.phase === 'completed' })
+    return owned
+  }
+  return { ...expedition, tick, record: state.record }
 }
 module.exports = { createDragonRuntime }
