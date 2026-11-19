@@ -9,6 +9,7 @@ const DIRT = 'minecraft:dirt'
 // What the climb may stand on: dirt first, then the cobblestone it mined on the way.
 const FILL = [DIRT, 'minecraft:cobblestone', 'minecraft:cobbled_deepslate']
 const { low, offGrid } = require('./low-block')
+const { onRim, footings } = require('./ledge-footing')
 
 function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, getMotion, getHealth = () => null, pillarStep, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
   const block = (x, y, z) => getBlock(x, y, z)
@@ -71,8 +72,23 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     }
     return false
   }
+  // On the rim of a block (the body's centre over air, ledge-footing.js) no walk can be planned either: one
+  // simulated connector onto a full stand, level or one block lower. It counts when the feet's own cell has a floor.
+  const RIM = /starting footprint has no known safe support/
+  async function footing (toward = null) {
+    if (!onRim(block, getFeet())) return false
+    for (const stand of footings(block, getFeet(), toward)) {
+      if (!await begin(() => operations.movement.start(stand.target, stand.options))) continue
+      await sleep(300)
+      await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 5000)
+      const at = getFeet()
+      if (at && !offGrid(at) && !onRim(block, at)) return true
+    }
+    return false
+  }
   async function walk (target) {
     let started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
+    if (!started && (RIM.test(said) || RIM.test(why ?? '')) && await footing(target)) started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
     // The landing refusal is read before the step-down, whose own refusal
     // would hide it from the ordinary landing below (real Realm 2026-11-17
     // 15:12 JST: mid-stair in its tunnel the step-down was refused and the
@@ -214,7 +230,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     const at = getFeet()
     return !!at && Math.floor(at.x) === Math.floor(target.x) && Math.floor(at.z) === Math.floor(target.z) && Math.abs(at.y - target.y) < 0.3
   }
-  return { feet: getFeet, block, dirt, fill, walk, stepOff, land, approach, canMine, mine, canDig, dig, descend, pillar, bridge, drop, health: () => { const value = getHealth(); return Number.isFinite(value) ? value : null }, place, pick, reason, why: () => why }
+  return { feet: getFeet, block, dirt, fill, walk, stepOff, footing, land, approach, canMine, mine, canDig, dig, descend, pillar, bridge, drop, health: () => { const value = getHealth(); return Number.isFinite(value) ? value : null }, place, pick, reason, why: () => why }
 }
 
 module.exports = { createScaffoldPorts }
