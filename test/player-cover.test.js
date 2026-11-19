@@ -5,6 +5,7 @@ const assert = require('node:assert/strict')
 const { createPlayerCover, coverCells, exposedTo } = require('../src/modes/player-cover')
 const { walkableCells } = require('../src/modes/player-drops')
 const { createCombatExposure } = require('../src/combat/combat-exposure')
+const { createControlOwner } = require('../src/modes/control-owner')
 
 // Flat stone floor at y=63, air above, and a wall two high along x=3 for z=-1..1.
 function terrain ({ wall = true, known = () => true } = {}) {
@@ -21,13 +22,15 @@ const real = getBlock => ({
 })
 const skeleton = (x, z = 0) => ({ entityType: 'minecraft:skeleton', hostile: true, position: { x, y: 64, z } })
 const eye = { x: 0.5, y: 65.62, z: 0.5 }
+// Combat's snapshot while a fight holds the input.
+const FIGHT = { busy: true, claim: { claimId: 7 }, lastResult: null }
 
-function setup ({ getBlock = terrain(), hostiles = [skeleton(-10.5, 0.5)], inventory = { items: [{ name: 'minecraft:stone_sword', count: 1 }] }, hitAgo = 1000, walk, reachable } = {}) {
+function setup ({ getBlock = terrain(), hostiles = [skeleton(-10.5, 0.5)], inventory = { items: [{ name: 'minecraft:stone_sword', count: 1 }] }, hitAgo = 1000, walk, fight = null } = {}) {
   let time = 100000
   const logs = [], walks = [], stops = []
   const shared = { playerWanted: true, recentDamageNoPrimary: { at: time - hitAgo } }
   const cover = createPlayerCover({
-    getMode: () => 'player', shared, log: text => logs.push(text), now: () => time, reachable,
+    getMode: () => 'player', shared, log: text => logs.push(text), now: () => time, owner: createControlOwner({ shared, now: () => time, fight: () => fight }),
     agent: { running: () => true, stop: reason => stops.push(reason) },
     getState: () => ({ health: 12, position: eye, inventory }), hostiles: () => hostiles, ...real(getBlock),
     walk: walk ?? (async target => { walks.push({ target, flee: shared.playerFlee }); return true })
@@ -61,11 +64,11 @@ test('shot by an archer it cannot walk to: stops the work, stands combat down an
   assert.match(logs[1], /射線から外れました/)
 })
 
-test('it does not move without a recent hit, with a bow and arrows, for a reachable archer, or for a zombie', async () => {
+test('it does not move without a recent hit, with a bow and arrows, while an armed fight is on, or for a zombie', async () => {
   assert.equal(await setup({ hitAgo: 6000 }).cover.tick(), false)
   assert.equal(await setup({ inventory: { items: [{ name: 'minecraft:bow', count: 1 }, { name: 'minecraft:arrow', count: 8 }] } }).cover.tick(), false)
   assert.equal(await setup({ inventory: null }).cover.tick(), false)
-  assert.equal(await setup({ reachable: () => true }).cover.tick(), false)
+  assert.equal(await setup({ fight: FIGHT }).cover.tick(), false)
   assert.equal(await setup({ hostiles: [{ ...skeleton(-10.5, 0.5), entityType: 'minecraft:zombie' }] }).cover.tick(), false)
   assert.equal(await setup({ hostiles: [skeleton(-2.5, 0.5)] }).cover.tick(), false)
   const hidden = setup({ hostiles: [skeleton(10.5, 0.5)] })
@@ -73,18 +76,18 @@ test('it does not move without a recent hit, with a bow and arrows, for a reacha
   assert.equal(hidden.walks.length, 0)
 })
 
-test('without a weapon a reachable archer cannot be fought either: it takes cover (live 2026-11-18 11:49 JST)', async () => {
+test('without a weapon an archer cannot be fought, whatever combat holds: it takes cover (live 2026-11-18 11:49 JST)', async () => {
   const witch = { entityType: 'minecraft:witch', hostile: true, position: { x: -8.5, y: 64, z: 0.5 } }
   const bare = { items: [{ name: 'minecraft:wooden_pickaxe', count: 1 }, { name: 'minecraft:oak_planks', count: 4 }] }
-  const { cover, walks, logs, stops } = setup({ hostiles: [witch], inventory: bare, reachable: () => true })
+  const { cover, walks, logs, stops } = setup({ hostiles: [witch], inventory: bare, fight: FIGHT })
   assert.equal(await cover.tick(), true)
   assert.equal(walks.length, 1)
   assert.equal(stops.length, 1)
   assert.match(logs[0], /武器がなく戦えない witch（9\.0m）に撃たれているため、射線から外れます/)
-  // The same witch with a sword in the inventory is combat's.
-  const armed = setup({ hostiles: [witch], reachable: () => true })
+  // The same witch with a sword in the inventory and a fight that is on is combat's.
+  const armed = setup({ hostiles: [witch], fight: FIGHT })
   assert.equal(await armed.cover.tick(), false)
-  assert.equal(armed.cover.status().skip, 'reachable')
+  assert.equal(armed.cover.status().skip, 'fighting')
   assert.equal(armed.walks.length, 0)
 })
 

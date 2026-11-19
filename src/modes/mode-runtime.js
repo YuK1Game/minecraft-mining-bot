@@ -12,7 +12,7 @@ const { createPlayerRecovery } = require('./player-recovery')
 const { createPlayerShelter } = require('./player-shelter')
 const { createPlayerFlee } = require('./player-flee')
 const { fleeThreats } = require('./player-flee-threats')
-const { knownUnreachable, knownReachable } = require('../combat/threat-reachability')
+const { knownUnreachable } = require('../combat/threat-reachability')
 const { createPlayerCover } = require('./player-cover')
 const { walkableCells } = require('./player-drops')
 const { createCombatExposure } = require('../combat/combat-exposure')
@@ -199,8 +199,10 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       return air(cover)
     }
   })
+  // Who holds the input near enemies: the fight, a walk away, or the work (control-owner.js).
+  const owner = require('./control-owner').createControlOwner({ shared, fight: () => runtime.combatFight?.() ?? null, held: () => runtime.combatOwns?.() === true })
   const flee = createPlayerFlee({
-    getMode: control.get, shared, log, disposed,
+    getMode: control.get, shared, log, disposed, owner,
     agent: { stop: reason => agent.stop(reason), running: () => agentStatus().running === true },
     travel: { status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     getState: () => { const state = runtime.raw(); return { health: state.health, position: where(), inventory: shared.inventoryUncertain ? null : state.inventory, totem: () => runtime.totem(), healing: require('./flee-healing').healing({ hunger: hunger(), inventory: shared.inventoryUncertain ? null : runtime.inventory(), hasFood }) } },
@@ -211,12 +213,12 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     retreat: () => runtime.travel().retreatFromHostiles()
   })
   // Shot by an archer it cannot walk to: behind the nearest block (player-cover.js), under the expedition too (cover-ports.js).
-  const coverHold = require('./cover-ports').createCoverPorts({ expedition: { owns: () => expedition?.owns() === true, busy: () => expedition?.busy() === true }, cancelExpedition: () => cancelExpedition(), agent, agentRunning: () => agentStatus().running === true, travelStatus: () => quarry.travelStatus(), walk: target => hands.walk(target), reachable: actor => knownReachable(runtime.raw(), actor), combatOwns: () => runtime.combatOwns?.() === true, getFeet: () => feetNow() })
+  const coverHold = require('./cover-ports').createCoverPorts({ expedition: { owns: () => expedition?.owns() === true, busy: () => expedition?.busy() === true }, cancelExpedition: () => cancelExpedition(), agent, agentRunning: () => agentStatus().running === true, travelStatus: () => quarry.travelStatus(), walk: target => hands.walk(target) })
   const cover = createPlayerCover({
-    getMode: control.get, shared, log, disposed,
+    getMode: control.get, shared, log, disposed, owner,
     agent: coverHold.agent,
     getState: () => { const state = runtime.raw(); return { health: state.health, position: where(), inventory: shared.inventoryUncertain ? null : state.inventory } },
-    hostiles: () => runtime.hostiles(), reachable: coverHold.reachable,
+    hostiles: () => runtime.hostiles(),
     sight: (from, to) => createCombatExposure({ world: runtime.host().world, entities: {}, scopeOf: () => null }).sight(from, to),
     cells: position => walkableCells(position, (x, y, z) => runtime.host().world.getBlock(x, y, z)).values(),
     walk: coverHold.walk,
@@ -341,8 +343,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     operations, runtime, shared, root, active, log, getBlock, lifeKey, loading: () => shared.loadingScreenEnded === false || shared.respawnTerrain?.pending === true || shared.inventoryUncertain === true, threatened: danger,
     finish: () => { shared.playerWanted = false; shared.autoWanted = false; void resume.note() },
     legacyIdle: () => idle() && shared.autoWanted !== true,
-    legacyBusy: () => require('./crew-busy').crewBusy(crew) || runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld() || runtime.combatOwns?.() === true,
-    stopLegacy: (reason, why) => why?.hurtOnly === true && runtime.combatOwns?.() === true ? runtime.autonomy().stop(reason) : inner.stop(reason),
+    legacyBusy: () => require('./crew-busy').crewBusy(crew) || runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld() || owner.held(),
+    stopLegacy: (reason, why) => why?.hurtOnly === true && owner.held() ? runtime.autonomy().stop(reason) : inner.stop(reason),
     stepPorts: signal => {
       const owner = lifeKey()
       const cancelled = () => signal.aborted || !active() || lifeKey() !== owner || shared.loadingScreenEnded === false
@@ -363,7 +365,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // What the defenses were doing at a hit (live 2026-11-17 23:13-23:16 JST: three
   // minutes of arrows with no flee, cover or combat line in the log).
   const defenseNote = () => { const safe = (() => { try { return operations.safety.snapshot() } catch { return null } })(); return `離れる ${flee.status().skip ?? (flee.status().active ? '実行中' : '-')}・射線 ${cover.status().skip ?? (cover.status().active ? '実行中' : '-')}・待機保護 ${safe?.phase ?? '?'}${safe?.active ? `/${safe.active}` : ''}・プレイ ${shared.playerWanted === true ? '中' : '外'}` }
-  const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else { coverHold.sample(); if (expedition.owns()) expedition.guard(); else void flee.tick().catch(() => {}); void cover.tick().catch(() => {}); try { noteDamage({ shared, health: runtime.raw().health, position: where(), actors: runtime.host().entities.snapshot({ kind: 'all' }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, why: defenseNote }) } catch { /* A log line only. */ } } }), 500)
+  const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else { owner.sample(); if (expedition.owns()) expedition.guard(); else void flee.tick().catch(() => {}); void cover.tick().catch(() => {}); try { noteDamage({ shared, health: runtime.raw().health, position: where(), actors: runtime.host().entities.snapshot({ kind: 'all' }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, why: defenseNote }) } catch { /* A log line only. */ } } }), 500)
   fleeTimer.unref?.()
   // The received world behind the server under the feet: the terrain there is asked for again
   // (live 2026-11-18 07:09-09:48 JST, movement/ground-refresh.js).
