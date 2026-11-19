@@ -90,3 +90,14 @@ test('all returned evidence is observational and inputs/work state remain unchan
   assert.equal(Object.hasOwn(result,'targetingBot'),false)
   assert.deepEqual(input,before)
 })
+
+test('an enemy at the body with nothing solid between is a current threat without route or dry sight (drowned in a pond, 2026-11-19 11:00 JST)', () => {
+  const touching = check(mob('minecraft:drowned', 1.1), { routeToBot: false, sight: false, touching: true })
+  assert.equal(touching.intercept, true)
+  assert.equal(touching.awareness, 'observed_contact')
+  assert.equal(check(mob('minecraft:zombie', 1.1), { routeToBot: false, sight: false, touching: true }).intercept, true)
+  // Not touching (a wall between), or beyond contact: the ordinary evidence still decides.
+  assert.equal(check(mob('minecraft:drowned', 1.1), { routeToBot: false, sight: false }).intercept, false)
+  assert.equal(check(mob('minecraft:zombie', 1.1), { routeToBot: false, sight: false }).intercept, false)
+  assert.equal(check(mob('minecraft:drowned', 2.6), { routeToBot: false, sight: false, touching: true }).intercept, false)
+})

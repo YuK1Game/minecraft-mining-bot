@@ -46,3 +46,16 @@ test('one sight ray reads each sampled cell once and observes changes on its nex
   blocks.clear()
   assert.equal(exposure.sight(from, to), true)
 })
+
+test('a drowned at the body under water is a current threat; behind a wall it is not (live 2026-11-19 11:00 JST)', () => {
+  const water = { known: true, name: 'minecraft:water', boundingBox: 'empty' }
+  const pond = wall => ({ getBlock: (x, y, z) => y < 58 ? stone : wall && x === 1 ? stone : y <= 62 ? water : air, revision: () => 1 })
+  const state = { phase: 'spawned', health: 19.2, dimension: 'overworld', runtimeEntityId: 1, position: { x: 0.5, y: 60.1 + 1.62, z: 0.5 } }
+  const drowned = { kind: 'mob', entityType: 'minecraft:drowned', hostile: true, alive: true, positionKnown: true, dimension: 'overworld', runtimeId: 9, uniqueId: -9, position: { x: 1.6, y: 60, z: 0.5 } }
+  const wet = createCombatExposure({ world: pond(false), entities: { motion: () => null }, scopeOf: () => 'scope' }).evaluate(drowned, state)
+  assert.equal(wet.evidence.sight, false)
+  assert.equal(wet.intercept, true)
+  assert.equal(wet.awareness, 'observed_contact')
+  const walled = createCombatExposure({ world: pond(true), entities: { motion: () => null }, scopeOf: () => 'scope' }).evaluate(drowned, state)
+  assert.equal(walled.intercept, false)
+})

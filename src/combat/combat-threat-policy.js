@@ -27,7 +27,8 @@ function observedClosing (motion, target, feet) {
   return { closing: radialPerTick > 1e-4, radialPerTick }
 }
 
-function evaluateCombatThreat ({ target, state, routeToBot = null, sight = null, motion = null, provoked = false } = {}) {
+const CONTACT_M = 2
+function evaluateCombatThreat ({ target, state, routeToBot = null, sight = null, motion = null, provoked = false, touching = false } = {}) {
   const type = typeOf(target), radius = recognitionRadius(target)
   const accessKind = mobType(type)?.attackAccess ?? 'enemy_walk_route'
   const ranged = accessKind === 'projectile_sight', flying = accessKind === 'flight_sight_proxy'
@@ -46,13 +47,19 @@ function evaluateCombatThreat ({ target, state, routeToBot = null, sight = null,
   if (target.hostile !== true && !evidence.provoked) return decline(target.hostile === false ? 'NOT_CONFIRMED_HOSTILE' : 'HOSTILITY_UNKNOWN', target.hostile !== false)
   Object.assign(evidence, observedClosing(motion, target.position, feet))
   base.access = flying || ranged ? evidence.sight : evidence.routeToBot
+  // An enemy already at the body needs neither a walk route nor a dry sight line to hit. In water there are no
+  // walk cells and combat's sight line reads water as blocked (live 2026-11-19 11:00:42-11:01:03 JST: a drowned
+  // 0.8-1.3 m away in a pond took health 19.2 to 0 while every claim ended NOT_A_CURRENT_THREAT / LOS_BLOCKED).
+  // `touching`: the caller found no received block with a body between the two bodies (combat-exposure.js).
+  const contact = touching === true && base.distance <= CONTACT_M
+  if (contact) base.access = true
   if (base.access !== true) return decline(base.access === null ? 'ATTACK_ACCESS_UNKNOWN' : ranged || flying ? 'PROJECTILE_SIGHT_BLOCKED' : 'ENEMY_ATTACK_ROUTE_BLOCKED', base.access === null)
   // A remote wandering/primed actor may be reacting to someone else. Only
   // actual individual attack evidence overrides this interception distance.
   if (base.distance > radius && !evidence.provoked) return decline('OUTSIDE_RECOGNITION_RADIUS')
-  const awareness = evidence.provoked ? 'observed_attack' : evidence.primed ? 'observed_priming' : evidence.closing ? 'observed_closing' : evidence.sight === true ? 'inferred_near_visible_hostile' : null
+  const awareness = evidence.provoked ? 'observed_attack' : contact ? 'observed_contact' : evidence.primed ? 'observed_priming' : evidence.closing ? 'observed_closing' : evidence.sight === true ? 'inferred_near_visible_hostile' : null
   if (!awareness) return decline(evidence.sight === null ? 'RECOGNITION_EVIDENCE_UNKNOWN' : 'NO_CURRENT_RECOGNITION', evidence.sight === null)
   return { ...base, intercept: true, reason: 'CURRENT_THREAT_WITH_ATTACK_ACCESS', awareness }
 }
 
-module.exports = { evaluateCombatThreat, recognitionRadius }
+module.exports = { evaluateCombatThreat, recognitionRadius, CONTACT_M }
