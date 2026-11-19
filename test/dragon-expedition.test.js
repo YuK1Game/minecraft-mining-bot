@@ -18,7 +18,7 @@ function fixture (t, action) {
   const controls = { legacy: false, idle: true, crew: false, loading: false, finished: false }
   const job = createDragonExpedition({ state, raw: () => raw, active: () => !controls.finished,
     legacyNeeded: () => controls.legacy, legacyBusy: () => controls.crew, legacyIdle: () => controls.idle,
-    stopLegacy: () => { calls.push('stop'); controls.idle = true }, finish: () => { controls.finished = true },
+    stopLegacy: (reason, why) => { calls.push('stop'); controls.why = why; controls.idle = true }, finish: () => { controls.finished = true },
     lifeKey: () => [raw.connectionId, raw.dimension, raw.lifecycle.deathId].join('/'), loading: () => controls.loading,
     run: async (...args) => { calls.push('run'); return action(...args) } })
   const tick = async () => { job.tick(); await job.settled() }
@@ -105,4 +105,26 @@ test('stopping during a confirmed checkpoint write does not finish or re-enable 
   release(); await f.job.settled()
   assert.equal(f.controls.finished, false)
   assert.equal(f.job.status(), null)
+})
+
+test('a hit alone tells the stop that nothing else changed, so a running fight is kept', async t => {
+  let begin, release
+  const started = new Promise(resolve => { begin = resolve })
+  const hold = new Promise(resolve => { release = resolve })
+  const f = fixture(t, async () => { begin(); await hold; return { reason: 'x' } })
+  f.job.tick(); await started
+  f.raw.health = 11; f.job.guard()
+  assert.deepEqual(f.controls.why, { hurtOnly: true })
+  release(); await f.job.settled()
+})
+
+test('a life or dimension change is not reported as a hit alone', async t => {
+  let begin, release
+  const started = new Promise(resolve => { begin = resolve })
+  const hold = new Promise(resolve => { release = resolve })
+  const f = fixture(t, async () => { begin(); await hold; return { reason: 'x' } })
+  f.job.tick(); await started
+  f.raw.health = 11; f.raw.dimension = 'end'; f.job.guard()
+  assert.deepEqual(f.controls.why, { hurtOnly: false })
+  release(); await f.job.settled()
 })

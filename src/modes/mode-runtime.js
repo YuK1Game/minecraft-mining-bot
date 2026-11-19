@@ -340,7 +340,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     finish: () => { shared.playerWanted = false; shared.autoWanted = false; void resume.note() },
     legacyIdle: () => idle() && shared.autoWanted !== true,
     legacyBusy: () => require('./crew-busy').crewBusy(crew) || runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld() || runtime.combatOwns?.() === true,
-    stopLegacy: reason => inner.stop(reason),
+    stopLegacy: (reason, why) => why?.hurtOnly === true && runtime.combatOwns?.() === true ? runtime.autonomy().stop(reason) : inner.stop(reason),
     stepPorts: signal => {
       const owner = lifeKey()
       const cancelled = () => signal.aborted || !active() || lifeKey() !== owner || shared.loadingScreenEnded === false
