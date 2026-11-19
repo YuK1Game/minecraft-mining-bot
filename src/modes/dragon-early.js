@@ -1,7 +1,8 @@
 'use strict'
 
 const { GEAR } = require('../survival/diamond-gear')
-const { hasWorkingPick } = require('./dragon-supply-kit')
+const { hasWorkingPick, home } = require('./dragon-supply-kit')
+const { pinned } = require('./dragon-gather-pin')
 const { bedOf, chestOf, setSpawn } = require('./house/house-spawn')
 const { approachHome } = require('./dragon-early-home')
 const { provisionFood } = require('./dragon-early-food')
@@ -64,6 +65,7 @@ async function runDragonEarly (ctx) {
     return result(confirmed ? '本拠点の復帰地点を受信しました。' : '復帰地点の設定通知を待っています。')
   }
   if (next.id === 'home_reserve') {
+    if (state.gather && !pinned(state.gather, home)) delete state.gather
     if (state.gather) {
       const item = await acquire(state.gather.name, state.gather.count)
       if (item.done && !cancelled()) delete state.gather
@@ -74,7 +76,7 @@ async function runDragonEarly (ctx) {
     const stock = await supplies.reserve(chest, { mode: 'stock', kit: 'home' })
     if (!cancelled()) {
       if (stock.done) state.reserveReady = true
-      else if (stock.missing) state.gather = { ...stock.missing }
+      else if (stock.missing) state.gather = { ...stock.missing, since: Date.now() }
     }
     return result(stock.reason)
   }
