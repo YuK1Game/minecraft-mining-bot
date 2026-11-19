@@ -4,7 +4,12 @@ const { toolOf } = require('../quarry/quarry-rules')
 
 const FOOD = /^minecraft:(?:bread|baked_potato|cooked_(?:beef|porkchop|mutton|chicken|salmon|cod|rabbit))$/
 const ITEMS = ['iron_helmet', 'iron_chestplate', 'iron_leggings', 'iron_boots', 'iron_sword', 'iron_pickaxe', 'shield']
-const home = [['iron_pickaxe', 1], ['food', 32], ...ITEMS.filter(name => name !== 'iron_pickaxe').map(name => [name, 1]), ['bucket', 1]]
+// The first kit at home: armour and a sword come before the food, and the food is a small first stock.
+// The kit is held twice (one in the chest, one carried). With 32 food second in the list the Bot hunted for
+// 64 cooked food with a stone sword and no armour, and every death sent it back to wooden tools
+// (live 2026-11-19: deaths 01:09, 01:34, 07:44, 11:01 JST, cooked food never above 7).
+const HOME_FOOD = 8
+const home = [['iron_pickaxe', 1], ...ITEMS.filter(name => name !== 'iron_pickaxe').map(name => [name, 1]), ['food', HOME_FOOD], ['bucket', 1]]
 const spare = [...ITEMS.map(name => [name === 'iron_pickaxe' ? 'diamond_pickaxe' : name, 1]), ['bow', 1], ['arrow', 64], ['water_bucket', 1], ['food', 32], ['cobblestone', 128]]
 const active = ['diamond_helmet', 'diamond_chestplate', 'diamond_leggings', 'diamond_boots', 'diamond_pickaxe', 'diamond_sword', 'shield', 'water_bucket', 'bow'].map(name => [name, 1])
 const end = [...active, ['food', 32], ['arrow', 128], ['cobblestone', 128]]

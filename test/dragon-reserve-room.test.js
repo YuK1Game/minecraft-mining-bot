@@ -57,9 +57,14 @@ function fixture (chest, items) {
   return { api: createDragonSupplies(ctx), calls }
 }
 
+const GEAR = ['iron_helmet', 'iron_chestplate', 'iron_leggings', 'iron_boots', 'iron_sword', 'shield']
+// The armour and the sword come before the food in the home kit: both fixtures already hold them, in the chest and in hand.
+const stocked = () => Object.fromEntries(GEAR.map((name, i) => [i + 1, slot(i + 1, 'minecraft:' + name, 1)]))
+const carried = () => GEAR.map((name, i) => ({ slot: i + 2, name: 'minecraft:' + name, count: 1 }))
+
 test('a full reserve chest: rubble comes out, then the kit goes in', async () => {
-  const chest = fullOf('minecraft:cobblestone', { 0: slot(0, 'minecraft:iron_pickaxe', 1), 20: slot(20, 'minecraft:andesite', 9) })
-  const items = [{ slot: 0, name: 'minecraft:iron_pickaxe', count: 1 }, { slot: 1, name: 'minecraft:cooked_beef', count: 64 }]
+  const chest = fullOf('minecraft:cobblestone', { 0: slot(0, 'minecraft:iron_pickaxe', 1), ...stocked(), 20: slot(20, 'minecraft:andesite', 9) })
+  const items = [{ slot: 0, name: 'minecraft:iron_pickaxe', count: 1 }, { slot: 1, name: 'minecraft:cooked_beef', count: 64 }, ...carried()]
   const f = fixture(chest, items)
   const first = await f.api.reserve(position, { mode: 'stock', kit: 'home' })
   assert.equal(first.done, false)
@@ -67,13 +72,13 @@ test('a full reserve chest: rubble comes out, then the kit goes in', async () =>
   assert.deepEqual(f.calls, ['withdraw minecraft:andesite 9'], 'nothing was sent into the full chest')
   const second = await f.api.reserve(position, { mode: 'stock', kit: 'home' })
   assert.equal(second.done, false)
-  assert.deepEqual(f.calls, ['withdraw minecraft:andesite 9', 'deposit minecraft:cooked_beef 32'])
+  assert.deepEqual(f.calls, ['withdraw minecraft:andesite 9', 'deposit minecraft:cooked_beef 8'])
   assert.equal(chest[20].name, 'minecraft:cooked_beef')
 })
 
 test('a full chest with nothing to take out says so and sends nothing', async () => {
-  const chest = fullOf('minecraft:diamond', { 0: slot(0, 'minecraft:iron_pickaxe', 1) })
-  const items = [{ slot: 0, name: 'minecraft:iron_pickaxe', count: 1 }, { slot: 1, name: 'minecraft:cooked_beef', count: 64 }]
+  const chest = fullOf('minecraft:diamond', { 0: slot(0, 'minecraft:iron_pickaxe', 1), ...stocked() })
+  const items = [{ slot: 0, name: 'minecraft:iron_pickaxe', count: 1 }, { slot: 1, name: 'minecraft:cooked_beef', count: 64 }, ...carried()]
   const f = fixture(chest, items)
   const answer = await f.api.reserve(position, { mode: 'stock', kit: 'home' })
   assert.equal(answer.done, false)
