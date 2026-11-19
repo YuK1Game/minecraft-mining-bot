@@ -12,6 +12,7 @@ const { recoverDragon } = require('./dragon-recovery')
 const { createDragonSupplies } = require('./dragon-supplies')
 const { nightHome } = require('./dragon-night')
 const { threatWait } = require('./dragon-threat-wait')
+const { createProgress } = require('./dragon-progress')
 
 function createDragonRuntime (ports) {
   const { runtime, shared, root, getBlock } = ports
@@ -20,7 +21,12 @@ function createDragonRuntime (ports) {
     getLife: () => runtime.host().getLife?.(), getWorldId: () => runtime.host().meta?.startGame?.seed })
   const legacyNeeded = memory => earlyObjective({ inventory: shared.inventoryUncertain ? null : raw().inventory,
     worn: runtime.armor?.(), house: shared.playerHouse, memory }).legacy === true
+  let stepRecord = null
   async function run (record, signal, recoverHealth) {
+    stepRecord = record
+    return step(record, signal, recoverHealth)
+  }
+  async function step (record, signal, recoverHealth) {
     const ctx = ports.stepPorts(signal)
     const dim = raw().dimension
     if (record.stage !== 'early') shared.dragonGoldBoots = dim === 'nether' || record.stage === 'nether'
@@ -92,6 +98,23 @@ function createDragonRuntime (ports) {
     return result
   }
   const expedition = createDragonExpedition({ ...ports, state, raw, run, legacyNeeded })
-  return { ...expedition, record: state.record }
+  // What a stalled step forgets (dragon-progress.js): the pinned kit item, the home-approach rests, and the step itself.
+  const progress = createProgress({ shared, log: ports.log, onReset: () => {
+    const dropped = [stepRecord?.early?.gather && 'gather ' + stepRecord.early.gather.name, shared.dragonHomeWalk && 'homeWalk', shared.dragonHomeInner && 'homeInner',
+      expedition.abandon('進まない遠征の1歩をやめて、状態を再確認します。') && 'step'].filter(Boolean)
+    if (stepRecord?.early) delete stepRecord.early.gather
+    delete shared.dragonHomeWalk; delete shared.dragonHomeInner
+    return dropped.join('・')
+  } })
+  // Looked at on every tick, not after a step: a step that never returns is a stall too.
+  function tick () {
+    const owned = expedition.tick()
+    if (!owned) { progress.clear(); return owned }
+    const now = raw(), armor = runtime.armor?.(), shown = expedition.status(), stepMs = expedition.stepMs()
+    progress.note({ feet: now?.position, items: shared.inventoryUncertain ? null : now?.inventory?.items, worn: armor?.known ? armor.worn : null, health: now?.health, stage: stepRecord?.stage },
+      { reason: (shown?.reason ?? '') + (stepMs >= 60000 ? '・同じ1歩が ' + Math.round(stepMs / 1000) + ' 秒' : ''), waiting: shown?.phase === 'waiting' || shown?.phase === 'completed' })
+    return owned
+  }
+  return { ...expedition, tick, record: state.record }
 }
 module.exports = { createDragonRuntime }
