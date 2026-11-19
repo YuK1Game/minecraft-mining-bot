@@ -19,4 +19,23 @@ function cookFuel (items = [], amount = 1) {
   return wood ? { name: wood.name, count: need } : null
 }
 
-module.exports = { cookFuel, PER_WOOD }
+// What to fetch when nothing held burns: logs when a tree stands in the received terrain near the bot, else coal.
+// Asked before the walk to the furnace. Live 2026-11-19 09:46-10:10 JST: raw meat 6, no coal, no wood. The food
+// step walked into the house, found no fuel at the furnace and asked for coal; the coal step left the house; the
+// next decision was the cook again, which walked back in. 13 rounds in 25 minutes, nothing cooked, no coal mined.
+const LOG = /^minecraft:(?!stripped_)[a-z_]+_(?:log|stem)$/
+function fuelWanted (items, amount, ctx) {
+  if (cookFuel(items, amount)) return null
+  const need = Math.ceil(Math.max(1, amount) / PER_WOOD)
+  const feet = ctx?.getFeet?.()
+  if (feet && ctx.getBlock) {
+    const x0 = Math.floor(feet.x), y0 = Math.floor(feet.y), z0 = Math.floor(feet.z)
+    for (let dx = -12; dx <= 12; dx++) for (let dz = -12; dz <= 12; dz++) for (let dy = -5; dy <= 5; dy++) {
+      const block = ctx.getBlock(x0 + dx, y0 + dy, z0 + dz)
+      if (block?.known === true && LOG.test(block.name ?? '') && !block.protected && !block.protectionSource) return { name: 'log', count: need }
+    }
+  }
+  return { name: 'coal', count: 1 }
+}
+
+module.exports = { cookFuel, fuelWanted, PER_WOOD }

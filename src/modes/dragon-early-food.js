@@ -98,6 +98,9 @@ async function provisionFood (ctx, wanted = 32) {
   const huntReady = seen?.ready === true && !foodReach(ctx.shared, { now: ctx.now }).given(seen.target?.runtimeId)
   if (wheat >= 3 || require('./cook-trip').cookNow({ raw: rawCount, here, huntReady })) {
     const stationType = raw ? 'furnace' : 'crafting_table'
+    // No fuel in hand: the fuel comes first, before the walk to the furnace (cook-fuel.js).
+    const lack = raw && !wheat ? require('./cook-fuel').fuelWanted(items, Math.min(3, raw.count, wanted - count), ctx) : null
+    if (lack) return pending((await ctx.supplies.acquire(lack.name, lack.count)).reason)
     const station = placements(origin).find(step => step.item === stationType).position
     if (!await approachHome(ctx, station, { open: true })) return pending('集めた材料を本拠点で調理します。')
     if (!matches(stationType, ctx.getBlock(station.x, station.y, station.z))) return pending('調理設備のブロックを確認します。')
@@ -106,7 +109,7 @@ async function provisionFood (ctx, wanted = 32) {
     else {
       const amount = Math.min(3, raw.count, wanted - count)
       const fuel = require('./cook-fuel').cookFuel(items, amount)
-      if (!fuel) return pending((await ctx.supplies.acquire('coal', 1)).reason)
+      if (!fuel) return pending((await ctx.supplies.acquire('coal', 1)).reason) // raw meat beside wheat: bread first
       const cooked = await house.smelt(station, raw.name, amount, fuel.name, fuel.count, raw.name.replace('minecraft:', 'minecraft:cooked_'))
       // A cook that gained nothing says why (live 2026-11-18 23:15-23:19 JST: four minutes at the door with this step's
       // text and no log line).

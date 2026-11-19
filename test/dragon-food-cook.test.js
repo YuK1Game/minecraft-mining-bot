@@ -61,3 +61,31 @@ test('without coal the cook burns held wood, and only with neither goes for coal
   assert.deepEqual(asked, [['coal', 1]])
   assert.match(bare.reason, /coal/)
 })
+
+test('with nothing to burn the fuel is fetched before the walk to the furnace: logs when a tree is near, else coal', async () => {
+  // Live 2026-11-19 09:46-10:10 JST: the cook walked into the house, the coal step walked out, 13 rounds, nothing cooked.
+  const { fuelWanted } = require('../src/modes/cook-fuel')
+  const air = () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty' })
+  const tree = (x, y, z) => (x === 5 && z === 5 && y >= 64 && y <= 67 ? { known: true, name: 'minecraft:oak_log', boundingBox: 'block' } : air())
+  const feet = () => ({ x: 0.5, y: 64, z: 0.5 })
+  const meat = [{ name: 'minecraft:beef', count: 6, slot: 0 }]
+  assert.deepEqual(fuelWanted(meat, 3, { getFeet: feet, getBlock: tree }), { name: 'log', count: 2 })
+  assert.deepEqual(fuelWanted(meat, 3, { getFeet: feet, getBlock: air }), { name: 'coal', count: 1 })
+  assert.deepEqual(fuelWanted(meat, 3, { getFeet: feet, getBlock: () => ({ known: false, name: 'minecraft:oak_log' }) }), { name: 'coal', count: 1 }, 'a log that was not received is not a tree')
+  assert.equal(fuelWanted([...meat, { name: 'minecraft:coal', count: 1, slot: 1 }], 3, { getFeet: feet, getBlock: tree }), null)
+
+  const asked = []
+  let walked = 0
+  const ctx = {
+    shared: { playerHouse: { origin: { x: 100, y: 64, z: 100 }, done: true } }, memory: {}, cancelled: () => false, log: () => {}, now: () => 0,
+    getFeet: feet, getBlock: tree, hands: { walk: async () => { walked++; return true }, approach: async () => { walked++; return true } },
+    travelTo: async () => { walked++ }, walk: async () => { walked++ },
+    runtime: { inventory: () => ({ known: true, items: meat }), raw: () => ({ dimension: 'overworld' }) },
+    supplies: { acquire: async (name, count) => { asked.push([name, count]); return { done: false, reason: 'log を準備しています（0/2）。' } } },
+    operations: { foraging: { preview: () => ({ ready: false, code: 'NO_KNOWN_FOOD_SOURCE' }) }, quarry: { travelStatus: () => ({ busy: false }) } }
+  }
+  const out = await provisionFood(ctx)
+  assert.deepEqual(asked, [['log', 2]])
+  assert.equal(walked, 0, 'no walk home before there is fuel')
+  assert.match(out.reason, /log/)
+})
