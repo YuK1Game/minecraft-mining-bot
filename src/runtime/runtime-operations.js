@@ -8,6 +8,8 @@ const { createDragonRuntimePorts } = require('../modes/dragon-ports')
 // Modules are loaded through rt.require, the require of runtime.js.
 
 function createRuntimeOperations (rt) {
+  // Raw meat on its way to the furnace is not eaten by any meal (modes/raw-meat-keep.js).
+  rt.food?.setKeep?.((item, vitals) => { const keep = rt.require('./modes/raw-meat-keep'); return keep.RAW.test(item?.name ?? '') && keep.keeping(rt.host.shared, vitals) })
   const operations = {
     loadout: { preview: input => { rt.requireIdle({ loadoutHandoff: true }); return rt.ensureLoadoutReset().prepare({ area: rt.normalizeChunkArea(input?.area) }) },
       start: input => { rt.requireIdle({ loadoutHandoff: true }); return rt.ensureLoadoutReset().start({ ...input, area: rt.normalizeChunkArea(input?.area) }) },

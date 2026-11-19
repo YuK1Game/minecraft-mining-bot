@@ -134,3 +134,25 @@ test('quarry food ties retain slot order and legacy kept foods do not displace k
   assert.equal(legacyOnly.keep.get(0), 1, 'existing KEEP classification is preserved')
   assert.equal(legacyOnly.keep.get(1), 3)
 })
+
+// Live 2026-11-19 14:31 JST: at health 17 the planner's 「持ち物の食料を食べて回復を優先します。」 ate two raw mutton meant
+// for the furnace; 14:51 JST: the trip preparation's emergency meal ate the last one at health 19.6 while logging rotten flesh.
+test('food the caller keeps is not eaten by any path; the rule is asked with the received hunger and health', () => {
+  const f = fixture({ foodName: 'minecraft:bread', equip: async () => ({ serverConfirmed: true }) })
+  f.bag.set(0, air())
+  addFood(f, 9, 'mutton')
+  const { RAW } = require('../src/modes/raw-meat-keep')
+  let asked = null, keeping = true
+  f.food.setKeep((entry, vitals) => { asked = vitals; return keeping && RAW.test(entry.name) })
+  assert.equal(f.food.preview().code, 'FOOD_KEPT')
+  assert.equal(f.food.preview({ slot: 9 }).code, 'FOOD_KEPT', 'an explicit slot does not pass the rule')
+  assert.ok(asked && 'hunger' in asked && 'health' in asked)
+  addFood(f, 14, 'cooked_beef')
+  assert.equal(f.food.preview().name, 'minecraft:cooked_beef', 'other food is eaten as before')
+  f.bag.set(14, air())
+  keeping = false
+  assert.equal(f.food.preview().name, 'minecraft:mutton', 'hungry or hurt: the raw meat is eaten as before')
+  f.food.setKeep(null)
+  assert.equal(f.food.preview({ slot: 9 }).name, 'minecraft:mutton')
+  assert.equal(f.transactions.length, 0)
+})
