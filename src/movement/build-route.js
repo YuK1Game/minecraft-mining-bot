@@ -31,6 +31,14 @@
 //   like the bridge (real Realm 2026-11-19 12:05-12:07 JST: respawned with empty
 //   hands on the two-block entrance step of the house, the ground three lower;
 //   no block to bridge with, the search ended after 21 cells, six times).
+//   With `maxFall` over three (up to MAX_FALL) the drop may be deeper and costs
+//   health (one point a block beyond three), as a player jumps down a ledge
+//   when nothing else leads off it; the walk gives the limit from the health
+//   it holds, and such a drop is dear (HURT a point), so any way without it is
+//   taken first (real Realm 2026-11-19 17:19-17:37 JST: respawned with empty
+//   hands in the house; the door step, three cobblestones in the air, stood
+//   four and five blocks over the ground; NO_BUILD_ROUTE sixty times in
+//   fourteen minutes, and nothing else leads out of the house).
 // Never: an unreceived cell, liquid, leaves, logs, a container, a bed, a
 // door, a block a base protects (`natural: false`), a drop of more than one.
 // The search is bounded (a box round the start and the target, a node limit
@@ -50,14 +58,16 @@ const OWN = /^minecraft:(?:dirt|grass_block|cobblestone|cobbled_deepslate)$/
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]]
 const AROUND = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0]]
 const COST = { walk: 1, step: 1.5, soft: 2, hard: 5, shaft: 3, stack: 5, bridge: 6, drop: 4 }
+const SAFE_FALL = 3, MAX_FALL = 6, HURT = 8
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 
 const keyOf = (x, y, z) => `${x},${y},${z}`
 
-function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = true, allowBridge = false, allowDrop = false, refused = null, barred = null, pad = 12, rise = 8, maxNodes = 12000, maxMs = 1500, now = Date.now }) {
+function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = true, allowBridge = false, allowDrop = false, maxFall = SAFE_FALL, refused = null, barred = null, pad = 12, rise = 8, maxNodes = 12000, maxMs = 1500, now = Date.now }) {
   const lo = { x: Math.min(start.x, target.x) - pad, y: Math.min(start.y, target.y) - rise, z: Math.min(start.z, target.z) - pad }
   const hi = { x: Math.max(start.x, target.x) + pad, y: Math.max(start.y, target.y) + rise, z: Math.max(start.z, target.z) + pad }
   const inside = (x, y, z) => x >= lo.x && x <= hi.x && y >= lo.y && y <= hi.y && z >= lo.z && z <= hi.z
+  const deepest = Math.min(MAX_FALL, Math.max(SAFE_FALL, Math.floor(Number(maxFall) || SAFE_FALL)))
   const seen = new Map()
   const at = (x, y, z) => {
     const k = keyOf(x, y, z)
@@ -140,11 +150,11 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
         const dig = through([[nx, y + 1, nz], [nx, y, nz], [nx, y - 1, nz]])
         if (dig) offer(node, nx, y - 1, nz, COST.step + digCost(dig), { kind: 'walk', dig })
       }
-      // Off the edge: two or three down onto a received floor, through open cells only.
+      // Off the edge: two or three down (deeper at the cost of health) onto a received floor, through open cells only.
       if (allowDrop && at(nx, y + 1, nz).open && at(nx, y, nz).open && at(nx, y - 1, nz).open) {
-        for (const d of [2, 3]) {
+        for (let d = 2; d <= deepest; d++) {
           if (!at(nx, y - d, nz).open) break
-          if (at(nx, y - d - 1, nz).floor) { offer(node, nx, y - d, nz, COST.drop, { kind: 'drop', dig: [], fall: d }); break }
+          if (at(nx, y - d - 1, nz).floor) { offer(node, nx, y - d, nz, COST.drop + HURT * Math.max(0, d - SAFE_FALL), { kind: 'drop', dig: [], fall: d }); break }
         }
       }
     }
@@ -161,7 +171,7 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
   for (let k = keyOf(end.x, end.y, end.z); from.has(k); k = from.get(k).prev) steps.push(from.get(k).step)
   steps.reverse()
   const count = kind => steps.filter(step => step.kind === kind).length
-  return { ok: true, code: 'BUILD_ROUTE', expanded, steps, cost: end.g, dig: steps.reduce((sum, step) => sum + step.dig.length, 0), shaft: count('shaft'), stack: count('stack'), bridge: count('bridge'), drop: count('drop') }
+  return { ok: true, code: 'BUILD_ROUTE', expanded, steps, cost: end.g, dig: steps.reduce((sum, step) => sum + step.dig.length, 0), shaft: count('shaft'), stack: count('stack'), bridge: count('bridge'), drop: count('drop'), hurt: steps.reduce((sum, step) => sum + (step.kind === 'drop' ? Math.max(0, step.fall - SAFE_FALL) : 0), 0) }
 }
 
 function planBuildRoute (options) {
@@ -180,4 +190,4 @@ async function planBuildRouteAsync (options = {}) {
   }
 }
 
-module.exports = { planBuildRoute, planBuildRouteAsync, keyOf }
+module.exports = { planBuildRoute, planBuildRouteAsync, keyOf, SAFE_FALL, MAX_FALL }

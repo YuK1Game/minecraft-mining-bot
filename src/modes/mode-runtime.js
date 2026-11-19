@@ -112,10 +112,12 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // Ordinary walking, mining, placement and the pillar step, shared by the scaffold and the climb out of a tunnel.
   const buildHands = (done, actions = operations) => createScaffoldPorts({
     operations: actions, disposed: done, pillarStep: (step, settings) => runtime.pillarStep(step, settings),
-    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getMotion: () => runtime.motion(),
+    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getMotion: () => runtime.motion(), getHealth: () => runtime.raw().health,
     getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
   })
   const hands = buildHands(disposed)
+  // The starter house read as built: the way out of a pit never cuts it (safety/house-protection.js).
+  const houseBuilt = require('../safety/house-protection').createHouseProtection(() => shared.playerHouse)
   const houseWayOut = (target, done) => createBuildWalk({ hands, getHouse: () => shared.playerHouse, log })(target, { done, aborted: () => disposed() })
   const leaveIsland = createIslandStart({ getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }, walkable: feet => walkableCells({ x: feet.x, y: feet.y + 1.62, z: feet.z }, (x, y, z) => runtime.host().world.getBlock(x, y, z)), openSky: () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), skyAt: cell => !insideHouse(shared.playerHouse?.origin, cell) && !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), { x: cell.x + 0.5, y: cell.y + 1.62, z: cell.z + 0.5 }), build: (target, done) => houseWayOut(target, done), log })
   // A long trip from inside the starter house first walks out through its door (house/house-exit.js).
@@ -160,7 +162,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       boxed: () => boxedIn((x, y, z) => runtime.host().world.getBlock(x, y, z), where()),
       out: async aborted => {
         for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
-        return stepOut({ ports: hands, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, aborted: () => aborted() || flee.status().active || shelter.status().active })
+        return stepOut({ ports: { ...hands, block: (x, y, z) => houseBuilt(hands.block(x, y, z), x, y, z) }, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, aborted: () => aborted() || flee.status().active || shelter.status().active })
       }
     },
     settle: {

@@ -13,6 +13,10 @@
 // The side whose rim is lowest is cut first. The mining preview refuses
 // liquid, falling blocks and unreceived terrain; the climb then stops with the
 // reason. Leaves are never cut.
+// Nor is a block of the starter house (read as natural: false through
+// safety/house-protection.js): the house with a blown-away door step is a
+// small closed area too, and its roof and walls were the "wall" (real Realm
+// 2026-11-19 17:33 JST: 「穴から出る途中で止まりました（…birch_slab）」 from the door step).
 const { walkableCells } = require('./player-drops')
 
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
@@ -48,7 +52,7 @@ async function stepOut ({ ports, getBlock = ports.block, log = () => {}, aborted
       const x = at.x + dx, z = at.z + dz
       if (!solid(block(x, at.y, z))) return null
       const cut = [{ x, y: at.y + 2, z }, { x, y: at.y + 1, z }, { x: at.x, y: at.y + 2, z: at.z }].filter(cell => !open(block(cell.x, cell.y, cell.z)))
-      if (cut.some(cell => { const found = block(cell.x, cell.y, cell.z); return found?.known !== true || LEAVES.test(found.name ?? '') })) return null
+      if (cut.some(cell => { const found = block(cell.x, cell.y, cell.z); return found?.known !== true || found.natural === false || LEAVES.test(found.name ?? '') })) return null
       let rim = RIM_SCAN
       for (let up = 1; up <= RIM_SCAN; up++) if (open(block(x, at.y + up, z)) && open(block(x, at.y + up + 1, z))) { rim = up; break }
       return { x, z, cut, rim }

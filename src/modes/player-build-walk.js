@@ -15,12 +15,15 @@
 // - No plan: the answer is NO_BUILD_ROUTE (or the search limit) at once.
 // ports: the scaffold's hands (player-scaffold-ports.js): feet, block, walk,
 // canMine, mine, canDig, dig, pick, descend, pillar, bridge, fill, reason.
-const { planBuildRouteAsync, keyOf } = require('../movement/build-route')
+const { planBuildRouteAsync, keyOf, SAFE_FALL, MAX_FALL } = require('../movement/build-route')
 const { createHouseProtection } = require('../safety/house-protection')
 const { centreOnColumn } = require('./pillar-centre')
 
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const ROUNDS = 6
+// A jump down a ledge deeper than three costs one health a block: only what leaves KEEP_HEALTH (build-route.js `maxFall`).
+const KEEP_HEALTH = 10
+const fallFor = health => Number.isFinite(health) ? Math.min(MAX_FALL, Math.max(SAFE_FALL, SAFE_FALL + Math.floor(health - KEEP_HEALTH))) : SAFE_FALL
 const RUN = 4 // plain walking steps taken as one walk
 // What one walk learned (a block the mining check refused, a step that did not carry the Bot) is kept for the next
 // walks: every caller starts a new walk, and each new walk planned the same route through the same refused block
@@ -70,14 +73,14 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
     // Also off an edge two or three down (nothing carried is needed for that).
     const mayBridge = carried > 0 && typeof ports.bridge === 'function', mayDrop = typeof ports.drop === 'function'
     if (!route.ok && (mayBridge || mayDrop) && !aborted()) {
-      const wider = await plan({ getBlock: block, start, target, done, blocks: carried, refused, barred, ...limits, allowBridge: mayBridge, allowDrop: mayDrop })
+      const wider = await plan({ getBlock: block, start, target, done, blocks: carried, refused, barred, ...limits, allowBridge: mayBridge, allowDrop: mayDrop, maxFall: fallFor(ports.health?.()) })
       if (wider.ok) route = wider; else route = { ...route, expanded: route.expanded + wider.expanded }
     }
     if (!route.ok) {
       say(`掘る・積む道もありません（${route.code}・調べたマス ${route.expanded}${why ? `・${String(why).slice(0, 60)}` : ''}）`)
       return { ok: false, code: route.code, moved, mined, stacked, expanded: route.expanded }
     }
-    say(`歩ける道がないため、掘る・積む道で進みます（${route.steps.length} 歩・掘る ${route.dig} 個・自分の柱を下りる ${route.shaft} 段・積む ${route.stack} 段${route.bridge ? `・足場を置く ${route.bridge} 個` : ''}${round ? `・${round + 1} 回目の計画` : ''}）`)
+    say(`歩ける道がないため、掘る・積む道で進みます（${route.steps.length} 歩・掘る ${route.dig} 個・自分の柱を下りる ${route.shaft} 段・積む ${route.stack} 段${route.bridge ? `・足場を置く ${route.bridge} 個` : ''}${route.hurt ? `・高い縁から飛び下りる（落下で体力 ${route.hurt} を使います）` : ''}${round ? `・${round + 1} 回目の計画` : ''}）`)
     let at = start, failed = false
     for (let i = 0; i < route.steps.length && !failed; i++) {
       if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }
@@ -103,8 +106,10 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
         bar(at, step.to); why = laid ? ports.why?.() ?? 'WALK_FAILED' : ports.why?.() ?? 'BRIDGE_FAILED'; failed = true
       } else if (step.kind === 'drop') {
         // Centred on the edge cell first, then the predicted drop; the feet at the lower cell count.
+        // A jump that costs health is taken only with the health the plan counted on still there.
+        if (step.fall > SAFE_FALL && step.fall > fallFor(ports.health?.())) { bar(at, step.to); why = 'DROP_TOO_DEEP_FOR_HEALTH'; failed = true; continue }
         await walk(centre(at))
-        if (await ports.drop(centre(step.to)) && there(step.to)) { moved++; at = step.to; continue }
+        if (await ports.drop(centre(step.to), step.fall) && there(step.to)) { moved++; at = step.to; continue }
         bar(at, step.to); why = ports.why?.() ?? 'DROP_FAILED'; failed = true
       } else if (step.kind === 'shaft') {
         if (await ports.descend({ x: at.x, y: at.y - 1, z: at.z }) && there(step.to)) { moved++; mined++; at = step.to; continue }
