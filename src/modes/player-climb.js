@@ -54,13 +54,10 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
   const off = () => { const at = feet(); return at ? Math.hypot(at.x - centre.x, at.z - centre.z) : 0 }
   if (off() > 0.06 && !aborted()) {
     const solid = (x, y, z) => { const found = block(x, y, z); return found?.known === true && found.boundingBox === 'block' }
-    const room = (x, y, z) => solid(x, y - 1, z) && isAir(block(x, y, z)) && isAir(block(x, y + 1, z))
     const sides = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ x: column.x + dx, z: column.z + dz }))
-    // Level, one step up (room over the own head) or one step down.
-    const stand = cell => room(cell.x, base, cell.z) ? base : isAir(block(column.x, base + 2, column.z)) && room(cell.x, base + 1, cell.z) ? base + 1 : room(cell.x, base - 1, cell.z) && isAir(block(cell.x, base + 1, cell.z)) ? base - 1 : null
     const there = async side => { await walk({ x: side.x + 0.5, y: side.y, z: side.z + 0.5 }); await walk(centre) }
-    let side = sides.map(cell => ({ ...cell, y: stand(cell) })).find(cell => cell.y !== null)
-    if (side) { await there(side); side = null }
+    let side = null
+    await require('./pillar-centre').centreOnColumn({ column, base, feet, block, walk, aborted, tries: 1 })
     // Walled in (a stair it dug itself): the blocks of one side are mined (real
     // Realm 15:46-15:57 JST: 0.149 off, stone on every side at the feet or the head).
     if (off() > 0.06 && !aborted()) for (const cell of sides) {
