@@ -19,7 +19,7 @@ const SIGHT_PLANTS = new Set([
   'wildflowers', 'dandelion', 'poppy', 'blue_orchid', 'allium', 'azure_bluet',
   'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'oxeye_daisy',
   'cornflower', 'lily_of_the_valley', 'pink_petals'
-].map(name => `minecraft:${name}`))
+].map(name => `minecraft:${name}`).concat(require('./sight-climbers').CLIMBERS))
 // Aim inside a known mob body rather than at its feet. These low aim heights
 // also avoid assuming a full adult size when the tracker has no size metadata.
 const BODY_AIM_HEIGHTS = new Map([
