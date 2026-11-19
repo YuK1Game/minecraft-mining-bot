@@ -10,6 +10,8 @@
 // いたりしないですか？」). The answer belongs to the trip itself:
 // - a pass in which neither the relay point nor a chunk leg moved the Bot
 //   asks here once before it counts as failed;
+// - in water (the body's own column or one it reaches into): the water exit
+//   (`dry`) first, and nothing else from there;
 // - under received natural ground: the shared way up (`climb`) first;
 // - otherwise: a received cell to stand on, AHEAD_MIN..AHEAD_MAX cells toward
 //   the destination (straight on first, then to either side), is reached by
@@ -44,7 +46,7 @@ function standpoints (getBlock, feet, destination) {
   return found.sort((a, b) => a.score - b.score)
 }
 
-function createTravelDetour ({ getFeet, getBlock, covered = () => false, climb = null, build, log = () => {}, now = Date.now, restMs = REST_MS } = {}) {
+function createTravelDetour ({ getFeet, getBlock, covered = () => false, climb = null, wet = () => false, dry = null, build, log = () => {}, now = Date.now, restMs = REST_MS } = {}) {
   let rested = null
   const cellOf = feet => `${Math.floor(feet.x)},${Math.floor(feet.y + 0.001)},${Math.floor(feet.z)}`
   const movedFrom = start => { const feet = getFeet(); return !!feet && Math.hypot(feet.x - start.x, feet.y - start.y, feet.z - start.z) >= MOVED_M }
@@ -54,6 +56,14 @@ function createTravelDetour ({ getFeet, getBlock, covered = () => false, climb =
     const here = cellOf(start)
     if (rested?.at === here && now() < rested.until) return { ok: false, code: 'DETOUR_RESTING' }
     const fail = code => { rested = { at: cellOf(getFeet() ?? start), until: now() + restMs }; return { ok: false, code } }
+    // A body in water (or reaching into it from the edge) leaves the water first: nothing is dug or stacked from there.
+    if (typeof dry === 'function' && wet() === true) {
+      log('長距離移動: 歩く道がなく水に入っているため、先に水から上がります')
+      let out = null
+      try { out = await dry(aborted) } catch (error) { out = { ok: false, reason: String(error?.message ?? error).slice(0, 80) } }
+      if (wet() !== true || movedFrom(start)) return { ok: true, code: 'DETOUR_DRIED' }
+      return fail(`DETOUR_WET:${String(out?.reason ?? '').slice(0, 40)}`)
+    }
     if (typeof climb === 'function' && covered() === true) {
       log(`長距離移動: 歩く道がなく地下（y=${Math.floor(start.y)}）にいるため、地上へ出ます`)
       try { await climb(aborted) } catch (error) { log(`長距離移動: 地上へ出られませんでした（${String(error?.message ?? error).slice(0, 100)}）`) }
