@@ -104,3 +104,15 @@ test('post-acquisition melee validation rejects unsupported/unknown targets befo
   const result = await f.coordinator.tick()
   assert.equal(result.code, 'NO_READY_ACTION'); assert.equal(f.acquisitions.length, 1); assert.equal(f.approaches.length, 0); assert.equal(f.resumes.length, 1)
 })
+
+test('an approach knocked back by a hit is planned again in the same claim, a bounded number of times (live 2026-11-19 12:05 JST)', async () => {
+  const { KNOCKBACK_REASON, REPLANS } = require('../src/combat/knockback-replan')
+  const f = fixture({ approachHook: () => ({ ready: false, reason: KNOCKBACK_REASON }), canAcquireMeleeApproach: () => true }); setRange(f, 5.5)
+  const result = await f.coordinator.tick()
+  assert.equal(result.code, 'APPROACH_NOT_READY')
+  assert.equal(f.approaches.length, REPLANS + 1)
+  assert.equal(f.acquisitions.length, 1, 'one claim, not one per arrow')
+  // Any other refusal still ends the claim at once.
+  const g = fixture({ approachHook: () => ({ ready: false, reason: 'No known bounded melee stance' }), canAcquireMeleeApproach: () => true }); setRange(g, 5.5)
+  assert.equal((await g.coordinator.tick()).code, 'APPROACH_NOT_READY'); assert.equal(g.approaches.length, 1)
+})

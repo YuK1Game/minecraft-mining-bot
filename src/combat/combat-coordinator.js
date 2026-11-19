@@ -454,6 +454,8 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       // a reason to drop the fight. Hold for a bounded moment; the hostile
       // walks back into reach and melee is retaken on the next poll.
       if (g.distance < CLOSE_HOLD_RANGE && (lease.closeHolds ?? 0) < CLOSE_HOLD_POLLS) { lease.closeHolding = true; return null }
+      // Knocked back by a hit mid-walk: plan the approach again in this claim instead of ending it (knockback-replan.js).
+      if (!controllerCleanup().pending && engageable(g.actor, g.state) && require('./knockback-replan').replanAfterKnockback(lease, result)) return null
       return stop('APPROACH_NOT_READY', result.error?.message ?? result.value?.reason ?? 'Root approach did not accept a known safe step')
     }
     const controller = g.mode === 'melee' ? melee : g.mode === 'ranged' ? ranged : null
