@@ -78,7 +78,7 @@ function createDragonSupplies (ctx) {
     if (near) { await approach(ctx, near); return remember(near) }
     if (!held(name)) { await acquire(name, 1); return null }
     // Open cells first; in a one-wide tunnel a niche is mined for it (station-room.js).
-    const pos = await placeStation({ getBlock, feet: ctx.getFeet(), place: cell => bench.place(cell, full(name)), retrySafe: () => bench.placementRetrySafe(), hands: ctx.hands, cancelled, log: ctx.log, label: name === 'crafting_table' ? '作業台' : name === 'furnace' ? 'かまど' : name })
+    const pos = await placeStation({ getBlock, feet: ctx.getFeet(), getFeet: ctx.getFeet, place: cell => bench.place(cell, full(name)), retrySafe: () => bench.placementRetrySafe(), why: () => bench.refusal(), hands: ctx.hands, cancelled, log: ctx.log, label: name === 'crafting_table' ? '作業台' : name === 'furnace' ? 'かまど' : name })
     return pos ? remember(pos) : null
   }
 
