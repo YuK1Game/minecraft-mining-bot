@@ -13,16 +13,15 @@
 // - `skyWay`: the cells the Bot can stand in and walk to from its feet (one
 //   block up or down a step, received terrain only), nearest first, up to the
 //   first one with nothing but received open cells, a tree's crown or built
-//   blocks above it. Unreceived cells above are not the sky.
+//   blocks above it. Unreceived cells right above are not the sky (player-surface.js openAbove).
 // - `walkToSky`: that way walked a few cells at a time by the ordinary walk.
-const { BUILT } = require('./player-surface')
+const { openAbove } = require('./player-surface')
 const { follow } = require('./player-tunnel-exit')
 
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const HAZARD = /water|lava|fire|magma|cactus|campfire|powder_snow|cobweb|sweet_berry/
-const TREE = /_(?:leaves|log|wood|stem)$|leaf_litter/
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-const RANGE = 16, LIMIT = 800, SCAN_UP = 64
+const RANGE = 16, LIMIT = 800
 
 const key = (x, y, z) => `${x},${y},${z}`
 
@@ -33,14 +32,7 @@ function skyWay ({ block, feet, range = RANGE, limit = LIMIT }) {
   const open = (x, y, z) => { const found = read(x, y, z); return found?.known === true && !found.extra?.length && !HAZARD.test(found.name ?? '') && (AIR.test(found.name ?? '') || found.boundingBox === 'empty') }
   const solid = (x, y, z) => { const found = read(x, y, z); return found?.known === true && found.boundingBox === 'block' && !AIR.test(found.name ?? '') && !HAZARD.test(found.name ?? '') }
   const stand = (x, y, z) => solid(x, y - 1, z) && open(x, y, z) && open(x, y + 1, z)
-  const sky = (x, y, z) => {
-    for (let up = y + 2; up < y + 2 + SCAN_UP; up++) {
-      const found = read(x, up, z)
-      if (found?.known !== true) return false
-      if (found.boundingBox === 'block' && !BUILT.test(found.name ?? '') && !TREE.test(found.name ?? '')) return false
-    }
-    return true
-  }
+  const sky = (x, y, z) => openAbove(read, x, y, z, { roof: true })
   const origin = { x: Math.floor(feet.x), y: Math.floor(feet.y + 0.001), z: Math.floor(feet.z) }
   if (!stand(origin.x, origin.y, origin.z)) return { ready: false, reason: 'NO_STAND' }
   const parents = new Map([[key(origin.x, origin.y, origin.z), null]]), queue = [origin]
