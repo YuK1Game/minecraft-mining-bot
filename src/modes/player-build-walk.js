@@ -14,7 +14,7 @@
 //   the Bot stands, at most ROUNDS times; then the answer is the reason.
 // - No plan: the answer is NO_BUILD_ROUTE (or the search limit) at once.
 // ports: the scaffold's hands (player-scaffold-ports.js): feet, block, walk,
-// canMine, mine, canDig, dig, pick, descend, pillar, bridge, fill, reason.
+// canMine, mine, canDig, dig, pick, descend, pillar, bridge, fill, reason, footing.
 const { planBuildRouteAsync, keyOf, SAFE_FALL, MAX_FALL } = require('../movement/build-route')
 const { createHouseProtection } = require('../safety/house-protection')
 const { centreOnColumn } = require('./pillar-centre')
@@ -64,6 +64,8 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
   }
 
   for (let round = 0; round < rounds && !aborted(); round++) {
+    // On the rim of a block the own cell has no floor and no route starts from it: onto a full stand first (ledge-footing.js).
+    if (await ports.footing?.(target)) say('ブロックの縁に立っていたため、先に床のあるマスへ移りました')
     const start = cell()
     if (!start) return { ok: false, code: 'NO_POSITION', moved, mined, stacked }
     if (done(start)) return { ok: true, code: 'BUILD_ROUTE_DONE', moved, mined, stacked }
