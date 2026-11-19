@@ -130,4 +130,15 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
 // "nothing to lose" rule of the long-trip preparation does not apply.
 const armedInPlay = (shared, inventory) => shared?.playerWanted === true && !shared.inventoryUncertain && !unarmed(inventory)
 
-module.exports = { createPlayerFlee, fleeWanted, unarmed, armedInPlay, FLEE_AT }
+// A hostile within melee contact (the caller asks for a weapon) is combat's, even while a
+// step away from another one is being walked: the stand-down covered the
+// whole step, so a zombie that closed in during it hit freely (live
+// 2026-11-19 12:17 JST: combat ended on PLAYER_FLEE with a zombie within 2 m,
+// health 20 to 2 in five seconds).
+function caughtUp (target, state) {
+  const at = target?.position, me = state?.position
+  if (!at || !me) return false
+  return Math.hypot(at.x - me.x, at.y - (me.y - 1.62), at.z - me.z) <= CONTACT_M
+}
+
+module.exports = { caughtUp, createPlayerFlee, fleeWanted, unarmed, armedInPlay, FLEE_AT }

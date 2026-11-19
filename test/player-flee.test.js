@@ -138,7 +138,7 @@ test('the flee ends after twenty seconds', async () => {
 
 test('the combat work guard stands down while the flee flag is live', () => {
   const source = runtimeSource()
-  assert.equal(source.match(/reason: 'EMPTY_HANDED_AVOID' \}; if \(playerFleeing\(\)\) return \{ allowed: false, reason: 'PLAYER_FLEE' \}/g)?.length, 2)
+  assert.equal(source.match(/reason: 'EMPTY_HANDED_AVOID' \}; if \(playerFleeing\(target, state\)\) return \{ allowed: false, reason: 'PLAYER_FLEE' \}/g)?.length, 2)
 })
 
 test('armed and in melee contact the Bot keeps fighting; unarmed it still runs', () => {
@@ -255,4 +255,13 @@ test('water between the two is not cover: a drowned in the pond is still run fro
   const behindBank = { ...drowned, position: { x: -6.5, y: 60, z: 0.5 } }
   assert.equal(sight({ solidCover: true })(behindBank), false)
   assert.deepEqual(fleeThreats({ hostiles: [behindBank], sight: sight({ solidCover: true }) }), [])
+})
+
+test('a hostile within melee contact is not held off by the stand-down', () => {
+  const { caughtUp } = require('../src/modes/player-flee')
+  const state = { position: { x: 0, y: 65.62, z: 0 } }
+  assert.equal(caughtUp({ position: { x: 1.5, y: 64, z: 0 } }, state), true)
+  assert.equal(caughtUp({ position: { x: 5, y: 64, z: 0 } }, state), false)
+  assert.equal(caughtUp({ position: null }, state), false)
+  assert.equal(caughtUp({ position: { x: 1, y: 64, z: 0 } }, {}), false)
 })
