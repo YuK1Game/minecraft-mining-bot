@@ -12,12 +12,14 @@
 // - arrival is judged from the server's received position by the caller.
 
 const swim = require('./water-swim')
+const corner = require('./water-corner')
 
 const copy = value => structuredClone(value)
 const point = value => ({ x: value.x, y: value.y, z: value.z })
 // Live 2026-11-14 20:00: in a lake the shore was three blocks away and no
 // adjacent ledge existed; the tape may swim up to six blocks toward a ledge.
 const MAX_TICKS = 120
+const VIA_TICKS = 200
 const MAX_REACH = 6
 const MAX_DEPTH = 8
 const HAZARD = /lava|fire|magma|cactus|campfire|powder_snow|cobweb|wither_rose|dripstone/
@@ -55,21 +57,30 @@ function planWaterExit ({ physics, initial, target }) {
   const from = Math.max(feet.y, top)
   if (Math.hypot(cell.x + 0.5 - feet.x, cell.z + 0.5 - feet.z) > MAX_REACH || cell.y - from > 1.6 || cell.y - feet.y < -0.6) return empty('Water exit reaches only a ledge within six blocks, at most one block up')
   if (!ledgeCellsKnown(physics, cell)) return empty('Water exit ledge, its floor and head room must be received and passable')
-  const yaw = Math.atan2(-(cell.x + 0.5 - feet.x), cell.z + 0.5 - feet.z) * 180 / Math.PI
-  let predicted = copy(initial)
-  const frames = []
-  try {
-    for (let tick = 0; tick < MAX_TICKS; tick++) {
-      const controls = { forward: true, jump: true }
-      predicted = physics.step({ ...predicted, yaw, pitch: 0 }, controls)
-      frames.push({ controls, state: copy(predicted) })
-      if (predicted.isInLava) return empty('Water exit tape enters lava')
-      const p = predicted.position
-      if (predicted.onGround && !predicted.isInWater && Math.floor(p.x) === cell.x && Math.floor(p.z) === cell.z && Math.abs(p.y - cell.y) < 1e-3) {
-        return { ready: true, origin: point(initial.position), target: { x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }, waypoints: [{ position: { x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }, action: 'swim', medium: 'land' }], waterExit: { yaw }, exitFrames: frames, predictionOnly: true, serverConfirmed: false }
+  const centre = { x: cell.x + 0.5, z: cell.z + 0.5 }
+  const straight = Math.atan2(-(centre.x - feet.x), centre.z - feet.z) * 180 / Math.PI
+  // The straight heading first; then around a corner, through each water cell beside the ledge (water-corner.js).
+  const tapes = [{ yaw: () => straight, ticks: MAX_TICKS, waterExit: { yaw: straight } }]
+  for (const via of corner.sides(physics, cell, top, feet)) tapes.push({ yaw: p => corner.aim(p, via, centre), ticks: VIA_TICKS, waterExit: { yaw: straight, via } })
+  let unknown = null, lava = false
+  for (const tape of tapes) {
+    let predicted = copy(initial)
+    const frames = []
+    try {
+      for (let tick = 0; tick < tape.ticks; tick++) {
+        const controls = { forward: true, jump: true }
+        predicted = physics.step({ ...predicted, yaw: tape.yaw(predicted.position), pitch: 0 }, controls)
+        frames.push({ controls, state: copy(predicted) })
+        if (predicted.isInLava) { lava ||= tape === tapes[0]; break }
+        const p = predicted.position
+        if (predicted.onGround && !predicted.isInWater && Math.floor(p.x) === cell.x && Math.floor(p.z) === cell.z && Math.abs(p.y - cell.y) < 1e-3) {
+          return { ready: true, origin: point(initial.position), target: { x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }, waypoints: [{ position: { x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }, action: 'swim', medium: 'land' }], waterExit: tape.waterExit, exitFrames: frames, predictionOnly: true, serverConfirmed: false }
+        }
       }
-    }
-  } catch (error) { return empty(`Water exit terrain is unknown or unsupported: ${error.message}`) }
+    } catch (error) { unknown ??= error.message }
+  }
+  if (lava) return empty('Water exit tape enters lava')
+  if (unknown) return empty(`Water exit terrain is unknown or unsupported: ${unknown}`)
   return empty('Water exit tape did not stand on the ledge within its tick bound')
 }
 
@@ -77,18 +88,20 @@ function planWaterExit ({ physics, initial, target }) {
 // (bounded). A server correction re-seeds the prediction and the same input
 // continues (Bedrock lifts the swimmer while it presses the ledge); the
 // received position decides arrival.
-function createWaterExitStepper ({ route, initial, physics, maxTicks = 160 }) {
+function createWaterExitStepper ({ route, initial, physics, maxTicks = route.waterExit?.via ? VIA_TICKS + 60 : 160 }) {
   if (route.waterExit?.swim === true) return swim.stepper({ route, initial, physics })
   let predicted = copy(initial); let index = 0; let phase = 'moving'; let reason = null
   const target = route.waypoints[0].position
   const cell = { x: Math.floor(target.x), y: Math.round(target.y), z: Math.floor(target.z) }
   const controls = { forward: true, jump: true }
+  const via = route.waterExit?.via
+  const heading = p => (via ? corner.aim(p, via, { x: cell.x + 0.5, z: cell.z + 0.5 }) : route.waterExit.yaw)
   const snapshot = (sent = {}) => ({ phase, predictedState: copy(predicted), packetPosition: physics.toServerPosition(predicted), controls: copy(sent), waypointIndex: 0, waypoint: route.waypoints[0], reason })
   function next () {
     if (phase !== 'moving') return snapshot()
     try {
       if (index >= maxTicks) throw new Error('Water exit did not reach the ledge within its tick bound')
-      predicted = physics.step({ ...predicted, yaw: route.waterExit.yaw, pitch: 0 }, controls)
+      predicted = physics.step({ ...predicted, yaw: heading(predicted.position), pitch: 0 }, controls)
       index++
       if (predicted.isInLava) throw new Error('Water exit entered lava')
       const p = predicted.position
