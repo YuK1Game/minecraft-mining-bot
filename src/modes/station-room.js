@@ -15,11 +15,14 @@
 // goes into the niche. Ore, unknown cells and anything the mining check
 // refuses are left alone. A placement that was sent and not answered ends the
 // search (no second station while the first may still appear).
-// A cell the placement takes is received air and nothing else (actions/interactions.js `placementPlan`). Until
-// 2026-11-20 short grass, ferns and leaf litter counted as open here and none of them could be placed in (live
-// 03:49-03:55 JST on a forest floor: 「作業台を置ける場所がありません（空いたマス 8・掘れる壁 0）」 for six minutes; seven
-// of the eight were litter, the eighth was air whose click line crossed the Bot's own litter cell, see
-// actions/interaction-sight.js). Litter is not swept: leaves and litter are never broken.
+// A cell the placement takes is received air and nothing else (actions/interactions.js `placementPlan`), and a
+// click's line passes air only (actions/interaction-sight.js). Until 2026-11-20 short grass, ferns and leaf litter
+// counted as open here and none of them could be placed in; and from a cell that holds a plant the line to the
+// floor of every cell beside it crosses that plant. Live 03:49-03:55 JST on a forest floor, standing in leaf litter:
+// 「作業台を置ける場所がありません（空いたマス 8・掘れる壁 0）」 for six minutes; seven of the eight were litter, the
+// eighth was air behind the Bot's own litter cell. So: open is air; and when nothing could be placed from a cell
+// that holds a plant, the Bot first steps onto bare ground that has bare ground beside it (`bareStance`) and
+// places from there. Litter is not swept: leaves and litter are never broken.
 const OPEN = /^minecraft:(?:air|cave_air|void_air)$/
 const ROCK = /^minecraft:(?:stone|deepslate|andesite|diorite|granite|tuff|dirt|grass_block|cobblestone|cobbled_deepslate|netherrack)$/
 const FIXED = [[2, 0], [-2, 0], [0, 2], [0, -2], [1, 1]]
@@ -46,6 +49,18 @@ function openSpots (getBlock, feet) {
   return out
 }
 
+// A cell of air to stand on (solid floor, air for the head) with a cell of air right beside it, nearest first:
+// from there the line to that neighbour's floor crosses air only.
+function bareStance (getBlock, feet) {
+  const at = cellOf(feet), bare = cell => { const here = getBlock(cell.x, cell.y, cell.z); return here?.known === true && OPEN.test(here.name ?? '') && !here.extra?.length }
+  const ground = cell => bare(cell) && solid(getBlock(cell.x, cell.y - 1, cell.z))
+  const cells = [...FIXED, ...BESIDE, ...AROUND].map(([dx, dz]) => ({ x: at.x + dx, y: at.y, z: at.z + dz }))
+    .sort((a, b) => Math.hypot(a.x - at.x, a.z - at.z) - Math.hypot(b.x - at.x, b.z - at.z))
+  return cells.find(cell => ground(cell) && bare({ ...cell, y: cell.y + 1 }) && SIDES.some(([dx, dz]) => ground({ x: cell.x + dx, y: cell.y, z: cell.z + dz }))) ?? null
+}
+// The feet's own cell holds a plant (litter, grass, a flower): something received that is not air and has no body.
+const inPlant = (getBlock, feet) => { const at = cellOf(feet), here = getBlock(at.x, at.y, at.z); return here?.known === true && !OPEN.test(here.name ?? '') && here.boundingBox === 'empty' && !here.extra?.length }
+
 // Wall blocks beside the feet that may be opened: plain rock on a solid floor.
 function wallSpots (getBlock, feet) {
   const at = cellOf(feet), out = []
@@ -64,15 +79,32 @@ function sayOnce (log, text, now = Date.now()) {
 }
 
 // `why`: the placement's last refusal, for the line that says nothing could be placed.
-async function placeStation ({ getBlock, feet, place, retrySafe = () => true, hands = null, cancelled = () => false, log = () => {}, label = '設備', why = () => null, now = Date.now }) {
+// `getFeet`: where the Bot stands after a step (received), for the step onto bare ground.
+async function placeStation ({ getBlock, feet, getFeet = null, place, retrySafe = () => true, hands = null, cancelled = () => false, log = () => {}, label = '設備', why = () => null, now = Date.now }) {
   if (!feet) return null
   const end = now() + TRY_MS
-  for (const cell of openSpots(getBlock, feet)) {
-    if (cancelled()) return null
-    // A placement that waits on another operation takes seconds a cell: the rest is for the next look.
-    if (now() > end) break
-    if (await place(cell)) return cell
-    if (!retrySafe()) return null
+  // The open cells from where the Bot stands; false when a placement was sent and not answered.
+  async function open () {
+    for (const cell of openSpots(getBlock, feet)) {
+      if (cancelled()) return false
+      // A placement that waits on another operation takes seconds a cell: the rest is for the next look.
+      if (now() > end) break
+      if (await place(cell)) return cell
+      if (!retrySafe()) return false
+    }
+    return null
+  }
+  let put = await open()
+  if (put !== null) return put || null
+  // Standing in a plant, every line to a floor beside the feet crosses it: onto bare ground first, once.
+  const stance = hands?.walk && getFeet && inPlant(getBlock, feet) ? bareStance(getBlock, feet) : null
+  if (stance && !cancelled()) {
+    log(`プレイヤーモード: 草・落ち葉のマスからは${label}を置く床が見えないため、何もないマス (${stance.x}, ${stance.y}, ${stance.z}) へ移ってから置きます`)
+    await hands.walk({ x: stance.x + 0.5, y: stance.y, z: stance.z + 0.5 })
+    const after = getFeet()
+    if (cancelled() || !after) return null
+    feet = after
+    if (!inPlant(getBlock, feet)) { put = await open(); if (put !== null) return put || null }
   }
   const walls = hands ? wallSpots(getBlock, feet) : []
   for (const cell of walls) {
@@ -88,4 +120,4 @@ async function placeStation ({ getBlock, feet, place, retrySafe = () => true, ha
   return null
 }
 
-module.exports = { placeStation, openSpots, wallSpots }
+module.exports = { placeStation, openSpots, wallSpots, bareStance }
