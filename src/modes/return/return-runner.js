@@ -304,6 +304,8 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     const active = goal?.state === 'active'
     return {
       active,
+      // An operation of this goal is in flight now (a waiting goal has none).
+      working: running,
       reason: active ? `拠点へ資材を預けに行きます（${LABEL[goal.stage]}${goal.interrupt ? `・${goal.interrupt.who}のため待機` : ''}）。` : null,
       banked: banked + (goal?.progress.banked ?? 0),
       base: shared.playerBase ?? null,

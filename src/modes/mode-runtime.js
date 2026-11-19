@@ -339,7 +339,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     operations, runtime, shared, root, active, log, getBlock, lifeKey, loading: () => shared.loadingScreenEnded === false || shared.respawnTerrain?.pending === true || shared.inventoryUncertain === true, threatened: danger,
     finish: () => { shared.playerWanted = false; shared.autoWanted = false; void resume.note() },
     legacyIdle: () => idle() && shared.autoWanted !== true,
-    legacyBusy: () => crew.some(task => task.status().active) || runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld() || runtime.combatOwns?.() === true,
+    legacyBusy: () => require('./crew-busy').crewBusy(crew) || runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld() || runtime.combatOwns?.() === true,
     stopLegacy: reason => inner.stop(reason),
     stepPorts: signal => {
       const owner = lifeKey()
