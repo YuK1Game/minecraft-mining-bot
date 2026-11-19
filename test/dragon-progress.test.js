@@ -1,83 +1,99 @@
 'use strict'
 
+// The expedition's own watch for a goal that is not getting anywhere (指示書 B1〜B3), through the real
+// runtime: the expedition, its saved record, the goal ledger and the watcher, over a virtual clock.
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createProgress, STALL_MS, RESET_MS } = require('../src/modes/dragon-progress')
+const { createWorld } = require('./helpers/dragon-goal-world')
 
-function harness () {
-  const shared = {}, lines = []
-  let at = 1000000, resets = 0
-  const progress = createProgress({ shared, now: () => at, log: line => lines.push(line), onReset: () => { resets++; return 'gather food' } })
-  return { shared, lines, progress, pass: ms => { at += ms }, resets: () => resets }
-}
-const seen = (over = {}) => ({ feet: { x: -4900.5, y: 76, z: -4990.5 }, items: [{ name: 'minecraft:cooked_beef', count: 9 }], worn: [], health: 19.6, stage: 'early', ...over })
+const MIN = 60000
+const WARN = /分進んでいません/, DECIDE = /決め直します/, HOLD = /保留します/, RELEASE = /保留を解いて/
+const minutes = line => Number(/が (\d+) 分進んでいません/.exec(line)?.[1])
 
-test('a step whose place, items and health do not change is reported once per five minutes, then its choices are dropped', () => {
-  const h = harness()
-  h.progress.note(seen(), { reason: '狩りで得た肉を確認して調理します。' })
-  // A different text for the same state is not progress, and a step inside the same 8-block cell is not either.
-  for (let i = 0; i < 149; i++) { h.pass(2000); h.progress.note(seen({ feet: { x: -4899.2, y: 76, z: -4989.1 } }), { reason: i % 2 ? '集めた材料を本拠点で調理します。' : '調理後の食料数を確認します。' }) }
-  assert.equal(h.lines.length, 0)
-  assert.equal(h.shared.dragonStall, undefined)
-  h.pass(2000)
-  h.progress.note(seen(), { reason: '集めた材料を本拠点で調理します。' })
-  assert.equal(h.lines.length, 1)
-  assert.match(h.lines[0], /5 分、場所・持ち物・体力が変わっていません（集めた材料を本拠点で調理します。）/)
-  assert.equal(h.shared.dragonStall.reason, '集めた材料を本拠点で調理します。')
-  for (let i = 0; i < 60; i++) { h.pass(2000); h.progress.note(seen(), { reason: 'x' }) }
-  assert.equal(h.lines.length, 1)
-  assert.equal(h.resets(), 0)
-  h.pass(RESET_MS - STALL_MS - 120000)
-  h.progress.note(seen(), { reason: 'x' })
-  assert.equal(h.resets(), 1)
-  assert.match(h.lines.at(-1), /覚えていた選択を捨てて、受信した状態から決め直します（gather food）/)
-  h.pass(2000)
-  h.progress.note(seen(), { reason: 'x' })
-  assert.equal(h.resets(), 1)
+test('B1: health that goes down and up, and a walk between two places, are not progress: warned at 5 minutes, decided again 3 times, then held', async t => {
+  let flips = 0
+  const w = await createWorld(t, { step: async (ctx, w) => {
+    // Every four minutes of work the Bot is hit or healed, and stands in the other of two places.
+    const turn = Math.floor(w.at / (4 * MIN))
+    if (turn !== flips) { flips = turn; w.raw.health = turn % 2 ? 19 : 20; w.raw.position = { x: turn % 2 ? 20.5 : 0.5, y: 70, z: 0.5 } }
+    return { done: false, reason: 'iron_helmet を準備しています（0/2）。' }
+  } })
+  const started = w.at
+  await w.pass(4 * MIN + 50000)
+  assert.deepEqual(w.said(WARN), [], 'nothing before five minutes')
+  await w.pass(20000)
+  assert.equal(w.said(WARN).length, 1)
+  assert.equal(minutes(w.said(WARN)[0]), 5)
+  assert.match(w.said(WARN)[0], /目的 early\.home_reserve#1 .*iron_helmet を準備しています.*最後の成果 なし、最後の動き \d 分前、決め直し 0\/3/)
+  assert.equal(w.shared.dragonStall.goal, 'early.home_reserve#1')
+  await w.pass(35 * MIN)
+  assert.equal(w.said(DECIDE).length, 3, 'one decision per ten minutes without progress')
+  assert.deepEqual(w.said(DECIDE).map(line => /決め直し (\d)\/3/.exec(line)[1]), ['1', '2', '3'])
+  assert.equal(w.said(HOLD).length, 1)
+  assert.match(w.said(HOLD)[0], /NO_PROGRESS。見直し: 10 分後/)
+  assert.equal(w.goal().hold.code, 'NO_PROGRESS')
+  // Held: the step is not run, and nothing more is decided or said until the hold is looked at again.
+  const calls = w.calls, lines = w.lines.length
+  await w.pass(8 * MIN)
+  assert.equal(w.calls, calls)
+  assert.equal(w.lines.filter(line => /^遠征:/.test(line)).length, w.lines.slice(0, lines).filter(line => /^遠征:/.test(line)).length)
+  assert.match(w.rt.status().reason, /進まない目的を保留しています/)
+  // Its time is up: one decision is given back, and the next hold is longer. Never for good, never without a bound.
+  await w.pass(2 * MIN + 20000)
+  assert.equal(w.said(RELEASE).length, 1)
+  assert.match(w.said(RELEASE)[0], /TIME/)
+  assert.ok(w.calls > calls, 'the step runs again')
+  await w.pass(128 * MIN)
+  assert.equal(w.goal().startedAt, started, 'the same goal all along')
+  assert.equal(w.goal().id, 'early.home_reserve#1')
+  assert.equal(w.said(DECIDE).length, 6, 'three hours: 3 decisions, then one for each hold that was looked at again (10, 20, 40 minutes)')
+  assert.equal(w.said(HOLD).length, 4)
+  assert.match(w.said(HOLD).at(-1), /見直し: 60 分後/)
 })
 
-test('a received change is progress: items, armour, health, a new cell; waiting on purpose is not a stall', () => {
-  for (const change of [{ items: [{ name: 'minecraft:cooked_beef', count: 10 }] }, { worn: [{ name: 'minecraft:iron_helmet' }] }, { health: 12 }, { feet: { x: -4880, y: 76, z: -4990 } }, { stage: 'nether' }]) {
-    const h = harness()
-    h.progress.note(seen())
-    h.pass(STALL_MS - 1000); h.progress.note(seen(change))
-    h.pass(STALL_MS - 1000); h.progress.note(seen(change))
-    assert.equal(h.lines.length, 0, JSON.stringify(change))
-  }
-  const h = harness()
-  h.progress.note(seen(), { reason: 'bed', waiting: true })
-  h.pass(STALL_MS * 2); h.progress.note(seen(), { reason: 'bed', waiting: true })
-  assert.equal(h.shared.dragonStall, undefined)
-  h.pass(STALL_MS); h.progress.note(seen(), { reason: 'bed', waiting: true })
-  assert.match(h.lines.at(-1), /15 分、場所・持ち物・体力が変わっていません（bed）/)
-  h.pass(RESET_MS); h.progress.note(seen(), { reason: 'bed', waiting: true })
-  assert.equal(h.resets(), 0)
-  h.pass(2000); h.progress.note(seen({ health: 10 }), { reason: 'r' })
-  assert.equal(h.shared.dragonStall, undefined)
-  assert.match(h.lines.at(-1), /進み始めました/)
+test('B2: a reload of the behaviour code every four minutes does not start the clock, the decisions or the hold again', async t => {
+  const w = await createWorld(t)
+  const started = w.at
+  for (let i = 0; i < 11; i++) { await w.pass(4 * MIN); w.boot(w.shared) }
+  // 44 minutes, 11 reloads.
+  assert.equal(w.goal().id, 'early.home_reserve#1')
+  assert.equal(w.goal().startedAt, started)
+  assert.equal(minutes(w.said(WARN)[0]), 5)
+  assert.equal(w.said(DECIDE).length, 3)
+  assert.equal(w.said(HOLD).length, 1)
+  assert.equal(w.goal().decisions, 3)
+  assert.ok(w.goal().hold)
 })
 
-test('a stall noted before a reload of the behaviour code goes on, and its end is counted from its own start', () => {
-  const h = harness()
-  h.progress.note(seen(), { reason: 'r' })
-  h.pass(STALL_MS); h.progress.note(seen(), { reason: 'r' })
-  assert.equal(h.lines.length, 1)
-  // The reload: a new progress over the same shared state, at a later time.
-  let at = 1000000 + STALL_MS + 60000
-  const lines = []
-  const again = createProgress({ shared: h.shared, now: () => at, log: line => lines.push(line) })
-  again.note(seen(), { reason: 'r' })
-  assert.deepEqual(lines.map(line => /(\d+) 分、場所・持ち物・体力が変わっていません/.exec(line)?.[1]), ['6'], 'the same state is still the same stall')
-  assert.equal(h.shared.dragonStall.since, 1000000)
-  at += 60000
-  again.note(seen({ feet: { x: -4870, y: 72, z: -5034 } }), { reason: 'r' })
-  assert.match(lines.at(-1), /進み始めました（7 分止まっていました）/)
-  assert.equal(h.shared.dragonStall, undefined)
-  // Another state after the reload: the stall has ended, counted from its own start.
-  const other = harness()
-  other.shared.dragonStall = { since: 1000000 - 180000, reason: 'r', sig: 'something else' }
-  other.progress.note(seen(), { reason: 'r' })
-  assert.match(other.lines.at(-1), /進み始めました（3 分止まっていました）/)
+test('B3: a run that throws is an outcome, not a wait; the run after it that never returns is let go at the deadline', async t => {
+  const w = await createWorld(t, { step: (ctx, w) => { if (w.calls === 1) throw Error('boom'); return w.never() } })
+  await w.pass(10000)
+  // Run 1 threw: shown as recovering with its code, and no wait is carried into the next run.
+  assert.equal(w.rt.status().phase, 'recovering')
+  assert.equal(w.rt.status().reason, 'boom')
+  await w.pass(10000)
+  assert.equal(w.calls, 2)
+  const live = w.rt.runState()
+  assert.equal(live.running, true)
+  assert.equal(live.n, 2)
+  assert.equal(live.wait, null, 'the run that hangs inherits no wait')
+  await w.pass(5 * MIN)
+  assert.equal(w.said(WARN).length, 1, 'counted as a stall from the start')
+  assert.match(w.said(WARN)[0], /boom.*同じ1歩が \d+ 秒/)
+  await w.pass(5 * MIN + 10000)
+  assert.equal(w.said(DECIDE).length, 1)
+  assert.match(w.said(DECIDE)[0], /step・決め直し 1\/3/)
+  assert.equal(w.calls, 3, 'the step that never returned was let go and another one began')
+  await w.pass(50 * MIN)
+  assert.equal(w.said(DECIDE).length, 4)
+  assert.ok(w.said(HOLD).length >= 1)
+  assert.ok(w.calls <= 8, 'a bounded number of runs in an hour: ' + w.calls)
+})
+
+test('a run that throws tells its code to the next look', async t => {
+  const w = await createWorld(t, { step: () => { throw Error('boom') } })
+  await w.pass(6 * MIN)
+  assert.match(w.said(WARN)[0], /boom・結果 failed\/STEP_THREW/)
 })
 
 test('a step that never returns is given up: the next tick starts a new one, and the old one cannot clear it', async () => {
@@ -96,6 +112,7 @@ test('a step that never returns is given up: the next tick starts a new one, and
   assert.equal(job.abandon('やめます'), true)
   assert.deepEqual(stops, ['やめます'])
   assert.equal(job.busy(), false)
+  assert.equal(job.runState().outcome.code, 'STEP_ABANDONED')
   assert.equal(job.abandon('again'), false)
   assert.equal(job.tick(), true)
   await new Promise(resolve => setImmediate(resolve))

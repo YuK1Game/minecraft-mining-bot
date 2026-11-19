@@ -89,3 +89,49 @@ test('with nothing to burn the fuel is fetched before the walk to the furnace: l
   assert.equal(walked, 0, 'no walk home before there is fuel')
   assert.match(out.reason, /log/)
 })
+
+// 指示書 B5・§8: the cook is one way of the food goal. The same cook that gains nothing is tried three times,
+// then held until the meat or the fuel changes, and every answer carries a result with a code and what is left.
+test('B5: the same cook that gains nothing three times is not tried a fourth time; other meat is another state', async () => {
+  const { createGoalLedger } = require('../src/modes/goal/goal-ledger')
+  const origin = { x: 0, y: 64, z: 0 }
+  const furnace = placements(origin).find(step => step.item === 'furnace').position
+  const getBlock = (x, y, z) => x === furnace.x && y === furnace.y && z === furnace.z ? { known: true, name: 'minecraft:furnace', boundingBox: 'block' } : { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  let clock = 1e9, opens = 0
+  const ledger = createGoalLedger({ shared: {}, now: () => clock })
+  ledger.open('early.home_reserve'); ledger.look({ value: 0, scope: 'a/0' })
+  const items = [{ name: 'minecraft:beef', count: 2, slot: 0 }, { name: 'minecraft:coal', count: 1, slot: 1 }]
+  const logs = []
+  const ctx = {
+    shared: { playerHouse: { origin, done: true } }, memory: {}, cancelled: () => false, log: line => logs.push(line), now: () => clock, sleep: async ms => { clock += ms },
+    getFeet: () => ({ x: furnace.x + 1.5, y: furnace.y, z: furnace.z + 0.5 }), getBlock, hands: { walk: async () => true, approach: async () => true },
+    runtime: { inventory: () => ({ known: true, items }), raw: () => ({ dimension: 'overworld' }) },
+    goal: { fail: (f, o) => ledger.fail(f, o), spent: f => ledger.spent(f), step: k => ledger.step(k) },
+    operations: {
+      interactions: { openFurnace: async () => { opens++; throw new Error('操作対象への視線が遮られているか、未取得です。') }, useDoor: async () => {} },
+      crafting: { closeContainer () {} }, furnace: {}, quarry: { travelStatus: () => ({ busy: false }) }
+    }
+  }
+  for (let i = 0; i < 3; i++) {
+    const answer = await provisionFood(ctx, 8)
+    assert.equal(answer.result.status, 'failed')
+    assert.equal(answer.result.code, 'COOK_NOTHING')
+    assert.deepEqual(answer.result.remaining, { step: 'cook', cooked: 8, raw: 2 })
+    clock += 21000
+  }
+  const tried = opens
+  assert.ok(tried >= 3)
+  assert.equal(logs.filter(line => /3 回とも焼けなかったため、材料か燃料が変わるまで調理をやめます/.test(line)).length, 1)
+  for (let i = 0; i < 5; i++) {
+    const answer = await provisionFood(ctx, 8)
+    assert.equal(answer.result.status, 'blocked')
+    assert.equal(answer.result.code, 'COOK_SPENT')
+    assert.equal(answer.result.retry.kind, 'supplies_changed')
+    clock += 21000
+  }
+  assert.equal(opens, tried, 'the furnace is not opened again for the same meat and fuel')
+  // One more piece of raw meat: another state, the cook is tried again.
+  items[0].count = 3
+  assert.equal((await provisionFood(ctx, 8)).result.code, 'COOK_NOTHING')
+  assert.ok(opens > tried)
+})

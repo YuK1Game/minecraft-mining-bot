@@ -145,7 +145,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const tripDetour = require('../travel/travel-detour').createTravelDetour({ getFeet: () => feetNow(), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), covered: () => underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), climb: aborted => climbUp(aborted), wet: () => water.needed(), dry: aborted => water.exit(aborted), build: (target, options) => createBuildWalk({ hands, getHouse: () => shared.playerHouse, log })(target, options), log })
   shared.travelDetour = (destination, { signal } = {}) => disposed() || control.get() !== 'player' || shared.playerWanted !== true ? null : tripDetour(destination, { aborted: () => signal?.aborted === true || disposed() || shared.playerWanted !== true })
   // One memory of failed climbs for every expedition step (dragon-rise.js).
-  const tripRise = require('./dragon-rise').createTripRise({ covered: () => underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), getFeet: () => feetNow(), log })
+  const tripRise = require('./dragon-rise').createTripRise({ covered: () => underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), getFeet: () => feetNow(), log, goal: () => expedition?.goal ?? null })
   const recovery = createPlayerRecovery({
     getMode: control.get, shared, log, disposed, held: () => !!shared.travelNight?.cover,
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agentStatus().running === true },
@@ -335,12 +335,12 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
         if (cancelled() || runtime.raw().dimension !== 'overworld') throw Error('地上の長距離移動は現世でのみ開始できます。')
         // The step keeps its trip until it ends (dragon-trip.js); nothing else of the expedition starts between two legs.
         const aborted = () => cancelled() || options.aborted?.() === true
-        return expeditionTrip({ start: async () => { await tripRise(input?.destination ?? input ?? null, () => climbUp(cancelled)); return travelTo(input, { aborted }) }, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel(), cancelled: aborted, until: options.until, resting: () => !!shared.travelNight?.cover, log })
+        return expeditionTrip({ start: async () => { await tripRise(input?.destination ?? input ?? null, () => climbUp(cancelled)); return travelTo(input, { aborted }) }, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel(), cancelled: aborted, until: options.until, resting: () => !!shared.travelNight?.cover, log, goal: expedition?.goal ?? null, destination: input?.destination ?? input ?? null, getFeet: () => feetNow() })
       }
       const actions = guardDragonOperations(operations, cancelled)
       const hands = buildHands(cancelled, actions)
       return { operations: actions, runtime, shared, root, log, getBlock, where, feetNow, getFeet: feetNow,
-        hands, walk: hands.walk, drop: (slot, count) => cancelled() ? null : storagePorts.drop(slot, count), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null }, travelTo: travel, climbUp: () => climbUp(cancelled), storage, cancelled, signal }
+        hands, walk: hands.walk, drop: (slot, count) => cancelled() ? null : storagePorts.drop(slot, count), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null }, travelTo: travel, climbUp: () => tripRise(null, () => climbUp(cancelled)), storage, cancelled, signal }
     }
   })
   // Direct resumes inside the runtime also consult the selected player's owner.

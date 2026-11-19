@@ -112,7 +112,8 @@ function createDragonState ({ root, shared, getState, getLife = () => null, getW
   shared.persistDragonBoundary = () => {
     if (shared.botMode === 'player' && shared.playerWanted === true && stores.size) return observe()
   }
-  return { record, save, observe, snapshot: () => { const entry = store(environment()); return entry ? structuredClone(entry.value) : null } }
+  // scope: the world this record belongs to (profile, Realm, world), null while it cannot be told.
+  return { record, save, observe, scope: () => environment()?.key ?? null, snapshot: () => { const entry = store(environment()); return entry ? structuredClone(entry.value) : null } }
 }
 
 module.exports = { createDragonState }

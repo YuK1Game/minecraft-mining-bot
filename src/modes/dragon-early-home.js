@@ -18,7 +18,14 @@ const ARRIVE_M = 20, LEVEL_M = 6, RETRY_MS = 60000, NEAR_M = 48, STUCK_M = 4
 const close = (from, to, range) => from && Math.hypot(to.x + 0.5 - from.x, to.y - from.y, to.z + 0.5 - from.z) <= range
 
 // `open`: the destination is a block to be opened (a furnace, a chest): the Bot ends where the open click has a line to it.
-async function approachHome (ctx, destination, { open = false } = {}) {
+async function approachHome (ctx, destination, options = {}) {
+  const arrived = await reach(ctx, destination, options)
+  // At the thing in the house (and, for a furnace or a chest, where it opens): one confirmed step of the goal.
+  if (arrived === true) ctx.goal?.step?.(`home:${destination.x},${destination.y},${destination.z}`)
+  return arrived
+}
+
+async function reach (ctx, destination, { open = false } = {}) {
   const { shared, hands, getBlock, getFeet, cancelled, operations } = ctx
   const origin = shared.playerHouse.origin
   const now = ctx.now ?? Date.now
@@ -43,8 +50,9 @@ async function approachHome (ctx, destination, { open = false } = {}) {
   }
   if (!close(getFeet(), destination, 22)) {
     if (ctx.climbUp && getFeet().y < origin.y - 5 && underCover(getBlock, ctx.where())) {
-      await ctx.climbUp(cancelled)
-      return false
+      const up = await ctx.climbUp(cancelled)
+      // A climb that rests or is spent from here (dragon-rise.js) does not end the approach: the trip below has its own ways on.
+      if (!up?.code || up.rose || up.code === 'STILL_COVERED') return false
     }
     // Measured as the trip measures its own arrival (rounded metres to its own destination, the porch): measured to
     // the thing inside the house, a bot 20.5 m from the porch started a trip that arrived at once, every 2 s

@@ -46,7 +46,7 @@ async function explore (ctx, resource) {
     const x = Math.floor(feet.x) + direction[0] * distance, z = Math.floor(feet.z) + direction[1] * distance
     for (const dy of [0, 1, -1, 2, -2]) {
       const y = Math.floor(feet.y) + dy
-      if (standable(ctx.getBlock, x, y, z) && await ctx.hands.approach({ x, y, z }, 1.5)) { step[resource] = offset + 1; step[resource + ':miss'] = 0; return }
+      if (standable(ctx.getBlock, x, y, z) && await ctx.hands.approach({ x, y, z }, 1.5)) { step[resource] = offset + 1; step[resource + ':miss'] = 0; ctx.goal?.reached?.('search:' + resource); return }
       if (ctx.cancelled()) return
     }
   }
