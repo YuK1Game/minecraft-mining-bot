@@ -33,7 +33,7 @@ const { createBuildWalk } = require('../../src/modes/player-build-walk')
 const EYE = 1.62, WALK = 4.3, TRAVEL = 4, GROUND = 64
 const extra = () => ({ has_nbt: 'false', can_place_on: [], can_destroy: [] })
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: extra() })
-const NAMES = ['diamond', 'cobblestone', 'coal', 'iron_ingot', 'emerald', 'tuff', 'oak_log', 'oak_planks', 'chest', 'diamond_pickaxe', 'diamond_sword', 'cooked_beef', 'dirt', 'stick', 'wooden_pickaxe', 'string', 'bone']
+const NAMES = ['diamond', 'cobblestone', 'coal', 'iron_ingot', 'emerald', 'tuff', 'oak_log', 'oak_planks', 'chest', 'diamond_pickaxe', 'diamond_sword', 'cooked_beef', 'dirt', 'stick', 'wooden_pickaxe', 'string', 'bone', 'stone_sword', 'stone_pickaxe', 'iron_helmet']
 const REGISTRY = NAMES.map((name, index) => ({ runtime_id: 400 + index, name: `minecraft:${name}` }))
 const idOf = name => REGISTRY.find(entry => entry.name === (name.includes(':') ? name : `minecraft:${name}`)).runtime_id
 const nameOf = id => REGISTRY.find(entry => entry.runtime_id === id)?.name ?? null

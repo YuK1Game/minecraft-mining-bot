@@ -282,3 +282,41 @@ test('armed and unable to heal (hunger under 18, no food): the Bot does not walk
   assert.equal(healing({ hunger: null, inventory: { known: true, items: [] }, hasFood }), null)
   assert.equal(healing({ hunger: 6, inventory: null, hasFood }), null)
 })
+
+test('with no weapon, an archer or a witch is run from at any health within 12 m (live 2026-11-19 17:47 JST)', () => {
+  const witch = x => ({ entityType: 'minecraft:witch', hostile: true, position: { x, y: 64, z: 0 } })
+  const skeleton = x => ({ entityType: 'minecraft:skeleton', hostile: true, position: { x, y: 64, z: 0 } })
+  const drowned = x => ({ entityType: 'minecraft:drowned', hostile: true, tridentThrower: true, position: { x, y: 64, z: 0 } })
+  // Health 19 on the house's step, a witch 1.1 m away: the potions took it to 4 in six seconds.
+  assert.equal(fleeWanted({ health: 19, weaponless: true, hostiles: [witch(1.1)], position: here })?.name, 'witch')
+  assert.equal(fleeWanted({ health: 20, weaponless: true, hostiles: [skeleton(11)], position: here })?.name, 'skeleton')
+  assert.equal(fleeWanted({ health: 20, weaponless: true, hostiles: [drowned(10)], position: here })?.name, 'drowned')
+  assert.equal(fleeWanted({ health: 20, weaponless: true, hostiles: [skeleton(13)], position: here }), null)
+  assert.equal(fleeWanted({ health: 20, weaponless: true, hostiles: [zombie(5)], position: here }), null, 'a walker only at health 10 or less, as before')
+  assert.equal(fleeWanted({ health: 19, weaponless: false, hostiles: [witch(5)], position: here }), null, 'armed: combat has it')
+})
+
+test('"cannot heal, so stay" does not hold while being hit with no fight on (live 2026-11-19 18:02 JST)', async () => {
+  const skeleton = { entityType: 'minecraft:skeleton', hostile: true, position: { x: 6.9, y: 64, z: 0 } }
+  const make = at => {
+    const s = { shared: { playerWanted: true, recentDamageNoPrimary: at == null ? null : { at } }, clock: 100000, position: { ...here }, logs: [], steps: 0 }
+    s.flee = createPlayerFlee({
+      getMode: () => 'player', shared: s.shared, log: text => s.logs.push(text), now: () => s.clock, sleep: async ms => { s.clock += ms },
+      agent: { running: () => false, stop: () => {} }, travel: { status: () => ({ busy: false }), cancel: async () => {} },
+      getState: () => ({ health: 5, position: s.position, totem: false, healing: false, inventory: { items: [{ name: 'minecraft:wooden_sword', count: 1 }] } }),
+      hostiles: () => [skeleton], retreat: async () => { s.steps++; s.clock += 1000; s.position.x -= 12; return true }
+    })
+    return s
+  }
+  // Standing off, not hit: it stays, as before (the food work goes on).
+  const quiet = make(null)
+  assert.equal(await quiet.flee.tick(), false)
+  assert.equal(quiet.flee.status().skip, 'no_threat')
+  const old = make(100000 - 5000)
+  assert.equal(await old.flee.tick(), false)
+  // Hit a second ago: it leaves.
+  const struck = make(100000 - 1000)
+  assert.equal(await struck.flee.tick(), true)
+  assert.ok(struck.steps >= 1)
+  assert.match(struck.logs[0], /体力が少ないため敵から離れます（体力 5、skeleton 6\.9m）/)
+})

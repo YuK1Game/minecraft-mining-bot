@@ -38,3 +38,34 @@ test('a refused settle and a movement that never ends are reported, not retried'
   assert.equal(await landFirst({ feetY: () => 72.25, running: () => true, settle: () => { settles++ }, delay }), 'moving')
   assert.equal(settles, 0)
 })
+
+test('live 18:02:19: every route refused with the landing wait: one settle, one more plan', async () => {
+  const { planLanded, settleNow } = require('../src/combat/approach-landing')
+  const WAIT = 'No known bounded melee stance (routes 12, no standing 46: Wait for a supported landing before planning x12)'
+  let plans = 0, lands = 0
+  const out = await planLanded(async () => (++plans === 1 ? { ready: false, reason: WAIT } : { ready: true, code: 'PARTIAL_APPROACH' }), async () => { lands++; return 'settled' })
+  assert.deepEqual([plans, lands, out.ready], [2, 1, true])
+  // Still refused after the landing, or no landing: said in the reason, no third plan.
+  plans = 0
+  const still = await planLanded(async () => { plans++; return { ready: false, reason: WAIT } }, async () => 'settled')
+  assert.equal(plans, 2)
+  assert.match(still.reason, /\[after landing\]$/)
+  plans = 0
+  const refused = await planLanded(async () => { plans++; return { ready: false, reason: WAIT } }, async () => 'refused')
+  assert.equal(plans, 1)
+  assert.match(refused.reason, /\[landing: refused\]$/)
+  // Any other refusal, and a ready approach, pass through untouched.
+  lands = 0
+  const other = { ready: false, reason: 'No known bounded melee stance (routes 3, no standing 2: No safe route found x3)' }
+  assert.equal(await planLanded(async () => other, async () => { lands++; return 'settled' }), other)
+  const ready = { ready: true }
+  assert.equal(await planLanded(async () => ready, async () => { lands++; return 'settled' }), ready)
+  assert.equal(lands, 0)
+  // The settle itself: waits for a running movement, then settles once.
+  let running = 2, settles = 0
+  assert.equal(await settleNow({ running: () => running > 0, settle: () => { settles++ }, delay: async () => { running-- } }), 'settled')
+  assert.equal(settles, 1)
+  assert.equal(await settleNow({ running: () => true, settle: () => { settles++ }, delay }), 'moving')
+  assert.equal(await settleNow({ running: () => false, settle: () => { throw new Error('no') }, delay }), 'refused')
+  assert.equal(settles, 1)
+})
