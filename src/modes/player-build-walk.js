@@ -17,6 +17,7 @@
 // canMine, mine, canDig, dig, pick, descend, pillar, bridge, fill, reason.
 const { planBuildRouteAsync, keyOf } = require('../movement/build-route')
 const { createHouseProtection } = require('../safety/house-protection')
+const { centreOnColumn } = require('./pillar-centre')
 
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const ROUNDS = 6
@@ -97,6 +98,7 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
         bar(at, step.to); why = ports.why?.() ?? 'DESCEND_FAILED'; failed = true
       } else {
         await walk(centre(at))
+        await centreOnColumn({ column: at, base: at.y, feet, block, walk, aborted })
         let up = await ports.pillar({ x: at.x, z: at.z }, at.y, { any: true })
         // The step before may still be ending (the mining that just finished).
         if (!up?.ok && !aborted() && !there(step.to)) { await sleep(1500); up = there(step.to) ? { ok: true } : await ports.pillar({ x: at.x, z: at.z }, at.y, { any: true }) }
