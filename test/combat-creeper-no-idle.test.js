@@ -196,3 +196,25 @@ test('the evade rest forgets a creeper that is primed, nearer, or after its time
   rest.note('a', 5.5); now = 1000
   assert.equal(rest.resting('a', 5.5), false, 'after the rest')
 })
+
+test('the evade rest doubles while the same creeper keeps failing, and starts over after a quiet spell', () => {
+  const { createEvadeRest } = require('../src/combat/evade-rest')
+  let now = 0
+  const rest = createEvadeRest({ clock: () => now })
+  rest.note('a', 6); now = 1000
+  assert.equal(rest.resting('a', 6), false, 'first rest: one second')
+  rest.note('a', 6); now = 2500
+  assert.equal(rest.resting('a', 6), true, 'second rest: two seconds')
+  now = 3000
+  assert.equal(rest.resting('a', 6), false)
+  for (let i = 0; i < 6; i++) { rest.note('a', 6); now += 500 }
+  const from = now
+  rest.note('a', 6); now = from + 9999
+  assert.equal(rest.resting('a', 6), true, 'at most ten seconds')
+  now = from + 10000
+  assert.equal(rest.resting('a', 6), false)
+  assert.equal(rest.resting('a', 6, true), false, 'primed is answered at once')
+  rest.note('a', 6); now += 40000
+  rest.note('a', 6); now += 1000
+  assert.equal(rest.resting('a', 6), false, 'a new streak after thirty quiet seconds')
+})
