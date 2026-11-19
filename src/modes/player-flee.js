@@ -29,9 +29,12 @@
 //   the trip to the base went on). It waits the same way, and during that
 //   wait the hostile it could not leave behind does not start a new run,
 //   however near it comes: combat has it.
+// - Who holds the input is decided in control-owner.js: no run starts while
+//   an armed fight is on, and the stand-down of combat is the owner's claim.
 const { normalizeMode } = require('./bot-mode')
+const { createControlOwner, inContact, CONTACT_M } = require('./control-owner')
 
-const FLEE_AT = 8, UNARMED_FLEE_AT = 10, CREEPER_M = 8, CONTACT_M = 3.5, GAIN_M = 2
+const FLEE_AT = 8, UNARMED_FLEE_AT = 10, CREEPER_M = 8, GAIN_M = 2
 const WEAPON = /_sword$|_axe$|^minecraft:(?:bow|crossbow|trident|mace)$/
 // Unreceived items are not a weapon in hand.
 const unarmed = inventory => !(inventory?.items ?? []).some(item => item?.count > 0 && WEAPON.test(item.name ?? ''))
@@ -63,7 +66,7 @@ function fleeWanted ({ health, totem, hostiles, position, weaponless = false, he
   return nearest && (typeof totem === 'function' ? totem() : totem) !== true ? nearest : null
 }
 
-function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, hostiles, retreat, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, hostiles, retreat, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), owner = createControlOwner({ shared, now }) }) {
   let busy = false, restUntil = 0, stuck = 0, stuckHealth = null, stuckDistance = null
   // The hostiles the last runs walked from without leaving them behind.
   const kept = new Set()
@@ -77,6 +80,8 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
     if (!inPlay()) { skip = 'not_playing'; return false }
     if (shared.travelNight?.cover) { skip = 'night_pit'; return false }
     const state = getState()
+    // An armed fight that is on keeps the input (control-owner.js).
+    if (owner.fighting(!unarmed(state.inventory))) { skip = 'fighting'; return false }
     const resting = now() < restUntil
     // Hurt again since the run that went nowhere: the wait is over.
     if (resting && stuckHealth === null) { skip = 'rest'; return false }
@@ -100,7 +105,7 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
         // Caught up with while armed: combat takes the fight back.
         if (steps + failed > 0 && !unarmed(current.inventory) && near.some(actor => Math.hypot(actor.position.x - current.position.x, actor.position.y - (current.position.y - 1.62), actor.position.z - current.position.z) <= CONTACT_M)) break
         // Combat stands down only while a step is being tried or walked.
-        shared.playerFlee = { until: now() + 9000 }
+        owner.claim('flee', 9000)
         if (agent.running()) agent.stop('敵から離れます。')
         if (travel?.status()?.busy) { try { await travel.cancel() } catch { /* The step below fails and is retried. */ } }
         let moved = false
@@ -126,7 +131,7 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
         if (failed >= 3) restUntil = now() + 5000
       }
       return true
-    } finally { shared.playerFlee = null; busy = false }
+    } finally { owner.release('flee'); busy = false }
   }
 
   return { tick, status: () => ({ active: busy, reason: busy ? '敵から離れています。' : null, skip }) }
@@ -141,10 +146,6 @@ const armedInPlay = (shared, inventory) => shared?.playerWanted === true && !sha
 // whole step, so a zombie that closed in during it hit freely (live
 // 2026-11-19 12:17 JST: combat ended on PLAYER_FLEE with a zombie within 2 m,
 // health 20 to 2 in five seconds).
-function caughtUp (target, state) {
-  const at = target?.position, me = state?.position
-  if (!at || !me) return false
-  return Math.hypot(at.x - me.x, at.y - (me.y - 1.62), at.z - me.z) <= CONTACT_M
-}
+const caughtUp = inContact
 
 module.exports = { caughtUp, createPlayerFlee, fleeWanted, unarmed, armedInPlay, FLEE_AT }

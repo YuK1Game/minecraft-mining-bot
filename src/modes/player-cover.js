@@ -23,8 +23,11 @@
 //   on foot; this cover said "reachable", combat had nothing to swing, the
 //   flee waits for health 10 without a weapon, and the Bot went from 19 to 1
 //   in 22 s without a step, then died).
+// - Who holds the input is decided in control-owner.js: with a weapon, no
+//   walk starts while a fight is on, whichever enemy the fight is with.
 const { normalizeMode } = require('./bot-mode')
 const { unarmed } = require('./player-flee')
+const { createControlOwner } = require('./control-owner')
 
 const ARCHER = /^minecraft:(?:skeleton|stray|bogged|pillager|witch)$/
 // A witch throws potions from close by, so it counts from sword reach (3 m).
@@ -53,14 +56,14 @@ function coverCells ({ feet, cells, archers, sight, limit = TRIES }) {
   return found
 }
 
-function createPlayerCover ({ getMode, shared, agent, getState, hostiles, sight, cells, walk, reachable = () => false, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now }) {
+function createPlayerCover ({ getMode, shared, agent, getState, hostiles, sight, cells, walk, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, owner = createControlOwner({ shared, now }) }) {
   let busy = false, restUntil = 0
   // Why the last tick did not run, for the hit note (damage-note.js).
   let skip = null
   const inPlay = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
 
   async function tick () {
-    const reason = busy ? 'busy' : !inPlay() ? 'not_playing' : now() < restUntil ? 'rest' : shared.travelNight?.cover ? 'night_pit' : shared.playerFlee ? 'fleeing' : blocked() ? 'blocked' : null
+    const reason = busy ? 'busy' : !inPlay() ? 'not_playing' : now() < restUntil ? 'rest' : shared.travelNight?.cover ? 'night_pit' : owner.walking() ? 'fleeing' : blocked() ? 'blocked' : null
     if (reason) { skip = reason; return false }
     const hitAt = Number(shared.recentDamageNoPrimary?.at ?? NaN)
     if (!(now() - hitAt >= 0 && now() - hitAt <= HIT_MS)) { skip = 'no_recent_hit'; return false }
@@ -72,8 +75,10 @@ function createPlayerCover ({ getMode, shared, agent, getState, hostiles, sight,
     const near = (hostiles() ?? []).filter(actor => actor?.position && (ARCHER.test(String(actor.entityType ?? '')) || actor.tridentThrower === true) && range(actor) > nearOf(actor) && range(actor) <= FAR_M)
     const exposed = near.length ? exposedTo(feet, near, sight) : []
     const armed = !unarmed(state.inventory)
-    const archers = exposed.filter(actor => !(armed && reachable(actor)))
-    if (!archers.length) { skip = !near.length ? 'no_archer_4_20m' : !exposed.length ? `unseen_by_${near.length}` : 'reachable'; return false }
+    const archers = exposed
+    if (!archers.length) { skip = !near.length ? 'no_archer_4_20m' : `unseen_by_${near.length}`; return false }
+    // An armed fight that is on keeps the input (control-owner.js).
+    if (owner.fighting(armed)) { skip = 'fighting'; return false }
     skip = null
     busy = true
     try {
@@ -87,7 +92,7 @@ function createPlayerCover ({ getMode, shared, agent, getState, hostiles, sight,
       log(`プレイヤーモード: ${armed ? '近づけない' : '武器がなく戦えない'} ${name}（${range(archers[0]).toFixed(1)}m）に撃たれているため、射線から外れます`)
       for (const cell of places) {
         if (!inPlay()) break
-        shared.playerFlee = { until: now() + 14000 }
+        owner.claim('cover', 14000)
         if (agent.running()) agent.stop('弓の敵の射線から外れます。')
         let arrived = false
         try { arrived = await walk({ x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }) === true } catch { arrived = false }
@@ -96,7 +101,7 @@ function createPlayerCover ({ getMode, shared, agent, getState, hostiles, sight,
       restUntil = now() + 5000
       log('プレイヤーモード: 射線から外れる場所へ歩けませんでした')
       return false
-    } finally { shared.playerFlee = null; busy = false }
+    } finally { owner.release('cover'); busy = false }
   }
 
   return { tick, status: () => ({ active: busy, reason: busy ? '弓の敵の射線から外れています。' : null, skip }) }
