@@ -1,6 +1,6 @@
 'use strict'
 
-const { profileOf, engagementAllowed } = require('./combat-profiles')
+const { profileOf, engagementAllowed, PROVOKED_DISTANCE } = require('./combat-profiles')
 const { mobType } = require('./mob-catalog')
 
 // Interception policy distances, NOT server-AI target or perception receipts:
@@ -51,7 +51,8 @@ function evaluateCombatThreat ({ target, state, routeToBot = null, sight = null,
   // walk cells and combat's sight line reads water as blocked (live 2026-11-19 11:00:42-11:01:03 JST: a drowned
   // 0.8-1.3 m away in a pond took health 19.2 to 0 while every claim ended NOT_A_CURRENT_THREAT / LOS_BLOCKED).
   // `touching`: the caller found no received block with a body between the two bodies (combat-exposure.js).
-  const contact = touching === true && base.distance <= CONTACT_M
+  // The one that just hit the Bot counts out to the provoked distance (an enderman's reach, a body floating off its floor).
+  const contact = touching === true && base.distance <= (evidence.provoked ? PROVOKED_DISTANCE : CONTACT_M)
   if (contact) base.access = true
   if (base.access !== true) return decline(base.access === null ? 'ATTACK_ACCESS_UNKNOWN' : ranged || flying ? 'PROJECTILE_SIGHT_BLOCKED' : 'ENEMY_ATTACK_ROUTE_BLOCKED', base.access === null)
   // A remote wandering/primed actor may be reacting to someone else. Only

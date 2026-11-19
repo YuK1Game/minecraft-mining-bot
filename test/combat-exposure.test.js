@@ -59,3 +59,24 @@ test('a drowned at the body under water is a current threat; behind a wall it is
   const walled = createCombatExposure({ world: pond(true), entities: { motion: () => null }, scopeOf: () => 'scope' }).evaluate(drowned, state)
   assert.equal(walled.intercept, false)
 })
+
+test('a neutral mob that just hit the Bot is a current threat, even from a body floating off its floor', () => {
+  // Live 2026-11-19 11:36 JST: an enderman 2.6 m away, 1.2 below, hit three times; the feet cell and the one below were air.
+  const world = { getBlock: (x, y, z) => y < 60 ? stone : air, revision: () => 1 }
+  let at = null
+  const exposure = createCombatExposure({ world, entities: { motion: () => null }, scopeOf: () => 'scope', recentDamageAt: () => at })
+  const state = { phase: 'spawned', health: 13, dimension: 'overworld', runtimeEntityId: 1, position: { x: 0.5, y: 67.62, z: 0.5 } }
+  const enderman = { kind: 'mob', entityType: 'minecraft:enderman', hostile: false, alive: true, positionKnown: true, dimension: 'overworld', runtimeId: 9, uniqueId: -9, position: { x: 2.8, y: 64.8, z: 0.5 } }
+  assert.equal(exposure.evaluate(enderman, state).intercept, false)
+  at = Date.now() - 1000
+  const hit = exposure.evaluate(enderman, state)
+  assert.equal(hit.intercept, true)
+  assert.equal(hit.awareness, 'observed_attack')
+  // Old damage, a far one, and one behind a wall stay declined.
+  at = Date.now() - 6000
+  assert.equal(exposure.evaluate(enderman, state).intercept, false)
+  at = Date.now() - 1000
+  assert.equal(exposure.evaluate({ ...enderman, position: { x: 6.5, y: 66, z: 0.5 } }, state).intercept, false)
+  const walled = createCombatExposure({ world: { getBlock: (x, y, z) => y < 60 || x === 1 ? stone : air, revision: () => 1 }, entities: {}, scopeOf: () => 'scope', recentDamageAt: () => at })
+  assert.equal(walled.evaluate(enderman, state).intercept, false)
+})

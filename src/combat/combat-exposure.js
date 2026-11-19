@@ -1,6 +1,7 @@
 'use strict'
 
 const { evaluateCombatThreat, CONTACT_M } = require('./combat-threat-policy')
+const { PROVOKED_WINDOW_MS, PROVOKED_DISTANCE } = require('./combat-profiles')
 const threatReachability = require('./threat-reachability')
 const { createCombatSearchBudget } = require('./combat-search-budget')
 
@@ -12,7 +13,15 @@ const TARGET_EYE = 1.6
 // the stricter default; a caller that asks "is the Bot safe from this one
 // here" (player-flee-threats.js) must not take water for a wall: a drowned
 // throws its trident through it (live 2026-11-18 05:09 JST).
-function createCombatExposure ({ world, entities, scopeOf, solidCover = false }) {
+// recentDamageAt: when the Bot last lost health (ms). A mob within PROVOKED_DISTANCE inside PROVOKED_WINDOW_MS of
+// that is "this one attacked us" - the same evidence the coordinator's profile gate uses. Without it here, the
+// profile gate let a neutral mob through and this evaluation then declined it as NOT_CONFIRMED_HOSTILE (live
+// 2026-11-19 11:36 JST: an enderman 2.6 m away hit three times for 7 each; combat never started).
+function createCombatExposure ({ world, entities, scopeOf, solidCover = false, recentDamageAt = null }) {
+  function struck () {
+    const at = Number(typeof recentDamageAt === 'function' ? recentDamageAt() : NaN), age = Date.now() - at
+    return Number.isFinite(at) && age >= 0 && age <= PROVOKED_WINDOW_MS
+  }
   let decisionSight = null
   // Only synchronous callers share geometry. Returning (including returning a
   // promise) or throwing ends this scope; the next guard observes a fresh ray.
@@ -78,6 +87,8 @@ function createCombatExposure ({ world, entities, scopeOf, solidCover = false })
     try { sight = targetSight(target, state) } catch {}
     try { motion = entities.motion?.(target.runtimeId) ?? null } catch {}
     let result = evaluateCombatThreat({ target, state, sight, motion })
+    const provoked = Number.isFinite(result.distance) && result.distance <= PROVOKED_DISTANCE && struck()
+    if (provoked) result = evaluateCombatThreat({ target, state, sight, motion, provoked })
     if (result.accessKind === 'enemy_walk_route' && Number.isFinite(result.distance) && result.distance <= result.recognitionRadius) {
       const feet = state.position && { x: state.position.x, y: state.position.y - 1.62, z: state.position.z }
       const key = JSON.stringify([scopeOf(state), String(target.runtimeId), String(target.uniqueId), world.revision?.(), ...['x', 'y', 'z'].map(k => Math.floor(feet?.[k])), ...['x', 'y', 'z'].map(k => Math.floor(target.position?.[k]))])
@@ -92,16 +103,17 @@ function createCombatExposure ({ world, entities, scopeOf, solidCover = false })
         if (searched) enemyAttackRoutes.set(key, { at: now, value: routeToBot })
         while (enemyAttackRoutes.size > 128) enemyAttackRoutes.delete(enemyAttackRoutes.keys().next().value)
       }
-      result = evaluateCombatThreat({ target, state, routeToBot, sight, motion })
+      result = evaluateCombatThreat({ target, state, routeToBot, sight, motion, provoked })
     }
     // At the body, with nothing solid between: a current threat whatever the route or the water says.
-    if (result.intercept !== true && Number.isFinite(result.distance) && result.distance <= CONTACT_M && ['ATTACK_ACCESS_UNKNOWN', 'PROJECTILE_SIGHT_BLOCKED', 'ENEMY_ATTACK_ROUTE_BLOCKED', 'RECOGNITION_EVIDENCE_UNKNOWN', 'NO_CURRENT_RECOGNITION'].includes(result.reason)) {
+    if (result.intercept !== true && Number.isFinite(result.distance) && result.distance <= (provoked ? PROVOKED_DISTANCE : CONTACT_M) && ['ATTACK_ACCESS_UNKNOWN', 'PROJECTILE_SIGHT_BLOCKED', 'ENEMY_ATTACK_ROUTE_BLOCKED', 'RECOGNITION_EVIDENCE_UNKNOWN', 'NO_CURRENT_RECOGNITION'].includes(result.reason)) {
       let touching = false
       try { touching = bodySight(state.position, target, true) === true } catch {}
-      if (touching) result = evaluateCombatThreat({ target, state, routeToBot, sight, motion, touching })
+      if (touching) result = evaluateCombatThreat({ target, state, routeToBot, sight, motion, provoked, touching })
     }
     return result
   }
-  return { evaluate: require('../common/work-spans').wrap('exposure.evaluate', evaluate), sight: sightEvidence, withDecision, snapshot: () => combatSearchBudget.snapshot() }
+  function heed (ports = {}) { if (typeof ports.recentDamageAt === 'function') recentDamageAt = ports.recentDamageAt }
+  return { heed, evaluate: require('../common/work-spans').wrap('exposure.evaluate', evaluate), sight: sightEvidence, withDecision, snapshot: () => combatSearchBudget.snapshot() }
 }
 module.exports = { createCombatExposure }
