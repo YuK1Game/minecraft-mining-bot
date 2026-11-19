@@ -59,6 +59,8 @@ async function createFoodLap (t, { chestFood = 7, chestFoodName = 'cooked_beef',
     row.count -= count
     w.raw.inventory = { known: true, items: rows().filter(item => item.count > 0) }
   }
+  // name -> uses left, as received with the item (w.wear.set('minecraft:stone_pickaxe', 0): worn out).
+  w.wear = new Map()
   w.hand = test => total(rows(), test)
   w.chestCount = test => total(w.slots, test)
   w.cooked = () => w.hand(COOKED)
@@ -144,7 +146,9 @@ async function createFoodLap (t, { chestFood = 7, chestFoodName = 'cooked_beef',
       stop: () => {}
     }
   }
-  const runtime = { raw: () => w.raw, host: () => ({ getLife: () => w.raw.lifecycle, meta: { startGame: { seed: 1 } } }), armor: () => ({ known: true, worn: w.worn }), inventory: () => w.raw.inventory }
+  const runtime = { raw: () => w.raw, host: () => ({ getLife: () => w.raw.lifecycle, meta: { startGame: { seed: 1 } } }), armor: () => ({ known: true, worn: w.worn }),
+    // As in the product (runtime.js `working`): the host's rows carry no durability, the runtime's reading adds the tools' received one.
+    inventory: () => ({ ...w.raw.inventory, items: rows().map(item => w.wear.has(item.name) ? { ...item, durabilityKnown: true, durabilityRemaining: w.wear.get(item.name) } : item) }) }
   // The saved record of a Bot whose house stands and whose bed is confirmed: the goal is the kit at home.
   const seed = createDragonState({ root, shared: {}, getState: () => w.raw, getLife: () => w.raw.lifecycle, getWorldId: () => 1 })
   const record = seed.record()
@@ -164,7 +168,7 @@ async function createFoodLap (t, { chestFood = 7, chestFoodName = 'cooked_beef',
     return w.rt
   }
   w.record = () => w.rt.record()
-  w.objective = () => earlyObjective({ inventory: w.raw.inventory, worn: runtime.armor(), house: w.shared.playerHouse, memory: w.record() })
+  w.objective = () => earlyObjective({ inventory: runtime.inventory(), worn: runtime.armor(), house: w.shared.playerHouse, memory: w.record() })
   // One look of the two-second timer and the step it starts. each(w): called before every look.
   w.look = async () => {
     const owned = w.rt.tick()
