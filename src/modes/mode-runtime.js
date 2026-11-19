@@ -137,6 +137,9 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     // The tunnel it dug itself on foot, a walk to the open sky, or straight up (player-rise.js).
     return riseToSky({ ports: hands, floors: recordedFloors(shared, runtime.raw()), log, aborted: stop, sky: () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()) })
   }
+  // The long trip's own way on when no walk leads on (travel/travel-detour.js): lent only while the play mode plays.
+  const tripDetour = require('../travel/travel-detour').createTravelDetour({ getFeet: () => feetNow(), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), covered: () => underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), climb: aborted => climbUp(aborted), build: (target, options) => createBuildWalk({ hands, getHouse: () => shared.playerHouse, log })(target, options), log })
+  shared.travelDetour = (destination, { signal } = {}) => disposed() || control.get() !== 'player' || shared.playerWanted !== true ? null : tripDetour(destination, { aborted: () => signal?.aborted === true || disposed() || shared.playerWanted !== true })
   // One memory of failed climbs for every expedition step (dragon-rise.js).
   const tripRise = require('./dragon-rise').createTripRise({ covered: () => underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), getFeet: () => feetNow(), log })
   const recovery = createPlayerRecovery({
