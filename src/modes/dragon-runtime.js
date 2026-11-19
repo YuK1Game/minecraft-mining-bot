@@ -12,6 +12,7 @@ const { recoverDragon } = require('./dragon-recovery')
 const { createDragonSupplies } = require('./dragon-supplies')
 const { nightHome } = require('./dragon-night')
 const { threatWait } = require('./dragon-threat-wait')
+const { createProgress } = require('./dragon-progress')
 
 function createDragonRuntime (ports) {
   const { runtime, shared, root, getBlock } = ports
@@ -20,7 +21,23 @@ function createDragonRuntime (ports) {
     getLife: () => runtime.host().getLife?.(), getWorldId: () => runtime.host().meta?.startGame?.seed })
   const legacyNeeded = memory => earlyObjective({ inventory: shared.inventoryUncertain ? null : raw().inventory,
     worn: runtime.armor?.(), house: shared.playerHouse, memory }).legacy === true
+  let stepRecord = null
+  // What a stalled step forgets (dragon-progress.js): the pinned kit item and the home-approach rests.
+  const progress = createProgress({ shared, log: ports.log, onReset: () => {
+    const dropped = [stepRecord?.early?.gather && 'gather ' + stepRecord.early.gather.name, shared.dragonHomeWalk && 'homeWalk', shared.dragonHomeInner && 'homeInner'].filter(Boolean)
+    if (stepRecord?.early) delete stepRecord.early.gather
+    delete shared.dragonHomeWalk; delete shared.dragonHomeInner
+    return dropped.join('・')
+  } })
   async function run (record, signal, recoverHealth) {
+    const result = await step(record, signal, recoverHealth)
+    stepRecord = record
+    const now = raw(), armor = runtime.armor?.()
+    progress.note({ feet: now?.position, items: shared.inventoryUncertain ? null : now?.inventory?.items, worn: armor?.known ? armor.worn : null, health: now?.health, stage: record.stage },
+      { reason: result?.reason ?? '', waiting: result?.phase === 'waiting' || result?.phase === 'completed' })
+    return result
+  }
+  async function step (record, signal, recoverHealth) {
     const ctx = ports.stepPorts(signal)
     const dim = raw().dimension
     if (record.stage !== 'early') shared.dragonGoldBoots = dim === 'nether' || record.stage === 'nether'
