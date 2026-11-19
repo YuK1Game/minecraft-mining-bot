@@ -40,9 +40,11 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
     const current = raw()
     const hurt = Number.isFinite(previousHealth) && current?.health < previousHealth && current.health <= 12
     if (hurt) recoveringHealth = true
-    if (fence !== lifeKey() || !active() || !ready(current) || hurt) {
+    const changed = fence !== lifeKey() || !active() || !ready(current)
+    if (changed || hurt) {
       currentController.abort()
-      stopLegacy('遠征中の入力を解除して状態を再確認します。')
+      // A hit alone must not end a fight that already owns the input.
+      stopLegacy('遠征中の入力を解除して状態を再確認します。', { hurtOnly: !changed })
     }
     previousHealth = current?.health
   }
