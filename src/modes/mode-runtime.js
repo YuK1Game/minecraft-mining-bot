@@ -58,6 +58,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const shared = runtime.host().shared, file = modeFile(root), log = text => runtime.host().log(text)
   // First runtime of this process: `npm run auto` means player mode, otherwise the saved choice.
   if (!isMode(shared.botMode)) shared.botMode = shared.autoWanted === true ? 'player' : loadModeSync(file)
+  // Raw meat on its way to the furnace is not eaten by any meal path (raw-meat-keep.js).
+  require('./raw-meat-keep').wire(() => runtime.food?.(), () => shared)
   const resume = createPlayerResume({ file: playFile(root), shared, getMode: () => shared.botMode, log })
   resume.restore()
   const quarry = operations.quarry
