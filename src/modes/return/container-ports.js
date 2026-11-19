@@ -20,12 +20,20 @@
 //   anything is sent (CONTAINER_NOT_IN_REACH, CONTAINER_NOT_VISIBLE), and the
 //   caller stands somewhere else (live 2026-11-18 03:16-03:20 JST: 27 tries
 //   from one place at chests it could not see, 17 diamonds not banked).
+// - A preview that refuses for another reason (the inventory not confirmed,
+//   the slot in hand) says nothing about the place. The place is then judged
+//   by the same reach and line alone, so a chest across the base is still
+//   "out of reach" and is walked to; beside it, the open itself answers with
+//   its reason (live 2026-11-19 18:26:07 JST: five chests of the base were
+//   each "opened" from where the Bot stood, all refused within 64 ms, and the
+//   trip for the kit ended with nothing taken and nothing said).
 const { completed, partial, blocked, failed, interrupted } = require('./return-result')
+const { openAccess } = require('../../actions/open-face')
 
 const WAIT = /待って|待機|使用中|確認しています/
-const OPEN_MS = 4000, SLOT_MS = 3000, PATIENT_MS = 10000, MAX_TRANSFERS = 72
+const OPEN_MS = 4000, SLOT_MS = 3000, PATIENT_MS = 10000, MAX_TRANSFERS = 72, EYE = 1.62
 
-function createContainerPorts ({ operations, getInventory, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now, memory = null }) {
+function createContainerPorts ({ operations, getInventory, getBlock = null, getFeet = null, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now, memory = null }) {
   const items = () => getInventory()?.items ?? []
   const count = name => items().filter(item => item?.name === name && item.count > 0).reduce((sum, item) => sum + item.count, 0)
   const until = async (test, ms, stop = () => false) => { const end = now() + ms; while (now() < end && !disposed() && !stop()) { if (test()) return true; await sleep(200) } return !disposed() && !stop() && test() }
@@ -81,7 +89,12 @@ function createContainerPorts ({ operations, getInventory, held = () => false, d
   function access (position) {
     let seen = null
     try { seen = operations.interactions?.previewOpenChest?.(position) } catch { return null }
-    return seen?.ready === false ? AWAY[seen.code] ?? null : null
+    if (seen?.ready !== false) return null
+    if (AWAY[seen.code]) return AWAY[seen.code]
+    const feet = getBlock ? getFeet?.() : null
+    if (!feet) return null
+    const place = openAccess(at => getBlock(at.x, at.y, at.z), { x: feet.x, y: feet.y + EYE, z: feet.z }, position)
+    return place ? AWAY[place.code] ?? null : null
   }
 
   // Why the chest did not open, from the state.
