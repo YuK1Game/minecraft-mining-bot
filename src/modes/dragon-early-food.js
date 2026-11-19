@@ -92,7 +92,11 @@ async function provisionFood (ctx, wanted = 32) {
   const here = distance(feet, origin) < 25
   const raw = items.find(item => MEAT.test(item.name) && item.count > 0)
   const wheat = items.filter(item => item.name === 'minecraft:wheat').reduce((n, item) => n + item.count, 0)
-  if (raw || wheat >= 3) {
+  // One piece of raw meat is not a reason to walk home while another animal is in view (cook-trip.js).
+  const rawCount = items.reduce((n, item) => n + (MEAT.test(item.name) ? item.count : 0), 0)
+  const seen = raw && !here ? ctx.operations.foraging.preview({ stockpile: true }) : null
+  const huntReady = seen?.ready === true && !foodReach(ctx.shared, { now: ctx.now }).given(seen.target?.runtimeId)
+  if (wheat >= 3 || require('./cook-trip').cookNow({ raw: rawCount, here, huntReady })) {
     const stationType = raw ? 'furnace' : 'crafting_table'
     const station = placements(origin).find(step => step.item === stationType).position
     if (!await approachHome(ctx, station, { open: true })) return pending('集めた材料を本拠点で調理します。')
