@@ -41,7 +41,7 @@ const FLEE_AT = 8, UNARMED_FLEE_AT = 10, CREEPER_M = 8, GAIN_M = 2
 // Bot came down the house's step 1.1 m from a witch at health 19; the flee
 // waited for health 10, the potions took it from 19 to 4 in six seconds, and
 // the run that started then was too late).
-const RANGED = /skeleton|stray|bogged|pillager|witch|blaze|ghast/, RANGED_M = 12
+const RANGED = /skeleton|stray|bogged|pillager|witch|blaze|ghast/, RANGED_M = 12, STRUCK_MS = 4000
 const WEAPON = /_sword$|_axe$|^minecraft:(?:bow|crossbow|trident|mace)$/
 // Unreceived items are not a weapon in hand.
 const unarmed = inventory => !(inventory?.items ?? []).some(item => item?.count > 0 && WEAPON.test(item.name ?? ''))
@@ -93,7 +93,14 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
     const resting = now() < restUntil
     // Hurt again since the run that went nowhere: the wait is over.
     if (resting && stuckHealth === null) { skip = 'rest'; return false }
-    const threat = fleeWanted({ health: state.health, totem: state.totem, hostiles: resting ? others() : hostiles(), position: state.position, weaponless: unarmed(state.inventory), healing: state.healing })
+    // "Health cannot come back, so stay" is for hostiles that stand off. While
+    // being hit with no fight on, it does not hold (live 2026-11-19
+    // 18:02:23-18:02:32 JST: health 5, hunger 16, no food, the fight ended on
+    // HP_DISENGAGE, no cover within reach; this said "no threat" and a
+    // skeleton 7 m away took the last 5 health in nine seconds).
+    const struck = now() - Number(shared.recentDamageNoPrimary?.at ?? NaN) <= STRUCK_MS
+    const healing = struck ? null : state.healing
+    const threat = fleeWanted({ health: state.health, totem: state.totem, hostiles: resting ? others() : hostiles(), position: state.position, weaponless: unarmed(state.inventory), healing })
     if (!threat) { skip = resting && kept.size ? 'kept_up_rest' : 'no_threat'; return false }
     // So is it when a hostile has come 2 m closer than the one it was stuck on
     // (live 2026-11-16 13:08 JST: during the wait a creeper walked up to 3.8 m

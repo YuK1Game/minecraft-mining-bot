@@ -14,16 +14,41 @@
 const POLLS = 12, SETTLE_POLLS = 40
 const offGrid = feetY => Number.isFinite(feetY) && Math.abs(feetY - Math.round(feetY * 2) / 2) > 0.01
 
+// Lands by the ordinary settle once nothing else moves: 'moving', 'refused' or 'settled'.
+async function settleNow ({ running, settle, delay, polls = POLLS }) {
+  for (let i = 0; i < polls && running(); i++) await delay(50)
+  if (running()) return 'moving'
+  try { settle() } catch { return 'refused' }
+  for (let i = 0; i < SETTLE_POLLS; i++) { await delay(50); if (!running()) break }
+  return 'settled'
+}
+
 async function landFirst ({ feetY, running, settle, delay, polls = POLLS }) {
   if (!offGrid(feetY())) return 'grounded'
   for (let i = 0; i < polls; i++) {
     await delay(50)
     if (!running() && !offGrid(feetY())) return 'landed'
   }
-  if (running()) return 'moving'
-  try { settle() } catch { return 'refused' }
-  for (let i = 0; i < SETTLE_POLLS; i++) { await delay(50); if (!running()) break }
-  return offGrid(feetY()) ? 'airborne' : 'settled'
+  const how = await settleNow({ running, settle, delay, polls: 0 })
+  return how !== 'settled' ? how : offGrid(feetY()) ? 'airborne' : 'settled'
 }
 
-module.exports = { landFirst, offGrid }
+// The planner's own word decides, whatever height this module read: when
+// every route of an approach was refused with its landing wait, the body is
+// settled once and the approach is planned once more. How the landing ended is
+// added to the reason of an approach that still fails.
+// Live 2026-11-19 18:02:19 JST: feet read on the grid, so landFirst answered
+// at once; the planner refused all 12 routes with "Wait for a supported
+// landing before planning" (148 ms), the approach to a skeleton 8.3 m away
+// ended, and its arrows took the Bot from 9 to 0 in 13 s without a swing.
+const WAIT = /Wait for a supported landing/
+async function planLanded (plan, land) {
+  const out = await plan()
+  if (out?.ready !== false || !WAIT.test(String(out.reason ?? ''))) return out
+  const how = await land()
+  if (how !== 'settled') return { ...out, reason: `${out.reason} [landing: ${how}]` }
+  const again = await plan()
+  return again?.ready === false ? { ...again, reason: `${again.reason} [after landing]` } : again
+}
+
+module.exports = { landFirst, settleNow, planLanded, offGrid }

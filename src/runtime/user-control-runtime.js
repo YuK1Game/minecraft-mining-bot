@@ -519,6 +519,10 @@ function createUserControlRuntime (rt) {
       move: moveUserNative,
       log: message => rt.host.log(message)
     })
+    const landing = context => ({ feetY: () => requireUserLease(context).position.y - 1.62, running: () => rt.generationMovement.snapshot().running === true, delay: ms => rt.delay(ms, undefined, { signal: context.signal }),
+      settle: () => { requireUserLease(context); rt.stopOrdinaryUserStream(); rt.motionOrigin = rt.working(); rt.host.shared.motionSource = 'navigation_settle'; rt.generationMovement.settle({ maxTicks: 40, maxDrop: 1, maxHorizontal: 1, emergency: true }) } })
+    // Every route refused with the planner's landing wait: settle once, plan once more (combat/approach-landing.js).
+    const approachLanded = (target, context) => context?.purpose === 'sight' ? approachUserTarget(target, context) : rt.require('./combat/approach-landing').planLanded(() => approachUserTarget(target, context), () => rt.require('./combat/approach-landing').settleNow(landing(context)))
     async function approachUserTarget (target, context) {
       if (context?.purpose === 'sight') return seekSightStance(target, context)
       if (context.emergencyCreeperStrike === true && target?.entityType === 'minecraft:creeper') {
@@ -535,8 +539,7 @@ function createUserControlRuntime (rt) {
         return {ready:false,reason:'No known safe short creeper counterstep'}
       }
       // An airborne body lands first (combat/approach-landing.js): the planner refuses every route from it.
-      await rt.require('./combat/approach-landing').landFirst({ feetY: () => requireUserLease(context).position.y - 1.62, running: () => rt.generationMovement.snapshot().running === true, delay: ms => rt.delay(ms, undefined, { signal: context.signal }),
-        settle: () => { requireUserLease(context); rt.stopOrdinaryUserStream(); rt.motionOrigin = rt.working(); rt.host.shared.motionSource = 'navigation_settle'; rt.generationMovement.settle({ maxTicks: 40, maxDrop: 1, maxHorizontal: 1, emergency: true }) } })
+      await rt.require('./combat/approach-landing').landFirst(landing(context))
       const surface = await approachSurfaceMelee(target, context)
       if (surface) return surface
       validateHealthyMeleeApproach(requireUserLease(context), target)
@@ -632,7 +635,7 @@ function createUserControlRuntime (rt) {
         placeBed: (value, context) => userInteraction('placeBed', value, context), useBed: (value, context) => userInteraction('useBed', value, context), wakeBed: (value, context) => userInteraction('wakeBed', value, context), mineBed: mineUserBed,
         moveBed: (value, context) => moveUserNative(value.target, context), collectBed: (value, context) => moveUserNative({ x: value.position.x + 0.5, y: value.position.y, z: value.position.z + 0.5 }, context),
         cancelBedActions: async (reason, context) => { if (!sameLease(context)) return { cleaned: true }; rt.mining.stop(reason); rt.interactions.cancel(reason); if (rt.inventory.snapshot().pendingRequestId == null) rt.inventory.cancel(reason); rt.generationMovement.stop(reason); rt.stopOrdinaryUserStream(); return { cleaned: true } },
-        acquireControl: acquireUserControl, resumeControl: resumeUserControl, approach: approachUserTarget, retreat: retreatUserTarget,
+        acquireControl: acquireUserControl, resumeControl: resumeUserControl, approach: approachLanded, retreat: retreatUserTarget,
         rangedOptions: { log: rt.host.log, onSelectionSent: slot => rt.host.commitSelection(slot) },
         meleeOptions: { log: rt.host.log },
         coordinatorOptions: { log: rt.host.log, withDecision: fn => { hearDamage(); return rt.combatExposure.withDecision(fn) }, controlReady: ({ claimId, token }) => !(rt.userBehaviorLease?.kind === 'combat' && rt.userBehaviorLease.claimId === `combat:${claimId}` && rt.userBehaviorLease.token === token && rt.userBehaviorLease.receiptsReady === false), canAcquireMeleeApproach: (target, state) => canAcquireStuckMeleeApproach(target, state) || canAcquireHealthyMeleeApproach(target, state) || canChargeShooter(target, state), canEngage: (target, state) => rt.combatAttackExposure(target, state).intercept, engageRadius: rt.threatReachability.ENGAGE_RADIUS, getRecentDamageAt: () => rt.host.shared.recentDamageNoPrimary?.at ?? null, workGuard: { canSelectTarget: rt.quarryCanSelectTarget, canContinue: rt.quarryCanContinue } },
