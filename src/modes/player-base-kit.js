@@ -27,6 +27,12 @@ const TOOL = /_(pickaxe|sword|axe|shovel)$/
 const TIER = { netherite: 6, diamond: 5, iron: 4, stone: 3, golden: 2, wooden: 1 }
 const TOOLS_KEPT = { pickaxe: 2, sword: 1, axe: 1, shovel: 1 }
 const uses = item => Number.isSafeInteger(item?.maxDurability) && Number.isSafeInteger(item?.durabilityUsed) ? item.maxDurability - item.durabilityUsed : null
+// A pickaxe that can still dig (more than the two uses the mining gate keeps back). One reading for both
+// directions: what is banked (a row of the inventory) and what is taken back out (a slot of a chest, which
+// carries the same received uses: return/container-ports.js). Uses not received count as able to dig.
+// Until 2026-11-20 a chest slot was read by its name alone, so a worn-out pickaxe was "a better pickaxe than
+// none": banked, taken out, banked again (live 02:45-02:49 JST: eight rounds at one chest, the trip given up).
+const working = item => !/_pickaxe$/.test(bare(item?.name)) || (uses(item) ?? 3) > 2
 
 // Diamonds the gear not yet owned takes; with the worn armor unknown, armor counts as missing.
 function diamondsNeeded (items, worn) {
@@ -59,7 +65,6 @@ function bankableAll (inventory, { worn = null } = {}) {
   keepUpTo(items.filter(item => bare(item.name) === 'diamond'), diamondsNeeded(items, worn))
   for (const [kind, count] of Object.entries(TOOLS_KEPT)) {
     const tools = items.filter(item => TOOL.exec(bare(item.name))?.[1] === kind && !(kind === 'axe' && /pickaxe$/.test(item.name)))
-    const working = item => kind !== 'pickaxe' || (uses(item) ?? 3) > 2
     const ranked = tools.filter(working).sort((a, b) => (TIER[bare(b.name).split('_')[0]] ?? 0) - (TIER[bare(a.name).split('_')[0]] ?? 0) || (uses(b) ?? 0) - (uses(a) ?? 0))
     for (const item of tools) kept.add(item.slot)
     for (const item of tools) if (!ranked.slice(0, count).includes(item)) out.push({ slot: item.slot, name: item.name, count: item.count })
@@ -85,7 +90,8 @@ const TAKE = [[/^diamond$/, null], ...CAPS.filter(([pattern]) => ['coal', 'stick
 // tools banked through the day). Per kind: a better tier than the best held
 // (a sword, a pickaxe), an armour piece neither worn nor held (only with the
 // worn slots received), a shield, and food up to FOOD_TAKEN with none held.
-// Chest slots carry no durability: the tier is read from the name.
+// The tier is read from the name; a pickaxe that cannot dig any more (`working`) is neither taken out nor
+// counted as the one held.
 const ARMOR_TIER = { netherite: 6, diamond: 5, iron: 4, chainmail: 3, golden: 2, leather: 1, turtle: 3 }
 const tierOf = (name, table = TIER) => table[bare(name).split('_')[0]] ?? 0
 const GEAR_KINDS = [
@@ -103,8 +109,8 @@ function gearWanted (items, worn, slots) {
       if (worn?.known !== true || !Array.isArray(worn.worn)) continue
       if (held.length || worn.worn.some(entry => entry?.piece === kind.piece && entry.name)) continue
     } else if (!kind.better && held.length) continue
-    const best = held.reduce((top, item) => Math.max(top, kind.tier(item.name)), 0)
-    const pick = slots.filter(slot => slot?.known === true && slot.count > 0 && kind.test(bare(slot.name)) && kind.tier(slot.name) > best).sort((a, b) => kind.tier(b.name) - kind.tier(a.name))[0]
+    const best = held.filter(working).reduce((top, item) => Math.max(top, kind.tier(item.name)), 0)
+    const pick = slots.filter(slot => slot?.known === true && slot.count > 0 && kind.test(bare(slot.name)) && working(slot) && kind.tier(slot.name) > best).sort((a, b) => kind.tier(b.name) - kind.tier(a.name))[0]
     if (pick) out.push({ chestSlot: pick.slot, name: pick.name, count: 1 })
   }
   if (!items.some(item => FOOD.test(bare(item.name)))) {

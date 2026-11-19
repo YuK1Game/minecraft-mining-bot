@@ -207,10 +207,21 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
   // ---- the server side of the inventory and the chests ----
   const bag = Array.from({ length: 36 }, air)
   let stackId = 100
-  const raw = (name, count) => ({ network_id: idOf(name), count, metadata: 0, has_stack_id: true, stack_id: ++stackId, block_runtime_id: 0, extra: extra() })
-  for (const [slot, name, count] of items) bag[slot] = raw(name, count)
+  // A used tool carries its damage in the item's own data, as the server sends it (`damage`: uses spent).
+  const worn = damage => ({ has_nbt: 'true', nbt: { version: 1, nbt: { type: 'compound', name: '', value: { Damage: { type: 'int', value: damage } } } }, can_place_on: [], can_destroy: [] })
+  const raw = (name, count, damage = 0) => ({ network_id: idOf(name), count, metadata: 0, has_stack_id: true, stack_id: ++stackId, block_runtime_id: 0, extra: damage > 0 ? worn(damage) : extra() })
+  for (const [slot, name, count, damage] of items) bag[slot] = raw(name, count, damage)
   let uncertain = false
-  const inventory = () => uncertain ? null : ({ known: true, items: bag.map((item, slot) => item.network_id ? { slot, name: nameOf(item.network_id), count: item.count } : null).filter(Boolean) })
+  // What the durability reader says of a tool (inventory/durability.js; the real one needs the real item ids):
+  // the same reading for a row of the inventory and for a slot of a chest.
+  const USES = { wooden: 59, stone: 131, iron: 250, diamond: 1561 }
+  const tool = (row, item) => {
+    const max = /_(?:pickaxe|sword|axe|shovel)$/.test(row?.name ?? '') ? USES[row.name.replace(/^minecraft:/, '').split('_')[0]] : null
+    if (!max || !item?.network_id) return row
+    const used = item.extra?.nbt?.nbt?.value?.Damage?.value ?? 0
+    return { ...row, durabilityKnown: true, maxDurability: max, durabilityUsed: used, durabilityRemaining: max - used }
+  }
+  const inventory = () => uncertain ? null : ({ known: true, items: bag.map((item, slot) => item.network_id ? tool({ slot, name: nameOf(item.network_id), count: item.count }, item) : null).filter(Boolean) })
   const held = name => bag.filter(item => item.network_id === idOf(name)).reduce((sum, item) => sum + item.count, 0)
   const stores = new Map() // one store per container; the halves of a large chest share it
   const pairOf = at => [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ x: at.x + dx, y: at.y, z: at.z + dz })).find(p => {
@@ -306,7 +317,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
 
   const operations = {
     movement,
-    chest: { open: position => { requireIdle(); crafting.closeContainer(); return chest.open(position) }, depositItem: options => { requireIdle(); return chest.depositItem(options) }, withdrawItem: options => { requireIdle(); return chest.withdrawItem(options) }, snapshot: () => chest.snapshot(), cancel: reason => chest.cancel(reason) },
+    chest: { open: position => { requireIdle(); crafting.closeContainer(); return chest.open(position) }, depositItem: options => { requireIdle(); return chest.depositItem(options) }, withdrawItem: options => { requireIdle(); return chest.withdrawItem(options) }, snapshot: () => chest.snapshot(), rawItem: slot => chest.rawItem(slot), cancel: reason => chest.cancel(reason) },
     crafting: { closeContainer: () => crafting.closeContainer() },
     interactions: { previewOpenChest: target => { if (server.hand) return { ready: false, code: null, errors: [server.hand] }; const refused = openAccess(pos => getBlock(pos.x, pos.y, pos.z), getPosition(), target); return refused ? { ready: false, code: refused.code, errors: [refused.message] } : { ready: true } }, useDoor: async at => { requireIdle(); began('door', { ...at }); later(200, () => { for (const dy of [0, 1]) { const found = getBlock(at.x, at.y + dy, at.z); if (/door$/.test(found?.name ?? '')) blocks.set(key(at.x, at.y + dy, at.z), empty(found.name, { open_bit: true })) } }) } },
     // Ordinary mining, only when a scenario turns it on (sim.digging): a received
@@ -380,7 +391,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     const hands = createScaffoldPorts({ operations, disposed, getBlock, getFeet, getInventory: inventory, getMotion: () => motion, pillarStep, sleep, now })
     // The route that digs and stacks (player-build-walk.js), only when a scenario turns it on.
     const build = sim.digging === true ? createBuildWalk({ hands, getHouse: () => sim.house, log: say }) : null
-    const storagePorts = createStoragePorts({ operations, disposed, getBlock, getFeet, getInventory: inventory, held: combatOwns, sleep, now })
+    const storagePorts = createStoragePorts({ operations, disposed, getBlock, getFeet, getInventory: inventory, held: combatOwns, sleep, now, tool })
     const waterJob = createPlayerWater({ getMode: () => sim.mode, shared, agent: { objective: {}, start: async () => {}, stop () {}, settled }, getPosition: getFeet, getBlock, start: (target, options) => movement.start(target, options), moving: () => motion.phase === 'moving', why: () => motion.reason, disposed, log: say, now, sleep })
     const door = () => sim.house?.origin ? openDoor({ origin: sim.house.origin, getBlock, useDoor: at => operations.interactions.useDoor(at), walk: target => hands.walk(target), getFeet, log: say, now, sleep }) : Promise.resolve(true)
     const jobs = { other: null } // 'flee', 'shelter', ... while set
@@ -420,7 +431,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     get clock () { return clock }, get trips () { return trips },
     set uncertain (value) { uncertain = value }, get uncertain () { return uncertain },
     resync: sendInventory,
-    give (slot, name, count) { bag[slot] = raw(name, count); sendInventory() },
+    give (slot, name, count, damage = 0) { bag[slot] = raw(name, count, damage); sendInventory() },
     fight (ms) { combatUntil = clock + ms; path = []; motion = { phase: 'idle', reason: 'combat' } },
     eat (ms) { eatingUntil = clock + ms },
     die (spawn) { state.lifecycle = { deathId: state.lifecycle.deathId + 1, dead: false }; for (let slot = 0; slot < 36; slot++) bag[slot] = air(); Object.assign(body, spawn); path = []; Object.assign(travel, { busy: false, phase: 'idle' }); server.window = null; observe('container_close', { window_id: windowId }); sendInventory() },
