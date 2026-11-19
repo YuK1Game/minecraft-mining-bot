@@ -348,3 +348,14 @@ test('default melee spams: plain hits go out about every 100ms (Bedrock has no a
   assert.equal(r.hitsRequested, 4)
   for (let i = 1; i < f.attacks.length; i++) { const gap = f.attacks[i].at - f.attacks[i - 1].at; assert.ok(gap >= 100 && gap < 300, String(gap)) }
 })
+
+test('a swing passes through vines and other hanging plants, not through a solid block of the same cell', () => {
+  for (const name of ['vine', 'glow_lichen', 'cave_vines', 'hanging_roots']) {
+    const f = fixture(); f.blocks.set('1,66,0', { known: true, name: 'minecraft:' + name, boundingBox: 'empty', extra: [] })
+    assert.notEqual(f.melee.preview('70').code, 'LOS_BLOCKED', name)
+  }
+  const solid = fixture(); solid.blocks.set('1,66,0', { known: true, name: 'minecraft:vine', boundingBox: 'block', extra: [] })
+  assert.equal(solid.melee.preview('70').code, 'LOS_BLOCKED')
+  const wet = fixture(); wet.blocks.set('1,66,0', { known: true, name: 'minecraft:vine', boundingBox: 'empty', extra: [{ name: 'minecraft:water' }] })
+  assert.equal(wet.melee.preview('70').code, 'LOS_BLOCKED')
+})
