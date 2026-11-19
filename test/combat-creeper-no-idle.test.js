@@ -160,3 +160,39 @@ test('low health still starts nothing against a walker outside the defence range
   assert.equal(f.attacks.length, 0)
   assert.notEqual(result?.code, 'TARGET_DEAD')
 })
+
+test('a failed evade is not claimed again every tick: one second of rest unless the creeper comes closer', async () => {
+  // Live 2026-11-19 10:10:35-10:10:40 JST: about 15 evade claims in five seconds at 5.2-5.9 m, none with a standpoint.
+  const f = fixture({ range: 5.5 }); await corner(f)
+  assert.equal(f.retreats.length, 1)
+  for (let i = 0; i < 10; i++) { await f.coordinator.tick(); f.advance(50) }
+  assert.equal(f.retreats.length, 1, 'no new evade within the rest')
+  f.advance(600)
+  assert.equal((await f.coordinator.tick()).code, 'CREEPER_EVADE_UNAVAILABLE')
+  assert.equal(f.retreats.length, 2, 'tried again after the rest')
+  // Closer by half a block: the evade is tried at once.
+  f.actor.position.x -= 0.6
+  f.advance(1)
+  await f.coordinator.tick()
+  assert.equal(f.retreats.length, 3)
+  // Inside the cornered strike band the strike is not rested.
+  const near = fixture({ range: 4.0 }); await corner(near)
+  const before = near.approaches.length
+  near.advance(1)
+  await near.coordinator.tick()
+  assert.ok(near.approaches.length > before, 'the step in for the knockback hit starts on the next tick')
+})
+
+test('the evade rest forgets a creeper that is primed, nearer, or after its time', () => {
+  const { createEvadeRest } = require('../src/combat/evade-rest')
+  let now = 0
+  const rest = createEvadeRest({ clock: () => now })
+  assert.equal(rest.resting('a', 5), false)
+  rest.note('a', 5.5)
+  assert.equal(rest.resting('a', 5.4), true)
+  assert.equal(rest.resting('a', 5.4, true), false, 'primed')
+  rest.note('a', 5.5)
+  assert.equal(rest.resting('a', 4.9), false, 'half a block nearer')
+  rest.note('a', 5.5); now = 1000
+  assert.equal(rest.resting('a', 5.5), false, 'after the rest')
+})

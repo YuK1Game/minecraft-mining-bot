@@ -146,6 +146,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
   // Creepers that left no evade standpoint: fought (melee knockback / bow from
   // ~4m) for a short window instead of only evading until they explode.
   const corneredCreepers = new Map()
+  const evadeRest = require('./evade-rest').createEvadeRest({ clock })
   const cornered = (e, scope) => scope != null && (corneredCreepers.get(targetKey(scope, e)) ?? 0) > clock()
   // A cornered creeper inside the cornered strike band is fought at any health: there is nowhere to go, and stopping only waits for the blast.
   const corneredStrike = (e, scope, range) => e?.entityType === 'minecraft:creeper' && cornered(e, scope) && range <= (profiles.CREEPER_CORNERED_STRIKE ?? 4.5)
@@ -186,6 +187,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       if (workAllows('canSelectTarget', target, s, { distance: preferred.distance, provoked: provokedBy(s, target) }).allowed !== true) continue
       if (!engageable(target, s)) continue
       const modes = profiles.allowedModes(target.entityType, { hasBow: bow, distance: preferred.distance, elevated: elevatedFrom(target, s), cornered: cornered(target, scope) })
+      if (modes.length === 1 && modes[0] === 'evade' && evadeRest.resting(key, preferred.distance, actor.primed === true)) continue
       let mode = retreat && modes.includes('evade') ? 'evade' : preferred.mode ?? (mayAcquireApproach(s, target, preferred.distance) ? 'approach' : null)
       // A survey includes inventory, trajectory and friendly-actor checks.
       // Share it only within this selection; action previews always recheck.
@@ -489,6 +491,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       if (result !== 'stepped') {
         corneredCreepers.set(targetKey(lease.scope, lease.target), clock() + 10000)
         while (corneredCreepers.size > 64) corneredCreepers.delete(corneredCreepers.keys().next().value)
+        evadeRest.note(targetKey(lease.scope, lease.target), g.distance)
       }
       if (result !== 'stepped') return { outcome: stop('CREEPER_EVADE_UNAVAILABLE', step.value?.reason ?? String(step.error?.message ?? step.error ?? 'No evade standpoint'), { creeperDistance: g.distance }) }
       await sleep(pollMs)
