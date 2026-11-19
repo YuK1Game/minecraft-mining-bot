@@ -21,6 +21,7 @@ const LEAVES = /_leaves$/
 const TREE = /_(?:leaves|log|wood|stem)$|leaf_litter/
 const SCAN_UP = 64
 const MAX_STEPS = 96
+const { gatherFill, arrives } = require('./fill-source')
 
 // ports: the scaffold's hands (player-scaffold-ports.js).
 async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), maxSteps = MAX_STEPS, wayOut = null }) {
@@ -84,6 +85,7 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
     if (sky === 'cover' && top !== null && at > top && wayOut?.()) { walkable = true; break }
     if (sky === 'unknown' && top === null) { reason = 'UNKNOWN_ABOVE'; break }
     if (steps >= maxSteps) { reason = 'TOO_HIGH'; break }
+    let took = false // a block mined with a tool in this step: its drop is on the way
     for (const y of [at + 2, at + 3]) {
       // climbShaft: the floor of a tunnel it walked may be passed through here
       // (the pillar fills the hole again; real Realm 2026-11-16 16:01-16:11 JST:
@@ -97,9 +99,18 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
       const tool = canMine(cell) || (await ports.pick?.() && canMine(cell))
       if (!tool && !ports.canDig?.(cell)) { reason = 'CANNOT_MINE'; detail = ports.reason?.(cell) ?? null; break }
       if (!await (tool ? mine(cell) : ports.dig(cell))) { reason = 'MINE_FAILED'; break }
+      if (tool) took = true
       if (found.boundingBox === 'block') top = Math.max(top ?? y, y)
     }
     if (reason || aborted()) break
+    // Nothing to stack: what was just mined is in the pack a moment later; else blocks from beside the feet,
+    // one for every open cell up to the rock overhead (fill-source.js; live 2026-11-19 18:45 JST: NO_DIRT at once).
+    if (fill() < 1 && took) await arrives({ fill, had: 0, sleep, aborted })
+    if (fill() < 1 && !aborted()) {
+      let gap = 1
+      while (gap < 12 && isAir(block(column.x, at + 3 + gap, column.z))) gap++
+      await gatherFill({ ports, want: gap, aborted, log, sleep })
+    }
     if (fill() < 1) { reason = 'NO_DIRT'; break }
     let step = await pillar(column, at, { any: true })
     // The step before may still be ending (ASCENT_BUSY, a mining that just finished).

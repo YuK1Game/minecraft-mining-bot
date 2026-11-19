@@ -139,7 +139,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     for (let i = 0; i < 50 && !aborted() && !idle(); i++) await new Promise(resolve => setTimeout(resolve, 200))
     const stop = () => aborted() || flee.status().active || shelter.status().active
     // The tunnel it dug itself on foot, a walk to the open sky, or straight up (player-rise.js).
-    return riseToSky({ ports: hands, floors: recordedFloors(shared, runtime.raw()), log, aborted: stop, sky: () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()) })
+    return riseToSky({ ports: hands, floors: recordedFloors(shared, runtime.raw()), log, aborted: stop, sky: () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), build: createBuildWalk({ hands, getHouse: () => shared.playerHouse, log }) })
   }
   // A finished house that lost blocks is built again (house/house-damage.js).
   const houseDamage = require('./house/house-damage').createHouseDamage({ shared, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getFeet: () => feetNow(), log })
