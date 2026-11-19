@@ -186,3 +186,22 @@ test('laps: only the same step back, to the same chest, from the same place, in 
   assert.equal(lap(), false); now += 40000; assert.equal(lap(), false); now += 40000
   assert.equal(lap(), false)
 })
+
+test('a goal that only waits is not working; the expedition does not wait for it', async () => {
+  const { crewBusy } = require('../src/modes/crew-busy')
+  const f = fixture(), get = f.ports.getBlock
+  f.ports.getBlock = (x, y, z) => y === 63 ? get(x, y, z) : { known: false }
+  const runner = createReturnRunner(f.config)
+  await runner.tick()
+  assert.equal(runner.status().active, true, 'the purpose is kept')
+  assert.equal(runner.status().working, false, 'no operation is in flight between ticks')
+  assert.equal(crewBusy([runner]), false)
+  assert.equal(crewBusy([runner, { status: () => ({ active: true }) }]), true, 'a job without the field counts while active')
+  const gate = deferred(), held = fixture()
+  held.ports.moves.travel.to = async () => { await gate.promise }
+  const moving = createReturnRunner(held.config)
+  const pending = moving.tick()
+  for (let i = 0; i < 20 && !moving.status().working; i++) await turn()
+  assert.equal(crewBusy([moving]), true, 'busy while its tick runs')
+  held.state.disposed = true; gate.resolve(); await pending
+})
