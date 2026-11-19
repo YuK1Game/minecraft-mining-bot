@@ -15,6 +15,8 @@
 //   waits for the inventory to be received again.
 // - Why a refusal happened is read from the state (the controls are held, the
 //   chest is busy, the inventory is uncertain), not from the message.
+// - A tool in a chest slot carries its received uses (chest-tools.js), so the
+//   rules that read a slot see what they see of a row of the inventory.
 // - A chest out of reach, or with no clear line to the face the click goes to,
 //   is not clicked at all: the open operation's own preview says so before
 //   anything is sent (CONTAINER_NOT_IN_REACH, CONTAINER_NOT_VISIBLE), and the
@@ -29,11 +31,12 @@
 //   trip for the kit ended with nothing taken and nothing said).
 const { completed, partial, blocked, failed, interrupted } = require('./return-result')
 const { openAccess } = require('../../actions/open-face')
+const { chestTool, slotTool } = require('./chest-tools')
 
 const WAIT = /待って|待機|使用中|確認しています/
 const OPEN_MS = 4000, SLOT_MS = 3000, PATIENT_MS = 10000, MAX_TRANSFERS = 72, EYE = 1.62
 
-function createContainerPorts ({ operations, getInventory, getBlock = null, getFeet = null, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now, memory = null }) {
+function createContainerPorts ({ operations, getInventory, getBlock = null, getFeet = null, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now, memory = null, tool = chestTool }) {
   const items = () => getInventory()?.items ?? []
   const count = name => items().filter(item => item?.name === name && item.count > 0).reduce((sum, item) => sum + item.count, 0)
   const until = async (test, ms, stop = () => false) => { const end = now() + ms; while (now() < end && !disposed() && !stop()) { if (test()) return true; await sleep(200) } return !disposed() && !stop() && test() }
@@ -49,7 +52,8 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
       }
     }
   }
-  const view = () => { try { return operations.chest.snapshot() } catch { return null } }
+  // The chest as received; a tool in a slot with the uses its own data gives, read as the inventory's rows are.
+  const view = () => { try { const seen = operations.chest.snapshot(); return Array.isArray(seen?.slots) ? { ...seen, slots: seen.slots.map(slot => slotTool(slot, operations.chest.rawItem, tool)) } : seen } catch { return null } }
   const empty = slot => slot.known === true && !slot.name && !slot.count
   // A late finally owns only the window it actually opened. A newer call,
   // another owner or another connection must keep its own window untouched.
