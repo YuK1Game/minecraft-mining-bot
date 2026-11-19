@@ -137,6 +137,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     // The tunnel it dug itself on foot, a walk to the open sky, or straight up (player-rise.js).
     return riseToSky({ ports: hands, floors: recordedFloors(shared, runtime.raw()), log, aborted: stop, sky: () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()) })
   }
+  // A finished house that lost blocks is built again (house/house-damage.js).
+  const houseDamage = require('./house/house-damage').createHouseDamage({ shared, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getFeet: () => feetNow(), log })
   // The long trip's own way on when no walk leads on (travel/travel-detour.js): lent only while the play mode plays.
   const tripDetour = require('../travel/travel-detour').createTravelDetour({ getFeet: () => feetNow(), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), covered: () => underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), climb: aborted => climbUp(aborted), build: (target, options) => createBuildWalk({ hands, getHouse: () => shared.playerHouse, log })(target, options), log })
   shared.travelDetour = (destination, { signal } = {}) => disposed() || control.get() !== 'player' || shared.playerWanted !== true ? null : tripDetour(destination, { aborted: () => signal?.aborted === true || disposed() || shared.playerWanted !== true })
@@ -370,6 +372,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     void resume.note()
     try { const gone = control.get() === 'player' ? pruneTunnelFloors(shared, runtime.raw(), where()) : 0; if (gone) log(`プレイヤーモード: 帰路の床の記録が多いため、遠いものから ${gone} 個を外しました`) } catch { /* The next tick retries. */ }
     try { if (shared.playerWanted === true) ground.tick() } catch { /* The next tick retries. */ }
+    try { if (shared.playerWanted === true) houseDamage.tick() } catch { /* The next tick looks again. */ }
     if (expedition.tick()) {
       if (shared.travelNight?.cover && runtime.raw().dimension === 'overworld') void shelter.tick().catch(() => {})
       return
