@@ -7,11 +7,10 @@ const { earlyObjective, runDragonEarly } = require('./dragon-early')
 const { stepNether } = require('./dragon-nether')
 const { createDragonStronghold } = require('./dragon-stronghold')
 const { runDragonEndStep } = require('./dragon-end')
-const { hasFood } = require('./player-food')
 const { recoverDragon } = require('./dragon-recovery')
 const { createDragonSupplies } = require('./dragon-supplies')
 const { nightHome } = require('./dragon-night')
-const { threatWait } = require('./dragon-threat-wait')
+const { heal } = require('./dragon-heal')
 const { createProgress } = require('./dragon-progress')
 
 function createDragonRuntime (ports) {
@@ -44,25 +43,8 @@ function createDragonRuntime (ports) {
       const packed = await packRoom({ shared, getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getFeet: ctx.getFeet, drop: ctx.drop, walk: ctx.walk, why: () => ctx.hands.why?.(), cells: ctx.cells, log: ctx.log })
       if (packed) return packed
     }
-    if (recoverHealth && dim !== 'end') {
-      // An enemy that stands near without hitting for twenty seconds no longer holds the meal and the hunt
-      // (live 2026-11-19 01:21-01:34 JST: thirteen minutes at health 7 with no food, then a creeper).
-      const hit = Date.now() - Number(shared.travelLastDamageAt ?? 0) < 10000
-      if (ports.threatened() && threatWait(shared, 'recover', { fighting: hit, slot: 'dragonRecoverWait' })) {
-        await runtime.travel().retreatFromHostiles()
-        return { phase: 'recovering', reason: '被弾したため、攻撃を中断して退避します。' }
-      }
-      if (ctx.operations.food.preview().ready) await ctx.operations.food.eat()
-      else if (!hasFood(runtime.inventory())) {
-        if (dim === 'nether' && record.nether.gate) {
-          record.nether.returning = 'supplies'
-          return stepNether(ctx)
-        }
-        if (record.recovery) return recoverDragon(ctx, record)
-        if (dim === 'overworld' && shared.playerHouse?.origin) return supplies.acquire('food', 1)
-      }
-      return { phase: 'recovering', reason: '安全な場所で食事を取り、体力18以上への回復を待ちます。' }
-    }
+    // The wait for health: a meal, the regeneration, or the way to food (dragon-heal.js).
+    if (recoverHealth && dim !== 'end') return heal({ ctx, record, dim, shared, runtime, threatened: ports.threatened, supplies, nether: stepNether, recover: recoverDragon })
     if (record.recovery || record.lootRecovery) {
       const recovery = await recoverDragon(ctx, record)
       if (!recovery.done) return { phase: 'recovering', reason: recovery.reason }
