@@ -21,7 +21,7 @@
 //   ordinary exit. No shore in the received water: said once a minute.
 // - Not while a hostile is within 12 m or another job runs. 30 s between tries.
 const { normalizeMode } = require('./bot-mode')
-const { ledges } = require('../movement/water-ledges')
+const { ledges, wetColumn } = require('../movement/water-ledges')
 const { way } = require('../movement/water-swim')
 
 const STUCK_MS = 15000, AGAIN_MS = 30000, MOVED_M = 1, TRIES = 8, LEGS = 12, SAY_MS = 60000
@@ -29,11 +29,8 @@ const STUCK_MS = 15000, AGAIN_MS = 30000, MOVED_M = 1, TRIES = 8, LEGS = 12, SAY
 const finite = p => !!p && [p.x, p.y, p.z].every(Number.isFinite)
 const water = found => /water/.test(found?.name ?? '')
 
-function wet (getBlock, feet) {
-  if (!finite(feet)) return false
-  const x = Math.floor(feet.x), y = Math.floor(feet.y + 0.2), z = Math.floor(feet.z)
-  return water(getBlock(x, y, z)) || water(getBlock(x, y - 1, z))
-}
+// In water: the own column, or a column the body reaches into (movement/water-ledges.js).
+const wet = (getBlock, feet) => finite(feet) && wetColumn(getBlock, feet) !== null
 
 function createPlayerWater ({ getMode, shared, agent, getPosition, getBlock, start, moving, why = () => null, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, since = null, anchor = null, said = -Infinity

@@ -26,4 +26,14 @@ function snackItems (shared, vitals, items = []) {
   return keeping(shared, vitals) ? items.filter(item => !RAW.test(item?.name ?? '')) : items
 }
 
-module.exports = { snackItems, keeping, RAW, HUNGER, HEALTH }
+// The eat operation asks this rule for every food it might choose (actions/food.js setKeep), so no meal path eats
+// the kept meat. A runtime built without the food module (a partial test harness) has nothing to wire.
+function wire (food, shared) {
+  let module = null
+  try { module = food() } catch { return false }
+  if (typeof module?.setKeep !== 'function') return false
+  module.setKeep((item, vitals) => RAW.test(item?.name ?? '') && keeping(shared(), vitals))
+  return true
+}
+
+module.exports = { wire, snackItems, keeping, RAW, HUNGER, HEALTH }

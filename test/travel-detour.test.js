@@ -74,3 +74,17 @@ test('the long trip asks for the detour when neither a point nor a chunk leg mov
   assert.ok(detours >= 3)
   assert.equal(logs.some(text => /どの方向にも進めません/.test(text)), false)
 })
+
+// Live 2026-11-19 14:53-15:03 JST: on a dry dirt cell with water in the columns west and north (isInWater true), the
+// dig-and-stack route was planned about 60 times; every step ended with ASCENT_POSITION_UNCONFIRMED or a refused step-down.
+test('in water the detour leaves the water first and digs or stacks nothing from there', async () => {
+  const state = { feet: { x: 1.5, y: 77, z: 0.5 }, wet: true, logs: [], builds: 0, clock: 0 }
+  const make = dry => createTravelDetour({ getFeet: () => state.feet, getBlock: step, wet: () => state.wet, dry, now: () => state.clock, log: text => state.logs.push(text), build: async () => { state.builds++; return { ok: true } } })
+  const out = await make(async () => { state.wet = false; return { ok: true } })({ x: 1, z: 200 })
+  assert.deepEqual(out, { ok: true, code: 'DETOUR_DRIED' })
+  assert.equal(state.builds, 0)
+  state.wet = true
+  const stuck = await make(async () => ({ ok: false, reason: 'NO_LEDGE' }))({ x: 1, z: 200 })
+  assert.deepEqual(stuck, { ok: false, code: 'DETOUR_WET:NO_LEDGE' })
+  assert.equal(state.builds, 0)
+})

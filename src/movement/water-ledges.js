@@ -17,14 +17,34 @@ const DEPTH = 8
 
 const water = found => /water/.test(found?.name ?? '')
 
-// y of the highest water cell in the column of the feet; null when the body is
-// not in water or the water goes on above DEPTH cells.
-function surface (getBlock, feet, depth = DEPTH) {
+// The column whose water the body is in: its own (water at the feet or one
+// below), or one its 0.6-wide body reaches into with water at the feet's
+// level. A body on a dry cell at the water's edge is pulled about by the
+// water beside it: the server's feet bob, no walk, landing or pillar step is
+// accepted, and the own column says "dry" (live 2026-11-19 14:53-15:03 JST:
+// feet (-4928.77, 61, -4967.30) on dirt, water in the columns west and north,
+// isInWater true; the dig-and-stack route was planned about 60 times in ten
+// minutes and no water exit ran).
+const HALF = 0.3
+function wetColumn (getBlock, feet) {
   if (!feet || ![feet.x, feet.y, feet.z].every(Number.isFinite)) return null
-  const x = Math.floor(feet.x), z = Math.floor(feet.z)
-  let y = Math.floor(feet.y + 0.2)
-  if (!water(getBlock(x, y, z))) { if (!water(getBlock(x, y - 1, z))) return null; y -= 1 }
-  for (let i = 0; i < depth; i++) { if (!water(getBlock(x, y + 1, z))) return y; y += 1 }
+  const x = Math.floor(feet.x), y = Math.floor(feet.y + 0.2), z = Math.floor(feet.z)
+  if (water(getBlock(x, y, z))) return { x, y, z, own: true }
+  if (water(getBlock(x, y - 1, z))) return { x, y: y - 1, z, own: true }
+  for (const [dx, dz] of [[-HALF, 0], [HALF, 0], [0, -HALF], [0, HALF], [-HALF, -HALF], [HALF, -HALF], [-HALF, HALF], [HALF, HALF]]) {
+    const cx = Math.floor(feet.x + dx), cz = Math.floor(feet.z + dz)
+    if ((cx !== x || cz !== z) && water(getBlock(cx, y, cz))) return { x: cx, y, z: cz, own: false }
+  }
+  return null
+}
+
+// y of the highest water cell in the column of the water the body is in; null
+// when the body is not in water or the water goes on above DEPTH cells.
+function surface (getBlock, feet, depth = DEPTH) {
+  const column = wetColumn(getBlock, feet)
+  if (!column) return null
+  let y = column.y
+  for (let i = 0; i < depth; i++) { if (!water(getBlock(column.x, y + 1, column.z))) return y; y += 1 }
   return null
 }
 
@@ -32,11 +52,13 @@ function surface (getBlock, feet, depth = DEPTH) {
 function ledges (getBlock, feet, { reach = REACH } = {}) {
   const top = surface(getBlock, feet)
   if (top === null) return []
+  const own = wetColumn(getBlock, feet).own
   const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.2), fz = Math.floor(feet.z)
   const span = Math.ceil(reach - 0.5), out = []
   for (let dx = -span; dx <= span; dx++) {
     for (let dz = -span; dz <= span; dz++) {
-      if ((!dx && !dz) || Math.hypot(dx, dz) > reach) continue
+      // The own cell is a ledge only for a body that reaches into water from a dry cell.
+      if ((!dx && !dz && own) || Math.hypot(dx, dz) > reach) continue
       for (let y = top; y <= Math.max(top, fy) + 1; y++) {
         const x = fx + dx, z = fz + dz
         const floor = getBlock(x, y - 1, z), body = getBlock(x, y, z), head = getBlock(x, y + 1, z)
@@ -49,4 +71,4 @@ function ledges (getBlock, feet, { reach = REACH } = {}) {
   return out.sort((a, b) => Math.hypot(a.x - feet.x, a.z - feet.z) - Math.hypot(b.x - feet.x, b.z - feet.z))
 }
 
-module.exports = { surface, ledges, REACH, DEPTH }
+module.exports = { wetColumn, surface, ledges, REACH, DEPTH }

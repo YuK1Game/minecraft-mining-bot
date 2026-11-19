@@ -29,3 +29,13 @@ test('no house (no furnace to cook at), not playing, or the quarry mode: as befo
   assert.equal(keeping(undefined, { hunger: 15, health: 18 }), false)
   assert.equal(keeping(play, { hunger: 15, health: 18 }), true)
 })
+
+test('the rule is wired into the eat operation; a runtime without the food module has nothing to wire', () => {
+  const { wire } = require('../src/modes/raw-meat-keep')
+  let rule = null
+  assert.equal(wire(() => ({ setKeep: fn => { rule = fn } }), () => play), true)
+  assert.equal(rule({ name: 'minecraft:mutton' }, { hunger: 17, health: 17 }), true)
+  assert.equal(rule({ name: 'minecraft:cooked_mutton' }, { hunger: 17, health: 17 }), false)
+  assert.equal(rule({ name: 'minecraft:mutton' }, { hunger: 17, health: 9.6 }), false)
+  assert.equal(wire(() => { throw new ReferenceError('food is not defined') }, () => play), false)
+})

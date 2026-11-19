@@ -75,6 +75,8 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
   let inventoryUncertain = false
   let lastResult = null
   let lastReceiptTrace = null
+  // Food the caller keeps for another use (raw meat for the furnace, modes/raw-meat-keep.js): not eaten by any path.
+  let keep = null
 
   // A Host-local, received baseline can survive a runtime reload. This never
   // runs the packet acknowledgement path or credits a food consumption.
@@ -191,11 +193,14 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
     if (typeof allowEmergencyRotten !== 'boolean') throw failure('非常用食料の指定が不正です。', 'INVALID_OPTIONS')
     const { state, observed, selected } = session()
     const items = observed.inventory ?? []
-    const healthyAvailable = items.some(item => isSupportedFood(item.name, state) && item.count > 0 && Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36)
+    const kept = item => keep?.(item, { hunger, health: state.health }) === true
+    const edible = item => isSupportedFood(item.name, state) && !kept(item)
+    const healthyAvailable = items.some(item => edible(item) && item.count > 0 && Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36)
     const emergency = allowEmergencyRotten && !healthyAvailable && Number.isFinite(hunger) && hunger < 18 && canEmergencyEat() === true
-    const candidates = items.filter(item => (isSupportedFood(item.name, state) || emergency && item.name === 'minecraft:rotten_flesh') && item.count > 0 && Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && (slot == null || slot === item.slot))
+    const candidates = items.filter(item => (edible(item) || emergency && item.name === 'minecraft:rotten_flesh') && item.count > 0 && Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36 && (slot == null || slot === item.slot))
     const preferred = slot == null && candidates.some(item => FOODS.has(item.name)) ? candidates.filter(item => FOODS.has(item.name)) : candidates
     const item = preferred.sort((a, b) => foodNutrition(b.name, state) - foodNutrition(a.name, state) || Number(b.slot === selected) - Number(a.slot === selected) || a.slot - b.slot)[0]
+    if (!item && items.some(i => i.count > 0 && isSupportedFood(i.name, state) && kept(i) && (slot == null || slot === i.slot))) throw failure('この食料は調理のために残しています。', 'FOOD_KEPT', 'food_acquisition')
     if (!item) throw failure('持っている対応食料がありません。食料の入手が必要です。', 'FOOD_NOT_IN_INVENTORY', 'food_acquisition')
     if (item.name === 'minecraft:chicken' && (!Number.isFinite(hunger) || hunger < 0 || hunger > 20)) throw failure('生の鶏肉を使うには実際の空腹値の受信が必要です。', 'HUNGER_UNKNOWN')
     rawInventory()
@@ -405,7 +410,7 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
     checkObserved(attempt)
     } finally { finishReceiptTrace(tracedAttempt, tracedReceipt) }
   }
-  return { preview, eat, applyPacket, cancel, preemptForCombat, restoreHunger, restoreInitialHunger, snapshot: () => ({ busy: operation !== null && !operation.combatPreempted, phase: operation?.combatPreempted ? 'preempted_for_combat' : operation?.phase ?? lastResult?.phase ?? 'idle', pendingRequestId: operation?.id ?? null, inventoryUncertain, hunger, receiptTrace: operation && !operation.serverConfirmed && !operation.cancelled ? copy(lastReceiptTrace) : null, lastResult: copy(lastResult) }) }
+  return { setKeep: fn => { keep = typeof fn === 'function' ? fn : null }, preview, eat, applyPacket, cancel, preemptForCombat, restoreHunger, restoreInitialHunger, snapshot: () => ({ busy: operation !== null && !operation.combatPreempted, phase: operation?.combatPreempted ? 'preempted_for_combat' : operation?.phase ?? lastResult?.phase ?? 'idle', pendingRequestId: operation?.id ?? null, inventoryUncertain, hunger, receiptTrace: operation && !operation.serverConfirmed && !operation.cancelled ? copy(lastReceiptTrace) : null, lastResult: copy(lastResult) }) }
 }
 
 module.exports = { createFood, isSupportedFood, foodNutrition }
