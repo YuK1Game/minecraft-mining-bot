@@ -34,7 +34,7 @@ const reasons = {
   LONG_TRAVEL_NO_PROGRESS: '同じ場所から先へ進めていません'
 }
 
-function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, inventoryReady = null, beforeLeg = null, record = null, onSurface = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terrainRevision = null, findPoint = null, walkTo = null, detour = null, inventoryReady = null, beforeLeg = null, record = null, onSurface = null, save = async () => {}, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
   legM = LEG_M, arriveM = 20, chunkTries = 3, stopWhenBlocked = false, blockedBackoffMs = 10000, maxLegs = 600, maxFailuresInRow = 6, damagePauseMs = 3000, legWaitMs = 25000, pollMs = 250 } = {}) {
   if (typeof getState !== 'function' || typeof chunkTravel?.start !== 'function' || typeof chunkTravel?.status !== 'function') throw new TypeError('Long travel needs getState and chunk travel')
   let run = null, task = null
@@ -153,6 +153,15 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
         last = result
         if (result.code === 'CHUNK_TRAVEL_DAMAGED') { say(`被弾したため一時停止し、${damagePauseMs / 1000}秒後に続けます`); await timedSleep('backoff', damagePauseMs); break }
         if (result.code === 'CHUNK_TRAVEL_BUSY' || result.code === 'CHUNK_TRAVEL_CONTEXT_CHANGED') { await timedSleep('backoff', 2000); break }
+      }
+      // No walk led on: the trip's own way on (dig, stack, bridge, or up from a cave; travel-detour.js) before the pass counts as failed.
+      if (!moved && typeof detour === 'function' && !['CHUNK_TRAVEL_DAMAGED', 'CHUNK_TRAVEL_BUSY', 'CHUNK_TRAVEL_CONTEXT_CHANGED', 'POINT_REPLAN'].includes(last?.code)) {
+        const td = now()
+        let went = null
+        try { went = await detour(run.destination, { signal, code: last?.code ?? null }) } catch {}
+        add(went?.ok ? 'detour' : 'detour_fail', now() - td)
+        if (signal.aborted) throw fail('LONG_TRAVEL_CANCELLED')
+        if (went?.ok) { moved = true; via = 'detour' }
       }
       const after = feetOf(getState())
       // One line per pass: times, received positions and the distance left.
