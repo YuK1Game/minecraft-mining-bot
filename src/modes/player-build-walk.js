@@ -53,8 +53,10 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
     const carried = ports.fill?.() ?? 0
     let route = await plan({ getBlock: block, start, target, done, blocks: carried, refused, barred, ...limits })
     // No way by walking, digging and stacking: once more with floor blocks placed over gaps.
-    if (!route.ok && carried > 0 && typeof ports.bridge === 'function' && !aborted()) {
-      const wider = await plan({ getBlock: block, start, target, done, blocks: carried, refused, barred, ...limits, allowBridge: true })
+    // Also off an edge two or three down (nothing carried is needed for that).
+    const mayBridge = carried > 0 && typeof ports.bridge === 'function', mayDrop = typeof ports.drop === 'function'
+    if (!route.ok && (mayBridge || mayDrop) && !aborted()) {
+      const wider = await plan({ getBlock: block, start, target, done, blocks: carried, refused, barred, ...limits, allowBridge: mayBridge, allowDrop: mayDrop })
       if (wider.ok) route = wider; else route = { ...route, expanded: route.expanded + wider.expanded }
     }
     if (!route.ok) {
@@ -85,6 +87,11 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
         const laid = floor() || (typeof ports.bridge === 'function' && await ports.bridge(step.place, at) && floor())
         if (laid && await walk(centre(step.to)) && there(step.to)) { moved++; bridged++; at = step.to; continue }
         bar(at, step.to); why = laid ? ports.why?.() ?? 'WALK_FAILED' : ports.why?.() ?? 'BRIDGE_FAILED'; failed = true
+      } else if (step.kind === 'drop') {
+        // Centred on the edge cell first, then the predicted drop; the feet at the lower cell count.
+        await walk(centre(at))
+        if (await ports.drop(centre(step.to)) && there(step.to)) { moved++; at = step.to; continue }
+        bar(at, step.to); why = ports.why?.() ?? 'DROP_FAILED'; failed = true
       } else if (step.kind === 'shaft') {
         if (await ports.descend({ x: at.x, y: at.y - 1, z: at.z }) && there(step.to)) { moved++; mined++; at = step.to; continue }
         bar(at, step.to); why = ports.why?.() ?? 'DESCEND_FAILED'; failed = true
