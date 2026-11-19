@@ -32,6 +32,17 @@ function earlyObjective ({ inventory, worn, house, memory = {} }) {
   return step('early_ready', '予備装備を本拠点に残し、ネザーの入口を準備します。', false, true)
 }
 
+// One reading of the objective for everyone who asks: who has the player (dragon-runtime.js `legacyNeeded`), what
+// the goal is called (`keyNow`) and the step below. It is read from the inventory the steps work with
+// (`runtime.inventory()`: the received rows with the tools' received durability), not from the host's bare rows.
+// Until 2026-11-20 the owner and the goal read the bare rows, where a worn-out pickaxe is still a pickaxe, and the
+// step read the other: the owner kept the player for `home_reserve`, the step answered "the starter jobs make the
+// first tools" and did nothing, and the starter jobs never got the player.
+// Live 2026-11-20 02:21-02:32 JST: the stone pickaxe reached 0 of 131 while digging a way down; for eleven minutes
+// the Bot stood at y 54 under 「原木から最初の道具を作ります。」 with no move, no dig and the starter jobs not started.
+const objectiveNow = ({ runtime, shared, memory }) => earlyObjective({ inventory: shared.inventoryUncertain ? null : runtime.inventory(),
+  worn: runtime.armor?.(), house: shared.playerHouse, memory })
+
 const distanceToBed = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
 const playerSpawn = receipt => !!receipt?.position && [0, 'player'].includes(receipt.type)
 const atHomeBed = (receipt, bed) => playerSpawn(receipt) && [0, 'overworld'].includes(receipt.dimension) && distanceToBed(bed, receipt.position) <= 3
@@ -41,9 +52,8 @@ const scoutArmor = worn => ['helmet', 'chestplate', 'leggings'].every(piece =>
 async function runDragonEarly (ctx) {
   const { shared, memory, runtime, supplies, cancelled } = ctx
   const state = memory.early ??= {}
-  const inventory = runtime.inventory()
   const result = reason => ({ done: false, reason })
-  const next = earlyObjective({ inventory, worn: runtime.armor(), house: shared.playerHouse, memory })
+  const next = objectiveNow({ runtime, shared, memory })
   if (cancelled() || next.legacy || next.id === 'observe') return result(next.label)
   if (next.ready) return { done: true, reason: next.label }
   const origin = shared.playerHouse.origin
@@ -123,4 +133,4 @@ async function runDragonEarly (ctx) {
   return { done: !cancelled(), reason: '本拠点に予備を残し、ネザー偵察用の装備を確認しました。' }
 }
 
-module.exports = { earlyObjective, runDragonEarly }
+module.exports = { earlyObjective, objectiveNow, runDragonEarly }

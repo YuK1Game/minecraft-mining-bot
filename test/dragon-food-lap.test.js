@@ -97,3 +97,32 @@ test('lap: with no animal anywhere the lap does not end as done; the goal is war
   assert.ok(w.shared.dragonGoal?.hold, 'held: ' + JSON.stringify(w.shared.dragonGoal))
   assert.match(String(w.rt.status()?.reason), /保留/)
 })
+
+// Live 2026-11-20 02:21-02:32 JST: the only pickaxe reached 0 uses while the expedition dug a way down. The owner's
+// decision read the host's rows (no durability: "a pickaxe is held, the goal is the kit at home") and the step read
+// the runtime's (durability 0: "the starter jobs make the first tools"). The expedition kept the player and did
+// nothing for eleven minutes; the starter jobs were never started.
+test('lap: a pickaxe worn out on the way gives the player to the starter jobs; with a pickaxe again the same goal goes on to the end', async t => {
+  const w = await createFoodLap(t)
+  let broke = false
+  const first = await w.lap({ each: () => { if (!broke && w.hunts === 1) { broke = true; w.wear.set('minecraft:iron_pickaxe', 0) } } })
+  assert.equal(broke, true)
+  assert.notEqual(first, -1, 'the player is given back, not kept under a step that does nothing: ' + w.trace.join(' / '))
+  assert.equal(w.objective().id, 'wood')
+  assert.equal(w.rt.owns(), false, 'the starter jobs have the player')
+  assert.equal(w.record().early.reserveReady, undefined, 'not counted as done')
+  const goal = w.shared.dragonGoal?.id
+  assert.equal(goal, 'early.home_reserve#1')
+  // The starter jobs made a pickaxe.
+  w.wear.delete('minecraft:iron_pickaxe')
+  assert.equal(w.rt.owns(), true)
+  const looks = await w.lap()
+  assert.notEqual(looks, -1, 'the lap ends: ' + w.trace.join(' / '))
+  assert.equal(w.shared.dragonGoal?.id.startsWith('early.home_reserve#'), true)
+  assert.equal(w.hunts, 1, 'the hunt is not done again')
+  assert.deepEqual(w.transfers.filter(FOOD_IN), [['in', 'minecraft:cooked_beef', 1]])
+  assert.equal(w.chestCount(COOKED), 8)
+  assert.ok(w.cooked() >= 8)
+  assert.equal(w.record().early.reserveReady, true)
+  assert.equal(w.objective().id, 'diamond')
+})

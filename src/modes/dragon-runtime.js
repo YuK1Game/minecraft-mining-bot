@@ -3,7 +3,7 @@
 const { packRoom, crowded } = require('./dragon-pack-room')
 const { createDragonExpedition } = require('./dragon-expedition')
 const { createDragonState } = require('./dragon-state')
-const { earlyObjective, runDragonEarly } = require('./dragon-early')
+const { objectiveNow, runDragonEarly } = require('./dragon-early')
 const { stepNether } = require('./dragon-nether')
 const { createDragonStronghold } = require('./dragon-stronghold')
 const { runDragonEndStep } = require('./dragon-end')
@@ -24,8 +24,7 @@ function createDragonRuntime (ports) {
   const raw = runtime.raw
   const state = createDragonState({ root, shared, getState: raw, getBlock,
     getLife: () => runtime.host().getLife?.(), getWorldId: () => runtime.host().meta?.startGame?.seed })
-  const legacyNeeded = memory => earlyObjective({ inventory: shared.inventoryUncertain ? null : raw().inventory,
-    worn: runtime.armor?.(), house: shared.playerHouse, memory }).legacy === true
+  const legacyNeeded = memory => objectiveNow({ runtime, shared, memory }).legacy === true
   let stepRecord = null, unpin = false
   // The parent goal of the work (goal/goal-ledger.js): its clock, its budget and its hold are in `shared`, and
   // its checkpoint is saved with the record, so neither a reload nor a restart starts them again.
@@ -125,7 +124,7 @@ function createDragonRuntime (ports) {
     if (!record) { try { record = state.snapshot() } catch { return null } }
     if (!record || state.scope() == null) return null
     if (record.stage !== 'early') return { key: goalKey(record), record }
-    const objective = earlyObjective({ inventory: shared.inventoryUncertain ? null : raw().inventory, worn: runtime.armor?.(), house: shared.playerHouse, memory: record })
+    const objective = objectiveNow({ runtime, shared, memory: record })
     // No objective of its own to name (the inventory is not received, or the expedition owns the player only to
     // recover what a death left): the goal it had goes on.
     return { key: goalKey(record, objective) ?? ledger.goal()?.key ?? 'early.recover', record }
