@@ -626,7 +626,7 @@ function createUserControlRuntime (rt) {
       // The attack-access evaluation hears the same "this one hit us" evidence as the coordinator's profile gate (combat-exposure.js).
       // Wired on the first combat decision: the exposure does not exist yet while this part is being built.
       let heard = false
-      const hearDamage = () => { if (heard) return; heard = true; rt.combatExposure.heed?.({ recentDamageAt: () => rt.host.shared.recentDamageNoPrimary?.at ?? null }) }
+      const hearDamage = () => { if (heard) return; heard = true; rt.combatExposure.heed?.({ recentDamageAt: () => rt.host.shared.recentDamageNoPrimary?.at ?? null, provokedBy: (state, actor) => rt.userBehaviors?.provokedBy?.(state, actor) }) }
       rt.userBehaviors = rt.createUserBehaviors({ client: rt.host.client, getState: () => { rt.requireGeneration(); return rt.lightweightUserState() }, getRawState: () => { rt.requireGeneration(); return rt.lightweightRawState() }, world: rt.host.world, entities: rt.host.entities, crafting: rt.crafting, inventory: rt.inventory,
         getInput: () => { rt.requireGeneration(); if (rt.userBehaviorSleeping || rt.userBehaviorWakePending || rt.generationMovement.snapshot().running) throw new Error('Native movement or actual sleep owns input'); return rt.generationInput }, getSelfUniqueId: () => rt.host.meta.startGame?.entity_id,
         previewHop: options => { rt.requireGeneration(); if (rt.motionActive()) return { ready: false, reason: 'Another native movement owns input' }; rt.motionOrigin = rt.working(); return rt.generationMovement.previewHop(options) },

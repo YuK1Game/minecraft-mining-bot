@@ -5,6 +5,8 @@ const { permittedTarget } = require('./expedition-target')
 const { createMeleeCombat } = require('./melee-combat')
 const { createRangedCombat } = require('./ranged-combat')
 const { createCombatCoordinator } = require('./combat-coordinator')
+const { createProvocation } = require('./provocation')
+const { engagementAllowed } = require('./combat-profiles')
 const { createPortableBed } = require('../actions/portable-bed')
 
 // Movement and chunk packets are observed by the world/entity controllers and
@@ -47,8 +49,13 @@ function createUserBehaviors ({ client, getState, getRawState, world, entities, 
       actor.runtimeId === grant.actor.runtimeId && actor.uniqueId === grant.actor.uniqueId &&
       actor.entityType === grant.actor.entityType && permittedTarget(actor, getState().dimension, weapon)
   }
-  const melee = controllers.melee ?? createMeleeCombat({ ...meleeOptions, missionTarget: missionTarget('melee'), client, getState, getRawState, world, entities, crafting, equip: equipCombat, cancelEquip: cancelCombatEquip, getInput, previewHop, startHop, getMovement, stopHop, getItemComponents, getTargetWet, isBusy: combatBusy, version, now, wallNow, ...(sleep ? { sleep } : {}) })
-  const ranged = controllers.ranged ?? createRangedCombat({ ...rangedOptions, missionTarget: missionTarget('bow'), client, getState, world, entities, crafting, equip: equipCombat, cancelEquip: cancelCombatEquip, getInput, getSelfUniqueId: getSelfUniqueId ?? (() => getRawState()?.uniqueEntityId ?? null), isBusy: combatBusy, onUncertain, version, now, ...(sleep ? { sleep } : {}) })
+  // The one reading of "this mob hit us" (provocation.js): the candidate scan, the attack-access evaluation
+  // (through `provokedBy`) and the controllers' permitted target all ask it. A neutral mob is a permitted target
+  // only while it is that attacker and its profile allows a fight when provoked.
+  const provocation = createProvocation({ recentDamageAt: coordinatorOptions.getRecentDamageAt ?? null, actors: () => entities.snapshot({ kind: 'all' }), now: wallNow })
+  const attacker = actor => actor?.kind === 'mob' && actor.hostile !== true && provocation.by(getState(), actor) && engagementAllowed(actor.entityType, { distance: 0, provoked: true })
+  const melee = controllers.melee ?? createMeleeCombat({ ...meleeOptions, missionTarget: actor => missionTarget('melee')(actor) || attacker(actor), client, getState, getRawState, world, entities, crafting, equip: equipCombat, cancelEquip: cancelCombatEquip, getInput, previewHop, startHop, getMovement, stopHop, getItemComponents, getTargetWet, isBusy: combatBusy, version, now, wallNow, ...(sleep ? { sleep } : {}) })
+  const ranged = controllers.ranged ?? createRangedCombat({ ...rangedOptions, missionTarget: actor => missionTarget('bow')(actor) || attacker(actor), client, getState, world, entities, crafting, equip: equipCombat, cancelEquip: cancelCombatEquip, getInput, getSelfUniqueId: getSelfUniqueId ?? (() => getRawState()?.uniqueEntityId ?? null), isBusy: combatBusy, onUncertain, version, now, ...(sleep ? { sleep } : {}) })
 
   async function cleanupBed (lease, reason) {
     if (!lease || lease.kind !== 'bed' || control !== lease) return
@@ -133,7 +140,7 @@ function createUserBehaviors ({ client, getState, getRawState, world, entities, 
     if (control === lease) control = null
     publish(); return result
   }
-  combat = controllers.combat ?? createCombatCoordinator({ ...coordinatorOptions, getState, entities, melee, ranged, acquire: acquireCombat, resume: resumeCombat,
+  combat = controllers.combat ?? createCombatCoordinator({ ...coordinatorOptions, provoked: provocation.by, getState, entities, melee, ranged, acquire: acquireCombat, resume: resumeCombat,
     approach: approach ? (actor, options) => { const lease = requireLease('combat', options.signal); if (lease.engineId !== options.claimId) throw new Error('Combat approach claim changed'); return approach(actor, context(lease, { ...options, kind: 'combat', claimId: lease.id, coordinatorClaimId: options.claimId, token: lease.token })) } : null,
     retreat: retreat ? (actor, options) => { const lease = requireLease('combat', options.signal); if (lease.engineId !== options.claimId) throw new Error('Combat retreat claim changed'); return retreat(actor, context(lease, { ...options, kind: 'combat', claimId: lease.id, coordinatorClaimId: options.claimId, token: lease.token })) } : null,
     canAct: options => !bedStatus.sleeping && allowed('combat', { ...options, claimId: options.claimId == null ? null : `combat:${options.claimId}`, coordinatorClaimId: options.claimId, token: control?.kind === 'combat' ? control.token : null }), now, ...(sleep ? { sleep } : {}) })
@@ -246,7 +253,7 @@ function createUserBehaviors ({ client, getState, getRawState, world, entities, 
     const pending = !control && c.claim ? { kind: 'combat', claimId: `combat:${c.claim.claimId}`, phase: c.phase, acquired: false, blocked: c.blocked === true, hasToken: false, token: null, scope: c.claim.scope } : null
     return { busy: !!(control || c.busy || bedWorker || sleeping || cleanupUnconfirmed), claim: publicClaim(control) ?? pending, activeKind: sleeping ? 'sleeping' : control?.kind ?? (c.busy || cleanupUnconfirmed ? 'combat' : null), sleeping, blocked: control?.blocked === true || c.blocked === true || cleanupUnconfirmed, cleanupUnconfirmed, combat: c, melee: m, ranged: r, bed: { ...bedStatus }, lastError }
   }
-  return { tick, expeditionStrike, applyPacket, cancel, drain, snapshot, explainCombat: () => combat?.explain?.() ?? null, ownsBedTarget: (state, target, block) => control?.kind === 'bed' && control.acquired && !control.cancelled && !control.blocked && bed.ownsTarget(state, target, block) === true }
+  return { tick, expeditionStrike, applyPacket, cancel, drain, snapshot, provokedBy: provocation.by, explainCombat: () => combat?.explain?.() ?? null, ownsBedTarget: (state, target, block) => control?.kind === 'bed' && control.acquired && !control.cancelled && !control.blocked && bed.ownsTarget(state, target, block) === true }
 }
 
 module.exports = { createUserBehaviors }
