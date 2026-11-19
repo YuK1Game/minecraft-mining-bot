@@ -10,6 +10,7 @@ const { home, end, nether, spare, combined, matches, count, full, bare, homeCarr
 const { provisionFood } = require('./dragon-early-food')
 const { placeStation } = require('./station-room')
 const { reserveRoom } = require('./dragon-reserve-room')
+const { createOpenStand } = require('./open-stand')
 
 const { ingredient, smelted, small, pickFor } = require('./dragon-supply-recipes')
 const pending = reason => ({ done: false, reason })
@@ -33,6 +34,13 @@ function createDragonSupplies (ctx) {
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
   // Why the last step of this run did nothing (a refused open click, …): shown with the reason, so a stall is not silent.
   let trouble = null
+  // A furnace that stands near and cannot be opened from anywhere the Bot can stand: one failure of that furnace
+  // for the goal's ledger (three, and it is spent). Live 2026-11-20 02:55-03:03 JST: underground, a furnace in
+  // the bag, raw iron and fuel in hand, and a furnace within eight blocks that no walk reached. Every two seconds
+  // the smelt was asked of that furnace and refused (「かまど: 操作対象が手の届く範囲外です。」) for eight minutes,
+  // until the pinned item ran out; the held furnace was never put down.
+  const stand = createOpenStand({ getBlock, getFeet: ctx.getFeet, walk: to => ctx.hands.walk(to) })
+  const shut = cell => ({ stage: 'station', target: [cell.x, cell.y, cell.z].join(','), code: 'STATION_NOT_OPENED' })
 
   async function station (name) {
     const saved = ctx.memory?.early
@@ -54,7 +62,19 @@ function createDragonSupplies (ctx) {
       if (saved && name === 'brewing_stand' && runtime.raw().dimension === 'overworld') saved.brewingStand = {x:cell.x,y:cell.y,z:cell.z}
       return cell
     }
-    const near = findCells(ctx, b => b.name === full(name) || name === 'furnace' && b.name === 'minecraft:lit_furnace', 8, 3)[0]
+    // A furnace standing nearby is used from where its open click has a line (open-stand.js: the rule of the click
+    // itself). One that gave no such place three times is left for another, or for the held one to be put down.
+    const near = findCells(ctx, b => b.name === full(name) || name === 'furnace' && b.name === 'minecraft:lit_furnace', 8, 3).find(cell => ctx.goal?.spent?.(shut(cell)) !== true)
+    if (near && name === 'furnace') {
+      await approach(ctx, near)
+      if (cancelled()) return null
+      if (await stand.go(near, cancelled)) return remember(near)
+      if (cancelled()) return null
+      const noted = ctx.goal?.fail?.(shut(near), { paceMs: 10000 })
+      trouble = `かまど (${near.x}, ${near.y}, ${near.z}) を開けられる場所に立てません`
+      if (noted?.exhausted) ctx.log?.(`プレイヤーモード: かまど (${near.x}, ${near.y}, ${near.z}) を開けられる場所に ${noted.count} 回立てなかったため、このかまどは使いません（ほかのかまどを使うか、持っているかまどを置きます）`)
+      return null
+    }
     if (near) { await approach(ctx, near); return remember(near) }
     if (!held(name)) { await acquire(name, 1); return null }
     // Open cells first; in a one-wide tunnel a niche is mined for it (station-room.js).
