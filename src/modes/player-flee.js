@@ -38,7 +38,7 @@ const unarmed = inventory => !(inventory?.items ?? []).some(item => item?.count 
 const text = value => String(value ?? '').replace(/^minecraft:/, '').replace(/[\p{C}§]/gu, ' ').slice(0, 40)
 const idOf = actor => actor?.runtimeId ?? actor?.uniqueId ?? null
 
-function fleeWanted ({ health, totem, hostiles, position, weaponless = false }) {
+function fleeWanted ({ health, totem, hostiles, position, weaponless = false, healing = null }) {
   if (!Number.isFinite(health) || health <= 0 || !position) return null
   const hurt = health <= (weaponless ? UNARMED_FLEE_AT : FLEE_AT)
   if (!hurt && !weaponless) return null
@@ -53,6 +53,12 @@ function fleeWanted ({ health, totem, hostiles, position, weaponless = false }) 
   // at 1.1 m, combat was told to stand down, no step started in three
   // seconds, and three more hits killed the Bot). Combat keeps the fight.
   if (nearest && !weaponless && nearest.distance <= CONTACT_M) return null
+  // Armed, and health cannot come back (received hunger under 18, no food
+  // held): walking away buys nothing and stops the food work that would heal
+  // (live 2026-11-19 12:59-13:09 JST: health 3.66 for ten minutes, hunger
+  // 17 → 6, food 0; left zombies at 5-12 m, resumed, left again, and every
+  // forage ended 「自律処理は停止されました」). Combat keeps what comes near.
+  if (nearest && hurt && !weaponless && healing === false) return null
   // The totem is asked last: reading it costs a full state.
   return nearest && (typeof totem === 'function' ? totem() : totem) !== true ? nearest : null
 }
@@ -74,7 +80,7 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
     const resting = now() < restUntil
     // Hurt again since the run that went nowhere: the wait is over.
     if (resting && stuckHealth === null) { skip = 'rest'; return false }
-    const threat = fleeWanted({ health: state.health, totem: state.totem, hostiles: resting ? others() : hostiles(), position: state.position, weaponless: unarmed(state.inventory) })
+    const threat = fleeWanted({ health: state.health, totem: state.totem, hostiles: resting ? others() : hostiles(), position: state.position, weaponless: unarmed(state.inventory), healing: state.healing })
     if (!threat) { skip = resting && kept.size ? 'kept_up_rest' : 'no_threat'; return false }
     // So is it when a hostile has come 2 m closer than the one it was stuck on
     // (live 2026-11-16 13:08 JST: during the wait a creeper walked up to 3.8 m
@@ -103,7 +109,7 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, getState, ho
       }
       // Walked, and the hostile is as near as it was: it flies, or it keeps up.
       const end = getState()
-      const left = steps > 0 ? fleeWanted({ health: end.health, totem: end.totem, hostiles: hostiles(), position: end.position, weaponless: unarmed(end.inventory) }) : null
+      const left = steps > 0 ? fleeWanted({ health: end.health, totem: end.totem, hostiles: hostiles(), position: end.position, weaponless: unarmed(end.inventory), healing: end.healing }) : null
       const keptUp = !!left && left.distance < threat.distance + GAIN_M
       log(failed >= 3 ? `プレイヤーモード: 離れる経路がないため、その場で戦います（${steps}歩）` : keptUp ? `プレイヤーモード: 離れても敵との距離が開きません（${steps}歩、${left.name} ${left.distance.toFixed(1)}m）` : `プレイヤーモード: 敵から離れました（${steps}歩）`)
       // After a failed run, combat gets five seconds before the next try; a

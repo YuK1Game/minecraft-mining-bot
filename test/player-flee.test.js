@@ -265,3 +265,20 @@ test('a hostile within melee contact is not held off by the stand-down', () => {
   assert.equal(caughtUp({ position: null }, state), false)
   assert.equal(caughtUp({ position: { x: 1, y: 64, z: 0 } }, {}), false)
 })
+
+test('armed and unable to heal (hunger under 18, no food): the Bot does not walk away', () => {
+  const { fleeWanted } = require('../src/modes/player-flee')
+  const { healing } = require('../src/modes/flee-healing')
+  const hostiles = [{ entityType: 'minecraft:zombie', position: { x: 8, y: 64, z: 0 } }]
+  const base = { health: 3.66, totem: false, hostiles, position: { x: 0, y: 65.62, z: 0 } }
+  assert.equal(fleeWanted({ ...base, healing: false }), null)
+  assert.ok(fleeWanted({ ...base, healing: true }), 'with food it still leaves')
+  assert.ok(fleeWanted({ ...base, healing: null }), 'unknown is not "cannot heal"')
+  assert.ok(fleeWanted({ ...base, healing: false, weaponless: true }), 'unarmed still leaves')
+  const hasFood = inventory => inventory.items.some(item => /cooked/.test(item.name))
+  assert.equal(healing({ hunger: 6, inventory: { known: true, items: [] }, hasFood }), false)
+  assert.equal(healing({ hunger: 6, inventory: { known: true, items: [{ name: 'minecraft:cooked_beef', count: 1 }] }, hasFood }), true)
+  assert.equal(healing({ hunger: 19, inventory: { known: true, items: [] }, hasFood }), true)
+  assert.equal(healing({ hunger: null, inventory: { known: true, items: [] }, hasFood }), null)
+  assert.equal(healing({ hunger: 6, inventory: null, hasFood }), null)
+})

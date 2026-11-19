@@ -201,7 +201,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed,
     agent: { stop: reason => agent.stop(reason), running: () => agentStatus().running === true },
     travel: { status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
-    getState: () => { const state = runtime.raw(); return { health: state.health, position: where(), inventory: shared.inventoryUncertain ? null : state.inventory, totem: () => runtime.totem() } },
+    getState: () => { const state = runtime.raw(); return { health: state.health, position: where(), inventory: shared.inventoryUncertain ? null : state.inventory, totem: () => runtime.totem(), healing: require('./flee-healing').healing({ hunger: hunger(), inventory: shared.inventoryUncertain ? null : runtime.inventory(), hasFood }) } },
     // A hostile with fresh evidence that it cannot walk to the Bot (shut in a
     // deep pit, no route) is not run from; creepers always are.
     // Nor is a shooter or a flyer behind received blocks (player-flee-threats.js).
