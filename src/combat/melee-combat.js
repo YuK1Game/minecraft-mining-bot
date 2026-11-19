@@ -26,6 +26,16 @@ const logBinding = (state, target) => ({
   life: state.lifecycle?.deathId ?? state.deathId ?? null
 })
 const EMERGENCY_REACH = 3.5 // cornered creeper, no approach path: swing from where the bot stands
+// A hit knocks its target back out of reach, and a mob that chases walks
+// straight back in. Ending the engagement on that first "out of reach" handed
+// the fight to an approach each time, 0.9-1.7 s before the next swing, while
+// the target was back within 2 m (live 2026-11-19 18:39:43-18:39:47 JST: four
+// bursts in five seconds at a zombie 1.7-2.1 m away, each ended OUT_OF_REACH;
+// the zombie lived, the Bot at health 8 did not). The engagement now waits
+// for the target to come back for as long as its hit would not count anyway
+// (about the 0.5 s a hurt mob takes no damage), while it is within
+// KNOCKBACK_M beyond reach; farther or longer, it ends as before.
+const KNOCKBACK_MS = 600, KNOCKBACK_M = 1.5
 function bodyAim (target) { return { ...target.position, y: target.position.y + (['minecraft:spider', 'minecraft:cave_spider', 'minecraft:silverfish', 'minecraft:endermite', 'minecraft:slime', 'minecraft:magma_cube', 'minecraft:vex', 'minecraft:phantom'].includes(target.entityType) ? 0.2 : 0.9) } }
 function descendingCriticalFrame (movement, criticalHopId, { wallNow = Date.now(), workingPosition } = {}) {
   const m = movement; const p = m?.physicsState
@@ -198,7 +208,7 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
   }
   function requestAttack (r, p, { critical = false, queuedTick = null, hopId = null } = {}) {
     assertRun(r); const weapon = heldWeapon(p)
-    if (!p.inReach) throw failure('Target moved outside real melee reach', 'OUT_OF_REACH')
+    if (!p.inReach) throw Object.assign(failure('Target moved outside real melee reach', 'OUT_OF_REACH'), { diagnostics: p.diagnostics })
     if (clock() - lastAttack < cooldownMs) throw failure('Bedrock invulnerability/cooldown interval has not elapsed', 'COOLDOWN')
     const transaction = { legacy: { legacy_request_id: 0, legacy_transactions: null }, transaction_type: 'item_use_on_entity', actions: [], transaction_data: { entity_runtime_id: BigInt(p.target.runtimeId), action_type: 'attack', hotbar_slot: p.selected, hand: 'main_hand', held_item: copy(weapon.raw), player_pos: copy(p.state.position), click_pos: { x: 0, y: 0, z: 0 } } }
     client.queue('inventory_transaction', { transaction })
@@ -360,6 +370,8 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
               await ordinary(r)
             }
           } catch (error) {
+            // Knocked back by the hit just made: the same engagement waits for it to come back.
+            if (error.code === 'OUT_OF_REACH' && !r.cancelReason && !r.terminal && r.hitsRequested > 0 && clock() - lastAttack <= KNOCKBACK_MS && error.diagnostics?.distance <= (r.reachLimit ?? reach) + KNOCKBACK_M) { await sleep(40, r.controller.signal); continue }
             // A hop landing or cooldown gap can leave the model a tick stale.
             if (error.code !== 'POSE_UNTRUSTED' || r.cancelReason || r.terminal || poseRetries >= MAX_POSE_RETRIES) throw error
             poseRetries++; await settlePose(r.controller.signal); continue

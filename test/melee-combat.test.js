@@ -359,3 +359,34 @@ test('a swing passes through vines and other hanging plants, not through a solid
   const wet = fixture(); wet.blocks.set('1,66,0', { known: true, name: 'minecraft:vine', boundingBox: 'empty', extra: [{ name: 'minecraft:water' }] })
   assert.equal(wet.melee.preview('70').code, 'LOS_BLOCKED')
 })
+
+// Live 2026-11-19 18:39:43-18:39:47 JST: each burst at a zombie ended OUT_OF_REACH on the knockback of its own hit.
+test('a target knocked just out of reach by the hit is waited for; the same engagement hits it again when it walks back', async () => {
+  let knockedAt = null
+  const f = fixture({
+    onAttack: ({ target, attacks }) => { if (attacks.length === 1) { target.position.x = 3.9; knockedAt = attacks[0].at } },
+    onSleep: ({ target, time }) => { if (knockedAt != null && time - knockedAt >= 320 && target.position.x > 3) target.position.x = 2.4 }
+  })
+  const r = await f.melee.engage('70', { critical: false, maxHits: 3, durationMs: 4000 })
+  assert.equal(r.code, 'HIT_LIMIT', r.reason)
+  assert.equal(r.hitsRequested, 3)
+  assert.ok(f.attacks[1].at - f.attacks[0].at >= 320 && f.attacks[1].at - f.attacks[0].at <= 700, String(f.attacks[1].at - f.attacks[0].at))
+  assert.equal(f.attacks.every(attack => Math.hypot(2.4 - attack.position.x, 0) <= 3 || attack === f.attacks[0]), true, 'no swing went out while it was out of reach')
+})
+
+test('a target that stays out of reach after the hit, or is thrown far, ends the engagement as before', async () => {
+  let sent = null, ended = null
+  const stays = fixture({ onAttack: ({ target, attacks }) => { target.position.x = 3.9; sent = attacks[0].at }, onSleep: ({ time }) => { ended = time } })
+  const a = await stays.melee.engage('70', { critical: false, maxHits: 3, durationMs: 4000 })
+  assert.equal(a.outcome, 'out_of_reach'); assert.equal(a.hitsRequested, 1)
+  assert.ok(ended - sent >= 600 && ended - sent <= 900, String(ended - sent))
+  let farEnded = null, farSent = null
+  const far = fixture({ onAttack: ({ target, attacks }) => { target.position.x = 6; farSent = attacks[0].at }, onSleep: ({ time }) => { farEnded = time } })
+  const b = await far.melee.engage('70', { critical: false, maxHits: 3, durationMs: 4000 })
+  assert.equal(b.outcome, 'out_of_reach'); assert.equal(b.hitsRequested, 1)
+  assert.ok(farEnded - farSent <= 200, String(farEnded - farSent))
+  // Never in reach at all: no waiting, nothing sent.
+  const never = fixture(); never.target.position.x = 3.9
+  const c = await never.melee.engage('70', { critical: false, maxHits: 3, durationMs: 4000 })
+  assert.equal(c.outcome, 'out_of_reach'); assert.equal(c.hitsRequested, 0); assert.equal(never.attacks.length, 0)
+})
