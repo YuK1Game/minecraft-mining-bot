@@ -1,6 +1,6 @@
 'use strict'
 
-const { evaluateCombatThreat } = require('./combat-threat-policy')
+const { evaluateCombatThreat, CONTACT_M } = require('./combat-threat-policy')
 const threatReachability = require('./threat-reachability')
 const { createCombatSearchBudget } = require('./combat-search-budget')
 
@@ -23,7 +23,7 @@ function createCombatExposure ({ world, entities, scopeOf, solidCover = false })
     decisionSight = new Map()
     try { return fn() } finally { decisionSight = parent }
   }
-  function sightEvidence (from, to) {
+  function sightEvidence (from, to, solid = solidCover) {
     if (!from || !to || !['x', 'y', 'z'].every(k => Number.isFinite(from[k]) && Number.isFinite(to[k]))) return null
     const steps = Math.ceil(Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z) / 0.25)
     let unknown = false, lastX, lastY, lastZ
@@ -35,7 +35,7 @@ function createCombatExposure ({ world, entities, scopeOf, solidCover = false })
       lastX = x; lastY = y; lastZ = z
       const b = world.getBlock(x, y, z)
       if (b?.known !== true) { unknown = true; continue }
-      if (solidCover ? b.boundingBox !== 'empty' && !/^minecraft:(?:air|cave_air|void_air)$/.test(b.name) : b.extra?.length || !(/^minecraft:(?:air|cave_air|void_air)$/.test(b.name) || b.boundingBox === 'empty' && !/water|lava|bubble|powder_snow|cobweb|portal/.test(String(b.name)))) return false
+      if (solid ? b.boundingBox !== 'empty' && !/^minecraft:(?:air|cave_air|void_air)$/.test(b.name) : b.extra?.length || !(/^minecraft:(?:air|cave_air|void_air)$/.test(b.name) || b.boundingBox === 'empty' && !/water|lava|bubble|powder_snow|cobweb|portal/.test(String(b.name)))) return false
     }
     return unknown ? null : true
   }
@@ -43,13 +43,13 @@ function createCombatExposure ({ world, entities, scopeOf, solidCover = false })
   // one-block rise shoots from its eye over the edge while the ray from the
   // bot's eye to its body centre ends inside that block. Any clear ray is
   // sight; blocked only when every ray is blocked.
-  function bodySight (from, target) {
+  function bodySight (from, target, solid = solidCover) {
     const p = target.position, feetY = from.y - 1.62
     const eye = { ...p, y: p.y + TARGET_EYE }
     const rays = [[from, { ...p, y: p.y + 0.9 }], [from, eye], [eye, { ...from, y: feetY + 0.9 }]]
     let unknown = false
     for (const [a, b] of rays) {
-      const value = sightEvidence(a, b)
+      const value = sightEvidence(a, b, solid)
       if (value === true) return true
       if (value === null) unknown = true
     }
@@ -93,6 +93,12 @@ function createCombatExposure ({ world, entities, scopeOf, solidCover = false })
         while (enemyAttackRoutes.size > 128) enemyAttackRoutes.delete(enemyAttackRoutes.keys().next().value)
       }
       result = evaluateCombatThreat({ target, state, routeToBot, sight, motion })
+    }
+    // At the body, with nothing solid between: a current threat whatever the route or the water says.
+    if (result.intercept !== true && Number.isFinite(result.distance) && result.distance <= CONTACT_M && ['ATTACK_ACCESS_UNKNOWN', 'PROJECTILE_SIGHT_BLOCKED', 'ENEMY_ATTACK_ROUTE_BLOCKED', 'RECOGNITION_EVIDENCE_UNKNOWN', 'NO_CURRENT_RECOGNITION'].includes(result.reason)) {
+      let touching = false
+      try { touching = bodySight(state.position, target, true) === true } catch {}
+      if (touching) result = evaluateCombatThreat({ target, state, routeToBot, sight, motion, touching })
     }
     return result
   }
