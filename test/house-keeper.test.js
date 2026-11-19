@@ -112,8 +112,13 @@ test('C6: a held repair runs again when the house is observed to have changed', 
 test('a repair a job asked for is held as soon as that thing stands; the walls wait', () => {
   const f = setup()
   f.w.take('white_bed', 'oak_planks')
-  assert.equal(needHouse(f.shared, f.w.getBlock, 'bed', { now: f.clock }).state, 'repair')
   assert.equal(f.pass(2000), null)
+  const before = f.saved.length
+  assert.equal(needHouse(f.shared, f.w.getBlock, 'bed', { now: f.clock }).state, 'repair')
+  assert.equal(f.saved.length, before, 'the job writes the record, it does not save it')
+  assert.equal(f.pass(2000), null)
+  assert.equal(f.saved.at(-1).repair.need, 'bed', 'the keeper saves what the job asked for: it is still there after a restart')
+  assert.deepEqual(f.saved.at(-1), f.house())
   f.w.mend('white_bed') // the build, limited to the bed's step
   assert.equal(f.pass(2000), 'held')
   const repair = f.house().repair

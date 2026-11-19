@@ -42,7 +42,7 @@ const profiles = require('./combat-profiles')
 function stop (code, reason, extra = {}) { return { phase: 'stopped', code, reason, targetDead: false, targetRemoved: false, serverConfirmed: false, botCausedDamage: null, botCausedDeath: null, attribution: 'unconfirmed', ...extra } }
 
 const { totemGuarded } = require('../safety/learning-health')
-function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, resume, approach = null, canAcquireMeleeApproach = null, canEngage = null, engageRadius = 32, getRecentDamageAt = null, retreat = null, log = () => {}, canAct = () => false, controlReady = () => true, now = () => performance.now(), sleep = ms => delay(ms), pollMs = 50, backoffMs = 400, durationMs = 120000, maxChaseDistance = 40, controllerSliceMs = 8000, workGuard = null, withDecision = fn => fn() }) {
+function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, resume, approach = null, canAcquireMeleeApproach = null, canEngage = null, engageRadius = 32, getRecentDamageAt = null, provoked = null, retreat = null, log = () => {}, canAct = () => false, controlReady = () => true, now = () => performance.now(), sleep = ms => delay(ms), pollMs = 50, backoffMs = 400, durationMs = 120000, maxChaseDistance = 40, controllerSliceMs = 8000, workGuard = null, withDecision = fn => fn() }) {
   if ([getState, acquire, resume, canAct, controlReady, now, sleep, withDecision].some(f => typeof f !== 'function') || typeof entities?.snapshot !== 'function' || [melee, ranged].some(c => ['preview', 'engage', 'cancel', 'drain', 'snapshot'].some(k => typeof c?.[k] !== 'function')) || approach != null && typeof approach !== 'function' || canAcquireMeleeApproach != null && typeof canAcquireMeleeApproach !== 'function' || canEngage != null && typeof canEngage !== 'function' || retreat != null && typeof retreat !== 'function' || !(engageRadius > 0)) throw new Error('Combat coordinator requires observed state, controllers and protective lease callbacks')
   if (!(pollMs >= 10 && pollMs <= 250) || !(backoffMs >= 100 && backoffMs <= 30000) || !Number.isInteger(durationMs) || durationMs < 1000 || durationMs > 120000 || !(maxChaseDistance > 0 && maxChaseDistance <= 48) || !Number.isInteger(controllerSliceMs) || controllerSliceMs < 1200 || controllerSliceMs > 120000) throw new Error('Invalid combat coordination bounds')
   let claim = null; let worker = null; let sequence = 0; let lastResult = null; let lastError = null; let hpRetreating = false; let lastTargetKey = null
@@ -75,7 +75,9 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
   }
   function live (s) { return s?.phase === 'spawned' && !s.dead && !s.isDead && !s.spawnPending && Number.isFinite(s.health) && s.health > 0 && finite(s.position) }
   function allActors () { const all = entities.snapshot({ kind: 'all' }); if (!Array.isArray(all)) throw new Error('Actor snapshot must be an array'); return all }
-  function eligible (e, s) { return e?.kind === 'mob' && e.hostile === true && e.alive === true && e.positionKnown === true && finite(e.position) && e.dimension === s.dimension && typeof e.entityType === 'string' && /^minecraft:[a-z0-9_]+$/.test(e.entityType) && e.entityType !== 'minecraft:player' && id(e.runtimeId) !== null && id(e.runtimeId) !== id(s.runtimeEntityId) && id(e.uniqueId, true) !== null }
+  // A neutral mob is a candidate only while it is the one that hit the Bot (provocation.js, the reading the attack-access evaluation and the melee controller share).
+  const attackedBy = (s, e) => e.hostile !== true && typeof provoked === 'function' && provoked(s, e) === true
+  function eligible (e, s) { return e?.kind === 'mob' && (e.hostile === true || attackedBy(s, e)) && e.alive === true && e.positionKnown === true && finite(e.position) && e.dimension === s.dimension && typeof e.entityType === 'string' && /^minecraft:[a-z0-9_]+$/.test(e.entityType) && e.entityType !== 'minecraft:player' && id(e.runtimeId) !== null && id(e.runtimeId) !== id(s.runtimeEntityId) && id(e.uniqueId, true) !== null }
   function hasBowAndArrows (s) {
     if (s.inventory?.known !== true || s.inventory.uncertain || s.inventoryConfidence?.known === false) return false
     const items = s.inventory.items ?? []
@@ -152,6 +154,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
   const corneredStrike = (e, scope, range) => e?.entityType === 'minecraft:creeper' && cornered(e, scope) && range <= (profiles.CREEPER_CORNERED_STRIKE ?? 4.5)
   function crowdedLowHp (s) { return updateHpRetreat(s) && closeHostiles(s) >= 2 && !allActors().some(e => eligible(e, s) && distance(s.position, bodyAim(e)) <= MELEE_SELECT_REACH) }
   function provokedBy (s, e) {
+    if (typeof provoked === 'function') return provoked(s, e) === true
     const at = Number(getRecentDamageAt?.() ?? NaN)
     return Number.isFinite(at) && clock() >= 0 && Date.now() - at >= 0 && Date.now() - at <= profiles.PROVOKED_WINDOW_MS && distance(s.position, bodyAim(e)) <= profiles.PROVOKED_DISTANCE
   }

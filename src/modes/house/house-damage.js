@@ -35,11 +35,14 @@ const NEAR_M = 16, CONFIRM_MS = 4000
 const WHY = Object.freeze({ TIME: '時間', SEEN: '家全体を受信', OBSERVED: '家の様子が変化', MATERIALS: '材料がそろった' })
 
 function createHouseDamage ({ shared, getBlock, getFeet, getInventory = () => null, dimension = () => 'overworld', scope = () => null, save = () => {}, log = () => {}, now = Date.now } = {}) {
-  let first = null, seenScope
+  let first = null, seenScope, kept
   const say = text => log(`プレイヤーモード: ${text}`)
   const minutes = ms => Math.round(ms / 60000)
+  // What of the record the file has to hold for the repair to go on after a restart.
+  const mark = house => JSON.stringify([house.done === true, house.built === true, house.repair ?? null])
   function write (house) {
     shared.playerHouse = house
+    kept = mark(house)
     try { void Promise.resolve(save(house)).catch(() => {}) } catch { /* Kept in shared until the next save. */ }
   }
 
@@ -77,6 +80,9 @@ function createHouseDamage ({ shared, getBlock, getFeet, getInventory = () => nu
       delete shared.playerHouseRepair
       if (!house.repair && old?.open === true && house.done !== true) { house = { ...house, built: true, repair: running(Number.isFinite(old.since) ? old.since : now()) }; write(house) }
     }
+    // A repair a job asked for (`needHouse`) is written to `shared` only: the keeper saves it, so that what the
+    // job needs and its steps are still there after a restart. (The first tick after a reload saves once.)
+    if (mark(house) !== kept) write(house)
     const left = reading(house.origin), sight = look(left), repair = house.repair ?? null
     if (house.done === true) {
       if (repair) { write({ ...house, built: true, repair: null }); say('家の修理が終わりました'); return 'repaired' }

@@ -17,7 +17,7 @@ const TARGET_EYE = 1.6
 // that is "this one attacked us" - the same evidence the coordinator's profile gate uses. Without it here, the
 // profile gate let a neutral mob through and this evaluation then declined it as NOT_CONFIRMED_HOSTILE (live
 // 2026-11-19 11:36 JST: an enderman 2.6 m away hit three times for 7 each; combat never started).
-function createCombatExposure ({ world, entities, scopeOf, solidCover = false, recentDamageAt = null }) {
+function createCombatExposure ({ world, entities, scopeOf, solidCover = false, recentDamageAt = null, provokedBy = null }) {
   function struck () {
     const at = Number(typeof recentDamageAt === 'function' ? recentDamageAt() : NaN), age = Date.now() - at
     return Number.isFinite(at) && age >= 0 && age <= PROVOKED_WINDOW_MS
@@ -87,7 +87,9 @@ function createCombatExposure ({ world, entities, scopeOf, solidCover = false, r
     try { sight = targetSight(target, state) } catch {}
     try { motion = entities.motion?.(target.runtimeId) ?? null } catch {}
     let result = evaluateCombatThreat({ target, state, sight, motion })
-    const provoked = Number.isFinite(result.distance) && result.distance <= PROVOKED_DISTANCE && struck()
+    // Who hit the Bot is read in one place when there is one (provocation.js); without it, the rule of before.
+    const told = Number.isFinite(result.distance) && result.distance <= PROVOKED_DISTANCE && typeof provokedBy === 'function' ? provokedBy(state, target) : null
+    const provoked = typeof told === 'boolean' ? told : Number.isFinite(result.distance) && result.distance <= PROVOKED_DISTANCE && struck()
     if (provoked) result = evaluateCombatThreat({ target, state, sight, motion, provoked })
     if (result.accessKind === 'enemy_walk_route' && Number.isFinite(result.distance) && result.distance <= result.recognitionRadius) {
       const feet = state.position && { x: state.position.x, y: state.position.y - 1.62, z: state.position.z }
@@ -113,7 +115,7 @@ function createCombatExposure ({ world, entities, scopeOf, solidCover = false, r
     }
     return result
   }
-  function heed (ports = {}) { if (typeof ports.recentDamageAt === 'function') recentDamageAt = ports.recentDamageAt }
+  function heed (ports = {}) { if (typeof ports.recentDamageAt === 'function') recentDamageAt = ports.recentDamageAt; if (typeof ports.provokedBy === 'function') provokedBy = ports.provokedBy }
   return { heed, evaluate: require('../common/work-spans').wrap('exposure.evaluate', evaluate), sight: sightEvidence, withDecision, snapshot: () => combatSearchBudget.snapshot() }
 }
 module.exports = { createCombatExposure }
