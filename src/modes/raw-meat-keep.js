@@ -18,7 +18,12 @@
 const RAW = /^minecraft:(?:beef|porkchop|mutton|chicken|rabbit|cod|salmon)$/
 const HUNGER = 10, HEALTH = 12
 
+//
+// Only while the expedition owns the work: its food step is the one that carries the meat to the furnace. While the
+// ordinary work runs (the house is being built or repaired) nothing cooks, and kept meat only kept the Bot hungry
+// (live 2026-11-19 15:40-15:55 JST: raw meat 6, cooked 0, hunger 12 and health 15 in a tunnel, no regeneration).
 const keeping = (shared, { hunger, health }) => shared?.playerWanted === true && shared.botMode === 'player' && !!shared.playerHouse?.origin &&
+  shared.dragonOwnsWork?.() === true &&
   Number.isFinite(hunger) && hunger >= HUNGER && Number.isFinite(health) && health > HEALTH
 
 // The items a snack may take: all of them, or all but the raw meat.
