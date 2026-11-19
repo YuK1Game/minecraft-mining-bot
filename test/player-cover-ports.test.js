@@ -54,3 +54,19 @@ test('a walk that never gets free still starts after three seconds', async () =>
   assert.equal(world.clock, 3000)
   assert.equal(calls.length, 1)
 })
+
+// Live 2026-11-19 15:18:36-15:18:44 JST: four sword hits on a skeleton at 3.9 m; the cover then read the same skeleton
+// at 4.9 m as "cannot be walked to", ended the fight (PLAYER_FLEE) and the Bot died two seconds later.
+test('an archer the running fight has closed on is left to the fight, whatever the route check says', () => {
+  const world = { combat: true, clock: 0 }
+  const ports = createCoverPorts({
+    expedition: { owns: () => false, busy: () => false }, cancelExpedition: () => {}, agent: { stop: () => {} }, agentRunning: () => false,
+    travelStatus: () => ({ busy: false }), walk: async () => true,
+    reachable: () => false, combatOwns: () => world.combat, getFeet: () => ({ x: 0, y: 78, z: 0 }), now: () => world.clock
+  })
+  assert.equal(ports.reachable({ position: { x: 4.9, y: 78, z: 0 } }), true, 'within 6 m of a fight that holds the input')
+  assert.equal(ports.reachable({ position: { x: 13.5, y: 78, z: 0 } }), false, 'a far archer with no known route is still left')
+  world.combat = false
+  world.clock = 2500
+  assert.equal(ports.reachable({ position: { x: 4.9, y: 78, z: 0 } }), false, 'no fight for two seconds: nobody is fighting it')
+})

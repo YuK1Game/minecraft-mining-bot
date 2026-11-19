@@ -211,7 +211,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     retreat: () => runtime.travel().retreatFromHostiles()
   })
   // Shot by an archer it cannot walk to: behind the nearest block (player-cover.js), under the expedition too (cover-ports.js).
-  const coverHold = require('./cover-ports').createCoverPorts({ expedition: { owns: () => expedition?.owns() === true, busy: () => expedition?.busy() === true }, cancelExpedition: () => cancelExpedition(), agent, agentRunning: () => agentStatus().running === true, travelStatus: () => quarry.travelStatus(), walk: target => hands.walk(target), reachable: actor => knownReachable(runtime.raw(), actor), combatOwns: () => runtime.combatOwns?.() === true })
+  const coverHold = require('./cover-ports').createCoverPorts({ expedition: { owns: () => expedition?.owns() === true, busy: () => expedition?.busy() === true }, cancelExpedition: () => cancelExpedition(), agent, agentRunning: () => agentStatus().running === true, travelStatus: () => quarry.travelStatus(), walk: target => hands.walk(target), reachable: actor => knownReachable(runtime.raw(), actor), combatOwns: () => runtime.combatOwns?.() === true, getFeet: () => feetNow() })
   const cover = createPlayerCover({
     getMode: control.get, shared, log, disposed,
     agent: coverHold.agent,
