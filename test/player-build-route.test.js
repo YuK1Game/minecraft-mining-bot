@@ -227,3 +227,30 @@ test('with empty hands on a step three over the ground, the route drops off the 
   assert.equal(drops, 1)
   assert.ok(done(h.cell()))
 })
+
+test('a refused block is remembered by the next walk: it plans around it at once, and the memory ends (live 2026-11-19 16:14 JST, 39 stops at one unseen face)', async () => {
+  const { createMemo } = require('../src/modes/player-build-walk')
+  const { planBuildRouteAsync } = require('../src/movement/build-route')
+  const build = () => { const world = flatWorld(); world.setBlock = world.set; for (let z = -3; z <= 3; z++) for (const y of [64, 65]) world.set(2, y, z, 'stone'); return world }
+  const target = { x: 4, y: 64, z: 0 }, done = cell => cell.x >= 3 && cell.y === 64
+  const wall = cell => cell.x === 2 && cell.z === 0
+  let t = 0
+  const memo = createMemo({ now: () => t })
+  const run = async () => {
+    const bot = hands(build(), { x: 0, y: 64, z: 0 }, { refuse: wall }), asked = []
+    const out = await buildWalk({ ports: bot.ports, target, done, limits: { pad: 4 }, memo, plan: options => { asked.push(new Set(options.refused)); return planBuildRouteAsync(options) } })
+    return { out, asked, bot }
+  }
+  const first = await run()
+  assert.equal(first.out.ok, true)
+  assert.ok(first.asked.length >= 2, 'the first walk learns the refused block by trying it')
+  assert.equal(first.asked[0].size, 0)
+  const second = await run()
+  assert.equal(second.out.ok, true)
+  assert.equal(second.asked.length, 1, 'the next walk plans once, around the block')
+  assert.ok(second.asked[0].size >= 1)
+  assert.equal(second.bot.did.some(step => step.kind === 'mine' && wall(step)), false)
+  t += 3 * 60000 + 1
+  const third = await run()
+  assert.equal(third.asked[0].size, 0, 'after three minutes the block is tried again')
+})

@@ -22,15 +22,28 @@ const { centreOnColumn } = require('./pillar-centre')
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const ROUNDS = 6
 const RUN = 4 // plain walking steps taken as one walk
+// What one walk learned (a block the mining check refused, a step that did not carry the Bot) is kept for the next
+// walks: every caller starts a new walk, and each new walk planned the same route through the same refused block
+// (live 2026-11-19 16:14-16:16 JST: fifteen plans a minute, 39 times stopped at the same unseen face of (-4913,63,-4990)).
+const MEMO_MS = 3 * 60000, MEMO_MAX = 256
 
-async function buildWalk ({ ports, target, done, log = () => {}, aborted = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), rounds = ROUNDS, plan = planBuildRouteAsync, limits = {} }) {
+function createMemo ({ now = Date.now, ms = MEMO_MS, max = MEMO_MAX } = {}) {
+  const kept = { refused: new Map(), barred: new Map() }
+  const live = kind => { const t = now(); for (const [key, until] of kept[kind]) if (until <= t) kept[kind].delete(key); return [...kept[kind].keys()] }
+  const note = (kind, key) => { if (kept[kind].size >= max) kept[kind].delete(kept[kind].keys().next().value); kept[kind].set(key, now() + ms) }
+  return { live, note }
+}
+const sharedMemo = createMemo()
+
+async function buildWalk ({ ports, target, done, log = () => {}, aborted = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), rounds = ROUNDS, plan = planBuildRouteAsync, limits = {}, memo = null }) {
   const { feet, block, walk } = ports
   const cell = () => { const at = feet(); return at && [at.x, at.y, at.z].every(Number.isFinite) ? { x: Math.floor(at.x), y: Math.floor(at.y + 0.001), z: Math.floor(at.z) } : null }
   const centre = at => ({ x: at.x + 0.5, y: at.y, z: at.z + 0.5 })
   const there = at => { const now = cell(); return !!now && now.x === at.x && now.y === at.y && now.z === at.z }
   const isAir = at => { const found = block(at.x, at.y, at.z); return found?.known === true && (AIR.test(found.name ?? '') || found.boundingBox !== 'block') }
-  const refused = new Set(), barred = new Set()
-  const bar = (a, b) => barred.add(`${keyOf(a.x, a.y, a.z)}>${keyOf(b.x, b.y, b.z)}`)
+  const refused = new Set(memo?.live('refused')), barred = new Set(memo?.live('barred'))
+  const refuse = at => { const key = keyOf(at.x, at.y, at.z); refused.add(key); memo?.note('refused', key) }
+  const bar = (a, b) => { const key = `${keyOf(a.x, a.y, a.z)}>${keyOf(b.x, b.y, b.z)}`; barred.add(key); memo?.note('barred', key) }
   const say = text => log(`プレイヤーモード: ${text}`)
   let moved = 0, mined = 0, stacked = 0, bridged = 0, why = null
 
@@ -40,8 +53,8 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
       if (aborted()) return false
       if (isAir(at)) continue
       const tool = ports.canMine(at) || (await ports.pick?.() && ports.canMine(at))
-      if (!tool && !ports.canDig?.(at)) { refused.add(keyOf(at.x, at.y, at.z)); why = ports.reason?.(at) ?? 'CANNOT_MINE'; return false }
-      if (!await (tool ? ports.mine(at) : ports.dig(at))) { refused.add(keyOf(at.x, at.y, at.z)); why = ports.why?.() ?? 'MINE_FAILED'; return false }
+      if (!tool && !ports.canDig?.(at)) { refuse(at); why = ports.reason?.(at) ?? 'CANNOT_MINE'; return false }
+      if (!await (tool ? ports.mine(at) : ports.dig(at))) { refuse(at); why = ports.why?.() ?? 'MINE_FAILED'; return false }
       mined++
     }
     return true
@@ -117,10 +130,10 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
 
 // The port the jobs use: the hands, with the starter house read as built
 // (safety/house-protection.js), so its floor and walls are never part of a route.
-function createBuildWalk ({ hands, getHouse = () => null, log = () => {} }) {
+function createBuildWalk ({ hands, getHouse = () => null, log = () => {}, memo = sharedMemo }) {
   const overlay = createHouseProtection(getHouse)
   const ports = { ...hands, block: (x, y, z) => overlay(hands.block(x, y, z), x, y, z) }
-  return (target, { done, aborted = () => false, limits = {} } = {}) => buildWalk({ ports, target, done, log, aborted, limits })
+  return (target, { done, aborted = () => false, limits = {} } = {}) => buildWalk({ ports, target, done, log, aborted, limits, memo })
 }
 
-module.exports = { buildWalk, createBuildWalk, ROUNDS }
+module.exports = { buildWalk, createBuildWalk, createMemo, ROUNDS }
