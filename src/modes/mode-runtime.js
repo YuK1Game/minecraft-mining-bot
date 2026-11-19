@@ -137,6 +137,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     // The tunnel it dug itself on foot, a walk to the open sky, or straight up (player-rise.js).
     return riseToSky({ ports: hands, floors: recordedFloors(shared, runtime.raw()), log, aborted: stop, sky: () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()) })
   }
+  // One memory of failed climbs for every expedition step (dragon-rise.js).
+  const tripRise = require('./dragon-rise').createTripRise({ covered: () => underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), getFeet: () => feetNow(), log })
   const recovery = createPlayerRecovery({
     getMode: control.get, shared, log, disposed, held: () => !!shared.travelNight?.cover,
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agentStatus().running === true },
@@ -341,7 +343,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
         if (cancelled() || runtime.raw().dimension !== 'overworld') throw Error('地上の長距離移動は現世でのみ開始できます。')
         // The step keeps its trip until it ends (dragon-trip.js); nothing else of the expedition starts between two legs.
         const aborted = () => cancelled() || options.aborted?.() === true
-        return expeditionTrip({ start: () => travelTo(input, { aborted }), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel(), cancelled: aborted, until: options.until, resting: () => !!shared.travelNight?.cover, log })
+        return expeditionTrip({ start: async () => { await tripRise(input?.destination ?? input ?? null, () => climbUp(cancelled)); return travelTo(input, { aborted }) }, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel(), cancelled: aborted, until: options.until, resting: () => !!shared.travelNight?.cover, log })
       }
       const actions = guardDragonOperations(operations, cancelled)
       const hands = buildHands(cancelled, actions)
