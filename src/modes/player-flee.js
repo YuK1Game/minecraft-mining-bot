@@ -8,7 +8,8 @@
 //   Not with a weapon in hand once the nearest hostile is within 3.5 m.
 //   With no weapon held (live 20:30-20:33 JST: an empty-handed Bot on a trip
 //   took two creeper blasts, 20 -> 10 -> 0, without stepping away): a creeper
-//   within 8 m at any health, and any hostile within 12 m at health 10 or less.
+//   within 8 m at any health, an archer or a witch within 12 m at any health,
+//   and any hostile within 12 m at health 10 or less.
 // - A trip in progress is cancelled first: its walk owns the movement.
 // - While it runs, combat is told to stand down (shared.playerFlee, read by the
 //   combat work guard) and the autonomy is stopped; each step is the long
@@ -35,6 +36,12 @@ const { normalizeMode } = require('./bot-mode')
 const { createControlOwner, inContact, CONTACT_M } = require('./control-owner')
 
 const FLEE_AT = 8, UNARMED_FLEE_AT = 10, CREEPER_M = 8, GAIN_M = 2
+// With no weapon an archer or a witch is run from at any health within
+// RANGED_M (live 2026-11-19 17:47:10-17:47:19 JST: respawned empty-handed, the
+// Bot came down the house's step 1.1 m from a witch at health 19; the flee
+// waited for health 10, the potions took it from 19 to 4 in six seconds, and
+// the run that started then was too late).
+const RANGED = /skeleton|stray|bogged|pillager|witch|blaze|ghast/, RANGED_M = 12
 const WEAPON = /_sword$|_axe$|^minecraft:(?:bow|crossbow|trident|mace)$/
 // Unreceived items are not a weapon in hand.
 const unarmed = inventory => !(inventory?.items ?? []).some(item => item?.count > 0 && WEAPON.test(item.name ?? ''))
@@ -49,7 +56,8 @@ function fleeWanted ({ health, totem, hostiles, position, weaponless = false, he
   for (const actor of hostiles ?? []) {
     if (!actor?.position) continue
     const distance = Math.hypot(actor.position.x - position.x, actor.position.y - (position.y - 1.62), actor.position.z - position.z)
-    if (distance <= (hurt ? 12 : /creeper/.test(String(actor.entityType ?? actor.name ?? '')) ? CREEPER_M : -1) && (!nearest || distance < nearest.distance)) nearest = { distance, name: text(actor.entityType ?? actor.name), ...(idOf(actor) != null ? { id: String(idOf(actor)) } : {}) }
+    const type = String(actor.entityType ?? actor.name ?? '')
+    if (distance <= (hurt ? 12 : /creeper/.test(type) ? CREEPER_M : RANGED.test(type) || actor.tridentThrower === true ? RANGED_M : -1) && (!nearest || distance < nearest.distance)) nearest = { distance, name: text(actor.entityType ?? actor.name), ...(idOf(actor) != null ? { id: String(idOf(actor)) } : {}) }
   }
   // Armed and already in melee contact: turning away only gives free hits
   // (live 2026-11-16 10:00 JST: with a stone sword at 6.4 health and a drowned

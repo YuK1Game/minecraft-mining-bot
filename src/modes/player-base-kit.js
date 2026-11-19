@@ -79,15 +79,63 @@ function bankableAll (inventory, { worn = null } = {}) {
 // (live 2026-11-17 19:09 JST: died with the diamond gear, respawned at the
 // house with a wooden pickaxe while the base chest held the banked diamonds).
 const TAKE = [[/^diamond$/, null], ...CAPS.filter(([pattern]) => ['coal', 'stick', 'oak_log', 'oak_planks', 'iron_ingot', 'crafting_table', 'furnace', 'chest'].some(name => pattern.test(name)))]
+// The gear and food back out too (live 2026-11-19 17:47-17:48 JST: respawned
+// in the house with nothing, walked out with bare hands, and a witch by the door
+// killed the Bot twice in a minute while the chests beside the bed held the
+// tools banked through the day). Per kind: a better tier than the best held
+// (a sword, a pickaxe), an armour piece neither worn nor held (only with the
+// worn slots received), a shield, and food up to FOOD_TAKEN with none held.
+// Chest slots carry no durability: the tier is read from the name.
+const ARMOR_TIER = { netherite: 6, diamond: 5, iron: 4, chainmail: 3, golden: 2, leather: 1, turtle: 3 }
+const tierOf = (name, table = TIER) => table[bare(name).split('_')[0]] ?? 0
+const GEAR_KINDS = [
+  { test: name => /_sword$/.test(name), tier: name => tierOf(name), better: true },
+  { test: name => /_pickaxe$/.test(name), tier: name => tierOf(name), better: true },
+  ...['helmet', 'chestplate', 'leggings', 'boots'].map(piece => ({ piece, test: name => name.endsWith(`_${piece}`) || (piece === 'helmet' && name === 'turtle_helmet'), tier: name => tierOf(name, ARMOR_TIER) })),
+  { test: name => name === 'shield', tier: () => 1 }
+]
+const FOOD_TAKEN = 16
+function gearWanted (items, worn, slots) {
+  const out = []
+  for (const kind of GEAR_KINDS) {
+    const held = items.filter(item => kind.test(bare(item.name)))
+    if (kind.piece) {
+      if (worn?.known !== true || !Array.isArray(worn.worn)) continue
+      if (held.length || worn.worn.some(entry => entry?.piece === kind.piece && entry.name)) continue
+    } else if (!kind.better && held.length) continue
+    const best = held.reduce((top, item) => Math.max(top, kind.tier(item.name)), 0)
+    const pick = slots.filter(slot => slot?.known === true && slot.count > 0 && kind.test(bare(slot.name)) && kind.tier(slot.name) > best).sort((a, b) => kind.tier(b.name) - kind.tier(a.name))[0]
+    if (pick) out.push({ chestSlot: pick.slot, name: pick.name, count: 1 })
+  }
+  if (!items.some(item => FOOD.test(bare(item.name)))) {
+    let left = FOOD_TAKEN
+    for (const slot of slots.filter(slot => slot?.known === true && slot.count > 0 && FOOD.test(bare(slot.name))).sort((a, b) => Number(/^cooked_|^bread$|^golden/.test(bare(b.name))) - Number(/^cooked_|^bread$|^golden/.test(bare(a.name))))) {
+      if (left <= 0) break
+      const count = Math.min(left, slot.count); out.push({ chestSlot: slot.slot, name: slot.name, count }); left -= count
+    }
+  }
+  return out
+}
+// What a trip to the chests is worth making for: the diamonds, the gear and the food (not fuel or sticks alone).
+const essential = name => bare(name) === 'diamond' || GEAR_KINDS.some(kind => kind.test(bare(name))) || FOOD.test(bare(name))
+// Nothing to fight or to dig with (after a death): any unopened chest at the base may hold it.
+// Armour and food alone are not: the Bot often has none, and they are taken along on any trip.
+function kitMissing (inventory) {
+  if (inventory?.known !== true || inventory.uncertain) return false
+  const names = (inventory.items ?? []).filter(item => item?.count > 0).map(item => bare(item.name))
+  return !names.some(name => /_sword$/.test(name) || (/_axe$/.test(name) && !/pickaxe$/.test(name))) || !names.some(name => /_pickaxe$/.test(name))
+}
+
 function restockable (inventory, worn, slots) {
   if (inventory?.known !== true || inventory.uncertain || !Array.isArray(slots)) return []
   const items = (inventory.items ?? []).filter(item => item?.count > 0)
-  const out = []
+  const out = gearWanted(items, worn, slots)
   for (const [pattern, cap] of TAKE) {
     const held = items.filter(item => pattern.test(bare(item.name))).reduce((sum, item) => sum + item.count, 0)
     let left = (cap ?? diamondsNeeded(items, worn)) - held
     for (const slot of slots) {
       if (left <= 0) break
+      if (out.some(want => want.chestSlot === slot?.slot)) continue
       if (slot?.known !== true || !(slot.count > 0) || !pattern.test(bare(slot.name))) continue
       const count = Math.min(left, slot.count, 64)
       out.push({ chestSlot: slot.slot, name: slot.name, count }); left -= count
@@ -96,4 +144,4 @@ function restockable (inventory, worn, slots) {
   return out
 }
 
-module.exports = { bankableAll, diamondsNeeded, restockable }
+module.exports = { bankableAll, diamondsNeeded, restockable, essential, kitMissing }

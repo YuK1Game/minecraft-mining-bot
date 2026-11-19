@@ -282,3 +282,16 @@ test('armed and unable to heal (hunger under 18, no food): the Bot does not walk
   assert.equal(healing({ hunger: null, inventory: { known: true, items: [] }, hasFood }), null)
   assert.equal(healing({ hunger: 6, inventory: null, hasFood }), null)
 })
+
+test('with no weapon, an archer or a witch is run from at any health within 12 m (live 2026-11-19 17:47 JST)', () => {
+  const witch = x => ({ entityType: 'minecraft:witch', hostile: true, position: { x, y: 64, z: 0 } })
+  const skeleton = x => ({ entityType: 'minecraft:skeleton', hostile: true, position: { x, y: 64, z: 0 } })
+  const drowned = x => ({ entityType: 'minecraft:drowned', hostile: true, tridentThrower: true, position: { x, y: 64, z: 0 } })
+  // Health 19 on the house's step, a witch 1.1 m away: the potions took it to 4 in six seconds.
+  assert.equal(fleeWanted({ health: 19, weaponless: true, hostiles: [witch(1.1)], position: here })?.name, 'witch')
+  assert.equal(fleeWanted({ health: 20, weaponless: true, hostiles: [skeleton(11)], position: here })?.name, 'skeleton')
+  assert.equal(fleeWanted({ health: 20, weaponless: true, hostiles: [drowned(10)], position: here })?.name, 'drowned')
+  assert.equal(fleeWanted({ health: 20, weaponless: true, hostiles: [skeleton(13)], position: here }), null)
+  assert.equal(fleeWanted({ health: 20, weaponless: true, hostiles: [zombie(5)], position: here }), null, 'a walker only at health 10 or less, as before')
+  assert.equal(fleeWanted({ health: 19, weaponless: false, hostiles: [witch(5)], position: here }), null, 'armed: combat has it')
+})

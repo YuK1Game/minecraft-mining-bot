@@ -24,7 +24,7 @@ const { writeDurableJson } = require('../common/durable-json')
 const { storable } = require('./player-storage-rubble')
 const { chestsNear } = require('./player-storage')
 const { underCover } = require('./player-surface')
-const { bankableAll, restockable } = require('./player-base-kit')
+const { bankableAll, restockable, essential, kitMissing } = require('./player-base-kit')
 const { baseChests, knownSlots } = require('./base-chests')
 const { createReturnRunner } = require('./return/return-runner')
 const { standsBeside } = require('./return/return-steps')
@@ -98,18 +98,22 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
   const cell = at => `${at.x},${at.y},${at.z}`
   const tried = at => ((shared.playerChestTried ??= {})[cell(at)] ?? 0) > now()
   const noteTried = at => { (shared.playerChestTried ??= {})[cell(at)] = now() + TRIED_MS }
-  const lacking = () => restockable(getInventory(), getWorn(), [{ slot: 0, known: true, name: DIAMOND, count: 64 }]).length > 0
+  const diamondsShort = () => restockable(getInventory(), getWorn(), [{ slot: 0, known: true, name: DIAMOND, count: 64 }]).length > 0
+  // Diamonds short, or the kit missing after a death (no weapon, pickaxe, food or armour: player-base-kit.js).
+  const lacking = () => diamondsShort() || kitMissing(getInventory(), getWorn())
+  // A trip is made for diamonds, gear or food a chest is known to hold, or to
+  // open a chest not opened yet while they are missing (each tried one rests TRIED_MS).
   function short () {
-    if (!lacking()) return false
-    const holds = at => { const slots = knownSlots(getBlock, hands.contents, at); return slots ? takeable(slots).some(want => want.name === DIAMOND) : null }
-    return chests().filter(isChest).some(at => holds(at) ?? true) || around().some(at => isChest(at) && (holds(at) ?? !tried(at)))
+    const diamonds = diamondsShort(), missing = diamonds || kitMissing(getInventory(), getWorn())
+    const holds = at => { const slots = knownSlots(getBlock, hands.contents, at); return slots ? takeable(slots).some(want => essential(want.name)) : null }
+    return chests().filter(isChest).some(at => holds(at) ?? (diamonds || (missing && !tried(at)))) || around().some(at => isChest(at) && (holds(at) ?? (missing && !tried(at))))
   }
   const restockWanted = () => { const position = getPosition(); return !!position && !!shared.playerBase && flat(shared.playerBase, position) <= NEAR_M && !underCover(getBlock, position) && !!hands.take && short() }
   // Why a trip is due now, or null.
   function dueReason () {
     const inventory = getInventory(), position = getPosition()
     if (!inventory || !position) return null
-    if (restockWanted()) return '拠点のチェストからダイヤと資材を取り出します'
+    if (restockWanted()) return diamondsShort() ? '拠点のチェストからダイヤと資材を取り出します' : '拠点のチェストから武器・道具・防具・食料を取り出します'
     const stacks = stacksNow()
     const banked = name => stacks.filter(stack => stack.name === name).reduce((sum, stack) => sum + stack.count, 0)
     const spare = banked(DIAMOND), precious = stacks.filter(stack => PRECIOUS.test(stack.name)).reduce((sum, stack) => sum + stack.count, 0)
