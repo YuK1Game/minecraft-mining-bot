@@ -189,3 +189,70 @@ test('the food step keeps its search trip: the hunt starts only after the trip h
   assert.equal(f.travel.status().busy, false)
   assert.ok(f.count() >= 2, 'the sheep came into view on the way; the trip ended there')
 })
+
+// What a trip tells the goal of the expedition (goal/goal-ledger.js), with the real ledger.
+function ledgerGoal () {
+  const { createGoalLedger } = require('../src/modes/goal/goal-ledger')
+  const clock = { at: 1e9 }
+  const shared = {}
+  const ledger = createGoalLedger({ shared, now: () => clock.at })
+  ledger.open('early.home_reserve')
+  ledger.look({ value: 0, scope: 'a/0' })
+  return { clock, ledger, goal: { step: key => ledger.step(key), mark: (key, value, by) => ledger.mark(key, value, by), fail: (failure, options) => ledger.fail(failure, options), spent: failure => ledger.spent(failure) }, g: () => shared.dragonGoal }
+}
+
+test('closer to the destination than ever is a mark of the goal and the arrival a step; a trip to and fro is neither', async () => {
+  const f = fakeTrip({ remaining: 200 }), l = ledgerGoal()
+  const waiting = expeditionTrip({ ...f, sleep: tickOf, goal: l.goal, destination: { x: 300, z: 40 }, getFeet: () => ({ x: 100, y: 70, z: 40 }) })
+  for (let i = 0; i < 5; i++) await tickOf()
+  const first = l.g().progressAt
+  for (const [left, moved] of [[190, false], [183, true], [200, false], [170, false], [150, true]]) {
+    l.clock.at += 1000
+    f.trip.remaining = left
+    for (let i = 0; i < 5; i++) await tickOf()
+    assert.equal(l.g().progressAt === l.clock.at, moved, `remaining ${left}`)
+  }
+  assert.ok(l.g().progressAt > first)
+  l.clock.at += 1000
+  Object.assign(f.trip, { busy: false, phase: 'arrived', remaining: 12 })
+  assert.equal((await waiting).ended, 'finished')
+  assert.deepEqual(l.g().steps, ['arrived:18,2'])
+  assert.equal(l.g().progressAt, l.clock.at)
+})
+
+test('B5: a trip that ended short three times from one place is not started from there again; from another place it is', async () => {
+  const l = ledgerGoal()
+  let feet = { x: 100, y: 70, z: 40 }, starts = 0
+  const logs = []
+  const once = () => {
+    const f = fakeTrip()
+    return expeditionTrip({ ...f, start: async () => { starts++; return {} }, sleep: tickOf, goal: l.goal, destination: { x: 300, z: 40 }, getFeet: () => feet, log: line => logs.push(line) })
+  }
+  // Refused at once and asked again every two seconds: one failure a minute at most.
+  for (let i = 0; i < 10; i++) { await once(); l.clock.at += 2000 }
+  assert.equal(starts, 10)
+  assert.equal(l.ledger.spent({ stage: 'trip', target: '18,2', code: 'TRIP_FAILED', state: { from: '6,2' } }), false)
+  l.clock.at += 60000; await once()
+  l.clock.at += 60000; await once()
+  assert.equal(starts, 12)
+  assert.match(logs.at(-1), /300, 40 への長距離移動は、この場所から 3 回とも着かなかったため、場所が変わるまで始めません/)
+  // The same step, planned again and again: nothing is started.
+  for (let i = 0; i < 5; i++) { l.clock.at += 2000; assert.equal((await once()).ended, 'spent') }
+  assert.equal(starts, 12)
+  // Another place (another 16-block cell): the way from there is another way.
+  feet = { x: 130, y: 70, z: 40 }
+  assert.notEqual((await once()).ended, 'spent')
+  assert.equal(starts, 13)
+})
+
+test('a trip the step cancelled, or one that found what it looked for, is no failure of the way', async () => {
+  const l = ledgerGoal()
+  for (const options of [{ cancelled: () => true }, { until: () => true }]) {
+    for (let i = 0; i < 4; i++) {
+      const f = fakeTrip()
+      await expeditionTrip({ ...f, ...options, sleep: tickOf, goal: l.goal, destination: { x: 300, z: 40 }, getFeet: () => ({ x: 100, y: 70, z: 40 }) })
+      l.clock.at += 61000
+    }
+  }
+  assert.equal(l.ledger.spent({ stage: 'trip', target: '18,2', code: 'TRIP_FAILED', state: { from: '6,2' } }), false)
+})

@@ -69,7 +69,8 @@ async function runDragonEarly (ctx) {
     if (state.gather) {
       const item = await acquire(state.gather.name, state.gather.count)
       if (item.done && !cancelled()) delete state.gather
-      return result(item.reason)
+      // The step's own outcome (return-result.js) goes up with the text.
+      return item.result ? { ...result(item.reason), result: item.result } : result(item.reason)
     }
     const chest = chestOf(origin)
     if (!await approachHome(ctx, chest)) return result('本拠点の予備装備チェストへ戻っています。')

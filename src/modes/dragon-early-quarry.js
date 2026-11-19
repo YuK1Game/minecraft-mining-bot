@@ -60,6 +60,8 @@ async function searchMine (ctx, name) {
   const to = { x: from.x + dx * 3, y: from.y + dy * 2, z: from.z + dz * 3 }
   const walk = createBuildWalk({ hands: ctx.hands, getHouse: () => ctx.shared.playerHouse, log: ctx.log })
   const out = await walk(to, { done: cell => same(cell, to), limits, aborted: ctx.cancelled })
+  // For the goal (goal/goal-ledger.js): deeper toward the ore's level than ever is a mark, a part of the mine not yet walked one step.
+  if (out.ok) { ctx.goal?.mark?.('mine:' + name, Math.abs(point(ctx.getFeet()).y - targetY), 4); ctx.goal?.reached?.('mine') }
   if (!out.ok && !ctx.cancelled()) state.direction = (index + 1) % 4
   return true
 }

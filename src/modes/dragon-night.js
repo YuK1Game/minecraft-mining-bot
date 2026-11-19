@@ -20,6 +20,8 @@ const { approachHome } = require('./dragon-early-home')
 
 const TRY_MS = 30000, SLEEP_MS = 12000, POLL_MS = 500
 const waiting = reason => ({ phase: 'waiting', reason })
+// In the house until morning: a wait on purpose, with a name and the ledger's limit (goal/goal-ledger.js WAITS.DAWN).
+const dawn = reason => ({ phase: 'waiting', reason, wait: { code: 'DAWN' } })
 
 async function nightHome (ctx, { clock, approach = approachHome, now = ctx.now ?? Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   const house = ctx.shared.playerHouse
@@ -30,7 +32,7 @@ async function nightHome (ctx, { clock, approach = approachHome, now = ctx.now ?
   if (!await approach(ctx, bed)) return waiting('夜のため、本拠点へ戻ります。')
   const block = ctx.getBlock(bed.x, bed.y, bed.z)
   const state = ctx.shared.dragonNight ??= {}
-  if (block?.known !== true || !/bed$/.test(block.name) || now() - (state.triedAt ?? -Infinity) < TRY_MS) return waiting('夜のため、本拠点の中で朝を待ちます。')
+  if (block?.known !== true || !/bed$/.test(block.name) || now() - (state.triedAt ?? -Infinity) < TRY_MS) return dawn('夜のため、本拠点の中で朝を待ちます。')
   state.triedAt = now()
   const use = ctx.operations.interactions
   if (use.previewUseBed(bed)?.ready !== true) {
@@ -42,15 +44,16 @@ async function nightHome (ctx, { clock, approach = approachHome, now = ctx.now ?
   if (ctx.cancelled()) return waiting('夜のため、本拠点の中で朝を待ちます。')
   try { await use.useBed(bed) } catch (error) {
     ctx.log?.(`プレイヤーモード: 本拠点のベッドを使えません（${String(error?.message ?? error).slice(0, 80)}）。家の中で朝を待ちます`)
-    return waiting('夜のため、本拠点の中で朝を待ちます。')
+    return dawn('夜のため、本拠点の中で朝を待ちます。')
   }
+  ctx.goal?.wait?.('DAWN')
   const until = now() + SLEEP_MS
   while (now() < until && night() && !ctx.cancelled()) await sleep(POLL_MS)
   const slept = !night()
   // Still night (others awake, monsters near): out of the bed, so that combat can act; the house is the shelter.
   if (!slept) { try { await use.wakeBed(bed) } catch { /* Not in the bed. */ } }
   ctx.log?.(slept ? 'プレイヤーモード: 本拠点のベッドで眠り、朝になりました（受信した時計で確認）' : 'プレイヤーモード: 本拠点のベッドを使いましたが、朝になりません。家の中で朝を待ちます')
-  return waiting(slept ? '朝になりました。作業に戻ります。' : '夜のため、本拠点の中で朝を待ちます。')
+  return slept ? waiting('朝になりました。作業に戻ります。') : dawn('夜のため、本拠点の中で朝を待ちます。')
 }
 
 module.exports = { nightHome, TRY_MS }

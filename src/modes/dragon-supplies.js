@@ -152,6 +152,8 @@ function createDragonSupplies (ctx) {
     const recovering = mode === 'recover', desired = kit === 'end' ? spare : home
     const slots = await inspect(pos)
     if (!slots) return pending('予備のラージチェスト54枠と持ち物を確認します。')
+    // What the reserve chest holds, as received just now: part of what the goal has (dragon-goal-measure.js).
+    ctx.shared.dragonReserveSeen = { counts: Object.fromEntries(desired.map(([name]) => [name, count(name, slots)])) }
     for (const [name, amount] of desired) {
       const inChest = count(name, slots), carried = held(name), equipped = count(name, worn())
       if (recovering && carried + equipped >= amount) continue

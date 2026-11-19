@@ -6,6 +6,7 @@ const { spiralPoint } = require('./house/house-sand')
 const { approachHome } = require('./dragon-early-home')
 const { threatWait, WAIT_MS } = require('./dragon-threat-wait')
 const { foodReach } = require('./dragon-food-reach')
+const { partial, failed, blocked } = require('./return/return-result')
 
 const PROVISIONS = /^minecraft:(?:bread|cooked_(?:beef|porkchop|chicken|rabbit|mutton|salmon|cod)|baked_potato)$/
 const MEAT = /^minecraft:(beef|porkchop|chicken|rabbit|mutton|salmon|cod)$/
@@ -14,7 +15,9 @@ const AIR = /^minecraft:(?:air|cave_air)$/
 const THREAT = new Set(['NEARBY_THREAT', 'THREAT_OBSERVATION_UNKNOWN'])
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
 const key = at => [at.x, at.y, at.z].join(',')
-const pending = reason => ({ done: false, reason })
+// result: what the step did, in the return's shape (return-result.js): status, code, confirmed progress and what is left.
+const pending = (reason, result = null) => result ? { done: false, reason, result } : { done: false, reason }
+const cell16 = at => at ? [at.x, at.y, at.z].map(v => Math.floor(v / 16)).join(',') : '?'
 const known = (cell, names) => cell?.known === true && names.test(cell.name)
 
 function farmSites (getBlock, center) {
@@ -96,13 +99,28 @@ async function provisionFood (ctx, wanted = 32) {
   const rawCount = items.reduce((n, item) => n + (MEAT.test(item.name) ? item.count : 0), 0)
   const seen = raw && !here ? ctx.operations.foraging.preview({ stockpile: true }) : null
   const huntReady = seen?.ready === true && !foodReach(ctx.shared, { now: ctx.now }).given(seen.target?.runtimeId)
-  if (wheat >= 3 || require('./cook-trip').cookNow({ raw: rawCount, here, huntReady })) {
+  // The steps of this goal and what is left of it, for the parent goal: gather, back to the kitchen, cook, receive.
+  const left = step => ({ step, cooked: wanted - count, raw: rawCount })
+  // The way home and the cook are each one way of the goal (goal/goal-ledger.js): three failures from the same
+  // state and it is spent, and the step gathers on instead of standing at it. Another place, another count of raw
+  // meat or another fuel is another state. One failure of the way home is a minute of not arriving from one
+  // 16-block cell, one failure of the cook is a cook that gained nothing (20 s apart at least).
+  const homeFailure = { stage: 'cook_return', code: 'HOME_NOT_REACHED', state: { from: cell16(feet) } }
+  const cookFailure = fuel => ({ stage: 'cook', code: 'COOK_NOTHING', state: { raw: rawCount, fuel: fuel ?? null } })
+  const spent = ctx.goal?.spent?.(homeFailure) === true
+  if ((wheat >= 3 || require('./cook-trip').cookNow({ raw: rawCount, here, huntReady })) && !spent) {
     const stationType = raw ? 'furnace' : 'crafting_table'
     // No fuel in hand: the fuel comes first, before the walk to the furnace (cook-fuel.js).
     const lack = raw && !wheat ? require('./cook-fuel').fuelWanted(items, Math.min(3, raw.count, wanted - count), ctx) : null
     if (lack) return pending((await ctx.supplies.acquire(lack.name, lack.count)).reason)
     const station = placements(origin).find(step => step.item === stationType).position
-    if (!await approachHome(ctx, station, { open: true })) return pending('集めた材料を本拠点で調理します。')
+    if (!await approachHome(ctx, station, { open: true })) {
+      if (ctx.cancelled()) return pending('集めた材料を本拠点で調理します。')
+      const moved = cell16(ctx.getFeet()) !== homeFailure.state.from
+      const noted = moved ? null : ctx.goal?.fail?.(homeFailure, { paceMs: 60000 })
+      if (noted?.exhausted) ctx.log?.(`プレイヤーモード: この場所から本拠点の調理場所へ ${noted.count} 回とも着けなかったため、場所が変わるまで調理に戻らず、食料集めを続けます`)
+      return pending('集めた材料を本拠点で調理します。', moved ? partial('COOK_RETURN', { remaining: left('return') }) : failed('HOME_NOT_REACHED', { remaining: left('return') }))
+    }
     if (!matches(stationType, ctx.getBlock(station.x, station.y, station.z))) return pending('調理設備のブロックを確認します。')
     const house = createHousePorts({ operations: ctx.operations, getBlock: ctx.getBlock, getInventory: ctx.runtime.inventory, disposed: ctx.cancelled, ...(ctx.sleep ? { sleep: ctx.sleep, now: ctx.now } : {}) })
     if (!raw) await house.craft('minecraft:bread', Math.min(Math.floor(wheat / 3), wanted - count, 16), station)
@@ -110,6 +128,7 @@ async function provisionFood (ctx, wanted = 32) {
       const amount = Math.min(3, raw.count, wanted - count)
       const fuel = require('./cook-fuel').cookFuel(items, amount)
       if (!fuel) return pending((await ctx.supplies.acquire('coal', 1)).reason) // raw meat beside wheat: bread first
+      if (ctx.goal?.spent?.(cookFailure(fuel.name))) return pending('本拠点のかまどで焼けないため、材料か燃料が変わるまで調理を保留します。', blocked('COOK_SPENT', { kind: 'supplies_changed' }, { remaining: left('cook') }))
       const cooked = await house.smelt(station, raw.name, amount, fuel.name, fuel.count, raw.name.replace('minecraft:', 'minecraft:cooked_'))
       // A cook that gained nothing says why (live 2026-11-18 23:15-23:19 JST: four minutes at the door with this step's
       // text and no log line).
@@ -117,10 +136,13 @@ async function provisionFood (ctx, wanted = 32) {
         const why = house.why() ?? '焼いた肉が増えません'
         const at = (ctx.now ?? Date.now)()
         if (!(at - (state.cookSaidAt ?? -Infinity) < 20000)) { state.cookSaidAt = at; ctx.log?.(`プレイヤーモード: 本拠点のかまどで調理できません（${why}。足元 ${Math.floor(feet.x)}, ${Math.floor(feet.y)}, ${Math.floor(feet.z)}）`) }
-        return pending(`本拠点のかまどで調理をやり直します。（かまど: ${why}）`)
+        const noted = ctx.goal?.fail?.(cookFailure(fuel.name), { paceMs: 20000 })
+        if (noted?.exhausted) ctx.log?.(`プレイヤーモード: 同じ材料と燃料の調理が ${noted.count} 回とも焼けなかったため、材料か燃料が変わるまで調理をやめます`)
+        return pending(`本拠点のかまどで調理をやり直します。（かまど: ${why}）`, failed('COOK_NOTHING', { remaining: left('cook'), detail: why }))
       }
+      if (cooked > 0) return pending('調理後の食料数を確認します。', partial('FOOD_COOKED', { progress: { cooked }, remaining: left('receive') }))
     }
-    return pending('調理後の食料数を確認します。')
+    return pending('調理後の食料数を確認します。', partial('FOOD_COOKING', { remaining: left('receive') }))
   }
   if (here) {
     const drops = ctx.operations.perception.entities().filter(actor => actor.kind === 'item' && actor.position && distance(actor.position, feet) < 8 && /(?:wheat|wheat_seeds)$/.test(actor.name ?? actor.item?.name ?? ''))
@@ -143,7 +165,7 @@ async function provisionFood (ctx, wanted = 32) {
     try { hunt = await forage.execute({ stockpile: true, timeoutMs: 12000 }) } finally { ctx.signal.removeEventListener('abort', stop) }
     const gave = reach.note(hunt)
     if (gave) ctx.log?.(gave.chased ? `プレイヤーモード: 食料源 ${name(hunt.target)} は歩いても当てられないため、5分あけて別の食料源を探します（${hunt.reason ?? '理由不明'}）` : `プレイヤーモード: 食料源 ${name(hunt.target)} へ歩いて近づけません（${hunt.reason ?? '理由不明'}）`)
-    return pending('狩りで得た肉を確認して調理します。')
+    return pending('狩りで得た肉を確認して調理します。', gave ? failed(gave.chased ? 'HUNT_NO_HIT' : 'HUNT_NOT_REACHED', { remaining: left('gather') }) : partial('FOOD_HUNT', { remaining: left('gather') }))
   }
   if (plan.ready) {
     const near = reach.trip(plan.target, feet)
