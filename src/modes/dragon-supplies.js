@@ -4,7 +4,7 @@ const { createStoragePorts } = require('./player-storage-ports')
 const { bestWool } = require('./house/house-needs')
 const { createHousePorts } = require('./house/house-ports')
 const { createContainerPorts } = require('./return/container-ports')
-const { approach, findCells, collect, SOURCES, MOBS } = require('./dragon-supply-gather')
+const { approach, findCells, inView, collect, SOURCES, MOBS } = require('./dragon-supply-gather')
 const { createDragonBrewing } = require('./dragon-brew')
 const { home, end, nether, spare, combined, matches, count, full, bare, homeCarryNeed, hasWorkingPick } = require('./dragon-supply-kit')
 const { provisionFood } = require('./dragon-early-food')
@@ -116,7 +116,7 @@ function createDragonSupplies (ctx) {
       if (!held(material)) await acquire(material, 1)
       else if (!held('coal') && !held('charcoal') && !held('planks')) {
         // Fuel: coal ore already in view (underground) before a walk to the trees.
-        const coalNear = findCells(ctx, b => SOURCES.coal.test(bare(b.name))).length > 0
+        const coalNear = inView(ctx, 'coal').length > 0
         await acquire(coalNear ? 'coal' : 'planks', coalNear ? 1 : 2)
       }
       else {
