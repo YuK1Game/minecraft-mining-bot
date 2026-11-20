@@ -73,6 +73,11 @@ function createDragonRuntime (ports) {
       const recovery = await recoverDragon(ctx, record)
       if (!recovery.done) return { phase: 'recovering', reason: recovery.reason }
     }
+    // No weapon in the bag: a stone sword is made of what is carried before other work (carry-weapon.js).
+    if (dim === 'overworld' && record.stage === 'early') {
+      const way = supplies.weapon()
+      if (way && !ports.threatened()) return supplies.arm(way)
+    }
     // A tree that was begun is cut down to its last log before other work (dragon-tree.js).
     if (dim === 'overworld' && (shared.playerTree || shared.playerScaffoldDebt) && !ports.threatened()) {
       const felling = await finishTree(ctx)

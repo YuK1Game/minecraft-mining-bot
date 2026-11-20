@@ -6,7 +6,7 @@
 // - small: crafted in the 2x2 grid; pickFor: the pickaxe tier that mines it.
 const ingredient = {
   iron_helmet: { iron_ingot: 5 }, iron_chestplate: { iron_ingot: 8 }, iron_leggings: { iron_ingot: 7 }, iron_boots: { iron_ingot: 4 },
-  wooden_pickaxe: { planks: 3, stick: 2 }, stone_pickaxe: { cobblestone: 3, stick: 2 },
+  wooden_pickaxe: { planks: 3, stick: 2 }, stone_pickaxe: { cobblestone: 3, stick: 2 }, stone_sword: { cobblestone: 2, stick: 1 },
   golden_boots: { gold_ingot: 4 }, iron_pickaxe: { iron_ingot: 3, stick: 2 }, iron_sword: { iron_ingot: 2, stick: 1 },
   diamond_helmet: { diamond: 5 }, diamond_chestplate: { diamond: 8 }, diamond_leggings: { diamond: 7 }, diamond_boots: { diamond: 4 },
   diamond_sword: { diamond: 2, stick: 1 }, diamond_pickaxe: { diamond: 3, stick: 2 }, shield: { iron_ingot: 1, planks: 6 },

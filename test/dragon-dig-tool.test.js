@@ -20,6 +20,7 @@ const { createDragonSupplies } = require('../src/modes/dragon-supplies')
 const { createGoalLedger } = require('../src/modes/goal/goal-ledger')
 const { count } = require('../src/modes/dragon-supply-kit')
 const { createDigWorld } = require('./helpers/dig-world')
+const { attachBench } = require('./helpers/dig-bench')
 const received = require('./fixtures/mine-tunnel-ore-in-view.json')
 
 const full = name => 'minecraft:' + name
@@ -130,39 +131,7 @@ test('with a stone pickaxe carried, the tunnel to the coal is dug with it; the i
 function live ({ sticks = 3, craftFails = false, scene = received, bag = null, world = {} } = {}) {
   const items = bag ?? [pick(0, 'iron', 53), sword(1), { slot: 2, name: full('crafting_table'), count: 1 }, { slot: 3, name: full('cobblestone'), count: 64 }, { slot: 4, name: full('cobblestone'), count: 64 }, { slot: 5, name: full('cobblestone'), count: 12 }, ...(sticks ? [{ slot: 6, name: full('stick'), count: sticks }] : [])]
   const w = createDigWorld(scene, { items, ...world })
-  const take = (name, n) => { for (const row of items) { if (!(name instanceof RegExp ? name.test(row.name) : row.name === full(name)) || !row.count) continue; const part = Math.min(n, row.count); row.count -= part; n -= part } if (n) throw new Error('材料が不足しています: ' + name) }
-  const free = () => { for (let slot = 0; ; slot++) if (!items.some(item => item.slot === slot && item.count > 0)) return slot }
-  const give = (name, n) => items.push({ slot: free(), name: full(name), count: n })
-  w.crafted = []; w.tables = []
-  let open = null
-  Object.assign(w.ctx.operations, {
-    crafting: {
-      closeContainer () { open = null },
-      openInventory: async () => { open = 'inventory' },
-      craft: async output => {
-        if (craftFails) throw new Error('サーバーから受信したレシピがありません: ' + output)
-        if (/_planks$/.test(output)) { assert.ok(open, 'a window is open'); take(new RegExp(output.replace('_planks', '_log') + '$'), 1); give(output.replace('minecraft:', ''), 4) }
-        else if (output === full('stick')) { assert.ok(open, 'a window is open'); take(/_planks$/, 2); give('stick', 4) }
-        else {
-          assert.equal(output, full('stone_pickaxe'))
-          assert.equal(open, 'table', 'a pickaxe is made at a table')
-          take('cobblestone', 3); take('stick', 2)
-          items.push({ ...pick(free(), 'stone', 131) })
-        }
-        w.crafted.push(output)
-      }
-    },
-    interactions: {
-      openCraftingTable: async at => {
-        const feet = w.ctx.getFeet()
-        assert.equal(w.getBlock(at.x, at.y, at.z).name, full('crafting_table'))
-        assert.ok(Math.hypot(at.x + 0.5 - feet.x, at.y - feet.y, at.z + 0.5 - feet.z) <= 5)
-        open = 'table'
-      },
-      // An ordinary placement: the block is received and the item leaves the bag.
-      placeBlock: async ({ position, slot }) => { const row = items.find(item => item.slot === slot && item.count > 0); row.count--; w.put(position, row.name.replace('minecraft:', '')); w.tables.push(position) }
-    }
-  })
+  attachBench(w, items, { craftFails })
   const shared = {}
   const ledger = createGoalLedger({ shared, now: () => w.at, world: () => 'w', restore: () => null })
   ledger.open('early.home_reserve')
