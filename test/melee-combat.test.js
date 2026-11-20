@@ -390,3 +390,29 @@ test('a target that stays out of reach after the hit, or is thrown far, ends the
   const c = await never.melee.engage('70', { critical: false, maxHits: 3, durationMs: 4000 })
   assert.equal(c.outcome, 'out_of_reach'); assert.equal(c.hitsRequested, 0); assert.equal(never.attacks.length, 0)
 })
+
+// Live 2026-11-20 15:39:21, 15:39:53 and 15:39:58 JST: 「戦闘スライス: mode=melee … code=WEAPON_CHANGED hits=1」
+// about 150 ms after the first swing of the slice, three times in one fight with a stone sword. Each hit wears the
+// sword, and the server's update of the held stack (its Damage tag) arrived while the next swing was being aimed.
+const worn = (networkId, stackId, damage) => ({ ...rawItem(networkId, stackId), extra: { has_nbt: 'true', nbt: { version: 1, nbt: { type: 'compound', name: '', value: { Damage: { type: 'int', value: damage } } } }, can_place_on: [], can_destroy: [] } })
+function wearing (change) {
+  let starts = 0, changed = false
+  const f = fixture({ onSleep: ({ bag }) => { if (starts >= 2 && !changed) { changed = true; change(bag) } } })
+  f.bag.set(0, worn(300, 40, 3))
+  const start = f.input.start; f.input.start = () => { starts++; return start() }
+  return f
+}
+test('the wear of the sword arriving while the next swing is aimed does not end the burst', async () => {
+  const f = wearing(bag => bag.set(0, worn(300, 40, 4)))
+  const r = await f.melee.engage('70', { critical: false, maxHits: 3, durationMs: 3000 })
+  assert.equal(r.code, 'HIT_LIMIT', r.reason)
+  assert.equal(r.hitsRequested, 3)
+  assert.equal(f.attacks[1].params.transaction.transaction_data.held_item.extra.nbt.nbt.value.Damage.value, 4, 'the swing is sent with the stack the server holds now')
+  for (let i = 1; i < f.attacks.length; i++) assert.ok(f.attacks[i].at - f.attacks[i - 1].at < 300, String(f.attacks[i].at - f.attacks[i - 1].at))
+})
+test('another item in the hand while a swing is aimed still ends the engagement', async () => {
+  const f = wearing(bag => bag.set(0, worn(301, 41, 0)))
+  const r = await f.melee.engage('70', { critical: false, maxHits: 3, durationMs: 3000 })
+  assert.equal(r.code, 'WEAPON_CHANGED', r.reason)
+  assert.equal(f.attacks.length, 1)
+})
