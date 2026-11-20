@@ -306,16 +306,19 @@ test('a very close creeper uses a bounded short search and still validates each 
 
 test('fresh damage observed inside the captured Guard read aborts synchronously before another mutation, and stale-generation callbacks cannot start or stop new actors', async t => {
   const f = prepare(t); const actor = f.guards[0]; const old = f.safeties[0].options
+  const captured = context(f)
   actor.work = async (nodes, bounds) => { f.raw.health = 19; actor.options.getState(); assert.equal(bounds.signal.aborted, true); return { escaped: true, arrived: true } }
-  await assert.rejects(old.escape(context(f)), /damage/)
+  await assert.rejects(old.escape(captured), /damage/)
   assert.equal(f.movements[0].starts.length, 0)
   assert.equal(f.combats[0].calls.length, 0)
   assert.ok(actor.stops.includes('Idle escape interrupted'))
   await f.runtime.onSpawn()
-  const nextStops = f.guards[1].stops.length
-  await assert.rejects(async () => old.escape(context(f)), /スポーン前/)
+  const mutations = () => [f.guards[1].calls.length, f.guards[1].stops.length, f.movements[1].starts.length, f.movements[1].stops.length, f.combats[1].calls.length, f.combats[1].cancel.length]
+  const before = mutations(), stale = { code: 'SAFETY_GENERATION_CHANGED', cancelled: true }
+  assert.throws(() => old.getState(), stale)
+  await assert.rejects(async () => old.escape(captured), stale)
   await old.cancelOwned({ operationId: 7, reason: 'late cancel' })
-  assert.equal(f.guards[1].stops.length, nextStops)
+  assert.deepEqual(mutations(), before, 'stale callbacks cannot start or stop any new-generation actor')
 })
 
 test('escape reports a deadline separately from observed damage', async t => {
