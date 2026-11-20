@@ -6,7 +6,8 @@
 // Stand-in, and only this: the server. It agrees with every predicted step. A block is mined when one of its faces is
 // open, within reach, and in a straight line of open cells from the eye; its drop is in the inventory at once. Leaves
 // are refused (leaves are never mined), and logs too unless the scene says `logs: true` (player mode takes logs).
-// The long trip is recorded, not walked. Its success is not the game's.
+// The long trip is recorded, not walked. A placement is answered where a side of the cell is solid (w.placed).
+// Its success is not the game's.
 // The hand: `equip` swaps the row into the selected slot (slot 0), as the inventory screen does. A block that needs a
 // pickaxe is refused with a lesser tool in the hand (the mining check's own line); a tool in the hand loses a use a
 // block (a sword two). w.uses counts them by tool, w.swaps the swaps.
@@ -44,7 +45,7 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
   const navigator = createNavigator({ world: { getBlock, revision: () => revision } })
   let state = navigator.physics.fromServer({ position: { x: received.feet.x, y: received.feet.y + 1.62, z: received.feet.z }, rotation: { yaw: 0, pitch: 0 }, gameMode: 'survival' })
   for (let i = 0; i < 20; i++) state = navigator.physics.step(state, {})
-  const w = { lines: [], minedNames: [], trips: [], failures: [], uses: {}, swaps: 0, at: 0, getBlock }
+  const w = { lines: [], minedNames: [], placed: [], trips: [], failures: [], uses: {}, swaps: 0, at: 0, getBlock }
   const SELECTED = 0
   const inHand = () => items.find(item => item.slot === SELECTED && item.count > 0)
   const tierInHand = () => TIERS[/^minecraft:(\w+)_pickaxe$/.exec(inHand()?.name ?? '')?.[1]] ?? 0
@@ -88,6 +89,17 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
       if (!route.ready) throw new Error(route.reason)
       const stepper = navigator.createStepper(route, state)
       for (let i = 0; i < 400; i++) { const frame = stepper.next(); state = frame.predictedState; if (frame.phase !== 'moving') break }
+    } },
+    // An ordinary placement: into a received open cell with a solid block on one of its sides, within reach. The
+    // block is received and the item leaves the bag.
+    interactions: { placeBlock: async ({ position, slot }) => {
+      const row = items.find(item => item.slot === slot && item.count > 0)
+      const eye = { x: state.position.x, y: state.position.y + 1.62, z: state.position.z }
+      const solid = ([dx, dy, dz]) => { const found = getBlock(position.x + dx, position.y + dy, position.z + dz); return found.known === true && found.boundingBox === 'block' }
+      if (!row || getBlock(position.x, position.y, position.z).boundingBox !== 'empty' || !FACES.some(solid) || Math.hypot(position.x + 0.5 - eye.x, position.y + 0.5 - eye.y, position.z + 0.5 - eye.z) > 5) throw new Error('設置できません。')
+      row.count--
+      w.put(position, row.name.replace('minecraft:', ''))
+      w.placed.push({ ...position, name: row.name.replace('minecraft:', '') })
     } },
     mining: {
       preview: ([cell]) => besideLiquid(cell) ? { ready: false, errors: [BESIDE_LIQUID] } : !visible(cell) ? { ready: false, errors: [REFUSED] } : lesser(cell) ? { ready: false, errors: [LESSER(cell)] } : { ready: true },

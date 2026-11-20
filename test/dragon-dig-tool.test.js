@@ -228,7 +228,8 @@ test('a stone pickaxe that cannot be made is left after three tries, and the dig
 // Before (main fb6ec4c, this scene): 12 looks dig 63 blocks, all 63 with the iron pickaxe; nothing is made.
 // After: one log, planks, sticks, the stone pickaxe (looks 1-4); 32 blocks with it in the next 8 looks, the iron
 // pickaxe one use (the log, with it in the hand).
-// Not covered: the tree is left with the rest of its trunk (the expedition takes single logs, as for its fuel).
+// Only the supplies are looked at here: the tree that log belongs to is finished by the runtime's step before the
+// next work (dragon-tree.js, test/dragon-whole-tree.test.js).
 const forest = require('./fixtures/tree-top-stuck.json')
 const within = (x, z) => x >= forest.x0 && x <= forest.x0 + 14 && z >= forest.z0 && z <= forest.z0 + 14
 function surface ({ underground = false } = {}) {

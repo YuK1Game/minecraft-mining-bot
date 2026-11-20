@@ -168,6 +168,28 @@ async function cleanScaffold ({ record, ports }) {
 
 const REASONS = { NO_DIRT: '足場にする土を用意できません', TRUNK_NOT_REACHED: '幹のあった場所に立てません', TRUNK_BLOCKED: '幹の根元の原木を伐れません', TREE_TOO_FAR: '木のそばまで歩けません', TOO_HIGH: `足場は${MAX_STEPS}段までです`, NO_HEADROOM: '頭の上が空いていません', INTERRUPTED: '中断しました', LOGS_OUT_OF_REACH: '足場からも届きません', TRUNK_FLOOR_UNCONFIRMED: '幹の下の地面を確認できません' }
 
+// One tree handed to the scaffold: the job, its log lines, and what it still owes afterwards (shared.playerScaffoldDebt).
+// The same for the ordinary work (the tick below) and for the expedition (dragon-tree.js).
+async function scaffoldTree ({ tree, shared, ports, aborted = () => false, log = () => {}, now = Date.now }) {
+  const record = tree.scaffold ??= { holes: [], placed: 0 }
+  log(`プレイヤーモード: 地面から届かない原木のために足場を積みます`)
+  let result = null
+  try { result = await runScaffold({ tree, record, ports, aborted, log }) } finally { Object.assign(tree, { needsScaffold: false, scaffolded: true, misses: 0, progressAt: now() }) }
+  log(result.ok ? `プレイヤーモード: 足場から原木 ${result.cut} 個を伐り、木を伐り終えました` : `プレイヤーモード: 足場から原木 ${result.cut} 個を伐りました。${result.left ?? '?'} 個は残ります（${REASONS[result.reason] ?? String(result.reason).slice(0, 80)}${result.detail ? `: ${String(result.detail).slice(0, 80)}` : ''}）`)
+  if (result.cleaned === false) { shared.playerScaffoldDebt = { column: record.column, ground: record.ground, holes: record.holes, placed: record.placed, tries: 0, triedAt: now() }; log(`プレイヤーモード: 足場の片付けが残りました（柱 ${record.placed} 段・穴 ${record.holes.length} か所）。あとでやり直します`) } else if (result.cleaned) log('プレイヤーモード: 足場のブロックを回収しました')
+  return result
+}
+
+// A pillar or a hole a job left behind: three more tries, thirty seconds apart.
+const debtDue = (shared, now = Date.now) => { const debt = shared.playerScaffoldDebt; return !!debt && (debt.tries ?? 0) < 3 && now() - (debt.triedAt ?? 0) > 30000 }
+async function settleDebt ({ shared, ports, log = () => {}, now = Date.now }) {
+  const debt = shared.playerScaffoldDebt
+  debt.tries = (debt.tries ?? 0) + 1; debt.triedAt = now()
+  const cleaned = await cleanScaffold({ record: debt, ports })
+  if (cleaned) { delete shared.playerScaffoldDebt; log('プレイヤーモード: 残っていた足場を片付けました') } else if (debt.tries >= 3) log(`プレイヤーモード: 足場を片付けられませんでした（柱 ${debt.placed} 段・穴 ${debt.holes.length} か所、(${debt.column.x}, ${debt.ground}, ${debt.column.z})）`)
+  return cleaned
+}
+
 // Runs the job when the tree plan asks for it (tree.needsScaffold), with the
 // autonomy stopped, and plays on afterwards.
 function createPlayerScaffold ({ getMode, shared, agent, ports, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
@@ -179,26 +201,15 @@ function createPlayerScaffold ({ getMode, shared, agent, ports, blocked = () => 
 
   async function tick () {
     if (busy || !live() || blocked()) return null
-    const tree = shared.playerTree, debt = shared.playerScaffoldDebt
-    const owed = !!debt && (debt.tries ?? 0) < 3 && now() - (debt.triedAt ?? 0) > 30000
-    if (!tree?.needsScaffold && !owed) return null
+    const tree = shared.playerTree
+    if (!tree?.needsScaffold && !debtDue(shared, now)) return null
     busy = true
     try {
       agent.stop(reason = tree?.needsScaffold ? '足場を積んで上の原木を伐っています。' : '足場のブロックを回収しています。')
       await settle()
       const all = { ...ports, sleep }
-      if (tree?.needsScaffold) {
-        const record = tree.scaffold ??= { holes: [], placed: 0 }
-        log(`プレイヤーモード: 地面から届かない原木のために足場を積みます`)
-        const result = await runScaffold({ tree, record, ports: all, aborted: () => !live() || blocked(), log })
-        Object.assign(tree, { needsScaffold: false, scaffolded: true, misses: 0, progressAt: now() })
-        log(result.ok ? `プレイヤーモード: 足場から原木 ${result.cut} 個を伐り、木を伐り終えました` : `プレイヤーモード: 足場から原木 ${result.cut} 個を伐りました。${result.left ?? '?'} 個は残ります（${REASONS[result.reason] ?? String(result.reason).slice(0, 80)}${result.detail ? `: ${String(result.detail).slice(0, 80)}` : ''}）`)
-        if (result.cleaned === false) { shared.playerScaffoldDebt = { column: record.column, ground: record.ground, holes: record.holes, placed: record.placed, tries: 0, triedAt: now() }; log(`プレイヤーモード: 足場の片付けが残りました（柱 ${record.placed} 段・穴 ${record.holes.length} か所）。あとでやり直します`) } else if (result.cleaned) log('プレイヤーモード: 足場のブロックを回収しました')
-      } else {
-        debt.tries = (debt.tries ?? 0) + 1; debt.triedAt = now()
-        const cleaned = await cleanScaffold({ record: debt, ports: all })
-        if (cleaned) { delete shared.playerScaffoldDebt; log('プレイヤーモード: 残っていた足場を片付けました') } else if (debt.tries >= 3) log(`プレイヤーモード: 足場を片付けられませんでした（柱 ${debt.placed} 段・穴 ${debt.holes.length} か所、(${debt.column.x}, ${debt.ground}, ${debt.column.z})）`)
-      }
+      if (tree?.needsScaffold) await scaffoldTree({ tree, shared, ports: all, aborted: () => !live() || blocked(), log, now })
+      else await settleDebt({ shared, ports: all, log, now })
       return true
     } catch (error) {
       log(`プレイヤーモード: 足場の処理に失敗 ${String(error?.message ?? error).slice(0, 120)}`)
@@ -213,4 +224,4 @@ function createPlayerScaffold ({ getMode, shared, agent, ports, blocked = () => 
   return { tick, status: () => ({ active: busy, reason: busy ? reason : null }) }
 }
 
-module.exports = { createPlayerScaffold, runScaffold, cleanScaffold, scaffoldPlan, dirtSpots, MAX_STEPS }
+module.exports = { createPlayerScaffold, scaffoldTree, settleDebt, debtDue, runScaffold, cleanScaffold, scaffoldPlan, dirtSpots, MAX_STEPS }

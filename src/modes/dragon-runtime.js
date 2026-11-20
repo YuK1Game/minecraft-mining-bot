@@ -11,6 +11,7 @@ const { recoverDragon } = require('./dragon-recovery')
 const { createDragonSupplies } = require('./dragon-supplies')
 const { nightHome } = require('./dragon-night')
 const { heal } = require('./dragon-heal')
+const { finishTree } = require('./dragon-tree')
 const { createProgress } = require('./dragon-progress')
 const { createGoalLedger } = require('./goal/goal-ledger')
 const { goalKey, measure } = require('./dragon-goal-measure')
@@ -71,6 +72,11 @@ function createDragonRuntime (ports) {
     if (record.recovery || record.lootRecovery) {
       const recovery = await recoverDragon(ctx, record)
       if (!recovery.done) return { phase: 'recovering', reason: recovery.reason }
+    }
+    // A tree that was begun is cut down to its last log before other work (dragon-tree.js).
+    if (dim === 'overworld' && (shared.playerTree || shared.playerScaffoldDebt) && !ports.threatened()) {
+      const felling = await finishTree(ctx)
+      if (felling) return felling
     }
     // A held goal keeps the steps above (night, room in the pack, health, recovery) and nothing else. Only in the
     // overworld: in the Nether and in the End standing still is the danger, the work goes on and the hold only

@@ -6,6 +6,7 @@ const { approachOre, searchMine, coolLava, lake, DEPTH } = require('./dragon-ear
 const { roam } = require('./supply-roam')
 const { digTool } = require('./dig-tool')
 const { cellRest } = require('./supply-cell-rest')
+const { treeAt, beginTree } = require('./dragon-tree')
 
 const SOURCES = {
   raw_iron: /^(?:deepslate_)?iron_ore$/, raw_gold: /^(?:deepslate_)?gold_ore$/,
@@ -96,7 +97,12 @@ async function collect (ctx, name) {
     const rested = cellRest(ctx.shared, ctx.runtime.raw().dimension, { now: ctx.now })
     const far = cell => { const feet = ctx.getFeet(); return feet ? Math.hypot(cell.x + 0.5 - feet.x, cell.y - feet.y, cell.z + 0.5 - feet.z) : Infinity }
     const cells = findCells(ctx, (b, p) => re.test(bare(b.name)) && !b.protected && !b.protectionSource && !protectedAt(ctx, p) && !rested.resting(p))
-    for (const cell of cells.slice(0, 6)) {
+    const skip = (b, p) => b.protected || !!b.protectionSource || protectedAt(ctx, p)
+    for (const seen of cells.slice(0, 6)) {
+      // A log is taken as the first of its tree (dragon-tree.js): the lowest one standing, walked to at the trunk's
+      // foot (the nearest stand at the height of a log in the crown is on the leaves).
+      const trunk = name === 'log' && ctx.runtime.raw().dimension === 'overworld' ? treeAt(ctx.getBlock, seen, skip) : null
+      const cell = trunk?.find(p => !rested.resting(p)) ?? seen
       const block = ctx.getBlock(cell.x, cell.y, cell.z)
       // End portal frames are not candidates. Obsidian already in a lit frame
       // is never part of the collection route.
@@ -121,7 +127,7 @@ async function collect (ctx, name) {
         if (ctx.cancelled() || !rested.miss(cell, before, far(cell))) return
         ctx.log?.(`プレイヤーモード: ${bare(block.name)} (${cell.x}, ${cell.y}, ${cell.z}) を掘れなかったため、しばらくほかを先に試します${ctx.hands.reason?.(target) ? `（${String(ctx.hands.reason(target)).slice(0, 60)}）` : ''}`)
       }
-      await approach(ctx, target)
+      await approach(ctx, trunk ? { x: target.x, y: trunk[0].y, z: target.z } : target)
       if (ctx.cancelled()) return
       if (!ctx.hands.canMine(target)) {
         if (!oreSearch || !await approachOre(ctx, target) || ctx.cancelled()) { left(); continue }
@@ -130,7 +136,10 @@ async function collect (ctx, name) {
         if (picked) await hold()
         if (!ctx.hands.canMine(target)) { left(); continue }
       }
-      if (await ctx.hands.mine(target) && !ctx.cancelled()) {
+      // With its first log mined the tree is the work until it is down (dragon-tree.js).
+      const mined = await ctx.hands.mine(target)
+      if (mined && trunk) beginTree(ctx, trunk)
+      if (mined && !ctx.cancelled()) {
         if (standable(ctx.getBlock,target.x,target.y,target.z)) await ctx.walk({x:target.x+0.5,y:target.y,z:target.z+0.5})
         return
       }
