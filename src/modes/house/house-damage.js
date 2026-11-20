@@ -21,9 +21,10 @@
 // The repair's clock:
 // - A repair that runs GIVE_UP_MS is held: the rest of the play is not stopped by a block that cannot be
 //   placed. `done` stays false. The hold says what was missing and which materials were short.
-// - A held repair runs again when its time is up (AGAIN_MS), when the house is received whole for the first
-//   time since, when the count of missing steps has changed, or when a kind of material that was short is all
-//   there (house-repair.js `review`).
+// - A held repair runs again when its time is up (AGAIN_MS), when the count of missing steps has changed, when a
+//   kind of material that was short is all there, or, for a hold taken with nothing observed in this life, when
+//   the house is received whole for the first time (house-repair.js `review`). A hold taken out of sight of a
+//   house this life has observed is measured by that observation: the same count seen again is not a reason.
 // - A repair a job asked for (one thing of the house, house-repair.js `needHouse`) is held as soon as that
 //   thing stands again, so the job goes on; the walls wait for the next look.
 const { placements, remaining, counts } = require('./house-blueprint')
@@ -102,9 +103,14 @@ function createHouseDamage ({ shared, getBlock, getFeet, getInventory = () => nu
     if (repair.state === 'running') {
       const met = !!repair.need && facility(getBlock, house.origin, repair.need).state === 'standing'
       if (!met && now() - repair.since < GIVE_UP_MS) return null
-      const next = hold(house, { now: now(), missing: left ? left.length : null, short: shortNow(house, left), met })
+      // Out of sight at this moment: what this life last observed of the house is what the hold is measured by.
+      // (A hold taken blind is looked at again at the first sight of the house. Three holds taken a few steps
+      // outside NEAR_M were each looked at again within two minutes, with the count they had already seen.)
+      const last = shared.playerHouseSeen?.state === 'damaged' ? shared.playerHouseSeen.missing : null
+      const missing = left ? left.length : last
+      const next = hold(house, { now: now(), missing, short: shortNow(house, left), met })
       write(next)
-      const seen = left ? `残り ${left.length} 手` : '家は未確認'
+      const seen = left ? `残り ${left.length} 手` : missing !== null ? `最後に見た時は残り ${missing} 手` : '家は未確認'
       const thing = repair.need ? `家の${LABEL[repair.need]}` : '家'
       say(met ? `${thing}が直ったため、残りの修理は保留して作業に戻ります（${seen}。見直し: ${minutes(AGAIN_MS)} 分後、または材料・家の様子が変わった時）`
         : `${thing}の修理が ${minutes(GIVE_UP_MS)} 分で終わらないため保留します（観測は破損のまま: ${seen}。見直し: ${minutes(AGAIN_MS)} 分後、または材料・家の様子が変わった時）`)
