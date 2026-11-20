@@ -42,11 +42,16 @@ const toolNeeded = name => { const rule = blockRule(name); return rule?.kind ===
 
 // What a stone pickaxe is made of, for the expedition to make one for digging (dragon-supplies.js).
 const STONE_TIER = 2
-// True when rock would be dug with a pickaxe better than stone, and a stone one can be made from what is carried.
+// When rock would be dug with a pickaxe better than stone, and the cobblestone for a stone one is carried:
+// 'make' with the wood for its sticks carried as well, 'wood' with none (the caller fetches a log where that is a
+// short walk). Otherwise false.
+// Live 2026-11-20 17:50:41-17:56:30 JST (main fb6ec4c): the bag held 299 cobblestone and a crafting table, no stick,
+// plank or log, and a stone pickaxe with two uses. The stairs down from y 66 to y 44 (123 blocks) and the shaft back
+// up (24 levels) were dug with the iron pickaxe: 177 uses at 17:51:03, 28 at 17:56:06.
 function diggerWanted (items, held) {
   const now = digTool(items)
-  if (!now || now.tier <= STONE_TIER) return false
-  return held('cobblestone') >= 3 && (held('stick') >= 2 || held('planks') >= 2 || held('log') >= 1)
+  if (!now || now.tier <= STONE_TIER || held('cobblestone') < 3) return false
+  return held('stick') >= 2 || held('planks') >= 2 || held('log') >= 1 ? 'make' : 'wood'
 }
 
 module.exports = { digTool, toolNeeded, diggerWanted }
