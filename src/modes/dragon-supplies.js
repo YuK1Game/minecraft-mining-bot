@@ -15,8 +15,13 @@ const { createOpenStand } = require('./open-stand')
 const { ingredient, smelted, small, pickFor } = require('./dragon-supply-recipes')
 const { diggerWanted } = require('./dig-tool')
 const { openAbove } = require('./player-surface')
+const { weaponWanted } = require('./carry-weapon')
 const DIGGER = { stage: 'digger', target: 'stone_pickaxe', code: 'NOT_MADE' }
 const WOOD = { stage: 'digger', target: 'log', code: 'NOT_FOUND' }
+const SWORD = { stage: 'weapon', target: 'stone_sword', code: 'NOT_MADE' }
+const SWORD_WOOD = { stage: 'weapon', target: 'log', code: 'NOT_FOUND' }
+const DIGGER_SAYS = { flag: 'dragonDiggerWood', wood: '岩を掘る石のツルハシの棒がないため、掘り始める前に原木を1本取ります（良いツルハシは、それが要るブロックに残します）', made: '岩を掘るための石のツルハシを作りました（良いツルハシは、それが要るブロックに残します）', none: '石のツルハシにする木が近くに見つからないため、持っているツルハシで掘り進みます' }
+const SWORD_SAYS = { flag: 'dragonSwordWood', wood: '武器がなく、石の剣にする木も足りないため、先に原木を1本取ります', made: '武器がないため、石の剣を作りました', none: '石の剣にする木が近くに見つからないため、武器なしで作業を続けます' }
 const pending = reason => ({ done: false, reason })
 const done = reason => ({ done: true, reason })
 
@@ -100,14 +105,35 @@ function createDragonSupplies (ctx) {
   // is fetched where that is a short walk: one in view, or the open sky overhead (a tree is looked for as any other
   // material is; a head under ground, a roof or unreceived cells is not the open sky). Underground with no log in
   // view nothing is fetched and the digging goes on with what is carried. A way that failed three times is left.
+  // The way open now to a stone tool of the Bot's own making: `made` with its parts carried, `wood` where a log is
+  // a short walk, null where neither is or the way failed three times.
+  const sky = () => { const feet = ctx.getFeet(); return !!feet && openAbove(getBlock, Math.floor(feet.x), Math.floor(feet.y + 0.001), Math.floor(feet.z)) }
+  const wayTo = (want, made, wood) => want === 'make' ? (ctx.goal?.spent?.(made) === true ? null : made) : ctx.goal?.spent?.(wood) === true ? null : inView(ctx, 'log').length > 0 || sky() ? wood : null
   function digger () {
     const want = diggerWanted(rows(), held)
-    if (!want || !(held('crafting_table') || bench.tableNear())) return null
-    if (want === 'make') return ctx.goal?.spent?.(DIGGER) === true ? null : DIGGER
-    if (ctx.goal?.spent?.(WOOD) === true) return null
-    const feet = ctx.getFeet()
-    const sky = () => !!feet && openAbove(getBlock, Math.floor(feet.x), Math.floor(feet.y + 0.001), Math.floor(feet.z))
-    return inView(ctx, 'log').length > 0 || sky() ? WOOD : null
+    return want && (held('crafting_table') || bench.tableNear()) ? wayTo(want, DIGGER, WOOD) : null
+  }
+  // A stone sword when no weapon is carried (carry-weapon.js), by the same ways.
+  function weapon () {
+    const want = getInventory() ? weaponWanted(rows(), held, { table: () => held('crafting_table') > 0 || !!bench.tableNear() }) : false
+    return want ? wayTo(want, SWORD, SWORD_WOOD) : null
+  }
+  // One try at such a tool. A look that brought it no nearer (no log, no stick made, no table put down) is a failed
+  // try; after three the way is left. True once the tool is in the bag.
+  async function own (item, way, wood, says) {
+    const parts = () => [held(item), held('stick'), held('planks'), held('log'), held('crafting_table'), !!bench.tableNear()].join()
+    const before = held(item), was = parts()
+    if (way === wood && !ctx.shared[says.flag]) { ctx.shared[says.flag] = true; ctx.log?.('プレイヤーモード: ' + says.wood) }
+    await acquire(item, before + 1)
+    if (held(item) > before) { delete ctx.shared[says.flag]; ctx.log?.('プレイヤーモード: ' + says.made); return true }
+    if (!cancelled() && parts() === was && ctx.goal?.fail?.(way, { paceMs: way === wood ? 20000 : 15000 })?.exhausted && way === wood) { delete ctx.shared[says.flag]; ctx.log?.('プレイヤーモード: ' + says.none) }
+    return false
+  }
+  // The step of the runtime before other work (dragon-runtime.js): null with a weapon carried or no way to one.
+  async function arm (way = weapon()) {
+    if (!way) return null
+    await own('stone_sword', way, SWORD_WOOD, SWORD_SAYS)
+    return { phase: 'working', reason: '武器がないため、石の剣を用意しています。' }
   }
   async function fill (name) {
     const vessel = name === 'water_bucket' ? 'bucket' : 'glass_bottle'
@@ -157,16 +183,7 @@ function createDragonSupplies (ctx) {
       // Rock on the way to ore is dug with a stone pickaxe (dig-tool.js); the better one is kept for what needs it.
       // A look that brought it no nearer (no log, no stick made, no table put down) is a failed try; after three
       // it is left, and the digging goes on.
-      const way = digger()
-      const parts = () => [held('stone_pickaxe'), held('stick'), held('planks'), held('log'), held('crafting_table'), !!bench.tableNear()].join()
-      const before = held('stone_pickaxe'), was = parts()
-      if (way === WOOD && !ctx.shared.dragonDiggerWood) { ctx.shared.dragonDiggerWood = true; ctx.log?.('プレイヤーモード: 岩を掘る石のツルハシの棒がないため、掘り始める前に原木を1本取ります（良いツルハシは、それが要るブロックに残します）') }
-      await acquire('stone_pickaxe', before + 1)
-      if (held('stone_pickaxe') > before) { delete ctx.shared.dragonDiggerWood; ctx.log?.('プレイヤーモード: 岩を掘るための石のツルハシを作りました（良いツルハシは、それが要るブロックに残します）') }
-      else if (!cancelled() && parts() === was && ctx.goal?.fail?.(way, { paceMs: way === WOOD ? 20000 : 15000 })?.exhausted && way === WOOD) {
-        delete ctx.shared.dragonDiggerWood
-        ctx.log?.('プレイヤーモード: 石のツルハシにする木が近くに見つからないため、持っているツルハシで掘り進みます')
-      }
+      await own('stone_pickaxe', digger(), WOOD, DIGGER_SAYS)
     } else if (SOURCES[name] || MOBS[name]) await collect(ctx, name)
     else return { ...pending(full(name) + ' の回収を待っています。'), missing: { name, count: target } }
     const current = held(name)
@@ -284,6 +301,6 @@ function createDragonSupplies (ctx) {
     const actual = getBlock(cell.x, cell.y + 1, cell.z)
     return actual?.known === true && actual.name === 'minecraft:water' && actual.properties?.liquid_depth === 0 ? done('水源を確認しました。') : pending('注いだ水源の受信を待ちます。')
   }
-  return { acquire, prepare, reserve, waterAt, store:(p,n,c) => bank(p,n,c,false), withdraw:(p,n,c) => bank(p,n,c,true), ...brewing }
+  return { acquire, prepare, reserve, waterAt, weapon, arm, store:(p,n,c) => bank(p,n,c,false), withdraw:(p,n,c) => bank(p,n,c,true), ...brewing }
 }
 module.exports = { createDragonSupplies }
