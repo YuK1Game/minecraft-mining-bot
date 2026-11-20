@@ -152,7 +152,17 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
   const cornered = (e, scope) => scope != null && (corneredCreepers.get(targetKey(scope, e)) ?? 0) > clock()
   // A cornered creeper inside the cornered strike band is fought at any health: there is nowhere to go, and stopping only waits for the blast.
   const corneredStrike = (e, scope, range) => e?.entityType === 'minecraft:creeper' && cornered(e, scope) && range <= (profiles.CREEPER_CORNERED_STRIKE ?? 4.5)
-  function crowdedLowHp (s) { return updateHpRetreat(s) && closeHostiles(s) >= 2 && !allActors().some(e => eligible(e, s) && distance(s.position, bodyAim(e)) <= MELEE_SELECT_REACH) }
+  // "In reach" holds through the knockback of a hit, the Bot's own or the one it took (knockback-reach.js). Looked
+  // at on every poll, low health or not: the hit that takes the health under the line is the one that throws.
+  const contact = require('./knockback-reach').createContactHold({ reach: MELEE_SELECT_REACH, clock })
+  let swings = 0
+  // The swings of the sword burst in flight (its count starts again with each burst).
+  function noteSwings () { try { const sent = Number(melee.snapshot().hitsRequested ?? 0); if (sent > swings) contact.swung(); swings = sent } catch { /* the look below still counts */ } }
+  function crowdedLowHp (s) {
+    noteSwings()
+    const touching = contact.touching(allActors().filter(e => eligible(e, s)).map(e => distance(s.position, bodyAim(e))))
+    return updateHpRetreat(s) && closeHostiles(s) >= 2 && !touching
+  }
   function provokedBy (s, e) {
     if (typeof provoked === 'function') return provoked(s, e) === true
     const at = Number(getRecentDamageAt?.() ?? NaN)
@@ -550,6 +560,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       const sliceHits = hitLimit ?? (kite ? 1 : null)
       const result = await watched(lease, `engaging_${g.mode}`, signal => controller.engage(lease.target.runtimeId, { signal, durationMs: Math.min(controllerSliceMs, remaining), ...(sliceHits != null ? { maxHits: sliceHits } : {}), ...(g.mode === 'melee' || useEmergency ? { critical: false } : {}), ...(useEmergency ? emergencyReach : {}) /* spam plain hits (Bedrock has no attack cooldown); a jump crit made every hit wait ~1s for its descent */ }), controller)
       if (g.mode === 'melee') lease.meleeHits = (lease.meleeHits ?? 0) + Number(result.value?.hitsRequested ?? 0)
+      if (g.mode === 'melee' && Number(result.value?.hitsRequested ?? 0) > swings) contact.swung() // a swing no poll saw: the burst ended within one
       if (Number(result.value?.hitsRequested ?? 0) > 0) { lease.closeHolds = 0; lease.closeHolding = false }
       combatLog(lease, `戦闘スライス: mode=${g.mode} distance=${g.distance.toFixed(1)}m code=${result.value?.code ?? (result.outcome?.code ?? (result.error ? 'error' : '?'))} hits=${result.value?.hitsRequested ?? 0} shots=${result.value?.shotsConfirmed ?? 0}/${result.value?.shotsRequested ?? 0}${result.error ? ' error=' + String(result.error.message ?? result.error).slice(0, 80) : ''}`)
       if (kite && !result.outcome && !result.error && Number(result.value?.hitsRequested ?? 0) > 0 && !terminalResult(lease, result.value)) {

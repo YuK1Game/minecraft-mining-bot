@@ -35,7 +35,14 @@ const EMERGENCY_REACH = 3.5 // cornered creeper, no approach path: swing from wh
 // for the target to come back for as long as its hit would not count anyway
 // (about the 0.5 s a hurt mob takes no damage), while it is within
 // KNOCKBACK_M beyond reach; farther or longer, it ends as before.
-const KNOCKBACK_MS = 600, KNOCKBACK_M = 1.5
+const { KNOCKBACK_MS, KNOCKBACK_M } = require('./knockback-reach')
+// Each hit wears the weapon, and the server's update of the held stack (its Damage tag) comes about a tick later:
+// often while the next swing is being aimed. That is the same weapon. Before, the aim ended WEAPON_CHANGED and the
+// burst stopped after one hit (live 2026-11-20 15:39:21, 15:39:53, 15:39:58 JST: 「code=WEAPON_CHANGED hits=1」 about
+// 150 ms after the first swing, three times in one fight with a stone sword). The swing is sent with the stack as it
+// is now; another item, count, enchantment or slot is still a change.
+const besidesWear = raw => { const tags = { ...(raw?.extra?.nbt?.nbt?.value ?? {}) }; delete tags.Damage; return { id: raw?.network_id, count: raw?.count, metadata: raw?.metadata, tags } }
+const sameWeapon = (a, b) => a.selected === b.selected && a.weapon.name === b.weapon.name && isDeepStrictEqual(besidesWear(a.weapon.raw), besidesWear(b.weapon.raw))
 function bodyAim (target) { return { ...target.position, y: target.position.y + (['minecraft:spider', 'minecraft:cave_spider', 'minecraft:silverfish', 'minecraft:endermite', 'minecraft:slime', 'minecraft:magma_cube', 'minecraft:vex', 'minecraft:phantom'].includes(target.entityType) ? 0.2 : 0.9) } }
 function descendingCriticalFrame (movement, criticalHopId, { wallNow = Date.now(), workingPosition } = {}) {
   const m = movement; const p = m?.physicsState
@@ -238,7 +245,7 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
         sent = input.stats()
         if (getInput() !== input || sent.running !== true || sent.target || sent.lastError) throw failure(sent.lastError ?? 'Aimed input stopped or changed owner', 'INPUT_UNCONFIRMED')
         latest = plan(r.target.runtimeId, r.target); heldWeapon(latest)
-        if (latest.selected !== p.selected || !isDeepStrictEqual(latest.weapon.raw, p.weapon.raw)) throw failure('Held stack changed during aim', 'WEAPON_CHANGED')
+        if (!sameWeapon(latest, p)) throw failure('Held stack changed during aim', 'WEAPON_CHANGED')
         if (!Number.isSafeInteger(sent.sent) || sent.sent < before.sent) throw failure('Aimed input receipt counter is invalid', 'INPUT_UNCONFIRMED')
         if (clock() >= end || performance.now() >= wallEnd) throw failure('No actual aimed input tick was queued within 250ms', 'INPUT_UNCONFIRMED')
         if (sent.sent > before.sent && id(sent.tick) !== null && (id(before.tick) === null || BigInt(sent.tick) > BigInt(before.tick))) break
