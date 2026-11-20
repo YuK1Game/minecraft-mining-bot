@@ -105,7 +105,7 @@ async function sidestep ({ ports, log = () => {}, aborted = () => false, tries =
     const found = block(cell.x, cell.y, cell.z)
     if (isAir(found)) return true
     if (found?.known !== true || wet(found) || LEAVES.test(found.name ?? '')) return false
-    const tool = canMine(cell) || (await ports.pick?.() && canMine(cell))
+    const tool = canMine(cell) || (await ports.pick?.(cell) && canMine(cell))
     if (!tool && !ports.canDig?.(cell)) return false
     return await (tool ? mine(cell) : ports.dig(cell)) === true
   }

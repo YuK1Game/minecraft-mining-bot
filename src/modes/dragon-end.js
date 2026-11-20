@@ -30,7 +30,7 @@ async function dig (ctx, position, expectedName) {
     ).sort((a,b) => b.durabilityRemaining - a.durabilityRemaining)[0]
     if (!pick) return false
     await ctx.operations.inventory.equip(pick.slot)
-  } else if (!await ctx.hands.pick()) return false
+  } else if (!await ctx.hands.pick(position)) return false
   if (ctx.cancelled?.()) return false
   const target = { ...position, expectedName, accessPreparation: 'end_expedition' }
   if (!ctx.operations.mining.preview([target]).ready) return false

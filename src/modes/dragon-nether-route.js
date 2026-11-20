@@ -81,7 +81,7 @@ async function tunnel (ctx, nether, at) {
     const y = high.name === 'minecraft:netherrack' ? at.y + 1 : low.name === 'minecraft:netherrack' ? at.y : null
     if (y === null) continue
     if (directions.some(([sx, sz]) => danger(ctx.getBlock(x + sx, y, z + sz))) || danger(ctx.getBlock(x, y + 1, z))) continue
-    if (!live(ctx) || !await ctx.hands.pick()) break
+    if (!live(ctx) || !await ctx.hands.pick({ x, y, z })) break
     if (await ctx.hands.mine({ x, y, z })) nether.tunnelStep = { x, y: at.y, z }
     return pending('足元と溶岩を確認し、ネザーラックに高さ2の退路を掘ります')
   }
@@ -97,7 +97,7 @@ async function survey (ctx, nether, objective = 'blaze') {
       const head = { ...p, y: p.y + 1 }
       const wall = [head, p].find(q => blockAt(ctx, q)?.name === 'minecraft:netherrack')
       if (wall && ctx.hands.canMine(wall)) {
-        if (live(ctx) && await ctx.hands.pick()) await ctx.hands.mine(wall)
+        if (live(ctx) && await ctx.hands.pick(wall)) await ctx.hands.mine(wall)
         return pending('足元に床を残し、横穴の残り1マスを掘ります')
       }
       if (air(blockAt(ctx, head)) && air(blockAt(ctx, p)) && floor(ctx.getBlock(p.x, p.y - 1, p.z)) && await walkTo(ctx, p)) {

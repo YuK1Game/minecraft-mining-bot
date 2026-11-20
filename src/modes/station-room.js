@@ -109,7 +109,7 @@ async function placeStation ({ getBlock, feet, getFeet = null, place, retrySafe 
   const walls = hands ? wallSpots(getBlock, feet) : []
   for (const cell of walls) {
     if (cancelled()) return null
-    if (!hands.canMine(cell) && !(await hands.pick?.() && hands.canMine(cell))) continue
+    if (!hands.canMine(cell) && !(await hands.pick?.(cell) && hands.canMine(cell))) continue
     log(`プレイヤーモード: ${label}を置く場所がないため、横の壁を1マス掘ります（${cell.x}, ${cell.y}, ${cell.z}）`)
     if (!await hands.mine(cell) || cancelled()) continue
     if (await place(cell)) return cell

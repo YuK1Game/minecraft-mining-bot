@@ -62,7 +62,7 @@ async function stepOut ({ ports, getBlock = ports.block, log = () => {}, aborted
     for (const side of sides) {
       let failed = false
       for (const cell of side.cut) {
-        const tool = canMine(cell) || (await ports.pick?.() && canMine(cell))
+        const tool = canMine(cell) || (await ports.pick?.(cell) && canMine(cell))
         if (!tool && !ports.canDig?.(cell)) { failed = true; detail = ports.reason?.(cell) ?? ports.why?.() ?? null; break }
         if (!await (tool ? mine(cell) : ports.dig(cell))) { failed = true; detail = ports.why?.() ?? null; break }
         if (aborted()) break

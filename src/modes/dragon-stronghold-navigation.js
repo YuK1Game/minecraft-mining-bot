@@ -95,7 +95,7 @@ async function digStep (ctx, state, goal, descending) {
     const cut = cells.find(p => !air(read(ctx.getBlock, p)))
     if (cut) {
       const target = miningTarget(cut, read(ctx.getBlock, cut))
-      if (!await ctx.hands.pick() || ctx.cancelled() || !ctx.hands.canMine(target)) continue
+      if (!await ctx.hands.pick(cut) || ctx.cancelled() || !ctx.hands.canMine(target)) continue
       if (await ctx.hands.mine(target)) return true
     } else if (await ctx.hands.walk(center(next))) {
       visits[pointKey(at)] = (visits[pointKey(at)] ?? 0) + 1

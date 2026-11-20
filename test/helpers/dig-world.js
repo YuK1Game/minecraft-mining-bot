@@ -6,11 +6,17 @@
 // Stand-in, and only this: the server. It agrees with every predicted step. A block is mined when one of its faces is
 // open, within reach, and in a straight line of open cells from the eye; its drop is in the inventory at once. Leaves
 // and logs are refused (leaves are never mined). The long trip is recorded, not walked. Its success is not the game's.
+// The hand: `equip` swaps the row into the selected slot (slot 0), as the inventory screen does. A block that needs a
+// pickaxe is refused with a lesser tool in the hand (the mining check's own line); a tool in the hand loses a use a
+// block (a sword two). w.uses counts them by tool, w.swaps the swaps.
 const { createNavigator } = require('../../src/movement/navigation')
 const { createScaffoldPorts } = require('../../src/modes/player-scaffold-ports')
 
 const DROPS = { coal_ore: 'coal', iron_ore: 'raw_iron', stone: 'cobblestone', andesite: 'andesite', diorite: 'diorite', granite: 'granite', dirt: 'dirt', grass_block: 'dirt' }
 const EMPTY = new Set(['air', 'leaf_litter', 'short_grass'])
+// The pickaxe tier a block needs (actions/mining.js PICK, as far as these boxes hold).
+const NEEDS = { stone: 1, cobblestone: 1, andesite: 1, diorite: 1, granite: 1, coal_ore: 1, iron_ore: 2 }
+const TIERS = { wooden: 1, stone: 2, iron: 3, diamond: 4 }
 const FACES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 // The block states the physics needs. Leaves as received under the feet at the tree (persistent_bit 0, update_bit 0);
 // logs upright and leaf litter flat where only the name was read.
@@ -23,7 +29,9 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
   const mined = new Set()
   let revision = 1
   const key = (x, y, z) => `${x},${y},${z}`
+  const put = new Map()
   const getBlock = (x, y, z) => {
+    if (put.has(key(x, y, z))) return block(put.get(key(x, y, z)))
     if (mined.has(key(x, y, z))) return block('air')
     const c = received.rows[y]?.[z - received.z0]?.[x - received.x0]
     if (c) return block(received.legend[c])
@@ -33,7 +41,13 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
   const navigator = createNavigator({ world: { getBlock, revision: () => revision } })
   let state = navigator.physics.fromServer({ position: { x: received.feet.x, y: received.feet.y + 1.62, z: received.feet.z }, rotation: { yaw: 0, pitch: 0 }, gameMode: 'survival' })
   for (let i = 0; i < 20; i++) state = navigator.physics.step(state, {})
-  const w = { lines: [], minedNames: [], trips: [], failures: [], at: 0, getBlock }
+  const w = { lines: [], minedNames: [], trips: [], failures: [], uses: {}, swaps: 0, at: 0, getBlock }
+  const SELECTED = 0
+  const inHand = () => items.find(item => item.slot === SELECTED && item.count > 0)
+  const tierInHand = () => TIERS[/^minecraft:(\w+)_pickaxe$/.exec(inHand()?.name ?? '')?.[1]] ?? 0
+  const bareName = cell => getBlock(cell.x, cell.y, cell.z).name?.replace('minecraft:', '')
+  const LESSER = cell => `適切なツルハシの装備を確認できません: ${bareName(cell)}`
+  const lesser = cell => !['hand_dig', 'pillar_descent'].includes(cell.accessPreparation) && (NEEDS[bareName(cell)] ?? 0) > tierInHand()
   const open = (x, y, z) => { const found = getBlock(x, y, z); return found.known === true && found.boundingBox === 'empty' }
   const visible = cell => {
     const found = getBlock(cell.x, cell.y, cell.z)
@@ -54,7 +68,14 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
   const REFUSED = '射程内の採掘面への視線が遮られているか、未取得です。'
   const operations = {
     perception: { entities: () => [] },
-    inventory: { equip: async slot => ({ phase: 'completed', slot }) },
+    inventory: { equip: async slot => {
+      if (slot === SELECTED) return { phase: 'completed', slot: SELECTED, sourceSlot: slot, selectedSlotChanged: false }
+      const moved = items.find(item => item.slot === slot && item.count > 0), was = inHand()
+      if (moved) moved.slot = SELECTED
+      if (was) was.slot = slot
+      w.swaps++
+      return { phase: 'completed', slot: SELECTED, sourceSlot: slot }
+    } },
     movement: { start (target, { maxTicks, ...options } = {}) {
       const route = navigator.plan(state, target, options)
       if (!route.ready) throw new Error(route.reason)
@@ -62,11 +83,17 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
       for (let i = 0; i < 400; i++) { const frame = stepper.next(); state = frame.predictedState; if (frame.phase !== 'moving') break }
     } },
     mining: {
-      preview: ([cell]) => visible(cell) ? { ready: true } : { ready: false, errors: [REFUSED] },
+      preview: ([cell]) => !visible(cell) ? { ready: false, errors: [REFUSED] } : lesser(cell) ? { ready: false, errors: [LESSER(cell)] } : { ready: true },
       start ([cell]) {
         if (!visible(cell)) throw new Error(REFUSED)
-        const name = getBlock(cell.x, cell.y, cell.z).name.replace('minecraft:', '')
-        mined.add(key(cell.x, cell.y, cell.z)); revision++
+        if (lesser(cell)) throw new Error(LESSER(cell))
+        const name = bareName(cell), tool = inHand()
+        if (/_(?:pickaxe|sword|shovel|axe)$/.test(tool?.name ?? '')) {
+          const kind = tool.name.replace('minecraft:', '')
+          w.uses[kind] = (w.uses[kind] ?? 0) + 1
+          if (Number.isFinite(tool.durabilityRemaining)) tool.durabilityRemaining -= /_sword$/.test(kind) ? 2 : 1
+        }
+        put.delete(key(cell.x, cell.y, cell.z)); mined.add(key(cell.x, cell.y, cell.z)); revision++
         w.minedNames.push(name)
         const drop = DROPS[name]
         if (!drop) return
@@ -76,16 +103,18 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
     }
   }
   const getFeet = () => ({ ...state.position })
-  const inventory = () => ({ known: true, items })
-  const hands = createScaffoldPorts({ operations, getBlock, getFeet, getInventory: inventory, getMotion: () => ({ phase: 'idle' }), getHealth: () => health, pillarStep: async () => ({ ok: false }), sleep: async ms => { w.at += ms }, now: () => w.at })
+  const inventory = () => ({ known: true, items: items.filter(item => item.count > 0) })
+  const hands = createScaffoldPorts({ operations, getBlock, getFeet, getInventory: inventory, getMotion: () => ({ phase: 'idle' }), getHealth: () => health, getHeld: () => inHand() ?? null, pillarStep: async () => ({ ok: false }), sleep: async ms => { w.at += ms }, now: () => w.at })
   // What the expedition hands to a step (dragon-runtime.js), as far as the gathering reads it.
   w.ctx = {
     memory: { early: {} }, shared: {}, log: line => w.lines.push(line), cancelled: () => false, operations, hands, getFeet, getBlock,
-    runtime: { raw: () => ({ dimension: 'overworld' }), inventory },
+    runtime: { raw: () => ({ dimension: 'overworld', heldItem: inHand() ?? null }), inventory },
     walk: target => hands.walk(target),
     travelTo: async input => { w.trips.push(input) },
     goal: { fail: failure => { w.failures.push(failure) }, mark: () => {}, reached: () => {}, step: () => {} }
   }
+  // A block the Bot put down (a placement's received block).
+  w.put = (cell, name) => { put.set(key(cell.x, cell.y, cell.z), name); revision++ }
   w.count = name => items.reduce((sum, item) => sum + (item.name === `minecraft:${name}` ? item.count : 0), 0)
   w.cell = () => { const at = getFeet(); return { x: Math.floor(at.x), y: Math.floor(at.y + 0.001), z: Math.floor(at.z) } }
   w.onGround = () => state.onGround

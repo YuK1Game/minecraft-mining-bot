@@ -315,7 +315,7 @@ function createDragonStronghold (ctx) {
     if (!await approachPortal(s)) return working('記録した道を使ってポータルの部屋へ近づきます。')
     const spawner = dir.flatMap(([dx, dz]) => [3, 4, 5, 6, 7].flatMap(d => [0, 1, -1].map(dy => ({ x: s.portal.x + dx * d, y: s.portal.y + dy, z: s.portal.z + dz * d })))).find(p => read(getBlock, p)?.name === 'minecraft:mob_spawner')
     if (spawner) {
-      if (!await hands.pick() || cancelled()) return waiting('スポナーを撤去するツルハシを確認しています。')
+      if (!await hands.pick(spawner) || cancelled()) return waiting('スポナーを撤去するツルハシを確認しています。')
       const target = miningTarget(spawner, read(getBlock, spawner))
       if (!hands.canMine(target)) {
         const near = standsAround(ctx, center(spawner), 1, 3).find(p => distance(center(p), getFeet()) > 0.45)
