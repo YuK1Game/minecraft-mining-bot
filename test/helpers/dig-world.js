@@ -12,16 +12,18 @@
 const { createNavigator } = require('../../src/movement/navigation')
 const { createScaffoldPorts } = require('../../src/modes/player-scaffold-ports')
 
-const DROPS = { coal_ore: 'coal', iron_ore: 'raw_iron', stone: 'cobblestone', andesite: 'andesite', diorite: 'diorite', granite: 'granite', dirt: 'dirt', grass_block: 'dirt' }
-const EMPTY = new Set(['air', 'leaf_litter', 'short_grass'])
+const DROPS = { coal_ore: 'coal', iron_ore: 'raw_iron', copper_ore: 'raw_copper', stone: 'cobblestone', andesite: 'andesite', diorite: 'diorite', granite: 'granite', dirt: 'dirt', grass_block: 'dirt' }
+// Water is given as a source (only names were read); seagrass stands in water.
+const EMPTY = new Set(['air', 'leaf_litter', 'short_grass', 'water', 'seagrass'])
+const WET = { extra: [{ name: 'minecraft:water', properties: { liquid_depth: 0 } }] }
 // The pickaxe tier a block needs (actions/mining.js PICK, as far as these boxes hold).
-const NEEDS = { stone: 1, cobblestone: 1, andesite: 1, diorite: 1, granite: 1, coal_ore: 1, iron_ore: 2 }
+const NEEDS = { stone: 1, cobblestone: 1, andesite: 1, diorite: 1, granite: 1, dripstone_block: 1, coal_ore: 1, iron_ore: 2, copper_ore: 2 }
 const TIERS = { wooden: 1, stone: 2, iron: 3, diamond: 4 }
 const FACES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 // The block states the physics needs. Leaves as received under the feet at the tree (persistent_bit 0, update_bit 0);
 // logs upright and leaf litter flat where only the name was read.
-const STATES = name => /_leaves$/.test(name) ? { persistent_bit: 0, update_bit: 0 } : /_log$/.test(name) ? { pillar_axis: 'y' } : name === 'leaf_litter' ? { growth: 0, 'minecraft:cardinal_direction': 'south' } : {}
-const block = name => ({ known: true, name: `minecraft:${name}`, boundingBox: EMPTY.has(name) ? 'empty' : 'block', properties: STATES(name), extra: [] })
+const STATES = name => /_leaves$/.test(name) ? { persistent_bit: 0, update_bit: 0 } : /_log$/.test(name) ? { pillar_axis: 'y' } : name === 'leaf_litter' ? { growth: 0, 'minecraft:cardinal_direction': 'south' } : name === 'water' ? { liquid_depth: 0 } : {}
+const block = name => ({ known: true, name: `minecraft:${name}`, boundingBox: EMPTY.has(name) ? 'empty' : 'block', properties: STATES(name), extra: name === 'seagrass' ? WET.extra : [] })
 
 // received: { x0, z0, feet, legend, rows: { y: [row of z, a character per x] } }.
 // outside(x, y, z): the block where nothing was read (a name, or null for a cell not received).
@@ -48,7 +50,11 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
   const bareName = cell => getBlock(cell.x, cell.y, cell.z).name?.replace('minecraft:', '')
   const LESSER = cell => `適切なツルハシの装備を確認できません: ${bareName(cell)}`
   const lesser = cell => !['hand_dig', 'pillar_descent'].includes(cell.accessPreparation) && (NEEDS[bareName(cell)] ?? 0) > tierInHand()
-  const open = (x, y, z) => { const found = getBlock(x, y, z); return found.known === true && found.boundingBox === 'empty' }
+  const wet = found => /water|seagrass/.test(found.name ?? '')
+  const open = (x, y, z) => { const found = getBlock(x, y, z); return found.known === true && found.boundingBox === 'empty' && !wet(found) }
+  // The mining check's own rule (actions/mining.js): a block with liquid on one of its six sides is refused.
+  const BESIDE_LIQUID = '対象の隣に液体・落下ブロックなどがあります。'
+  const besideLiquid = cell => FACES.some(([dx, dy, dz]) => wet(getBlock(cell.x + dx, cell.y + dy, cell.z + dz)))
   const visible = cell => {
     const found = getBlock(cell.x, cell.y, cell.z)
     if (found.known !== true || found.boundingBox === 'empty' || /leaves|_log$/.test(found.name)) return false
@@ -83,8 +89,9 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
       for (let i = 0; i < 400; i++) { const frame = stepper.next(); state = frame.predictedState; if (frame.phase !== 'moving') break }
     } },
     mining: {
-      preview: ([cell]) => !visible(cell) ? { ready: false, errors: [REFUSED] } : lesser(cell) ? { ready: false, errors: [LESSER(cell)] } : { ready: true },
+      preview: ([cell]) => besideLiquid(cell) ? { ready: false, errors: [BESIDE_LIQUID] } : !visible(cell) ? { ready: false, errors: [REFUSED] } : lesser(cell) ? { ready: false, errors: [LESSER(cell)] } : { ready: true },
       start ([cell]) {
+        if (besideLiquid(cell)) throw new Error(BESIDE_LIQUID)
         if (!visible(cell)) throw new Error(REFUSED)
         if (lesser(cell)) throw new Error(LESSER(cell))
         const name = bareName(cell), tool = inHand()

@@ -5,6 +5,7 @@ const { full, bare, workingPickTier } = require('./dragon-supply-kit')
 const { approachOre, searchMine, coolLava, lake, DEPTH } = require('./dragon-early-quarry')
 const { roam } = require('./supply-roam')
 const { digTool } = require('./dig-tool')
+const { cellRest } = require('./supply-cell-rest')
 
 const SOURCES = {
   raw_iron: /^(?:deepslate_)?iron_ore$/, raw_gold: /^(?:deepslate_)?gold_ore$/,
@@ -24,6 +25,14 @@ function findCells (ctx, test, radius = 12, height = 5) {
     if (block?.known && test(block, { x, y, z })) out.push({ x, y, z, distance: dx * dx + dy * dy + dz * dz })
   }
   return out.sort((a, b) => a.distance - b.distance)
+}
+
+// The blocks of a material in view that the gathering has not just failed to take (supply-cell-rest.js).
+function inView (ctx, name) {
+  const re = SOURCES[name]
+  if (!re) return []
+  const rested = cellRest(ctx.shared, ctx.runtime?.raw?.().dimension, { now: ctx.now })
+  return findCells(ctx, (b, p) => re.test(bare(b.name)) && !rested.resting(p))
 }
 
 async function approach (ctx, target) {
@@ -53,7 +62,7 @@ async function explore (ctx, resource) {
   }
   step[resource] = (Math.floor(offset / 7) + 1) * 7
   // No heading had a place to walk to (a tunnel underground has none): the long trip goes instead (supply-roam.js).
-  await roam(ctx, resource, step, feet, () => SOURCES[resource] ? findCells(ctx, b => SOURCES[resource].test(bare(b.name))).length > 0 : false)
+  await roam(ctx, resource, step, feet, () => inView(ctx, resource).length > 0)
 }
 
 function protectedAt (ctx, p) {
@@ -83,7 +92,10 @@ async function collect (ctx, name) {
   const oreSearch = Object.hasOwn(DEPTH, name) && ctx.runtime.raw().dimension === 'overworld'
   if (name === 'obsidian' && ctx.memory.early?.mine?.pond && await coolLava(ctx, [])) return
   if (re) {
-    const cells = findCells(ctx, (b, p) => re.test(bare(b.name)) && !b.protected && !b.protectionSource && !protectedAt(ctx, p))
+    // A block that was tried and not taken rests (supply-cell-rest.js): the next nearest ones get their turn.
+    const rested = cellRest(ctx.shared, ctx.runtime.raw().dimension, { now: ctx.now })
+    const far = cell => { const feet = ctx.getFeet(); return feet ? Math.hypot(cell.x + 0.5 - feet.x, cell.y - feet.y, cell.z + 0.5 - feet.z) : Infinity }
+    const cells = findCells(ctx, (b, p) => re.test(bare(b.name)) && !b.protected && !b.protectionSource && !protectedAt(ctx, p) && !rested.resting(p))
     for (const cell of cells.slice(0, 6)) {
       const block = ctx.getBlock(cell.x, cell.y, cell.z)
       // End portal frames are not candidates. Obsidian already in a lit frame
@@ -104,19 +116,25 @@ async function collect (ctx, name) {
       if (['flint', 'obsidian', 'string'].includes(name)) Object.assign(target, { accessPreparation: 'quarry', expectedName: block.name, expectedRuntimeId: block.runtimeId, ...(name === 'obsidian' ? { requiredTool: { kind:'pickaxe',tier:4,reserve:1 } } : {}) })
       if (['nether_wart','soul_sand'].includes(name)) Object.assign(target,{accessPreparation:'nether_ingredient',expectedName:block.name})
       if (ctx.cancelled()) return
+      const before = far(cell)
+      const left = () => {
+        if (ctx.cancelled() || !rested.miss(cell, before, far(cell))) return
+        ctx.log?.(`プレイヤーモード: ${bare(block.name)} (${cell.x}, ${cell.y}, ${cell.z}) を掘れなかったため、しばらくほかを先に試します${ctx.hands.reason?.(target) ? `（${String(ctx.hands.reason(target)).slice(0, 60)}）` : ''}`)
+      }
       await approach(ctx, target)
       if (ctx.cancelled()) return
       if (!ctx.hands.canMine(target)) {
-        if (!oreSearch || !await approachOre(ctx, target) || ctx.cancelled()) continue
+        if (!oreSearch || !await approachOre(ctx, target) || ctx.cancelled()) { left(); continue }
         // Tunneling may have equipped another pick. Restore the proper tool
         // before checking the ore's live face and tool requirement again.
         if (picked) await hold()
-        if (!ctx.hands.canMine(target)) continue
+        if (!ctx.hands.canMine(target)) { left(); continue }
       }
       if (await ctx.hands.mine(target) && !ctx.cancelled()) {
         if (standable(ctx.getBlock,target.x,target.y,target.z)) await ctx.walk({x:target.x+0.5,y:target.y,z:target.z+0.5})
         return
       }
+      left()
     }
   }
   if (oreSearch) {
@@ -125,4 +143,4 @@ async function collect (ctx, name) {
   }
   await explore(ctx, name)
 }
-module.exports = { collect, findCells, approach, explore, SOURCES, MOBS }
+module.exports = { collect, findCells, inView, approach, explore, SOURCES, MOBS }
