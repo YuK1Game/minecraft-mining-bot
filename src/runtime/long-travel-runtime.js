@@ -568,7 +568,8 @@ function createLongTravelRuntime (rt) {
         {
           const cellAt = (x, y, z) => rt.host.world.getBlock(x, y, z)
           const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.2), fz = Math.floor(feet.z)
-          if (/water/.test(cellAt(fx, fy, fz)?.name ?? '') || /water/.test(cellAt(fx, fy - 1, fz)?.name ?? '')) {
+          const holdsWater = rt.require('./movement/wet-cell').water
+          if (holdsWater(cellAt(fx, fy, fz)) || holdsWater(cellAt(fx, fy - 1, fz))) {
             // Within five blocks (live 20:00: open water, shore three blocks away),
             // from the water surface above a sunken body (movement/water-ledges.js);
             // nearest first, then toward the destination.

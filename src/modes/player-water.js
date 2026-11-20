@@ -27,7 +27,6 @@ const { way } = require('../movement/water-swim')
 const STUCK_MS = 15000, AGAIN_MS = 30000, MOVED_M = 1, TRIES = 8, LEGS = 12, SAY_MS = 60000
 
 const finite = p => !!p && [p.x, p.y, p.z].every(Number.isFinite)
-const water = found => /water/.test(found?.name ?? '')
 
 // In water: the own column, or a column the body reaches into (movement/water-ledges.js).
 const wet = (getBlock, feet) => finite(feet) && wetColumn(getBlock, feet) !== null
