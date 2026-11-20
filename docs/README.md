@@ -24,6 +24,7 @@
 | [ci.md](ci.md) | CI が実行する内容、基準の結果の使い回しと3分割、遅かった原因と計測値、速さを保つための決まり |
 | [review-hardening.md](review-hardening.md) | コードレビュー対応の記録と、`npm run test:review` / `test:compare` の読み方、実Realmで未実施の確認項目 |
 | [review-efficiency.md](review-efficiency.md) | 実装の共通化・重複処理削減の記録（検証結果は [review-efficiency-results.json](review-efficiency-results.json)） |
+| [travel-storage-recovery.md](travel-storage-recovery.md) | 移動・退避・帰還収納の判定統一、原因別の復旧、検証と反映手順 |
 | [handoff.md](handoff.md) | 作業の引き継ぎ資料（その時点の状態と残課題） |
 | [quarry-start-handoff.md](quarry-start-handoff.md) | 露天掘り開始の実行引継ぎと、その後の追記 |
 | [player-roadmap.md](player-roadmap.md) | プレイヤーモードのロードマップ（エンダードラゴン討伐までの段階と、松明での湧き潰しなど全段階に共通の決まり） |

@@ -83,14 +83,20 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
   const timedSleep = async (cat, ms) => { const t = now(); await sleep(ms); add(cat, now() - t) }
   async function loop (signal) {
     let stuckAt = null, stuckCount = 0, lastLife = null
-    while (!signal.aborted) {
-      const state = getState(), feet = feetOf(state)
-      if (state?.phase !== 'spawned' || state.dead || !feet || !(state.health > 0)) { run.phase = 'waiting'; await timedSleep('waiting', 1000); continue }
-      // Deaths during one trip (decision 2026-11-14): five are continued after
-      // the normal respawn; the sixth stops the trip with the reason.
+    let candidateScope = null
+    const tried = new Set()
+    function observeLife (state) {
       const life = state.lifecycle?.deathId ?? null
       if (lastLife !== null && life !== null && life !== lastLife) { run.deaths = (run.deaths ?? 0) + 1; say(`死亡しました（${run.deaths}回目）。リスポーンのあと続けます`); if (run.deaths > 5) throw fail('LONG_TRAVEL_DEATH_LIMIT', '死亡が5回を超えたため停止しました') }
       lastLife = life
+      return life
+    }
+    while (!signal.aborted) {
+      let state = getState(), feet = feetOf(state)
+      if (state?.phase !== 'spawned' || state.dead || !feet || !(state.health > 0)) { run.phase = 'waiting'; await timedSleep('waiting', 1000); continue }
+      // Deaths during one trip (decision 2026-11-14): five are continued after
+      // the normal respawn; the sixth stops the trip with the reason.
+      let life = observeLife(state)
       // After a respawn the armour/offhand arrive a little later; the empty-hand
       // judgement (and its exceptions) waits for the complete received inventory.
       if (typeof inventoryReady === 'function' && inventoryReady() !== true) { run.phase = 'waiting'; await timedSleep('waiting', 500); continue }
@@ -103,6 +109,12 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
         add(r?.hold ? `hold_${r.phase ?? 'waiting'}` : 'food', now() - t0)
         if (signal.aborted) continue
         if (r?.hold) { run.phase = r.phase ?? 'waiting'; if (r.message && r.message !== run.message) say(r.message); await timedSleep(`hold_${r.phase ?? 'waiting'}`, r.waitMs ?? 1000); continue }
+        // Preparation can retreat, gather food or survive a respawn. Runtime
+        // states are snapshots; refresh every movement prerequisite after it.
+        state = getState(); feet = feetOf(state)
+        if (state?.phase !== 'spawned' || state.dead || !feet || !(state.health > 0)) { run.phase = 'waiting'; await timedSleep('waiting', 1000); continue }
+        life = observeLife(state)
+        if (typeof inventoryReady === 'function' && inventoryReady() !== true) { run.phase = 'waiting'; await timedSleep('waiting', 500); continue }
       }
       run.remaining = Math.round(horizontal(feet, run.destination))
       if (run.remaining <= arriveM && (typeof onSurface !== 'function' || onSurface(feet) === true)) { run.phase = 'arrived'; run.reason = 'LONG_TRAVEL_ARRIVED'; say(`${reasons.LONG_TRAVEL_ARRIVED}（残り ${run.remaining}m・${run.legs}区間）`); await persist(); return }
@@ -110,11 +122,24 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
       run.phase = 'moving'
       const passStart = now(), remainingBefore = run.remaining, fromFeet = { x: Math.round(feet.x), y: Math.round(feet.y), z: Math.round(feet.z) }
       let via = null
-      const tried = new Set()
       let moved = false, last = null
       // Rough terrain (live 2026-11-14 09:53: a ravine by the water) needs
       // shorter legs: each direction is tried at full and then half length.
       const tries = ANGLES.flatMap(angle => [[angle, legM], [angle, Math.max(12, Math.round(legM / 2))]])
+      // Keep failed directions across passes until every candidate has a turn.
+      // A global terrain revision is not a reset: requesting another chunk
+      // changes it too and would starve later directions again. Every actual
+      // attempt still plans against the current received terrain.
+      const scope = JSON.stringify([state.profile ?? null, state.realm?.id == null ? null : String(state.realm.id), state.dimension ?? null, state.connectionId ?? null, state.runtimeEntityId == null ? null : String(state.runtimeEntityId), life,
+        Math.floor(feet.x), Math.floor(feet.y + 1e-6), Math.floor(feet.z)])
+      if (scope !== candidateScope) { candidateScope = scope; tried.clear() }
+      const candidates = new Map()
+      for (const [angle, length] of tries) {
+        const area = chunkAhead(feet, run.destination, angle, length)
+        if (area.x1 === Math.floor(feet.x / 16) && area.z1 === Math.floor(feet.z / 16) && run.remaining > length) continue
+        candidates.set(`${area.x1},${area.z1}`, area)
+      }
+      if ([...candidates.keys()].every(key => tried.has(key))) tried.clear()
       // Point legs first (live 2026-11-14 09:58: whole target chunks had no known
       // footing while nearer points toward the destination were walkable): the
       // runtime finds a walkable received point toward the destination and walks
@@ -137,11 +162,9 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
       // Coordinator 2026-11-14: chunk fallbacks took 21.7 of 60 minutes; at most
       // chunkTries of them per pass, then back to the relay-point search.
       let chunkTried = 0
-      if (!moved && last?.code !== 'POINT_REPLAN') for (const [angle, length] of tries) {
+      if (!moved && last?.code !== 'POINT_REPLAN') for (const [key, area] of candidates) {
         if (chunkTried >= chunkTries) break
-        const area = chunkAhead(feet, run.destination, angle, length)
-        const key = `${area.x1},${area.z1}`
-        if (tried.has(key) || area.x1 === Math.floor(feet.x / 16) && area.z1 === Math.floor(feet.z / 16) && run.remaining > length) continue
+        if (tried.has(key)) continue
         tried.add(key)
         chunkTried++
         const tl = now()
@@ -151,6 +174,9 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
         if (signal.aborted) throw fail('LONG_TRAVEL_CANCELLED')
         if (result.ok) { moved = true; break }
         last = result
+        // No route was tested while another owner held input or the planning
+        // context was changing. Retain that candidate for the next attempt.
+        if (['CHUNK_TRAVEL_DAMAGED', 'CHUNK_TRAVEL_BUSY', 'CHUNK_TRAVEL_CONTEXT_CHANGED'].includes(result.code)) tried.delete(key)
         if (result.code === 'CHUNK_TRAVEL_DAMAGED') { say(`被弾したため一時停止し、${damagePauseMs / 1000}秒後に続けます`); await timedSleep('backoff', damagePauseMs); break }
         if (result.code === 'CHUNK_TRAVEL_BUSY' || result.code === 'CHUNK_TRAVEL_CONTEXT_CHANGED') { await timedSleep('backoff', 2000); break }
       }

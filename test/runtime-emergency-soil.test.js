@@ -152,11 +152,19 @@ test('captured hand soil clearance uses received AIR and fresh guarded movement'
       if (mode === 'target_protected') blocks.get(key(obstacle)).protected = true
       if (mode === 'neighbour_liquid') blocks.set('-16,69,30', { known: true, name: 'minecraft:water', properties: { liquid_depth: 0 }, extra: [], boundingBox: 'empty' })
       if (mode === 'air_layer') blocks.set(key(obstacle), { known: true, position: { ...obstacle }, name: 'minecraft:air', properties: {}, extra: [{ known: true, name: 'minecraft:water', properties: { liquid_depth: 0 } }], boundingBox: 'empty' })
-      const rejected = assert.rejects(action, /clearance|scope|aborted|cancel|safe/i)
+      // The ownership layer preserves scope revocation as a typed cancellation;
+      // its user-facing message need not contain an English cancellation word.
+      const rejection = mode === 'scope_changed' ? { code: 'SAFETY_SCOPE_CHANGED', cancelled: true } : /clearance|scope|aborted|cancel|safe/i
+      const rejected = assert.rejects(action, rejection)
       f.runtime.applyPacket('move_entity', {})
       assert.notEqual(f.runtime.snapshot().mining.phase, 'mining')
+      if (mode === 'scope_changed') {
+        assert.equal(f.runtime.snapshot().mining.phase, 'stopped', 'scope revocation stops Mining in the packet turn')
+        assert.equal(f.runtime.snapshot().mining.activeTarget, null)
+      }
       await rejected
       assert.equal(movementStarts().length, 0)
+      assert.equal(f.movements.flatMap(actor => actor.frames).length, 0, 'cancelled clearance emits no movement frames')
       assert.equal(blocks.get(key(obstacle)).name, mode === 'air_layer' ? 'minecraft:air' : 'minecraft:grass_block')
       assert.ok(f.calls.some(call => call.type === 'mining_input_stop'))
       f.raw.dimension = observed.dimension ?? 'overworld'

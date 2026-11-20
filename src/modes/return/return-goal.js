@@ -43,6 +43,7 @@
 //   The failure memory (return-failures.js) outlives the goal either way.
 const fs = require('node:fs')
 const path = require('node:path')
+const { sourceRejected } = require('./transfer-recovery')
 
 const STAGES = Object.freeze(['observe', 'surface', 'travel', 'approach', 'container', 'store', 'verify', 'replan'])
 const LABEL = Object.freeze({ observe: '状態の確認', surface: '出発位置の確保', travel: '拠点へ移動', approach: 'チェストへ接近', container: 'チェストの確認', store: '収納', verify: '収納の確認', replan: '作業の再開' })
@@ -50,7 +51,6 @@ const BUDGET = Object.freeze({ STAGE_ATTEMPTS: 3, GOAL_ATTEMPTS: 12, WAKE_ATTEMP
 
 const cell = point => point && [point.x, point.y, point.z].every(Number.isFinite) ? { x: Math.floor(point.x), y: Math.floor(point.y), z: Math.floor(point.z) } : null
 const chestCell = value => value && [value.x, value.y, value.z].every(Number.isSafeInteger) ? { x: value.x, y: value.y, z: value.z } : null
-const chestList = value => Array.isArray(value) ? value.map(chestCell).filter(Boolean).slice(0, 16) : []
 // Required observations are all-or-nothing: dropping an invalid cell would
 // silently weaken the condition that originally blocked the step.
 const terrainCells = value => Array.isArray(value) && value.length > 0 && value.length <= 16 && value.every(entry => chestCell(entry)) ? value.map(chestCell) : null
@@ -63,9 +63,9 @@ function newGoal ({ id, reason, base = null, scope = null, origin = null, now = 
     createdAt: now, stageAt: now,
     progress: { banked: 0, taken: 0, lastAt: null, last: null },
     remaining: null,
-    full: [], unopened: [], unreached: [], visited: [], kit: null, built: 0, detour: null, detours: 0, sides: 0,
+    full: [], fullObservations: {}, unopened: [], unreached: [], visited: [], kit: null, built: 0, detour: null, detours: 0, sides: 0,
     budget: { attempts: 0, activeMs: 0, wakes: 0, interrupts: 0 },
-    wait: null, hold: null, interrupt: null, last: null, saved: true
+    wait: null, hold: null, interrupt: null, last: null, pendingTransfer: null, saved: true
   }
 }
 
@@ -81,10 +81,10 @@ function restoreGoal (value) {
     createdAt: number(value.createdAt, Date.now()), stageAt: Date.now(),
     progress: { banked: number(value.progress?.banked), taken: number(value.progress?.taken), lastAt: Number.isFinite(value.progress?.lastAt) ? value.progress.lastAt : null, last: typeof value.progress?.last === 'string' ? value.progress.last : null },
     remaining: null,
-    full: chestList(value.full), unopened: [], unreached: [], visited: [], kit: value.kit === 'done' ? 'done' : null, built: number(value.built), detour: null, detours: number(value.detours), sides: 0,
+    full: [], fullObservations: {}, unopened: [], unreached: [], visited: [], kit: value.kit === 'done' ? 'done' : null, built: number(value.built), detour: null, detours: number(value.detours), sides: 0,
     budget: { attempts: number(value.budget?.attempts), activeMs: number(value.budget?.activeMs), wakes: number(value.budget?.wakes), interrupts: 0 },
     wait: null, hold: value.state === 'held' && value.hold && typeof value.hold === 'object' ? { code: String(value.hold.code ?? 'UNKNOWN'), at: number(value.hold.at), until: number(value.hold.until), position: cell(value.hold.position), supplies: typeof value.hold.supplies === 'string' || Number.isFinite(value.hold.supplies) ? value.hold.supplies : null, kinds: Array.isArray(value.hold.kinds) ? value.hold.kinds.filter(kind => typeof kind === 'string') : [], vertical: value.hold.vertical === true, terrainCells: terrainCells(value.hold.terrainCells) } : null,
-    interrupt: null, last: null, saved: true, resumed: true
+    interrupt: null, last: null, pendingTransfer: sourceRejected(value.pendingTransfer?.transfer?.rejectionProof) ? structuredClone(value.pendingTransfer) : null, saved: true, resumed: true
   }
 }
 

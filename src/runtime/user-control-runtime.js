@@ -6,6 +6,8 @@
 // Modules are loaded through rt.require, the runtime's own require.
 
 function createUserControlRuntime (rt) {
+    const { performance } = rt.require('node:perf_hooks')
+    const { retreatCandidates, createWaterRetreat, PLAN_MS } = rt.require('./combat/retreat-step')
     function requireUserLease (context) {
       rt.requireGeneration()
       if (!rt.userBehaviorLease || rt.userBehaviorLease.generation !== rt.generationStream || context?.kind !== rt.userBehaviorLease.kind || context.claimId !== rt.userBehaviorLease.claimId || context.token !== rt.userBehaviorLease.token) throw new Error('利用者指定動作の操作権が一致しません。')
@@ -295,8 +297,9 @@ function createUserControlRuntime (rt) {
         return Math.hypot(from.x + t * dx - circle.position.x, from.y + t * dy - circle.position.y, from.z + t * dz - circle.position.z) >= circle.minDistance + (circle.padding ?? 0) - 1e-4
       })
     }
-    async function moveUserNative (target, context, primary = null, surface = null) {
+    async function moveUserNative (target, context, primary = null, surface = null, retreat = null) {
       const initial = requireUserLease(context), expectedScope = rt.userScope(initial), controller = rt.generationMovement, owner = rt.userBehaviorLease
+      const waterMove = surface !== null || retreat?.options.allowWater === true
       const counterOrigin = { ...initial.position, y: initial.position.y - 1.62 }
       const emergencyCounterhit = context.kind === 'combat' && context.emergencyCreeperStrike === true && primary?.entityType === 'minecraft:creeper' && Math.hypot(initial.position.x - primary.position.x, initial.position.y - primary.position.y - 0.9, initial.position.z - primary.position.z) <= 4.5
       if (context.emergencyCreeperStrike === true && !emergencyCounterhit) throw new Error('Invalid emergency creeper counterstep')
@@ -323,19 +326,21 @@ function createUserControlRuntime (rt) {
       if (!rt.require('./combat/approach-steps').inStep(initial, target)) throw new Error('User movement exceeds its known six-block step')
       const ensure = () => {
         const fresh = requireUserLease(context)
-        if (rt.userScope(fresh) !== expectedScope || rt.userBehaviorLease !== owner || controller !== rt.movement || surface && waterSerial != null && waterSerial !== rt.portableMovementSerial) throw new Error('User movement life or owner changed')
+        if (rt.userScope(fresh) !== expectedScope || rt.userBehaviorLease !== owner || controller !== rt.movement || waterMove && waterSerial != null && waterSerial !== rt.portableMovementSerial) throw new Error('User movement life or owner changed')
         if (primary && !rt.host.entities.snapshot({ kind: 'all' }).some(e => String(e.runtimeId) === String(primary.runtimeId) && String(e.uniqueId) === String(primary.uniqueId) && e.entityType === primary.entityType && e.alive === true && e.positionKnown === true)) throw new Error('Combat approach target changed')
         if (emergencyCounterhit) {
           const actor = rt.host.entities.snapshot({kind:'all'}).find(e=>String(e.runtimeId)===String(primary.runtimeId)&&String(e.uniqueId)===String(primary.uniqueId))
           if (!actor?.position || Math.hypot(actor.position.x-fresh.position.x,actor.position.y+0.9-fresh.position.y,actor.position.z-fresh.position.z)>4.5) throw new Error('Creeper counterstep target is no longer close')
         }
         if (surface && !surfaceCombatState(primary, context, surface)) throw new Error('Surface melee approach lost its bound admission')
-        validateHealthyMeleeApproach(fresh, primary)
+        if (!retreat) validateHealthyMeleeApproach(fresh, primary)
         return fresh
       }
-      const options = { allowWater: surface !== null, emergency: true, maxDistance: 6, maxExpanded: 300, ...(surface ? { directSurface: true, exactGoal: true, sprint: false, maxTicks: 80 } : {}), avoidance: userAvoidance(initial, primary), signal: context.signal, beforeInput: frame => {
+      const currentPrimary = () => rt.host.entities.snapshot({ kind: 'all' }).find(e => String(e.runtimeId) === String(primary?.runtimeId) && String(e.uniqueId) === String(primary?.uniqueId) && e.entityType === primary?.entityType)
+      const options = { allowWater: surface !== null, emergency: true, maxDistance: 6, maxExpanded: 300, ...(surface ? { directSurface: true, exactGoal: true, sprint: false, maxTicks: 80 } : {}), ...retreat?.options, avoidance: userAvoidance(initial, primary), signal: context.signal, beforeInput: frame => {
         const fresh = ensure(), eye = { ...frame.predictedState.position, y: frame.predictedState.position.y + 1.62 }
         checkDefenseRoute(fresh, frame.predictedState.position)
+        if (retreat && (!frame.packetPosition || Math.hypot(eye.x - frame.packetPosition.x, eye.y - frame.packetPosition.y, eye.z - frame.packetPosition.z) > 1e-6 || !retreat.beforeInput(fresh, frame, currentPrimary(), userAvoidance(fresh, primary)))) return false
         if (surface) {
           if (!rt.knownSurfaceBody(rt.generationPhysics, frame.predictedState.position, surface.surfaceY) || !frame.packetPosition || Math.hypot(eye.x - frame.packetPosition.x, eye.y - frame.packetPosition.y, eye.z - frame.packetPosition.z) > 1e-6) return false
           return surfaceEyeSegmentSafe(fresh.position, eye, userAvoidance(fresh, primary))
@@ -345,20 +350,29 @@ function createUserControlRuntime (rt) {
       ensure(); rt.motionOrigin = rt.working()
       const preview = controller.preview(target, options)
       if (!preview?.ready || surface && preview.directSurface !== true) return { ready: false, reason: 'No known native user movement route' }
+      if (retreat && !retreat.prove(preview, ensure(), currentPrimary(), userAvoidance(initial, primary))) return { ready: false, reason: 'No known outward retreat trajectory' }
+      if (retreat) {
+        // Let buffered world/actor packets run after the bounded physics proof.
+        // A changed origin needs a new plan; ownership and actors are checked
+        // again below and immediately before every native packet.
+        await rt.delay(0, undefined, { signal: context.signal })
+        const current = ensure()
+        if (Math.hypot(current.position.x - initial.position.x, current.position.y - initial.position.y, current.position.z - initial.position.z) > 0.1) return { ready: false, reason: 'Retreat origin changed after the native proof' }
+      }
       if ((owner.defenseAnchor || emergencyCounterhit) && (!Array.isArray(preview.waypoints) || !preview.waypoints.length)) return { ready: false, reason: 'Defense route waypoints are unknown' }
       checkDefenseRoute(ensure(), target, preview.waypoints ?? [])
       ensure(); rt.stopOrdinaryUserStream(); rt.motionOrigin = rt.working(); rt.host.shared.motionSource = 'navigation'
-      const owns = () => sameLease(context) && rt.userBehaviorLease === owner && controller === rt.movement && (!surface || waterSerial === rt.portableMovementSerial)
+      const owns = () => sameLease(context) && rt.userBehaviorLease === owner && controller === rt.movement && (!waterMove || waterSerial === rt.portableMovementSerial)
       const cancel = () => { if (owns()) controller.stop('User movement cancelled') }
       context.signal?.addEventListener('abort', cancel, { once: true })
       try {
         ensure()
-        if (surface) { rt.yieldPortableMovement(); waterSerial = ++rt.portableMovementSerial; rt.portableMovementOwner = null }
+        if (waterMove) { rt.yieldPortableMovement(); waterSerial = ++rt.portableMovementSerial; rt.portableMovementOwner = null }
         controller.start(target, options)
         const deadline = Date.now() + 6000
         while (Date.now() < deadline) {
           const fresh = ensure(), motion = controller.snapshot()
-          if (primary) {
+          if (primary && !retreat) {
             const e = rt.host.entities.snapshot({ kind: 'all' }).find(e => String(e.runtimeId) === String(primary.runtimeId)), p = e && (surface ? meleeApproachAim(e) : { ...e.position, y: e.position.y + 0.9 })
             if (p && Math.hypot(fresh.position.x - p.x, fresh.position.y - p.y, fresh.position.z - p.z) <= (surface ? 2.8 : 2.2) && (!surface || surfaceMeleeSight(fresh.position, p))) return { phase: 'predicted', accepted: true, serverConfirmed: false, ...(surface ? { meleeReady: true, surfaceApproach: true } : {}) }
           }
@@ -470,7 +484,7 @@ function createUserControlRuntime (rt) {
       // planner refuses an airborne origin, so wait briefly for the landing.
       for (let i = 0; i < rt.KITE_LANDING_POLLS; i++) {
         const now = requireUserLease(context), physical = now.predicted?.physicsState ?? now.physicsState
-        if (physical?.onGround === true && !rt.generationMovement.snapshot().running) break
+        if ((physical?.onGround === true || physical?.isInWater === true) && !rt.generationMovement.snapshot().running) break
         await rt.delay(50, undefined, { signal: context.signal })
       }
       const state = requireUserLease(context), dx = state.position.x - target.position.x, dz = state.position.z - target.position.z, d = Math.hypot(dx, dz)
@@ -479,20 +493,28 @@ function createUserControlRuntime (rt) {
       // bounded, at most 6) step; the kite default is a short 3-block step.
       const radii = Array.isArray(context.radii) && context.radii.every(r => Number.isFinite(r) && r > 0 && r <= 12) ? context.radii : rt.KITE_RADII
       const maxStep = Number.isFinite(context.maxStep) && context.maxStep > 0 && context.maxStep <= 6 ? context.maxStep : 3
-      let tried = 0, skipped = 0, lastReason = null
-      // Straight back first, then diagonal-back directions when the terrain
-      // directly behind has no known standpoint.
-      for (const angle of rt.KITE_ANGLES) for (const radius of radii) for (const y of [...new Set([Math.round(state.position.y - 1.62), Math.round(state.position.y - 1.62) - 1, Math.round(state.position.y - 1.62) + 1])]) {
-        const cos = Math.cos(angle), sin = Math.sin(angle), ux = (dx * cos - dz * sin) / d, uz = (dx * sin + dz * cos) / d
-        const candidate = { x: target.position.x + ux * radius, y, z: target.position.z + uz * radius }
-        if (Math.hypot(candidate.x - state.position.x, candidate.y - state.position.y + 1.62, candidate.z - state.position.z) > maxStep) { skipped++; continue }
+      let tried = 0, lastReason = null, navigator = null
+      const until = performance.now() + PLAN_MS
+      for (const candidate of retreatCandidates({ state, target, radii, angles: rt.KITE_ANGLES, maxStep, physics: rt.generationPhysics })) {
+        const current = requireUserLease(context)
+        if (performance.now() > until) { lastReason = 'Retreat planning time bound reached'; break }
+        if (Math.hypot(current.position.x - state.position.x, current.position.y - state.position.y, current.position.z - state.position.z) > 0.1) return { ready: false, reason: 'Retreat origin changed; observe before replanning' }
         rt.motionOrigin = rt.working()
-        const preview = rt.generationMovement.preview(candidate, { emergency: true, allowWater: false, maxDistance: Math.ceil(maxStep) + 1, maxExpanded: 300, avoidance: userAvoidance(state, target) })
         tried++
-        if (preview?.ready) return moveUserNative(candidate, context, target)
-        lastReason = preview?.reason ?? preview?.error ?? lastReason
+        if (candidate.options.allowWater) {
+          navigator ??= rt.createNavigator({ world: rt.host.world, version: rt.host.meta.version, allowWater: true, physics: rt.generationPhysics })
+          const retreat = createWaterRetreat({ candidate, state: current, physics: rt.generationPhysics, navigator, maxStep })
+          const result = await moveUserNative(candidate.target, context, target, null, retreat)
+          if (result?.ready !== false) return result
+          lastReason = result.reason
+        } else {
+          const preview = rt.generationMovement.preview(candidate.target, { ...candidate.options, avoidance: userAvoidance(current, target) })
+          if (preview?.ready) return moveUserNative(candidate.target, context, target)
+          lastReason = preview?.reason ?? preview?.error ?? lastReason
+        }
+        if (tried % 3 === 0) await rt.delay(0, undefined, { signal: context.signal })
       }
-      return { ready: false, reason: `No known retreat standpoint (tried=${tried} skipped=${skipped} last=${lastReason ?? 'none'})` }
+      return { ready: false, reason: `No known retreat standpoint (tried=${tried} last=${lastReason ?? 'none'})` }
     }
     // Bow sight stance: a short move (<=4.5m, higher ground first) to a
     // standable cell from which the eye has a clear line to the target body.

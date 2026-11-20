@@ -709,8 +709,10 @@ function createLongTravelRuntime (rt) {
     if (rt.chunkTravel) return rt.chunkTravel
     let planner = null
     rt.chunkTravel = rt.createChunkTravel({ getState: rt.quarryState, getBlock: (x, y, z) => rt.host.world.getBlock(x, y, z),
-      getMovement: () => rt.movement?.snapshot() ?? { phase: 'unavailable', running: false },
+      getMovement: () => rt.require('./travel/chunk-travel-errors').movementStatus(rt.movement?.snapshot(), rt.chunkMoveLease?.guardFailure),
       generation: () => rt.host.shared.loadoutGeneration, jobIdentity: rt.chunkMoveJobIdentity, log: message => rt.host.log(message),
+      routePointAllowed: (point, medium) => planner?.validateRoutePoint(point, medium) === true,
+      planningOptions: state => rt.require('./travel/chunk-travel-threats').chunkTravelAvoidance({ state, attackExposure: rt.combatAttackExposure }),
       planRoute: async (target, options) => {
         if (!rt.idlePhysics) return { ready: false, reason: '移動に必要な地形が未受信です。' }
         planner ??= rt.createNavigator({ world: rt.host.world, version: rt.host.meta.version, allowWater: true,
@@ -730,6 +732,7 @@ function createLongTravelRuntime (rt) {
         rt.chunkMoveDepth++
         try {
           const { operationId, ...native } = options
+          owner.guardFailure = null
           // User decision 2026-11-13: a dashboard move runs at any health above zero.
           const result = rt.startMotion('navigation', target, { ...native, allowWater: true, sprint: false, allowLowHealth: true })
           owner.startedMovement = rt.movement; owner.startedSerial = rt.portableMovementSerial; owner.stopped = false

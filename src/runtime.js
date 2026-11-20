@@ -19,6 +19,7 @@ const { createRuntimeV22ChestReset, receivedEquipmentView, jobPending } = requir
 const { createInventoryStore } = require('./inventory/inventory-store')
 const { createLoggedStallWatch, describeWork } = require('./runtime/event-loop-stall')
 const { currentLifeId } = require('./common/life-identity')
+const { actionBusyError } = require('./common/action-busy-error')
 const { createManualChestRuntime } = require('./loadout/manual-chest-runtime-adapter')
 const { createChunkTravel } = require('./travel/chunk-travel')
 const { chunkTravelThreatsClear } = require('./travel/chunk-travel-threats')
@@ -1048,12 +1049,12 @@ function createRuntime (host) {
     if (host.shared.respawnTerrain?.pending) throw new Error('リスポーン先の地形と前の操作の終了を確認しています。')
     if (working().spawnPending) throw new Error('参加位置をサーバーで確認するまで行動を待機します。')
     if (inventoryRequired && host.shared.inventoryUncertain) throw new Error('操作後の持ち物が未確定です。新しいサーバー情報を待っています。')
-    if (!ownedCall && userBehaviorOwns() && !(combatHandoff && !userBehaviorSleeping && !userBehaviorWakePending && !behavior.sleeping)) throw new Error('利用者指定の戦闘・睡眠・片付け動作が操作を使用中です。')
-    if (!ownedCall && pendingStops.size) throw new Error('前の操作の終了処理を待ってください。')
+    if (!ownedCall && userBehaviorOwns() && !(combatHandoff && !userBehaviorSleeping && !userBehaviorWakePending && !behavior.sleeping)) throw actionBusyError('利用者指定の戦闘・睡眠・片付け動作が操作を使用中です。')
+    if (!ownedCall && pendingStops.size) throw actionBusyError('前の操作の終了処理を待ってください。')
     if (!ownedCall && quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
     if (!ownedCall && quarryPillar?.snapshot().busy) throw new Error('土柱の設置と着地の確認を待ってください。')
-    if (!ownedCall && (idleSafety?.snapshot().busy && !combatHandoff || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy)) throw new Error('前の操作が終わるまで待ってください。')
-    if (!combatHandoff && (motionActive() || input?.stats().running || snapshot(combat)?.busy || snapshot(combat)?.defending || snapshot(combat)?.engaging) || snapshot(food).busy || (snapshot(furnace).busy || chestStatus().busy) || inventory.snapshot().busy || craftStatus().pendingRequestId != null || interactions.snapshot().pendingOperation) throw new Error('前の操作が完了するまで待ってください。')
+    if (!ownedCall && (idleSafety?.snapshot().busy && !combatHandoff || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy)) throw actionBusyError('前の操作が終わるまで待ってください。')
+    if (!combatHandoff && (motionActive() || input?.stats().running || snapshot(combat)?.busy || snapshot(combat)?.defending || snapshot(combat)?.engaging) || snapshot(food).busy || (snapshot(furnace).busy || chestStatus().busy) || inventory.snapshot().busy || craftStatus().pendingRequestId != null || interactions.snapshot().pendingOperation) throw actionBusyError('前の操作が完了するまで待ってください。')
     if (!ownedCall) host.shared.safetyManualActionAt = Date.now()
   }
   // First load of the single inventory record on a live connection: adopt the
@@ -2294,6 +2295,7 @@ function createRuntime (host) {
     // this closure through accessors, so each use sees the current value exactly
     // as the code did when it was written here.
     const idleSafetyRuntime = require('./runtime/idle-safety-runtime').createIdleSafetyRuntime({
+      get require () { return require },
       get activeUnarmedSpiderFloor () { return activeUnarmedSpiderFloor },
       get actualLifeId () { return actualLifeId },
       get autonomy () { return autonomyRuntime.autonomy },
@@ -2887,11 +2889,8 @@ function createRuntime (host) {
           const owner = chunkMoveLease, controllerGuard = options?.beforeInput, baseOptions = { ...options }
           delete baseOptions.beforeInput
           const ordinary = normalWaterMovementOptions(portableMovementOptions(target, baseOptions), { combatAware: true }), ordinaryGuard = ordinary.beforeInput
-          preparedPortableOptions = { ...ordinary, beforeInput: frame => {
-            if (!owner || chunkMoveLease !== owner || owner.signal?.aborted || disposed || disposing) return false
-            if (controllerGuard && controllerGuard(frame) === false) return false
-            return ordinaryGuard ? ordinaryGuard(frame) !== false : true
-          } }
+          preparedPortableOptions = { ...ordinary, beforeInput: require('./travel/chunk-travel-errors').chunkMovementGuard({ owner,
+            isCurrent: () => chunkMoveLease === owner && !disposed && !disposing, controllerGuard, ordinaryGuard, diagnostics: host.shared }) }
         // Long trips and water exits use the chunk-move rule for water frames (live
         // 11-14, 11-18: a drowned in the pond rejected every swim frame for hours).
         } else preparedPortableOptions = normalWaterMovementOptions(portableMovementOptions(target, options), { combatAware: !!travelRuntime.longTravel?.status?.().busy || options?.waterExit === true })
@@ -3495,31 +3494,18 @@ function createRuntime (host) {
   // Repeated escapes with no route and no damage (a ledge with a pit in front
   // and a wall behind) only freeze the bot: pause them for a while so normal
   // movement can take over. Damage or a hostile within 4m ends the pause.
-  const ESCAPE_PAUSE_MS = 20000
-  function escapePaused () {
-    const stuck = host.shared.escapeStuck
-    if (!stuck || Date.now() >= stuck.until) return false
-    const s = raw()
-    if (!(s.health >= stuck.health) || nearestHostileDistance() <= 4) { stuck.until = 0; stuck.fails = 0; return false }
-    return true
-  }
-  function noteEscapeOutcome (failedNoRoute) {
-    const stuck = host.shared.escapeStuck ??= { fails: 0, until: 0, health: null }
-    const hp = raw().health
-    if (!failedNoRoute) { stuck.fails = 0; return }
-    if (stuck.fails === 0) stuck.health = hp
-    stuck.fails++
-    if (stuck.fails >= 3 && hp >= stuck.health) { stuck.until = Date.now() + ESCAPE_PAUSE_MS; stuck.fails = 0; host.log(`待機保護の退避を一時停止: 経路なしが3回続き被弾なし（${ESCAPE_PAUSE_MS / 1000}秒）`) }
-  }
-  function logEscapePhase (context, task) {
-    const started = Date.now(), nearest = nearestHostileText()
-    host.log(`待機保護の退避開始: op=${context?.operationId ?? '?'} ${nearest}`)
-    return Promise.resolve(task).then(result => {
-      host.log(`待機保護の退避終了: ${Date.now() - started}ms supported=${result?.supported} escaped=${result?.escaped ?? result?.ok ?? '?'} code=${result?.code ?? result?.reason ?? 'none'}`)
-      try { noteEscapeOutcome(result?.supported === false && /no_known/.test(String(result?.code ?? result?.reason ?? '')) || result?.supported === true && result?.escaped === false) } catch {}
-      return result
-    }, error => { host.log(`待機保護の退避終了: ${Date.now() - started}ms error=${error?.code ?? error?.message ?? error}`); try { if (!/CANCELLED/.test(String(error?.code ?? error?.message ?? ''))) noteEscapeOutcome(/deadline|stalled/.test(String(error?.message ?? ''))) } catch {} throw error })
-  }
+  // This part lives in escape-outcomes-runtime.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const escapeOutcomesRuntime = require('./runtime/escape-outcomes-runtime').createEscapeOutcomesRuntime({
+    get require () { return require },
+    get host () { return host }, set host ($value) { host = $value },
+    get nearestHostileDistance () { return nearestHostileDistance },
+    get nearestHostileText () { return nearestHostileText },
+    get raw () { return raw }
+  })
+  function escapePaused (...args) { return escapeOutcomesRuntime.escapePaused(...args) }
+  function logEscapePhase (...args) { return escapeOutcomesRuntime.logEscapePhase(...args) }
   const combatExposure = createCombatExposure({ world: host.world, entities: host.entities, scopeOf: userScope })
   function combatSightEvidence (from, to) { return combatExposure.sight(from, to) }
   const bowSightClearAt = (from, to) => combatSightEvidence(from, to) === true
@@ -3985,6 +3971,7 @@ function createRuntime (host) {
     get chunkMoveJobIdentity () { return chunkMoveJobIdentity },
     get chunkMoveLease () { return chunkMoveLease }, set chunkMoveLease (value) { chunkMoveLease = value },
     get chunkTravel () { return chunkTravel }, set chunkTravel (value) { chunkTravel = value },
+    get combatAttackExposure () { return combatAttackExposure },
     get controlLocation () { return controlLocation },
     get crafting () { return crafting },
     get createChunkTravel () { return createChunkTravel },

@@ -16,11 +16,12 @@
 // (chest-lid.js) is left out: it never opens. Both halves of a large chest are
 // listed; what is known of a chest is kept per cell that was opened (knownSlots).
 const { chestShut } = require('./chest-lid')
+const { pairedChest } = require('./chest-pair')
 
 const CHEST = 'minecraft:chest'
 const REACH = 12, RISE = 4
 
-function baseChests (getBlock, anchors, { reach = REACH, rise = RISE } = {}) {
+function baseChests (getBlock, anchors, { reach = REACH, rise = RISE, contents = null } = {}) {
   const from = anchors.filter(Boolean)
   const found = new Map()
   for (const anchor of from) {
@@ -28,7 +29,7 @@ function baseChests (getBlock, anchors, { reach = REACH, rise = RISE } = {}) {
       const at = { x: anchor.x + dx, y: anchor.y + dy, z: anchor.z + dz }, key = `${at.x},${at.y},${at.z}`
       if (found.has(key)) continue
       const block = getBlock(at.x, at.y, at.z)
-      if (block?.known !== true || block.name !== CHEST || chestShut(getBlock, at)) continue
+      if (block?.known !== true || block.name !== CHEST || chestShut(getBlock, at, contents)) continue
       found.set(key, at)
     }
   }
@@ -45,12 +46,8 @@ function baseChests (getBlock, anchors, { reach = REACH, rise = RISE } = {}) {
 function knownSlots (getBlock, contents, at) {
   const own = contents?.(at)
   if (own) return own
-  const isChest = cell => { const block = getBlock(cell.x, cell.y, cell.z); return block?.known === true && block.name === CHEST }
-  const beside = cell => [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ x: cell.x + dx, y: cell.y, z: cell.z + dz })).filter(isChest)
-  const near = beside(at)
-  if (near.length !== 1 || beside(near[0]).length !== 1) return null
-  const slots = contents?.(near[0])
-  return Array.isArray(slots) && slots.length === 54 ? slots : null
+  const pair = pairedChest(getBlock, at, contents)
+  return pair ? contents?.(pair) ?? null : null
 }
 
 module.exports = { baseChests, knownSlots, REACH, RISE }

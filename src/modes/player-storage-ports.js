@@ -120,7 +120,7 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held
   // The chest window: opening, reading, depositing and taking out (return/container-ports.js).
   const box = createContainerPorts({ operations, getInventory, getBlock, getFeet, held, disposed, sleep, now, memory, tool })
 
-  return { craftSmall, craftPlanks, tableNear, place, hold, drop, placeTable, craftAtTable, recoverTables: () => operations.playerWorkstations?.recoverNearby({ tablesOnly: true }), placementRetrySafe: () => retrySafe, room: box.room, contents: box.contents, store: box.store, take: box.take, withdraw: box.withdraw, inspect: box.inspect, deposit: box.deposit, access: box.access, refusal: () => refusal }
+  return { craftSmall, craftPlanks, tableNear, place, hold, drop, placeTable, craftAtTable, recoverTables: () => operations.playerWorkstations?.recoverNearby({ tablesOnly: true }), placementRetrySafe: () => retrySafe, room: box.room, contents: box.contents, store: box.store, take: box.take, withdraw: box.withdraw, inspect: box.inspect, deposit: box.deposit, recoverTransfer: box.recoverTransfer, access: box.access, refusal: () => refusal }
 }
 
 module.exports = { createStoragePorts }

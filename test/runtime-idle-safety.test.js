@@ -235,8 +235,8 @@ test('damage preserves supervisor history while explicit stop and disposal drain
   actor.gate.resolve(); await stopping
   await f.runtime.onSpawn()
   assert.equal(old.isCurrentGeneration(), false)
-  assert.throws(() => old.getState(), /スポーン前/)
-  await assert.rejects(old.engage('9', { operationId: 1 }), /スポーン前/)
+  assert.throws(() => old.getState(), { code: 'SAFETY_GENERATION_CHANGED' })
+  await assert.rejects(old.engage('9', { operationId: 1 }), { code: 'SAFETY_GENERATION_CHANGED' })
   const count = f.combats[1].cancel.length
   await old.cancelOwned({ operationId: 1, reason: 'late cleanup' })
   assert.equal(f.combats[1].cancel.length, count)

@@ -69,10 +69,12 @@ const DEFAULT_MAX_SECTIONS = 4096
 function createWorld ({ version = '1.26.60', registry, maxSections = DEFAULT_MAX_SECTIONS } = {}) {
   if (!registry) registry = require('prismarine-registry')(`bedrock_${version}`)
   let revision = 0
+  let terrainEpoch = 0
   // Only packets that change received terrain bump it; derived caches (terrain
   // evidence, reachability cells) would otherwise reset on every entity move.
   const WORLD_PACKETS = new Set(['start_game', 'change_dimension', 'respawn', 'level_chunk', 'subchunk', 'update_block', 'update_subchunk_blocks', 'update_block_synced', 'block_entity_data'])
   const sections = new Map()
+  const terrainObservers = require('./terrain-observer').createTerrainObservers({ epoch: () => terrainEpoch, version: id => sections.get(id)?.terrainRevision ?? null })
   const columns = new Set()
   const pending = new Map()
   // Survey history is separate from pending so failed/expired outer requests
@@ -117,7 +119,7 @@ function createWorld ({ version = '1.26.60', registry, maxSections = DEFAULT_MAX
   function remember (x, y, z, section) {
     const id = key(x, y, z)
     sections.delete(id)
-    sections.set(id, { ...section, updates: section.updates ?? new Map() })
+    sections.set(id, { ...section, terrainRevision: revision, updates: section.updates ?? new Map() })
     if (section.complete) surveyHistory.delete(id)
     evict()
   }
@@ -189,12 +191,14 @@ function createWorld ({ version = '1.26.60', registry, maxSections = DEFAULT_MAX
     const index = ((position.x & 15) << 8) | ((position.z & 15) << 4) | (position.y & 15)
     if (!section.updates.has(index)) section.updates.set(index, new Map())
     section.updates.get(index).set(packet.layer, packet.block_runtime_id)
+    section.terrainRevision = revision
     counters.blockUpdates++
   }
   function applyPacket (name, packet) {
     // Any applied world packet may change received blocks; derived caches key
     // on this revision so they never outlive a block change.
     if (WORLD_PACKETS.has(name)) revision++
+    if (['start_game', 'change_dimension', 'respawn'].includes(name)) terrainEpoch++
     // Sections are only added, replaced or removed from here.
     lastSection = null
     if (name === 'start_game') {
@@ -292,6 +296,7 @@ function createWorld ({ version = '1.26.60', registry, maxSections = DEFAULT_MAX
     if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y) || !Number.isSafeInteger(z)) return unknown('invalid_position')
     if (!initialized) return unknown(mappingIssue ?? 'world_not_initialized')
     const sx = Math.floor(x / 16), sy = Math.floor(y / 16), sz = Math.floor(z / 16)
+    terrainObservers.read(sx, sy, sz)
     let section = lastSection
     if (!section || sx !== lastX || sy !== lastY || sz !== lastZ) {
       section = sections.get(key(sx, sy, sz))
@@ -412,7 +417,7 @@ function createWorld ({ version = '1.26.60', registry, maxSections = DEFAULT_MAX
     return requests.length ? [{ dimension: dimensionId, origin, requests }] : []
   }
   return {
-    applyPacket, getBlock, getArea, buildSubchunkRequest, buildSurfaceSurveyRequests, setRetention, revision: () => revision,
+    applyPacket, getBlock, getArea, buildSubchunkRequest, buildSurfaceSurveyRequests, setRetention, revision: () => revision, observeTerrain: terrainObservers.observe,
     stats: () => ({ version, dimension, initialized, mappingIssue, loadedSections: [...sections.values()].filter(section => section.complete).length, cachedSections: sections.size, maxSections, retainedColumns: retain.pinned.size, announcedColumns: columns.size, ...counters, lastError })
   }
 }

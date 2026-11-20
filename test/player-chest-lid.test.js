@@ -4,6 +4,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { lidBlocker, chestShut, lidFree } = require('../src/modes/chest-lid')
 const { chestsNear, chestCells } = require('../src/modes/player-storage')
+const { pairedChest } = require('../src/modes/chest-pair')
 
 const mc = name => `minecraft:${name}`
 const solid = name => ({ known: true, name: mc(name), boundingBox: 'block' })
@@ -50,9 +51,25 @@ test('what leaves the lid free: glass, leaves, a slab, stairs, another chest, a 
 
 test('a large chest with a block on one half does not open from either half', () => {
   const block = (x, y, z) => y === 64 && z === 0 && (x === 3 || x === 4) ? solid('chest') : y === 65 && x === 4 && z === 0 ? solid('stone') : y <= 63 ? solid('stone') : air
-  assert.deepEqual(chestShut(block, { x: 3, y: 64, z: 0 }), { at: { x: 4, y: 65, z: 0 }, name: 'minecraft:stone' })
-  assert.deepEqual(chestShut(block, { x: 4, y: 64, z: 0 }), { at: { x: 4, y: 65, z: 0 }, name: 'minecraft:stone' })
-  assert.deepEqual(chestsNear(block, { x: 0.5, y: 64, z: 0.5 }), [])
+  const contents = at => at.x === 3 ? Array.from({ length: 54 }, (_, slot) => ({ slot, known: true, count: 0 })) : null
+  assert.deepEqual(chestShut(block, { x: 3, y: 64, z: 0 }, contents), { at: { x: 4, y: 65, z: 0 }, name: 'minecraft:stone' })
+  assert.deepEqual(chestShut(block, { x: 4, y: 64, z: 0 }, contents), { at: { x: 4, y: 65, z: 0 }, name: 'minecraft:stone' })
+  assert.deepEqual(chestsNear(block, { x: 0.5, y: 64, z: 0.5 }, 5, { contents }), [])
+})
+
+test('an adjacent independent chest does not inherit a blocked lid, even with stale double-chest contents', () => {
+  const block = (x, y, z) => y === 64 && z === 0 && (x === 3 || x === 4) ? { ...solid('chest'), properties: { 'minecraft:cardinal_direction': { value: x === 3 ? 'north' : 'south' } } } : y === 65 && x === 4 && z === 0 ? solid('stone') : y <= 63 ? solid('stone') : air
+  const at = { x: 3, y: 64, z: 0 }
+  assert.equal(chestShut(block, at), null)
+  assert.equal(chestShut(block, at, () => Array.from({ length: 54 })), null)
+  assert.deepEqual(chestsNear(block, { x: 0.5, y: 64, z: 0.5 }).map(chest => chest.position), [at])
+})
+
+test('one received facing is enough to reject a pair along the incompatible axis', () => {
+  for (const known of [3, 4]) {
+    const block = (x, y, z) => y === 64 && z === 0 && (x === 3 || x === 4) ? { ...solid('chest'), ...(x === known ? { properties: { facing_direction: 5 } } : {}) } : air
+    assert.equal(pairedChest(block, { x: 3, y: 64, z: 0 }, () => Array.from({ length: 54 })), null)
+  }
 })
 
 test('no chest is placed in a cell under a whole block', () => {

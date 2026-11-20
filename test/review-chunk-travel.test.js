@@ -424,3 +424,71 @@ test('an uncoded failure keeps its own message in the log and in the shown reaso
   assert.match(travel.status().error.message, /Movement requires a spawned player with a server position/)
   assert.match(logs[0], /cause=Movement requires a spawned player with a server position/)
 })
+
+test('a changed read section gets at most two replans; exhaustion retains its typed cause', async () => {
+  for (const failures of [2, Infinity]) {
+    let plans = 0
+    const f = fixture({ plan: () => { if (plans++ < failures) throw Object.assign(new Error('Navigation terrain changed during planning'), { code: 'NAVIGATION_TERRAIN_CHANGED' }) } })
+    f.travel.start({ area: { x1: 1, z1: 0 } }); await f.travel.drain()
+    const status = f.travel.status()
+    assert.equal(status.replans, 2)
+    if (failures === 2) { assert.equal(status.phase, 'arrived'); assert.ok(f.moves.length > 1) } else {
+      assert.equal(plans, 3); assert.equal(f.moves.length, 0)
+      assert.equal(status.error.code, 'CHUNK_TRAVEL_CONTEXT_CHANGED')
+      assert.equal(status.error.causeCode, 'NAVIGATION_TERRAIN_CHANGED')
+      assert.match(status.error.message, /参照した地形/)
+    }
+  }
+})
+
+test('ownership and lifecycle invalidation stay soft and never become a route rejection', async () => {
+  for (const code of ['ACTION_BUSY', 'NAVIGATION_CONTEXT_CHANGED', 'CHUNK_MOVE_CONTEXT_CHANGED']) {
+    const f = fixture(), fail = () => { throw Object.assign(new Error('temporary admission change'), { code }) }
+    const travel = createChunkTravel({ ...f.ports, ...(code === 'ACTION_BUSY' ? { acquire: async (id, options) => { await f.ports.acquire(id, options); fail() } } : { planRoute: fail }) })
+    travel.start({ area: { x1: 1, z1: 0 } }); await travel.drain()
+    const status = travel.status()
+    assert.equal(status.error.code, code === 'ACTION_BUSY' ? 'CHUNK_TRAVEL_BUSY' : 'CHUNK_TRAVEL_CONTEXT_CHANGED')
+    assert.equal(status.error.causeCode, code); assert.equal(status.planningFailure, null); assert.equal(status.replans, 0)
+    assert.equal(f.moves.length, 0); assert.equal(f.events.at(-1), 'release')
+  }
+})
+
+test('long planning failures retain candidate, search limit and unknown frontier in status and log', async () => {
+  const f = fixture(), logs = [], unknownFrontier = [{ x: 1, y: 63, z: 0 }]
+  const travel = createChunkTravel({ ...f.ports, log: line => logs.push(line), planRoute: async () => ({ ready: false, code: 'NAVIGATION_SEARCH_LIMIT', reason: 'Navigation search limit reached', expanded: 5000, unknownFrontier }) })
+  travel.start({ area: { x1: 1, z1: 0 } }); await travel.drain()
+  const status = travel.status()
+  assert.equal(status.error.code, 'CHUNK_TRAVEL_NO_ROUTE')
+  assert.equal(status.planningFailure.code, 'NAVIGATION_SEARCH_LIMIT')
+  assert.equal(status.planningFailure.reason, 'Navigation search limit reached')
+  assert.equal(status.planningFailure.expanded, 5000)
+  assert.deepEqual(status.planningFailure.unknownFrontier, unknownFrontier)
+  assert.ok(Number.isFinite(status.planningFailure.target.x))
+  assert.match(logs[0], /plan=NAVIGATION_SEARCH_LIMIT candidate=[\d.,-]+ expanded=5000 unknown=1/)
+  status.planningFailure.unknownFrontier[0].x = 100
+  assert.equal(travel.status().planningFailure.unknownFrontier[0].x, 1)
+})
+
+test('a changed enemy after preview stops the owned leg and makes only two fresh attempts', async () => {
+  for (const failures of [1, Infinity]) {
+    const f = fixture(); let starts = 0, motion = { phase: 'idle' }, policies = 0
+    const travel = createChunkTravel({ ...f.ports, planningOptions: () => { policies++; return { avoidance: [] } }, getMovement: () => motion,
+      startMove: (target, options) => {
+        if (starts++ < failures) {
+          assert.equal(options.beforeInput(), true)
+          return (motion = { phase: 'failed', running: false, reason: 'Movement frame guard rejected the proposed input', guardFailure: { code: 'CHUNK_MOVE_THREAT_CHANGED', reason: '敵の位置が変わりました。' } })
+        }
+        return (motion = f.ports.startMove(target, options))
+      } })
+    travel.start({ area: { x1: 1, z1: 0 } }); await travel.drain()
+    const status = travel.status()
+    if (failures === 1) { assert.equal(status.phase, 'arrived'); assert.equal(status.replans, 1); assert.ok(f.moves.length > 1) } else {
+      assert.equal(starts, 3); assert.equal(status.replans, 2)
+      assert.equal(status.error.code, 'CHUNK_TRAVEL_CONTEXT_CHANGED')
+      assert.equal(status.error.causeCode, 'CHUNK_MOVE_THREAT_CHANGED')
+      assert.equal(status.movementFailure.causeCode, 'CHUNK_MOVE_THREAT_CHANGED')
+      assert.match(status.error.message, /敵の位置/)
+    }
+    assert.ok(policies >= 4); assert.ok(f.stops.some(stop => stop.reason === 'CHUNK_MOVE_THREAT_CHANGED'))
+  }
+})

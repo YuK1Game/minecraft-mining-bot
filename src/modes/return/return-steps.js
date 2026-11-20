@@ -11,6 +11,8 @@ const { underCover } = require('../player-surface')
 const { openAccess } = require('../../actions/open-face')
 const { chestShut } = require('../chest-lid')
 const { knownSlots } = require('../base-chests')
+const { pairedChest: pairOf } = require('../chest-pair')
+const { refreshCapacity, rememberFull } = require('./return-capacity')
 
 const CHEST = 'minecraft:chest'
 const ARRIVE_M = 20, REACH_M = 4, CLOSE_M = 6, FAR_M = 1024, MAX_BUILT = 3, EYE = 1.62, STANDS = 6
@@ -44,12 +46,6 @@ function standsBeside (getBlock, chest) {
   return out
 }
 
-// The other half of a large chest: the same container.
-function pairOf (getBlock, chest) {
-  const isChest = at => { const found = getBlock(at.x, at.y, at.z); return found?.known === true && found.name === CHEST }
-  return [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ x: chest.x + dx, y: chest.y, z: chest.z + dz })).find(isChest) ?? null
-}
-
 function createReturnSteps ({ goal, ports, flow }) {
   const { getBlock, getPosition, getFeet, getInventory, policy, moves, chests } = ports
   const { ok, interrupter, say, now, sleep } = flow
@@ -79,11 +75,12 @@ function createReturnSteps ({ goal, ports, flow }) {
   const listed = (list, at) => { if (!inList(list, at)) list.push({ x: at.x, y: at.y, z: at.z }) }
   // The received slots of a chest: its own, or those of the other half of a large chest (base-chests.js).
   const slotsOf = at => knownSlots(getBlock, chests.hands.contents, at)
+  const capacity = () => ({ getBlock, contents: chests.hands.contents, cargo: policy.cargo() })
   // A chest under a whole block does not open (chest-lid.js): it is not walked to,
   // not clicked and not counted as a failure. Said once for each chest.
   const told = new Set()
   const shut = at => {
-    const by = chestShut(getBlock, at)
+    const by = chestShut(getBlock, at, chests.hands.contents)
     if (by && !told.has(`${at.x},${at.y},${at.z}`)) { told.add(`${at.x},${at.y},${at.z}`); say(`チェスト (${at.x}, ${at.y}, ${at.z}) は、真上 (${by.at.x}, ${by.at.y}, ${by.at.z}) の ${String(by.name).replace('minecraft:', '')} でふたが開かないため使いません`) }
     return !!by
   }
@@ -275,6 +272,7 @@ function createReturnSteps ({ goal, ports, flow }) {
   async function container () {
     if (aborted()) return stopped('CONTAINER_INTERRUPTED')
     const goalNow = g()
+    refreshCapacity(goalNow, capacity())
     // Only taking out: no chest with room is needed, and none is built.
     if (!policy.cargo().length && getInventory()) return { ...completed('NOTHING_TO_STORE'), next: 'verify' }
     // The base's chest, the house's second one, the one in use, and any other standing near the Bot.
@@ -283,7 +281,7 @@ function createReturnSteps ({ goal, ports, flow }) {
     const known = goalNow.base ? [goalNow.base, ...chests.spares(), ...(goalNow.target ? [goalNow.target] : []), ...(chests.near?.() ?? [])].filter((at, index, all) => all.findIndex(other => same(other, at)) === index) : []
     // The halves of a large chest are one container: what is known of one half
     // (full, would not open, could not be got to) holds for the other.
-    const either = (list, at) => { const pair = pairOf(getBlock, at); return inList(list, at) || (!!pair && inList(list, pair)) }
+    const either = (list, at) => { const pair = pairOf(getBlock, at, chests.hands.contents); return inList(list, at) || (!!pair && inList(list, pair)) }
     const full = at => either(goalNow.full, at)
     const usable = known.filter(at => isChest(at) && !chests.pending?.(at) && !shut(at) && !full(at) && !either(goalNow.unopened, at) && !either(goalNow.unreached, at))
     for (const at of usable) {
@@ -296,9 +294,7 @@ function createReturnSteps ({ goal, ports, flow }) {
       if (seen.evidence?.room > 0) { goalNow.target = at; return completed('CHEST_HAS_ROOM', { evidence: seen.evidence }) }
       if (seen.evidence?.mayMerge) { goalNow.target = at; return completed('CHEST_CHOSEN', { evidence: seen.evidence }) }
       say(`チェスト (${at.x}, ${at.y}, ${at.z}) は満杯です（受信した空き 0 枠）`)
-      listed(goalNow.full, at)
-      const pair = pairOf(getBlock, at)
-      if (pair) listed(goalNow.full, pair)
+      rememberFull(goalNow, at, capacity())
     }
     // A chest it could not get to is not replaced by a new one somewhere else:
     // the place is planned again later. Only where a chest was opened and
@@ -351,11 +347,9 @@ function createReturnSteps ({ goal, ports, flow }) {
     const moved = out.progress?.confirmedTransferred ?? 0
     // Counted once, here, whatever the rest of the answer says.
     if (moved > 0) { goalNow.progress.banked += moved; goalNow.progress.lastAt = now(); goalNow.progress.last = `${moved} 個を (${at.x}, ${at.y}, ${at.z}) に収納` }
-    if (aborted()) return { ...stopped('STORE_INTERRUPTED'), progress: out.progress }
+    if (aborted()) return { ...stopped('STORE_INTERRUPTED'), progress: out.progress, evidence: out.evidence }
     if (out.code === 'CONTAINER_FULL') {
-      listed(goalNow.full, at)
-      const pair = pairOf(getBlock, at)
-      if (pair) listed(goalNow.full, pair)
+      rememberFull(goalNow, at, capacity())
       goalNow.target = null
       return { ...(moved > 0 ? partial : completed)('CONTAINER_FULL', { progress: out.progress, remaining: out.remaining, evidence: out.evidence }), next: 'container' }
     }
@@ -403,12 +397,12 @@ function createReturnSteps ({ goal, ports, flow }) {
         const taken = out.progress?.confirmedTransferred ?? 0
         if (taken > 0) { goalNow.progress.taken += taken; goalNow.progress.lastAt = now(); goalNow.progress.last = `${taken} 個を取り出し` }
         // What was taken out may have made room: the chest is looked at again.
-        if (taken > 0 && first) { const pair = pairOf(getBlock, at); goalNow.full = goalNow.full.filter(other => !same(other, at) && !(pair && same(other, pair))) }
-        if (aborted()) return { ...stopped('RESTOCK_INTERRUPTED'), progress: out.progress }
+        if (taken > 0 && first) { const pair = pairOf(getBlock, at, chests.hands.contents); goalNow.full = goalNow.full.filter(other => !same(other, at) && !(pair && same(other, pair))) }
+        if (aborted()) return { ...stopped('RESTOCK_INTERRUPTED'), progress: out.progress, evidence: out.evidence }
         // A transfer can invalidate inventory after this stage's entry check.
         // Wait for fresh receipts before opening or taking anything else.
         if (!getInventory()) return blocked('TRANSFER_UNCONFIRMED', { kind: 'inventory_update', timeoutMs: 30000 }, { progress: out.progress, evidence: out.evidence, detail: out.detail })
-        if (out.status === 'blocked' || out.status === 'interrupted' || out.status === 'cancelled') return out
+        if (out.hold === true || out.evidence?.transfer?.rejectionProof || out.status === 'blocked' || out.status === 'interrupted' || out.status === 'cancelled') return out
         // Never in silence: which chest did not give, and why.
         if (out.status !== 'completed') { why = why ?? out; say(`チェスト (${at.x}, ${at.y}, ${at.z}) から取り出せませんでした（${out.code}${out.detail ? `: ${out.detail}` : ''}）`) }
       }

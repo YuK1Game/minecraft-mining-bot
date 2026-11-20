@@ -129,17 +129,33 @@ test('a trip that stops getting closer is ended after four minutes and tried aga
 })
 
 test('a base chest that would not open is not full, and is not waited for: chest B, then a new chest (live 2026-11-18 01:02 JST)', async () => {
+  // These are the house's already verified double chests. Read their actual
+  // 54 slots before the later failure: adjacency alone must not give an
+  // unobserved neighbouring chest the same "unopened" conclusion.
+  const rememberHouseChests = async (sim, runtime, chests) => {
+    const before = sim.getFeet()
+    try {
+      for (const at of chests) {
+        Object.assign(sim.body, { x: at.x + 0.5, y: at.y, z: at.z + 1.5 })
+        const observed = await runtime.storagePorts.inspect(at)
+        assert.equal(observed.status, 'completed')
+        assert.equal(observed.evidence.slotCount, 54)
+      }
+    } finally { Object.assign(sim.body, before) }
+  }
   const { sim, A, B } = home([...KIT, [2, 'diamond', 40], [3, 'chest', 2]])
   const same = (a, b) => a.x === b.x && a.y === b.y && a.z === b.z
-  sim.server.contents = at => same(at, A) ? 'none' : 'send'
   const runtime = sim.mount()
+  await rememberHouseChests(sim, runtime, [A, B])
+  sim.server.contents = at => same(at, A) ? 'none' : 'send'
   assert.equal(await sim.run(runtime, { until: done }), true, sim.log.join('\n'))
   assert.equal(sim.stored(B, 'diamond'), 37, 'chest B takes it')
   assert.equal(lines(sim, /満杯です/).length, 0, 'the unopened chest is never called full')
   // Neither opens: a new chest outside takes everything and becomes the base.
   const second = home([...KIT, [2, 'diamond', 40], [3, 'chest', 2]])
-  second.sim.server.contents = at => same(at, second.A) || same(at, second.B) ? 'none' : 'send'
   const other = second.sim.mount()
+  await rememberHouseChests(second.sim, other, [second.A, second.B])
+  second.sim.server.contents = at => same(at, second.A) || same(at, second.B) ? 'none' : 'send'
   assert.equal(await second.sim.run(other, { until: done, ms: 900000 }), true, second.sim.log.join('\n'))
   assert.equal(second.sim.events.filter(event => event.kind === 'place_chest').length, 1)
   assert.equal(second.sim.stored(second.sim.shared.playerBase, 'diamond'), 37)

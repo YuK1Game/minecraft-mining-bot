@@ -22,6 +22,7 @@ function fixture ({ remaining = 2, lastRequestedAt = null, onDelay = null } = {}
   const events = [], actors = [], busy = () => ({ snapshot: () => ({ busy: false }) })
   const state = { profile: 'terminal-test', realm: { id: '1' }, connectionId: 'c1', startedAt: 't1', dimension: 'overworld', runtimeEntityId: '41', lifecycle: { deathId: 1 }, phase: 'spawned', health: 20, position: { x: 0.5, y: 66.62, z: 0.5 }, inventory: { known: true, items: [{ slot: 0, name: 'minecraft:diamond_pickaxe', count: 1, stackId: 42, durabilityKnown: true, durabilityRemaining: remaining }] } }
   const context = {
+    actionBusyError: require('../src/common/action-busy-error').actionBusyError,
     ownedCall: 0, disposed: false, disposing: false, pendingStops: new Set(), userBehaviorTickTask: null, inputOwner: 'idle', inventoryBusy: false, craftPending: null, motion: false, manualArmorOwner: null,
     host: { shared: { autoWanted: false, equipment: null, ...(lastRequestedAt == null ? {} : { inventoryResync: { lastRequestedAt } }) }, entities: { snapshot: () => structuredClone(actors) } },
     Date: { now: () => clock }, Error, Promise, Object, Number, Math,

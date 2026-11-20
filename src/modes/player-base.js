@@ -94,7 +94,7 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
   // each is opened once. One that was tried and is still not known (it did not
   // open, no way to it) is not a reason for another trip for TRIED_MS.
   let scan = { at: -Infinity, list: [] }
-  const around = () => { if (!shared.playerBase) return []; if (now() - scan.at >= SCAN_MS) scan = { at: now(), list: baseChests(getBlock, [shared.playerBase, ...spares()]) }; return scan.list }
+  const around = () => { if (!shared.playerBase) return []; if (now() - scan.at >= SCAN_MS) scan = { at: now(), list: baseChests(getBlock, [shared.playerBase, ...spares()], { contents: hands.contents }) }; return scan.list }
   const cell = at => `${at.x},${at.y},${at.z}`
   const tried = at => ((shared.playerChestTried ??= {})[cell(at)] ?? 0) > now()
   const noteTried = at => { (shared.playerChestTried ??= {})[cell(at)] = now() + TRIED_MS }
