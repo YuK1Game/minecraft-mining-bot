@@ -12,10 +12,11 @@
 // - A ledge is a received solid floor that is not water, with two received
 //   empty dry cells above it, standing at the surface level or one above (and,
 //   for a body bobbing above the top water block, one above its feet cell).
+// Water: the cell's block or its second layer (wet-cell.js): a seagrass cell is water, not a ledge.
+const { water } = require('./wet-cell')
+
 const REACH = 5.5
 const DEPTH = 8
-
-const water = found => /water/.test(found?.name ?? '')
 
 // The column whose water the body is in: its own (water at the feet or one
 // below), or one its 0.6-wide body reaches into with water at the feet's

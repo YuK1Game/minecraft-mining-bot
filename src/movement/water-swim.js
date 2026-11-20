@@ -17,7 +17,7 @@
 const { surface } = require('./water-ledges')
 
 const RANGE = 48, CELLS = 6000, LEG = 8, REACH = 10, TICKS = 200, NEAR = 0.7
-const water = found => /water/.test(found?.name ?? '')
+const { water } = require('./wet-cell')
 const open = found => found?.known === true && found.boundingBox === 'empty' && !water(found) && !/lava/.test(found.name ?? '')
 const copy = value => structuredClone(value)
 

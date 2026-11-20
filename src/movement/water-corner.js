@@ -18,7 +18,7 @@
 //   the side cell; on the line it heads for the ledge.
 const ALIGNED = 0.2
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-const water = found => /water/.test(found?.name ?? '')
+const { water } = require('./wet-cell')
 
 function sides (physics, cell, top, feet) {
   const out = []
