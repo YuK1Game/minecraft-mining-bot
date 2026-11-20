@@ -33,10 +33,13 @@ const { createBuildWalk } = require('../../src/modes/player-build-walk')
 const EYE = 1.62, WALK = 4.3, TRAVEL = 4, GROUND = 64
 const extra = () => ({ has_nbt: 'false', can_place_on: [], can_destroy: [] })
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: extra() })
-const NAMES = ['diamond', 'cobblestone', 'coal', 'iron_ingot', 'emerald', 'tuff', 'oak_log', 'oak_planks', 'chest', 'diamond_pickaxe', 'diamond_sword', 'cooked_beef', 'dirt', 'stick', 'wooden_pickaxe', 'string', 'bone', 'stone_sword', 'stone_pickaxe', 'iron_helmet']
+const NAMES = ['diamond', 'cobblestone', 'coal', 'iron_ingot', 'emerald', 'tuff', 'oak_log', 'oak_planks', 'chest', 'diamond_pickaxe', 'diamond_sword', 'cooked_beef', 'dirt', 'stick', 'wooden_pickaxe', 'string', 'bone', 'stone_sword', 'stone_pickaxe', 'iron_helmet', 'oak_boat', 'egg']
 const REGISTRY = NAMES.map((name, index) => ({ runtime_id: 400 + index, name: `minecraft:${name}` }))
 const idOf = name => REGISTRY.find(entry => entry.name === (name.includes(':') ? name : `minecraft:${name}`)).runtime_id
 const nameOf = id => REGISTRY.find(entry => entry.runtime_id === id)?.name ?? null
+// The server's own rule for a slot: no more of an item than its stack size (a boat or a tool 1, an egg 16).
+const SIZES = require('minecraft-data')('bedrock_1.26.60').itemsByName
+const sizeOf = id => SIZES[String(nameOf(id)).replace(/^minecraft:/, '')]?.stackSize ?? 64
 
 function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], stopLagMs = 400 } = {}) {
   // ---- clock: simulated time; every sleep also lets real promises settle ----
@@ -277,6 +280,9 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
         if (mode === 'reject') return observe('item_stack_response', { responses: [{ status: 'error', request_id: request.request_id }] })
         const store = storeOf(server.window.position), deposit = action.source.slot_type.container_id === 'hotbar_and_inventory'
         const playerSlot = deposit ? action.source.slot : action.destination.slot, chestSlot = deposit ? action.destination.slot : action.source.slot
+        // A transfer onto a slot that holds another item, or that would hold more than the item's stack size, is refused.
+        const moving = deposit ? bag[playerSlot] : store[chestSlot], onto = deposit ? store[chestSlot] : bag[playerSlot]
+        if (onto.network_id && (onto.network_id !== moving.network_id || onto.count + action.count > sizeOf(moving.network_id))) { server.refused = (server.refused ?? 0) + 1; return observe('item_stack_response', { responses: [{ status: 'error', request_id: request.request_id }] }) }
         const give = (list, slot, from) => { list[slot] = list[slot].network_id ? { ...list[slot], count: list[slot].count + action.count, stack_id: ++stackId } : { ...structuredClone(from), count: action.count, stack_id: ++stackId } }
         const take = (list, slot) => { list[slot] = list[slot].count - action.count > 0 ? { ...list[slot], count: list[slot].count - action.count, stack_id: ++stackId } : air() }
         const next = { bag: bag.map(item => structuredClone(item)), store }
