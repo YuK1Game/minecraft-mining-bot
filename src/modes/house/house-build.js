@@ -67,7 +67,7 @@ const order = steps => {
   return [...steps.filter(step => step.phase === 'foundation'), ...EARLY.map(id => steps.find(step => step.id === id)).filter(Boolean), ...rest, ...steps.filter(step => step.id === DOOR)]
 }
 
-function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel, getBlock, getPosition, getFeet, getInventory, chestWork = null, file = null, write = null, blocked = () => false, hostile = () => false, onDone = async () => {}, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel, getBlock, getPosition, getFeet, getInventory, chestWork = null, file = null, write = null, blocked = () => false, hostile = () => false, hostileWhy = () => null, onDone = async () => {}, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, placedTotal = 0
   const work = { begin: async () => true, complete: async () => true, attempt: async () => true, received: async () => true, retry: async () => true, canAttempt: () => true, ...chestWork }
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
@@ -346,7 +346,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
       if (aborted() || underCover(getBlock, getPosition())) {
         // Why, and soon again when only an enemy or a pause cut it short (live
         // 07:02 JST: cut off after 10 s with no reason, then 10 minutes idle).
-        const why = !live() ? 'プレイ停止' : hostile() ? '近くの敵' : blocked() ? 'ほかの作業・体力' : out?.reason ?? '不明'
+        const why = !live() ? 'プレイ停止' : hostile() ? `近くの敵${hostileWhy() ? `: ${hostileWhy()}` : ''}` : blocked() ? 'ほかの作業・体力' : out?.reason ?? '不明'
         say(`地上へ出られないため、拠点の家を建てられません（${why}）`)
         if (live() && (hostile() || blocked() || out?.reason === 'INTERRUPTED')) soon = true
         return 0
@@ -437,7 +437,8 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     // Cut short by an enemy or a pause before or between the steps: say so and
     // come back in 2 minutes, not 10 (live 2026-11-17 14:19 JST: a witch and two
     // skeletons by the house, 「0 個置きました」 with no reason at all).
-    if (aborted() && live()) { soon = true; say(`拠点の家: ${hostile() ? '敵が近い' : 'ほかの作業が始まった'}ため中断しました（2分後に続けます）`) }
+    // Which enemy it was goes with the line (work-danger.js; live 2026-11-20 22:15-22:44 JST: six runs cut short with nothing in the log near them).
+    if (aborted() && live()) { soon = true; const who = hostile() ? hostileWhy() : null; say(`拠点の家: ${hostile() ? '敵が近い' : 'ほかの作業が始まった'}ため中断しました（2分後に続けます）${who ? `。相手: ${who}` : ''}`) }
     const left = remaining(getBlock, origin)
     const chestsVerified = !aborted() && await verifyChests()
     for (const step of left) if ((fails.get(step.id) ?? 0) > 0 && workable(step)) failedAt.set(step.id, now())
