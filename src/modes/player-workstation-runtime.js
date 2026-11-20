@@ -5,6 +5,7 @@ const path = require('node:path')
 const { writeDurableJson } = require('../common/durable-json')
 const { createStationRecovery } = require('../actions/station-recovery')
 const { supplyScope } = require('../survival/supply-return')
+const { digTool } = require('./dig-tool')
 const { walkableCells } = require('./player-drops')
 const stations = require('./player-workstations')
 
@@ -112,7 +113,8 @@ function createPlayerWorkstationRuntime ({ shared, getState, getBlock, getMotion
       if (!disposed() && !held() && ownWindow && JSON.stringify(getFurnace()?.window) === JSON.stringify(ownWindow)) operations.crafting.closeContainer()
     }
     const state = check()
-    const pick = state.inventory.items.filter(i => /_pickaxe$/.test(i.name) && i.count > 0 && i.durabilityKnown === true && i.durabilityRemaining > 1).sort((a, b) => b.durabilityRemaining - a.durabilityRemaining)[0]
+    // A furnace comes off with any pickaxe: the cheapest working one (dig-tool.js), else any with a use left.
+    const pick = digTool(state.inventory.items, null, state.heldItem) ?? state.inventory.items.filter(i => /_pickaxe$/.test(i.name) && i.count > 0 && i.durabilityKnown === true && i.durabilityRemaining > 1).sort((a, b) => b.durabilityRemaining - a.durabilityRemaining)[0]
     if (!pick) throw failure('STATION_PICKAXE_REQUIRED', 'かまどを回収できるツルハシが必要です。')
     await operations.inventory.equip(pick.slot)
     check()

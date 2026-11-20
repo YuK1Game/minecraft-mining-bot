@@ -110,7 +110,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // Ordinary walking, mining, placement and the pillar step, shared by the scaffold and the climb out of a tunnel.
   const buildHands = (done, actions = operations) => createScaffoldPorts({
     operations: actions, disposed: done, pillarStep: (step, settings) => runtime.pillarStep(step, settings),
-    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getMotion: () => runtime.motion(), getHealth: () => runtime.raw().health,
+    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getMotion: () => runtime.motion(), getHealth: () => runtime.raw().health, getHeld: () => runtime.raw().heldItem,
     getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
   })
   const hands = buildHands(disposed)
@@ -229,7 +229,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const storagePorts = createStoragePorts({ operations, disposed, held: () => runtime.combatOwns?.() === true, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), memory: shared.playerChestMemory ??= { seen: new Map() } })
   const storage = createPlayerStorage({
     file: path.join(root, '.local', 'player-chest-pairs.json'), write: writeDurableJson, worldScope: () => stationWorldScope(runtime.raw()),
-    getMode: control.get, shared, log, disposed, getFeet: feetNow, mine: async cell => (await hands.pick()) && hands.mine(cell), dig: cell => hands.dig(cell), why: () => hands.why(), walk: target => hands.walk(target), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null },
+    getMode: control.get, shared, log, disposed, getFeet: feetNow, mine: async cell => (await hands.pick(cell)) && hands.mine(cell), dig: cell => hands.dig(cell), why: () => hands.why(), walk: target => hands.walk(target), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active || quarry.travelStatus().busy === true || danger(),

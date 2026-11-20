@@ -55,7 +55,7 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
     for (const at of cells) {
       if (aborted()) return false
       if (isAir(at)) continue
-      const tool = ports.canMine(at) || (await ports.pick?.() && ports.canMine(at))
+      const tool = ports.canMine(at) || (await ports.pick?.(at) && ports.canMine(at))
       if (!tool && !ports.canDig?.(at)) { refuse(at); why = ports.reason?.(at) ?? 'CANNOT_MINE'; return false }
       if (!await (tool ? ports.mine(at) : ports.dig(at))) { refuse(at); why = ports.why?.() ?? 'MINE_FAILED'; return false }
       mined++

@@ -67,7 +67,7 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
       for (const y of [base + 1, base]) {
         const target = { x: cell.x, y, z: cell.z }
         if (isAir(block(target.x, y, target.z))) continue
-        const tool = canMine(target) || (await ports.pick?.() && canMine(target))
+        const tool = canMine(target) || (await ports.pick?.(target) && canMine(target))
         if (!(tool ? await mine(target) : ports.canDig?.(target) && await ports.dig(target))) { open = false; break }
       }
       if (open) { side = { ...cell, y: base }; break }
@@ -96,7 +96,7 @@ async function climbOut ({ ports, log = () => {}, aborted = () => false, sleep =
       if (LEAVES.test(found.name ?? '')) { reason = 'LEAVES_ABOVE'; break }
       // No pickaxe left that may be used: plain rock by hand (real Realm
       // 2026-11-16 09:28 JST: every pickaxe at 2 uses, 20 blocks under the surface).
-      const tool = canMine(cell) || (await ports.pick?.() && canMine(cell))
+      const tool = canMine(cell) || (await ports.pick?.(cell) && canMine(cell))
       if (!tool && !ports.canDig?.(cell)) { reason = 'CANNOT_MINE'; detail = ports.reason?.(cell) ?? null; break }
       if (!await (tool ? mine(cell) : ports.dig(cell))) { reason = 'MINE_FAILED'; break }
       if (tool) took = true

@@ -52,7 +52,7 @@ async function gatherFill ({ ports, want = 1, aborted = () => false, log = () =>
   // One block: mined, then counted when it is in the pack. `fetch`: where to step when it does not come by itself.
   async function take (cell, fetch = null) {
     if (aborted() || fill() >= goal || !usable(cell)) return false
-    if (!(canMine(cell) || (await ports.pick?.() && canMine(cell)))) return false
+    if (!(canMine(cell) || (await ports.pick?.(cell) && canMine(cell)))) return false
     const had = fill()
     if (!await mine(cell)) return false
     mined++

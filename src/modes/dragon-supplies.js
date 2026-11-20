@@ -13,6 +13,8 @@ const { reserveRoom } = require('./dragon-reserve-room')
 const { createOpenStand } = require('./open-stand')
 
 const { ingredient, smelted, small, pickFor } = require('./dragon-supply-recipes')
+const { diggerWanted } = require('./dig-tool')
+const DIGGER = { stage: 'digger', target: 'stone_pickaxe', code: 'NOT_MADE' }
 const pending = reason => ({ done: false, reason })
 const done = reason => ({ done: true, reason })
 
@@ -135,6 +137,15 @@ function createDragonSupplies (ctx) {
       }
     } else if (pickFor[name] && !hasWorkingPick(rows(), pickFor[name])) {
       await acquire(pickFor[name] + '_pickaxe', 1)
+    } else if (pickFor[name] && diggerWanted(rows(), held) && (held('crafting_table') || bench.tableNear()) && ctx.goal?.spent?.(DIGGER) !== true) {
+      // Rock on the way to ore is dug with a stone pickaxe made from what is carried (dig-tool.js); the better one
+      // is kept for what needs it. A look that brought it no nearer (no stick made, no table put down) is a failed
+      // try; after three it is left, and the digging goes on.
+      const parts = () => [held('stone_pickaxe'), held('stick'), held('planks'), held('crafting_table'), !!bench.tableNear()].join()
+      const before = held('stone_pickaxe'), was = parts()
+      await acquire('stone_pickaxe', before + 1)
+      if (held('stone_pickaxe') > before) ctx.log?.('プレイヤーモード: 岩を掘るための石のツルハシを作りました（良いツルハシは、それが要るブロックに残します）')
+      else if (!cancelled() && parts() === was) ctx.goal?.fail?.(DIGGER, { paceMs: 15000 })
     } else if (SOURCES[name] || MOBS[name]) await collect(ctx, name)
     else return { ...pending(full(name) + ' の回収を待っています。'), missing: { name, count: target } }
     const current = held(name)

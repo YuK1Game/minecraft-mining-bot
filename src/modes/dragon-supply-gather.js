@@ -4,6 +4,7 @@ const { standable } = require('./house/house-steps')
 const { full, bare, workingPickTier } = require('./dragon-supply-kit')
 const { approachOre, searchMine, coolLava, lake, DEPTH } = require('./dragon-early-quarry')
 const { roam } = require('./supply-roam')
+const { digTool } = require('./dig-tool')
 
 const SOURCES = {
   raw_iron: /^(?:deepslate_)?iron_ore$/, raw_gold: /^(?:deepslate_)?gold_ore$/,
@@ -89,13 +90,16 @@ async function collect (ctx, name) {
       // is never part of the collection route.
       if (name === 'obsidian' && [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]].some(([x,y,z]) => /^(?:minecraft:)(?:nether_)?portal$/.test(ctx.getBlock(cell.x+x,cell.y+y,cell.z+z)?.name ?? ''))) continue
       const target = { x: cell.x, y: cell.y, z: cell.z }
-      if (['raw_iron','raw_gold','redstone','coal','diamond','obsidian','cobblestone'].includes(name)) {
-        const minTier = name === 'obsidian' ? 4 : 1
-        const picks = ctx.runtime.inventory().items.filter(i => workingPickTier(i) >= minTier)
-        const best = picks.sort((a, b) => workingPickTier(b) - workingPickTier(a) || (b.durabilityRemaining ?? 0) - (a.durabilityRemaining ?? 0))[0]
-        if (!best) return
-        await ctx.operations.inventory.equip(best.slot)
+      // The pickaxe for this block: the lowest tier that mines it (dig-tool.js), so the better one is kept for
+      // what needs it. With none chosen: the best working one, as before.
+      const picked = ['raw_iron','raw_gold','redstone','coal','diamond','obsidian','cobblestone'].includes(name)
+      const hold = async () => {
+        const items = ctx.runtime.inventory().items, minTier = name === 'obsidian' ? 4 : 1
+        const tool = digTool(items, block.name, ctx.runtime.raw().heldItem) ?? items.filter(i => workingPickTier(i) >= minTier).sort((a, b) => workingPickTier(b) - workingPickTier(a) || (b.durabilityRemaining ?? 0) - (a.durabilityRemaining ?? 0))[0]
+        if (tool) await ctx.operations.inventory.equip(tool.slot)
+        return !!tool
       }
+      if (picked && !await hold()) return
       if (name === 'sand') Object.assign(target, { accessPreparation: 'house_sand', expectedName: block.name })
       if (['flint', 'obsidian', 'string'].includes(name)) Object.assign(target, { accessPreparation: 'quarry', expectedName: block.name, expectedRuntimeId: block.runtimeId, ...(name === 'obsidian' ? { requiredTool: { kind:'pickaxe',tier:4,reserve:1 } } : {}) })
       if (['nether_wart','soul_sand'].includes(name)) Object.assign(target,{accessPreparation:'nether_ingredient',expectedName:block.name})
@@ -106,10 +110,7 @@ async function collect (ctx, name) {
         if (!oreSearch || !await approachOre(ctx, target) || ctx.cancelled()) continue
         // Tunneling may have equipped another pick. Restore the proper tool
         // before checking the ore's live face and tool requirement again.
-        if (name === 'obsidian') {
-          const pick = ctx.runtime.inventory().items.find(i => /^(?:minecraft:)(?:diamond|netherite)_pickaxe$/.test(i.name) && i.count > 0 && i.durabilityRemaining > 1)
-          if (pick) await ctx.operations.inventory.equip(pick.slot)
-        }
+        if (picked) await hold()
         if (!ctx.hands.canMine(target)) continue
       }
       if (await ctx.hands.mine(target) && !ctx.cancelled()) {

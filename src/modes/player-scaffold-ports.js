@@ -10,8 +10,10 @@ const DIRT = 'minecraft:dirt'
 const FILL = [DIRT, 'minecraft:cobblestone', 'minecraft:cobbled_deepslate']
 const { low, offGrid } = require('./low-block')
 const { onRim, footings } = require('./ledge-footing')
+const { digTool, toolNeeded } = require('./dig-tool')
+const { toolOf } = require('../quarry/quarry-rules')
 
-function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, getMotion, getHealth = () => null, pillarStep, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, getMotion, getHealth = () => null, getHeld = () => null, pillarStep, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
   const block = (x, y, z) => getBlock(x, y, z)
   const air = cell => { const found = block(cell.x, cell.y, cell.z); return found?.known === true && AIR.test(found.name ?? '') }
   const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
@@ -152,12 +154,14 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   const reason = cell => { try { const preview = operations.mining.preview([cell]); return preview?.ready === true ? null : String(preview?.errors?.[0] ?? preview?.error ?? '').slice(0, 160) || null } catch (error) { return String(error?.message ?? error).slice(0, 160) } }
   async function mine (cell) {
     if (air(cell)) return true
+    await ready(cell)
     if (!await begin(() => operations.mining.start([cell]))) return false
     return until(() => air(cell), 35000)
   }
   // The pillar block under the feet: received air there, then the feet one lower.
   async function descend (cell) {
     const name = block(cell.x, cell.y, cell.z)?.name
+    await ready(cell)
     if (!await begin(() => operations.mining.start([{ ...cell, accessPreparation: 'pillar_descent', expectedName: name }]))) return false
     if (!await until(() => air(cell), 35000)) return false
     return until(() => { const at = getFeet(); return !!at && at.y <= cell.y + 0.05 }, 5000)
@@ -205,20 +209,44 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     }
     return false
   }
-  // The pickaxe with the most uses left into the hand (the pillar step leaves
-  // dirt there; real Realm 2026-11-16 06:41 JST: stone overhead was refused
-  // with a sword in hand, 「適切なツルハシの装備を確認できません」).
-  async function pick () {
-    const picks = () => (getInventory()?.items ?? []).filter(item => /_pickaxe$/.test(item?.name ?? '') && item.count > 0 && item.durabilityKnown === true && item.durabilityRemaining > 2).sort((a, b) => b.durabilityRemaining - a.durabilityRemaining)
-    const item = picks()[0]
+  // A pickaxe into the hand (the pillar step leaves dirt there; real Realm 2026-11-16 06:41 JST: stone overhead was
+  // refused with a sword in hand, 「適切なツルハシの装備を確認できません」).
+  // For a block (`cell`): the working pickaxe of the lowest tier that mines it (dig-tool.js), so rock and dirt are
+  // not dug with the iron pickaxe while a stone one is carried. With no cell, or a block with no dig rule: the
+  // pickaxe with the most uses left, as before.
+  const picks = () => (getInventory()?.items ?? []).filter(item => /_pickaxe$/.test(item?.name ?? '') && item.count > 0 && item.durabilityKnown === true && item.durabilityRemaining > 2).sort((a, b) => b.durabilityRemaining - a.durabilityRemaining)
+  const chosen = cell => {
+    const name = cell ? block(cell.x, cell.y, cell.z)?.name : null
+    return name && digTool(getInventory()?.items ?? [], name, getHeld()) || picks()[0] || null
+  }
+  async function pick (cell = null) {
+    const item = chosen(cell)
     if (!item) return false
     // Through the inventory, into the slot the server has selected: a hotbar
     // selection alone is not confirmed by this server, and the mining check
     // then reads the old hand (real Realm 07:01 JST: refused with the wooden
     // pickaxe selected).
-    try { if ((await operations.inventory.equip(item.slot))?.phase !== 'completed') return false } catch (error) { return refused(error) }
+    try {
+      const moved = await operations.inventory.equip(item.slot)
+      if (moved?.phase !== 'completed') return false
+      // Already in the hand: nothing was swapped and nothing is waited for.
+      if (moved.selectedSlotChanged === false && moved.slot === moved.sourceSlot) return true
+    } catch (error) { return refused(error) }
     await sleep(250)
     return true
+  }
+  // Before a block is mined: the pickaxe for that block into the hand. A hand that cannot be changed is left as it
+  // is, and the mining check decides as before.
+  // A block no tool is needed for (dirt, grass) costs nothing with no tool in the hand: the hand is changed only
+  // when it holds a tool of a higher tier than the cheapest pickaxe (the iron pickaxe, with a stone one carried).
+  async function ready (cell) {
+    const hand = getHeld() ?? null
+    const name = block(cell.x, cell.y, cell.z)?.name, tool = name ? digTool(getInventory()?.items ?? [], name, hand) : null
+    if (!tool) return
+    if (hand && hand.slot === tool.slot && hand.name === tool.name) return
+    if (!toolNeeded(name) && !((toolOf(hand)?.tier ?? 0) > tool.tier)) return
+    const before = why
+    if (!await pick(cell)) why = before
   }
   // Off an edge onto a floor two or three lower in the next cell: the navigation's predicted controlled drop
   // (movement/navigation.js `controlledDrop`). It counts when the feet are received at the lower cell.
