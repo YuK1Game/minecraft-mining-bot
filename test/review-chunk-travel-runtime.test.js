@@ -16,7 +16,7 @@ function fixture (t, { combatExposure = null } = {}) {
   let motion = { phase: 'idle', running: false }, hop = 0, nativeState = null
   const events = [], starts = [], stops = [], previews = []
   const movement = {
-    snapshot: () => structuredClone(motion), preview: target => { previews.push({ target, origin: nativeState?.().position }); return { ready: true } }, previewHop: () => ({ ready: true }),
+    snapshot: () => structuredClone(motion), preview: (target, options) => { previews.push({ target, options, origin: nativeState?.().position }); return { ready: true } }, previewHop: () => ({ ready: true }),
     start: (target, options) => { starts.push({ target, options }); motion = { phase: 'moving', running: true, route: { operation: 'navigation' } }; return movement.snapshot() },
     startHop: () => { motion = { phase: 'moving', running: true, route: { operation: 'critical_hop' }, criticalHopId: ++hop, queuedTick: '1001', queuedReceiptConfirmed: true }; return movement.snapshot() },
     stop: reason => { stops.push(reason); motion = { phase: 'stopped', running: false } }, resetLifecycle: reason => movement.stop(reason), applyPacket () {}, diagnostics: () => null
@@ -135,6 +135,7 @@ test('chunk movement uses observed attack access for a blocked drowned while ord
   const checks = [], f = fixture(t, { combatExposure: (actor, state) => { checks.push({ actor: actor.runtimeId, position: state.position }); return { intercept: false, unknown: false, reason: 'PROJECTILE_SIGHT_BLOCKED' } } })
   f.begin(); await f.acquire()
   f.actors.push({ runtimeId: '9', uniqueId: '-99', entityType: 'minecraft:drowned', kind: 'mob', hostile: true, alive: true, positionKnown: true, dimension: 'overworld', position: { x: 6.5, y: 65, z: .5 } })
+  assert.deepEqual(f.ports().planningOptions(f.ports().getState()), { ready: true, avoidance: [] }, 'the planner shares the live blocked-attack exemption')
   const target = { x: 1.5, y: 65, z: .5 }, frame = { packetPosition: { x: .6, y: 66.62, z: .5 }, predictedState: { position: { x: .6, y: 65, z: .5 }, isInLava: false } }
   f.ports().startMove(target, { operationId: f.id(), beforeInput: () => true })
   assert.equal(f.starts[0].options.beforeInput(frame), true)
@@ -143,6 +144,29 @@ test('chunk movement uses observed attack access for a blocked drowned while ord
   f.runtime.operations.movement.start(target, { allowWater: true })
   assert.equal(f.starts.at(-1).options.beforeInput(frame), false, 'the unrelated ordinary water policy stays unchanged')
   f.movement.stop('offline cleanup')
+})
+
+test('Runtime passes received creeper avoidance through the preview and ordinary start ports', async t => {
+  const f = fixture(t); f.begin(); await f.acquire()
+  f.actors.push({ runtimeId: '9', uniqueId: '-99', entityType: 'minecraft:creeper', kind: 'mob', hostile: true, alive: true, positionKnown: true, dimension: 'overworld', position: { x: 14.5, y: 66.62, z: .5 }, positionUpdatedAt: new Date().toISOString() })
+  const options = f.ports().planningOptions(f.ports().getState())
+  assert.equal(options.ready, true); assert.equal(options.avoidance[0].id, '9')
+  f.ports().previewMove({ x: 1.5, y: 65, z: .5 }, options)
+  assert.deepEqual(f.previews[0].options.avoidance, options.avoidance)
+  f.ports().startMove({ x: 1.5, y: 65, z: .5 }, { ...options, operationId: f.id(), beforeInput: () => true })
+  assert.deepEqual(f.starts[0].options.avoidance, options.avoidance)
+  assert.equal(typeof f.starts[0].options.beforeInput, 'function')
+  f.actors[0].position.x = 2.5
+  const frame = { packetPosition: { x: .6, y: 66.62, z: .5 }, predictedState: { position: { x: .6, y: 65, z: .5 }, isInLava: false } }
+  assert.equal(f.starts[0].options.beforeInput(frame), false, 'a moved actor is rejected despite the old plan circle')
+  f.movement.stop('offline frame refusal')
+  assert.equal(f.ports().getMovement().guardFailure.code, 'CHUNK_MOVE_THREAT_CHANGED')
+  f.actors[0].position.x = 14.5
+  f.ports().startMove({ x: 1.5, y: 65, z: .5 }, { ...options, operationId: f.id(), beforeInput: () => true })
+  assert.equal(f.starts[1].options.beforeInput(frame), true)
+  f.movement.stop('offline ordinary completion')
+  assert.equal(f.ports().getMovement().guardFailure, undefined, 'the previous leg refusal cannot leak into a new leg')
+  f.finish()
 })
 
 test('combat cancels chunk movement synchronously and old cleanup cannot stop the new combat movement', { timeout: 2500 }, async t => {

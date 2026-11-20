@@ -14,8 +14,8 @@
 // Glass, leaves, slabs, stairs and another chest above leave the lid free.
 // A block that was not received is not called a blocker: the chest is tried.
 const { low } = require('./low-block')
+const { pairedChest } = require('./chest-pair')
 
-const CHEST = 'minecraft:chest'
 const CLEAR = /glass|leaves|(?::|_)ice$|glowstone|sea_lantern|beacon|slime|honey_block|mob_spawner|shulker_box|barrier|azalea|mangrove_roots|copper_grate|sculk_sensor|sculk_shrieker|pointed_dripstone|bamboo|cactus|chorus|piston_arm|moving_block|light_block|structure_void/
 
 // The name of the block that keeps the lid of the chest cell `at` shut, or null.
@@ -26,9 +26,8 @@ function lidBlocker (getBlock, at) {
 }
 
 // The same for a chest and its other half: { at, name } of the first blocker, or null.
-function chestShut (getBlock, at) {
-  const isChest = cell => { const found = getBlock(cell.x, cell.y, cell.z); return found?.known === true && found.name === CHEST }
-  const halves = [at, ...[[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ x: at.x + dx, y: at.y, z: at.z + dz })).filter(isChest).slice(0, 1)]
+function chestShut (getBlock, at, contents = null) {
+  const halves = [at, pairedChest(getBlock, at, contents)].filter(Boolean)
   for (const half of halves) {
     const name = lidBlocker(getBlock, half)
     if (name) return { at: { x: half.x, y: half.y + 1, z: half.z }, name }

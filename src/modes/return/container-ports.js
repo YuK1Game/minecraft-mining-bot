@@ -32,6 +32,7 @@
 const { completed, partial, blocked, failed, interrupted } = require('./return-result')
 const { openAccess } = require('../../actions/open-face')
 const { chestTool, slotTool } = require('./chest-tools')
+const { transferEvidence, sourceRejected, refreshRejectedTransfer } = require('./transfer-recovery')
 
 const WAIT = /待って|待機|使用中|確認しています/
 const OPEN_MS = 4000, SLOT_MS = 3000, PATIENT_MS = 10000, MAX_TRANSFERS = 72, EYE = 1.62
@@ -60,9 +61,9 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
   let owner = null
   const sameWindow = (a, b) => !!a && !!b && a.id === b.id && a.epoch === b.epoch && JSON.stringify(a.scope) === JSON.stringify(b.scope)
   function session ({ aborted = () => false } = {}) {
-    const mine = { window: null }
+    const mine = { window: null, allowClosed: false }
     if (!disposed() && !aborted() && !held()) owner = mine
-    mine.stop = () => disposed() || aborted() || held() || owner !== mine || (!!mine.window && !sameWindow(view()?.window, mine.window))
+    mine.stop = () => disposed() || aborted() || held() || owner !== mine || (!!mine.window && !(mine.allowClosed && !view()?.window) && !sameWindow(view()?.window, mine.window))
     return mine
   }
   const cut = (mine, code, extra) => mine.stop() ? interrupted(held() ? 'CONTROLS_HELD' : code, extra) : null
@@ -147,6 +148,28 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
     } finally { close(mine) }
   }
 
+  async function recover (mine, transfer) {
+    // Release only our own window. The next deposit reopens it and receives
+    // its contents again; refreshing the inventory alone proves no storage.
+    mine.allowClosed = true
+    close(mine)
+    transfer.recovery = await refreshRejectedTransfer({ operations, proof: transfer.rejectionProof, stop: mine.stop, sleep, now })
+    transfer.recovery.inventoryKnown = getInventory() != null
+    return transfer.recovery.freshMainObserved === true && transfer.recovery.inventoryKnown
+  }
+
+  // A held/restored goal retains an unresolved rejection. Time passing or a
+  // reload cannot grant permission to use the inventory that was rejected.
+  async function recoverTransfer (pending, { aborted = () => false } = {}) {
+    const mine = session({ aborted }), transfer = structuredClone(pending.transfer)
+    transfer.recovery = await refreshRejectedTransfer({ operations, proof: transfer.rejectionProof, stop: mine.stop, sleep, now })
+    transfer.recovery.inventoryKnown = getInventory() != null
+    const evidence = { chest: transfer.rejectionProof.position, transfer }
+    if (mine.stop()) return interrupted(held() ? 'CONTROLS_HELD' : 'CONTAINER_INTERRUPTED', { evidence })
+    if (transfer.recovery.freshMainObserved === true && transfer.recovery.inventoryKnown) return completed('TRANSFER_REFRESHED', { evidence })
+    return { ...failed(pending.code, { evidence, detail: transfer.recovery.status }), hold: true }
+  }
+
   // cargo: the stacks to deposit, [{ slot, name, count }], or a function that
   // reads them from the inventory as it is now.
   async function deposit (position, cargo, { aborted = () => false } = {}) {
@@ -185,8 +208,14 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
             }
           }
         } catch (error) {
-          if (mine.stop()) return answer(interrupted, held() ? 'CONTROLS_HELD' : 'DEPOSIT_INTERRUPTED', { detail: error?.message })
-          if (getInventory() == null || view()?.inventoryUncertain === true) return blocked('TRANSFER_UNCONFIRMED', { kind: 'inventory_update', timeoutMs: 30000 }, { progress: { confirmedTransferred: moved }, evidence: { chest: chestOf(position) }, detail: error?.message })
+          const transfer = transferEvidence(error)
+          if (mine.stop()) return answer(interrupted, held() ? 'CONTROLS_HELD' : 'DEPOSIT_INTERRUPTED', { detail: error?.message, evidence: { transfer } })
+          if (sourceRejected(transfer.rejectionProof)) {
+            const refreshed = await recover(mine, transfer)
+            if (mine.stop()) return answer(interrupted, held() ? 'CONTROLS_HELD' : 'DEPOSIT_INTERRUPTED', { evidence: { transfer } })
+            return { ...answer(failed, 'TRANSFER_REJECTED', { detail: error?.message, evidence: { transfer } }), hold: !refreshed }
+          }
+          if (getInventory() == null || view()?.inventoryUncertain === true) return blocked('TRANSFER_UNCONFIRMED', { kind: 'inventory_update', timeoutMs: 30000 }, { progress: { confirmedTransferred: moved }, evidence: { chest: chestOf(position), transfer }, detail: error?.message })
           refused = error; skipped.add(sign(stack)); continue
         }
         if (!amount && full) return answer(moved > 0 ? partial : failed, 'CONTAINER_FULL')
@@ -203,7 +232,7 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
     } finally { if (!mine.stop() && view()?.contentsKnown === true) remember(position); close(mine) }
     const rest = left()
     if (rest === 0) return answer(completed, 'CARGO_STORED')
-    return answer(moved > 0 ? partial : failed, 'TRANSFER_REJECTED', { detail: refused?.message })
+    return answer(moved > 0 ? partial : failed, 'TRANSFER_REJECTED', { detail: refused?.message, evidence: { transfer: transferEvidence(refused) } })
   }
 
   // The stacks pick(slots) names out of the chest. The answer says how many
@@ -214,8 +243,8 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
     const mine = session({ aborted })
     let moved = 0, refused = null
     const left = () => getInventory() == null || view()?.contentsKnown !== true ? null : pick(view().slots ?? []).reduce((sum, want) => sum + want.count, 0)
-    const answer = (make, code, extra = {}) => make(code, { ...extra, progress: { confirmedTransferred: moved }, remaining: { items: left() }, evidence: { chest: chestOf(position) } })
-    const unknown = detail => answer((code, extra) => blocked(code, { kind: 'inventory_update', timeoutMs: 30000 }, extra), 'TRANSFER_UNCONFIRMED', { detail })
+    const answer = (make, code, extra = {}) => make(code, { ...extra, progress: { confirmedTransferred: moved }, remaining: { items: left() }, evidence: { chest: chestOf(position), ...extra.evidence } })
+    const unknown = (detail, transfer = null) => answer((code, extra) => blocked(code, { kind: 'inventory_update', timeoutMs: 30000 }, extra), 'TRANSFER_UNCONFIRMED', { detail, evidence: { transfer } })
     const opened = await open(position, { aborted }, mine)
     if (opened.status !== 'completed') { close(mine); return { ...opened, progress: { confirmedTransferred: 0 } } }
     try {
@@ -225,8 +254,14 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
         const before = count(want.name)
         let receipt
         try { receipt = await patient(() => operations.chest.withdrawItem({ chestSlot: want.chestSlot, count: want.count, expectedName: want.name }), mine.stop) } catch (error) {
-          if (mine.stop()) return answer(interrupted, held() ? 'CONTROLS_HELD' : 'WITHDRAW_INTERRUPTED', { detail: error?.message })
-          if (getInventory() == null || view()?.inventoryUncertain === true) return unknown(error?.message)
+          const transfer = transferEvidence(error)
+          if (mine.stop()) return answer(interrupted, held() ? 'CONTROLS_HELD' : 'WITHDRAW_INTERRUPTED', { detail: error?.message, evidence: { transfer } })
+          if (sourceRejected(transfer.rejectionProof)) {
+            const refreshed = await recover(mine, transfer)
+            if (mine.stop()) return answer(interrupted, held() ? 'CONTROLS_HELD' : 'WITHDRAW_INTERRUPTED', { evidence: { transfer } })
+            return { ...answer(failed, 'WITHDRAW_REFUSED', { detail: error?.message, evidence: { transfer } }), hold: !refreshed }
+          }
+          if (getInventory() == null || view()?.inventoryUncertain === true) return unknown(error?.message, transfer)
           refused = error; if (error?.code === 'INVENTORY_FULL') break; continue
         }
         const received = confirmed(receipt, want.count) || await until(() => getInventory() != null && count(want.name) >= before + want.count, SLOT_MS, mine.stop)
@@ -237,15 +272,15 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
       if (mine.stop()) return answer(interrupted, held() ? 'CONTROLS_HELD' : 'WITHDRAW_INTERRUPTED')
       if (getInventory() == null || view()?.inventoryUncertain === true) return unknown()
       if (left() === 0) return answer(completed, 'KIT_TAKEN')
-      return answer(moved > 0 ? partial : failed, 'WITHDRAW_REFUSED', { detail: refused?.message })
-    } catch (error) { return answer(moved > 0 ? partial : failed, 'WITHDRAW_REFUSED', { detail: error?.message }) } finally { if (!mine.stop() && view()?.contentsKnown === true) remember(position); close(mine) }
+      return answer(moved > 0 ? partial : failed, 'WITHDRAW_REFUSED', { detail: refused?.message, evidence: { transfer: transferEvidence(refused) } })
+    } catch (error) { return answer(moved > 0 ? partial : failed, 'WITHDRAW_REFUSED', { detail: error?.message, evidence: { transfer: transferEvidence(error) } }) } finally { if (!mine.stop() && view()?.contentsKnown === true) remember(position); close(mine) }
   }
   const take = async (position, pick, options) => (await withdraw(position, pick, options)).progress?.confirmedTransferred ?? 0
 
   // The count alone, for the callers that only add it up (player-storage.js).
   const store = async (position, stacks, options) => (await deposit(position, stacks, options)).progress?.confirmedTransferred ?? 0
 
-  return { open, inspect, deposit, take, withdraw, store, room, contents, patient, access }
+  return { open, inspect, deposit, take, withdraw, store, room, contents, recoverTransfer, patient, access }
 }
 
 module.exports = { createContainerPorts }

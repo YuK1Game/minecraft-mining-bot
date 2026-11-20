@@ -44,6 +44,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
   if (allowWater && physics.capabilities.water === 'disabled') throw new Error('Water navigation requires explicit water prediction')
 
   let planGeometry = null
+  let observingTerrain = false
   function geometryBlockAt (position) {
     if (!planGeometry) return physics.blockAt(position)
     const id = cellKey(Math.floor(position.x), Math.floor(position.y), Math.floor(position.z))
@@ -66,6 +67,9 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
   // bumps it). A world without a revision gets a fresh map for every plan.
   let kept = null
   function geometryForPlan () {
+    // A nested connector plan must make its own reads visible to the active
+    // observer instead of borrowing a cache populated by an earlier operation.
+    if (observingTerrain) return new Map()
     const revision = typeof world?.revision === 'function' ? world.revision() : null
     if (!Number.isSafeInteger(revision)) return new Map()
     if (!kept || kept.revision !== revision || kept.getBlock !== world.getBlock || kept.map.size >= 32768) kept = { revision, getBlock: world.getBlock, map: new Map() }
@@ -97,27 +101,29 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     if (typeof world?.revision !== 'function') throw new Error('Asynchronous planning requires a revisioned trusted world')
     const { signal, check, ...settings } = options
     if (signal != null && typeof signal.throwIfAborted !== 'function' || check != null && typeof check !== 'function') throw new TypeError('Invalid trusted planning cancellation guard')
-    const started = performance.now(), revision = world.revision(), geometry = new Map()
+    const started = performance.now(), revision = world.revision(), geometry = new Map(), observer = world.observeTerrain?.()
     if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('Invalid trusted world revision')
     let cpuMs = 0, sliceUntil = 0
     const guard = () => {
       signal?.throwIfAborted()
       const result = check?.()
-      if (result === false || result?.then || revision !== world?.revision?.()) throw Object.assign(new Error('Trusted planning context changed'), { code: 'NAVIGATION_CONTEXT_CHANGED' })
+      if (result === false || result?.then) throw Object.assign(new Error('Trusted planning context changed'), { code: 'NAVIGATION_CONTEXT_CHANGED' })
+      if (observer ? !observer.current() : revision !== world?.revision?.()) throw Object.assign(new Error(observer ? 'Navigation terrain changed during planning' : 'Trusted planning context changed'), { code: observer ? 'NAVIGATION_TERRAIN_CHANGED' : 'NAVIGATION_CONTEXT_CHANGED' })
     }
     const iterator = planCore(structuredClone(initialState), structuredClone(target), structuredClone(settings), { shouldYield: () => performance.now() >= sliceUntil })
-    const expired = () => ({ ready: false, reason: 'The trusted asynchronous planning time limit was reached', waypoints: [], unknownFrontier: [], predictionOnly: true, serverConfirmed: false, planningOnly: true })
+    const expired = () => ({ ready: false, code: 'NAVIGATION_TIME_LIMIT', reason: 'The trusted asynchronous planning time limit was reached', waypoints: [], unknownFrontier: [], predictionOnly: true, serverConfirmed: false, planningOnly: true })
     try {
       guard()
       await new Promise(resolve => setImmediate(resolve))
       for (;;) {
         guard()
         if (cpuMs >= 2000 || performance.now() - started >= 15000) return expired()
-        const before = performance.now(), previous = planGeometry
+        const before = performance.now(), previous = planGeometry, previousObserver = observingTerrain
         sliceUntil = before + 8
         let next
         planGeometry = geometry
-        try { next = iterator.next() } finally { planGeometry = previous; cpuMs += performance.now() - before }
+        observingTerrain = !!observer
+        try { next = observer ? observer.run(() => iterator.next()) : iterator.next() } finally { planGeometry = previous; observingTerrain = previousObserver; cpuMs += performance.now() - before }
         guard()
         if (cpuMs >= 2000 || performance.now() - started >= 15000) return expired()
         if (next.done) return { ...next.value, planningOnly: true }
@@ -229,6 +235,15 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     return standAt(position) ?? waterAt(position)
   }
 
+  // A consumer revalidates the same collision/support predicate used by the
+  // search, with fresh received blocks. Storage placement rules are separate.
+  function validateRoutePoint (position, medium) {
+    if (!finite(position) || !['land', 'water'].includes(medium)) return false
+    const previous = planGeometry
+    planGeometry = null
+    try { return (medium === 'land' ? standAt(position) : waterAt(position)) !== null } catch { return false } finally { planGeometry = previous }
+  }
+
   function settledPose (state, medium = 'land') {
     if (Math.hypot(state.velocity.x, state.velocity.z) >= 0.006) return false
     if (medium === 'water') return Math.abs(state.velocity.y) < 0.08 && waterAt(state.position) !== null
@@ -282,7 +297,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
   function * planWithoutCache (initialState, target, { maxDistance = 12, maxExpanded = 1500, avoidance = [], directFlat = false, directSurface = false, exactGoal = false, partialDrop = false, partialRecenter = false, controlledDrop = false, dropLimit = 3, shoreRecenter = false, stablePartialOrigin = false, boundedJump = null, waterExit = false, lowStepDown = false } = {}, control = null) {
     const planningStarted = planningDistanceLimit > 24 && !control ? performance.now() : null
     const unknown = new Map()
-    const empty = reason => ({ ready: false, reason, waypoints: [], unknownFrontier: [...unknown.values()].slice(0, 32), predictionOnly: true, serverConfirmed: false })
+    const empty = (reason, code = 'NAVIGATION_NO_ROUTE') => ({ ready: false, code, reason, waypoints: [], unknownFrontier: [...unknown.values()].slice(0, 32), predictionOnly: true, serverConfirmed: false })
     if (!finite(initialState?.position) || !(boundedJump !== null && target == null) && (!Number.isFinite(target?.x) || !Number.isFinite(target?.z) || (target.y != null && !Number.isFinite(target.y)))) return empty('Invalid navigation coordinates')
     if (!Number.isInteger(maxDistance) || maxDistance < 1 || maxDistance > planningDistanceLimit || !Number.isInteger(maxExpanded) || maxExpanded < 1 || maxExpanded > 5000) return empty('Invalid navigation search bounds')
     if (typeof directFlat !== 'boolean' || typeof directSurface !== 'boolean' || directSurface && (!allowWater || !exactGoal) || typeof exactGoal !== 'boolean' || typeof partialDrop !== 'boolean' || typeof partialRecenter !== 'boolean' || typeof controlledDrop !== 'boolean' || !Number.isInteger(dropLimit) || dropLimit < 3 || dropLimit > 6 || typeof shoreRecenter !== 'boolean' || typeof stablePartialOrigin !== 'boolean' || shoreRecenter && (!partialRecenter || !allowWater) || typeof lowStepDown !== 'boolean' || Number(partialDrop) + Number(partialRecenter) + Number(controlledDrop) + Number(lowStepDown) > 1) return empty('Invalid direct movement policy')
@@ -530,7 +545,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     // actual floating/falling height and must reach the shore by simulation.
     const roundedY = originWater?.surfaceY ?? Math.round(origin.y * 2) / 2
     if (Math.abs(origin.y - roundedY) > CONTACT_EPSILON) {
-      if (!originWater) return empty('Wait for a supported landing before planning')
+      if (!originWater) return empty('Wait for a supported landing before planning', 'NAVIGATION_ORIGIN_UNSUPPORTED')
     }
     let start
     const roundedOrigin = { ...origin, y: roundedY }
@@ -552,7 +567,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
         initialPartialSkin = !full && initialState.onGround === true && initialState.isInWater !== true && initialState.isInLava !== true && knownUnitSupportOrAir(roundedOrigin)
         initialContactSkin = full || initialPartialSkin
       }
-      if (!originClass && ((!originFree && !initialContactSkin) || !physics.hasSupport(roundedOrigin))) return empty('The current footprint has no known safe support')
+      if (!originClass && ((!originFree && !initialContactSkin) || !physics.hasSupport(roundedOrigin))) return empty('The current footprint has no known safe support', 'NAVIGATION_ORIGIN_UNSUPPORTED')
       // A real jump can land with only part of the footprint on a ledge. Start
       // from a nearby fully supported node only if every point of the short
       // connector remains physically supported; never cross a gap this way.
@@ -591,7 +606,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
       // checks, and the actual water trajectory is still simulated by callers.
       if (!start && circles.length && originClass?.medium === 'water' && initialState.isInLava !== true && bodyFree(roundedOrigin) && policyEdge(origin, roundedOrigin, true)) start = { ...originClass, position: copy(roundedOrigin) }
     } catch (error) { noteUnknown(roundedOrigin, error) }
-    if (!start) return empty('The starting footprint has no known safe support')
+    if (!start) return empty('The starting footprint has no known safe support', 'NAVIGATION_ORIGIN_UNSUPPORTED')
     const heuristic = node => Math.abs(Math.floor(node.position.x) - goalX) + Math.abs(Math.floor(node.position.z) - goalZ) + (target.y == null ? 0 : Math.abs(node.position.y - target.y))
     const firstKey = key(start.position)
     const records = new Map([[firstKey, { ...start, g: 0, f: heuristic(start), parent: null, action: start.medium === 'water' ? 'swim' : 'walk', waterSurfaceY: start.surfaceY }]])
@@ -603,7 +618,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     let found = null
     while (open.size && expanded < maxExpanded) {
       if (control?.shouldYield()) yield
-      if (planningStarted !== null && performance.now() - planningStarted >= 120) return empty('The trusted planning time limit was reached')
+      if (planningStarted !== null && performance.now() - planningStarted >= 120) return empty('The trusted planning time limit was reached', 'NAVIGATION_TIME_LIMIT')
       const currentKey = open.pop()
       if (currentKey === null) break
       const current = records.get(currentKey)
@@ -652,7 +667,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
         }
       }
     }
-    if (!found) return empty(expanded >= maxExpanded ? 'Navigation search limit reached' : unknown.size ? 'No route through the known safe terrain' : 'No safe route found')
+    if (!found) return { ...empty(expanded >= maxExpanded ? 'Navigation search limit reached' : unknown.size ? 'No route through the known safe terrain' : 'No safe route found', expanded >= maxExpanded ? 'NAVIGATION_SEARCH_LIMIT' : unknown.size ? 'NAVIGATION_TERRAIN_UNKNOWN' : 'NAVIGATION_NO_ROUTE'), expanded }
     const reversed = []
     for (let cursor = found; cursor !== null; cursor = records.get(cursor).parent) {
       const record = records.get(cursor)
@@ -985,7 +1000,7 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     return { next, snapshot, stop, reconcile }
   }
 
-  return { plan: require('../common/work-spans').wrap('navigation.plan', plan), planAsync, createStepper, createSettler, verifyOrigin, physics, capabilities: Object.freeze({ version, predictionOnly: true, serverAcceptanceVerified: false, maxSearchDistance: planningDistanceLimit, oneBlockJumpPlanning: true, water: allowWater ? 'experimental-surface-only' : 'disabled', fastSwimmingPose: false }) }
+  return { plan: require('../common/work-spans').wrap('navigation.plan', plan), planAsync, createStepper, createSettler, verifyOrigin, validateRoutePoint, physics, capabilities: Object.freeze({ version, predictionOnly: true, serverAcceptanceVerified: false, maxSearchDistance: planningDistanceLimit, oneBlockJumpPlanning: true, water: allowWater ? 'experimental-surface-only' : 'disabled', fastSwimmingPose: false }) }
 }
 
 module.exports = { createNavigator }

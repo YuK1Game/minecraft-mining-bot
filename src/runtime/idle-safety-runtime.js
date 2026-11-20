@@ -15,6 +15,7 @@ const { tryDetour } = require('./idle-escape/escape-port-detour')
 const { trySurfaceRetreat } = require('./idle-escape/escape-port-surface')
 
 function createIdleSafetyRuntime (rt) {
+    const { createSafetyOwnership } = rt.require('./runtime/safety-ownership')
     const generationGuardRoute = rt.createGuardedRoute({
       getState: rt.routeState, movement: rt.routeMovement, getMovement: rt.own(() => rt.generationMovement.snapshot()), inventory: rt.routeInventory,
       combat: { previewEngage: rt.own(id => rt.generationCombat.previewEngage(id)), engage: rt.own((id, options) => rt.generationCombat.engage(id, options)), preview: rt.own(id => rt.generationCombat.preview(id)), attack: rt.own(id => rt.generationCombat.attack(id)), cancel: reason => rt.generationCombat.cancel(reason), drain: () => rt.generationCombat.drain() },
@@ -72,10 +73,10 @@ function createIdleSafetyRuntime (rt) {
     })
     rt.guardRouteProgress = null
     rt.guardRoute = generationGuardRoute
-    const safetyScope = state => JSON.stringify([state.profile ?? null, state.realm?.id == null ? null : String(state.realm.id), state.dimension ?? null, state.connectionId ?? null, state.runtimeEntityId == null ? null : String(state.runtimeEntityId)])
-    const safetyOriginScope = safetyScope(rt.raw())
-    const safetyCurrent = () => rt.currentGeneration() && safetyScope(rt.raw()) === safetyOriginScope && !rt.combatOwnsInput()
-    const requireSafety = () => { rt.requireGeneration(); if (!safetyCurrent()) throw new Error('待機保護のワールド・プレイヤーが変わりました。') }
+    const safetyOwnership = createSafetyOwnership({ currentGeneration: () => rt.currentGeneration(), getState: () => rt.raw(), combatOwnsInput: () => rt.combatOwnsInput(), userBehaviorOwns: () => rt.userBehaviorOwns() })
+    const safetyOriginScope = safetyOwnership.originScope
+    const safetyCurrent = safetyOwnership.current
+    const requireSafety = safetyOwnership.requireCurrent
     const owners = { inventory: null, combat: null, hut: null, escape: null }
     let emergencyMiningOp = null
     let emergencyDropOp = null
@@ -85,7 +86,7 @@ function createIdleSafetyRuntime (rt) {
       if (context.signal?.aborted) throw context.signal.reason ?? new Error('待機保護を中断しました。')
       const record = { operationId: context.operationId }
       owners[kind] = record
-      try { const result = await rt.own(fn)(); requireSafety(); return result } finally { if (owners[kind] === record) owners[kind] = null }
+      try { const result = await rt.own(fn)(); requireSafety(); return result } catch (error) { throw safetyOwnership.errorFor(error) } finally { if (owners[kind] === record) owners[kind] = null }
     }
     let recentUserSafetyObservation = null
     // The safety view (safety/exposed-actors.js): planning and live inspection use the same current attack-access view.
@@ -205,50 +206,7 @@ function createIdleSafetyRuntime (rt) {
       } catch { return false }
     }
     function shallowWaterTerrain (point, surfaceY, { allowDeepSurface = false, allowBriefSubmerge = false } = {}) {
-      const fullCube = block => block.shapes.length === 1 && block.shapes[0].every((value, index) => Math.abs(value - [0, 0, 0, 1, 1, 1][index]) <= 1e-9)
-      try {
-        // Keep the modelled eye at least 0.02 blocks above the water surface.
-        // Server corrections can legitimately put the feet deeper than 1.05
-        // blocks even when the player's head is still in air.
-        if (!point || !['x', 'y', 'z'].every(axis => Number.isFinite(point[axis])) || !Number.isInteger(surfaceY) || point.y < surfaceY - (allowBriefSubmerge ? 1.85 : 1.60)) return false
-        for (let x = Math.floor(point.x - 0.3 + 1e-4); x <= Math.floor(point.x + 0.3 - 1e-4); x++) for (let z = Math.floor(point.z - 0.3 + 1e-4); z <= Math.floor(point.z + 0.3 - 1e-4); z++) {
-          const layer = rt.generationPhysics.blockAt({ x, y: surfaceY - 1, z })
-          if (['water', 'flowing_water'].includes(layer.name)) {
-            // Keep the head above the received surface. A surface retreat can
-            // cross deeper water only when five consecutive liquid layers are
-            // known; no bottom or deeper terrain is inferred from that proof.
-            if (!Number.isInteger(layer.metadata) || layer.metadata < 0 || layer.metadata >= 8) return false
-            let floor = null; let floorY = null
-            for (let depth = 1; depth <= 4; depth++) {
-              const block = rt.generationPhysics.blockAt({ x, y: surfaceY - 1 - depth, z })
-              if (['water', 'flowing_water'].includes(block.name)) {
-                if (!Number.isInteger(block.metadata) || block.metadata < 0 || block.metadata >= 8) return false
-                continue
-              }
-              floor = block; floorY = surfaceY - 1 - depth; break
-            }
-            if (!floor && !allowDeepSurface) return false
-            if (floor && (!fullCube(floor) || /(?:lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush|concrete_powder|anvil)/.test(floor.name))) return false
-            if (floor && /^(?:sand|red_sand|gravel)$/.test(floor.name)) {
-              let stable = false
-              for (let depth = 1; depth <= 8; depth++) {
-                const below = rt.generationPhysics.blockAt({ x, y: floorY - depth, z })
-                if (!fullCube(below) || /(?:lava|fire|cactus|magma|campfire|concrete_powder|anvil)/.test(below.name)) return false
-                if (!/^(?:sand|red_sand|gravel)$/.test(below.name)) { stable = true; break }
-              }
-              if (!stable) return false
-            }
-          } else if (!fullCube(layer) || /(?:lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush|concrete_powder|anvil)/.test(layer.name)) return false
-          const head = rt.generationPhysics.blockAt({ x, y: Math.floor(point.y + 1.62), z })
-          const submergedHead = allowBriefSubmerge && ['water', 'flowing_water'].includes(head.name) && Number.isInteger(head.metadata) && head.metadata >= 0 && head.metadata < 8
-          if (head.shapes.length || !submergedHead && /(?:water|lava|fire|cactus|magma|campfire|powder_snow|cobweb|wither_rose|pointed_dripstone|sweet_berry_bush)/.test(head.name)) return false
-          if (submergedHead) {
-            const above = rt.generationPhysics.blockAt({ x, y: surfaceY, z })
-            if (above.shapes.length || !['air', 'cave_air', 'void_air'].includes(above.name)) return false
-          }
-        }
-        return true
-      } catch { return false }
+      return rt.require('./movement/retreat-terrain').shallowWaterTerrain(rt.generationPhysics, point, surfaceY, { allowDeepSurface, allowBriefSubmerge })
     }
     function verifyShallowWater (observed, { signal, allowDeepSurface = false } = {}) {
       if (signal?.aborted) return false

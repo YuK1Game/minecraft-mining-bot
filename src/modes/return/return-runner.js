@@ -27,6 +27,7 @@ const { queueReturnWrite } = require('./return-persistence')
 const { newGoal, restoreGoal, exhausted, attemptLimit, wakeReason, LABEL, BUDGET, cell, terrainCells } = require('./return-goal')
 const { sidePoint } = require('./return-side')
 const { createLaps, isBack } = require('./return-laps')
+const { sourceRejected } = require('./transfer-recovery')
 
 const NEXT = Object.freeze({ observe: 'surface', surface: 'travel', travel: 'approach', approach: 'container', container: 'store', store: 'verify', verify: 'replan' })
 const DONE_MS = 30000, CLOSE_M = 6
@@ -117,7 +118,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
   function failure (out, stage = goal.stage) {
     const seen = memory.note({ scope: goal.scope, stage, target: out.evidence?.chest ?? goal.target ?? goal.base, code: out.code, state: out.evidence?.state ?? null })
     goal.budget.attempts++
-    goal.last = { code: out.code, count: seen.count, retry: out.retry?.kind ?? null, at: now() }
+    goal.last = { code: out.code, count: seen.count, retry: out.retry?.kind ?? null, at: now(), evidence: out.evidence ?? null }
     say(`${LABEL[stage]}に失敗: ${out.code}${out.detail ? ` ${brief(out.detail)}` : ''}（同じ条件で ${seen.count} 回目・全体 ${goal.budget.attempts}/${attemptLimit(goal)}・再試行の条件 ${out.retry?.kind ?? 'なし'}）`)
     return seen
   }
@@ -134,6 +135,10 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     }
     const at = out.evidence?.chest
     if (!at || !['approach', 'container', 'store'].includes(goal.stage)) return false
+    // A transfer refusal says nothing about whether the chest can be opened.
+    // Keep its real cause and hold within the budget instead of replacing a
+    // usable empty chest and eventually reporting a shortage of wood.
+    if (!['CHEST_UNREACHED', 'CONTAINER_NOT_IN_REACH', 'CONTAINER_NOT_VISIBLE', 'CONTAINER_OPEN_REFUSED', 'CONTAINER_CONTENTS_UNKNOWN'].includes(out.code)) return false
     // Arrived, and no way to the chest from this side (live 2026-11-18 03:41 JST:
     // on the hill 15 blocks over the house, 「拠点の家の前まで歩けません（あと 17m、No
     // safe route found）」): round to another side with the long travel and in from there.
@@ -168,7 +173,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     const current = scope()
     if (goal.scope === current) return false
     say('接続・次元・生存回が変わったため、今の状態から計画し直します')
-    Object.assign(goal, { scope: current, stage: 'observe', target: null, detour: null, sides: 0, base: shared.playerBase ?? goal.base, full: [], unopened: [], unreached: [], visited: [], wait: null, interrupt: null })
+    Object.assign(goal, { scope: current, stage: 'observe', target: null, detour: null, sides: 0, base: shared.playerBase ?? goal.base, full: [], fullObservations: {}, unopened: [], unreached: [], visited: [], wait: null, interrupt: null, pendingTransfer: null })
     if (goal.state === 'held') { goal.state = 'active'; goal.hold = null; goal.budget.wakes++ }
     memory.prune(current)
     commit()
@@ -197,7 +202,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     if (goal.state === 'held') {
       const why = wakeReason(goal, seenNow())
       if (!why) return null
-      goal.state = 'active'; goal.hold = null; goal.stage = 'observe'; goal.unopened = []; goal.unreached = []; goal.visited = []; goal.kit = null; goal.sides = 0; goal.budget.wakes++
+      goal.state = 'active'; goal.hold = null; goal.stage = 'observe'; goal.full = []; goal.fullObservations = {}; goal.unopened = []; goal.unreached = []; goal.visited = []; goal.kit = null; goal.sides = 0; goal.budget.wakes++
       say(`を再開します（${why}・${goal.budget.wakes} 回目の再評価）`)
       commit()
     }
@@ -238,10 +243,24 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
       const stage = goal.stage, began = now()
       const steps = createReturnSteps({ goal: () => owner, ports: { ...ports, policy }, flow: { ok, interrupter, say, now, sleep } })
       let out = null
-      try { out = await steps[stage]() } catch (error) { out = { status: 'failed', code: 'STEP_THREW', detail: error?.message, progress: {}, evidence: null, retry: null } }
+      try {
+        // An unresolved source rejection survives hold/reload. Before any
+        // further step (including a resumed approach), refresh it first.
+        if (goal.pendingTransfer) {
+          out = typeof ports.chests.hands.recoverTransfer === 'function'
+            ? await ports.chests.hands.recoverTransfer(goal.pendingTransfer, { aborted: () => !ok() || !!interrupter() })
+            : { status: 'failed', code: goal.pendingTransfer.code, hold: true, evidence: { transfer: goal.pendingTransfer.transfer } }
+          if (out.status === 'completed') out = { ...out, next: 'observe' }
+        } else out = await steps[stage]()
+      } catch (error) { out = { status: 'failed', code: 'STEP_THREW', detail: error?.message, progress: {}, evidence: null, retry: null } }
       if (!current() || goal !== owner || goal.stage !== stage) return null
       // The step began in another connection, dimension or life: its answer is not used.
       if (!ok()) continue
+      const transfer = out.evidence?.transfer
+      if (sourceRejected(transfer?.rejectionProof)) {
+        goal.pendingTransfer = transfer.recovery?.freshMainObserved === true && transfer.recovery.inventoryKnown === true ? null : { code: goal.pendingTransfer?.code ?? (stage === 'verify' ? 'WITHDRAW_REFUSED' : 'TRANSFER_REJECTED'), transfer }
+        commit()
+      }
       if (out.status !== 'interrupted') goal.budget.activeMs += now() - began
       if (out.status === 'cancelled') return null
       if (out.status === 'completed' || out.status === 'partial') {

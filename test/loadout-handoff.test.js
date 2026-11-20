@@ -17,6 +17,7 @@ function fixture () {
   const b = { busy: false }, op = { snapshot: () => b }
   const behavior = { sleeping: false, claim: { kind: 'combat' } }
   const context = {
+    actionBusyError: require('../src/common/action-busy-error').actionBusyError,
     createSnapshotReader,
     chestStatus: () => typeof context.chest.status === 'function' ? context.chest.status() : context.chest.snapshot(),
     userBehaviorSnapshot: () => behavior, userBehaviorLease: { kind: 'combat' }, userBehaviorOwns: () => true,
@@ -33,7 +34,7 @@ function fixture () {
 }
 test('loadout-handoff: only private debug admission allows active combat; ordinary operations stay blocked', () => {
   const f = fixture()
-  assert.throws(() => f.call(), /戦闘|前の操作/)
+  assert.throws(() => f.call(), error => error.code === 'ACTION_BUSY' && /戦闘|前の操作/.test(error.message))
   assert.doesNotThrow(() => f.call({ loadoutHandoff: true }))
   f.behavior.sleeping = true
   assert.throws(() => f.call({ loadoutHandoff: true }), /戦闘・睡眠/)

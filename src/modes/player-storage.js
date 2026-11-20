@@ -44,13 +44,13 @@ function chestLook (getBlock, at) {
 // Chests within reach: [{ position, pair: position|null }]. One that does not
 // open (a whole block on it or on its other half, chest-lid.js) is listed only
 // for a caller that asks for it (`shut`: the return says why it is not used).
-function chestsNear (getBlock, feet, near = NEAR, { shut = false } = {}) {
+function chestsNear (getBlock, feet, near = NEAR, { shut = false, contents = null } = {}) {
   const fx = Math.floor(feet.x), fy = Math.floor(feet.y + 0.05), fz = Math.floor(feet.z)
   const isChest = (x, y, z) => { const found = getBlock(x, y, z); return found?.known === true && found.name === CHEST }
   const found = []
   for (let dy = -2; dy <= 3; dy++) for (let dx = -near; dx <= near; dx++) for (let dz = -near; dz <= near; dz++) {
     const x = fx + dx, y = fy + dy, z = fz + dz
-    if (!isChest(x, y, z) || (!shut && chestShut(getBlock, { x, y, z }))) continue
+    if (!isChest(x, y, z) || (!shut && chestShut(getBlock, { x, y, z }, contents))) continue
     const pair = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([ox, oz]) => ({ x: x + ox, y, z: z + oz })).find(p => isChest(p.x, p.y, p.z)) ?? null
     found.push({ position: { x, y, z }, pair })
   }
@@ -125,7 +125,7 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
   function canMakeChest () {
     if (!pairs.ready()) return false
     const feet = getFeet()
-    const nearby = feet ? chestsNear(getBlock, feet).filter(chest => hands.room(chest.position) !== 0 && !(chest.pair && hands.room(chest.pair) === 0)) : []
+    const nearby = feet ? chestsNear(getBlock, feet, NEAR, { contents: hands.contents }).filter(chest => hands.room(chest.position) !== 0 && !(chest.pair && hands.room(chest.pair) === 0)) : []
     return nearby.some(chest => !!chest.pair) || woodFor(nearby.some(chest => !chest.pair) ? 1 : 2)
   }
 
@@ -170,7 +170,7 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     if (stopped() || !feet || !pairs.ready()) return null
     if (!await pairs.observe() || stopped()) return null
     const key = p => `${p.x},${p.y},${p.z}`, fullSet = new Set(full.map(key))
-    const chests = chestsNear(getBlock, feet).filter(chest => !fullSet.has(key(chest.position)) && !(chest.pair && fullSet.has(key(chest.pair))))
+    const chests = chestsNear(getBlock, feet, NEAR, { contents: hands.contents }).filter(chest => !fullSet.has(key(chest.position)) && !(chest.pair && fullSet.has(key(chest.pair))))
     const roomy = chest => hands.room(chest.position) !== 0 && !(chest.pair && hands.room(chest.pair) === 0)
     const inspect = async position => {
       if (stopped() || !hands.inspect) return null

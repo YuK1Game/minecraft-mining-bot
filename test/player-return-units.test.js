@@ -73,7 +73,7 @@ test('the goal is plain data: no operation, promise or timer survives a save', (
   const back = restoreGoal(JSON.parse(JSON.stringify(goal)))
   assert.equal(back.stage, 'observe', 'the stage is observed again')
   assert.deepEqual([back.target, back.detour, back.wait, back.interrupt, back.unopened], [null, null, null, null, []])
-  assert.deepEqual(back.full, [{ x: 5, y: 64, z: 0 }], 'what the received slots showed is kept')
+  assert.deepEqual(back.full, [], 'capacity is reobserved after restoration')
   assert.deepEqual([back.progress.banked, back.budget.attempts, back.id], [12, 4, 'r1'])
   for (const broken of [null, {}, { version: 2 }, { ...goal, state: 'done' }, { ...goal, purpose: 'other' }, { ...goal, id: 5 }]) assert.equal(restoreGoal(broken), null)
   assert.deepEqual(loadReturnSync('x', { io: { readFileSync: () => '{' } }), { goal: null, failures: null })

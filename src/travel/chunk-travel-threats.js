@@ -1,5 +1,6 @@
 'use strict'
 
+const { evaluateThreats } = require('../combat/threats')
 const finite = p => p && ['x', 'y', 'z'].every(axis => Number.isFinite(p[axis]) && Math.abs(p[axis]) <= 30000000)
 const samePoint = (a, b) => finite(a) && finite(b) && ['x', 'y', 'z'].every(axis => a[axis] === b[axis])
 const id = (value, signed = false) => {
@@ -17,6 +18,7 @@ function segmentDistance (point, from, to) {
 // profiles remain the existing combat evaluator; creeper blast margins remain
 // the existing distance corridor even when a walk route or sight is blocked.
 const STILL_CREEPER_RADIUS = 4.5
+const creeperRadius = entry => entry.standingStill === true ? Math.min(entry.dangerRadius, STILL_CREEPER_RADIUS) : entry.dangerRadius
 
 function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure } = {}) {
   try {
@@ -52,7 +54,7 @@ function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure 
         // standingStill) only closes the cells where it could start its fuse;
         // inside its full circle the Bot may walk away (real Realm 2026-11-15:
         // every step 7.8 m from such a creeper was refused).
-        const radius = entry.standingStill === true ? Math.min(entry.dangerRadius, STILL_CREEPER_RADIUS) : entry.dangerRadius
+        const radius = creeperRadius(entry)
         if (group === 'threats' || entry.dangerous === true || segmentDistance(actual.position, previous, next) < radius - 1e-4) return false
       } else entries.push({ entry, group })
     }
@@ -81,4 +83,29 @@ function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure 
   } catch { return false }
 }
 
-module.exports = { chunkTravelThreatsClear }
+// Build the planner's circles from the same received actors and admission rule
+// as the live frame guard. Known blocked attack access stays traversable;
+// creepers and unsearched far actors keep their existing distance corridor.
+function chunkTravelAvoidance ({ state, attackExposure } = {}) {
+  const unknown = () => ({ ready: false, code: 'THREAT_OBSERVATION_UNKNOWN', reason: '敵の位置・状態の確認を待っています。' })
+  try {
+    if (state?.emptyHandedPrep === true) return { ready: true, avoidance: [] }
+    if (state?.entityStats?.unknownPositions !== 0) return unknown()
+    const risk = evaluateThreats(state, state.entities, { observationRadius: 32 }), unsearched = new Set()
+    const clear = chunkTravelThreatsClear({ state, previous: state.position, next: state.position, risk,
+      attackExposure: (actor, projected) => {
+        const result = attackExposure(actor, projected)
+        if (result?.unknown === true) unsearched.add(String(actor.runtimeId))
+        return result
+      } })
+    if (!clear) return risk.requiresObservation ? unknown() : { ready: false, code: 'NEARBY_THREAT', reason: '現在の敵を避けて歩ける状態になるまで待ちます。' }
+    const avoidance = []
+    for (const group of ['threats', 'outsideDanger', 'suppressedByTerrain', 'unreachable']) for (const entry of risk[group]) {
+      if (entry.name !== 'minecraft:creeper' && !unsearched.has(entry.runtimeId)) continue
+      avoidance.push({ id: entry.runtimeId, position: { ...entry.position }, minDistance: entry.name === 'minecraft:creeper' ? creeperRadius(entry) : entry.dangerRadius, padding: 0.15 })
+    }
+    return avoidance.length > 64 ? unknown() : { ready: true, avoidance }
+  } catch { return unknown() }
+}
+
+module.exports = { chunkTravelThreatsClear, chunkTravelAvoidance }
