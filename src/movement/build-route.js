@@ -43,6 +43,10 @@
 // door, a block a base protects (`natural: false`), a drop of more than one.
 // The search is bounded (a box round the start and the target, a node limit
 // and a time limit) and says why it ended: it does not go on looking.
+// `greed` (1 by default) multiplies the guide toward the target. The guide counts steps; through rock a step costs
+// about eleven, so a short route through rock is found only after the whole box round it. A caller that digs
+// toward a near cell gives a greed near that cost: the route is found in a fraction of the cells, every step of it
+// checked as before; it may cost more than the cheapest one.
 // Real Realm 2026-11-18 12:40 and 15:30 JST: on a thin layer of grass 18
 // blocks over the ground west of the house, 12-17 m from the base chest and
 // 14 blocks over it, every walk and every trip ended with no route, while
@@ -63,7 +67,7 @@ const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 
 const keyOf = (x, y, z) => `${x},${y},${z}`
 
-function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = true, allowBridge = false, allowDrop = false, maxFall = SAFE_FALL, refused = null, barred = null, pad = 12, rise = 8, maxNodes = 12000, maxMs = 1500, now = Date.now }) {
+function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = true, allowBridge = false, allowDrop = false, maxFall = SAFE_FALL, refused = null, barred = null, pad = 12, rise = 8, maxNodes = 12000, maxMs = 1500, greed = 1, now = Date.now }) {
   const lo = { x: Math.min(start.x, target.x) - pad, y: Math.min(start.y, target.y) - rise, z: Math.min(start.z, target.z) - pad }
   const hi = { x: Math.max(start.x, target.x) + pad, y: Math.max(start.y, target.y) + rise, z: Math.max(start.z, target.z) + pad }
   const inside = (x, y, z) => x >= lo.x && x <= hi.x && y >= lo.y && y <= hi.y && z >= lo.z && z <= hi.z
@@ -74,11 +78,14 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
     let cell = seen.get(k)
     if (!cell) {
       const found = getBlock(x, y, z), kind = classify(found), name = found?.name ?? ''
-      cell = { kind, name, open: kind === 'pass', floor: kind === 'solid' && !low(found), rock: kind === 'solid' && !low(found) && found.natural !== false && !FIXED.test(name) && !found.extra?.length }
+      cell = { kind, name, open: kind === 'pass', floor: kind === 'solid' && !low(found), leaf: kind === 'leaves' && found.boundingBox === 'block', rock: kind === 'solid' && !low(found) && found.natural !== false && !FIXED.test(name) && !found.extra?.length }
       seen.set(k, cell)
     }
     return cell
   }
+  // A floor to step onto from (x, y, z). Leaves are a floor only for a body that stands on leaves already: the way
+  // off a canopy is over its leaves and off their edge, and no route climbs onto one (leaves are never dug or passed).
+  const floorFrom = (x, y, z, fx, fy, fz) => { const cell = at(fx, fy, fz); return cell.floor || cell.leaf && at(x, y - 1, z).leaf }
   // A block the ordinary mining takes: nothing flows or falls into the hole.
   const minable = (x, y, z) => {
     if (!at(x, y, z).rock || refused?.has(keyOf(x, y, z))) return false
@@ -99,7 +106,8 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
     return dig
   }
   const digCost = dig => dig.reduce((sum, cell) => sum + (SOFT.test(cell.name) ? COST.soft : COST.hard), 0)
-  const h = (x, y, z) => Math.max(Math.abs(target.x - x) + Math.abs(target.z - z), Math.abs(target.y - y))
+  const lean = Math.max(1, Number(greed) || 1)
+  const h = (x, y, z) => lean * Math.max(Math.abs(target.x - x) + Math.abs(target.z - z), Math.abs(target.y - y))
 
   const open = [], best = new Map(), from = new Map()
   let order = 0
@@ -132,7 +140,7 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
     for (const [dx, dz] of SIDES) {
       const nx = x + dx, nz = z + dz
       // Level: a floor there, the two body cells open or mined.
-      if (at(nx, y - 1, nz).floor) {
+      if (floorFrom(x, y, z, nx, y - 1, nz)) {
         const dig = through([[nx, y + 1, nz], [nx, y, nz]])
         if (dig) offer(node, nx, y, nz, COST.walk + digCost(dig), { kind: 'walk', dig })
       } else if (allowBridge && node.used < blocks && gap(nx, y - 1, nz)) {
@@ -141,12 +149,12 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
         if (dig) offer(node, nx, y, nz, COST.bridge + digCost(dig), { kind: 'bridge', dig, place: { x: nx, y: y - 1, z: nz } }, node.used + 1)
       }
       // One up: the block beside the feet is the floor; the room over the own head and over that floor.
-      if (at(nx, y, nz).floor) {
+      if (floorFrom(x, y, z, nx, y, nz)) {
         const dig = through([[x, y + 2, z], [nx, y + 2, nz], [nx, y + 1, nz]])
         if (dig) offer(node, nx, y + 1, nz, COST.step + digCost(dig), { kind: 'walk', dig })
       }
       // One down: a floor one lower; the three cells the body passes.
-      if (at(nx, y - 2, nz).floor) {
+      if (floorFrom(x, y, z, nx, y - 2, nz)) {
         const dig = through([[nx, y + 1, nz], [nx, y, nz], [nx, y - 1, nz]])
         if (dig) offer(node, nx, y - 1, nz, COST.step + digCost(dig), { kind: 'walk', dig })
       }
@@ -154,7 +162,7 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
       if (allowDrop && at(nx, y + 1, nz).open && at(nx, y, nz).open && at(nx, y - 1, nz).open) {
         for (let d = 2; d <= deepest; d++) {
           if (!at(nx, y - d, nz).open) break
-          if (at(nx, y - d - 1, nz).floor) { offer(node, nx, y - d, nz, COST.drop + HURT * Math.max(0, d - SAFE_FALL), { kind: 'drop', dig: [], fall: d }); break }
+          if (floorFrom(x, y, z, nx, y - d - 1, nz)) { offer(node, nx, y - d, nz, COST.drop + HURT * Math.max(0, d - SAFE_FALL), { kind: 'drop', dig: [], fall: d }); break }
         }
       }
     }

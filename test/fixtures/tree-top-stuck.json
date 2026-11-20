@@ -1,0 +1,19 @@
+{
+  "note": "Real Realm 2026-11-20, GET /blocks 14:42 JST (main ad1b4fc): the oak at (9884, 66..69, 10158) on whose top leaf the Bot stood 13:38-13:48 JST, feet (9884, 71, 10158), under them oak_leaves. Every cell received, no liquid. Rows: z 10151..10165, columns x 9877..9891.",
+  "x0": 9877, "z0": 10151,
+  "feet": { "x": 9884.5, "y": 71, "z": 10158.5 },
+  "legend": { ".": "air", "o": "oak_leaves", "b": "birch_leaves", "O": "oak_log", "B": "birch_log", "l": "leaf_litter", ",": "short_grass", "G": "grass_block", "d": "dirt", "S": "stone" },
+  "rows": {
+    "73": ["...ooo.........", "....oooo.......", "...ooooo.......", ".b.ooOoo.......", "bBbooooo.......", "bb.oooo........", "ooo............", "Ooo............", "ooo............", "ooo............", "...............", "...............", "...b...........", "..bbb..........", "...b..........."],
+    "72": [".o.oOo.........", "oooooooo.......", "bbbooooo.......", "bbbboOoo.......", "bBbboooo.......", "bbbboooo.......", "bbb............", "Ooo............", "ooo............", "oo.............", "...............", "...............", ".obbb..........", "oobBb..........", ".o.bb.........."],
+    "71": ["ooooOoo........", "oOooooo........", "bbbbooo........", "bbbb.O.........", "bBbb...........", "bbbb...........", "bbb............", "O..............", "...............", "...............", "...............", "..bbbb.........", ".bbbbb.........", "oObBbb.........", ".bbbbb........."],
+    "70": ["ooooOoo........", "oOooooo........", "oooooo.........", "oool.O.........", ".Bl,...........", "llll...........", ".......o.......", "O.....ooo......", ".......o.......", "...............", "......o........", "oobbbboo.......", "obbbbbo........", "oObBbb.........", "obbbbb........."],
+    "69": ["ooooO..........", "oOoGll.........", "oooGll.........", "ooGGlO.........", "lBGGl..........", "GGGG.l.........", ".ll....oo......", "Ol....oOo......", "l.....oo.......", "...............", "......o........", "ooo..oOo.......", "oooo..o........", "oOoB...........", "bboo..........."],
+    "68": [".llGO..........", "lOGdGGl........", "lGGdGGl........", "GGddGd.........", "GdddGGl......o.", "ddddGGooo...ooo", "GGGG.ooooo...o.", "dGl..ooOoo.....", "G....ooooo.....", "l...oooooo.....", "....ooooo......", "....ooOoo......", "....ooooo......", ".O.Booooo......", "bb............."],
+    "67": [".GGdd..........", "GdddddG.......o", "GdddddGl.....oo", "ddddddG.......o", "ddddddG.....oo.", "ddddddGGoo..oOo", "ddddGGGooo...o.", "ddGGlooOoo.....", "dG...ooooo.....", "G....oooo......", "Gl..ooooo......", "G...ooOoo......", "Gl..ooooo......", "GOlBooooo......", "l.............."],
+    "66": ["GddddGG........", "dddddddG......o", "dddddddG.....oO", "dddddddG....ooo", "dddddddGG..oooo", "ddddddddGl.ooOo", "dddddddGll.oooo", "ddddGGGOll.oooo", "ddG.l.ll.......", "dG.............", "dGll...........", "dGlll.O........", "dGllll.........", "ddGBl..........", "Goooo.........."],
+    "65": ["ddddddd........", "dddddddd......o", "dddddddd.....oO", "dddSddddG...ooo", "dddddddddG.oooo", "dSSSdddddGlooOo", "ddddddddGG.oooo", "ddddddddGG..ooo", "dddGGGGGGl.....", "ddG.llll.l.....", "ddGGllllll.....", "ddGGGlO........", "ddGGGGll.......", "ddddGGlll......", "dGGoo..l......."],
+    "64": ["dddSddd........", "dddSSSdd......o", "dddSSSddG....oO", "SdSSSSddd....oo", "SSSSSSdddd..loo", "SSSSSSddddGGlO.", "SdSSddSdddGGll.", "dSddddddddGG.ll", "SddddddddGGG...", "dddGGGGGGGGGG..", "ddddGGGGGGGG...", "dddddGdGGG.....", "ddddddGGGl.....", "ddddddGGGl.....", "dddGGGGGl.l...."],
+    "63": ["dddSSddG......l", "ddSSSSSdG....ll", "SSSSSSSddGGGllO", "SSSSSSSddG..G.l", "SSSSSSSdSdG.GGl", "SSSSSSSSSdddGdl", "SSSSSSSSddddGG.", "SSSSddSdddddGGG", "SSddddddddddGGG", "SddddddddddddGG", "SdddddddddddGGG", "SdddddddddGGGGG", "SddddddddGGGGGG", "SddddddddGGGG..", "ddddddddGGG...."]
+  }
+}
