@@ -67,11 +67,38 @@ test('another connection, dimension or life: what was observed is unknown until 
   assert.equal(f.shared.playerHouseSeen.state, 'complete')
 })
 
-test('a repair held while the house was not in sight is looked at again when the house is received whole', () => {
+// Real Realm 2026-11-20 21:54-22:56 JST (house at (9877,64,10138), 17-18 steps missing after a creeper): the repair
+// ran out of time while the Bot stood a few steps outside the keeper's sight, was held as "not seen", and was
+// looked at again at the next sight of the house: 2 minutes, 9 seconds and 8 seconds later, each time with the
+// count it had already seen. The repair ran all but 19 seconds of an hour, and placed nothing.
+test('a repair held out of sight is measured by what this life last saw of the house: the same count is not a reason', () => {
   const f = setup()
   f.w.take('oak_door', 'p_039')
   assert.equal(f.look(), 'reopened')
   f.w.away = true
+  assert.equal(f.pass(GIVE_UP_MS), 'held')
+  assert.deepEqual(f.house().repair.basis, { missing: 2, short: null, seen: true })
+  assert.match(f.logs.at(-1), /観測は破損のまま: 最後に見た時は残り 2 手/)
+  assert.equal(f.house().done, false, 'not seen is not whole')
+  f.w.away = false
+  for (let t = 0; t < AGAIN_MS - 60000; t += 60000) assert.equal(f.pass(60000), null, 'the house as it was seen before: held')
+  assert.equal(f.pass(60000), 'resumed', 'its time is up')
+  // Seen changed after a hold taken out of sight: looked at again.
+  f.w.away = true
+  assert.equal(f.pass(GIVE_UP_MS), 'held')
+  f.w.away = false
+  f.w.take('white_bed')
+  f.keeper.tick()
+  assert.equal(f.pass(5000), 'resumed')
+  assert.match(f.logs.at(-1), /家の様子が変化・残り 3 手/)
+})
+
+test('a repair held with nothing observed in this life is looked at again when the house is received whole', () => {
+  const f = setup()
+  f.w.take('oak_door', 'p_039')
+  assert.equal(f.look(), 'reopened')
+  // Another life, away from the house until the repair's time is up.
+  f.scope = 'c1/overworld/2'; f.w.away = true
   assert.equal(f.pass(GIVE_UP_MS), 'held')
   assert.deepEqual(f.house().repair.basis, { missing: null, short: null, seen: false })
   assert.match(f.logs.at(-1), /観測は破損のまま: 家は未確認/)

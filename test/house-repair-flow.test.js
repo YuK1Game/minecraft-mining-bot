@@ -80,6 +80,26 @@ test('C1: a damaged house whose repair runs out of time stays damaged; only the 
   assert.equal(f.objective().id, 'base')
 })
 
+// Real Realm 2026-11-20 21:54-22:56 JST: each hold was taken a few steps out of the keeper's sight and was looked at
+// again at the next sight of the house (2 minutes, 9 seconds, 8 seconds later). The expedition had the work for 19
+// seconds of that hour.
+test('C1: a repair that runs out of time out of sight stays held when the Bot comes back to the house it had seen', () => {
+  const f = scene()
+  f.w.take(WALL, 'oak_door')
+  assert.equal(f.look(), 'reopened')
+  const porch = f.feet
+  f.feet = { x: ORIGIN.x + 24, y: ORIGIN.y + 1, z: ORIGIN.z + 3 } // gathering wood for the repair
+  assert.equal(f.pass(GIVE_UP_MS), 'held')
+  assert.equal(f.said(/保留します（観測は破損のまま: 最後に見た時は残り 2 手/), 1)
+  f.feet = porch
+  for (let t = 0; t < 10 * 60000; t += 5000) assert.equal(f.pass(5000), null)
+  assert.equal(f.house().repair.state, 'held')
+  assert.equal(f.objective().id, 'home_spawn', 'the expedition keeps the work')
+  assert.equal(f.objective().legacy, false)
+  assert.equal(f.supplying(), false)
+  assert.equal(f.said(/保留していた家の修理を見直します/), 0)
+})
+
 test('C2: with a wall open and the bed, the chest, the furnace and the way in standing, the steps store and cook', async () => {
   const f = scene()
   f.w.take(WALL, 'oak_door')
