@@ -15,6 +15,7 @@ const { finishTree } = require('./dragon-tree')
 const { createProgress } = require('./dragon-progress')
 const { createGoalLedger } = require('./goal/goal-ledger')
 const { goalKey, measure } = require('./dragon-goal-measure')
+const { reserveCounts } = require('./dragon-reserve-seen')
 
 const HELD = '進まない目的を保留しています。場所・持ち物・接続が変わった時か、時間をおいて見直します。'
 const LET_GO_MS = 60000
@@ -150,7 +151,7 @@ function createDragonRuntime (ports) {
     const seen = raw(), armor = runtime.armor?.(), shown = expedition.status(), live = expedition.runState(), stepMs = expedition.stepMs()
     // Measured only from a received inventory and received armour; while either is open, nothing is counted as a result.
     const items = shared.inventoryUncertain || seen?.inventory?.known !== true || seen.inventory.uncertain ? null : seen.inventory.items
-    const sized = armor && armor.known !== true ? null : measure({ key: at.key, items, worn: armor?.worn ?? [], reserve: shared.dragonReserveSeen?.counts, record: at.record })
+    const sized = armor && armor.known !== true ? null : measure({ key: at.key, items, worn: armor?.worn ?? [], reserve: reserveCounts(shared), record: at.record })
     progress.note(at.key, { feet: seen?.position, health: seen?.health, value: sized?.value ?? null, extras: sized?.extras ?? null, scope: ports.lifeKey?.() ?? null },
       { n: live.n, wait: live.wait, reason: String(shown?.reason ?? '').replace(/。$/, '') + (live.outcome ? '・結果 ' + live.outcome.status + '/' + live.outcome.code : '') + (stepMs >= 60000 ? '・同じ1歩が ' + Math.round(stepMs / 1000) + ' 秒' : '') })
     return owned

@@ -16,6 +16,7 @@ const { ingredient, smelted, small, pickFor } = require('./dragon-supply-recipes
 const { diggerWanted } = require('./dig-tool')
 const { openAbove } = require('./player-surface')
 const { weaponWanted } = require('./carry-weapon')
+const { noteReserve } = require('./dragon-reserve-seen')
 const DIGGER = { stage: 'digger', target: 'stone_pickaxe', code: 'NOT_MADE' }
 const WOOD = { stage: 'digger', target: 'log', code: 'NOT_FOUND' }
 const SWORD = { stage: 'weapon', target: 'stone_sword', code: 'NOT_MADE' }
@@ -38,7 +39,8 @@ function createDragonSupplies (ctx) {
     if (armor?.offhand?.name) result.push({ ...armor.offhand, count: 1 })
     return result
   }
-  const deps = { operations, getFeet: ctx.getFeet, getBlock, getInventory, disposed: cancelled }
+  // One memory of received chest contents with the return and the storage (mode-runtime.js): what any of them last received of a chest.
+  const deps = { operations, getFeet: ctx.getFeet, getBlock, getInventory, disposed: cancelled, memory: ctx.shared.playerChestMemory ??= { seen: new Map() } }
   const bench = createStoragePorts(deps), house = createHousePorts(deps), box = createContainerPorts(deps)
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
   // Why the last step of this run did nothing (a refused open click, …): shown with the reason, so a stall is not silent.
@@ -226,8 +228,8 @@ function createDragonSupplies (ctx) {
     const recovering = mode === 'recover', desired = kit === 'end' ? spare : home
     const slots = await inspect(pos)
     if (!slots) return unread ? { ...pending('予備のラージチェストの54枠を受信できません（' + unread + '）。'), unread } : pending('予備のラージチェスト54枠と持ち物を確認します。')
-    // What the reserve chest holds, as received just now: part of what the goal has (dragon-goal-measure.js).
-    ctx.shared.dragonReserveSeen = { counts: Object.fromEntries(desired.map(([name]) => [name, count(name, slots)])) }
+    // What the reserve chest holds, as received just now: part of what the goal has (dragon-goal-measure.js, read through dragon-reserve-seen.js).
+    noteReserve(ctx.shared, pos, desired.map(([name]) => name), slots)
     for (const [name, amount] of desired) {
       const inChest = count(name, slots), carried = held(name), equipped = count(name, worn())
       if (recovering && carried + equipped >= amount) continue
