@@ -6,7 +6,17 @@ const { standable } = require('./house/house-steps')
 
 const DEPTH = { raw_iron: 16, coal: 48, raw_gold: -16, redstone: -48, diamond: -48, obsidian: -50 }
 const DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1]]
-const limits = { pad: 4, rise: 3, maxNodes: 550, maxMs: 200, allowShaft: false, blocks: 0 }
+// The short dig routes of the mine. `greed` leans the search toward the target (movement/build-route.js): through
+// rock one step costs about eleven (two blocks mined), and with the plain distance as its guide the search spread
+// over the whole box before it reached a cell six blocks away, and ended on its node limit.
+// Real Realm 2026-11-20 14:28 JST (main ad1b4fc), in its own one-wide tunnel at y 20 with coal ore 5-6 blocks away:
+// the routes to the sides of six coal ores ended twelve times in a row with BUILD_ROUTE_SEARCH_LIMIT (調べたマス 1100),
+// about every 0.2 s, on every tick; then the heading of the mine was dug instead. In the 13:00 hour that line was
+// logged 1,108 times, and an iron pickaxe (241 uses) was dug away in 33 minutes. The same routes are found within
+// 620-750 cells, and with the lean within about 120 (test/dragon-ore-in-view.test.js, on the blocks received there).
+const limits = { pad: 4, rise: 3, maxNodes: 550, maxMs: 200, greed: 8, allowShaft: false, blocks: 0 }
+// Every heading of the mine failed from one cell: nothing is planned from that cell again.
+const HEADINGS = 4
 const point = p => ({ x: Math.floor(p.x), y: Math.floor(p.y + 0.001), z: Math.floor(p.z) })
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
 const same = (a, b) => a.x === b.x && a.y === b.y && a.z === b.z
@@ -57,12 +67,28 @@ async function searchMine (ctx, name) {
     return true
   }
   const dy = Math.max(-1, Math.min(1, targetY - from.y))
+  // A cell no heading leaves (the top of a tree: leaves are not dug, the ground is further down than this short
+  // route looks; a pocket between water and gravel) is not asked again: the caller's search for another place
+  // goes on from here (explore in dragon-supply-gather.js: a walk, then the long trip, which digs, stacks and drops).
+  // Real Realm 2026-11-20 13:38-13:48 JST: on oak leaves at (9884, 71, 10158), 「掘る・積む道もありません
+  // （NO_BUILD_ROUTE・調べたマス 2）」 about 290 times, one every two seconds, and no other step for ten minutes.
+  const key = `${from.x},${from.y},${from.z},${dy}`
+  if (state.stuck?.key === key && state.stuck.count >= HEADINGS) return false
   const to = { x: from.x + dx * 3, y: from.y + dy * 2, z: from.z + dz * 3 }
   const walk = createBuildWalk({ hands: ctx.hands, getHouse: () => ctx.shared.playerHouse, log: ctx.log })
   const out = await walk(to, { done: cell => same(cell, to), limits, aborted: ctx.cancelled })
   // For the goal (goal/goal-ledger.js): deeper toward the ore's level than ever is a mark, a part of the mine not yet walked one step.
-  if (out.ok) { ctx.goal?.mark?.('mine:' + name, Math.abs(point(ctx.getFeet()).y - targetY), 4); ctx.goal?.reached?.('mine') }
-  if (!out.ok && !ctx.cancelled()) state.direction = (index + 1) % 4
+  if (out.ok) { delete state.stuck; ctx.goal?.mark?.('mine:' + name, Math.abs(point(ctx.getFeet()).y - targetY), 4); ctx.goal?.reached?.('mine') }
+  if (!out.ok && !ctx.cancelled()) {
+    state.direction = (index + 1) % 4
+    if (out.code === 'INTERRUPTED') return true
+    state.stuck = { key, count: state.stuck?.key === key ? state.stuck.count + 1 : 1 }
+    if (state.stuck.count >= HEADINGS) {
+      ctx.goal?.fail?.({ stage: 'mine', target: name, code: 'NO_HEADING', state: { cell: key } })
+      ctx.log?.(`プレイヤーモード: ここ (${from.x}, ${from.y}, ${from.z}) からは、どの向きにも掘り進む道がないため（${out.code}）、${name} を探す場所を変えます`)
+      return false
+    }
+  }
   return true
 }
 
