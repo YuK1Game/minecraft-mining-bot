@@ -4,6 +4,7 @@ const { isDeepStrictEqual } = require('node:util')
 const { serialize } = require('node:v8')
 const { resourceMinHealth } = require('../safety/learning-health')
 const { isShulkerBox, storageContainerType, storageWindowMatches, canonicalWindowId: windowId } = require('../inventory/container-types')
+const { stackLimit } = require('../inventory/stack-limit')
 
 // Bedrock 1.26.60: WindowType 0=container; ContainerEnumName 7=LevelEntity,
 // 12=CombinedHotbarAndInventory, 30=ShulkerBox. Both storage windows use type0.
@@ -250,8 +251,10 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
     const name = names.get(source.network_id)
     if (typeof expectedName !== 'string' || !expectedName || rawEmpty(source) || !name || name !== canonical(expectedName) || source.count < count) throw new Error(operation === 'deposit_diamond' ? '指定スロットに受信済みの実ダイヤがありません。' : '指定スロットの実アイテム・期待名・個数が一致しません。')
     if (window.kind === 'shulker' && isShulkerBox(name)) throw new Error('シュルカーボックスの中へシュルカーボックスは収納できません。')
-    const stackLimit = isShulkerBox(name) ? 1 : 64
-    const compatible = raw => validRaw(raw) && (rawEmpty(raw) || isDeepStrictEqual(identity(raw), identity(source))) && raw.count + count <= stackLimit
+    // An empty slot takes what the server's own stack holds; a slot with the same item takes up to the item's known
+    // stack size (inventory/stack-limit.js), and nothing more where that size is not known.
+    const limit = stackLimit(name)
+    const compatible = raw => validRaw(raw) && (rawEmpty(raw) ? count <= 64 : limit != null && isDeepStrictEqual(identity(raw), identity(source)) && raw.count + count <= limit)
     if (chestSlot == null) {
       chestSlot = Array.from({ length: window.slotCount }, (_, slot) => slot).find(slot => !rawEmpty(slots.get(slot)) && compatible(slots.get(slot)))
       if (chestSlot == null) chestSlot = Array.from({ length: window.slotCount }, (_, slot) => slot).find(slot => rawEmpty(slots.get(slot)) && compatible(slots.get(slot)))
@@ -294,8 +297,8 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
     if (!Number.isInteger(chestSlot) || chestSlot < 0 || chestSlot >= window.slotCount || !Number.isSafeInteger(count) || count < 1 || count > 64) throw new Error('受信済みの容器スロットと個数1〜64を指定してください。')
     const source = copy(slots.get(chestSlot)), name = names.get(source.network_id)
     if (typeof expectedName !== 'string' || !expectedName || rawEmpty(source) || !name || name !== canonical(expectedName) || source.count < count) throw new Error('容器内の実アイテム・期待名・個数が一致しません。')
-    const limit = require('minecraft-data')('bedrock_1.26.60').itemsByName[name.replace(/^minecraft:/, '')]?.stackSize
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 64 || source.count > limit) throw new Error('アイテムの既知の最大スタック数を確認できません。')
+    const limit = stackLimit(name)
+    if (limit == null || source.count > limit) throw new Error('アイテムの既知の最大スタック数を確認できません。')
     const compatible = raw => validRaw(raw) && (rawEmpty(raw) || isDeepStrictEqual(identity(raw), identity(source))) && raw.count + count <= limit
     if (targetSlot == null) {
       targetSlot = Array.from({ length: 36 }, (_, slot) => slot).find(slot => !rawEmpty(crafting.rawItem(slot)) && compatible(crafting.rawItem(slot)))

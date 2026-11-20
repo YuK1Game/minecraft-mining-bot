@@ -15,6 +15,8 @@
 //   waits for the inventory to be received again.
 // - Why a refusal happened is read from the state (the controls are held, the
 //   chest is busy, the inventory is uncertain), not from the message.
+// - How much of a stack a slot of the same item still takes is the item's own
+//   stack size (inventory/stack-limit.js), not 64: a boat takes none, eggs 16.
 // - A tool in a chest slot carries its received uses (chest-tools.js), so the
 //   rules that read a slot see what they see of a row of the inventory.
 // - A chest out of reach, or with no clear line to the face the click goes to,
@@ -32,6 +34,7 @@
 const { completed, partial, blocked, failed, interrupted } = require('./return-result')
 const { openAccess } = require('../../actions/open-face')
 const { chestTool, slotTool } = require('./chest-tools')
+const { stackLimit } = require('../../inventory/stack-limit')
 
 const WAIT = /待って|待機|使用中|確認しています/
 const OPEN_MS = 4000, SLOT_MS = 3000, PATIENT_MS = 10000, MAX_TRANSFERS = 72, EYE = 1.62
@@ -142,7 +145,7 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
       const cargo = typeof options.cargo === 'function' ? options.cargo() : options.cargo ?? []
       // This only selects a chest to try; the lower operation proves item
       // identity (including NBT) before sending any merge request.
-      const mayMerge = contents(position).some(slot => slot.known === true && slot.count > 0 && slot.count < 64 && cargo.some(stack => stack.name === slot.name))
+      const mayMerge = contents(position).some(slot => slot.known === true && slot.count > 0 && slot.count < (stackLimit(slot.name) ?? 0) && cargo.some(stack => stack.name === slot.name))
       return { ...out, evidence: { ...out.evidence, mayMerge } }
     } finally { close(mine) }
   }
@@ -175,7 +178,8 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
         // stacks. CONTAINER_FULL is a pre-send refusal; only then try their
         // received capacities. The chest module alone chooses a compatible
         // destination, so matching names never bypass its NBT check.
-        const sizes = [...new Set([wanted, ...(window.slots ?? []).filter(slot => slot.known === true && slot.name === stack.name && slot.count > 0 && slot.count < 64).map(slot => Math.min(wanted, 64 - slot.count))])].sort((a, b) => b - a)
+        const limit = stackLimit(stack.name) ?? 0
+        const sizes = [...new Set([wanted, ...(window.slots ?? []).filter(slot => slot.known === true && slot.name === stack.name && slot.count > 0 && slot.count < limit).map(slot => Math.min(wanted, limit - slot.count))])].sort((a, b) => b - a)
         let amount = 0, full = false, receipt = null
         try {
           for (const size of sizes) {
