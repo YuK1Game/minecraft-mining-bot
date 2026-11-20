@@ -94,16 +94,18 @@ test('a sword in the hand is not changed for the only, better pickaxe to dig dir
   assert.equal(w.uses.iron_pickaxe, 1)
 })
 
-test('a stone pickaxe is wanted for digging when rock would be dug with a better one and the parts are carried', () => {
+test('a stone pickaxe is wanted for digging when rock would be dug with a better one: made from the parts, or wood first', () => {
   const held = rows => name => count(name, rows)
   const parts = [{ slot: 5, name: full('cobblestone'), count: 64 }, { slot: 6, name: full('stick'), count: 3 }]
   const want = rows => diggerWanted(rows, held(rows))
-  assert.equal(want([pick(0, 'iron', 53), ...parts]), true)
-  assert.equal(want([pick(0, 'iron', 53), pick(1, 'stone', 2), ...parts]), true, 'a stone pickaxe with two uses left is not a digging pickaxe')
+  assert.equal(want([pick(0, 'iron', 53), ...parts]), 'make')
+  assert.equal(want([pick(0, 'iron', 53), pick(1, 'stone', 2), ...parts]), 'make', 'a stone pickaxe with two uses left is not a digging pickaxe')
   assert.equal(want([pick(0, 'iron', 53), pick(1, 'stone', 60), ...parts]), false)
   assert.equal(want([pick(0, 'stone', 60), ...parts]), false)
-  assert.equal(want([pick(0, 'iron', 53), parts[0]]), false, 'no sticks, planks or log: nothing is fetched for it')
-  assert.equal(want([pick(0, 'iron', 53), parts[0], { slot: 6, name: full('oak_planks'), count: 2 }]), true)
+  assert.equal(want([pick(0, 'iron', 53), parts[0]]), 'wood', 'no sticks, planks or log: the wood is what is missing')
+  assert.equal(want([pick(0, 'iron', 53), pick(1, 'stone', 2), parts[0]]), 'wood')
+  assert.equal(want([pick(0, 'iron', 53), parts[0], { slot: 6, name: full('oak_planks'), count: 2 }]), 'make')
+  assert.equal(want([pick(0, 'iron', 53), parts[0], { slot: 6, name: full('oak_log'), count: 1 }]), 'make')
   assert.equal(want([pick(0, 'iron', 53), { slot: 5, name: full('cobblestone'), count: 2 }, parts[1]]), false)
   assert.equal(want([sword(0), ...parts]), false, 'with no pickaxe at all the first pickaxe is another step')
 })
@@ -124,11 +126,13 @@ test('with a stone pickaxe carried, the tunnel to the coal is dug with it; the i
 })
 
 // As at 15:18:38 JST: the iron pickaxe with 53 uses in the hand, a stone sword, cobblestone, three sticks, a table.
-function live ({ sticks = 3, craftFails = false } = {}) {
-  const items = [pick(0, 'iron', 53), sword(1), { slot: 2, name: full('crafting_table'), count: 1 }, { slot: 3, name: full('cobblestone'), count: 64 }, { slot: 4, name: full('cobblestone'), count: 64 }, { slot: 5, name: full('cobblestone'), count: 12 }, ...(sticks ? [{ slot: 6, name: full('stick'), count: sticks }] : [])]
-  const w = createDigWorld(received, { items })
-  const take = (name, n) => { for (const row of items) { if (row.name !== full(name) || !row.count) continue; const part = Math.min(n, row.count); row.count -= part; n -= part } if (n) throw new Error('材料が不足しています: ' + name) }
+// `scene`, `bag`, `world`: another received box, another bag (wood.test below).
+function live ({ sticks = 3, craftFails = false, scene = received, bag = null, world = {} } = {}) {
+  const items = bag ?? [pick(0, 'iron', 53), sword(1), { slot: 2, name: full('crafting_table'), count: 1 }, { slot: 3, name: full('cobblestone'), count: 64 }, { slot: 4, name: full('cobblestone'), count: 64 }, { slot: 5, name: full('cobblestone'), count: 12 }, ...(sticks ? [{ slot: 6, name: full('stick'), count: sticks }] : [])]
+  const w = createDigWorld(scene, { items, ...world })
+  const take = (name, n) => { for (const row of items) { if (!(name instanceof RegExp ? name.test(row.name) : row.name === full(name)) || !row.count) continue; const part = Math.min(n, row.count); row.count -= part; n -= part } if (n) throw new Error('材料が不足しています: ' + name) }
   const free = () => { for (let slot = 0; ; slot++) if (!items.some(item => item.slot === slot && item.count > 0)) return slot }
+  const give = (name, n) => items.push({ slot: free(), name: full(name), count: n })
   w.crafted = []; w.tables = []
   let open = null
   Object.assign(w.ctx.operations, {
@@ -137,10 +141,14 @@ function live ({ sticks = 3, craftFails = false } = {}) {
       openInventory: async () => { open = 'inventory' },
       craft: async output => {
         if (craftFails) throw new Error('サーバーから受信したレシピがありません: ' + output)
-        assert.equal(output, full('stone_pickaxe'))
-        assert.equal(open, 'table', 'a pickaxe is made at a table')
-        take('cobblestone', 3); take('stick', 2)
-        items.push({ ...pick(free(), 'stone', 131) })
+        if (/_planks$/.test(output)) { assert.ok(open, 'a window is open'); take(new RegExp(output.replace('_planks', '_log') + '$'), 1); give(output.replace('minecraft:', ''), 4) }
+        else if (output === full('stick')) { assert.ok(open, 'a window is open'); take(/_planks$/, 2); give('stick', 4) }
+        else {
+          assert.equal(output, full('stone_pickaxe'))
+          assert.equal(open, 'table', 'a pickaxe is made at a table')
+          take('cobblestone', 3); take('stick', 2)
+          items.push({ ...pick(free(), 'stone', 131) })
+        }
         w.crafted.push(output)
       }
     },
@@ -165,7 +173,7 @@ function live ({ sticks = 3, craftFails = false } = {}) {
   w.look = async (name, target) => { const out = await createDragonSupplies(w.ctx).acquire(name, target); w.at += 2000; return out }
   return w
 }
-const MADE = /岩を掘るための石のツルハシを作りました/
+const MADE = /岩を掘るための石のツルハシを作りました/, WOOD = /掘り始める前に原木を1本取ります/, NO_WOOD = /木が近くに見つからないため/
 
 test('the live bag: a stone pickaxe is made first, and the coal is dug with it', async () => {
   const w = live()
@@ -186,7 +194,7 @@ test('the live bag: a stone pickaxe is made first, and the coal is dug with it',
   assert.equal(w.failures.length, 0)
 })
 
-test('with no sticks nothing is fetched for it: the coal is dug with the iron pickaxe as before', async () => {
+test('underground with no sticks and no log in view nothing is fetched: the coal is dug with the iron pickaxe as before', async () => {
   const w = live({ sticks: 0 })
   let out = null
   for (let looks = 0; looks < 30 && !out?.done; looks++) out = await w.look('coal', 4)
@@ -195,6 +203,8 @@ test('with no sticks nothing is fetched for it: the coal is dug with the iron pi
   assert.equal(w.tables.length, 0)
   assert.equal(w.trips.length, 0)
   assert.ok(w.uses.iron_pickaxe >= 10, JSON.stringify(w.uses))
+  assert.equal(w.failures.length, 0, 'nothing was tried, so nothing failed')
+  assert.equal(w.lines.filter(line => WOOD.test(line)).length, 0)
 })
 
 test('a stone pickaxe that cannot be made is left after three tries, and the digging goes on', async () => {
@@ -206,4 +216,70 @@ test('a stone pickaxe that cannot be made is left after three tries, and the dig
   assert.equal(w.failures.filter(failure => failure.stage === 'digger').length >= 3, true, JSON.stringify(w.failures))
   assert.equal(w.lines.filter(line => MADE.test(line)).length, 0)
   assert.ok(w.uses.iron_pickaxe >= 10, JSON.stringify(w.uses))
+})
+
+// Real Realm 2026-11-20 17:50:41-17:56:30 JST (main fb6ec4c): for the iron of a chestplate the Bot dug stairs from
+// y 66 down to y 44 (the dig-and-stack walks: 123 blocks) and a shaft back up (24 levels), all with the iron pickaxe:
+// 177 uses at 17:51:03, 28 at 17:56:06; at 18:10 it was gone. No line 「岩を掘るための石のツルハシ」. The bag at
+// 17:33: iron pickaxe, a stone pickaxe with two uses, 299 cobblestone, a crafting table, raw iron 3, an iron ingot;
+// no stick, plank or log (none at 18:10 either).
+// The ground here is the forest floor received the same day 50 m from there (test/fixtures/tree-top-stuck.json:
+// oaks and birches, grass, dirt, stone from y 63 down), the Bot on the grass three blocks from an oak.
+// Before (main fb6ec4c, this scene): 12 looks dig 63 blocks, all 63 with the iron pickaxe; nothing is made.
+// After: one log, planks, sticks, the stone pickaxe (looks 1-4); 32 blocks with it in the next 8 looks, the iron
+// pickaxe one use (the log, with it in the hand).
+// Not covered: the tree is left with the rest of its trunk (the expedition takes single logs, as for its fuel).
+const forest = require('./fixtures/tree-top-stuck.json')
+const within = (x, z) => x >= forest.x0 && x <= forest.x0 + 14 && z >= forest.z0 && z <= forest.z0 + 14
+function surface ({ underground = false } = {}) {
+  const bag = [pick(0, 'iron', 177), pick(1, 'stone', 2), { slot: 2, name: full('crafting_table'), count: 1 }, { slot: 3, name: full('raw_iron'), count: 3 }, { slot: 4, name: full('iron_ingot'), count: 1 },
+    ...[64, 64, 43, 64, 64].map((n, i) => ({ slot: 5 + i, name: full('cobblestone'), count: n }))]
+  // underground: the same ground with rock over everything from y 68 up (the trees are cut off at the trunk).
+  const scene = underground ? { ...forest, rows: Object.fromEntries(Object.entries(forest.rows).filter(([y]) => Number(y) <= 67).map(([y, rows]) => [y, rows.map(row => row.replace(/[OB]/g, 'S'))])) } : forest
+  return live({ scene: { ...scene, feet: { x: 9887.5, y: 65, z: 10158.5 } }, bag, world: { logs: true, outside: (x, y, z) => within(x, z) ? (y < 63 || underground ? 'stone' : 'air') : null } })
+}
+
+test('under the open sky with no wood in the bag: a log is taken first, the stone pickaxe made, and the rock dug with it', async () => {
+  const w = surface()
+  for (let looks = 0; looks < 12; looks++) await w.look('raw_iron', 8)
+  const log = w.lines.join('\n')
+  assert.equal(w.lines.filter(line => WOOD.test(line)).length, 1, log)
+  assert.equal(w.lines.filter(line => MADE.test(line)).length, 1, log)
+  assert.deepEqual(w.crafted, [full('oak_planks'), full('stick'), full('stone_pickaxe')], log)
+  assert.equal(w.minedNames.filter(name => /_log$/.test(name)).length, 1, 'one log')
+  assert.ok(w.minedNames.every(name => !/leaves/.test(name)), w.minedNames.join(' '))
+  // The mine goes down after it, with the stone pickaxe.
+  const rock = w.minedNames.filter(name => !/_log$/.test(name)).length
+  assert.ok(rock >= 8, `${rock}\n${log}`)
+  assert.ok(w.cell().y < 65, JSON.stringify(w.cell()))
+  // The iron pickaxe: the log at most (it was in the hand), and the block of a niche for the table.
+  assert.ok((w.uses.iron_pickaxe ?? 0) <= 2, JSON.stringify(w.uses))
+  assert.ok(w.uses.stone_pickaxe >= 8, JSON.stringify(w.uses))
+  assert.equal(count('stick', w.items), 2, 'two sticks are left for the next one')
+  assert.equal(count('planks', w.items), 2)
+  assert.equal(w.failures.filter(failure => failure.stage === 'digger').length, 0)
+})
+
+test('under rock with no log in view nothing is fetched, and where no tree is found the search ends after three tries', async () => {
+  // Under rock: the look goes straight to the digging.
+  const below = surface({ underground: true })
+  for (let looks = 0; looks < 6; looks++) await below.look('raw_iron', 8)
+  assert.equal(below.lines.filter(line => WOOD.test(line)).length, 0, below.lines.join('\n'))
+  assert.equal(below.failures.filter(failure => failure.stage === 'digger').length, 0)
+  assert.ok(below.uses.iron_pickaxe >= 4, JSON.stringify(below.uses))
+  // Under the open sky with every tree out of what is received: the search for one is three paced tries, then the
+  // digging goes on with the iron pickaxe.
+  const bare = surface()
+  const none = { ...forest, feet: { x: 9887.5, y: 65, z: 10158.5 }, rows: Object.fromEntries(Object.entries(forest.rows).map(([y, rows]) => [y, rows.map(row => row.replace(/[OBob]/g, '.'))])) }
+  const w = live({ scene: none, bag: bare.items, world: { logs: true, outside: (x, y, z) => within(x, z) ? (y < 63 ? 'stone' : 'air') : null } })
+  for (let looks = 0; looks < 60; looks++) await w.look('raw_iron', 8)
+  const log = w.lines.join('\n')
+  assert.equal(w.lines.filter(line => WOOD.test(line)).length, 1, log)
+  assert.equal(w.lines.filter(line => NO_WOOD.test(line)).length, 1, log)
+  // (w.failures: every look that asked; the ledger counts one per twenty seconds, and three end it.)
+  const asked = w.failures.filter(failure => failure.stage === 'digger')
+  assert.ok(asked.length >= 3 && asked.every(failure => failure.target === 'log' && failure.code === 'NOT_FOUND'), JSON.stringify(asked))
+  assert.ok(asked.length <= 30, `the search lasts under a minute of looks: ${asked.length}`)
+  assert.deepEqual(w.crafted, [])
+  assert.ok(w.uses.iron_pickaxe >= 4, `${JSON.stringify(w.uses)}\n${log}`)
 })

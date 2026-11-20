@@ -5,14 +5,15 @@
 // and everything above them that the test calls.
 // Stand-in, and only this: the server. It agrees with every predicted step. A block is mined when one of its faces is
 // open, within reach, and in a straight line of open cells from the eye; its drop is in the inventory at once. Leaves
-// and logs are refused (leaves are never mined). The long trip is recorded, not walked. Its success is not the game's.
+// are refused (leaves are never mined), and logs too unless the scene says `logs: true` (player mode takes logs).
+// The long trip is recorded, not walked. Its success is not the game's.
 // The hand: `equip` swaps the row into the selected slot (slot 0), as the inventory screen does. A block that needs a
 // pickaxe is refused with a lesser tool in the hand (the mining check's own line); a tool in the hand loses a use a
 // block (a sword two). w.uses counts them by tool, w.swaps the swaps.
 const { createNavigator } = require('../../src/movement/navigation')
 const { createScaffoldPorts } = require('../../src/modes/player-scaffold-ports')
 
-const DROPS = { coal_ore: 'coal', iron_ore: 'raw_iron', copper_ore: 'raw_copper', stone: 'cobblestone', andesite: 'andesite', diorite: 'diorite', granite: 'granite', dirt: 'dirt', grass_block: 'dirt' }
+const DROPS = { coal_ore: 'coal', iron_ore: 'raw_iron', copper_ore: 'raw_copper', stone: 'cobblestone', andesite: 'andesite', diorite: 'diorite', granite: 'granite', dirt: 'dirt', grass_block: 'dirt', oak_log: 'oak_log', birch_log: 'birch_log' }
 // Water is given as a source (only names were read); seagrass stands in water.
 const EMPTY = new Set(['air', 'leaf_litter', 'short_grass', 'water', 'seagrass'])
 const WET = { extra: [{ name: 'minecraft:water', properties: { liquid_depth: 0 } }] }
@@ -27,7 +28,7 @@ const block = name => ({ known: true, name: `minecraft:${name}`, boundingBox: EM
 
 // received: { x0, z0, feet, legend, rows: { y: [row of z, a character per x] } }.
 // outside(x, y, z): the block where nothing was read (a name, or null for a cell not received).
-function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0, name: 'minecraft:iron_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 200 }], health = 20 } = {}) {
+function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0, name: 'minecraft:iron_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 200 }], health = 20, logs = false } = {}) {
   const mined = new Set()
   let revision = 1
   const key = (x, y, z) => `${x},${y},${z}`
@@ -57,7 +58,7 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
   const besideLiquid = cell => FACES.some(([dx, dy, dz]) => wet(getBlock(cell.x + dx, cell.y + dy, cell.z + dz)))
   const visible = cell => {
     const found = getBlock(cell.x, cell.y, cell.z)
-    if (found.known !== true || found.boundingBox === 'empty' || /leaves|_log$/.test(found.name)) return false
+    if (found.known !== true || found.boundingBox === 'empty' || (logs ? /leaves/ : /leaves|_log$/).test(found.name)) return false
     const eye = { x: state.position.x, y: state.position.y + 1.62, z: state.position.z }
     return FACES.some(([dx, dy, dz]) => {
       if (!open(cell.x + dx, cell.y + dy, cell.z + dz)) return false

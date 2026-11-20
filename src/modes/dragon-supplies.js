@@ -14,7 +14,9 @@ const { createOpenStand } = require('./open-stand')
 
 const { ingredient, smelted, small, pickFor } = require('./dragon-supply-recipes')
 const { diggerWanted } = require('./dig-tool')
+const { openAbove } = require('./player-surface')
 const DIGGER = { stage: 'digger', target: 'stone_pickaxe', code: 'NOT_MADE' }
+const WOOD = { stage: 'digger', target: 'log', code: 'NOT_FOUND' }
 const pending = reason => ({ done: false, reason })
 const done = reason => ({ done: true, reason })
 
@@ -93,6 +95,20 @@ function createDragonSupplies (ctx) {
     await operations.interactions.useDragonItem({ item: full(item), position: { x:pos.x,y:pos.y,z:pos.z }, slot })
     return !cancelled()
   }
+  // The stone pickaxe for digging rock (dig-tool.js `diggerWanted`), and the way to it that is open now.
+  // DIGGER: its parts are carried, it is made. WOOD: the cobblestone is carried and no stick, plank or log; a log
+  // is fetched where that is a short walk: one in view, or the open sky overhead (a tree is looked for as any other
+  // material is; a head under ground, a roof or unreceived cells is not the open sky). Underground with no log in
+  // view nothing is fetched and the digging goes on with what is carried. A way that failed three times is left.
+  function digger () {
+    const want = diggerWanted(rows(), held)
+    if (!want || !(held('crafting_table') || bench.tableNear())) return null
+    if (want === 'make') return ctx.goal?.spent?.(DIGGER) === true ? null : DIGGER
+    if (ctx.goal?.spent?.(WOOD) === true) return null
+    const feet = ctx.getFeet()
+    const sky = () => !!feet && openAbove(getBlock, Math.floor(feet.x), Math.floor(feet.y + 0.001), Math.floor(feet.z))
+    return inView(ctx, 'log').length > 0 || sky() ? WOOD : null
+  }
   async function fill (name) {
     const vessel = name === 'water_bucket' ? 'bucket' : 'glass_bottle'
     if (!held(vessel)) { await acquire(vessel, 1); return }
@@ -137,15 +153,20 @@ function createDragonSupplies (ctx) {
       }
     } else if (pickFor[name] && !hasWorkingPick(rows(), pickFor[name])) {
       await acquire(pickFor[name] + '_pickaxe', 1)
-    } else if (pickFor[name] && diggerWanted(rows(), held) && (held('crafting_table') || bench.tableNear()) && ctx.goal?.spent?.(DIGGER) !== true) {
-      // Rock on the way to ore is dug with a stone pickaxe made from what is carried (dig-tool.js); the better one
-      // is kept for what needs it. A look that brought it no nearer (no stick made, no table put down) is a failed
-      // try; after three it is left, and the digging goes on.
-      const parts = () => [held('stone_pickaxe'), held('stick'), held('planks'), held('crafting_table'), !!bench.tableNear()].join()
+    } else if (pickFor[name] && digger()) {
+      // Rock on the way to ore is dug with a stone pickaxe (dig-tool.js); the better one is kept for what needs it.
+      // A look that brought it no nearer (no log, no stick made, no table put down) is a failed try; after three
+      // it is left, and the digging goes on.
+      const way = digger()
+      const parts = () => [held('stone_pickaxe'), held('stick'), held('planks'), held('log'), held('crafting_table'), !!bench.tableNear()].join()
       const before = held('stone_pickaxe'), was = parts()
+      if (way === WOOD && !ctx.shared.dragonDiggerWood) { ctx.shared.dragonDiggerWood = true; ctx.log?.('プレイヤーモード: 岩を掘る石のツルハシの棒がないため、掘り始める前に原木を1本取ります（良いツルハシは、それが要るブロックに残します）') }
       await acquire('stone_pickaxe', before + 1)
-      if (held('stone_pickaxe') > before) ctx.log?.('プレイヤーモード: 岩を掘るための石のツルハシを作りました（良いツルハシは、それが要るブロックに残します）')
-      else if (!cancelled() && parts() === was) ctx.goal?.fail?.(DIGGER, { paceMs: 15000 })
+      if (held('stone_pickaxe') > before) { delete ctx.shared.dragonDiggerWood; ctx.log?.('プレイヤーモード: 岩を掘るための石のツルハシを作りました（良いツルハシは、それが要るブロックに残します）') }
+      else if (!cancelled() && parts() === was && ctx.goal?.fail?.(way, { paceMs: way === WOOD ? 20000 : 15000 })?.exhausted && way === WOOD) {
+        delete ctx.shared.dragonDiggerWood
+        ctx.log?.('プレイヤーモード: 石のツルハシにする木が近くに見つからないため、持っているツルハシで掘り進みます')
+      }
     } else if (SOURCES[name] || MOBS[name]) await collect(ctx, name)
     else return { ...pending(full(name) + ' の回収を待っています。'), missing: { name, count: target } }
     const current = held(name)
