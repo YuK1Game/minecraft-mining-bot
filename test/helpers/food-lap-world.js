@@ -187,6 +187,8 @@ async function createFoodLap (t, { chestFood = 7, chestFoodName = 'cooked_beef',
     return -1
   }
   w.said = pattern => w.lines.filter(line => pattern.test(line))
+  // The chest and furnace windows, for another opener of the same chest (the return's ports).
+  w.operations = operations
   w.boot()
   return w
 }

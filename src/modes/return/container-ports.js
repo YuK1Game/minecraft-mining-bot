@@ -76,7 +76,8 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
   // With `memory` (a map kept by the caller) the received slots stay known
   // when this module is loaded again; each opening replaces them. The room is
   // not kept: after a reload a chest is opened before it is called full.
-  const rooms = new Map(), seen = memory?.seen ?? new Map()
+  // When each was received (`memory.at`), so that a reader of the memory can tell which of two records is the later.
+  const rooms = new Map(), seen = memory?.seen ?? new Map(), stamps = memory ? (memory.at ??= new Map()) : new Map()
   const key = position => `${position.x},${position.y},${position.z}`
   const room = position => rooms.get(key(position)) ?? null
   const contents = position => seen.get(key(position)) ?? null
@@ -84,6 +85,7 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
     const slots = view()?.slots ?? []
     rooms.set(key(position), slots.filter(empty).length)
     seen.set(key(position), slots.map(slot => ({ ...slot })))
+    stamps.set(key(position), now())
   }
   const chestOf = position => ({ x: position.x, y: position.y, z: position.z })
   const at = (window, position) => !!window?.position && window.position.x === position.x && window.position.y === position.y && window.position.z === position.z
