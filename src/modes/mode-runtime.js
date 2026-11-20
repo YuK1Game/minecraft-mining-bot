@@ -88,24 +88,9 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // minutes old on this Realm (live 2026-11-15 21:24-21:42 JST: every walk
   // looked like "got nowhere", so the search turned 60 degrees each time and
   // circled a hexagon around the stale point).
-  // A hostile near enough to stop a side job (storage, food, house...): within
-  // 12 m, an archer within 24 m, or damage taken in the last 10 s (real Realm
-  // 2026-11-17 09:52-09:53 JST: a skeleton 12.4 m away shot the Bot from 12.9
-  // to 0; the storage and the food climb started anyway, the climb cancelled the
-  // fight, and no hit landed).
-  let healthSeen = null, hurtAt = 0
-  const ARCHER = /skeleton|stray|bogged|pillager|witch/ // one that has not moved for 5 min is not counted
-  // An archer whose position has not changed for a minute is not aiming (a skeleton that aims turns, and every turn is a move update): live 2026-11-17 10:46-10:59 JST, a cave skeleton 15 blocks below with no update for 4+ minutes held the house's sand search the whole time.
-  const danger = () => {
-    const health = runtime.raw()?.health
-    if (Number.isFinite(health)) { if (Number.isFinite(healthSeen) && health < healthSeen) hurtAt = Date.now(); healthSeen = health }
-    if (Date.now() - hurtAt < 10000) return true
-    const at = where()
-    if (!at) return runtime.nearestHostile() < 12
-    const state = runtime.raw(), near = actor => actor?.position && Math.hypot(actor.position.x - at.x, actor.position.y - at.y, actor.position.z - at.z)
-    // A walker the reachability check found no route from does not count (creepers always do): live 2026-11-17 11:15 JST, zombies 10-12 m away in the cave above held the base trip.
-    return (runtime.hostiles() ?? []).some(actor => (near(actor) < 12 && (/creeper/.test(String(actor?.entityType ?? '')) || !knownUnreachable(state, actor))) || (ARCHER.test(String(actor?.entityType ?? '')) && actor.position && !(Date.now() - Date.parse(actor.positionUpdatedAt ?? '') > 60000) && near(actor) < 24))
-  }
+  // A hostile near enough to stop a side job (storage, food, house...), and who it is (work-danger.js).
+  const dangerOf = require('./work-danger').createWorkDanger({ health: () => runtime.raw()?.health, where: () => where(), hostiles: () => runtime.hostiles(), nearest: () => runtime.nearestHostile(), unreachable: actor => knownUnreachable(runtime.raw(), actor), world: () => runtime.host().world })
+  const danger = dangerOf.near
   const where = () => { const position = runtime.position?.(); return position && [position.x, position.y, position.z].every(Number.isFinite) ? position : runtime.raw().position ?? null }
   // Ordinary walking, mining, placement and the pillar step, shared by the scaffold and the climb out of a tunnel.
   const buildHands = (done, actions = operations) => createScaffoldPorts({
@@ -295,7 +280,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     ports: createHousePorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() }),
     hands, climb: climbUp,
     travel: { to: travelTo, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
-    hostile: () => danger(),
+    hostile: () => danger(), hostileWhy: () => dangerOf.text(),
     // Not with 10 health or less: eating, the shelter and fleeing come first (live 2026-11-17 05:53 JST: the build began at 1.9 health with no food).
     // Nor hungry with no food: the forage comes first (live 2026-11-17 08:26-08:29 JST: hunger 12, the build stopped the forage for a cow).
     blocked: () => !(runtime.raw().health > 10) || hungryWithoutFood() || recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active,
