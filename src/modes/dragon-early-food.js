@@ -7,6 +7,7 @@ const { threatWait, WAIT_MS } = require('./dragon-threat-wait')
 const { foodReach } = require('./dragon-food-reach')
 const { partial, failed, blocked } = require('./return/return-result')
 const { homeTarget, homeUse, same } = require('./dragon-home-use')
+const { createOpenStand } = require('./open-stand')
 
 const PROVISIONS = /^minecraft:(?:bread|cooked_(?:beef|porkchop|chicken|rabbit|mutton|salmon|cod)|baked_potato)$/
 const MEAT = /^minecraft:(beef|porkchop|chicken|rabbit|mutton|salmon|cod)$/
@@ -82,8 +83,9 @@ async function tend (ctx, items, origin, state) {
 }
 
 async function provisionFood (ctx, wanted = 32) {
-  const inventory = ctx.runtime.inventory()
-  if (inventory?.known !== true || inventory.uncertain || ctx.cancelled()) return pending('食料の所持数を確認します。')
+  const getInventory = () => { const inventory = ctx.runtime.inventory(); return inventory?.known === true && !inventory.uncertain && !ctx.shared?.inventoryUncertain ? inventory : null }
+  const inventory = getInventory()
+  if (!inventory || ctx.cancelled()) return pending('食料の所持数を確認します。')
   const items = inventory.items ?? []
   const count = items.reduce((n, item) => n + (PROVISIONS.test(item.name) ? item.count : 0), 0)
   if (count >= wanted) return { done: true, reason: '遠征に持参する食料を確認しました。' }
@@ -95,6 +97,7 @@ async function provisionFood (ctx, wanted = 32) {
   const here = distance(feet, origin) < 25
   const raw = items.find(item => MEAT.test(item.name) && item.count > 0)
   const wheat = items.filter(item => item.name === 'minecraft:wheat').reduce((n, item) => n + item.count, 0)
+  const bread = wheat >= 3
   // One piece of raw meat is not a reason to walk home while another animal is in view (cook-trip.js).
   const rawCount = items.reduce((n, item) => n + (MEAT.test(item.name) ? item.count : 0), 0)
   const seen = raw && !here ? ctx.operations.foraging.preview({ stockpile: true }) : null
@@ -109,15 +112,30 @@ async function provisionFood (ctx, wanted = 32) {
   const homeFailure = { stage: 'cook_return', code: 'HOME_NOT_REACHED', state: { from: cell16(feet) } }
   const cookFailure = (fuel, at) => ({ stage: 'cook', target: key(at), code: 'COOK_NOTHING', state: { raw: rawCount, fuel: fuel ?? null } })
   const spent = ctx.goal?.spent?.(homeFailure) === true
-  if ((wheat >= 3 || require('./cook-trip').cookNow({ raw: rawCount, here, huntReady })) && !spent) {
+  const makeHouse = () => createHousePorts({ operations: ctx.operations, getBlock: ctx.getBlock, getInventory, disposed: ctx.cancelled, ...(ctx.sleep ? { sleep: ctx.sleep, now: ctx.now } : {}) })
+  // Reconcile the kitchen when its furnace already opens from here. This does
+  // not send a bot with no fuel on another walk home before its fuel gathering.
+  const near = !bread && here && ctx.operations.furnace?.snapshot ? homeTarget(ctx, 'furnace') : null
+  const inspectHere = near?.state === 'standing' && createOpenStand({ getBlock: ctx.getBlock, getFeet: ctx.getFeet }).here(near.at)
+  if (!raw && inspectHere && !spent) {
+    const house = makeHouse(), fuel = require('./cook-fuel').cookFuel(items, 3)
+    const recovered = await house.resumeSmelt(near.at, { outputOf: name => MEAT.test(name ?? '') ? name.replace('minecraft:', 'minecraft:cooked_') : null, accepts: name => PROVISIONS.test(name ?? ''), fuel: fuel?.name, fuelCount: fuel?.count })
+    if (!getInventory() || ctx.cancelled()) return pending('食料の所持数を確認します。')
+    if (recovered.produced > 0) return pending('かまどに残っていた食料の受け取りを確認しました。', partial('FOOD_COOKED', { progress: { cooked: recovered.produced }, remaining: left('receive') }))
+    if (recovered.needed?.fuel && !fuel && !ctx.cancelled()) {
+      const lack = require('./cook-fuel').fuelWanted(items, 3, ctx)
+      return pending((await ctx.supplies.acquire(lack.name, lack.count)).reason)
+    }
+  }
+  if ((bread || require('./cook-trip').cookNow({ raw: rawCount, here, huntReady })) && !spent) {
     // The thing the cook needs, from its received blocks now (dragon-home-use.js): never from the house's record.
-    const thing = raw ? 'furnace' : 'table'
-    const amount = raw ? Math.min(3, raw.count, wanted - count) : 0
-    // No fuel in hand: the fuel comes first, before the walk to the furnace (cook-fuel.js).
-    const lack = raw && !wheat ? require('./cook-fuel').fuelWanted(items, amount, ctx) : null
-    if (lack) return pending((await ctx.supplies.acquire(lack.name, lack.count)).reason)
-    const fuel = raw ? require('./cook-fuel').cookFuel(items, amount) : null
-    const choice = { spent: at => !!fuel && ctx.goal?.spent?.(cookFailure(fuel.name, at)) === true }
+    const thing = bread ? 'table' : 'furnace'
+    const amount = bread ? 0 : Math.min(3, raw.count, wanted - count)
+    // Wheat ready for bread chooses the table even when raw meat is carried.
+    const lack = bread ? null : require('./cook-fuel').fuelWanted(items, amount, ctx)
+    if (lack && !inspectHere) return pending((await ctx.supplies.acquire(lack.name, lack.count)).reason)
+    const fuel = bread ? null : require('./cook-fuel').cookFuel(items, amount)
+    const choice = { spent: at => !bread && ctx.goal?.spent?.(cookFailure(fuel?.name, at)) === true }
     const station = homeTarget(ctx, thing, choice).at
     if (!await approachHome(ctx, station, { open: true })) {
       if (ctx.cancelled()) return pending('集めた材料を本拠点で調理します。')
@@ -131,18 +149,21 @@ async function provisionFood (ctx, wanted = 32) {
     if (!use.ok) return pending(use.reason, { ...use.result, remaining: left('cook') })
     // The other furnace stands and this one does not: the next look walks to it.
     if (!same(use.at, station)) return pending('本拠点の使える調理設備へ移ります。', partial('COOK_STATION', { remaining: left('cook') }))
-    const house = createHousePorts({ operations: ctx.operations, getBlock: ctx.getBlock, getInventory: ctx.runtime.inventory, disposed: ctx.cancelled, ...(ctx.sleep ? { sleep: ctx.sleep, now: ctx.now } : {}) })
-    if (!raw) await house.craft('minecraft:bread', Math.min(Math.floor(wheat / 3), wanted - count, 16), station)
-    else {
-      if (!fuel) return pending((await ctx.supplies.acquire('coal', 1)).reason) // raw meat beside wheat: bread first
-      const cooked = await house.smelt(station, raw.name, amount, fuel.name, fuel.count, raw.name.replace('minecraft:', 'minecraft:cooked_'))
+    const house = makeHouse()
+    if (bread) {
+      await house.craft('minecraft:bread', Math.min(Math.floor(wheat / 3), wanted - count, 16), station)
+      if (!getInventory() || ctx.cancelled()) return pending('食料の所持数を確認します。')
+    } else {
+      const cooked = await house.smelt(station, raw.name, amount, fuel?.name, fuel?.count, raw.name.replace('minecraft:', 'minecraft:cooked_'))
+      if (!getInventory() || ctx.cancelled()) return pending('食料の所持数を確認します。')
+      if (!(cooked > 0) && lack && house.smeltNeed()?.fuel && !ctx.cancelled()) return pending((await ctx.supplies.acquire(lack.name, lack.count)).reason)
       // A cook that gained nothing says why (live 2026-11-18 23:15-23:19 JST: four minutes at the door with this step's
       // text and no log line).
       if (!(cooked > 0) && !ctx.cancelled()) {
         const why = house.why() ?? '焼いた肉が増えません'
         const at = (ctx.now ?? Date.now)()
         if (!(at - (state.cookSaidAt ?? -Infinity) < 20000)) { state.cookSaidAt = at; ctx.log?.(`プレイヤーモード: 本拠点のかまどで調理できません（${why}。足元 ${Math.floor(feet.x)}, ${Math.floor(feet.y)}, ${Math.floor(feet.z)}）`) }
-        const noted = ctx.goal?.fail?.(cookFailure(fuel.name, station), { paceMs: 20000 })
+        const noted = ctx.goal?.fail?.(cookFailure(fuel?.name, station), { paceMs: 20000 })
         if (noted?.exhausted) ctx.log?.(`プレイヤーモード: 同じ材料と燃料の調理が ${noted.count} 回とも焼けなかったため、材料か燃料が変わるまで調理をやめます`)
         return pending(`本拠点のかまどで調理をやり直します。（かまど: ${why}）`, failed('COOK_NOTHING', { remaining: left('cook'), detail: why }))
       }
@@ -191,10 +212,12 @@ async function provisionFood (ctx, wanted = 32) {
   if (!ctx.operations.quarry.travelStatus().busy && !ctx.cancelled()) {
     const index = state.foodSearch ?? 0
     // Return to the plots regularly so they are loaded and can grow.
-    const destination = index % 3 === 2 ? { x: origin.x + 3, z: origin.z + 9 } : spiralPoint(origin, index % 6)
+    // Home visits do not consume a search direction. The six directions on
+    // each ring are all visited before expanding to the next ring (up to 480m).
+    const destination = index % 3 === 2 ? { x: origin.x + 3, z: origin.z + 9 } : spiralPoint(origin, index - Math.floor(index / 3))
     // The search trip ends as soon as a food source comes into view (dragon-trip.js).
     await ctx.travelTo({ destination }, { aborted: ctx.cancelled, until: () => { const seen = forage.preview({ stockpile: true }); return seen.ready === true && !reach.given(seen.target?.runtimeId) } })
-    state.foodSearch = index + 1
+    if (!ctx.cancelled()) state.foodSearch = index + 1
   }
   return pending('畑の成長を待ちながら、周囲の食料源を探します。')
 }

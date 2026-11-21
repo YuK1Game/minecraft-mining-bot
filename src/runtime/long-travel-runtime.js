@@ -582,7 +582,7 @@ function createLongTravelRuntime (rt) {
         // Follow the coarse wide-area route first (2026-11-14): a point some
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
-          const planRoute = (extra = {}) => { const bad = rt.host.shared.longTravelBadCells ??= new Set(); const blocked = avoidCols.size ? { has: k => bad.has(k) || avoidCols.has(k) } : bad; return rt.require('./travel/coarse-route').planCoarseRouteAsync({ getBlock: (x, y, z) => rt.host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 200000, maxMs: 6000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked, ...extra }) }
+          const planRoute = (extra = {}) => { const bad = rt.host.shared.longTravelBadCells ??= new Set(); const blocked = avoidCols.size ? { has: k => bad.has(k) || avoidCols.has(k) } : bad; return rt.require('./travel/coarse-route').planCoarseRouteAsync({ getBlock: (x, y, z) => rt.host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 200000, maxMs: 6000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked, signal, ...extra }) }
           let route = await planRoute()
           // Live 16:05: columns marked after failed walks fenced the bot in (the
           // same route without them existed). When they leave no route at all,
@@ -659,17 +659,21 @@ function createLongTravelRuntime (rt) {
         return null
       },
       walkTo: async (target, { signal } = {}) => {
+        const cancelled = () => signal?.aborted ? { ok: false, code: 'LONG_TRAVEL_CANCELLED' } : null
+        if (cancelled()) return cancelled()
         try { rt.requireIdle({ inventoryRequired: false }) } catch (error) { return { ok: false, code: 'CHUNK_TRAVEL_BUSY', message: String(error.message ?? error).slice(0, 120) } }
         // Carved step (2026-11-14): each cell by the ordinary mining, confirmed
         // by received air, before stepping up.
         if (Array.isArray(target.dig) && target.dig.length) {
           for (const cell of target.dig) {
+            if (cancelled()) return cancelled()
             const air = () => { const b = rt.host.world.getBlock(cell.x, cell.y, cell.z); return b?.known === true && /^minecraft:(?:air|cave_air)$/.test(b.name ?? '') }
             if (air()) continue
             rt.host.log(`長距離移動: 段を掘ります (${cell.x},${cell.y},${cell.z}) ${String(cell.name ?? '').replace('minecraft:', '')}`)
             // Live 14:35: stone was refused with the wooden pickaxe in the bag.
             // Hold the best received pickaxe (stone-like) or shovel (soft) first.
             try { await travelHoldTool(cell.name) } catch {}
+            if (cancelled()) return cancelled()
             try { rt.operations.mining.start([{ x: cell.x, y: cell.y, z: cell.z }]) } catch (error) { (rt.host.shared.longTravelBadCells ??= new Set()).add(`${cell.x},${cell.z}`); return { ok: false, code: 'DIG_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
             const until = Date.now() + 30000
             while (!air()) {
@@ -684,6 +688,7 @@ function createLongTravelRuntime (rt) {
         // Empty-handed: sprint out of range while hunger allows it (> 6).
         const v = rt.host.shared.vitals?.hunger, hunger = Number.isFinite(v) ? v : v?.value
         const sprint = rt.working().emptyHandedPrep === true && Number.isFinite(hunger) && hunger > 6
+        if (cancelled()) return cancelled()
         try { rt.startMotion('navigation', { x: target.x, y: target.y, z: target.z }, { allowWater: true, allowLowHealth: true, maxDistance: target.waterExit ? 4 : 16, ...(target.waterExit ? { waterExit: true } : sprint ? { sprint: true } : {}) }) } catch (error) { return { ok: false, code: 'POINT_START_FAILED', message: String(error.message ?? error).slice(0, 120) } }
         const until = Date.now() + 60000
         for (;;) {

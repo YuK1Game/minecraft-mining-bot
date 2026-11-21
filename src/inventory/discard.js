@@ -7,60 +7,88 @@
 // It counts only when the server answers the request with the slot emptied (or
 // lowered); the inventory model is then committed from that answer.
 const MAIN = { container_id: 'hotbar_and_inventory', dynamic_container_id: null }
-const MAIN_IDS = new Set(['hotbar_and_inventory', 'inventory', 'hotbar', 12, 28, 29])
+const { empty, valid, same, scopeOf, responseSlot, receivedItem, captureMain, validateMain, mainDelta } = require('./response-delta')
 const copy = value => structuredClone(value)
-const EMPTY = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: false, can_place_on: [], can_destroy: [] } })
-const empty = item => !item || item.network_id === 0 || !(item.count > 0)
 
-function createDiscard ({ client, getState, crafting, allocateRequestId, onInventory = () => {}, log = () => {}, timeoutMs = 3000 }) {
+function createDiscard ({ client, getState, crafting, allocateRequestId, inventoryStore = null, onInventory = () => {}, onUncertain = () => {}, log = () => {}, timeoutMs = 3000 }) {
   let attempt = null
 
   async function drop (slot, count = null) {
     if (attempt) throw new Error('前の「捨てる」操作を待っています。')
-    const state = getState()
-    if (state?.phase !== 'spawned' || state.dead === true || state.isDead === true) throw new Error('死亡中・接続前は捨てられません。')
+    const scope = scopeOf(getState())
     if (!Number.isInteger(slot) || slot < 0 || slot > 35) throw new Error('捨てる枠は持ち物の0〜35で指定してください。')
     if (crafting.snapshot?.().pendingRequestId != null) throw new Error('クラフト結果を待ってから捨ててください。')
     const raw = crafting.rawItem(slot)
-    if (empty(raw) || raw.has_stack_id !== true || !(raw.stack_id > 0)) throw new Error('捨てる枠の実際の持ち物を確認できません。')
+    if (!valid(raw) || empty(raw)) throw new Error('捨てる枠の実際の持ち物を確認できません。')
     const amount = Number.isInteger(count) && count > 0 ? Math.min(count, raw.count) : raw.count
     const id = allocateRequestId()
-    const mine = attempt = { id, slot, raw: copy(raw), amount, done: null }
-    let openedHere = false
+    const mine = attempt = { id, slot, raw: copy(raw), amount, scope, before: captureMain(crafting, inventoryStore, slot), done: null, wireSent: false, finished: false, preempted: false }
+    let opened = null
     try {
-      if (!crafting.snapshot().openContainer) { await crafting.openInventory(); openedHere = true }
+      if (!crafting.snapshot().openContainer) opened = await crafting.openInventory() ?? crafting.snapshot().openContainer
+      if (mine.finished) return mine.result
+      if (mine.preempted) return { phase: 'stopped', code: 'COMBAT_PREEMPTED', serverConfirmed: false }
+      if (scopeOf(getState()) !== mine.scope) throw Error('持ち物を捨てる途中で接続またはlifeが変わりました。')
+      validateMain(crafting, inventoryStore, slot, mine.before)
       const settled = new Promise(resolve => { mine.done = resolve })
+      mine.wireSent = true
       client.queue('item_stack_request', { requests: [{ request_id: id, actions: [{ type_id: 'drop', legacy_type_id: 3, count: amount, source: { slot_type: copy(MAIN), slot, stack_id: raw.stack_id }, randomly: false }], custom_names: [], cause: -1 }] })
-      const timer = setTimeout(() => mine.done?.({ phase: 'failed', reason: 'no server response' }), timeoutMs)
+      const timer = setTimeout(() => finish(mine, { phase: 'failed', serverConfirmed: false, reason: 'no server response' }), timeoutMs)
       const result = await settled
       clearTimeout(timer)
       return result
+    } catch (error) {
+      const result = { phase: 'failed', serverConfirmed: false, reason: String(error.message ?? error) }
+      finish(mine, result)
+      return result
     } finally {
       if (attempt === mine) attempt = null
-      if (openedHere) { try { crafting.closeContainer() } catch { /* a pending craft owns the screen */ } }
+      if (opened && !mine.preempted) { try { if (scopeOf(getState()) === mine.scope && crafting.snapshot().openContainer?.id === opened.id) crafting.closeContainer() } catch { /* The new life or another operation owns the screen. */ } }
     }
+  }
+
+  function finish (mine, result) {
+    if (mine.finished) return
+    mine.finished = true; mine.result = result
+    if (mine.wireSent && result.phase !== 'rejected' && result.serverConfirmed !== true) {
+      try { if (scopeOf(getState()) === mine.scope) onUncertain({ requestId: mine.id, operation: 'discard', reason: result.reason }) } catch { /* The host already observed a different life. */ }
+    }
+    mine.done?.(result)
+  }
+
+  function preemptForCombat () {
+    if (attempt) attempt.preempted = true
+    return { preempted: !!attempt, pendingRequestId: attempt?.wireSent ? attempt.id : null }
   }
 
   function applyPacket (name, packet) {
     const mine = attempt
-    if (!mine || name !== 'item_stack_response') return
+    if (!mine || mine.finished || !['item_stack_response', 'start_game', 'change_dimension', 'disconnect', 'death_info', 'respawn'].includes(name)) return
+    try {
+      if (['start_game', 'change_dimension', 'disconnect', 'death_info'].includes(name) || scopeOf(getState()) !== mine.scope) {
+        finish(mine, { phase: 'failed', serverConfirmed: false, reason: '接続・次元・lifeが変わりました。' }); return
+      }
+    } catch (error) { finish(mine, { phase: 'failed', serverConfirmed: false, reason: error.message }); return }
+    if (name !== 'item_stack_response') return
     for (const response of packet.responses ?? []) {
       if (response.request_id !== mine.id) continue
-      if (response.status !== 'ok' && response.status !== 0) { mine.done?.({ phase: 'rejected', reason: `server status ${response.status}` }); return }
-      // The answer names the source slot's new count; commit it to the model.
-      let left = mine.raw.count - mine.amount
-      for (const container of response.containers ?? []) if (MAIN_IDS.has(container.slot_type?.container_id)) for (const row of container.slots ?? []) if (row.slot === mine.slot && Number.isInteger(row.count)) left = row.count
+      if (response.status !== 'ok' && response.status !== 0) { finish(mine, { phase: 'rejected', serverConfirmed: false, reason: `server status ${response.status}` }); return }
       try {
-        const input = Array.from({ length: 36 }, (_, slot) => copy(crafting.rawItem(slot) ?? EMPTY()))
-        input[mine.slot] = left > 0 ? { ...mine.raw, count: left } : EMPTY()
-        onInventory({ window_id: 'inventory', input, container: { container_id: 'inventory', dynamic_container_id: null } })
-      } catch { /* the next server inventory corrects the model */ }
-      try { log(`持ち物を捨てました: 枠 ${mine.slot} ${mine.amount} 個（残り ${left}）`) } catch {}
-      mine.done?.({ phase: 'completed', serverConfirmed: true, slot: mine.slot, count: mine.amount, left })
+        const row = responseSlot(response, 'main', mine.slot, mine.raw.count - mine.amount)
+        const item = receivedItem(mine.raw, row)
+        validateMain(crafting, inventoryStore, mine.slot, mine.before, item)
+        onInventory(mainDelta(mine.slot, item, mine.id, 'discard'))
+        if (mine.finished) return
+        if (scopeOf(getState()) !== mine.scope) throw Error('捨てる操作の応答反映中に接続またはlifeが変わりました。')
+        if (!same(crafting.rawItem(mine.slot), item)) throw Error('捨てる操作の受理応答を持ち物1枠へ反映できませんでした。')
+        finish(mine, { phase: 'completed', serverConfirmed: true, confirmedBy: 'matching_response_slot', slot: mine.slot, count: mine.amount, left: row.count, requestId: mine.id })
+        try { log(`持ち物を捨てました: 枠 ${mine.slot} ${mine.amount} 個（残り ${row.count}）`) } catch {}
+      } catch (error) { finish(mine, { phase: 'failed', serverConfirmed: false, reason: String(error.message ?? error) }) }
+      return
     }
   }
 
-  return { drop, applyPacket, busy: () => !!attempt }
+  return { drop, applyPacket, preemptForCombat, busy: () => !!attempt }
 }
 
 module.exports = { createDiscard }

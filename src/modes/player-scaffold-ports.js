@@ -13,7 +13,7 @@ const { onRim, footings } = require('./ledge-footing')
 const { digTool, toolNeeded } = require('./dig-tool')
 const { toolOf } = require('../quarry/quarry-rules')
 
-function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, getMotion, getHealth = () => null, getHeld = () => null, pillarStep, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, getMotion, getHealth = () => null, getHeld = () => null, getScope = () => null, pillarStep, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
   const block = (x, y, z) => getBlock(x, y, z)
   const air = cell => { const found = block(cell.x, cell.y, cell.z); return found?.known === true && AIR.test(found.name ?? '') }
   const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
@@ -258,7 +258,8 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     const at = getFeet()
     return !!at && Math.floor(at.x) === Math.floor(target.x) && Math.floor(at.z) === Math.floor(target.z) && Math.abs(at.y - target.y) < 0.3
   }
-  return { feet: getFeet, block, dirt, fill, walk, stepOff, footing, land, approach, canMine, mine, canDig, dig, descend, pillar, bridge, drop, health: () => { const value = getHealth(); return Number.isFinite(value) ? value : null }, place, pick, reason, why: () => why }
+  return { feet: getFeet, block, dirt, fill, walk, stepOff, footing, land, approach, canMine, mine, canDig, dig, descend, pillar, bridge, drop, health: () => { const value = getHealth(); return Number.isFinite(value) ? value : null }, place, pick, reason, why: () => why,
+    buildConditions: () => ({ scope: getScope(), inventory: getInventory() }) }
 }
 
 module.exports = { createScaffoldPorts }

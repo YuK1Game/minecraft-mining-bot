@@ -836,9 +836,13 @@ function createRuntime (host) {
   const furnace = createFurnace({ client: host.client, getState: working, crafting, version: host.meta.version, allocateRequestId: () => host.allocate('craft'), onUncertain, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
   const prospecting = createProspecting({ client: host.client, getState: working, world: host.world })
   const inventory = createInventory({ client: host.client, getState: working, crafting, allocateRequestId: () => host.allocate('craft'), commitSelection: typeof host.commitSelection === 'function' ? slot => host.commitSelection(slot) : null, selectionStore: host.shared.inventorySelection ??= {}, onUncertain, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) } })
+  const inventoryResponse = require('./runtime/inventory-response-runtime').createInventoryResponseRuntime({
+    working, actualLifeId, onUncertain,
+    get crafting () { return crafting }, get inventoryStore () { return inventoryStore }, get host () { return host }
+  })
   let armorTask = null
   let manualArmorOwner = null
-  const armor = createArmor({ client: host.client, preferGoldBoots: () => host.shared.botMode === 'player' && host.shared.playerWanted === true && host.shared.dragonGoldBoots === true, getState: working, crafting, allocateRequestId: () => host.allocate('craft'), store: host.shared.armorStore ??= {}, inventoryStore, onInventory: packet => { crafting.applyPacket('inventory_content', packet); host.commitInventory(packet) }, log: message => host.log(message) })
+  const armor = inventoryResponse.createArmor(createArmor)
   function canEmergencyEatHere () {
     const state = observedState()
     const threats = evaluateThreats(state, state.entities, { observationRadius: 32 })
@@ -857,13 +861,6 @@ function createRuntime (host) {
   const mining = createMining({ blockTimeoutMs: 30000, logAllowance: () => longTravelLogAllowance(), travelDownAllowance: () => Date.now() < (host.shared.travelDownUntil ?? 0), getState: () => ({ ...miningState(), lifecycle: { deathId: actualLifeId() } }), world: host.world, getInput: () => input, getRawItem: slot => crafting.rawItem(slot), isProtected: point => { const block = planningWorld.getBlock(point.x,point.y,point.z); return block?.protected === true || !!block?.protectionSource || (depotBuilder?.protectedCells() ?? []).some(p => p.x===point.x && p.y===point.y && p.z===point.z) }, verifyOwnedStation: (state, target, block) => require('./modes/player-workstations').ownsStation({ shared: host.shared, state, target, block }), verifyOwnedBed: (state, target, block) => userBehaviors?.ownsBedTarget(state, target, block) === true || travelBedOwns(target, block), verifyOwnedShulker: (state, target, block) => quarryPortableStorage?.ownsShulker(state, target, block) === true || manualShulkerRecovery?.ownsShulker(state, target, block) === true || travelShulkerOwns(target, block) })
   const interactions = createInteractions({ client: host.client, getState: () => ({ ...working(), lifecycle: { deathId: actualLifeId() } }), world: host.world, crafting, getInput: () => input, version: host.meta.version, onInventory, onUncertain, allocateLegacyId: () => host.allocate('interaction') })
 
-  // This part lives in inventory-response-runtime.js. It reads and writes these bindings of
-  // this closure through accessors, so each use sees the current value exactly
-  // as the code did when it was written here.
-  const inventoryResponse = require('./runtime/inventory-response-runtime').createInventoryResponseRuntime({
-    get crafting () { return crafting },
-    get host () { return host }, set host ($value) { host = $value }
-  })
   function commitChestMainDelta (...args) { return inventoryResponse.commitChestMainDelta(...args) }
   const chest = createChest({ client: host.client, getState: () => { const state = working(); return { ...state, profile: state.profile ?? host.meta.profile, lifecycle: { ...(state.lifecycle ?? {}), deathId: foodKnownLife() } } }, world: host.world, crafting, interactions, version: host.meta.version, allocateRequestId: () => host.allocate('craft'), onUncertain, onInventory: commitChestMainDelta })
   const quarryV22Equipment = createQuarryV22Equipment({
@@ -1045,6 +1042,7 @@ function createRuntime (host) {
     if (chunkMoveHeld() && !chunkMoveHandoff && chunkMoveDepth === 0 && !(ownedCall && userBehaviorLease?.kind === 'combat')) throw Object.assign(new Error('Botの移動が終わるまで待ってください。'), { code: 'CHUNK_MOVE_BUSY' })
     if (!ownedCall && manualShulkerTask) throw new Error('指定したシュルカーボックスの回収完了を待ってください。')
     if (manualArmorOwner && manualArmorOwner !== armorOwner) throw new Error('手動の防具装備が完了するまで待ってください。')
+    if (!ownedCall && armor.snapshot().busy) throw actionBusyError('防具の持ち替え・持ち物を捨てる操作の完了を待ってください。')
     if (disposed || disposing) throw new Error('行動コードを更新しました。新しい状態からやり直してください。')
     if (host.shared.respawnTerrain?.pending) throw new Error('リスポーン先の地形と前の操作の終了を確認しています。')
     if (working().spawnPending) throw new Error('参加位置をサーバーで確認するまで行動を待機します。')
@@ -4061,7 +4059,7 @@ function createRuntime (host) {
     operations: runtimeOperations.operations, snapshot: getSnapshot, applyPacket, onSpawn, onRespawn, stopActions, resumeRequested,
     canReload: () => {
       const snapshot = createSnapshotReader()
-      return !quarryPlacementPreparation && !chunkMoveHeld() && !resetHeld() && !manualChestStorage?.isBusy() && !host.shared.quarrySurfaceStorageOwner && !quarryV22Equipment.status().busy && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && snapshot(mining).phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !snapshot(food).busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(snapshot(furnace).busy || chestStatus().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !snapshot(combat)?.busy && !snapshot(combat)?.defending && !snapshot(combat)?.engaging
+      return !quarryPlacementPreparation && !chunkMoveHeld() && !resetHeld() && !manualChestStorage?.isBusy() && !host.shared.quarrySurfaceStorageOwner && !quarryV22Equipment.status().busy && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !armor.snapshot().busy && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && snapshot(mining).phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !snapshot(food).busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(snapshot(furnace).busy || chestStatus().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !snapshot(combat)?.busy && !snapshot(combat)?.defending && !snapshot(combat)?.engaging
     },
     dispose: async reason => {
       if (disposed) return

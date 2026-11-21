@@ -40,7 +40,7 @@ function createDragonSupplies (ctx) {
     return result
   }
   // One memory of received chest contents with the return and the storage (mode-runtime.js): what any of them last received of a chest.
-  const deps = { operations, getFeet: ctx.getFeet, getBlock, getInventory, disposed: cancelled, memory: ctx.shared.playerChestMemory ??= { seen: new Map() } }
+  const deps = { operations, getFeet: ctx.getFeet, getBlock, getInventory, disposed: cancelled, memory: ctx.shared.playerChestMemory ??= { seen: new Map() }, ...(ctx.sleep ? { sleep: ctx.sleep, now: ctx.now } : {}) }
   const bench = createStoragePorts(deps), house = createHousePorts(deps), box = createContainerPorts(deps)
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
   // Why the last step of this run did nothing (a refused open click, …): shown with the reason, so a stall is not silent.
@@ -53,7 +53,7 @@ function createDragonSupplies (ctx) {
   const stand = createOpenStand({ getBlock, getFeet: ctx.getFeet, walk: to => ctx.hands.walk(to) })
   const shut = cell => ({ stage: 'station', target: [cell.x, cell.y, cell.z].join(','), code: 'STATION_NOT_OPENED' })
 
-  async function station (name) {
+  async function station (name, { existingOnly = false } = {}) {
     const saved = ctx.memory?.early
     const previous = name === 'brewing_stand' && saved?.brewingStand
     if (previous && runtime.raw().dimension === 'overworld') {
@@ -87,6 +87,7 @@ function createDragonSupplies (ctx) {
       return null
     }
     if (near) { await approach(ctx, near); return remember(near) }
+    if (existingOnly) return null
     if (!held(name)) { await acquire(name, 1); return null }
     // Open cells first; in a one-wide tunnel a niche is mined for it (station-room.js).
     const pos = await placeStation({ getBlock, feet: ctx.getFeet(), getFeet: ctx.getFeet, place: cell => bench.place(cell, full(name)), retrySafe: () => bench.placementRetrySafe(), why: () => bench.refusal(), hands: ctx.hands, cancelled, log: ctx.log, label: name === 'crafting_table' ? '作業台' : name === 'furnace' ? 'かまど' : name })
@@ -157,17 +158,31 @@ function createDragonSupplies (ctx) {
       if (!log) await acquire('log', 1)
       else await bench.craftPlanks(log.name, 1)
     } else if (material) {
-      if (!held(material)) await acquire(material, 1)
-      else if (!held('coal') && !held('charcoal') && !held('planks')) {
+      const plank = rows().find(i => matches('planks', i))
+      const fuel = held('coal') ? 'minecraft:coal' : held('charcoal') ? 'minecraft:charcoal' : plank?.name
+      // Read a nearby furnace before gathering: it may already hold the result,
+      // the raw item or burning fuel from the interrupted previous look.
+      // Once its shortage was received, let that gathering continue for up to a
+      // minute without walking back to the same empty furnace every two seconds.
+      // This is a next-step hint only; using the furnace always reads it anew.
+      const gather = ctx.shared.dragonSmeltGather, at = (ctx.now ?? Date.now)(), dimension = runtime.raw()?.dimension
+      const fetching = gather?.name === name && gather.dimension === dimension && at >= gather.at && at - gather.at < 60000 && (gather.need.input > 0 && !held(material) || gather.need.fuel && !fuel)
+      const furnace = fetching ? null : await station('furnace', { existingOnly: !held(material) || !fuel })
+      let need = fetching ? gather.need : null
+      if (furnace && !cancelled()) {
+        house.reset()
+        const made = await house.smelt(furnace, full(material), 1, fuel, 1, full(name))
+        if (made > 0 || cancelled() || !getInventory()) { delete ctx.shared.dragonSmeltGather; return held(name) >= target ? done(name + ' の所持数を確認しました。') : pending(name + ' の精錬後の所持数を確認します。') }
+        need = house.smeltNeed()
+        if (house.why()) trouble = 'かまど: ' + house.why()
+        if (!need) return pending(trouble ?? 'かまどの受信を確認します。')
+        ctx.shared.dragonSmeltGather = { name, dimension, at: (ctx.now ?? Date.now)(), need }
+      }
+      if ((!need || need.input > 0) && !held(material)) await acquire(material, 1)
+      else if ((!need || need.fuel) && !fuel) {
         // Fuel: coal ore already in view (underground) before a walk to the trees.
         const coalNear = inView(ctx, 'coal').length > 0
         await acquire(coalNear ? 'coal' : 'planks', coalNear ? 1 : 2)
-      }
-      else {
-        const furnace = await station('furnace')
-        const plank = rows().find(i => matches('planks', i))
-        const fuel = held('coal') ? 'minecraft:coal' : held('charcoal') ? 'minecraft:charcoal' : plank?.name
-        if (furnace && fuel && !cancelled()) { house.reset(); if (!await house.smelt(furnace, full(material), 1, fuel, 1, full(name)) && house.why()) trouble = 'かまど: ' + house.why() }
       }
     } else if (recipe) {
       const missing = Object.entries(recipe).find(([part, need]) => held(part) < need)

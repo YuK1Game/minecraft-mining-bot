@@ -18,6 +18,7 @@
 const { planBuildRouteAsync, keyOf, SAFE_FALL, MAX_FALL } = require('../movement/build-route')
 const { createHouseProtection } = require('../safety/house-protection')
 const { centreOnColumn } = require('./pillar-centre')
+const { createMemo, failureRecord, sameFailure, transientFailure } = require('./build-walk-memo')
 
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const ROUNDS = 6
@@ -28,14 +29,6 @@ const RUN = 4 // plain walking steps taken as one walk
 // What one walk learned (a block the mining check refused, a step that did not carry the Bot) is kept for the next
 // walks: every caller starts a new walk, and each new walk planned the same route through the same refused block
 // (live 2026-11-19 16:14-16:16 JST: fifteen plans a minute, 39 times stopped at the same unseen face of (-4913,63,-4990)).
-const MEMO_MS = 3 * 60000, MEMO_MAX = 256
-
-function createMemo ({ now = Date.now, ms = MEMO_MS, max = MEMO_MAX } = {}) {
-  const kept = { refused: new Map(), barred: new Map() }
-  const live = kind => { const t = now(); for (const [key, until] of kept[kind]) if (until <= t) kept[kind].delete(key); return [...kept[kind].keys()] }
-  const note = (kind, key) => { if (kept[kind].size >= max) kept[kind].delete(kept[kind].keys().next().value); kept[kind].set(key, now() + ms) }
-  return { live, note }
-}
 const sharedMemo = createMemo()
 
 async function buildWalk ({ ports, target, done, log = () => {}, aborted = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), rounds = ROUNDS, plan = planBuildRouteAsync, limits = {}, memo = null }) {
@@ -44,9 +37,15 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
   const centre = at => ({ x: at.x + 0.5, y: at.y, z: at.z + 0.5 })
   const there = at => { const now = cell(); return !!now && now.x === at.x && now.y === at.y && now.z === at.z }
   const isAir = at => { const found = block(at.x, at.y, at.z); return found?.known === true && (AIR.test(found.name ?? '') || found.boundingBox !== 'block') }
-  const refused = new Set(memo?.live('refused')), barred = new Set(memo?.live('barred'))
-  const refuse = at => { const key = keyOf(at.x, at.y, at.z); refused.add(key); memo?.note('refused', key) }
-  const bar = (a, b) => { const key = `${keyOf(a.x, a.y, a.z)}>${keyOf(b.x, b.y, b.z)}`; barred.add(key); memo?.note('barred', key) }
+  const valid = record => sameFailure(ports, record)
+  const refused = new Set(memo?.live('refused', valid)), barred = new Set(memo?.live('barred', valid))
+  const remember = (kind, key, points, reason) => {
+    if (!memo || aborted() || transientFailure(reason)) return
+    const record = failureRecord(ports, points, kind, reason)
+    if (record) memo.note(kind, key, record)
+  }
+  const refuse = (at, reason) => { const key = keyOf(at.x, at.y, at.z); refused.add(key); remember('refused', key, [at], reason) }
+  const bar = (a, b, reason) => { const key = `${keyOf(a.x, a.y, a.z)}>${keyOf(b.x, b.y, b.z)}`; barred.add(key); remember('barred', key, [a, b], reason) }
   const say = text => log(`プレイヤーモード: ${text}`)
   let moved = 0, mined = 0, stacked = 0, bridged = 0, why = null
 
@@ -56,8 +55,9 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
       if (aborted()) return false
       if (isAir(at)) continue
       const tool = ports.canMine(at) || (await ports.pick?.(at) && ports.canMine(at))
-      if (!tool && !ports.canDig?.(at)) { refuse(at); why = ports.reason?.(at) ?? 'CANNOT_MINE'; return false }
-      if (!await (tool ? ports.mine(at) : ports.dig(at))) { refuse(at); why = ports.why?.() ?? 'MINE_FAILED'; return false }
+      if (aborted()) return false
+      if (!tool && !ports.canDig?.(at)) { why = ports.reason?.(at) ?? 'CANNOT_MINE'; refuse(at, why); return false }
+      if (!await (tool ? ports.mine(at) : ports.dig(at))) { why = ports.why?.() ?? 'MINE_FAILED'; refuse(at, why); return false }
       mined++
     }
     return true
@@ -66,16 +66,19 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
   for (let round = 0; round < rounds && !aborted(); round++) {
     // On the rim of a block the own cell has no floor and no route starts from it: onto a full stand first (ledge-footing.js).
     if (await ports.footing?.(target)) say('ブロックの縁に立っていたため、先に床のあるマスへ移りました')
+    if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }
     const start = cell()
     if (!start) return { ok: false, code: 'NO_POSITION', moved, mined, stacked }
     if (done(start)) return { ok: true, code: 'BUILD_ROUTE_DONE', moved, mined, stacked }
     const carried = ports.fill?.() ?? 0
-    let route = await plan({ getBlock: block, start, target, done, blocks: carried, refused, barred, ...limits })
+    let route = await plan({ getBlock: block, start, target, done, blocks: carried, refused, barred, ...limits, cancelled: aborted })
+    if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }
     // No way by walking, digging and stacking: once more with floor blocks placed over gaps.
     // Also off an edge two or three down (nothing carried is needed for that).
     const mayBridge = carried > 0 && typeof ports.bridge === 'function', mayDrop = typeof ports.drop === 'function'
     if (!route.ok && (mayBridge || mayDrop) && !aborted()) {
-      const wider = await plan({ getBlock: block, start, target, done, blocks: carried, refused, barred, ...limits, allowBridge: mayBridge, allowDrop: mayDrop, maxFall: fallFor(ports.health?.()) })
+      const wider = await plan({ getBlock: block, start, target, done, blocks: carried, refused, barred, ...limits, allowBridge: mayBridge, allowDrop: mayDrop, maxFall: fallFor(ports.health?.()), cancelled: aborted })
+      if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }
       if (wider.ok) route = wider; else route = { ...route, expanded: route.expanded + wider.expanded }
     }
     if (!route.ok) {
@@ -92,38 +95,44 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
         let last = i
         while (last + 1 < route.steps.length && last - i < RUN - 1 && route.steps[last + 1].kind === 'walk' && !route.steps[last + 1].dig.length) last++
         if (last > i && await walk(centre(route.steps[last].to)) && there(route.steps[last].to)) { moved += last - i + 1; at = route.steps[last].to; i = last; continue }
+        if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }
         if (there(step.to) || await walk(centre(step.to)) && there(step.to)) { moved++; at = step.to; continue }
-        bar(at, step.to); why = ports.why?.() ?? 'WALK_FAILED'; failed = true
+        why = ports.why?.() ?? 'WALK_FAILED'; bar(at, step.to, why); failed = true
         continue
       }
       if (!await clear(step.dig)) { failed = true; continue }
+      if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }
       if (step.kind === 'walk') {
         if (await walk(centre(step.to)) && there(step.to)) { moved++; at = step.to; continue }
-        bar(at, step.to); why = ports.why?.() ?? 'WALK_FAILED'; failed = true
+        why = ports.why?.() ?? 'WALK_FAILED'; bar(at, step.to, why); failed = true
       } else if (step.kind === 'bridge') {
         // A floor block over the gap first (received), then the step onto it.
         const floor = () => { const found = block(step.place.x, step.place.y, step.place.z); return found?.known === true && found.boundingBox === 'block' }
         const laid = floor() || (typeof ports.bridge === 'function' && await ports.bridge(step.place, at) && floor())
+        if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }
         if (laid && await walk(centre(step.to)) && there(step.to)) { moved++; bridged++; at = step.to; continue }
-        bar(at, step.to); why = laid ? ports.why?.() ?? 'WALK_FAILED' : ports.why?.() ?? 'BRIDGE_FAILED'; failed = true
+        why = laid ? ports.why?.() ?? 'WALK_FAILED' : ports.why?.() ?? 'BRIDGE_FAILED'; bar(at, step.to, why); failed = true
       } else if (step.kind === 'drop') {
         // Centred on the edge cell first, then the predicted drop; the feet at the lower cell count.
         // A jump that costs health is taken only with the health the plan counted on still there.
-        if (step.fall > SAFE_FALL && step.fall > fallFor(ports.health?.())) { bar(at, step.to); why = 'DROP_TOO_DEEP_FOR_HEALTH'; failed = true; continue }
+        if (step.fall > SAFE_FALL && step.fall > fallFor(ports.health?.())) { why = 'DROP_TOO_DEEP_FOR_HEALTH'; bar(at, step.to, why); failed = true; continue }
         await walk(centre(at))
+        if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }
         if (await ports.drop(centre(step.to), step.fall) && there(step.to)) { moved++; at = step.to; continue }
-        bar(at, step.to); why = ports.why?.() ?? 'DROP_FAILED'; failed = true
+        why = ports.why?.() ?? 'DROP_FAILED'; bar(at, step.to, why); failed = true
       } else if (step.kind === 'shaft') {
         if (await ports.descend({ x: at.x, y: at.y - 1, z: at.z }) && there(step.to)) { moved++; mined++; at = step.to; continue }
-        bar(at, step.to); why = ports.why?.() ?? 'DESCEND_FAILED'; failed = true
+        why = ports.why?.() ?? 'DESCEND_FAILED'; bar(at, step.to, why); failed = true
       } else {
         await walk(centre(at))
+        if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }
         await centreOnColumn({ column: at, base: at.y, feet, block, walk, aborted })
+        if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }
         let up = await ports.pillar({ x: at.x, z: at.z }, at.y, { any: true })
         // The step before may still be ending (the mining that just finished).
-        if (!up?.ok && !aborted() && !there(step.to)) { await sleep(1500); up = there(step.to) ? { ok: true } : await ports.pillar({ x: at.x, z: at.z }, at.y, { any: true }) }
+        if (!up?.ok && !aborted() && !there(step.to)) { await sleep(1500); if (aborted()) return { ok: false, code: 'INTERRUPTED', moved, mined, stacked }; up = there(step.to) ? { ok: true } : await ports.pillar({ x: at.x, z: at.z }, at.y, { any: true }) }
         if ((up?.ok || there(step.to)) && there(step.to)) { moved++; stacked++; at = step.to; continue }
-        bar(at, step.to); why = up?.reason ?? ports.why?.() ?? 'PILLAR_FAILED'; failed = true
+        why = up?.reason ?? ports.why?.() ?? 'PILLAR_FAILED'; bar(at, step.to, why); failed = true
       }
     }
     const now = cell()

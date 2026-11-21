@@ -4,20 +4,21 @@ const assert = require('node:assert/strict')
 const { createArmor, armorInfo } = require('../src/actions/armor')
 
 const NAMES = new Map([[1, 'minecraft:iron_chestplate'], [2, 'minecraft:leather_chestplate'], [3, 'minecraft:iron_sword'], [4, 'minecraft:diamond_helmet'], [5, 'minecraft:golden_boots'], [6, 'minecraft:diamond_boots']])
+const alive = () => ({ phase: 'spawned', health: 20, gameMode: 'survival', inventory: { known: true }, profile: 'test', realm: { id: '1' }, connectionId: 'armor-test', startedAt: '2026-11-21T00:00:00Z', runtimeEntityId: '1', dimension: 'overworld', lifecycle: { deathId: 0 } })
 function fixture ({ inventory = [], respond = 'ok', preferGoldBoots = () => false } = {}) {
   const sent = []; let open = null
   const raws = new Map(inventory.map(i => [i.slot, { network_id: i.id, count: 1, has_stack_id: true, stack_id: 100 + i.slot, metadata: 0 }]))
   const crafting = {
     rawItem: slot => raws.get(slot) ?? { network_id: 0, count: 0 },
-    snapshot: () => ({ authority: true, inventoryKnown: true, pendingRequestId: null, openContainer: open, inventory: inventory.map(i => ({ slot: i.slot, name: NAMES.get(i.id), count: 1 })) }),
+    snapshot: () => ({ authority: true, inventoryKnown: true, pendingRequestId: null, openContainer: open, inventory: [...raws.entries()].filter(([, raw]) => raw.count > 0).map(([slot, raw]) => ({ slot, name: NAMES.get(raw.network_id), count: raw.count })) }),
     openInventory: async () => { open = { id: 9, type: 'inventory' }; return open },
     closeContainer: () => { open = null },
     itemNameOf: id => NAMES.get(id) ?? null
   }
   let armor
-  const client = { queue: (name, params) => { sent.push({ name, params }); if (name === 'item_stack_request' && respond) { const r = params.requests[0]; queueMicrotask(() => armor.applyPacket('item_stack_response', { responses: [{ request_id: r.request_id, status: respond, containers: [{ slot_type: { container_id: 'armor' }, slots: [{ slot: r.actions[0].destination.slot, count: 1, item_stack_id: 500 }] }] }] })) } } }
+  const client = { queue: (name, params) => { sent.push({ name, params }); if (name === 'item_stack_request' && respond) { const r = params.requests[0]; queueMicrotask(() => armor.applyPacket('item_stack_response', { responses: [{ request_id: r.request_id, status: respond, containers: [{ slot_type: { container_id: 'armor' }, slots: [{ slot: r.actions[0].destination.slot, count: 1, item_stack_id: 500 }] }, { slot_type: { container_id: 'hotbar_and_inventory' }, slots: [{ slot: r.actions[0].source.slot, count: 0, item_stack_id: 0 }] }] }] })) } } }
   let rid = -1
-  armor = createArmor({ client, crafting, preferGoldBoots, getState: () => ({ phase: 'spawned', health: 20, gameMode: 'survival', inventory: { known: true } }), allocateRequestId: () => (rid -= 2), timeoutMs: 200 })
+  armor = createArmor({ client, crafting, preferGoldBoots, getState: alive, onInventory: delta => raws.set(delta.slot, structuredClone(delta.item)), allocateRequestId: () => (rid -= 2), timeoutMs: 200 })
   return { armor, sent, crafting, isOpen: () => open }
 }
 
@@ -47,17 +48,18 @@ test('a rejected request stops further moves and is reported', async () => {
   const moved = await f.armor.equipBest()
   assert.equal(moved.length, 1); assert.equal(moved[0].phase, 'rejected'); assert.equal(f.isOpen(), null)
 })
-test('an accepted move commits the emptied source slot to the inventory model', async () => {
+test('an ok status without resulting slots never commits an invented inventory', async () => {
   const commits = []
   const f = fixture({ inventory: [{ slot: 7, id: 1 }] })
   // rebuild with an onInventory hook
   const { createArmor } = require('../src/actions/armor')
   let armor; const sent = []
   const client = { queue: (name, params) => { sent.push(name); if (name === 'item_stack_request') { const r = params.requests[0]; queueMicrotask(() => armor.applyPacket('item_stack_response', { responses: [{ request_id: r.request_id, status: 'ok', containers: [] }] })) } } }
-  armor = createArmor({ client, crafting: f.crafting, getState: () => ({ phase: 'spawned', health: 20, gameMode: 'survival', inventory: { known: true } }), allocateRequestId: () => -3, onInventory: p => commits.push(p) })
+  armor = createArmor({ client, crafting: f.crafting, getState: alive, allocateRequestId: () => -3, onInventory: p => commits.push(p) })
   armor.applyPacket('inventory_content', { window_id: 'armor', input: [0, 0, 0, 0].map(() => ({ network_id: 0, count: 0 })) })
-  await armor.equipBest({ maxMoves: 1 })
-  assert.equal(commits.length, 1); assert.equal(commits[0].input[7].network_id, 0); assert.equal(commits[0].input.length, 36)
+  const result = await armor.equipBest({ maxMoves: 1 })
+  assert.equal(result[0].serverConfirmed, false); assert.equal(result[0].phase, 'failed')
+  assert.equal(commits.length, 0); assert.equal(f.crafting.rawItem(7).network_id, 1)
 })
 
 test('gold boots on Nether trips are preferred over diamond and kept until the expedition leaves', () => {

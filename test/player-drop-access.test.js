@@ -48,3 +48,10 @@ test('an item the Bot can already walk to needs no digging', () => {
   const opened = (x, y, z) => x === -4917 && y === 63 && z === -4952 ? { known: true, name: 'minecraft:air', boundingBox: 'empty', position: { x, y, z } } : world(false)(x, y, z)
   assert.equal(openWayToDrop({ mode: 'player', shared: {}, state, decision: planned, drops, getBlock: opened, preview: live }), null)
 })
+
+for (const obstacle of [{ known: false }, { protected: true, protectionSource: 'tunnel_floor' }, { natural: false }, { name: 'minecraft:coal_ore' }]) {
+  test(`the saved stair refuses an unsafe access block: ${JSON.stringify(obstacle)}`, () => {
+    const blocked = (x, y, z) => ({ ...world(true)(x, y, z), ...(x === -4917 && y === 63 && z === -4952 ? obstacle : {}) })
+    assert.equal(openWayToDrop({ mode: 'player', shared: {}, state, decision: planned, drops, getBlock: blocked, preview: live }), null)
+  })
+}

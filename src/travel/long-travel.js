@@ -63,6 +63,7 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
   }
   async function leg (area, signal) {
     if (typeof requestTerrain === 'function') { try { await requestTerrain(area, { signal }) } catch {} }
+    if (signal.aborted) throw fail('LONG_TRAVEL_CANCELLED')
     // Live 2026-11-14 09:46: terrain arriving during route planning changed the
     // world revision and every plan aborted (NAVIGATION_CONTEXT_CHANGED). Wait
     // until the received terrain stops changing (bounded) before planning.
@@ -71,6 +72,7 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
       let last = terrainRevision(), stableSince = now()
       while (now() < until && now() - stableSince < 800) { await sleep(150); if (signal.aborted) break; const r = terrainRevision(); if (r !== last) { last = r; stableSince = now() } }
     }
+    if (signal.aborted) throw fail('LONG_TRAVEL_CANCELLED')
     try { await chunkTravel.start({ area }) } catch (error) { return { ok: false, code: error.code ?? 'CHUNK_TRAVEL_START_FAILED', message: String(error.message ?? error).slice(0, 160) } }
     const s = await waitChunkTravel(signal)
     if (s.phase === 'arrived' && s.serverConfirmed === true) return { ok: true }
@@ -149,6 +151,7 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
         const tp = now()
         try { point = await findPoint(feet, run.destination, { signal }) } catch {}
         add('plan', now() - tp)
+        if (signal.aborted) throw fail('LONG_TRAVEL_CANCELLED')
         if (!point) say("歩ける中継点が見つかりません"); else {
           const tw = now()
           const result = await walkTo(point, { signal })

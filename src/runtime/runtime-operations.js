@@ -369,14 +369,7 @@ function createRuntimeOperations (rt) {
         return results.map(r => ({ requested: r.requested, packets: r.packets, reason: r.reason ?? null }))
       },
       // Read-only: the coarse wide-area route over the received terrain.
-      coarseRoutePreview: (input = {}) => {
-        const d = input.destination, st = rt.working()
-        if (!d || ![d.x, d.z].every(Number.isFinite) || !st.position) throw new Error('目的地 {x, z} を指定してください。')
-        const started = Date.now()
-        const r = rt.require('./travel/coarse-route').planCoarseRoute({ getBlock: (x, y, z) => rt.host.world.getBlock(x, y, z), start: { x: st.position.x, y: st.position.y - 1.62, z: st.position.z }, goal: d, maxNodes: Math.min(120000, input.maxNodes ?? 60000), allowDig: input.allowDig === true, surfaceOnly: input.surfaceOnly === true, maxDrop: Number.isInteger(input.maxDrop) ? input.maxDrop : 3 })
-        const step = Math.max(1, Math.floor(r.path.length / 20))
-        return { ready: r.ready, reached: r.reached, surfaced: r.surfaced === true, remaining: r.remaining, expanded: r.expanded, ms: Date.now() - started, length: r.path.length, sample: r.path.filter((_, i) => i % step === 0 || i === r.path.length - 1), frontier: r.frontier.slice(0, 8) }
-      },
+      coarseRoutePreview: (input = {}, options = {}) => rt.require('./runtime/coarse-route-preview').previewCoarseRoute({ world: rt.host.world, getState: () => rt.working(), cancelled: () => rt.disposed || rt.disposing }, input, options),
       // Preparation for a long trip from empty hands: about 10 logs by the
       // existing tree work (logs only), then planks/table/tools by the existing
       // crafting. The allowance expires after 30 minutes.

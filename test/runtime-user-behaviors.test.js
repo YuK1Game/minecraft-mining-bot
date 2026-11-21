@@ -73,7 +73,7 @@ function manualArmorFixture (t, { includeDestination = true } = {}) {
       const request = packet.requests[0], destination = request.actions[0].destination
       requests.push(destination.slot)
       assert.equal(destination.slot_type.container_id, 'armor')
-      const containers = includeDestination ? [{ slot_type: { container_id: 'armor' }, slots: [{ slot: destination.slot, count: 1, item_stack_id: 550 + destination.slot }] }] : []
+      const containers = includeDestination ? [{ slot_type: { container_id: 'armor' }, slots: [{ slot: destination.slot, count: 1, item_stack_id: 550 + destination.slot }] }, { slot_type: { container_id: 'hotbar_and_inventory' }, slots: [{ slot: request.actions[0].source.slot, count: 0, item_stack_id: 0 }] }] : []
       queueMicrotask(() => f.runtime.applyPacket('item_stack_response', { responses: [{ request_id: request.request_id, status: 'ok', containers }] }))
     }
     return result
@@ -99,7 +99,21 @@ test('manual armor equip refuses nearby hostiles and never credits a bare ACK wi
   f.actors.length = 0
   const result = await f.runtime.operations.armor.equipBest()
   assert.equal(result.phase, 'blocked'); assert.equal(result.serverConfirmed, false)
-  assert.equal(result.reason, 'ARMOR_SLOT_UNCONFIRMED'); assert.equal(result.moves.length, 0); assert.equal(requests.length, 1)
+  assert.match(result.reason, /スロット/); assert.equal(result.moves.length, 0); assert.equal(requests.length, 1)
+})
+
+test('runtime discard owns its pending response across idle admission and reload until the real ACK arrives', async t => {
+  const f = scene(t)
+  const stack = { ...air(), network_id: 300, count: 10, has_stack_id: true, stack_id: 77 }
+  f.runtime.applyPacket('inventory_content', { window_id: 'inventory', input: Array.from({ length: 36 }, (_, slot) => slot === 3 ? stack : air()) })
+  f.runtime.applyPacket('container_open', { window_id: 'inventory', window_type: 'inventory' })
+  const pending = f.runtime.operations.inventory.discard(3, 4)
+  assert.equal(f.runtime.canReload(), false)
+  assert.throws(() => f.runtime.operations.crafting.openInventory(), /捨てる操作/)
+  f.runtime.applyPacket('item_stack_response', { responses: [{ request_id: -3, status: 'ok', containers: [{ slot_type: { container_id: 'hotbar_and_inventory' }, slots: [{ slot: 3, count: 6, item_stack_id: 901 }] }] }] })
+  assert.equal((await pending).serverConfirmed, true)
+  assert.equal(f.facadeOptions.crafting.rawItem(3).stack_id, 901)
+  assert.equal(f.runtime.canReload(), true)
 })
 
 test('runtime shares observed portable-container ports for quarry supplies and keeps resync outside the action owner', async t => {
