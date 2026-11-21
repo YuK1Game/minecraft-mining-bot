@@ -32,6 +32,7 @@ function mineLadderResult (ctx, request, raw) {
     planId: text(branch?.plan?.id), layer: text(branch?.request?.layer), depth: Number.isFinite(branch?.shaft?.depth) ? branch.shaft.depth : null,
     operationId: text(request?.operationId), from: point(request?.from), to: point(request?.to), phase,
     queuedFrames: Number.isSafeInteger(raw?.queuedFrames) ? raw.queuedFrames : null,
+    replayedCorrections: Number.isSafeInteger(raw?.replayedCorrections) ? raw.replayedCorrections : null,
     ladderOwnsInput: typeof observed?.ladderOwnsInput === 'boolean' ? observed.ladderOwnsInput : null,
     activeBehavior: text(observed?.activeBehavior),
     position: position ? { pending: position.pending === true, reason: codeOf(position.lastResult?.reason), serverConfirmed: position.lastResult?.serverConfirmed === true, feet: point(position.feet ?? position.lastResult?.feet) } : null
@@ -45,6 +46,7 @@ function mineLadderResult (ctx, request, raw) {
   const identity = JSON.stringify([scopeOf(ctx), status, code, evidence.planId, evidence.depth, evidence.operationId, evidence.to, phase, evidence.activeBehavior, evidence.position?.reason])
   const previous = ctx.shared.mineLadderDiagnostic
   ctx.shared.mineLadderDiagnostic = { key: confirmed ? null : identity, status, code, ...evidence }
+  if (raw?.correctionDiagnostic && previous?.key !== identity) ctx.log?.('採掘場: はしご補正 ' + JSON.stringify(raw.correctionDiagnostic))
   if (!confirmed && previous?.key !== identity) ctx.log?.('採掘場: はしご ' + JSON.stringify({ status, code, ...evidence }))
   return normalized
 }

@@ -16,12 +16,32 @@ function ladderAt (getBlock, point) {
   return { position: { ...point }, face, supportPosition, block: b, support }
 }
 
-function safeBody (getBlock, physics, feet) {
+function atRoundedLadderFace (raw, feet, cell, box, plan) {
+  if (!plan || raw.name !== 'minecraft:ladder' || raw.properties?.facing_direction !== plan.facing ||
+      cell.x !== plan.column.x || cell.z !== plan.column.z) return false
+  const normal = FACE[plan.facing]
+  if (!normal || normal.y) return false
+  const axis = normal.x ? 'x' : 'z'
+  const side = normal[axis]
+  const index = (axis === 'x' ? 0 : 2) + (side > 0 ? 3 : 0)
+  const contact = cell[axis] + box[index] + side * 0.3
+  const rounded = Math.fround(contact)
+  const overlap = side * (contact - feet[axis])
+  const rounding = side * (contact - rounded)
+  // A received float32 position at the open face can round just inside its
+  // ladder panel. Allow only that rounding on this verified rung, not walls.
+  return rounding > 0 && rounding <= 0.001 && overlap <= rounding + 1e-7
+}
+
+function safeBody (getBlock, physics, feet, ladderContact = null) {
   for (let x = Math.floor(feet.x - 0.3 + 1e-7); x <= Math.floor(feet.x + 0.3 - 1e-7); x++) for (let z = Math.floor(feet.z - 0.3 + 1e-7); z <= Math.floor(feet.z + 0.3 - 1e-7); z++) for (let y = Math.floor(feet.y + 1e-7); y <= Math.floor(feet.y + 1.8 - 1e-7); y++) {
     const raw = getBlock(x, y, z)
     if (raw?.known !== true || raw.extra?.length || HAZARD.test(raw.name ?? '')) fail('LADDER_BODY_UNSAFE')
     const block = physics.blockAt({ x, y, z })
-    if (block.shapes.some(box => feet.x + 0.3 > x + box[0] + 1e-6 && feet.x - 0.3 < x + box[3] - 1e-6 && feet.z + 0.3 > z + box[2] + 1e-6 && feet.z - 0.3 < z + box[5] - 1e-6 && feet.y + 1.8 > y + box[1] + 1e-6 && feet.y < y + box[4] - 1e-6)) fail('LADDER_BODY_OBSTRUCTED')
+    if (block.shapes.some(box => feet.x + 0.3 > x + box[0] + 1e-6 && feet.x - 0.3 < x + box[3] - 1e-6 &&
+      feet.z + 0.3 > z + box[2] + 1e-6 && feet.z - 0.3 < z + box[5] - 1e-6 &&
+      feet.y + 1.8 > y + box[1] + 1e-6 && feet.y < y + box[4] - 1e-6 &&
+      !atRoundedLadderFace(raw, feet, { x, z }, box, ladderContact))) fail('LADDER_BODY_OBSTRUCTED')
   }
   return true
 }

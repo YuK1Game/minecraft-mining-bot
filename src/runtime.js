@@ -2028,6 +2028,7 @@ function createRuntime (host) {
     quarryPillar = generationPillar
     generationLadder = require('./runtime/ladder-runtime').createLadderRuntime({
       getState: () => { requireGeneration(); return quarryState() }, getBlock: (x, y, z) => planningWorld.getBlock(x, y, z),
+      getCorrection: () => host.shared.lastServerCorrection,
       getPhysics: () => generationPhysics.withWorld(host.world, { allowWater: false }), getInput: () => generationInput,
       currentGeneration, requireIdle: own(() => requireIdle()),
       canAcquire: () => !pillarInputToken && !userBehaviorOwns() && !idleSafety?.snapshot().busy && !pendingStops.size,
