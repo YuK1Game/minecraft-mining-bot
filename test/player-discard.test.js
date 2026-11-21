@@ -7,6 +7,7 @@ const { createDiscard } = require('../src/inventory/discard')
 
 const mc = name => `minecraft:${name}`
 const inv = items => ({ known: true, items: items.map(([slot, name, count, extra = {}]) => ({ slot, name: mc(name), count, ...extra })) })
+const alive = () => ({ phase: 'spawned', health: 20, profile: 'test', realm: { id: '1' }, connectionId: 'discard-test', startedAt: '2026-11-21T00:00:00Z', runtimeEntityId: '1', dimension: 'overworld', lifecycle: { deathId: 0 } })
 
 test('throws whole rubble stacks and junk, keeps the reserve, valuables and the best tools', () => {
   const inventory = inv([
@@ -43,7 +44,7 @@ test('the drop request counts only on the server answer and commits the emptied 
   const raws = { 3: { network_id: 5, count: 10, metadata: 0, has_stack_id: true, stack_id: 77, block_runtime_id: 0 } }
   let open = null
   const crafting = { rawItem: slot => raws[slot] ?? { network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0 }, snapshot: () => ({ openContainer: open, pendingRequestId: null }), openInventory: async () => { open = { id: 1 } }, closeContainer: () => { open = null } }
-  const discard = createDiscard({ client: { queue: (name, packet) => sent.push([name, packet]) }, getState: () => ({ phase: 'spawned' }), crafting, allocateRequestId: () => -5, onInventory: packet => committed.push(packet), timeoutMs: 1000 })
+  const discard = createDiscard({ client: { queue: (name, packet) => sent.push([name, packet]) }, getState: alive, crafting, allocateRequestId: () => -5, onInventory: delta => { committed.push(delta); raws[delta.slot] = structuredClone(delta.item) }, timeoutMs: 1000 })
   const pending = discard.drop(3)
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(sent[0][0], 'item_stack_request')
@@ -51,17 +52,18 @@ test('the drop request counts only on the server answer and commits the emptied 
   assert.equal(action.type_id, 'drop')
   assert.equal(action.count, 10)
   assert.equal(action.source.stack_id, 77)
-  discard.applyPacket('item_stack_response', { responses: [{ status: 'ok', request_id: -5, containers: [{ slot_type: { container_id: 'hotbar_and_inventory' }, slots: [{ slot: 3, count: 0 }] }] }] })
+  discard.applyPacket('item_stack_response', { responses: [{ status: 'ok', request_id: -5, containers: [{ slot_type: { container_id: 'hotbar_and_inventory' }, slots: [{ slot: 3, count: 0, item_stack_id: 0 }] }] }] })
   const result = await pending
   assert.equal(result.phase, 'completed')
-  assert.equal(committed[0].input[3].count, 0)
+  assert.equal(committed[0].slot, 3); assert.equal(committed[0].item.count, 0)
+  assert.equal(committed[0].source, 'server_item_stack_response'); assert.equal(committed[0].fullRefresh, false)
   assert.equal(open, null)
 })
 
 test('a rejected drop is not counted', async () => {
   const raws = { 0: { network_id: 5, count: 1, metadata: 0, has_stack_id: true, stack_id: 9, block_runtime_id: 0 } }
   const crafting = { rawItem: slot => raws[slot], snapshot: () => ({ openContainer: { id: 1 }, pendingRequestId: null }), openInventory: async () => {}, closeContainer: () => {} }
-  const discard = createDiscard({ client: { queue: () => {} }, getState: () => ({ phase: 'spawned' }), crafting, allocateRequestId: () => -7, timeoutMs: 1000 })
+  const discard = createDiscard({ client: { queue: () => {} }, getState: alive, crafting, allocateRequestId: () => -7, timeoutMs: 1000 })
   const pending = discard.drop(0)
   await new Promise(resolve => setImmediate(resolve))
   discard.applyPacket('item_stack_response', { responses: [{ status: 'error', request_id: -7 }] })

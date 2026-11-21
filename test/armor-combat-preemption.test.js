@@ -29,7 +29,7 @@ test('armor combat preemption retains the sent ACK but sends no next move and ne
   let settled = false; void pending.then(() => { settled = true })
   await turn(); assert.equal(settled, false, 'only the actual reply settles the sent request')
   f.replaceGui()
-  f.armor.applyPacket('item_stack_response', { responses: [{ request_id: r.request_id, status: 'ok', containers: [{ slot_type: { container_id: 'armor' }, slots: [{ slot: r.actions[0].destination.slot, count: 1, item_stack_id: 501 }] }] }] })
+  f.armor.applyPacket('item_stack_response', { responses: [{ request_id: r.request_id, status: 'ok', containers: [{ slot_type: { container_id: 'armor' }, slots: [{ slot: r.actions[0].destination.slot, count: 1, item_stack_id: 501 }] }, { slot_type: { container_id: 'hotbar_and_inventory' }, slots: [{ slot: r.actions[0].source.slot, count: 0, item_stack_id: 0 }] }] }] })
   const result = await pending
   assert.equal(result.length, 1); assert.equal(result[0].serverConfirmed, true)
   assert.equal(requests(f).length, 1); assert.equal(f.closes(), 0)

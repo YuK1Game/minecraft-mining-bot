@@ -86,6 +86,31 @@ test('lap: a reload of the behaviour code in the middle goes on with the same go
   assert.equal(w.objective().id, 'diamond')
 })
 
+test('lap: food already cooked in the furnace finishes the reserve without another hunt or fuel acquisition', async t => {
+  const w = await createFoodLap(t, { fuel: 0, animals: [] })
+  Object.assign(w.furnace[2], { name: 'minecraft:cooked_beef', count: 1 })
+  assert.notEqual(await w.lap(), -1, w.trace.join(' / '))
+  assert.equal(w.hunts, 0)
+  assert.equal(w.cooks.length, 0)
+  assert.equal(w.chestCount(COOKED), 8)
+  assert.equal(w.cooked(), 8)
+  assert.deepEqual(w.transfers, [['in', 'minecraft:cooked_beef', 1]])
+  assert.equal(w.objective().id, 'diamond')
+})
+
+test('lap: raw meat and fuel left in the furnace finish the reserve with neither held', async t => {
+  const w = await createFoodLap(t, { fuel: 0, animals: [] })
+  Object.assign(w.furnace[0], { name: 'minecraft:beef', count: 1 })
+  Object.assign(w.furnace[1], { name: 'minecraft:coal', count: 1 })
+  assert.notEqual(await w.lap(), -1, w.trace.join(' / '))
+  assert.equal(w.hunts, 0)
+  assert.equal(w.cooks.length, 1)
+  assert.equal(w.chestCount(COOKED), 8)
+  assert.equal(w.cooked(), 8)
+  assert.deepEqual(w.transfers, [['in', 'minecraft:cooked_beef', 1]])
+  assert.equal(w.objective().id, 'diamond')
+})
+
 test('lap: with no animal anywhere the lap does not end as done; the goal is warned about, decided again three times and held with its reason', async t => {
   const w = await createFoodLap(t, { animals: [] })
   const looks = await w.lap({ limit: 1500, each: () => { w.at += 2000 } })

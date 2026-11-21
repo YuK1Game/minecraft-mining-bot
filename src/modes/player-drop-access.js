@@ -19,7 +19,7 @@ const HAZARD = /water|lava|fire|magma|cactus|campfire|powder_snow|cobweb|sweet_b
 const KEEP = new Set(['stop', 'complete', 'wait', 'respawn', 'collect_drops', 'eat', 'avoid_threat', 'defend', 'capability_required'])
 const REACH = 6
 const TRIES = 3
-const key = (x, y, z) => `${x},${y},${z}`
+const { cellKey: key } = require('../movement/plan-cache')
 const idOf = drop => String(drop?.entityId ?? drop?.runtimeEntityId ?? drop?.runtimeId ?? drop?.id ?? '')
 
 function openWayToDrop ({ mode, shared, state, decision, drops, getBlock, preview, log = () => {} }) {

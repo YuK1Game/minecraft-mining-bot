@@ -109,7 +109,7 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
   const lean = Math.max(1, Number(greed) || 1)
   const h = (x, y, z) => lean * Math.max(Math.abs(target.x - x) + Math.abs(target.z - z), Math.abs(target.y - y))
 
-  const open = [], best = new Map(), from = new Map()
+  const open = [], best = new Map()
   let order = 0
   const push = node => { node.order = order++; open.push(node); let i = open.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (open[p].f < open[i].f || open[p].f === open[i].f && open[p].order < open[i].order) break; [open[p], open[i]] = [open[i], open[p]]; i = p } }
   const pop = () => {
@@ -120,21 +120,29 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
   const offer = (node, x, y, z, cost, step, used = node.used) => {
     if (!inside(x, y, z) || barred?.has(`${keyOf(node.x, node.y, node.z)}>${keyOf(x, y, z)}`)) return
     const k = keyOf(x, y, z), g = node.g + cost
-    if (g >= (best.get(k) ?? Infinity)) return
-    best.set(k, g)
-    from.set(k, { prev: keyOf(node.x, node.y, node.z), step: { ...step, to: { x, y, z } } })
-    push({ x, y, z, g, f: g + h(x, y, z), used })
+    let labels = best.get(k)
+    // A cheaper way to the same cell may have spent the last floor block.
+    // Keep every cost/material tradeoff; discard a label only when another
+    // is no dearer AND uses no more carried blocks. Limits still bound work.
+    if (labels) {
+      for (const [spent, cost] of labels) if (spent <= used && cost <= g) return
+      for (const [spent, cost] of labels) if (spent >= used && cost >= g) labels.delete(spent)
+    } else best.set(k, labels = new Map())
+    labels.set(used, g)
+    // An immutable predecessor retains the exact resource label even if a
+    // better label at that coordinate is discovered after this one expanded.
+    push({ x, y, z, g, f: g + h(x, y, z), used, prev: node, step: { ...step, to: { x, y, z } } })
   }
 
   const deadline = now() + maxMs
   let expanded = 0, end = null, code = 'NO_BUILD_ROUTE'
   push({ x: start.x, y: start.y, z: start.z, g: 0, f: h(start.x, start.y, start.z), used: 0 })
-  best.set(keyOf(start.x, start.y, start.z), 0)
+  best.set(keyOf(start.x, start.y, start.z), new Map([[0, 0]]))
   while (open.length) {
     if (expanded >= maxNodes) { code = 'BUILD_ROUTE_SEARCH_LIMIT'; break }
     if ((expanded & 127) === 0) { if (now() > deadline) { code = 'BUILD_ROUTE_SEARCH_LIMIT'; break } yield expanded }
     const node = pop(); expanded++
-    if (node.g > (best.get(keyOf(node.x, node.y, node.z)) ?? Infinity)) continue
+    if (node.g !== best.get(keyOf(node.x, node.y, node.z))?.get(node.used)) continue
     if (done(node)) { end = node; break }
     const { x, y, z } = node
     for (const [dx, dz] of SIDES) {
@@ -176,7 +184,7 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
   }
   if (!end) return { ok: false, code, expanded, steps: [] }
   const steps = []
-  for (let k = keyOf(end.x, end.y, end.z); from.has(k); k = from.get(k).prev) steps.push(from.get(k).step)
+  for (let node = end; node.prev; node = node.prev) steps.push(node.step)
   steps.reverse()
   const count = kind => steps.filter(step => step.kind === kind).length
   return { ok: true, code: 'BUILD_ROUTE', expanded, steps, cost: end.g, dig: steps.reduce((sum, step) => sum + step.dig.length, 0), shaft: count('shaft'), stack: count('stack'), bridge: count('bridge'), drop: count('drop'), hurt: steps.reduce((sum, step) => sum + (step.kind === 'drop' ? Math.max(0, step.fall - SAFE_FALL) : 0), 0) }
@@ -191,11 +199,14 @@ async function planBuildRouteAsync (options = {}) {
   const sliceMs = options.sliceMs ?? 25, now = options.now ?? Date.now
   const it = search(options)
   let slice = now()
-  for (;;) {
-    const r = it.next()
-    if (r.done) return r.value
-    if (now() - slice >= sliceMs) { await new Promise(resolve => setImmediate(resolve)); slice = now() }
-  }
+  try {
+    for (;;) {
+      if (options.signal?.aborted || options.cancelled?.()) return { ok: false, code: 'BUILD_ROUTE_CANCELLED', expanded: 0, steps: [] }
+      const r = it.next()
+      if (r.done) return r.value
+      if (now() - slice >= sliceMs) { await new Promise(resolve => setImmediate(resolve)); slice = now() }
+    }
+  } finally { it.return() }
 }
 
 module.exports = { planBuildRoute, planBuildRouteAsync, keyOf, SAFE_FALL, MAX_FALL }

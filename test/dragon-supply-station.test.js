@@ -75,6 +75,7 @@ function world ({ walled = true, heldFurnace = true } = {}) {
   ledger.open('early.home_reserve')
   ledger.look({ scope: 's' })
   const runtime = { raw: () => ({ dimension: 'overworld' }), inventory: () => ({ known: true, items: rows().map(item => ({ ...item })) }), armor: () => ({ known: true, worn: [] }) }
+  w.operations = operations
   w.held = name => rows().filter(item => item.name === full(name)).reduce((sum, item) => sum + item.count, 0)
   // One look of the expedition's two-second timer: a new step with the same goal.
   w.look = async () => {
@@ -118,4 +119,51 @@ test('a furnace that stands free is used as before, from a place its open click 
   assert.deepEqual(w.opened, [[5, 64, 0]])
   assert.equal(w.placed.length, 0, 'the held furnace stays in the bag')
   assert.equal(w.refused.length, 0)
+})
+
+test('supplies recover a ready ingot before trying to acquire absent raw iron or fuel', async () => {
+  const w = world({ walled: false })
+  w.items = []
+  Object.assign(w.furnace[2], { name: full('iron_ingot'), count: 1 })
+  assert.equal((await w.look()).done, true)
+  assert.equal(w.held('iron_ingot'), 1)
+  assert.equal(w.cooks, 0)
+  assert.deepEqual(w.opened, [[5, 64, 0]])
+  assert.equal(w.placed.length, 0)
+})
+
+test('supplies finish matching furnace input with furnace fuel before acquiring more raw iron', async () => {
+  const w = world({ walled: false })
+  w.items = []
+  Object.assign(w.furnace[0], { name: full('raw_iron'), count: 1 })
+  Object.assign(w.furnace[1], { name: full('coal'), count: 1 })
+  assert.equal((await w.look()).done, true)
+  assert.equal(w.held('iron_ingot'), 1)
+  assert.equal(w.cooks, 1)
+  assert.deepEqual(w.opened, [[5, 64, 0]])
+})
+
+test('supplies use fuel in the furnace when no fuel is held', async () => {
+  const w = world({ walled: false })
+  w.items = [{ slot: 0, name: full('raw_iron'), count: 1 }]
+  Object.assign(w.furnace[1], { name: full('coal'), count: 1 })
+  assert.equal((await w.look()).done, true)
+  assert.equal(w.held('iron_ingot'), 1)
+  assert.equal(w.cooks, 1)
+})
+
+test('a received fuel shortage keeps gathering instead of reopening the empty furnace on every look', async () => {
+  const w = world({ walled: false })
+  w.items = [{ slot: 0, name: full('raw_iron'), count: 1 }, { slot: 1, name: full('oak_log'), count: 1 }]
+  let crafted = 0
+  w.operations.crafting.openInventory = async () => {}
+  w.operations.crafting.craft = async () => { crafted++; throw new Error('今回のクラフトは拒否されました') }
+  assert.equal((await w.look()).done, false)
+  assert.equal(crafted, 1)
+  assert.equal((await w.look()).done, false)
+  assert.equal(crafted, 2, 'fuel gathering gets its next step')
+  assert.deepEqual(w.opened, [[5, 64, 0]], 'the received shortage is not inspected again between the gathering steps')
+  w.items.push({ slot: 2, name: full('oak_planks'), count: 2 })
+  assert.equal((await w.look()).done, true, 'new fuel resumes the cook after a fresh furnace read')
+  assert.equal(w.opened.length, 2)
 })

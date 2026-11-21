@@ -66,7 +66,13 @@ function createHeap () {
     }
   }
 }
-function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3, blocked = null, surfaceOnly = false, maxMs = Infinity, now = Date.now, faceStairs = false }) {
+function checkCancelled ({ signal, cancelled }) {
+  if (signal?.aborted || cancelled?.()) throw Object.assign(new Error('広域経路の探索を中断しました。'), { name: 'AbortError', code: 'COARSE_ROUTE_CANCELLED' })
+}
+
+function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3, blocked = null, surfaceOnly = false, maxMs = Infinity, now = Date.now, faceStairs = false, signal, cancelled }) {
+  const ensure = () => checkCancelled({ signal, cancelled })
+  ensure()
   // Live 2026-11-14 12:13: the route led down into a cave to y-33. With
   // surfaceOnly a stand must see the sky (nothing solid above but leaves/logs
   // within 40 blocks); covered stands cost five times and may only be entered
@@ -106,7 +112,7 @@ function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 
   const deadline = now() + maxMs
   let timedOut = false
   while (open.length && expanded < maxNodes) {
-    if ((expanded & 255) === 0) { if (now() > deadline) { timedOut = true; break } yield expanded }
+    if ((expanded & 31) === 0) { ensure(); if (now() >= deadline) { timedOut = true; break } yield expanded; ensure() }
     const n = pop(); expanded++
     const d = h(n.x, n.z)
     if (d < closest.d && (!surfaceOnly || !startCovered && sky(n.x, n.y, n.z) || startCovered)) closest = { x: n.x, y: n.y, z: n.z, d }
@@ -182,6 +188,7 @@ function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 
       }
     }
   }
+  ensure()
   const path = []
   let k = key(closest.x, closest.y, closest.z)
   while (k) { const [x, y, z] = k.split(',').map(Number); const dig = digOf.get(k); path.push({ x: x + 0.5, y, z: z + 0.5, ...(dig ? { dig } : {}) }); k = parent.get(k) }
@@ -199,14 +206,17 @@ function planCoarseRoute (options) {
 // yields to the event loop every sliceMs, so a long search (maxMs, seconds)
 // never stalls the connection.
 async function planCoarseRouteAsync (options = {}) {
-  const sliceMs = options.sliceMs ?? 30, now = options.now ?? Date.now
+  const sliceMs = options.sliceMs ?? 8, now = options.now ?? Date.now
   const it = coarseSearch(options)
   let slice = now()
-  for (;;) {
-    const r = it.next()
-    if (r.done) return r.value
-    if (now() - slice >= sliceMs) { await new Promise(resolve => setImmediate(resolve)); slice = now() }
-  }
+  try {
+    for (;;) {
+      checkCancelled(options)
+      const r = options.terrainObserver ? options.terrainObserver.run(() => it.next()) : it.next()
+      if (r.done) { checkCancelled(options); return r.value }
+      if (now() - slice >= sliceMs) { await new Promise(resolve => setImmediate(resolve)); slice = now() }
+    }
+  } finally { it.return() }
 }
 
 module.exports = { planCoarseRoute, planCoarseRouteAsync, createSurface, classify }

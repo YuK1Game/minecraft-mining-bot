@@ -28,7 +28,7 @@ const { createPlayerTorch } = require('./player-torch')
 const { createTorchPorts } = require('./player-torch-ports')
 const { createPlayerStorage } = require('./player-storage')
 const { createStoragePorts } = require('./player-storage-ports')
-const { stationWorldScope } = require('../survival/supply-return')
+const { stationWorldScope, supplyScope } = require('../survival/supply-return')
 const { nextObjective } = require('./player-goal')
 const { guardDragonOperations } = require('./dragon-ports')
 const { createDragonRuntime } = require('./dragon-runtime')
@@ -95,6 +95,14 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // Ordinary walking, mining, placement and the pillar step, shared by the scaffold and the climb out of a tunnel.
   const buildHands = (done, actions = operations) => createScaffoldPorts({
     operations: actions, disposed: done, pillarStep: (step, settings) => runtime.pillarStep(step, settings),
+    getScope: () => {
+      const state = runtime.raw(), host = runtime.host()
+      // Host keeps its received lifecycle separate from the raw packet state.
+      // A missing/stale counter cannot make a failure current for another life.
+      if (typeof host.getLife !== 'function') return supplyScope(state)
+      const life = host.getLife()
+      return life && life.connectionId === state.connectionId ? supplyScope({ ...state, lifecycle: life }) : null
+    },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getMotion: () => runtime.motion(), getHealth: () => runtime.raw().health, getHeld: () => runtime.raw().heldItem,
     getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
   })

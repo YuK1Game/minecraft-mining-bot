@@ -1,6 +1,7 @@
 'use strict'
 
 const { createDiscard } = require('../inventory/discard')
+const { valid, same, scopeOf, responseSlot, receivedItem, captureMain, validateMain, mainDelta } = require('../inventory/response-delta')
 
 // Automatic armor: for each body slot, wear the owned piece with the highest
 // defence (toughness breaks ties). A move is an ordinary server-authoritative
@@ -44,7 +45,7 @@ function armorInfo (name) {
   return { slot, score: MATERIAL[m[1]].points[slot] * 10 + MATERIAL[m[1]].toughness }
 }
 
-function createArmor ({ client, getState, crafting, allocateRequestId, store = {}, inventoryStore = null, preferGoldBoots = () => false, onInventory = () => {}, log = () => {}, now = () => Date.now(), timeoutMs = 3000 }) {
+function createArmor ({ client, getState, crafting, allocateRequestId, store = {}, inventoryStore = null, preferGoldBoots = () => false, onInventory = () => {}, onUncertain = () => {}, log = () => {}, now = () => Date.now(), timeoutMs = 3000 }) {
   // Hosts without a full inventory controller (test fakes, replay) get an
   // armor helper that never plans a move.
   const capable = typeof client?.queue === 'function' && typeof getState === 'function' && typeof crafting?.rawItem === 'function' && typeof crafting?.snapshot === 'function' && typeof crafting?.openInventory === 'function' && typeof crafting?.closeContainer === 'function' && typeof allocateRequestId === 'function'
@@ -59,10 +60,12 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   const isKnown = () => shared ? shared.known('armor', { loose: true }) : store.known === true
   const markUnknown = reason => { if (shared) shared.invalidate('armor', null, reason); else store.known = false }
   // Throwing a stack away shares this controller's packet path (runtime.js stays as it is).
-  const discard = capable ? createDiscard({ client, getState, crafting, allocateRequestId, onInventory, log }) : null
+  const discard = capable ? createDiscard({ client, getState, crafting, allocateRequestId, inventoryStore, onInventory, onUncertain, log, timeoutMs }) : null
   let operation = null
   let lastResult = null
   let preemptionRevision = 0, runningBatches = 0
+  const equipmentReceipts = new Map()
+  let receiptSequence = 0
 
   const nameOf = raw => empty(raw) ? null : (typeof crafting.itemNameOf === 'function' ? crafting.itemNameOf(raw.network_id) : null)
   // The Nether scout deliberately wears gold. Score both the worn and held
@@ -102,7 +105,7 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
     const s = getState()
     if (s?.phase !== 'spawned' || s.dead || s.isDead || !(s.health > 0) || !['survival', 0].includes(s.gameMode)) return false
     const observed = crafting.snapshot()
-    return observed.authority === true && observed.inventoryKnown === true && s.inventory?.known === true && !s.inventory.uncertain && observed.pendingRequestId == null && !operation
+    return observed.authority === true && observed.inventoryKnown === true && s.inventory?.known === true && !s.inventory.uncertain && observed.pendingRequestId == null && !operation && !discard?.busy()
   }
   function preview () { return ready() ? nextUpgrade() : null }
 
@@ -125,43 +128,68 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
     preemptionRevision++
     if (operation) { operation.preemptedForCombat = true; operation.preemptionReason = String(reason) }
     // A sent request is still authoritative when its real reply arrives.
-    return { preempted: runningBatches > 0 || !!operation, pendingRequestId: operation?.wireSent ? operation.id : null }
+    const dropped = discard?.preemptForCombat()
+    return { preempted: runningBatches > 0 || !!operation || dropped?.preempted === true, pendingRequestId: operation?.wireSent ? operation.id : dropped?.pendingRequestId ?? null }
   }
 
   async function move (next, revision) {
     const raw = crafting.rawItem(next.sourceSlot)
-    if (empty(raw) || raw.has_stack_id !== true || !(raw.stack_id > 0)) return (lastResult = { phase: 'failed', reason: 'source stack unknown', ...next })
+    if (!valid(raw) || raw.count !== 1 || empty(raw)) return (lastResult = { phase: 'failed', serverConfirmed: false, reason: 'source stack unknown', ...next })
     const current = next.offhand ? offhand.get(0) : worn.get(next.armorSlot)
+    if (!valid(current)) return (lastResult = { phase: 'failed', serverConfirmed: false, reason: 'equipment slot unknown', ...next })
     const target = next.offhand ? { type: OFFHAND, slot: OFFHAND_WIRE_SLOT } : { type: ARMOR, slot: next.armorSlot }
     const id = allocateRequestId()
-    const attempt = operation = { id, next, raw: copy(raw), previous: empty(current) ? null : copy(current), accepted: false, done: null, startedAt: now(), revision, wireSent: false }
-    let openedHere = false
+    const equipmentKey = next.offhand ? 'offhand:0' : `armor:${next.armorSlot}`
+    const attempt = operation = { id, next, raw: copy(raw), previous: copy(current), mainBefore: captureMain(crafting, shared, next.sourceSlot),
+      scope: scopeOf(getState()), equipmentKey, equipmentRevision: equipmentReceipts.get(equipmentKey)?.revision ?? 0,
+      accepted: false, done: null, startedAt: now(), revision, wireSent: false, finished: false }
+    let opened = null
     try {
-      if (!crafting.snapshot().openContainer) { await crafting.openInventory(); openedHere = true }
+      if (!crafting.snapshot().openContainer) opened = await crafting.openInventory() ?? crafting.snapshot().openContainer
+      if (attempt.finished) return attempt.result
       if (revision !== preemptionRevision || attempt.preemptedForCombat) return { phase: 'stopped', code: 'COMBAT_PREEMPTED', serverConfirmed: false, ...next }
+      if (scopeOf(getState()) !== attempt.scope) throw Error('防具の持ち替え中に接続またはlifeが変わりました。')
+      validateMain(crafting, shared, next.sourceSlot, attempt.mainBefore)
+      if (!same(next.offhand ? offhand.get(0) : worn.get(next.armorSlot), current)) throw Error('持ち替える防具が更新されました。')
       const action = empty(current)
         ? { type_id: 'place', legacy_type_id: 1, count: 1, source: { slot_type: copy(MAIN), slot: next.sourceSlot, stack_id: raw.stack_id }, destination: { slot_type: copy(target.type), slot: target.slot, stack_id: 0 } }
         : { type_id: 'swap', legacy_type_id: 2, source: { slot_type: copy(MAIN), slot: next.sourceSlot, stack_id: raw.stack_id }, destination: { slot_type: copy(target.type), slot: target.slot, stack_id: current.stack_id } }
       const settled = new Promise(resolve => { attempt.done = resolve })
       attempt.wireSent = true
       client.queue('item_stack_request', { requests: [{ request_id: id, actions: [action], custom_names: [], cause: -1 }] })
-      const timer = setTimeout(() => attempt.done?.({ phase: 'failed', reason: 'no server response' }), timeoutMs)
+      const timer = setTimeout(() => finishAttempt(attempt, { phase: 'failed', serverConfirmed: false, reason: 'no server response' }), timeoutMs)
       const result = await settled
       clearTimeout(timer)
       lastResult = { ...result, ...next, requestId: id }
       try { log(`防具を装備: ${next.name.replace('minecraft:', '')} result=${result.phase}${result.reason ? ' reason=' + result.reason : ''}`) } catch {}
       return copy(lastResult)
     } catch (error) {
-      lastResult = { phase: 'failed', reason: String(error.message ?? error), ...next }
+      lastResult = { phase: 'failed', serverConfirmed: false, reason: String(error.message ?? error), ...next }
+      finishAttempt(attempt, lastResult)
       return copy(lastResult)
     } finally {
       if (operation === attempt) operation = null
-      if (openedHere && revision === preemptionRevision && !attempt.preemptedForCombat) { try { crafting.closeContainer() } catch { /* a pending craft owns the screen */ } }
+      if (opened && revision === preemptionRevision && !attempt.preemptedForCombat) { try { if (scopeOf(getState()) === attempt.scope && crafting.snapshot().openContainer?.id === opened.id) crafting.closeContainer() } catch { /* The new life or another operation owns the screen. */ } }
     }
+  }
+
+  function finishAttempt (attempt, result) {
+    if (attempt.finished) return
+    attempt.finished = true; attempt.result = result
+    if (attempt.wireSent && result.phase !== 'rejected' && result.serverConfirmed !== true) {
+      try { if (scopeOf(getState()) === attempt.scope) onUncertain({ requestId: attempt.id, operation: 'armor', reason: result.reason }) } catch { /* A changed life is already observed by the host. */ }
+    }
+    attempt.done?.(result)
   }
 
   function applyPacket (name, packet) {
     if (!shared) applyWire(name, packet)
+    const kind = armorWindow(packet.window_id) ? 'armor' : packet.window_id === 'offhand' || packet.window_id === 119 ? 'offhand' : null
+    if (kind && ['inventory_content', 'inventory_slot'].includes(name)) {
+      const size = kind === 'armor' ? 4 : 1
+      const rows = name === 'inventory_content' ? Array.from({ length: size }, (_, slot) => ({ item: packet.input?.[slot], slot })) : [{ item: packet.item, slot: packet.slot }]
+      for (const row of rows) if (Number.isInteger(row.slot) && row.slot >= 0 && row.slot < size) equipmentReceipts.set(`${kind}:${row.slot}`, { revision: ++receiptSequence, item: valid(row.item) ? copy(row.item) : null, source: packet.source ?? `server_${name}` })
+    }
     applyOwnResponse(name, packet)
     discard?.applyPacket(name, packet)
   }
@@ -176,38 +204,52 @@ function createArmor ({ client, getState, crafting, allocateRequestId, store = {
   }
   function applyOwnResponse (name, packet) {
     const attempt = operation
-    if (!attempt) return
+    if (!attempt || attempt.finished || !['item_stack_response', 'start_game', 'change_dimension', 'disconnect', 'death_info', 'respawn'].includes(name)) return
+    try {
+      if (['start_game', 'change_dimension', 'disconnect', 'death_info'].includes(name) || scopeOf(getState()) !== attempt.scope) {
+        finishAttempt(attempt, { phase: 'failed', serverConfirmed: false, reason: '接続・次元・lifeが変わりました。' }); return
+      }
+    } catch (error) { finishAttempt(attempt, { phase: 'failed', serverConfirmed: false, reason: error.message }); return }
     if (name === 'item_stack_response') {
       for (const response of packet.responses ?? []) {
         if (response.request_id !== attempt.id) continue
         // A rejection means our view of the worn slots is wrong (e.g. right after
         // login): stop planning until the server sends the armor window again.
-        if (response.status !== 'ok' && response.status !== 0) { markUnknown('armor_request_rejected'); attempt.done?.({ phase: 'rejected', serverConfirmed: false, reason: `server status ${response.status}` }); return }
+        if (response.status !== 'ok' && response.status !== 0) { markUnknown('armor_request_rejected'); finishAttempt(attempt, { phase: 'rejected', serverConfirmed: false, reason: `server status ${response.status}` }); return }
         attempt.accepted = true
-        // The response lists the changed slots; adopt the armor one now so the
-        // next upgrade is planned against what the server says is worn.
-        for (const container of response.containers ?? []) {
-          if (attempt.next.offhand) { if (container.slot_type?.container_id === 'offhand') for (const slot of container.slots ?? []) if (slot.slot === OFFHAND_WIRE_SLOT && slot.count > 0) offhand?.set(0, { ...attempt.raw, count: slot.count, has_stack_id: true, stack_id: slot.item_stack_id }); continue }
-          if (container.slot_type?.container_id !== 'armor') continue
-          for (const slot of container.slots ?? []) if (slot.slot === attempt.next.armorSlot && slot.count > 0) worn.set(slot.slot, { ...attempt.raw, count: slot.count, has_stack_id: true, stack_id: slot.item_stack_id })
-        }
-        // The server does not re-send the source slot for our own request:
-        // commit the accepted move to the shared inventory model (the source
-        // now holds the previously worn piece, or nothing).
         try {
-          const input = Array.from({ length: 36 }, (_, slot) => copy(crafting.rawItem(slot) ?? { network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0 }))
-          input[attempt.next.sourceSlot] = attempt.previous ?? { network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0 }
-          onInventory({ window_id: 'inventory', input, container: { container_id: 'inventory', dynamic_container_id: null } })
-        } catch { /* the next server inventory corrects the model */ }
-        attempt.done?.({ phase: 'completed', serverConfirmed: true, confirmedBy: 'item_stack_response_ok' })
+          const kind = attempt.next.offhand ? 'offhand' : 'armor', slot = attempt.next.offhand ? OFFHAND_WIRE_SLOT : attempt.next.armorSlot
+          const latest = equipmentReceipts.get(attempt.equipmentKey)
+          // The store sees this count-only ACK before its owning controller.
+          // Preserve a newer real descriptor even if that generic ACK erased it.
+          if (shared && latest && latest.revision !== attempt.equipmentRevision) shared.commit(kind, attempt.next.offhand ? 0 : slot, latest.item, latest.source)
+          const equipment = receivedItem(attempt.raw, responseSlot(response, kind, slot, 1))
+          const main = receivedItem(attempt.previous, responseSlot(response, 'main', attempt.next.sourceSlot, empty(attempt.previous) ? 0 : 1))
+          validateMain(crafting, shared, attempt.next.sourceSlot, attempt.mainBefore, main)
+          if (latest && latest.revision !== attempt.equipmentRevision && !same(latest.item, equipment)) throw Error('防具の新しい受信結果を古い要求で上書きできません。')
+          // The callback updates only this proven main slot, with the actual
+          // ACK stack ID. It must reject an incomplete host baseline.
+          onInventory(mainDelta(attempt.next.sourceSlot, main, attempt.id, 'armor'))
+          if (attempt.finished) return
+          if (scopeOf(getState()) !== attempt.scope) throw Error('防具の応答反映中に接続またはlifeが変わりました。')
+          if (!same(crafting.rawItem(attempt.next.sourceSlot), main)) throw Error('防具の受理応答を持ち物1枠へ反映できませんでした。')
+          if (shared && latest && latest.revision !== attempt.equipmentRevision) shared.commit(kind, attempt.next.offhand ? 0 : slot, equipment, latest.source)
+          else if (attempt.next.offhand) offhand.set(0, equipment)
+          else worn.set(attempt.next.armorSlot, equipment)
+          finishAttempt(attempt, { phase: 'completed', serverConfirmed: true, confirmedBy: 'matching_response_slots' })
+        } catch (error) { finishAttempt(attempt, { phase: 'failed', serverConfirmed: false, reason: String(error.message ?? error) }) }
+        return
       }
     }
   }
 
   function snapshot () {
-    return { busy: !!operation, known: isKnown(), offhand: offhand?.get(0) ? { name: nameOf(offhand.get(0)) } : null, worn: PIECES.map(([piece, slot]) => ({ piece, name: nameOf(worn.get(slot)) })), next: isKnown() ? nextUpgrade() : null, lastResult: copy(lastResult) }
+    return { busy: !!operation || discard?.busy() === true, known: isKnown(), offhand: offhand?.get(0) ? { name: nameOf(offhand.get(0)) } : null, worn: PIECES.map(([piece, slot]) => ({ piece, name: nameOf(worn.get(slot)) })), next: isKnown() ? nextUpgrade() : null, lastResult: copy(lastResult) }
   }
-  return { preview, equipBest, preemptForCombat, applyPacket, snapshot, discard: (slot, count) => discard ? discard.drop(slot, count) : Promise.reject(new Error('持ち物を捨てる操作に対応していません。')) }
+  return { preview, equipBest, preemptForCombat, applyPacket, snapshot, discard: (slot, count) => {
+    if (operation || runningBatches) return Promise.reject(new Error('防具の持ち替え完了を待ってください。'))
+    return discard ? discard.drop(slot, count) : Promise.reject(new Error('持ち物を捨てる操作に対応していません。'))
+  } }
 }
 
 module.exports = { createArmor, armorInfo, pieceRank }

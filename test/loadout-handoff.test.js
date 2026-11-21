@@ -15,6 +15,7 @@ const stopSource = section('stopActions', 'stopActionsAfterRaw')
 const ensureSource = section('ensureLoadoutReset', 'quarryPackingBusy')
 function fixture () {
   const b = { busy: false }, op = { snapshot: () => b }
+  const armorState = { busy: false }
   const behavior = { sleeping: false, claim: { kind: 'combat' } }
   const context = {
     actionBusyError: require('../src/common/action-busy-error').actionBusyError,
@@ -28,9 +29,10 @@ function fixture () {
     quarryJob: null, quarryPillar: null, idleSafety: op, excavation: op, tunneling: op, recovery: op, foraging: op,
     surfaceReturn: op, shelter: op, hut: op, guardRoute: op, motionActive: () => true,
     input: { stats: () => ({ running: true }) }, food: op, furnace: op, chest: op, inventory: op,
+    armor: { snapshot: () => ({ ...armorState }) },
     craftStatus: () => ({}), interactions: { snapshot: () => ({}) }, combat: { snapshot: () => ({ busy: true, engaging: true }) } }
   vm.createContext(context); vm.runInContext(idleSource, context)
-  return { context, behavior, call: options => context.requireIdle(options) }
+  return { context, behavior, armorState, call: options => context.requireIdle(options) }
 }
 test('loadout-handoff: only private debug admission allows active combat; ordinary operations stay blocked', () => {
   const f = fixture()
@@ -49,6 +51,17 @@ test('loadout-handoff: debug admission does not bypass inventory, active quarry 
     if (blocker === 'chunkMove') c.chunkMoveHeld = () => true
     assert.throws(() => f.call({ loadoutHandoff: true }), undefined, blocker)
   }
+})
+test('loadout-handoff: pending armor or discard blocks external admission until settled, preserving internal combat ownership', () => {
+  const f = fixture()
+  f.armorState.busy = true
+  for (const options of [undefined, { loadoutHandoff: true }]) {
+    assert.throws(() => f.call(options), error => error.code === 'ACTION_BUSY' && /防具の持ち替え・持ち物を捨てる操作/.test(error.message))
+  }
+  f.context.ownedCall = 1
+  assert.doesNotThrow(() => f.call({ loadoutHandoff: true }))
+  f.context.ownedCall = 0; f.armorState.busy = false
+  assert.doesNotThrow(() => f.call({ loadoutHandoff: true }))
 })
 test('loadout-handoff: exact lease identity is required for post-drain validation', () => {
   const f = fixture(), c = f.context

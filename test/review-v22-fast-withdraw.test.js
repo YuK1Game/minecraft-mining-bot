@@ -3,7 +3,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), Module = require('node:module')
-const { isDeepStrictEqual } = require('node:util')
 const { createChest } = require('../src/actions/chest')
 const { createArmor } = require('../src/actions/armor')
 const { createInventoryInspection } = require('../src/inventory/inventory-inspection')
@@ -102,7 +101,8 @@ function fixture (t, { actualArmor = true } = {}) {
   armor = createArmor({ client: f.client, getState: () => f.state, crafting: f.crafting, allocateRequestId: allocate, store: armorStore, timeoutMs: 100,
     onInventory: packet => {
       assert.ok(processingArmorId != null, 'armor main changes require an actual matching response')
-      for (const [slot, raw] of packet.input.entries()) if (!isDeepStrictEqual(f.crafting.rawItem(slot), raw)) inventoryDelta({ window_id: 'inventory', slot, item: copy(raw), source: 'server_item_stack_response', requestId: processingArmorId, fullRefresh: false })
+      assert.equal(packet.requestId, processingArmorId)
+      inventoryDelta(packet)
     } })
   f.interactions.openChest = async () => {
     queueMicrotask(() => { receive('container_open', { window_id: 5, window_type: 'container', coordinates: target, runtime_entity_id: -1n }); fullChest() })

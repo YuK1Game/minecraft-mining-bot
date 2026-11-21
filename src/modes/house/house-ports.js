@@ -1,13 +1,16 @@
 'use strict'
 
 const { createContainerPorts } = require('../return/container-ports')
+const { createHouseSmelt } = require('./house-smelt')
 
 // The game operations the starter house is built with: ordinary placement on
 // any face (operations.interactions.placeHouseBlock), crafting in the inventory
 // or at a crafting table, and smelting in a furnace. Everything counts by the
 // received inventory and received blocks.
 function createHousePorts ({ operations, getBlock, getInventory, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
-  const items = () => getInventory()?.items ?? []
+  const received = () => { const inventory = getInventory(); return inventory && inventory.known !== false && inventory.uncertain !== true ? inventory : null }
+  const inventoryReady = () => received()?.known === true
+  const items = () => received()?.items ?? []
   const count = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).reduce((sum, item) => sum + item.count, 0)
   const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
   let why = null
@@ -67,38 +70,13 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
     close()
     return until(() => count(name => name === output) > before, 4000)
   }
-  // Smelting `input` (count) with `fuel` (count) in the furnace at `at`, then
-  // taking `output` out; returns how many came out.
-  async function smelt (at, input, inputCount, fuel, fuelCount, output) {
-    const slotOf = name => items().find(item => item?.name === name && item.count > 0)?.slot
-    const before = count(name => name === output)
-    try {
-      await patient(() => operations.interactions.openFurnace(at))
-      await until(() => operations.furnace.snapshot?.()?.contentsKnown === true, 4000)
-      if (slotOf(input) == null || slotOf(fuel) == null) { close(); why = '精錬の材料がありません'; return 0 }
-      // What an interrupted smelt left behind comes out first: a result of
-      // another kind blocks the furnace, and another kind of input or fuel in
-      // its slot refuses ours.
-      const held = n => operations.furnace.snapshot?.()?.slots?.find(slot => slot.slot === n)
-      const empty = async () => { const ready = held(2); if (ready?.count > 0) await operations.furnace.takeOutput({ count: ready.count }) }
-      await empty()
-      const left = held(0)?.count > 0 && held(0).name !== input ? held(0) : null
-      if (!left) await operations.furnace.putInput(slotOf(input), inputCount)
-      if (!(held(1)?.count > 0) || held(1).name === fuel) await operations.furnace.putFuel(slotOf(fuel), fuelCount)
-      if (left) { await until(() => !(held(0)?.count > 0), left.count * 11000 + 5000); why = `かまどに残っていた ${left.name} を先に焼きました` }
-      else { try { await operations.furnace.waitOutput(output, inputCount, { timeoutMs: inputCount * 11000 + 5000 }) } catch { /* Take what is there. */ } }
-      await empty()
-    } catch (error) { refused(error) }
-    close()
-    await until(() => count(name => name === output) > before, 3000)
-    return count(name => name === output) - before
-  }
+  const smelting = createHouseSmelt({ operations, items, count, inventoryReady, until, patient, close, refused, disposed })
   const mine = async (cell, extra = null) => {
     try { await patient(() => operations.mining.start([extra ? { ...cell, ...extra } : cell])) } catch (error) { return refused(error) }
     return until(() => { const found = getBlock(cell.x, cell.y, cell.z); return found?.known === true && /air$/.test(found.name ?? '') }, 10000)
   }
   const containers = createContainerPorts({ operations, getInventory, disposed, sleep, now })
-  return { place, preview, craft, smelt, mine, count, inspectChest: containers.inspect, placementRetrySafe: () => placementRetrySafe, why: () => why, reset: () => { why = null } }
+  return { place, preview, craft, ...smelting, mine, count, inspectChest: containers.inspect, placementRetrySafe: () => placementRetrySafe, why: () => why, reset: () => { why = null } }
 }
 
 module.exports = { createHousePorts }
