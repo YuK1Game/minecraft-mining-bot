@@ -241,16 +241,40 @@ test('runtime accepts only authorized directory IDs, rejects stale loads during 
   assert.equal(ops.status().document.id,'one')
 })
 
+function frameProvider () {
+  return Function('manualShulkerRecovery','mining','manualShulkerMiningSerial','portableActionOwners','frame',
+    'generationLadder','generationPillar','neutralFrame',
+    excerpt('      const recovery = manualShulkerRecovery?.snapshot(), target = mining.snapshot().activeTarget','    }, onQueuedFrame: queuedFrame'))
+}
+
 test('runtime mining-frame checks apply only to matching active recovery operations and exact native serials',()=>{
-  const guard=Function('manualShulkerRecovery','mining','manualShulkerMiningSerial','portableActionOwners','frame',
-    excerpt('      const recovery = manualShulkerRecovery?.snapshot(), target = mining.snapshot().activeTarget','      return generationPillar?.frame(frame)'))
+  const guard=frameProvider()
   const frame={position:{x:0,y:0,z:0}};let calls=[]
   const one=(busy,key,serial,current)=>guard({snapshot:()=>({busy,operationId:'manual_shulker:one'}),beforeInput:f=>calls.push(f)},
-    {snapshot:()=>({activeTarget:{ownershipKey:key}})},serial,{serial:()=>current},frame)
+    {snapshot:()=>({activeTarget:{ownershipKey:key}})},serial,{serial:()=>current},frame,null,null,()=>null)
   one(false,'manual_shulker:one',2,2)
   one(true,'another-operation',2,2)
   one(true,'manual_shulker:one',2,3)
   assert.deepEqual(calls,[])
   one(true,'manual_shulker:one',3,3)
   assert.deepEqual(calls,[frame])
+})
+
+test('runtime checks recovery before choosing ladder, pillar or neutral input',()=>{
+  const provider=frameProvider(), calls=[], frame={position:{x:0,y:0,z:0}}
+  const recovery={snapshot:()=>({busy:true,operationId:'manual_shulker:one'}),beforeInput:()=>calls.push('recovery')}
+  const mining={snapshot:()=>({activeTarget:{ownershipKey:'manual_shulker:one'}})}
+  const ladderFrame={kind:'ladder'}, pillarFrame={kind:'pillar'}, neutralFrame={kind:'neutral'}
+  let ladderResult=ladderFrame, pillarResult=pillarFrame
+  const ladder={frame:value=>{assert.equal(value,frame);calls.push('ladder');return ladderResult}}
+  const pillar={frame:value=>{assert.equal(value,frame);calls.push('pillar');return pillarResult}}
+  const neutral=value=>{assert.equal(value,frame);calls.push('neutral');return neutralFrame}
+  const run=()=>provider(recovery,mining,3,{serial:()=>3},frame,ladder,pillar,neutral)
+  assert.equal(run(),ladderFrame);assert.deepEqual(calls,['recovery','ladder'])
+  calls.length=0;ladderResult=null
+  assert.equal(run(),pillarFrame);assert.deepEqual(calls,['recovery','ladder','pillar'])
+  calls.length=0;pillarResult=null
+  assert.equal(run(),neutralFrame);assert.deepEqual(calls,['recovery','ladder','pillar','neutral'])
+  calls.length=0;recovery.beforeInput=()=>{calls.push('recovery');throw new Error('RECOVERY_FRAME_REFUSED')}
+  assert.throws(run,/RECOVERY_FRAME_REFUSED/);assert.deepEqual(calls,['recovery'])
 })
