@@ -1,10 +1,11 @@
 'use strict'
 
 const { mineSteps,stepCells }=require('./mine-geometry')
-const { at,open,solid,standY,key,live,received,feetAt,blocked,stopped,results }=require('./mine-common')
+const { at,open,solid,standY,key,scope,live,received,feetAt,blocked,stopped,action,results }=require('./mine-common')
 const { walkCell }=require('./mine-excavate')
 const { climb,topStand }=require('./mine-shaft')
 const { insideMine,mineLocation }=require('./mine-location')
+const { createBuildWalk } = require('../player-build-walk')
 const same=(a,b)=>a.x===b.x && a.z===b.z
 
 // Every underground consumer enters through the same received surface approach
@@ -12,12 +13,43 @@ const same=(a,b)=>a.x===b.x && a.z===b.z
 async function enterMine(ctx,branch){
   if(!live(ctx))return stopped()
   if(insideMine(ctx,branch))return {...results.completed('MINE_INSIDE'),serverConfirmed:true}
-  const to=branch.plan.shaft.approach,feet=ctx.getFeet()
-  if(Math.hypot(feet.x-to.x,feet.z-to.z)>12){
-    if(typeof ctx.hands?.approach!=='function' || !await ctx.hands.approach(to,1))return blocked('MINE_ENTRY_UNREACHABLE','採掘場の入口へ既知の地上路で移動します。','position_changed')
-    if(!live(ctx))return stopped()
+  const before = scope(ctx), { shaft } = branch.plan, to = shaft.approach
+  const distance = feet => feet ? Math.hypot(feet.x - to.x, feet.z - to.z) : Infinity
+  if (distance(ctx.getFeet()) > 12 && typeof ctx.hands?.approach === 'function') {
+    await ctx.hands.approach(to, 1)
+    if (!live(ctx, before)) return stopped()
   }
-  return walkCell(ctx,branch,to,'mine_entry')
+  if (distance(ctx.getFeet()) <= 12) {
+    const walked = await walkCell(ctx, branch, to, 'mine_entry')
+    if (walked.code !== 'MINE_WALK_REFUSED') return walked
+  }
+
+  // The nearest walking hop can end at the same edge on every try. Build a
+  // bounded approach to the saved entrance, preserving its shaft columns.
+  const feet = ctx.getFeet()
+  const cell = { x: Math.floor(to.x), y: to.y, z: Math.floor(to.z) }
+  const noRoute = (detail = '採掘場の入口へ安全な地上路が見つかりません。') => blocked('MINE_ENTRY_UNREACHABLE', detail, 'position_changed')
+  if (!feet || distance(feet) > 24 || Math.abs(feet.y - to.y) > 12 || typeof ctx.hands?.block !== 'function' ||
+      typeof ctx.minePorts?.confirmPosition !== 'function') return noRoute()
+  const entranceKnown = () => solid(at(ctx, { ...cell, y: cell.y - 1 })) && open(at(ctx, cell)) && open(at(ctx, { ...cell, y: cell.y + 1 }))
+  if (!entranceKnown()) return noRoute('採掘場の入口の床と頭上を再確認します。')
+  const columns = new Set(shaft.columns.map(p => `${p.x},${p.z}`))
+  const hands = { ...ctx.hands, block: (x, y, z) => {
+    if (columns.has(`${x},${z}`)) return { known: false }
+    return ctx.hands.block(x, y, z)
+  } }
+  const build = createBuildWalk({ hands, getHouse: () => ctx.shared?.playerHouse, log: ctx.log })
+  return action(ctx, branch, { kind: 'walk', purpose: 'mine_entry', target: { ...to } }, async () => {
+    const route = await build(cell, {
+      done: p => p.x === cell.x && p.y === cell.y && p.z === cell.z,
+      aborted: () => !live(ctx, before),
+      limits: { allowShaft: false, pad: 7, rise: 5, maxNodes: 9000 }
+    })
+    if (!live(ctx, before)) return stopped()
+    if (!route.ok) return noRoute(`採掘場の入口への道を作れません（${route.code}）。`)
+    if (!feetAt(ctx, to) || !entranceKnown()) return noRoute('採掘場の入口の足場と到着位置を再確認します。')
+    return ctx.minePorts.confirmPosition(to)
+  }, () => feetAt(ctx, to) && entranceKnown())
 }
 
 function layerStands(ctx,plan,layer){

@@ -30,10 +30,19 @@ async function rung (ctx,branch,y) {
   const shaft=branch.plan.shaft,target=here(shaft.ladder,y),support=here(shaft.ladder.support,y)
   if(at(ctx,target)?.known !== true || at(ctx,support)?.known !== true)return observe(ctx,[target,support],'はしごと支持壁の地形を受信します。')
   if(!solid(at(ctx,support))){const made=await fillCell(ctx,branch,support,'ladder_support');if(!received(made))return made}
-  if(ladder(at(ctx,target)) && Number(value(at(ctx,target).properties?.facing_direction))===shaft.ladder.face)return filled()
-  if(!air(at(ctx,target)))return blocked('MINE_LADDER_CELL','はしごの列に空間を確保します。')
-  if(!count(ctx,'ladder'))return blocked('MINE_LADDER_SUPPLY','縦坑のはしごを補給します。','supplies_changed')
-  return action(ctx,branch,{kind:'ladder',target},()=>ctx.minePorts.place({position:target,name:'minecraft:ladder',clicked:support,face:shaft.ladder.face,clickY:0.5}),()=>ladder(at(ctx,target)) && solid(at(ctx,support)))
+  const installed = () => ladder(at(ctx, target)) && Number(value(at(ctx, target).properties?.facing_direction)) === shaft.ladder.face && solid(at(ctx, support))
+  const pending = branch.pendingAction
+  if (installed()) {
+    // A delayed block receipt can arrive after the original interaction
+    // failed. Reconcile this recorded rung through the placement port, which
+    // clears the intent from a matching received block without sending it.
+    if (pending?.kind !== 'place' || pending.name !== 'minecraft:ladder' || !pending.position || key(pending.position) !== key(target)) return filled()
+  } else {
+    if (!air(at(ctx, target))) return blocked('MINE_LADDER_CELL', 'はしごの列に空間を確保します。')
+    if (!count(ctx, 'ladder')) return blocked('MINE_LADDER_SUPPLY', '縦坑のはしごを補給します。', 'supplies_changed')
+  }
+  return action(ctx, branch, { kind: 'ladder', target },
+    () => ctx.minePorts.place({ position: target, name: 'minecraft:ladder', clicked: support, face: shaft.ladder.face, clickY: 0.5 }), installed)
 }
 
 async function climb (ctx,branch,to) {

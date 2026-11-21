@@ -52,6 +52,28 @@ test('a lower landing cannot resume when its floor becomes unobserved', async t 
   assert.equal(w.branch.shaft.depth, 70)
 })
 
+test('an interrupted ladder placement reconciles the received rung without placing it twice', async t => {
+  const w = createMineWorld(t)
+  const target = { x: w.plan.shaft.ladder.x, y: w.plan.shaft.topY, z: w.plan.shaft.ladder.z }
+  const place = w.ctx.operations.interactions.placeHouseBlock
+  let interrupted = false, cancelled = false
+  w.ctx.cancelled = () => cancelled
+  w.ctx.operations.interactions.placeHouseBlock = async request => {
+    await place(request)
+    if (!interrupted && key(request.position) === key(target)) {
+      interrupted = true
+      cancelled = true
+    }
+  }
+  assert.equal((await ensureShaft(w.ctx, w.branch, 'upper')).status, 'interrupted')
+  assert.equal(w.getBlock(target.x, target.y, target.z).name, 'minecraft:ladder')
+  assert.equal(w.branch.pendingAction.name, 'minecraft:ladder')
+  cancelled = false
+  await upper(w)
+  assert.equal(w.branch.pendingAction, undefined)
+  assert.equal(w.places.filter(request => key(request.position) === key(target)).length, 1)
+})
+
 test('a failed depth checkpoint retains the unfinished slice for received-state reconciliation', async t => {
   const w = createMineWorld(t), save = w.ctx.saveMine
   let fail = true
