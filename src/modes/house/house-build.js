@@ -67,7 +67,7 @@ const order = steps => {
   return [...steps.filter(step => step.phase === 'foundation'), ...EARLY.map(id => steps.find(step => step.id === id)).filter(Boolean), ...rest, ...steps.filter(step => step.id === DOOR)]
 }
 
-function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel, getBlock, getPosition, getFeet, getInventory, chestWork = null, file = null, write = null, blocked = () => false, hostile = () => false, hostileWhy = () => null, onDone = async () => {}, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null, climb, travel, getBlock, getPosition, getFeet, getInventory, chestWork = null, file = null, write = null, blocked = () => false, hostile = () => false, hostileWhy = () => null, onDone = async () => {}, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, placedTotal = 0
   const work = { begin: async () => true, complete: async () => true, attempt: async () => true, received: async () => true, retry: async () => true, canAttempt: () => true, ...chestWork }
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
@@ -402,7 +402,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     const fails = new Map(), started = now()
     let placed = 0
     let largeChests = []
-    const verifyChests = async () => { largeChests = await verifyHouseChests({ origin, getBlock, getFeet, hands, ports, aborted, confirmed: largeChests, complete: work.complete }); return largeChests.length === chestPairs(origin).length }
+    const verifyChests = async () => { largeChests = await verifyHouseChests({ origin, getBlock, getFeet, hands, ports, aborted, build, confirmed: largeChests, complete: work.complete }); return largeChests.length === chestPairs(origin).length }
     const reasons = new Map()
     const note = (step, text) => { if (!reasons.has(text)) reasons.set(text, { count: 0, step }); reasons.get(text).count++ }
     // Passes go on while one places something (each step is tried TRIES times at most).

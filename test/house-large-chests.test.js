@@ -20,6 +20,29 @@ for (const size of [27, 54]) test(`house inspection requires a received 54-slot 
   assert.ok(sim.events.filter(event => event.kind === 'open').length >= 2)
 })
 
+test('house repair can reach a visible chest through a damaged approach and still reads both large windows', async () => {
+  const origin = { x: 0, y: 64, z: 0 }
+  const outside = { x: 3, y: 65, z: -1 }
+  const inside = { x: 3, y: 65, z: 4 }
+  const sim = createReturnSim({ feet: { x: outside.x + 0.5, y: outside.y, z: outside.z + 0.5 } })
+  sim.buildHouse(origin)
+  const ports = createHousePorts({ operations: sim.operations, getBlock: sim.getBlock, getInventory: sim.inventory, now: sim.now, sleep: sim.sleep })
+  let routes = 0
+  const confirmed = await verifyHouseChests({
+    origin, getBlock: sim.getBlock, getFeet: sim.getFeet, ports, hands: { walk: async () => false }, aborted: () => false,
+    build: async (_, { done }) => {
+      routes++
+      assert.equal(done(outside), false, 'a nearby stand behind the wall does not finish the route')
+      assert.equal(done(inside), true)
+      Object.assign(sim.body, { x: inside.x + 0.5, y: inside.y, z: inside.z + 0.5 })
+      return { ok: true }
+    }
+  })
+  assert.equal(routes, 1)
+  assert.equal(confirmed.length, 2)
+  assert.equal(sim.events.filter(event => event.kind === 'open').length, 2)
+})
+
 function building ({ missing = [], chests = 0, planks = 0, slots = 54, chestWork } = {}) {
   const origin = { x: 0, y: 64, z: 0 }, feet = { x: 3.5, y: 65, z: 5.5 }
   const world = new Map(), key = at => `${at.x},${at.y},${at.z}`
