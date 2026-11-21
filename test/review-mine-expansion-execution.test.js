@@ -16,6 +16,9 @@ async function upper (t) {
   let lowerReceived = false
   const getBlock = (x, y, z) => !lowerReceived && y < 46 ? { known: false } : w.getBlock(x, y, z)
   world.getBlock = getBlock; w.ctx.getBlock = getBlock
+  // This execution peer has no announced lower columns until receiveLower;
+  // it reports the zero-request state instead of claiming a dispatched scan.
+  w.ctx.runtime.mineObserve = async () => require('../src/modes/return/return-result').blocked('MINE_TERRAIN_UNREQUESTABLE', { kind: 'position_changed' }, { evidence: { requested: 0, packets: 0, reason: 'unannounced_or_pending' } })
   for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) w.put({ x, y: 48, z }, 'iron_ore')
   const planned = await planMine({ world, getState: () => w.ctx.runtime.mineState(), origin: { x: 0.5, y: 70, z: 0.5 }, resource: 'raw_iron', targetCount: 100,
     width: 12, length: 12, searchRadius: 0, upperYs: [48], maxCandidates: 4 })
@@ -54,7 +57,7 @@ test('upper iron is actually built and delivered before lower observation; the s
   const w = await upper(t), branch = w.branch, previous = structuredClone(branch)
   const digs = w.digs.length, climbs = w.climbs.length
   const unknown = await requestMine(w.ctx, { resource: 'diamond', targetHeld: 1 })
-  assert.equal(unknown.result.code, 'MINE_LOWER_ORE_OBSERVATION_NEEDED', JSON.stringify(unknown))
+  assert.equal(unknown.result.code, 'MINE_TERRAIN_UNREQUESTABLE', JSON.stringify(unknown))
   assert.equal(w.ctx.memory.early.mine.branch, branch)
   assert.equal(branch.plan.layers.length, 1); assert.deepEqual(branch.progress.upper, previous.progress.upper)
   assert.equal(w.digs.length, digs); assert.equal(w.climbs.length, climbs)
@@ -80,7 +83,7 @@ test('upper iron is actually built and delivered before lower observation; the s
 test('a fully observed impossible lower layer safely archives the upper mine and advances finite site search; unknown lower keeps it active', async t => {
   const w = await upper(t), branch = w.branch, before = structuredClone(branch)
   const waiting = await requestMine(w.ctx, { resource: 'diamond', targetHeld: 1 })
-  assert.equal(waiting.result.code, 'MINE_LOWER_ORE_OBSERVATION_NEEDED')
+  assert.equal(waiting.result.code, 'MINE_TERRAIN_UNREQUESTABLE')
   assert.equal(w.ctx.memory.early.mine.branch, branch)
   assert.equal(w.ctx.memory.early.mine.sites, undefined)
   w.receiveLower()

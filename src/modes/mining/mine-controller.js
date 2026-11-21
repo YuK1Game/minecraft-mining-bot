@@ -12,11 +12,12 @@ const {noteMineProgress}=require('./mine-progress')
 const {checkStock,depositMine}=require('./mine-stock')
 const {mineLocation,insideMine}=require('./mine-location')
 const {occupied,constructionKeep}=require('./mine-carry')
+const {ladderDetail}=require('./mine-ladder-result')
 const MINERALS=new Set(['raw_iron','coal','diamond','raw_gold','redstone'])
 const bare=name=>String(name??'').replace(/^minecraft:/,'')
 const layerFor=resource=>['raw_iron','coal'].includes(resource)?'upper':'lower'
 const enabled=ctx=>!!ctx.minePorts || ctx.shared?.botMode==='player' || ctx.shared?.playerWanted===true || !!ctx.memory?.early?.mine?.branch
-const outcome=(result,reason)=>pending(reason??result?.detail??`採掘場の確認を続けます（${result?.code??'WAIT'}）。`,result)
+const outcome=(result,reason)=>pending(ladderDetail(result)??reason??result?.detail??`採掘場の確認を続けます（${result?.code??'WAIT'}）。`,result)
 const raw=ctx=>ctx.runtime.mineState?.()??ctx.runtime.raw()
 const mineOf=ctx=>ctx.memory?.early?.mine?.branch
 const inside=insideMine

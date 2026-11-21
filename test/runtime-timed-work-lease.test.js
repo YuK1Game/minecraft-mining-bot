@@ -5,7 +5,7 @@ test('timed logical hold leaves Parent/protection enabled, holds actual dispatch
  const f=fixture(t);await f.runtime.resumeRequested();await f.advance(100);await f.runtime.operations.depotMission.start();let resumes=0;f.parent.resume=async()=>{resumes++;return f.parent.snapshot()}
  const flags=[f.shared.autoWanted,f.shared.safetyWanted,f.shared.userBehaviorsEnabled],tick=BigInt(f.runtime.snapshot().queuedWireClock.tick),h=await f.runtime.operations.agent.yieldWork({reason:'controlled TTL',ttlMs:1000})
  assert.equal(h.held,true);assert.ok(h.leaseId);assert.equal(h.scope, f.shared.legacyWorkHoldScope);assert.equal(h.expiresAt,Date.now()+1000);assert.equal(f.parent.isEnabled(),true)
- await f.runtime.resumeRequested();await f.advance(500);await f.runtime.resumeRequested();assert.equal(resumes,0);assert.equal((await f.runtime.operations.__testDispatchDepot({kind:'observe_inventory'},{signal:new AbortController().signal,extra:{}})).owner,'manual_work_hold')
+ await f.runtime.resumeRequested();await f.advance(500);await f.runtime.resumeRequested();assert.equal(resumes,0);assert.equal((await f.inspection.runtime.dispatchDepotIntent({kind:'observe_inventory'},{signal:new AbortController().signal,extra:{}})).owner,'manual_work_hold')
  await f.advance(525);await f.runtime.resumeRequested();assert.ok(resumes>0);assert.equal(f.shared.legacyWorkHoldLease,null);assert.equal(f.shared.legacyWorkHoldScope,null);assert.deepEqual([f.shared.autoWanted,f.shared.safetyWanted,f.shared.userBehaviorsEnabled],flags);assert.equal(f.runtime.snapshot().input.streamRunning,true);assert.ok(BigInt(f.runtime.snapshot().queuedWireClock.tick)>tick)
 })
 test('actual physical movement extends only until it ends; idle stream alone never extends TTL',async t=>{

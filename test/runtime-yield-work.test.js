@@ -20,7 +20,6 @@ source = source.replace(/^  const mockAutonomy = .+$/m, '  const mockAutonomy = 
 source = source.replace(/^    '\.\/movement\/physics': .+$/m, "    './movement/physics': { createPhysics: options => hooks.physics(options) }, './movement/navigation': { createNavigator: options => hooks.navigator(options) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },")
 source = source.replace(/^    '\.\/movement\/input': .+$/m, "    './movement/input': { createInput: options => { wireInputOptions.push(options); return hooks.input(options) } },")
 source = source.replace(/^    '\.\/movement\/input-history': .+$/m, "    './movement/input-history': { createInputHistory },")
-source = source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", "loaded._compile(hooks.instrument(process.env.RUNTIME_TEST_SOURCE ? fs.readFileSync(process.env.RUNTIME_TEST_SOURCE, 'utf8') : require('./helpers/runtime-source').runtimeSource()), filename)")
 source = source.replace("    './movement/input-history': { createInputHistory },", "    './movement/input-history': { createInputHistory: hooks.history },")
 source += '\nmodule.exports={scene,setHooks:value=>{hooks=value}}'
 const loaded = { exports: {} }
@@ -35,14 +34,7 @@ function fixture (t) {
   loaded.exports.setHooks({ parent, history: createInputHistory,
     autonomy: { snapshot, start: options => { starts.push(copy(options)); running = true; return snapshot() }, stop: () => { running = false; return snapshot() }, tick: async () => snapshot() },
     physics: options => prepared.withWorld(options.world, { allowWater: options.allowWater ?? false }), navigator: options => createNavigator({ ...options, physics: options.physics ?? prepared.withWorld(options.world, { allowWater: options.allowWater ?? false }) }),
-    input: options => { stream = createInput({ ...options, clock: () => elapsed, startGameReceivedAt: 0, onQueuedFrame: frame => { frames.push(copy(frame)); options.onQueuedFrame?.(frame) } }); return stream },
-    instrument: runtimeSource => {
-      assert.ok(runtimeSource.includes('yieldWork: async reason =>'))
-      const marker = '  const operations = {'
-      assert.ok(runtimeSource.includes(marker))
-      // Test-only access verifies the REAL Parent dispatcher hold, not a stub.
-      return runtimeSource.replace(marker, marker + '\n    __testDispatchDepot: dispatchDepotIntent,')
-    }
+    input: options => { stream = createInput({ ...options, clock: () => elapsed, startGameReceivedAt: 0, onQueuedFrame: frame => { frames.push(copy(frame)); options.onQueuedFrame?.(frame) } }); return stream }
   })
   f = loaded.exports.scene(t)
   f.shared.autoWanted = true; f.shared.safetyWanted = true; f.shared.userBehaviorsEnabled = true
@@ -67,7 +59,7 @@ test('public yieldWork holds automatic and Parent restarts while actual neutral 
   await f.runtime.resumeRequested(); await f.advance(125)
   assert.equal(f.starts.length, startCount); assert.equal(f.shared.legacyWorkHoldScope, held)
   assert.deepEqual([f.shared.autoWanted, f.shared.safetyWanted, f.shared.userBehaviorsEnabled], flags)
-  const parentResult = await f.runtime.operations.__testDispatchDepot({ kind: 'observe_inventory' }, { signal: new AbortController().signal, extra: {} })
+  const parentResult = await f.inspection.runtime.dispatchDepotIntent({ kind: 'observe_inventory' }, { signal: new AbortController().signal, extra: {} })
   assert.deepEqual(parentResult, { phase: 'yielding', owner: 'manual_work_hold' })
   const after = f.runtime.snapshot()
   assert.equal(after.input.streamRunning, true); assert.equal(after.input.owner, 'idle'); assert.equal(after.safety.running, true)

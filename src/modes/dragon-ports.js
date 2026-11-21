@@ -23,6 +23,7 @@ function createDragonRuntimePorts (rt) {
     mineState: () => rt.quarryState(),
     mineConfirmPosition: (feet, options) => rt.confirmQuarryPosition(feet, options),
     mineLadderMove: (request, options) => rt.mineLadder?.move(request, options),
+    mineLadderDiagnostics: () => ({ ladderOwnsInput: rt.mineLadder?.hasInput?.() === true, activeBehavior: rt.userBehaviorSnapshot?.().activeKind ?? null, position: rt.quarryPositionVerifier?.snapshot() ?? null }),
     mineObserve: (request, options) => require('./mining/mine-runtime-observe').observeMineRuntime(rt, request, options),
     dragonItems: {
       commit: delta => rt.commitBrewMainDelta({ ...delta, brewing: true }),
