@@ -8,6 +8,7 @@
 | --- | --- |
 | [combat-mode-spec.md](combat-mode-spec.md) | 戦闘モードの数値仕様（標的選択、剣・弓、クリーパー、低体力時の方針） |
 | [dashboard-controls.md](dashboard-controls.md) | 管理画面からの接続・ワールド選択・露天掘りの操作と、その安全上の制約 |
+| [cloudwatch-logs.md](cloudwatch-logs.md) | Bot内蔵の任意ログ送信、専用キーの設定と送信先を限定したIAMポリシー |
 | [loadout-reset.md](loadout-reset.md) | シュルカー専用収納と初期セットリセットの仕様・移行 |
 | [manual-chest-deposit.md](manual-chest-deposit.md) | ラージチェストへの手動全収納 |
 | [player-branch-mining.md](player-branch-mining.md) | 受信鉱石から選ぶ2層の採掘場、はしご縦坑、湧き潰し、複数ラージチェストと再開 |

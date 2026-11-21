@@ -19,6 +19,7 @@ const { createHotReloader } = require('./hotreload')
 const { normalizePlayerCorrection } = require('../movement/server-physics')
 const { createRespawnSwim } = require('./respawn-swim')
 const { parseQuarryCommand } = require('./quarry-cli')
+const { createBotLog } = require('./bot-log')
 
 const PACKET_EVENTS = ['start_game', 'network_chunk_publisher_update', 'player_action', 'show_credits', 'move_player', 'correct_player_move_prediction', 'server_post_move', 'change_dimension', 'respawn', 'update_attributes', 'set_health', 'death_info', 'item_registry', 'inventory_content', 'inventory_slot', 'mob_equipment', 'player_hotbar', 'set_player_game_type', 'update_player_game_type', 'level_chunk', 'subchunk', 'update_block', 'update_subchunk_blocks', 'update_block_synced', 'crafting_data', 'item_stack_response', 'container_open', 'container_close', 'add_item_entity', 'take_item_entity', 'remove_entity', 'move_entity', 'move_entity_delta', 'add_player', 'add_entity', 'entity_event', 'set_entity_data', 'command_output']
 const DIMENSION_EVENTS = new Set(['player_action', 'subchunk', 'level_chunk', 'update_block', 'move_player', 'server_post_move', 'correct_player_move_prediction'])
@@ -355,10 +356,6 @@ function createHostPacketReceiver ({ state, shared, meta, cache, applyState, wor
   return { receive, snapshot: () => ({ lastCorrectionTick, acceptedCorrections, rejectedCorrections }) }
 }
 
-// Append-only live log for the dashboard (.local/bot.log), rotated at 5MB to
-// bot.log.1. Writes are fire-and-forget; a disk error never affects the Bot.
-const liveLog = require('./live-log').createLiveLog({ file: path.resolve(__dirname, '..', '..', '.local', 'bot.log') })
-
 async function main () {
   const args = process.argv.slice(2)
   if (args.includes('--help')) { console.log('npm start: 接続してコード更新を待つ / npm run auto: 自律作業 / npm run realms: Realm一覧'); return }
@@ -402,13 +399,9 @@ async function main () {
   if (managed && process.env.DASHBOARD_RESTORE_QUARRY === '1') shared.quarryRestoreAfterReconnect = true
   let stopping = false; let nextOdd = -1; let nextEven = -2; let lastInputTick = -1n; let loginSwim = null
   const current = () => reloader?.current
-  // Millisecond wall-clock prefix (JST, UTC+9) so combat/escape timelines can be rebuilt.
-  // Every line is also appended to .local/bot.log for the dashboard's live log page.
-  const log = message => {
-    const line = `[${new Date(Date.now() + 9 * 3600000).toISOString().slice(11, 23)} JST] ${displayText(message)}`
-    console.log(line)
-    liveLog.write(line)
-  }
+  // Keep local JST output and the dashboard file, with optional remote delivery.
+  // Creating the sinks here keeps importing the host free of background work.
+  const { log, liveLog, cloudLog } = createBotLog({ file: path.resolve(__dirname, '..', '..', '.local', 'bot.log') })
   const reportResumeError = receipt => log(`行動の再開を見送り、接続を保持します: ${receipt.source}: ${receipt.message}`)
   const onlineEmergency = createOnlineEmergencyHandler({ getState: () => state, getShared: () => shared, getCurrent: current, getLife: () => lifecycle?.stats().deathId, now: Date.now, report: receipt => log(formatOnlineEmergency(receipt)) })
   const deathRespawn = createDeathRespawnReflex({ getState: () => state, getShared: () => shared, getLifecycle: () => lifecycle, getCurrent: current, isStopping: () => stopping, report: result => log(`死亡後の通常リスポーン: ${result.phase}${result.reason ? ` (${result.reason})` : ''}`) })
@@ -521,7 +514,7 @@ async function main () {
     process.exitCode = code
     const deadline = setTimeout(() => process.exit(code), 5000).unref()
     const finish = () => { clearTimeout(deadline); process.exit(code) }
-    void Promise.all([Promise.resolve(cleanup).finally(() => shared.flushDragonCheckpoints?.()), liveLog.close()]).then(finish, error => { console.error(`終了時の記録確認: ${errorText(error)}`); finish() })
+    void Promise.all([Promise.resolve(cleanup).finally(() => shared.flushDragonCheckpoints?.()), cloudLog.close().finally(() => liveLog.close())]).then(finish, error => { console.error(`終了時の記録確認: ${errorText(error)}`); finish() })
   }
   process.once('SIGINT', () => stop()); process.once('SIGTERM', () => stop())
   const context = {
