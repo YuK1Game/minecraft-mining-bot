@@ -18,7 +18,7 @@ test('lap: chest 7 and hand 8 -> the shortage is read at the chest, meat is hunt
   const gather = w.record().early.gather
   assert.deepEqual({ name: gather.name, count: gather.count }, { name: 'food', count: 9 }, 'one for the chest over the eight it keeps')
   assert.deepEqual(w.transfers, [], 'nothing is moved while the hand has only its own eight')
-  // 2-4. Runs until the expedition gives the player back to the ordinary work.
+  // 2-4. Runs until the reserve finishes and the planned diamond work becomes the next objective.
   const looks = await w.lap()
   assert.notEqual(looks, -1, 'the lap ends: ' + w.trace.join(' / '))
   // 2. Meat came into the hand and was cooked at the home furnace.
@@ -30,12 +30,12 @@ test('lap: chest 7 and hand 8 -> the shortage is read at the chest, meat is hunt
   assert.equal(w.cooked(), 8)
   assert.deepEqual(w.transfers, [['in', 'minecraft:cooked_beef', 1]])
   assert.equal(w.shared.dragonReserveSeen.counts.food, 8, 'the last read of the chest')
-  // 4. The kit is banked, and the next decision is the ordinary work's: diamonds.
+  // 4. The kit is banked and the expedition retains the planned diamond objective.
   assert.equal(w.record().early.reserveReady, true)
   assert.equal(w.record().early.gather, undefined)
   assert.equal(w.objective().id, 'diamond')
-  assert.equal(w.objective().legacy, true)
-  assert.equal(w.rt.owns(), false)
+  assert.equal(w.objective().legacy, false)
+  assert.equal(w.rt.owns(), true)
   assert.equal(w.said(/^遠征: 目的 .*進んでいません/).length, 0, 'no stall was counted on the way')
 })
 

@@ -2,10 +2,16 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { nextGear } = require('../src/survival/diamond-gear')
+const { nextGear,nextGearNeed } = require('../src/survival/diamond-gear')
 
 const item = (name, count = 1) => ({ name: `minecraft:${name}`, count })
 const worn = (...names) => ({ known: true, worn: ['head', 'chest', 'legs', 'feet'].map((piece, index) => ({ piece, name: names[index] ? `minecraft:${names[index]}` : null })) })
+
+test('the expedition can request the missing piece before its diamonds exist',()=>{
+  assert.equal(nextGearNeed({items:[],worn:worn()}).output,'diamond_pickaxe')
+  assert.equal(nextGearNeed({items:[item('diamond_pickaxe'),item('diamond_sword')],worn:worn(null,'diamond_chestplate')}).output,'diamond_leggings')
+  assert.equal(nextGearNeed({items:[item('diamond_pickaxe'),item('diamond_sword')],worn:{known:false}}),null)
+})
 
 test('diamond gear is made in order, each piece once, when enough diamonds are held', () => {
   assert.equal(nextGear({ items: [item('diamond', 2)], worn: worn(), diamonds: 2 }), null, 'a pickaxe needs 3')

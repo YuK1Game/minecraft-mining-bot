@@ -178,11 +178,12 @@ async function createFoodLap (t, { chestFood = 7, chestFoodName = 'cooked_beef',
     if (owned && shown?.reason && w.trace[w.trace.length - 1] !== shown.reason) w.trace.push(shown.reason)
     return owned
   }
-  // Looks until the expedition gives the player back (the next objective is the ordinary work's), or `limit` looks.
+  // This food lap ends at the diamond objective; its mining has its own
+  // execution fixture. Earlier bootstrap handovers remain observable too.
   w.lap = async ({ limit = 80, each = null } = {}) => {
     for (let n = 0; n < limit; n++) {
       each?.(w, n)
-      if (!await w.look()) return n
+      if (!await w.look() || w.objective().id === 'diamond') return n
     }
     return -1
   }

@@ -17,6 +17,7 @@ const { diggerWanted } = require('./dig-tool')
 const { openAbove } = require('./player-surface')
 const { weaponWanted } = require('./carry-weapon')
 const { noteReserve } = require('./dragon-reserve-seen')
+const mining = require('./mining/mine-controller')
 const DIGGER = { stage: 'digger', target: 'stone_pickaxe', code: 'NOT_MADE' }
 const WOOD = { stage: 'digger', target: 'log', code: 'NOT_FOUND' }
 const SWORD = { stage: 'weapon', target: 'stone_sword', code: 'NOT_MADE' }
@@ -54,6 +55,8 @@ function createDragonSupplies (ctx) {
   const shut = cell => ({ stage: 'station', target: [cell.x, cell.y, cell.z].join(','), code: 'STATION_NOT_OPENED' })
 
   async function station (name, { existingOnly = false } = {}) {
+    const returning = await mining.beforeSurfaceSupply(ctx)
+    if (returning) { trouble = returning.reason; return null }
     const saved = ctx.memory?.early
     const previous = name === 'brewing_stand' && saved?.brewingStand
     if (previous && runtime.raw().dimension === 'overworld') {
@@ -149,8 +152,16 @@ function createDragonSupplies (ctx) {
   async function acquire (requested, target = 1) {
     const name = bare(requested)
     if (cancelled() || !getInventory() || !Number.isSafeInteger(target) || target < 1) return pending('資材を準備するため、現在の所持品を再確認します。')
-    if (held(name) >= target) return done(name + ' を持ち物で確認しました。')
-    if (name === 'food') return provisionFood(ctx, target)
+    if(name!=='food' && !mining.MINERALS.has(name)){
+      const finishing=await mining.finishMineWork(ctx)
+      if(finishing)return finishing
+    }
+    const plannedMining = mining.enabled(ctx) && runtime.raw().dimension === 'overworld' && mining.MINERALS.has(name)
+    if (held(name) >= target) {
+      if (plannedMining && ctx.memory?.early?.mine?.branch?.request?.resource === name) return mining.requestMine(ctx, { resource: name, targetHeld: target })
+      return done(name + ' を持ち物で確認しました。')
+    }
+    if (name === 'food') return await mining.beforeSurfaceSupply(ctx) ?? provisionFood(ctx, target)
     const recipe = ingredient[name], material = smelted[name]
     if (name === 'water_bucket') await fill(name)
     else if (name === 'planks') {
@@ -158,6 +169,7 @@ function createDragonSupplies (ctx) {
       if (!log) await acquire('log', 1)
       else await bench.craftPlanks(log.name, 1)
     } else if (material) {
+      const batch = mining.enabled(ctx) ? Math.max(1, Math.min(8, target - held(name))) : 1
       const plank = rows().find(i => matches('planks', i))
       const fuel = held('coal') ? 'minecraft:coal' : held('charcoal') ? 'minecraft:charcoal' : plank?.name
       // Read a nearby furnace before gathering: it may already hold the result,
@@ -166,19 +178,26 @@ function createDragonSupplies (ctx) {
       // minute without walking back to the same empty furnace every two seconds.
       // This is a next-step hint only; using the furnace always reads it anew.
       const gather = ctx.shared.dragonSmeltGather, at = (ctx.now ?? Date.now)(), dimension = runtime.raw()?.dimension
-      const fetching = gather?.name === name && gather.dimension === dimension && at >= gather.at && at - gather.at < 60000 && (gather.need.input > 0 && !held(material) || gather.need.fuel && !fuel)
+      const fetching = gather?.name === name && gather.dimension === dimension && at >= gather.at && at - gather.at < 60000 && (gather.need.input > 0 && held(material) < (gather.inputGoal ?? 1) || gather.need.fuel && !fuel)
       const furnace = fetching ? null : await station('furnace', { existingOnly: !held(material) || !fuel })
       let need = fetching ? gather.need : null
       if (furnace && !cancelled()) {
         house.reset()
-        const made = await house.smelt(furnace, full(material), 1, fuel, 1, full(name))
+        const made = await house.smelt(furnace, full(material), batch, fuel, /coal$/.test(fuel ?? '') ? Math.ceil(batch / 8) : batch, full(name))
         if (made > 0 || cancelled() || !getInventory()) { delete ctx.shared.dragonSmeltGather; return held(name) >= target ? done(name + ' の所持数を確認しました。') : pending(name + ' の精錬後の所持数を確認します。') }
         need = house.smeltNeed()
         if (house.why()) trouble = 'かまど: ' + house.why()
         if (!need) return pending(trouble ?? 'かまどの受信を確認します。')
-        ctx.shared.dragonSmeltGather = { name, dimension, at: (ctx.now ?? Date.now)(), need }
+        ctx.shared.dragonSmeltGather = { name, dimension, at: (ctx.now ?? Date.now)(), need, inputGoal: held(material) + need.input }
       }
-      if ((!need || need.input > 0) && !held(material)) await acquire(material, 1)
+      const inputGoal = fetching ? gather.inputGoal ?? 1 : need ? held(material) + need.input : batch
+      if ((!need || need.input > 0) && held(material) < inputGoal) {
+        // With no reusable furnace nearby, the batch is still a demand for
+        // raw material. Keep that demand while the mine is underground;
+        // seeing its first ore must not cause a new trip to look for a furnace.
+        if(mining.enabled(ctx) && !fetching)ctx.shared.dragonSmeltGather={name,dimension,at: (ctx.now ?? Date.now)(),need:need??{input:inputGoal-held(material),fuel:!fuel},inputGoal}
+        await acquire(material, inputGoal)
+      }
       else if ((!need || need.fuel) && !fuel) {
         // Fuel: coal ore already in view (underground) before a walk to the trees.
         const coalNear = inView(ctx, 'coal').length > 0
@@ -201,7 +220,12 @@ function createDragonSupplies (ctx) {
       // A look that brought it no nearer (no log, no stick made, no table put down) is a failed try; after three
       // it is left, and the digging goes on.
       await own('stone_pickaxe', digger(), WOOD, DIGGER_SAYS)
-    } else if (SOURCES[name] || MOBS[name]) await collect(ctx, name)
+    } else if (plannedMining) return mining.requestMine(ctx, { resource: name, targetHeld: target })
+    else if (SOURCES[name] || MOBS[name]) {
+      const returning = await mining.beforeSurfaceSupply(ctx)
+      if (returning) return returning
+      await collect(ctx, name)
+    }
     else return { ...pending(full(name) + ' の回収を待っています。'), missing: { name, count: target } }
     const current = held(name)
     return current >= target ? done(name + ' の所持数を確認しました。') : pending(name + ' を準備しています（' + current + '/' + target + '）。' + (trouble ? '（' + trouble + '）' : ''))

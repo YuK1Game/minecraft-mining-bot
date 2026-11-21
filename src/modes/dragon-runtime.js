@@ -53,14 +53,17 @@ function createDragonRuntime (ports) {
     const opts = { signal, aborted: ctx.cancelled }
     const supplies = createDragonSupplies(ctx)
     Object.assign(ctx, { supplies, memory: record, rt: runtime, ports: ctx.hands, active: () => !ctx.cancelled(), ...opts })
+    ctx.saveMine = async () => !ctx.cancelled() && await state.save(record) === true && !ctx.cancelled()
     const stronghold = createDragonStronghold(ctx)
     // From dusk the overworld part before the Nether goes home to its bed (dragon-night.js).
     if (dim === 'overworld' && record.stage === 'early' && !record.recovery && !(recoverHealth && ports.threatened())) {
       const night = await nightHome(ctx, { clock: () => runtime.travel?.()?.travelClock?.() })
       if (night) return night
     }
-    // A full inventory first throws its rubble away (dragon-pack-room.js): nothing else makes room under the expedition.
+    // Planned mining stores its cargo in confirmed chests. Other expedition work retains its pack-room policy.
     if (dim === 'overworld' && !recoverHealth && ctx.drop && crowded(shared.inventoryUncertain ? null : runtime.inventory()) && !ports.threatened()) {
+      const stored = await require('./mining/mine-controller').minePackRoom(ctx)
+      if (stored) return stored
       const packed = await packRoom({ shared, getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getFeet: ctx.getFeet, drop: ctx.drop, walk: ctx.walk, why: () => ctx.hands.why?.(), cells: ctx.cells, log: ctx.log })
       if (packed) return packed
     }

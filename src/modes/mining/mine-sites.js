@@ -1,0 +1,119 @@
+'use strict'
+
+// A finished footprint remains protected. Only its geometry and storage
+// registry survive retirement; per-cell ore estimates and live receipts do not.
+const { planMine }=require('./mine-plan')
+const { DIRECTIONS }=require('./mine-geometry')
+const state=require('./mine-state')
+const { at,air,solid,count,scope,live,received,save,blocked,stopped,results }=require('./mine-common')
+const { leaveMine }=require('./mine-route')
+const MAX_SITES=8,MAX_BYTES=900000
+const OFFSETS=[[0,0],[1,0],[0,1],[-1,0],[0,-1],[1,1],[-1,1],[-1,-1],[1,-1]]
+const raw=ctx=>ctx.runtime.mineState?.()??ctx.runtime.raw()
+const memory=ctx=>{ctx.memory.early??={};return ctx.memory.early.mine??={}}
+const revisionOf=ctx=>{const world=ctx.runtime.host?.()?.world;return typeof world?.revision==='function'?world.revision():world?.revision??null}
+
+function footprint(plan){
+  const f=DIRECTIONS[plan.site.direction],r={x:-f.z,z:f.x},corners=[]
+  for(const u of[0,plan.site.length-1])for(const v of[0,plan.site.width-1])corners.push({x:plan.site.anchor.x+f.x*u+r.x*v,z:plan.site.anchor.z+f.z*u+r.z*v})
+  corners.push(...plan.shaft.columns,plan.shaft.ladder.support)
+  const margin=Math.min(3,plan.vein?.radius??3)+1
+  return {min:{x:Math.min(...corners.map(p=>p.x))-margin,y:plan.shaft.bottomY-3,z:Math.min(...corners.map(p=>p.z))-margin},max:{x:Math.max(...corners.map(p=>p.x))+margin,y:plan.shaft.topY+2,z:Math.max(...corners.map(p=>p.z))+margin}}
+}
+
+function compactSite(branch){
+  const {evaluation,...geometry}=branch.plan
+  return {version:1,plan:structuredClone(geometry),bounds:footprint(geometry),shaft:structuredClone(branch.shaft),storage:structuredClone(branch.storage??{pairs:{}}),
+    progress:Object.fromEntries(Object.entries(branch.progress).map(([layer,p])=>[layer,{cursor:p.cursor,confirmedSteps:p.confirmedSteps,status:p.status}])),
+    exhausted:branch.request?.resource??null}
+}
+
+function protectedBySites(sites,world){
+  const bounds=sites.filter(site=>state.sameWorld(site.plan?.scope,world)).map(site=>site.bounds??footprint(site.plan))
+  return p=>bounds.some(b=>p.x>=b.min.x && p.x<=b.max.x && p.y>=b.min.y && p.y<=b.max.y && p.z>=b.min.z && p.z<=b.max.z)
+}
+
+function originAt(ctx,index,sites){
+  const home=ctx.shared.playerHouse?.origin,base=home?{...home,y:home.y+1}:sites[0]?.plan.shaft.approach??ctx.getFeet()
+  if(index===0)return {origin:{...base}}
+  const [dx,dz]=OFFSETS[index],x=Math.floor(base.x+dx*48),z=Math.floor(base.z+dz*48),unknown=[]
+  // The next site's surface height comes from this received column, not the
+  // old home's Y. Unknown air above a solid block is not an entrance.
+  for(let y=Math.min(318,Math.floor(base.y)+24);y>=Math.max(-58,Math.floor(base.y)-32);y--){
+    const floor=at(ctx,{x,y:y-1,z}),body=at(ctx,{x,y,z}),head=at(ctx,{x,y:y+1,z})
+    if([floor,body,head].some(b=>b?.known!==true)){if(unknown.length<18)unknown.push({x,y,z});continue}
+    if(solid(floor) && air(body) && air(head))return {origin:{x:x+0.5,y,z:z+0.5}}
+  }
+  return {unknown}
+}
+
+function observationCells(planned){
+  return (planned.needsObservation??[]).slice(0,18).map(p=>typeof p==='string'?Object.fromEntries(['x','y','z'].map((axis,i)=>[axis,Number(p.split(',')[i])])):{x:p.x*16+8,y:p.y*16+8,z:p.z*16+8})
+}
+
+async function nextMine(ctx,resource,targetHeld){
+  const mine=memory(ctx),sites=mine.sites??=[],revision=revisionOf(ctx),worldScope=state.mineWorldScope(raw(ctx))
+  if(sites.length>=MAX_SITES)return {result:blocked('MINE_SITE_LIMIT','確認済み採掘場が8か所に達しました。保管した鉱石と採掘範囲を確認します。','supplies_changed')}
+  const search=mine.search??={index:0}
+  const requestKey=JSON.stringify([resource,targetHeld,scope(ctx)])
+  if(search.requestKey!==requestKey){search.requestKey=requestKey;search.index=0;delete search.wait;delete search.exhaustedRevision}
+  if(search.wait?.revision===revision && search.wait?.requestKey===requestKey && search.wait?.index===search.index){
+    await ctx.minePorts.observe({cells:search.wait.cells,reason:search.wait.code})
+    return {result:blocked(search.wait.code,'新たな地形の受信を待ち、同じ未確認の採掘候補を繰り返し掘らずに再評価します。')}
+  }
+  if(search.index>=OFFSETS.length){
+    if(search.exhaustedRevision===revision)return {result:blocked('MINE_SITE_OBSERVATION_NEEDED','周囲の候補を調べました。新たな鉱石と地形の受信を待ちます。')}
+    search.index=0
+  }
+  const found=originAt(ctx,search.index,sites)
+  let planned
+  if(!found.origin)planned={status:found.unknown.length?'observing':'blocked',code:'MINE_SURFACE_OBSERVATION_NEEDED',needsObservation:[]}
+  else {
+    const host=ctx.runtime.host?.(),world=host?.world??{getBlock:ctx.getBlock},house=ctx.shared.playerHouse?.origin,archived=protectedBySites(sites,worldScope)
+    const isProtected=p=>archived(p) || !!house && p.x>=house.x-2 && p.x<=house.x+10 && p.z>=house.z-2 && p.z<=house.z+11 && p.y>=house.y-3
+    planned=await planMine({world,getState:()=>raw(ctx),origin:found.origin,resource,targetCount:Math.max(1,targetHeld-count(ctx,resource)),isProtected},{signal:ctx.signal})
+  }
+  if(!live(ctx))return {result:stopped()}
+  if(planned.status!=='planned'){
+    const cells=found.unknown??observationCells(planned)
+    if(planned.status==='observing' || cells.length){
+      search.wait={revision,requestKey,index:search.index,code:planned.code??'MINE_PLAN_PENDING',cells}
+      await ctx.minePorts.observe({cells,reason:planned.code})
+    }else{
+      delete search.wait;search.index++
+      if(search.index>=OFFSETS.length)search.exhaustedRevision=revision
+    }
+    if(!await save(ctx,null))return {result:blocked('MINE_CHECKPOINT','次の採掘候補の確認結果を保存します。','owner_released')}
+    return {result:blocked(planned.code??'MINE_PLAN_PENDING','既存の採掘場を保護し、次の2層の採掘範囲を観測しています。')}
+  }
+  if(sites.some(site=>site.plan.id===planned.plan.id)){
+    search.index++;delete search.wait
+    if(search.index>=OFFSETS.length)search.exhaustedRevision=revision
+    await save(ctx,null)
+    return {result:blocked('MINE_SITE_ALREADY_USED','使い終えた採掘範囲を除外し、別の範囲を確認します。')}
+  }
+  const plan=planned.plan,branch={version:1,plan,progress:Object.fromEntries(plan.layers.map(layer=>[layer.id,state.createMineState(plan,{layer:layer.id})])),request:null,failures:{}}
+  mine.branch=branch;delete mine.search
+  if(!await save(ctx,branch))return {result:blocked('MINE_CHECKPOINT','採掘場の計画を保存できません。','owner_released')}
+  ctx.log?.(`プレイヤーモード: 採掘場を計画しました（上層Y${plan.layers[0].y}・下層Y${plan.layers[1].y}、${plan.site.width}×${plan.site.length}）`)
+  return {branch}
+}
+
+async function retireMine(ctx,branch){
+  if(branch.pendingAction || branch.vein)return blocked('MINE_RETIRE_PENDING_ACTION','未確認の施工と鉱脈の埋戻しを終えてから次の採掘場へ移ります。','inventory_update')
+  const left=await leaveMine(ctx,branch)
+  if(!received(left) || !live(ctx))return live(ctx)?left:stopped()
+  const mine=memory(ctx),sites=mine.sites??=[]
+  if(sites.length>=MAX_SITES)return blocked('MINE_SITE_LIMIT','確認済み採掘場の保管と範囲を見直します。','supplies_changed')
+  const archived=compactSite(branch),next=[...sites,archived]
+  if(Buffer.byteLength(JSON.stringify(next))>MAX_BYTES)return blocked('MINE_ARCHIVE_LIMIT','採掘場の保存容量を確認します。','owner_released')
+  mine.sites=next;delete mine.branch
+  // Re-evaluate the home area once with the old footprint protected, then
+  // move through the eight fixed neighbouring survey centres if it is full.
+  mine.search={index:0}
+  if(!await save(ctx,null)){mine.branch=branch;mine.sites=sites;return blocked('MINE_CHECKPOINT','採掘場の保存を確認します。','owner_released')}
+  ctx.log?.(`プレイヤーモード: 採掘範囲を使い終えたため、既設の坑道・収納を残して次の採掘場を調べます（保存済み${next.length}か所）`)
+  return {...results.partial('MINE_SITE_RETIRED',{progress:{sites:next.length}}),serverConfirmed:true}
+}
+
+module.exports={nextMine,retireMine,compactSite,footprint,protectedBySites,originAt,revisionOf,MAX_SITES,MAX_BYTES}

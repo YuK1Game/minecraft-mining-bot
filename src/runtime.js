@@ -379,6 +379,7 @@ function createRuntime (host) {
   // created lazily on first use and survives reloads only as a saved document.
   let quarryPorts = null, quarryJob = null, quarryRetreatDepth = 0, quarryCombatArmed = false, quarryBehaviorRestore = null, quarryPortableStorage = null, quarrySupplies = null
   let quarryPillar = null, quarryPillarTask = null, quarryEgressRuntime = null, quarryEgressTask = null, quarryEgressAbort = null
+  let mineLadder = null, mineLadderTask = null
   let quarryPositionVerifier = null
   let storagePlacementAudit = null
   let plainsLocator = null
@@ -1051,6 +1052,7 @@ function createRuntime (host) {
     if (!ownedCall && pendingStops.size) throw actionBusyError('前の操作の終了処理を待ってください。')
     if (!ownedCall && quarryJob?.holdsWork()) throw new Error('露天掘りの作業中です。/quarry pause で一時停止してから操作してください。')
     if (!ownedCall && quarryPillar?.snapshot().busy) throw new Error('土柱の設置と着地の確認を待ってください。')
+    if (!ownedCall && mineLadder?.snapshot().busy) throw new Error('はしごの移動と足場の確認を待ってください。')
     if (!ownedCall && (idleSafety?.snapshot().busy && !combatHandoff || excavation?.snapshot().busy || tunneling?.snapshot().busy || recovery?.snapshot().busy || (foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) || shelter?.snapshot().busy || hut?.snapshot().busy || guardRoute?.snapshot().busy)) throw actionBusyError('前の操作が終わるまで待ってください。')
     if (!combatHandoff && (motionActive() || input?.stats().running || snapshot(combat)?.busy || snapshot(combat)?.defending || snapshot(combat)?.engaging) || snapshot(food).busy || (snapshot(furnace).busy || chestStatus().busy) || inventory.snapshot().busy || craftStatus().pendingRequestId != null || interactions.snapshot().pendingOperation) throw actionBusyError('前の操作が完了するまで待ってください。')
     if (!ownedCall) host.shared.safetyManualActionAt = Date.now()
@@ -1874,6 +1876,7 @@ function createRuntime (host) {
       mining.stop(reason)
       walker?.stop(reason)
       movement?.stop(reason)
+      mineLadder?.cancel(reason)
       combat?.cancel(reason)
       inputStream.stop()
     }
@@ -1906,7 +1909,7 @@ function createRuntime (host) {
     let queuedMotionFrames = 0; let unprovedInputFrames = 0
     const queuedForageLandingFrames = [], foragingLandingOwners = new WeakMap(), foragingLandingProofs = new WeakMap()
     let generationForaging = null
-    let generationPillar = null, pillarInputToken = null
+    let generationPillar = null, generationLadder = null, pillarInputToken = null
     const currentGeneration = () => !disposed && !disposing && inputStream === generationStream
     const requireGeneration = () => { if (!currentGeneration()) throw new Error('スポーン前の操作は終了しました。新しい位置からやり直してください。') }
     const queuedFrame = frame => {
@@ -1922,6 +1925,7 @@ function createRuntime (host) {
           ? { tick: String(frame.tick), at: frame.queuedAt, position: { ...frame.packetPosition } } : null
       }
       generationPillar?.onQueuedFrame(frame)
+      generationLadder?.onQueuedFrame(frame)
       try {
         const physical = frame.predictedState, state = raw(), snapshot = generationHistory.snapshot(), controls = frame.controls
         const neutral = controls && typeof controls === 'object' && !Array.isArray(controls) && Object.entries(controls).every(([key, value]) => ['forward', 'back', 'left', 'right', 'jump', 'sprint', 'sneak'].includes(key) && value === false)
@@ -1945,6 +1949,7 @@ function createRuntime (host) {
         movementPhase: movement?.snapshot().phase ?? null, miningPhase: mine.phase, miningActiveTarget: mine.activeTarget != null
       }
       generationPillar?.cancel(error.message)
+      generationLadder?.cancel(error.message)
       queuedForageLandingFrames.length = 0
       generationHistory.invalidate('input_failed')
       inputOwner = 'none'; idleFailureAt = at; host.shared.idleError = error.message
@@ -1954,7 +1959,7 @@ function createRuntime (host) {
       requireGeneration()
       const recovery = manualShulkerRecovery?.snapshot(), target = mining.snapshot().activeTarget
       if (recovery?.busy && target?.ownershipKey === recovery.operationId && manualShulkerMiningSerial === portableActionOwners.serial(mining)) manualShulkerRecovery.beforeInput(frame)
-      return generationPillar?.frame(frame) ?? neutralFrame(frame)
+      return generationLadder?.frame(frame) ?? generationPillar?.frame(frame) ?? neutralFrame(frame)
     }, onQueuedFrame: queuedFrame, getQueuedCursor: queuedCursor, onError: onInputError })
     inputStream = generationStream
     input = {
@@ -2010,7 +2015,7 @@ function createRuntime (host) {
       cancelPlace: reason => { if (currentGeneration() && pillarInputToken && inputOwner === 'task') interactions.cancel(reason) },
       acquireInput: ({ token }) => {
         requireGeneration()
-        if (pillarInputToken || userBehaviorOwns() || idleSafety?.snapshot().busy || pendingStops.size) throw new Error('ASCENT_INPUT_BUSY')
+        if (pillarInputToken || generationLadder?.hasInput() || userBehaviorOwns() || idleSafety?.snapshot().busy || pendingStops.size) throw new Error('ASCENT_INPUT_BUSY')
         own(() => requireIdle())()
         pillarInputToken = token
         // The step starts the same input stream after recording its intent.
@@ -2021,6 +2026,22 @@ function createRuntime (host) {
       onPrediction: prediction => { if (currentGeneration()) publishControlPrediction({ ...host.shared.prediction, ...prediction }, 'quarry_pillar') }
     })
     quarryPillar = generationPillar
+    generationLadder = require('./runtime/ladder-runtime').createLadderRuntime({
+      getState: () => { requireGeneration(); return quarryState() }, getBlock: (x, y, z) => planningWorld.getBlock(x, y, z),
+      getPhysics: () => generationPhysics.withWorld(host.world, { allowWater: false }), getInput: () => generationInput,
+      currentGeneration, requireIdle: own(() => requireIdle()),
+      canAcquire: () => !pillarInputToken && !userBehaviorOwns() && !idleSafety?.snapshot().busy && !pendingStops.size,
+      taskOwnsInput: () => inputOwner === 'task' && !host.shared.respawnTerrain?.pending, setTaskOwner: () => { inputOwner = 'task' },
+      confirmPosition: (feet, settings) => confirmQuarryPosition(feet, settings),
+      onPrediction: prediction => { if (currentGeneration()) publishControlPrediction({ ...host.shared.prediction, ...prediction }, 'mine_ladder') },
+      guard: () => !userBehaviorOwns() && !idleSafety?.snapshot().busy && host.shared.botMode === 'player' && host.shared.playerWanted === true
+    })
+    mineLadder = { ...generationLadder, move: (request, options) => {
+      requireGeneration()
+      const task = generationLadder.move(request, options)
+      mineLadderTask = task
+      return task.finally(() => { if (mineLadderTask === task) mineLadderTask = null })
+    } }
     const pillarStep = (request, options) => {
       requireGeneration()
       const task = generationPillar.step(request, options)
@@ -2062,45 +2083,29 @@ function createRuntime (host) {
       if (threats.threats.length) { const error = new Error('近くの敵への自衛を優先します。'); error.code = 'NEARBY_THREAT'; throw error }
       return threats.outsideDanger.map(actor => ({ id: actor.runtimeId, position: { ...actor.position }, minDistance: actor.dangerRadius, padding: state.threatPolicy === 'online_learning' ? 0 : 0.5 }))
     }, onProgress: data => { if (currentGeneration()) host.noteProgress(data) } })
-    function verifyForagingQueuedLanding (request) {
-      try {
-        requireGeneration()
-        if (!request || !request.operationToken || typeof request.operationToken !== 'object' || request.signal?.aborted || typeof request.isCurrent !== 'function' || request.isCurrent() !== true || !generationForaging || foraging !== generationForaging || generationForaging.snapshot().busy !== true || !Number.isSafeInteger(host.shared.deathRespawn?.deathId) || host.shared.deathRespawn.deathId < 0) return null
-        const binding = request.targetBinding
-        if (!binding || binding.uniqueId == null || !['prey', 'drop'].includes(binding.kind)) return null
-        const state = lightweightUserState(), life = actualLifeId(), key = JSON.stringify([String(binding.runtimeId), String(binding.uniqueId), binding.kind, binding.name, binding.dimension])
-        const target = state.entities.find(e => String(e.runtimeId) === String(binding.runtimeId)), statusTarget = generationForaging.snapshot().target
-        if (state.phase !== 'spawned' || state.dead || state.isDead || state.spawnPending || state.inventory?.known !== true || state.inventory.uncertain || !target || String(target.uniqueId) !== String(binding.uniqueId) || target.dimension !== state.dimension || binding.dimension !== state.dimension || target.positionKnown !== true || !target.position || target.kind !== (binding.kind === 'drop' ? 'item' : 'mob') || (binding.kind === 'drop' ? target.name : target.entityType) !== binding.name || target.alive === false || target.protected || target.owned || target.tamed || target.isTamed || target.owner != null || target.ownerId != null || target.ownerUniqueId != null || String(statusTarget?.runtimeId) !== String(binding.runtimeId) || statusTarget?.kind !== binding.kind || statusTarget?.name !== binding.name) return null
-        if (!Number.isSafeInteger(request.before?.lifecycle?.deathId) || request.before.lifecycle.deathId !== life || state.health !== request.before.health) return null
-        const physical = state.predicted?.physicsState ?? state.physicsState, feet = { ...state.position, y: state.position.y - 1.62 }
-        if (physical?.onGround !== true || physical.isInWater || physical.isInLava || !fullStandingGeometry(state, feet)) return null
-        const witness = generationHistory.witness({ scope: historyScope(state), health: state.health, position: state.position })
-        if (witness.ready !== true || witness.anchor?.kind !== 'server_correction' || witness.anchor.derived !== false || witness.anchor.physicsState?.onGround !== false || witness.queuedTicks < 2 || !queuedTailTrajectoryFree(witness)) return null
-        const rawState = raw(), anchor = witness.anchor, stamp = value => typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) : NaN
-        const previousStamp = stamp(request.before.rawServerPositionUpdatedAt ?? request.before.positionUpdatedAt), currentStamp = stamp(rawState.positionUpdatedAt)
-        if (!Number.isFinite(request.startedAt) || !Number.isFinite(previousStamp) || !Number.isFinite(currentStamp) || !(currentStamp > previousStamp && currentStamp >= request.startedAt - 1000 && currentStamp <= Date.now() + 1000) || stamp(anchor.rawStamp) !== currentStamp || stamp(state.rawServerPositionUpdatedAt) !== currentStamp || !['x', 'y', 'z'].every(k => anchor.rawPosition[k] === rawState.position[k] && state.rawServerPosition[k] === rawState.position[k])) return null
-        const correction = host.shared.lastServerCorrection, motionAt = stamp(host.shared.lastServerMotion?.receivedAt)
-        if (correction?.accepted !== true || correction.source !== 'correct_player_move_prediction' || String(correction.tick) !== witness.anchorTick || correction.onGround !== false || !['x', 'y', 'z'].every(k => correction.position?.[k] === rawState.position[k]) || Number.isFinite(motionAt) && motionAt >= anchor.receivedAt) return null
-        if (!['x', 'y', 'z'].every(k => Math.abs(witness.expectedPosition[k] - state.position[k]) <= 1e-4 && Math.abs(witness.physicsState.position[k] - physical.position[k]) <= 1e-4 && Math.abs(witness.physicsState.velocity[k] - physical.velocity[k]) <= 1e-4)) return null
-        const audit = queuedForageLandingFrames
-        if (audit.length !== 2 || BigInt(audit[1].tick) !== BigInt(audit[0].tick) + 1n || generationHistory.snapshot().latestTick !== audit[1].tick || generationStream.stats().tick !== audit[1].tick || generationStream.stats().lastError != null || Date.now() < audit[1].at || Date.now() - audit[1].at > 200 || witness.tick !== audit[1].tick) return null
-        for (const frame of audit) {
-          const replay = witness.physicsTrace.find(p => p.tick === frame.tick)
-          if (!replay || frame.life !== life || frame.scope !== userScope(state) || frame.health !== state.health || frame.forceRevision !== userBehaviorForceRevision || frame.rawStamp !== rawState.positionUpdatedAt || frame.anchorTick !== witness.anchorTick || frame.leaseAt !== anchor.leaseAt || BigInt(frame.tick) <= BigInt(witness.anchorTick) || !['x', 'y', 'z'].every(k => frame.rawPosition[k] === rawState.position[k] && Math.abs(replay.physicsState.position[k] - frame.physicsState.position[k]) <= 1e-4 && Math.abs(replay.physicsState.velocity[k] - frame.physicsState.velocity[k]) <= 1e-4) || !fullStandingGeometry({ position: frame.packetPosition, predicted: { physicsState: frame.physicsState } }, frame.physicsState.position)) return null
-        }
-        if (!['x', 'y', 'z'].every(k => Math.abs(audit[1].packetPosition[k] - state.position[k]) <= 1e-4)) return null
-        const owner = foragingLandingOwners.get(request.operationToken)
-        if (owner && (owner.signal !== request.signal || owner.isCurrent !== request.isCurrent || owner.targetKey !== key || owner.life !== life || owner.scope !== userScope(state))) return null
-        if (!owner) foragingLandingOwners.set(request.operationToken, { signal: request.signal, isCurrent: request.isCurrent, targetKey: key, life, scope: userScope(state) })
-        const lease = { operationToken: request.operationToken, signal: request.signal, isCurrent: request.isCurrent, targetKey: key, life, scope: userScope(state), health: state.health, rawStamp: rawState.positionUpdatedAt, rawPosition: { ...rawState.position }, anchorTick: witness.anchorTick, leaseAt: anchor.leaseAt, forceRevision: userBehaviorForceRevision, tick: witness.tick, position: { ...state.position }, velocity: { ...physical.velocity } }
-        if (request.mode === 'prepare') { const proof = Object.freeze({}); foragingLandingProofs.set(proof, lease); return proof }
-        if (request.mode !== 'consume' || !request.proof) return null
-        const saved = foragingLandingProofs.get(request.proof)
-        if (!saved || ['operationToken', 'signal', 'isCurrent', 'targetKey', 'life', 'scope', 'health', 'rawStamp', 'anchorTick', 'leaseAt', 'forceRevision', 'tick'].some(k => saved[k] !== lease[k]) || !['x', 'y', 'z'].every(k => saved.rawPosition[k] === lease.rawPosition[k] && Math.abs(saved.position[k] - lease.position[k]) <= 1e-4 && Math.abs(saved.velocity[k] - lease.velocity[k]) <= 1e-4) || request.isCurrent() !== true || request.signal.aborted) return null
-        foragingLandingProofs.delete(request.proof)
-        return request.proof
-      } catch { return null }
-    }
+    // This part lives in foraging-landing-runtime.js. It reads and writes these bindings of
+    // this closure through accessors, so each use sees the current value exactly
+    // as the code did when it was written here.
+    const foragingLandingRuntime = require('./foraging-landing-runtime').createForagingLandingRuntime({
+      get actualLifeId () { return actualLifeId },
+      get foraging () { return foraging }, set foraging ($value) { foraging = $value },
+      get foragingLandingOwners () { return foragingLandingOwners },
+      get foragingLandingProofs () { return foragingLandingProofs },
+      get fullStandingGeometry () { return fullStandingGeometry },
+      get generationForaging () { return generationForaging }, set generationForaging ($value) { generationForaging = $value },
+      get generationHistory () { return generationHistory },
+      get generationStream () { return generationStream },
+      get historyScope () { return historyScope },
+      get host () { return host }, set host ($value) { host = $value },
+      get lightweightUserState () { return lightweightUserState },
+      get queuedForageLandingFrames () { return queuedForageLandingFrames },
+      get queuedTailTrajectoryFree () { return queuedTailTrajectoryFree },
+      get raw () { return raw },
+      get requireGeneration () { return requireGeneration },
+      get userBehaviorForceRevision () { return userBehaviorForceRevision }, set userBehaviorForceRevision ($value) { userBehaviorForceRevision = $value },
+      get userScope () { return userScope }
+    })
+    function verifyForagingQueuedLanding (...args) { return foragingLandingRuntime.verifyForagingQueuedLanding(...args) }
 
     generationForaging = createForaging({ getState: () => { requireGeneration(); const state = observedState(); return { ...state, lifecycle: { ...(state.lifecycle ?? {}), deathId: Number.isSafeInteger(host.shared.deathRespawn?.deathId) ? actualLifeId() : null } } }, verifyQueuedLanding: verifyForagingQueuedLanding, world: host.world, entities: host.entities, movement: ownedMovement, getMovement: () => generationMovement.snapshot(), combat: { previewHunt: own(id => generationCombat.previewHunt(id)), hunt: own(id => runtimeOperations.operations.combat.hunt(id)), cancel: reason => generationCombat.cancel(reason) }, onProgress: data => { if (currentGeneration()) host.noteProgress(data) } })
     foraging = generationForaging
@@ -2456,6 +2461,7 @@ function createRuntime (host) {
       get generationCombat () { return generationCombat },
       get generationHut () { return generationHut },
       get generationInput () { return generationInput },
+      get generationLadder () { return generationLadder },
       get generationMovement () { return generationMovement },
       get generationPhysics () { return generationPhysics },
       get generationPillar () { return generationPillar }, set generationPillar (value) { generationPillar = value },
@@ -2492,6 +2498,7 @@ function createRuntime (host) {
       get quarryEgressTask () { return quarryEgressTask }, set quarryEgressTask (value) { quarryEgressTask = value },
       get quarryJob () { return quarryJob }, set quarryJob (value) { quarryJob = value },
       get quarryPillarTask () { return quarryPillarTask }, set quarryPillarTask (value) { quarryPillarTask = value },
+      get mineLadderTask () { return mineLadderTask },
       get quarryPlacementPreparation () { return quarryPlacementPreparation }, set quarryPlacementPreparation (value) { quarryPlacementPreparation = value },
       get quarryRetreatDepth () { return quarryRetreatDepth }, set quarryRetreatDepth (value) { quarryRetreatDepth = value },
       get raw () { return raw },
@@ -2733,6 +2740,7 @@ function createRuntime (host) {
     const receiptState = raw()
     quarryEgressAbort?.abort(new Error(reason ?? 'EGRESS_INTERRUPTED'))
     quarryPillar?.cancel(reason ?? 'ASCENT_INTERRUPTED')
+    mineLadder?.cancel(reason ?? 'LADDER_INTERRUPTED')
     quarryPositionVerifier?.cancel(reason ?? 'POSITION_QUERY_INTERRUPTED')
     storagePlacementAudit?.cancel(reason ?? 'STORAGE_AUDIT_INTERRUPTED')
     plainsLocator?.cancel()
@@ -2768,7 +2776,7 @@ function createRuntime (host) {
     const keepSafety = !disposing && !disposed && reason === 'ダメージを検知しました。' && current.phase === 'spawned' && !current.dead && !current.isDead && Number.isFinite(current.health) && current.health > 0
     if (!keepSafety) safetyDispatchEpoch++
     const safetyCleanup = keepSafety ? null : idleSafety?.stop(reason)
-    const cleanup = Promise.allSettled([quarryPillarTask, quarryEgressTask, userCleanup, safetyCleanup, keepSafety ? null : idleSafety?.drain(), excavation?.stop(reason), tunneling?.stop(reason), recoveryCleanup, foraging?.stop(reason), surfaceReturn?.stop(reason), shelter?.stop(reason), hut?.stop(reason), combatCleanup, guardCleanup])
+    const cleanup = Promise.allSettled([quarryPillarTask, mineLadderTask, quarryEgressTask, userCleanup, safetyCleanup, keepSafety ? null : idleSafety?.drain(), excavation?.stop(reason), tunneling?.stop(reason), recoveryCleanup, foraging?.stop(reason), surfaceReturn?.stop(reason), shelter?.stop(reason), hut?.stop(reason), combatCleanup, guardCleanup])
     pendingStops.add(cleanup)
     cleanup.finally(() => pendingStops.delete(cleanup))
     mining.stop(reason)
@@ -2992,6 +3000,7 @@ function createRuntime (host) {
     get measureSnapshots () { return measureSnapshots },
     get mining () { return mining },
     get missionJournal () { return missionJournal },
+    get mineLadder () { return mineLadder },
     get missionReady () { return missionReady },
     get motionOrigin () { return motionOrigin }, set motionOrigin (value) { motionOrigin = value },
     get movement () { return movement }, set movement (value) { movement = value },
@@ -4059,7 +4068,7 @@ function createRuntime (host) {
     operations: runtimeOperations.operations, snapshot: getSnapshot, applyPacket, onSpawn, onRespawn, stopActions, resumeRequested,
     canReload: () => {
       const snapshot = createSnapshotReader()
-      return !quarryPlacementPreparation && !chunkMoveHeld() && !resetHeld() && !manualChestStorage?.isBusy() && !host.shared.quarrySurfaceStorageOwner && !quarryV22Equipment.status().busy && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !armor.snapshot().busy && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && snapshot(mining).phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !snapshot(food).busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(snapshot(furnace).busy || chestStatus().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !snapshot(combat)?.busy && !snapshot(combat)?.defending && !snapshot(combat)?.engaging
+      return !quarryPlacementPreparation && !chunkMoveHeld() && !resetHeld() && !manualChestStorage?.isBusy() && !host.shared.quarrySurfaceStorageOwner && !quarryV22Equipment.status().busy && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !armor.snapshot().busy && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !mineLadder?.snapshot().busy && !mineLadderTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && snapshot(mining).phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !snapshot(food).busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(snapshot(furnace).busy || chestStatus().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !snapshot(combat)?.busy && !snapshot(combat)?.defending && !snapshot(combat)?.engaging
     },
     dispose: async reason => {
       if (disposed) return

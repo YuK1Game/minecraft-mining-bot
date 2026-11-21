@@ -32,6 +32,7 @@ const { stationWorldScope, supplyScope } = require('../survival/supply-return')
 const { nextObjective } = require('./player-goal')
 const { guardDragonOperations } = require('./dragon-ports')
 const { createDragonRuntime } = require('./dragon-runtime')
+const { createMinePorts } = require('./mining/mine-ports')
 const { expeditionTrip } = require('./dragon-trip')
 const { pruneTunnelFloors } = require('./player-floor-prune')
 const { noteDamage } = require('./damage-note')
@@ -332,8 +333,10 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       }
       const actions = guardDragonOperations(operations, cancelled)
       const hands = buildHands(cancelled, actions)
-      return { operations: actions, runtime, shared, root, log, getBlock, where, feetNow, getFeet: feetNow,
+      const ctx = { operations: actions, runtime, shared, root, log, getBlock, where, feetNow, getFeet: feetNow,
         hands, walk: hands.walk, drop: (slot, count) => cancelled() ? null : storagePorts.drop(slot, count), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null }, travelTo: travel, climbUp: () => tripRise(null, () => climbUp(cancelled)), storage, cancelled, signal }
+      ctx.minePorts = createMinePorts(ctx)
+      return ctx
     }
   })
   // Direct resumes inside the runtime also consult the selected player's owner.

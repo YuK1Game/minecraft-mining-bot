@@ -206,7 +206,8 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     const feet = { x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62 + 0.001), z: Math.floor(state.position.z) }
     const feetY = state.position.y - 1.62
     const support = world.getBlock(feet.x, feet.y - 1, feet.z)
-    if (Math.abs(feetY - Math.round(feetY)) > 0.05 || !support.known || AIR.has(blockName(support)) || HAZARDS.test(blockName(support))) {
+    const slabFooting = !['pillar_descent', 'travel_down'].includes(target.accessPreparation) && require('../common/cobblestone-slab').bottomSlabFooting(world, state)
+    if (!slabFooting && (Math.abs(feetY - Math.round(feetY)) > 0.05 || !support.known || AIR.has(blockName(support)) || HAZARDS.test(blockName(support)))) {
       throw new Error('通常の地面に静止していることを確認できません。')
     }
     const descent = target.accessPreparation === 'pillar_descent'

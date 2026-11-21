@@ -25,7 +25,7 @@ test('reuse the house and survival jobs until actual equipment exists', () => {
     memory.early.reserveReady = true
     const next = earlyObjective({ inventory, house, memory })
     assert.equal(next.id, 'diamond')
-    assert.equal(next.legacy, true)
+    assert.equal(next.legacy, false)
   }
   assert.equal(earlyObjective({ inventory: observed(kit.slice(0, 2)), worn: worn(kit.slice(2).map(piece => piece.name)), house }).id, 'home_spawn')
   assert.equal(earlyObjective({ inventory: { ...observed(), uncertain: true }, house }).id, 'observe')
@@ -58,7 +58,7 @@ test('acquires missing reserve item away from the chest without re-inspecting on
   assert.equal(state.reserveReady, undefined)
   assert.equal((await runDragonEarly(ctx)).done, false)
   assert.equal(state.reserveReady, true)
-  assert.equal(earlyObjective({ inventory: ctx.runtime.inventory(), house, memory: ctx.memory }).legacy, true)
+  assert.equal(earlyObjective({ inventory: ctx.runtime.inventory(), house, memory: ctx.memory }).legacy, false)
 })
 
 test('Nether handover waits for the worn gold slot and supplies; the reserve stays banked', async () => {

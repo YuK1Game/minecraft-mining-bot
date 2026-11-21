@@ -30,7 +30,7 @@ const left = item => {
 const kind = name => bare(name).replace(/^(?:diamond|netherite)_/, '')
 
 // The next piece to make: { output, diamonds, sticks } or null.
-function nextGear ({ items = [], worn = null, diamonds = 0 } = {}) {
+function nextGearNeed ({ items = [], worn = null } = {}) {
   const owned = new Set()
   for (const item of items) if (item?.count > 0 && /^(?:diamond|netherite)_/.test(bare(item.name)) && !(kind(item.name) === 'pickaxe' && (left(item) ?? Infinity) < WORN)) owned.add(kind(item.name))
   const wornKnown = worn?.known === true && Array.isArray(worn.worn)
@@ -38,9 +38,14 @@ function nextGear ({ items = [], worn = null, diamonds = 0 } = {}) {
   for (const piece of GEAR) {
     if (owned.has(kind(piece.output))) continue
     if (piece.armor && !wornKnown) return null
-    return diamonds >= piece.diamonds ? { ...piece } : null
+    return { ...piece }
   }
   return null
 }
 
-module.exports = { nextGear, GEAR, WORN }
+function nextGear ({ items = [], worn = null, diamonds = 0 } = {}) {
+  const piece = nextGearNeed({ items, worn })
+  return piece && diamonds >= piece.diamonds ? piece : null
+}
+
+module.exports = { nextGear, nextGearNeed, GEAR, WORN }

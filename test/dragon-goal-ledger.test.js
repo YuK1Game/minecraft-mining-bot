@@ -264,6 +264,15 @@ test('the goal key follows the objective, not the step; no key while it cannot b
   assert.equal(goalKey({ stage: 'early' }, { id: 'home_reserve' }), 'early.home_reserve')
   assert.equal(goalKey({ stage: 'early' }, { id: 'observe' }), null)
   assert.equal(goalKey({ stage: 'early' }, { id: 'diamond', legacy: true }), null)
+  assert.equal(goalKey({ stage: 'early' }, { id: 'diamond', legacy: false }), 'early.diamond')
+})
+
+test('a mining plan is no diamond progress, while received diamonds and crafted gear are measured',()=>{
+  const key='early.diamond',record={stage:'early',early:{mine:{branch:{plan:{layers:[{id:'upper',y:16}],evaluation:{oreUnion:Array(100).fill({resource:'diamond'})}}}}}}
+  assert.equal(measure({key,items:[],worn:[],record}).value,0)
+  const ore=measure({key,items:[item('diamond',3)],worn:[]}).value
+  const pick=measure({key,items:[item('diamond_pickaxe')],worn:[]}).value
+  assert.ok(ore>0 && pick>ore)
 })
 
 test('after a decision the goal is measured from what is received: what was used up and is gathered again is a result, and gives no decision back', () => {

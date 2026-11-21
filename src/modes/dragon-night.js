@@ -32,6 +32,8 @@ async function nightHome (ctx, { clock, approach = approachHome, now = ctx.now ?
   if (!night() || !house?.origin || houseDuty(house)) return null
   const bed = bedOf(house.origin)
   if (!bed) return null
+  const returning = await require('./mining/mine-controller').beforeSurfaceSupply(ctx)
+  if (returning) return waiting('夜のため、確認済みのはしごで採掘場の入口へ戻ります。' + (returning.result?.detail ?? ''))
   if (!await approach(ctx, bed)) return waiting('夜のため、本拠点へ戻ります。')
   const block = ctx.getBlock(bed.x, bed.y, bed.z)
   const state = ctx.shared.dragonNight ??= {}
