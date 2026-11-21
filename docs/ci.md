@@ -51,7 +51,7 @@ CI（`.github/workflows/ci.yml`、「Bot regression CI」）が何を実行す�
 
 原因はテストが分割済みの Runtime を一つの文字列へ戻す際に、各モジュールの相対パスとファイル先頭の依存を失っていたことです。パスだけを直すと、次は `createDragonRuntimePorts` が未定義になります。`test/helpers/runtime-fixture.js` は実ファイルのスコープと相対 `require` を保持して読み込み、依存の差し替えを解決済みのモジュール名へそろえます。テストごとに Runtime の分割モジュールを隔離するので、反実仮想の変更が次のテストへ残りません。
 
-観測には共通の `inspection`、依存の差し替えには `runtimeOverrides`、限定した反実仮想にはファイル名を指定する `runtimeHooks.transforms` を使います。ソース内の観測点は一意に一致することを確認します。実 Runtime と対象の分割モジュールを読み込み、外部サービスの差し替えは既存 fixture の境界に限定します。Runtime 自体を成功固定値へ置き換えません。旧 `runtime-source.js` はソース構造を調べる既存テスト用に残し、今回の実行テストは使いません。
+観測には共通の `inspection`、依存の差し替えには `runtimeOverrides`、限定した反実仮想にはファイル名を指定する `runtimeHooks.transforms` を使います。入力ソースの改行をそろえてから変換し、観測点が一意に一致することを確認します。Windowsの改行をRuntime本体と分割モジュールへ与える回帰も `review-runtime-fixture.test.js` で検査します。実 Runtime と対象の分割モジュールを読み込み、外部サービスの差し替えは既存 fixture の境界に限定します。Runtime 自体を成功固定値へ置き換えません。旧 `runtime-source.js` はソース構造を調べる既存テスト用に残し、今回の実行テストは使いません。
 
 | 確認範囲 | 手元の結果（Node 24） |
 | --- | --- |

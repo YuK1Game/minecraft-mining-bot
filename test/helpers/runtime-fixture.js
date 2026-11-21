@@ -21,6 +21,7 @@ function installRuntimeFixture (root, overrides = {}, { transforms = {}, capture
   const edits = new Map(Object.entries(transforms).map(([name, edit]) => [path.resolve(src, name), edit]))
   const captureBinding = (key, value) => { capture[key] = value }
   const instrument = (source, filename) => {
+    source = source.replace(/\r\n/g, '\n')
     source = edits.get(filename)?.(source) ?? source
     if (!inspect) return source
     if (filename === runtimeFile) {
