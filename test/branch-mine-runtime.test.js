@@ -25,7 +25,8 @@ function fixture (t) {
 
 test('actual Runtime exposes the mine ports and forwards its shared Input frame and receipt', t => {
   const f = fixture(t)
-  for (const name of ['mineState', 'mineObserve', 'mineLadderMove', 'mineConfirmPosition']) assert.equal(typeof f.ports[name], 'function', name)
+  for (const name of ['mineState', 'mineObserve', 'mineLadderMove', 'mineLadderDiagnostics', 'mineConfirmPosition']) assert.equal(typeof f.ports[name], 'function', name)
+  assert.equal(f.ports.mineLadderDiagnostics().ladderOwnsInput, false)
   assert.equal(f.ports.mineState().lifecycle.deathId, 0)
   const input = f.wireInputOptions.at(-1)
   assert.equal(input.frameProvider({ tick: 1001n }), f.marker)

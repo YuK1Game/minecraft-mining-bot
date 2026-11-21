@@ -6,6 +6,7 @@ const { key, cell, air, solid, bottomSlab, full, held, receivedInventory, value,
 const { sameWorld, mineWorldScope } = require('./mine-state')
 const { digTool, toolNeeded } = require('../dig-tool')
 const { supportIntent, recordSupportReceipt } = require('./mine-support-receipt')
+const { mineLadderResult } = require('./mine-ladder-result')
 const NORMAL = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]]
 
 function createMineActions (ctx) {
@@ -175,18 +176,27 @@ function createMineActions (ctx) {
   async function ladderMove (request) {
     const scope = scopeOf(ctx)
     if (!same(scope)) return interrupted('MINE_SCOPE_CHANGED')
-    const result = await ctx.runtime.mineLadderMove?.(request, { signal: ctx.signal })
+    let result
+    try { result = await ctx.runtime.mineLadderMove?.(request, { signal: ctx.signal }) }
+    catch (error) { result = { status: 'failed', reason: error.code ?? error.message, serverConfirmed: false } }
     if (!same(scope)) return interrupted('MINE_SCOPE_CHANGED')
-    return result?.status === 'completed' && result.serverConfirmed === true ? result : result ?? wait('MINE_LADDER_UNAVAILABLE', 'owner_released')
+    return mineLadderResult(ctx, request, result)
   }
   async function observe ({ cells = null, reason = null } = {}) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
-    if (Array.isArray(cells) && cells.length && cells.every(p => cell(p) && block(p)?.known === true)) return done('MINE_TERRAIN_RECEIVED')
+    const known = () => Array.isArray(cells) && cells.length > 0 && cells.every(p => cell(p) && block(p)?.known === true)
+    if (known()) return done('MINE_TERRAIN_RECEIVED')
     const scope = scopeOf(ctx)
     if (!same(scope)) return wait('MINE_SCOPE_UNKNOWN', 'owner_released')
-    await ctx.runtime.mineObserve?.({ cells, reason }, { signal: ctx.signal })
+    const result = await ctx.runtime.mineObserve?.({ cells, reason }, { signal: ctx.signal })
     if (!same(scope)) return interrupted('MINE_SCOPE_CHANGED')
-    return wait('MINE_TERRAIN_REQUESTED')
+    if (known()) return done('MINE_TERRAIN_RECEIVED', result?.evidence ?? {})
+    // Requests, including successful dispatches, are never terrain receipts.
+    // Preserve the observer's zero-target/waiting distinction for the survey.
+    if (['blocked', 'partial', 'failed', 'interrupted', 'cancelled'].includes(result?.status) && typeof result.code === 'string') {
+      return { ...result, serverConfirmed: false, evidence: { ...(result.evidence ?? {}), serverConfirmed: false } }
+    }
+    return wait(result?.code === 'MINE_TERRAIN_RECEIVED' ? 'MINE_TERRAIN_WAITING' : 'MINE_OBSERVATION_UNAVAILABLE', 'terrain_received', { evidence: result?.evidence ?? null })
   }
   return { block, inventory, mine, place, placement, matches, walk, confirmPosition, ladderMove, observe, house, save, done, wait }
 }

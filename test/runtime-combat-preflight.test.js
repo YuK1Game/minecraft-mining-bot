@@ -17,7 +17,6 @@ let source = fs.readFileSync(filename, 'utf8').replace(/\r\n/g, '\n').split('\nt
 source = 'let testHooks;\n' + source
 source = source.replace(/^    '\.\/movement\/physics': .+$/m, "    './movement/physics': { createPhysics: options => testHooks.physics(options) }, './movement/navigation': { createNavigator: options => testHooks.navigator(options) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },")
 source = source.replace(/^    '\.\/safety\/idle-safety': .+$/m, "    './safety/idle-safety': { createIdleSafety: options => { testHooks.safetyOptions = options; return { snapshot: () => structuredClone(testHooks.protection), start: () => { testHooks.protection.running = true }, stop: async () => { testHooks.safetyStops++; testHooks.protection.running = false }, drain: async () => {}, requestWorkClearance: () => ({ pending: false }) } } },")
-source = source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", "loaded._compile(testHooks.instrument(process.env.RUNTIME_TEST_SOURCE ? fs.readFileSync(process.env.RUNTIME_TEST_SOURCE, 'utf8') : require('./helpers/runtime-source').runtimeSource()), filename)")
 source += '\nmodule.exports = { scene, setHooks: value => { testHooks = value } }'
 const loaded = { exports: {} }
 new vm.Script(Module.wrap(source), { filename }).runInThisContext()(loaded.exports, Module.createRequire(filename), loaded, filename, path.dirname(filename))
@@ -28,13 +27,6 @@ function fixture (t) {
     navigator: options => {
       const actual = createNavigator({ ...options, physics: options.physics ?? prepared.withWorld(options.world, { allowWater: options.allowWater ?? false }) })
       return { ...actual, plan: (...args) => { const result = actual.plan(...args); hooks.native.push({ target: copy(args[1]), options: copy(args[2]), result: copy(result) }); return result } }
-    },
-    instrument: runtimeSource => {
-      const ownerDeclaration = '    const owners = { inventory: null, combat: null, hut: null, escape: null }'
-      assert.ok(runtimeSource.includes(ownerDeclaration))
-      // Test-only access to the actual Root ownership object. No production
-      // source or ownership algorithm is replaced by this inspection seam.
-      return runtimeSource.replace(ownerDeclaration, ownerDeclaration + '\n    host.__testCombatOwners = owners')
     }
   }
   loaded.exports.setHooks(hooks)
@@ -72,7 +64,6 @@ test('another outside actor circle does not veto an armed near claim', async t =
   f.actors.push(other)
   const current = f.facadeOptions.getState(), canonical = evaluateThreats(current, current.entities, { observationRadius: 32 })
   assert.ok(canonical.outsideDanger.some(actor => actor.runtimeId === other.runtimeId && actor.dangerRadius === 5))
-  const beforeMotion = f.mockMovement.snapshot(), beforeWire = f.wire.length
   const context = f.context(), token = await f.facadeOptions.acquireControl(context)
   assert.notEqual(token.acquired, false)
   await f.facadeOptions.resumeControl({ ...context, token })
@@ -85,20 +76,23 @@ test.skip('(superseded) outside actor circle kept Safety running', async t => {
   assert.equal(f.wire.length, beforeWire)
 })
 
-test('an unarmed claim preserves the actual owned escape and its fresh confirmed moving frame', async t => {
+test('a selected nearby unarmed combat claim takes priority over an owned escape without sending an attack', async t => {
   const f = fixture(t)
-  f.target.position.x = 2.2 // Already within ordinary fist range: the escape veto must run first.
+  f.target.position.x = 2.2 // Current combat policy takes priority inside ordinary fist range.
   const owner = { operationId: 'controlled-owned-escape' }
-  f.host.__testCombatOwners.escape = owner
+  f.inspection.safety.owners.escape = owner
   Object.assign(f.hooks.protection, { running: true, busy: true, active: 'escape', phase: 'escaping' })
   f.setMovement({ phase: 'moving', running: true, route: { operation: 'navigate' }, queuedReceiptConfirmed: true, queuedAt: Date.now(), queuedTick: '1001', sent: 1, serverConfirmed: false })
-  const before = f.mockMovement.snapshot(), beforeWire = f.wire.length
+  const beforeWire = f.wire.length
   const token = await f.facadeOptions.acquireControl(f.context())
-  assert.equal(token.acquired, false)
-  assert.equal(f.host.__testCombatOwners.escape, owner)
-  assert.deepEqual(f.mockMovement.snapshot(), before)
-  assert.equal(f.hooks.safetyStops, 0)
-  assert.equal(f.hooks.protection.running, true)
-  assert.equal(f.hooks.native.length, 0, 'The owned unarmed escape veto precedes attack and route surveys')
+  // docs/combat-mode-spec.md: combat acquisition stops an existing escape;
+  // the bound combat controller still owns all weapon and pose validation.
+  assert.notEqual(token.acquired, false)
+  assert.equal(f.mockMovement.snapshot().running, false)
+  assert.equal(f.mockMovement.snapshot().phase, 'stopped')
+  assert.equal(f.hooks.safetyStops, 1)
+  assert.equal(f.hooks.protection.running, false)
+  assert.equal(f.hooks.native.length, 0, 'The admission itself sends no approach movement')
   assert.equal(f.wire.length, beforeWire)
+  await f.facadeOptions.resumeControl({ ...f.context(), token })
 })

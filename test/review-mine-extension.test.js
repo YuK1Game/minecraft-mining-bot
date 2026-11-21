@@ -99,9 +99,12 @@ test('unknown lower extension waits without altering durable upper work, then re
   const branch = { plan, progress: { upper }, shaft: { depth: 32, landings: { upper: true }, entry: true }, storage: { pairs: { 'upper:supply': { slots: 54 } } } }
   const before = structuredClone(branch), observed = [], saved = []
   const ctx = { shared: {}, memory: { early: { mine: { branch } } }, cancelled: () => false, getFeet: () => plan.shaft.approach, getBlock: f.world.getBlock,
-    runtime: { mineState: f.getState, inventory: () => ({ known: true, items: [] }), host: () => ({ world: f.world }) }, minePorts: { observe: async request => observed.push(request) }, saveMine: async () => { saved.push(structuredClone(branch)); return true } }
+    runtime: { mineState: f.getState, inventory: () => ({ known: true, items: [] }), host: () => ({ world: f.world }) }, minePorts: { observe: async request => {
+      observed.push(request)
+      return require('../src/modes/return/return-result').blocked('MINE_TERRAIN_UNREQUESTABLE', { kind: 'position_changed' }, { evidence: { requested: 0, packets: 0, reason: 'unannounced_or_pending' } })
+    } }, saveMine: async () => { saved.push(structuredClone(branch)); return true } }
   const first = await ensureMineLayer(ctx, branch, { resource: 'diamond', targetHeld: 4 })
-  assert.equal(first.status, 'blocked'); assert.equal(first.code, 'MINE_LOWER_ORE_OBSERVATION_NEEDED')
+  assert.equal(first.status, 'blocked'); assert.equal(first.code, 'MINE_TERRAIN_UNREQUESTABLE')
   assert.deepEqual(branch.plan, before.plan); assert.deepEqual(branch.progress, before.progress)
   assert.ok(observed.length > 0)
   const previousSearch = branch.extensionSearch
@@ -131,4 +134,20 @@ test('legacy two-layer geometry and saved states remain valid; cancelled or unsa
   assert.equal((await ensureMineLayer(ctx, branch, { resource: 'diamond', targetHeld: 1 })).code, 'MINE_CHECKPOINT')
   assert.deepEqual(branch, previous)
   assert.throws(() => extendMineGeometry(old, { lowerY: -30 }), /EXTENSION_INVALID/)
+})
+
+test('receiving lower observation is partial until the real extension is planned, and unfinished work blocks survey return travel', async () => {
+  const f = plannerWorld({ minSection: 1 }), plan = constructedUpper(f), branch = { plan, progress: { upper: createMineState(plan, { layer: 'upper' }) } }
+  let calls = 0
+  const ctx = { shared: {}, memory: { early: { mine: { branch } } }, cancelled: () => false, getFeet: () => plan.shaft.approach, getBlock: f.world.getBlock,
+    runtime: { mineState: f.getState, inventory: () => ({ known: true, items: [] }), host: () => ({ world: f.world }) }, saveMine: async () => true,
+    minePorts: { observe: async () => { calls++; f.receive(-4, 0); return { status: 'completed', code: 'MINE_TERRAIN_RECEIVED', serverConfirmed: true } },
+      walk: async () => { throw Error('unfinished work cannot start survey travel') }, ladderMove: async () => { throw Error('unfinished work cannot start return travel') } } }
+  const observed = await ensureMineLayer(ctx, branch, { resource: 'diamond', targetHeld: 1 })
+  assert.equal(observed.status, 'partial'); assert.equal(observed.code, 'MINE_OBSERVATION_RECEIVED')
+  assert.equal(branch.plan.layers.length, 1); assert.equal(branch.progress.lower, undefined)
+  branch.segmentTask = { stepId: 'unfinished' }
+  branch.extensionSearch = { observation: { waits: 3 } }
+  const stopped = await ensureMineLayer(ctx, branch, { resource: 'diamond', targetHeld: 1 })
+  assert.equal(stopped.code, 'MINE_EXTENSION_PENDING_WORK'); assert.equal(calls, 1)
 })

@@ -8,7 +8,7 @@ const { createSessionCache } = require('../src/host/session-cache')
 const actualAutonomy = require('../src/survival/autonomy')
 const air = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra: { has_nbt: 'false', can_place_on: [], can_destroy: [] } })
 
-function scene (t, { realFacade = false, nativeStanding = false, runtimeOverrides = {} } = {}) {
+function scene (t, { realFacade = false, nativeStanding = false, runtimeOverrides = {}, runtimeHooks = {} } = {}) {
   t.mock.timers.enable({ apis: ['setInterval'] })
   let worldReads = 0, tick = 1000n, sent = 0, running = false, predicted = null, movementState = { phase: 'idle', running: false, sent: 0 }, facadeOptions, recoveryOptions, autonomyOptions, historyRevision = 0
   const events = [], wire = [], facadeWire = [], movementStarts = [], recoverPreviews = { sync: 0, async: 0 }, counters = { invalidates: [], facadeTicks: 0, facadeCancels: 0, idleStarts: 0, inputStops: 0, autonomyStarts: 0 }
@@ -41,11 +41,12 @@ function scene (t, { realFacade = false, nativeStanding = false, runtimeOverride
   }
   const filename = path.resolve(__dirname, '../src/runtime.js'), loaded = new Module(filename, module)
   loaded.filename = filename; loaded.paths = Module._nodeModulePaths(path.dirname(filename)); loaded.require = name => overrides[name] ?? Module.prototype.require.call(loaded, name)
+  const inspection = require('./helpers/runtime-fixture').installRuntimeFixture(loaded, overrides, runtimeHooks)
   loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)
   const runtime = loaded.exports.createRuntime(host)
   t.after(async () => { await runtime.dispose('test_cleanup') })
   const scope = () => ({ profile: raw.profile, realmId: raw.realm.id, connectionId: raw.connectionId, startedAt: raw.startedAt, runtimeEntityId: raw.runtimeEntityId, dimension: raw.dimension, deathId: shared.deathRespawn.deathId })
-  return { runtime, host, raw, shared, facadeState, facadeWire, facadeOptions, recoveryOptions, recovery, recoverPreviews, autonomyOptions, actors, mockMovement, events, counters, wire, scope, wireInputOptions, wireMovementOptions, worldReads: () => worldReads, advance: ms => t.mock.timers.tick(ms), setMovement: value => { movementState = value }, unexpectedQueuedInput: () => { sent++; tick++ } }
+  return { runtime, host, raw, shared, facadeState, facadeWire, facadeOptions, recoveryOptions, recovery, recoverPreviews, autonomyOptions, actors, mockMovement, events, counters, wire, scope, wireInputOptions, wireMovementOptions, worldReads: () => worldReads, advance: ms => t.mock.timers.tick(ms), setMovement: value => { movementState = value }, unexpectedQueuedInput: () => { sent++; tick++ }, inspection }
 }
 
 function capturedPhantomScene (t) {
@@ -256,6 +257,7 @@ test('Native hop wrappers pin motion and refuse generic input until ID-matched s
 })
 test('ordinary NAV intent is scoped, while recovery water waypoints cannot overwrite it', t => {
   const f = scene(t), destination = { x: 4.5, y: 63, z: 4.5 }
+  Object.assign(f.shared.deathRespawn, { connectionId: f.raw.connectionId, phase: 'confirmed', serverConfirmed: true })
   f.runtime.operations.movement.start(destination, { allowWater: true }); f.mockMovement.stop(); assert.deepEqual(f.recoveryOptions.getDestination(f.facadeOptions.getState()).position, destination)
   f.recoveryOptions.movement.start({ x: 2.5, y: 63, z: 2.5 }, { allowWater: true, emergency: true }); assert.deepEqual(f.recoveryOptions.getDestination(f.facadeOptions.getState()).position, destination)
   f.shared.deathRespawn.deathId++; assert.equal(f.recoveryOptions.getDestination(f.facadeOptions.getState()), null); assert.equal(f.recoveryOptions.flatShoreOnly, true)

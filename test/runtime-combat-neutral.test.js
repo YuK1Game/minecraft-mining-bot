@@ -21,7 +21,6 @@ let source = 'let testHooks;\n' + fs.readFileSync(filename, 'utf8').replace(/\r\
 source = source.replace(/^    '\.\/movement\/physics': .+$/m, "    './movement/physics': { createPhysics: options => testHooks.physics(options) }, './movement/navigation': { createNavigator: options => testHooks.navigator(options) }, './movement/movement': { createMovement: options => { wireMovementOptions.push(options); return mockMovement } },")
 source = source.replace(/^    '\.\/movement\/input': .+$/m, "    './movement/input': { createInput: options => { wireInputOptions.push(options); return testHooks.input(options) } },")
 source = source.replace(/^    '\.\/movement\/input-history': .+$/m, "    './movement/input-history': { createInputHistory: options => testHooks.history(options) },")
-source = source.replace("loaded._compile(fs.readFileSync(process.env.RUNTIME_TEST_SOURCE ?? filename, 'utf8'), filename)", "loaded._compile(testHooks.instrument(process.env.RUNTIME_TEST_SOURCE ? fs.readFileSync(process.env.RUNTIME_TEST_SOURCE, 'utf8') : require('./helpers/runtime-source').runtimeSource()), filename)")
 source += '\nmodule.exports = { scene, setHooks: value => { testHooks = value } }'
 const loaded = { exports: {} }
 new vm.Script(Module.wrap(source), { filename }).runInThisContext()(loaded.exports, Module.createRequire(filename), loaded, filename, path.dirname(filename))
@@ -41,14 +40,14 @@ function fixture (t, { legacy = false, processNow = null } = {}) {
       return actualInput
     },
     instrument: runtimeSource => {
-      const line = "      if (lease.kind === 'combat') startIdle()"
+      const line = "        rt.startIdle()\n        return token"
       assert.ok(runtimeSource.includes(line), 'Run against the staged combat-neutral Runtime')
       // The old control removes exactly the proposed timer-start statement.
-      return legacy ? runtimeSource.replace(line, '') : runtimeSource
+      return legacy ? runtimeSource.replace(line, '        return token') : runtimeSource
     }
   }
   loaded.exports.setHooks(hooks)
-  const f = loaded.exports.scene(t)
+  const f = loaded.exports.scene(t, { runtimeHooks: { transforms: { 'runtime/user-control-runtime.js': hooks.instrument } } })
   f.raw.positionUpdatedAt = new Date(epoch).toISOString()
   f.host.setPrediction = prediction => { f.shared.prediction = { ...copy(prediction), source: 'client_prediction', serverConfirmed: false, updatedAt: new Date(wallNow()).toISOString() } }
   f.host.getState = () => ({ ...copy(f.raw), rawServerPosition: copy(f.raw.position), rawServerPositionUpdatedAt: f.raw.positionUpdatedAt, ...(f.shared.prediction ? { position: copy(f.shared.prediction.position), predicted: copy(f.shared.prediction), positionSource: 'client_prediction', positionServerConfirmed: false, positionUpdatedAt: f.shared.prediction.updatedAt } : {}) })
