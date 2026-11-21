@@ -44,6 +44,22 @@ test('cobblestone collection uses an exposed face instead of repeatedly approach
   assert.equal(w.lines.some(line => LEFT.test(line)), false)
 })
 
+test('a shallow soil cover exposes stone for the next ordinary collection without a long trip', async () => {
+  const w = createDigWorld({ x0: 0, z0: 0, feet: { x: 0.5, y: 64, z: 0.5 }, rows: {}, legend: {} }, {
+    outside: (x, y, z) => x === 2 && y === 62 && z === 0 ? 'stone' : y === 63 ? 'grass_block' : y < 63 ? 'dirt' : 'air'
+  })
+  w.ctx.hands.canDig = () => { throw new Error('the rock-only hand-dig action cannot clear soil') }
+  assert.deepEqual(inView(w.ctx, 'cobblestone'), [])
+  await collect(w.ctx, 'cobblestone')
+  assert.equal(w.getBlock(2, 63, 0).name, 'minecraft:air')
+  assert.equal(w.getBlock(0, 63, 0).name, 'minecraft:grass_block')
+  assert.equal(w.count('cobblestone'), 0)
+  await collect(w.ctx, 'cobblestone')
+  assert.equal(w.count('cobblestone'), 1)
+  assert.deepEqual(w.minedNames, ['grass_block', 'stone'])
+  assert.deepEqual(w.trips, [])
+})
+
 test('the received place: on coal ore beside the lake, 49 coal ores in view, the six nearest against the water', () => {
   const w = scene()
   assert.deepEqual(w.cell(), { x: 9916, y: 58, z: 10162 })

@@ -11,6 +11,7 @@ const { inside, leaveHouse } = require('./house/house-exit')
 const { doorOf, openDoor } = require('./house/house-door')
 const { createBuildWalk } = require('./player-build-walk')
 const { sightPassable } = require('../actions/interaction-sight')
+const { uncoverStone, walkStoneStand } = require('./dragon-stone-cover')
 
 const SOURCES = {
   raw_iron: /^(?:deepslate_)?iron_ore$/, raw_gold: /^(?:deepslate_)?gold_ore$/,
@@ -170,6 +171,10 @@ async function collect (ctx, name) {
         await approach(ctx, trunk ? { x: target.x, y: trunk[0].y, z: target.z } : target)
       }
       if (ctx.cancelled()) return
+      if (name === 'cobblestone' && !ctx.hands.canMine(target)) {
+        await walkStoneStand(ctx, target, () => ctx.hands.canMine(target), [0, 1, 2, 3, -1])
+      }
+      if (ctx.cancelled()) return
       if (!ctx.hands.canMine(target)) {
         if (!oreSearch || !await approachOre(ctx, target) || ctx.cancelled()) { left(); continue }
         // Tunneling may have equipped another pick. Restore the proper tool
@@ -186,6 +191,8 @@ async function collect (ctx, name) {
       }
       left()
     }
+    if (name === 'cobblestone' && ctx.runtime.raw().dimension === 'overworld' &&
+        await uncoverStone(ctx, { findCells, rested, skip })) return
   }
   if (oreSearch) {
     if (name === 'obsidian' && await coolLava(ctx, findCells(ctx, lake))) return
