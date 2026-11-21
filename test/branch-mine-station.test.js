@@ -8,7 +8,7 @@ const { createHousePorts } = require('../src/modes/house/house-ports')
 const { createInteractions } = require('../src/actions/interactions')
 const { openAccess } = require('../src/actions/open-face')
 
-function fixture ({ enclosed = false, failWalk = false, cancelWalk = false } = {}) {
+function fixture ({ enclosed = false, failWalk = false, cancelWalk = false, raisedFloor = false } = {}) {
   const plan = createMineGeometry({ scope: { profile: 'p', realmId: 'r', dimension: 'overworld' }, anchor: { x: 0, z: 0 }, surfaceY: 64, upperY: 16, lowerY: -54 })
   const stock = { stick: 8, oak_log: 8, oak_planks: 8, furnace: 1, torch: 0, ladder: 128, cobblestone: 128, cobblestone_slab: 128, chest: 6 }
   const inventory = { known: true, items: Object.entries(stock).map(([name, count], slot) => ({ name: 'minecraft:' + name, count, slot })) }
@@ -17,7 +17,8 @@ function fixture ({ enclosed = false, failWalk = false, cancelWalk = false } = {
   blocks.set(key(furnace), block('furnace'))
   blocks.set('-1,64,0', block('stone')); blocks.set('-1,65,0', block('stone'))
   if (enclosed) for (const [x, y, z] of [[-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) blocks.set(key({ x: furnace.x + x, y: furnace.y + y, z: furnace.z + z }), block('stone'))
-  const getBlock = (x, y, z) => blocks.get(`${x},${y},${z}`) ?? block(y < 64 ? 'stone' : 'air')
+  const getBlock = (x, y, z) => blocks.get(`${x},${y},${z}`) ??
+    block(y < 64 || raisedFloor && y === 64 && (x !== 0 || z !== 0) ? 'stone' : 'air')
   let feet = { x: 0.5, y: 64, z: 0.5 }, cancelled = false, why = null, clock = 0
   const walks = [], placements = [], smelts = []
   const ctx = { getFeet: () => feet, cancelled: () => cancelled, memory: { early: { mine: { branch: { plan } } } }, supplies: { acquire: async () => { throw new Error('fixture already carries the station and charcoal ingredients') } } }
@@ -73,6 +74,15 @@ test('a received stand around the wall allows the existing furnace to be reused'
   assert.ok(f.walks.length > 0 && f.walks.length <= 4)
   assert.equal(f.placements.length, 0)
   assert.deepEqual(f.smelts, [f.furnace])
+})
+
+test('a held station can be placed on a visible ledge above the current feet', async () => {
+  const f = fixture({ enclosed: true, raisedFloor: true })
+  const out = await f.supplies.ensure(f.plan)
+  assert.equal(out.code, 'MINE_CHARCOAL_RECEIVED')
+  assert.equal(f.placements.length, 1)
+  assert.equal(f.placements[0].position.y, 65)
+  assert.equal(f.placements[0].clicked.y, 64)
 })
 
 test('unreachable stands exhaust a finite budget then use the held station', async () => {

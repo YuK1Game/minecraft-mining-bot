@@ -7,6 +7,7 @@ const { insideMine } = require('./mine-location')
 const { takeSupplies } = require('./mine-stock')
 const { supplyNeeds } = require('./mine-needs')
 const { count } = require('../dragon-supply-kit')
+const { placementTopVisible, planPlacementAccess } = require('../../actions/action-access')
 
 // Infrastructure is prepared in bounded batches. Torches can bootstrap from
 // charcoal, so preparing a coal mine never recursively starts another mine.
@@ -34,6 +35,44 @@ function createMineSupplies (ctx, actions, storage) {
     const far = at => Math.hypot(at.x + 0.5 - p.x, at.y - p.y, at.z + 0.5 - p.z)
     return found.sort((a, b) => far(a) - far(b)).slice(0, 4)
   }
+  async function placeStation (name, branch) {
+    const eye = () => {
+      const feet = ctx.getFeet()
+      return feet && { ...feet, y: feet.y + 1.62 }
+    }
+    const feet = ctx.getFeet()
+    if (!feet) return { result: wait('MINE_POSITION_UNKNOWN') }
+    const centre = { x: Math.floor(feet.x), y: Math.floor(feet.y + 0.001), z: Math.floor(feet.z) }
+    const shaft = branch?.plan?.shaft
+    const reserved = p => shaft?.columns.some(c => c.x === p.x && c.z === p.z) ||
+      shaft?.approach && Math.floor(shaft.approach.x) === p.x && Math.floor(shaft.approach.z) === p.z
+    const targets = [], ground = []
+    for (let x = centre.x - 3; x <= centre.x + 3; x++) for (let z = centre.z - 3; z <= centre.z + 3; z++) {
+      for (let y = centre.y - 2; y <= centre.y + 2; y++) {
+        const position = { x, y, z }, floor = { x, y: y - 1, z }
+        const block = actions.block(floor)
+        if (!solid(block) || !air(actions.block(position)) || !air(actions.block({ x, y: y + 1, z }))) continue
+        ground.push({ ...block, position: floor })
+        if (!reserved(position) && Math.hypot(x + 0.5 - feet.x, z + 0.5 - feet.z) >= 1.1) targets.push(position)
+      }
+    }
+    const distance = p => Math.hypot(p.x + 0.5 - feet.x, p.y - feet.y, p.z + 0.5 - feet.z)
+    targets.sort((a, b) => distance(a) - distance(b))
+    const visible = position => placementTopVisible({ state: { position: eye() }, target: position, getBlock: actions.block })
+    let position = targets.find(visible)
+    if (!position) {
+      const access = planPlacementAccess({ state: { position: eye() }, targets, blocks: ground, getBlock: actions.block })
+      if (!access) return { result: wait('MINE_STATION_SPACE_UNAVAILABLE') }
+      const moved = await actions.walk(access.standpoint)
+      if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
+      if (!confirmed(moved)) return { result: moved }
+      if (!visible(access.target)) return { result: wait('MINE_STATION_SIGHT_CHANGED') }
+      position = access.target
+    }
+    if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
+    const placed = await actions.place({ position, name, clicked: { ...position, y: position.y - 1 }, face: 1 })
+    return confirmed(placed) ? { position } : { result: placed }
+  }
   async function station (name) {
     const branch = ctx.memory?.early?.mine?.branch
     if (insideMine(ctx, branch)) {
@@ -59,16 +98,7 @@ function createMineSupplies (ctx, actions, storage) {
       }
     }
     if (have(name) < 1) return { result: await acquire(name, 1) }
-    const feet = ctx.getFeet()
-    if (!feet) return { result: wait('MINE_POSITION_UNKNOWN') }
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]]) {
-      const p = { x: Math.floor(feet.x) + dx, y: Math.ceil(feet.y), z: Math.floor(feet.z) + dz }
-      if (branch?.plan?.shaft.columns.some(c => c.x === p.x && c.z === p.z) || branch?.plan?.shaft.approach && Math.floor(branch.plan.shaft.approach.x) === p.x && Math.floor(branch.plan.shaft.approach.z) === p.z) continue
-      if (!air(actions.block(p)) || !solid(actions.block({ ...p, y: p.y - 1 })) || !air(actions.block({ ...p, y: p.y + 1 }))) continue
-      const placed = await actions.place({ position: p, name, clicked: { ...p, y: p.y - 1 }, face: 1 })
-      return confirmed(placed) ? { position: p } : { result: placed }
-    }
-    return { result: wait('MINE_STATION_SPACE_UNAVAILABLE') }
+    return placeStation(name, branch)
   }
   async function planks (amount) {
     if (have('planks') < amount) return acquire('planks', amount)
