@@ -10,6 +10,7 @@ const full = name => 'minecraft:' + name
 const empty = () => ({ network_id: 0, count: 0, metadata: 0, has_stack_id: false, block_runtime_id: 0, extra })
 const USES = { wooden_pickaxe: 59, stone_pickaxe: 131, iron_pickaxe: 250 }
 const NAMES = ['oak_log', 'oak_planks', 'stick', 'crafting_table', 'wooden_pickaxe', 'stone_pickaxe', 'iron_pickaxe', 'cobblestone', 'furnace', 'charcoal', 'coal', 'torch', 'ladder', 'cobblestone_slab', 'chest', 'raw_iron', 'iron_ingot', 'dirt']
+NAMES.push('iron_sword', 'bucket')
 const named = name => ({ type: 'valid', descriptor_type: 'name', name: full(name), metadata: 0, count: 1 })
 
 function attachBootstrapRecipes (w) {
@@ -92,6 +93,7 @@ function attachBootstrapRecipes (w) {
   add('oak_planks', 4, [['oak_log']]); add('stick', 4, [['oak_planks'], ['oak_planks']])
   add('crafting_table', 1, [['oak_planks', 'oak_planks'], ['oak_planks', 'oak_planks']])
   for (const [name, material] of [['wooden_pickaxe', 'oak_planks'], ['stone_pickaxe', 'cobblestone'], ['iron_pickaxe', 'iron_ingot']]) add(name, 1, [[material, material, material], [null, 'stick', null], [null, 'stick', null]])
+  add('iron_sword', 1, [['iron_ingot'], ['iron_ingot'], ['stick']])
   add('furnace', 1, [['cobblestone', 'cobblestone', 'cobblestone'], ['cobblestone', null, 'cobblestone'], ['cobblestone', 'cobblestone', 'cobblestone']])
   for (const fuel of ['coal', 'charcoal']) add('torch', 4, [[fuel], ['stick']])
   add('ladder', 3, [['stick', null, 'stick'], ['stick', 'stick', 'stick'], ['stick', null, 'stick']])
@@ -115,7 +117,7 @@ function attachBootstrapRecipes (w) {
     box.slots = [input.count ? input : empty(), fuel?.count ? fuel : empty(), raw(product, (output?.count ?? 0) + madeCount)]
     for (let slot = 0; slot < 3; slot++) send('inventory_slot', { window_id: 7, slot, item: box.slots[slot] })
     send('container_set_data', { window_id: 7, property: 1, value: box.burn })
-    cooked.push({ input: name, output: product, count: madeCount, feet: w.feet() })
+    cooked.push({ input: name, output: product, count: madeCount, feet: w.feet(), furnace: box.position })
   }
   const close = operations.crafting.closeContainer
   operations.crafting = { ...crafting, closeContainer: () => { close(); return crafting.closeContainer() },
@@ -133,7 +135,7 @@ function attachBootstrapRecipes (w) {
     assert.equal(w.getBlock(at.x, at.y, at.z).name, full('furnace'))
     assert.ok(Math.hypot(at.x + .5 - w.feet().x, at.y - w.feet().y, at.z + .5 - w.feet().z) < 5)
     sync(); const key = `${at.x},${at.y},${at.z}`
-    if (!furnaces.has(key)) furnaces.set(key, { slots: [empty(), empty(), empty()], burn: 0 })
+    if (!furnaces.has(key)) furnaces.set(key, { slots: [empty(), empty(), empty()], burn: 0, position: { ...at } })
     activeFurnace = furnaces.get(key)
     send('container_open', { window_id: 7, window_type: 'furnace', coordinates: at })
     send('inventory_content', { window_id: 7, input: activeFurnace.slots })

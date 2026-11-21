@@ -51,6 +51,15 @@ function createHouseSmelt ({ operations, items, count, inventoryReady, until, pa
       const remaining = held(0)
       const other = remaining?.count > 0 && remaining.name !== input ? remaining : null
       const already = !other && remaining?.name === input ? remaining.count : 0
+      if (request.wholeAmount) {
+        // A home equipment batch may span more than one furnace stack. Count
+        // received iron already in this furnace before requesting more ore.
+        const outputNow = held(2)
+        const cooked = accepts(outputNow?.name) ? outputNow.count : 0
+        const supplied = count(accepts) - before + cooked + already + count(name => name === input)
+        const missing = Math.max(0, request.wholeAmount - supplied)
+        if (missing) { needed = { input: missing, wholeInputMissing: missing, fuel: !burning() }; return }
+      }
       const wanted = Math.max(0, left - already)
       const carried = request.resume ? null : stack(input)
       const insert = Math.min(wanted, carried?.count ?? 0)
@@ -71,7 +80,7 @@ function createHouseSmelt ({ operations, items, count, inventoryReady, until, pa
         await until(() => !ready() || !(held(0)?.count > 0), Math.min(180000, other.count * 11000 + 5000))
         if (ready()) refused(new Error(held(0)?.count > 0 ? `かまどに残っている ${other.name} の調理が終わりません` : `かまどに残っていた ${other.name} を先に焼きました`))
       } else {
-        const expected = Math.min(left, already + insert)
+        const expected = Math.min(left, already + insert, request.waitBatch ?? Infinity)
         try { await furnace.waitOutput(output, expected, { timeoutMs: Math.min(180000, expected * 11000 + 5000) }) } catch (error) { if (!disposed()) refused(error) }
       }
       await take()
@@ -83,7 +92,8 @@ function createHouseSmelt ({ operations, items, count, inventoryReady, until, pa
   }
 
   return {
-    smelt: async (at, input, amount, fuel, fuelCount, output) => (await run(at, { input, amount, fuel, fuelCount, output })).produced,
+    smelt: async (at, input, amount, fuel, fuelCount, output, { wholeAmount, waitBatch } = {}) =>
+      (await run(at, { input, amount, fuel, fuelCount, output, wholeAmount, waitBatch })).produced,
     resumeSmelt: (at, { outputOf, accepts, fuel = null, fuelCount = 1 }) => run(at, { resume: true, outputOf, accepts, fuel, fuelCount }),
     smeltNeed: () => needed
   }
