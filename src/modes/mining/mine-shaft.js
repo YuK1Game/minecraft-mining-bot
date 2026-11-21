@@ -87,6 +87,13 @@ function workStand (ctx,branch,depth) {
   return null
 }
 
+function besideLadder (feet, column) {
+  if (!feet) return false
+  const x = Math.floor(feet.x), z = Math.floor(feet.z)
+  return Math.abs(x - column.x) + Math.abs(z - column.z) <= 1 &&
+    Math.hypot(feet.x - x - 0.5, feet.z - z - 0.5) <= 0.2
+}
+
 function shaftFinish (branch,depth,landing = null) {
   const shaft=branch.plan.shaft,torchColumn=shaft.columns[3]
   const position=here(torchColumn,depth),support=here(torchColumn,depth-1)
@@ -146,6 +153,13 @@ async function ensureShaft (ctx,branch,layer) {
     const moved=await climb(ctx,branch,resumedDown?centre(nextLadder):from)
     if(!received(moved))return moved
   }
+  // After an interrupted first descent, enterMine returns to the surface
+  // approach at the right height but still two cells away from the ladder.
+  // Move to its landing before asking the ladder controller to mount.
+  if (resumedDown && ctx.getFeet().y >= shaft.topY - 0.2 && !besideLadder(ctx.getFeet(), shaft.ladder)) {
+    const moved = await walkCell(ctx, branch, topStand(plan), 'shaft_mount_resume')
+    if (!received(moved)) return moved
+  }
   const currentRung=await rung(ctx,branch,depth)
   if(!received(currentRung))return currentRung
   if(!resumedDown){
@@ -155,9 +169,9 @@ async function ensureShaft (ctx,branch,layer) {
     const dug=await digCell(ctx,branch,nextLadder,'shaft')
     if(!received(dug))return dug
     if(!solid(at(ctx,bottom))){const support=await fillCell(ctx,branch,bottom,'shaft_landing');if(!received(support))return support}
-    const installed=await rung(ctx,branch,next)
-    if(!received(installed))return installed
   }
+  const installed = await rung(ctx, branch, next)
+  if (!received(installed)) return installed
   const down=await climb(ctx,branch,centre(nextLadder))
   if(!received(down))return down
   for(const column of shaft.fillColumns){

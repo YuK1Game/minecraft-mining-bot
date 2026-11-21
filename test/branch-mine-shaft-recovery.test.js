@@ -74,6 +74,31 @@ test('an interrupted ladder placement reconciles the received rung without placi
   assert.equal(w.places.filter(request => key(request.position) === key(target)).length, 1)
 })
 
+test('after leaving the unfinished shaft, a received lower rung is mounted from the adjacent surface landing', async t => {
+  const w = createMineWorld(t), { shaft } = w.plan
+  const target = { x: shaft.ladder.x, y: shaft.topY - 1, z: shaft.ladder.z }
+  const place = w.ctx.operations.interactions.placeHouseBlock
+  let cancelled = false
+  w.ctx.cancelled = () => cancelled
+  w.ctx.operations.interactions.placeHouseBlock = async request => {
+    await place(request)
+    if (key(request.position) === key(target)) cancelled = true
+  }
+  assert.equal((await ensureShaft(w.ctx, w.branch, 'upper')).status, 'interrupted')
+  assert.equal(w.branch.pendingAction.name, 'minecraft:ladder')
+  assert.equal(w.getBlock(target.x, target.y, target.z).name, 'minecraft:ladder')
+  cancelled = false
+  w.setFeet({ ...shaft.approach, x: shaft.approach.x - 0.04 })
+  const resumed = await ensureShaft(w.ctx, w.branch, 'upper')
+  assert.equal(resumed.code, 'MINE_SHAFT_ADVANCED', JSON.stringify(resumed))
+  assert.equal(w.branch.shaft.depth, shaft.topY - 1)
+  assert.equal(w.branch.pendingAction, undefined)
+  assert.equal(w.places.filter(request => key(request.position) === key(target)).length, 1)
+  const mount = w.climbs.find(request => request.to.y === target.y)
+  assert.ok(mount)
+  assert.equal(Math.abs(Math.floor(mount.from.x) - shaft.ladder.x) + Math.abs(Math.floor(mount.from.z) - shaft.ladder.z), 1)
+})
+
 test('a failed depth checkpoint retains the unfinished slice for received-state reconciliation', async t => {
   const w = createMineWorld(t), save = w.ctx.saveMine
   let fail = true
