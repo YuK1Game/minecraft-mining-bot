@@ -18,12 +18,32 @@ const { collect } = require('../src/modes/dragon-supply-gather')
 const { treeAt, finishTree, MAX } = require('../src/modes/dragon-tree')
 const { createDigWorld } = require('./helpers/dig-world')
 const { createWorld } = require('./helpers/dragon-goal-world')
+const { createReturnSim } = require('./helpers/player-return-sim')
+const { inside } = require('../src/modes/house/house-exit')
 const forest = require('./fixtures/tree-top-stuck.json')
 
 const full = name => 'minecraft:' + name
 const within = (x, z) => x >= forest.x0 && x <= forest.x0 + 14 && z >= forest.z0 && z <= forest.z0 + 14
 const OAK = [66, 67, 68, 69].map(y => ({ x: 9884, y, z: 10158 }))
 const BEGUN = /この木を最後まで伐ります（原木 (\d+) 個）/, DOWN = /木を1本伐り終えました（原木 (\d+) 個）/, LEFT = /届かない原木が (\d+) 個残りました/
+
+test('a request for logs walks through the received open door before searching outdoors', async () => {
+  const origin = { x: 0, y: 64, z: 0 }
+  const sim = createReturnSim({ feet: { x: 3.5, y: 65, z: 4.5 } })
+  const house = sim.buildHouse(origin)
+  const { hands } = sim.mount()
+  const lines = []
+  await collect({
+    shared: { playerHouse: house },
+    runtime: { raw: () => ({ dimension: 'overworld' }) },
+    operations: sim.operations, getBlock: sim.getBlock, getFeet: sim.getFeet, hands, sleep: sim.sleep, now: sim.now,
+    cancelled: () => !inside(origin, sim.getFeet()),
+    log: line => lines.push(line)
+  }, 'log')
+  assert.equal(inside(origin, sim.getFeet()), false)
+  assert.equal(sim.events.filter(event => event.kind === 'door').length, 1)
+  assert.ok(lines.some(line => line.includes('家のドアから外へ出ました')))
+})
 
 // The expedition over the forest: its step asks for `want` logs, then does "its next work".
 async function expedition (t, { scene = forest, feet = { x: 9887.5, y: 65, z: 10158.5 }, want = 1 } = {}) {

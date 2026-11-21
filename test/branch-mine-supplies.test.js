@@ -12,7 +12,13 @@ function fixture (plankCounts, extra = {}) {
   for (const count of plankCounts) inv.items.push({ name: 'minecraft:oak_planks', count, slot: inv.items.length })
   const calls = [], ctx = { getFeet: () => ({ x: 0.5, y: 64, z: 0.5 }), cancelled: () => false, memory: { early: { mine: { branch: { plan } } } }, supplies: { acquire: async (name, count) => { calls.push(['acquire', name, count]) } } }
   const actions = { inventory: () => inv, done: code => ({ status: 'completed', serverConfirmed: true, code }),
-    block: p => ({ known: true, name: p.y < 64 ? 'minecraft:chest' : 'minecraft:crafting_table', boundingBox: 'block' }),
+    block: p => {
+      if (p.y === 64 && p.x === 3 && p.z === 0) return { known: true, name: 'minecraft:crafting_table', boundingBox: 'block' }
+      if (p.y < 64) return { known: true, name: 'minecraft:chest', boundingBox: 'block' }
+      if (p.x === 1 && p.z === 0 && p.y <= 65) return { known: true, name: 'minecraft:stone', boundingBox: 'block' }
+      return { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+    },
+    walk: async () => { calls.push(['walk to workbench']); return { status: 'blocked' } },
     house: { craft: async (name, times) => { calls.push(['craft', name, times]); inv.items.push({ name, count: times * 4, slot: inv.items.length }) }, why: () => null }
   }
   return { plan, calls, supplies: createMineSupplies(ctx, actions, {}) }

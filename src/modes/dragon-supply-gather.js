@@ -7,6 +7,9 @@ const { roam } = require('./supply-roam')
 const { digTool } = require('./dig-tool')
 const { cellRest } = require('./supply-cell-rest')
 const { treeAt, beginTree } = require('./dragon-tree')
+const { inside, leaveHouse } = require('./house/house-exit')
+const { doorOf, openDoor } = require('./house/house-door')
+const { createBuildWalk } = require('./player-build-walk')
 
 const SOURCES = {
   raw_iron: /^(?:deepslate_)?iron_ore$/, raw_gold: /^(?:deepslate_)?gold_ore$/,
@@ -43,6 +46,19 @@ async function approach (ctx, target) {
   return ctx.hands.approach(target, 2.7)
 }
 
+function enclosedHome (ctx) {
+  const house = ctx.shared.playerHouse
+  if (!house?.origin || ctx.runtime.raw()?.dimension !== 'overworld') return null
+  const door = doorOf(house.origin)
+  if (!door) return null
+  // Only points around an actual doorway should require the route through
+  // it. An open foundation or a site with these walls missing has no exit to use.
+  return [-1, 0, 1].some(dx => {
+    const block = ctx.getBlock(door.x + dx, door.y, door.z)
+    return block?.known === true && (block.boundingBox === 'block' || /_door$/.test(block.name))
+  }) ? house : null
+}
+
 async function explore (ctx, resource) {
   const feet = ctx.getFeet()
   if (!feet || ctx.cancelled()) return
@@ -50,6 +66,7 @@ async function explore (ctx, resource) {
   const step = state.supplySearch ??= {}
   const offset = Number(step[resource] ?? 0)
   const options = [[1, 0], [0, 1], [-1, 0], [0, -1]]
+  const house = resource === 'log' ? enclosedHome(ctx)?.origin : null
   // Spend multiple steps on one heading. A blocked route switches to another
   // heading rather than digging unknown ground or crossing an unseen gap.
   const direction = options[Math.floor(offset / 7) % 4]
@@ -57,7 +74,8 @@ async function explore (ctx, resource) {
     const x = Math.floor(feet.x) + direction[0] * distance, z = Math.floor(feet.z) + direction[1] * distance
     for (const dy of [0, 1, -1, 2, -2]) {
       const y = Math.floor(feet.y) + dy
-      if (standable(ctx.getBlock, x, y, z) && await ctx.hands.approach({ x, y, z }, 1.5)) { step[resource] = offset + 1; step[resource + ':miss'] = 0; ctx.goal?.reached?.('search:' + resource); return }
+      if (inside(house, { x: x + 0.5, y, z: z + 0.5 })) continue
+      if (standable(ctx.getBlock, x, y, z) && await ctx.hands.approach({ x, y, z }, 1.5) && !inside(house, ctx.getFeet())) { step[resource] = offset + 1; step[resource + ':miss'] = 0; ctx.goal?.reached?.('search:' + resource); return }
       if (ctx.cancelled()) return
     }
   }
@@ -77,6 +95,20 @@ function protectedAt (ctx, p) {
 async function collect (ctx, name) {
   const mining = require('./mining/mine-controller')
   if (mining.enabled(ctx) && ctx.runtime.raw().dimension === 'overworld' && mining.MINERALS.has(name)) return mining.requestMine(ctx, { resource: name, targetHeld: Math.max(1, require('./dragon-supply-kit').count(name, ctx.runtime.inventory()?.items ?? []) + 1) })
+  const house = name === 'log' ? enclosedHome(ctx) : null
+  if (inside(house?.origin, ctx.getFeet())) {
+    // Nearby tree targets are visible in the terrain cache from inside the
+    // house, but an approach within range can still end behind its wall.
+    const { getBlock, getFeet, hands, log, cancelled } = ctx
+    const walk = target => !cancelled() && hands.walk(target)
+    const build = createBuildWalk({ hands, getHouse: () => house, log })
+    const left = await leaveHouse({
+      house, getBlock, getFeet, walk, why: () => hands.why?.(), log,
+      door: () => openDoor({ origin: house.origin, getBlock, getFeet, walk, useDoor: at => !cancelled() && ctx.operations.interactions.useDoor(at), log, now: ctx.now, sleep: ctx.sleep }),
+      build: (target, done) => build(target, { done, aborted: cancelled })
+    })
+    if (!left || cancelled()) return
+  }
   const re = SOURCES[name]
   const mob = MOBS[name]
   if (mob) {

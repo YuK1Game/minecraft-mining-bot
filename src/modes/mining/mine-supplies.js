@@ -6,13 +6,16 @@ const { createOpenStand } = require('../open-stand')
 const { insideMine } = require('./mine-location')
 const { takeSupplies } = require('./mine-stock')
 const { supplyNeeds } = require('./mine-needs')
+const { count } = require('../dragon-supply-kit')
 
 // Infrastructure is prepared in bounded batches. Torches can bootstrap from
 // charcoal, so preparing a coal mine never recursively starts another mine.
 function createMineSupplies (ctx, actions, storage) {
   const stopped = () => ctx.cancelled() || ctx.signal?.aborted
   const wait = (code, detail = null) => blocked(code, { kind: 'supplies_changed' }, { detail })
-  const have = name => held(actions.inventory(), name) ?? 0
+  const have = name => name === 'planks' || name === 'log'
+    ? count(name, actions.inventory()?.items ?? [])
+    : held(actions.inventory(), name) ?? 0
   const item = test => actions.inventory()?.items.find(i => i.count > 0 && test(bare(i.name)))
   const openStand = createOpenStand({ getBlock: (x, y, z) => actions.block({ x, y, z }), getFeet: ctx.getFeet, walk: to => actions.walk(to) })
   async function acquire (name, amount) {
@@ -68,8 +71,7 @@ function createMineSupplies (ctx, actions, storage) {
     return { result: wait('MINE_STATION_SPACE_UNAVAILABLE') }
   }
   async function planks (amount) {
-    const count = (actions.inventory()?.items ?? []).filter(i => /_planks$/.test(i.name) && i.count > 0).reduce((sum, i) => sum + i.count, 0)
-    if (count < amount) return acquire('planks', amount)
+    if (have('planks') < amount) return acquire('planks', amount)
     return null
   }
   async function craft (name, times, table = null) {
@@ -78,6 +80,10 @@ function createMineSupplies (ctx, actions, storage) {
     await actions.house.craft('minecraft:' + name, times, table, { fitMaterials: true })
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     return have(name) > before ? wait('MINE_SUPPLIES_CRAFTED', `${name} ${have(name)}`) : wait('MINE_CRAFT_UNCONFIRMED', actions.house.why())
+  }
+  async function craftAtTable (name, times) {
+    const table = await station('crafting_table')
+    return table.result ?? craft(name, times, table.position)
   }
   async function torches (amount) {
     const batches = Math.min(8, Math.ceil((amount - have('torch')) / 4))
@@ -122,21 +128,25 @@ function createMineSupplies (ctx, actions, storage) {
     }
     const [name, amount] = missing
     if (name === 'cobblestone') return acquire(name, amount)
-    const table = await station('crafting_table')
-    if (table.result) return table.result
+    if (insideMine(ctx, ctx.memory.early.mine.branch)) {
+      const surface = await station('crafting_table')
+      if (surface.result) return surface.result
+    }
+    // Collect the missing ingredients before going to the workbench. A
+    // gather tick for wood can end outside and continue from there.
     if (name === 'ladder') {
       const batches = Math.min(8, Math.ceil((amount - have(name)) / 3)), sticks = batches * 7
       if (have('stick') < sticks) { const times = Math.min(8, Math.ceil((sticks - have('stick')) / 4)), missing = await planks(2 * times); return missing ?? craft('stick', times) }
-      return craft(name, batches, table.position)
+      return craftAtTable(name, batches)
     }
     if (name === 'cobblestone_slab') {
       const batches = Math.min(8, Math.ceil((amount - have(name)) / 6))
       if (have('cobblestone') < batches * 3 + needs.cobblestone) return acquire('cobblestone', batches * 3 + needs.cobblestone)
-      return craft(name, batches, table.position)
+      return craftAtTable(name, batches)
     }
     if (name === 'chest') {
       const batches = Math.min(4, amount - have(name)), missing = await planks(batches * 8)
-      return missing ?? craft(name, batches, table.position)
+      return missing ?? craftAtTable(name, batches)
     }
     return wait('MINE_SUPPLIES_MISSING')
   }

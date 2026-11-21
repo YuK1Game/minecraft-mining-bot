@@ -118,7 +118,11 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
     if(count(ctx,resource)>=targetHeld){const out=await leaveMine(ctx,branch);return received(out)&&live(ctx)?{done:true,reason:`保管済みの${resource}を持ち物で確認し、採掘場から戻りました。`,result:results.completed('MINE_SUPPLY_DELIVERED')}:outcome(out)}
   }
   const prepared=await prepare(ctx,branch,layer)
-  if(!received(prepared) || !live(ctx))return outcome(live(ctx)?prepared:stopped(),'採掘場のはしご・照明・床材・収納箱を準備します。')
+  if (!live(ctx)) return outcome(stopped())
+  if (!received(prepared)) {
+    const detail = prepared?.detail || prepared?.code
+    return outcome(prepared, detail ? `採掘場の資材を準備しています（${detail}）。` : '採掘場のはしご・照明・床材・収納箱を準備します。')
+  }
   const entered=await entry(ctx,branch)
   if(!received(entered))return outcome(entered)
   // The upper landing and its storage are made usable first; lower ore does not require exhausting all upper branches.
