@@ -7,6 +7,7 @@ const { loadModeSync, saveMode } = require('../src/modes/mode-store')
 const { createModeControl } = require('../src/modes/mode-control')
 const { createPlayerMode } = require('../src/modes/player-mode')
 const { playerStages } = require('../src/modes/player-stages')
+const { createMineGeometry, mineSteps } = require('../src/modes/mining/mine-geometry')
 
 test('mode switch is refused while either mode works, allowed when both are stopped', () => {
   assert.equal(switchRefusal({ from: 'quarry', to: 'player' }), null)
@@ -55,11 +56,11 @@ test('player mode starts the survival autonomy with idle protection only in play
   const started = player.start()
   assert.deepEqual(calls, [['safety'], ['start', 'diamond']])
   assert.equal(started.running, true)
-  assert.equal(started.current, 'home_reserve')
+  assert.equal(started.current, 'branch_mine')
   assert.equal((await player.stop()).running, false)
 })
 
-test('stages are reached only from a received inventory', () => {
+test('player goals follow received equipment and saved construction', () => {
   assert.equal(playerStages(null).current, null)
   assert.equal(playerStages({ known: true, uncertain: true, items: [{ name: 'minecraft:diamond', count: 1 }] }).known, false)
   assert.equal(playerStages({ known: true, items: [] }).current, 'wood')
@@ -70,11 +71,27 @@ test('stages are reached only from a received inventory', () => {
   assert.equal(playerStages({ known: true, items: [] }, null, built).current, 'wood')
   const stone = playerStages({ known: true, items: [{ name: 'minecraft:stone_pickaxe', count: 1 }] }, null, built)
   assert.deepEqual(stone.stages.filter(s => s.reached).map(s => s.id), ['wood', 'base', 'stone'])
-  assert.equal(stone.current, 'iron')
-  const reserve = { early: { reserveReady: true } }
+  assert.equal(stone.current, 'branch_mine')
+  const record = { early: {} }
   const iron = { known: true, items: [{ name: 'minecraft:iron_pickaxe', count: 1 }] }
-  assert.equal(playerStages(iron, null, built).current, 'home_reserve')
-  assert.equal(playerStages(iron, null, built, { early: { spawnReady: true } }).current, 'home_reserve')
+  const mineGoal = () => playerStages(iron, null, built, record).stages.find(stage => stage.id === 'branch_mine')
+  const plan = createMineGeometry({
+    scope: { profile: 'test', realmId: '1', dimension: 'overworld' },
+    anchor: { x: 0, z: 0 }, surfaceY: 64
+  })
+  const storageSteps = mineSteps(plan, { layer: 'upper' }).findIndex(step => step.kind === 'main')
+  const progress = { upper: { cursor: storageSteps, confirmedSteps: storageSteps } }
+  const pairs = Object.fromEntries(plan.storage.flatMap(room => room.pairs).map(pair => [pair.id, { positions: pair.positions, slots: 54 }]))
+  const site = { plan, progress, shaft: { landings: { upper: true } }, storage: { pairs } }
+  record.early.mine = { branch: site }
+  assert.equal(mineGoal().reached, false)
+  progress.upper.cursor++
+  assert.equal(mineGoal().reached, false)
+  progress.upper.confirmedSteps++
+  assert.equal(mineGoal().reached, true)
+  assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:stone_pickaxe', count: 1 }] }, null, built, record).current, 'iron')
+  assert.equal(playerStages(iron, null, built, record).current, 'home_reserve')
+  const reserve = { early: { reserveReady: true, mine: { sites: [site] } } }
   assert.equal(playerStages(iron, null, built, reserve).current, 'diamond')
   // Diamonds alone are not the diamond stage: the pickaxe and the sword are.
   assert.equal(playerStages({ known: true, items: [{ name: 'minecraft:iron_pickaxe', count: 1 }, { name: 'minecraft:diamond', count: 18 }] }, null, built, reserve).current, 'diamond')

@@ -1,7 +1,9 @@
 'use strict'
 
+const { key, mineSteps } = require('./mining/mine-geometry')
+
 const shortLabels = {
-  wood: '木', base: '拠点', stone: '石', iron: '鉄', home_reserve: '備蓄',
+  wood: '木', base: '拠点', stone: '石', iron: '鉄', home_reserve: '備蓄', branch_mine: 'ブランチ採掘場',
   diamond: 'ダイヤ', nether: 'ゲート', rods: 'ネザー要塞', stronghold: '地下要塞', end: 'ドラゴン', return: '帰還'
 }
 
@@ -16,6 +18,33 @@ function diamondEquipment (items) {
     label,
     done: equipment.has(`diamond_${piece}`) || equipment.has(`netherite_${piece}`)
   }))
+}
+
+function upperMineBuilt (site) {
+  const plan = site?.plan
+  const progress = site?.progress?.upper
+  if (plan?.version !== 1 || !Array.isArray(plan.layers) || !Array.isArray(plan.segments) || !Array.isArray(plan.storage) ||
+    !plan.layers.some(entry => entry.id === 'upper') || site.shaft?.landings?.upper !== true ||
+    !Number.isSafeInteger(progress?.cursor) || !Number.isSafeInteger(progress?.confirmedSteps)) return false
+
+  const storage = plan.storage.find(room => room.layer === 'upper')?.pairs
+  if (!storage?.length || !storage.every(pair => {
+    const saved = site.storage?.pairs?.[pair.id]
+    return saved?.slots === 54 && saved.positions?.length === 2 &&
+      pair.positions.every((position, index) => saved.positions[index] && key(position) === key(saved.positions[index]))
+  })) return false
+
+  const steps = mineSteps(plan, { layer: 'upper' })
+  if (progress.cursor < 1 || progress.cursor > steps.length || progress.confirmedSteps > progress.cursor) return false
+  // A skipped branch advances the cursor without adding a confirmed step.
+  const storageSteps = steps.slice(0, progress.cursor).filter(step => step.kind === 'storage').length
+  return progress.confirmedSteps > storageSteps
+}
+
+function branchMineChecks (record) {
+  const mine = record?.early?.mine
+  const sites = [mine?.branch, ...(Array.isArray(mine?.sites) ? mine.sites : [])]
+  return [{ label: '鉄・石炭を採る上層の坑道・はしご・収納', status: sites.some(upperMineBuilt) ? 'done' : 'pending' }]
 }
 
 function stageChecks (stage, items, house, record) {
@@ -68,4 +97,4 @@ function stageChecks (stage, items, house, record) {
   }
 }
 
-module.exports = { shortLabels, diamondEquipment, stageChecks }
+module.exports = { shortLabels, diamondEquipment, stageChecks, branchMineChecks }

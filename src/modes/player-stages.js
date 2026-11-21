@@ -1,6 +1,6 @@
 'use strict'
 
-const { shortLabels, diamondEquipment, stageChecks } = require('./player-stage-checks')
+const { shortLabels, diamondEquipment, stageChecks, branchMineChecks } = require('./player-stage-checks')
 
 // The player mode's road to the Ender Dragon, as ordered stages. A stage counts
 // as reached from received equipment, the house record, or a scoped expedition receipt.
@@ -17,6 +17,7 @@ const STAGES = Object.freeze([
   // implied by a later stage (user 23:16 JST: 「02目標に『拠点の作成』も追加しといて」).
   { id: 'base', label: '拠点の作成', implemented: true, record: true, reached: (items, house) => house?.built === true || house?.done === true },
   { id: 'stone', label: '石の道具', implemented: true, reached: pickaxeAtLeast('stone') },
+  { id: 'branch_mine', label: 'ブランチマイニング場の作成', expedition: true, checks: branchMineChecks },
   { id: 'iron', label: '鉄の道具', implemented: true, reached: pickaxeAtLeast('iron') },
   { id: 'home_reserve', label: '本拠点に予備の鉄装備と食料を備蓄', expedition: true, reached: record => record.early?.reserveReady === true },
   // The full diamond set, held or worn: pickaxe, sword and all four armour pieces
@@ -41,6 +42,10 @@ function playerStages (inventory, worn = null, house = null, record = null) {
   const wearing = worn?.known === true && Array.isArray(worn.worn) ? worn.worn.filter(piece => piece?.name).map(piece => ({ name: piece.name, count: 1 })) : []
   const items = known ? [...inventory.items, ...wearing] : []
   const stages = STAGES.map(stage => {
+    if (stage.checks) {
+      const checks = stage.checks(record)
+      return { id: stage.id, label: stage.label, implemented: true, reached: checks.every(check => check.status === 'done'), checks }
+    }
     const reached = stage.expedition
       ? Boolean(record && stage.reached(record))
       : Boolean(record?.early?.finished || (known && stage.reached(items, house)))
@@ -53,13 +58,15 @@ function playerStages (inventory, worn = null, house = null, record = null) {
   // or an elytra never proves a visit to another dimension or a dragon kill.
   const gear = stages.filter((stage, index) => !STAGES[index].record && !STAGES[index].expedition)
   for (let i = gear.length - 2; i >= 0; i--) if (gear[i + 1].reached) gear[i].reached = true
-  const current = known || record?.early?.finished ? stages.find(stage => !stage.reached)?.id ?? null : null
+  const current = known || record?.early?.finished
+    ? stages.find(stage => !stage.reached && (stage.id !== 'branch_mine' || !record?.early?.finished))?.id ?? null
+    : null
   return {
     known, current,
     stages: stages.map(stage => ({
       ...stage,
       shortLabel: shortLabels[stage.id],
-      checks: stageChecks(stage, items, house, record)
+      checks: stage.checks ?? stageChecks(stage, items, house, record)
     }))
   }
 }
