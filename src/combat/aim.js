@@ -1,8 +1,9 @@
 'use strict'
 
 // Full-cube block targeting. Bedrock face IDs: down/up/north/south/west/east.
-// Rays stop at unknown/opaque cells; only a known empty-box torch is an explicit
-// non-air exception. Target blocks still require their own full-cube face.
+// Rays stop at unknown/opaque cells. Empty torches and the space in front of
+// a received, backed ladder plate have explicit geometry exceptions. Target
+// blocks still require their own full-cube face.
 const AXES = ['x', 'y', 'z']
 const AIR = new Set(['air', 'cave_air', 'void_air'])
 const FACES = [
@@ -24,6 +25,7 @@ const nameOf = block => {
   return short
 }
 const { pointKey: key } = require('../common/vec3')
+const { ladderRayClear, bottomSlabRayClear } = require('../common/ladder-shape')
 const finite = point => point && AXES.every(axis => Number.isFinite(point[axis]) && Math.abs(point[axis]) <= 30000001)
 const clamp = value => Math.max(EDGE_MARGIN, Math.min(1 - EDGE_MARGIN, value))
 const air = block => block?.known === true && AIR.has(nameOf(block)) && !(block.extra ?? []).some(layer => !AIR.has(nameOf(layer)))
@@ -67,7 +69,7 @@ function trace (settings, point) {
     // that stays above it for its whole length does not touch it (real Realm
     // 2026-11-16 13:15-13:34 JST: a log whose side face was beside a litter
     // cell was refused ten times, with the eye 1.6 above that cell's floor).
-    return air(block) || emptyTorch(block) || litterMin >= y + LITTER_TOP && leafLitter(block)
+    return air(block) || emptyTorch(block) || litterMin >= y + LITTER_TOP && leafLitter(block) || ladderRayClear(block, cell, eye, point, read) || bottomSlabRayClear(block, cell, eye, point)
   }
   let entry = 0
   let face = null

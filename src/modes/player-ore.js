@@ -26,9 +26,9 @@ const LIMIT = 12
 const whole = point => !!point && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]))
 const same = (a, b) => ['x', 'y', 'z'].every(axis => a[axis] === b[axis])
 
-function reachableOre ({ mode, state, decision, observations, preview, guarded }) {
+function reachableOre ({ mode, state, decision, observations, preview, guarded, permitted }) {
   const kind = Object.hasOwn(ORES, decision?.resource ?? '') ? ORES[decision.resource] : null
-  if (normalizeMode(mode) !== 'player' || !kind || !TYPES.includes(decision.type) || typeof preview !== 'function') return null
+  if (normalizeMode(mode) !== 'player' || !kind || !TYPES.includes(decision.type) || typeof preview !== 'function' || typeof permitted !== 'function') return null
   const ORE = kind.name
   const eye = state?.position
   if (!eye || !['x', 'y', 'z'].every(axis => Number.isFinite(eye[axis]))) return null
@@ -44,7 +44,7 @@ function reachableOre ({ mode, state, decision, observations, preview, guarded }
   const kept = point => { try { return typeof guarded === 'function' && guarded(point) === true } catch { return true } }
   const far = ore => Math.hypot(ore.position.x + 0.5 - eye.x, ore.position.y + 0.5 - eye.y, ore.position.z + 0.5 - eye.z)
   const ores = (Array.isArray(observations?.blocks) ? observations.blocks : [])
-    .filter(block => block?.known === true && ORE.test(block.name ?? '') && whole(block.position) && far(block) <= REACH && !kept(block.position))
+    .filter(block => block?.known === true && ORE.test(block.name ?? '') && whole(block.position) && far(block) <= REACH && !kept(block.position) && permitted(block.position) === true)
     .sort((a, b) => far(a) - far(b)).slice(0, LIMIT)
   const ore = ores.find(accepts)
   if (!ore) return null

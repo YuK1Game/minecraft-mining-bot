@@ -15,7 +15,7 @@ const stopSource = section('stopActions', 'stopActionsAfterRaw')
 const ensureSource = section('ensureLoadoutReset', 'quarryPackingBusy')
 function fixture () {
   const b = { busy: false }, op = { snapshot: () => b }
-  const armorState = { busy: false }
+  const armorState = { busy: false }, ladderState = { busy: false }
   const behavior = { sleeping: false, claim: { kind: 'combat' } }
   const context = {
     actionBusyError: require('../src/common/action-busy-error').actionBusyError,
@@ -29,10 +29,10 @@ function fixture () {
     quarryJob: null, quarryPillar: null, idleSafety: op, excavation: op, tunneling: op, recovery: op, foraging: op,
     surfaceReturn: op, shelter: op, hut: op, guardRoute: op, motionActive: () => true,
     input: { stats: () => ({ running: true }) }, food: op, furnace: op, chest: op, inventory: op,
-    armor: { snapshot: () => ({ ...armorState }) },
+    armor: { snapshot: () => ({ ...armorState }) }, mineLadder: { snapshot: () => ({ ...ladderState }) },
     craftStatus: () => ({}), interactions: { snapshot: () => ({}) }, combat: { snapshot: () => ({ busy: true, engaging: true }) } }
   vm.createContext(context); vm.runInContext(idleSource, context)
-  return { context, behavior, armorState, call: options => context.requireIdle(options) }
+  return { context, behavior, armorState, ladderState, call: options => context.requireIdle(options) }
 }
 test('loadout-handoff: only private debug admission allows active combat; ordinary operations stay blocked', () => {
   const f = fixture()
@@ -62,6 +62,26 @@ test('loadout-handoff: pending armor or discard blocks external admission until 
   assert.doesNotThrow(() => f.call({ loadoutHandoff: true }))
   f.context.ownedCall = 0; f.armorState.busy = false
   assert.doesNotThrow(() => f.call({ loadoutHandoff: true }))
+})
+test('loadout-handoff: a busy ladder blocks external handoffs while private ownership admits its own work', () => {
+  const f = fixture(), c = f.context
+  c.userBehaviorOwns = () => false; c.userBehaviorLease = null; f.behavior.claim = null
+  c.combat = { snapshot: () => ({ busy: false }) }; c.motionActive = () => false; c.input = null
+  f.ladderState.busy = true
+  const ladderBusy = error => /はしごの移動と足場の確認/.test(error.message)
+  for (const options of [undefined, { loadoutHandoff: true }, { storageHandoff: true }, { chunkMoveHandoff: true }, { ownedCall: 1 }]) {
+    assert.throws(() => f.call(options), ladderBusy)
+  }
+  // This depth is private Runtime state, not an option supplied by a caller.
+  c.ownedCall = 1
+  try {
+    assert.doesNotThrow(() => f.call())
+    assert.equal(c.host.shared.safetyManualActionAt, undefined, 'owned work does not become a manual action')
+  } finally { c.ownedCall = 0 }
+  assert.throws(() => f.call(), ladderBusy, 'releasing the owner does not release the still-busy ladder')
+  f.ladderState.busy = false
+  assert.doesNotThrow(() => f.call())
+  assert.equal(typeof c.host.shared.safetyManualActionAt, 'number')
 })
 test('loadout-handoff: exact lease identity is required for post-drain validation', () => {
   const f = fixture(), c = f.context

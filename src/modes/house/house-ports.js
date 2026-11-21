@@ -60,11 +60,17 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
     const slot = item.slot <= 8 ? item.slot : 0
     return operations.interactions.previewHouseBlock({ position: plan.position, slot, clicked: plan.clicked, face: plan.face, clickY: plan.clickY, head: plan.head ?? null })?.ready === true || item.slot > 8
   }
-  async function craft (output, times, table = null) {
+  async function craft (output, times, table = null, { fitMaterials = false } = {}) {
     const before = count(name => name === output)
     try {
       if (table) await patient(() => operations.interactions.openCraftingTable(table))
       else await patient(() => operations.crafting.openInventory())
+      // A batch may contain enough material in total but mix recipe variants
+      // (coal/charcoal or wood species). Let the received recipe and concrete
+      // stack IDs choose the largest batch that can actually be sent.
+      if (fitMaterials && typeof operations.crafting.preview === 'function') {
+        while (times > 1 && operations.crafting.preview(output, { times }).ready !== true) times--
+      }
       await operations.crafting.craft(output, { times })
     } catch (error) { close(); return refused(error) }
     close()

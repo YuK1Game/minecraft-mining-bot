@@ -8,6 +8,7 @@ const { interactionSightError, interactionSightFailure, sightPassable } = requir
 const { containerFace } = require('./open-face')
 const { dragonItemPlan } = require('./dragon-item-use')
 const { createHousePlan } = require('./house-placement')
+const { bottomCobblestoneSlab } = require('../common/cobblestone-slab')
 
 const { stationVisibleFace } = require('./action-access')
 const { bedVisibleFace, bedFingerprint, BED_HEIGHT } = require('./portable-bed')
@@ -363,7 +364,12 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
         const raw = crafting.rawItem(pending.plan.slot)
         let consumed = validItem(raw) && (raw.network_id === 0 && raw.count === 0 && pending.plan.raw.count === 1 || raw.network_id === pending.plan.raw.network_id && raw.count === pending.plan.raw.count - 1)
         const observedAt = Date.now(), singleBox = pending.plan.raw.count === 1 && SHULKER_BLOCKS.includes(pending.plan.expectedBlock)
-        const blockMatches = block?.known === true && placedBlockMatches(block, pending.plan.expectedBlock, pending.plan.wall === true)
+        const construction = pending.plan.ladderFacing != null || pending.plan.bottomSlab === true
+        if (construction && (inventory.inventoryKnown !== true || state.inventory?.known !== true || state.inventory.uncertain)) throw new Error('坑道の設置結果の持ち物が不明になりました。')
+        if (construction && raw?.count > 0) consumed &&= raw.stack_id === pending.plan.raw.stack_id && raw.metadata === pending.plan.raw.metadata
+        const support = pending.plan.ladderFacing == null ? null : world.getBlock(pending.plan.clicked.x, pending.plan.clicked.y, pending.plan.clicked.z)
+        const constructionMatches = (!pending.plan.bottomSlab || bottomCobblestoneSlab(block)) && (pending.plan.ladderFacing == null || block?.properties?.facing_direction === pending.plan.ladderFacing && !block.extra?.length && placementSupportOk(support) && support.runtimeId === pending.plan.blockRuntimeId)
+        const blockMatches = block?.known === true && constructionMatches && placedBlockMatches(block, pending.plan.expectedBlock, pending.plan.wall === true)
         if (singleBox) {
           if (inventory.inventoryKnown !== true || state.inventory?.known !== true || state.inventory.uncertain) throw new Error('設置結果の持ち物が不明になりました。')
           if (blockMatches) pending.blockObservedAt ??= observedAt

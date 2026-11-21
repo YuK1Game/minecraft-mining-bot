@@ -20,6 +20,10 @@ function guardDragonOperations (operations, cancelled, refuse = () => Object.ass
 
 function createDragonRuntimePorts (rt) {
   return {
+    mineState: () => rt.quarryState(),
+    mineConfirmPosition: (feet, options) => rt.confirmQuarryPosition(feet, options),
+    mineLadderMove: (request, options) => rt.mineLadder?.move(request, options),
+    mineObserve: (request, options) => require('./mining/mine-runtime-observe').observeMineRuntime(rt, request, options),
     dragonItems: {
       commit: delta => rt.commitBrewMainDelta({ ...delta, brewing: true }),
       id: name => rt.crafting.itemIdOf(name),

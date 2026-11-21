@@ -75,6 +75,8 @@ function protectedAt (ctx, p) {
 }
 
 async function collect (ctx, name) {
+  const mining = require('./mining/mine-controller')
+  if (mining.enabled(ctx) && ctx.runtime.raw().dimension === 'overworld' && mining.MINERALS.has(name)) return mining.requestMine(ctx, { resource: name, targetHeld: Math.max(1, require('./dragon-supply-kit').count(name, ctx.runtime.inventory()?.items ?? []) + 1) })
   const re = SOURCES[name]
   const mob = MOBS[name]
   if (mob) {

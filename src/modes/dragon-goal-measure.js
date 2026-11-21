@@ -18,6 +18,7 @@
 // Health, the place and every other item are not looked at.
 const { ingredient, smelted } = require('./dragon-supply-recipes')
 const { home, nether, end, spare, combined, matches } = require('./dragon-supply-kit')
+const { GEAR } = require('../survival/diamond-gear')
 
 const RAW_FOOD = /^minecraft:(?:beef|porkchop|chicken|rabbit|mutton|salmon|cod)$/
 const SUPPORT = ['log', 'planks', 'stick', 'cobblestone', 'coal', 'charcoal', 'crafting_table', 'furnace', 'chest', 'stone_pickaxe', 'wooden_pickaxe']
@@ -50,7 +51,7 @@ function uses (kit) {
   for (const [name, amount] of kit) add(name, amount)
   return cap
 }
-const KITS = { 'early.home_reserve': combined(home, home), 'early.nether_kit': combined(nether, spare), late: combined(nether, end, spare, EXTRA) }
+const KITS = { 'early.home_reserve': combined(home, home), 'early.diamond': GEAR.map(piece => [piece.output, 1]), 'early.nether_kit': combined(nether, spare), late: combined(nether, end, spare, EXTRA) }
 const caps = new Map()
 const capsOf = key => { const kit = KITS[key] ?? (key.startsWith('early.') ? [] : KITS.late); if (!caps.has(key)) caps.set(key, uses(kit)); return caps.get(key) }
 

@@ -173,6 +173,7 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
         validatePhysicsState(frame.predictedState)
         if (frame.commitPrediction != null && typeof frame.commitPrediction !== 'function') throw new Error('commitPrediction must be a synchronous callback')
         if (frame.inputFlags != null && !Array.isArray(frame.inputFlags)) throw new Error('inputFlagsは文字列の配列で指定してください。')
+        if (frame.moveVector != null && (!Number.isFinite(frame.moveVector.x) || !Number.isFinite(frame.moveVector.z) || Math.hypot(frame.moveVector.x, frame.moveVector.z) > 1.000001)) throw new Error('moveVector must be a finite unit input vector')
         for (const flag of frame.inputFlags ?? []) {
           if (typeof flag !== 'string' || !frameFlags.has(flag)) throw new Error('inputFlagsに未対応のフラグがあります。')
           if (!PAYLOAD_FLAGS.has(flag)) flags.add(flag)
@@ -188,6 +189,11 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
     }
     const packet = buildStationaryInput({ position, pitch: rotation.pitch, yaw: rotation.yaw, tick: nextTick, actions: pending })
     packet.delta = delta
+    if (providedFrame?.moveVector) {
+      packet.move_vector = { x: providedFrame.moveVector.x, z: providedFrame.moveVector.z }
+      packet.analogue_move_vector = { ...packet.move_vector }
+      packet.raw_move_vector = { ...packet.move_vector }
+    }
     for (const flag of flags) if (!packet.input_data.includes(flag)) packet.input_data.push(flag)
     if (packedTransaction) {
       packet.transaction = packedTransaction

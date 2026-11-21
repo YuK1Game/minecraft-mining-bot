@@ -139,7 +139,7 @@ function createUserControlRuntime (rt) {
         rt.armor.preemptForCombat?.('user_behavior')
         // Cancel input synchronously. Bookkeeping/drain promises retain their
         // checkpoints but cannot delay the new combat owner's first action.
-        rt.stopOrdinaryUserStream(); rt.mining.stop('user_behavior'); rt.walker?.stop('user_behavior'); rt.generationMovement.stop('user_behavior'); rt.generationCombat.cancel('user_behavior')
+        rt.generationLadder?.cancel('user_behavior'); rt.stopOrdinaryUserStream(); rt.mining.stop('user_behavior'); rt.walker?.stop('user_behavior'); rt.generationMovement.stop('user_behavior'); rt.generationCombat.cancel('user_behavior')
         const mutationPending = () => rt.inventory.snapshot().pendingRequestId != null || rt.chestStatus().pendingRequestId != null || rt.furnace.snapshot().pendingRequestId != null || rt.craftStatus().pendingRequestId != null || rt.manualChestStorage?.pendingMutation()
         const receiptWaiting = () => mutationPending() || rt.inventory.snapshot().busy || rt.chestStatus().busy || rt.furnace.snapshot().busy || rt.manualChestStorage?.equipmentBusy?.()
         if (rt.craftStatus().pendingRequestId == null) rt.crafting.cancel('user_behavior')
@@ -152,7 +152,7 @@ function createUserControlRuntime (rt) {
         if (!mutationPending()) { try { rt.crafting.closeContainer() } catch {} }
         for (const fn of [
           () => rt.autonomy.stop('user_behavior'), () => rt.depotPrebuild?.cancel('user_behavior'), () => rt.depotBuilder?.stop('user_behavior'), () => rt.depotStorage?.cancel('user_behavior'),
-          () => rt.depotPrebuild?.drain(), () => rt.quarryPillarTask, () => rt.quarryEgressTask,
+          () => rt.depotPrebuild?.drain(), () => rt.quarryPillarTask, () => rt.mineLadderTask, () => rt.quarryEgressTask,
           () => rt.generationSafety.stop('user_behavior'), () => rt.generationSafety.drain(), () => rt.generationCombat.drain(),
           () => rt.excavation?.stop('user_behavior'), () => rt.tunneling?.stop('user_behavior'), () => rt.recovery?.stop('user_behavior'),
           () => rt.foraging?.stop('user_behavior'), () => rt.surfaceReturn?.stop('user_behavior'), () => rt.generationShelter.stop('user_behavior'), () => rt.generationHut.stop('user_behavior'), () => rt.idleSafetyRuntime.generationGuardRoute.stop('user_behavior')
@@ -191,9 +191,9 @@ function createUserControlRuntime (rt) {
       rt.depotPrebuild?.cancel('user_behavior'); rt.depotBuilder?.stop('user_behavior'); rt.depotStorage?.cancel('user_behavior')
       // A cancelled prebuild settles with its abort reason; that is not an acquire failure.
       await rt.depotPrebuild?.drain()?.catch(() => {})
-      rt.stopOrdinaryUserStream(); rt.mining.stop('user_behavior'); rt.walker?.stop('user_behavior'); rt.generationMovement.stop('user_behavior'); rt.generationCombat.cancel('user_behavior')
+      rt.generationLadder?.cancel('user_behavior'); rt.stopOrdinaryUserStream(); rt.mining.stop('user_behavior'); rt.walker?.stop('user_behavior'); rt.generationMovement.stop('user_behavior'); rt.generationCombat.cancel('user_behavior')
       rt.crafting.cancel('user_behavior'); rt.furnace.cancel('user_behavior'); rt.inventory.cancel('user_behavior'); rt.food.cancel('user_behavior'); rt.interactions.cancel('user_behavior'); rt.prospecting.cancel('user_behavior')
-      const stopped = await Promise.allSettled([rt.quarryPillarTask, rt.quarryEgressTask, rt.generationSafety.stop('user_behavior'), rt.generationSafety.drain(), rt.generationCombat.drain(), rt.excavation?.stop('user_behavior'), rt.tunneling?.stop('user_behavior'), rt.recovery?.stop('user_behavior'), rt.foraging?.stop('user_behavior'), rt.generationShelter.stop('user_behavior'), rt.generationHut.stop('user_behavior'), rt.idleSafetyRuntime.generationGuardRoute.stop('user_behavior')])
+      const stopped = await Promise.allSettled([rt.quarryPillarTask, rt.mineLadderTask, rt.quarryEgressTask, rt.generationSafety.stop('user_behavior'), rt.generationSafety.drain(), rt.generationCombat.drain(), rt.excavation?.stop('user_behavior'), rt.tunneling?.stop('user_behavior'), rt.recovery?.stop('user_behavior'), rt.foraging?.stop('user_behavior'), rt.generationShelter.stop('user_behavior'), rt.generationHut.stop('user_behavior'), rt.idleSafetyRuntime.generationGuardRoute.stop('user_behavior')])
       const deadline = Date.now() + 2000
       while ((rt.autonomy.snapshot().actionActive || rt.depotBuilder?.snapshot().busy || rt.depotStorage?.snapshot().busy) && Date.now() < deadline && rt.currentGeneration()) await rt.delay(25)
       if (!rt.currentGeneration() || stopped.some(r => r.status === 'rejected') || rt.autonomy.snapshot().actionActive || rt.depotBuilder?.snapshot().busy || rt.depotStorage?.snapshot().busy) { if (preemption) preemption.outcome = 'cleanup_failed'; if (rt.userBehaviorLease === lease) rt.userBehaviorLease = null; return userAcquireDenied('stops_rejected_or_still_busy') }

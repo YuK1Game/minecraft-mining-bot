@@ -1,6 +1,7 @@
 'use strict'
 
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
+const { ladderRayClear, bottomSlabRayClear } = require('../common/ladder-shape')
 const sightPassable = block => block?.known === true && !block.extra?.length && (AIR.has(block.name) || block.name === 'minecraft:torch' && block.boundingBox === 'empty')
 
 // Shared by the actual interaction and site previews. The clicked support
@@ -22,7 +23,7 @@ function interactionSightFailure (read, eye, point, clicked, { plannedClearance 
     if (pos.x === clicked.x && pos.y === clicked.y && pos.z === clicked.z) continue
     const block = read(pos)
     // Only read-only proposals pass this callback. Live interactions never do.
-    if (!sightPassable(block) && !plannedClearance?.(block, pos)) return { code: 'SIGHT_BLOCKED', message: '操作対象への視線が遮られているか、未取得です。' }
+    if (!sightPassable(block) && !ladderRayClear(block, pos, eye, point, read) && !bottomSlabRayClear(block, pos, eye, point) && !plannedClearance?.(block, pos)) return { code: 'SIGHT_BLOCKED', message: '操作対象への視線が遮られているか、未取得です。' }
   }
   return null
 }

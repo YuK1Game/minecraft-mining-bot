@@ -1,6 +1,5 @@
 'use strict'
 
-const { GEAR } = require('../survival/diamond-gear')
 const { hasWorkingPick, home } = require('./dragon-supply-kit')
 const { pinned } = require('./dragon-gather-pin')
 const { bedOf, chestOf, setSpawn } = require('./house/house-spawn')
@@ -9,6 +8,7 @@ const { provisionFood } = require('./dragon-early-food')
 const { houseDuty } = require('./house/house-repair')
 const { homeTarget, homeUse, same } = require('./dragon-home-use')
 const { failed } = require('./return/return-result')
+const { diamondNeed, prepareDiamonds } = require('./dragon-diamond')
 
 // The starter jobs build the house and tools. Before mining for diamonds,
 // establish the respawn point and physically stock the first recovery kit.
@@ -25,9 +25,7 @@ function earlyObjective ({ inventory, worn, house, memory = {} }) {
   if (!hasWorkingPick(held, 'stone')) return step('stone', '鉄鉱石を採れる石以上のツルハシを用意します。', true)
   if (!memory.early?.spawnReady) return step('home_spawn', '本拠点へ戻り、復帰ベッドを確認します。')
   if (!memory.early.reserveReady) return step('home_reserve', '本拠点のラージチェストに再出発用の装備を揃えます。')
-  const equipped = worn?.known === true ? (worn.worn ?? []).filter(item => item?.name) : []
-  const owned = new Set([...held, ...equipped].map(item => item.name?.replace(/^minecraft:(diamond|netherite)_/, '')))
-  if (!GEAR.every(piece => owned.has(piece.output.slice(8)))) return step('diamond', '採掘とクラフトでダイヤ装備を揃えます。', true)
+  if (!diamondNeed(inventory, worn).done) return step('diamond', '計画した下層坑道の採掘とクラフトでダイヤ装備を揃えます。')
   if (!memory.early.outfitted) return step('nether_kit', 'ネザー偵察用の装備と食料を揃えます。')
   return step('early_ready', '予備装備を本拠点に残し、ネザーの入口を準備します。', false, true)
 }
@@ -115,6 +113,7 @@ async function runDragonEarly (ctx) {
     }
     return result(stock.reason)
   }
+  if (next.id === 'diamond') return prepareDiamonds(ctx)
   shared.dragonGoldBoots = true
   const worn = runtime.armor()
   const equipped = worn?.known === true ? worn.worn ?? [] : []

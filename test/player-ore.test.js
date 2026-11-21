@@ -1,7 +1,10 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { reachableOre } = require('../src/modes/player-ore')
+const { reachableOre: chooseOre } = require('../src/modes/player-ore')
+// These legacy geometric examples now run only inside an explicitly allowed
+// excavation mask. The default player caller cannot grant that mask.
+const reachableOre = options => chooseOre({ permitted: () => true, ...options })
 
 // The vein of 2026-11-16: the planned ore is enclosed, two others lie open.
 const ore = (x, y, z) => ({ known: true, name: 'minecraft:deepslate_diamond_ore', position: { x, y, z } })
@@ -11,7 +14,7 @@ const tunnel = { type: 'tunnel', stage: 'diamond', resource: 'diamond', target: 
 const open = new Set(['-4927,3,-4965', '-4928,3,-4965'])
 const preview = asked => targets => { const p = targets[0]; asked.push(`${p.x},${p.y},${p.z}`); return open.has(`${p.x},${p.y},${p.z}`) ? { ready: true, targets: [{ name: 'minecraft:deepslate_diamond_ore', position: { ...p } }] } : { ready: false, targets: [] } }
 
-test('an ore the pickaxe reaches now is mined instead of tunnelling to the enclosed one', () => {
+test('within a permitted volume, the ore the pickaxe reaches is selected before an enclosed ore', () => {
   const asked = []
   const decision = reachableOre({ mode: 'player', state, decision: tunnel, observations: { blocks }, preview: preview(asked) })
   assert.equal(decision.type, 'mine_ore')
@@ -21,6 +24,16 @@ test('an ore the pickaxe reaches now is mined instead of tunnelling to the enclo
   assert.equal(decision.targetOre, undefined)
   assert.equal(decision.requiredToolTier, 3)
   assert.equal(asked[0], '-4928,3,-4965', 'nearest first')
+})
+
+test('no permission, a rejected cell, or an absent mask never enables direct ore mining',()=>{
+  const asked=[],options={mode:'player',state,decision:tunnel,observations:{blocks},preview:preview(asked)}
+  assert.equal(chooseOre(options),null)
+  assert.equal(chooseOre({...options,permitted:()=>false}),null)
+  assert.deepEqual(asked,[])
+  const selected=chooseOre({...options,permitted:p=>p.x===-4927 && p.y===3 && p.z===-4965})
+  assert.deepEqual(selected.target,{x:-4927,y:3,z:-4965})
+  assert.deepEqual(asked,['-4927,3,-4965'])
 })
 
 test('nothing changes outside player mode, for other resources, or when no ore is in reach', () => {

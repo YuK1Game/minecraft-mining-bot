@@ -37,7 +37,7 @@ function fixture ({ remaining = 2, lastRequestedAt = null, onDelay = null } = {}
     input: { stats: () => ({ running: false }) }, autonomy: { snapshot: () => ({ actionActive: false }) },
     idleSafety: busy(), excavation: busy(), tunneling: busy(), recovery: busy(), foraging: busy(), surfaceReturn: busy(), shelter: busy(), hut: busy(), guardRoute: busy(),
     mining: { snapshot: () => ({ phase: 'idle' }) }, walker: { snapshot: () => ({ phase: 'idle' }) },
-    food: busy(), furnace: busy(), chest: busy(), interactions: { snapshot: () => ({ pendingOperation: null }) }, combat: busy(), quarryPillar: busy(),
+    food: busy(), furnace: busy(), chest: busy(), interactions: { snapshot: () => ({ pendingOperation: null }) }, combat: busy(), quarryPillar: busy(), mineLadder: null,
     quarryJob: { holdsWork: () => true }, quarryCombatArmed: false, armorTask: null, longTravel: null,
     craftStatus: () => ({ pendingRequestId: context.craftPending, openContainer: null }),
     inventory: {
@@ -49,7 +49,7 @@ function fixture ({ remaining = 2, lastRequestedAt = null, onDelay = null } = {}
         return { slot, serverConfirmed: true }
       }
     },
-    armor: { preview: () => true, equipBest: async () => { armorEquips++; return [] } }
+    armor: { snapshot: () => ({ busy: false }), preview: () => true, equipBest: async () => { armorEquips++; return [] } }
   }
   context.refreshInventoryWithRetry = options => refreshInventoryWithRetry({ ...options, now: () => clock, sleep: ms => new Promise(resolve => context.setTimeout(resolve, ms)) })
   context.own = fn => async (...args) => { context.ownedCall++; try { return await fn(...args) } finally { context.ownedCall-- } }
@@ -106,6 +106,20 @@ test('the real idle and ordinary-action guards still reject competing work', asy
   const healthy = fixture({ remaining: 100 }); healthy.context.motion = true
   await assert.rejects(healthy.context.ports.prepareMining(healthy.tool, { signal: new AbortController().signal }), /前の操作/)
   assert.equal(healthy.equips(), 0)
+})
+
+test('the actual idle guard blocks an active ladder while retaining internal owner admission', () => {
+  const f = fixture()
+  f.context.quarryJob = null
+  assert.doesNotThrow(() => f.context.requireIdle())
+  f.context.mineLadder = { snapshot: () => ({ busy: true }) }
+  assert.throws(() => f.context.requireIdle(), /はしごの移動と足場/)
+  f.context.ownedCall = 1
+  assert.doesNotThrow(() => f.context.requireIdle())
+  f.context.ownedCall = 0
+  assert.throws(() => f.context.requireIdle(), /はしごの移動と足場/)
+  f.context.mineLadder = null
+  assert.doesNotThrow(() => f.context.requireIdle())
 })
 
 test('healthy tools keep the ordinary equipment path without a fresh request or cooldown wait', async () => {
