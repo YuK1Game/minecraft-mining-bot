@@ -4,7 +4,7 @@ const { mineSteps,stepCells }=require('./mine-geometry')
 const { at,open,solid,standY,key,scope,live,received,feetAt,blocked,stopped,action,results }=require('./mine-common')
 const { walkCell }=require('./mine-excavate')
 const { climb,topStand }=require('./mine-shaft')
-const { insideMine,mineLocation }=require('./mine-location')
+const { insideMine }=require('./mine-location')
 const { createBuildWalk } = require('../player-build-walk')
 const same=(a,b)=>a.x===b.x && a.z===b.z
 
@@ -94,7 +94,7 @@ async function walkLayer(ctx,branch,layer,target){
 async function reachLayer(ctx,branch,layer){
   const plan=branch.plan,target=plan.shaft.landings.find(p=>p.layer===layer)
   if(!target || !branch.shaft?.landings?.[layer])return blocked('MINE_LANDING_UNKNOWN','採掘層の踊り場を先に施工します。')
-  const feet=ctx.getFeet(),current=mineLocation(ctx,branch) && plan.layers.find(p=>Math.abs(feet.y-(p.y-0.5))<0.15 || Math.abs(feet.y-p.y)<0.15)
+  const feet=ctx.getFeet(),current=insideMine(ctx,branch) && plan.layers.find(p=>Math.abs(feet.y-(p.y-0.5))<0.15 || Math.abs(feet.y-p.y)<0.15)
   if(current?.id===layer)return walkCell(ctx,branch,feet,'mine_layer_position')
   if(current){const landing=plan.shaft.landings.find(p=>p.layer===current.id),walked=await walkLayer(ctx,branch,current.id,landing.stand);if(!received(walked))return walked}
   else if(insideMine(ctx,branch)){
@@ -113,7 +113,7 @@ async function reachLayer(ctx,branch,layer){
 }
 
 async function leaveMine(ctx,branch){
-  if(!branch?.plan || !branch.shaft)return {...results.completed('MINE_OUTSIDE'),serverConfirmed:true}
+  if(!insideMine(ctx,branch))return {...results.completed('MINE_OUTSIDE'),serverConfirmed:true}
   const feet=ctx.getFeet(),plan=branch.plan,current=plan.layers.find(p=>Math.abs(feet.y-(p.y-0.5))<0.15 || Math.abs(feet.y-p.y)<0.15)
   if(current){const landing=plan.shaft.landings.find(p=>p.layer===current.id),out=await walkLayer(ctx,branch,current.id,landing.stand);if(!received(out))return out}
   else if(feet.y>=plan.shaft.topY-0.2)return {...results.completed('MINE_OUTSIDE'),serverConfirmed:true}

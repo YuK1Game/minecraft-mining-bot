@@ -32,6 +32,18 @@ const wet = (w, cell) => SIDES.some(([dx, dy, dz]) => w.getBlock(cell.x + dx, ce
 const LEFT = /を掘れなかったため、しばらくほかを先に試します/
 const key = cell => `${cell.x},${cell.y},${cell.z}`
 
+test('cobblestone collection uses an exposed face instead of repeatedly approaching nearer buried stone', async () => {
+  const exposed = { x: 4, y: 64, z: 0 }
+  const w = createDigWorld({ x0: 0, z0: 0, feet: { x: 0.5, y: 64, z: 0.5 }, rows: {}, legend: {} },
+    { outside: (x, y, z) => key({ x, y, z }) === key(exposed) || y < 62 ? 'stone' : y < 64 ? 'dirt' : 'air' })
+  assert.deepEqual(inView(w.ctx, 'cobblestone').map(key), [key(exposed)])
+  await collect(w.ctx, 'cobblestone')
+  assert.equal(w.count('cobblestone'), 1)
+  assert.deepEqual(w.minedNames, ['stone'])
+  assert.equal(w.getBlock(exposed.x, exposed.y, exposed.z).name, 'minecraft:air')
+  assert.equal(w.lines.some(line => LEFT.test(line)), false)
+})
+
 test('the received place: on coal ore beside the lake, 49 coal ores in view, the six nearest against the water', () => {
   const w = scene()
   assert.deepEqual(w.cell(), { x: 9916, y: 58, z: 10162 })

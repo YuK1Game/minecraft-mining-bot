@@ -10,6 +10,7 @@ const { treeAt, beginTree } = require('./dragon-tree')
 const { inside, leaveHouse } = require('./house/house-exit')
 const { doorOf, openDoor } = require('./house/house-door')
 const { createBuildWalk } = require('./player-build-walk')
+const { sightPassable } = require('../actions/interaction-sight')
 
 const SOURCES = {
   raw_iron: /^(?:deepslate_)?iron_ore$/, raw_gold: /^(?:deepslate_)?gold_ore$/,
@@ -19,6 +20,8 @@ const SOURCES = {
   log: /^(?!stripped_)[a-z_]+_(?:log|stem)$/, string: /^web$/
 }
 const MOBS = { string: 'spider', feather: 'chicken', phantom_membrane: 'phantom', slime_ball: 'slime', magma_cream: 'magma_cube', wool: 'sheep' }
+const SIDES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
+const exposedStone = (ctx, p) => SIDES.some(([x, y, z]) => sightPassable(ctx.getBlock(p.x + x, p.y + y, p.z + z)))
 
 function findCells (ctx, test, radius = 12, height = 5) {
   const feet = ctx.getFeet()
@@ -36,7 +39,8 @@ function inView (ctx, name) {
   const re = SOURCES[name]
   if (!re) return []
   const rested = cellRest(ctx.shared, ctx.runtime?.raw?.().dimension, { now: ctx.now })
-  return findCells(ctx, (b, p) => re.test(bare(b.name)) && !rested.resting(p))
+  return findCells(ctx, (b, p) => re.test(bare(b.name)) && !rested.resting(p) &&
+    (name !== 'cobblestone' || !b.protected && !b.protectionSource && !protectedAt(ctx, p) && exposedStone(ctx, p)))
 }
 
 async function approach (ctx, target) {
@@ -130,7 +134,8 @@ async function collect (ctx, name) {
     // A block that was tried and not taken rests (supply-cell-rest.js): the next nearest ones get their turn.
     const rested = cellRest(ctx.shared, ctx.runtime.raw().dimension, { now: ctx.now })
     const far = cell => { const feet = ctx.getFeet(); return feet ? Math.hypot(cell.x + 0.5 - feet.x, cell.y - feet.y, cell.z + 0.5 - feet.z) : Infinity }
-    const cells = findCells(ctx, (b, p) => re.test(bare(b.name)) && !b.protected && !b.protectionSource && !protectedAt(ctx, p) && !rested.resting(p))
+    const cells = findCells(ctx, (b, p) => re.test(bare(b.name)) && !b.protected && !b.protectionSource && !protectedAt(ctx, p) &&
+      !rested.resting(p) && (name !== 'cobblestone' || exposedStone(ctx, p)))
     const skip = (b, p) => b.protected || !!b.protectionSource || protectedAt(ctx, p)
     for (const seen of cells.slice(0, 6)) {
       // A log is taken as the first of its tree (dragon-tree.js): the lowest one standing, walked to at the trunk's
@@ -161,7 +166,9 @@ async function collect (ctx, name) {
         if (ctx.cancelled() || !rested.miss(cell, before, far(cell))) return
         ctx.log?.(`プレイヤーモード: ${bare(block.name)} (${cell.x}, ${cell.y}, ${cell.z}) を掘れなかったため、しばらくほかを先に試します${ctx.hands.reason?.(target) ? `（${String(ctx.hands.reason(target)).slice(0, 60)}）` : ''}`)
       }
-      await approach(ctx, trunk ? { x: target.x, y: trunk[0].y, z: target.z } : target)
+      if (name !== 'cobblestone' || !ctx.hands.canMine(target)) {
+        await approach(ctx, trunk ? { x: target.x, y: trunk[0].y, z: target.z } : target)
+      }
       if (ctx.cancelled()) return
       if (!ctx.hands.canMine(target)) {
         if (!oreSearch || !await approachOre(ctx, target) || ctx.cancelled()) { left(); continue }

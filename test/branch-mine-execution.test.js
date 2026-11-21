@@ -146,6 +146,11 @@ test('an archived overworld mine never captures Nether or distant cave food and 
   w.raw.dimension='overworld';w.ctx.getFeet=()=>({x:1000.5,y:40,z:1000.5})
   assert.equal(await beforeSurfaceSupply(w.ctx),null)
   assert.equal(await minePackRoom(w.ctx),null)
+  // Footprint + elevation alone used to make the outdoor dip beside the
+  // entrance request an ascent, though the Bot was already outside.
+  w.ctx.getFeet=()=>({ ...w.plan.shaft.approach, y:w.plan.shaft.topY-1 })
+  assert.equal(await beforeSurfaceSupply(w.ctx),null)
+  assert.equal((await leaveMine(w.ctx,w.branch)).code,'MINE_OUTSIDE')
   assert.equal(w.climbs.length,0)
 })
 
