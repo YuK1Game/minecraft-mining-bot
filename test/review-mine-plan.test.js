@@ -166,8 +166,9 @@ test('dense observed veins resize cargo capacity for the final room on both laye
   const f = fixture({ full: true })
   for (let x = -15; x < 15; x++) for (let z = -15; z < 15; z++) for (const y of [31, 32, 33, 34]) f.put({ x, y, z }, 'iron_ore')
   f.put({ x: 0, y: -51, z: 0 }, 'diamond_ore')
-  const result = await planMine({ ...f, origin: { x: 0.5, y: 64, z: 0.5 }, resource: 'raw_iron', width: 32, length: 32, upperYs: [32], maxLowerLevels: 1, searchRadius: 0 })
+  const result = await planMine({ ...f, origin: { x: 0.5, y: 64, z: 0.5 }, resource: 'diamond', width: 32, length: 32, upperYs: [32], maxLowerLevels: 1, searchRadius: 0 })
   assert.equal(result.status, 'planned', JSON.stringify(result))
+  assert.equal(result.plan.layers.length, 2, 'an initial diamond request still plans both layers')
   assert.ok(result.plan.storage.find(room => room.layer === 'upper').pairs.filter(p => p.purpose === 'cargo').length > 1)
   for (const room of result.plan.storage) {
     const cargo = room.pairs.filter(p => p.purpose === 'cargo').length
@@ -282,7 +283,7 @@ test('diamond observations choose lower levels even when iron and copper are mor
 
 test('a fully received ore-free lower area is blocked so the bounded site search can advance', async () => {
   const f = fixture({ full: true })
-  const result = await planMine({ ...f, origin: { x: 0.5, y: 64, z: 0.5 }, width: 12, length: 16, searchRadius: 0 })
+  const result = await planMine({ ...f, origin: { x: 0.5, y: 64, z: 0.5 }, resource: 'diamond', width: 12, length: 16, searchRadius: 0 })
   assert.equal(result.status, 'blocked'); assert.equal(result.code, 'MINE_NO_OBSERVED_LOWER_ORE')
   assert.equal(result.diagnostics.unknown, 0); assert.equal(result.diagnostics.observedOres, 0)
   assert.deepEqual(result.needsObservation, [])
@@ -313,7 +314,7 @@ test('unknown World, changed terrain and a spent evaluation budget cannot return
   const bounded = await planMine({ ...ready, origin: { x: 0, y: 64, z: 0 }, width: 12, length: 16, searchRadius: 0, maxWork: 1 })
   assert.equal(bounded.code, 'MINE_PLAN_BUDGET'); assert.equal(bounded.status, 'blocked')
   let changed = false
-  const stale = await planMine({ ...ready, origin: { x: 0, y: 64, z: 0 }, width: 12, length: 16, yieldNow: async () => { if (!changed) { changed = true; ready.put({ x: -16, y: -59, z: -16 }, 'water') } } })
+  const stale = await planMine({ ...ready, origin: { x: 0, y: 64, z: 0 }, width: 12, length: 16, yieldNow: async () => { if (!changed) { changed = true; ready.put({ x: -16, y: 14, z: -16 }, 'water') } } })
   assert.equal(stale.status, 'observing'); assert.equal(stale.plan, undefined)
 })
 

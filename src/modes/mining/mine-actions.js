@@ -5,6 +5,7 @@ const { completed, blocked, failed, interrupted } = require('../return/return-re
 const { key, cell, air, solid, bottomSlab, full, held, receivedInventory, value, scopeOf } = require('./mine-observed')
 const { sameWorld, mineWorldScope } = require('./mine-state')
 const { digTool, toolNeeded } = require('../dig-tool')
+const { supportIntent, recordSupportReceipt } = require('./mine-support-receipt')
 const NORMAL = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]]
 
 function createMineActions (ctx) {
@@ -23,6 +24,15 @@ function createMineActions (ctx) {
     if (!inventory()) return wait('MINE_INVENTORY_UNKNOWN', 'inventory_update')
     const scope = scopeOf(ctx), state = branch()
     if (!scope || !state || !worldMatches()) return wait('MINE_SCOPE_UNKNOWN', 'owner_released')
+    // Cancellation can arrive just after a break receipt. That completed
+    // break must not leave a transfer-like pending intent blocking every
+    // following cell, even when the executor has already skipped its AIR.
+    const previous = state.pendingAction
+    if (previous?.kind === 'dig' && cell(previous.position) && air(block(previous.position))) {
+      forgetDig(previous.position)
+      if (!await clear(previous.key)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
+      if (!same(scope)) return interrupted('MINE_SCOPE_CHANGED')
+    }
     if (state.pendingAction) return wait('MINE_ACTION_UNCONFIRMED', 'inventory_update', { evidence: state.pendingAction })
     state.pendingAction = { ...intent, scope, stage: 'attempting' }
     if (!await save() || !same(scope)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
@@ -31,8 +41,11 @@ function createMineActions (ctx) {
   async function clear (expected) {
     const state = branch()
     if (state?.pendingAction && expected && state.pendingAction.key !== expected) return false
+    const pending = state?.pendingAction
     if (state) delete state.pendingAction
-    return save()
+    if (await save()) return true
+    if (state && pending && !state.pendingAction) state.pendingAction = pending
+    return false
   }
   function matches (p, name, plan = {}) {
     const found = block(p)
@@ -41,13 +54,24 @@ function createMineActions (ctx) {
     if (found.name === 'minecraft:ladder' && Number.isInteger(plan.face)) return value(found.properties?.facing_direction) === plan.face
     return true
   }
+  function forgetDig (position) {
+    const state = branch()
+    let changed = false
+    for (const name of ['supportFills', 'temporarySeals']) if (state?.[name]) {
+      const remaining = state[name].filter(p => key(p) !== key(position))
+      if (remaining.length !== state[name].length) { state[name] = remaining; changed = true }
+    }
+    return changed
+  }
   async function mine (position) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     if (!worldMatches()) return wait('MINE_SCOPE_UNKNOWN', 'owner_released')
     if (!cell(position)) return failed('MINE_CELL_INVALID')
     const actionKey = 'dig:' + key(position), pending = branch()?.pendingAction
     if (air(block(position))) {
+      const changed = forgetDig(position)
       if (pending?.key === actionKey && !await clear(actionKey)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
+      if (changed && pending?.key !== actionKey && !await save()) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
       return done('MINE_AIR_RECEIVED', { position })
     }
     if (block(position)?.known !== true) return wait('MINE_TERRAIN_UNKNOWN')
@@ -63,6 +87,7 @@ function createMineActions (ctx) {
     try { mined = await ctx.hands.mine(position) } catch (error) { if (!stopped()) ctx.log?.('採掘場: ' + String(error.code ?? error.message).slice(0, 120)) }
     if (!same(start.scope)) return interrupted('MINE_SCOPE_CHANGED')
     if (air(block(position))) {
+      forgetDig(position)
       if (!await clear(actionKey)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
       return done('MINE_AIR_RECEIVED', { position })
     }
@@ -90,18 +115,30 @@ function createMineActions (ctx) {
     if (matches(position, name, plan)) {
       // A received existing piece can be reused after a reload. This proves
       // the structure, not that an old, unconfirmed transaction consumed it.
+      if (pending?.key === actionKey && pending.supportFill) {
+        const saved = branch().supportFills?.some(p => key(p) === key(position) && p.name === name && p.receipt?.planId === branch().plan.id && p.receipt?.scope === pending.scope && p.receipt?.consumed === 1)
+        // An in-flight support may finish after cancellation. Within that
+        // same observed life, the saved AIR intent and exact item decrement
+        // can reconcile it. Across lives only its durable receipt suffices.
+        if (!saved && (pending.scope !== scopeOf(ctx) || !recordSupportReceipt(branch(), pending, block(position), held(inventory(), name)))) return wait('MINE_SUPPORT_RECEIPT_UNCONFIRMED', 'inventory_update')
+      }
       if (pending?.key === actionKey && !await clear(actionKey)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
       return done('MINE_STRUCTURE_RECEIVED', { position, reused: true })
     }
     if (!air(block(position))) return wait('MINE_PLACE_CELL_OCCUPIED')
     const before = held(inventory(), name)
     if (!(before > 0)) return wait('MINE_MATERIAL_MISSING', 'supplies_changed', { evidence: { name } })
-    const start = await begin({ key: actionKey, kind: 'place', position, name, before })
+    const supportFill = supportIntent(branch(), plan)
+    const start = await begin({ key: actionKey, kind: 'place', position, name, before, ...(supportFill ? { supportFill, fromAir: true } : {}) })
     if (!start.scope) return start
     let placed = false
     try { placed = await house.place(name, plan) } catch (error) { ctx.log?.('採掘場: ' + String(error.code ?? error.message).slice(0, 120)) }
     if (!same(start.scope)) return interrupted('MINE_SCOPE_CHANGED')
     if (placed && matches(position, name, plan) && held(inventory(), name) <= before - 1 && inventory()) {
+      // Commit this received support together with clearing the placement
+      // intent. A later executor checkpoint failure/reload cannot lose the
+      // proof and mistake our temporary floor for somebody else's block.
+      if (supportFill && !recordSupportReceipt(branch(), branch()?.pendingAction, block(position), held(inventory(), name))) return wait('MINE_SUPPORT_RECEIPT_UNCONFIRMED', 'inventory_update')
       if (!await clear(actionKey)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
       return done('MINE_PLACEMENT_RECEIVED', { position, name, consumed: 1 })
     }

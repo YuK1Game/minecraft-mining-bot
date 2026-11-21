@@ -6,6 +6,8 @@ const { digCell, walkCell } = require('./mine-excavate')
 const { fillCell } = require('./mine-shaft')
 const { cellRest } = require('../supply-cell-rest')
 const { pocketOf,isMineNaturalBlock } = require('./mine-vein-geometry')
+const {prepareVeinReturn}=require('./mine-vein-access')
+const {insideMine}=require('./mine-location')
 const ORES={coal:/^(?:deepslate_)?coal_ore$/,raw_iron:/^(?:deepslate_)?iron_ore$/,raw_gold:/^(?:deepslate_)?gold_ore$/,diamond:/^(?:deepslate_)?diamond_ore$/,redstone:/^(?:lit_)?(?:deepslate_)?(?:lit_)?redstone_ore$/}
 const bare=name=>String(name??'').replace(/^minecraft:/,'')
 
@@ -27,7 +29,7 @@ function candidates (ctx,branch,resource,anchor,frontier=branch.vein?.frontier??
 async function restoreVein (ctx,branch) {
   const vein=branch.vein
   if(!vein)return {...results.completed('MINE_VEIN_CLOSED'),serverConfirmed:true}
-  const back=await walkCell(ctx,branch,vein.returnTo,'vein_return')
+  const back=await prepareVeinReturn(ctx,branch)
   if(!received(back))return back
   const ordered=[...vein.opened].sort((a,b)=>Math.hypot(b.x-vein.anchor.x,b.z-vein.anchor.z)-Math.hypot(a.x-vein.anchor.x,a.z-vein.anchor.z)||b.y-a.y)
   for(const p of ordered){
@@ -46,13 +48,14 @@ async function restoreVein (ctx,branch) {
 // report a supply request complete, change layers, or choose another branch.
 async function workVein (ctx,branch,cells=null) {
   if(!live(ctx))return stopped()
+  if(branch.vein && (branch.vein.liveScope!==scope(ctx) || !insideMine(ctx,branch))){branch.vein.closing=true;return restoreVein(ctx,branch)}
   const request=branch.request
   if(!branch.vein){
     if(!cells)return {...results.completed('MINE_NO_VEIN'),serverConfirmed:true}
     const feet=ctx.getFeet(),anchor={x:Math.floor(feet.x),y:Math.ceil(feet.y),z:Math.floor(feet.z)}
     const layer=branch.plan.layers.find(p=>p.id===request.layer),frontier=cells.clear.filter(p=>p.y===layer.y && open(at(ctx,p)) && open(at(ctx,{...p,y:p.y+1}))).map(p=>({...p}))
     if(!candidates(ctx,branch,request.resource,anchor,frontier).length)return {...results.completed('MINE_NO_VEIN'),serverConfirmed:true}
-    branch.vein={anchor,returnTo:{...feet},frontier,opened:[],mined:0,closing:false}
+    branch.vein={layer:request.layer,liveScope:scope(ctx),anchor,returnTo:{...feet},frontier,opened:[],mined:0,closing:false}
     if(!await save(ctx,branch))return blocked('MINE_CHECKPOINT','鉱脈の追掘り範囲を保存します。','owner_released')
   }
   const vein=branch.vein,max=Math.min(32,branch.plan.vein?.maxBlocks??32)
