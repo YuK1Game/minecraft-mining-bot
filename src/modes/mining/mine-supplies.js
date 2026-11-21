@@ -4,6 +4,8 @@ const { blocked, interrupted } = require('../return/return-result')
 const { held, bare, solid, air, confirmed } = require('./mine-observed')
 const { createOpenStand } = require('../open-stand')
 const { insideMine } = require('./mine-location')
+const { takeSupplies } = require('./mine-stock')
+const { supplyNeeds } = require('./mine-needs')
 
 // Infrastructure is prepared in bounded batches. Torches can bootstrap from
 // charcoal, so preparing a coal mine never recursively starts another mine.
@@ -99,30 +101,25 @@ function createMineSupplies (ctx, actions, storage) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     if (!actions.inventory()) return blocked('MINE_INVENTORY_UNKNOWN', { kind: 'inventory_update' })
     const id = typeof layer === 'string' ? layer : layer.id
-    const level = plan.layers.find(entry => entry.id === id), room = plan.storage.find(entry => entry.layer === id)
-    if (!level || !room) return wait('MINE_SUPPLY_LAYER_INVALID')
-    // A first request may already be for diamonds. Include the still-unbuilt
-    // upper shaft as well, so spending one ladder there also reduces the
-    // remaining budget instead of forcing a surface top-up every step.
-    const prior = plan.shaft.topY
-    let installed = 0
-    for (let y = level.y; y <= prior; y++) {
-      const seen = actions.block({ x: plan.shaft.ladder.x, y, z: plan.shaft.ladder.z })
-      if (seen?.known === true && seen.name === 'minecraft:ladder') installed++
-    }
-    const ladders = Math.max(4, prior - level.y + 2 - installed)
-    const remainingChests = room.pairs.reduce((sum, pair) => sum + pair.positions.filter(p => actions.block(p)?.name !== 'minecraft:chest' || actions.block(p)?.known !== true).length, 0)
-    const needs = { ladder: ladders, torch: have('torch') < 8 ? 32 : 8, cobblestone_slab: have('cobblestone_slab') < 12 ? 64 : 12, cobblestone: have('cobblestone') < 16 ? 64 : 16, chest: remainingChests }
+    const needs = supplyNeeds(plan, id, { inventory: actions.inventory(), getBlock: actions.block })
+    if (!needs) return wait('MINE_SUPPLY_LAYER_INVALID')
     // Only unopened deficits are withdrawn, and an existing supply pair is
     // physically read again. Stored estimates never masquerade as inventory.
     const deficits = Object.fromEntries(Object.entries(needs).map(([name, n]) => [name, Math.max(0, n - have(name))]).filter(([, n]) => n > 0))
     if (Object.keys(deficits).length && ctx.memory.early.mine.branch.storage?.pairs?.[`${id}:supply`]) {
-      const out = await storage.take(plan, { layer: id, needs: deficits })
+      const out = await takeSupplies(ctx, ctx.memory.early.mine.branch, id, needs, storage)
       if (!confirmed(out)) return out
     }
     if (have('torch') < needs.torch) return torches(needs.torch)
     const missing = Object.entries(needs).find(([name, amount]) => have(name) < amount)
-    if (!missing) return actions.done('MINE_SUPPLIES_READY', { layer: id, request, needs })
+    if (!missing) {
+      const branch = ctx.memory.early.mine.branch
+      if (branch.supplyChecked) {
+        delete branch.supplyChecked
+        if (!await actions.save()) return wait('MINE_CHECKPOINT_FAILED')
+      }
+      return actions.done('MINE_SUPPLIES_READY', { layer: id, request, needs })
+    }
     const [name, amount] = missing
     if (name === 'cobblestone') return acquire(name, amount)
     const table = await station('crafting_table')

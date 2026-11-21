@@ -7,21 +7,7 @@ const { pairedChest } = require('../chest-pair')
 const { stationWorldScope } = require('../../survival/supply-return')
 const { completed, blocked, failed, interrupted } = require('../return/return-result')
 const { key, air, solid, bottomSlab, confirmed, bare } = require('./mine-observed')
-const CARGO = /^(?:cobblestone|cobbled_deepslate|stone|deepslate|granite|diorite|andesite|tuff|calcite|dirt|gravel|flint|raw_iron|raw_gold|raw_copper|coal|diamond|redstone|lapis_lazuli|emerald)$/
-const RETAIN = { cobblestone: 64, cobbled_deepslate: 16, torch: 32, ladder: 32, cobblestone_slab: 64, stick: 16 }
-
-function cargo (inventory, keep = {}) {
-  if (inventory?.known !== true || inventory.uncertain === true) return null
-  const remaining = { ...RETAIN, ...Object.fromEntries(Object.entries(keep).map(([name, n]) => [bare(name), Math.max(0, n)])) }, out = []
-  for (const item of inventory.items ?? []) {
-    const name = bare(item.name)
-    if (!CARGO.test(name) || !(item.count > 0)) continue
-    const kept = Math.min(item.count, remaining[name] ?? 0)
-    remaining[name] = Math.max(0, (remaining[name] ?? 0) - kept)
-    if (item.count > kept) out.push({ slot: item.slot, name: item.name, count: item.count - kept })
-  }
-  return out
-}
+const { cargo, capacityCargo, occupied, isCargo, RETAIN } = require('./mine-carry')
 
 function createMineStorage (ctx, actions) {
   const stopped = () => ctx.cancelled() || ctx.signal?.aborted
@@ -87,29 +73,36 @@ function createMineStorage (ctx, actions) {
     }
     return actions.done('MINE_STORAGE_READY', { pairs: room.pairs.length })
   }
-  async function deposit (plan, { layer, keep = {} } = {}) {
+  async function deposit (plan, { layer, keep = {}, freeSlots = null } = {}) {
     const room = roomOf(plan, layer)
     if (!room) return failed('MINE_STORAGE_LAYER_INVALID')
-    const stacks = () => cargo(actions.inventory(), keep)
+    const capacity = Number.isInteger(freeSlots) && freeSlots > 0 && freeSlots < 36
+    const enough = () => occupied(actions.inventory()) != null && occupied(actions.inventory()) <= 36 - freeSlots
+    const stacks = () => capacity && enough() ? [] : (capacity ? capacityCargo : cargo)(actions.inventory(), keep)
     if (stacks() == null) return wait('MINE_INVENTORY_UNKNOWN', 'inventory_update')
-    if (!stacks().length) return actions.done('MINE_CARGO_EMPTY')
+    if (!stacks().length) return capacity && !enough() ? wait('MINE_CAPACITY_RETAINED', 'inventory_update') : actions.done(capacity ? 'MINE_CAPACITY_READY' : 'MINE_CARGO_EMPTY')
     let transferred = 0
-    for (const pair of room.pairs.filter(pair => pair.purpose === 'cargo')) {
+    const finish = async result => {
+      if (transferred > 0) {
+        registry().lastDeposit = { layer: room.layer, confirmedTransferred: transferred, revision: (registry().lastDeposit?.revision ?? 0) + 1 }
+        if (!await actions.save()) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
+      }
+      return result
+    }
+    for (const pair of room.pairs.filter(pair => pair.purpose === 'cargo' || capacity && pair.purpose === 'supply')) {
       if (stopped()) return stoppedResult()
+      const offered = () => (stacks() ?? []).filter(item => !capacity || (pair.purpose === 'cargo') === isCargo(item))
+      if (!offered().length) continue
       const received = await inspect(pair)
-      if (!confirmed(received)) return received
-      const out = await box.deposit(pair.positions[0], () => stacks() ?? [], { aborted: stopped })
+      if (!confirmed(received)) return finish(received)
+      const out = await box.deposit(pair.positions[0], offered, { aborted: stopped })
       transferred += out.progress?.confirmedTransferred ?? 0
       if (stopped()) return stoppedResult()
       if (!actions.inventory()) return wait('MINE_INVENTORY_UNKNOWN', 'inventory_update')
-      if (!stacks().length) {
-        registry().lastDeposit = { layer: room.layer, confirmedTransferred: transferred, revision: (registry().lastDeposit?.revision ?? 0) + 1 }
-        if (!await actions.save()) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
-        return actions.done('MINE_CARGO_STORED', { confirmedTransferred: transferred })
-      }
-      if (out.code !== 'CONTAINER_FULL' && !['completed', 'partial'].includes(out.status)) return out
+      if (!stacks().length) return finish(capacity && !enough() ? wait('MINE_CAPACITY_RETAINED', 'inventory_update') : actions.done(capacity ? 'MINE_CAPACITY_FREED' : 'MINE_CARGO_STORED', { confirmedTransferred: transferred, freeSlots: 36 - occupied(actions.inventory()) }))
+      if (out.code !== 'CONTAINER_FULL' && !['completed', 'partial'].includes(out.status)) return finish(out)
     }
-    return wait('MINE_STORAGE_FULL', 'container_update', { progress: { confirmedTransferred: transferred }, remaining: { items: stacks()?.reduce((sum, s) => sum + s.count, 0) ?? null } })
+    return finish(wait('MINE_STORAGE_FULL', 'container_update', { progress: { confirmedTransferred: transferred }, remaining: { items: stacks()?.reduce((sum, s) => sum + s.count, 0) ?? null } }))
   }
   async function take (plan, { layer, needs = {} } = {}) {
     const room = roomOf(plan, layer)
@@ -130,15 +123,17 @@ function createMineStorage (ctx, actions) {
     }
     return actions.done('MINE_SUPPLY_CHESTS_READ')
   }
-  async function depositHome ({ keep = {} } = {}) {
+  async function depositHome ({ keep = {}, freeSlots = null } = {}) {
     const origin = ctx.shared.playerHouse?.origin
     if (!origin) return wait('MINE_HOME_STORAGE_UNAVAILABLE', 'container_update')
     const { chestOf } = require('../house/house-spawn')
     const { approachHome } = require('../dragon-early-home')
     const { baseChests } = require('../base-chests')
-    const anchor = chestOf(origin), stacks = () => cargo(actions.inventory(), keep)
+    const capacity = Number.isInteger(freeSlots) && freeSlots > 0 && freeSlots < 36
+    const enough = () => occupied(actions.inventory()) != null && occupied(actions.inventory()) <= 36 - freeSlots
+    const anchor = chestOf(origin), stacks = () => capacity && enough() ? [] : (capacity ? capacityCargo : cargo)(actions.inventory(), keep)
     if (stacks() == null) return wait('MINE_INVENTORY_UNKNOWN', 'inventory_update')
-    if (!stacks().length) return actions.done('MINE_CARGO_EMPTY')
+    if (!stacks().length) return capacity && !enough() ? wait('MINE_CAPACITY_RETAINED', 'inventory_update') : actions.done(capacity ? 'MINE_CAPACITY_READY' : 'MINE_CARGO_EMPTY')
     if (!await approachHome(ctx, anchor, { open: true })) return wait('MINE_HOME_ACCESS_UNCONFIRMED', 'position_changed')
     if (stopped()) return stoppedResult()
     const visited = new Set()
@@ -157,7 +152,7 @@ function createMineStorage (ctx, actions) {
       visited.add(key(position)); visited.add(key(mate))
       const out = await box.deposit(position, () => stacks() ?? [], { aborted: stopped })
       if (stopped()) return stoppedResult()
-      if (stacks() && !stacks().length) return actions.done('MINE_HOME_CARGO_STORED', { chest: position, confirmedTransferred: out.progress?.confirmedTransferred ?? 0 })
+      if (stacks() && !stacks().length) return capacity && !enough() ? wait('MINE_CAPACITY_RETAINED', 'inventory_update') : actions.done(capacity ? 'MINE_CAPACITY_FREED' : 'MINE_HOME_CARGO_STORED', { chest: position, confirmedTransferred: out.progress?.confirmedTransferred ?? 0, freeSlots: 36 - occupied(actions.inventory()) })
       if (out.code !== 'CONTAINER_FULL' && !['completed', 'partial'].includes(out.status)) return out
     }
     return wait('MINE_HOME_STORAGE_FULL_OR_UNKNOWN', 'container_update')

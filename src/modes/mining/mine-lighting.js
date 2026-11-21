@@ -5,6 +5,7 @@ const { classifyMineCell, mineSteps, stepCells } = require('./mine-geometry')
 const { key, air, solid, bottomSlab, confirmed, held } = require('./mine-observed')
 const { low } = require('../low-block')
 const { placementSupportOk } = require('../../quarry/storage/storage-site-terrain')
+const { shaftBoundary } = require('./mine-shaft-boundary')
 const SIDE = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]
 const NEXT = [...SIDE, [0, 1, 0], [0, -1, 0]]
 const cellOf = p => p.position ?? p
@@ -72,20 +73,27 @@ function createMineLighting (ctx, actions) {
   }
   function boundary (plan, cells) {
     const result = new Map(), current = new Set((cells.clear ?? []).map(key)), complete = new Set(), branch = ctx.memory?.early?.mine?.branch
-    for (const layer of plan.layers) {
+    for (const layer of plan.layers ?? []) {
       const steps = mineSteps(plan, { layer: layer.id }), cursor = branch?.progress?.[layer.id]?.cursor ?? 0
       for (const step of steps.slice(0, cursor)) for (const p of stepCells(plan, step).clear) complete.add(key(p))
     }
     const openFinished = (at, role) => {
-      if (!passable(block(at))) return false
       const layer = plan.layers.find(layer => layer.id === role.layer) ?? plan.layers.find(layer => at.y >= layer.y && at.y < layer.y + 3)
-      if (!layer || !(complete.has(key(at)) || role.role === 'shaft' && branch?.shaft?.landings?.[layer.id])) return false
+      if (!layer) return false
       const foot = { x: at.x, y: layer.y, z: at.z }
+      const floorOpening = at.y === layer.y - 1 && bottomSlab(block(at))
+      if (!floorOpening && !passable(block(at))) return false
+      if (!(complete.has(key(floorOpening ? foot : at)) || role.role === 'shaft' && branch?.shaft?.landings?.[layer.id])) return false
       // The shaft's working bay keeps full supports while the next level is
       // built. Its received clear body and torch light are still required;
       // a saved landing flag alone never makes this opening safe.
       const shaftSupport = role.role === 'shaft' && branch?.shaft?.landings?.[layer.id] && placementSupportOk(block({ ...foot, y: layer.y - 1 }))
       return (bottomSlab(block({ ...foot, y: layer.y - 1 })) || shaftSupport) && passable(block(foot)) && passable(block({ ...foot, y: layer.y + 1 })) && receivedLight(ctx.getBlock, [foot], { target: plan.finish.lightTarget }).safe
+    }
+    if (cells.shaft) {
+      const ys = (cells.clear ?? []).map(p => p.y)
+      if (!ys.length) return []
+      return shaftBoundary(plan, { minY: Math.min(...ys), maxY: Math.max(...ys) }).filter(p => !openFinished(p, classifyMineCell(plan, p)))
     }
     for (const p of cells.clear ?? []) for (const [dx, dy, dz] of SIDE) {
       const at = { x: p.x + dx, y: p.y + dy, z: p.z + dz }, role = classifyMineCell(plan, at)
@@ -105,7 +113,7 @@ function createMineLighting (ctx, actions) {
   }
   async function finish (plan, cells) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
-    const floors = (cells.floor ?? []).map(cellOf), walls = cells.shaft ? [] : boundary(plan, cells), ground = new Map()
+    const floors = (cells.floor ?? []).map(cellOf), walls = boundary(plan, cells), ground = new Map()
     for (const p of cells.clear ?? []) {
       const id = `${p.x},${p.z}`
       if (!ground.has(id) || ground.get(id).y > p.y) ground.set(id, p)
@@ -160,6 +168,7 @@ function createMineLighting (ctx, actions) {
       if (!confirmed(out)) return out
       if (++changed >= 12) return pause()
     }
+    if (!boundary(plan, cells).every(p => placementSupportOk(block(p)))) return wait('MINE_CAVE_BOUNDARY_UNSAFE')
     if (!floors.every(p => bottomSlab(block(p))) || !targets.every(p => passable(block(p)) && passable(block({ ...p, y: p.y + 1 })))) return wait('MINE_FLOOR_OR_CLEARANCE_UNCONFIRMED')
     const light = receivedLight(ctx.getBlock, targets, { target: plan.finish.lightTarget })
     if (!light.safe) return wait('MINE_LIGHTING_UNCONFIRMED', { evidence: light })

@@ -35,10 +35,11 @@ function inSegment (segment, p) {
 
 // Y is the lowest excavated cell; the bottom slab occupies Y-1 and supports
 // feet at Y-0.5. The saved plan contains lines, never a whole terrain snapshot.
-function createMineGeometry ({ scope, anchor, direction = 'east', width = 24, length = 24, surfaceY, upperY = 16, lowerY, expectedDrops = {}, cargoSlots = 43 } = {}) {
-  if (!scope?.profile || !scope.realmId || scope.dimension !== 'overworld' || !anchor || !Number.isSafeInteger(anchor.x) || !Number.isSafeInteger(anchor.z) || !DIRECTIONS[direction] || ![width, length].every(n => Number.isInteger(n) && n >= 12 && n <= 32) || ![surfaceY, upperY, lowerY].every(Number.isInteger) || surfaceY < upperY + 3 || upperY < lowerY + 6 || lowerY < -60 || surfaceY > 316 || !Number.isInteger(cargoSlots) || cargoSlots < 1 || cargoSlots > 54) throw Error('MINE_GEOMETRY_INVALID')
-  if (surfaceY - lowerY > MAX_SHAFT_DEPTH) throw Error('MINE_SHAFT_DEPTH_EXCEEDED')
-  const plan = { version: 1, scope: copy(scope), site: { anchor: { ...anchor }, direction, width, length, surfaceY }, layers: [{ id: 'upper', y: upperY }, { id: 'lower', y: lowerY }], segments: [], storage: [], finish: { floor: 'bottom_slab', torchSpacing: 6, storageTorchSpacing: 4, lightTarget: 8 }, vein: { radius: 3, maxBlocks: 32 } }
+function createMineGeometry ({ scope, anchor, direction = 'east', width = 24, length = 24, surfaceY, upperY = 16, lowerY = null, expectedDrops = {}, cargoSlots = 43 } = {}) {
+  const hasLower = lowerY != null, bottomY = hasLower ? lowerY : upperY
+  if (!scope?.profile || !scope.realmId || scope.dimension !== 'overworld' || !anchor || !Number.isSafeInteger(anchor.x) || !Number.isSafeInteger(anchor.z) || !DIRECTIONS[direction] || ![width, length].every(n => Number.isInteger(n) && n >= 12 && n <= 32) || ![surfaceY, upperY, bottomY].every(Number.isInteger) || surfaceY < upperY + 3 || hasLower && upperY < lowerY + 6 || bottomY < -60 || surfaceY > 316 || !Number.isInteger(cargoSlots) || cargoSlots < 1 || cargoSlots > 54) throw Error('MINE_GEOMETRY_INVALID')
+  if (surfaceY - bottomY > MAX_SHAFT_DEPTH) throw Error('MINE_SHAFT_DEPTH_EXCEEDED')
+  const plan = { version: 1, scope: copy(scope), site: { anchor: { ...anchor }, direction, width, length, surfaceY }, layers: [{ id: 'upper', y: upperY }, ...(hasLower ? [{ id: 'lower', y: lowerY }] : [])], segments: [], storage: [], finish: { floor: 'bottom_slab', torchSpacing: 6, storageTorchSpacing: 4, lightTarget: 8 }, vein: { radius: 3, maxBlocks: 32 }, ...(!hasLower ? { revision: 1, lowerPending: true } : {}) }
   const mid = Math.floor((width - 2) / 2), f = DIRECTIONS[direction], r = { x: -f.z, z: f.x }
   const add = (layer, kind, id, u0, v0, u1, v1, w, h, walkOffset = 0) => {
     const from = point(plan, u0, layer.y, v0), to = point(plan, u1, layer.y, v1)
@@ -70,13 +71,29 @@ function createMineGeometry ({ scope, anchor, direction = 'east', width = 24, le
   const columns = [[0, mid], [1, mid], [0, mid + 1], [1, mid + 1]].map(([u, v]) => { const p = point(plan, u, 0, v); return { x: p.x, z: p.z } })
   const ladder = columns[0], back = point(plan, -1, 0, mid), backing = { x: back.x, z: back.z }
   const topLanding = point(plan, 0, surfaceY, mid - 1), entryTorch = point(plan, 1, surfaceY, mid - 1)
-  plan.shaft = { topY: surfaceY, bottomY: lowerY, columns, ladder: { ...ladder, face: faceOf(f), support: backing }, fillColumns: columns.slice(1),
+  plan.shaft = { topY: surfaceY, bottomY, columns, ladder: { ...ladder, face: faceOf(f), support: backing }, fillColumns: columns.slice(1),
     approach: { ...point(plan, 2, surfaceY, mid), x: point(plan, 2, surfaceY, mid).x + 0.5, z: point(plan, 2, surfaceY, mid).z + 0.5 },
     topLanding: { ...topLanding, x: topLanding.x + 0.5, z: topLanding.z + 0.5 },
     entryTorch: { position: entryTorch, support: { ...entryTorch, y: surfaceY - 1 }, face: 1, name: 'minecraft:torch' },
     landings: plan.layers.map(layer => ({ layer: layer.id, y: layer.y, clear: [point(plan, 1, layer.y, mid), point(plan, 1, layer.y + 1, mid)], floor: [{ position: point(plan, 1, layer.y - 1, mid), half: 'bottom' }], stand: { ...point(plan, 1, layer.y - 0.5, mid), x: point(plan, 1, layer.y, mid).x + 0.5, z: point(plan, 1, layer.y, mid).z + 0.5 } })) }
   plan.id = createHash('sha256').update(JSON.stringify(plan)).digest('hex').slice(0, 20)
   return plan
+}
+
+// An extension owns only the newly surveyed lower construction. The original
+// mine identity and every upper line, chest, doorway and shaft column survive;
+// received progress remains history and is not recertified by this change.
+function extendMineGeometry (plan, { lowerY, expectedDrops = {} } = {}) {
+  if (!plan?.id || plan.layers?.length !== 1 || plan.layers[0].id !== 'upper' || plan.shaft.bottomY !== plan.layers[0].y) throw Error('MINE_EXTENSION_INVALID')
+  const candidate = createMineGeometry({ scope: plan.scope, ...plan.site, upperY: plan.layers[0].y, lowerY,
+    expectedDrops: { upper: plan.storage.find(room => room.layer === 'upper')?.estimatedDrops, ...expectedDrops } })
+  if (candidate.layers.length !== 2) throw Error('MINE_EXTENSION_INVALID')
+  const { evaluation, ...previous } = copy(plan)
+  return { ...previous, revision: (plan.revision ?? 1) + 1, lowerPending: false,
+    layers: [...copy(plan.layers), candidate.layers.find(layer => layer.id === 'lower')],
+    segments: [...copy(plan.segments), ...candidate.segments.filter(segment => segment.layer === 'lower')],
+    storage: [...copy(plan.storage), ...candidate.storage.filter(room => room.layer === 'lower')],
+    shaft: { ...copy(plan.shaft), bottomY: lowerY, landings: [...copy(plan.shaft.landings), candidate.shaft.landings.find(landing => landing.layer === 'lower')] } }
 }
 
 function mineSteps (plan, { layer = null } = {}) {
@@ -142,4 +159,4 @@ function classifyMineCell (plan, p) {
   return { allowedDig: false, protected: !within, role: within ? 'vein_candidate' : 'outside' }
 }
 
-module.exports = { createMineGeometry, mineSteps, stepCells, classifyMineCell, point, local, lineLength, segmentPoint, DIRECTIONS, MAX_SHAFT_DEPTH, key }
+module.exports = { createMineGeometry, extendMineGeometry, mineSteps, stepCells, classifyMineCell, point, local, lineLength, segmentPoint, DIRECTIONS, MAX_SHAFT_DEPTH, key }

@@ -4,7 +4,21 @@ const { mineSteps,stepCells }=require('./mine-geometry')
 const { at,open,solid,standY,key,live,received,feetAt,blocked,stopped,results }=require('./mine-common')
 const { walkCell }=require('./mine-excavate')
 const { climb,topStand }=require('./mine-shaft')
+const { insideMine,mineLocation }=require('./mine-location')
 const same=(a,b)=>a.x===b.x && a.z===b.z
+
+// Every underground consumer enters through the same received surface approach
+// and ladder. A chest or saved work point is not a surface walking destination.
+async function enterMine(ctx,branch){
+  if(!live(ctx))return stopped()
+  if(insideMine(ctx,branch))return {...results.completed('MINE_INSIDE'),serverConfirmed:true}
+  const to=branch.plan.shaft.approach,feet=ctx.getFeet()
+  if(Math.hypot(feet.x-to.x,feet.z-to.z)>12){
+    if(typeof ctx.hands?.approach!=='function' || !await ctx.hands.approach(to,1))return blocked('MINE_ENTRY_UNREACHABLE','採掘場の入口へ既知の地上路で移動します。','position_changed')
+    if(!live(ctx))return stopped()
+  }
+  return walkCell(ctx,branch,to,'mine_entry')
+}
 
 function layerStands(ctx,plan,layer){
   const out=new Map(),y=plan.layers.find(p=>p.id===layer)?.y
@@ -48,10 +62,18 @@ async function walkLayer(ctx,branch,layer,target){
 async function reachLayer(ctx,branch,layer){
   const plan=branch.plan,target=plan.shaft.landings.find(p=>p.layer===layer)
   if(!target || !branch.shaft?.landings?.[layer])return blocked('MINE_LANDING_UNKNOWN','採掘層の踊り場を先に施工します。')
-  const feet=ctx.getFeet(),current=plan.layers.find(p=>Math.abs(feet.y-(p.y-0.5))<0.15 || Math.abs(feet.y-p.y)<0.15)
+  const feet=ctx.getFeet(),current=mineLocation(ctx,branch) && plan.layers.find(p=>Math.abs(feet.y-(p.y-0.5))<0.15 || Math.abs(feet.y-p.y)<0.15)
   if(current?.id===layer)return walkCell(ctx,branch,feet,'mine_layer_position')
   if(current){const landing=plan.shaft.landings.find(p=>p.layer===current.id),walked=await walkLayer(ctx,branch,current.id,landing.stand);if(!received(walked))return walked}
+  else if(insideMine(ctx,branch)){
+    // An interrupted shaft slice is a supported ladder work point, not a
+    // surface path. The ladder port rechecks its received rung and floor.
+    if(!plan.shaft.columns.some(p=>p.x===Math.floor(feet.x) && p.z===Math.floor(feet.z)))return blocked('MINE_ROUTE_UNKNOWN','縦坑の作業足場と採掘層への帰路を確認します。')
+    return climb(ctx,branch,target.stand)
+  }
   else {
+    const entered=await enterMine(ctx,branch)
+    if(!received(entered))return entered
     const stand=topStand(plan)
     if(!feetAt(ctx,stand)){const out=await walkCell(ctx,branch,stand,'mine_entry');if(!received(out))return out}
   }
@@ -68,4 +90,4 @@ async function leaveMine(ctx,branch){
   return walkCell(ctx,branch,plan.shaft.approach,'mine_exit')
 }
 
-module.exports={layerStands,walkLayer,reachLayer,leaveMine}
+module.exports={layerStands,walkLayer,reachLayer,leaveMine,enterMine}

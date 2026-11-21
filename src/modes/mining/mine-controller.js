@@ -3,13 +3,15 @@
 const {mineSteps,stepCells}=require('./mine-geometry')
 const state=require('./mine-state')
 const {at,solid,inventory,count,scope,live,received,save,pending,blocked,stopped,results}=require('./mine-common')
-const {excavateSegment,walkCell}=require('./mine-excavate')
+const {excavateSegment}=require('./mine-excavate')
 const {ensureShaft}=require('./mine-shaft')
-const {walkLayer,reachLayer,leaveMine}=require('./mine-route')
+const {walkLayer,reachLayer,leaveMine,enterMine:entry}=require('./mine-route')
 const {workVein,restoreVein}=require('./mine-veins')
-const {nextMine,retireMine}=require('./mine-sites')
+const {nextMine,retireMine,ensureMineLayer}=require('./mine-sites')
+const {noteMineProgress}=require('./mine-progress')
 const {checkStock,depositMine}=require('./mine-stock')
 const {mineLocation,insideMine}=require('./mine-location')
+const {occupied,constructionKeep}=require('./mine-carry')
 const MINERALS=new Set(['raw_iron','coal','diamond','raw_gold','redstone'])
 const bare=name=>String(name??'').replace(/^minecraft:/,'')
 const layerFor=resource=>['raw_iron','coal'].includes(resource)?'upper':'lower'
@@ -26,17 +28,8 @@ async function prepare(ctx,branch,layer){
   finally{ctx.mineSupplyWork=previous}
 }
 
-async function entry(ctx,branch){
-  if(inside(ctx,branch))return {status:'completed',serverConfirmed:true}
-  const to=branch.plan.shaft.approach,feet=ctx.getFeet()
-  if(Math.hypot(feet.x-to.x,feet.z-to.z)>12){
-    if(typeof ctx.hands?.approach!=='function' || !await ctx.hands.approach(to,1))return blocked('MINE_ENTRY_UNREACHABLE','採掘場の入口へ既知の地上路で移動します。','position_changed')
-    if(!live(ctx))return stopped()
-  }
-  return walkCell(ctx,branch,to,'mine_entry')
-}
-
 async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={}){
+  noteMineProgress(ctx)
   const progress=branch.progress[layer],steps=mineSteps(branch.plan,{layer}),step=steps[progress.cursor]
   if(!step || lobbyOnly && step.kind!=='storage')return {...results.completed('MINE_LOBBY_READY'),serverConfirmed:true}
   if(branch.segmentTask && (branch.segmentTask.stepId!==step.id || branch.segmentTask.cursor!==progress.cursor || branch.segmentTask.layer!==layer))return blocked('MINE_ACTIVE_STEP_MISMATCH','保存した施工区間と現在の坑道を照合します。','owner_released')
@@ -63,11 +56,17 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
     }
     return out
   }
+  const task=branch.segmentTask,failure=branch.failures[step.segmentId]
   branch.progress[layer]=state.advanceMineState(progress,{...out,planId:branch.plan.id,stepId:step.id,cursor:progress.cursor,liveScope:before},{step,liveScope:before,plan:branch.plan})
   delete branch.segmentTask
   delete branch.failures[step.segmentId]
-  ctx.goal?.step?.(`mine:${branch.plan.id}:${step.id}`)
-  if(!await save(ctx,branch,before))return blocked('MINE_CHECKPOINT','坑道の確認済み区間を保存します。','owner_released')
+  if(!await save(ctx,branch,before)){
+    branch.progress[layer]=progress
+    branch.segmentTask=task
+    if(failure!==undefined)branch.failures[step.segmentId]=failure
+    return blocked('MINE_CHECKPOINT','坑道の確認済み区間を保存します。','owner_released')
+  }
+  noteMineProgress(ctx)
   if(!lobbyOnly && !finishOnly && count(ctx,branch.request.resource)<branch.request.targetHeld){const vein=await workVein(ctx,branch,cells);if(!received(vein) && vein.status!=='partial')return vein}
   return {...results.partial('MINE_SEGMENT_ADVANCED',{progress:{layer,cursor:branch.progress[layer].cursor}}),serverConfirmed:true}
 }
@@ -106,6 +105,10 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
     const out=await leaveMine(ctx,branch)
     return received(out) && live(ctx) ? {done:true,reason:`${resource} ${count(ctx,resource)}個を受信し、採掘場から戻りました。`,result:results.completed('MINE_SUPPLY_DELIVERED')} : outcome(out)
   }
+  if(!branch.plan.layers.some(p=>p.id===layer)){
+    const planned=await ensureMineLayer(ctx,branch,{resource,targetHeld})
+    if(!received(planned))return outcome(planned,'受信した地形から次の採掘層を計画します。')
+  }
   if(branch.lobbyReady?.[layer]){
     const entered=await entry(ctx,branch)
     if(!received(entered))return outcome(entered)
@@ -136,8 +139,8 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   const stocked=await checkStock(ctx,branch,layer)
   if(!received(stocked))return outcome(stocked,'保管した鉱石をラージチェストから確認して取り出します。')
   if(count(ctx,resource)>=targetHeld)return outcome({...results.partial('MINE_STOCK_READY'),serverConfirmed:true},'保管済みの鉱石を受信しました。確認済みの帰路で地上へ戻ります。')
-  const held=inventory(ctx)?.items.filter(i=>i.count>0).length??36
-  if(held>=30){const out=await depositMine(ctx,branch,layer,{[resource]:targetHeld});if(!received(out))return outcome(out,'採掘物を計画済みのラージチェストへ収納します。')}
+  const held=occupied(inventory(ctx))??36
+  if(held>30){const out=await depositMine(ctx,branch,layer,{...constructionKeep(ctx,branch,layer),[resource]:targetHeld},{freeSlots:6});if(!received(out))return outcome(out,'必要な携行品を残し、採掘用の空き枠をラージチェストへの収納で確保します。')}
   const steps=mineSteps(branch.plan,{layer}),progress=branch.progress[layer]
   if(progress.cursor>=steps.length)return outcome(await retireMine(ctx,branch),'確認済みの収納と坑道を残し、次の採掘場へ移ります。')
   const out=await stepLayer(ctx,branch,layer)
@@ -162,17 +165,18 @@ async function minePackRoom(ctx){
   const branch=mineOf(ctx)
   if(!branch || !ctx.minePorts || !mineLocation(ctx,branch))return null
   if(!live(ctx))return outcome(stopped())
+  if(occupied(inventory(ctx))<35)return null
   if(branch.vein){branch.vein.closing=true;return outcome(await restoreVein(ctx,branch),'収納の前に鉱脈の穴を埋め戻します。')}
-  const keep=branch.request?{[branch.request.resource]:branch.request.targetHeld}:{},layer=branch.request?.layer??'upper'
+  const layer=branch.request?.layer??'upper',keep={...constructionKeep(ctx,branch,layer),...(branch.request?{[branch.request.resource]:branch.request.targetHeld}:{})}
   if(!branch.lobbyReady?.[layer]){
     const left=await leaveMine(ctx,branch)
     if(!received(left))return outcome(left,'採掘場の入口へ戻り、地上の箱へ採掘物を運びます。')
-    const out=await ctx.minePorts.storage.depositHome?.({keep})
+    const out=await ctx.minePorts.storage.depositHome?.({keep,freeSlots:6})
     return outcome(out??blocked('MINE_HOME_STORAGE_UNAVAILABLE','地上のラージチェストを確認します。'),'本拠点のラージチェストへ採掘物を収納します。')
   }
   const entered=await entry(ctx,branch)
   if(!received(entered))return outcome(entered)
-  const out=await depositMine(ctx,branch,layer,keep)
+  const out=await depositMine(ctx,branch,layer,keep,{freeSlots:6})
   return outcome(out,'採掘物を計画済みのラージチェストへ収納します。')
 }
 

@@ -30,6 +30,17 @@ function resumeMineState (saved, { plan, scope } = {}) {
   return { ...copy(saved), needsRevalidation: true, liveScope: null, receipts: [] }
 }
 
+function extendMineProgress (progress, { previous, plan } = {}) {
+  if (!previous?.id || previous.id !== plan?.id || !sameWorld(previous.scope, plan.scope) || previous.layers?.length !== 1 || previous.layers[0].id !== 'upper' || plan.layers?.length !== 2 || !plan.layers.some(layer => layer.id === 'lower') || progress?.lower) fail('MINE_EXTENSION_STATE_INVALID')
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  const upper = value => value.filter(entry => entry.layer === 'upper')
+  if (!same(previous.site, plan.site) || !same(previous.layers[0], plan.layers.find(layer => layer.id === 'upper')) || !same(previous.segments, upper(plan.segments)) || !same(previous.storage, upper(plan.storage)) || !same(previous.shaft.columns, plan.shaft.columns) || !same(previous.shaft.ladder, plan.shaft.ladder) || !same(previous.shaft.landings, upper(plan.shaft.landings))) fail('MINE_EXTENSION_MOVED_EXISTING_WORK')
+  // Validate the saved upper cursor without minting new upper receipts or
+  // changing its confirmed work count. Only the newly added layer starts at 0.
+  resumeMineState(progress.upper, { plan: previous, scope: previous.scope })
+  return { ...copy(progress), lower: createMineState(plan, { layer: 'lower' }) }
+}
+
 function advanceMineState (state, receipt, { step, liveScope, plan = null } = {}) {
   if (state?.version !== 1 || !liveScope || typeof liveScope !== 'string' || receipt?.liveScope !== liveScope || receipt?.planId !== state.planId || receipt?.stepId !== step?.id || receipt?.serverConfirmed !== true || receipt.receivedAir !== true || receipt.walkConfirmed !== true || receipt.finishConfirmed !== true) fail('MINE_RECEIPT_UNCONFIRMED')
   if (!Number.isInteger(state.cursor) || state.cursor < 0 || state.cursor >= state.stepCount || state.layer != null && state.layer !== step.layer) fail('MINE_PROGRESS_INVALID')
@@ -51,4 +62,4 @@ function skipMineSegment (state, { segmentId, code, plan, liveScope, attempts } 
     blocked: [...(state.blocked ?? []), { segmentId, code, attempts, fromCursor: state.cursor, toCursor: cursor, liveScope }] }
 }
 
-module.exports = { mineWorldScope, mineLiveScope, sameWorld, createMineState, resumeMineState, advanceMineState, skipMineSegment }
+module.exports = { mineWorldScope, mineLiveScope, sameWorld, createMineState, resumeMineState, advanceMineState, skipMineSegment, extendMineProgress }

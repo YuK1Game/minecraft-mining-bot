@@ -3,6 +3,7 @@
 // A finished footprint remains protected. Only its geometry and storage
 // registry survive retirement; per-cell ore estimates and live receipts do not.
 const { planMine }=require('./mine-plan')
+const { planMineExtension }=require('./mine-extension')
 const { DIRECTIONS }=require('./mine-geometry')
 const state=require('./mine-state')
 const { at,air,solid,count,scope,live,received,save,blocked,stopped,results }=require('./mine-common')
@@ -95,12 +96,53 @@ async function nextMine(ctx,resource,targetHeld){
   const plan=planned.plan,branch={version:1,plan,progress:Object.fromEntries(plan.layers.map(layer=>[layer.id,state.createMineState(plan,{layer:layer.id})])),request:null,failures:{}}
   mine.branch=branch;delete mine.search
   if(!await save(ctx,branch))return {result:blocked('MINE_CHECKPOINT','採掘場の計画を保存できません。','owner_released')}
-  ctx.log?.(`プレイヤーモード: 採掘場を計画しました（上層Y${plan.layers[0].y}・下層Y${plan.layers[1].y}、${plan.site.width}×${plan.site.length}）`)
+  const lower=plan.layers.find(layer=>layer.id==='lower')
+  ctx.log?.(`プレイヤーモード: 採掘場を計画しました（上層Y${plan.layers[0].y}${lower?`・下層Y${lower.y}`:'・下層は受信後に拡張'}、${plan.site.width}×${plan.site.length}）`)
   return {branch}
 }
 
+async function ensureMineLayer(ctx,branch,{resource,targetHeld=1}={}){
+  if(!live(ctx))return stopped()
+  if(['raw_iron','coal'].includes(resource) || branch.plan.layers.some(layer=>layer.id==='lower'))return {...results.completed('MINE_LAYER_PLANNED'),serverConfirmed:true}
+  if(branch.segmentTask || branch.vein || branch.pendingAction)return blocked('MINE_EXTENSION_PENDING_WORK','未確認の施工と鉱脈の埋戻しを終えてから下層を計画します。','inventory_update')
+  const before=scope(ctx),previous=branch.plan,revision=revisionOf(ctx),requestKey=JSON.stringify([resource,targetHeld,before,previous.id,previous.revision??1])
+  if(branch.extensionSearch?.revision===revision && branch.extensionSearch.requestKey===requestKey){
+    const search=branch.extensionSearch
+    if(search.status==='observing')await ctx.minePorts.observe({cells:search.cells,reason:search.code})
+    return blocked(search.code,'現在の縦坑と上層を保持し、下層の安全な延伸範囲の受信を待ちます。')
+  }
+  const host=ctx.runtime.host?.(),world=host?.world??{getBlock:ctx.getBlock},mine=memory(ctx),isProtected=protectedBySites(mine.sites??[],previous.scope)
+  const planned=await planMineExtension({world,getState:()=>raw(ctx),plan:previous,origin:ctx.getFeet(),resource,targetCount:Math.max(1,targetHeld-count(ctx,resource)),
+    ownedFills:[...(branch.supportFills??[]),...(branch.temporarySeals??[])],isProtected},{signal:ctx.signal})
+  if(!live(ctx,before))return stopped()
+  if(mine.branch!==branch || branch.plan!==previous)return blocked('MINE_EXTENSION_CHANGED','現在の採掘計画と拡張対象を照合します。','owner_released')
+  if(planned.status!=='planned'){
+    // Only a complete received comparison can retire this footprint. A
+    // budget, cancellation, save failure or unknown cell is never evidence
+    // that its lower layer is impossible.
+    if(planned.status==='blocked' && planned.diagnostics?.unknown===0 && ['MINE_NO_OBSERVED_LOWER_ORE','MINE_NO_SAFE_RESOURCE_PLAN','MINE_SHAFT_DEPTH_EXCEEDED'].includes(planned.code))return retireMine(ctx,branch)
+    const cells=observationCells(planned)
+    branch.extensionSearch={requestKey,revision,status:planned.status,code:planned.code??'MINE_PLAN_PENDING',cells}
+    if(planned.status==='observing')await ctx.minePorts.observe({cells,reason:planned.code})
+    if(!await save(ctx,branch,before))return blocked('MINE_CHECKPOINT','下層の観測状況を保存します。','owner_released')
+    return blocked(planned.code??'MINE_PLAN_PENDING','既設の上層を保持し、下層の鉱石と施工範囲を確認します。')
+  }
+  let progress
+  try{progress=state.extendMineProgress(branch.progress,{previous,plan:planned.plan})}
+  catch{return blocked('MINE_EXTENSION_STATE_INVALID','既設の上層と進捗を保持できる拡張計画か確認します。','owner_released')}
+  const previousProgress=branch.progress,previousSearch=branch.extensionSearch
+  branch.plan=planned.plan;branch.progress=progress;delete branch.extensionSearch
+  if(!await save(ctx,branch,before)){
+    branch.plan=previous;branch.progress=previousProgress
+    if(previousSearch)branch.extensionSearch=previousSearch
+    return blocked('MINE_CHECKPOINT','上層を保持した下層の計画を保存します。','owner_released')
+  }
+  ctx.log?.(`プレイヤーモード: 既設の上層と縦坑を保持し、下層Y${planned.plan.layers.find(layer=>layer.id==='lower').y}を追加しました`)
+  return {...results.completed('MINE_LAYER_PLANNED',{evidence:{planOnly:true,planId:planned.plan.id,revision:planned.plan.revision,addedLayer:'lower'}}),serverConfirmed:true}
+}
+
 async function retireMine(ctx,branch){
-  if(branch.pendingAction || branch.vein)return blocked('MINE_RETIRE_PENDING_ACTION','未確認の施工と鉱脈の埋戻しを終えてから次の採掘場へ移ります。','inventory_update')
+  if(branch.pendingAction || branch.vein || branch.segmentTask)return blocked('MINE_RETIRE_PENDING_ACTION','未確認の施工と鉱脈の埋戻しを終えてから次の採掘場へ移ります。','inventory_update')
   const left=await leaveMine(ctx,branch)
   if(!received(left) || !live(ctx))return live(ctx)?left:stopped()
   const mine=memory(ctx),sites=mine.sites??=[]
@@ -116,4 +158,4 @@ async function retireMine(ctx,branch){
   return {...results.partial('MINE_SITE_RETIRED',{progress:{sites:next.length}}),serverConfirmed:true}
 }
 
-module.exports={nextMine,retireMine,compactSite,footprint,protectedBySites,originAt,revisionOf,MAX_SITES,MAX_BYTES}
+module.exports={nextMine,ensureMineLayer,retireMine,compactSite,footprint,protectedBySites,originAt,revisionOf,MAX_SITES,MAX_BYTES}

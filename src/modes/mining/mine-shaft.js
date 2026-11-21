@@ -3,6 +3,7 @@
 const { at, air, open, solid, standY, centre, key, live, received, count, observe, action, save, feetAt, blocked, stopped, results } = require('./mine-common')
 const { digCell, walkCell } = require('./mine-excavate')
 const { value } = require('./mine-observed')
+const { noteMineProgress } = require('./mine-progress')
 // HousePorts supports ordinary cobblestone placement. Do not select dirt or
 // deepslate merely because it is present in the inventory.
 const FILLS = ['cobblestone']
@@ -14,17 +15,15 @@ const topStand = plan => plan.shaft.topLanding ?? {x:2*plan.shaft.columns[0].x-p
 async function fillCell (ctx,branch,target,purpose = 'shaft') {
   const b=at(ctx,target)
   if(b?.known !== true)return observe(ctx,[target],'縦坑の支持ブロックを受信します。')
-  if(solid(b))return filled()
+  if(solid(b)){
+    const pending=branch.pendingAction
+    if(pending?.kind==='place' && pending.supportFill && pending.position && key(pending.position)===key(target))return ctx.minePorts.place({position:target,name:pending.name,supportPurpose:purpose})
+    return filled()
+  }
   if(!air(b))return blocked('MINE_FILL_OCCUPIED','縦坑の埋戻し先を確認します。')
   const name=FILLS.find(name=>count(ctx,name)>0)
   if(!name)return blocked('MINE_FILL_SUPPLY','縦坑の足場と埋戻し用ブロックを補給します。','supplies_changed')
-  const out=await action(ctx,branch,{kind:'fill',purpose,target},()=>ctx.minePorts.place({position:target,name:'minecraft:'+name}),()=>solid(at(ctx,target)))
-  if(received(out) && out.evidence?.consumed===1 && (purpose==='shaft_landing' || purpose==='shaft_work_floor')){
-    branch.supportFills??=[]
-    if(!branch.supportFills.some(p=>p.x===target.x && p.y===target.y && p.z===target.z))branch.supportFills.push({...target,name:'minecraft:'+name})
-    if(!await save(ctx,branch))return blocked('MINE_CHECKPOINT','仮足場の設置受信を保存します。','owner_released')
-  }
-  return out
+  return action(ctx,branch,{kind:'fill',purpose,target},()=>ctx.minePorts.place({position:target,name:'minecraft:'+name,supportPurpose:purpose}),()=>solid(at(ctx,target)))
 }
 
 async function rung (ctx,branch,y) {
@@ -100,12 +99,17 @@ async function finishLanding (ctx,branch,layer) {
   const moved=await walkCell(ctx,branch,landing.stand,'landing')
   if(!received(moved))return moved
   branch.shaft.landings ??= {}
+  const prior=branch.shaft.landings[layer]
   branch.shaft.landings[layer]=true
-  if(!await save(ctx,branch))return blocked('MINE_CHECKPOINT','踊り場の完成を保存します。','owner_released')
+  if(!await save(ctx,branch)){
+    if(prior===undefined)delete branch.shaft.landings[layer];else branch.shaft.landings[layer]=prior
+    return blocked('MINE_CHECKPOINT','踊り場の完成を保存します。','owner_released')
+  }
   return {...results.completed('MINE_SHAFT_READY'),serverConfirmed:true}
 }
 
 async function ensureShaft (ctx,branch,layer) {
+  noteMineProgress(ctx)
   if(!live(ctx))return stopped()
   const plan=branch.plan,shaft=plan.shaft,target=plan.layers.find(p=>p.id===layer)
   if(!target)return blocked('MINE_LAYER_INVALID','採掘層を確認します。')
@@ -122,8 +126,11 @@ async function ensureShaft (ctx,branch,layer) {
     return finishLanding(ctx,branch,layer)
   }
   const depth=branch.shaft.depth,from=workStand(ctx,branch,depth),next=depth-1,nextLadder=here(shaft.ladder,next),bottom=here(shaft.ladder,next-1)
-  if(!from)return observe(ctx,[here(shaft.columns[1],depth-1),here(shaft.columns[1],depth),here(shaft.columns[1],depth+1)],'はしご正面の受信済み作業足場を確認します。')
   const resumedDown=ladder(at(ctx,nextLadder)) && solid(at(ctx,bottom))
+  // Opening the lower front cell removes the old work stand. A received
+  // lower rung and landing can resume the unfinished bay without that old
+  // floor; its walls, other floors and light still finish before depth moves.
+  if(!from && !resumedDown)return observe(ctx,[here(shaft.columns[1],depth-1),here(shaft.columns[1],depth),here(shaft.columns[1],depth+1)],'はしご正面の受信済み作業足場を確認します。')
   // At the surface the ordinary walk enters the known 2x2 work bay; below it the installed ladder is used.
   if(Math.abs(ctx.getFeet().y-depth)>0.6){
     if(ctx.getFeet().y>=shaft.topY-0.2){const moved=await walkCell(ctx,branch,topStand(plan),'shaft_entry');if(!received(moved))return moved}
@@ -159,8 +166,8 @@ async function ensureShaft (ctx,branch,layer) {
   const lit=await action(ctx,branch,{kind:'shaft_finish',depth:next},()=>ctx.minePorts.ensureSegment(plan,shaftFinish(branch,next)))
   if(!received(lit))return lit
   branch.shaft.depth=next
-  if(!await save(ctx,branch))return blocked('MINE_CHECKPOINT','縦坑の確認済みの深さを保存します。','owner_released')
-  ctx.goal?.step?.(`mine:${plan.id}:shaft:${next}`)
+  if(!await save(ctx,branch)){branch.shaft.depth=depth;return blocked('MINE_CHECKPOINT','縦坑の確認済みの深さを保存します。','owner_released')}
+  noteMineProgress(ctx)
   return next===target.y ? finishLanding(ctx,branch,layer) : {...results.partial('MINE_SHAFT_ADVANCED',{progress:{depth:next}}),serverConfirmed:true}
 }
 

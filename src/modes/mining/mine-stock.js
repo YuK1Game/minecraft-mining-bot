@@ -28,11 +28,28 @@ async function checkStock(ctx,branch,layer){
   return {...out,held:count(ctx,request.resource)}
 }
 
-async function depositMine(ctx,branch,layer,keep){
+async function depositMine(ctx,branch,layer,keep,options={}){
   const reached=await reachStorage(ctx,branch,layer)
   if(!received(reached))return reached
-  const before=scope(ctx),out=await ctx.minePorts.storage.deposit(branch.plan,{layer,keep})
+  const before=scope(ctx),out=await ctx.minePorts.storage.deposit(branch.plan,{...options,layer,keep})
   return live(ctx,before)?out:stopped()
 }
 
-module.exports={reachStorage,checkStock,depositMine}
+// A supply episode reads its box once, including an empty answer. Crafting on
+// the surface must not re-enter the mine on every partial inventory update.
+// A new life, requirement or confirmed deposit invalidates that observation.
+async function takeSupplies(ctx,branch,layer,needs,storage){
+  const before=scope(ctx),key=JSON.stringify([layer,before,branch.storage?.lastDeposit?.revision??0,Object.entries(needs).sort()])
+  if(branch.supplyChecked===key)return {...results.completed('MINE_SUPPLIES_PREVIOUSLY_CHECKED'),serverConfirmed:true}
+  const reached=await reachStorage(ctx,branch,layer)
+  if(!received(reached))return reached
+  const deficits=Object.fromEntries(Object.entries(needs).map(([name,n])=>[name,Math.max(0,n-count(ctx,name))]).filter(([,n])=>n>0))
+  const out=await storage.take(branch.plan,{layer,needs:deficits})
+  if(!live(ctx,before))return stopped()
+  if(!received(out))return out
+  branch.supplyChecked=key
+  if(!await save(ctx,branch,before))return blocked('MINE_CHECKPOINT','補給箱で確認した不足を保存します。','owner_released')
+  return out
+}
+
+module.exports={reachStorage,checkStock,depositMine,takeSupplies}

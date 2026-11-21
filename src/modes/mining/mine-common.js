@@ -45,8 +45,15 @@ async function action (ctx, branch, intent, call, confirm = () => true) {
   if (!live(ctx, before)) return stopped()
   if (!received(out)) return out?.status ? out : blocked('MINE_ACTION_UNCONFIRMED', '採掘場の操作結果をまだ確認できません。', 'time')
   if (!confirm()) return blocked('MINE_RECEIPT_CHANGED', '採掘場の受信結果を再確認します。')
+  const confirmedIntent = branch.intent
   delete branch.intent
-  if (!await save(ctx, branch, before)) return blocked('MINE_CHECKPOINT', '採掘場の施工結果を保存できません。', 'owner_released')
+  if (!await save(ctx, branch, before)) {
+    // Keep the work debt visible until its completed checkpoint is durable.
+    // Receipts saved by the low-level action (including temporary floors)
+    // remain available for the next attempt; no input is replayed here.
+    branch.intent ??= confirmedIntent
+    return blocked('MINE_CHECKPOINT', '採掘場の施工結果を保存できません。', 'owner_released')
+  }
   return { ...out, serverConfirmed: true }
 }
 

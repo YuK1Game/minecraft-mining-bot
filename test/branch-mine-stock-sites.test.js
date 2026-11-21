@@ -54,7 +54,7 @@ test('exhausted requests archive protected geometry and storage, then wait on ne
   assert.equal(protectedAt({x:200,y:66,z:200}),false)
   assert.ok(Buffer.byteLength(JSON.stringify(Array(8).fill(site)))<MAX_BYTES)
   const world=w.ctx.runtime.host().world,read=world.getBlock;let reads=0,missing=true
-  world.getBlock=(x,y,z)=>{reads++;return missing && x===0 && y===0 && z===0?{known:false}:read(x,y,z)}
+  world.getBlock=(x,y,z)=>{reads++;return missing && x===0 && y===32 && z===0?{known:false}:read(x,y,z)}
   const first=await requestMine(w.ctx,{resource:'raw_iron',targetHeld:2}),observed=reads
   assert.equal(first.done,false)
   assert.notEqual(first.result.code,'MINE_AREA_EXHAUSTED')
@@ -63,7 +63,7 @@ test('exhausted requests archive protected geometry and storage, then wait on ne
   assert.equal(second.done,false)
   assert.equal(reads,observed,'an unchanged observation does not restart the expensive plan scan')
   assert.equal(mine.sites.length,1)
-  missing=false;w.put({x:0,y:0,z:0},'stone')
+  missing=false;w.put({x:0,y:32,z:0},'stone')
   await requestMine(w.ctx,{resource:'raw_iron',targetHeld:2})
   assert.equal(mine.search.index,1,'a fully observed empty region advances to the next survey centre')
   await requestMine(w.ctx,{resource:'raw_iron',targetHeld:2})
