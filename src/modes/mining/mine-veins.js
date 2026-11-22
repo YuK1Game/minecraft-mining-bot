@@ -1,8 +1,8 @@
 'use strict'
 
-const { classifyMineCell } = require('./mine-geometry')
-const { at, air, open, solid, key, centre, live, count, received, save, scope, blocked, stopped, results } = require('./mine-common')
-const { digCell, walkCell } = require('./mine-excavate')
+const { classifyMineCell, stepCells } = require('./mine-geometry')
+const { at, air, open, solid, standY, key, centre, live, count, received, save, scope, blocked, stopped, results } = require('./mine-common')
+const { digCell, inspectDig, walkCell } = require('./mine-excavate')
 const { fillCell } = require('./mine-shaft')
 const { cellRest } = require('../supply-cell-rest')
 const { pocketOf,isMineNaturalBlock } = require('./mine-vein-geometry')
@@ -11,19 +11,52 @@ const {insideMine}=require('./mine-location')
 const ORES={coal:/^(?:deepslate_)?coal_ore$/,raw_iron:/^(?:deepslate_)?iron_ore$/,raw_gold:/^(?:deepslate_)?gold_ore$/,diamond:/^(?:deepslate_)?diamond_ore$/,redstone:/^(?:lit_)?(?:deepslate_)?(?:lit_)?redstone_ore$/}
 const bare=name=>String(name??'').replace(/^minecraft:/,'')
 
-function candidates (ctx,branch,resource,anchor,frontier=branch.vein?.frontier??[]) {
+function candidates (ctx,branch,resource,anchor,frontier=branch.vein?.frontier??[],feet=ctx.getFeet()) {
   const re=ORES[resource],plan=branch.plan,layer=plan.layers.find(p=>p.id===branch.request.layer),radius=Math.min(3,plan.vein?.radius??3)
   if(!re || !layer)return []
   const resting=cellRest(ctx.shared,ctx.runtime.raw().dimension,{now:ctx.now}),out=[]
   for(let dx=-radius;dx<=radius;dx++)for(let dz=-radius;dz<=radius;dz++)for(let dy=0;dy<=1;dy++){
     if(Math.abs(dx)+Math.abs(dz)>radius)continue
-    const p={x:anchor.x+dx,y:layer.y+dy,z:anchor.z+dz},b=at(ctx,p),role=classifyMineCell(plan,p)
-    const pocket=pocketOf(plan,{layer:layer.id,anchor,position:p,frontier})
-    if(!pocket || b?.known!==true || !re.test(bare(b.name)) || role.protected || role.role!=='vein_candidate' || b.protected || b.protectionSource || resting.resting(p))continue
-    const feet=ctx.getFeet(),distance=Math.hypot(p.x+0.5-feet.x,p.y-feet.y,p.z+0.5-feet.z)
+    const p={x:anchor.x+dx,y:layer.y+dy,z:anchor.z+dz},b=at(ctx,p)
+    if(b?.known!==true || !re.test(bare(b.name)) || b.protected || b.protectionSource || resting.resting(p))continue
+    const role=classifyMineCell(plan,p),pocket=pocketOf(plan,{layer:layer.id,anchor,position:p,frontier})
+    if(!pocket || role.protected || role.role!=='vein_candidate')continue
+    const distance=Math.hypot(p.x+0.5-feet.x,p.y-feet.y,p.z+0.5-feet.z)
     if(distance<=7)out.push({...p,distance,pocket})
   }
   return out.sort((a,b)=>a.distance-b.distance)
+}
+
+const anchorFrom = feet => ({x:Math.floor(feet.x),y:Math.ceil(feet.y),z:Math.floor(feet.z)})
+const openColumn = (ctx,p) => open(at(ctx,p)) && open(at(ctx,{...p,y:p.y+1}))
+const frontierOf = (ctx,cells,y) => cells.clear.filter(p=>p.y===y && openColumn(ctx,p))
+
+// Work that resumed during finishing can already have a useful ore face.
+// Revisit only confirmed, currently supported sections with a received
+// candidate in the same bounded pocket geometry used for ordinary digging.
+function observedVeinStep (ctx,branch,steps,progress) {
+  const feet=ctx.getFeet(),plan=branch.plan,request=branch.request
+  if(!feet || !progress.cursor)return null
+  const distance=stand=>Math.hypot(stand.x-feet.x,stand.z-feet.z)
+  const finished=steps.slice(0,progress.cursor)
+    .filter((step,index)=>step.kind!=='storage' && !progress.blocked?.some(span=>index>=span.fromCursor && index<span.toCursor))
+    .map(step=>stepCells(plan,step)).sort((a,b)=>distance(a.stand)-distance(b.stand))
+  for(const cells of finished){
+    const frontier=frontierOf(ctx,cells,Math.ceil(cells.stand.y))
+    const stands=frontier.flatMap(p=>{
+      const floor=at(ctx,{...p,y:p.y-1})
+      return solid(floor)?[{...centre(p),y:standY(floor,p.y)}]:[]
+    }).sort((a,b)=>distance(a)-distance(b))
+    for(const stand of stands){
+      const ore=candidates(ctx,branch,request.resource,anchorFrom(stand),frontier,stand).find(({pocket})=>{
+        const footing=at(ctx,pocket.floor)
+        return solid(footing) && isMineNaturalBlock(footing) &&
+          [pocket.head,pocket.base].every(p=>typeof inspectDig(ctx,p,branch).clear==='boolean')
+      })
+      if(ore)return {cells,stand,ore}
+    }
+  }
+  return null
 }
 
 async function restoreVein (ctx,branch) {
@@ -52,8 +85,8 @@ async function workVein (ctx,branch,cells=null) {
   const request=branch.request
   if(!branch.vein){
     if(!cells)return {...results.completed('MINE_NO_VEIN'),serverConfirmed:true}
-    const feet=ctx.getFeet(),anchor={x:Math.floor(feet.x),y:Math.ceil(feet.y),z:Math.floor(feet.z)}
-    const layer=branch.plan.layers.find(p=>p.id===request.layer),frontier=cells.clear.filter(p=>p.y===layer.y && open(at(ctx,p)) && open(at(ctx,{...p,y:p.y+1}))).map(p=>({...p}))
+    const feet=ctx.getFeet(),anchor=anchorFrom(feet)
+    const layer=branch.plan.layers.find(p=>p.id===request.layer),frontier=frontierOf(ctx,cells,layer.y).map(p=>({...p}))
     if(!candidates(ctx,branch,request.resource,anchor,frontier).length)return {...results.completed('MINE_NO_VEIN'),serverConfirmed:true}
     branch.vein={layer:request.layer,liveScope:scope(ctx),anchor,returnTo:{...feet},frontier,opened:[],mined:0,closing:false}
     if(!await save(ctx,branch))return blocked('MINE_CHECKPOINT','鉱脈の追掘り範囲を保存します。','owner_released')
@@ -99,4 +132,4 @@ async function workVein (ctx,branch,cells=null) {
   return {...results.partial('MINE_VEIN_ADVANCED',{progress:{mined:vein.mined}}),serverConfirmed:true}
 }
 
-module.exports={workVein,restoreVein,candidates,ORES}
+module.exports={workVein,restoreVein,observedVeinStep,candidates,ORES}

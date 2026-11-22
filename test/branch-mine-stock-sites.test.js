@@ -101,6 +101,29 @@ test('an interrupted exit from an exhausted site resumes retirement without desc
   assert.equal(w.ctx.memory.early.mine.sites[0].plan.id,w.plan.id)
 })
 
+test('a received ore pocket beside a completed section is worked before further corridors',async t=>{
+  const w=await upper(t),cursor=w.branch.progress.upper.cursor
+  const leftover={x:9,y:66,z:7}
+  w.put(leftover,'iron_ore')
+  let out, rounded=false
+  for(let i=0;i<12;i++){
+    out=await requestMine(w.ctx,{resource:'raw_iron',targetHeld:2})
+    if(w.branch.vein && !rounded){
+      w.branch.vein.returnTo.y-=1e-12
+      rounded=true
+    }
+    if(out.done)break
+    assert.ok(['partial','completed'].includes(out.result.status),JSON.stringify(out))
+  }
+  assert.equal(out.done,true,JSON.stringify(out))
+  assert.equal(rounded,true)
+  assert.equal(w.branch.progress.upper.cursor,cursor)
+  assert.equal(w.digs.some(row=>row.target.x===leftover.x && row.target.y===leftover.y && row.target.z===leftover.z && row.name==='minecraft:iron_ore'),true)
+  assert.equal(w.getBlock(leftover.x,leftover.y,leftover.z).name,'minecraft:cobblestone')
+  assert.equal(w.branch.vein,undefined)
+  assert.equal(w.feet().y,70)
+})
+
 test('a vein closes its existing pocket before opening one it cannot refill with carried cobblestone',async t=>{
   const w=await upper(t),step=mineSteps(w.plan,{layer:'upper'}).filter(p=>p.kind==='main')[1],cells=stepCells(w.plan,step)
   w.setFeet({x:9.5,y:65.5,z:6.5});w.branch.request={resource:'raw_iron',targetHeld:10,layer:'upper'}

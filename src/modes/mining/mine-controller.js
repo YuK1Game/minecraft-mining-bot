@@ -7,7 +7,8 @@ const {excavateSegment}=require('./mine-excavate')
 const {retainStorageTorchSupport}=require('./mine-storage-layout')
 const {ensureShaft}=require('./mine-shaft')
 const {walkLayer,reachLayer,leaveMine,enterMine:entry}=require('./mine-route')
-const {workVein,restoreVein}=require('./mine-veins')
+const {workVein,restoreVein,observedVeinStep}=require('./mine-veins')
+const {cellRest}=require('../supply-cell-rest')
 const {nextMine,retireMine,ensureMineLayer}=require('./mine-sites')
 const {noteMineProgress}=require('./mine-progress')
 const {checkStock,stockIsChecked,depositMine}=require('./mine-stock')
@@ -118,7 +119,8 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   // A checked, exhausted layer needs only its exit. An interrupted climb
   // must not take the Bot back to the chest on its next tick.
   const progress=branch.progress[layer],steps=mineSteps(branch.plan,{layer})
-  if(progress.cursor===steps.length && stockIsChecked(ctx,branch,layer))return outcome(await retireMine(ctx,branch),'確認済みの収納と坑道を残し、次の採掘場へ移ります。')
+  const observedVein=observedVeinStep(ctx,branch,steps,progress)
+  if(!observedVein && progress.cursor===steps.length && stockIsChecked(ctx,branch,layer))return outcome(await retireMine(ctx,branch),'確認済みの収納と坑道を残し、次の採掘場へ移ります。')
   if(branch.lobbyReady?.[layer]){
     const entered=await entry(ctx,branch)
     if(!received(entered))return outcome(entered)
@@ -155,6 +157,12 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   if(count(ctx,resource)>=targetHeld)return outcome({...results.partial('MINE_STOCK_READY'),serverConfirmed:true},'保管済みの鉱石を受信しました。確認済みの帰路で地上へ戻ります。')
   const held=occupied(inventory(ctx))??36
   if(held>30){const out=await depositMine(ctx,branch,layer,{...constructionKeep(ctx,branch,layer),[resource]:targetHeld},{freeSlots:6});if(!received(out))return outcome(out,'必要な携行品を残し、採掘用の空き枠をラージチェストへの収納で確保します。')}
+  if(observedVein){
+    const reached=await walkLayer(ctx,branch,layer,observedVein.stand)
+    if(received(reached))return outcome(await workVein(ctx,branch,observedVein.cells),'完成済みの坑道から確認できる鉱脈を回収します。')
+    if(live(ctx) && /^MINE_ROUTE_(?:UNKNOWN|BLOCKED)$/.test(reached.code??''))cellRest(ctx.shared,raw(ctx).dimension,{now:ctx.now}).miss(observedVein.ore,0,0)
+    return outcome(reached)
+  }
   if(progress.cursor>=steps.length)return outcome(await retireMine(ctx,branch),'確認済みの収納と坑道を残し、次の採掘場へ移ります。')
   const out=await stepLayer(ctx,branch,layer)
   return outcome(out,`${layer==='upper'?'上層の鉄・石炭':'下層のダイヤ'}坑道を施工しています（${resource} ${count(ctx,resource)}/${targetHeld}）。`)
