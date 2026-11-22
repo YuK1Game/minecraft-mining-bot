@@ -71,6 +71,36 @@ test('exhausted requests archive protected geometry and storage, then wait on ne
   assert.equal(mine.search.index,2,'the next fully observed empty region is not retried forever')
 })
 
+test('an interrupted exit from an exhausted site resumes retirement without descending again',async t=>{
+  const w=await upper(t),progress=w.branch.progress.upper
+  progress.cursor=progress.stepCount;progress.status='completed'
+  const landing=w.plan.shaft.landings.find(item=>item.layer==='upper')
+  w.setFeet(landing.stand)
+  const move=w.ctx.runtime.mineLadderMove
+  let corrections=0,descending=0
+  w.ctx.runtime.mineLadderMove=async request=>{
+    if(request.to.y<request.from.y)descending++
+    if(request.to.y===w.plan.shaft.topY && request.from.y<request.to.y && corrections===0){
+      corrections++
+      w.setFeet(w.plan.shaft.approach)
+      return {status:'interrupted',code:'LADDER_SERVER_CORRECTION'}
+    }
+    return move(request)
+  }
+  const request={resource:'raw_iron',targetHeld:2}
+  const first=await requestMine(w.ctx,request)
+  assert.equal(first.result.code,'LADDER_SERVER_CORRECTION',JSON.stringify(first))
+  assert.equal(w.feet().y,w.plan.shaft.topY)
+  assert.equal(w.branch.retiring,true)
+  assert.ok(w.saved.some(entry=>entry.branch?.retiring))
+  const chestReads=w.opened.length
+  const second=await requestMine(w.ctx,request)
+  assert.equal(second.result.code,'MINE_SITE_RETIRED',JSON.stringify(second))
+  assert.equal(descending,0,'no ladder descent is sent after the interrupted exit')
+  assert.equal(w.opened.length,chestReads)
+  assert.equal(w.ctx.memory.early.mine.sites[0].plan.id,w.plan.id)
+})
+
 test('a vein closes its existing pocket before opening one it cannot refill with carried cobblestone',async t=>{
   const w=await upper(t),step=mineSteps(w.plan,{layer:'upper'}).filter(p=>p.kind==='main')[1],cells=stepCells(w.plan,step)
   w.setFeet({x:9.5,y:65.5,z:6.5});w.branch.request={resource:'raw_iron',targetHeld:10,layer:'upper'}

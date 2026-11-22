@@ -113,8 +113,15 @@ async function reachLayer(ctx,branch,layer){
 }
 
 async function leaveMine(ctx,branch){
-  if(!insideMine(ctx,branch))return {...results.completed('MINE_OUTSIDE'),serverConfirmed:true}
-  const feet=ctx.getFeet(),plan=branch.plan,current=plan.layers.find(p=>Math.abs(feet.y-(p.y-0.5))<0.15 || Math.abs(feet.y-p.y)<0.15)
+  const feet=ctx.getFeet(),plan=branch.plan
+  if(!insideMine(ctx,branch)){
+    const atShaftTop=branch.shaft && feet && Math.abs(feet.y-plan.shaft.topY)<=0.6 &&
+      plan.shaft.columns.some(p=>p.x===Math.floor(feet.x) && p.z===Math.floor(feet.z))
+    // A final ladder correction may report surface height while the body is
+    // still in the opening. Verify the supported exit waypoint in that case.
+    return atShaftTop ? walkCell(ctx,branch,plan.shaft.approach,'mine_exit') : {...results.completed('MINE_OUTSIDE'),serverConfirmed:true}
+  }
+  const current=plan.layers.find(p=>Math.abs(feet.y-(p.y-0.5))<0.15 || Math.abs(feet.y-p.y)<0.15)
   if(current){const landing=plan.shaft.landings.find(p=>p.layer===current.id),out=await walkLayer(ctx,branch,current.id,landing.stand);if(!received(out))return out}
   else if(feet.y>=plan.shaft.topY-0.2)return {...results.completed('MINE_OUTSIDE'),serverConfirmed:true}
   const out=await climb(ctx,branch,topStand(plan))

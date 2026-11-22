@@ -194,9 +194,17 @@ async function ensureMineLayer(ctx,branch,{resource,targetHeld=1}={}){
 
 async function retireMine(ctx,branch){
   if(branch.pendingAction || branch.vein || branch.segmentTask)return blocked('MINE_RETIRE_PENDING_ACTION','未確認の施工と鉱脈の埋戻しを終えてから次の採掘場へ移ります。','inventory_update')
+  if(!branch.retiring){
+    branch.retiring=true
+    if(!await save(ctx,branch)){delete branch.retiring;return blocked('MINE_CHECKPOINT','採掘場からの帰路を保存します。','owner_released')}
+  }
   const left=await leaveMine(ctx,branch)
   if(!received(left) || !live(ctx))return live(ctx)?left:stopped()
-  const mine=memory(ctx),sites=mine.sites??=[]
+  if(left.code==='MINE_OUTSIDE'){
+    const outside=await ctx.minePorts.confirmPosition(ctx.getFeet())
+    if(!received(outside) || !live(ctx))return live(ctx)?outside:stopped()
+  }
+  const mine=memory(ctx),sites=mine.sites??=[],search=mine.search
   if(sites.length>=MAX_SITES)return blocked('MINE_SITE_LIMIT','確認済み採掘場の保管と範囲を見直します。','supplies_changed')
   const archived=compactSite(branch),next=[...sites,archived]
   if(Buffer.byteLength(JSON.stringify(next))>MAX_BYTES)return blocked('MINE_ARCHIVE_LIMIT','採掘場の保存容量を確認します。','owner_released')
@@ -204,7 +212,7 @@ async function retireMine(ctx,branch){
   // Re-evaluate the home area once with the old footprint protected, then
   // move through the eight fixed neighbouring survey centres if it is full.
   mine.search={index:0}
-  if(!await save(ctx,null)){mine.branch=branch;mine.sites=sites;return blocked('MINE_CHECKPOINT','採掘場の保存を確認します。','owner_released')}
+  if(!await save(ctx,null)){mine.branch=branch;mine.sites=sites;mine.search=search;return blocked('MINE_CHECKPOINT','採掘場の保存を確認します。','owner_released')}
   ctx.log?.(`プレイヤーモード: 採掘範囲を使い終えたため、既設の坑道・収納を残して次の採掘場を調べます（保存済み${next.length}か所）`)
   return {...results.partial('MINE_SITE_RETIRED',{progress:{sites:next.length}}),serverConfirmed:true}
 }
