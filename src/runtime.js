@@ -2979,6 +2979,8 @@ function createRuntime (host) {
     get idlePhysicsState () { return idlePhysicsState }, set idlePhysicsState (value) { idlePhysicsState = value },
     get idleSafety () { return idleSafety }, set idleSafety (value) { idleSafety = value },
     get inputHistory () { return inputHistory }, set inputHistory (value) { inputHistory = value },
+    get inputOwner () { return inputOwner },
+    get inputStream () { return inputStream },
     get interactions () { return interactions },
     get inventory () { return inventory },
     get inventoryInspection () { return inventoryInspection },

@@ -33,6 +33,50 @@ test('real HousePorts placement does not complete or replay without block and in
   assert.equal(f.sends(), 1)
 })
 
+test('an unconfirmed ordinary placement is retried once after confirmed air and replenished stock', async () => {
+  const f = fixture(), request = { position: { x: 1, y: 1, z: 1 }, name: 'cobblestone' }
+  const branch = f.ctx.memory.early.mine.branch
+  assert.equal((await f.ports.place(request)).code, 'MINE_PLACEMENT_UNCONFIRMED')
+  const original = branch.pendingAction
+  f.ctx.runtime.minePlacementAudit = async () => ({ target: { serverConfirmed: false } })
+  assert.equal(await f.ports.reconcilePlacement(), false)
+  assert.equal(branch.pendingAction, original)
+  f.ctx.runtime.minePlacementAudit = async () => ({ target: { serverConfirmed: true } })
+  f.inventory.items[0].count--
+  assert.equal(await f.ports.reconcilePlacement(), false)
+  assert.equal(branch.pendingAction, original)
+
+  f.inventory.items[0].count++
+  assert.equal(await f.ports.reconcilePlacement(), true)
+  assert.equal(branch.pendingAction, undefined)
+  assert.equal(branch.lastReconciledPlacement.pending, original)
+  assert.equal(f.sends(), 1)
+
+  assert.equal((await f.ports.place(request)).code, 'MINE_PLACEMENT_UNCONFIRMED')
+  assert.equal(branch.pendingAction.retryAfterAudit, true)
+  assert.equal(await f.ports.reconcilePlacement(), false)
+  assert.equal((await f.ports.place(request)).code, 'MINE_ACTION_UNCONFIRMED')
+  assert.equal(f.sends(), 2)
+})
+
+test('a placement audit does not clear the checkpoint after a scope change or failed save', async () => {
+  const f = fixture(), request = { position: { x: 1, y: 1, z: 1 }, name: 'cobblestone' }
+  await f.ports.place(request)
+  const branch = f.ctx.memory.early.mine.branch, original = branch.pendingAction
+  f.ctx.runtime.minePlacementAudit = async () => {
+    f.state.connectionId = 'changed'
+    return { target: { serverConfirmed: true } }
+  }
+  assert.equal(await f.ports.reconcilePlacement(), false)
+  assert.equal(branch.pendingAction, original)
+  f.state.connectionId = 'a'
+  f.ctx.runtime.minePlacementAudit = async () => ({ target: { serverConfirmed: true } })
+  f.ctx.saveMine = async () => false
+  assert.equal(await f.ports.reconcilePlacement(), false)
+  assert.equal(branch.pendingAction, original)
+  assert.equal(branch.lastReconciledPlacement, undefined)
+})
+
 test('received placement clears its durable intent and cancelled runs cannot reuse a block as progress', async () => {
   const f = fixture(), request = { position: { x: 1, y: 1, z: 1 }, name: 'cobblestone' }
   f.setReceive(true)

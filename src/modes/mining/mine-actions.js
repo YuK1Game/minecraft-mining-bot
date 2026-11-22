@@ -7,6 +7,7 @@ const { sameWorld, mineWorldScope } = require('./mine-state')
 const { digTool, toolNeeded } = require('../dig-tool')
 const { supportIntent, recordSupportReceipt } = require('./mine-support-receipt')
 const { mineLadderResult } = require('./mine-ladder-result')
+const RETRYABLE_MATERIALS = new Set(['minecraft:torch', 'minecraft:cobblestone', 'minecraft:cobblestone_slab', 'minecraft:ladder'])
 const NORMAL = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]]
 
 function createMineActions (ctx) {
@@ -54,6 +55,36 @@ function createMineActions (ctx) {
     if (/_slab$/.test(found.name)) return bottomSlab(found)
     if (found.name === 'minecraft:ladder' && Number.isInteger(plan.face)) return value(found.properties?.facing_direction) === plan.face
     return true
+  }
+  async function reconcilePlacement () {
+    const state = branch(), pending = state?.pendingAction, scope = scopeOf(ctx)
+    if (pending?.kind !== 'place' || pending.supportFill || !RETRYABLE_MATERIALS.has(pending.name) ||
+      !cell(pending.position) || pending.key !== 'place:' + key(pending.position) ||
+      pending.scope !== scope || !same(scope) || !worldMatches()) return false
+
+    const { position, name, before } = pending
+    const face = name === 'minecraft:ladder' ? state.plan.shaft?.ladder?.face : undefined
+    let evidence
+    if ((name !== 'minecraft:ladder' || Number.isInteger(face)) && matches(position, name, { face })) {
+      evidence = { kind: 'current_structure_received' }
+    } else {
+      if (pending.retryAfterAudit || !Number.isSafeInteger(before) || before <= 0 ||
+        (held(inventory(), name) ?? 0) < before || !air(block(position))) return false
+      const audit = await ctx.runtime.minePlacementAudit?.(position, { signal: ctx.signal })
+      if (audit?.target?.serverConfirmed !== true || !same(scope) || state.pendingAction !== pending || !air(block(position)) ||
+        (held(inventory(), name) ?? 0) < before) return false
+      evidence = { kind: 'current_target_air', count: held(inventory(), name), ...audit }
+    }
+
+    const previous = state.lastReconciledPlacement
+    state.lastReconciledPlacement = { pending, evidence }
+    if (await clear(pending.key)) {
+      ctx.log?.(`採掘場: 設置待ち ${key(position)} ${name} を現在の受信状態で照合しました（${evidence.kind}）。`)
+      return true
+    }
+    if (previous) state.lastReconciledPlacement = previous
+    else delete state.lastReconciledPlacement
+    return false
   }
   function forgetDig (position) {
     const state = branch()
@@ -130,7 +161,11 @@ function createMineActions (ctx) {
     const before = held(inventory(), name)
     if (!(before > 0)) return wait('MINE_MATERIAL_MISSING', 'supplies_changed', { evidence: { name } })
     const supportFill = supportIntent(branch(), plan)
-    const start = await begin({ key: actionKey, kind: 'place', position, name, before, ...(supportFill ? { supportFill, fromAir: true } : {}) })
+    const recovered = branch()?.lastReconciledPlacement
+    const retryAfterAudit = recovered?.evidence?.kind === 'current_target_air' && recovered.pending?.key === actionKey &&
+      recovered.pending.name === name && recovered.pending.scope === scopeOf(ctx)
+    const start = await begin({ key: actionKey, kind: 'place', position, name, before,
+      ...(supportFill ? { supportFill, fromAir: true } : {}), ...(retryAfterAudit ? { retryAfterAudit: true } : {}) })
     if (!start.scope) return start
     let placed = false
     try { placed = await house.place(name, plan) } catch (error) { ctx.log?.('採掘場: ' + String(error.code ?? error.message).slice(0, 120)) }
@@ -143,8 +178,8 @@ function createMineActions (ctx) {
       if (!await clear(actionKey)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
       return done('MINE_PLACEMENT_RECEIVED', { position, name, consumed: 1 })
     }
-    // Only a pre-send rejection or the server's explicit rejection permits a
-    // second placement. Unknown acknowledgements retain the durable intent.
+    // Preserve unknown acknowledgements for current-state reconciliation.
+    // An explicit rejection can be cleared immediately.
     if (house.placementRetrySafe()) await clear(actionKey)
     return wait('MINE_PLACEMENT_UNCONFIRMED', 'inventory_update', { detail: house.why() })
   }
@@ -198,7 +233,7 @@ function createMineActions (ctx) {
     }
     return wait(result?.code === 'MINE_TERRAIN_RECEIVED' ? 'MINE_TERRAIN_WAITING' : 'MINE_OBSERVATION_UNAVAILABLE', 'terrain_received', { evidence: result?.evidence ?? null })
   }
-  return { block, inventory, mine, place, placement, matches, walk, confirmPosition, ladderMove, observe, house, save, done, wait }
+  return { block, inventory, mine, place, placement, matches, reconcilePlacement, walk, confirmPosition, ladderMove, observe, house, save, done, wait }
 }
 
 module.exports = { createMineActions }

@@ -87,10 +87,18 @@ function createDragonRuntime (ports) {
       const felling = await finishTree(ctx)
       if (felling) return felling
     }
-    // A held goal keeps the steps above (night, room in the pack, health, recovery) and nothing else. Only in the
-    // overworld: in the Nether and in the End standing still is the danger, the work goes on and the hold only
-    // keeps the watcher from deciding again.
-    if (ledger.goal()?.hold && dim === 'overworld') return { phase: 'waiting', reason: HELD }
+    const currentGoal = ledger.goal(), hold = currentGoal?.hold
+    if (dim === 'overworld') {
+      const mineGoal = record.stage === 'early' && ['early.home_reserve', 'early.diamond'].includes(currentGoal?.key)
+      if (mineGoal && (!hold || hold.code === 'NO_PROGRESS') && !ports.threatened() &&
+        await ctx.minePorts?.reconcilePlacement?.()) {
+        if (hold && ledger.goal() === currentGoal && currentGoal.hold === hold) {
+          ledger.held({ ...hold.basis, minePlacementReconciled: true })
+        }
+        return { phase: 'waiting', reason: '設置先の受信結果を確認しました。縦坑・坑道の作業を続けます。' }
+      }
+      if (hold) return { phase: 'waiting', reason: HELD }
+    }
     if (dim === 'end') {
       const result = await runDragonEndStep(ctx, record.end, opts)
       record.stage = 'end'

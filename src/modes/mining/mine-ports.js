@@ -15,6 +15,7 @@ function createMinePorts (ctx) {
   const actions = createMineActions(ctx), lighting = createMineLighting(ctx, actions), storage = createMineStorage(ctx, actions)
   const supplies = createMineSupplies(ctx, actions, storage), tools = createMineTools(ctx, actions)
   return { mine: actions.mine, place: actions.place, walk: actions.walk, confirmPosition: actions.confirmPosition, ladderMove: actions.ladderMove, observe: actions.observe,
+    reconcilePlacement: actions.reconcilePlacement,
     ensureSupplies: async (plan, options = {}) => {
       const ready = await tools(options)
       return ready.serverConfirmed === true ? supplies.ensure(plan, options) : ready
