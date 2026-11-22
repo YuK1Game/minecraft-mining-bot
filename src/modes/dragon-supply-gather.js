@@ -3,7 +3,7 @@
 const { standable } = require('./house/house-steps')
 const { full, bare, workingPickTier } = require('./dragon-supply-kit')
 const { approachOre, searchMine, coolLava, lake, DEPTH } = require('./dragon-early-quarry')
-const { roam } = require('./supply-roam')
+const { roam, ROAM_M } = require('./supply-roam')
 const { digTool } = require('./dig-tool')
 const { cellRest } = require('./supply-cell-rest')
 const { treeAt, beginTree } = require('./dragon-tree')
@@ -65,6 +65,34 @@ function enclosedHome (ctx) {
   }) ? house : null
 }
 
+async function receivedWoodDestination (ctx, feet) {
+  const origin = { x: Math.floor(feet.x), y: Math.floor(feet.y), z: Math.floor(feet.z) }
+  const approached = cellRest(ctx.shared, 'overworld:wood-approach', { now: ctx.now })
+  let destination = null, best = ROAM_M ** 2
+  for (let dx = -ROAM_M; dx <= ROAM_M; dx++) {
+    if (ctx.cancelled()) return null
+    for (let dz = -ROAM_M; dz <= ROAM_M; dz++) {
+      const distance = dx * dx + dz * dz
+      if (distance >= best || Math.max(Math.abs(dx), Math.abs(dz)) <= 12) continue
+      const column = { x: origin.x + dx, y: 0, z: origin.z + dz }
+      if (approached.resting(column)) continue
+      for (let y = origin.y - 8; y <= origin.y + 8; y++) {
+        const p = { ...column, y }, block = ctx.getBlock(p.x, p.y, p.z)
+        if (block?.known !== true || !SOURCES.log.test(bare(block.name)) ||
+            block.protected || block.protectionSource || protectedAt(ctx, p)) continue
+        destination = column
+        best = distance
+        break
+      }
+    }
+    await new Promise(resolve => setImmediate(resolve))
+  }
+  if (!destination || ctx.cancelled()) return null
+  // Give other trees and the ordinary search a turn if this route fails.
+  approached.miss(destination, 0, 0)
+  return { x: destination.x, z: destination.z }
+}
+
 async function explore (ctx, resource) {
   const feet = ctx.getFeet()
   if (!feet || ctx.cancelled()) return
@@ -72,9 +100,10 @@ async function explore (ctx, resource) {
   const step = state.supplySearch ??= {}
   const wood = resource === 'log' && ctx.runtime.raw().dimension === 'overworld'
   const visible = () => inView(ctx, resource).length > 0
+  const findWood = wood ? () => receivedWoodDestination(ctx, feet) : null
   if (wood && (step['log:shortWalks'] ?? 0) >= WOOD_SEARCH_STEPS) {
     step['log:shortWalks'] = 0
-    if (await roam(ctx, resource, step, feet, visible, { afterWalks: true })) return
+    if (await roam(ctx, resource, step, feet, visible, { afterWalks: true, findWood })) return
   }
   const offset = Number(step[resource] ?? 0)
   const options = [[1, 0], [0, 1], [-1, 0], [0, -1]]
@@ -108,7 +137,7 @@ async function explore (ctx, resource) {
   if (nearTarget) delete step['log:roamTarget']
   step[resource] = (Math.floor(offset / 7) + 1) * 7
   // No heading had a place to walk to (a tunnel underground has none): the long trip goes instead (supply-roam.js).
-  await roam(ctx, resource, step, feet, visible)
+  await roam(ctx, resource, step, feet, visible, { findWood })
 }
 
 function protectedAt (ctx, p) {

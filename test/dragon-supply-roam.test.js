@@ -92,3 +92,25 @@ test('an early long-trip arrival is followed by a short walk into the selected a
   await explore(h.ctx, 'log')
   assert.equal(search['log:roamTarget'], undefined)
 })
+
+test('long wood search uses a received tree beyond local reach and preserves the fallback search', async () => {
+  const h = tunnel()
+  const getBlock = h.ctx.getBlock
+  const target = { x: -4819, z: -4967 }
+  h.ctx.getBlock = (x, y, z) => {
+    if (x === -4825 && y === 47 && z === -4987) return { known: true, name: 'minecraft:oak_log', protected: true }
+    if (x === -4824 && y === 47 && z === -4987) return { known: false, name: 'minecraft:oak_log' }
+    if (x === target.x && y === 46 && z === target.z) return { known: true, name: 'minecraft:oak_log' }
+    return getBlock(x, y, z)
+  }
+  h.ctx.travelTo = async input => {
+    h.trips.push(input.destination)
+    return { phase: 'blocked' }
+  }
+  for (let i = 0; i < MISSES; i++) await explore(h.ctx, 'log')
+  assert.deepEqual(h.trips, [target])
+  assert.match(h.lines[0], /受信済みの原木へ向かいます/)
+
+  for (let i = 0; i < MISSES; i++) await explore(h.ctx, 'log')
+  assert.deepEqual(h.trips, [target, { x: -4840 + ROAM_M, z: -4987 }])
+})
