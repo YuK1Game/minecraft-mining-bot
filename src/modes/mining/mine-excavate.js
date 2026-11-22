@@ -1,9 +1,10 @@
 'use strict'
 
-const { at, air, open, wet, solid, standY, centre, key, live, received, observe, action, feetAt, blocked, stopped, results } = require('./mine-common')
+const { at, air, open, wet, solid, standY, centre, key, live, inventory, received, observe, action, feetAt, blocked, stopped, results } = require('./mine-common')
 const SIDES = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]
 const {isMineNaturalBlock}=require('./mine-vein-geometry')
 const { selectVisibleBlockFace } = require('../../combat/aim')
+const { digTool, toolNeeded } = require('../dig-tool')
 const cell = (p, dx, dy, dz) => ({ x: p.x + dx, y: p.y + dy, z: p.z + dz })
 
 function inspectDig (ctx, target, branch = null) {
@@ -44,6 +45,7 @@ async function walkCell (ctx, branch, feet, kind = 'corridor') {
 async function excavateSegment (ctx, branch, step, cells) {
   if (!live(ctx)) return stopped()
   const world = { getBlock: ctx.getBlock }, triedStands = new Set()
+  const visibleFrom = (target, feet) => selectVisibleBlockFace({ eye: { ...feet, y: feet.y + 1.62 }, target, world, maxReach: 4.5 })
   let moved = false
   while (live(ctx)) {
     const feet = ctx.getFeet()
@@ -57,7 +59,21 @@ async function excavateSegment (ctx, branch, step, cells) {
     // A nearer block can be hidden behind the next visible face. Prefer a
     // face the normal mining preview accepts now and reconsider the rest
     // after the received air update.
-    const target = candidates.find(p => ctx.hands.canMine(p))
+    let target = candidates.find(p => ctx.hands.canMine(p))
+    if (!target && candidates.length) {
+      // Finishing a previous segment may have left a torch or slab in the
+      // hand. Prepare a suitable tool for a visible face, then use the same
+      // live preview before sending any mining input.
+      const held = ctx.runtime.raw().heldItem, items = inventory(ctx)?.items ?? []
+      const prepare = candidates.find(p => {
+        const name = at(ctx, p).name, tool = toolNeeded(name) && digTool(items, name, held)
+        return tool && (tool.slot !== held?.slot || tool.name !== held?.name) && visibleFrom(p, feet)
+      })
+      if (prepare && await ctx.hands.pick(prepare)) {
+        if (!live(ctx)) return stopped()
+        target = candidates.find(p => ctx.hands.canMine(p))
+      }
+    }
     if (target) {
       const mined = await digCell(ctx, branch, target)
       if (!received(mined)) return mined
@@ -74,7 +90,7 @@ async function excavateSegment (ctx, branch, step, cells) {
       Math.hypot(b.x - feet.x, b.y - feet.y, b.z - feet.z))
     const stand = stands.find(p => !triedStands.has(key(p)) && !feetAt(ctx, p) && candidates.some(target => {
       const ownFloor = Math.floor(p.x) === target.x && Math.floor(p.z) === target.z && target.y <= Math.floor(p.y)
-      return !ownFloor && selectVisibleBlockFace({ eye: { ...p, y: p.y + 1.62 }, target, world, maxReach: 4.5 })
+      return !ownFloor && visibleFrom(target, p)
     }))
     if (!stand || triedStands.size >= 3) {
       const detail = ctx.hands.reason?.(candidates[0]) ?? '確認済みの足場から採掘面に届きません。'

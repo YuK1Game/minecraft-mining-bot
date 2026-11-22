@@ -100,6 +100,24 @@ test('a nearer hidden lobby block waits for the visible face in the same planned
   assert.deepEqual(w.digs.map(d=>d.target),[visible,near])
 })
 
+test('corridor excavation equips a pickaxe after the previous finish left a torch selected',async t=>{
+  const w=createMineWorld(t),target={x:2,y:70,z:0}
+  w.setFeet({x:.5,y:70,z:.5})
+  w.put(target,'stone')
+  const torch=w.items.find(item=>item.name==='minecraft:torch')
+  await w.ctx.operations.inventory.equip(torch.slot)
+  const raw=w.ctx.runtime.raw
+  w.ctx.runtime.raw=()=>({...raw(),heldItem:w.items.find(item=>item.slot===0)})
+  const preview=w.ctx.operations.mining.preview
+  w.ctx.operations.mining.preview=targets=>w.ctx.runtime.raw().heldItem.name.endsWith('_pickaxe') ? preview(targets) : {ready:false}
+  w.ctx.minePorts.ensureSegment=async()=>({status:'completed',serverConfirmed:true})
+  const step={id:'upper:lobby:tool-test',layer:'upper',kind:'storage'}
+  const cells={clear:[target],stand:w.feet(),approach:w.feet()}
+  const result=await excavateSegment(w.ctx,w.branch,step,cells)
+  assert.equal(result.code,'MINE_SEGMENT_CONFIRMED',JSON.stringify(result))
+  assert.deepEqual(w.digs.map(d=>d.target),[target])
+})
+
 test('floor finishing walks to a stand with sight of the lower support before placing',async t=>{
   const w=createMineWorld(t),floor={x:2,y:69,z:0}
   w.setFeet({x:.5,y:70,z:.5})
