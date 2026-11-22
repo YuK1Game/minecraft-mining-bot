@@ -61,3 +61,27 @@ test('when an ordinary surface hop fails, a bounded route still requires a recei
   assert.equal((await enterMine(ctx, branch)).serverConfirmed, true)
   assert.equal(branch.intent, undefined)
 })
+
+test('returning from distant supplies travels to the fixed site, then verifies the exact entrance', async () => {
+  const to = { x: 96.5, y: 64, z: 24.5 }, branch = { plan: { shaft: { approach: to } } }
+  const state = { profile: 'test', realm: { id: 'one' }, dimension: 'overworld', connectionId: 'a', startedAt: 'start',
+    runtimeEntityId: '1', lifecycle: { deathId: 0 }, phase: 'spawned', health: 20 }
+  let feet = { x: 0.5, y: 58, z: 24.5 }
+  const calls = []
+  const ctx = {
+    runtime: { raw: () => state, inventory: () => ({ known: true, items: [] }) },
+    getFeet: () => feet, cancelled: () => false, saveMine: async () => true,
+    travelTo: async (input, { aborted }) => {
+      calls.push(['travel', input.destination])
+      assert.equal(aborted(), false)
+      feet = { ...to, x: to.x - 19 }
+      return { phase: 'arrived' }
+    },
+    hands: { approach: async point => { calls.push(['approach', point]); feet = { ...point, x: point.x - 1 }; return true } },
+    minePorts: { walk: async point => { calls.push(['walk', point]); feet = point; return { status: 'completed', serverConfirmed: true } } }
+  }
+  const result = await enterMine(ctx, branch)
+  assert.deepEqual(calls, [['travel', { x: 96, z: 24 }], ['approach', to], ['walk', to]])
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(branch.intent, undefined)
+})

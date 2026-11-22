@@ -15,6 +15,19 @@ async function enterMine(ctx,branch){
   if(insideMine(ctx,branch))return {...results.completed('MINE_INSIDE'),serverConfirmed:true}
   const before = scope(ctx), { shaft } = branch.plan, to = shaft.approach
   const distance = feet => feet ? Math.hypot(feet.x - to.x, feet.z - to.z) : Infinity
+  const noRoute = (detail = '採掘場の入口へ安全な地上路が見つかりません。') => blocked('MINE_ENTRY_UNREACHABLE', detail, 'position_changed')
+  // Supply work can end well beyond the local approach and build budgets.
+  // Travel only to the saved surface entrance, then check its exact arrival.
+  const feet = ctx.getFeet()
+  if (feet && distance(feet) > 24 && typeof ctx.travelTo === 'function') {
+    try {
+      await ctx.travelTo({ destination: { x: Math.floor(to.x), z: Math.floor(to.z) } }, { aborted: () => !live(ctx, before) })
+    } catch (error) {
+      return live(ctx, before) ? noRoute(`採掘場への地上移動を開始できません（${error.code ?? error.message}）。`) : stopped()
+    }
+    if (!live(ctx, before)) return stopped()
+    if (distance(ctx.getFeet()) > 24) return noRoute()
+  }
   if (distance(ctx.getFeet()) > 12 && typeof ctx.hands?.approach === 'function') {
     await ctx.hands.approach(to, 1)
     if (!live(ctx, before)) return stopped()
@@ -26,10 +39,9 @@ async function enterMine(ctx,branch){
 
   // The nearest walking hop can end at the same edge on every try. Build a
   // bounded approach to the saved entrance, preserving its shaft columns.
-  const feet = ctx.getFeet()
+  const local = ctx.getFeet()
   const cell = { x: Math.floor(to.x), y: to.y, z: Math.floor(to.z) }
-  const noRoute = (detail = '採掘場の入口へ安全な地上路が見つかりません。') => blocked('MINE_ENTRY_UNREACHABLE', detail, 'position_changed')
-  if (!feet || distance(feet) > 24 || Math.abs(feet.y - to.y) > 12 || typeof ctx.hands?.block !== 'function' ||
+  if (!local || distance(local) > 24 || Math.abs(local.y - to.y) > 12 || typeof ctx.hands?.block !== 'function' ||
       typeof ctx.minePorts?.confirmPosition !== 'function') return noRoute()
   const entranceKnown = () => solid(at(ctx, { ...cell, y: cell.y - 1 })) && open(at(ctx, cell)) && open(at(ctx, { ...cell, y: cell.y + 1 }))
   if (!entranceKnown()) return noRoute('採掘場の入口の床と頭上を再確認します。')
