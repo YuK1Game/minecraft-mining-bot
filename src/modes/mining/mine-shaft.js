@@ -5,6 +5,7 @@ const { digCell, walkCell } = require('./mine-excavate')
 const { value, fillMaterial } = require('./mine-observed')
 const { noteMineProgress } = require('./mine-progress')
 const { clearableSitePlant } = require('../../quarry/storage/storage-site-terrain')
+const { shaftEntryBackingUsable } = require('./mine-shaft-boundary')
 
 const here = (column,y) => ({ x:column.x,y,z:column.z })
 const ladder = b => b?.known === true && b.name === 'minecraft:ladder' && !b.extra?.length
@@ -168,6 +169,13 @@ async function ensureShaft (ctx,branch,layer) {
   const plan=branch.plan,shaft=plan.shaft,target=plan.layers.find(p=>p.id===layer)
   if(!target)return blocked('MINE_LAYER_INVALID','採掘層を確認します。')
   branch.shaft ??= {depth:shaft.topY,landings:{}}
+  if(branch.shaft.depth===shaft.topY && !branch.pendingAction &&
+    air(at(ctx,here(shaft.ladder,shaft.topY))) && solid(at(ctx,here(shaft.ladder,shaft.topY-1)))){
+    const backing=at(ctx,here(shaft.ladder.support,shaft.topY))
+    if(backing?.known===true && !shaftEntryBackingUsable(backing)){
+      return blocked('MINE_SHAFT_ENTRY_BACKING_BLOCKED','最初のはしごを支える位置を安全に使えません。')
+    }
+  }
   if(!branch.shaft.entry && shaft.entryTorch){
     const to=topStand(plan),moved=await walkCell(ctx,branch,to,'shaft_entry')
     if(!received(moved))return moved

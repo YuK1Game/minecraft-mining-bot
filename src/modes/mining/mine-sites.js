@@ -29,7 +29,7 @@ function compactSite(branch){
   const {evaluation,...geometry}=branch.plan
   return {version:1,plan:structuredClone(geometry),bounds:footprint(geometry),shaft:structuredClone(branch.shaft),storage:structuredClone(branch.storage??{pairs:{}}),
     progress:Object.fromEntries(Object.entries(branch.progress).map(([layer,p])=>[layer,{cursor:p.cursor,confirmedSteps:p.confirmedSteps,status:p.status}])),
-    exhausted:branch.request?.resource??null}
+    exhausted:branch.request?.resource??null,...(typeof branch.retiring==='string'?{retireReason:branch.retiring}:{})}
 }
 
 function protectedBySites(sites,world){
@@ -211,10 +211,10 @@ async function ensureMineLayer(ctx,branch,{resource,targetHeld=1}={}){
   return {...results.completed('MINE_LAYER_PLANNED',{evidence:{planOnly:true,planId:planned.plan.id,revision:planned.plan.revision,addedLayer:'lower'}}),serverConfirmed:true}
 }
 
-async function retireMine(ctx,branch){
+async function retireMine(ctx,branch,reason=null){
   if(branch.pendingAction || branch.vein || branch.segmentTask)return blocked('MINE_RETIRE_PENDING_ACTION','未確認の施工と鉱脈の埋戻しを終えてから次の採掘場へ移ります。','inventory_update')
   if(!branch.retiring){
-    branch.retiring=true
+    branch.retiring=reason??true
     if(!await save(ctx,branch)){delete branch.retiring;return blocked('MINE_CHECKPOINT','採掘場からの帰路を保存します。','owner_released')}
   }
   const left=await leaveMine(ctx,branch)
@@ -232,7 +232,8 @@ async function retireMine(ctx,branch){
   // move through the eight fixed neighbouring survey centres if it is full.
   mine.search={index:0}
   if(!await save(ctx,null)){mine.branch=branch;mine.sites=sites;mine.search=search;return blocked('MINE_CHECKPOINT','採掘場の保存を確認します。','owner_released')}
-  ctx.log?.(`プレイヤーモード: 採掘範囲を使い終えたため、既設の坑道・収納を残して次の採掘場を調べます（保存済み${next.length}か所）`)
+  const detail=archived.retireReason==='MINE_SHAFT_ENTRY_BACKING_BLOCKED'?'入口の支持位置を使えないため':'採掘範囲を使い終えたため'
+  ctx.log?.(`プレイヤーモード: ${detail}、確認済みの施工を残して次の採掘場を調べます（保存済み${next.length}か所）`)
   return {...results.partial('MINE_SITE_RETIRED',{progress:{sites:next.length}}),serverConfirmed:true}
 }
 

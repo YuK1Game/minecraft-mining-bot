@@ -5,7 +5,7 @@ const { surveyMine, oreResource } = require('./mine-survey')
 const { createMineGeometry, mineSteps, stepCells, DIRECTIONS, MAX_SHAFT_DEPTH, shaftSurfaceLayout, key } = require('./mine-geometry')
 const { mineWorldScope, mineLiveScope } = require('./mine-state')
 const { pocketOf, isMineNaturalBlock } = require('./mine-vein-geometry')
-const { shaftBoundary } = require('./mine-shaft-boundary')
+const { shaftBoundary, shaftEntryBackingUsable } = require('./mine-shaft-boundary')
 const FULL_GROUND = new Set(require('../../common/standing-ground').STANDING_GROUND.map(name => `minecraft:${name}`))
 
 const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
@@ -97,6 +97,10 @@ async function evaluateMineGeometry (plan, survey, { origin, resource, targetCou
     for (const y of [plan.site.surfaceY, plan.site.surfaceY + 1]) { const p = { ...column, y }, b = get(p); if (b.known && (!AIR.has(b.name) || b.extra?.length || b.protected)) blocked.add(key(p)) }
     const p = { ...column, y: plan.site.surfaceY - 1 }, b = get(p)
     if (b.known && (b.boundingBox !== 'block' || !FULL_GROUND.has(b.name) || b.extra?.length || b.protected)) blocked.add(key(p))
+  }
+  if (!existingPlan) {
+    const backing = { ...plan.shaft.ladder.support, y: plan.shaft.topY }, block = get(backing)
+    if (block.known && !shaftEntryBackingUsable(block)) blocked.add(key(backing))
   }
   if (missing.size || blocked.size) return failure('surface', { surfaceBlocked: true })
   // Storage keeps full foundations beneath its chests. These cells are not

@@ -71,6 +71,25 @@ test('exhausted requests archive protected geometry and storage, then wait on ne
   assert.equal(mine.search.index,2,'the next fully observed empty region is not retried forever')
 })
 
+test('a stored unstarted site with obstructed backing preserves its entry and continues the survey', async t => {
+  const w = createMineWorld(t), { shaft } = w.plan
+  const getBlock = w.ctx.getBlock
+  w.ctx.getBlock = (x, y, z) => x === shaft.ladder.support.x && y === shaft.topY && z === shaft.ladder.support.z
+    ? { known: true, name: 'minecraft:leaf_litter', boundingBox: 'empty', extra: [] }
+    : getBlock(x, y, z)
+  w.branch.shaft = { entry: true, depth: shaft.topY, landings: {} }
+  w.put(shaft.entryTorch.position, 'torch')
+  const out = await requestMine(w.ctx, { resource: 'diamond', targetHeld: 3 })
+  const mine = w.ctx.memory.early.mine
+  assert.equal(out.result.code, 'MINE_SITE_RETIRED', JSON.stringify(out))
+  assert.equal(mine.branch, undefined)
+  assert.equal(mine.sites[0].retireReason, 'MINE_SHAFT_ENTRY_BACKING_BLOCKED')
+  assert.equal(mine.search.index, 0)
+  assert.equal(w.getBlock(shaft.entryTorch.position.x, shaft.topY, shaft.entryTorch.position.z).name, 'minecraft:torch')
+  assert.equal(w.digs.length, 0)
+  assert.equal(w.places.length, 0)
+})
+
 test('an interrupted exit from an exhausted site resumes retirement without descending again',async t=>{
   const w=await upper(t),progress=w.branch.progress.upper
   progress.cursor=progress.stepCount;progress.status='completed'
