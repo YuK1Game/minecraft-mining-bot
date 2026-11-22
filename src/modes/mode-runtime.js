@@ -289,7 +289,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     ports: createHousePorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() }),
-    hands, build: buildWalk, climb: climbUp,
+    hands, build: buildWalk, openEntrance: houseDoor, climb: climbUp,
     travel: { to: travelTo, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     hostile: () => danger(), hostileWhy: () => dangerOf.text(),
     // Not with 10 health or less: eating, the shelter and fleeing come first (live 2026-11-17 05:53 JST: the build began at 1.9 health with no food).

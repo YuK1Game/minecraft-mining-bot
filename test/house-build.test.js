@@ -88,6 +88,40 @@ test('with the materials held: builds every step in order and marks the house do
   assert.ok(crafted.some(([output]) => output === 'minecraft:bed'))
 })
 
+test('rechecking finished house chests opens its door without mining it', async () => {
+  const w = world(), origin = { x: 0, y: 64, z: 0 }, feet = { x: 3.5, y: 64, z: -2.5 }
+  for (const step of placements(origin)) for (const cell of step.cells) {
+    w.set(cell, 'minecraft:' + (step.item === 'white_bed' ? 'bed' : step.item))
+  }
+  const shared = { playerWanted: true, playerHouse: { origin, built: true, done: false, repair: { state: 'running' } } }
+  let opened = 0, inspections = 0, built = 0
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, sleep: async () => {},
+    agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
+    ports: {
+      inspectChest: async () => { assert.equal(opened, 1); assert.equal(Math.floor(feet.z), 5); inspections++; return largeWindow() },
+      mine: async () => assert.fail('the existing door is already part of the verified blueprint')
+    },
+    openEntrance: async () => { assert.equal(Math.floor(feet.z), 7); opened++; return true },
+    hands: { walk: async stand => { if (feet.z < 0) return false; Object.assign(feet, stand); return true }, approach: async () => false },
+    build: async (target, { done }) => {
+      assert.deepEqual(target, { x: 3, y: 65, z: 7 })
+      assert.equal(done(target), true)
+      Object.assign(feet, { x: target.x + 0.5, y: target.y, z: target.z + 0.5 })
+      built++
+      return { ok: true }
+    },
+    climb: async () => ({ ok: true }), travel: { status: () => ({ busy: false }) },
+    getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => feet,
+    getInventory: () => ({ known: true, items: [{ slot: 0, name: 'minecraft:stone_pickaxe', count: 1 }] })
+  })
+  assert.equal(remaining(w.getBlock, origin).length, 0)
+  await build.tick()
+  assert.equal(built, 1)
+  assert.equal(inspections, 2)
+  assert.equal(shared.playerHouse.done, true)
+})
+
 test('without sand or wool: builds the rest and leaves the glass and the bed', async () => {
   const w = world()
   const feet = { x: 0.5, y: 64, z: 0.5 }
