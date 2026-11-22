@@ -9,6 +9,7 @@ const { createMinePorts } = require('../../src/modes/mining/mine-ports')
 const { createQuarryTerrainRequester } = require('../../src/quarry/quarry-terrain')
 const { observeMineRuntime } = require('../../src/modes/mining/mine-runtime-observe')
 const { mineLiveScope } = require('../../src/modes/mining/mine-state')
+const { searchKey } = require('../../src/modes/mining/mine-sites')
 const { createServerPositionVerifier } = require('../../src/movement/server-position-verifier')
 
 function observationWorld ({ index = 1 } = {}) {
@@ -48,7 +49,7 @@ function observationWorld ({ index = 1 } = {}) {
     walks.push({ target: { ...target }, actual: feet(), route: route.path })
     onWalk(walks.length)
   } } }
-  const ctx = { root: require('node:path').resolve(__dirname, '../..'), shared: {}, memory: { early: { mine: { search: { index, requestKey: JSON.stringify(['raw_iron', 1, mineLiveScope(f.current)]) } } } }, signal: controller.signal,
+  const ctx = { root: require('node:path').resolve(__dirname, '../..'), shared: {}, memory: { early: { mine: { search: { index, requestKey: searchKey('raw_iron', 1, mineLiveScope(f.current)) } } } }, signal: controller.signal,
     cancelled: () => stopped || controller.signal.aborted, getFeet: feet, getBlock: f.world.getBlock, now: () => clock, sleep: async ms => { clock += ms }, operations,
     runtime: { mineState: f.getState, raw: f.getState, inventory: () => inv, host: () => ({ world: f.world }),
       mineObserve: (request, options) => observeMineRuntime(rt, request, options), mineConfirmPosition: (target, options) => {

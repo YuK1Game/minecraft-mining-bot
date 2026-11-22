@@ -2,7 +2,7 @@
 
 // A finished footprint remains protected. Only its geometry and storage
 // registry survive retirement; per-cell ore estimates and live receipts do not.
-const { planMine }=require('./mine-plan')
+const { planMine,PLAN_RULES }=require('./mine-plan')
 const { planMineExtension }=require('./mine-extension')
 const { DIRECTIONS }=require('./mine-geometry')
 const state=require('./mine-state')
@@ -112,13 +112,16 @@ function rejectSite(ctx,search,plan,candidateCount){
   search.rejected[index]=details
 }
 
+// A search belongs to one request, one life and the planner's rules: any of them changing starts it over.
+const searchKey=(resource,targetHeld,liveScope)=>JSON.stringify([resource,targetHeld,liveScope,PLAN_RULES])
+
 async function nextMine(ctx,resource,targetHeld){
   const mine=memory(ctx),sites=mine.sites??=[],revision=revisionOf(ctx),worldScope=state.mineWorldScope(raw(ctx))
   if(!live(ctx))return {result:stopped()}
   if(mine.branch?.segmentTask || mine.branch?.vein || mine.branch?.pendingAction)return {result:blocked('MINE_OBSERVATION_PENDING_WORK','施工中の区間と埋戻しを完了してから次の採掘場を調べます。','inventory_update')}
   if(sites.length>=MAX_SITES)return {result:blocked('MINE_SITE_LIMIT','確認済み採掘場が8か所に達しました。保管した鉱石と採掘範囲を確認します。','supplies_changed')}
   const search=mine.search??={index:0},candidateCount=siteOffsets(sites).length
-  const requestKey=JSON.stringify([resource,targetHeld,scope(ctx)])
+  const requestKey=searchKey(resource,targetHeld,scope(ctx))
   if(search.requestKey!==requestKey){search.requestKey=requestKey;search.index=0;delete search.wait;delete search.deferred;delete search.exhaustedRevision;delete search.origin;delete search.rejected;delete search.entranceSurveyed;delete search.visited}
   // Observation moves must not move the nine fixed candidate centres too.
   search.origin??=originAt(ctx,0,sites).origin
@@ -250,4 +253,4 @@ async function retireMine(ctx,branch,reason=null){
   return {...results.partial('MINE_SITE_RETIRED',{progress:{sites:next.length}}),serverConfirmed:true}
 }
 
-module.exports={nextMine,ensureMineLayer,retireMine,compactSite,footprint,protectedBySites,originAt,revisionOf,MAX_SITES,MAX_BYTES}
+module.exports={nextMine,ensureMineLayer,retireMine,compactSite,footprint,protectedBySites,originAt,revisionOf,searchKey,MAX_SITES,MAX_BYTES}

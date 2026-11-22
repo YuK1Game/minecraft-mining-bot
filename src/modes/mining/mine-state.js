@@ -54,13 +54,16 @@ function advanceMineState (state, receipt, { step, liveScope, plan = null } = {}
       ...(receipt.evidence?.retainedTorchSupport ? { retainedTorchSupport: copy(receipt.evidence.retainedTorchSupport) } : {}) }] }
 }
 
-function skipMineSegment (state, { segmentId, code, plan, liveScope, attempts } = {}) {
+// A branch is passed by for one of two reasons: its plan left the step out (plan.closed, mine-plan.js), or
+// three attempts at it failed. Nothing else moves the cursor without a receipt.
+function skipMineSegment (state, { segmentId, code, plan, liveScope, attempts = 0 } = {}) {
   const steps = mineSteps(plan, { layer: state.layer }), current = steps[state.cursor]
-  if (plan.id !== state.planId || !liveScope || !Number.isInteger(attempts) || attempts < 3 || current?.segmentId !== segmentId || current.kind !== 'branch' || typeof code !== 'string' || !code) fail('MINE_SEGMENT_SKIP_DENIED')
+  const planned = !!current && plan.closed?.includes(current.id) === true
+  if (plan.id !== state.planId || !liveScope || !Number.isInteger(attempts) || !planned && attempts < 3 || current?.segmentId !== segmentId || current.kind !== 'branch' || typeof code !== 'string' || !code) fail('MINE_SEGMENT_SKIP_DENIED')
   let cursor = state.cursor
   while (steps[cursor]?.segmentId === segmentId) cursor++
   return { ...state, cursor, status: cursor === state.stepCount ? 'partial' : 'building', needsRevalidation: true, liveScope,
-    blocked: [...(state.blocked ?? []), { segmentId, code, attempts, fromCursor: state.cursor, toCursor: cursor, liveScope }] }
+    blocked: [...(state.blocked ?? []), { segmentId, code, attempts, ...(planned ? { planned: true } : {}), fromCursor: state.cursor, toCursor: cursor, liveScope }] }
 }
 
 module.exports = { mineWorldScope, mineLiveScope, sameWorld, createMineState, resumeMineState, advanceMineState, skipMineSegment, extendMineProgress }

@@ -52,6 +52,15 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
   const progress=branch.progress[layer],steps=mineSteps(branch.plan,{layer}),step=steps[progress.cursor]
   if(!step || lobbyOnly && step.kind!=='storage')return {...results.completed('MINE_LOBBY_READY'),serverConfirmed:true}
   if(branch.segmentTask && (branch.segmentTask.stepId!==step.id || branch.segmentTask.cursor!==progress.cursor || branch.segmentTask.layer!==layer))return blocked('MINE_ACTIVE_STEP_MISMATCH','保存した施工区間と現在の坑道を照合します。','owner_released')
+  // The plan left this branch step out for a hazard beside it (mine-plan.js): it and the rest of its line stay rock.
+  if(step.kind==='branch' && !branch.segmentTask && branch.plan.closed?.includes(step.id)){
+    const before=scope(ctx)
+    if(!before)return stopped()
+    branch.progress[layer]=state.skipMineSegment(progress,{segmentId:step.segmentId,code:'MINE_PLANNED_HAZARD',plan:branch.plan,liveScope:before})
+    if(!await save(ctx,branch,before)){branch.progress[layer]=progress;return blocked('MINE_CHECKPOINT','掘らない支線の記録を保存します。','owner_released')}
+    ctx.log?.(`プレイヤーモード: 採掘場の支線 ${step.id} から先は、横に水・溶岩・砂利などがあるため掘らずに次へ進みます`)
+    return {...results.partial('MINE_SEGMENT_CLOSED',{progress:{layer,cursor:branch.progress[layer].cursor}}),serverConfirmed:true}
+  }
   const planned=stepCells(branch.plan,step),recorded=branch.segmentTask?.retainedTorchSupport
   const retained=retainStorageTorchSupport(ctx,branch.plan,step,planned,recorded)
   if(recorded && !retained)return blocked('MINE_RETAINED_LAYOUT_CHANGED','残した丸石と周囲の通路を再確認します。')
