@@ -155,11 +155,20 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
         if (!point) say("歩ける中継点が見つかりません"); else {
           const tw = now()
           const result = await walkTo(point, { signal })
-          add(result?.ok ? 'walk' : 'walk_fail', now() - tw)
           via = 'point'
           if (signal.aborted) throw fail('LONG_TRAVEL_CANCELLED')
-          if (result?.ok) moved = true
-          else { last = result ?? { ok: false, code: 'POINT_WALK_FAILED' }; say(`中継点 (${point.x},${point.y},${point.z}) へ歩けませんでした（${last.code}${last.message ? ': ' + last.message : ''}）`) }
+          const reached = result?.ok ? feetOf(getState()) : null
+          const changedColumn = reached && (Math.floor(reached.x) !== Math.floor(feet.x) || Math.floor(reached.z) !== Math.floor(feet.z))
+          const arrivedInColumn = reached && Math.round(horizontal(reached, run.destination)) <= arriveM &&
+            (typeof onSurface !== 'function' || onSurface(reached) === true)
+          // Moving up and down inside one column does not advance the trip.
+          // Reuse the chunk and detour search from the newly received pose.
+          moved = !!(changedColumn || arrivedInColumn)
+          add(moved ? 'walk' : 'walk_fail', now() - tw)
+          if (!moved) {
+            last = result?.ok ? { ok: false, code: 'POINT_SAME_COLUMN' } : result ?? { ok: false, code: 'POINT_WALK_FAILED' }
+            say(`中継点 (${point.x},${point.y},${point.z}) へ歩けませんでした（${last.code}${last.message ? ': ' + last.message : ''}）`)
+          }
         }
       }
       // Coordinator 2026-11-14: chunk fallbacks took 21.7 of 60 minutes; at most

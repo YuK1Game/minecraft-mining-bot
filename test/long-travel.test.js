@@ -34,6 +34,25 @@ async function finish (f, ms = 5000) {
   return f.travel.status()
 }
 
+test('a same-column relay uses the existing detour without counting a travel leg', async () => {
+  const state = { phase: 'spawned', health: 20, position: { x: 0.5, y: 65.62, z: 0.5 } }
+  let walks = 0, detours = 0
+  const travel = createLongTravel({
+    getState: () => state,
+    findPoint: async () => ({ x: 0.5, y: 65, z: 0.5 }),
+    walkTo: async () => { walks++; state.position.y += 1; return { ok: true } },
+    chunkTravel: { start: async () => {}, status: () => ({ busy: false, phase: 'failed', error: { code: 'CHUNK_TRAVEL_NO_ROUTE' } }) },
+    detour: async () => { detours++; state.position.x = 52.5; return { ok: true } },
+    sleep: () => new Promise(resolve => setImmediate(resolve)), stopWhenBlocked: true
+  })
+  travel.start({ destination: { x: 60, z: 0 } })
+  const result = await finish({ travel })
+  assert.equal(result.phase, 'arrived', JSON.stringify(result))
+  assert.equal(result.legs, 1)
+  assert.equal(walks, 1)
+  assert.equal(detours, 1)
+})
+
 test('walks leg by leg toward a far destination and arrives', async () => {
   const f = fixture()
   f.travel.start({ destination: { x: 300, z: -300 } })
