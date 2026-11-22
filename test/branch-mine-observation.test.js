@@ -2,6 +2,8 @@
 const test = require('node:test'), assert = require('node:assert/strict')
 const { observationWorld } = require('./helpers/branch-mine-observation-world')
 const { nextMine, originAt } = require('../src/modes/mining/mine-sites')
+const { createMineGeometry } = require('../src/modes/mining/mine-geometry')
+const { mineWorldScope } = require('../src/modes/mining/mine-state')
 const { observeCandidate, observationStand, MAX_MOVES } = require('../src/modes/mining/mine-observation')
 const { observeMineRuntime } = require('../src/modes/mining/mine-runtime-observe')
 const target = { x: 48, y: 64, z: 0 }
@@ -166,4 +168,25 @@ test('surface observation records the actually unknown head cell even when its b
   assert.deepEqual(before.unknown, [{ x: 48, y: 89, z: 0 }])
   f.put({ x: 48, y: 89, z: 0 }, 'air')
   assert.deepEqual(originAt(f.ctx, 1, [], { x: 0.5, y: 64, z: 0.5 }).origin, { x: 48.5, y: 88, z: 0.5 })
+})
+
+test('a retired mine continues from an exhausted nearby search to a received outer candidate', async () => {
+  const f = observationWorld({ index: 9 })
+  const mine = f.ctx.memory.early.mine
+  const previous = createMineGeometry({
+    scope: mineWorldScope(f.current), anchor: { x: 0, z: 0 }, direction: 'east',
+    surfaceY: 64, upperY: 48, width: 16, length: 16
+  })
+  mine.sites = [{ plan: previous }]
+  mine.search.origin = { x: 0.5, y: 64, z: 0.5 }
+  mine.search.exhaustedRevision = 1
+  mine.search.entranceSurveyed = true
+  f.receiveSite(6, 0)
+
+  const out = await tick(f)
+  assert.ok(out.branch, JSON.stringify(out))
+  assert.ok(out.branch.plan.site.anchor.x > 65, 'the new site is outside the first ring')
+  assert.deepEqual(mine.sites.map(site => site.plan.id), [previous.id])
+  assert.equal(mine.search, undefined)
+  assert.equal(f.walks.length, 0, 'received terrain can be planned from a distance')
 })
