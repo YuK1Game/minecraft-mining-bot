@@ -6,6 +6,7 @@
 // log line, and 「iron_pickaxe を準備しています（0/1）」 stood for 90 minutes.
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
+const { placementTopVisible } = require('../src/actions/action-access')
 const { placeStation, openSpots, wallSpots } = require('../src/modes/station-room')
 
 const key = (x, y, z) => `${x},${y},${z}`
@@ -79,6 +80,24 @@ test('a refused cell that is safe to retry moves on to the next open cell, then 
   assert.deepEqual(p.placed[0], { x: 1, y: 64, z: 0 })
   assert.deepEqual(at, { x: -1, y: 64, z: 0 })
   assert.deepEqual(h.mined, [at])
+})
+
+test('a safe placement refusal can move to a nearby confirmed view before mining a niche', async () => {
+  const open = []
+  for (let x = -3; x <= 3; x++) for (let z = -3; z <= 3; z++) open.push([x, 64, z], [x, 65, z])
+  const w = world(open), h = hands(w)
+  let feet = { x: 0.5, y: 64, z: 0.5 }, walked = false
+  const place = async cell => {
+    if (!walked) return false
+    assert.ok(placementTopVisible({ state: { position: { ...feet, y: feet.y + 1.62 } },
+      target: cell, getBlock: p => w.getBlock(p.x, p.y, p.z) }))
+    return true
+  }
+  const at = await placeStation({ getBlock: w.getBlock, feet, getFeet: () => feet, place,
+    hands: { ...h, walk: async target => { feet = target; walked = true; return true } } })
+  assert.ok(at)
+  assert.equal(walked, true)
+  assert.deepEqual(h.mined, [])
 })
 
 test('a stop in the middle places nothing more', async () => {

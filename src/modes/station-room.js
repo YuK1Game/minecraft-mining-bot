@@ -23,6 +23,7 @@
 // eighth was air behind the Bot's own litter cell. So: open is air; and when nothing could be placed from a cell
 // that holds a plant, the Bot first steps onto bare ground that has bare ground beside it (`bareStance`) and
 // places from there. Litter is not swept: leaves and litter are never broken.
+const { planPlacementAccess, placementTopVisible } = require('../actions/action-access')
 const OPEN = /^minecraft:(?:air|cave_air|void_air)$/
 const ROCK = /^minecraft:(?:stone|deepslate|andesite|diorite|granite|tuff|dirt|grass_block|cobblestone|cobbled_deepslate|netherrack)$/
 const FIXED = [[2, 0], [-2, 0], [0, 2], [0, -2], [1, 1]]
@@ -58,6 +59,22 @@ function bareStance (getBlock, feet) {
     .sort((a, b) => Math.hypot(a.x - at.x, a.z - at.z) - Math.hypot(b.x - at.x, b.z - at.z))
   return cells.find(cell => ground(cell) && bare({ ...cell, y: cell.y + 1 }) && SIDES.some(([dx, dz]) => ground({ x: cell.x + dx, y: cell.y, z: cell.z + dz }))) ?? null
 }
+function placementAccess (getBlock, feet) {
+  const targetCells = openSpots(getBlock, feet)
+  if (!targetCells.length) return null
+  const at = cellOf(feet), blocks = []
+  for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) for (let dy = -5; dy <= 3; dy++) {
+    const position = { x: at.x + dx, y: at.y + dy, z: at.z + dz }
+    const ground = getBlock(position.x, position.y, position.z)
+    if (solid(ground)) blocks.push({ ...ground, position })
+  }
+  const read = position => {
+    const block = getBlock(position.x, position.y, position.z)
+    return !block || block.position ? block : { ...block, position }
+  }
+  return planPlacementAccess({ state: { position: { ...feet, y: feet.y + 1.62 } }, targets: targetCells, blocks, getBlock: read })
+}
+
 // The feet's own cell holds a plant (litter, grass, a flower): something received that is not air and has no body.
 const inPlant = (getBlock, feet) => { const at = cellOf(feet), here = getBlock(at.x, at.y, at.z); return here?.known === true && !OPEN.test(here.name ?? '') && here.boundingBox === 'empty' && !here.extra?.length }
 
@@ -105,6 +122,20 @@ async function placeStation ({ getBlock, feet, getFeet = null, place, retrySafe 
     if (cancelled() || !after) return null
     feet = after
     if (!inPlant(getBlock, feet)) { put = await open(); if (put !== null) return put || null }
+  }
+  if (hands?.walk && getFeet && !cancelled() && now() < end) {
+    const access = placementAccess(getBlock, feet)
+    if (access) {
+      const arrived = await hands.walk(access.standpoint)
+      const after = getFeet()
+      if (cancelled() || !after) return null
+      feet = after
+      const state = { position: { ...after, y: after.y + 1.62 } }
+      if (arrived && placementTopVisible({ state, target: access.target, getBlock: p => getBlock(p.x, p.y, p.z) })) {
+        if (await place(access.target)) return access.target
+        if (!retrySafe()) return null
+      }
+    }
   }
   const walls = hands ? wallSpots(getBlock, feet) : []
   for (const cell of walls) {
