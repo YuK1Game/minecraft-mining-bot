@@ -9,9 +9,13 @@ const state=require('./mine-state')
 const { at,air,solid,count,scope,live,received,save,blocked,stopped,results }=require('./mine-common')
 const { leaveMine }=require('./mine-route')
 const { observeCandidate,observationSignature,MAX_WAITS }=require('./mine-observation')
+const { visitDeferred,centreOf,withinWalk }=require('./mine-site-visit')
 const MAX_SITES=8,MAX_BYTES=900000
 const OFFSETS=[[0,0],[1,0],[0,1],[-1,0],[0,-1],[1,1],[-1,1],[-1,-1],[1,-1]]
-const EXPANDED_OFFSETS=[...OFFSETS,...OFFSETS.slice(1).map(([x,z])=>[x*2,z*2])]
+// Rings at 48, 96, 144 and 192 m. Saved searches name a centre by its index, so rings are only appended.
+const EXPANDED_OFFSETS=[...OFFSETS,...[2,3,4].flatMap(ring=>OFFSETS.slice(1).map(([x,z])=>[x*ring,z*ring]))]
+// The centre's own column can be a pond, a beach or a treetop. The columns around it are read too, the centre first.
+const AROUND=[[0,0],...[4,8,12].flatMap(r=>[[r,0],[0,r],[-r,0],[0,-r],[r,r],[-r,r],[-r,-r],[r,-r]])]
 const siteOffsets=sites=>sites.length?EXPANDED_OFFSETS:OFFSETS
 const raw=ctx=>ctx.runtime.mineState?.()??ctx.runtime.raw()
 const memory=ctx=>{ctx.memory.early??={};return ctx.memory.early.mine??={}}
@@ -40,18 +44,23 @@ function protectedBySites(sites,world){
 function originAt(ctx,index,sites,origin=null){
   const home=ctx.shared.playerHouse?.origin,base=origin??(home?{...home,y:home.y+1}:sites[0]?.plan.shaft.approach??ctx.getFeet())
   if(index===0)return {origin:{...base}}
-  const [dx,dz]=siteOffsets(sites)[index],x=Math.floor(base.x+dx*48),z=Math.floor(base.z+dz*48),unknown=[],seen=new Set()
-  // The next site's surface height comes from this received column, not the
+  const centre=centreOf(base,siteOffsets(sites)[index]),own=[],around=[],seen=new Set()
+  // The next site's surface height comes from a received column, not the
   // old home's Y. Unknown air above a solid block is not an entrance.
-  for(let y=Math.min(318,Math.floor(base.y)+24);y>=Math.max(-58,Math.floor(base.y)-32);y--){
-    const floor=at(ctx,{x,y:y-1,z}),body=at(ctx,{x,y,z}),head=at(ctx,{x,y:y+1,z})
-    if([floor,body,head].some(b=>b?.known!==true)){
-      for(const [i,b] of [floor,body,head].entries())if(b?.known!==true && unknown.length<18){const p={x,y:y+i-1,z},id=`${p.x},${p.y},${p.z}`;if(!seen.has(id)){seen.add(id);unknown.push(p)}}
-      continue
+  for(const [ax,az] of AROUND){
+    const x=centre.x+ax,z=centre.z+az,unknown=ax||az?around:own
+    for(let y=Math.min(318,Math.floor(base.y)+24);y>=Math.max(-58,Math.floor(base.y)-32);y--){
+      const floor=at(ctx,{x,y:y-1,z}),body=at(ctx,{x,y,z}),head=at(ctx,{x,y:y+1,z})
+      if([floor,body,head].some(b=>b?.known!==true)){
+        for(const [i,b] of [floor,body,head].entries())if(b?.known!==true && unknown.length<18){const p={x,y:y+i-1,z},id=`${p.x},${p.y},${p.z}`;if(!seen.has(id)){seen.add(id);unknown.push(p)}}
+        continue
+      }
+      if(solid(floor) && air(body) && air(head))return {origin:{x:x+0.5,y,z:z+0.5}}
     }
-    if(solid(floor) && air(body) && air(head))return {origin:{x:x+0.5,y,z:z+0.5}}
   }
-  return {unknown}
+  // The centre's own missing cells are asked for first. The columns around it are asked for only when the
+  // centre is received and has no place to stand.
+  return {unknown:own.length?own:around}
 }
 
 function observationCells(planned){
@@ -60,8 +69,8 @@ function observationCells(planned){
 
 const candidateEvidence=(ctx,wait)=>JSON.stringify([observationSignature(ctx,[...wait.cells,...(wait.observation?.frontier??[])]),ctx.getFeet()&&Object.fromEntries(Object.entries(ctx.getFeet()).map(([k,v])=>[k,Math.floor(v)]))])
 
-async function observeSite(ctx,search,wait){
-  const before=scope(ctx),out=await observeCandidate(ctx,wait,{cells:wait.cells,reason:wait.code})
+async function observeSite(ctx,search,wait,offsets){
+  const before=scope(ctx),out=await observeCandidate(ctx,wait,{cells:wait.cells,reason:wait.code,travel:withinWalk(ctx,search,offsets[wait.index])})
   if(!live(ctx,before))return {result:stopped()}
   if(out.defer){
     search.deferred??={}
@@ -110,7 +119,7 @@ async function nextMine(ctx,resource,targetHeld){
   if(sites.length>=MAX_SITES)return {result:blocked('MINE_SITE_LIMIT','確認済み採掘場が8か所に達しました。保管した鉱石と採掘範囲を確認します。','supplies_changed')}
   const search=mine.search??={index:0},candidateCount=siteOffsets(sites).length
   const requestKey=JSON.stringify([resource,targetHeld,scope(ctx)])
-  if(search.requestKey!==requestKey){search.requestKey=requestKey;search.index=0;delete search.wait;delete search.deferred;delete search.exhaustedRevision;delete search.origin;delete search.rejected;delete search.entranceSurveyed}
+  if(search.requestKey!==requestKey){search.requestKey=requestKey;search.index=0;delete search.wait;delete search.deferred;delete search.exhaustedRevision;delete search.origin;delete search.rejected;delete search.entranceSurveyed;delete search.visited}
   // Observation moves must not move the nine fixed candidate centres too.
   search.origin??=originAt(ctx,0,sites).origin
   // Reconsider a legacy exhausted search once with measured entrances,
@@ -121,14 +130,18 @@ async function nextMine(ctx,resource,targetHeld){
   }
   search.entranceSurveyed=true
   if(search.wait?.revision===revision && search.wait?.requestKey===requestKey && search.wait?.index===search.index){
-    return observeSite(ctx,search,search.wait)
+    return observeSite(ctx,search,search.wait,siteOffsets(sites))
   }
   if(search.index>=candidateCount){
     // An unrelated packet does not reset exhausted walk/request budgets.
     // Revisit only a deferred candidate whose own missing-cell evidence
     // changed. An unknown column cannot monopolise the remaining candidates.
     const ready=Object.values(search.deferred??{}).find(wait=>wait.signature!==candidateEvidence(ctx,wait))
-    if(!ready)return {result:blocked('MINE_OBSERVATION_EXHAUSTED',`周囲${candidateCount}か所の観測候補を確認しました。安全に進めない候補は保留し、対象の地形受信が変わるまで待ちます。`)}
+    if(!ready){
+      // Nothing brings the terrain of a far centre here: go to each deferred centre once (mine-site-visit.js).
+      const visit=await visitDeferred(ctx,search,siteOffsets(sites))
+      return visit??{result:blocked('MINE_OBSERVATION_EXHAUSTED',`周囲${candidateCount}か所の観測候補を確認しました。安全に進めない候補は保留し、対象の地形受信が変わるまで待ちます。`)}
+    }
     search.index=ready.index;search.wait={...ready,revision:null};delete search.deferred[ready.index]
   }
   const found=originAt(ctx,search.index,sites,search.origin)
@@ -145,7 +158,7 @@ async function nextMine(ctx,resource,targetHeld){
     if(planned.status==='observing' || cells.length){
       const previous=search.wait?.index===search.index?search.wait:search.deferred?.[search.index]
       search.wait={revision,requestKey,index:search.index,code:planned.code??'MINE_PLAN_PENDING',cells,...(previous?.observation?{observation:previous.observation}:{})}
-      return observeSite(ctx,search,search.wait)
+      return observeSite(ctx,search,search.wait,siteOffsets(sites))
     }else{
       rejectSite(ctx,search,planned,candidateCount)
       delete search.wait;search.index++
