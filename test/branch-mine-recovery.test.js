@@ -8,7 +8,7 @@ const {requestMine,minePackRoom}=require('../src/modes/mining/mine-controller')
 const {workVein}=require('../src/modes/mining/mine-veins')
 const {createDragonSupplies}=require('../src/modes/dragon-supplies')
 const {ensureShaft}=require('../src/modes/mining/mine-shaft')
-const {reachLayer}=require('../src/modes/mining/mine-route')
+const {reachLayer,walkLayer}=require('../src/modes/mining/mine-route')
 const {cargo,capacityCargo,occupied,constructionKeep}=require('../src/modes/mining/mine-carry')
 const {crowded}=require('../src/modes/dragon-pack-room')
 const held=(w,name)=>w.items.filter(i=>i.name==='minecraft:'+name && i.count>0).reduce((n,i)=>n+i.count,0)
@@ -299,4 +299,40 @@ test('a failed approach can select the verified mine storage but an unresolved t
   assert.equal(occupied(w.inv), 35)
   assert.equal((await minePackRoom(w.ctx)).result.code, 'MINE_CAPACITY_FREED')
   assert.equal(occupied(w.inv), 30)
+})
+
+
+test('a supported slab rim outside the route graph is centred on the received landing before storage travel', async t => {
+  const w = createMineWorld(t)
+  await upper(w)
+  const shaft = w.plan.shaft
+  const landing = shaft.landings.find(entry => entry.layer === 'upper').stand
+  const rim = {
+    ...landing,
+    x: landing.x + Math.sign(shaft.ladder.x + 0.5 - landing.x) * 0.67,
+    z: landing.z + Math.sign(shaft.ladder.z + 0.5 - landing.z) * 0.67
+  }
+  w.put({ x: shaft.ladder.x, y: Math.floor(landing.y), z: shaft.ladder.z }, 'ladder', { facing_direction: shaft.ladder.face })
+  w.setFeet(rim)
+  const room = w.plan.storage.find(entry => entry.layer === 'upper')
+  const target = { x: room.access.from.x + 0.5, y: room.access.from.y - 0.5, z: room.access.from.z + 0.5 }
+  const walk = w.ctx.minePorts.walk
+  let receivedLanding = false, corrected = false
+  w.ctx.minePorts.walk = async point => {
+    if (corrected) return walk(point)
+    assert.deepEqual(point, landing)
+    if (!receivedLanding) return { status: 'blocked', code: 'MINE_POSITION_UNCONFIRMED' }
+    w.setFeet(landing)
+    corrected = true
+    return { status: 'completed', serverConfirmed: true }
+  }
+
+  const first = w.walks.length
+  assert.equal((await walkLayer(w.ctx, w.branch, 'upper', target)).code, 'MINE_POSITION_UNCONFIRMED')
+  assert.equal(w.walks.length, first, 'no corridor travel starts before the corrected landing is received')
+  receivedLanding = true
+  const out = await walkLayer(w.ctx, w.branch, 'upper', target)
+  assert.equal(out.serverConfirmed, true, JSON.stringify({ out, feet: w.feet(), walks: w.walks.slice(first) }))
+  assert.equal(corrected, true)
+  assert.ok(w.walks.length > first, 'the normal corridor walk resumes afterwards')
 })

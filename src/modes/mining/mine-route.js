@@ -93,8 +93,26 @@ function layerStands(ctx,plan,layer){
 async function walkLayer(ctx,branch,layer,target){
   if(!live(ctx))return stopped()
   if(feetAt(ctx,target))return walkCell(ctx,branch,target,'mine_route')
-  const nodes=layerStands(ctx,branch.plan,layer),feet=ctx.getFeet(),start=`${Math.floor(feet.x)},${Math.floor(feet.z)}`,finish=`${Math.floor(target.x)},${Math.floor(target.z)}`
-  if(!nodes.has(start) || !nodes.has(finish))return blocked('MINE_ROUTE_UNKNOWN','採掘場の通路と帰路を再確認します。')
+  const nodes=layerStands(ctx,branch.plan,layer)
+  const columnKey=p=>`${Math.floor(p.x)},${Math.floor(p.z)}`
+  const feet=ctx.getFeet(),finish=columnKey(target)
+  const unknown=()=>blocked('MINE_ROUTE_UNKNOWN','採掘場の通路と帰路を再確認します。')
+  if(!feet || !nodes.has(finish))return unknown()
+  let start=columnKey(feet)
+  if(!nodes.has(start)){
+    // After a ladder dismount the received position can be supported at the
+    // rim of an adjacent slab, before the body centre is in its column.
+    const x=Math.floor(feet.x),z=Math.floor(feet.z)
+    const adjacent=[...nodes.values()].filter(p=>
+      Math.abs(Math.floor(p.x)-x)+Math.abs(Math.floor(p.z)-z)===1 &&
+      Math.abs(p.y-feet.y)<=0.12 && Math.hypot(p.x-feet.x,p.z-feet.z)<=1
+    ).sort((a,b)=>Math.hypot(a.x-feet.x,a.z-feet.z)-Math.hypot(b.x-feet.x,b.z-feet.z))
+    if(!adjacent.length)return unknown()
+    const landed=await walkCell(ctx,branch,adjacent[0],'mine_route_start')
+    if(!received(landed))return landed
+    start=columnKey(ctx.getFeet())
+    if(!nodes.has(start))return unknown()
+  }
   const queue=[start],parents=new Map([[start,null]])
   for(let i=0;i<queue.length && !parents.has(finish);i++){
     const from=nodes.get(queue[i]),x=Math.floor(from.x),z=Math.floor(from.z)

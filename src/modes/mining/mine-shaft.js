@@ -53,13 +53,41 @@ async function rung (ctx,branch,y) {
     () => ctx.minePorts.place({ position: target, name: 'minecraft:ladder', clicked: support, face: shaft.ladder.face, clickY: 0.5 }), installed)
 }
 
+// Returning from a surface trip can unload sections of a finished shaft.
+// Request one missing cell per section, then let the ladder port check the
+// full received route as usual.
+function missingLadderTerrain (ctx, shaft, from, to) {
+  const missing=new Map()
+  const need=p=>{
+    if(at(ctx,p)?.known===true)return
+    const section=key({x:Math.floor(p.x/16),y:Math.floor(p.y/16),z:Math.floor(p.z/16)})
+    if(!missing.has(section))missing.set(section,p)
+  }
+  for(const feet of [from,to]){
+    for(let x=Math.floor(feet.x-0.3+1e-7);x<=Math.floor(feet.x+0.3-1e-7);x++){
+      for(let z=Math.floor(feet.z-0.3+1e-7);z<=Math.floor(feet.z+0.3-1e-7);z++){
+        for(let y=Math.floor(feet.y-1e-5);y<=Math.floor(feet.y+1.8-1e-7);y++)need({x,y,z})
+      }
+    }
+  }
+  for(let y=Math.floor(Math.min(from.y,to.y));y<=Math.ceil(Math.max(from.y,to.y));y++){
+    need(here(shaft.ladder,y))
+    if(shaft.ladder.support)need(here(shaft.ladder.support,y))
+  }
+  return [...missing.values()]
+}
+
 async function climb (ctx,branch,to) {
   const from={...ctx.getFeet()}
-  const sameLevel=Math.abs(from.y-to.y)<0.12 && Math.floor(from.x)===Math.floor(to.x) && Math.floor(from.z)===Math.floor(to.z)
-  // A corrected descent can already be on the landing's floor but off
-  // centre. Use a supported walk and the normal position witness to settle.
+  const sameColumn=Math.floor(from.x)===Math.floor(to.x) && Math.floor(from.z)===Math.floor(to.z)
+  const sameLevel=Math.abs(from.y-to.y)<0.12 && (sameColumn || Math.hypot(from.x-to.x,from.z-to.z)<=1)
+  // A correction can settle on a landing's slab while the body centre
+  // remains in the ladder column. Use a short supported walk on that level.
   if(feetAt(ctx,to) || sameLevel)return walkCell(ctx,branch,to,'ladder_landing')
-  const column={x:branch.plan.shaft.ladder.x,z:branch.plan.shaft.ladder.z}
+  const shaft=branch.plan.shaft
+  const missing=missingLadderTerrain(ctx,shaft,from,to)
+  if(missing.length)return observe(ctx,missing,'はしごと乗り降りする足場の地形を受信します。')
+  const column={x:shaft.ladder.x,z:shaft.ladder.z}
   return action(ctx,branch,{kind:'ladder_move',from,to},()=>ctx.minePorts.ladderMove({column,from,to,operationId:`${branch.plan.id}:${from.y}:${to.y}`},{signal:ctx.signal}),()=>feetAt(ctx,to))
 }
 

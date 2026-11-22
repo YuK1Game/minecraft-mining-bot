@@ -211,3 +211,54 @@ test('a completed upper corridor stays connected only while its actual slab, cle
   for (const t of cells.torch) w.put(t.position, 'air')
   assert.equal(blocked(), true)
 })
+
+
+test('climbing after a surface trip requests missing shaft sections before issuing movement', async t => {
+  const w = createMineWorld(t)
+  const shaft = w.plan.shaft
+  const target = { x: shaft.ladder.x + 0.5, y: 15.5, z: shaft.ladder.z + 0.5 }
+  let feet = { ...shaft.approach }, sectionsReceived = false, moves = 0
+  const requests = []
+  w.ctx.getFeet = () => ({ ...feet })
+  w.ctx.getBlock = (x, y, z) => !sectionsReceived && y >= 15 && y < 32 ? { known: false } : w.getBlock(x, y, z)
+  w.ctx.minePorts.observe = async request => {
+    requests.push(request)
+    return { status: 'blocked', code: 'MINE_TERRAIN_REQUESTED', serverConfirmed: false }
+  }
+  w.ctx.minePorts.ladderMove = async ({ to }) => {
+    moves++
+    feet = { ...to }
+    return { status: 'completed', serverConfirmed: true }
+  }
+
+  const waiting = await climb(w.ctx, w.branch, target)
+  assert.equal(waiting.code, 'MINE_TERRAIN_UNKNOWN')
+  assert.equal(moves, 0)
+  assert.equal(requests.length, 1)
+  const sections = requests[0].cells.map(cell => [cell.x, cell.y, cell.z].map(n => Math.floor(n / 16)))
+  assert.deepEqual([...new Set(sections.map(section => section[1]))].sort(), [0, 1])
+  assert.equal(new Set(sections.map(String)).size, sections.length)
+  sectionsReceived = true
+  assert.equal((await climb(w.ctx, w.branch, target)).serverConfirmed, true)
+  assert.equal(moves, 1)
+})
+
+
+test('corrected feet on the adjacent slab height walk onto the landing without remounting the ladder', async t => {
+  const w = createMineWorld(t)
+  const target = w.plan.shaft.landings.find(entry => entry.layer === 'upper').stand
+  const shaft = w.plan.shaft.ladder
+  let feet = {
+    ...target,
+    x: target.x + Math.sign(shaft.x + 0.5 - target.x) * 0.796,
+    z: target.z + Math.sign(shaft.z + 0.5 - target.z) * 0.796
+  }
+  w.ctx.getFeet = () => ({ ...feet })
+  w.ctx.minePorts.ladderMove = async () => assert.fail('feet are already at the landing height')
+  w.ctx.minePorts.walk = async point => {
+    assert.deepEqual(point, target)
+    feet = { ...point }
+    return { status: 'completed', serverConfirmed: true }
+  }
+  assert.equal((await climb(w.ctx, w.branch, target)).serverConfirmed, true)
+})
