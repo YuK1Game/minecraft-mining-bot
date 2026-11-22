@@ -54,8 +54,12 @@ async function rung (ctx,branch,y) {
 }
 
 async function climb (ctx,branch,to) {
-  if(feetAt(ctx,to))return walkCell(ctx,branch,to,'ladder_landing')
-  const from={...ctx.getFeet()},column={x:branch.plan.shaft.ladder.x,z:branch.plan.shaft.ladder.z}
+  const from={...ctx.getFeet()}
+  const sameLevel=Math.abs(from.y-to.y)<0.12 && Math.floor(from.x)===Math.floor(to.x) && Math.floor(from.z)===Math.floor(to.z)
+  // A corrected descent can already be on the landing's floor but off
+  // centre. Use a supported walk and the normal position witness to settle.
+  if(feetAt(ctx,to) || sameLevel)return walkCell(ctx,branch,to,'ladder_landing')
+  const column={x:branch.plan.shaft.ladder.x,z:branch.plan.shaft.ladder.z}
   return action(ctx,branch,{kind:'ladder_move',from,to},()=>ctx.minePorts.ladderMove({column,from,to,operationId:`${branch.plan.id}:${from.y}:${to.y}`},{signal:ctx.signal}),()=>feetAt(ctx,to))
 }
 

@@ -19,7 +19,7 @@ function fixture (t, { receipts = true, oracle = false, oracleHook = null, missi
   const packets = [], blocks = new Map(), errors = [], queries = []
   const landing = frontLanding ? { x: 0, z: -1 } : { x: 1, z: 0 }
   const block = (name, properties = {}) => ({ known: true, name: 'minecraft:' + name, properties, runtimeId: 1, boundingBox: name === 'air' ? 'empty' : 'block', extra: [] })
-  for (let y = 65; y <= 74; y++) blocks.set(`0,${y},0`, block('ladder', { facing_direction: 2 }))
+  for (let y = 65; y <= Math.max(74, ...landings); y++) blocks.set(`0,${y},0`, block('ladder', { facing_direction: 2 }))
   for (const y of landings) blocks.set(`${landing.x},${y - 1},${landing.z}`, block('stone'))
   if (bottomSlab) blocks.set(`${landing.x},${bottomSlabY},${landing.z}`, block('cobblestone_slab', { 'minecraft:vertical_half': 'bottom' }))
   const world = { getBlock: (x, y, z) => blocks.get(`${x},${y},${z}`) ?? block(y < 65 || z === 1 ? 'stone' : 'air') }
@@ -248,6 +248,36 @@ test('a received correction bound to an emitted ascent frame resumes on the same
   assert.equal(result.serverConfirmed, true)
   assert.equal(result.positionEvidence.kind, 'server_position')
   assert.equal(f.server.onGround, true)
+})
+
+test('a long ascent may continue after twelve verified corrections when the server confirms upward progress', async t => {
+  let correctedY = 65, corrections = 0
+  const f = fixture(t, { landings: [65, 95], frontLanding: true, startOffset: { x: 0, z: 1 }, timeoutMs: 26000, interrupt: c => {
+    const p = c.server.position
+    if (p.y < correctedY + 1.75 || p.y > 94.3) return
+    correctedY = p.y - 0.29
+    corrections++
+    c.correct({ x: p.x, y: correctedY + 1.62, z: p.z }, { delta: { x: 0, y: 0.2, z: 0 }, updatePeer: true })
+  } })
+  const result = await f.move(65, 95, { from: { x: 0.5, y: 65, z: 0.5 } })
+  assert.ok(corrections > 12)
+  assert.equal(result.status, 'completed', JSON.stringify(result))
+  assert.equal(result.replayedCorrections, corrections)
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(f.server.onGround, true)
+})
+
+test('repeated corrections around the same height still hit the initial limit', async t => {
+  const f = fixture(t, { landings: [65, 95], startOffset: { x: -1, z: 0 }, interrupt: c => {
+    const p = c.server.position
+    if (p.y < 65.9) return
+    c.correct({ x: p.x, y: 65.55 + 1.62, z: p.z }, { delta: { x: 0, y: 0.2, z: 0 }, updatePeer: true })
+  } })
+  const result = await f.move(65, 95, { from: { x: 0.5, y: 65, z: 0.5 } })
+  assert.equal(result.reason, 'LADDER_SERVER_CORRECTION', JSON.stringify(result))
+  assert.equal(result.correctionDiagnostic?.refusal, 'correction_limit')
+  assert.equal(result.replayedCorrections, 12)
+  assert.equal(result.serverConfirmed, false)
 })
 
 test('a float32 correction at the verified ladder face admits rounding but rejects body overlap', () => {

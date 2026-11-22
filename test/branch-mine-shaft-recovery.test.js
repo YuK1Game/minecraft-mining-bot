@@ -3,7 +3,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createMineWorld } = require('./helpers/branch-mine-world')
-const { ensureShaft, shaftFinish } = require('../src/modes/mining/mine-shaft')
+const { ensureShaft, shaftFinish, climb } = require('../src/modes/mining/mine-shaft')
 const { leaveMine } = require('../src/modes/mining/mine-route')
 const { shaftBoundary } = require('../src/modes/mining/mine-shaft-boundary')
 const { mineSteps, stepCells } = require('../src/modes/mining/mine-geometry')
@@ -16,6 +16,17 @@ async function upper (w) {
   }
   assert.equal(w.branch.shaft.landings.upper, true)
 }
+
+test('same-height landing recovery recentres with ordinary walking and sends no ladder input', async t => {
+  const w = createMineWorld(t), column = w.plan.shaft.ladder
+  const to = { x: column.x + 0.5, y: w.plan.shaft.topY, z: column.z + 0.5 }
+  w.setFeet({ ...to, z: to.z + 0.21 })
+  const out = await climb(w.ctx, w.branch, to)
+  assert.equal(out.code, 'MINE_POSITION_RECEIVED', JSON.stringify(out))
+  assert.equal(out.serverConfirmed, true)
+  assert.equal(w.climbs.length, 0)
+  assert.deepEqual(w.walks.at(-1), to)
+})
 
 test('clear a dry surface plant at the planned ladder support and leave nearby plants alone', async t => {
   const w = createMineWorld(t), shaft = w.plan.shaft

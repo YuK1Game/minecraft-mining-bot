@@ -9,7 +9,13 @@ const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(p
 
 function rebaseLadderCorrection ({ run, correction, pose, state, getBlock, now }) {
   const reject = reason => { run.correctionRefusal = reason; return false }
-  if (run.plan.direction !== 1 || !['climb', 'dismount'].includes(run.phase) || run.replayedCorrections >= MAX_REBASES) return reject('phase_or_limit')
+  if (run.plan.direction !== 1 || !['climb', 'dismount'].includes(run.phase)) return reject('phase')
+  // Only height from a previously accepted server correction can extend the
+  // allowance. Replays at the same height and predicted motion never add it.
+  const { from, to } = run.plan
+  const observedRise = Math.floor((run.highestCorrectionY ?? from.y) - from.y)
+  const routeRise = Math.ceil(to.y - from.y)
+  if (run.replayedCorrections >= MAX_REBASES + Math.max(0, Math.min(routeRise, observedRise))) return reject('correction_limit')
   if (correction?.accepted !== true || correction.source !== 'correct_player_move_prediction' ||
       correction.temporalScope !== 'packet_tick' || correction.velocitySource !== 'server_correction' ||
       !finite(correction.position) || !finite(correction.velocity) || typeof correction.onGround !== 'boolean' ||
@@ -25,7 +31,7 @@ function rebaseLadderCorrection ({ run, correction, pose, state, getBlock, now }
   const correctedTick = BigInt(correction.tick)
   if (run.lastRebasedTick != null && correctedTick <= run.lastRebasedTick) return reject('old_tick')
 
-  const { centre, column, from, to, facing } = run.plan
+  const { centre, column, facing } = run.plan
   const onRoute = physical => {
     const p = physical.position
     return Math.hypot(p.x - centre.x, p.z - centre.z) <= 0.28 &&
@@ -38,6 +44,7 @@ function rebaseLadderCorrection ({ run, correction, pose, state, getBlock, now }
     let physical = run.physics.fromServer({ ...state, position: correction.position, positionSource: correction.source },
       { velocity: correction.velocity, onGround: correction.onGround })
     if (!onRoute(physical)) return reject('corrected_pose_off_route')
+    const correctedY = physical.position.y
     let tick = correctedTick
     // A packet-tick correction replaces that tick's pose. Only the later
     // frames this owner actually queued are replayed, with no gaps.
@@ -51,6 +58,7 @@ function rebaseLadderCorrection ({ run, correction, pose, state, getBlock, now }
     run.settledFrames = 0
     run.stalled = 0
     run.lastRebasedTick = correctedTick
+    run.highestCorrectionY = Math.max(run.highestCorrectionY ?? from.y, correctedY)
     run.replayedCorrections++
     run.correctionRefusal = null
     return true
