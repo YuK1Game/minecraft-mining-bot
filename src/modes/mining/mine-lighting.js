@@ -1,7 +1,7 @@
 'use strict'
 
 const { completed, partial, blocked, interrupted } = require('../return/return-result')
-const { classifyMineCell, mineSteps, stepCells } = require('./mine-geometry')
+const { classifyMineCell, isMineTorchTarget, mineSteps, stepCells } = require('./mine-geometry')
 const { key, air, solid, bottomSlab, confirmed, held } = require('./mine-observed')
 const { low } = require('../low-block')
 const { placementSupportOk } = require('../../quarry/storage/storage-site-terrain')
@@ -149,7 +149,7 @@ function createMineLighting (ctx, actions) {
       if (air(b)) {
         const stand = await approach(p)
         if (!confirmed(stand)) return stand
-        if (classifyMineCell(plan, p).allowedDig) {
+        if (classifyMineCell(plan, p).allowedDig || isMineTorchTarget(plan, p)) {
           const branch = ctx.memory.early.mine.branch
           branch.temporarySeals ??= []
           if (!branch.temporarySeals.some(at => key(at) === key(p))) branch.temporarySeals.push({ ...p })

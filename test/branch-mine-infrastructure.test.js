@@ -181,6 +181,25 @@ test('each layer has sized cargo pairs plus a separated supply pair', () => {
   }
 })
 
+test('an air opening in a future torch position keeps its temporary seal record', async () => {
+  const plan = createMineGeometry({ scope: { profile: 'test', realmId: 'realm', dimension: 'overworld' }, anchor: { x: 0, z: 0 }, surfaceY: 64, upperY: 16, lowerY: -54 })
+  const steps = mineSteps(plan, { layer: 'upper' }), index = steps.findIndex(step => step.kind === 'storage')
+  const current = stepCells(plan, steps[index]), next = stepCells(plan, steps[index + 1])
+  const target = next.torch[0].position
+  const adjacent = current.clear.find(p => Math.abs(p.x - target.x) + Math.abs(p.z - target.z) === 1 && p.y === target.y)
+  assert.ok(adjacent)
+  const here = p => p.x === target.x && p.y === target.y && p.z === target.z
+  const branch = { plan, progress: { upper: { cursor: index } }, temporarySeals: [] }
+  const ctx = { memory: { early: { mine: { branch } } }, getBlock: (x, y, z) => here({ x, y, z }) ? air : solid,
+    getFeet: () => ({ x: adjacent.x + 0.5, y: adjacent.y - 1, z: adjacent.z + 0.5 }), cancelled: () => false }
+  let recorded = false
+  const actions = { block: p => ctx.getBlock(p.x, p.y, p.z), done: () => ({ status: 'completed', serverConfirmed: true }),
+    save: async () => { recorded = branch.temporarySeals.some(here); return true },
+    place: ({ position }) => { assert.deepEqual(position, target); assert.equal(recorded, true); return { status: 'interrupted', code: 'AFTER_SEAL_CHECKPOINT' } } }
+  const out = await createMineLighting(ctx, actions).finish(plan, current)
+  assert.equal(out.code, 'AFTER_SEAL_CHECKPOINT')
+})
+
 test('a future planned corridor is sealed when it opens into an unfinished cave', () => {
   const plan = createMineGeometry({ scope: { profile: 'test', realmId: 'realm', dimension: 'overworld' }, anchor: { x: 0, z: 0 }, surfaceY: 64, upperY: 16, lowerY: -54 })
   const steps = mineSteps(plan, { layer: 'upper' }), index = steps.findIndex(step => step.kind === 'main'), current = stepCells(plan, steps[index]), next = stepCells(plan, steps[index + 1])

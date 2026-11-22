@@ -136,20 +136,32 @@ function stepCells (plan, step) {
   return { clear, floor, torch, ladder: [], fill: [], stand: feet(end), approach: feet(before), protected: protectedCells }
 }
 
+// Build the reservation index once for this fixed plan. Only a torch's
+// placement cell belongs to future excavation. Its support stays protected.
+function lightingReservations (plan) {
+  if (!lightingByPlan.has(plan)) {
+    const byPosition = new Map(), undergroundTargets = new Set()
+    for (const step of mineSteps(plan)) for (const torch of stepCells(plan, step).torch) {
+      const placement = key(torch.position)
+      byPosition.set(placement, step.layer)
+      byPosition.set(key(torch.support), step.layer)
+      undergroundTargets.add(placement)
+    }
+    if (plan.shaft.entryTorch) for (const position of [plan.shaft.entryTorch.position, plan.shaft.entryTorch.support]) {
+      byPosition.set(key(position), 'surface')
+    }
+    lightingByPlan.set(plan, { byPosition, undergroundTargets })
+  }
+  return lightingByPlan.get(plan)
+}
+
+const isMineTorchTarget = (plan, p) => lightingReservations(plan).undergroundTargets.has(key(p))
+
 function classifyMineCell (plan, p) {
   if (!integer(p)) return { allowedDig: false, protected: true, role: 'invalid' }
   if (plan.shaft.columns.some(c => c.x === p.x && c.z === p.z) && p.y >= plan.shaft.bottomY - 1 && p.y <= plan.shaft.topY + 2) return { allowedDig: false, protected: true, role: 'shaft' }
   for (const storage of plan.storage) for (const pair of storage.pairs) if (pair.positions.some(c => c.x === p.x && c.z === p.z && Math.abs(c.y - p.y) <= 1)) return { allowedDig: false, protected: true, role: 'storage', layer: storage.layer }
-  // A fixed plan never changes its lines after construction begins. Build the
-  // compact reservation index lazily so vein scans preserve every torch and
-  // backing block, including an ore block used as a wall support.
-  if (!lightingByPlan.has(plan)) {
-    const reservations = new Map()
-    for (const step of mineSteps(plan)) for (const torch of stepCells(plan, step).torch) for (const position of [torch.position, torch.support]) reservations.set(key(position), step.layer)
-    if (plan.shaft.entryTorch) for (const position of [plan.shaft.entryTorch.position, plan.shaft.entryTorch.support]) reservations.set(key(position), 'surface')
-    lightingByPlan.set(plan, reservations)
-  }
-  const lightingLayer = lightingByPlan.get(plan).get(key(p))
+  const lightingLayer = lightingReservations(plan).byPosition.get(key(p))
   if (lightingLayer) return { allowedDig: false, protected: true, role: 'lighting', layer: lightingLayer }
   for (const segment of plan.segments) if (inSegment(segment, p)) {
     if (p.y === segment.from.y - 1) return { allowedDig: false, protected: true, role: 'floor', layer: segment.layer }
@@ -159,4 +171,4 @@ function classifyMineCell (plan, p) {
   return { allowedDig: false, protected: !within, role: within ? 'vein_candidate' : 'outside' }
 }
 
-module.exports = { createMineGeometry, extendMineGeometry, mineSteps, stepCells, classifyMineCell, point, local, lineLength, segmentPoint, DIRECTIONS, MAX_SHAFT_DEPTH, key }
+module.exports = { createMineGeometry, extendMineGeometry, mineSteps, stepCells, classifyMineCell, isMineTorchTarget, point, local, lineLength, segmentPoint, DIRECTIONS, MAX_SHAFT_DEPTH, key }
