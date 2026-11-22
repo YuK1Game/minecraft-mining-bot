@@ -62,4 +62,11 @@ function createProvocation ({ recentDamageAt = null, actors = () => [], now = Da
   return { by, snapshot: () => ({ read, attackers: [...attackers.entries()] }) }
 }
 
-module.exports = { createProvocation, ANGER_MS, SWING_MS }
+// A mob the fight may take: one the server lists as hostile, or the neutral mob that hit the Bot (`by` is the `by` above).
+// The candidate scan (combat-coordinator.js eligible) and the root's lease (user-control-runtime.js acquireUserControl)
+// both ask this. Until 2026-11-21 the root asked for `hostile === true` by itself: the scan chose the enderman that
+// was hitting the Bot and the root refused each claim (live 03:48:39-03:48:51 JST: 75 claims in 11 s, each ended
+// ACQUIRE_DENIED after 3 ms, no swing, death).
+const fought = (actor, state, by) => actor?.kind === 'mob' && (actor.hostile === true || typeof by === 'function' && by(state, actor) === true)
+
+module.exports = { createProvocation, fought, ANGER_MS, SWING_MS }

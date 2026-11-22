@@ -8,6 +8,7 @@
 function createUserControlRuntime (rt) {
     const { performance } = rt.require('node:perf_hooks')
     const { retreatCandidates, createWaterRetreat, PLAN_MS } = rt.require('./combat/retreat-step')
+    const { fought } = rt.require('./combat/provocation')
     function requireUserLease (context) {
       rt.requireGeneration()
       if (!rt.userBehaviorLease || rt.userBehaviorLease.generation !== rt.generationStream || context?.kind !== rt.userBehaviorLease.kind || context.claimId !== rt.userBehaviorLease.claimId || context.token !== rt.userBehaviorLease.token) throw new Error('利用者指定動作の操作権が一致しません。')
@@ -94,7 +95,7 @@ function createUserControlRuntime (rt) {
         const state = rt.lightweightUserState(), aim = meleeApproachAim(context.target)
         const range = aim ? Math.hypot(state.position.x - aim.x, state.position.y - aim.y, state.position.z - aim.z) : NaN
         const canonical = rt.evaluateThreats(state, state.entities ?? [], { observationRadius: 32 })
-        const actor = state.entities?.find(e => String(e.runtimeId) === String(context.target.runtimeId) && String(e.uniqueId) === String(context.target.uniqueId) && e.entityType === context.target.entityType && e.kind === 'mob' && e.hostile === true && e.alive === true && e.positionKnown === true && e.dimension === state.dimension)
+        const actor = state.entities?.find(e => String(e.runtimeId) === String(context.target.runtimeId) && String(e.uniqueId) === String(context.target.uniqueId) && e.entityType === context.target.entityType && fought(e, state, rt.userBehaviors?.provokedBy) && e.alive === true && e.positionKnown === true && e.dimension === state.dimension) // hostile, or the neutral mob that hit the Bot: the candidate scan's own reading
         const currentAim = actor && meleeApproachAim(actor), currentRange = currentAim ? Math.hypot(state.position.x - currentAim.x, state.position.y - currentAim.y, state.position.z - currentAim.z) : Infinity
         if (currentRange < 4 && actor && !canonical.requiresObservation && canonical.threats.some(e => e.runtimeId === String(actor.runtimeId) && e.category === 'melee') && state.inventory?.known === true && !state.inventory.uncertain && state.inventoryConfidence?.known !== false && Array.isArray(state.inventory.items)) surfaceMeleeBinding = { scope: rt.userScope(state), runtimeId: String(actor.runtimeId), uniqueId: String(actor.uniqueId), entityType: actor.entityType, initialBodyRange: currentRange, threatPolicy: state.threatPolicy, radius: canonical.threats.find(e => e.runtimeId === String(actor.runtimeId)).dangerRadius }
         const scope = context.scope

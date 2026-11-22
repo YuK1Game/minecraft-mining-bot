@@ -39,6 +39,7 @@ const RETREAT_PRESSURE_WINDOW_MS = 5000
 const MELEE_SELECT_REACH = 3.0
 const EMERGENCY_STRIKE_REACH = 3.5 // cornered creeper, no path: in-place swing reach
 const profiles = require('./combat-profiles')
+const { fought } = require('./provocation')
 function stop (code, reason, extra = {}) { return { phase: 'stopped', code, reason, targetDead: false, targetRemoved: false, serverConfirmed: false, botCausedDamage: null, botCausedDeath: null, attribution: 'unconfirmed', ...extra } }
 
 const { totemGuarded } = require('../safety/learning-health')
@@ -75,9 +76,8 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
   }
   function live (s) { return s?.phase === 'spawned' && !s.dead && !s.isDead && !s.spawnPending && Number.isFinite(s.health) && s.health > 0 && finite(s.position) }
   function allActors () { const all = entities.snapshot({ kind: 'all' }); if (!Array.isArray(all)) throw new Error('Actor snapshot must be an array'); return all }
-  // A neutral mob is a candidate only while it is the one that hit the Bot (provocation.js, the reading the attack-access evaluation and the melee controller share).
-  const attackedBy = (s, e) => e.hostile !== true && typeof provoked === 'function' && provoked(s, e) === true
-  function eligible (e, s) { return e?.kind === 'mob' && (e.hostile === true || attackedBy(s, e)) && e.alive === true && e.positionKnown === true && finite(e.position) && e.dimension === s.dimension && typeof e.entityType === 'string' && /^minecraft:[a-z0-9_]+$/.test(e.entityType) && e.entityType !== 'minecraft:player' && id(e.runtimeId) !== null && id(e.runtimeId) !== id(s.runtimeEntityId) && id(e.uniqueId, true) !== null }
+  // A neutral mob is a candidate only while it is the one that hit the Bot (provocation.js `fought`: the reading the root's lease, the attack-access evaluation and the melee controller share).
+  function eligible (e, s) { return fought(e, s, provoked) && e.alive === true && e.positionKnown === true && finite(e.position) && e.dimension === s.dimension && typeof e.entityType === 'string' && /^minecraft:[a-z0-9_]+$/.test(e.entityType) && e.entityType !== 'minecraft:player' && id(e.runtimeId) !== null && id(e.runtimeId) !== id(s.runtimeEntityId) && id(e.uniqueId, true) !== null }
   function hasBowAndArrows (s) {
     if (s.inventory?.known !== true || s.inventory.uncertain || s.inventoryConfidence?.known === false) return false
     const items = s.inventory.items ?? []
