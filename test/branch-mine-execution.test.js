@@ -4,6 +4,7 @@ const {createMineWorld}=require('./helpers/branch-mine-world')
 const {ensureShaft}=require('../src/modes/mining/mine-shaft')
 const {mineSteps,stepCells}=require('../src/modes/mining/mine-geometry')
 const {excavateSegment}=require('../src/modes/mining/mine-excavate')
+const {canSeePlacementFloor}=require('../src/actions/interaction-sight')
 const {withPlannedMine}=require('../src/modes/player-mining-policy')
 const {leaveMine}=require('../src/modes/mining/mine-route')
 const {requestMine}=require('../src/modes/mining/mine-controller')
@@ -97,6 +98,25 @@ test('a nearer hidden lobby block waits for the visible face in the same planned
   const result=await excavateSegment(w.ctx,w.branch,step,cells)
   assert.equal(result.code,'MINE_SEGMENT_CONFIRMED',JSON.stringify(result))
   assert.deepEqual(w.digs.map(d=>d.target),[visible,near])
+})
+
+test('floor finishing walks to a stand with sight of the lower support before placing',async t=>{
+  const w=createMineWorld(t),floor={x:2,y:69,z:0}
+  w.setFeet({x:.5,y:70,z:.5})
+  w.put(floor,'air')
+  w.put({x:2,y:70,z:1},'torch')
+  const visible=()=>canSeePlacementFloor(p=>w.getBlock(p.x,p.y,p.z),{...w.feet(),y:w.feet().y+1.62},floor)
+  assert.equal(visible(),false)
+  const preview=w.ctx.operations.interactions.previewHouseBlock
+  w.ctx.operations.interactions.previewHouseBlock=data=>visible()?preview(data):{ready:false,errors:['blocked view']}
+  const cells={clear:[],floor:[floor],torch:[]}
+  assert.equal(await w.ctx.minePorts.lighting.recoverFloorStand(cells),true)
+  assert.equal(w.getBlock(floor.x,floor.y,floor.z).name,'minecraft:air')
+  w.setFeet({x:.5,y:70,z:.5})
+  const result=await w.ctx.minePorts.lighting.finish(w.plan,cells)
+  assert.equal(result.code,'MINE_FINISH_RECEIVED',JSON.stringify(result))
+  assert.ok(w.walks.length>0)
+  assert.equal(w.getBlock(floor.x,floor.y,floor.z).name,'minecraft:cobblestone_slab')
 })
 
 test('real requests construct storage and consecutive runs in both layers, receive ore and return by ladder',async t=>{

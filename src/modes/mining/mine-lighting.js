@@ -6,6 +6,8 @@ const { key, air, solid, bottomSlab, confirmed, held } = require('./mine-observe
 const { low } = require('../low-block')
 const { placementSupportOk } = require('../../quarry/storage/storage-site-terrain')
 const { shaftBoundary } = require('./mine-shaft-boundary')
+const { canSeePlacementFloor } = require('../../actions/interaction-sight')
+const { selectVisibleBlockFace } = require('../../combat/aim')
 const SIDE = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]
 const NEXT = [...SIDE, [0, 1, 0], [0, -1, 0]]
 const cellOf = p => p.position ?? p
@@ -56,20 +58,36 @@ function standFor (getBlock, target, from) {
 function createMineLighting (ctx, actions) {
   const block = actions.block, stopped = () => ctx.cancelled() || ctx.signal?.aborted
   const wait = (code, extra = {}) => blocked(code, { kind: 'terrain_received' }, extra)
-  async function approach (position) {
+  async function approach (position, canUse = () => true) {
     const at = ctx.getFeet()
     if (!at) return wait('MINE_POSITION_UNKNOWN')
     // Never replace the block supporting the body, including a body on its
     // rim. Select a received stand beside it and verify the movement first.
     if (Math.abs(at.x - position.x - 0.5) > 0.8 || Math.abs(at.z - position.z - 0.5) > 0.8) {
-      if (Math.hypot(at.x - position.x - 0.5, at.y + 1.62 - position.y - 0.5, at.z - position.z - 0.5) < 4.1) return actions.done('MINE_STAND_RECEIVED')
+      if (Math.hypot(at.x - position.x - 0.5, at.y + 1.62 - position.y - 0.5, at.z - position.z - 0.5) < 4.1 && canUse(at)) return actions.done('MINE_STAND_RECEIVED')
     }
-    for (const stand of standFor(ctx.getBlock, position, at).slice(0, 6)) {
+    for (const stand of standFor(ctx.getBlock, position, at).filter(canUse).slice(0, 6)) {
       if (stopped()) return interrupted('MINE_INTERRUPTED')
       const out = await actions.walk(stand)
-      if (confirmed(out)) return out
+      if (confirmed(out) && canUse(ctx.getFeet())) return out
     }
     return wait('MINE_FINISH_STAND_UNAVAILABLE')
+  }
+  function floorVisible (p, feet) {
+    if (!feet) return false
+    const eye = { ...feet, y: feet.y + 1.62 }
+    if (!air(block(p)) && !selectVisibleBlockFace({ eye, target: p, world: { getBlock: ctx.getBlock }, maxReach: 4.5 })) return false
+    // With a solid block below, placement will click its top face. Only
+    // the floor block to be replaced may be omitted in the sight proposal.
+    return !solid(block({ ...p, y: p.y - 1 })) ||
+      canSeePlacementFloor(block, eye, p, { plannedClearance: (_, pos) => key(pos) === key(p) })
+  }
+  async function recoverFloorStand (cells) {
+    const target = (cells.floor ?? []).map(cellOf).find(p => !bottomSlab(block(p)))
+    if (!target || !air(block(target)) || !solid(block({ ...target, y: target.y - 1 })) ||
+      !(held(actions.inventory(), 'cobblestone_slab') > 0) || floorVisible(target, ctx.getFeet())) return false
+    const out = await approach(target, feet => floorVisible(target, feet))
+    return confirmed(out) && out.code === 'MINE_POSITION_RECEIVED'
   }
   function boundary (plan, cells) {
     const result = new Map(), current = new Set((cells.clear ?? []).map(key)), complete = new Set(), branch = ctx.memory?.early?.mine?.branch
@@ -148,7 +166,7 @@ function createMineLighting (ctx, actions) {
       if (!(held(actions.inventory(), 'cobblestone_slab') > 0)) return blocked('MINE_FLOOR_MATERIAL_MISSING', { kind: 'supplies_changed' })
       const below = block({ ...p, y: p.y - 1 })
       if (below?.known !== true || /water|lava/.test(below.name ?? '') || below.extra?.length) return wait('MINE_FLOOR_SUPPORT_UNKNOWN')
-      const stand = await approach(p)
+      const stand = await approach(p, feet => floorVisible(p, feet))
       if (!confirmed(stand)) return stand
       if (!air(block(p))) {
         const out = await actions.mine(p)
@@ -174,7 +192,7 @@ function createMineLighting (ctx, actions) {
     if (!light.safe) return wait('MINE_LIGHTING_UNCONFIRMED', { evidence: light })
     return { ...completed('MINE_FINISH_RECEIVED', { evidence: { serverConfirmed: true, finishConfirmed: true, light, slabs: floors.length, sealed: walls.length } }), serverConfirmed: true }
   }
-  return { finish, ensureSegment: finish, approach, boundary }
+  return { finish, ensureSegment: finish, approach, recoverFloorStand, boundary }
 }
 
 module.exports = { createMineLighting, receivedLight, standFor, passable }

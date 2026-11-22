@@ -27,7 +27,7 @@ function createDragonRuntime (ports) {
   const state = createDragonState({ root, shared, getState: raw, getBlock,
     getLife: () => runtime.host().getLife?.(), getWorldId: () => runtime.host().meta?.startGame?.seed })
   const legacyNeeded = memory => objectiveNow({ runtime, shared, memory }).legacy === true
-  let stepRecord = null, unpin = false
+  let stepRecord = null, unpin = false, triedFinishHold = null
   // The parent goal of the work (goal/goal-ledger.js): its clock, its budget and its hold are in `shared`, and
   // its checkpoint is saved with the record, so neither a reload nor a restart starts them again.
   const now = ports.now ?? Date.now
@@ -90,13 +90,23 @@ function createDragonRuntime (ports) {
     const currentGoal = ledger.goal(), hold = currentGoal?.hold
     if (dim === 'overworld') {
       const mineGoal = record.stage === 'early' && ['early.home_reserve', 'early.diamond'].includes(currentGoal?.key)
-      // This only reads receipts and settles a checkpoint. The runtime still
-      // fences the read against actual interaction, movement and combat owners.
-      if (mineGoal && (!hold || hold.code === 'NO_PROGRESS') && await ctx.minePorts?.reconcilePlacement?.()) {
-        if (hold && ledger.goal() === currentGoal && currentGoal.hold === hold) {
-          ledger.held({ ...hold.basis, minePlacementReconciled: true })
+      if (mineGoal && (!hold || hold.code === 'NO_PROGRESS')) {
+        const reconciled = await ctx.minePorts?.reconcilePlacement?.()
+        let reached = false
+        if (!reconciled && hold && triedFinishHold !== hold) {
+          // One verified walk for the unfinished floor. A failed attempt
+          // leaves the normal hold in force.
+          triedFinishHold = hold
+          reached = await ctx.minePorts?.recoverFinishStand?.()
         }
-        return { phase: 'waiting', reason: '設置先の受信結果を確認しました。縦坑・坑道の作業を続けます。' }
+        if (reconciled || reached) {
+          if (hold && ledger.goal() === currentGoal && currentGoal.hold === hold) {
+            ledger.held({ ...hold.basis, mineWorkReconciled: true })
+          }
+          const reason = reached ? '床の設置面が見える足場への到着を確認しました。仕上げを続けます。'
+            : '設置先の受信結果を確認しました。縦坑・坑道の作業を続けます。'
+          return { phase: 'waiting', reason }
+        }
       }
       if (hold) return { phase: 'waiting', reason: HELD }
     }
