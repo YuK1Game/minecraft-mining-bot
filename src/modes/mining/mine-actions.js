@@ -1,6 +1,8 @@
 'use strict'
 
 const { createHousePorts } = require('../house/house-ports')
+const { houseClickGeometry } = require('../../actions/house-placement')
+const { interactionSightError } = require('../../actions/interaction-sight')
 const { completed, blocked, failed, interrupted } = require('../return/return-result')
 const { key, cell, air, solid, bottomSlab, full, held, receivedInventory, value, scopeOf } = require('./mine-observed')
 const { sameWorld, mineWorldScope } = require('./mine-state')
@@ -9,6 +11,26 @@ const { supportIntent, recordSupportReceipt } = require('./mine-support-receipt'
 const { mineLadderResult } = require('./mine-ladder-result')
 const RETRYABLE_MATERIALS = new Set(['minecraft:torch', 'minecraft:cobblestone', 'minecraft:cobblestone_slab', 'minecraft:ladder'])
 const NORMAL = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]]
+
+function placements (block, request) {
+  const position = request.position, name = full(request.name)
+  if (!cell(position)) return []
+  const clickY = request.clickY ?? (/_slab$/.test(name) ? 0.25 : 0.5)
+  if (request.clicked || request.support) return [{ ...request, name, clicked: request.clicked ?? request.support, clickY }]
+  return [1, 2, 3, 4, 5].flatMap(face => {
+    const n = NORMAL[face], clicked = { x: position.x - n[0], y: position.y - n[1], z: position.z - n[2] }
+    return solid(block(clicked)) ? [{ ...request, name, clicked, face, clickY }] : []
+  })
+}
+
+function visibleMinePlacement (block, request, feet) {
+  if (!feet) return null
+  const eye = { ...feet, y: feet.y + 1.62 }
+  return placements(block, request).find(plan => {
+    const geometry = houseClickGeometry(plan.clicked, plan.face, plan.clickY)
+    return geometry && solid(block(plan.clicked)) && !interactionSightError(block, eye, geometry.point, plan.clicked)
+  }) ?? null
+}
 
 function createMineActions (ctx) {
   const block = p => ctx.getBlock(p.x, p.y, p.z)
@@ -128,16 +150,7 @@ function createMineActions (ctx) {
     if (block(position)?.known === true) await clear(actionKey)
     return wait(mined ? 'MINE_BLOCK_UNCONFIRMED' : 'MINE_DIG_REFUSED', 'terrain_received', { detail: ctx.hands.why?.() })
   }
-  function placement (request) {
-    const position = request.position, name = full(request.name)
-    if (!cell(position)) return null
-    if (request.clicked || request.support) return { ...request, name, clicked: request.clicked ?? request.support, clickY: request.clickY ?? (/_slab$/.test(name) ? 0.25 : 0.5) }
-    for (const face of [1, 2, 3, 4, 5]) {
-      const n = NORMAL[face], clicked = { x: position.x - n[0], y: position.y - n[1], z: position.z - n[2] }
-      if (solid(block(clicked))) return { ...request, name, clicked, face, clickY: /_slab$/.test(name) ? 0.25 : 0.5 }
-    }
-    return null
-  }
+  const placement = request => placements(block, request)[0] ?? null
   async function place (request) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     if (!worldMatches()) return wait('MINE_SCOPE_UNKNOWN', 'owner_released')
@@ -236,4 +249,4 @@ function createMineActions (ctx) {
   return { block, inventory, mine, place, placement, matches, reconcilePlacement, walk, confirmPosition, ladderMove, observe, house, save, done, wait }
 }
 
-module.exports = { createMineActions }
+module.exports = { createMineActions, visibleMinePlacement }

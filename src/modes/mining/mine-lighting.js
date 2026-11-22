@@ -6,7 +6,8 @@ const { key, air, solid, bottomSlab, confirmed, held } = require('./mine-observe
 const { low } = require('../low-block')
 const { placementSupportOk } = require('../../quarry/storage/storage-site-terrain')
 const { shaftBoundary } = require('./mine-shaft-boundary')
-const { canSeePlacementFloor, interactionSightError } = require('../../actions/interaction-sight')
+const { canSeePlacementFloor } = require('../../actions/interaction-sight')
+const { visibleMinePlacement } = require('./mine-actions')
 const { selectVisibleBlockFace } = require('../../combat/aim')
 const SIDE = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]
 const NEXT = [...SIDE, [0, 1, 0], [0, -1, 0]]
@@ -72,6 +73,13 @@ function createMineLighting (ctx, actions) {
       if (confirmed(out) && canUse(ctx.getFeet())) return out
     }
     return wait('MINE_FINISH_STAND_UNAVAILABLE')
+  }
+  async function placementStand (request) {
+    const visible = feet => visibleMinePlacement(block, request, feet)
+    const reached = await approach(request.position, visible)
+    if (!confirmed(reached)) return { result: reached }
+    const plan = visible(ctx.getFeet())
+    return plan ? { plan } : { result: wait('MINE_FINISH_STAND_UNAVAILABLE') }
   }
   function floorVisible (p, feet) {
     if (!feet) return false
@@ -147,15 +155,15 @@ function createMineLighting (ctx, actions) {
       if (stopped()) return interrupted('MINE_INTERRUPTED')
       const b = block(p)
       if (air(b)) {
-        const stand = await approach(p)
-        if (!confirmed(stand)) return stand
+        const stand = await placementStand({ position: p, name: 'cobblestone' })
+        if (!stand.plan) return stand.result
         if (classifyMineCell(plan, p).allowedDig || isMineTorchTarget(plan, p)) {
           const branch = ctx.memory.early.mine.branch
           branch.temporarySeals ??= []
           if (!branch.temporarySeals.some(at => key(at) === key(p))) branch.temporarySeals.push({ ...p })
           if (!await actions.save()) return wait('MINE_CHECKPOINT_FAILED')
         }
-        const out = await actions.place({ position: p, name: 'cobblestone' })
+        const out = await actions.place(stand.plan)
         if (!confirmed(out)) return out
         if (++changed >= 12) return pause()
       } else if (!placementSupportOk(b)) return wait('MINE_CAVE_BOUNDARY_UNSAFE')
@@ -180,15 +188,9 @@ function createMineLighting (ctx, actions) {
       if (stopped()) return interrupted('MINE_INTERRUPTED')
       if (!placementSupportOk(block(torch.support))) return wait('MINE_TORCH_SUPPORT_UNKNOWN')
       if (block(torch.position)?.known === true && block(torch.position).name === 'minecraft:torch') continue
-      const retained = cells.retainedTorchSupport
-      const canUse = retained && key(retained.position) === key(torch.position) ? feet => {
-        const eye = feet && { ...feet, y: feet.y + 1.62 }
-        const point = { x: (torch.support.x + torch.position.x + 1) / 2, y: torch.support.y + 0.5, z: (torch.support.z + torch.position.z + 1) / 2 }
-        return !!eye && !interactionSightError(block, eye, point, torch.support)
-      } : undefined
-      const stand = await approach(torch.position, canUse)
-      if (!confirmed(stand)) return stand
-      const out = await actions.place({ ...torch, clicked: torch.support, name: 'torch' })
+      const stand = await placementStand({ ...torch, clicked: torch.support, name: 'torch' })
+      if (!stand.plan) return stand.result
+      const out = await actions.place(stand.plan)
       if (!confirmed(out)) return out
       if (++changed >= 12) return pause()
     }

@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createMineActions } = require('../src/modes/mining/mine-actions')
+const { createMineActions, visibleMinePlacement } = require('../src/modes/mining/mine-actions')
 const { receivedLight, createMineLighting } = require('../src/modes/mining/mine-lighting')
 const { bottomSlab } = require('../src/modes/mining/mine-observed')
 const { cargo } = require('../src/modes/mining/mine-storage')
@@ -179,6 +179,15 @@ test('each layer has sized cargo pairs plus a separated supply pair', () => {
     assert.equal(room.pairs.filter(p => p.purpose === 'supply').length, 1)
     for (const a of room.pairs) for (const b of room.pairs) if (a !== b) for (const p of a.positions) for (const q of b.positions) assert.ok(Math.abs(p.x - q.x) + Math.abs(p.z - q.z) > 1)
   }
+})
+
+test('a cave seal uses the visible side when its first support is hidden', () => {
+  const position = { x: 3, y: 1, z: 3 }, feet = { x: 1.515, y: -0.5, z: 2.504 }
+  const supports = new Set(['3,0,3', '2,1,3', '4,1,3'])
+  const block = p => supports.has([p.x, p.y, p.z].join(',')) ? solid : air
+  const request = { position, name: 'cobblestone' }
+  assert.equal(visibleMinePlacement(block, { ...request, clicked: { x: 3, y: 0, z: 3 }, face: 1 }, feet), null)
+  assert.equal(visibleMinePlacement(block, request, feet)?.face, 5)
 })
 
 test('an air opening in a future torch position keeps its temporary seal record', async () => {

@@ -20,6 +20,16 @@ const FACE = [{ x: 0, y: -1, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: -1 }
 const int = point => ({ x: Math.trunc(point?.x), y: Math.trunc(point?.y), z: Math.trunc(point?.z) })
 const valid = point => point && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]))
 
+function houseClickGeometry (click, face, clickY) {
+  const normal = Number.isInteger(face) && FACE[face]
+  if (!normal) return null
+  const side = normal.y === 0
+  const height = side && Number.isFinite(clickY) ? Math.min(0.95, Math.max(0.05, clickY)) : 0.5 + normal.y * 0.5
+  const clickPos = { x: 0.5 + normal.x * 0.5, y: height, z: 0.5 + normal.z * 0.5 }
+  const point = { x: click.x + clickPos.x, y: click.y + clickPos.y, z: click.z + clickPos.z }
+  return { side, clickPos, point }
+}
+
 function createHousePlan ({ session, slotItem, crafting, world, overlapsPlayer, players, sightError }) {
   const air = block => block?.known === true && AIR.has(block.name) && !block.extra?.length
   function housePlan (options) {
@@ -42,16 +52,13 @@ function createHousePlan ({ session, slotItem, crafting, world, overlapsPlayer, 
     for (const player of players.values()) if (overlapsPlayer(target, player.position, true)) throw new Error('他のプレイヤーに重なる可能性があります。')
     const support = world.getBlock(click.x, click.y, click.z)
     if (support?.known !== true || AIR.has(support.name) || LIQUID.test(support.name) || support.boundingBox === 'empty' || support.extra?.length) throw new Error('クリックするブロックは取得済みの通常ブロックである必要があります。')
-    const side = normal.y === 0
-    const height = side && Number.isFinite(clickY) ? Math.min(0.95, Math.max(0.05, clickY)) : 0.5 + normal.y * 0.5
+    const { side, clickPos, point } = houseClickGeometry(click, face, clickY)
     const ladder = expectedBlock === 'minecraft:ladder', bottomSlab = expectedBlock === 'minecraft:cobblestone_slab'
     if (ladder || bottomSlab) {
       if (observed.inventoryKnown !== true || state.inventory?.known !== true || state.inventory.uncertain || description.stackId !== raw.stack_id) throw new Error('坑道の建材は受信済みの持ち物・個数・スタックIDが必要です。')
       if (ladder && (!side || !placementSupportOk(support))) throw new Error('はしごには受信済みの固い横の支持壁が必要です。')
-      if (bottomSlab && (face === 0 || side && height >= 0.5)) throw new Error('丸石ハーフブロックは下付きになる面を指定してください。')
+      if (bottomSlab && (face === 0 || side && clickPos.y >= 0.5)) throw new Error('丸石ハーフブロックは下付きになる面を指定してください。')
     }
-    const clickPos = { x: 0.5 + normal.x * 0.5, y: height, z: 0.5 + normal.z * 0.5 }
-    const point = { x: click.x + clickPos.x, y: click.y + clickPos.y, z: click.z + clickPos.z }
     const eye = state.position
     if (Math.hypot(point.x - eye.x, point.y - eye.y, point.z - eye.z) > 4.5) throw new Error('操作対象が手の届く範囲外です。')
     const error = sightError(eye, point, click)
@@ -61,4 +68,4 @@ function createHousePlan ({ session, slotItem, crafting, world, overlapsPlayer, 
   return housePlan
 }
 
-module.exports = { createHousePlan, HOUSE }
+module.exports = { createHousePlan, houseClickGeometry, HOUSE }
