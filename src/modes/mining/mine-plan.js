@@ -409,4 +409,9 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
   } catch (error) { return { status: error.code === 'MINE_CANCELLED' ? 'cancelled' : error.code === 'MINE_PLAN_BUDGET' ? 'blocked' : 'observing', code: error.code ?? 'MINE_PLAN_FAILED', reason: error.message, diagnostics: { evaluated, work } } }
 }
 
-module.exports = { planMine, evaluateMineGeometry, lowerLevels, resourceName, withClosed }
+// What the planner accepts. A saved site search keeps the rejections of the rules that made them, so a search
+// judged under an older number starts over (mine-sites.js). Raise it when a rule here accepts more or less.
+// 2: a hazard beside a branch closes that branch instead of rejecting the geometry.
+const PLAN_RULES = 2
+
+module.exports = { planMine, evaluateMineGeometry, lowerLevels, resourceName, withClosed, PLAN_RULES }

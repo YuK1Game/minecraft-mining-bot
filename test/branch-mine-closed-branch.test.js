@@ -15,6 +15,8 @@ const { planMine, evaluateMineGeometry, withClosed } = require('../src/modes/min
 const { createMineGeometry, mineSteps, stepCells, key } = require('../src/modes/mining/mine-geometry')
 const { mineWorldScope, mineLiveScope, createMineState, skipMineSegment } = require('../src/modes/mining/mine-state')
 const { requestMine } = require('../src/modes/mining/mine-controller')
+const { observationWorld } = require('./helpers/branch-mine-observation-world')
+const { nextMine, searchKey } = require('../src/modes/mining/mine-sites')
 
 // East, 16 x 16 at (0,0): the lobby is x 2-5, the main x 6-15 at z 7-8, branches at x 7, 10, 13 running to
 // z 0 (left) and z 15 (right) in steps of three cells.
@@ -125,4 +127,27 @@ test('the builder digs the open part of a branch, leaves the closed part as rock
   assert.deepEqual(spans.map(span => [span.segmentId, span.code, span.planned]), [[branches[0], 'MINE_PLANNED_HAZARD', true]])
   assert.equal(w.lines.filter(line => /採掘場の支線 .* から先は、横に水・溶岩・砂利などがあるため掘らずに次へ進みます/.test(line)).length, 1)
   assert.equal(w.branch.failures[branches[0]], undefined, 'a planned pass-by is not a failure')
+})
+
+test('a search saved under the older planning rules starts over, so its rejected centres are judged again', async () => {
+  const f = observationWorld({ index: 0 }), mine = f.ctx.memory.early.mine, life = mineLiveScope(f.current)
+  const older = JSON.stringify(['raw_iron', 1, life])
+  assert.notEqual(searchKey('raw_iron', 1, life), older)
+  // The live state of 2026-11-23: the search at its end, centres rejected for a hazard, others deferred.
+  Object.assign(mine.search, { index: 9, requestKey: older, origin: { x: 0.5, y: 64, z: 0.5 }, exhaustedRevision: 1, entranceSurveyed: true,
+    rejected: { 0: { code: 'MINE_NO_SAFE_RESOURCE_PLAN', unknown: 0, unsafe: 96 } }, deferred: { 3: { index: 3, requestKey: older, code: 'MINE_SURFACE_OBSERVATION_NEEDED', cells: [] } }, visited: { 3: 1 } })
+  f.advance(10000)
+  await nextMine(f.ctx, 'raw_iron', 1)
+  const search = f.ctx.memory.early.mine.search
+  assert.equal(search.requestKey, searchKey('raw_iron', 1, life))
+  assert.equal(search.index, 0, 'the first centre is judged again')
+  assert.equal(search.wait.index, 0); assert.equal(search.wait.code, 'MINE_TERRAIN_UNKNOWN')
+  assert.equal(search.rejected, undefined); assert.equal(search.visited, undefined); assert.equal(search.deferred, undefined)
+  assert.deepEqual(search.origin, { x: 0.5, y: 64, z: 0.5 }, 'the centres stay where they were')
+  // The same rules and the same life keep the saved search.
+  const g = observationWorld({ index: 9 }), saved = g.ctx.memory.early.mine.search
+  Object.assign(saved, { origin: { x: 0.5, y: 64, z: 0.5 }, exhaustedRevision: 1, entranceSurveyed: true, rejected: { 0: { code: 'MINE_NO_SAFE_RESOURCE_PLAN' } } })
+  g.advance(10000)
+  await nextMine(g.ctx, 'raw_iron', 1)
+  assert.equal(g.ctx.memory.early.mine.search.index, 9); assert.ok(g.ctx.memory.early.mine.search.rejected[0])
 })
