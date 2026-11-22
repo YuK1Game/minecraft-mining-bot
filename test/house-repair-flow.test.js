@@ -224,7 +224,8 @@ test('C3: no walk in, and the doorway\'s floor received as gone: the entrance is
   // With the floor standing a walk that does not arrive asks for nothing.
   const g = scene({ early: { spawnReady: true } })
   g.w.take('oak_door'); g.walks = false
-  g.shared.dragonHomeInner = { until: Infinity }; g.shared.dragonHomeWalk = { until: Infinity }
+  // Here the doorway still has its stands, so the rest that counts is the one of the way to the entrance.
+  g.shared.dragonHomeInner = { until: Infinity, entrance: true }; g.shared.dragonHomeWalk = { until: Infinity }
   assert.equal(await approachHome(g.ctx, chestOf(ORIGIN)), false)
   assert.equal(g.house().done, true)
   assert.equal(g.house().repair, undefined)

@@ -1315,8 +1315,7 @@ function createRuntime (host) {
     if(!actualScope || !expectedScope || JSON.stringify(actualScope)!==JSON.stringify(expectedScope) || current.health<expected.health || !position || !['x','y','z'].every(k=>Number.isSafeInteger(position[k]) && Math.abs(position[k])<=30000000))return {known:false,position}
     return planningWorld.getBlock(position.x,position.y,position.z)
   }
-  // Logs only for a long trip's preparation (scoped, bounded, never while
-  // quarry work runs). 2026-11-14 user decision (relay): logs may be cut only to prepare a long trip, about 10, starting empty-handed. Leaves stay off, the quarry rule stays.
+  // Logs only for a long trip's preparation (AGENTS.md): about 10, never in quarry work.
   // Empty hands, confirmed slot by slot from the server (never an unreceived
   // slot), while the long-trip preparation allowance is active.
   function emptyHandedPrep () {
