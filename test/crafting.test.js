@@ -82,6 +82,29 @@ test('a full inventory can craft into a completely consumed source slot', async 
   assert.equal(f.crafting.rawItem(1).count, 64)
 })
 
+test('a smaller matching material stack can supply the output slot when the inventory is full', async () => {
+  const f = fixture()
+  for (let slot = 0; slot < 36; slot++) f.slots[slot] = item(41, 64, 1000 + slot)
+  f.slots[0] = item(29, 8, 71)
+  f.slots[35] = item(29, 1, 72)
+  f.crafting.applyPacket('inventory_content', { window_id: 'inventory', input: f.slots })
+  const plan = f.crafting.preview('stick', { times: 2 })
+  assert.equal(plan.destination, 35)
+  assert.deepEqual(plan.materials.map(({ slot, count }) => [slot, count]), [[35, 1], [0, 3]])
+  f.crafting.applyPacket('container_open', { window_id: 'inventory', window_type: 'inventory' })
+  const task = f.crafting.craft('stick', { times: 2 })
+  const req = f.packets.at(-1).params.requests[0]
+  f.crafting.applyPacket('item_stack_response', { responses: [{ request_id: req.request_id, status: 'ok', containers: [
+    { slot_type: { container_id: 'hotbar_and_inventory' }, slots: [
+      { slot: 0, count: 5, item_stack_id: 71 }, { slot: 35, count: 8, item_stack_id: 102 }
+    ] }
+  ] }] })
+  assert.equal((await task).phase, 'completed')
+  assert.equal(f.crafting.rawItem(0).count, 5)
+  assert.equal(f.crafting.rawItem(35).network_id, 41)
+  assert.equal(f.crafting.rawItem(35).count, 8)
+})
+
 test('a late craft response cannot overwrite a newer unrelated item in a reused material slot', async () => {
   const f = fixture()
   for (let slot = 1; slot < 36; slot++) f.slots[slot] = item(29, 64, 1000 + slot)

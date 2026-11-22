@@ -108,7 +108,7 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
     return state
   }
 
-  function planRecipe (recipe, outputName, times) {
+  function planRecipe (recipe, outputName, times, smallestFirst = false) {
     const output = recipe.output?.[0]
     if (recipe.output?.length !== 1 || !output || output.count < 1) throw new Error('単一の結果を返すレシピだけに対応しています。')
     const count = output.count * times
@@ -122,11 +122,14 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
     const available = new Map([...inventory].map(([slot, item]) => [slot, item.count ?? 0]))
     const allocations = new Map()
     const consumptions = []
+    const materialSlots = smallestFirst
+      ? [...inventory].sort(([slotA, a], [slotB, b]) => (a.count ?? 0) - (b.count ?? 0) || slotA - slotB)
+      : inventory
     for (const [ingredientIndex, ingredient] of recipe.input.entries()) {
       if (ingredient.type === 'invalid' || ingredient.count === 0 || ingredient.descriptor_type === 'empty') continue
       if (!Number.isInteger(ingredient.count) || ingredient.count < 1) throw new Error('レシピの材料数を解釈できません。')
       let remaining = ingredient.count * times
-      for (const [slot, item] of inventory) {
+      for (const [slot, item] of materialSlots) {
         if (!matches(ingredient, item)) continue
         const taken = Math.min(available.get(slot), remaining)
         if (!taken) continue
@@ -146,7 +149,12 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
     // inventory is full, a completely consumed source is an empty target.
     const destination = Array.from({ length: 36 }, (_, slot) => slot).find(slot => empty(inventory.get(slot))) ??
       [...allocations.keys()].find(slot => available.get(slot) === 0)
-    if (destination === undefined) throw new Error('クラフト結果を置く空きスロットがありません。')
+    if (destination === undefined) {
+      // Preserve the normal material choice. Retry only when it would
+      // leave every slot occupied; a smaller matching stack may empty.
+      if (!smallestFirst) return planRecipe(recipe, outputName, times, true)
+      throw new Error('クラフト結果を置く空きスロットがありません。')
+    }
     const ingredients = []
     for (let ingredientIndex = 0; ingredientIndex < recipe.input.length; ingredientIndex++) {
       const concrete = new Map()

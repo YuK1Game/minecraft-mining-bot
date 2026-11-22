@@ -32,7 +32,14 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held
     } catch { return false } finally { close() }
     return until(() => count(output) > before, 3000)
   }
-  const craftPlanks = (log, times) => craftSmall(log.replace(/_(?:log|wood)$/, '_planks').replace(/_(?:stem|hyphae)$/, '_planks'), times)
+  function craftPlanks (log, times = 1, maxTimes = times) {
+    const output = log.replace(/_(?:log|wood)$/, '_planks').replace(/_(?:stem|hyphae)$/, '_planks')
+    if (maxTimes === times || typeof operations.crafting.preview !== 'function') return craftSmall(output, times)
+    for (let batch = times; batch <= maxTimes; batch++) {
+      if (operations.crafting.preview(output, { times: batch })?.ready === true) return craftSmall(output, batch)
+    }
+    return false
+  }
 
   function tableNear () {
     const at = feetCell()

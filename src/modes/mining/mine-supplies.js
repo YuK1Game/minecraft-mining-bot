@@ -98,7 +98,16 @@ function createMineSupplies (ctx, actions, storage) {
         if (confirmed(moved) && openStand.here(seen)) return { position: seen }
       }
     }
-    if (have(name) < 1) return { result: await acquire(name, 1) }
+    if (have(name) < 1) {
+      const fullInventory = occupied(actions.inventory()) === 36
+      const preview = ctx.operations?.crafting?.preview
+      if (name === 'crafting_table' && fullInventory && ctx.shared?.playerHouse?.origin &&
+        preview?.('minecraft:crafting_table', { times: 1 })?.ready === false) {
+        const home = await require('../dragon-home-iron').homeStation(ctx, 'table')
+        return home.at ? { position: home.at } : { result: home.result ?? wait('MINE_HOME_WORKBENCH', home.reason) }
+      }
+      return { result: await acquire(name, 1) }
+    }
     return placeStation(name, branch)
   }
   async function planks (amount) {

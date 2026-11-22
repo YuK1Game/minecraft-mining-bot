@@ -18,6 +18,7 @@ const { openAbove } = require('./player-surface')
 const { weaponWanted } = require('./carry-weapon')
 const { noteReserve } = require('./dragon-reserve-seen')
 const mining = require('./mining/mine-controller')
+const { occupied } = require('./mining/mine-carry')
 const homeIron = require('./dragon-home-iron')
 const DIGGER = { stage: 'digger', target: 'stone_pickaxe', code: 'NOT_MADE' }
 const WOOD = { stage: 'digger', target: 'log', code: 'NOT_FOUND' }
@@ -168,7 +169,7 @@ function createDragonSupplies (ctx) {
     else if (name === 'planks') {
       const log = rows().find(i => matches('log', i))
       if (!log) await acquire('log', 1)
-      else await bench.craftPlanks(log.name, 1)
+      else await bench.craftPlanks(log.name, 1, occupied(getInventory()) === 36 ? Math.min(log.count, 16) : 1)
     } else if (material) {
       const batch = mining.enabled(ctx) ? Math.max(1, Math.min(8, target - held(name))) : 1
       const plank = rows().find(i => matches('planks', i))
