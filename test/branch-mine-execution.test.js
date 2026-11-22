@@ -137,6 +137,34 @@ test('floor finishing walks to a stand with sight of the lower support before pl
   assert.equal(w.getBlock(floor.x,floor.y,floor.z).name,'minecraft:cobblestone_slab')
 })
 
+test('storage finishing retains an unowned edge stone and verifies the moved torch and original central route',async t=>{
+  const w=createMineWorld(t),steps=mineSteps(w.plan,{layer:'upper'}),index=steps.findIndex(step=>step.kind==='storage' && step.count===1)
+  assert.ok(index>0)
+  const request={resource:'raw_iron',targetHeld:3}
+  for(let i=0;i<35 && w.branch.progress.upper.cursor<index;i++){
+    const out=await requestMine(w.ctx,request)
+    assert.ok(['partial','completed'].includes(out.result?.status),JSON.stringify(out))
+  }
+  assert.equal(w.branch.progress.upper.cursor,index)
+  const cells=stepCells(w.plan,steps[index]),obstruction=cells.torch[0].position
+  for(const p of cells.clear)w.put(p,'air')
+  w.put(obstruction,'cobblestone')
+  w.branch.segmentTask={layer:'upper',stepId:steps[index].id,cursor:index,lobbyOnly:true}
+  let out
+  for(let i=0;i<10 && w.branch.progress.upper.cursor===index;i++){
+    out=await requestMine(w.ctx,request)
+    assert.ok(['partial','completed'].includes(out.result?.status),JSON.stringify(out))
+  }
+  assert.equal(w.branch.progress.upper.cursor,index+1,JSON.stringify(out))
+  assert.equal(w.getBlock(obstruction.x,obstruction.y,obstruction.z).name,'minecraft:cobblestone')
+  assert.ok(!w.digs.some(row=>row.target.x===obstruction.x && row.target.y===obstruction.y && row.target.z===obstruction.z))
+  const record=w.branch.progress.upper.receipts.at(-1).retainedTorchSupport
+  assert.deepEqual(record.support,obstruction)
+  assert.equal(w.getBlock(record.position.x,record.position.y,record.position.z).name,'minecraft:torch')
+  assert.ok(w.saved.some(s=>s.branch.segmentTask?.retainedTorchSupport?.name==='minecraft:cobblestone'))
+  assert.equal(w.feet().y,cells.stand.y)
+})
+
 test('real requests construct storage and consecutive runs in both layers, receive ore and return by ladder',async t=>{
   const w=createMineWorld(t)
   for(const [layer,resource,ore]of[['upper','raw_iron','iron_ore'],['lower','diamond','diamond_ore']]){

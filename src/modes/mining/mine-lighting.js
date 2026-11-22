@@ -6,7 +6,7 @@ const { key, air, solid, bottomSlab, confirmed, held } = require('./mine-observe
 const { low } = require('../low-block')
 const { placementSupportOk } = require('../../quarry/storage/storage-site-terrain')
 const { shaftBoundary } = require('./mine-shaft-boundary')
-const { canSeePlacementFloor } = require('../../actions/interaction-sight')
+const { canSeePlacementFloor, interactionSightError } = require('../../actions/interaction-sight')
 const { selectVisibleBlockFace } = require('../../combat/aim')
 const SIDE = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]
 const NEXT = [...SIDE, [0, 1, 0], [0, -1, 0]]
@@ -180,14 +180,27 @@ function createMineLighting (ctx, actions) {
       if (stopped()) return interrupted('MINE_INTERRUPTED')
       if (!placementSupportOk(block(torch.support))) return wait('MINE_TORCH_SUPPORT_UNKNOWN')
       if (block(torch.position)?.known === true && block(torch.position).name === 'minecraft:torch') continue
-      const stand = await approach(torch.position)
+      const retained = cells.retainedTorchSupport
+      const canUse = retained && key(retained.position) === key(torch.position) ? feet => {
+        const eye = feet && { ...feet, y: feet.y + 1.62 }
+        const point = { x: (torch.support.x + torch.position.x + 1) / 2, y: torch.support.y + 0.5, z: (torch.support.z + torch.position.z + 1) / 2 }
+        return !!eye && !interactionSightError(block, eye, point, torch.support)
+      } : undefined
+      const stand = await approach(torch.position, canUse)
       if (!confirmed(stand)) return stand
       const out = await actions.place({ ...torch, clicked: torch.support, name: 'torch' })
       if (!confirmed(out)) return out
       if (++changed >= 12) return pause()
     }
     if (!boundary(plan, cells).every(p => placementSupportOk(block(p)))) return wait('MINE_CAVE_BOUNDARY_UNSAFE')
-    if (!floors.every(p => bottomSlab(block(p))) || !targets.every(p => passable(block(p)) && passable(block({ ...p, y: p.y + 1 })))) return wait('MINE_FLOOR_OR_CLEARANCE_UNCONFIRMED')
+    if (!floors.every(p => bottomSlab(block(p))) || !targets.every(p => {
+      const head = { ...p, y: p.y + 1 }, retained = cells.retainedTorchSupport
+      if (retained && key(retained.support) === key(head)) {
+        const support = block(head)
+        return passable(block(p)) && placementSupportOk(support) && support.name === retained.name && (support.runtimeId ?? null) === retained.runtimeId
+      }
+      return passable(block(p)) && passable(block(head))
+    })) return wait('MINE_FLOOR_OR_CLEARANCE_UNCONFIRMED')
     const light = receivedLight(ctx.getBlock, targets, { target: plan.finish.lightTarget })
     if (!light.safe) return wait('MINE_LIGHTING_UNCONFIRMED', { evidence: light })
     return { ...completed('MINE_FINISH_RECEIVED', { evidence: { serverConfirmed: true, finishConfirmed: true, light, slabs: floors.length, sealed: walls.length } }), serverConfirmed: true }

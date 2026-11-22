@@ -108,7 +108,7 @@ async function excavateSegment (ctx, branch, step, cells) {
   if (!received(finish)) return finish
   const walked = await walkCell(ctx,branch,cells.stand)
   if (!received(walked)) return walked
-  return { ...results.completed('MINE_SEGMENT_CONFIRMED',{ evidence:{ step:step.id,moved } }),serverConfirmed:true,receivedAir:true,walkConfirmed:true,finishConfirmed:true }
+  return { ...results.completed('MINE_SEGMENT_CONFIRMED',{ evidence:{ step:step.id,moved,...(cells.retainedTorchSupport?{retainedTorchSupport:cells.retainedTorchSupport}:{}) } }),serverConfirmed:true,receivedAir:true,walkConfirmed:true,finishConfirmed:true }
 }
 
 module.exports = { inspectDig, digCell, walkCell, excavateSegment }

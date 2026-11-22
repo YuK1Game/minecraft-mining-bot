@@ -50,7 +50,8 @@ function advanceMineState (state, receipt, { step, liveScope, plan = null } = {}
   if (receipt.cursor !== state.cursor) fail('MINE_STEP_OUT_OF_ORDER')
   const cursor = state.cursor + 1
   return { ...state, cursor, confirmedSteps: (state.confirmedSteps ?? 0) + 1, status: cursor === state.stepCount ? (state.blocked?.length ? 'partial' : 'completed') : 'building', needsRevalidation: false, liveScope,
-    receipts: [...(state.receipts ?? []).slice(-7), { stepId: step.id, cursor: state.cursor, liveScope, serverConfirmed: true, receivedAir: true, walkConfirmed: true, finishConfirmed: true }] }
+    receipts: [...(state.receipts ?? []).slice(-7), { stepId: step.id, cursor: state.cursor, liveScope, serverConfirmed: true, receivedAir: true, walkConfirmed: true, finishConfirmed: true,
+      ...(receipt.evidence?.retainedTorchSupport ? { retainedTorchSupport: copy(receipt.evidence.retainedTorchSupport) } : {}) }] }
 }
 
 function skipMineSegment (state, { segmentId, code, plan, liveScope, attempts } = {}) {

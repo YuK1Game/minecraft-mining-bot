@@ -4,6 +4,7 @@ const {mineSteps,stepCells}=require('./mine-geometry')
 const state=require('./mine-state')
 const {at,solid,inventory,count,scope,live,received,save,pending,blocked,stopped,results}=require('./mine-common')
 const {excavateSegment}=require('./mine-excavate')
+const {retainStorageTorchSupport}=require('./mine-storage-layout')
 const {ensureShaft}=require('./mine-shaft')
 const {walkLayer,reachLayer,leaveMine,enterMine:entry}=require('./mine-route')
 const {workVein,restoreVein}=require('./mine-veins')
@@ -34,11 +35,14 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
   const progress=branch.progress[layer],steps=mineSteps(branch.plan,{layer}),step=steps[progress.cursor]
   if(!step || lobbyOnly && step.kind!=='storage')return {...results.completed('MINE_LOBBY_READY'),serverConfirmed:true}
   if(branch.segmentTask && (branch.segmentTask.stepId!==step.id || branch.segmentTask.cursor!==progress.cursor || branch.segmentTask.layer!==layer))return blocked('MINE_ACTIVE_STEP_MISMATCH','保存した施工区間と現在の坑道を照合します。','owner_released')
-  const cells=stepCells(branch.plan,step),feet=ctx.getFeet()
+  const planned=stepCells(branch.plan,step),recorded=branch.segmentTask?.retainedTorchSupport
+  const retained=retainStorageTorchSupport(ctx,branch.plan,step,planned,recorded)
+  if(recorded && !retained)return blocked('MINE_RETAINED_LAYOUT_CHANGED','残した丸石と周囲の通路を再確認します。')
+  const cells=retained??planned,feet=ctx.getFeet()
   // The first room grows out of the shaft doorway. Other runs return along the received corridor before digging.
   if(Math.hypot(feet.x-cells.approach.x,feet.z-cells.approach.z)>3.6){const moved=await walkLayer(ctx,branch,layer,cells.approach);if(!received(moved))return moved}
   const before=scope(ctx)
-  branch.segmentTask={layer,stepId:step.id,cursor:progress.cursor,lobbyOnly}
+  branch.segmentTask={layer,stepId:step.id,cursor:progress.cursor,lobbyOnly,...(retained?{retainedTorchSupport:retained.retainedTorchSupport}:{})}
   if(!await save(ctx,branch,before))return blocked('MINE_CHECKPOINT','施工する区間を保存します。','owner_released')
   const out=await excavateSegment(ctx,branch,step,cells)
   if(!live(ctx,before))return stopped()
