@@ -32,7 +32,8 @@ function cellRest (shared, dimension = 'overworld', { now = Date.now } = {}) {
     if (keys.length > LIMIT) delete held[keys.find(other => other !== key)]
     return seen.rest === true
   }
-  return { resting, miss }
+  const reconsider = cell => { delete held[keyOf(cell)] }
+  return { resting, miss, reconsider }
 }
 
 module.exports = { cellRest, REST_MS, TRIES }

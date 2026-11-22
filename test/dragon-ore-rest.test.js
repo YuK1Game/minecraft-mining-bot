@@ -18,6 +18,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { collect, inView } = require('../src/modes/dragon-supply-gather')
+const { walkStoneStand } = require('../src/modes/dragon-stone-cover')
 const { cellRest, REST_MS, TRIES } = require('../src/modes/supply-cell-rest')
 const { createDigWorld } = require('./helpers/dig-world')
 const received = require('./fixtures/mine-cave-back-and-forth.json')
@@ -44,6 +45,41 @@ test('cobblestone collection uses an exposed face instead of repeatedly approach
   assert.equal(w.lines.some(line => LEFT.test(line)), false)
 })
 
+test('stone with an open face in a buried pocket does not send the Bot to blind surface stands', async () => {
+  const target = { x: 2, y: 61, z: 0 }
+  const w = createDigWorld({ x0: 0, z0: 0, feet: { x: 0.5, y: 64, z: 0.5 }, rows: {}, legend: {} }, {
+    outside: (x, y, z) => (x === 3 && y === 61 && z === 0) || y >= 64 ? 'air' : 'stone'
+  })
+  let walks = 0
+  w.ctx.hands.walk = async () => { walks++; return true }
+  assert.equal(await walkStoneStand(w.ctx, target, () => false, [0, 1, 2, 3, -1]), false)
+  assert.equal(walks, 0)
+})
+
+test('cobblestone collection picks up confirmed reachable stone before digging more', async () => {
+  const w = createDigWorld({ x0: 0, z0: 0, feet: { x: 0.5, y: 64, z: 0.5 }, rows: {}, legend: {} },
+    { outside: (x, y, z) => y < 64 ? 'stone' : 'air' })
+  w.ctx.operations.perception.entities = () => [
+    { kind: 'item', dimension: 'overworld', name: 'minecraft:cobblestone', alive: true, positionKnown: true, position: { x: 1.5, y: 61.125, z: 0.5 } },
+    { kind: 'item', dimension: 'overworld', name: 'minecraft:cobblestone', alive: true, positionKnown: true, position: { x: 3.5, y: 64.125, z: 0.5 } }
+  ]
+  const walk = w.ctx.hands.walk
+  const inventory = w.ctx.runtime.inventory
+  let picked = false
+  w.ctx.hands.walk = async to => {
+    assert.deepEqual(to, { x: 3.5, y: 64, z: 0.5 })
+    picked = await walk(to)
+    return picked
+  }
+  w.ctx.runtime.inventory = () => {
+    const original = inventory()
+    return picked ? { ...original, items: [...original.items, { name: 'minecraft:cobblestone', count: 1 }] } : original
+  }
+  await collect(w.ctx, 'cobblestone')
+  assert.equal(picked, true)
+  assert.deepEqual(w.minedNames, [])
+})
+
 test('a shallow soil cover exposes stone for the next ordinary collection without a long trip', async () => {
   const w = createDigWorld({ x0: 0, z0: 0, feet: { x: 0.5, y: 64, z: 0.5 }, rows: {}, legend: {} }, {
     outside: (x, y, z) => x === 2 && y === 62 && z === 0 ? 'stone' : y === 63 ? 'grass_block' : y < 63 ? 'dirt' : 'air'
@@ -55,8 +91,11 @@ test('a shallow soil cover exposes stone for the next ordinary collection withou
   assert.equal(w.getBlock(0, 63, 0).name, 'minecraft:grass_block')
   assert.equal(w.count('cobblestone'), 0)
   await collect(w.ctx, 'cobblestone')
+  assert.equal(w.getBlock(1, 63, 0).name, 'minecraft:air')
+  assert.equal(w.count('cobblestone'), 0)
+  await collect(w.ctx, 'cobblestone')
   assert.equal(w.count('cobblestone'), 1)
-  assert.deepEqual(w.minedNames, ['grass_block', 'stone'])
+  assert.deepEqual(w.minedNames, ['grass_block', 'grass_block', 'stone'])
   assert.deepEqual(w.trips, [])
 })
 

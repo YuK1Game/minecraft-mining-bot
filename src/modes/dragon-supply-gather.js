@@ -11,7 +11,7 @@ const { inside, leaveHouse } = require('./house/house-exit')
 const { doorOf, openDoor } = require('./house/house-door')
 const { createBuildWalk } = require('./player-build-walk')
 const { sightPassable } = require('../actions/interaction-sight')
-const { uncoverStone, walkStoneStand } = require('./dragon-stone-cover')
+const { uncoverStone, walkStoneStand, canCollectBrokenStone, pickUpStone } = require('./dragon-stone-cover')
 
 const SOURCES = {
   raw_iron: /^(?:deepslate_)?iron_ore$/, raw_gold: /^(?:deepslate_)?gold_ore$/,
@@ -114,6 +114,7 @@ async function collect (ctx, name) {
     })
     if (!left || cancelled()) return
   }
+  if (name === 'cobblestone' && ctx.runtime.raw().dimension === 'overworld' && await pickUpStone(ctx)) return
   const re = SOURCES[name]
   const mob = MOBS[name]
   if (mob) {
@@ -167,12 +168,12 @@ async function collect (ctx, name) {
         if (ctx.cancelled() || !rested.miss(cell, before, far(cell))) return
         ctx.log?.(`プレイヤーモード: ${bare(block.name)} (${cell.x}, ${cell.y}, ${cell.z}) を掘れなかったため、しばらくほかを先に試します${ctx.hands.reason?.(target) ? `（${String(ctx.hands.reason(target)).slice(0, 60)}）` : ''}`)
       }
-      if (name !== 'cobblestone' || !ctx.hands.canMine(target)) {
+      if (name === 'cobblestone') {
+        const ready = () => canCollectBrokenStone(ctx.getBlock, target, ctx.getFeet()) && ctx.hands.canMine(target)
+        if (!ready()) await walkStoneStand(ctx, target, ready, [0, 1, 2, -1], { forPickup: true })
+        if (!ready()) { left(); continue }
+      } else {
         await approach(ctx, trunk ? { x: target.x, y: trunk[0].y, z: target.z } : target)
-      }
-      if (ctx.cancelled()) return
-      if (name === 'cobblestone' && !ctx.hands.canMine(target)) {
-        await walkStoneStand(ctx, target, () => ctx.hands.canMine(target), [0, 1, 2, 3, -1])
       }
       if (ctx.cancelled()) return
       if (!ctx.hands.canMine(target)) {
