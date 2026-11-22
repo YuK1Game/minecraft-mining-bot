@@ -66,7 +66,14 @@ async function reach (ctx, destination, { open = false } = {}) {
       if (!operations.quarry.travelStatus().busy) {
         // Travel stops near the porch; the next dispatch uses the actual door.
         const from = getFeet()
-        await ctx.travelTo({ destination: stop }, { aborted: cancelled })
+        // A covered ledge near the home is still a valid handoff to
+        // the local entrance route. General travel can keep its sky rule.
+        const nearPorch = () => {
+          const feet = getFeet()
+          return !!feet && Math.round(Math.hypot(feet.x - stop.x, feet.z - stop.z)) <= ARRIVE_M &&
+            Math.abs(feet.y - porch.y) <= LEVEL_M
+        }
+        await ctx.travelTo({ destination: stop }, { aborted: cancelled, until: nearPorch })
         // The trip ended where it began, near the house (no leg went on in any direction): the same trip
         // again finds the same nothing. The way that digs and stacks leads to the porch from there.
         const feet = getFeet()
