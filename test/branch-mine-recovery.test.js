@@ -184,7 +184,7 @@ test('capacity relief retains the same unfinished deep-shaft ladder and chest bu
   const keep=constructionKeep(ctx,{plan},'lower'),offered=capacityCargo(inv,keep)
   assert.equal(keep.ladder,126)
   assert.equal(offered.filter(i=>i.name==='minecraft:ladder').reduce((n,i)=>n+i.count,0),2)
-  assert.equal(keep.chest,plan.storage.find(p=>p.layer==='lower').pairs.length*2)
+  assert.equal(keep.chest,plan.storage.reduce((sum,room)=>sum+room.pairs.length*2,0))
   assert.equal(offered.some(i=>i.name==='minecraft:diamond_pickaxe'),false)
 })
 
@@ -239,7 +239,7 @@ test('home capacity relief survives an interrupted trip outside the mine and a p
   let visits = 0
   w.ctx.minePorts.storage.depositHome = async ({ keep, freeSlots }) => {
     visits++
-    assert.equal(w.saved.at(-1).branch.homeCapacityPending, true)
+    assert.equal(w.saved.at(-1).branch.capacityDestination ?? (w.saved.at(-1).branch.homeCapacityPending ? 'home' : null), 'home')
     assert.equal(keep.raw_iron, 16)
     assert.equal(freeSlots, 6)
     if (visits === 1) {
@@ -253,12 +253,31 @@ test('home capacity relief survives an interrupted trip outside the mine and a p
   const sent = await minePackRoom(w.ctx, { returningToMine: true })
   assert.equal(sent.result.code, 'TRANSFER_INTERRUPTED')
   assert.equal(occupied(w.inv), 34)
-  assert.equal(w.branch.homeCapacityPending, true)
+  assert.equal(w.branch.capacityDestination, 'home')
   // Recreate the branch state from the saved checkpoint after losing the trip owner.
   Object.assign(w.branch, structuredClone(w.saved.at(-1).branch))
+  delete w.branch.capacityDestination
+  w.branch.homeCapacityPending = true
   assert.equal((await minePackRoom(w.ctx)).result.code, 'MINE_CAPACITY_FREED')
   assert.equal(occupied(w.inv), 30)
   assert.equal(await minePackRoom(w.ctx), null)
   assert.equal(w.saved.at(-1).branch.homeCapacityPending, undefined)
   assert.equal(visits, 2)
+})
+
+
+test('capacity relief for lower-layer work uses the finished upper room and keeps the lower supplies', async t => {
+  const w = createMineWorld(t)
+  await upper(w)
+  w.branch.request = { resource: 'diamond', targetHeld: 3, layer: 'lower' }
+  fillNonCargo(w)
+  w.ctx.minePorts.storage.depositHome = async () => assert.fail('a verified mine room is ready')
+  const out = await minePackRoom(w.ctx)
+  assert.equal(out.result.code, 'MINE_CAPACITY_FREED', JSON.stringify(out))
+  assert.equal(w.branch.capacityDestination, 'upper')
+  assert.equal(occupied(w.inv), 30)
+  assert.ok(w.boxes.get('upper:supply').some(item => item.count > 0))
+  assert.equal(held(w, 'ladder'), constructionKeep(w.ctx, w.branch, 'lower').ladder)
+  assert.equal(await minePackRoom(w.ctx), null)
+  assert.equal(w.saved.at(-1).branch.capacityDestination, undefined)
 })

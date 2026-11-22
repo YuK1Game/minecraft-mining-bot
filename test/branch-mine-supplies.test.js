@@ -107,3 +107,16 @@ test('a first lower-layer request budgets the still-unbuilt upper shaft as well'
   assert.notEqual(out.code, 'MINE_SUPPLIES_READY')
   assert.deepEqual(f.calls, [['acquire', 'planks', 16]])
 })
+
+
+test('a lower-layer trip budgets both unfinished rooms and excludes already received upper chests', () => {
+  const { supplyNeeds } = require('../src/modes/mining/mine-needs')
+  const f = fixture([], { chest: 4 })
+  const [upper, lower] = f.plan.storage.map(room => room.pairs.flatMap(pair => pair.positions))
+  const empty = () => ({ known: true, name: 'minecraft:air' })
+  assert.equal(supplyNeeds(f.plan, 'lower', { inventory: f.inv, getBlock: empty }).chest, upper.length + lower.length)
+  assert.equal(supplyNeeds(f.plan, 'upper', { inventory: f.inv, getBlock: empty }).chest, upper.length)
+  const upperStanding = p => upper.some(cell => cell.x === p.x && cell.y === p.y && cell.z === p.z)
+    ? { known: true, name: 'minecraft:chest' } : empty()
+  assert.equal(supplyNeeds(f.plan, 'lower', { inventory: f.inv, getBlock: upperStanding }).chest, lower.length)
+})

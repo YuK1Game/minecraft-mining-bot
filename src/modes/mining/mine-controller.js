@@ -188,31 +188,35 @@ async function finishMineWork(ctx){
 async function minePackRoom(ctx,{returningToMine=false}={}){
   const branch=mineOf(ctx)
   if(!branch || !ctx.minePorts || !state.sameWorld(branch.plan?.scope,state.mineWorldScope(raw(ctx))))return null
-  const layer=branch.request?.layer??'upper',homePending=branch.homeCapacityPending===true
-  const outsideWithDemand=returningToMine && branch.request && !branch.vein && !branch.lobbyReady?.[layer] &&
+  const layer=branch.request?.layer??'upper'
+  const pending=branch.capacityDestination??(branch.homeCapacityPending ? 'home' : null)
+  const outsideWithDemand=returningToMine && branch.request && !branch.vein &&
     count(ctx,branch.request.resource)<branch.request.targetHeld
-  if(!homePending && !outsideWithDemand && !mineLocation(ctx,branch))return null
+  if(!pending && !outsideWithDemand && !mineLocation(ctx,branch))return null
   if(!live(ctx))return outcome(stopped())
   const carried=occupied(inventory(ctx))
-  if(homePending && carried<=30){
+  if(pending && carried<=30){
+    delete branch.capacityDestination
     delete branch.homeCapacityPending
     if(!await save(ctx,branch)){
-      branch.homeCapacityPending=true
+      branch.capacityDestination=pending
       return outcome(blocked('MINE_CHECKPOINT','収納後の空き枠を保存します。','owner_released'))
     }
     return null
   }
-  if(!homePending && carried<35)return null
+  if(!pending && carried<35)return null
   if(branch.vein){branch.vein.closing=true;return outcome(await restoreVein(ctx,branch),'収納の前に鉱脈の穴を埋め戻します。')}
-  const keep={...constructionKeep(ctx,branch,layer),...(branch.request?{[branch.request.resource]:branch.request.targetHeld}:{})}
-  if(homePending || !branch.lobbyReady?.[layer]){
-    if(!homePending){
-      branch.homeCapacityPending=true
-      if(!await save(ctx,branch)){
-        delete branch.homeCapacityPending
-        return outcome(blocked('MINE_CHECKPOINT','本拠点への収納予定を保存します。','owner_released'))
-      }
+  const readyLayer=branch.lobbyReady?.[layer]?layer:branch.lobbyReady?.upper?'upper':null
+  const destination=pending??readyLayer??'home'
+  if(!pending){
+    branch.capacityDestination=destination
+    if(!await save(ctx,branch)){
+      delete branch.capacityDestination
+      return outcome(blocked('MINE_CHECKPOINT','収納先を保存します。','owner_released'))
     }
+  }
+  const keep={...constructionKeep(ctx,branch,layer),...(branch.request?{[branch.request.resource]:branch.request.targetHeld}:{})}
+  if(destination==='home'){
     const left=await leaveMine(ctx,branch)
     if(!received(left))return outcome(left,'採掘場の入口へ戻り、地上の箱へ採掘物を運びます。')
     const out=await ctx.minePorts.storage.depositHome?.({keep,freeSlots:6})
@@ -220,7 +224,7 @@ async function minePackRoom(ctx,{returningToMine=false}={}){
   }
   const entered=await entry(ctx,branch)
   if(!received(entered))return outcome(entered)
-  const out=await depositMine(ctx,branch,layer,keep,{freeSlots:6})
+  const out=await depositMine(ctx,branch,destination,keep,{freeSlots:6})
   return outcome(out,'採掘物を計画済みのラージチェストへ収納します。')
 }
 
