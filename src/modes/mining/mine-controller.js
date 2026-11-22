@@ -185,14 +185,34 @@ async function finishMineWork(ctx){
   return requestMine(ctx,branch.request)
 }
 
-async function minePackRoom(ctx){
+async function minePackRoom(ctx,{returningToMine=false}={}){
   const branch=mineOf(ctx)
-  if(!branch || !ctx.minePorts || !mineLocation(ctx,branch))return null
+  if(!branch || !ctx.minePorts || !state.sameWorld(branch.plan?.scope,state.mineWorldScope(raw(ctx))))return null
+  const layer=branch.request?.layer??'upper',homePending=branch.homeCapacityPending===true
+  const outsideWithDemand=returningToMine && branch.request && !branch.vein && !branch.lobbyReady?.[layer] &&
+    count(ctx,branch.request.resource)<branch.request.targetHeld
+  if(!homePending && !outsideWithDemand && !mineLocation(ctx,branch))return null
   if(!live(ctx))return outcome(stopped())
-  if(occupied(inventory(ctx))<35)return null
+  const carried=occupied(inventory(ctx))
+  if(homePending && carried<=30){
+    delete branch.homeCapacityPending
+    if(!await save(ctx,branch)){
+      branch.homeCapacityPending=true
+      return outcome(blocked('MINE_CHECKPOINT','収納後の空き枠を保存します。','owner_released'))
+    }
+    return null
+  }
+  if(!homePending && carried<35)return null
   if(branch.vein){branch.vein.closing=true;return outcome(await restoreVein(ctx,branch),'収納の前に鉱脈の穴を埋め戻します。')}
-  const layer=branch.request?.layer??'upper',keep={...constructionKeep(ctx,branch,layer),...(branch.request?{[branch.request.resource]:branch.request.targetHeld}:{})}
-  if(!branch.lobbyReady?.[layer]){
+  const keep={...constructionKeep(ctx,branch,layer),...(branch.request?{[branch.request.resource]:branch.request.targetHeld}:{})}
+  if(homePending || !branch.lobbyReady?.[layer]){
+    if(!homePending){
+      branch.homeCapacityPending=true
+      if(!await save(ctx,branch)){
+        delete branch.homeCapacityPending
+        return outcome(blocked('MINE_CHECKPOINT','本拠点への収納予定を保存します。','owner_released'))
+      }
+    }
     const left=await leaveMine(ctx,branch)
     if(!received(left))return outcome(left,'採掘場の入口へ戻り、地上の箱へ採掘物を運びます。')
     const out=await ctx.minePorts.storage.depositHome?.({keep,freeSlots:6})

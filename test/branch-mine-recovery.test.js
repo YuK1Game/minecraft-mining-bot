@@ -229,3 +229,36 @@ test('a failed segment checkpoint restores its finishing debt and cannot mark un
   assert.equal(w.branch.failures[step.segmentId],undefined)
   assert.equal(Math.min(...marks.map(([,value])=>value)),value-1)
 })
+
+
+test('home capacity relief survives an interrupted trip outside the mine and a partial deposit', async t => {
+  const w = createMineWorld(t)
+  w.branch.request = { resource: 'raw_iron', targetHeld: 16, layer: 'upper' }
+  fillNonCargo(w)
+  w.setFeet({ x: 90.5, y: 70, z: 0.5 })
+  let visits = 0
+  w.ctx.minePorts.storage.depositHome = async ({ keep, freeSlots }) => {
+    visits++
+    assert.equal(w.saved.at(-1).branch.homeCapacityPending, true)
+    assert.equal(keep.raw_iron, 16)
+    assert.equal(freeSlots, 6)
+    if (visits === 1) {
+      w.items.splice(-1, 1)
+      return { status: 'interrupted', code: 'TRANSFER_INTERRUPTED' }
+    }
+    w.items.splice(-4, 4)
+    return { status: 'completed', code: 'MINE_CAPACITY_FREED', serverConfirmed: true }
+  }
+
+  const sent = await minePackRoom(w.ctx, { returningToMine: true })
+  assert.equal(sent.result.code, 'TRANSFER_INTERRUPTED')
+  assert.equal(occupied(w.inv), 34)
+  assert.equal(w.branch.homeCapacityPending, true)
+  // Recreate the branch state from the saved checkpoint after losing the trip owner.
+  Object.assign(w.branch, structuredClone(w.saved.at(-1).branch))
+  assert.equal((await minePackRoom(w.ctx)).result.code, 'MINE_CAPACITY_FREED')
+  assert.equal(occupied(w.inv), 30)
+  assert.equal(await minePackRoom(w.ctx), null)
+  assert.equal(w.saved.at(-1).branch.homeCapacityPending, undefined)
+  assert.equal(visits, 2)
+})

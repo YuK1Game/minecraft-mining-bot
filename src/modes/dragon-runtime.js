@@ -64,8 +64,11 @@ function createDragonRuntime (ports) {
       if (night) return night
     }
     // Planned mining stores its cargo in confirmed chests. Other expedition work retains its pack-room policy.
-    if (dim === 'overworld' && !recoverHealth && ctx.drop && crowded(shared.inventoryUncertain ? null : runtime.inventory()) && !ports.threatened()) {
-      const stored = await require('./mining/mine-controller').minePackRoom(ctx)
+    const homeCapacityPending = record.early?.mine?.branch?.homeCapacityPending === true
+    if (dim === 'overworld' && !recoverHealth && ctx.drop && !ports.threatened() &&
+        (homeCapacityPending || crowded(shared.inventoryUncertain ? null : runtime.inventory()))) {
+      const returningToMine = record.stage === 'early' && ['early.diamond', 'early.home_reserve'].includes(ledger.goal()?.key)
+      const stored = await require('./mining/mine-controller').minePackRoom(ctx, { returningToMine })
       if (stored) return stored
       const packed = await packRoom({ shared, getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getFeet: ctx.getFeet, drop: ctx.drop, walk: ctx.walk, why: () => ctx.hands.why?.(), cells: ctx.cells, log: ctx.log })
       if (packed) return packed
