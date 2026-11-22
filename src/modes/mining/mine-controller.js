@@ -217,9 +217,19 @@ async function minePackRoom(ctx,{returningToMine=false}={}){
   }
   const keep={...constructionKeep(ctx,branch,layer),...(branch.request?{[branch.request.resource]:branch.request.targetHeld}:{})}
   if(destination==='home'){
-    const left=await leaveMine(ctx,branch)
+    const before=scope(ctx),left=await leaveMine(ctx,branch)
     if(!received(left))return outcome(left,'採掘場の入口へ戻り、地上の箱へ採掘物を運びます。')
     const out=await ctx.minePorts.storage.depositHome?.({keep,freeSlots:6})
+    // This code is returned before the home container is opened. Keep any
+    // submitted transfer on its original route until its receipt is known.
+    if(out?.code==='MINE_HOME_ACCESS_UNCONFIRMED' && readyLayer && branch.lobbyReady[readyLayer]===before && live(ctx,before)){
+      branch.capacityDestination=readyLayer
+      if(!await save(ctx,branch,before)){
+        branch.capacityDestination='home'
+        return outcome(blocked('MINE_CHECKPOINT','切り替える収納先を保存します。','owner_released'))
+      }
+      return outcome(blocked('MINE_CAPACITY_ROUTE_CHANGED','採掘場の確認済みラージチェストへ収納先を切り替えました。','position_changed'))
+    }
     return outcome(out??blocked('MINE_HOME_STORAGE_UNAVAILABLE','地上のラージチェストを確認します。'),'本拠点のラージチェストへ採掘物を収納します。')
   }
   const entered=await entry(ctx,branch)

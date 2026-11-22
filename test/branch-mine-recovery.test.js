@@ -281,3 +281,22 @@ test('capacity relief for lower-layer work uses the finished upper room and keep
   assert.equal(await minePackRoom(w.ctx), null)
   assert.equal(w.saved.at(-1).branch.capacityDestination, undefined)
 })
+
+
+test('a failed approach can select the verified mine storage but an unresolved transfer retains home', async t => {
+  const w = createMineWorld(t)
+  await upper(w)
+  fillNonCargo(w)
+  w.setFeet({ x: 6.5, y: 70, z: 0.5 })
+  w.branch.capacityDestination = 'home'
+  let code = 'TRANSFER_UNCONFIRMED'
+  w.ctx.minePorts.storage.depositHome = async () => ({ status: 'blocked', code })
+  assert.equal((await minePackRoom(w.ctx)).result.code, code)
+  assert.equal(w.branch.capacityDestination, 'home')
+  code = 'MINE_HOME_ACCESS_UNCONFIRMED'
+  assert.equal((await minePackRoom(w.ctx)).result.code, 'MINE_CAPACITY_ROUTE_CHANGED')
+  assert.equal(w.saved.at(-1).branch.capacityDestination, 'upper')
+  assert.equal(occupied(w.inv), 35)
+  assert.equal((await minePackRoom(w.ctx)).result.code, 'MINE_CAPACITY_FREED')
+  assert.equal(occupied(w.inv), 30)
+})
