@@ -1,13 +1,36 @@
 'use strict'
 
 const { createHousePorts } = require('../house/house-ports')
+const { houseClickGeometry } = require('../../actions/house-placement')
+const { interactionSightError } = require('../../actions/interaction-sight')
 const { completed, blocked, failed, interrupted } = require('../return/return-result')
-const { key, cell, air, solid, bottomSlab, full, held, receivedInventory, value, scopeOf } = require('./mine-observed')
+const { key, cell, air, solid, bottomSlab, full, held, receivedInventory, value, FILL_BLOCKS, scopeOf } = require('./mine-observed')
 const { sameWorld, mineWorldScope } = require('./mine-state')
 const { digTool, toolNeeded } = require('../dig-tool')
 const { supportIntent, recordSupportReceipt } = require('./mine-support-receipt')
 const { mineLadderResult } = require('./mine-ladder-result')
+const RETRYABLE_MATERIALS = new Set(['minecraft:torch', 'minecraft:cobblestone_slab', 'minecraft:ladder', ...FILL_BLOCKS])
 const NORMAL = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]]
+
+function placements (block, request) {
+  const position = request.position, name = full(request.name)
+  if (!cell(position)) return []
+  const clickY = request.clickY ?? (/_slab$/.test(name) ? 0.25 : 0.5)
+  if (request.clicked || request.support) return [{ ...request, name, clicked: request.clicked ?? request.support, clickY }]
+  return [1, 2, 3, 4, 5].flatMap(face => {
+    const n = NORMAL[face], clicked = { x: position.x - n[0], y: position.y - n[1], z: position.z - n[2] }
+    return solid(block(clicked)) ? [{ ...request, name, clicked, face, clickY }] : []
+  })
+}
+
+function visibleMinePlacement (block, request, feet) {
+  if (!feet) return null
+  const eye = { ...feet, y: feet.y + 1.62 }
+  return placements(block, request).find(plan => {
+    const geometry = houseClickGeometry(plan.clicked, plan.face, plan.clickY)
+    return geometry && solid(block(plan.clicked)) && !interactionSightError(block, eye, geometry.point, plan.clicked)
+  }) ?? null
+}
 
 function createMineActions (ctx) {
   const block = p => ctx.getBlock(p.x, p.y, p.z)
@@ -55,6 +78,36 @@ function createMineActions (ctx) {
     if (found.name === 'minecraft:ladder' && Number.isInteger(plan.face)) return value(found.properties?.facing_direction) === plan.face
     return true
   }
+  async function reconcilePlacement () {
+    const state = branch(), pending = state?.pendingAction, scope = scopeOf(ctx)
+    if (pending?.kind !== 'place' || pending.supportFill || !RETRYABLE_MATERIALS.has(pending.name) ||
+      !cell(pending.position) || pending.key !== 'place:' + key(pending.position) ||
+      pending.scope !== scope || !same(scope) || !worldMatches()) return false
+
+    const { position, name, before } = pending
+    const face = name === 'minecraft:ladder' ? state.plan.shaft?.ladder?.face : undefined
+    let evidence
+    if ((name !== 'minecraft:ladder' || Number.isInteger(face)) && matches(position, name, { face })) {
+      evidence = { kind: 'current_structure_received' }
+    } else {
+      if (pending.retryAfterAudit || !Number.isSafeInteger(before) || before <= 0 ||
+        (held(inventory(), name) ?? 0) < before || !air(block(position))) return false
+      const audit = await ctx.runtime.minePlacementAudit?.(position, { signal: ctx.signal })
+      if (audit?.target?.serverConfirmed !== true || !same(scope) || state.pendingAction !== pending || !air(block(position)) ||
+        (held(inventory(), name) ?? 0) < before) return false
+      evidence = { kind: 'current_target_air', count: held(inventory(), name), ...audit }
+    }
+
+    const previous = state.lastReconciledPlacement
+    state.lastReconciledPlacement = { pending, evidence }
+    if (await clear(pending.key)) {
+      ctx.log?.(`採掘場: 設置待ち ${key(position)} ${name} を現在の受信状態で照合しました（${evidence.kind}）。`)
+      return true
+    }
+    if (previous) state.lastReconciledPlacement = previous
+    else delete state.lastReconciledPlacement
+    return false
+  }
   function forgetDig (position) {
     const state = branch()
     let changed = false
@@ -97,20 +150,14 @@ function createMineActions (ctx) {
     if (block(position)?.known === true) await clear(actionKey)
     return wait(mined ? 'MINE_BLOCK_UNCONFIRMED' : 'MINE_DIG_REFUSED', 'terrain_received', { detail: ctx.hands.why?.() })
   }
-  function placement (request) {
-    const position = request.position, name = full(request.name)
-    if (!cell(position)) return null
-    if (request.clicked || request.support) return { ...request, name, clicked: request.clicked ?? request.support, clickY: request.clickY ?? (/_slab$/.test(name) ? 0.25 : 0.5) }
-    for (const face of [1, 2, 3, 4, 5]) {
-      const n = NORMAL[face], clicked = { x: position.x - n[0], y: position.y - n[1], z: position.z - n[2] }
-      if (solid(block(clicked))) return { ...request, name, clicked, face, clickY: /_slab$/.test(name) ? 0.25 : 0.5 }
-    }
-    return null
-  }
+  const placement = request => placements(block, request)[0] ?? null
   async function place (request) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     if (!worldMatches()) return wait('MINE_SCOPE_UNKNOWN', 'owner_released')
-    const plan = placement(request)
+    // Shaft fills can have a solid face that is hidden by an earlier fill.
+    // Keep explicit faces fixed and prefer a visible one for inferred support.
+    const inferredSupport = request.supportPurpose && !request.clicked && !request.support
+    const plan = (inferredSupport ? visibleMinePlacement(block, request, ctx.getFeet()) : null) ?? placement(request)
     if (!plan) return wait('MINE_PLACE_SUPPORT_UNKNOWN')
     const { position, name } = plan, actionKey = 'place:' + key(position), pending = branch()?.pendingAction
     if (matches(position, name, plan)) {
@@ -130,7 +177,11 @@ function createMineActions (ctx) {
     const before = held(inventory(), name)
     if (!(before > 0)) return wait('MINE_MATERIAL_MISSING', 'supplies_changed', { evidence: { name } })
     const supportFill = supportIntent(branch(), plan)
-    const start = await begin({ key: actionKey, kind: 'place', position, name, before, ...(supportFill ? { supportFill, fromAir: true } : {}) })
+    const recovered = branch()?.lastReconciledPlacement
+    const retryAfterAudit = recovered?.evidence?.kind === 'current_target_air' && recovered.pending?.key === actionKey &&
+      recovered.pending.name === name && recovered.pending.scope === scopeOf(ctx)
+    const start = await begin({ key: actionKey, kind: 'place', position, name, before,
+      ...(supportFill ? { supportFill, fromAir: true } : {}), ...(retryAfterAudit ? { retryAfterAudit: true } : {}) })
     if (!start.scope) return start
     let placed = false
     try { placed = await house.place(name, plan) } catch (error) { ctx.log?.('採掘場: ' + String(error.code ?? error.message).slice(0, 120)) }
@@ -143,8 +194,8 @@ function createMineActions (ctx) {
       if (!await clear(actionKey)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
       return done('MINE_PLACEMENT_RECEIVED', { position, name, consumed: 1 })
     }
-    // Only a pre-send rejection or the server's explicit rejection permits a
-    // second placement. Unknown acknowledgements retain the durable intent.
+    // Preserve unknown acknowledgements for current-state reconciliation.
+    // An explicit rejection can be cleared immediately.
     if (house.placementRetrySafe()) await clear(actionKey)
     return wait('MINE_PLACEMENT_UNCONFIRMED', 'inventory_update', { detail: house.why() })
   }
@@ -198,7 +249,7 @@ function createMineActions (ctx) {
     }
     return wait(result?.code === 'MINE_TERRAIN_RECEIVED' ? 'MINE_TERRAIN_WAITING' : 'MINE_OBSERVATION_UNAVAILABLE', 'terrain_received', { evidence: result?.evidence ?? null })
   }
-  return { block, inventory, mine, place, placement, matches, walk, confirmPosition, ladderMove, observe, house, save, done, wait }
+  return { block, inventory, mine, place, placement, matches, reconcilePlacement, walk, confirmPosition, ladderMove, observe, house, save, done, wait }
 }
 
-module.exports = { createMineActions }
+module.exports = { createMineActions, visibleMinePlacement }

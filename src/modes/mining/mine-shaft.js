@@ -1,12 +1,12 @@
 'use strict'
 
-const { at, air, open, solid, standY, centre, key, live, received, count, observe, action, save, feetAt, blocked, stopped, results } = require('./mine-common')
+const { at, air, open, solid, standY, centre, key, live, inventory, received, count, observe, action, save, feetAt, blocked, stopped, results } = require('./mine-common')
 const { digCell, walkCell } = require('./mine-excavate')
-const { value } = require('./mine-observed')
+const { value, fillMaterial } = require('./mine-observed')
 const { noteMineProgress } = require('./mine-progress')
-// HousePorts supports ordinary cobblestone placement. Do not select dirt or
-// deepslate merely because it is present in the inventory.
-const FILLS = ['cobblestone']
+const { clearableSitePlant } = require('../../quarry/storage/storage-site-terrain')
+const { shaftEntryBackingUsable } = require('./mine-shaft-boundary')
+
 const here = (column,y) => ({ x:column.x,y,z:column.z })
 const ladder = b => b?.known === true && b.name === 'minecraft:ladder' && !b.extra?.length
 const filled = () => ({...results.completed('MINE_SUPPORT_CONFIRMED'),serverConfirmed:true})
@@ -21,24 +21,72 @@ async function fillCell (ctx,branch,target,purpose = 'shaft') {
     return filled()
   }
   if(!air(b))return blocked('MINE_FILL_OCCUPIED','縦坑の埋戻し先を確認します。')
-  const name=FILLS.find(name=>count(ctx,name)>0)
+  const name=fillMaterial(inventory(ctx))
   if(!name)return blocked('MINE_FILL_SUPPLY','縦坑の足場と埋戻し用ブロックを補給します。','supplies_changed')
-  return action(ctx,branch,{kind:'fill',purpose,target},()=>ctx.minePorts.place({position:target,name:'minecraft:'+name,supportPurpose:purpose}),()=>solid(at(ctx,target)))
+  return action(ctx,branch,{kind:'fill',purpose,target},()=>ctx.minePorts.place({position:target,name,supportPurpose:purpose}),()=>solid(at(ctx,target)))
 }
 
 async function rung (ctx,branch,y) {
   const shaft=branch.plan.shaft,target=here(shaft.ladder,y),support=here(shaft.ladder.support,y)
   if(at(ctx,target)?.known !== true || at(ctx,support)?.known !== true)return observe(ctx,[target,support],'はしごと支持壁の地形を受信します。')
+  if(y===shaft.topY){
+    for(const cell of [support,target]){
+      if(!clearableSitePlant(at(ctx,cell)))continue
+      const cleared=await digCell(ctx,branch,cell,'shaft_entry_plant')
+      if(!received(cleared))return cleared
+    }
+  }
   if(!solid(at(ctx,support))){const made=await fillCell(ctx,branch,support,'ladder_support');if(!received(made))return made}
-  if(ladder(at(ctx,target)) && Number(value(at(ctx,target).properties?.facing_direction))===shaft.ladder.face)return filled()
-  if(!air(at(ctx,target)))return blocked('MINE_LADDER_CELL','はしごの列に空間を確保します。')
-  if(!count(ctx,'ladder'))return blocked('MINE_LADDER_SUPPLY','縦坑のはしごを補給します。','supplies_changed')
-  return action(ctx,branch,{kind:'ladder',target},()=>ctx.minePorts.place({position:target,name:'minecraft:ladder',clicked:support,face:shaft.ladder.face,clickY:0.5}),()=>ladder(at(ctx,target)) && solid(at(ctx,support)))
+  const installed = () => ladder(at(ctx, target)) && Number(value(at(ctx, target).properties?.facing_direction)) === shaft.ladder.face && solid(at(ctx, support))
+  const pending = branch.pendingAction
+  if (installed()) {
+    // A delayed block receipt can arrive after the original interaction
+    // failed. Reconcile this recorded rung through the placement port, which
+    // clears the intent from a matching received block without sending it.
+    if (pending?.kind !== 'place' || pending.name !== 'minecraft:ladder' || !pending.position || key(pending.position) !== key(target)) return filled()
+  } else {
+    if (!air(at(ctx, target))) return blocked('MINE_LADDER_CELL', 'はしごの列に空間を確保します。')
+    if (!count(ctx, 'ladder')) return blocked('MINE_LADDER_SUPPLY', '縦坑のはしごを補給します。', 'supplies_changed')
+  }
+  return action(ctx, branch, { kind: 'ladder', target },
+    () => ctx.minePorts.place({ position: target, name: 'minecraft:ladder', clicked: support, face: shaft.ladder.face, clickY: 0.5 }), installed)
+}
+
+// Returning from a surface trip can unload sections of a finished shaft.
+// Request one missing cell per section, then let the ladder port check the
+// full received route as usual.
+function missingLadderTerrain (ctx, shaft, from, to) {
+  const missing=new Map()
+  const need=p=>{
+    if(at(ctx,p)?.known===true)return
+    const section=key({x:Math.floor(p.x/16),y:Math.floor(p.y/16),z:Math.floor(p.z/16)})
+    if(!missing.has(section))missing.set(section,p)
+  }
+  for(const feet of [from,to]){
+    for(let x=Math.floor(feet.x-0.3+1e-7);x<=Math.floor(feet.x+0.3-1e-7);x++){
+      for(let z=Math.floor(feet.z-0.3+1e-7);z<=Math.floor(feet.z+0.3-1e-7);z++){
+        for(let y=Math.floor(feet.y-1e-5);y<=Math.floor(feet.y+1.8-1e-7);y++)need({x,y,z})
+      }
+    }
+  }
+  for(let y=Math.floor(Math.min(from.y,to.y));y<=Math.ceil(Math.max(from.y,to.y));y++){
+    need(here(shaft.ladder,y))
+    if(shaft.ladder.support)need(here(shaft.ladder.support,y))
+  }
+  return [...missing.values()]
 }
 
 async function climb (ctx,branch,to) {
-  if(feetAt(ctx,to))return walkCell(ctx,branch,to,'ladder_landing')
-  const from={...ctx.getFeet()},column={x:branch.plan.shaft.ladder.x,z:branch.plan.shaft.ladder.z}
+  const from={...ctx.getFeet()}
+  const sameColumn=Math.floor(from.x)===Math.floor(to.x) && Math.floor(from.z)===Math.floor(to.z)
+  const sameLevel=Math.abs(from.y-to.y)<0.12 && (sameColumn || Math.hypot(from.x-to.x,from.z-to.z)<=1)
+  // A correction can settle on a landing's slab while the body centre
+  // remains in the ladder column. Use a short supported walk on that level.
+  if(feetAt(ctx,to) || sameLevel)return walkCell(ctx,branch,to,'ladder_landing')
+  const shaft=branch.plan.shaft
+  const missing=missingLadderTerrain(ctx,shaft,from,to)
+  if(missing.length)return observe(ctx,missing,'はしごと乗り降りする足場の地形を受信します。')
+  const column={x:shaft.ladder.x,z:shaft.ladder.z}
   return action(ctx,branch,{kind:'ladder_move',from,to},()=>ctx.minePorts.ladderMove({column,from,to,operationId:`${branch.plan.id}:${from.y}:${to.y}`},{signal:ctx.signal}),()=>feetAt(ctx,to))
 }
 
@@ -78,6 +126,13 @@ function workStand (ctx,branch,depth) {
   return null
 }
 
+function besideLadder (feet, column) {
+  if (!feet) return false
+  const x = Math.floor(feet.x), z = Math.floor(feet.z)
+  return Math.abs(x - column.x) + Math.abs(z - column.z) <= 1 &&
+    Math.hypot(feet.x - x - 0.5, feet.z - z - 0.5) <= 0.2
+}
+
 function shaftFinish (branch,depth,landing = null) {
   const shaft=branch.plan.shaft,torchColumn=shaft.columns[3]
   const position=here(torchColumn,depth),support=here(torchColumn,depth-1)
@@ -114,6 +169,13 @@ async function ensureShaft (ctx,branch,layer) {
   const plan=branch.plan,shaft=plan.shaft,target=plan.layers.find(p=>p.id===layer)
   if(!target)return blocked('MINE_LAYER_INVALID','採掘層を確認します。')
   branch.shaft ??= {depth:shaft.topY,landings:{}}
+  if(branch.shaft.depth===shaft.topY && !branch.pendingAction &&
+    air(at(ctx,here(shaft.ladder,shaft.topY))) && solid(at(ctx,here(shaft.ladder,shaft.topY-1)))){
+    const backing=at(ctx,here(shaft.ladder.support,shaft.topY))
+    if(backing?.known===true && !shaftEntryBackingUsable(backing)){
+      return blocked('MINE_SHAFT_ENTRY_BACKING_BLOCKED','最初のはしごを支える位置を安全に使えません。')
+    }
+  }
   if(!branch.shaft.entry && shaft.entryTorch){
     const to=topStand(plan),moved=await walkCell(ctx,branch,to,'shaft_entry')
     if(!received(moved))return moved
@@ -137,6 +199,13 @@ async function ensureShaft (ctx,branch,layer) {
     const moved=await climb(ctx,branch,resumedDown?centre(nextLadder):from)
     if(!received(moved))return moved
   }
+  // After an interrupted first descent, enterMine returns to the surface
+  // approach at the right height but still two cells away from the ladder.
+  // Move to its landing before asking the ladder controller to mount.
+  if (resumedDown && ctx.getFeet().y >= shaft.topY - 0.2 && !besideLadder(ctx.getFeet(), shaft.ladder)) {
+    const moved = await walkCell(ctx, branch, topStand(plan), 'shaft_mount_resume')
+    if (!received(moved)) return moved
+  }
   const currentRung=await rung(ctx,branch,depth)
   if(!received(currentRung))return currentRung
   if(!resumedDown){
@@ -146,9 +215,9 @@ async function ensureShaft (ctx,branch,layer) {
     const dug=await digCell(ctx,branch,nextLadder,'shaft')
     if(!received(dug))return dug
     if(!solid(at(ctx,bottom))){const support=await fillCell(ctx,branch,bottom,'shaft_landing');if(!received(support))return support}
-    const installed=await rung(ctx,branch,next)
-    if(!received(installed))return installed
   }
+  const installed = await rung(ctx, branch, next)
+  if (!received(installed)) return installed
   const down=await climb(ctx,branch,centre(nextLadder))
   if(!received(down))return down
   for(const column of shaft.fillColumns){

@@ -1,5 +1,7 @@
 'use strict'
 
+const { createMinePlacementAudit } = require('./mining/mine-placement-audit')
+
 // A controller may have been awaiting a walk, a chest receipt or hotbar equip
 // when play stopped. Check the owner again at the point of its next action.
 // The walks near enemies use the same guard with their lease (control-owner.js); `refuse` is their error.
@@ -21,6 +23,7 @@ function guardDragonOperations (operations, cancelled, refuse = () => Object.ass
 function createDragonRuntimePorts (rt) {
   return {
     mineState: () => rt.quarryState(),
+    minePlacementAudit: createMinePlacementAudit(rt),
     mineConfirmPosition: (feet, options) => rt.confirmQuarryPosition(feet, options),
     mineLadderMove: (request, options) => rt.mineLadder?.move(request, options),
     mineLadderDiagnostics: () => ({ ladderOwnsInput: rt.mineLadder?.hasInput?.() === true, activeBehavior: rt.userBehaviorSnapshot?.().activeKind ?? null, position: rt.quarryPositionVerifier?.snapshot() ?? null }),

@@ -2,10 +2,10 @@
 
 const { setImmediate: immediate } = require('node:timers/promises')
 const { surveyMine, oreResource } = require('./mine-survey')
-const { createMineGeometry, mineSteps, stepCells, DIRECTIONS, MAX_SHAFT_DEPTH, key } = require('./mine-geometry')
+const { createMineGeometry, mineSteps, stepCells, DIRECTIONS, MAX_SHAFT_DEPTH, shaftSurfaceLayout, key } = require('./mine-geometry')
 const { mineWorldScope, mineLiveScope } = require('./mine-state')
 const { pocketOf, isMineNaturalBlock } = require('./mine-vein-geometry')
-const { shaftBoundary } = require('./mine-shaft-boundary')
+const { shaftBoundary, shaftEntryBackingUsable } = require('./mine-shaft-boundary')
 const FULL_GROUND = new Set(require('../../common/standing-ground').STANDING_GROUND.map(name => `minecraft:${name}`))
 
 const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
@@ -81,6 +81,8 @@ async function evaluateMineGeometry (plan, survey, { origin, resource, targetCou
   if (!existingPlan && plan.shaft.entryTorch) torches.set(key(plan.shaft.entryTorch.position), plan.shaft.entryTorch)
   const requested = new Set(), missing = new Set(), blocked = new Set(), observed = new Map()
   const get = p => { const id = key(p); if (observed.has(id)) return observed.get(id); const b = read(p); observed.set(id, b); if (!b.known) missing.add(id); return b }
+  const failure = (stage, extra = {}) => ({ eligible: false, unknown: missing.size, hazards: blocked.size,
+    unsafe: { stage, blocks: [...blocked].slice(0, 3).map(id => ({ at: id, name: observed.get(id)?.name, protected: observed.get(id)?.protected === true })) }, ...extra })
   const unsafe = p => {
     const b = get(p)
     if (!b.known) return true
@@ -96,14 +98,18 @@ async function evaluateMineGeometry (plan, survey, { origin, resource, targetCou
     const p = { ...column, y: plan.site.surfaceY - 1 }, b = get(p)
     if (b.known && (b.boundingBox !== 'block' || !FULL_GROUND.has(b.name) || b.extra?.length || b.protected)) blocked.add(key(p))
   }
-  if (missing.size || blocked.size) return { eligible: false, unknown: missing.size, hazards: blocked.size, surfaceBlocked: true }
+  if (!existingPlan) {
+    const backing = { ...plan.shaft.ladder.support, y: plan.shaft.topY }, block = get(backing)
+    if (block.known && !shaftEntryBackingUsable(block)) blocked.add(key(backing))
+  }
+  if (missing.size || blocked.size) return failure('surface', { surfaceBlocked: true })
   // Storage keeps full foundations beneath its chests. These cells are not
   // slab replacements, so an existing cave floor cannot promise a usable room.
   for (const storage of rooms) for (const pair of storage.pairs) for (const chest of pair.positions) {
     const p = { ...chest, y: chest.y - 1 }, b = get(p)
     if (b.known && (b.boundingBox !== 'block' || !FULL_GROUND.has(b.name) || hazardous(b) || b.protected || INFRASTRUCTURE.test(b.name))) blocked.add(key(p))
   }
-  if (missing.size || blocked.size) return { eligible: false, unknown: missing.size, hazards: blocked.size }
+  if (missing.size || blocked.size) return failure('storage')
   const construction = new Map(excavate)
   for (const p of floor.values()) if (!bottomSlab(get(p))) construction.set(key(p), p)
   let blocks = 0, hardness = 0, floorCuts = 0, shaftHardness = 0, shaftDrops = 0
@@ -150,7 +156,7 @@ async function evaluateMineGeometry (plan, survey, { origin, resource, targetCou
   for (let y = plan.shaft.bottomY; y <= Math.min(plan.shaft.topY, shaftTop); y++) { const p = { ...plan.shaft.ladder.support, y }; unsafe(p); if (AIR.has(get(p).name) && !caveSeals.has(key(p))) supportCells.add(key(p)) }
   const supports = supportCells.size
   await checkpoint()
-  if (missing.size || blocked.size) return { eligible: false, unknown: missing.size, hazards: blocked.size, needsObservation: [...missing].slice(0, 16) }
+  if (missing.size || blocked.size) return failure('construction', { needsObservation: [...missing].slice(0, 16) })
 
   const ores = new Map(), veinConstruction = new Map(), layerOres = { upper: 0, lower: 0 }
   for (const [id, p] of construction) {
@@ -238,6 +244,25 @@ async function evaluateMineGeometry (plan, survey, { origin, resource, targetCou
     oreCounts: counts, oreUnion: oreUnion.map(({ access, ...ore }) => ore), estimatedDrops, value, costs, totalCost, targetCost, requiredPrefix: { layer: targetLayer, steps: prefixSteps, haulTrips: prefixTrips, haulDistance: prefixHaul }, costModel: 'weighted_work_units_v1', score: 1 / Math.max(1, targetCost) }
 }
 
+function observedSurfaceY (site, radius, read) {
+  if (!radius) return { y: site.surfaceY, ready: false }
+  const { columns, approach, topLanding, entryTorch } = shaftSurfaceLayout(site)
+  const entrance = [...columns, ...[approach, topLanding, entryTorch].map(p => ({ x: Math.floor(p.x), z: Math.floor(p.z) }))]
+  const heights = [0, ...Array.from({ length: radius }, (_, i) => [i + 1, -i - 1]).flat()]
+  for (const dy of heights) {
+    const y = site.surfaceY + dy
+    if (y > 316) continue
+    if (entrance.every(column => {
+      const floor = read({ ...column, y: y - 1 }), body = read({ ...column, y }), head = read({ ...column, y: y + 1 })
+      return floor.known && floor.boundingBox === 'block' && FULL_GROUND.has(floor.name) && !floor.extra?.length && !floor.protected &&
+        [body, head].every(block => block.known && AIR.has(block.name) && !block.extra?.length && !block.protected)
+    })) return { y, ready: true }
+  }
+  // Keep the original height if the alternative evidence is incomplete.
+  // The evaluator still reports missing terrain or a blocked entrance.
+  return { y: site.surfaceY, ready: false }
+}
+
 async function planMine ({ world, getState, origin, resource = 'raw_iron', targetCount = 1, width = null, length = null, sizes = [16, 24, 32], searchRadius = 8, upperYs = [16, 32, 48], maxLowerLevels = 2,
   maxCandidates = 96, maxWork = 8000000, yieldNow = immediate, requestSections = null, maxCells = 1500000, survey: suppliedSurvey = null, isProtected = () => false } = {}, { signal } = {}) {
   const state = getState?.(), scope = mineWorldScope(state), liveScope = mineLiveScope(state)
@@ -250,8 +275,9 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
   if (!possibleUppers.length) return { status: 'blocked', code: 'MINE_SURFACE_TOO_LOW' }
   const uppers = possibleUppers.filter(y => surfaceY - y <= MAX_SHAFT_DEPTH)
   if (!uppers.length) return { status: 'blocked', code: 'MINE_SHAFT_DEPTH_EXCEEDED' }
+  const surfaceRadius = Math.min(8, searchRadius)
   const radius = Math.ceil(Math.max(...dimensions.flat()) / 2) + searchRadius + 4
-  const bounds = { min: { x: Math.floor(origin.x) - radius, y: upperOnly ? Math.min(...uppers) - 2 : -60, z: Math.floor(origin.z) - radius }, max: { x: Math.floor(origin.x) + radius, y: Math.min(319, surfaceY + 3), z: Math.floor(origin.z) + radius } }
+  const bounds = { min: { x: Math.floor(origin.x) - radius, y: upperOnly ? Math.min(...uppers) - 2 : -60, z: Math.floor(origin.z) - radius }, max: { x: Math.floor(origin.x) + radius, y: Math.min(319, surfaceY + 3 + surfaceRadius), z: Math.floor(origin.z) + radius } }
   const survey = suppliedSurvey ?? await surveyMine({ world, getState, bounds, requestSections, maxCells, yieldNow, isProtected }, { signal })
   if (!['ready', 'partial'].includes(survey.status)) return survey
   let work = 0, nextYield = 512, evaluated = 0, rejectedUnknown = 0, rejectedHazard = 0
@@ -266,31 +292,38 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
     const lowersByUpper = new Map(uppers.map(upperY => [upperY, upperOnly ? [null] : lowerLevels(survey, upperY, maxLowerLevels, surfaceY - MAX_SHAFT_DEPTH, resource)]))
     const lowers = [...new Set([...lowersByUpper.values()].flat())]
     if (!lowers.length) return { status: 'blocked', code: 'MINE_SHAFT_DEPTH_EXCEEDED', diagnostics: { surfaceY, observedLowerYs: observedLowers, maximumShaftDepth: MAX_SHAFT_DEPTH } }
-    const shifts = [...new Set([-searchRadius, 0, searchRadius])], candidates = []
+    const shifts = [...new Set([-searchRadius, 0, searchRadius])], candidates = [], surfaces = new Map()
     for (const [width, length] of dimensions) for (const dx of shifts) for (const dz of shifts) for (const direction of Object.keys(DIRECTIONS)) for (const upperY of uppers) for (const lowerY of lowersByUpper.get(upperY)) {
       const f = DIRECTIONS[direction], r = { x: -f.z, z: f.x }
       const anchor = { x: Math.floor(origin.x + dx - f.x * (length - 1) / 2 - r.x * (width - 1) / 2), z: Math.floor(origin.z + dz - f.z * (length - 1) / 2 - r.z * (width - 1) / 2) }
-      candidates.push({ scope, anchor, direction, width, length, surfaceY, upperY, lowerY })
+      const surfaceKey = `${anchor.x},${anchor.z},${direction},${width}`
+      if (!surfaces.has(surfaceKey)) surfaces.set(surfaceKey, observedSurfaceY({ anchor, direction, width, surfaceY }, surfaceRadius, read))
+      const entrance = surfaces.get(surfaceKey)
+      if (entrance.y >= upperY + 3 && entrance.y - (lowerY ?? upperY) <= MAX_SHAFT_DEPTH) {
+        candidates.push({ options: { scope, anchor, direction, width, length, surfaceY: entrance.y, upperY, lowerY }, entranceReady: entrance.ready })
+      }
+      await checkpoint()
     }
     // Cheap bounds compare every rectangle before expensive construction and
     // vein evaluation. Keep all size/direction/upper-height families represented.
     const pools = new Map(), ranked = []
     const potentialAt = await potentialIndex(survey, resource, [...new Set([...uppers, ...lowers.filter(y => y != null)])], account, checkpoint)
-    for (const options of candidates) {
+    const compare = (a, b) => Number(b.entranceReady) - Number(a.entranceReady) || Number(b.potential >= targetCount) - Number(a.potential >= targetCount) || a.optimisticCost - b.optimisticCost
+    for (const { options, entranceReady } of candidates) {
       const targetY = ['coal', 'raw_iron', 'raw_copper'].includes(resource) ? options.upperY : options.lowerY
       account(); const potential = potentialAt(options)
-      const optimisticCost = (surfaceY - targetY) * 5 + options.width * options.length * Math.min(1, targetCount / Math.max(1, potential))
-      const candidate = { options, potential, optimisticCost }
+      const optimisticCost = (options.surfaceY - targetY) * 5 + options.width * options.length * Math.min(1, targetCount / Math.max(1, potential))
+      const candidate = { options, potential, optimisticCost, entranceReady }
       const family = `${options.width}:${options.length}:${options.direction}:${options.upperY}`
       const previous = pools.get(family)
-      if (!previous || Number(potential >= targetCount) > Number(previous.potential >= targetCount) || (potential >= targetCount) === (previous.potential >= targetCount) && optimisticCost < previous.optimisticCost) pools.set(family, candidate)
+      if (!previous || compare(candidate, previous) < 0) pools.set(family, candidate)
       ranked.push(candidate)
       await yieldNow(); guard()
     }
-    const compare = (a, b) => Number(b.potential >= targetCount) - Number(a.potential >= targetCount) || a.optimisticCost - b.optimisticCost
     const selected = [...pools.values()].sort(compare).slice(0, maxCandidates), used = new Set(selected)
     for (const entry of ranked.sort(compare)) { if (selected.length >= maxCandidates) break; if (!used.has(entry)) { used.add(entry); selected.push(entry) } }
     let best = null
+    const unsafeSamples = {}
     for (const { options } of selected) {
       guard()
       let plan = createMineGeometry(options), evaluation = await evaluateMineGeometry(plan, survey, { origin, resource, targetCount, checkpoint, read, account })
@@ -312,12 +345,15 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
       }
       evaluated++
       if (evaluation.unknown) rejectedUnknown++
-      if (evaluation.hazards) rejectedHazard++
+      if (evaluation.hazards) {
+        rejectedHazard++
+        if (evaluation.unsafe) unsafeSamples[evaluation.unsafe.stage] ??= evaluation.unsafe.blocks
+      }
       if (evaluation.eligible && (!best || Number(evaluation.meetsTarget) > Number(best.evaluation.meetsTarget) || evaluation.meetsTarget === best.evaluation.meetsTarget && (evaluation.meetsTarget ? evaluation.targetCost < best.evaluation.targetCost : evaluation.shortfall < best.evaluation.shortfall || evaluation.shortfall === best.evaluation.shortfall && evaluation.targetCost < best.evaluation.targetCost))) best = { plan, evaluation }
       // Geometry work itself also yields, including uniformly unknown areas.
       await yieldNow(); guard()
     }
-    const diagnostics = { candidates: candidates.length, prefiltered: selected.length, evaluated, work, known: survey.known, unknown: survey.unknown, observedOres: survey.ores.length, rejectedUnknown, rejectedHazard, upperYs: uppers, lowerYs: lowers.filter(y => y != null), dimensions, upperOnly }
+    const diagnostics = { candidates: candidates.length, prefiltered: selected.length, evaluated, work, known: survey.known, unknown: survey.unknown, observedOres: survey.ores.length, rejectedUnknown, rejectedHazard, unsafeSamples, upperYs: uppers, lowerYs: lowers.filter(y => y != null), dimensions, upperOnly }
     if (!best) return { status: rejectedUnknown ? 'observing' : 'blocked', code: rejectedUnknown ? 'MINE_TERRAIN_UNKNOWN' : 'MINE_NO_SAFE_RESOURCE_PLAN', needsObservation: survey.needsObservation, diagnostics }
     best.plan.evaluation = { ...best.evaluation, observationOnly: true, source: 'current_received_world', terrainRevision: survey.revision, optimality: 'best_complete_candidate_in_bounded_search', ...diagnostics }
     return { status: 'planned', code: best.evaluation.meetsTarget ? 'MINE_TARGET_REACHABLE' : 'MINE_RESOURCE_SHORTFALL', plan: best.plan, needsObservation: survey.needsObservation, diagnostics }

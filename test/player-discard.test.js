@@ -60,6 +60,21 @@ test('the drop request counts only on the server answer and commits the emptied 
   assert.equal(open, null)
 })
 
+test('a matching empty drop response may omit the ID, but a remaining stack still needs it', async () => {
+  for (const [amount, count, expectedPhase] of [[4, 0, 'completed'], [3, 1, 'failed']]) {
+    let item = { network_id: 5, count: 4, metadata: 0, has_stack_id: true, stack_id: 77, block_runtime_id: 0 }
+    const crafting = { rawItem: () => item, snapshot: () => ({ openContainer: { id: 1 }, pendingRequestId: null }) }
+    const discard = createDiscard({ client: { queue: () => {} }, getState: alive, crafting, allocateRequestId: () => -6,
+      timeoutMs: 1000, onInventory: delta => { item = delta.item } })
+    const pending = discard.drop(3, amount)
+    discard.applyPacket('item_stack_response', { responses: [{ status: 'ok', request_id: -6, containers: [
+      { slot_type: { container_id: 'hotbar_and_inventory' }, slots: [{ slot: 3, count }] }
+    ] }] })
+    assert.equal((await pending).phase, expectedPhase)
+    assert.equal(item.count, expectedPhase === 'completed' ? 0 : 4)
+  }
+})
+
 test('a rejected drop is not counted', async () => {
   const raws = { 0: { network_id: 5, count: 1, metadata: 0, has_stack_id: true, stack_id: 9, block_runtime_id: 0 } }
   const crafting = { rawItem: slot => raws[slot], snapshot: () => ({ openContainer: { id: 1 }, pendingRequestId: null }), openInventory: async () => {}, closeContainer: () => {} }
@@ -68,6 +83,18 @@ test('a rejected drop is not counted', async () => {
   await new Promise(resolve => setImmediate(resolve))
   discard.applyPacket('item_stack_response', { responses: [{ status: 'error', request_id: -7 }] })
   assert.equal((await pending).phase, 'rejected')
+})
+
+test('a junk slot replaced along the walk is checked again before discarding', async () => {
+  let inventory = inv([[0, 'granite', 10]])
+  const result = await discardJunk({
+    drop: async () => assert.fail('a replacement stack cannot be discarded by the old list'),
+    walk: async () => { inventory = inv([[0, 'raw_iron', 10]]); return true },
+    getFeet: () => ({ x: 0.5, y: 0, z: 0.5 }),
+    cells: () => new Map([[0, { x: 4, y: 0, z: 0 }]]),
+    getInventory: () => inventory, shared: {}
+  })
+  assert.equal(result, 0)
 })
 
 test('throws from a walkable cell 3-6 m away and walks straight back; with no such cell it throws nothing', async () => {

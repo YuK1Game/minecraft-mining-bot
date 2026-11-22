@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createMineActions } = require('../src/modes/mining/mine-actions')
+const { createMineActions, visibleMinePlacement } = require('../src/modes/mining/mine-actions')
 const { receivedLight, createMineLighting } = require('../src/modes/mining/mine-lighting')
 const { bottomSlab } = require('../src/modes/mining/mine-observed')
 const { cargo } = require('../src/modes/mining/mine-storage')
@@ -31,6 +31,50 @@ test('real HousePorts placement does not complete or replay without block and in
   const second = await f.ports.place(request)
   assert.equal(second.code, 'MINE_ACTION_UNCONFIRMED')
   assert.equal(f.sends(), 1)
+})
+
+test('an unconfirmed ordinary placement is retried once after confirmed air and replenished stock', async () => {
+  const f = fixture(), request = { position: { x: 1, y: 1, z: 1 }, name: 'cobblestone' }
+  const branch = f.ctx.memory.early.mine.branch
+  assert.equal((await f.ports.place(request)).code, 'MINE_PLACEMENT_UNCONFIRMED')
+  const original = branch.pendingAction
+  f.ctx.runtime.minePlacementAudit = async () => ({ target: { serverConfirmed: false } })
+  assert.equal(await f.ports.reconcilePlacement(), false)
+  assert.equal(branch.pendingAction, original)
+  f.ctx.runtime.minePlacementAudit = async () => ({ target: { serverConfirmed: true } })
+  f.inventory.items[0].count--
+  assert.equal(await f.ports.reconcilePlacement(), false)
+  assert.equal(branch.pendingAction, original)
+
+  f.inventory.items[0].count++
+  assert.equal(await f.ports.reconcilePlacement(), true)
+  assert.equal(branch.pendingAction, undefined)
+  assert.equal(branch.lastReconciledPlacement.pending, original)
+  assert.equal(f.sends(), 1)
+
+  assert.equal((await f.ports.place(request)).code, 'MINE_PLACEMENT_UNCONFIRMED')
+  assert.equal(branch.pendingAction.retryAfterAudit, true)
+  assert.equal(await f.ports.reconcilePlacement(), false)
+  assert.equal((await f.ports.place(request)).code, 'MINE_ACTION_UNCONFIRMED')
+  assert.equal(f.sends(), 2)
+})
+
+test('a placement audit does not clear the checkpoint after a scope change or failed save', async () => {
+  const f = fixture(), request = { position: { x: 1, y: 1, z: 1 }, name: 'cobblestone' }
+  await f.ports.place(request)
+  const branch = f.ctx.memory.early.mine.branch, original = branch.pendingAction
+  f.ctx.runtime.minePlacementAudit = async () => {
+    f.state.connectionId = 'changed'
+    return { target: { serverConfirmed: true } }
+  }
+  assert.equal(await f.ports.reconcilePlacement(), false)
+  assert.equal(branch.pendingAction, original)
+  f.state.connectionId = 'a'
+  f.ctx.runtime.minePlacementAudit = async () => ({ target: { serverConfirmed: true } })
+  f.ctx.saveMine = async () => false
+  assert.equal(await f.ports.reconcilePlacement(), false)
+  assert.equal(branch.pendingAction, original)
+  assert.equal(branch.lastReconciledPlacement, undefined)
 })
 
 test('received placement clears its durable intent and cancelled runs cannot reuse a block as progress', async () => {
@@ -135,6 +179,35 @@ test('each layer has sized cargo pairs plus a separated supply pair', () => {
     assert.equal(room.pairs.filter(p => p.purpose === 'supply').length, 1)
     for (const a of room.pairs) for (const b of room.pairs) if (a !== b) for (const p of a.positions) for (const q of b.positions) assert.ok(Math.abs(p.x - q.x) + Math.abs(p.z - q.z) > 1)
   }
+})
+
+test('a cave seal uses the visible side when its first support is hidden', () => {
+  const position = { x: 3, y: 1, z: 3 }, feet = { x: 1.515, y: -0.5, z: 2.504 }
+  const supports = new Set(['3,0,3', '2,1,3', '4,1,3'])
+  const block = p => supports.has([p.x, p.y, p.z].join(',')) ? solid : air
+  const request = { position, name: 'cobblestone' }
+  assert.equal(visibleMinePlacement(block, { ...request, clicked: { x: 3, y: 0, z: 3 }, face: 1 }, feet), null)
+  assert.equal(visibleMinePlacement(block, request, feet)?.face, 5)
+})
+
+test('an air opening in a future torch position keeps its temporary seal record', async () => {
+  const plan = createMineGeometry({ scope: { profile: 'test', realmId: 'realm', dimension: 'overworld' }, anchor: { x: 0, z: 0 }, surfaceY: 64, upperY: 16, lowerY: -54 })
+  const steps = mineSteps(plan, { layer: 'upper' }), index = steps.findIndex(step => step.kind === 'storage')
+  const current = stepCells(plan, steps[index]), next = stepCells(plan, steps[index + 1])
+  const target = next.torch[0].position
+  const adjacent = current.clear.find(p => Math.abs(p.x - target.x) + Math.abs(p.z - target.z) === 1 && p.y === target.y)
+  assert.ok(adjacent)
+  const here = p => p.x === target.x && p.y === target.y && p.z === target.z
+  const branch = { plan, progress: { upper: { cursor: index } }, temporarySeals: [] }
+  const ctx = { memory: { early: { mine: { branch } } }, getBlock: (x, y, z) => here({ x, y, z }) ? air : solid,
+    getFeet: () => ({ x: adjacent.x + 0.5, y: adjacent.y - 1, z: adjacent.z + 0.5 }), cancelled: () => false }
+  let recorded = false
+  const actions = { block: p => ctx.getBlock(p.x, p.y, p.z), done: () => ({ status: 'completed', serverConfirmed: true }),
+    inventory: () => ({ known: true, items: [{ name: 'minecraft:cobbled_deepslate', count: 1 }] }),
+    save: async () => { recorded = branch.temporarySeals.some(at => here(at) && at.name === 'minecraft:cobbled_deepslate'); return true },
+    place: ({ position, name }) => { assert.deepEqual(position, target); assert.equal(name, 'minecraft:cobbled_deepslate'); assert.equal(recorded, true); return { status: 'interrupted', code: 'AFTER_SEAL_CHECKPOINT' } } }
+  const out = await createMineLighting(ctx, actions).finish(plan, current)
+  assert.equal(out.code, 'AFTER_SEAL_CHECKPOINT')
 })
 
 test('a future planned corridor is sealed when it opens into an unfinished cave', () => {

@@ -1,5 +1,10 @@
 'use strict'
 
+const { air, solid } = require('./mine-common')
+const { clearableSitePlant } = require('../../quarry/storage/storage-site-terrain')
+
+const shaftEntryBackingUsable = block => solid(block) || air(block) || clearableSitePlant(block)
+
 // The same outside wall cells are budgeted by the planner and checked by the
 // constructor. Ground-level access stays open; underground doorways are only
 // opened by the executor after their adjoining corridor is received as safe.
@@ -17,4 +22,4 @@ function shaftBoundary (plan, { minY = plan?.shaft?.bottomY, maxY = plan?.shaft?
   return [...walls.values()]
 }
 
-module.exports = { shaftBoundary }
+module.exports = { shaftBoundary, shaftEntryBackingUsable }

@@ -1,7 +1,9 @@
 'use strict'
 
 const { mineWorldScope, sameWorld } = require('./mine-state')
-const { live } = require('./mine-common')
+const { at, inventory, live } = require('./mine-common')
+const { supplyNeeds } = require('./mine-needs')
+const { count } = require('../dragon-supply-kit')
 
 // Work history is used only to keep the goal watcher informed. It is never a
 // certificate of present terrain, light, footing, or resource ownership.
@@ -32,4 +34,23 @@ function noteMineProgress (ctx) {
   return ctx.goal?.mark?.('mine:construction', -constructionCount(ctx.memory?.early?.mine, world), 1) ?? false
 }
 
-module.exports = { constructionCount, noteMineProgress }
+function noteMinePreparation (ctx, branch, layer) {
+  if (!live(ctx)) return false
+  const plan = branch.plan, level = plan.layers.find(p => p.id === layer)
+  if (!level || branch.shaft?.depth <= level.y) return false
+  const stock = inventory(ctx)
+  if (!stock) return false
+  const needs = supplyNeeds(plan, layer, { inventory: stock, getBlock: p => at(ctx, p), refillTorches: branch.refillTorches === true })
+  if (!needs) return false
+
+  const have = name => count(name, stock.items)
+  const ladders = Math.min(needs.ladder, have('ladder'))
+  const sticksNeeded = Math.ceil((needs.ladder - ladders) / 3) * 7
+  const wood = Math.min(sticksNeeded, have('stick') + 2 * have('planks') + 8 * have('log'))
+  const other = Object.entries(needs).reduce((sum, [name, amount]) => name === 'ladder' ? sum : sum + Math.min(amount, have(name)), 0)
+  // Seven sticks make three ladders. Count the received wood in stick
+  // equivalents and give the actual finished ladders a small extra weight.
+  return ctx.goal?.mark?.('mine:preparation', -(ladders * 8 + wood * 3 + other), 1) ?? false
+}
+
+module.exports = { constructionCount, noteMineProgress, noteMinePreparation }

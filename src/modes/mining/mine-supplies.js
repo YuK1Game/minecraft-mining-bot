@@ -3,16 +3,21 @@
 const { blocked, interrupted } = require('../return/return-result')
 const { held, bare, solid, air, confirmed } = require('./mine-observed')
 const { createOpenStand } = require('../open-stand')
-const { insideMine } = require('./mine-location')
+const { insideMine, reservedShaftCell } = require('./mine-location')
 const { takeSupplies } = require('./mine-stock')
-const { supplyNeeds } = require('./mine-needs')
+const { supplyNeeds, ladderBatches } = require('./mine-needs')
+const { occupied } = require('./mine-carry')
+const { count } = require('../dragon-supply-kit')
+const { placementTopVisible, planPlacementAccess } = require('../../actions/action-access')
 
 // Infrastructure is prepared in bounded batches. Torches can bootstrap from
 // charcoal, so preparing a coal mine never recursively starts another mine.
 function createMineSupplies (ctx, actions, storage) {
   const stopped = () => ctx.cancelled() || ctx.signal?.aborted
   const wait = (code, detail = null) => blocked(code, { kind: 'supplies_changed' }, { detail })
-  const have = name => held(actions.inventory(), name) ?? 0
+  const have = name => name === 'planks' || name === 'log'
+    ? count(name, actions.inventory()?.items ?? [])
+    : held(actions.inventory(), name) ?? 0
   const item = test => actions.inventory()?.items.find(i => i.count > 0 && test(bare(i.name)))
   const openStand = createOpenStand({ getBlock: (x, y, z) => actions.block({ x, y, z }), getFeet: ctx.getFeet, walk: to => actions.walk(to) })
   async function acquire (name, amount) {
@@ -31,7 +36,50 @@ function createMineSupplies (ctx, actions, storage) {
     const far = at => Math.hypot(at.x + 0.5 - p.x, at.y - p.y, at.z + 0.5 - p.z)
     return found.sort((a, b) => far(a) - far(b)).slice(0, 4)
   }
-  async function station (name) {
+  async function placeStation (name, branch) {
+    const eye = () => {
+      const feet = ctx.getFeet()
+      return feet && { ...feet, y: feet.y + 1.62 }
+    }
+    const feet = ctx.getFeet()
+    if (!feet) return { result: wait('MINE_POSITION_UNKNOWN') }
+    const centre = { x: Math.floor(feet.x), y: Math.floor(feet.y + 0.001), z: Math.floor(feet.z) }
+    const reserved = p => reservedShaftCell(branch?.plan, p)
+    const targets = [], ground = []
+    for (let x = centre.x - 3; x <= centre.x + 3; x++) for (let z = centre.z - 3; z <= centre.z + 3; z++) {
+      for (let y = centre.y - 2; y <= centre.y + 2; y++) {
+        const position = { x, y, z }, floor = { x, y: y - 1, z }
+        const block = actions.block(floor)
+        if (!solid(block) || !air(actions.block(position)) || !air(actions.block({ x, y: y + 1, z }))) continue
+        ground.push({ ...block, position: floor })
+        if (!reserved(position) && Math.hypot(x + 0.5 - feet.x, z + 0.5 - feet.z) >= 1.1) targets.push(position)
+      }
+    }
+    const distance = p => Math.hypot(p.x + 0.5 - feet.x, p.y - feet.y, p.z + 0.5 - feet.z)
+    targets.sort((a, b) => distance(a) - distance(b))
+    const visible = position => placementTopVisible({ state: { position: eye() }, target: position, getBlock: actions.block })
+    let position = targets.find(visible)
+    if (!position) {
+      const access = planPlacementAccess({ state: { position: eye() }, targets, blocks: ground, getBlock: actions.block })
+      if (!access) return { result: wait('MINE_STATION_SPACE_UNAVAILABLE') }
+      const moved = await actions.walk(access.standpoint)
+      if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
+      if (!confirmed(moved)) return { result: moved }
+      if (!visible(access.target)) return { result: wait('MINE_STATION_SIGHT_CHANGED') }
+      position = access.target
+    }
+    if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
+    const placed = await actions.place({ position, name, clicked: { ...position, y: position.y - 1 }, face: 1 })
+    return confirmed(placed) ? { position } : { result: placed }
+  }
+  async function homeStation (name, { receivedOnly = false } = {}) {
+    if (!ctx.shared?.playerHouse?.origin || stopped()) return null
+    const facility = name === 'furnace' ? 'furnace' : 'table'
+    if (receivedOnly && require('../dragon-home-use').homeTarget(ctx, facility).state !== 'standing') return null
+    const home = await require('../dragon-home-iron').homeStation(ctx, facility)
+    return home.at ? { position: home.at } : { result: home.result ?? wait('MINE_HOME_STATION_APPROACH', home.reason) }
+  }
+  async function station (name, { accessibleOnly = false } = {}) {
     const branch = ctx.memory?.early?.mine?.branch
     if (insideMine(ctx, branch)) {
       const out = await require('./mine-route').leaveMine(ctx, branch)
@@ -45,6 +93,7 @@ function createMineSupplies (ctx, actions, storage) {
     for (const seen of nearby(name)) {
       if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
       if (openStand.here(seen)) return { position: seen }
+      if (accessibleOnly) continue
       for (const stand of openStand.stands(seen)) {
         if (attempts >= 4) break
         if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
@@ -55,65 +104,111 @@ function createMineSupplies (ctx, actions, storage) {
         if (confirmed(moved) && openStand.here(seen)) return { position: seen }
       }
     }
-    if (have(name) < 1) return { result: await acquire(name, 1) }
-    const feet = ctx.getFeet()
-    if (!feet) return { result: wait('MINE_POSITION_UNKNOWN') }
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]]) {
-      const p = { x: Math.floor(feet.x) + dx, y: Math.ceil(feet.y), z: Math.floor(feet.z) + dz }
-      if (branch?.plan?.shaft.columns.some(c => c.x === p.x && c.z === p.z) || branch?.plan?.shaft.approach && Math.floor(branch.plan.shaft.approach.x) === p.x && Math.floor(branch.plan.shaft.approach.z) === p.z) continue
-      if (!air(actions.block(p)) || !solid(actions.block({ ...p, y: p.y - 1 })) || !air(actions.block({ ...p, y: p.y + 1 }))) continue
-      const placed = await actions.place({ position: p, name, clicked: { ...p, y: p.y - 1 }, face: 1 })
-      return confirmed(placed) ? { position: p } : { result: placed }
+    if (accessibleOnly) return {}
+    if (have(name) < 1) {
+      const fullInventory = occupied(actions.inventory()) === 36
+      const preview = ctx.operations?.crafting?.preview
+      if (name === 'crafting_table' && fullInventory && preview?.('minecraft:crafting_table', { times: 1 })?.ready === false) {
+        const home = await homeStation(name)
+        if (home) return home
+      }
+      return { result: await acquire(name, 1) }
     }
-    return { result: wait('MINE_STATION_SPACE_UNAVAILABLE') }
+    const placed = await placeStation(name, branch)
+    if (placed.result?.code === 'MINE_STATION_SPACE_UNAVAILABLE') {
+      return await homeStation(name, { receivedOnly: true }) ?? placed
+    }
+    return placed
   }
   async function planks (amount) {
-    const count = (actions.inventory()?.items ?? []).filter(i => /_planks$/.test(i.name) && i.count > 0).reduce((sum, i) => sum + i.count, 0)
-    if (count < amount) return acquire('planks', amount)
+    if (have('planks') < amount) return acquire('planks', amount)
     return null
   }
   async function craft (name, times, table = null) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     const before = have(name)
+    if (name === 'torch') ctx.goal?.mark?.('mine:torch-refill', -before, 1)
     await actions.house.craft('minecraft:' + name, times, table, { fitMaterials: true })
     if (stopped()) return interrupted('MINE_INTERRUPTED')
-    return have(name) > before ? wait('MINE_SUPPLIES_CRAFTED', `${name} ${have(name)}`) : wait('MINE_CRAFT_UNCONFIRMED', actions.house.why())
+    const after = have(name)
+    if (after <= before) return wait('MINE_CRAFT_UNCONFIRMED', actions.house.why())
+    if (name === 'torch') ctx.goal?.mark?.('mine:torch-refill', -after, 1)
+    return wait('MINE_SUPPLIES_CRAFTED', `${name} ${after}`)
+  }
+  async function makeSticks (target) {
+    const times = Math.min(8, Math.ceil((target - have('stick')) / 4))
+    const availablePlanks = have('planks')
+    if (availablePlanks < times * 2 && occupied(actions.inventory()) === 36) {
+      // A smaller useful batch can consume stacks and give the Bot room to
+      // gather. Require the normal preview to prove a usable destination.
+      for (let smaller = Math.floor(availablePlanks / 2); smaller > 0; smaller--) {
+        if (ctx.operations?.crafting?.preview?.('minecraft:stick', { times: smaller })?.ready === true) return craft('stick', smaller)
+      }
+    }
+    const missing = await planks(times * 2)
+    return missing ?? craft('stick', times)
+  }
+  async function craftAtTable (name, times) {
+    const table = await station('crafting_table')
+    return table.result ?? craft(name, times, table.position)
   }
   async function torches (amount) {
     const batches = Math.min(8, Math.ceil((amount - have('torch')) / 4))
-    if (have('stick') < batches) { const times = Math.min(8, Math.ceil((batches - have('stick')) / 4)), missing = await planks(2 * times); return missing ?? craft('stick', times) }
-    const fuel = have('coal') + have('charcoal')
-    if (fuel >= batches) return craft('torch', batches)
-    // Charcoal comes from a log in a received furnace, using wooden fuel.
-    // Existing furnace output/input are reconciled by house.smelt first.
-    const furnace = await station('furnace')
-    if (furnace.result) return furnace.result
+    const sticks = have('stick')
+    const fuel = Math.max(have('coal'), have('charcoal'))
+    const ready = Math.min(batches, sticks, fuel)
+    if (ready > 0) return craft('torch', ready)
+    if (sticks < batches) return makeSticks(fuel > 0 ? Math.min(batches, fuel) : batches)
     const log = item(name => /_log$/.test(name) && !/^stripped_/.test(name))
     const plank = item(name => /_planks$/.test(name))
-    const made = await actions.house.smelt(furnace.position, log?.name ?? 'minecraft:oak_log', Math.max(1, batches - fuel), plank?.name, Math.max(1, batches), 'minecraft:charcoal')
+    const amountToSmelt = Math.max(1, batches - fuel)
+    const missing = !log ? 'log' : !plank ? 'planks' : null
+    const gather = () => acquire(missing, missing === 'log' ? amountToSmelt : Math.max(2, batches))
+    // Retrieve fuel already burning or output already ready from an accessible
+    // furnace. Leave for ingredients before creating another one or walking
+    // back to the same empty furnace from the gathering route.
+    const furnace = await station('furnace', { accessibleOnly: missing !== null })
+    if (furnace.result) return furnace.result
+    if (!furnace.position) return gather()
+    const made = await actions.house.smelt(furnace.position, log?.name ?? 'minecraft:oak_log', amountToSmelt, plank?.name, batches, 'minecraft:charcoal')
     if (made > 0) return wait('MINE_CHARCOAL_RECEIVED')
     const need = actions.house.smeltNeed()
-    if (need?.input > 0 && !log) return acquire('log', Math.min(8, need.input))
-    if (need?.fuel && !plank) return acquire('planks', Math.max(2, batches))
+    if (missing && actions.inventory() && (!need || need.input > 0 && !log || need.fuel && !plank)) return gather()
     return wait('MINE_CHARCOAL_UNCONFIRMED', actions.house.why())
   }
-  async function ensure (plan, { layer = 'upper', request = null } = {}) {
+  async function ensure (plan, { layer = 'upper', request = null, shaftOnly = false } = {}) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     if (!actions.inventory()) return blocked('MINE_INVENTORY_UNKNOWN', { kind: 'inventory_update' })
     const id = typeof layer === 'string' ? layer : layer.id
-    const needs = supplyNeeds(plan, id, { inventory: actions.inventory(), getBlock: actions.block })
+    const branch = ctx.memory.early.mine.branch
+    const needs = supplyNeeds(plan, id, {
+      inventory: actions.inventory(), getBlock: actions.block,
+      refillCobblestone: branch.refillCobblestone === true, refillTorches: branch.refillTorches === true
+    })
     if (!needs) return wait('MINE_SUPPLY_LAYER_INVALID')
+    if (shaftOnly) needs.chest = 0
+    // A refill is an outstanding request until its full target is observed.
+    // Crossing the normal carry reserve must not make the Bot leave early.
+    const shaftUnderway = Number.isInteger(branch.shaft?.depth) && branch.shaft.depth < plan.shaft.topY
+    if (shaftUnderway && have('cobblestone') < needs.cobblestone) branch.refillCobblestone = true
     // Only unopened deficits are withdrawn, and an existing supply pair is
     // physically read again. Stored estimates never masquerade as inventory.
     const deficits = Object.fromEntries(Object.entries(needs).map(([name, n]) => [name, Math.max(0, n - have(name))]).filter(([, n]) => n > 0))
-    if (Object.keys(deficits).length && ctx.memory.early.mine.branch.storage?.pairs?.[`${id}:supply`]) {
-      const out = await takeSupplies(ctx, ctx.memory.early.mine.branch, id, needs, storage)
+    if (Object.keys(deficits).length && branch.storage?.pairs?.[`${id}:supply`]) {
+      const out = await takeSupplies(ctx, branch, id, needs, storage)
       if (!confirmed(out)) return out
     }
-    if (have('torch') < needs.torch) return torches(needs.torch)
+    const fromHome = await storage.takeHome?.({ ladder: needs.ladder, cobblestone_slab: needs.cobblestone_slab, stick: 7 * ladderBatches(needs.ladder, have('ladder')) })
+    if (fromHome) return (fromHome.progress?.confirmedTransferred ?? 0) > 0 && fromHome.status === 'completed'
+      ? wait('MINE_HOME_SUPPLIES_RECEIVED') : fromHome
+    if (have('torch') < needs.torch) {
+      branch.refillTorches = true
+      return torches(needs.torch)
+    }
+    delete branch.refillTorches
     const missing = Object.entries(needs).find(([name, amount]) => have(name) < amount)
     if (!missing) {
-      const branch = ctx.memory.early.mine.branch
+      delete branch.refillCobblestone
       if (branch.supplyChecked) {
         delete branch.supplyChecked
         if (!await actions.save()) return wait('MINE_CHECKPOINT_FAILED')
@@ -122,21 +217,25 @@ function createMineSupplies (ctx, actions, storage) {
     }
     const [name, amount] = missing
     if (name === 'cobblestone') return acquire(name, amount)
-    const table = await station('crafting_table')
-    if (table.result) return table.result
+    if (insideMine(ctx, branch)) {
+      const surface = await station('crafting_table')
+      if (surface.result) return surface.result
+    }
+    // Collect the missing ingredients before going to the workbench. A
+    // gather tick for wood can end outside and continue from there.
     if (name === 'ladder') {
-      const batches = Math.min(8, Math.ceil((amount - have(name)) / 3)), sticks = batches * 7
-      if (have('stick') < sticks) { const times = Math.min(8, Math.ceil((sticks - have('stick')) / 4)), missing = await planks(2 * times); return missing ?? craft('stick', times) }
-      return craft(name, batches, table.position)
+      const batches = ladderBatches(amount, have(name)), sticks = batches * 7
+      if (have('stick') < sticks) return makeSticks(sticks)
+      return craftAtTable(name, batches)
     }
     if (name === 'cobblestone_slab') {
       const batches = Math.min(8, Math.ceil((amount - have(name)) / 6))
       if (have('cobblestone') < batches * 3 + needs.cobblestone) return acquire('cobblestone', batches * 3 + needs.cobblestone)
-      return craft(name, batches, table.position)
+      return craftAtTable(name, batches)
     }
     if (name === 'chest') {
       const batches = Math.min(4, amount - have(name)), missing = await planks(batches * 8)
-      return missing ?? craft(name, batches, table.position)
+      return missing ?? craftAtTable(name, batches)
     }
     return wait('MINE_SUPPLIES_MISSING')
   }

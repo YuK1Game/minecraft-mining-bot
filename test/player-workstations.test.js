@@ -112,6 +112,22 @@ test('the actual storage crafting port reclaims its own table on a refused chest
   assert.equal(f.inventory().items[0].name, 'minecraft:crafting_table')
 })
 
+test('plank crafting can use the smallest confirmed batch that empties a material slot', async t => {
+  const f = fixture(t), checked = [], crafted = []
+  let inventory = { known: true, items: [{ slot: 0, name: 'minecraft:oak_log', count: 2 }] }
+  f.operations.crafting.openInventory = async () => {}
+  f.operations.crafting.preview = (output, { times }) => { checked.push([output, times]); return { ready: times === 2 } }
+  f.operations.crafting.craft = async (output, { times }) => {
+    crafted.push([output, times])
+    inventory = { known: true, items: [{ slot: 0, name: output, count: 8 }] }
+  }
+  const ports = createStoragePorts({ operations: f.operations, getBlock: f.getBlock, getFeet: () => f.state.position,
+    getInventory: () => inventory, now: f.now, sleep: f.sleep })
+  assert.equal(await ports.craftPlanks('minecraft:oak_log', 1, 2), true)
+  assert.deepEqual(checked, [['minecraft:oak_planks', 1], ['minecraft:oak_planks', 2]])
+  assert.deepEqual(crafted, [['minecraft:oak_planks', 2]])
+})
+
 test('an interrupted pickup stays pending across controller reload and never mines the cleared table twice', async t => {
   const f = fixture(t); await f.place()
   const record = f.shared.playerWorkstations.records[0]

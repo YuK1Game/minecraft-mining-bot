@@ -71,6 +71,78 @@ test('exhausted requests archive protected geometry and storage, then wait on ne
   assert.equal(mine.search.index,2,'the next fully observed empty region is not retried forever')
 })
 
+test('a stored unstarted site with obstructed backing preserves its entry and continues the survey', async t => {
+  const w = createMineWorld(t), { shaft } = w.plan
+  const getBlock = w.ctx.getBlock
+  w.ctx.getBlock = (x, y, z) => x === shaft.ladder.support.x && y === shaft.topY && z === shaft.ladder.support.z
+    ? { known: true, name: 'minecraft:leaf_litter', boundingBox: 'empty', extra: [] }
+    : getBlock(x, y, z)
+  w.branch.shaft = { entry: true, depth: shaft.topY, landings: {} }
+  w.put(shaft.entryTorch.position, 'torch')
+  const out = await requestMine(w.ctx, { resource: 'diamond', targetHeld: 3 })
+  const mine = w.ctx.memory.early.mine
+  assert.equal(out.result.code, 'MINE_SITE_RETIRED', JSON.stringify(out))
+  assert.equal(mine.branch, undefined)
+  assert.equal(mine.sites[0].retireReason, 'MINE_SHAFT_ENTRY_BACKING_BLOCKED')
+  assert.equal(mine.search.index, 0)
+  assert.equal(w.getBlock(shaft.entryTorch.position.x, shaft.topY, shaft.entryTorch.position.z).name, 'minecraft:torch')
+  assert.equal(w.digs.length, 0)
+  assert.equal(w.places.length, 0)
+})
+
+test('an interrupted exit from an exhausted site resumes retirement without descending again',async t=>{
+  const w=await upper(t),progress=w.branch.progress.upper
+  progress.cursor=progress.stepCount;progress.status='completed'
+  const landing=w.plan.shaft.landings.find(item=>item.layer==='upper')
+  w.setFeet(landing.stand)
+  const move=w.ctx.runtime.mineLadderMove
+  let corrections=0,descending=0
+  w.ctx.runtime.mineLadderMove=async request=>{
+    if(request.to.y<request.from.y)descending++
+    if(request.to.y===w.plan.shaft.topY && request.from.y<request.to.y && corrections===0){
+      corrections++
+      w.setFeet(w.plan.shaft.approach)
+      return {status:'interrupted',code:'LADDER_SERVER_CORRECTION'}
+    }
+    return move(request)
+  }
+  const request={resource:'raw_iron',targetHeld:2}
+  const first=await requestMine(w.ctx,request)
+  assert.equal(first.result.code,'LADDER_SERVER_CORRECTION',JSON.stringify(first))
+  assert.equal(w.feet().y,w.plan.shaft.topY)
+  assert.equal(w.branch.retiring,true)
+  assert.ok(w.saved.some(entry=>entry.branch?.retiring))
+  const chestReads=w.opened.length
+  const second=await requestMine(w.ctx,request)
+  assert.equal(second.result.code,'MINE_SITE_RETIRED',JSON.stringify(second))
+  assert.equal(descending,0,'no ladder descent is sent after the interrupted exit')
+  assert.equal(w.opened.length,chestReads)
+  assert.equal(w.ctx.memory.early.mine.sites[0].plan.id,w.plan.id)
+})
+
+test('a received ore pocket beside a completed section is worked before further corridors',async t=>{
+  const w=await upper(t),cursor=w.branch.progress.upper.cursor
+  const leftover={x:9,y:66,z:7}
+  w.put(leftover,'iron_ore')
+  let out, rounded=false
+  for(let i=0;i<12;i++){
+    out=await requestMine(w.ctx,{resource:'raw_iron',targetHeld:2})
+    if(w.branch.vein && !rounded){
+      w.branch.vein.returnTo.y-=1e-12
+      rounded=true
+    }
+    if(out.done)break
+    assert.ok(['partial','completed'].includes(out.result.status),JSON.stringify(out))
+  }
+  assert.equal(out.done,true,JSON.stringify(out))
+  assert.equal(rounded,true)
+  assert.equal(w.branch.progress.upper.cursor,cursor)
+  assert.equal(w.digs.some(row=>row.target.x===leftover.x && row.target.y===leftover.y && row.target.z===leftover.z && row.name==='minecraft:iron_ore'),true)
+  assert.equal(w.getBlock(leftover.x,leftover.y,leftover.z).name,'minecraft:cobblestone')
+  assert.equal(w.branch.vein,undefined)
+  assert.equal(w.feet().y,70)
+})
+
 test('a vein closes its existing pocket before opening one it cannot refill with carried cobblestone',async t=>{
   const w=await upper(t),step=mineSteps(w.plan,{layer:'upper'}).filter(p=>p.kind==='main')[1],cells=stepCells(w.plan,step)
   w.setFeet({x:9.5,y:65.5,z:6.5});w.branch.request={resource:'raw_iron',targetHeld:10,layer:'upper'}

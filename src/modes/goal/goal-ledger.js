@@ -180,13 +180,13 @@ function createGoalLedger ({ shared, slot = 'dragonGoal', now = Date.now, world 
   // Whether the goal is still held. It is looked at again when its time is up, in another life, connection or
   // dimension, when the Bot stands somewhere else, when the goal has more than it had, or when the wait it was
   // held in (another owner of the input, the night) is over. One decision is given back.
-  function held ({ cell = null, value = null, scope = null, wait = null } = {}) {
+  function held ({ cell = null, value = null, scope = null, wait = null, mineWorkReconciled = false } = {}) {
     const g = goal(), h = g?.hold
     if (!h) return { held: false }
     const basis = h.basis ?? {}
     const code = now() >= h.until ? 'TIME' : scope !== basis.scope ? 'SCOPE' : basis.wait && wait !== basis.wait ? 'WAIT_OVER'
       : cell !== null && basis.cell != null && cell !== basis.cell ? 'MOVED'
-      : Number.isFinite(value) && Number.isFinite(basis.value) && value > basis.value + EPS ? 'GAINED' : null
+      : Number.isFinite(value) && Number.isFinite(basis.value) && value > basis.value + EPS ? 'GAINED' : h.code === 'NO_PROGRESS' && mineWorkReconciled ? 'MINE_WORK_RECONCILED' : null
     if (!code) return { held: true, hold: h }
     g.hold = null
     g.decisions = Math.max(0, limit - 1)

@@ -7,12 +7,13 @@ const { movementInput } = require('../movement/movement')
 const { observedScope } = require('../movement/server-position-verifier')
 const { serverPose, usableServerPose, validPositionVolume, withinPositionVolume, workingFeet } = require('../quarry/exit/quarry-pillar')
 const { FACE, ladderAt, ladderPlan, landingAt, safeBody, fail } = require('../movement/ladder-geometry')
+const { rebaseLadderCorrection, recordLadderFrame } = require('../movement/ladder-correction')
 const copy = value => structuredClone(value)
 const horizontal = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
 
-function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acquireInput, ownsInput, releaseInput, onPrediction = () => {}, confirmPosition = null, guard = () => true, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), timeoutMs = null, pollMs = 25 } = {}) {
-  if ([getState, getBlock, getPhysics, getInput, acquireInput, ownsInput, releaseInput, onPrediction, guard, now, sleep].some(fn => typeof fn !== 'function') || confirmPosition != null && typeof confirmPosition !== 'function') throw new Error('Ladder requires live received state, owned Input, physics and position confirmation ports')
+function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acquireInput, ownsInput, releaseInput, getCorrection = () => null, onPrediction = () => {}, confirmPosition = null, guard = () => true, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), timeoutMs = null, pollMs = 25 } = {}) {
+  if ([getState, getBlock, getPhysics, getInput, acquireInput, ownsInput, releaseInput, getCorrection, onPrediction, guard, now, sleep].some(fn => typeof fn !== 'function') || confirmPosition != null && typeof confirmPosition !== 'function') throw new Error('Ladder requires live received state, owned Input, physics and position confirmation ports')
   if (timeoutMs != null && (!Number.isFinite(timeoutMs) || timeoutMs < 100 || timeoutMs > 180000) || !Number.isFinite(pollMs) || pollMs < 1) throw new Error('Invalid ladder bounds')
   let active = null, last = null
   const usedWitnesses = new Set()
@@ -33,10 +34,17 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
     const pose = serverPose(state)
     if (run.input && pose && pose.stamp !== run.lastPoseStamp) {
       run.lastPoseStamp = pose.stamp
-      // Old input predictions are never allowed to overwrite a new correction.
-      // A correction off the currently sent pose ends this operation; its next
-      // caller starts from that received pose and validates the route again.
-      if (distance({ ...pose.position, y: pose.position.y - 1.62 }, run.physical.position) > 0.18) fail('LADDER_SERVER_CORRECTION')
+      const changed = distance({ ...pose.position, y: pose.position.y - 1.62 }, run.physical.position) > 0.18
+      if (changed) {
+        const correction = getCorrection()
+        if (!rebaseLadderCorrection({ run, correction, pose, state, getBlock, now: now() })) {
+          run.correctionDiagnostic = { refusal: run.correctionRefusal, phase: run.phase,
+            feet: [pose.position.x, pose.position.y - 1.62, pose.position.z].map(value => Number(value.toFixed(4))),
+            tick: correction?.tick ?? null,
+            oldestQueuedTick: run.sentFrames[0]?.tick ?? null, newestQueuedTick: run.sentFrames.at(-1)?.tick ?? null }
+          fail('LADDER_SERVER_CORRECTION')
+        }
+      }
     }
     return state
   }
@@ -68,7 +76,7 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
       const controls = { ...base, ...(holdingSneak ? { sneak: true } : {}) }
       try {
         const predicted = run.physics.step(run.physical, controls)
-        safeBody(getBlock, run.physics, predicted.position)
+        safeBody(getBlock, run.physics, predicted.position, run.replayedCorrections > 0 ? run.plan : null)
         // A short braking lookahead avoids circling the centre with residual
         // airborne velocity when getting on/off a ladder.
         let coast = predicted
@@ -118,10 +126,15 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
         const fineLanding = run.physical.onGround && near && horizontal(p, plan.centre) > 0.85
         next = steer(run, plan.to, ontoLanding && (fineLanding || !run.physical.onGround && (horizontal(p, plan.centre) < 0.7 || near)))
       }
-      safeBody(getBlock, run.physics, next.predicted.position)
+      safeBody(getBlock, run.physics, next.predicted.position, run.replayedCorrections > 0 ? run.plan : null)
       const np = next.predicted.position
       if (np.y < Math.min(plan.from.y, plan.to.y) - 0.35 || np.y > Math.max(plan.from.y, plan.to.y) + 1.25 || horizontal(np, plan.centre) > 1.25) fail('LADDER_LEFT_ROUTE')
-      if (horizontal(np, plan.centre) < 0.3 && !next.predicted.onGround && !ladderAt(getBlock, { x: plan.column.x, y: Math.floor(np.y), z: plan.column.z })) fail('LADDER_LOST_CONTACT')
+      // Upward momentum can carry the Bot above the last rung during a
+      // sideways dismount. That frame still has to fit the verified route.
+      const rungY = Math.floor(np.y)
+      const aboveExit = run.phase === 'dismount' && plan.direction === 1 &&
+        horizontal(plan.to, plan.centre) > 0.1 && rungY === plan.maxY + 1
+      if (!aboveExit && horizontal(np, plan.centre) < 0.3 && !next.predicted.onGround && !ladderAt(getBlock, { x: plan.column.x, y: rungY, z: plan.column.z })) fail('LADDER_LOST_CONTACT')
       const settled = run.phase === 'dismount' && !next.controls.sneak && next.predicted.onGround === true && horizontal(np, plan.to) <= 0.08 && Math.abs(np.y - plan.to.y) <= 0.04 && Math.hypot(next.predicted.velocity.x, next.predicted.velocity.z) < 0.008
       run.settledFrames = settled ? run.settledFrames + 1 : 0
       if (distance(run.physical.position, np) < 1e-5 && !settled) run.stalled++
@@ -146,6 +159,7 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
     if (queued.modeled !== true || queued.receiptConfirmed !== true || String(queued.tick) !== run.expectedTick) { run.failure = 'LADDER_INPUT_RECEIPT_UNCONFIRMED'; return }
     run.queued++
     run.lastQueuedTick = String(queued.tick)
+    recordLadderFrame(run.sentFrames, queued)
   }
 
   function cancel (reason = 'LADDER_CANCELLED') {
@@ -158,6 +172,8 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
   async function move (request, { signal } = {}) {
     if (active) return { status: 'blocked', reason: 'LADDER_BUSY', serverConfirmed: false }
     const state = getState(), run = { token: {}, signal, scope: observedScope(state), health: state.health, operationId: request?.operationId, input: null, phase: 'preparing', ticks: 0, queued: 0, previous: {}, settledFrames: 0, stalled: 0, lastPoseStamp: serverPose(state)?.stamp ?? null, originStamp: serverPose(state)?.stamp ?? null }
+    run.sentFrames = []
+    run.replayedCorrections = 0
     active = run
     try {
       check(run)
@@ -185,7 +201,7 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
           check(run)
           if (positionEvidence) {
             if (!landingAt(getBlock, run.physics, run.plan.to) || !run.physical.onGround || horizontal(run.physical.position, run.plan.to) > 0.1) fail('LADDER_LANDING_CHANGED')
-            last = { status: 'completed', serverConfirmed: true, confirmedBy: positionEvidence.kind, positionEvidence, from: copy(run.plan.from), to: copy(run.plan.to), queuedFrames: run.queued }
+            last = { status: 'completed', serverConfirmed: true, confirmedBy: positionEvidence.kind, positionEvidence, from: copy(run.plan.from), to: copy(run.plan.to), queuedFrames: run.queued, replayedCorrections: run.replayedCorrections }
             return copy(last)
           }
         }
@@ -194,7 +210,8 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
       fail(run.settledFrames >= 2 ? 'LADDER_POSITION_UNCONFIRMED' : 'LADDER_TIMEOUT')
     } catch (error) {
       const reason = error.code ?? error.message
-      last = { status: run.cancelled || signal?.aborted || /PREEMPTED|INPUT_CHANGED|SCOPE_CHANGED|DAMAGED|CORRECTION/.test(reason) ? 'interrupted' : 'blocked', reason, serverConfirmed: false, phase: run.phase, queuedFrames: run.queued }
+      last = { status: run.cancelled || signal?.aborted || /PREEMPTED|INPUT_CHANGED|SCOPE_CHANGED|DAMAGED|CORRECTION/.test(reason) ? 'interrupted' : 'blocked', reason, serverConfirmed: false, phase: run.phase, queuedFrames: run.queued, replayedCorrections: run.replayedCorrections,
+        ...(run.correctionDiagnostic ? { correctionDiagnostic: run.correctionDiagnostic } : {}) }
       return copy(last)
     } finally {
       if (active === run) {

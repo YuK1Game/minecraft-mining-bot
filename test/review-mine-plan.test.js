@@ -15,8 +15,8 @@ const saved = require('./fixtures/mine-tunnel-ore-in-view.json')
 
 const state = () => ({ phase: 'spawned', profile: 'mine-test', realm: { id: 'realm' }, dimension: 'overworld', worldSeed: '123', connectionId: 'connection', startedAt: '2026-11-21T00:00:00Z', runtimeEntityId: '1', lifecycle: { deathId: 0 }, health: 20 })
 function fixture ({ full = false } = {}) {
-  const names = [...new Set(['air', 'stone', 'deepslate', 'diamond_ore', 'deepslate_diamond_ore', 'water', 'chest', 'torch', 'cobblestone', 'cobblestone_slab', ...Object.values(saved.legend)])]
-  const registry = { blocksByRuntimeId: Object.fromEntries(names.map((name, id) => [id, { stateId: id, name, boundingBox: ['air', 'water', 'torch'].includes(name) ? 'empty' : 'block', hardness: name === 'deepslate' ? 3 : 1.5, diggable: name !== 'air' && name !== 'water' }])), blockStates: names.map(name => ({ name, states: name === 'cobblestone_slab' ? { 'minecraft:vertical_half': 'bottom' } : {} })), handleStartGame () {} }
+  const names = [...new Set(['air', 'stone', 'deepslate', 'diamond_ore', 'deepslate_diamond_ore', 'water', 'chest', 'torch', 'leaf_litter', 'cobblestone', 'cobblestone_slab', ...Object.values(saved.legend)])]
+  const registry = { blocksByRuntimeId: Object.fromEntries(names.map((name, id) => [id, { stateId: id, name, boundingBox: ['air', 'water', 'torch', 'leaf_litter'].includes(name) ? 'empty' : 'block', hardness: name === 'deepslate' ? 3 : 1.5, diggable: name !== 'air' && name !== 'water' }])), blockStates: names.map(name => ({ name, states: name === 'cobblestone_slab' ? { 'minecraft:vertical_half': 'bottom' } : {} })), handleStartGame () {} }
   const world = createWorld({ registry }), current = state()
   world.applyPacket('start_game', { dimension: 'overworld' })
   const uniform = (sy, id) => {
@@ -250,6 +250,17 @@ test('default geometry can finish every short segment and receive both layers of
   assert.equal(inventory.items.filter(item => item.name === 'minecraft:cobblestone_slab').reduce((n, item) => n + item.count, 0), 32 * 64 - placedSlabs)
 })
 
+test('regional search measures the entrance height at each horizontal candidate', async () => {
+  const f = fixture({ full: true })
+  for (let x = -14; x <= 14; x++) for (let z = -14; z <= 14; z++) f.put({ x, y: 32, z }, 'iron_ore')
+  // The observation centre is above the level of every available entrance.
+  const chosen = await planMine({ ...f, origin: { x: 0.5, y: 66, z: 0.5 }, resource: 'raw_iron', upperYs: [32],
+    width: 16, length: 16, searchRadius: 4, maxCandidates: 12 })
+  assert.equal(chosen.status, 'planned', JSON.stringify(chosen.diagnostics))
+  assert.equal(chosen.plan.shaft.topY, 64)
+  assert.equal(chosen.plan.shaft.topLanding.y, 64)
+})
+
 test('a solid obstruction or an unsupported surface entrance cannot be selected as a mine', async () => {
   for (const mode of ['body', 'hole']) {
     const f = fixture({ full: true })
@@ -261,6 +272,18 @@ test('a solid obstruction or an unsupported surface entrance cannot be selected 
     assert.equal(result.status, 'blocked'); assert.equal(result.plan, undefined)
     assert.equal(result.code, 'MINE_NO_SAFE_RESOURCE_PLAN')
   }
+})
+
+test('a shaft with protected leaf litter in its first backing cell cannot be planned', async () => {
+  const f = fixture({ full: true }), plan = geometry({ width: 16, length: 16 })
+  const backing = { ...plan.shaft.ladder.support, y: plan.shaft.topY }
+  f.put(backing, 'leaf_litter')
+  f.put(point(plan, 9, 32, 7), 'iron_ore')
+  const survey = await surveyMine({ ...f, bounds: { min: { x: -4, y: -60, z: -4 }, max: { x: 36, y: 67, z: 36 } } })
+  const result = await evaluateMineGeometry(plan, survey, { origin: plan.shaft.approach, resource: 'raw_iron', checkpoint: async () => {}, read: p => survey.at(p) })
+  assert.equal(result.eligible, false)
+  assert.equal(result.unsafe.stage, 'surface')
+  assert.ok(result.unsafe.blocks.some(block => block.at === key(backing) && block.name === 'minecraft:leaf_litter'))
 })
 
 test('a low chest foundation is rejected even though its received bounding box is block', async () => {

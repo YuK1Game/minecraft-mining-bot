@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { explore } = require('../src/modes/dragon-supply-gather')
+const { explore, inView } = require('../src/modes/dragon-supply-gather')
 const { MISSES, ROAM_M } = require('../src/modes/supply-roam')
 
 // Solid rock everywhere except the Bot's own cell: no place to walk to in any heading.
@@ -48,4 +48,85 @@ test('a step that walked starts the count again; outside the overworld no trip i
   const nether = tunnel({ dimension: 'nether' })
   for (let i = 0; i < MISSES * 2; i++) await explore(nether.ctx, 'soul_sand')
   assert.equal(nether.trips.length, 0)
+})
+
+test('walking in an area without logs eventually searches further and expands from the same centre', async () => {
+  const h = tunnel()
+  h.ctx.getBlock = (x, y, z) => ({ known: true, name: y <= 46 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y <= 46 ? 'block' : 'empty' })
+  h.memory.early.supplySearch = { 'log:roam': 73 }
+  let feet = h.ctx.getFeet()
+  h.ctx.getFeet = () => feet
+  h.ctx.hands.approach = async target => { feet = { x: target.x + 0.5, y: target.y, z: target.z + 0.5 }; return true }
+  for (let i = 0; i < 7; i++) await explore(h.ctx, 'log')
+  assert.equal(h.trips.length, 0)
+  const centre = { x: Math.floor(feet.x), z: Math.floor(feet.z) }
+  await explore(h.ctx, 'log')
+  for (let i = 0; i < 4 * 8; i++) await explore(h.ctx, 'log')
+  const destinations = h.trips.map(trip => trip.input.destination)
+  assert.deepEqual(destinations, [
+    { x: centre.x + ROAM_M, z: centre.z }, { x: centre.x, z: centre.z + ROAM_M },
+    { x: centre.x - ROAM_M, z: centre.z }, { x: centre.x, z: centre.z - ROAM_M },
+    { x: centre.x + 2 * ROAM_M, z: centre.z }
+  ])
+})
+
+test('an early long-trip arrival is followed by a short walk into the selected area', async () => {
+  const h = tunnel()
+  let feet = h.ctx.getFeet()
+  h.ctx.getFeet = () => feet
+  h.ctx.travelTo = async ({ destination }) => {
+    feet = { x: destination.x - 19.5, y: feet.y, z: destination.z + 0.5 }
+    return { phase: 'arrived', ended: 'finished' }
+  }
+  for (let i = 0; i < MISSES; i++) await explore(h.ctx, 'log')
+
+  const search = h.memory.early.supplySearch
+  assert.deepEqual(search['log:roamTarget'], { x: -4840 + ROAM_M, z: -4987 })
+  // The regular next heading follows the Z axis instead of returning to the selected area.
+  search.log = 7
+  h.ctx.getBlock = (x, y, z) => ({ known: true, name: y <= 46 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y <= 46 ? 'block' : 'empty' })
+  h.ctx.hands.approach = async ({ x, y, z }) => { feet = { x: x + 0.5, y, z: z + 0.5 }; return true }
+  await explore(h.ctx, 'log')
+  assert.equal(feet.x, search['log:roamTarget'].x - 7.5)
+  assert.equal(feet.z, search['log:roamTarget'].z + 0.5)
+  await explore(h.ctx, 'log')
+  assert.equal(search['log:roamTarget'], undefined)
+})
+
+test('long wood search uses a received tree beyond local reach and preserves the fallback search', async () => {
+  const h = tunnel()
+  const getBlock = h.ctx.getBlock
+  const target = { x: -4819, z: -4967 }
+  h.ctx.getBlock = (x, y, z) => {
+    if (x === -4825 && y === 47 && z === -4987) return { known: true, name: 'minecraft:oak_log', protected: true }
+    if (x === -4824 && y === 47 && z === -4987) return { known: false, name: 'minecraft:oak_log' }
+    if (x === target.x && y === 46 && z === target.z) return { known: true, name: 'minecraft:oak_log' }
+    return getBlock(x, y, z)
+  }
+  h.ctx.travelTo = async input => {
+    h.trips.push(input.destination)
+    return { phase: 'blocked' }
+  }
+  for (let i = 0; i < MISSES; i++) await explore(h.ctx, 'log')
+  assert.deepEqual(h.trips, [target])
+  assert.match(h.lines[0], /受信済みの原木へ向かいます/)
+
+  for (let i = 0; i < MISSES; i++) await explore(h.ctx, 'log')
+  assert.deepEqual(h.trips, [target, { x: -4840 + ROAM_M, z: -4987 }])
+})
+
+test('protected logs at home do not cancel travel as though wood had been found', async () => {
+  const h = tunnel()
+  h.ctx.shared.playerHouse = { origin: { x: -4840, y: 46, z: -4987 } }
+  const getBlock = h.ctx.getBlock
+  h.ctx.getBlock = (x, y, z) => {
+    if (x === -4837 && y === 47 && z === -4984) return { known: true, name: 'minecraft:oak_log' }
+    if (x === -4842 && y === 47 && z === -4987) return { known: true, name: 'minecraft:oak_log', protectionSource: 'build' }
+    return getBlock(x, y, z)
+  }
+
+  assert.deepEqual(inView(h.ctx, 'log'), [])
+  for (let i = 0; i < MISSES; i++) await explore(h.ctx, 'log')
+  assert.equal(h.trips.length, 1)
+  assert.equal(h.trips[0].until, false)
 })

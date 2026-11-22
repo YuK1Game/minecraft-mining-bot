@@ -165,6 +165,21 @@ test('far from the house on the map the trip is started; beside the house on its
   assert.deepEqual(near.did, ['approach'])
 })
 
+test('a long trip hands off to the local home route near the porch at its level', async () => {
+  const f = bot(createOverhangWorld(), { x: origin.x + 60, y: origin.y, z: origin.z + 9 })
+  let trips = 0
+  f.ctx.travelTo = async ({ destination }, { until }) => {
+    trips++
+    assert.equal(until(), false)
+    Object.assign(f.body, { x: destination.x + 17, y: origin.y + 8, z: destination.z })
+    assert.equal(until(), false)
+    f.body.y = origin.y
+    assert.equal(until(), true)
+  }
+  assert.equal(await approachHome(f.ctx, chestOf(origin)), false)
+  assert.equal(trips, 1)
+})
+
 test('a bot the trip already counts as arrived at the porch does not start the trip again', async () => {
   // Live 2026-11-18 22:55 JST: about 20 m from the porch (-4898, -4984), which the trip calls arrived, and farther than that from the chest inside.
   const f = bot(createOverhangWorld(), { x: -4885, y: 77, z: -4970 })
@@ -251,11 +266,20 @@ test('three metres from the furnace through the west wall is not at the furnace:
   world.setBlock(furnace.x, furnace.y, furnace.z, 'furnace')
   const f = bot(world, { x: origin.x - 1, y: origin.y + 1, z: origin.z + 5 })
   f.ctx.hands.approach = async () => { f.did.push('approach'); return false }
+  const walk = f.ctx.hands.walk, visited = []
+  f.ctx.hands.walk = async target => {
+    const arrived = await walk(target)
+    if (arrived) visited.push(target)
+    return arrived
+  }
   assert.ok(Math.hypot(f.body.x - (furnace.x + 0.5), f.body.z - (furnace.z + 0.5)) < 4, 'within four blocks, outside the wall')
   assert.equal(await approachHome(f.ctx, furnace, { open: true }), true, f.logs.join('\n'))
   assert.ok(f.body.x > origin.x + 1 && f.body.x < origin.x + 6 && f.body.z > origin.z + 1 && f.body.z < origin.z + 6, JSON.stringify(f.body))
   assert.ok([...world.changed.keys()].length > 0)
   assert.ok(f.did.includes('walk'))
+  const outside = visited.findIndex(p => p.x === origin.x + 3.5 && p.y === origin.y + 1 && p.z === origin.z + 7.5)
+  const inside = visited.findIndex(p => p.x === origin.x + 3.5 && p.y === origin.y + 1 && p.z === origin.z + 5.5)
+  assert.ok(outside >= 0 && inside > outside, JSON.stringify(visited))
 
   // Walled in outside with no way: said once, not silently every two seconds.
   const stuck = bot(world, { x: origin.x - 1, y: origin.y + 1, z: origin.z + 5 }, { walkable: false })

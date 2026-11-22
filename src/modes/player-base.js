@@ -65,7 +65,7 @@ function bankable (inventory, keep = KEEP) {
 // A cell to stand in beside the chest (return/return-steps.js).
 const standBeside = (getBlock, chest) => standsBeside(getBlock, chest)[0] ?? null
 
-function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, pendingChest = () => false, door = async () => true, porchWalk = async () => false, spares = () => [], porch = () => null, climb, travel, walk, approach, build = null, water = { needed: () => false, exit: async () => ({ ok: true }) }, house = { inside: () => false, leave: async () => true }, scope = () => null, dimension = () => null, interrupter = null, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, file = null, returnFile = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = () => true, pendingChest = () => false, door = async () => true, porchWalk = async () => false, spares = () => [], porch = () => null, climb, travel, walk, approach, build = null, water = { needed: () => false, exit: async () => ({ ok: true }) }, house = { inside: () => false, leave: async () => true }, scope = () => null, dimension = () => null, interrupter = null, getBlock, getPosition, getFeet, getInventory, getWorn = () => null, getMineKeep = () => null, file = null, returnFile = null, write = writeDurableJson, blocked = () => false, hostile = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   const say = text => log(`プレイヤーモード: ${text}`)
   const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
   const isChest = at => { const found = getBlock(at.x, at.y, at.z); return found?.known === true && found.name === CHEST }
@@ -85,7 +85,10 @@ function createPlayerBase ({ getMode, shared, agent, hands, chest, canBuild = ()
   // fills up on the way, the rubble is what stays out (live 2026-11-18 03:16 JST:
   // 112 items of rubble went in, the chest was full, 17 diamonds were not banked).
   const rank = stack => stack.name === DIAMOND ? 0 : PRECIOUS.test(stack.name) ? 1 : 2
-  const stacksNow = () => bankableAll(getInventory(), { worn: getWorn() }).map((stack, index) => ({ stack, index })).sort((a, b) => rank(a.stack) - rank(b.stack) || a.index - b.index).map(entry => entry.stack)
+  const stacksNow = () => {
+    const inventory = getInventory()
+    return bankableAll(inventory, { worn: getWorn(), keep: getMineKeep(inventory) }).sort((a, b) => rank(a) - rank(b))
+  }
   // Diamonds and supplies to take back out (player-base-kit.js): from a chest
   // whose received slots hold them, or one not opened yet while diamonds are short.
   const chests = () => shared.playerBase ? [shared.playerBase, ...spares()] : []

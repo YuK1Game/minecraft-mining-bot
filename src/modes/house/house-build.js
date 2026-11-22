@@ -33,6 +33,8 @@ const { clicks, stands, standable } = require('./house-steps')
 const { underCover } = require('../player-surface')
 const { chestPairs, neededChests, verifyHouseChests } = require('./house-large-chests')
 const { focusOf } = require('./house-repair')
+const { doorOf, doorStands } = require('./house-door')
+const { inside } = require('./house-exit')
 
 const AGAIN_MS = 600000, SHORT_MS = 3000, TRIES = 3, RUN_MS = 20 * 60000
 const BLIND = /視線/
@@ -67,7 +69,7 @@ const order = steps => {
   return [...steps.filter(step => step.phase === 'foundation'), ...EARLY.map(id => steps.find(step => step.id === id)).filter(Boolean), ...rest, ...steps.filter(step => step.id === DOOR)]
 }
 
-function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel, getBlock, getPosition, getFeet, getInventory, chestWork = null, file = null, write = null, blocked = () => false, hostile = () => false, hostileWhy = () => null, onDone = async () => {}, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null, openEntrance = async () => false, climb, travel, getBlock, getPosition, getFeet, getInventory, chestWork = null, file = null, write = null, blocked = () => false, hostile = () => false, hostileWhy = () => null, onDone = async () => {}, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, placedTotal = 0
   const work = { begin: async () => true, complete: async () => true, attempt: async () => true, received: async () => true, retry: async () => true, canAttempt: () => true, ...chestWork }
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
@@ -164,8 +166,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
   async function openDoorway (origin, todo = null) {
     const door = placements(origin).find(step => step.id === DOOR)
     const left = remaining(getBlock, origin)
-    const needsVerification = !left.length && shared.playerHouse?.done !== true
-    if (!door || left.some(step => step.id === DOOR) || (!(todo ?? left).some(workable) && !needsVerification)) return false
+    if (!door || left.some(step => step.id === DOOR) || !(todo ?? left).some(workable)) return false
     const at = door.position
     if (!matches('oak_door', getBlock(at.x, at.y, at.z))) return false
     if (!await near(at)) { say('拠点の家: 入口のドアへ近づけません（中の作業が残っています）'); return false }
@@ -173,6 +174,21 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     const ok = await ports.mine(at, { accessPreparation: 'house_door', expectedName: getBlock(at.x, at.y, at.z)?.name })
     say(ok ? '拠点の家: 中の作業が残っているため、入口のドアを外しました（最後に付け直します）' : `拠点の家: 入口のドアを外せません（${ports.why() ?? '不明'}）`)
     return ok
+  }
+
+  async function enterForChests (origin, aborted) {
+    if (aborted() || inside(origin, getFeet())) return
+    const at = doorOf(origin)
+    if (!at) return
+    const stands = doorStands(getBlock, at)
+    const outside = stands.find(pos => !inside(origin, pos))
+    const entry = stands.find(pos => inside(origin, pos))
+    if (outside && entry && !await hands.walk(outside) && build && !aborted()) {
+      const cell = { x: Math.floor(outside.x), y: outside.y, z: Math.floor(outside.z) }
+      await build(cell, { done: pos => pos.x === cell.x && pos.y === cell.y && pos.z === cell.z,
+        aborted, limits: { pad: 6, rise: 5, greed: 3 } })
+    }
+    if (!aborted() && await openEntrance() && entry && !aborted()) await hands.walk(entry)
   }
 
   const tableAt = origin => { const step = placements(origin).find(s => s.id === 'p_178'); return matches('crafting_table', getBlock(step.position.x, step.position.y, step.position.z)) ? step.position : null }
@@ -380,7 +396,10 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     // Long travel counts 20 m as arrived and a hop 12 m: walk on to a received
     // stand by the porch, so the steps are within reach (live 04:48 JST: 16 m
     // short of the house, all 14 tries were 「操作対象が手の届く範囲外です」).
-    if (!await closeIn(origin)) {
+    const verificationOnly = remaining(getBlock, origin).length === 0
+    const feet = getFeet(), entrance = verificationOnly ? doorOf(origin) : null
+    const nearEntrance = entrance && feet && eyeTo(entrance, feet) <= 16 && Math.abs(feet.y - entrance.y) <= 6
+    if (!nearEntrance && !await closeIn(origin)) {
       // A site the Bot cannot walk to twice running, with little built yet, is
       // given up for one near the Bot (live 2026-11-17 05:28-05:36 JST: the
       // site lay 9-23 blocks below a steep slope, 「No safe route found」).
@@ -398,11 +417,13 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, climb, travel
     // The steps of this run: the whole blueprint, or the one thing a job asked for (and the door again when this run took it down).
     const focus = focusOf(shared.playerHouse)
     const todo = () => { const all = remaining(getBlock, origin); return focus ? all.filter(step => focus.has(step.id)) : all }
-    if (await openDoorway(origin, todo()) && focus) focus.add(DOOR)
+    if (verificationOnly) {
+      await enterForChests(origin, aborted)
+    } else if (await openDoorway(origin, todo()) && focus) focus.add(DOOR)
     const fails = new Map(), started = now()
     let placed = 0
     let largeChests = []
-    const verifyChests = async () => { largeChests = await verifyHouseChests({ origin, getBlock, getFeet, hands, ports, aborted, confirmed: largeChests, complete: work.complete }); return largeChests.length === chestPairs(origin).length }
+    const verifyChests = async () => { largeChests = await verifyHouseChests({ origin, getBlock, getFeet, hands, ports, aborted, build, confirmed: largeChests, complete: work.complete }); return largeChests.length === chestPairs(origin).length }
     const reasons = new Map()
     const note = (step, text) => { if (!reasons.has(text)) reasons.set(text, { count: 0, step }); reasons.get(text).count++ }
     // Passes go on while one places something (each step is tried TRIES times at most).

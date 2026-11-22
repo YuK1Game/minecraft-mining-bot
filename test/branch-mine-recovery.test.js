@@ -8,7 +8,7 @@ const {requestMine,minePackRoom}=require('../src/modes/mining/mine-controller')
 const {workVein}=require('../src/modes/mining/mine-veins')
 const {createDragonSupplies}=require('../src/modes/dragon-supplies')
 const {ensureShaft}=require('../src/modes/mining/mine-shaft')
-const {reachLayer}=require('../src/modes/mining/mine-route')
+const {reachLayer,walkLayer}=require('../src/modes/mining/mine-route')
 const {cargo,capacityCargo,occupied,constructionKeep}=require('../src/modes/mining/mine-carry')
 const {crowded}=require('../src/modes/dragon-pack-room')
 const held=(w,name)=>w.items.filter(i=>i.name==='minecraft:'+name && i.count>0).reduce((n,i)=>n+i.count,0)
@@ -146,6 +146,25 @@ test('35 occupied slots with no mining cargo gain six free slots through actual 
   assert.equal(await minePackRoom(w.ctx),null)
 })
 
+test('capacity relief banks only confirmed spent picks until the working inventory has room', async t => {
+  const w = createMineWorld(t)
+  await upper(w)
+  const spentSlots = new Set([0, 5, 12, 18, 27, 33])
+  w.items.splice(0, w.items.length, ...Array.from({ length: 35 }, (_, slot) => ({
+    slot, name: 'minecraft:iron_pickaxe', count: 1,
+    durabilityKnown: slot !== 3, durabilityRemaining: spentSlots.has(slot) || slot === 3 ? 2 : 100
+  })))
+  assert.deepEqual(cargo(w.inv), [])
+  const result = await minePackRoom(w.ctx)
+  assert.equal(result.result.code, 'MINE_CAPACITY_FREED', JSON.stringify(result))
+  assert.equal(occupied(w.inv), 30)
+  assert.equal(w.items.find(item => item.slot === 3)?.count, 1)
+  assert.equal(w.items.filter(item => item.count === 1 && item.durabilityRemaining === 100).length, 28)
+  assert.equal(w.items.filter(item => item.count === 1 && spentSlots.has(item.slot)).length, 1)
+  assert.equal(w.boxes.get('upper:supply').filter(item => item.name === 'minecraft:iron_pickaxe').reduce((sum, item) => sum + item.count, 0), 5)
+  assert.equal(await minePackRoom(w.ctx), null)
+})
+
 test('capacity relief rejects unknown inventory and keeps all retained gear with an explicit blocked result',async t=>{
   const w=createMineWorld(t);await upper(w)
   w.items.splice(0,w.items.length,...Array.from({length:35},(_,slot)=>({slot,name:'minecraft:iron_pickaxe',count:1,durabilityKnown:true,durabilityRemaining:100})))
@@ -184,8 +203,35 @@ test('capacity relief retains the same unfinished deep-shaft ladder and chest bu
   const keep=constructionKeep(ctx,{plan},'lower'),offered=capacityCargo(inv,keep)
   assert.equal(keep.ladder,126)
   assert.equal(offered.filter(i=>i.name==='minecraft:ladder').reduce((n,i)=>n+i.count,0),2)
-  assert.equal(keep.chest,plan.storage.find(p=>p.layer==='lower').pairs.length*2)
+  assert.equal(keep.chest,plan.storage.reduce((sum,room)=>sum+room.pairs.length*2,0))
   assert.equal(offered.some(i=>i.name==='minecraft:diamond_pickaxe'),false)
+
+  inv.items = [{ slot: 0, name: 'minecraft:ladder', count: 27 }, { slot: 1, name: 'minecraft:stick', count: 33 }]
+  const stillBuilding = constructionKeep(ctx, { plan }, 'lower')
+  assert.equal(stillBuilding.stick, 56)
+  assert.deepEqual(capacityCargo(inv, stillBuilding), [])
+})
+
+test('a lower ore request can build the upper shaft with only its own ladders, then waits for the room supplies', async t => {
+  const w = createMineWorld(t)
+  w.items.find(item => item.name === 'minecraft:ladder').count = 6
+  w.items.find(item => item.name === 'minecraft:chest').count = 0
+  let result
+  for (let i = 0; i < 15 && !w.branch.shaft?.landings?.upper; i++) {
+    result = await requestMine(w.ctx, { resource: 'diamond', targetHeld: 3 })
+  }
+  assert.equal(result.result.code, 'MINE_LANDING_READY', JSON.stringify(result))
+  assert.equal(w.branch.shaft.depth, 66)
+  assert.equal(w.branch.shaft.landings.upper, true)
+  assert.equal(w.branch.shaft.landings.lower, undefined)
+  assert.equal(w.branch.lobbyReady?.upper, undefined)
+  assert.ok(w.places.some(item => item.name === 'minecraft:ladder'))
+  assert.equal(w.opened.length, 0)
+
+  const room = await requestMine(w.ctx, { resource: 'diamond', targetHeld: 3 })
+  assert.match(room.result.code, /^MINE_(?:SURFACE_SUPPLY_STATION|SUPPLIES_IN_PROGRESS)$/)
+  assert.equal(w.branch.shaft.depth, 66)
+  assert.equal(w.branch.lobbyReady?.upper, undefined)
 })
 
 test('a supported incomplete lower shaft returns to upper supplies by ladder without a surface walk',async t=>{
@@ -228,4 +274,130 @@ test('a failed segment checkpoint restores its finishing debt and cannot mark un
   assert.equal(w.branch.progress.upper.cursor,1);assert.equal(w.branch.segmentTask,undefined)
   assert.equal(w.branch.failures[step.segmentId],undefined)
   assert.equal(Math.min(...marks.map(([,value])=>value)),value-1)
+})
+
+
+test('home capacity relief survives an interrupted trip outside the mine and a partial deposit', async t => {
+  const w = createMineWorld(t)
+  w.branch.request = { resource: 'raw_iron', targetHeld: 16, layer: 'upper' }
+  fillNonCargo(w)
+  w.setFeet({ x: 90.5, y: 70, z: 0.5 })
+  let visits = 0
+  w.ctx.minePorts.storage.depositHome = async ({ keep, freeSlots }) => {
+    visits++
+    assert.equal(w.saved.at(-1).branch.capacityDestination ?? (w.saved.at(-1).branch.homeCapacityPending ? 'home' : null), 'home')
+    assert.equal(keep.raw_iron, 16)
+    assert.equal(freeSlots, 6)
+    if (visits === 1) {
+      w.items.splice(-1, 1)
+      return { status: 'interrupted', code: 'TRANSFER_INTERRUPTED' }
+    }
+    w.items.splice(-4, 4)
+    return { status: 'completed', code: 'MINE_CAPACITY_FREED', serverConfirmed: true }
+  }
+
+  const sent = await minePackRoom(w.ctx, { returningToMine: true })
+  assert.equal(sent.result.code, 'TRANSFER_INTERRUPTED')
+  assert.equal(occupied(w.inv), 34)
+  assert.equal(w.branch.capacityDestination, 'home')
+  // Recreate the branch state from the saved checkpoint after losing the trip owner.
+  Object.assign(w.branch, structuredClone(w.saved.at(-1).branch))
+  delete w.branch.capacityDestination
+  w.branch.homeCapacityPending = true
+  assert.equal((await minePackRoom(w.ctx)).result.code, 'MINE_CAPACITY_FREED')
+  assert.equal(occupied(w.inv), 30)
+  assert.equal(await minePackRoom(w.ctx), null)
+  assert.equal(w.saved.at(-1).branch.homeCapacityPending, undefined)
+  assert.equal(visits, 2)
+})
+
+
+test('capacity relief for lower-layer work uses the finished upper room and keeps the lower supplies', async t => {
+  const w = createMineWorld(t)
+  await upper(w)
+  w.branch.request = { resource: 'diamond', targetHeld: 3, layer: 'lower' }
+  fillNonCargo(w)
+  w.ctx.minePorts.storage.depositHome = async () => assert.fail('a verified mine room is ready')
+  const out = await minePackRoom(w.ctx)
+  assert.equal(out.result.code, 'MINE_CAPACITY_FREED', JSON.stringify(out))
+  assert.equal(w.branch.capacityDestination, 'upper')
+  assert.equal(occupied(w.inv), 30)
+  assert.ok(w.boxes.get('upper:supply').some(item => item.count > 0))
+  assert.equal(held(w, 'ladder'), constructionKeep(w.ctx, w.branch, 'lower').ladder)
+  assert.equal(await minePackRoom(w.ctx), null)
+  assert.equal(w.saved.at(-1).branch.capacityDestination, undefined)
+})
+
+
+test('a failed approach can select the verified mine storage but an unresolved transfer retains home', async t => {
+  const w = createMineWorld(t)
+  await upper(w)
+  fillNonCargo(w)
+  w.setFeet({ x: 6.5, y: 70, z: 0.5 })
+  w.branch.capacityDestination = 'home'
+  let code = 'TRANSFER_UNCONFIRMED'
+  w.ctx.minePorts.storage.depositHome = async () => ({ status: 'blocked', code })
+  assert.equal((await minePackRoom(w.ctx)).result.code, code)
+  assert.equal(w.branch.capacityDestination, 'home')
+  code = 'MINE_HOME_ACCESS_UNCONFIRMED'
+  assert.equal((await minePackRoom(w.ctx)).result.code, 'MINE_CAPACITY_ROUTE_CHANGED')
+  assert.equal(w.saved.at(-1).branch.capacityDestination, 'upper')
+  assert.equal(occupied(w.inv), 35)
+  assert.equal((await minePackRoom(w.ctx)).result.code, 'MINE_CAPACITY_FREED')
+  assert.equal(occupied(w.inv), 30)
+})
+
+
+test('a supported slab rim outside the route graph is centred on the received landing before storage travel', async t => {
+  const w = createMineWorld(t)
+  await upper(w)
+  const shaft = w.plan.shaft
+  const landing = shaft.landings.find(entry => entry.layer === 'upper').stand
+  const rim = {
+    ...landing,
+    x: landing.x + Math.sign(shaft.ladder.x + 0.5 - landing.x) * 0.67,
+    z: landing.z + Math.sign(shaft.ladder.z + 0.5 - landing.z) * 0.67
+  }
+  w.put({ x: shaft.ladder.x, y: Math.floor(landing.y), z: shaft.ladder.z }, 'ladder', { facing_direction: shaft.ladder.face })
+  w.setFeet(rim)
+  const room = w.plan.storage.find(entry => entry.layer === 'upper')
+  const target = { x: room.access.from.x + 0.5, y: room.access.from.y - 0.5, z: room.access.from.z + 0.5 }
+  const walk = w.ctx.minePorts.walk
+  let receivedLanding = false, corrected = false
+  w.ctx.minePorts.walk = async point => {
+    if (corrected) return walk(point)
+    assert.deepEqual(point, landing)
+    if (!receivedLanding) return { status: 'blocked', code: 'MINE_POSITION_UNCONFIRMED' }
+    w.setFeet(landing)
+    corrected = true
+    return { status: 'completed', serverConfirmed: true }
+  }
+
+  const first = w.walks.length
+  assert.equal((await walkLayer(w.ctx, w.branch, 'upper', target)).code, 'MINE_POSITION_UNCONFIRMED')
+  assert.equal(w.walks.length, first, 'no corridor travel starts before the corrected landing is received')
+  receivedLanding = true
+  const out = await walkLayer(w.ctx, w.branch, 'upper', target)
+  assert.equal(out.serverConfirmed, true, JSON.stringify({ out, feet: w.feet(), walks: w.walks.slice(first) }))
+  assert.equal(corrected, true)
+  assert.ok(w.walks.length > first, 'the normal corridor walk resumes afterwards')
+})
+
+test('resuming an open lower room budgets for its highest remaining safe pickaxe tier', async t => {
+  const w = createMineWorld(t)
+  const step = mineSteps(w.plan, { layer: 'lower' })[0]
+  const { clear } = stepCells(w.plan, step)
+  w.put(clear.at(-1), 'deepslate_diamond_ore')
+  w.branch.segmentTask = { layer: 'lower', stepId: step.id, cursor: 0, lobbyOnly: true }
+  w.ctx.minePorts.ensureSupplies = async (plan, options) => {
+    assert.equal(plan, w.plan)
+    assert.equal(options.layer, 'lower')
+    assert.equal(options.request.resource, 'raw_iron')
+    assert.equal(options.blockName, 'minecraft:deepslate_diamond_ore')
+    return { status: 'blocked', code: 'MINE_TOOL_SUPPLY', serverConfirmed: false }
+  }
+
+  const result = await requestMine(w.ctx, { resource: 'raw_iron', targetHeld: 3 })
+  assert.equal(result.result.code, 'MINE_TOOL_SUPPLY')
+  assert.equal(w.digs.length, 0)
 })

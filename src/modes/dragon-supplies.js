@@ -18,6 +18,10 @@ const { openAbove } = require('./player-surface')
 const { weaponWanted } = require('./carry-weapon')
 const { noteReserve } = require('./dragon-reserve-seen')
 const mining = require('./mining/mine-controller')
+const { reservedShaftCell } = require('./mining/mine-location')
+const { mineWorldScope, sameWorld } = require('./mining/mine-state')
+const { occupied } = require('./mining/mine-carry')
+const homeIron = require('./dragon-home-iron')
 const DIGGER = { stage: 'digger', target: 'stone_pickaxe', code: 'NOT_MADE' }
 const WOOD = { stage: 'digger', target: 'log', code: 'NOT_FOUND' }
 const SWORD = { stage: 'weapon', target: 'stone_sword', code: 'NOT_MADE' }
@@ -42,7 +46,11 @@ function createDragonSupplies (ctx) {
   }
   // One memory of received chest contents with the return and the storage (mode-runtime.js): what any of them last received of a chest.
   const deps = { operations, getFeet: ctx.getFeet, getBlock, getInventory, disposed: cancelled, memory: ctx.shared.playerChestMemory ??= { seen: new Map() }, ...(ctx.sleep ? { sleep: ctx.sleep, now: ctx.now } : {}) }
-  const bench = createStoragePorts(deps), house = createHousePorts(deps), box = createContainerPorts(deps)
+  const reserved = cell => {
+    const plan = ctx.memory?.early?.mine?.branch?.plan
+    return reservedShaftCell(plan, cell) && sameWorld(plan.scope, mineWorldScope(runtime.mineState?.() ?? runtime.raw?.()))
+  }
+  const bench = createStoragePorts({ ...deps, reservedPlacement: reserved }), house = createHousePorts(deps), box = createContainerPorts(deps)
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
   // Why the last step of this run did nothing (a refused open click, …): shown with the reason, so a stall is not silent.
   let trouble = null
@@ -93,7 +101,7 @@ function createDragonSupplies (ctx) {
     if (existingOnly) return null
     if (!held(name)) { await acquire(name, 1); return null }
     // Open cells first; in a one-wide tunnel a niche is mined for it (station-room.js).
-    const pos = await placeStation({ getBlock, feet: ctx.getFeet(), getFeet: ctx.getFeet, place: cell => bench.place(cell, full(name)), retrySafe: () => bench.placementRetrySafe(), why: () => bench.refusal(), hands: ctx.hands, cancelled, log: ctx.log, label: name === 'crafting_table' ? '作業台' : name === 'furnace' ? 'かまど' : name })
+    const pos = await placeStation({ getBlock, reserved, feet: ctx.getFeet(), getFeet: ctx.getFeet, place: cell => bench.place(cell, full(name)), retrySafe: () => bench.placementRetrySafe(), why: () => bench.refusal(), hands: ctx.hands, cancelled, log: ctx.log, label: name === 'crafting_table' ? '作業台' : name === 'furnace' ? 'かまど' : name })
     return pos ? remember(pos) : null
   }
 
@@ -149,7 +157,7 @@ function createDragonSupplies (ctx) {
     else await require('./dragon-supply-gather').explore(ctx, 'water')
   }
 
-  async function acquire (requested, target = 1) {
+  async function acquire (requested, target = 1, { atHome = false } = {}) {
     const name = bare(requested)
     if (cancelled() || !getInventory() || !Number.isSafeInteger(target) || target < 1) return pending('資材を準備するため、現在の所持品を再確認します。')
     if(name!=='food' && !mining.MINERALS.has(name)){
@@ -167,7 +175,7 @@ function createDragonSupplies (ctx) {
     else if (name === 'planks') {
       const log = rows().find(i => matches('log', i))
       if (!log) await acquire('log', 1)
-      else await bench.craftPlanks(log.name, 1)
+      else await bench.craftPlanks(log.name, 1, occupied(getInventory()) === 36 ? Math.min(log.count, 16) : 1)
     } else if (material) {
       const batch = mining.enabled(ctx) ? Math.max(1, Math.min(8, target - held(name))) : 1
       const plank = rows().find(i => matches('planks', i))
@@ -204,14 +212,26 @@ function createDragonSupplies (ctx) {
         await acquire(coalNear ? 'coal' : 'planks', coalNear ? 1 : 2)
       }
     } else if (recipe) {
-      const missing = Object.entries(recipe).find(([part, need]) => held(part) < need)
+      const times = atHome ? target - held(name) : 1
+      const missing = Object.entries(recipe).find(([part, need]) => held(part) < need * times)
       if (missing) {
+        if (atHome && missing[0] === 'iron_ingot') return { ...pending('必要な鉄をまとめて見積もり直します。'), replanIron: true }
         if (name === 'magma_cream' && missing[0] === 'slime_ball' && runtime.raw().dimension === 'nether') await collect(ctx, name)
-        else await acquire(missing[0], missing[1])
+        else {
+          const input = await acquire(missing[0], missing[1] * times)
+          if (!input.done && input.result) return input
+        }
       } else if (small.has(name)) await bench.craftSmall(full(name), 1)
       else {
-        const table = await station('crafting_table')
-        if (table && !cancelled()) await bench.craftAtTable(table, full(name), 1)
+        const homeTable = atHome ? await homeIron.homeStation(ctx, 'table') : null
+        if (homeTable && !homeTable.at) return homeTable
+        const table = homeTable?.at ?? await station('crafting_table')
+        if (table && !cancelled()) {
+          // Equipment is unstackable, so each copy needs its own received slot.
+          for (let index = 0; index < times && !cancelled(); index++) {
+            if (!await bench.craftAtTable(table, full(name), 1)) break
+          }
+        }
       }
     } else if (pickFor[name] && !hasWorkingPick(rows(), pickFor[name])) {
       await acquire(pickFor[name] + '_pickaxe', 1)
@@ -269,6 +289,10 @@ function createDragonSupplies (ctx) {
     if (!slots) return unread ? { ...pending('予備のラージチェストの54枠を受信できません（' + unread + '）。'), unread } : pending('予備のラージチェスト54枠と持ち物を確認します。')
     // What the reserve chest holds, as received just now: part of what the goal has (dragon-goal-measure.js, read through dragon-reserve-seen.js).
     noteReserve(ctx.shared, pos, desired.map(([name]) => name), slots)
+    if (!recovering && kit === 'home' && homeIron.enabled(ctx)) {
+      const ironTarget = homeIron.homeIronTarget(slots, rows(), worn())
+      if (held('iron_ingot') < ironTarget) return { ...pending('携行用と予備用の鉄をまとめて準備します。'), ironTarget }
+    }
     for (const [name, amount] of desired) {
       const inChest = count(name, slots), carried = held(name), equipped = count(name, worn())
       if (recovering && carried + equipped >= amount) continue
@@ -342,6 +366,7 @@ function createDragonSupplies (ctx) {
     const actual = getBlock(cell.x, cell.y + 1, cell.z)
     return actual?.known === true && actual.name === 'minecraft:water' && actual.properties?.liquid_depth === 0 ? done('水源を確認しました。') : pending('注いだ水源の受信を待ちます。')
   }
-  return { acquire, prepare, reserve, waterAt, weapon, arm, store:(p,n,c) => bank(p,n,c,false), withdraw:(p,n,c) => bank(p,n,c,true), ...brewing }
+  return { acquire, prepare, reserve, waterAt, weapon, arm, prepareHomeIron: batch => homeIron.prepareHomeIron(ctx, batch, { held, house, acquire }),
+    store:(p,n,c) => bank(p,n,c,false), withdraw:(p,n,c) => bank(p,n,c,true), ...brewing }
 }
 module.exports = { createDragonSupplies }

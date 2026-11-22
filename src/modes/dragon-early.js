@@ -9,6 +9,7 @@ const { houseDuty } = require('./house/house-repair')
 const { homeTarget, homeUse, same } = require('./dragon-home-use')
 const { failed } = require('./return/return-result')
 const { diamondNeed, prepareDiamonds } = require('./dragon-diamond')
+const homeIron = require('./dragon-home-iron')
 
 // The starter jobs build the house and tools. Before mining for diamonds,
 // establish the respawn point and physically stock the first recovery kit.
@@ -82,10 +83,18 @@ async function runDragonEarly (ctx) {
     return result(confirmed ? '本拠点の復帰地点を受信しました。' : '復帰地点の設定通知を待っています。')
   }
   if (next.id === 'home_reserve') {
-    if (state.gather && !pinned(state.gather, home)) delete state.gather
+    const batching = homeIron.enabled(ctx)
+    if (batching && state.reserveIron) {
+      const iron = await supplies.prepareHomeIron(state.reserveIron)
+      if (iron.done && !cancelled()) delete state.reserveIron
+      return { ...iron, done: false }
+    }
+    if (state.gather && (!pinned(state.gather, home) || batching && homeIron.usesIron(state.gather.name) && !state.gather.homeEquipment)) delete state.gather
     if (state.gather) {
-      const item = await acquire(state.gather.name, state.gather.count)
-      if (item.done && !cancelled()) delete state.gather
+      const item = batching && state.gather.homeEquipment
+        ? await supplies.acquire(state.gather.name, state.gather.count, { atHome: true })
+        : await acquire(state.gather.name, state.gather.count)
+      if ((item.done || item.replanIron) && !cancelled()) delete state.gather
       // The step's own outcome (return-result.js) goes up with the text.
       return item.result ? { ...result(item.reason), result: item.result } : result(item.reason)
     }
@@ -109,7 +118,8 @@ async function runDragonEarly (ctx) {
     }
     if (!cancelled()) {
       if (stock.done) state.reserveReady = true
-      else if (stock.missing) state.gather = { ...stock.missing, since: Date.now() }
+      else if (batching && stock.ironTarget > 0) state.reserveIron = { target: stock.ironTarget }
+      else if (stock.missing) state.gather = { ...stock.missing, since: Date.now(), ...(batching && homeIron.usesIron(stock.missing.name) ? { homeEquipment: true } : {}) }
     }
     return result(stock.reason)
   }

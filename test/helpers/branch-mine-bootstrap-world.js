@@ -1,6 +1,6 @@
 'use strict'
 
-// Extends the execution fixture with an empty bag, surface resources, the actual
+// Extends the execution fixture with a partially stocked home kit, surface resources, the actual
 // supplier/early reserve goal, authoritative crafting/furnace receipts and tool wear.
 // The mine is an explicit upper-only short plan; this fixture does not choose a site.
 const assert = require('node:assert/strict')
@@ -31,7 +31,8 @@ function createBootstrapWorld (t) {
   const origin = { x: -9, y: 69, z: -4 }, home = chestOf(origin)
   ctx.shared.playerHouse = { origin, done: true, built: true, spawn: true }
   ctx.memory.early.spawnReady = true
-  ctx.runtime.armor = () => ({ known: true, worn: [] })
+  const existingArmor = ['iron_helmet', 'iron_chestplate', 'iron_leggings', 'iron_boots']
+  ctx.runtime.armor = () => ({ known: true, worn: existingArmor.map(name => ({ name: full(name) })), offhand: { name: full('shield') } })
   ctx.runtime.raw = () => ({ ...w.raw, gameMode: 'survival', position: w.feet(), heldItem: w.items.find(i => i.slot === 0 && i.count > 0) })
   ctx.walk = p => ctx.hands.walk(p)
   ctx.where = () => ({ x: Math.floor(w.feet().x), y: Math.floor(w.feet().y), z: Math.floor(w.feet().z) })
@@ -58,8 +59,12 @@ function createBootstrapWorld (t) {
   for (let x = 6; x <= 8; x++) for (const y of [66, 67]) for (const z of [5, 6]) w.put({ x, y, z }, 'iron_ore')
   const homePair = chestPairs(origin)[0].map(step => step.position)
   for (const step of placements(origin).filter(step => step.phase === 'foundation')) w.put(step.position, step.item)
+  const stations = placements(origin).filter(step => ['furnace', 'crafting_table'].includes(step.item))
+  for (const step of stations) w.put(step.position, step.item)
   for (const p of homePair) w.put(p, 'chest')
   const homeSlots = Array.from({ length: 54 }, (_, slot) => ({ slot, known: true, count: 0, name: null }))
+  for (const [slot, name] of [...existingArmor, 'shield', 'bucket'].entries()) Object.assign(homeSlots[slot], { name: full(name), count: 1 })
+  w.give('bucket')
   let homeView = null, epoch = 0
   const chest = ctx.operations.chest, open = chest.open, snapshot = chest.snapshot, deposit = chest.depositItem
   chest.open = async position => {
@@ -121,7 +126,7 @@ function createBootstrapWorld (t) {
     controller = new AbortController(); ctx.signal = controller.signal
     ctx.minePorts = createMinePorts(ctx); ctx.supplies = createDragonSupplies(ctx)
   }
-  return Object.assign(w, { recipes, home, homeSlots, history, worn, swaps, tick, cancel: () => controller.abort(), restart })
+  return Object.assign(w, { recipes, home, homeSlots, stations, history, worn, swaps, tick, cancel: () => controller.abort(), restart })
 }
 
 module.exports = { createBootstrapWorld }

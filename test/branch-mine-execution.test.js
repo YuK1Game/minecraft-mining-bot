@@ -4,6 +4,7 @@ const {createMineWorld}=require('./helpers/branch-mine-world')
 const {ensureShaft}=require('../src/modes/mining/mine-shaft')
 const {mineSteps,stepCells}=require('../src/modes/mining/mine-geometry')
 const {excavateSegment}=require('../src/modes/mining/mine-excavate')
+const {canSeePlacementFloor}=require('../src/actions/interaction-sight')
 const {withPlannedMine}=require('../src/modes/player-mining-policy')
 const {leaveMine}=require('../src/modes/mining/mine-route')
 const {requestMine}=require('../src/modes/mining/mine-controller')
@@ -85,6 +86,85 @@ test('player legacy mineral decisions are held while bootstrap and other modes r
   assert.equal(withPlannedMine({mode:'player',playing:true,decision:bootstrap}),bootstrap)
 })
 
+test('a nearer hidden lobby block waits for the visible face in the same planned section',async t=>{
+  const w=createMineWorld(t), near={x:2,y:70,z:0}, visible={x:3,y:70,z:0}
+  w.setFeet({x:.5,y:70,z:.5})
+  for(const p of [near,visible])w.put(p,'stone')
+  const original=w.ctx.operations.mining.preview
+  w.ctx.operations.mining.preview=([p])=>p.x===near.x && w.getBlock(visible.x,visible.y,visible.z).name!=='minecraft:air' ? {ready:false} : original([p])
+  w.ctx.minePorts.ensureSegment=async()=>({status:'completed',serverConfirmed:true})
+  const step={id:'upper:lobby:test',layer:'upper',kind:'storage'}
+  const cells={clear:[near,visible],stand:w.feet(),approach:w.feet()}
+  const result=await excavateSegment(w.ctx,w.branch,step,cells)
+  assert.equal(result.code,'MINE_SEGMENT_CONFIRMED',JSON.stringify(result))
+  assert.deepEqual(w.digs.map(d=>d.target),[visible,near])
+})
+
+test('corridor excavation equips a pickaxe after the previous finish left a torch selected',async t=>{
+  const w=createMineWorld(t),target={x:2,y:70,z:0}
+  w.setFeet({x:.5,y:70,z:.5})
+  w.put(target,'stone')
+  const torch=w.items.find(item=>item.name==='minecraft:torch')
+  await w.ctx.operations.inventory.equip(torch.slot)
+  const raw=w.ctx.runtime.raw
+  w.ctx.runtime.raw=()=>({...raw(),heldItem:w.items.find(item=>item.slot===0)})
+  const preview=w.ctx.operations.mining.preview
+  w.ctx.operations.mining.preview=targets=>w.ctx.runtime.raw().heldItem.name.endsWith('_pickaxe') ? preview(targets) : {ready:false}
+  w.ctx.minePorts.ensureSegment=async()=>({status:'completed',serverConfirmed:true})
+  const step={id:'upper:lobby:tool-test',layer:'upper',kind:'storage'}
+  const cells={clear:[target],stand:w.feet(),approach:w.feet()}
+  const result=await excavateSegment(w.ctx,w.branch,step,cells)
+  assert.equal(result.code,'MINE_SEGMENT_CONFIRMED',JSON.stringify(result))
+  assert.deepEqual(w.digs.map(d=>d.target),[target])
+})
+
+test('floor finishing walks to a stand with sight of the lower support before placing',async t=>{
+  const w=createMineWorld(t),floor={x:2,y:69,z:0}
+  w.setFeet({x:.5,y:70,z:.5})
+  w.put(floor,'air')
+  w.put({x:2,y:70,z:1},'torch')
+  const visible=()=>canSeePlacementFloor(p=>w.getBlock(p.x,p.y,p.z),{...w.feet(),y:w.feet().y+1.62},floor)
+  assert.equal(visible(),false)
+  const preview=w.ctx.operations.interactions.previewHouseBlock
+  w.ctx.operations.interactions.previewHouseBlock=data=>visible()?preview(data):{ready:false,errors:['blocked view']}
+  const cells={clear:[],floor:[floor],torch:[]}
+  assert.equal(await w.ctx.minePorts.lighting.recoverFloorStand(cells),true)
+  assert.equal(w.getBlock(floor.x,floor.y,floor.z).name,'minecraft:air')
+  w.setFeet({x:.5,y:70,z:.5})
+  const result=await w.ctx.minePorts.lighting.finish(w.plan,cells)
+  assert.equal(result.code,'MINE_FINISH_RECEIVED',JSON.stringify(result))
+  assert.ok(w.walks.length>0)
+  assert.equal(w.getBlock(floor.x,floor.y,floor.z).name,'minecraft:cobblestone_slab')
+})
+
+test('storage finishing retains an unowned edge stone and verifies the moved torch and original central route',async t=>{
+  const w=createMineWorld(t),steps=mineSteps(w.plan,{layer:'upper'}),index=steps.findIndex(step=>step.kind==='storage' && step.count===1)
+  assert.ok(index>0)
+  const request={resource:'raw_iron',targetHeld:3}
+  for(let i=0;i<35 && w.branch.progress.upper.cursor<index;i++){
+    const out=await requestMine(w.ctx,request)
+    assert.ok(['partial','completed'].includes(out.result?.status),JSON.stringify(out))
+  }
+  assert.equal(w.branch.progress.upper.cursor,index)
+  const cells=stepCells(w.plan,steps[index]),obstruction=cells.torch[0].position
+  for(const p of cells.clear)w.put(p,'air')
+  w.put(obstruction,'cobblestone')
+  w.branch.segmentTask={layer:'upper',stepId:steps[index].id,cursor:index,lobbyOnly:true}
+  let out
+  for(let i=0;i<10 && w.branch.progress.upper.cursor===index;i++){
+    out=await requestMine(w.ctx,request)
+    assert.ok(['partial','completed'].includes(out.result?.status),JSON.stringify(out))
+  }
+  assert.equal(w.branch.progress.upper.cursor,index+1,JSON.stringify(out))
+  assert.equal(w.getBlock(obstruction.x,obstruction.y,obstruction.z).name,'minecraft:cobblestone')
+  assert.ok(!w.digs.some(row=>row.target.x===obstruction.x && row.target.y===obstruction.y && row.target.z===obstruction.z))
+  const record=w.branch.progress.upper.receipts.at(-1).retainedTorchSupport
+  assert.deepEqual(record.support,obstruction)
+  assert.equal(w.getBlock(record.position.x,record.position.y,record.position.z).name,'minecraft:torch')
+  assert.ok(w.saved.some(s=>s.branch.segmentTask?.retainedTorchSupport?.name==='minecraft:cobblestone'))
+  assert.equal(w.feet().y,cells.stand.y)
+})
+
 test('real requests construct storage and consecutive runs in both layers, receive ore and return by ladder',async t=>{
   const w=createMineWorld(t)
   for(const [layer,resource,ore]of[['upper','raw_iron','iron_ore'],['lower','diamond','diamond_ore']]){
@@ -146,6 +226,11 @@ test('an archived overworld mine never captures Nether or distant cave food and 
   w.raw.dimension='overworld';w.ctx.getFeet=()=>({x:1000.5,y:40,z:1000.5})
   assert.equal(await beforeSurfaceSupply(w.ctx),null)
   assert.equal(await minePackRoom(w.ctx),null)
+  // Footprint + elevation alone used to make the outdoor dip beside the
+  // entrance request an ascent, though the Bot was already outside.
+  w.ctx.getFeet=()=>({ ...w.plan.shaft.approach, y:w.plan.shaft.topY-1 })
+  assert.equal(await beforeSurfaceSupply(w.ctx),null)
+  assert.equal((await leaveMine(w.ctx,w.branch)).code,'MINE_OUTSIDE')
   assert.equal(w.climbs.length,0)
 })
 

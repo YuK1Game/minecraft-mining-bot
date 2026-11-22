@@ -26,7 +26,10 @@ function fixture (item = 'minecraft:ladder') {
     interactions.applyPacket('update_block', { position: options.position })
     interactions.applyPacket('inventory_slot', { window_id: 'inventory', slot: 0, item: raw.get(0) })
   }
-  return { interactions, options, raw, state, blocks, receipt, sent, block }
+  const receiveAll = () => interactions.applyPacket('inventory_content', {
+    window_id: 'inventory', input: Array.from({ length: 36 }, (_, slot) => structuredClone(raw.get(slot)))
+  })
+  return { interactions, options, raw, state, blocks, receipt, sent, block, receiveAll }
 }
 
 test('ladder placement requires received facing, stable supporting wall and real consumption together', async () => {
@@ -91,4 +94,45 @@ test('confidence loss after a sent mine placement cannot produce success', async
   const pending = f.interactions.placeHouseBlock(f.options)
   f.sent(); f.state.inventory.uncertain = true; f.receipt({ facing_direction: 2 })
   await assert.rejects(pending, /持ち物が不明/)
+})
+
+
+test('a full server receipt can confirm a renumbered ladder stack before the block receipt', async () => {
+  const f = fixture()
+  const pending = f.interactions.placeHouseBlock(f.options)
+  f.sent()
+  f.raw.get(0).count = 7
+  f.raw.get(0).stack_id = 101
+  f.receiveAll()
+  assert.equal(f.interactions.snapshot().pendingOperation, 'place', 'wait for the actual correctly facing block')
+  f.receipt({ facing_direction: 2 }, false)
+  const result = await pending
+  assert.equal(result.confirmedBy, 'server_block_and_inventory')
+  assert.ok(result.placementObservation.sourceObservedAt <= result.placementObservation.blockObservedAt)
+})
+
+test('a renumbered source stack does not confirm when the missing item moved to another slot', async () => {
+  const f = fixture()
+  const pending = f.interactions.placeHouseBlock(f.options)
+  f.sent()
+  f.raw.get(0).count = 7
+  f.raw.get(0).stack_id = 101
+  f.raw.set(5, { ...f.raw.get(0), count: 1, stack_id: 102 })
+  f.receiveAll()
+  f.receipt({ facing_direction: 2 }, false)
+  assert.equal(f.interactions.snapshot().pendingOperation, 'place')
+  f.interactions.cancel('no net consumption')
+  await assert.rejects(pending, /no net consumption/)
+})
+
+
+test('cobbled deepslate uses the ordinary visible support face and placement receipts', async () => {
+  const f = fixture('minecraft:cobbled_deepslate')
+  assert.equal(f.interactions.previewHouseBlock(f.options).ready, true)
+  const pending = f.interactions.placeHouseBlock(f.options)
+  f.sent()
+  f.receipt({})
+  const result = await pending
+  assert.equal(result.blockName, 'minecraft:cobbled_deepslate')
+  assert.equal(result.confirmedBy, 'server_block_and_inventory')
 })

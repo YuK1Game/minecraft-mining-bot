@@ -23,6 +23,7 @@
 // eighth was air behind the Bot's own litter cell. So: open is air; and when nothing could be placed from a cell
 // that holds a plant, the Bot first steps onto bare ground that has bare ground beside it (`bareStance`) and
 // places from there. Litter is not swept: leaves and litter are never broken.
+const { planPlacementAccess, placementTopVisible } = require('../actions/action-access')
 const OPEN = /^minecraft:(?:air|cave_air|void_air)$/
 const ROCK = /^minecraft:(?:stone|deepslate|andesite|diorite|granite|tuff|dirt|grass_block|cobblestone|cobbled_deepslate|netherrack)$/
 const FIXED = [[2, 0], [-2, 0], [0, 2], [0, -2], [1, 1]]
@@ -58,6 +59,22 @@ function bareStance (getBlock, feet) {
     .sort((a, b) => Math.hypot(a.x - at.x, a.z - at.z) - Math.hypot(b.x - at.x, b.z - at.z))
   return cells.find(cell => ground(cell) && bare({ ...cell, y: cell.y + 1 }) && SIDES.some(([dx, dz]) => ground({ x: cell.x + dx, y: cell.y, z: cell.z + dz }))) ?? null
 }
+function placementAccess (getBlock, feet, reserved) {
+  const targetCells = openSpots(getBlock, feet).filter(cell => !reserved(cell))
+  if (!targetCells.length) return null
+  const at = cellOf(feet), blocks = []
+  for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) for (let dy = -5; dy <= 3; dy++) {
+    const position = { x: at.x + dx, y: at.y + dy, z: at.z + dz }
+    const ground = getBlock(position.x, position.y, position.z)
+    if (solid(ground)) blocks.push({ ...ground, position })
+  }
+  const read = position => {
+    const block = getBlock(position.x, position.y, position.z)
+    return !block || block.position ? block : { ...block, position }
+  }
+  return planPlacementAccess({ state: { position: { ...feet, y: feet.y + 1.62 } }, targets: targetCells, blocks, getBlock: read })
+}
+
 // The feet's own cell holds a plant (litter, grass, a flower): something received that is not air and has no body.
 const inPlant = (getBlock, feet) => { const at = cellOf(feet), here = getBlock(at.x, at.y, at.z); return here?.known === true && !OPEN.test(here.name ?? '') && here.boundingBox === 'empty' && !here.extra?.length }
 
@@ -80,12 +97,13 @@ function sayOnce (log, text, now = Date.now()) {
 
 // `why`: the placement's last refusal, for the line that says nothing could be placed.
 // `getFeet`: where the Bot stands after a step (received), for the step onto bare ground.
-async function placeStation ({ getBlock, feet, getFeet = null, place, retrySafe = () => true, hands = null, cancelled = () => false, log = () => {}, label = '設備', why = () => null, now = Date.now }) {
+async function placeStation ({ getBlock, feet, reserved = () => false, getFeet = null, place, retrySafe = () => true, hands = null, cancelled = () => false, log = () => {}, label = '設備', why = () => null, now = Date.now }) {
   if (!feet) return null
+  const openCells = () => openSpots(getBlock, feet).filter(cell => !reserved(cell))
   const end = now() + TRY_MS
   // The open cells from where the Bot stands; false when a placement was sent and not answered.
   async function open () {
-    for (const cell of openSpots(getBlock, feet)) {
+    for (const cell of openCells()) {
       if (cancelled()) return false
       // A placement that waits on another operation takes seconds a cell: the rest is for the next look.
       if (now() > end) break
@@ -106,7 +124,21 @@ async function placeStation ({ getBlock, feet, getFeet = null, place, retrySafe 
     feet = after
     if (!inPlant(getBlock, feet)) { put = await open(); if (put !== null) return put || null }
   }
-  const walls = hands ? wallSpots(getBlock, feet) : []
+  if (hands?.walk && getFeet && !cancelled() && now() < end) {
+    const access = placementAccess(getBlock, feet, reserved)
+    if (access) {
+      const arrived = await hands.walk(access.standpoint)
+      const after = getFeet()
+      if (cancelled() || !after) return null
+      feet = after
+      const state = { position: { ...after, y: after.y + 1.62 } }
+      if (arrived && placementTopVisible({ state, target: access.target, getBlock: p => getBlock(p.x, p.y, p.z) })) {
+        if (await place(access.target)) return access.target
+        if (!retrySafe()) return null
+      }
+    }
+  }
+  const walls = hands ? wallSpots(getBlock, feet).filter(cell => !reserved(cell)) : []
   for (const cell of walls) {
     if (cancelled()) return null
     if (!hands.canMine(cell) && !(await hands.pick?.(cell) && hands.canMine(cell))) continue
@@ -116,7 +148,7 @@ async function placeStation ({ getBlock, feet, getFeet = null, place, retrySafe 
     if (!retrySafe()) return null
   }
   const refusal = why()
-  sayOnce(log, `${label}を置ける場所がありません（空いたマス ${openSpots(getBlock, feet).length}・掘れる壁 ${walls.length}${refusal ? `・${String(refusal).slice(0, 60)}` : ''}）`)
+  sayOnce(log, `${label}を置ける場所がありません（空いたマス ${openCells().length}・掘れる壁 ${walls.length}${refusal ? `・${String(refusal).slice(0, 60)}` : ''}）`)
   return null
 }
 

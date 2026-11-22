@@ -7,7 +7,7 @@ const { createMineGeometry, mineSteps } = require('../src/modes/mining/mine-geom
 const { createMineState, skipMineSegment } = require('../src/modes/mining/mine-state')
 const { ensureShaft } = require('../src/modes/mining/mine-shaft')
 const { compactSite } = require('../src/modes/mining/mine-sites')
-const { constructionCount, noteMineProgress } = require('../src/modes/mining/mine-progress')
+const { constructionCount, noteMineProgress, noteMinePreparation } = require('../src/modes/mining/mine-progress')
 const { createGoalLedger, KEYS } = require('../src/modes/goal/goal-ledger')
 const { createProgress } = require('../src/modes/dragon-progress')
 const { measure } = require('../src/modes/dragon-goal-measure')
@@ -44,6 +44,29 @@ test('a received 54-level shaft advances the real watcher beyond sixteen steps; 
   }
   assert.equal(holds, 1)
   assert.equal(ledger.goal().hold.code, 'NO_PROGRESS')
+})
+
+test('confirmed preparation counts growing supplies without treating them as mined diamonds', t => {
+  const w = createMineWorld(t)
+  const ladder = w.items.find(row => row.name === 'minecraft:ladder')
+  const stick = w.items.find(row => row.name === 'minecraft:stick')
+  ladder.count = 1
+  stick.count = 0
+  const ledger = createGoalLedger({ shared: {}, world: () => 'world' })
+  ledger.open('early.diamond')
+  w.ctx.goal = { mark: ledger.mark }
+  const note = () => noteMinePreparation(w.ctx, w.branch, 'lower')
+  assert.equal(note(), false, 'the first genuine stock observation is the baseline')
+  stick.count = 7
+  assert.equal(note(), true, 'received material restarts progress')
+  assert.equal(note(), false, 're-reading unchanged stock cannot restart progress')
+  stick.count = 0
+  ladder.count += 3
+  assert.equal(note(), true, 'confirmed finished ladders advance preparation')
+  assert.equal(ledger.goal().results, 0, 'preparation does not count as diamonds')
+  w.inv.known = false
+  ladder.count++
+  assert.equal(note(), false, 'unreceived inventory cannot advance preparation')
 })
 
 test('a skipped branch, retirement, duplicate record and another world do not manufacture construction progress', t => {

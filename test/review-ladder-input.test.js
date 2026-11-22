@@ -8,16 +8,18 @@ const { createPhysics } = require('../src/movement/physics')
 const { createInput } = require('../src/movement/input')
 const { createLadderRuntime } = require('../src/runtime/ladder-runtime')
 const { createServerPositionVerifier } = require('../src/movement/server-position-verifier')
+const { normalizePlayerCorrection } = require('../src/movement/server-physics')
+const { safeBody } = require('../src/movement/ladder-geometry')
 
 // This deliberately exercises the real Input and Host receipt reducer. The
 // in-process peer is a physics fixture, not proof of live Realm acceptance.
 function fixture (t, { receipts = true, oracle = false, oracleHook = null, missingReceipt = false, interrupt = null, startY = 65, startOffset = { x: 0, z: 0 }, landings = [65, 68, 71], bottomSlab = false, bottomSlabY = 64, frontLanding = false, timeoutMs = 15000 } = {}) {
   t.mock.timers.enable({ apis: ['setInterval'] })
-  let clock = 1000, owner = 'idle', prediction = null, frames = 0, ladder, verifier, lastPacket, stopped = 0, positionQueries = 0
+  let clock = 1000, owner = 'idle', prediction = null, frames = 0, ladder, verifier, lastPacket, latestCorrection = null, stopped = 0, positionQueries = 0
   const packets = [], blocks = new Map(), errors = [], queries = []
   const landing = frontLanding ? { x: 0, z: -1 } : { x: 1, z: 0 }
   const block = (name, properties = {}) => ({ known: true, name: 'minecraft:' + name, properties, runtimeId: 1, boundingBox: name === 'air' ? 'empty' : 'block', extra: [] })
-  for (let y = 65; y <= 74; y++) blocks.set(`0,${y},0`, block('ladder', { facing_direction: 2 }))
+  for (let y = 65; y <= Math.max(74, ...landings); y++) blocks.set(`0,${y},0`, block('ladder', { facing_direction: 2 }))
   for (const y of landings) blocks.set(`${landing.x},${y - 1},${landing.z}`, block('stone'))
   if (bottomSlab) blocks.set(`${landing.x},${bottomSlabY},${landing.z}`, block('cobblestone_slab', { 'minecraft:vertical_half': 'bottom' }))
   const world = { getBlock: (x, y, z) => blocks.get(`${x},${y},${z}`) ?? block(y < 65 || z === 1 ? 'stone' : 'air') }
@@ -63,11 +65,18 @@ function fixture (t, { receipts = true, oracle = false, oracleHook = null, missi
   const input = { ...stream, stop: () => { stopped++; stream.stop(false); owner = 'idle' } }
   const sleep = async () => {
     clock += 50
-    interrupt?.({ clock, frames, ladder, host, blocks, input, takeover: () => { owner = 'combat' }, correct: position => host.applyPacket('correct_player_move_prediction', { position, delta: { x: 0, y: 0, z: 0 }, on_ground: false, tick: lastPacket?.tick ?? 0n, prediction_type: 'player' }) })
+    const correct = (position, { delta = { x: 0, y: 0, z: 0 }, updatePeer = false } = {}) => {
+      const packet = { position, delta, on_ground: false, tick: lastPacket?.tick ?? 0n, prediction_type: 'player' }
+      host.applyPacket('correct_player_move_prediction', packet)
+      latestCorrection = { ...normalizePlayerCorrection(packet, { historyAvailable: false }), receivedAt: new Date(clock).toISOString() }
+      if (updatePeer) server = serverPhysics.fromServer({ ...host.snapshot(), position }, { velocity: delta, onGround: false })
+    }
+    interrupt?.({ clock, frames, ladder, host, blocks, input, server, takeover: () => { owner = 'combat' }, correct })
     t.mock.timers.tick(50)
     await Promise.resolve()
   }
   ladder = createLadderRuntime({ getState, getBlock: world.getBlock, getPhysics: () => physics, getInput: () => input, currentGeneration: () => true, requireIdle: () => { if (owner !== 'idle') throw new Error('BUSY') }, canAcquire: () => owner === 'idle', taskOwnsInput: () => owner === 'task', setTaskOwner: () => { owner = 'task' }, guard: () => owner !== 'combat', now: () => clock, sleep, timeoutMs,
+    getCorrection: () => latestCorrection,
     ...(verifier ? { confirmPosition: verifier.confirm } : {}), onPrediction: value => { prediction = value } })
   t.after(() => stream.stop(false))
   const move = (fromY, toY, extra = {}) => ladder.move({ column: { x: 0, z: 0 }, from: { x: landing.x + 0.5, y: fromY, z: landing.z + 0.5 }, to: { x: landing.x + 0.5, y: toY, z: landing.z + 0.5 }, ...extra })
@@ -223,6 +232,65 @@ test('received correction away from the sent pose is retained and interrupts asc
   assert.equal(result.serverConfirmed, false)
 })
 
+test('a received correction bound to an emitted ascent frame resumes on the same ladder', async t => {
+  let corrected = false
+  const f = fixture(t, { startOffset: { x: -1, z: 0 }, interrupt: c => {
+    const p = c.server.position
+    if (!corrected && c.frames >= 4 && p.y > 65.7 && p.y < 67.5) {
+      corrected = true
+      c.correct({ x: p.x, y: p.y + 1.62 - 0.29, z: p.z }, { delta: { x: 0, y: 0.2, z: 0 }, updatePeer: true })
+    }
+  } })
+  const result = await f.move(65, 68, { from: { x: 0.5, y: 65, z: 0.5 } })
+  assert.equal(corrected, true)
+  assert.equal(result.status, 'completed', JSON.stringify(result))
+  assert.equal(result.replayedCorrections, 1)
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(result.positionEvidence.kind, 'server_position')
+  assert.equal(f.server.onGround, true)
+})
+
+test('a long ascent may continue after twelve verified corrections when the server confirms upward progress', async t => {
+  let correctedY = 65, corrections = 0
+  const f = fixture(t, { landings: [65, 95], frontLanding: true, startOffset: { x: 0, z: 1 }, timeoutMs: 26000, interrupt: c => {
+    const p = c.server.position
+    if (p.y < correctedY + 1.75 || p.y > 94.3) return
+    correctedY = p.y - 0.29
+    corrections++
+    c.correct({ x: p.x, y: correctedY + 1.62, z: p.z }, { delta: { x: 0, y: 0.2, z: 0 }, updatePeer: true })
+  } })
+  const result = await f.move(65, 95, { from: { x: 0.5, y: 65, z: 0.5 } })
+  assert.ok(corrections > 12)
+  assert.equal(result.status, 'completed', JSON.stringify(result))
+  assert.equal(result.replayedCorrections, corrections)
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(f.server.onGround, true)
+})
+
+test('repeated corrections around the same height still hit the initial limit', async t => {
+  const f = fixture(t, { landings: [65, 95], startOffset: { x: -1, z: 0 }, interrupt: c => {
+    const p = c.server.position
+    if (p.y < 65.9) return
+    c.correct({ x: p.x, y: 65.55 + 1.62, z: p.z }, { delta: { x: 0, y: 0.2, z: 0 }, updatePeer: true })
+  } })
+  const result = await f.move(65, 95, { from: { x: 0.5, y: 65, z: 0.5 } })
+  assert.equal(result.reason, 'LADDER_SERVER_CORRECTION', JSON.stringify(result))
+  assert.equal(result.correctionDiagnostic?.refusal, 'correction_limit')
+  assert.equal(result.replayedCorrections, 12)
+  assert.equal(result.serverConfirmed, false)
+})
+
+test('a float32 correction at the verified ladder face admits rounding but rejects body overlap', () => {
+  const column = { x: 9877, z: 10186 }, facing = 2
+  const getBlock = () => ({ known: true, name: 'minecraft:ladder', properties: { facing_direction: facing }, extra: [] })
+  const physics = { blockAt: () => ({ shapes: [[0, 0, 0.8125, 1, 1, 1]] }) }
+  const p = { x: column.x + 0.5, y: 62.955, z: Math.fround(column.z + 0.8125 - 0.3) }
+  assert.throws(() => safeBody(getBlock, physics, p), { code: 'LADDER_BODY_OBSTRUCTED' })
+  assert.equal(safeBody(getBlock, physics, p, { column, facing }), true)
+  assert.throws(() => safeBody(getBlock, physics, { ...p, z: p.z + 0.01 }, { column, facing }), { code: 'LADDER_BODY_OBSTRUCTED' })
+  assert.throws(() => safeBody(() => ({ ...getBlock(), name: 'minecraft:stone' }), physics, p, { column, facing }), { code: 'LADDER_BODY_OBSTRUCTED' })
+})
+
 test('a changed support wall or a missing input receipt never authorizes another step', async t => {
   const f = fixture(t, { interrupt: c => { if (c.frames >= 8) c.blocks.set('0,67,1', { known: false }) } })
   const result = await f.move(65, 68)
@@ -235,4 +303,22 @@ test('missing queued receipt prevents prediction commit and further ladder frame
   const result = await f.move(65, 68)
   assert.equal(result.reason, 'LADDER_INPUT_RECEIPT_UNCONFIRMED')
   assert.equal(f.packets.length, 1)
+})
+
+
+test('a surface side landing can be reached over the last rung during a long ascent', async t => {
+  const top = 112
+  let corrected = false
+  const f = fixture(t, { landings: [65, top], startOffset: { x: -1.0125, z: -0.2 }, timeoutMs: 45000, interrupt: c => {
+    const p = c.server.position
+    if (corrected || p.y < top - 0.3) return
+    corrected = true
+    c.correct({ x: p.x, y: top + 0.93 + 1.62, z: p.z }, { delta: { x: 0, y: 0.13, z: 0 }, updatePeer: true })
+  } })
+  const result = await f.move(65, top, { from: { x: 0.4875, y: 65, z: 0.3 } })
+  assert.equal(corrected, true)
+  assert.equal(result.status, 'completed', JSON.stringify(result))
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(f.server.onGround, true)
+  assert.ok(f.packets.some(packet => packet.position.y > top + 2.62), 'the ascent briefly rises above the final rung')
 })

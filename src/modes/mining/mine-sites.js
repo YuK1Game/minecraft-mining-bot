@@ -11,6 +11,8 @@ const { leaveMine }=require('./mine-route')
 const { observeCandidate,observationSignature,MAX_WAITS }=require('./mine-observation')
 const MAX_SITES=8,MAX_BYTES=900000
 const OFFSETS=[[0,0],[1,0],[0,1],[-1,0],[0,-1],[1,1],[-1,1],[-1,-1],[1,-1]]
+const EXPANDED_OFFSETS=[...OFFSETS,...OFFSETS.slice(1).map(([x,z])=>[x*2,z*2])]
+const siteOffsets=sites=>sites.length?EXPANDED_OFFSETS:OFFSETS
 const raw=ctx=>ctx.runtime.mineState?.()??ctx.runtime.raw()
 const memory=ctx=>{ctx.memory.early??={};return ctx.memory.early.mine??={}}
 const revisionOf=ctx=>{const world=ctx.runtime.host?.()?.world;return typeof world?.revision==='function'?world.revision():world?.revision??null}
@@ -27,7 +29,7 @@ function compactSite(branch){
   const {evaluation,...geometry}=branch.plan
   return {version:1,plan:structuredClone(geometry),bounds:footprint(geometry),shaft:structuredClone(branch.shaft),storage:structuredClone(branch.storage??{pairs:{}}),
     progress:Object.fromEntries(Object.entries(branch.progress).map(([layer,p])=>[layer,{cursor:p.cursor,confirmedSteps:p.confirmedSteps,status:p.status}])),
-    exhausted:branch.request?.resource??null}
+    exhausted:branch.request?.resource??null,...(typeof branch.retiring==='string'?{retireReason:branch.retiring}:{})}
 }
 
 function protectedBySites(sites,world){
@@ -38,7 +40,7 @@ function protectedBySites(sites,world){
 function originAt(ctx,index,sites,origin=null){
   const home=ctx.shared.playerHouse?.origin,base=origin??(home?{...home,y:home.y+1}:sites[0]?.plan.shaft.approach??ctx.getFeet())
   if(index===0)return {origin:{...base}}
-  const [dx,dz]=OFFSETS[index],x=Math.floor(base.x+dx*48),z=Math.floor(base.z+dz*48),unknown=[],seen=new Set()
+  const [dx,dz]=siteOffsets(sites)[index],x=Math.floor(base.x+dx*48),z=Math.floor(base.z+dz*48),unknown=[],seen=new Set()
   // The next site's surface height comes from this received column, not the
   // old home's Y. Unknown air above a solid block is not an entrance.
   for(let y=Math.min(318,Math.floor(base.y)+24);y>=Math.max(-58,Math.floor(base.y)-32);y--){
@@ -93,25 +95,40 @@ async function observeExtension(ctx,branch,search){
   return out.changed?results.partial('MINE_OBSERVATION_RECEIVED',{evidence:out.result.evidence}):out.result
 }
 
+function rejectSite(ctx,search,plan,candidateCount){
+  const {code,diagnostics={}}=plan,index=search.index
+  const details={code,unknown:diagnostics.unknown,ore:diagnostics.observedOres,unsafe:diagnostics.rejectedHazard,lowerYs:diagnostics.lowerYs,samples:diagnostics.unsafeSamples}
+  search.rejected??={}
+  if(JSON.stringify(search.rejected[index])!==JSON.stringify(details))ctx.log?.(`採掘候補 ${index+1}/${candidateCount}: ${JSON.stringify(details)}`)
+  search.rejected[index]=details
+}
+
 async function nextMine(ctx,resource,targetHeld){
   const mine=memory(ctx),sites=mine.sites??=[],revision=revisionOf(ctx),worldScope=state.mineWorldScope(raw(ctx))
   if(!live(ctx))return {result:stopped()}
   if(mine.branch?.segmentTask || mine.branch?.vein || mine.branch?.pendingAction)return {result:blocked('MINE_OBSERVATION_PENDING_WORK','施工中の区間と埋戻しを完了してから次の採掘場を調べます。','inventory_update')}
   if(sites.length>=MAX_SITES)return {result:blocked('MINE_SITE_LIMIT','確認済み採掘場が8か所に達しました。保管した鉱石と採掘範囲を確認します。','supplies_changed')}
-  const search=mine.search??={index:0}
+  const search=mine.search??={index:0},candidateCount=siteOffsets(sites).length
   const requestKey=JSON.stringify([resource,targetHeld,scope(ctx)])
-  if(search.requestKey!==requestKey){search.requestKey=requestKey;search.index=0;delete search.wait;delete search.deferred;delete search.exhaustedRevision;delete search.origin}
+  if(search.requestKey!==requestKey){search.requestKey=requestKey;search.index=0;delete search.wait;delete search.deferred;delete search.exhaustedRevision;delete search.origin;delete search.rejected;delete search.entranceSurveyed}
   // Observation moves must not move the nine fixed candidate centres too.
   search.origin??=originAt(ctx,0,sites).origin
+  // Reconsider a legacy exhausted search once with measured entrances,
+  // without resetting any saved observation budgets.
+  if(search.index>=candidateCount && search.exhaustedRevision!=null && !search.deferred && !search.entranceSurveyed){
+    search.index=0;search.rejected={};search.entranceSurveyed=true;delete search.exhaustedRevision
+    if(!await save(ctx,null))return {result:blocked('MINE_CHECKPOINT','採掘候補の判定を保存します。','owner_released')}
+  }
+  search.entranceSurveyed=true
   if(search.wait?.revision===revision && search.wait?.requestKey===requestKey && search.wait?.index===search.index){
     return observeSite(ctx,search,search.wait)
   }
-  if(search.index>=OFFSETS.length){
+  if(search.index>=candidateCount){
     // An unrelated packet does not reset exhausted walk/request budgets.
     // Revisit only a deferred candidate whose own missing-cell evidence
     // changed. An unknown column cannot monopolise the remaining candidates.
     const ready=Object.values(search.deferred??{}).find(wait=>wait.signature!==candidateEvidence(ctx,wait))
-    if(!ready)return {result:blocked('MINE_OBSERVATION_EXHAUSTED','周囲9か所の観測候補を確認しました。安全に進めない候補は保留し、対象の地形受信が変わるまで待ちます。')}
+    if(!ready)return {result:blocked('MINE_OBSERVATION_EXHAUSTED',`周囲${candidateCount}か所の観測候補を確認しました。安全に進めない候補は保留し、対象の地形受信が変わるまで待ちます。`)}
     search.index=ready.index;search.wait={...ready,revision:null};delete search.deferred[ready.index]
   }
   const found=originAt(ctx,search.index,sites,search.origin)
@@ -130,15 +147,17 @@ async function nextMine(ctx,resource,targetHeld){
       search.wait={revision,requestKey,index:search.index,code:planned.code??'MINE_PLAN_PENDING',cells,...(previous?.observation?{observation:previous.observation}:{})}
       return observeSite(ctx,search,search.wait)
     }else{
+      rejectSite(ctx,search,planned,candidateCount)
       delete search.wait;search.index++
-      if(search.index>=OFFSETS.length)search.exhaustedRevision=revision
+      if(search.index>=candidateCount)search.exhaustedRevision=revision
     }
     if(!await save(ctx,null))return {result:blocked('MINE_CHECKPOINT','次の採掘候補の確認結果を保存します。','owner_released')}
     return {result:blocked(planned.code??'MINE_PLAN_PENDING','既存の採掘場を保護し、次の2層の採掘範囲を観測しています。')}
   }
   if(sites.some(site=>site.plan.id===planned.plan.id)){
+    rejectSite(ctx,search,{code:'MINE_SITE_ALREADY_USED'},candidateCount)
     search.index++;delete search.wait
-    if(search.index>=OFFSETS.length)search.exhaustedRevision=revision
+    if(search.index>=candidateCount)search.exhaustedRevision=revision
     await save(ctx,null)
     return {result:blocked('MINE_SITE_ALREADY_USED','使い終えた採掘範囲を除外し、別の範囲を確認します。')}
   }
@@ -192,11 +211,19 @@ async function ensureMineLayer(ctx,branch,{resource,targetHeld=1}={}){
   return {...results.completed('MINE_LAYER_PLANNED',{evidence:{planOnly:true,planId:planned.plan.id,revision:planned.plan.revision,addedLayer:'lower'}}),serverConfirmed:true}
 }
 
-async function retireMine(ctx,branch){
+async function retireMine(ctx,branch,reason=null){
   if(branch.pendingAction || branch.vein || branch.segmentTask)return blocked('MINE_RETIRE_PENDING_ACTION','未確認の施工と鉱脈の埋戻しを終えてから次の採掘場へ移ります。','inventory_update')
+  if(!branch.retiring){
+    branch.retiring=reason??true
+    if(!await save(ctx,branch)){delete branch.retiring;return blocked('MINE_CHECKPOINT','採掘場からの帰路を保存します。','owner_released')}
+  }
   const left=await leaveMine(ctx,branch)
   if(!received(left) || !live(ctx))return live(ctx)?left:stopped()
-  const mine=memory(ctx),sites=mine.sites??=[]
+  if(left.code==='MINE_OUTSIDE'){
+    const outside=await ctx.minePorts.confirmPosition(ctx.getFeet())
+    if(!received(outside) || !live(ctx))return live(ctx)?outside:stopped()
+  }
+  const mine=memory(ctx),sites=mine.sites??=[],search=mine.search
   if(sites.length>=MAX_SITES)return blocked('MINE_SITE_LIMIT','確認済み採掘場の保管と範囲を見直します。','supplies_changed')
   const archived=compactSite(branch),next=[...sites,archived]
   if(Buffer.byteLength(JSON.stringify(next))>MAX_BYTES)return blocked('MINE_ARCHIVE_LIMIT','採掘場の保存容量を確認します。','owner_released')
@@ -204,8 +231,9 @@ async function retireMine(ctx,branch){
   // Re-evaluate the home area once with the old footprint protected, then
   // move through the eight fixed neighbouring survey centres if it is full.
   mine.search={index:0}
-  if(!await save(ctx,null)){mine.branch=branch;mine.sites=sites;return blocked('MINE_CHECKPOINT','採掘場の保存を確認します。','owner_released')}
-  ctx.log?.(`プレイヤーモード: 採掘範囲を使い終えたため、既設の坑道・収納を残して次の採掘場を調べます（保存済み${next.length}か所）`)
+  if(!await save(ctx,null)){mine.branch=branch;mine.sites=sites;mine.search=search;return blocked('MINE_CHECKPOINT','採掘場の保存を確認します。','owner_released')}
+  const detail=archived.retireReason==='MINE_SHAFT_ENTRY_BACKING_BLOCKED'?'入口の支持位置を使えないため':'採掘範囲を使い終えたため'
+  ctx.log?.(`プレイヤーモード: ${detail}、確認済みの施工を残して次の採掘場を調べます（保存済み${next.length}か所）`)
   return {...results.partial('MINE_SITE_RETIRED',{progress:{sites:next.length}}),serverConfirmed:true}
 }
 

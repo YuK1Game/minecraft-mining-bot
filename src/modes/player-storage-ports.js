@@ -8,7 +8,7 @@ const TABLE = 'minecraft:crafting_table'
 const AIR = /^minecraft:(?:air|cave_air|void_air|short_grass|fern|leaf_litter)$/
 const { createContainerPorts } = require('./return/container-ports')
 
-function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now, memory = null, tool }) {
+function createStoragePorts ({ operations, getBlock, getFeet, getInventory, reservedPlacement = () => false, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now, memory = null, tool }) {
   const items = () => getInventory()?.items ?? []
   const count = name => items().filter(item => item?.name === name && item.count > 0).reduce((sum, item) => sum + item.count, 0)
   const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
@@ -32,7 +32,14 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held
     } catch { return false } finally { close() }
     return until(() => count(output) > before, 3000)
   }
-  const craftPlanks = (log, times) => craftSmall(log.replace(/_(?:log|wood)$/, '_planks').replace(/_(?:stem|hyphae)$/, '_planks'), times)
+  function craftPlanks (log, times = 1, maxTimes = times) {
+    const output = log.replace(/_(?:log|wood)$/, '_planks').replace(/_(?:stem|hyphae)$/, '_planks')
+    if (maxTimes === times || typeof operations.crafting.preview !== 'function') return craftSmall(output, times)
+    for (let batch = times; batch <= maxTimes; batch++) {
+      if (operations.crafting.preview(output, { times: batch })?.ready === true) return craftSmall(output, batch)
+    }
+    return false
+  }
 
   function tableNear () {
     const at = feetCell()
@@ -64,6 +71,7 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held
   // Normal placement of a held block on the floor of a cell; it counts when the block is received.
   async function place (cell, name) {
     retrySafe = true
+    if (reservedPlacement(cell)) return false
     const stacks = () => items().filter(item => item?.name === name && item.count > 0)
     let item = stacks().find(stack => stack.slot <= 8)
     try {

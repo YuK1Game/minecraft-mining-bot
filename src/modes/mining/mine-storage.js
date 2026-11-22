@@ -6,13 +6,14 @@ const { createChestPairs } = require('../player-chest-pairs')
 const { pairedChest } = require('../chest-pair')
 const { stationWorldScope } = require('../../survival/supply-return')
 const { completed, blocked, failed, interrupted } = require('../return/return-result')
-const { key, air, solid, bottomSlab, confirmed, bare } = require('./mine-observed')
+const { key, air, solid, bottomSlab, confirmed, bare, held } = require('./mine-observed')
 const { cargo, capacityCargo, occupied, isCargo, RETAIN } = require('./mine-carry')
 
 function createMineStorage (ctx, actions) {
   const stopped = () => ctx.cancelled() || ctx.signal?.aborted
+  const memory = ctx.shared.playerChestMemory ??= { seen: new Map() }
   const box = createContainerPorts({ operations: ctx.operations, getBlock: ctx.getBlock, getFeet: ctx.getFeet, getInventory: actions.inventory,
-    held: stopped, disposed: stopped, memory: ctx.shared.playerChestMemory ??= { seen: new Map() }, ...(ctx.sleep ? { sleep: ctx.sleep, now: ctx.now } : {}) })
+    held: stopped, disposed: stopped, memory, ...(ctx.sleep ? { sleep: ctx.sleep, now: ctx.now } : {}) })
   const pairs = createChestPairs({ shared: ctx.shared, worldScope: () => stationWorldScope(ctx.runtime.raw()), getBlock: ctx.getBlock,
     file: path.join(ctx.root, '.local', 'player-chest-pairs.json'), say: text => ctx.log?.('採掘場: ' + text) })
   const wait = (code, kind = 'terrain_received', extra = {}) => blocked(code, { kind }, extra)
@@ -104,6 +105,16 @@ function createMineStorage (ctx, actions) {
     }
     return finish(wait('MINE_STORAGE_FULL', 'container_update', { progress: { confirmedTransferred: transferred }, remaining: { items: stacks()?.reduce((sum, s) => sum + s.count, 0) ?? null } }))
   }
+  function pickDeficits (target, stock, slots) {
+    if (!stock) return []
+    const remaining = Object.fromEntries(Object.entries(target).map(([name, count]) => [name, Math.max(0, count - (held(stock, name) ?? 0))]))
+    return slots.flatMap(slot => {
+      const name = bare(slot.name), count = Math.min(slot.count ?? 0, remaining[name] ?? 0)
+      if (slot.known !== true || count <= 0) return []
+      remaining[name] -= count
+      return [{ chestSlot: slot.slot, name: slot.name, count }]
+    })
+  }
   async function take (plan, { layer, needs = {} } = {}) {
     const room = roomOf(plan, layer)
     if (!room) return failed('MINE_STORAGE_LAYER_INVALID')
@@ -111,17 +122,51 @@ function createMineStorage (ctx, actions) {
     for (const pair of room.pairs.filter(pair => pair.purpose === 'supply' && registry().pairs[pair.id])) {
       const received = await inspect(pair)
       if (!confirmed(received)) return received
-      const out = await box.withdraw(pair.positions[0], slots => {
-        const needed = Object.fromEntries(Object.entries(target).map(([name, n]) => [name, Math.max(0, n - (actions.inventory()?.items ?? []).filter(i => bare(i.name) === name).reduce((sum, i) => sum + i.count, 0))])), picks = []
-        for (const slot of slots) {
-          const name = bare(slot.name), count = Math.min(slot.count ?? 0, needed[name] ?? 0)
-          if (count > 0) { picks.push({ chestSlot: slot.slot, name: slot.name, count }); needed[name] -= count }
-        }
-        return picks
-      }, { aborted: stopped })
+      const out = await box.withdraw(pair.positions[0], slots => pickDeficits(target, actions.inventory(), slots), { aborted: stopped })
       if (out.status !== 'completed') return out
     }
     return actions.done('MINE_SUPPLY_CHESTS_READ')
+  }
+  async function takeHome (target) {
+    const origin = ctx.shared.playerHouse?.origin, feet = ctx.getFeet()
+    if (stopped()) return stoppedResult()
+    if (!origin || !feet || Math.hypot(feet.x - origin.x, feet.z - origin.z) > 24 || Math.abs(feet.y - origin.y) > 8) return null
+    const stock = actions.inventory()
+    if (!stock || Object.entries(target).every(([name, count]) => held(stock, name) >= count)) return null
+    const { chestOf } = require('../house/house-spawn')
+    const { approachHome } = require('../dragon-early-home')
+    const { chestShut } = require('../chest-lid')
+    const { REACH, RISE } = require('../base-chests')
+    const anchors = [ctx.shared.playerBase, chestOf(origin)].filter(Boolean)
+    const pick = slots => pickDeficits(target, actions.inventory(), slots)
+    // Earlier deposit receipts locate the material. The current window and
+    // inventory must confirm each withdrawal through the ordinary chest port.
+    for (const [id, slots] of memory.seen) {
+      if (!pick(slots).length) continue
+      const [x, y, z] = id.split(',').map(Number), position = { x, y, z }
+      if (!anchors.some(at => Math.abs(x - at.x) <= REACH && Math.abs(z - at.z) <= REACH && Math.abs(y - at.y) <= RISE)) continue
+      const chest = actions.block(position)
+      if (chest?.known !== true || chest.name !== 'minecraft:chest' || chestShut(ctx.getBlock, position, box.contents)) continue
+      const trial = { stage: 'mine-home-supply', target: id, code: 'MINE_HOME_SUPPLY_UNREACHABLE' }
+      if (ctx.goal?.spent?.(trial)) continue
+      if (!await approachHome(ctx, position, { open: true })) {
+        if (stopped()) return stoppedResult()
+        ctx.goal?.fail?.(trial)
+        continue
+      }
+      const location = await actions.confirmPosition(ctx.getFeet())
+      if (!confirmed(location)) return location
+      const out = await box.withdraw(position, pick, { aborted: stopped })
+      if (stopped()) return stoppedResult()
+      const transferred = out.progress?.confirmedTransferred ?? 0
+      if (transferred > 0) {
+        ctx.log?.(`採掘場: 本拠点のチェスト (${id}) から施工資材 ${transferred} 個を取り出しました。`)
+        return out
+      }
+      if (!actions.inventory() || out.hold === true || out.evidence?.transfer?.rejectionProof || out.status === 'interrupted') return out
+      if (out.status !== 'completed') ctx.goal?.fail?.(trial)
+    }
+    return null
   }
   async function depositHome ({ keep = {}, freeSlots = null } = {}) {
     const origin = ctx.shared.playerHouse?.origin
@@ -183,7 +228,7 @@ function createMineStorage (ctx, actions) {
     return actions.done(held() >= targetHeld ? 'MINE_STOCK_RECEIVED' : 'MINE_STOCK_CHECKED', { resource: bare(resource), held: held(), missing: Math.max(0, targetHeld - held()) })
   }
   const needsRoom = () => { const inv = actions.inventory(); return !inv || inv.items.filter(i => i.count > 0).length >= 28 }
-  return { ensure, deposit, depositHome, take, withdraw, inspect, needsRoom, contents: box.contents, room: box.room }
+  return { ensure, deposit, depositHome, takeHome, take, withdraw, inspect, needsRoom, contents: box.contents, room: box.room }
 }
 
 module.exports = { createMineStorage, cargo, RETAIN }

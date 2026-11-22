@@ -13,9 +13,14 @@ async function reachStorage(ctx,branch,layer){
   return walkLayer(ctx,branch,layer,{x:p.x+0.5,y:standY(floor,p.y),z:p.z+0.5})
 }
 
+function stockKey(ctx,branch,layer){
+  const request=branch.request,revision=branch.storage?.lastDeposit?.revision??0
+  return JSON.stringify([request.resource,request.targetHeld,layer,scope(ctx),revision])
+}
+const stockIsChecked=(ctx,branch,layer)=>branch.stockChecked===stockKey(ctx,branch,layer)
+
 async function checkStock(ctx,branch,layer){
-  const request=branch.request,before=scope(ctx),revision=branch.storage?.lastDeposit?.revision??0
-  const key=JSON.stringify([request.resource,request.targetHeld,layer,before,revision])
+  const request=branch.request,before=scope(ctx),key=stockKey(ctx,branch,layer)
   if(branch.stockChecked===key)return {...results.completed('MINE_STOCK_PREVIOUSLY_CHECKED'),serverConfirmed:true}
   const reached=await reachStorage(ctx,branch,layer)
   if(!received(reached))return reached
@@ -52,4 +57,4 @@ async function takeSupplies(ctx,branch,layer,needs,storage){
   return out
 }
 
-module.exports={reachStorage,checkStock,depositMine,takeSupplies}
+module.exports={reachStorage,checkStock,stockIsChecked,depositMine,takeSupplies}

@@ -3,10 +3,15 @@
 const { standable } = require('./house/house-steps')
 const { full, bare, workingPickTier } = require('./dragon-supply-kit')
 const { approachOre, searchMine, coolLava, lake, DEPTH } = require('./dragon-early-quarry')
-const { roam } = require('./supply-roam')
+const { roam, ROAM_M } = require('./supply-roam')
 const { digTool } = require('./dig-tool')
 const { cellRest } = require('./supply-cell-rest')
 const { treeAt, beginTree } = require('./dragon-tree')
+const { inside, leaveHouse } = require('./house/house-exit')
+const { doorOf, openDoor } = require('./house/house-door')
+const { createBuildWalk } = require('./player-build-walk')
+const { sightPassable } = require('../actions/interaction-sight')
+const { uncoverStone, walkStoneStand, canCollectBrokenStone, pickUpStone } = require('./dragon-stone-cover')
 
 const SOURCES = {
   raw_iron: /^(?:deepslate_)?iron_ore$/, raw_gold: /^(?:deepslate_)?gold_ore$/,
@@ -16,6 +21,9 @@ const SOURCES = {
   log: /^(?!stripped_)[a-z_]+_(?:log|stem)$/, string: /^web$/
 }
 const MOBS = { string: 'spider', feather: 'chicken', phantom_membrane: 'phantom', slime_ball: 'slime', magma_cream: 'magma_cube', wool: 'sheep' }
+const WOOD_SEARCH_STEPS = 7
+const SIDES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
+const exposedStone = (ctx, p) => SIDES.some(([x, y, z]) => sightPassable(ctx.getBlock(p.x + x, p.y + y, p.z + z)))
 
 function findCells (ctx, test, radius = 12, height = 5) {
   const feet = ctx.getFeet()
@@ -33,7 +41,8 @@ function inView (ctx, name) {
   const re = SOURCES[name]
   if (!re) return []
   const rested = cellRest(ctx.shared, ctx.runtime?.raw?.().dimension, { now: ctx.now })
-  return findCells(ctx, (b, p) => re.test(bare(b.name)) && !rested.resting(p))
+  return findCells(ctx, (b, p) => re.test(bare(b.name)) && !rested.resting(p) && !unavailableAt(ctx, b, p) &&
+    (name !== 'cobblestone' || exposedStone(ctx, p)))
 }
 
 async function approach (ctx, target) {
@@ -43,27 +52,92 @@ async function approach (ctx, target) {
   return ctx.hands.approach(target, 2.7)
 }
 
+function enclosedHome (ctx) {
+  const house = ctx.shared.playerHouse
+  if (!house?.origin || ctx.runtime.raw()?.dimension !== 'overworld') return null
+  const door = doorOf(house.origin)
+  if (!door) return null
+  // Only points around an actual doorway should require the route through
+  // it. An open foundation or a site with these walls missing has no exit to use.
+  return [-1, 0, 1].some(dx => {
+    const block = ctx.getBlock(door.x + dx, door.y, door.z)
+    return block?.known === true && (block.boundingBox === 'block' || /_door$/.test(block.name))
+  }) ? house : null
+}
+
+async function receivedWoodDestination (ctx, feet) {
+  const origin = { x: Math.floor(feet.x), y: Math.floor(feet.y), z: Math.floor(feet.z) }
+  const approached = cellRest(ctx.shared, 'overworld:wood-approach', { now: ctx.now })
+  let destination = null, best = ROAM_M ** 2
+  for (let dx = -ROAM_M; dx <= ROAM_M; dx++) {
+    if (ctx.cancelled()) return null
+    for (let dz = -ROAM_M; dz <= ROAM_M; dz++) {
+      const distance = dx * dx + dz * dz
+      if (distance >= best || Math.max(Math.abs(dx), Math.abs(dz)) <= 12) continue
+      const column = { x: origin.x + dx, y: 0, z: origin.z + dz }
+      if (approached.resting(column)) continue
+      for (let y = origin.y - 8; y <= origin.y + 8; y++) {
+        const p = { ...column, y }, block = ctx.getBlock(p.x, p.y, p.z)
+        if (block?.known !== true || !SOURCES.log.test(bare(block.name)) ||
+            unavailableAt(ctx, block, p)) continue
+        destination = column
+        best = distance
+        break
+      }
+    }
+    await new Promise(resolve => setImmediate(resolve))
+  }
+  if (!destination || ctx.cancelled()) return null
+  // Give other trees and the ordinary search a turn if this route fails.
+  approached.miss(destination, 0, 0)
+  return { x: destination.x, z: destination.z }
+}
+
 async function explore (ctx, resource) {
   const feet = ctx.getFeet()
   if (!feet || ctx.cancelled()) return
   const state = ctx.memory?.early ?? ctx.shared
   const step = state.supplySearch ??= {}
+  const wood = resource === 'log' && ctx.runtime.raw().dimension === 'overworld'
+  const visible = () => inView(ctx, resource).length > 0
+  const findWood = wood ? () => receivedWoodDestination(ctx, feet) : null
+  if (wood && (step['log:shortWalks'] ?? 0) >= WOOD_SEARCH_STEPS) {
+    step['log:shortWalks'] = 0
+    if (await roam(ctx, resource, step, feet, visible, { afterWalks: true, findWood })) return
+  }
   const offset = Number(step[resource] ?? 0)
   const options = [[1, 0], [0, 1], [-1, 0], [0, -1]]
+  const house = resource === 'log' ? enclosedHome(ctx)?.origin : null
   // Spend multiple steps on one heading. A blocked route switches to another
   // heading rather than digging unknown ground or crossing an unseen gap.
-  const direction = options[Math.floor(offset / 7) % 4]
+  const target = wood ? step['log:roamTarget'] : null
+  const dx = target ? target.x - feet.x : 0, dz = target ? target.z - feet.z : 0
+  const remaining = Math.hypot(dx, dz)
+  const nearTarget = target && remaining > 8 && remaining <= 24
+  if (target && !nearTarget) delete step['log:roamTarget']
+  const direction = nearTarget
+    ? (Math.abs(dx) >= Math.abs(dz) ? [Math.sign(dx), 0] : [0, Math.sign(dz)])
+    : options[Math.floor(offset / 7) % 4]
   for (const distance of [12, 8, 5, 3]) {
+    if (nearTarget && distance > Math.max(Math.abs(dx), Math.abs(dz))) continue
     const x = Math.floor(feet.x) + direction[0] * distance, z = Math.floor(feet.z) + direction[1] * distance
     for (const dy of [0, 1, -1, 2, -2]) {
       const y = Math.floor(feet.y) + dy
-      if (standable(ctx.getBlock, x, y, z) && await ctx.hands.approach({ x, y, z }, 1.5)) { step[resource] = offset + 1; step[resource + ':miss'] = 0; ctx.goal?.reached?.('search:' + resource); return }
+      if (inside(house, { x: x + 0.5, y, z: z + 0.5 })) continue
+      if (standable(ctx.getBlock, x, y, z) && await ctx.hands.approach({ x, y, z }, 1.5) && !inside(house, ctx.getFeet())) {
+        step[resource] = offset + 1
+        step[resource + ':miss'] = 0
+        if (wood) step['log:shortWalks'] = (step['log:shortWalks'] ?? 0) + 1
+        ctx.goal?.reached?.('search:' + resource)
+        return
+      }
       if (ctx.cancelled()) return
     }
   }
+  if (nearTarget) delete step['log:roamTarget']
   step[resource] = (Math.floor(offset / 7) + 1) * 7
   // No heading had a place to walk to (a tunnel underground has none): the long trip goes instead (supply-roam.js).
-  await roam(ctx, resource, step, feet, () => inView(ctx, resource).length > 0)
+  await roam(ctx, resource, step, feet, visible, { findWood })
 }
 
 function protectedAt (ctx, p) {
@@ -74,9 +148,28 @@ function protectedAt (ctx, p) {
   return p.x >= origin.x - 1 && p.x <= origin.x + 10 && p.z >= origin.z - 1 && p.z <= origin.z + 10 && p.y >= origin.y - 1 && p.y <= origin.y + 5
 }
 
+function unavailableAt (ctx, block, position) {
+  return block.protected || !!block.protectionSource || protectedAt(ctx, position)
+}
+
 async function collect (ctx, name) {
   const mining = require('./mining/mine-controller')
   if (mining.enabled(ctx) && ctx.runtime.raw().dimension === 'overworld' && mining.MINERALS.has(name)) return mining.requestMine(ctx, { resource: name, targetHeld: Math.max(1, require('./dragon-supply-kit').count(name, ctx.runtime.inventory()?.items ?? []) + 1) })
+  const house = name === 'log' ? enclosedHome(ctx) : null
+  if (inside(house?.origin, ctx.getFeet())) {
+    // Nearby tree targets are visible in the terrain cache from inside the
+    // house, but an approach within range can still end behind its wall.
+    const { getBlock, getFeet, hands, log, cancelled } = ctx
+    const walk = target => !cancelled() && hands.walk(target)
+    const build = createBuildWalk({ hands, getHouse: () => house, log })
+    const left = await leaveHouse({
+      house, getBlock, getFeet, walk, why: () => hands.why?.(), log,
+      door: () => openDoor({ origin: house.origin, getBlock, getFeet, walk, useDoor: at => !cancelled() && ctx.operations.interactions.useDoor(at), log, now: ctx.now, sleep: ctx.sleep }),
+      build: (target, done) => build(target, { done, aborted: cancelled })
+    })
+    if (!left || cancelled()) return
+  }
+  if (name === 'cobblestone' && ctx.runtime.raw().dimension === 'overworld' && await pickUpStone(ctx)) return
   const re = SOURCES[name]
   const mob = MOBS[name]
   if (mob) {
@@ -98,8 +191,9 @@ async function collect (ctx, name) {
     // A block that was tried and not taken rests (supply-cell-rest.js): the next nearest ones get their turn.
     const rested = cellRest(ctx.shared, ctx.runtime.raw().dimension, { now: ctx.now })
     const far = cell => { const feet = ctx.getFeet(); return feet ? Math.hypot(cell.x + 0.5 - feet.x, cell.y - feet.y, cell.z + 0.5 - feet.z) : Infinity }
-    const cells = findCells(ctx, (b, p) => re.test(bare(b.name)) && !b.protected && !b.protectionSource && !protectedAt(ctx, p) && !rested.resting(p))
-    const skip = (b, p) => b.protected || !!b.protectionSource || protectedAt(ctx, p)
+    const cells = findCells(ctx, (b, p) => re.test(bare(b.name)) && !unavailableAt(ctx, b, p) &&
+      !rested.resting(p) && (name !== 'cobblestone' || exposedStone(ctx, p)))
+    const skip = (b, p) => unavailableAt(ctx, b, p)
     for (const seen of cells.slice(0, 6)) {
       // A log is taken as the first of its tree (dragon-tree.js): the lowest one standing, walked to at the trunk's
       // foot (the nearest stand at the height of a log in the crown is on the leaves).
@@ -129,7 +223,13 @@ async function collect (ctx, name) {
         if (ctx.cancelled() || !rested.miss(cell, before, far(cell))) return
         ctx.log?.(`プレイヤーモード: ${bare(block.name)} (${cell.x}, ${cell.y}, ${cell.z}) を掘れなかったため、しばらくほかを先に試します${ctx.hands.reason?.(target) ? `（${String(ctx.hands.reason(target)).slice(0, 60)}）` : ''}`)
       }
-      await approach(ctx, trunk ? { x: target.x, y: trunk[0].y, z: target.z } : target)
+      if (name === 'cobblestone') {
+        const ready = () => canCollectBrokenStone(ctx.getBlock, target, ctx.getFeet()) && ctx.hands.canMine(target)
+        if (!ready()) await walkStoneStand(ctx, target, ready, [0, 1, 2, -1], { forPickup: true })
+        if (!ready()) { left(); continue }
+      } else {
+        await approach(ctx, trunk ? { x: target.x, y: trunk[0].y, z: target.z } : target)
+      }
       if (ctx.cancelled()) return
       if (!ctx.hands.canMine(target)) {
         if (!oreSearch || !await approachOre(ctx, target) || ctx.cancelled()) { left(); continue }
@@ -140,13 +240,24 @@ async function collect (ctx, name) {
       }
       // With its first log mined the tree is the work until it is down (dragon-tree.js).
       const mined = await ctx.hands.mine(target)
-      if (mined && trunk) beginTree(ctx, trunk)
+      if (mined && trunk) {
+        beginTree(ctx, trunk)
+        const search = (ctx.memory?.early ?? ctx.shared).supplySearch
+        if (search) {
+          delete search['log:shortWalks']
+          delete search['log:roamOrigin']
+          delete search['log:roamTarget']
+          delete search['log:roam']
+        }
+      }
       if (mined && !ctx.cancelled()) {
         if (standable(ctx.getBlock,target.x,target.y,target.z)) await ctx.walk({x:target.x+0.5,y:target.y,z:target.z+0.5})
         return
       }
       left()
     }
+    if (name === 'cobblestone' && ctx.runtime.raw().dimension === 'overworld' &&
+        await uncoverStone(ctx, { findCells, rested, skip })) return
   }
   if (oreSearch) {
     if (name === 'obsidian' && await coolLava(ctx, findCells(ctx, lake))) return

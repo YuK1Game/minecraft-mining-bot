@@ -8,7 +8,9 @@ const {insideMine}=require('./mine-location')
 
 function veinLayer(branch){
   const vein=branch.vein,layer=branch.plan.layers.find(p=>p.id===(vein.layer??branch.request?.layer))
-  return layer && vein.anchor?.y===layer.y && Math.abs(vein.returnTo?.y-layer.y)<=0.5 ? layer.id : null
+  // The received feet position on a bottom slab may round just below its
+  // exact half block. Keep the saved position for walking and verification.
+  return layer && vein.anchor?.y===layer.y && Math.abs(vein.returnTo?.y-layer.y)<=0.5001 ? layer.id : null
 }
 
 // Pockets are bounded additions to a corridor, not general route nodes. First

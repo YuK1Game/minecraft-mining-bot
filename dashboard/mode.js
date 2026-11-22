@@ -85,12 +85,13 @@
   }
 
   function renderStages (player) {
-    const nextSignature = JSON.stringify([player.current, player.reason, player.stages])
+    const nextSignature = JSON.stringify([player.current, player.phase, player.reason, player.stages])
     if (signature === nextSignature) return
     signature = nextSignature
     const active = player.stages.find(stage => stage.id === player.current)
     const reached = player.stages.filter(stage => stage.reached).length
-    goal.textContent = active?.label ?? (player.stages.length && reached === player.stages.length ? 'すべて達成' : '進捗の受信待ち')
+    const completed = player.stages.length && reached === player.stages.length
+    goal.textContent = active?.label ?? (completed ? 'すべて達成' : player.phase === 'completed' ? '遠征完了' : '進捗の受信待ち')
     total.textContent = player.stages.length ? `${reached} / ${player.stages.length} 達成` : ''
     const nextIds = player.stages.map(stage => stage.id)
     // Keep the buttons mounted while polling to preserve keyboard focus.

@@ -16,6 +16,9 @@ const { createProgress } = require('./dragon-progress')
 const { createGoalLedger } = require('./goal/goal-ledger')
 const { goalKey, measure } = require('./dragon-goal-measure')
 const { reserveCounts } = require('./dragon-reserve-seen')
+const { mineWorldScope, sameWorld } = require('./mining/mine-state')
+const { held, receivedInventory } = require('./mining/mine-observed')
+const { constructionSupplies } = require('./mining/mine-needs')
 
 const HELD = '進まない目的を保留しています。場所・持ち物・接続が変わった時か、時間をおいて見直します。'
 const LET_GO_MS = 60000
@@ -27,7 +30,7 @@ function createDragonRuntime (ports) {
   const state = createDragonState({ root, shared, getState: raw, getBlock,
     getLife: () => runtime.host().getLife?.(), getWorldId: () => runtime.host().meta?.startGame?.seed })
   const legacyNeeded = memory => objectiveNow({ runtime, shared, memory }).legacy === true
-  let stepRecord = null, unpin = false
+  let stepRecord = null, unpin = false, triedFinishHold = null
   // The parent goal of the work (goal/goal-ledger.js): its clock, its budget and its hold are in `shared`, and
   // its checkpoint is saved with the record, so neither a reload nor a restart starts them again.
   const now = ports.now ?? Date.now
@@ -61,8 +64,12 @@ function createDragonRuntime (ports) {
       if (night) return night
     }
     // Planned mining stores its cargo in confirmed chests. Other expedition work retains its pack-room policy.
-    if (dim === 'overworld' && !recoverHealth && ctx.drop && crowded(shared.inventoryUncertain ? null : runtime.inventory()) && !ports.threatened()) {
-      const stored = await require('./mining/mine-controller').minePackRoom(ctx)
+    const mine = record.early?.mine?.branch
+    const capacityPending = mine?.capacityDestination || mine?.homeCapacityPending === true
+    if (dim === 'overworld' && !recoverHealth && ctx.drop &&
+        (capacityPending || crowded(shared.inventoryUncertain ? null : runtime.inventory())) && !ports.threatened()) {
+      const returningToMine = record.stage === 'early' && ['early.diamond', 'early.home_reserve'].includes(ledger.goal()?.key)
+      const stored = await require('./mining/mine-controller').minePackRoom(ctx, { returningToMine })
       if (stored) return stored
       const packed = await packRoom({ shared, getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getFeet: ctx.getFeet, drop: ctx.drop, walk: ctx.walk, why: () => ctx.hands.why?.(), cells: ctx.cells, log: ctx.log })
       if (packed) return packed
@@ -87,10 +94,29 @@ function createDragonRuntime (ports) {
       const felling = await finishTree(ctx)
       if (felling) return felling
     }
-    // A held goal keeps the steps above (night, room in the pack, health, recovery) and nothing else. Only in the
-    // overworld: in the Nether and in the End standing still is the danger, the work goes on and the hold only
-    // keeps the watcher from deciding again.
-    if (ledger.goal()?.hold && dim === 'overworld') return { phase: 'waiting', reason: HELD }
+    const currentGoal = ledger.goal(), hold = currentGoal?.hold
+    if (dim === 'overworld') {
+      const mineGoal = record.stage === 'early' && ['early.home_reserve', 'early.diamond'].includes(currentGoal?.key)
+      if (mineGoal && (!hold || hold.code === 'NO_PROGRESS')) {
+        const reconciled = await ctx.minePorts?.reconcilePlacement?.()
+        let reached = false
+        if (!reconciled && hold && triedFinishHold !== hold) {
+          // One verified walk for the unfinished floor. A failed attempt
+          // leaves the normal hold in force.
+          triedFinishHold = hold
+          reached = await ctx.minePorts?.recoverFinishStand?.()
+        }
+        if (reconciled || reached) {
+          if (hold && ledger.goal() === currentGoal && currentGoal.hold === hold) {
+            ledger.held({ ...hold.basis, mineWorkReconciled: true })
+          }
+          const reason = reached ? '床の設置面が見える足場への到着を確認しました。仕上げを続けます。'
+            : '設置先の受信結果を確認しました。縦坑・坑道の作業を続けます。'
+          return { phase: 'waiting', reason }
+        }
+      }
+      if (hold) return { phase: 'waiting', reason: HELD }
+    }
     if (dim === 'end') {
       const result = await runDragonEndStep(ctx, record.end, opts)
       record.stage = 'end'
@@ -159,6 +185,22 @@ function createDragonRuntime (ports) {
       { n: live.n, wait: live.wait, reason: String(shown?.reason ?? '').replace(/。$/, '') + (live.outcome ? '・結果 ' + live.outcome.status + '/' + live.outcome.code : '') + (stepMs >= 60000 ? '・同じ1歩が ' + Math.round(stepMs / 1000) + ' 秒' : '') })
     return owned
   }
-  return { ...expedition, tick, record: state.record, goal }
+  function mineKeep (inventory) {
+    if (!ports.active() || !receivedInventory(inventory)) return null
+    let record = stepRecord
+    if (!record) { try { record = state.snapshot() } catch { return null } }
+    const branch = record?.early?.mine?.branch, request = branch?.request
+    if (record?.stage !== 'early' || !request || branch.retiring ||
+      !sameWorld(branch.plan?.scope, mineWorldScope(runtime.mineState?.() ?? raw()))) return null
+    const needOre = held(inventory, request.resource) < request.targetHeld
+    const producingReserve = request.requester === 'home_reserve' && record.early.reserveReady !== true
+    if (!needOre && !branch.segmentTask && !branch.vein && !producingReserve) return null
+    const layer = branch.segmentTask?.layer ?? branch.vein?.layer ?? request.layer
+    const supplies = constructionSupplies(branch.plan, layer, {
+      inventory, getBlock: p => getBlock(p.x, p.y, p.z), refillCobblestone: branch.refillCobblestone === true
+    })
+    return { ...supplies, [request.resource]: request.targetHeld }
+  }
+  return { ...expedition, tick, record: state.record, goal, mineKeep }
 }
 module.exports = { createDragonRuntime }

@@ -233,7 +233,9 @@ function createReturnSteps ({ goal, ports, flow }) {
     // Arrived by the flat distance only, far over or under the chest (live
     // 2026-11-18 15:30:43 JST: 17 m from it and 14 blocks over it, on ground
     // with no walk down): the way to its level digs and stacks.
-    const beside = cell => flat(cell, at) <= 2.5 && Math.abs(cell.y - at.y) <= 1
+    // The nearest cell can be on the other side of the house wall. A built
+    // route needs to end where the existing open click can see the chest.
+    const beside = cell => opensFrom({ x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }, at)
     let tried = false
     const byBuild = async () => { if (tried || !away(at) || aborted()) return; tried = true; await built(at, beside) }
     if (Math.abs((getFeet()?.y ?? at.y) - at.y) > LEVEL_M) await byBuild()

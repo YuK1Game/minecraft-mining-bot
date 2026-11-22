@@ -110,7 +110,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const hands = buildHands(disposed)
   // The starter house read as built: the way out of a pit never cuts it (safety/house-protection.js).
   const houseBuilt = require('../safety/house-protection').createHouseProtection(() => shared.playerHouse)
-  const houseWayOut = (target, done) => createBuildWalk({ hands, getHouse: () => shared.playerHouse, log })(target, { done, aborted: () => disposed() })
+  const buildWalk = createBuildWalk({ hands, getHouse: () => shared.playerHouse, log })
+  const houseWayOut = (target, done) => buildWalk(target, { done, aborted: disposed })
   const leaveIsland = createIslandStart({ getFeet: () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }, walkable: feet => walkableCells({ x: feet.x, y: feet.y + 1.62, z: feet.z }, (x, y, z) => runtime.host().world.getBlock(x, y, z)), openSky: () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), skyAt: cell => !insideHouse(shared.playerHouse?.origin, cell) && !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), { x: cell.x + 0.5, y: cell.y + 1.62, z: cell.z + 0.5 }), build: (target, done) => houseWayOut(target, done), log })
   // A long trip from inside the starter house first walks out through its door (house/house-exit.js).
   // Still in the water after the exit: the land trip is not started (it only fails leg after leg from there).
@@ -240,6 +241,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const base = createPlayerBase({
     getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: baseFile(root), returnFile: returnFile(root), getWorn: () => { try { return runtime.armor?.() ?? null } catch { return null } },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
+    getMineKeep: inventory => expedition?.mineKeep(inventory),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle, running: () => agentStatus().running === true || shared.autoWanted === true },
     hands: storagePorts, pendingChest: at => storage.pendingChest(at), chest: options => storage.chest(options), porch: () => { const o = shared.playerHouse?.origin; return o ? { stand: { x: o.x + 3, y: o.y, z: o.z + 10 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null }, canBuild: () => !!shared.playerHouse?.origin && require('./house/house-repair').houseDuty(shared.playerHouse) === null && storage.canMakeChest(), climb: climbUp, door: () => houseDoor(), porchWalk: () => shared.playerHouse?.origin ? house.closeIn(shared.playerHouse.origin) : false, spares: () => { const o = shared.playerHouse?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] }, walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within), build: require('./player-build-walk').createBuildWalk({ hands, getHouse: () => shared.playerHouse, log }),
     // The return checks each precondition itself: out of the water, out of the house, then the raw long travel.
@@ -287,7 +289,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     ports: createHousePorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() }),
-    hands, climb: climbUp,
+    hands, build: buildWalk, openEntrance: houseDoor, climb: climbUp,
     travel: { to: travelTo, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     hostile: () => danger(), hostileWhy: () => dangerOf.text(),
     // Not with 10 health or less: eating, the shelter and fleeing come first (live 2026-11-17 05:53 JST: the build began at 1.9 health with no food).

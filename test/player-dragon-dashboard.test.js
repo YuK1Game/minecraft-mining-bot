@@ -45,6 +45,7 @@ test('player dashboard distinguishes manual stop, active play, and a completed e
   assert.equal(badge.textContent, 'プレイ中')
   show('completed', false)
   assert.equal(badge.textContent, '遠征完了')
+  assert.equal(find('target-heading').following.children[0].children[0].textContent, '遠征完了')
   assert.equal(badge.title, '確認済みの進捗')
   assert.equal(start.disabled, true)
 })
@@ -65,6 +66,10 @@ test('the host control snapshot drives selected stage details and updates them d
     return snapshot.mode.player
   }
   const player = show()
+  const mine = player.stages.find(stage => stage.id === 'branch_mine')
+  assert.equal(mine.label, 'ブランチマイニング場の作成')
+  assert.equal(mine.reached, false)
+  assert.deepEqual(mine.checks.map(check => check.status), ['pending'])
   const end = player.stages.find(stage => stage.id === 'end')
   assert.equal(end.shortLabel, 'ドラゴン')
   assert.deepEqual(end.checks[1], { label: 'クリスタルのない柱を確認', status: 'pending', value: '1 / 10 本' })
