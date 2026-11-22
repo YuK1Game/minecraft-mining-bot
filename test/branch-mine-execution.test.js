@@ -85,6 +85,20 @@ test('player legacy mineral decisions are held while bootstrap and other modes r
   assert.equal(withPlannedMine({mode:'player',playing:true,decision:bootstrap}),bootstrap)
 })
 
+test('a nearer hidden lobby block waits for the visible face in the same planned section',async t=>{
+  const w=createMineWorld(t), near={x:2,y:70,z:0}, visible={x:3,y:70,z:0}
+  w.setFeet({x:.5,y:70,z:.5})
+  for(const p of [near,visible])w.put(p,'stone')
+  const original=w.ctx.operations.mining.preview
+  w.ctx.operations.mining.preview=([p])=>p.x===near.x && w.getBlock(visible.x,visible.y,visible.z).name!=='minecraft:air' ? {ready:false} : original([p])
+  w.ctx.minePorts.ensureSegment=async()=>({status:'completed',serverConfirmed:true})
+  const step={id:'upper:lobby:test',layer:'upper',kind:'storage'}
+  const cells={clear:[near,visible],stand:w.feet(),approach:w.feet()}
+  const result=await excavateSegment(w.ctx,w.branch,step,cells)
+  assert.equal(result.code,'MINE_SEGMENT_CONFIRMED',JSON.stringify(result))
+  assert.deepEqual(w.digs.map(d=>d.target),[visible,near])
+})
+
 test('real requests construct storage and consecutive runs in both layers, receive ore and return by ladder',async t=>{
   const w=createMineWorld(t)
   for(const [layer,resource,ore]of[['upper','raw_iron','iron_ore'],['lower','diamond','diamond_ore']]){
