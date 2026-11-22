@@ -40,7 +40,7 @@ function noteMinePreparation (ctx, branch, layer) {
   if (!level || branch.shaft?.depth <= level.y) return false
   const stock = inventory(ctx)
   if (!stock) return false
-  const needs = supplyNeeds(plan, layer, { inventory: stock, getBlock: p => at(ctx, p) })
+  const needs = supplyNeeds(plan, layer, { inventory: stock, getBlock: p => at(ctx, p), refillTorches: branch.refillTorches === true })
   if (!needs) return false
 
   const have = name => count(name, stock.items)

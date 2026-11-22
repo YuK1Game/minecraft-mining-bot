@@ -81,6 +81,17 @@ test('a confirmed home withdrawal has to finish the remaining preparation before
   assert.deepEqual(f.calls, [])
 })
 
+test('confirmed partial fuel is used for torches before another gathering trip', async () => {
+  const f = fixture([], { torch: 7, charcoal: 3, stick: 9 })
+  const marks = []
+  f.ctx.goal = { mark: (...args) => { marks.push(args) } }
+  const result = await f.supplies.ensure(f.plan, { layer: 'lower' })
+  assert.deepEqual(f.calls, [['craft', 'minecraft:torch', 3]])
+  assert.equal(result.code, 'MINE_SUPPLIES_CRAFTED')
+  assert.equal(f.branch.refillTorches, true)
+  assert.deepEqual(marks, [['mine:torch-refill', -7, 1], ['mine:torch-refill', -19, 1]])
+})
+
 test('initial preparation can proceed once the construction reserve is met', async () => {
   const f = fixture([], { ladder: 64, cobblestone: 31 })
   const stack = f.inv.items.find(item => item.name === 'minecraft:cobblestone')

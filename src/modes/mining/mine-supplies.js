@@ -129,9 +129,13 @@ function createMineSupplies (ctx, actions, storage) {
   async function craft (name, times, table = null) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     const before = have(name)
+    if (name === 'torch') ctx.goal?.mark?.('mine:torch-refill', -before, 1)
     await actions.house.craft('minecraft:' + name, times, table, { fitMaterials: true })
     if (stopped()) return interrupted('MINE_INTERRUPTED')
-    return have(name) > before ? wait('MINE_SUPPLIES_CRAFTED', `${name} ${have(name)}`) : wait('MINE_CRAFT_UNCONFIRMED', actions.house.why())
+    const after = have(name)
+    if (after <= before) return wait('MINE_CRAFT_UNCONFIRMED', actions.house.why())
+    if (name === 'torch') ctx.goal?.mark?.('mine:torch-refill', -after, 1)
+    return wait('MINE_SUPPLIES_CRAFTED', `${name} ${after}`)
   }
   async function makeSticks (target) {
     const times = Math.min(8, Math.ceil((target - have('stick')) / 4))
@@ -152,9 +156,11 @@ function createMineSupplies (ctx, actions, storage) {
   }
   async function torches (amount) {
     const batches = Math.min(8, Math.ceil((amount - have('torch')) / 4))
-    if (have('stick') < batches) return makeSticks(batches)
-    const fuel = have('coal') + have('charcoal')
-    if (fuel >= batches) return craft('torch', batches)
+    const sticks = have('stick')
+    const fuel = Math.max(have('coal'), have('charcoal'))
+    const ready = Math.min(batches, sticks, fuel)
+    if (ready > 0) return craft('torch', ready)
+    if (sticks < batches) return makeSticks(fuel > 0 ? Math.min(batches, fuel) : batches)
     const log = item(name => /_log$/.test(name) && !/^stripped_/.test(name))
     const plank = item(name => /_planks$/.test(name))
     const amountToSmelt = Math.max(1, batches - fuel)
@@ -178,7 +184,8 @@ function createMineSupplies (ctx, actions, storage) {
     const id = typeof layer === 'string' ? layer : layer.id
     const branch = ctx.memory.early.mine.branch
     const needs = supplyNeeds(plan, id, {
-      inventory: actions.inventory(), getBlock: actions.block, refillCobblestone: branch.refillCobblestone === true
+      inventory: actions.inventory(), getBlock: actions.block,
+      refillCobblestone: branch.refillCobblestone === true, refillTorches: branch.refillTorches === true
     })
     if (!needs) return wait('MINE_SUPPLY_LAYER_INVALID')
     // A refill is an outstanding request until its full target is observed.
@@ -195,7 +202,11 @@ function createMineSupplies (ctx, actions, storage) {
     const fromHome = await storage.takeHome?.({ ladder: needs.ladder, cobblestone_slab: needs.cobblestone_slab, stick: 7 * ladderBatches(needs.ladder, have('ladder')) })
     if (fromHome) return (fromHome.progress?.confirmedTransferred ?? 0) > 0 && fromHome.status === 'completed'
       ? wait('MINE_HOME_SUPPLIES_RECEIVED') : fromHome
-    if (have('torch') < needs.torch) return torches(needs.torch)
+    if (have('torch') < needs.torch) {
+      branch.refillTorches = true
+      return torches(needs.torch)
+    }
+    delete branch.refillTorches
     const missing = Object.entries(needs).find(([name, amount]) => have(name) < amount)
     if (!missing) {
       delete branch.refillCobblestone
