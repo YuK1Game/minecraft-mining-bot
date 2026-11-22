@@ -81,7 +81,7 @@ function createMineSupplies (ctx, actions, storage) {
     const home = await require('../dragon-home-iron').homeStation(ctx, facility)
     return home.at ? { position: home.at } : { result: home.result ?? wait('MINE_HOME_STATION_APPROACH', home.reason) }
   }
-  async function station (name) {
+  async function station (name, { accessibleOnly = false } = {}) {
     const branch = ctx.memory?.early?.mine?.branch
     if (insideMine(ctx, branch)) {
       const out = await require('./mine-route').leaveMine(ctx, branch)
@@ -95,6 +95,7 @@ function createMineSupplies (ctx, actions, storage) {
     for (const seen of nearby(name)) {
       if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
       if (openStand.here(seen)) return { position: seen }
+      if (accessibleOnly) continue
       for (const stand of openStand.stands(seen)) {
         if (attempts >= 4) break
         if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
@@ -105,6 +106,7 @@ function createMineSupplies (ctx, actions, storage) {
         if (confirmed(moved) && openStand.here(seen)) return { position: seen }
       }
     }
+    if (accessibleOnly) return {}
     if (have(name) < 1) {
       const fullInventory = occupied(actions.inventory()) === 36
       const preview = ctx.operations?.crafting?.preview
@@ -153,17 +155,21 @@ function createMineSupplies (ctx, actions, storage) {
     if (have('stick') < batches) return makeSticks(batches)
     const fuel = have('coal') + have('charcoal')
     if (fuel >= batches) return craft('torch', batches)
-    // Charcoal comes from a log in a received furnace, using wooden fuel.
-    // Existing furnace output/input are reconciled by house.smelt first.
-    const furnace = await station('furnace')
-    if (furnace.result) return furnace.result
     const log = item(name => /_log$/.test(name) && !/^stripped_/.test(name))
     const plank = item(name => /_planks$/.test(name))
-    const made = await actions.house.smelt(furnace.position, log?.name ?? 'minecraft:oak_log', Math.max(1, batches - fuel), plank?.name, Math.max(1, batches), 'minecraft:charcoal')
+    const amountToSmelt = Math.max(1, batches - fuel)
+    const missing = !log ? 'log' : !plank ? 'planks' : null
+    const gather = () => acquire(missing, missing === 'log' ? amountToSmelt : Math.max(2, batches))
+    // Retrieve fuel already burning or output already ready from an accessible
+    // furnace. Leave for ingredients before creating another one or walking
+    // back to the same empty furnace from the gathering route.
+    const furnace = await station('furnace', { accessibleOnly: missing !== null })
+    if (furnace.result) return furnace.result
+    if (!furnace.position) return gather()
+    const made = await actions.house.smelt(furnace.position, log?.name ?? 'minecraft:oak_log', amountToSmelt, plank?.name, batches, 'minecraft:charcoal')
     if (made > 0) return wait('MINE_CHARCOAL_RECEIVED')
     const need = actions.house.smeltNeed()
-    if (need?.input > 0 && !log) return acquire('log', Math.min(8, need.input))
-    if (need?.fuel && !plank) return acquire('planks', Math.max(2, batches))
+    if (missing && actions.inventory() && (!need || need.input > 0 && !log || need.fuel && !plank)) return gather()
     return wait('MINE_CHARCOAL_UNCONFIRMED', actions.house.why())
   }
   async function ensure (plan, { layer = 'upper', request = null } = {}) {

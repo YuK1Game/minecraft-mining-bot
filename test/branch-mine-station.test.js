@@ -8,9 +8,9 @@ const { createHousePorts } = require('../src/modes/house/house-ports')
 const { createInteractions } = require('../src/actions/interactions')
 const { openAccess } = require('../src/actions/open-face')
 
-function fixture ({ enclosed = false, failWalk = false, cancelWalk = false, raisedFloor = false, onlyHome = false } = {}) {
+function fixture ({ enclosed = false, failWalk = false, cancelWalk = false, raisedFloor = false, onlyHome = false, noLogs = false } = {}) {
   const plan = createMineGeometry({ scope: { profile: 'p', realmId: 'r', dimension: 'overworld' }, anchor: { x: 0, z: 0 }, surfaceY: 64, upperY: 16, lowerY: -54 })
-  const stock = { stick: 8, oak_log: 8, oak_planks: 8, furnace: 1, torch: 0, ladder: 128, cobblestone: 128, cobblestone_slab: 128, chest: 6 }
+  const stock = { stick: 8, oak_log: noLogs ? 0 : 8, oak_planks: 8, furnace: 1, torch: 0, ladder: 128, cobblestone: 128, cobblestone_slab: 128, chest: 6 }
   const inventory = { known: true, items: Object.entries(stock).map(([name, count], slot) => ({ name: 'minecraft:' + name, count, slot })) }
   const block = name => ({ known: true, name: 'minecraft:' + name, extra: [], boundingBox: name === 'air' ? 'empty' : 'block' })
   const furnace = { x: -2, y: 64, z: 0 }, blocks = new Map(), key = p => `${p.x},${p.y},${p.z}`
@@ -22,8 +22,8 @@ function fixture ({ enclosed = false, failWalk = false, cancelWalk = false, rais
   const getBlock = (x, y, z) => blocks.get(`${x},${y},${z}`) ??
     block(y < 64 || raisedFloor && y === 64 && (x !== 0 || z !== 0) || onlyHome && x < 5 && (x !== 0 || z !== 0) ? 'stone' : 'air')
   let feet = { x: 0.5, y: 64, z: 0.5 }, cancelled = false, why = null, clock = 0
-  const walks = [], placements = [], smelts = []
-  const ctx = { getFeet: () => feet, cancelled: () => cancelled, memory: { early: { mine: { branch: { plan } } } }, supplies: { acquire: async () => { throw new Error('fixture already carries the station and charcoal ingredients') } } }
+  const walks = [], placements = [], smelts = [], gathering = []
+  const ctx = { getFeet: () => feet, cancelled: () => cancelled, memory: { early: { mine: { branch: { plan } } } }, supplies: { acquire: async (...args) => { gathering.push(args) } } }
   if (onlyHome) Object.assign(ctx, {
     getBlock, shared: { playerHouse: { origin } },
     hands: { approach: async () => { feet = { x: 10.5, y: 64, z: 4.5 }; return true } },
@@ -57,7 +57,7 @@ function fixture ({ enclosed = false, failWalk = false, cancelWalk = false, rais
   const crafting = { snapshot: () => ({ authority: true, inventoryKnown: true }), rawItem: () => ({ network_id: 0, count: 0 }), applyPacket () {}, closeContainer () {} }
   const interactions = createInteractions({ client: { queue () {} }, getState: () => state, world: { getBlock }, crafting, getInput: () => ({}) })
   const actualHouse = createHousePorts({ operations: { interactions, crafting, furnace: { snapshot: () => ({ contentsKnown: false }) } }, getBlock, getInventory: () => inventory, now: () => clock, sleep: async ms => { clock += ms } })
-  return { plan, furnace, homeFurnace, walks, placements, smelts, actualHouse, supplies: createMineSupplies(ctx, actions, {}) }
+  return { plan, furnace, homeFurnace, walks, placements, smelts, gathering, actualHouse, supplies: createMineSupplies(ctx, actions, {}) }
 }
 
 test('an enclosed existing furnace is refused at the actual click and does not hide a held surface furnace', async () => {
@@ -114,4 +114,14 @@ test('a locally unplaceable facility is replaced by use of the received home fur
   assert.equal(out.code, 'MINE_CHARCOAL_RECEIVED')
   assert.equal(f.placements.length, 0)
   assert.deepEqual(f.smelts, [f.homeFurnace])
+})
+
+test('charcoal gathers input before placing another furnace when no existing one can be opened here', async () => {
+  const f = fixture({ noLogs: true, enclosed: true })
+  const result = await f.supplies.ensure(f.plan)
+  assert.equal(result.code, 'MINE_SUPPLIES_IN_PROGRESS')
+  assert.deepEqual(f.gathering, [['log', 8]])
+  assert.deepEqual(f.placements, [])
+  assert.deepEqual(f.walks, [])
+  assert.deepEqual(f.smelts, [])
 })
