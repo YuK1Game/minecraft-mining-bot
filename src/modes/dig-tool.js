@@ -54,4 +54,9 @@ function diggerWanted (items, held) {
   return held('stick') >= 2 || held('planks') >= 2 || held('log') >= 1 ? 'make' : 'wood'
 }
 
-module.exports = { digTool, toolNeeded, diggerWanted }
+function isSpentPickaxe (item) {
+  const tool = toolState(item, KEEP)
+  return tool?.kind === 'pickaxe' && tool.reason === 'DURABILITY_RESERVE'
+}
+
+module.exports = { digTool, toolNeeded, diggerWanted, isSpentPickaxe }
