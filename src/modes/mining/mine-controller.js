@@ -10,7 +10,7 @@ const {walkLayer,reachLayer,leaveMine,enterMine:entry}=require('./mine-route')
 const {workVein,restoreVein,observedVeinStep}=require('./mine-veins')
 const {cellRest}=require('../supply-cell-rest')
 const {nextMine,retireMine,ensureMineLayer}=require('./mine-sites')
-const {noteMineProgress}=require('./mine-progress')
+const {noteMineProgress,noteMinePreparation}=require('./mine-progress')
 const {checkStock,stockIsChecked,depositMine}=require('./mine-stock')
 const {mineLocation,insideMine}=require('./mine-location')
 const {occupied,constructionKeep}=require('./mine-carry')
@@ -27,8 +27,11 @@ const inside=insideMine
 async function prepare(ctx,branch,layer){
   const previous=ctx.mineSupplyWork
   ctx.mineSupplyWork=true
-  try{return await ctx.minePorts.ensureSupplies(branch.plan,{layer,request:branch.request})}
-  finally{ctx.mineSupplyWork=previous}
+  try{
+    const outcome=await ctx.minePorts.ensureSupplies(branch.plan,{layer,request:branch.request})
+    if(!received(outcome))noteMinePreparation(ctx,branch,layer)
+    return outcome
+  }finally{ctx.mineSupplyWork=previous}
 }
 
 async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={}){
