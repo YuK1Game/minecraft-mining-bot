@@ -14,7 +14,10 @@ function supplyNeeds(plan,layer,{inventory,getBlock,refillCobblestone=false,refi
     const seen=getBlock({x:plan.shaft.ladder.x,y,z:plan.shaft.ladder.z})
     if(seen?.known===true && seen.name==='minecraft:ladder')installed++
   }
-  const ladders=Math.max(4,plan.shaft.topY-level.y+2-installed)
+  const remainingRungs=plan.shaft.topY-level.y+1-installed
+  // A spare is useful while installing rungs. A finished ladder does not
+  // need another supply trip just to meet a carried reserve.
+  const ladders=remainingRungs>0?remainingRungs+1:0
   // A first lower-layer trip commissions the upper storage room on its way.
   const rooms=layer==='lower'?plan.storage:[room]
   const chests=rooms.flatMap(entry=>entry.pairs).reduce((sum,pair)=>sum+pair.positions.filter(p=>{

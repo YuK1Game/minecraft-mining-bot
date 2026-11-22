@@ -134,3 +134,14 @@ test('carried cobbled deepslate counts for supports while slab crafting still as
   assert.equal((await slabs.supplies.ensure(slabs.plan)).code, 'MINE_SUPPLIES_IN_PROGRESS')
   assert.deepEqual(slabs.calls, [['acquire', 'cobblestone', 24]])
 })
+
+
+test('a received final rung removes the ladder reserve from an unfinished landing', () => {
+  const { supplyNeeds } = require('../src/modes/mining/mine-needs')
+  const f = fixture([], { ladder: 3 })
+  const { ladder, bottomY, topY } = f.plan.shaft
+  const received = missing => p => p.x === ladder.x && p.z === ladder.z && p.y >= bottomY && p.y <= topY && p.y !== missing
+    ? { known: true, name: 'minecraft:ladder' } : { known: true, name: 'minecraft:stone' }
+  assert.equal(supplyNeeds(f.plan, 'lower', { inventory: f.inv, getBlock: received(bottomY) }).ladder, 2)
+  assert.equal(supplyNeeds(f.plan, 'lower', { inventory: f.inv, getBlock: received(null) }).ladder, 0)
+})
