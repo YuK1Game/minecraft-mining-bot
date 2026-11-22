@@ -2,7 +2,7 @@
 
 const { setImmediate: immediate } = require('node:timers/promises')
 const { surveyMine } = require('./mine-survey')
-const { evaluateMineGeometry, lowerLevels, resourceName } = require('./mine-plan')
+const { evaluateMineGeometry, lowerLevels, resourceName, withClosed } = require('./mine-plan')
 const { extendMineGeometry, point, MAX_SHAFT_DEPTH } = require('./mine-geometry')
 const { mineWorldScope, mineLiveScope, sameWorld } = require('./mine-state')
 const fail = code => { throw Object.assign(new Error(code), { code }) }
@@ -69,6 +69,7 @@ async function planMineExtension ({ world, getState, plan, origin = plan?.shaft?
     }
     const diagnostics = { candidates: lowers.length, evaluated, work, known: survey.known, unknown: survey.unknown, observedOres: survey.ores.length, rejectedUnknown, rejectedHazard, upperYs: [upperY], lowerYs: lowers, extension: true }
     if (!best) return { status: rejectedUnknown ? 'observing' : 'blocked', code: rejectedUnknown ? 'MINE_TERRAIN_UNKNOWN' : 'MINE_NO_SAFE_RESOURCE_PLAN', needsObservation: survey.needsObservation, diagnostics }
+    withClosed(best.plan, best.evaluation)
     best.plan.evaluation = { ...best.evaluation, observationOnly: true, source: 'current_received_world', terrainRevision: survey.revision, scope: 'lower_extension_only', existingUpperRequiresLiveValidation: true, optimality: 'best_complete_candidate_in_bounded_search', ...diagnostics }
     return { status: 'planned', code: best.evaluation.meetsTarget ? 'MINE_TARGET_REACHABLE' : 'MINE_RESOURCE_SHORTFALL', plan: best.plan, diagnostics }
   } catch (error) { return { status: error.code === 'MINE_CANCELLED' ? 'cancelled' : error.code === 'MINE_PLAN_BUDGET' ? 'blocked' : 'observing', code: error.code ?? 'MINE_PLAN_FAILED', reason: error.message, diagnostics: { evaluated, work } } }

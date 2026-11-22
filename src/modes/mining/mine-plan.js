@@ -58,8 +58,24 @@ async function potentialIndex (survey, resource, levels, account, checkpoint) {
   }
 }
 
-async function evaluateMineGeometry (plan, survey, { origin, resource, targetCount = 1, checkpoint, read, account = () => {}, existingPlan = null, ownedFills = [] } = {}) {
-  const excavate = new Map(), floor = new Map(), torches = new Map(), owners = new Map(), stepCosts = new Map(), geometry = new Map()
+// A hazard beside a branch closes that branch from the step it touches: the step and the rest of its line
+// are left as rock, and the geometry is judged again without them (so a hazard that then stands beside the
+// main, the lobby or the shaft still rejects it). Everything that is dug keeps the same margin as before.
+// The entrance, the shaft and its boundary, the ladder backing, the storage rooms and the main are never closed.
+// Live 2026-11-22 17:50-21:40 JST: five candidate centres were rejected with MINE_NO_SAFE_RESOURCE_PLAN, all
+// 96 geometries each (construction samples: water at (9860,16,10130), gravel at y17-19). One such block beside
+// any of a geometry's cells rejected the whole geometry.
+async function evaluateMineGeometry (plan, survey, options = {}) {
+  const closed = new Set(), cache = { observed: new Map(), missing: new Set() }
+  for (;;) {
+    const out = await evaluateOpenSteps(plan, survey, options, closed, cache)
+    if (!out.close) return out
+    for (const id of out.close) closed.add(id)
+  }
+}
+
+async function evaluateOpenSteps (plan, survey, { origin, resource, targetCount = 1, checkpoint, read, account = () => {}, existingPlan = null, ownedFills = [] } = {}, closed, cache) {
+  const excavate = new Map(), floor = new Map(), torches = new Map(), owners = new Map(), stepCosts = new Map(), geometry = new Map(), torchStep = new Map()
   const targetLayer = ['coal', 'raw_iron', 'raw_copper'].includes(resource) ? 'upper' : 'lower'
   const layers = existingPlan ? plan.layers.filter(layer => !existingPlan.layers.some(old => old.id === layer.id)) : plan.layers
   const steps = mineSteps(plan).filter(step => layers.some(layer => layer.id === step.layer)), rooms = plan.storage.filter(room => layers.some(layer => layer.id === room.layer))
@@ -69,24 +85,29 @@ async function evaluateMineGeometry (plan, survey, { origin, resource, targetCou
   const owned = new Map(ownedFills.map(p => [key(p), p.name ?? 'minecraft:cobblestone']))
   const priorFixture = (p, b) => existingPlan && (p.x === existingPlan.shaft.ladder.x && p.z === existingPlan.shaft.ladder.z && p.y >= existingPlan.shaft.bottomY && p.y <= existingPlan.shaft.topY && b.name === 'minecraft:ladder' || p.x === existingPlan.shaft.columns[3].x && p.z === existingPlan.shaft.columns[3].z && p.y === existingPlan.shaft.bottomY && b.name === 'minecraft:torch')
   for (const [index, step] of steps.entries()) {
+    if (closed.has(step.id)) continue
     const cells = stepCells(plan, step)
     geometry.set(step.id, cells)
     stepCosts.set(step.id, { cost: 0, drops: 0 })
     for (const p of cells.clear) { excavate.set(key(p), p); if (!owners.has(key(p))) owners.set(key(p), { stepId: step.id, layer: step.layer, index }) }
     for (const entry of cells.floor) { floor.set(key(entry.position), entry.position); if (!owners.has(key(entry.position))) owners.set(key(entry.position), { stepId: step.id, layer: step.layer, index }); stepCosts.get(step.id).cost += 0.8 }
-    for (const entry of cells.torch) { torches.set(key(entry.position), entry); stepCosts.get(step.id).cost++ }
+    for (const entry of cells.torch) { torches.set(key(entry.position), entry); torchStep.set(key(entry.position), step.id); stepCosts.get(step.id).cost++ }
     await checkpoint()
   }
   for (const column of plan.shaft.columns) for (let y = plan.shaft.bottomY; y <= shaftTop; y++) { const p = { ...column, y }; if (!retainedFloors.has(key(p))) excavate.set(key(p), p) }
   if (!existingPlan && plan.shaft.entryTorch) torches.set(key(plan.shaft.entryTorch.position), plan.shaft.entryTorch)
-  const requested = new Set(), missing = new Set(), blocked = new Set(), observed = new Map()
+  const requested = new Set(), blocked = new Set(), { observed, missing } = cache
+  // Which step each refusal belongs to: null is the shaft, its boundary, a ladder backing or the entrance.
+  const culprits = new Set()
+  let working = null
+  const refuse = id => { blocked.add(id); culprits.add(working) }
   const get = p => { const id = key(p); if (observed.has(id)) return observed.get(id); const b = read(p); observed.set(id, b); if (!b.known) missing.add(id); return b }
   const failure = (stage, extra = {}) => ({ eligible: false, unknown: missing.size, hazards: blocked.size,
     unsafe: { stage, blocks: [...blocked].slice(0, 3).map(id => ({ at: id, name: observed.get(id)?.name, protected: observed.get(id)?.protected === true })) }, ...extra })
   const unsafe = p => {
     const b = get(p)
     if (!b.known) return true
-    if (hazardous(b) || b.protected || INFRASTRUCTURE.test(b.name) && !priorFixture(p, b)) { blocked.add(key(p)); return true }
+    if (hazardous(b) || b.protected || INFRASTRUCTURE.test(b.name) && !priorFixture(p, b)) { refuse(key(p)); return true }
     return false
   }
   // Existing upper construction is deliberately absent from an extension's
@@ -118,8 +139,9 @@ async function evaluateMineGeometry (plan, survey, { origin, resource, targetCou
   const layerBlocks = { upper: 0, lower: 0 }
   for (const [id, p] of construction) {
     const b = get(p)
+    working = owners.get(id)?.stepId ?? null
     if (unsafe(p)) continue
-    if (solid(b) && (b.diggable === false || !isMineNaturalBlock(b) && owned.get(id) !== b.name)) { blocked.add(id); continue }
+    if (solid(b) && (b.diggable === false || !isMineNaturalBlock(b) && owned.get(id) !== b.name)) { refuse(id); continue }
     if (solid(b)) {
       const effort = Math.max(1, Number(b.hardness) || 1)
       blocks++; hardness += effort
@@ -141,6 +163,7 @@ async function evaluateMineGeometry (plan, survey, { origin, resource, targetCou
     }
     await checkpoint()
   }
+  working = null
   let shaftSealCost = 0
   for (const p of shaftBoundary(plan, { maxY: Math.min(plan.shaft.topY - 1, shaftTop) })) {
     const b = get(p)
@@ -148,14 +171,19 @@ async function evaluateMineGeometry (plan, survey, { origin, resource, targetCou
     if (existingFloors.has(key(p)) && bottomSlab(b)) continue
     if (AIR.has(b.name)) {
       if (!caveSeals.has(key(p))) { caveSeals.set(key(p), p); if (p.y >= targetY) shaftSealCost++ }
-    } else if (b.boundingBox !== 'block' || !FULL_GROUND.has(b.name)) blocked.add(key(p))
+    } else if (b.boundingBox !== 'block' || !FULL_GROUND.has(b.name)) refuse(key(p))
     await checkpoint()
   }
   const supportCells = new Set()
-  for (const entry of torches.values()) { unsafe(entry.support); if (AIR.has(get(entry.support).name) && !caveSeals.has(key(entry.support))) supportCells.add(key(entry.support)) }
+  for (const entry of torches.values()) { working = torchStep.get(key(entry.position)) ?? null; unsafe(entry.support); if (AIR.has(get(entry.support).name) && !caveSeals.has(key(entry.support))) supportCells.add(key(entry.support)) }
+  working = null
   for (let y = plan.shaft.bottomY; y <= Math.min(plan.shaft.topY, shaftTop); y++) { const p = { ...plan.shaft.ladder.support, y }; unsafe(p); if (AIR.has(get(p).name) && !caveSeals.has(key(p))) supportCells.add(key(p)) }
   const supports = supportCells.size
   await checkpoint()
+  if (!missing.size && blocked.size) {
+    const close = closable(steps, culprits, closed)
+    if (close) return { close }
+  }
   if (missing.size || blocked.size) return failure('construction', { needsObservation: [...missing].slice(0, 16) })
 
   const ores = new Map(), veinConstruction = new Map(), layerOres = { upper: 0, lower: 0 }
@@ -166,7 +194,7 @@ async function evaluateMineGeometry (plan, survey, { origin, resource, targetCou
   }
   const radius = Math.min(3, plan.vein.radius), maximum = Math.min(32, plan.vein.maxBlocks)
   for (const [index, step] of steps.entries()) {
-    if (step.layer !== targetLayer) continue
+    if (step.layer !== targetLayer || closed.has(step.id)) continue
     const cells = geometry.get(step.id), level = plan.layers.find(layer => layer.id === step.layer), clear = new Set(cells.clear.map(key))
     const frontier = cells.clear.filter(p => p.y === level.y && clear.has(key({ ...p, y: p.y + 1 })))
     const anchor = { x: Math.floor(cells.stand.x), y: level.y, z: Math.floor(cells.stand.z) }, opened = new Set()
@@ -230,9 +258,9 @@ async function evaluateMineGeometry (plan, survey, { origin, resource, targetCou
   }
   const targetDepth = Math.min(plan.shaft.topY, shaftTop) - targetY + 1
   let prefixCost = shaftHardness + targetDepth * 1.9 + access + supports + shaftSealCost + Number(!existingPlan && !!plan.shaft.entryTorch), prefixDrops = shaftDrops, prefixSteps = 0
-  if (targetLayer === 'lower') for (const step of steps.filter(step => step.layer === 'upper' && step.kind === 'storage')) { prefixCost += stepCosts.get(step.id).cost; prefixDrops += stepCosts.get(step.id).drops }
+  if (targetLayer === 'lower') for (const step of steps.filter(step => step.layer === 'upper' && step.kind === 'storage' && !closed.has(step.id))) { prefixCost += stepCosts.get(step.id).cost; prefixDrops += stepCosts.get(step.id).drops }
   let available = oreUnion.filter(ore => ore.resource === resource && ore.access?.shaftY >= targetY).length
-  const targetSteps = steps.filter(step => step.layer === targetLayer), lastLobby = targetSteps.findLastIndex(step => step.kind === 'storage')
+  const targetSteps = steps.filter(step => step.layer === targetLayer && !closed.has(step.id)), lastLobby = targetSteps.findLastIndex(step => step.kind === 'storage')
   for (const [i, step] of targetSteps.entries()) {
     const cost = stepCosts.get(step.id); prefixCost += cost.cost; prefixDrops += cost.drops; prefixSteps++
     available += oreUnion.filter(ore => ore.resource === resource && ore.access?.stepId === step.id).length
@@ -241,7 +269,27 @@ async function evaluateMineGeometry (plan, survey, { origin, resource, targetCou
   const prefixTrips = Math.max(1, Math.ceil(prefixDrops / (64 * 27))), prefixHaul = prefixTrips * 2 * (plan.shaft.topY - targetY + 1 + access + plan.site.length / 2)
   const targetCost = prefixCost + prefixHaul * 0.05, meetsTarget = available >= targetCount
   return { eligible: available > 0, unknown: 0, hazards: blocked.size, requestedOre: requested.size, availableTargetOre: available, targetCount, targetLayer, meetsTarget, shortfall: Math.max(0, targetCount - available),
-    oreCounts: counts, oreUnion: oreUnion.map(({ access, ...ore }) => ore), estimatedDrops, value, costs, totalCost, targetCost, requiredPrefix: { layer: targetLayer, steps: prefixSteps, haulTrips: prefixTrips, haulDistance: prefixHaul }, costModel: 'weighted_work_units_v1', score: 1 / Math.max(1, targetCost) }
+    oreCounts: counts, oreUnion: oreUnion.map(({ access, ...ore }) => ore), estimatedDrops, value, costs, totalCost, targetCost, requiredPrefix: { layer: targetLayer, steps: prefixSteps, haulTrips: prefixTrips, haulDistance: prefixHaul }, costModel: 'weighted_work_units_v1', score: 1 / Math.max(1, targetCost),
+    ...(closed.size ? { closedSteps: steps.filter(step => closed.has(step.id)).map(step => step.id) } : {}) }
+}
+
+// The steps to close for these refusals, or null when one of them is not a branch's own: only a branch
+// step can be left out, together with the rest of its line beyond it.
+function closable (steps, culprits, closed) {
+  const close = new Set()
+  for (const id of culprits) {
+    const step = id == null ? null : steps.find(item => item.id === id)
+    if (step?.kind !== 'branch') return null
+    for (const later of steps) if (later.segmentId === step.segmentId && later.offset >= step.offset && !closed.has(later.id)) close.add(later.id)
+  }
+  return close.size ? close : null
+}
+
+// The plan carries the steps its evaluation left out, so the builder passes them by (mine-controller.js).
+function withClosed (plan, evaluation) {
+  const closed = [...new Set([...(plan.closed ?? []), ...(evaluation.closedSteps ?? [])])]
+  if (closed.length) plan.closed = closed
+  return plan
 }
 
 function observedSurfaceY (site, radius, read) {
@@ -355,9 +403,10 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
     }
     const diagnostics = { candidates: candidates.length, prefiltered: selected.length, evaluated, work, known: survey.known, unknown: survey.unknown, observedOres: survey.ores.length, rejectedUnknown, rejectedHazard, unsafeSamples, upperYs: uppers, lowerYs: lowers.filter(y => y != null), dimensions, upperOnly }
     if (!best) return { status: rejectedUnknown ? 'observing' : 'blocked', code: rejectedUnknown ? 'MINE_TERRAIN_UNKNOWN' : 'MINE_NO_SAFE_RESOURCE_PLAN', needsObservation: survey.needsObservation, diagnostics }
+    withClosed(best.plan, best.evaluation)
     best.plan.evaluation = { ...best.evaluation, observationOnly: true, source: 'current_received_world', terrainRevision: survey.revision, optimality: 'best_complete_candidate_in_bounded_search', ...diagnostics }
     return { status: 'planned', code: best.evaluation.meetsTarget ? 'MINE_TARGET_REACHABLE' : 'MINE_RESOURCE_SHORTFALL', plan: best.plan, needsObservation: survey.needsObservation, diagnostics }
   } catch (error) { return { status: error.code === 'MINE_CANCELLED' ? 'cancelled' : error.code === 'MINE_PLAN_BUDGET' ? 'blocked' : 'observing', code: error.code ?? 'MINE_PLAN_FAILED', reason: error.message, diagnostics: { evaluated, work } } }
 }
 
-module.exports = { planMine, evaluateMineGeometry, lowerLevels, resourceName }
+module.exports = { planMine, evaluateMineGeometry, lowerLevels, resourceName, withClosed }
