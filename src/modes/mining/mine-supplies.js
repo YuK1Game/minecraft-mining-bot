@@ -176,7 +176,7 @@ function createMineSupplies (ctx, actions, storage) {
     if (missing && actions.inventory() && (!need || need.input > 0 && !log || need.fuel && !plank)) return gather()
     return wait('MINE_CHARCOAL_UNCONFIRMED', actions.house.why())
   }
-  async function ensure (plan, { layer = 'upper', request = null } = {}) {
+  async function ensure (plan, { layer = 'upper', request = null, shaftOnly = false } = {}) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     if (!actions.inventory()) return blocked('MINE_INVENTORY_UNKNOWN', { kind: 'inventory_update' })
     const id = typeof layer === 'string' ? layer : layer.id
@@ -186,6 +186,7 @@ function createMineSupplies (ctx, actions, storage) {
       refillCobblestone: branch.refillCobblestone === true, refillTorches: branch.refillTorches === true
     })
     if (!needs) return wait('MINE_SUPPLY_LAYER_INVALID')
+    if (shaftOnly) needs.chest = 0
     // A refill is an outstanding request until its full target is observed.
     // Crossing the normal carry reserve must not make the Bot leave early.
     const shaftUnderway = Number.isInteger(branch.shaft?.depth) && branch.shaft.depth < plan.shaft.topY

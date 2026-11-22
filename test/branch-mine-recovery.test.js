@@ -212,6 +212,28 @@ test('capacity relief retains the same unfinished deep-shaft ladder and chest bu
   assert.deepEqual(capacityCargo(inv, stillBuilding), [])
 })
 
+test('a lower ore request can build the upper shaft with only its own ladders, then waits for the room supplies', async t => {
+  const w = createMineWorld(t)
+  w.items.find(item => item.name === 'minecraft:ladder').count = 6
+  w.items.find(item => item.name === 'minecraft:chest').count = 0
+  let result
+  for (let i = 0; i < 15 && !w.branch.shaft?.landings?.upper; i++) {
+    result = await requestMine(w.ctx, { resource: 'diamond', targetHeld: 3 })
+  }
+  assert.equal(result.result.code, 'MINE_LANDING_READY', JSON.stringify(result))
+  assert.equal(w.branch.shaft.depth, 66)
+  assert.equal(w.branch.shaft.landings.upper, true)
+  assert.equal(w.branch.shaft.landings.lower, undefined)
+  assert.equal(w.branch.lobbyReady?.upper, undefined)
+  assert.ok(w.places.some(item => item.name === 'minecraft:ladder'))
+  assert.equal(w.opened.length, 0)
+
+  const room = await requestMine(w.ctx, { resource: 'diamond', targetHeld: 3 })
+  assert.match(room.result.code, /^MINE_(?:SURFACE_SUPPLY_STATION|SUPPLIES_IN_PROGRESS)$/)
+  assert.equal(w.branch.shaft.depth, 66)
+  assert.equal(w.branch.lobbyReady?.upper, undefined)
+})
+
 test('a supported incomplete lower shaft returns to upper supplies by ladder without a surface walk',async t=>{
   const w=createMineWorld(t)
   for(let i=0;i<15 && !w.branch.shaft?.landings?.upper;i++)await ensureShaft(w.ctx,w.branch,'upper')

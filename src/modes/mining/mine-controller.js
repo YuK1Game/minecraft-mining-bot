@@ -37,11 +37,11 @@ function remainingPickBlock(ctx,branch,step){
   return name
 }
 
-async function prepare(ctx,branch,layer,blockName=null){
+async function prepare(ctx,branch,layer,{blockName=null,shaftOnly=false}={}){
   const previous=ctx.mineSupplyWork
   ctx.mineSupplyWork=true
   try{
-    const outcome=await ctx.minePorts.ensureSupplies(branch.plan,{layer,request:branch.request,blockName})
+    const outcome=await ctx.minePorts.ensureSupplies(branch.plan,{layer,request:branch.request,blockName,shaftOnly})
     if(!received(outcome))noteMinePreparation(ctx,branch,layer)
     return outcome
   }finally{ctx.mineSupplyWork=previous}
@@ -115,7 +115,7 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   if(branch.segmentTask){
     const task=branch.segmentTask,current=mineSteps(branch.plan,{layer:task.layer})[branch.progress[task.layer]?.cursor]
     if(current?.id!==task.stepId || task.cursor!==branch.progress[task.layer]?.cursor)return outcome(blocked('MINE_ACTIVE_STEP_MISMATCH','保存した未完区間を現在の施工順と照合します。','owner_released'))
-    const prepared=await prepare(ctx,branch,task.layer,remainingPickBlock(ctx,branch,current))
+    const prepared=await prepare(ctx,branch,task.layer,{blockName:remainingPickBlock(ctx,branch,current)})
     if(!received(prepared) || !live(ctx))return outcome(live(ctx)?prepared:stopped(),'掘り始めた区間を仕上げる床材・照明・道具を補給します。')
     const entered=await entry(ctx,branch)
     if(!received(entered))return outcome(entered)
@@ -144,7 +144,10 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
     if(!received(stocked))return outcome(stocked,'保管した鉱石をラージチェストから確認して取り出します。')
     if(count(ctx,resource)>=targetHeld){const out=await leaveMine(ctx,branch);return received(out)&&live(ctx)?{done:true,reason:`保管済みの${resource}を持ち物で確認し、採掘場から戻りました。`,result:results.completed('MINE_SUPPLY_DELIVERED')}:outcome(out)}
   }
-  const prepared=await prepare(ctx,branch,layer)
+  // A lower request first commissions the upper shaft and its storage.
+  const current=layer==='lower' && !branch.lobbyReady?.upper?'upper':layer
+  const shaftOnly=!branch.shaft?.landings?.[current]
+  const prepared=await prepare(ctx,branch,current,{shaftOnly})
   if (!live(ctx)) return outcome(stopped())
   if (!received(prepared)) {
     const detail = prepared?.detail || prepared?.code
@@ -152,22 +155,20 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   }
   const entered=await entry(ctx,branch)
   if(!received(entered))return outcome(entered)
-  // The upper landing and its storage are made usable first; lower ore does not require exhausting all upper branches.
-  for(const current of layer==='lower'?['upper','lower']:['upper']){
-    if(current!==layer && branch.lobbyReady?.[current])continue
-    const shaft=await ensureShaft(ctx,branch,current)
-    if(!received(shaft)){await save(ctx,branch);return outcome(shaft,`採掘場の${current==='upper'?'上層':'下層'}へ、足場とはしごを確認しながら縦坑を施工します。`)}
-    const reached=await reachLayer(ctx,branch,current)
-    if(!received(reached))return outcome(reached)
-    const lobby=await stepLayer(ctx,branch,current,{lobbyOnly:true})
-    if(!received(lobby))return outcome(lobby,'採掘層の収納室と照明を整えます。')
-    if(branch.lobbyReady?.[current]!==scope(ctx)){
-      const storage=await ctx.minePorts.storage.ensure(branch.plan,current)
-      if(!received(storage) || !live(ctx))return outcome(live(ctx)?storage:stopped(),'採掘層のラージチェストの結合と54枠を確認します。')
-      branch.lobbyReady??={};branch.lobbyReady[current]=scope(ctx)
-      if(!await save(ctx,branch))return outcome(blocked('MINE_CHECKPOINT','収納室の確認結果を保存します。','owner_released'))
-    }
+  const shaft=await ensureShaft(ctx,branch,current)
+  if(!received(shaft)){await save(ctx,branch);return outcome(shaft,`採掘場の${current==='upper'?'上層':'下層'}へ、足場とはしごを確認しながら縦坑を施工します。`)}
+  if(shaftOnly)return outcome({...results.partial('MINE_LANDING_READY'),serverConfirmed:true},'縦坑と踊り場を確認し、収納室に必要な資材を整えます。')
+  const reached=await reachLayer(ctx,branch,current)
+  if(!received(reached))return outcome(reached)
+  const lobby=await stepLayer(ctx,branch,current,{lobbyOnly:true})
+  if(!received(lobby))return outcome(lobby,'採掘層の収納室と照明を整えます。')
+  if(branch.lobbyReady?.[current]!==scope(ctx)){
+    const storage=await ctx.minePorts.storage.ensure(branch.plan,current)
+    if(!received(storage) || !live(ctx))return outcome(live(ctx)?storage:stopped(),'採掘層のラージチェストの結合と54枠を確認します。')
+    branch.lobbyReady??={};branch.lobbyReady[current]=scope(ctx)
+    if(!await save(ctx,branch))return outcome(blocked('MINE_CHECKPOINT','収納室の確認結果を保存します。','owner_released'))
   }
+  if(current!==layer)return outcome({...results.partial('MINE_UPPER_STORAGE_READY'),serverConfirmed:true},'上層の収納室を確認し、下層に必要な資材を整えます。')
   const stocked=await checkStock(ctx,branch,layer)
   if(!received(stocked))return outcome(stocked,'保管した鉱石をラージチェストから確認して取り出します。')
   if(count(ctx,resource)>=targetHeld)return outcome({...results.partial('MINE_STOCK_READY'),serverConfirmed:true},'保管済みの鉱石を受信しました。確認済みの帰路で地上へ戻ります。')
