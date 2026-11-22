@@ -1,6 +1,6 @@
 'use strict'
 
-const { openDoor } = require('./house/house-door')
+const { openDoor, doorOf, doorStands } = require('./house/house-door')
 const { underCover } = require('./player-surface')
 const { createBuildWalk } = require('./player-build-walk')
 const { createOpenStand } = require('./open-stand')
@@ -36,7 +36,8 @@ async function reach (ctx, destination, { open = false } = {}) {
   // The ground in front of the door, outside the walls (the floor is one block over the highest ground the house stands on).
   const porch = { x: origin.x + 3, y: origin.y, z: origin.z + 9 }
   const atPorch = cell => Math.hypot(cell.x - porch.x, cell.z - porch.z) <= 3 && Math.abs(cell.y - porch.y) <= 2 && cell.z > origin.z + 7
-  const inside = () => { const feet = getFeet(); return feet.x >= origin.x && feet.x < origin.x + 7 && feet.z >= origin.z && feet.z < origin.z + 7 && feet.y >= origin.y }
+  const insideAt = feet => feet && feet.x >= origin.x && feet.x < origin.x + 7 && feet.z >= origin.z && feet.z < origin.z + 7 && feet.y >= origin.y
+  const inside = () => insideAt(getFeet())
   let built = false
   const byBuild = async () => {
     const state = shared.dragonHomeWalk
@@ -101,15 +102,30 @@ async function reach (ctx, destination, { open = false } = {}) {
   // twenty minutes around the door, feet at y 73-75 under the floor, and no cook).
   const near = () => { const feet = getFeet(); return inside() || close(feet, porch, 6) || close(feet, destination, 10) }
   if (!cancelled() && !there() && near()) {
+    const doorway = indoors && !inside() ? doorOf(origin) : null
+    const stands = doorway ? doorStands(getBlock, doorway) : []
+    const exterior = stands.find(feet => !insideAt(feet)), interior = stands.find(insideAt)
+    const entry = exterior && interior
+      ? { x: Math.floor(exterior.x), y: exterior.y, z: Math.floor(exterior.z) } : null
     const state = shared.dragonHomeInner
-    if (!state || now() >= state.until) {
+    if (!state || !!state.entrance !== !!entry || now() >= state.until) {
       const beside = cell => Math.max(Math.abs(cell.x - destination.x), Math.abs(cell.z - destination.z)) <= 2 && Math.abs(cell.y - destination.y) <= 1 && !(cell.x === destination.x && cell.z === destination.z) && (!indoors || room(cell)) && (!open || stand.opens(cell, destination))
-      const out = await createBuildWalk({ hands, getHouse: () => shared.playerHouse, log: ctx.log })(destination, { done: beside, aborted: cancelled })
-      if (out.ok || cancelled()) shared.dragonHomeInner = null
+      const build = createBuildWalk({ hands, getHouse: () => shared.playerHouse, log: ctx.log })
+      // If the door is already open, opening it does not move the Bot. On
+      // the low side of a raised house, aim at the exterior stand first.
+      const out = entry
+        ? await build(entry, { done: p => p.x === entry.x && p.y === entry.y && p.z === entry.z, aborted: cancelled, limits: { rise: 7, pad: 7 } })
+        : await build(destination, { done: beside, aborted: cancelled })
+      let entered = out.ok
+      if (entry && out.ok && !cancelled()) {
+        const opened = await openDoor({ origin, getBlock, getFeet, walk: hands.walk, useDoor: p => operations.interactions.useDoor(p), log: ctx.log })
+        entered = opened && !cancelled() && await hands.walk(interior) && inside()
+      }
+      if (entered || cancelled()) shared.dragonHomeInner = null
       else {
-        shared.dragonHomeInner = { until: now() + RETRY_MS }
+        shared.dragonHomeInner = { until: now() + RETRY_MS, entrance: !!entry }
         const feet = getFeet()
-        ctx.log?.(`プレイヤーモード: 本拠点の中の ${destination.x}, ${destination.y}, ${destination.z} へ、掘る・積む道でも行けませんでした（${out.code}。足元 ${feet ? `${Math.floor(feet.x)}, ${Math.floor(feet.y)}, ${Math.floor(feet.z)}` : '?'}）。1分後にもう一度試します`)
+        ctx.log?.(`プレイヤーモード: 本拠点の中の ${destination.x}, ${destination.y}, ${destination.z} へ、掘る・積む道でも行けませんでした（${out.ok ? 'DOOR_WALK_REFUSED' : out.code}。足元 ${feet ? `${Math.floor(feet.x)}, ${Math.floor(feet.y)}, ${Math.floor(feet.z)}` : '?'}）。1分後にもう一度試します`)
       }
     }
     return !cancelled() && at() && (!open || stand.go(destination, cancelled))

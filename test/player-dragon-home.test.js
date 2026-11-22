@@ -251,11 +251,20 @@ test('three metres from the furnace through the west wall is not at the furnace:
   world.setBlock(furnace.x, furnace.y, furnace.z, 'furnace')
   const f = bot(world, { x: origin.x - 1, y: origin.y + 1, z: origin.z + 5 })
   f.ctx.hands.approach = async () => { f.did.push('approach'); return false }
+  const walk = f.ctx.hands.walk, visited = []
+  f.ctx.hands.walk = async target => {
+    const arrived = await walk(target)
+    if (arrived) visited.push(target)
+    return arrived
+  }
   assert.ok(Math.hypot(f.body.x - (furnace.x + 0.5), f.body.z - (furnace.z + 0.5)) < 4, 'within four blocks, outside the wall')
   assert.equal(await approachHome(f.ctx, furnace, { open: true }), true, f.logs.join('\n'))
   assert.ok(f.body.x > origin.x + 1 && f.body.x < origin.x + 6 && f.body.z > origin.z + 1 && f.body.z < origin.z + 6, JSON.stringify(f.body))
   assert.ok([...world.changed.keys()].length > 0)
   assert.ok(f.did.includes('walk'))
+  const outside = visited.findIndex(p => p.x === origin.x + 3.5 && p.y === origin.y + 1 && p.z === origin.z + 7.5)
+  const inside = visited.findIndex(p => p.x === origin.x + 3.5 && p.y === origin.y + 1 && p.z === origin.z + 5.5)
+  assert.ok(outside >= 0 && inside > outside, JSON.stringify(visited))
 
   // Walled in outside with no way: said once, not silently every two seconds.
   const stuck = bot(world, { x: origin.x - 1, y: origin.y + 1, z: origin.z + 5 }, { walkable: false })
