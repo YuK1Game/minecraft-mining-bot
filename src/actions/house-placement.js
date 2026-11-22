@@ -12,7 +12,7 @@
 // - With `alignFacing` the Bot first turns to the point (chests, furnaces, the
 //   door and the bed face from the turn); the plan can be checked again.
 const WOODS = '(?:oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|bamboo|crimson|warped)'
-const HOUSE = new RegExp(`^minecraft:(?:cobblestone|cobblestone_slab|ladder|glass|torch|chest|furnace|crafting_table|bed|wooden_door|${WOODS}_(?:log|stem|planks|slab|door))$`)
+const HOUSE = new RegExp(`^minecraft:(?:cobblestone|cobbled_deepslate|cobblestone_slab|ladder|glass|torch|chest|furnace|crafting_table|bed|wooden_door|${WOODS}_(?:log|stem|planks|slab|door))$`)
 const { placementSupportOk } = require('../quarry/storage/storage-site-terrain')
 const AIR = new Set(['minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'])
 const LIQUID = /water|lava/

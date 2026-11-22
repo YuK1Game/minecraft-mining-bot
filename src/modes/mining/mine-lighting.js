@@ -2,7 +2,7 @@
 
 const { completed, partial, blocked, interrupted } = require('../return/return-result')
 const { classifyMineCell, isMineTorchTarget, mineSteps, stepCells } = require('./mine-geometry')
-const { key, air, solid, bottomSlab, confirmed, held } = require('./mine-observed')
+const { key, air, solid, bottomSlab, confirmed, held, FILL_BLOCKS, fillMaterial } = require('./mine-observed')
 const { low } = require('../low-block')
 const { placementSupportOk } = require('../../quarry/storage/storage-site-terrain')
 const { shaftBoundary } = require('./mine-shaft-boundary')
@@ -155,12 +155,18 @@ function createMineLighting (ctx, actions) {
       if (stopped()) return interrupted('MINE_INTERRUPTED')
       const b = block(p)
       if (air(b)) {
-        const stand = await placementStand({ position: p, name: 'cobblestone' })
+        const branch = ctx.memory?.early?.mine?.branch
+        const pending = branch?.pendingAction
+        const matchingPending = pending?.kind === 'place' && pending.position && key(pending.position) === key(p) && FILL_BLOCKS.includes(pending.name)
+        const name = matchingPending ? pending.name : fillMaterial(actions.inventory())
+        if (!name) return blocked('MINE_FILL_SUPPLY', { kind: 'supplies_changed' })
+        const stand = await placementStand({ position: p, name })
         if (!stand.plan) return stand.result
         if (classifyMineCell(plan, p).allowedDig || isMineTorchTarget(plan, p)) {
-          const branch = ctx.memory.early.mine.branch
           branch.temporarySeals ??= []
-          if (!branch.temporarySeals.some(at => key(at) === key(p))) branch.temporarySeals.push({ ...p })
+          const seal = branch.temporarySeals.find(at => key(at) === key(p))
+          if (!seal) branch.temporarySeals.push({ ...p, name })
+          else if (!pending) seal.name = name
           if (!await actions.save()) return wait('MINE_CHECKPOINT_FAILED')
         }
         const out = await actions.place(stand.plan)

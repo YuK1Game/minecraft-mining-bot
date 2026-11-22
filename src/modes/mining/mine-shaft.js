@@ -1,13 +1,11 @@
 'use strict'
 
-const { at, air, open, solid, standY, centre, key, live, received, count, observe, action, save, feetAt, blocked, stopped, results } = require('./mine-common')
+const { at, air, open, solid, standY, centre, key, live, inventory, received, count, observe, action, save, feetAt, blocked, stopped, results } = require('./mine-common')
 const { digCell, walkCell } = require('./mine-excavate')
-const { value } = require('./mine-observed')
+const { value, fillMaterial } = require('./mine-observed')
 const { noteMineProgress } = require('./mine-progress')
 const { clearableSitePlant } = require('../../quarry/storage/storage-site-terrain')
-// HousePorts supports ordinary cobblestone placement. Do not select dirt or
-// deepslate merely because it is present in the inventory.
-const FILLS = ['cobblestone']
+
 const here = (column,y) => ({ x:column.x,y,z:column.z })
 const ladder = b => b?.known === true && b.name === 'minecraft:ladder' && !b.extra?.length
 const filled = () => ({...results.completed('MINE_SUPPORT_CONFIRMED'),serverConfirmed:true})
@@ -22,9 +20,9 @@ async function fillCell (ctx,branch,target,purpose = 'shaft') {
     return filled()
   }
   if(!air(b))return blocked('MINE_FILL_OCCUPIED','縦坑の埋戻し先を確認します。')
-  const name=FILLS.find(name=>count(ctx,name)>0)
+  const name=fillMaterial(inventory(ctx))
   if(!name)return blocked('MINE_FILL_SUPPLY','縦坑の足場と埋戻し用ブロックを補給します。','supplies_changed')
-  return action(ctx,branch,{kind:'fill',purpose,target},()=>ctx.minePorts.place({position:target,name:'minecraft:'+name,supportPurpose:purpose}),()=>solid(at(ctx,target)))
+  return action(ctx,branch,{kind:'fill',purpose,target},()=>ctx.minePorts.place({position:target,name,supportPurpose:purpose}),()=>solid(at(ctx,target)))
 }
 
 async function rung (ctx,branch,y) {

@@ -203,8 +203,9 @@ test('an air opening in a future torch position keeps its temporary seal record'
     getFeet: () => ({ x: adjacent.x + 0.5, y: adjacent.y - 1, z: adjacent.z + 0.5 }), cancelled: () => false }
   let recorded = false
   const actions = { block: p => ctx.getBlock(p.x, p.y, p.z), done: () => ({ status: 'completed', serverConfirmed: true }),
-    save: async () => { recorded = branch.temporarySeals.some(here); return true },
-    place: ({ position }) => { assert.deepEqual(position, target); assert.equal(recorded, true); return { status: 'interrupted', code: 'AFTER_SEAL_CHECKPOINT' } } }
+    inventory: () => ({ known: true, items: [{ name: 'minecraft:cobbled_deepslate', count: 1 }] }),
+    save: async () => { recorded = branch.temporarySeals.some(at => here(at) && at.name === 'minecraft:cobbled_deepslate'); return true },
+    place: ({ position, name }) => { assert.deepEqual(position, target); assert.equal(name, 'minecraft:cobbled_deepslate'); assert.equal(recorded, true); return { status: 'interrupted', code: 'AFTER_SEAL_CHECKPOINT' } } }
   const out = await createMineLighting(ctx, actions).finish(plan, current)
   assert.equal(out.code, 'AFTER_SEAL_CHECKPOINT')
 })

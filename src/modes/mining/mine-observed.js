@@ -2,6 +2,7 @@
 
 // The mine's small, shared receipt predicates. A bounding box alone does not
 // identify a slab's upper surface, and an absent property is not 'bottom'.
+const FILL_BLOCKS = Object.freeze(['minecraft:cobbled_deepslate', 'minecraft:cobblestone'])
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 const key = p => `${p.x},${p.y},${p.z}`
 const point = p => p && ['x', 'y', 'z'].every(k => Number.isFinite(p[k]))
@@ -18,9 +19,10 @@ const receivedInventory = inv => inv?.known === true && inv.uncertain !== true &
 const bare = name => String(name ?? '').replace(/^minecraft:/, '')
 const full = name => 'minecraft:' + bare(name)
 const held = (inv, name) => receivedInventory(inv) ? inv.items.filter(i => i.name === full(name) && i.count > 0).reduce((sum, i) => sum + i.count, 0) : null
+const fillMaterial = inventory => FILL_BLOCKS.find(name => held(inventory, name) > 0)
 const confirmed = out => out?.status === 'completed' && (out.serverConfirmed === true || out.evidence?.serverConfirmed === true)
 function scopeOf (ctx) {
   return require('./mine-state').mineLiveScope(ctx.runtime.mineState?.() ?? ctx.runtime.raw())
 }
 
-module.exports = { key, point, cell, value, air, solid, bottomSlab, receivedInventory, bare, full, held, confirmed, scopeOf }
+module.exports = { key, point, cell, value, air, solid, bottomSlab, receivedInventory, bare, full, held, FILL_BLOCKS, fillMaterial, confirmed, scopeOf }

@@ -120,3 +120,17 @@ test('a lower-layer trip budgets both unfinished rooms and excludes already rece
     ? { known: true, name: 'minecraft:chest' } : empty()
   assert.equal(supplyNeeds(f.plan, 'lower', { inventory: f.inv, getBlock: upperStanding }).chest, lower.length)
 })
+
+
+test('carried cobbled deepslate counts for supports while slab crafting still asks for ordinary cobblestone', async () => {
+  const { supplyNeeds } = require('../src/modes/mining/mine-needs')
+  const stocked = fixture([], { cobblestone: 29, cobbled_deepslate: 35 })
+  const block = () => ({ known: true, name: 'minecraft:stone' })
+  const needs = supplyNeeds(stocked.plan, 'lower', { inventory: stocked.inv, getBlock: block, refillCobblestone: true })
+  assert.equal(needs.cobbled_deepslate, 35)
+  assert.equal(needs.cobblestone, 29)
+
+  const slabs = fixture([], { ladder: 64, cobblestone: 0, cobbled_deepslate: 64, cobblestone_slab: 0 })
+  assert.equal((await slabs.supplies.ensure(slabs.plan)).code, 'MINE_SUPPLIES_IN_PROGRESS')
+  assert.deepEqual(slabs.calls, [['acquire', 'cobblestone', 24]])
+})

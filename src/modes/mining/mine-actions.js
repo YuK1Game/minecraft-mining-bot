@@ -4,12 +4,12 @@ const { createHousePorts } = require('../house/house-ports')
 const { houseClickGeometry } = require('../../actions/house-placement')
 const { interactionSightError } = require('../../actions/interaction-sight')
 const { completed, blocked, failed, interrupted } = require('../return/return-result')
-const { key, cell, air, solid, bottomSlab, full, held, receivedInventory, value, scopeOf } = require('./mine-observed')
+const { key, cell, air, solid, bottomSlab, full, held, receivedInventory, value, FILL_BLOCKS, scopeOf } = require('./mine-observed')
 const { sameWorld, mineWorldScope } = require('./mine-state')
 const { digTool, toolNeeded } = require('../dig-tool')
 const { supportIntent, recordSupportReceipt } = require('./mine-support-receipt')
 const { mineLadderResult } = require('./mine-ladder-result')
-const RETRYABLE_MATERIALS = new Set(['minecraft:torch', 'minecraft:cobblestone', 'minecraft:cobblestone_slab', 'minecraft:ladder'])
+const RETRYABLE_MATERIALS = new Set(['minecraft:torch', 'minecraft:cobblestone_slab', 'minecraft:ladder', ...FILL_BLOCKS])
 const NORMAL = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]]
 
 function placements (block, request) {

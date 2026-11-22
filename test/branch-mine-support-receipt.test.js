@@ -104,3 +104,18 @@ test('an inferred shaft fill chooses a visible face over the first solid face', 
   assert.deepEqual(w.places[0].clicked, { x: 1, y: 68, z: 5 })
   assert.equal(w.places[0].face, 3)
 })
+
+
+test('cobbled deepslate supports require the same received ownership before later digging', async t => {
+  const w = createMineWorld(t)
+  w.put(target, 'air')
+  w.give('cobbled_deepslate', 1)
+  const result = await fillCell(w.ctx, w.branch, target, 'shaft_work_floor')
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(w.places[0].name, 'minecraft:cobbled_deepslate')
+  assert.equal(w.branch.supportFills[0].name, 'minecraft:cobbled_deepslate')
+  assert.equal(w.branch.supportFills[0].receipt.consumed, 1)
+  assert.equal(inspectDig(w.ctx, target, w.branch).clear, false)
+  delete w.branch.supportFills
+  assert.equal(inspectDig(w.ctx, target, w.branch).code, 'MINE_PROTECTED_OR_UNSAFE')
+})

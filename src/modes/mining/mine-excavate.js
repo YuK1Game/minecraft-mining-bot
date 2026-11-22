@@ -1,6 +1,7 @@
 'use strict'
 
 const { at, air, open, wet, solid, standY, centre, key, live, inventory, received, observe, action, feetAt, blocked, stopped, results } = require('./mine-common')
+const { FILL_BLOCKS } = require('./mine-observed')
 const SIDES = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]
 const {isMineNaturalBlock}=require('./mine-vein-geometry')
 const { selectVisibleBlockFace } = require('../../combat/aim')
@@ -12,7 +13,9 @@ function inspectDig (ctx, target, branch = null, kind = null) {
   const block = at(ctx, target)
   if (block?.known !== true) return { unknown: [target] }
   if (open(block)) return { clear: true }
-  const owned = branch && ((branch.temporarySeals??[]).some(p=>key(p)===key(target)) && block.name==='minecraft:cobblestone' || (branch.supportFills??[]).some(p=>key(p)===key(target) && p.name===block.name))
+  const ownedSeal = FILL_BLOCKS.includes(block.name) && branch?.temporarySeals?.some(p =>
+    key(p) === key(target) && (p.name ?? 'minecraft:cobblestone') === block.name)
+  const owned = ownedSeal || branch?.supportFills?.some(p => key(p) === key(target) && p.name === block.name)
   const shaft = branch?.plan?.shaft
   const clearEntryPlant = kind === 'shaft_entry_plant' && target.y === shaft?.topY && clearableSitePlant(block) &&
     [shaft.ladder, shaft.ladder.support].some(p => p.x === target.x && p.z === target.z)

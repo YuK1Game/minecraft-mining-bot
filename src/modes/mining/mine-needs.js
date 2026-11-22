@@ -21,7 +21,11 @@ function supplyNeeds(plan,layer,{inventory,getBlock,refillCobblestone=false,refi
     const block=getBlock(p)
     return block?.known!==true || block.name!=='minecraft:chest'
   }).length,0)
-  return {ladder:ladders,torch:refillTorches || have('torch')<8?32:8,cobblestone_slab:have('cobblestone_slab')<12?SLAB_REFILL:12,cobblestone:refillCobblestone || have('cobblestone')<32?64:32,chest:chests}
+  const deepslate=have('cobbled_deepslate')
+  const fillReserve=refillCobblestone || have('cobblestone')+deepslate<32?64:32
+  const keptDeepslate=Math.min(deepslate,fillReserve)
+  return {ladder:ladders,torch:refillTorches || have('torch')<8?32:8,cobblestone_slab:have('cobblestone_slab')<12?SLAB_REFILL:12,
+    cobblestone:fillReserve-keptDeepslate,cobbled_deepslate:keptDeepslate,chest:chests}
 }
 
 const ladderBatches = (target, current) => Math.min(8, Math.max(0, Math.ceil((target - current) / 3)))

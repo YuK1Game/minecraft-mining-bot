@@ -124,3 +124,15 @@ test('a renumbered source stack does not confirm when the missing item moved to 
   f.interactions.cancel('no net consumption')
   await assert.rejects(pending, /no net consumption/)
 })
+
+
+test('cobbled deepslate uses the ordinary visible support face and placement receipts', async () => {
+  const f = fixture('minecraft:cobbled_deepslate')
+  assert.equal(f.interactions.previewHouseBlock(f.options).ready, true)
+  const pending = f.interactions.placeHouseBlock(f.options)
+  f.sent()
+  f.receipt({})
+  const result = await pending
+  assert.equal(result.blockName, 'minecraft:cobbled_deepslate')
+  assert.equal(result.confirmedBy, 'server_block_and_inventory')
+})
