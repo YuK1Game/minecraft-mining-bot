@@ -336,3 +336,22 @@ test('a supported slab rim outside the route graph is centred on the received la
   assert.equal(corrected, true)
   assert.ok(w.walks.length > first, 'the normal corridor walk resumes afterwards')
 })
+
+test('resuming an open lower room budgets for its highest remaining safe pickaxe tier', async t => {
+  const w = createMineWorld(t)
+  const step = mineSteps(w.plan, { layer: 'lower' })[0]
+  const { clear } = stepCells(w.plan, step)
+  w.put(clear.at(-1), 'deepslate_diamond_ore')
+  w.branch.segmentTask = { layer: 'lower', stepId: step.id, cursor: 0, lobbyOnly: true }
+  w.ctx.minePorts.ensureSupplies = async (plan, options) => {
+    assert.equal(plan, w.plan)
+    assert.equal(options.layer, 'lower')
+    assert.equal(options.request.resource, 'raw_iron')
+    assert.equal(options.blockName, 'minecraft:deepslate_diamond_ore')
+    return { status: 'blocked', code: 'MINE_TOOL_SUPPLY', serverConfirmed: false }
+  }
+
+  const result = await requestMine(w.ctx, { resource: 'raw_iron', targetHeld: 3 })
+  assert.equal(result.result.code, 'MINE_TOOL_SUPPLY')
+  assert.equal(w.digs.length, 0)
+})

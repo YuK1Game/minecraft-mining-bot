@@ -3,7 +3,8 @@
 const {mineSteps,stepCells}=require('./mine-geometry')
 const state=require('./mine-state')
 const {at,solid,inventory,count,scope,live,received,save,pending,blocked,stopped,results}=require('./mine-common')
-const {excavateSegment}=require('./mine-excavate')
+const {excavateSegment,inspectDig}=require('./mine-excavate')
+const {blockRule}=require('../../quarry/quarry-rules')
 const {retainStorageTorchSupport}=require('./mine-storage-layout')
 const {ensureShaft}=require('./mine-shaft')
 const {walkLayer,reachLayer,leaveMine,enterMine:entry}=require('./mine-route')
@@ -24,11 +25,23 @@ const raw=ctx=>ctx.runtime.mineState?.()??ctx.runtime.raw()
 const mineOf=ctx=>ctx.memory?.early?.mine?.branch
 const inside=insideMine
 
-async function prepare(ctx,branch,layer){
+function remainingPickBlock(ctx,branch,step){
+  let name=null,tier=0
+  for(const p of stepCells(branch.plan,step).clear){
+    const block=at(ctx,p),rule=blockRule(block?.name)
+    if(rule?.needs==='pickaxe' && rule.tier>tier && inspectDig(ctx,p,branch).clear===false){
+      name=block.name
+      tier=rule.tier
+    }
+  }
+  return name
+}
+
+async function prepare(ctx,branch,layer,blockName=null){
   const previous=ctx.mineSupplyWork
   ctx.mineSupplyWork=true
   try{
-    const outcome=await ctx.minePorts.ensureSupplies(branch.plan,{layer,request:branch.request})
+    const outcome=await ctx.minePorts.ensureSupplies(branch.plan,{layer,request:branch.request,blockName})
     if(!received(outcome))noteMinePreparation(ctx,branch,layer)
     return outcome
   }finally{ctx.mineSupplyWork=previous}
@@ -102,7 +115,7 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   if(branch.segmentTask){
     const task=branch.segmentTask,current=mineSteps(branch.plan,{layer:task.layer})[branch.progress[task.layer]?.cursor]
     if(current?.id!==task.stepId || task.cursor!==branch.progress[task.layer]?.cursor)return outcome(blocked('MINE_ACTIVE_STEP_MISMATCH','保存した未完区間を現在の施工順と照合します。','owner_released'))
-    const prepared=await prepare(ctx,branch,task.layer)
+    const prepared=await prepare(ctx,branch,task.layer,remainingPickBlock(ctx,branch,current))
     if(!received(prepared) || !live(ctx))return outcome(live(ctx)?prepared:stopped(),'掘り始めた区間を仕上げる床材・照明・道具を補給します。')
     const entered=await entry(ctx,branch)
     if(!received(entered))return outcome(entered)
