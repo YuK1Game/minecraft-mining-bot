@@ -94,3 +94,13 @@ test('a support received during cancellation is reconciled in the same life with
   assert.equal(w.branch.supportFills[0].receipt.consumed, 1)
   assert.equal(w.places.length, 1)
 })
+
+test('an inferred shaft fill chooses a visible face over the first solid face', async t => {
+  const w = createMineWorld(t), target = { x: 1, y: 68, z: 6 }
+  for (const at of [target, { x: 1, y: 67, z: 6 }, { x: 0, y: 66, z: 5 }, { x: 0, y: 67, z: 5 }, { x: 0, y: 68, z: 5 }]) w.put(at, 'air')
+  for (const at of [{ x: 0, y: 65, z: 5 }, { x: 1, y: 68, z: 7 }, { x: 1, y: 68, z: 5 }, { x: 0, y: 68, z: 6 }]) w.put(at, 'stone')
+  w.setFeet({ x: 0.5, y: 66, z: 5.5 })
+  assert.equal((await fillCell(w.ctx, w.branch, target)).serverConfirmed, true)
+  assert.deepEqual(w.places[0].clicked, { x: 1, y: 68, z: 5 })
+  assert.equal(w.places[0].face, 3)
+})

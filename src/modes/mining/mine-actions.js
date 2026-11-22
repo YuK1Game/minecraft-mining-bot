@@ -154,7 +154,10 @@ function createMineActions (ctx) {
   async function place (request) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     if (!worldMatches()) return wait('MINE_SCOPE_UNKNOWN', 'owner_released')
-    const plan = placement(request)
+    // Shaft fills can have a solid face that is hidden by an earlier fill.
+    // Keep explicit faces fixed and prefer a visible one for inferred support.
+    const inferredSupport = request.supportPurpose && !request.clicked && !request.support
+    const plan = (inferredSupport ? visibleMinePlacement(block, request, ctx.getFeet()) : null) ?? placement(request)
     if (!plan) return wait('MINE_PLACE_SUPPORT_UNKNOWN')
     const { position, name } = plan, actionKey = 'place:' + key(position), pending = branch()?.pendingAction
     if (matches(position, name, plan)) {
