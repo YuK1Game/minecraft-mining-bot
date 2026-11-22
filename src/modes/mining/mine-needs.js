@@ -1,6 +1,7 @@
 'use strict'
 
 const {held}=require('./mine-observed')
+const SLAB_REFILL = 64
 
 // Replenishment and capacity relief share the remaining construction budget:
 // storing ladders still needed below would immediately withdraw them again.
@@ -15,7 +16,15 @@ function supplyNeeds(plan,layer,{inventory,getBlock,refillCobblestone=false}){
   }
   const ladders=Math.max(4,plan.shaft.topY-level.y+2-installed)
   const chests=room.pairs.reduce((sum,pair)=>sum+pair.positions.filter(p=>{const b=getBlock(p);return b?.known!==true || b.name!=='minecraft:chest'}).length,0)
-  return {ladder:ladders,torch:have('torch')<8?32:8,cobblestone_slab:have('cobblestone_slab')<12?64:12,cobblestone:refillCobblestone || have('cobblestone')<32?64:32,chest:chests}
+  return {ladder:ladders,torch:have('torch')<8?32:8,cobblestone_slab:have('cobblestone_slab')<12?SLAB_REFILL:12,cobblestone:refillCobblestone || have('cobblestone')<32?64:32,chest:chests}
 }
 
-module.exports={supplyNeeds}
+const ladderBatches = (target, current) => Math.min(8, Math.max(0, Math.ceil((target - current) / 3)))
+
+function constructionSupplies(plan, layer, options) {
+  const needs = supplyNeeds(plan, layer, options)
+  if (!needs) return null
+  return { ...needs, cobblestone_slab: SLAB_REFILL, stick: 7 * ladderBatches(needs.ladder, held(options.inventory, 'ladder') ?? 0) }
+}
+
+module.exports={supplyNeeds,constructionSupplies,ladderBatches}

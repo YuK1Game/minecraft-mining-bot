@@ -86,6 +86,26 @@ test('everything but the kit is banked (user 11:09 JST: 必要最低限のアイ
   assert.deepEqual(bankableAll({ known: true, uncertain: true, items: [] }), [])
 })
 
+test('banking retains the remaining shaft materials and regular kit, while storing the surplus', () => {
+  const { constructionSupplies } = require('../src/modes/mining/mine-needs')
+  const { createMineGeometry } = require('../src/modes/mining/mine-geometry')
+  const plan = createMineGeometry({ scope: { profile: 'p', realmId: 'r', dimension: 'overworld' }, anchor: { x: 0, z: 0 }, surfaceY: 69, upperY: 16, lowerY: -54 })
+  const items = inv([[0, 'ladder', 24], [1, 'ladder', 24], [2, 'ladder', 24], [3, 'ladder', 4],
+    [4, 'stick', 58], [5, 'cobblestone_slab', 64], [6, 'torch', 40], [7, 'cobblestone', 64], [8, 'string', 5]])
+  const keep = constructionSupplies(plan, 'lower', { inventory: items, getBlock: () => ({ known: true, name: 'minecraft:stone' }) })
+  assert.equal(keep.stick, 56)
+  const legacy = bankableAll(items)
+  assert.equal(legacy.filter(stack => stack.name === 'minecraft:ladder').reduce((sum, stack) => sum + stack.count, 0), 76)
+  const actual = bankableAll(items, { keep })
+  const byName = name => actual.filter(stack => stack.name === 'minecraft:' + name).reduce((sum, stack) => sum + stack.count, 0)
+  assert.equal(byName('ladder'), 0)
+  assert.equal(byName('stick'), 2)
+  assert.equal(byName('cobblestone_slab'), 0)
+  assert.equal(byName('torch'), 0)
+  assert.equal(byName('cobblestone'), 0)
+  assert.equal(byName('string'), 5)
+})
+
 test('the diamonds of the next pickaxe stay in hand while only one diamond pickaxe is good (live 2026-11-17 18:13 JST)', () => {
   const pick = (slot, used) => ({ slot, name: 'minecraft:diamond_pickaxe', count: 1, maxDurability: 1561, durabilityUsed: used })
   const worn = { known: true, worn: ['helmet', 'chestplate', 'leggings', 'boots'].map(piece => ({ piece, name: `minecraft:diamond_${piece}` })) }

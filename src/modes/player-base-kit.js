@@ -49,7 +49,7 @@ function diamondsNeeded (items, worn) {
 }
 
 // The stacks to bank: [{ slot, name, count }], kept items left in the largest stacks.
-function bankableAll (inventory, { worn = null } = {}) {
+function bankableAll (inventory, { worn = null, keep = null } = {}) {
   if (inventory?.known !== true || inventory.uncertain) return []
   const items = (inventory.items ?? []).filter(item => item?.count > 0 && Number.isInteger(item.slot) && item.slot >= 0 && item.slot < 36)
   const out = [], kept = new Set()
@@ -61,8 +61,15 @@ function bankableAll (inventory, { worn = null } = {}) {
       out.push({ slot: item.slot, name: item.name, count: item.count - left }); left = 0
     }
   }
+  // Active construction extends the ordinary kit's reserve for exact materials.
+  for (const [name, amount] of Object.entries(keep ?? {})) {
+    if (!Number.isSafeInteger(amount) || amount <= 0 || ALL.test(name)) continue
+    const ordinary = CAPS.find(([pattern]) => pattern.test(name))?.[1] ?? 0
+    const cap = Math.max(amount, ordinary, name === 'diamond' ? diamondsNeeded(items, worn) : 0)
+    keepUpTo(items.filter(item => bare(item.name) === name), cap)
+  }
   for (const [pattern, cap] of CAPS) keepUpTo(items.filter(item => !kept.has(item.slot) && pattern.test(bare(item.name))), cap)
-  keepUpTo(items.filter(item => bare(item.name) === 'diamond'), diamondsNeeded(items, worn))
+  keepUpTo(items.filter(item => !kept.has(item.slot) && bare(item.name) === 'diamond'), diamondsNeeded(items, worn))
   for (const [kind, count] of Object.entries(TOOLS_KEPT)) {
     const tools = items.filter(item => TOOL.exec(bare(item.name))?.[1] === kind && !(kind === 'axe' && /pickaxe$/.test(item.name)))
     const ranked = tools.filter(working).sort((a, b) => (TIER[bare(b.name).split('_')[0]] ?? 0) - (TIER[bare(a.name).split('_')[0]] ?? 0) || (uses(b) ?? 0) - (uses(a) ?? 0))

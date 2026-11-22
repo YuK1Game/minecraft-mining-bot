@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const { createMineGeometry } = require('../src/modes/mining/mine-geometry')
 const { createMineSupplies } = require('../src/modes/mining/mine-supplies')
 
-function fixture (plankCounts, extra = {}) {
+function fixture (plankCounts, extra = {}, storage = {}) {
   const plan = createMineGeometry({ scope: { profile: 'p', realmId: 'r', dimension: 'overworld' }, anchor: { x: 0, z: 0 }, surfaceY: 64, upperY: 16, lowerY: -54 })
   const stock = { torch: 32, cobblestone_slab: 64, cobblestone: 64, ladder: 0, stick: 0, ...extra }
   const inv = { known: true, items: Object.entries(stock).map(([name, count], slot) => ({ name: 'minecraft:' + name, count, slot })) }
@@ -21,7 +21,7 @@ function fixture (plankCounts, extra = {}) {
     walk: async () => { calls.push(['walk to workbench']); return { status: 'blocked' } },
     house: { craft: async (name, times) => { calls.push(['craft', name, times]); inv.items.push({ name, count: times * 4, slot: inv.items.length }) }, why: () => null }
   }
-  return { plan, calls, inv, ctx, branch: ctx.memory.early.mine.branch, supplies: createMineSupplies(ctx, actions, {}) }
+  return { plan, calls, inv, ctx, branch: ctx.memory.early.mine.branch, supplies: createMineSupplies(ctx, actions, storage) }
 }
 
 test('multi-batch ladder sticks reserve two planks per craft before crafting', async () => {
@@ -68,6 +68,17 @@ test('a started cobblestone refill keeps its target until confirmed inventory re
   stack.count = 60
   assert.equal((await f.supplies.ensure(f.plan)).code, 'MINE_SUPPLIES_READY')
   assert.deepEqual(f.calls, [['acquire', 'cobblestone', 64], ['acquire', 'cobblestone', 64]])
+})
+
+test('a confirmed home withdrawal has to finish the remaining preparation before construction', async () => {
+  const f = fixture([], { ladder: 0 }, { takeHome: async target => {
+    assert.ok(target.ladder > 24)
+    return { status: 'completed', code: 'KIT_TAKEN', evidence: { serverConfirmed: true }, progress: { confirmedTransferred: 24 } }
+  } })
+  const result = await f.supplies.ensure(f.plan, { layer: 'lower' })
+  assert.equal(result.code, 'MINE_HOME_SUPPLIES_RECEIVED')
+  assert.equal(result.status, 'blocked')
+  assert.deepEqual(f.calls, [])
 })
 
 test('initial preparation can proceed once the construction reserve is met', async () => {

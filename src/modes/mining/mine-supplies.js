@@ -5,7 +5,7 @@ const { held, bare, solid, air, confirmed } = require('./mine-observed')
 const { createOpenStand } = require('../open-stand')
 const { insideMine } = require('./mine-location')
 const { takeSupplies } = require('./mine-stock')
-const { supplyNeeds } = require('./mine-needs')
+const { supplyNeeds, ladderBatches } = require('./mine-needs')
 const { occupied } = require('./mine-carry')
 const { count } = require('../dragon-supply-kit')
 const { placementTopVisible, planPlacementAccess } = require('../../actions/action-access')
@@ -176,6 +176,9 @@ function createMineSupplies (ctx, actions, storage) {
       const out = await takeSupplies(ctx, branch, id, needs, storage)
       if (!confirmed(out)) return out
     }
+    const fromHome = await storage.takeHome?.({ ladder: needs.ladder, cobblestone_slab: needs.cobblestone_slab, stick: 7 * ladderBatches(needs.ladder, have('ladder')) })
+    if (fromHome) return (fromHome.progress?.confirmedTransferred ?? 0) > 0 && fromHome.status === 'completed'
+      ? wait('MINE_HOME_SUPPLIES_RECEIVED') : fromHome
     if (have('torch') < needs.torch) return torches(needs.torch)
     const missing = Object.entries(needs).find(([name, amount]) => have(name) < amount)
     if (!missing) {
@@ -195,7 +198,7 @@ function createMineSupplies (ctx, actions, storage) {
     // Collect the missing ingredients before going to the workbench. A
     // gather tick for wood can end outside and continue from there.
     if (name === 'ladder') {
-      const batches = Math.min(8, Math.ceil((amount - have(name)) / 3)), sticks = batches * 7
+      const batches = ladderBatches(amount, have(name)), sticks = batches * 7
       if (have('stick') < sticks) return makeSticks(sticks)
       return craftAtTable(name, batches)
     }

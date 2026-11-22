@@ -16,6 +16,9 @@ const { createProgress } = require('./dragon-progress')
 const { createGoalLedger } = require('./goal/goal-ledger')
 const { goalKey, measure } = require('./dragon-goal-measure')
 const { reserveCounts } = require('./dragon-reserve-seen')
+const { mineWorldScope, sameWorld } = require('./mining/mine-state')
+const { held, receivedInventory } = require('./mining/mine-observed')
+const { constructionSupplies } = require('./mining/mine-needs')
 
 const HELD = '進まない目的を保留しています。場所・持ち物・接続が変わった時か、時間をおいて見直します。'
 const LET_GO_MS = 60000
@@ -178,6 +181,22 @@ function createDragonRuntime (ports) {
       { n: live.n, wait: live.wait, reason: String(shown?.reason ?? '').replace(/。$/, '') + (live.outcome ? '・結果 ' + live.outcome.status + '/' + live.outcome.code : '') + (stepMs >= 60000 ? '・同じ1歩が ' + Math.round(stepMs / 1000) + ' 秒' : '') })
     return owned
   }
-  return { ...expedition, tick, record: state.record, goal }
+  function mineKeep (inventory) {
+    if (!ports.active() || !receivedInventory(inventory)) return null
+    let record = stepRecord
+    if (!record) { try { record = state.snapshot() } catch { return null } }
+    const branch = record?.early?.mine?.branch, request = branch?.request
+    if (record?.stage !== 'early' || !request || branch.retiring ||
+      !sameWorld(branch.plan?.scope, mineWorldScope(runtime.mineState?.() ?? raw()))) return null
+    const needOre = held(inventory, request.resource) < request.targetHeld
+    const producingReserve = request.requester === 'home_reserve' && record.early.reserveReady !== true
+    if (!needOre && !branch.segmentTask && !branch.vein && !producingReserve) return null
+    const layer = branch.segmentTask?.layer ?? branch.vein?.layer ?? request.layer
+    const supplies = constructionSupplies(branch.plan, layer, {
+      inventory, getBlock: p => getBlock(p.x, p.y, p.z), refillCobblestone: branch.refillCobblestone === true
+    })
+    return { ...supplies, [request.resource]: request.targetHeld }
+  }
+  return { ...expedition, tick, record: state.record, goal, mineKeep }
 }
 module.exports = { createDragonRuntime }
