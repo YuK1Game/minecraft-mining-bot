@@ -85,3 +85,28 @@ test('returning from distant supplies travels to the fixed site, then verifies t
   assert.equal(result.serverConfirmed, true)
   assert.equal(branch.intent, undefined)
 })
+
+test('a confirmed clear entrance can be walked after a recorded workstation is broken even if pickup is pending', async () => {
+  const to = { x: 2.5, y: 64, z: 0.5 }, at = { x: 2, y: 64, z: 0 }
+  const branch = { plan: { shaft: { approach: to } } }
+  const state = { profile: 'test', realm: { id: 'one' }, dimension: 'overworld', connectionId: 'a', startedAt: 'start',
+    runtimeEntityId: '1', lifecycle: { deathId: 0 }, phase: 'spawned', health: 20 }
+  let feet = { x: 0.5, y: 64, z: 0.5 }, block = 'crafting_table', clear = false
+  const calls = []
+  const ctx = {
+    runtime: { raw: () => state, inventory: () => ({ known: true, items: [] }) },
+    getFeet: () => feet, cancelled: () => false, saveMine: async () => true,
+    getBlock: () => ({ known: true, name: 'minecraft:' + block }),
+    operations: { playerWorkstations: { recoverAt: async target => {
+      calls.push(['recover', target])
+      if (clear) block = 'air'
+      return { phase: 'deferred', code: clear ? 'STATION_PICKUP_UNREACHABLE' : 'STATION_MINING_DENIED', collected: false }
+    } } },
+    minePorts: { walk: async point => { calls.push(['walk', point]); feet = point; return { status: 'completed', serverConfirmed: true } } }
+  }
+  assert.equal((await enterMine(ctx, branch)).code, 'MINE_ENTRY_UNREACHABLE')
+  assert.deepEqual(calls, [['recover', at]])
+  clear = true
+  assert.equal((await enterMine(ctx, branch)).serverConfirmed, true)
+  assert.deepEqual(calls, [['recover', at], ['recover', at], ['walk', to]])
+})

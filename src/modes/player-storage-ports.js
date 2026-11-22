@@ -8,7 +8,7 @@ const TABLE = 'minecraft:crafting_table'
 const AIR = /^minecraft:(?:air|cave_air|void_air|short_grass|fern|leaf_litter)$/
 const { createContainerPorts } = require('./return/container-ports')
 
-function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now, memory = null, tool }) {
+function createStoragePorts ({ operations, getBlock, getFeet, getInventory, reservedPlacement = () => false, held = () => false, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now, memory = null, tool }) {
   const items = () => getInventory()?.items ?? []
   const count = name => items().filter(item => item?.name === name && item.count > 0).reduce((sum, item) => sum + item.count, 0)
   const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
@@ -71,6 +71,7 @@ function createStoragePorts ({ operations, getBlock, getFeet, getInventory, held
   // Normal placement of a held block on the floor of a cell; it counts when the block is received.
   async function place (cell, name) {
     retrySafe = true
+    if (reservedPlacement(cell)) return false
     const stacks = () => items().filter(item => item?.name === name && item.count > 0)
     let item = stacks().find(stack => stack.slot <= 8)
     try {

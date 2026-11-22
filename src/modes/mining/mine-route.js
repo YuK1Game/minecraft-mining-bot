@@ -33,6 +33,18 @@ async function enterMine(ctx,branch){
     if (!live(ctx, before)) return stopped()
   }
   if (distance(ctx.getFeet()) <= 12) {
+    const entrance = { x: Math.floor(to.x), y: to.y, z: Math.floor(to.z) }
+    const workstations = ctx.operations?.playerWorkstations
+    if (workstations?.recoverAt) {
+      const block = at(ctx, entrance)
+      if (block?.known === true && ['minecraft:crafting_table', 'minecraft:furnace'].includes(block.name)) {
+        await workstations.recoverAt(entrance, { signal: ctx.signal })
+        if (!live(ctx, before)) return stopped()
+        // The block can be cleared before the inventory pickup is confirmed.
+        // Walking only needs the received air; recovery retains its own debt.
+        if (!open(at(ctx, entrance))) return noRoute('採掘場の入口にある設備の回収を待ちます。')
+      }
+    }
     const walked = await walkCell(ctx, branch, to, 'mine_entry')
     if (walked.code !== 'MINE_WALK_REFUSED') return walked
   }

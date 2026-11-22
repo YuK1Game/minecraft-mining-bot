@@ -3,7 +3,7 @@
 const { blocked, interrupted } = require('../return/return-result')
 const { held, bare, solid, air, confirmed } = require('./mine-observed')
 const { createOpenStand } = require('../open-stand')
-const { insideMine } = require('./mine-location')
+const { insideMine, reservedShaftCell } = require('./mine-location')
 const { takeSupplies } = require('./mine-stock')
 const { supplyNeeds, ladderBatches } = require('./mine-needs')
 const { occupied } = require('./mine-carry')
@@ -44,9 +44,7 @@ function createMineSupplies (ctx, actions, storage) {
     const feet = ctx.getFeet()
     if (!feet) return { result: wait('MINE_POSITION_UNKNOWN') }
     const centre = { x: Math.floor(feet.x), y: Math.floor(feet.y + 0.001), z: Math.floor(feet.z) }
-    const shaft = branch?.plan?.shaft
-    const reserved = p => shaft?.columns.some(c => c.x === p.x && c.z === p.z) ||
-      shaft?.approach && Math.floor(shaft.approach.x) === p.x && Math.floor(shaft.approach.z) === p.z
+    const reserved = p => reservedShaftCell(branch?.plan, p)
     const targets = [], ground = []
     for (let x = centre.x - 3; x <= centre.x + 3; x++) for (let z = centre.z - 3; z <= centre.z + 3; z++) {
       for (let y = centre.y - 2; y <= centre.y + 2; y++) {

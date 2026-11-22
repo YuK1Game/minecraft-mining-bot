@@ -40,4 +40,14 @@ function mineLocation(ctx,branch){
 }
 const insideMine=(ctx,branch)=>mineLocation(ctx,branch)?.inside===true
 
-module.exports={mineLocation,insideMine}
+// Keep the entrance's walk cells and the shaft itself clear of temporary equipment.
+function reservedShaftCell (plan, cell) {
+  const shaft = plan?.shaft
+  if (!shaft) return false
+  const sameColumn = position => cell.x === Math.floor(position.x) && cell.z === Math.floor(position.z)
+  if (cell.y >= shaft.bottomY - 1 && cell.y <= shaft.topY + 1 && shaft.columns.some(sameColumn)) return true
+  return [shaft.approach, shaft.topLanding, shaft.entryTorch?.position].some(position =>
+    position && sameColumn(position) && Math.abs(cell.y - position.y) <= 1)
+}
+
+module.exports={mineLocation,insideMine,reservedShaftCell}

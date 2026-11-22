@@ -18,6 +18,8 @@ const { openAbove } = require('./player-surface')
 const { weaponWanted } = require('./carry-weapon')
 const { noteReserve } = require('./dragon-reserve-seen')
 const mining = require('./mining/mine-controller')
+const { reservedShaftCell } = require('./mining/mine-location')
+const { mineWorldScope, sameWorld } = require('./mining/mine-state')
 const { occupied } = require('./mining/mine-carry')
 const homeIron = require('./dragon-home-iron')
 const DIGGER = { stage: 'digger', target: 'stone_pickaxe', code: 'NOT_MADE' }
@@ -44,7 +46,11 @@ function createDragonSupplies (ctx) {
   }
   // One memory of received chest contents with the return and the storage (mode-runtime.js): what any of them last received of a chest.
   const deps = { operations, getFeet: ctx.getFeet, getBlock, getInventory, disposed: cancelled, memory: ctx.shared.playerChestMemory ??= { seen: new Map() }, ...(ctx.sleep ? { sleep: ctx.sleep, now: ctx.now } : {}) }
-  const bench = createStoragePorts(deps), house = createHousePorts(deps), box = createContainerPorts(deps)
+  const reserved = cell => {
+    const plan = ctx.memory?.early?.mine?.branch?.plan
+    return reservedShaftCell(plan, cell) && sameWorld(plan.scope, mineWorldScope(runtime.mineState?.() ?? runtime.raw?.()))
+  }
+  const bench = createStoragePorts({ ...deps, reservedPlacement: reserved }), house = createHousePorts(deps), box = createContainerPorts(deps)
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
   // Why the last step of this run did nothing (a refused open click, …): shown with the reason, so a stall is not silent.
   let trouble = null
@@ -95,7 +101,7 @@ function createDragonSupplies (ctx) {
     if (existingOnly) return null
     if (!held(name)) { await acquire(name, 1); return null }
     // Open cells first; in a one-wide tunnel a niche is mined for it (station-room.js).
-    const pos = await placeStation({ getBlock, feet: ctx.getFeet(), getFeet: ctx.getFeet, place: cell => bench.place(cell, full(name)), retrySafe: () => bench.placementRetrySafe(), why: () => bench.refusal(), hands: ctx.hands, cancelled, log: ctx.log, label: name === 'crafting_table' ? '作業台' : name === 'furnace' ? 'かまど' : name })
+    const pos = await placeStation({ getBlock, reserved, feet: ctx.getFeet(), getFeet: ctx.getFeet, place: cell => bench.place(cell, full(name)), retrySafe: () => bench.placementRetrySafe(), why: () => bench.refusal(), hands: ctx.hands, cancelled, log: ctx.log, label: name === 'crafting_table' ? '作業台' : name === 'furnace' ? 'かまど' : name })
     return pos ? remember(pos) : null
   }
 

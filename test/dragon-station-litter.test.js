@@ -43,7 +43,7 @@ const Y70 = [
 const NAMES = { L: 'leaf_litter', G: 'grass_block', S: 'short_grass', '.': 'air' }
 
 // noLine: the two cells of air to the south-west, the only ones whose floor is seen from the litter cell, have no floor.
-function world ({ noLine = false, feet = { x: -4943.9, y: 71, z: -4955.3 } } = {}) {
+function world ({ noLine = false, mine = null, feet = { x: -4943.9, y: 71, z: -4955.3 } } = {}) {
   const blocks = new Map(), key = (x, y, z) => `${x},${y},${z}`
   let id = 100
   const made = name => ({ known: true, name: full(name), boundingBox: ['leaf_litter', 'short_grass', 'air'].includes(name) ? 'empty' : 'block', runtimeId: name === 'air' ? 0 : ++id, extra: [] })
@@ -107,11 +107,11 @@ function world ({ noLine = false, feet = { x: -4943.9, y: 71, z: -4955.3 } } = {
   const ledger = createGoalLedger({ shared, now: () => w.at, world: () => 'w', restore: () => null })
   ledger.open('early.home_reserve')
   ledger.look({ scope: 's' })
-  const runtime = { raw: () => ({ dimension: 'overworld' }), inventory: () => ({ known: true, items: rows().map(item => ({ ...item })) }), armor: () => ({ known: true, worn: [] }) }
+  const runtime = { raw: () => ({ profile: 'test', realm: { id: 'r' }, dimension: 'overworld' }), inventory: () => ({ known: true, items: rows().map(item => ({ ...item })) }), armor: () => ({ known: true, worn: [] }) }
   w.held = name => rows().filter(item => item.name === full(name)).reduce((sum, item) => sum + item.count, 0)
   // One look of the expedition's two-second timer.
   w.look = async () => {
-    const ctx = { operations, runtime, getBlock, cancelled: () => false, getFeet: () => w.feet, hands, shared, memory: { early: {} }, log: line => w.lines.push(line),
+    const ctx = { operations, runtime, getBlock, cancelled: () => false, getFeet: () => w.feet, hands, shared, memory: { early: mine ? { mine: { branch: { plan: mine } } } : {} }, log: line => w.lines.push(line),
       goal: { fail: (failure, options) => ledger.fail(failure, options), spent: failure => ledger.spent(failure) }, now: () => w.at, sleep: async ms => { w.at += ms } }
     const out = await createDragonSupplies(ctx).acquire('furnace', 1)
     w.at += 2000
@@ -164,4 +164,15 @@ test('on bare ground nothing is walked: the table goes into a cell of air from w
   await furnace(w)
   assert.deepEqual(w.walks, [])
   assert.deepEqual(cellOf(w.feet), start)
+})
+
+test('an ordinary expedition craft leaves the active mine entrance clear', async t => {
+  const approach = { x: -4945.5, y: 71, z: -4954.5 }
+  const plan = { scope: { profile: 'test', realmId: 'r', dimension: 'overworld' },
+    shaft: { columns: [], bottomY: 50, topY: 71, approach } }
+  const w = world({ mine: plan })
+  t.after(() => w.stop())
+  await furnace(w)
+  assert.notDeepEqual(w.placed[0], [full('crafting_table'), -4946, 71, -4955])
+  assert.equal(w.getBlock(-4946, 71, -4955).name, full('air'))
 })
