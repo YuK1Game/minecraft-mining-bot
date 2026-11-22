@@ -43,6 +43,17 @@ function integerPosition (position) {
 }
 function finitePosition (position) { return position && ['x', 'y', 'z'].every(axis => Number.isFinite(position[axis])) }
 function validItem (raw) { return Boolean(raw && Number.isInteger(raw.network_id) && Number.isInteger(raw.count) && (raw.network_id === 0 ? raw.count === 0 && (raw.has_stack_id !== true || raw.stack_id === 0) : raw.count > 0 && raw.has_stack_id === true && Number.isInteger(raw.stack_id) && raw.stack_id > 0 && raw.stack_id <= 2147483647)) }
+function receivedMaterialCount (items, source) {
+  if (!Array.isArray(items) || items.length !== 36) return null
+  let total = 0
+  for (const item of items) {
+    if (!Number.isInteger(item?.network_id)) return null
+    if (item.network_id !== source.network_id) continue
+    if (!Number.isSafeInteger(item.count) || item.count < 1) return null
+    total += item.count
+  }
+  return total
+}
 function placedBlockMatches (block, expected, wall = false) {
   if (expected === 'minecraft:bed') { const bed = bedFingerprint(block); return bed && [false, 0].includes(bed.properties.head_piece_bit) && [false, 0].includes(bed.properties.occupied_bit) }
   // A torch on a wall (the starter house) faces away from it; one on a floor faces up.
@@ -348,7 +359,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     if (plan.blockRuntimeId !== request.plan.blockRuntimeId || !isDeepStrictEqual(plan.raw, request.plan.raw)) throw new Error('向き合わせ中に設置面または持ち物が変わりました。')
     sendRequest(request)
   }
-  function check (sourceReceiptObserved = false) {
+  function check (sourceReceiptObserved = false, fullInventory = null) {
     if (!pending) return
     try {
       const state = session(pending.plan.expectedBlock === 'minecraft:bed' && ['place', 'bed_use'].includes(pending.kind))
@@ -366,7 +377,21 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
         const observedAt = Date.now(), singleBox = pending.plan.raw.count === 1 && SHULKER_BLOCKS.includes(pending.plan.expectedBlock)
         const construction = pending.plan.ladderFacing != null || pending.plan.bottomSlab === true
         if (construction && (inventory.inventoryKnown !== true || state.inventory?.known !== true || state.inventory.uncertain)) throw new Error('坑道の設置結果の持ち物が不明になりました。')
-        if (construction && raw?.count > 0) consumed &&= raw.stack_id === pending.plan.raw.stack_id && raw.metadata === pending.plan.raw.metadata
+        let constructionReceipt = null
+        if (construction && raw?.count > 0) {
+          const before = pending.plan.raw
+          if (consumed && raw.stack_id !== before.stack_id && sourceReceiptObserved && fullInventory &&
+              Number.isSafeInteger(pending.materialBefore) && receivedMaterialCount(fullInventory, before) === pending.materialBefore - 1 &&
+              raw.metadata === before.metadata && raw.block_runtime_id === before.block_runtime_id && isDeepStrictEqual(raw.extra, before.extra) &&
+              !fullInventory.some(item => item?.network_id !== 0 && item?.stack_id === before.stack_id)) {
+            // Realms can renumber the remaining stack. A complete received
+            // decrement proves that the old stack was not moved to another cell.
+            pending.renumberedConstruction = { raw: copy(raw), observedAt }
+          }
+          const renumbered = pending.renumberedConstruction
+          if (renumbered && isDeepStrictEqual(renumbered.raw, raw)) constructionReceipt = renumbered
+          consumed &&= raw.metadata === before.metadata && (raw.stack_id === before.stack_id || constructionReceipt !== null)
+        }
         const support = pending.plan.ladderFacing == null ? null : world.getBlock(pending.plan.clicked.x, pending.plan.clicked.y, pending.plan.clicked.z)
         const constructionMatches = (!pending.plan.bottomSlab || bottomCobblestoneSlab(block)) && (pending.plan.ladderFacing == null || block?.properties?.facing_direction === pending.plan.ladderFacing && !block.extra?.length && placementSupportOk(support) && support.runtimeId === pending.plan.blockRuntimeId)
         const blockMatches = block?.known === true && constructionMatches && placedBlockMatches(block, pending.plan.expectedBlock, pending.plan.wall === true)
@@ -394,7 +419,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
           // can fill this slot before the caller resumes its promise.
           const life = state.lifecycle?.deathId ?? state.deathId ?? null
           const witness = singleBox ? pending.sourceConsumption : null
-          const placementObservation = { version: 1, scope: { profile: state.profile ?? null, realmId: state.realm?.id == null ? null : String(state.realm.id), dimension: state.dimension, connectionId: state.connectionId ?? null, startedAt: state.startedAt ?? null, runtimeEntityId: state.runtimeEntityId == null ? null : String(state.runtimeEntityId), life }, life, requestId: pending.id, slot: pending.plan.slot, rawEncoding: 'v8-base64', sourceBefore: witness?.sourceBefore ?? serialize(pending.plan.raw).toString('base64'), sourceAfter: witness?.sourceAfter ?? serialize(raw).toString('base64'), sourceObservedAt: witness?.observedAt ?? observedAt, blockObservedAt: singleBox ? pending.blockObservedAt : observedAt, targetBlock: { position: copy(pending.plan.target), name: block.name, runtimeId: block.runtimeId }, transactionQueued: pending.transactionQueued === true, wireSent: pending.wireSent === true, observedAt }
+          const placementObservation = { version: 1, scope: { profile: state.profile ?? null, realmId: state.realm?.id == null ? null : String(state.realm.id), dimension: state.dimension, connectionId: state.connectionId ?? null, startedAt: state.startedAt ?? null, runtimeEntityId: state.runtimeEntityId == null ? null : String(state.runtimeEntityId), life }, life, requestId: pending.id, slot: pending.plan.slot, rawEncoding: 'v8-base64', sourceBefore: witness?.sourceBefore ?? serialize(pending.plan.raw).toString('base64'), sourceAfter: witness?.sourceAfter ?? serialize(raw).toString('base64'), sourceObservedAt: witness?.observedAt ?? constructionReceipt?.observedAt ?? observedAt, blockObservedAt: singleBox ? pending.blockObservedAt : observedAt, targetBlock: { position: copy(pending.plan.target), name: block.name, runtimeId: block.runtimeId }, transactionQueued: pending.transactionQueued === true, wireSent: pending.wireSent === true, observedAt }
           finish({ phase: 'completed', operation: 'place', position: pending.plan.target, blockName: block.name, expectedBlock: pending.plan.expectedBlock, requestId: pending.id, placementObservation, confirmedBy: 'server_block_and_inventory' })
         }
       }
@@ -412,6 +437,9 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     if (kind === 'place' && !allocateLegacyId) nextLegacyId -= 2
     return new Promise((resolve, reject) => {
       const request = pending = { kind, plan, id, input, origin: copy(state.position), dimension: state.dimension, scope: interactionScope(state), observedScope: observedScope(state), startedInput: !input.stats().running, resolve, reject, transactionQueued: false, wireSent: false, serverRejected: false, serverConfirmed: false, uncertaintyNotified: false, cancelled: false }
+      if (kind === 'place' && (plan.ladderFacing != null || plan.bottomSlab === true)) {
+        request.materialBefore = receivedMaterialCount(Array.from({ length: 36 }, (_, slot) => crafting.rawItem(slot)), plan.raw)
+      }
       pending.timeout = setTimeout(() => cancel('サーバーから設置・使用の完了を確認できませんでした。'), timeoutMs)
       pending.poll = setInterval(check, plan.alignFacing ? 25 : 100)
       lastResult = { phase: 'requesting', operation: kind, position: plan.target }
@@ -489,11 +517,13 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
       selected.confirmedSlot = pending.plan.slot
       finish({ phase: 'completed', operation: 'open', position: pending.plan.target, windowId: packet.window_id, windowType: packet.window_type, blockName: pending.plan.expectedBlock, confirmedBy: 'server_container_open' })
     }
+    const fullInventory = name === 'inventory_content' && inventoryWindow(packet.window_id) && Array.isArray(packet.input) && packet.input.length === 36 ? packet.input : null
     if (pending?.kind === 'place' && pending.wireSent) {
-      const received = name === 'inventory_slot' && inventoryWindow(packet.window_id) && packet.slot === pending.plan.slot ? packet.item : name === 'inventory_content' && inventoryWindow(packet.window_id) && Array.isArray(packet.input) && packet.input.length === 36 ? packet.input[pending.plan.slot] : null
+      const received = name === 'inventory_slot' && inventoryWindow(packet.window_id) && packet.slot === pending.plan.slot
+        ? packet.item : fullInventory?.[pending.plan.slot]
       if (validItem(received) && isDeepStrictEqual(received, crafting.rawItem(pending.plan.slot))) sourceReceiptObserved = true
     }
-    check(sourceReceiptObserved)
+    check(sourceReceiptObserved, fullInventory)
   }
   function previewPlace (options) {
     try { const plan = placementPlan(options); return { ready: true, position: plan.target, clicked: plan.clicked, face: plan.face, slot: plan.slot, expectedBlock: plan.expectedBlock } } catch (error) { return { ready: false, errors: [error.message] } }
