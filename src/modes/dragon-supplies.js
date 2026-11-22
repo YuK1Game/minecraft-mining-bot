@@ -211,7 +211,10 @@ function createDragonSupplies (ctx) {
       if (missing) {
         if (atHome && missing[0] === 'iron_ingot') return { ...pending('必要な鉄をまとめて見積もり直します。'), replanIron: true }
         if (name === 'magma_cream' && missing[0] === 'slime_ball' && runtime.raw().dimension === 'nether') await collect(ctx, name)
-        else await acquire(missing[0], missing[1] * times)
+        else {
+          const input = await acquire(missing[0], missing[1] * times)
+          if (!input.done && input.result) return input
+        }
       } else if (small.has(name)) await bench.craftSmall(full(name), 1)
       else {
         const homeTable = atHome ? await homeIron.homeStation(ctx, 'table') : null

@@ -79,3 +79,17 @@ test('a checkpoint that already has rods completes without depositing a second c
   window.slotCount=27
   assert.equal((await api.reserve(position,{mode:'stock',kit:'end'})).done,false)
 })
+
+
+test('equipment preparation passes through a blocked mining ingredient', async () => {
+  const raw = { profile: 'p', realm: { id: 'current' }, dimension: 'overworld', phase: 'spawned', health: 20,
+    connectionId: 'current-connection', startedAt: 'now', runtimeEntityId: '1', lifecycle: { deathId: 0 } }
+  const inventory = { known: true, items: [{ slot: 0, name: 'minecraft:stick', count: 2 }, { slot: 1, name: 'minecraft:iron_pickaxe', count: 1, durabilityUsed: 0, maxDurability: 250 }] }
+  const ctx = { operations: {}, getFeet: () => position, getBlock: () => null, shared: {}, cancelled: () => false,
+    runtime: { raw: () => raw, inventory: () => inventory }, minePorts: {},
+    memory: { early: { mine: { branch: { plan: { scope: { profile: 'p', realmId: 'different', dimension: 'overworld' } } } } } } }
+  const out = await createDragonSupplies(ctx).acquire('diamond_pickaxe', 1)
+  assert.equal(out.done, false)
+  assert.equal(out.result.code, 'MINE_WORLD_CHANGED')
+  assert.equal(out.reason, '現在のワールドの採掘場を確認します。')
+})

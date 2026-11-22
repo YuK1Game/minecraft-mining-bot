@@ -74,6 +74,13 @@ function createMineSupplies (ctx, actions, storage) {
     const placed = await actions.place({ position, name, clicked: { ...position, y: position.y - 1 }, face: 1 })
     return confirmed(placed) ? { position } : { result: placed }
   }
+  async function homeStation (name, { receivedOnly = false } = {}) {
+    if (!ctx.shared?.playerHouse?.origin || stopped()) return null
+    const facility = name === 'furnace' ? 'furnace' : 'table'
+    if (receivedOnly && require('../dragon-home-use').homeTarget(ctx, facility).state !== 'standing') return null
+    const home = await require('../dragon-home-iron').homeStation(ctx, facility)
+    return home.at ? { position: home.at } : { result: home.result ?? wait('MINE_HOME_STATION_APPROACH', home.reason) }
+  }
   async function station (name) {
     const branch = ctx.memory?.early?.mine?.branch
     if (insideMine(ctx, branch)) {
@@ -101,14 +108,17 @@ function createMineSupplies (ctx, actions, storage) {
     if (have(name) < 1) {
       const fullInventory = occupied(actions.inventory()) === 36
       const preview = ctx.operations?.crafting?.preview
-      if (name === 'crafting_table' && fullInventory && ctx.shared?.playerHouse?.origin &&
-        preview?.('minecraft:crafting_table', { times: 1 })?.ready === false) {
-        const home = await require('../dragon-home-iron').homeStation(ctx, 'table')
-        return home.at ? { position: home.at } : { result: home.result ?? wait('MINE_HOME_WORKBENCH', home.reason) }
+      if (name === 'crafting_table' && fullInventory && preview?.('minecraft:crafting_table', { times: 1 })?.ready === false) {
+        const home = await homeStation(name)
+        if (home) return home
       }
       return { result: await acquire(name, 1) }
     }
-    return placeStation(name, branch)
+    const placed = await placeStation(name, branch)
+    if (placed.result?.code === 'MINE_STATION_SPACE_UNAVAILABLE') {
+      return await homeStation(name, { receivedOnly: true }) ?? placed
+    }
+    return placed
   }
   async function planks (amount) {
     if (have('planks') < amount) return acquire('planks', amount)
