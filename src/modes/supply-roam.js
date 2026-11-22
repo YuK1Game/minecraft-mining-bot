@@ -39,7 +39,10 @@ async function roam (ctx, resource, step, feet, inView, { now = Date.now, afterW
     ctx.log?.(`プレイヤーモード: ${why}、長距離移動で場所を変えます（目的地 (${destination.x}, ${destination.z})）`)
   }
   try {
-    await ctx.travelTo({ destination }, { aborted: ctx.cancelled, until: inView })
+    const result = await ctx.travelTo({ destination }, { aborted: ctx.cancelled, until: inView })
+    // Long travel can finish up to 20 m away. Finish observing the selected
+    // area on foot before choosing the usual short-search heading again.
+    if (wood && !ctx.cancelled() && result?.phase === 'arrived' && result.ended === 'finished') step['log:roamTarget'] = destination
     return true
   } catch (error) {
     ctx.log?.(`プレイヤーモード: ${resource} を探す長距離移動を始められません（${String(error?.message ?? error).slice(0, 80)}）`)

@@ -81,8 +81,16 @@ async function explore (ctx, resource) {
   const house = resource === 'log' ? enclosedHome(ctx)?.origin : null
   // Spend multiple steps on one heading. A blocked route switches to another
   // heading rather than digging unknown ground or crossing an unseen gap.
-  const direction = options[Math.floor(offset / 7) % 4]
+  const target = wood ? step['log:roamTarget'] : null
+  const dx = target ? target.x - feet.x : 0, dz = target ? target.z - feet.z : 0
+  const remaining = Math.hypot(dx, dz)
+  const nearTarget = target && remaining > 8 && remaining <= 24
+  if (target && !nearTarget) delete step['log:roamTarget']
+  const direction = nearTarget
+    ? (Math.abs(dx) >= Math.abs(dz) ? [Math.sign(dx), 0] : [0, Math.sign(dz)])
+    : options[Math.floor(offset / 7) % 4]
   for (const distance of [12, 8, 5, 3]) {
+    if (nearTarget && distance > Math.max(Math.abs(dx), Math.abs(dz))) continue
     const x = Math.floor(feet.x) + direction[0] * distance, z = Math.floor(feet.z) + direction[1] * distance
     for (const dy of [0, 1, -1, 2, -2]) {
       const y = Math.floor(feet.y) + dy
@@ -97,6 +105,7 @@ async function explore (ctx, resource) {
       if (ctx.cancelled()) return
     }
   }
+  if (nearTarget) delete step['log:roamTarget']
   step[resource] = (Math.floor(offset / 7) + 1) * 7
   // No heading had a place to walk to (a tunnel underground has none): the long trip goes instead (supply-roam.js).
   await roam(ctx, resource, step, feet, visible)
@@ -204,6 +213,7 @@ async function collect (ctx, name) {
         if (search) {
           delete search['log:shortWalks']
           delete search['log:roamOrigin']
+          delete search['log:roamTarget']
           delete search['log:roam']
         }
       }

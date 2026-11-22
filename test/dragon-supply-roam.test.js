@@ -69,3 +69,26 @@ test('walking in an area without logs eventually searches further and expands fr
     { x: centre.x + 2 * ROAM_M, z: centre.z }
   ])
 })
+
+test('an early long-trip arrival is followed by a short walk into the selected area', async () => {
+  const h = tunnel()
+  let feet = h.ctx.getFeet()
+  h.ctx.getFeet = () => feet
+  h.ctx.travelTo = async ({ destination }) => {
+    feet = { x: destination.x - 19.5, y: feet.y, z: destination.z + 0.5 }
+    return { phase: 'arrived', ended: 'finished' }
+  }
+  for (let i = 0; i < MISSES; i++) await explore(h.ctx, 'log')
+
+  const search = h.memory.early.supplySearch
+  assert.deepEqual(search['log:roamTarget'], { x: -4840 + ROAM_M, z: -4987 })
+  // The regular next heading follows the Z axis instead of returning to the selected area.
+  search.log = 7
+  h.ctx.getBlock = (x, y, z) => ({ known: true, name: y <= 46 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y <= 46 ? 'block' : 'empty' })
+  h.ctx.hands.approach = async ({ x, y, z }) => { feet = { x: x + 0.5, y, z: z + 0.5 }; return true }
+  await explore(h.ctx, 'log')
+  assert.equal(feet.x, search['log:roamTarget'].x - 7.5)
+  assert.equal(feet.z, search['log:roamTarget'].z + 0.5)
+  await explore(h.ctx, 'log')
+  assert.equal(search['log:roamTarget'], undefined)
+})
