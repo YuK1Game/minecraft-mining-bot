@@ -142,7 +142,10 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
       }
       if (remaining) throw new Error(`材料が不足しています: ${ingredient.name ?? ingredient.tag ?? ingredient.descriptor_type}`)
     }
-    const destination = Array.from({ length: 36 }, (_, slot) => slot).find(slot => empty(inventory.get(slot)))
+    // Consume actions run before the output is taken. When the main
+    // inventory is full, a completely consumed source is an empty target.
+    const destination = Array.from({ length: 36 }, (_, slot) => slot).find(slot => empty(inventory.get(slot))) ??
+      [...allocations.keys()].find(slot => available.get(slot) === 0)
     if (destination === undefined) throw new Error('クラフト結果を置く空きスロットがありません。')
     const ingredients = []
     for (let ingredientIndex = 0; ingredientIndex < recipe.input.length; ingredientIndex++) {
@@ -216,6 +219,10 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
     if (itemName(item) !== request.plan.outputName || item.count !== request.plan.outputCount || item.has_stack_id !== true || item.stack_id <= 0) return
     for (const [slot, used] of request.plan.allocations) {
       const before = request.plan.before.get(slot)
+      if (slot === request.plan.destination) {
+        if (before.count !== used || before.network_id === item.network_id && before.count === item.count && before.stack_id === item.stack_id) return
+        continue
+      }
       const after = inventory.get(slot)
       const expectedCount = before.count - used
       if (expectedCount === 0 ? !empty(after) : !after || after.network_id !== before.network_id || after.count !== expectedCount || !after.has_stack_id || after.stack_id <= 0) return
@@ -241,7 +248,20 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
       }
     }
     const destination = updates.find(update => update.slot === pending.plan.destination && update.count === pending.plan.outputCount && Number.isInteger(update.item_stack_id) && update.item_stack_id > 0)
+    const usedDestination = pending.plan.before.get(pending.plan.destination)
+    if (destination && usedDestination) {
+      const current = inventory.get(pending.plan.destination)
+      const original = current?.network_id === usedDestination.network_id && current.count === usedDestination.count &&
+        current.stack_id === usedDestination.stack_id && current.metadata === usedDestination.metadata
+      const confirmedOutput = current && itemName(current) === pending.plan.outputName &&
+        current.count === destination.count && current.stack_id === destination.item_stack_id
+      if (!empty(current) && !original && !confirmedOutput) {
+        rejectPending('クラフト先の材料枠に別の更新を受信しました。')
+        return
+      }
+    }
     if (destination && [...pending.plan.allocations].every(([slot, used]) => {
+      if (slot === pending.plan.destination) return pending.plan.before.get(slot).count === used
       const update = updates.find(update => update.slot === slot)
       const expectedCount = pending.plan.before.get(slot).count - used
       return update && update.count === expectedCount && (expectedCount === 0 || Number.isInteger(update.item_stack_id) && update.item_stack_id > 0)
@@ -249,7 +269,8 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
       // Commit a prediction only after the server accepts this exact request and
       // supplies the destination count and its authoritative new stack ID.
       const { plan } = pending
-      for (const [slot, used] of plan.allocations) {
+      for (const [slot] of plan.allocations) {
+        if (slot === plan.destination) continue
         const item = plan.before.get(slot)
         const update = updates.find(update => update.slot === slot)
         if (update) {

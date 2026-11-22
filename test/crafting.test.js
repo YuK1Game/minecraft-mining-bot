@@ -56,6 +56,48 @@ test('online learning HP1 crafting still spends actual materials and waits for m
   f.state.health = 0; assert.equal(f.crafting.preview('oak_planks').ready, false)
 })
 
+test('a full inventory can craft into a completely consumed source slot', async () => {
+  const f = fixture()
+  for (let slot = 1; slot < 36; slot++) f.slots[slot] = item(29, 64, 1000 + slot)
+  f.slots[0] = item(17, 2, 71)
+  f.crafting.applyPacket('inventory_content', { window_id: 'inventory', input: f.slots })
+  assert.equal(f.crafting.preview('oak_planks').ready, false, 'a partially consumed slot is not empty')
+  f.slots[0] = item(17, 1, 71)
+  f.crafting.applyPacket('inventory_content', { window_id: 'inventory', input: f.slots })
+  assert.equal(f.crafting.preview('oak_planks').destination, 0)
+  f.crafting.applyPacket('container_open', { window_id: 'inventory', window_type: 'inventory' })
+  const task = f.crafting.craft('oak_planks')
+  const req = f.packets.at(-1).params.requests[0]
+  assert.equal(req.actions.find(a => a.type_id === 'consume').source.slot, 0)
+  const take = req.actions.find(a => a.type_id === 'take')
+  assert.equal(take.destination.slot, 0)
+  assert.equal(take.destination.stack_id, 0)
+  assert.equal(f.crafting.rawItem(0).network_id, 17)
+  f.crafting.applyPacket('item_stack_response', { responses: [{ request_id: req.request_id, status: 'ok', containers: [
+    { slot_type: { container_id: 'hotbar_and_inventory' }, slots: [{ slot: 0, count: 4, item_stack_id: 102 }] }
+  ] }] })
+  assert.equal((await task).phase, 'completed')
+  assert.equal(f.crafting.rawItem(0).network_id, 29)
+  assert.equal(f.crafting.rawItem(0).count, 4)
+  assert.equal(f.crafting.rawItem(1).count, 64)
+})
+
+test('a late craft response cannot overwrite a newer unrelated item in a reused material slot', async () => {
+  const f = fixture()
+  for (let slot = 1; slot < 36; slot++) f.slots[slot] = item(29, 64, 1000 + slot)
+  f.crafting.applyPacket('inventory_content', { window_id: 'inventory', input: f.slots })
+  f.crafting.applyPacket('container_open', { window_id: 'inventory', window_type: 'inventory' })
+  const task = f.crafting.craft('oak_planks')
+  const req = f.packets.at(-1).params.requests[0]
+  f.crafting.applyPacket('inventory_slot', { window_id: 'inventory', slot: 0, item: item(31, 1, 90) })
+  f.crafting.applyPacket('item_stack_response', { responses: [{ request_id: req.request_id, status: 'ok', containers: [
+    { slot_type: { container_id: 'hotbar_and_inventory' }, slots: [{ slot: 0, count: 4, item_stack_id: 102 }] }
+  ] }] })
+  await assert.rejects(task, /材料枠に別の更新/)
+  assert.equal(f.crafting.rawItem(0).network_id, 31)
+  assert.equal(f.crafting.rawItem(0).stack_id, 90)
+})
+
 test('planning uses received recipes and stack IDs, preserves raw items, and refuses unknown authority/materials', () => {
   const { crafting, packets } = fixture()
   assert.equal(crafting.preview('oak_planks').ready, true)
