@@ -137,19 +137,25 @@ function createMineSupplies (ctx, actions, storage) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     if (!actions.inventory()) return blocked('MINE_INVENTORY_UNKNOWN', { kind: 'inventory_update' })
     const id = typeof layer === 'string' ? layer : layer.id
-    const needs = supplyNeeds(plan, id, { inventory: actions.inventory(), getBlock: actions.block })
+    const branch = ctx.memory.early.mine.branch
+    const needs = supplyNeeds(plan, id, {
+      inventory: actions.inventory(), getBlock: actions.block, refillCobblestone: branch.refillCobblestone === true
+    })
     if (!needs) return wait('MINE_SUPPLY_LAYER_INVALID')
+    // A refill is an outstanding request until its full target is observed.
+    // Crossing the normal carry reserve must not make the Bot leave early.
+    if (have('cobblestone') < needs.cobblestone) branch.refillCobblestone = true
     // Only unopened deficits are withdrawn, and an existing supply pair is
     // physically read again. Stored estimates never masquerade as inventory.
     const deficits = Object.fromEntries(Object.entries(needs).map(([name, n]) => [name, Math.max(0, n - have(name))]).filter(([, n]) => n > 0))
-    if (Object.keys(deficits).length && ctx.memory.early.mine.branch.storage?.pairs?.[`${id}:supply`]) {
-      const out = await takeSupplies(ctx, ctx.memory.early.mine.branch, id, needs, storage)
+    if (Object.keys(deficits).length && branch.storage?.pairs?.[`${id}:supply`]) {
+      const out = await takeSupplies(ctx, branch, id, needs, storage)
       if (!confirmed(out)) return out
     }
     if (have('torch') < needs.torch) return torches(needs.torch)
     const missing = Object.entries(needs).find(([name, amount]) => have(name) < amount)
     if (!missing) {
-      const branch = ctx.memory.early.mine.branch
+      delete branch.refillCobblestone
       if (branch.supplyChecked) {
         delete branch.supplyChecked
         if (!await actions.save()) return wait('MINE_CHECKPOINT_FAILED')
@@ -158,7 +164,7 @@ function createMineSupplies (ctx, actions, storage) {
     }
     const [name, amount] = missing
     if (name === 'cobblestone') return acquire(name, amount)
-    if (insideMine(ctx, ctx.memory.early.mine.branch)) {
+    if (insideMine(ctx, branch)) {
       const surface = await station('crafting_table')
       if (surface.result) return surface.result
     }
