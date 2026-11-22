@@ -1,6 +1,7 @@
 'use strict'
 
 const { digTool } = require('../dig-tool')
+const { nextGear } = require('../../survival/diamond-gear')
 const { pickFor } = require('../dragon-supply-recipes')
 const { count } = require('../dragon-supply-kit')
 const { blocked, interrupted } = require('../return/return-result')
@@ -16,7 +17,16 @@ function createMineTools (ctx, actions) {
     const resource = request?.resource ?? 'raw_iron', block = resource.replace(/^raw_/, '') + '_ore'
     const tool = digTool(inventory.items, 'minecraft:' + block)
     if (tool) return actions.done('MINE_TOOL_READY', { tool })
-    const name = (pickFor[resource] ?? 'stone') + '_pickaxe', scope = scopeOf(ctx)
+    let name = (pickFor[resource] ?? 'stone') + '_pickaxe'
+    if (resource === 'diamond' && request?.requester === 'early' &&
+        ctx.memory?.stage === 'early' && ctx.memory.early?.reserveReady === true) {
+      const diamonds = count('diamond', inventory.items)
+      const next = nextGear({ items: inventory.items, worn: ctx.runtime.armor?.(), diamonds })
+      // If the ore is already carried, the expedition's next tool can also
+      // finish the open room instead of requiring an intermediate iron tool.
+      if (diamonds >= request.targetHeld && next?.output === 'diamond_pickaxe') name = next.output
+    }
+    const scope = scopeOf(ctx)
     // acquire's exact count includes a worn two-use pick. Ask for one more
     // using its own counting rule, so it cannot answer "already carried".
     await ctx.supplies.acquire(name, count(name, inventory.items) + 1)

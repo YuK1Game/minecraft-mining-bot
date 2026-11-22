@@ -23,3 +23,18 @@ test('received usable higher-tier tools satisfy a lower-tier mine without making
   const tools = createMineTools(ctx, { inventory: () => ({ known: true, items }), done: (code, evidence) => ({ code, evidence, status: 'completed', serverConfirmed: true }) })
   assert.equal((await tools({ request: { resource: 'raw_iron' } })).serverConfirmed, true)
 })
+
+
+test('the early mine uses carried goal diamonds for its next pick rather than replacing iron first', async () => {
+  const amount = { name: 'minecraft:diamond', slot: 1, count: 4 }
+  const items = [{ name: 'minecraft:iron_pickaxe', slot: 0, count: 1, durabilityKnown: true, durabilityRemaining: 2 }, amount]
+  const calls = []
+  const ctx = { cancelled: () => false, memory: { stage: 'early', early: { reserveReady: true } },
+    runtime: { raw: () => null }, supplies: { acquire: async (...args) => calls.push(args) } }
+  const tools = createMineTools(ctx, { inventory: () => ({ known: true, items }) })
+  const request = { resource: 'diamond', targetHeld: 3, requester: 'early' }
+  await tools({ request })
+  amount.count = 2
+  await tools({ request })
+  assert.deepEqual(calls, [['diamond_pickaxe', 1], ['iron_pickaxe', 2]])
+})
