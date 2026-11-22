@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { explore } = require('../src/modes/dragon-supply-gather')
+const { explore, inView } = require('../src/modes/dragon-supply-gather')
 const { MISSES, ROAM_M } = require('../src/modes/supply-roam')
 
 // Solid rock everywhere except the Bot's own cell: no place to walk to in any heading.
@@ -113,4 +113,20 @@ test('long wood search uses a received tree beyond local reach and preserves the
 
   for (let i = 0; i < MISSES; i++) await explore(h.ctx, 'log')
   assert.deepEqual(h.trips, [target, { x: -4840 + ROAM_M, z: -4987 }])
+})
+
+test('protected logs at home do not cancel travel as though wood had been found', async () => {
+  const h = tunnel()
+  h.ctx.shared.playerHouse = { origin: { x: -4840, y: 46, z: -4987 } }
+  const getBlock = h.ctx.getBlock
+  h.ctx.getBlock = (x, y, z) => {
+    if (x === -4837 && y === 47 && z === -4984) return { known: true, name: 'minecraft:oak_log' }
+    if (x === -4842 && y === 47 && z === -4987) return { known: true, name: 'minecraft:oak_log', protectionSource: 'build' }
+    return getBlock(x, y, z)
+  }
+
+  assert.deepEqual(inView(h.ctx, 'log'), [])
+  for (let i = 0; i < MISSES; i++) await explore(h.ctx, 'log')
+  assert.equal(h.trips.length, 1)
+  assert.equal(h.trips[0].until, false)
 })

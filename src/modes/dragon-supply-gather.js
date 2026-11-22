@@ -41,8 +41,8 @@ function inView (ctx, name) {
   const re = SOURCES[name]
   if (!re) return []
   const rested = cellRest(ctx.shared, ctx.runtime?.raw?.().dimension, { now: ctx.now })
-  return findCells(ctx, (b, p) => re.test(bare(b.name)) && !rested.resting(p) &&
-    (name !== 'cobblestone' || !b.protected && !b.protectionSource && !protectedAt(ctx, p) && exposedStone(ctx, p)))
+  return findCells(ctx, (b, p) => re.test(bare(b.name)) && !rested.resting(p) && !unavailableAt(ctx, b, p) &&
+    (name !== 'cobblestone' || exposedStone(ctx, p)))
 }
 
 async function approach (ctx, target) {
@@ -79,7 +79,7 @@ async function receivedWoodDestination (ctx, feet) {
       for (let y = origin.y - 8; y <= origin.y + 8; y++) {
         const p = { ...column, y }, block = ctx.getBlock(p.x, p.y, p.z)
         if (block?.known !== true || !SOURCES.log.test(bare(block.name)) ||
-            block.protected || block.protectionSource || protectedAt(ctx, p)) continue
+            unavailableAt(ctx, block, p)) continue
         destination = column
         best = distance
         break
@@ -148,6 +148,10 @@ function protectedAt (ctx, p) {
   return p.x >= origin.x - 1 && p.x <= origin.x + 10 && p.z >= origin.z - 1 && p.z <= origin.z + 10 && p.y >= origin.y - 1 && p.y <= origin.y + 5
 }
 
+function unavailableAt (ctx, block, position) {
+  return block.protected || !!block.protectionSource || protectedAt(ctx, position)
+}
+
 async function collect (ctx, name) {
   const mining = require('./mining/mine-controller')
   if (mining.enabled(ctx) && ctx.runtime.raw().dimension === 'overworld' && mining.MINERALS.has(name)) return mining.requestMine(ctx, { resource: name, targetHeld: Math.max(1, require('./dragon-supply-kit').count(name, ctx.runtime.inventory()?.items ?? []) + 1) })
@@ -187,9 +191,9 @@ async function collect (ctx, name) {
     // A block that was tried and not taken rests (supply-cell-rest.js): the next nearest ones get their turn.
     const rested = cellRest(ctx.shared, ctx.runtime.raw().dimension, { now: ctx.now })
     const far = cell => { const feet = ctx.getFeet(); return feet ? Math.hypot(cell.x + 0.5 - feet.x, cell.y - feet.y, cell.z + 0.5 - feet.z) : Infinity }
-    const cells = findCells(ctx, (b, p) => re.test(bare(b.name)) && !b.protected && !b.protectionSource && !protectedAt(ctx, p) &&
+    const cells = findCells(ctx, (b, p) => re.test(bare(b.name)) && !unavailableAt(ctx, b, p) &&
       !rested.resting(p) && (name !== 'cobblestone' || exposedStone(ctx, p)))
-    const skip = (b, p) => b.protected || !!b.protectionSource || protectedAt(ctx, p)
+    const skip = (b, p) => unavailableAt(ctx, b, p)
     for (const seen of cells.slice(0, 6)) {
       // A log is taken as the first of its tree (dragon-tree.js): the lowest one standing, walked to at the trunk's
       // foot (the nearest stand at the height of a log in the crown is on the leaves).
