@@ -21,6 +21,7 @@ const SOURCES = {
   log: /^(?!stripped_)[a-z_]+_(?:log|stem)$/, string: /^web$/
 }
 const MOBS = { string: 'spider', feather: 'chicken', phantom_membrane: 'phantom', slime_ball: 'slime', magma_cream: 'magma_cube', wool: 'sheep' }
+const WOOD_SEARCH_STEPS = 7
 const SIDES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 const exposedStone = (ctx, p) => SIDES.some(([x, y, z]) => sightPassable(ctx.getBlock(p.x + x, p.y + y, p.z + z)))
 
@@ -69,6 +70,12 @@ async function explore (ctx, resource) {
   if (!feet || ctx.cancelled()) return
   const state = ctx.memory?.early ?? ctx.shared
   const step = state.supplySearch ??= {}
+  const wood = resource === 'log' && ctx.runtime.raw().dimension === 'overworld'
+  const visible = () => inView(ctx, resource).length > 0
+  if (wood && (step['log:shortWalks'] ?? 0) >= WOOD_SEARCH_STEPS) {
+    step['log:shortWalks'] = 0
+    if (await roam(ctx, resource, step, feet, visible, { afterWalks: true })) return
+  }
   const offset = Number(step[resource] ?? 0)
   const options = [[1, 0], [0, 1], [-1, 0], [0, -1]]
   const house = resource === 'log' ? enclosedHome(ctx)?.origin : null
@@ -80,13 +87,19 @@ async function explore (ctx, resource) {
     for (const dy of [0, 1, -1, 2, -2]) {
       const y = Math.floor(feet.y) + dy
       if (inside(house, { x: x + 0.5, y, z: z + 0.5 })) continue
-      if (standable(ctx.getBlock, x, y, z) && await ctx.hands.approach({ x, y, z }, 1.5) && !inside(house, ctx.getFeet())) { step[resource] = offset + 1; step[resource + ':miss'] = 0; ctx.goal?.reached?.('search:' + resource); return }
+      if (standable(ctx.getBlock, x, y, z) && await ctx.hands.approach({ x, y, z }, 1.5) && !inside(house, ctx.getFeet())) {
+        step[resource] = offset + 1
+        step[resource + ':miss'] = 0
+        if (wood) step['log:shortWalks'] = (step['log:shortWalks'] ?? 0) + 1
+        ctx.goal?.reached?.('search:' + resource)
+        return
+      }
       if (ctx.cancelled()) return
     }
   }
   step[resource] = (Math.floor(offset / 7) + 1) * 7
   // No heading had a place to walk to (a tunnel underground has none): the long trip goes instead (supply-roam.js).
-  await roam(ctx, resource, step, feet, () => inView(ctx, resource).length > 0)
+  await roam(ctx, resource, step, feet, visible)
 }
 
 function protectedAt (ctx, p) {
@@ -185,7 +198,15 @@ async function collect (ctx, name) {
       }
       // With its first log mined the tree is the work until it is down (dragon-tree.js).
       const mined = await ctx.hands.mine(target)
-      if (mined && trunk) beginTree(ctx, trunk)
+      if (mined && trunk) {
+        beginTree(ctx, trunk)
+        const search = (ctx.memory?.early ?? ctx.shared).supplySearch
+        if (search) {
+          delete search['log:shortWalks']
+          delete search['log:roamOrigin']
+          delete search['log:roam']
+        }
+      }
       if (mined && !ctx.cancelled()) {
         if (standable(ctx.getBlock,target.x,target.y,target.z)) await ctx.walk({x:target.x+0.5,y:target.y,z:target.z+0.5})
         return

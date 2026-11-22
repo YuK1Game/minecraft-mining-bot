@@ -49,3 +49,23 @@ test('a step that walked starts the count again; outside the overworld no trip i
   for (let i = 0; i < MISSES * 2; i++) await explore(nether.ctx, 'soul_sand')
   assert.equal(nether.trips.length, 0)
 })
+
+test('walking in an area without logs eventually searches further and expands from the same centre', async () => {
+  const h = tunnel()
+  h.ctx.getBlock = (x, y, z) => ({ known: true, name: y <= 46 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y <= 46 ? 'block' : 'empty' })
+  h.memory.early.supplySearch = { 'log:roam': 73 }
+  let feet = h.ctx.getFeet()
+  h.ctx.getFeet = () => feet
+  h.ctx.hands.approach = async target => { feet = { x: target.x + 0.5, y: target.y, z: target.z + 0.5 }; return true }
+  for (let i = 0; i < 7; i++) await explore(h.ctx, 'log')
+  assert.equal(h.trips.length, 0)
+  const centre = { x: Math.floor(feet.x), z: Math.floor(feet.z) }
+  await explore(h.ctx, 'log')
+  for (let i = 0; i < 4 * 8; i++) await explore(h.ctx, 'log')
+  const destinations = h.trips.map(trip => trip.input.destination)
+  assert.deepEqual(destinations, [
+    { x: centre.x + ROAM_M, z: centre.z }, { x: centre.x, z: centre.z + ROAM_M },
+    { x: centre.x - ROAM_M, z: centre.z }, { x: centre.x, z: centre.z - ROAM_M },
+    { x: centre.x + 2 * ROAM_M, z: centre.z }
+  ])
+})
