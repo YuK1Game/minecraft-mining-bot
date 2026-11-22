@@ -5,31 +5,39 @@ const SIDES = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]
 const {isMineNaturalBlock}=require('./mine-vein-geometry')
 const { selectVisibleBlockFace } = require('../../combat/aim')
 const { digTool, toolNeeded } = require('../dig-tool')
+const { clearableSitePlant } = require('../../quarry/storage/storage-site-terrain')
 const cell = (p, dx, dy, dz) => ({ x: p.x + dx, y: p.y + dy, z: p.z + dz })
 
-function inspectDig (ctx, target, branch = null) {
+function inspectDig (ctx, target, branch = null, kind = null) {
   const block = at(ctx, target)
   if (block?.known !== true) return { unknown: [target] }
   if (open(block)) return { clear: true }
   const owned = branch && ((branch.temporarySeals??[]).some(p=>key(p)===key(target)) && block.name==='minecraft:cobblestone' || (branch.supportFills??[]).some(p=>key(p)===key(target) && p.name===block.name))
-  if (block.protected || block.protectionSource || !owned && !isMineNaturalBlock(block) || wet(block)) return { code: 'MINE_PROTECTED_OR_UNSAFE', target }
+  const shaft = branch?.plan?.shaft
+  const clearEntryPlant = kind === 'shaft_entry_plant' && target.y === shaft?.topY && clearableSitePlant(block) &&
+    [shaft.ladder, shaft.ladder.support].some(p => p.x === target.x && p.z === target.z)
+  if (block.protected || block.protectionSource || !owned && !isMineNaturalBlock(block) && !clearEntryPlant || wet(block)) return { code: 'MINE_PROTECTED_OR_UNSAFE', target }
   const neighbours = SIDES.map(([x,y,z]) => cell(target,x,y,z))
   const unknown = neighbours.filter(p => at(ctx, p)?.known !== true)
   if (unknown.length) return { unknown }
   if (neighbours.some(p => wet(at(ctx,p))) || /gravel|sand$/.test(at(ctx,cell(target,0,1,0))?.name ?? '')) return { code: 'MINE_HAZARD', target }
   const feet = ctx.getFeet()
   if (feet && Math.floor(feet.x) === target.x && Math.floor(feet.z) === target.z && target.y < feet.y && feet.y - target.y <= 1.05) return { code: 'MINE_OWN_FLOOR', target }
-  return { clear: false }
+  return { clear: false, ...(clearEntryPlant ? { clearEntryPlant: true } : {}) }
 }
 
 async function digCell (ctx, branch, target, kind = 'corridor') {
   if (!live(ctx)) return stopped()
-  const checked = inspectDig(ctx, target, branch)
+  const checked = inspectDig(ctx, target, branch, kind)
   if (checked.unknown) return observe(ctx, checked.unknown, '坑道の掘削面と周囲の地形を受信します。')
   if (checked.code) return blocked(checked.code, '坑道の予定範囲に掘れない地形があります。', 'position_changed')
   if (checked.clear) return { ...results.completed('MINE_ALREADY_CLEAR'), serverConfirmed: true }
-  const out = await action(ctx, branch, { kind: 'dig', purpose: kind, target: { ...target }, expectedName: at(ctx,target).name },
-    () => ctx.minePorts.mine(target), () => air(at(ctx,target)))
+  const block = at(ctx, target)
+  const miningTarget = checked.clearEntryPlant
+    ? { ...target, accessPreparation: 'quarry', expectedName: block.name, expectedRuntimeId: block.runtimeId ?? null }
+    : target
+  const out = await action(ctx, branch, { kind: 'dig', purpose: kind, target: { ...target }, expectedName: block.name },
+    () => ctx.minePorts.mine(miningTarget), () => air(at(ctx,target)))
   if (received(out)) for (const name of ['temporarySeals','supportFills']) if (branch[name]) branch[name]=branch[name].filter(p=>key(p)!==key(target))
   return out
 }

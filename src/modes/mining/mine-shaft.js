@@ -4,6 +4,7 @@ const { at, air, open, solid, standY, centre, key, live, received, count, observ
 const { digCell, walkCell } = require('./mine-excavate')
 const { value } = require('./mine-observed')
 const { noteMineProgress } = require('./mine-progress')
+const { clearableSitePlant } = require('../../quarry/storage/storage-site-terrain')
 // HousePorts supports ordinary cobblestone placement. Do not select dirt or
 // deepslate merely because it is present in the inventory.
 const FILLS = ['cobblestone']
@@ -29,6 +30,13 @@ async function fillCell (ctx,branch,target,purpose = 'shaft') {
 async function rung (ctx,branch,y) {
   const shaft=branch.plan.shaft,target=here(shaft.ladder,y),support=here(shaft.ladder.support,y)
   if(at(ctx,target)?.known !== true || at(ctx,support)?.known !== true)return observe(ctx,[target,support],'はしごと支持壁の地形を受信します。')
+  if(y===shaft.topY){
+    for(const cell of [support,target]){
+      if(!clearableSitePlant(at(ctx,cell)))continue
+      const cleared=await digCell(ctx,branch,cell,'shaft_entry_plant')
+      if(!received(cleared))return cleared
+    }
+  }
   if(!solid(at(ctx,support))){const made=await fillCell(ctx,branch,support,'ladder_support');if(!received(made))return made}
   const installed = () => ladder(at(ctx, target)) && Number(value(at(ctx, target).properties?.facing_direction)) === shaft.ladder.face && solid(at(ctx, support))
   const pending = branch.pendingAction

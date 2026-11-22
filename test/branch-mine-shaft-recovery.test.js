@@ -17,6 +17,26 @@ async function upper (w) {
   assert.equal(w.branch.shaft.landings.upper, true)
 }
 
+test('clear a dry surface plant at the planned ladder support and leave nearby plants alone', async t => {
+  const w = createMineWorld(t), shaft = w.plan.shaft
+  const support = { ...shaft.ladder.support, y: shaft.topY }, other = { ...support, z: support.z + 3 }
+  w.put(support, 'short_grass')
+  w.put(other, 'short_grass')
+  const read = w.ctx.getBlock
+  w.ctx.getBlock = (x, y, z) => {
+    const block = read(x, y, z)
+    return block.name === 'minecraft:short_grass' ? { ...block, boundingBox: 'empty' } : block
+  }
+  const out = await ensureShaft(w.ctx, w.branch, 'upper')
+  assert.ok(['partial', 'completed'].includes(out.status), JSON.stringify(out))
+  const dug = w.digs.find(entry => key(entry.target) === key(support))
+  assert.equal(dug?.target.expectedName, 'minecraft:short_grass')
+  assert.equal(dug?.target.accessPreparation, 'quarry')
+  assert.equal(w.getBlock(support.x, support.y, support.z).name, 'minecraft:cobblestone')
+  assert.equal(w.getBlock(other.x, other.y, other.z).name, 'minecraft:short_grass')
+  assert.equal(w.branch.shaft.depth, shaft.topY - 1)
+})
+
 for (const column of [1, 2, 3]) test(`a received lower-bay dig in column ${column} resumes after cancellation and keeps a confirmed return`, async t => {
   const w = createMineWorld(t), target = { ...w.plan.shaft.columns[column], y: w.plan.shaft.topY - 1 }
   let cancelled = false
