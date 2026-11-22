@@ -6,6 +6,7 @@ const { createOpenStand } = require('../open-stand')
 const { insideMine } = require('./mine-location')
 const { takeSupplies } = require('./mine-stock')
 const { supplyNeeds } = require('./mine-needs')
+const { occupied } = require('./mine-carry')
 const { count } = require('../dragon-supply-kit')
 const { placementTopVisible, planPlacementAccess } = require('../../actions/action-access')
 
@@ -111,13 +112,26 @@ function createMineSupplies (ctx, actions, storage) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     return have(name) > before ? wait('MINE_SUPPLIES_CRAFTED', `${name} ${have(name)}`) : wait('MINE_CRAFT_UNCONFIRMED', actions.house.why())
   }
+  async function makeSticks (target) {
+    const times = Math.min(8, Math.ceil((target - have('stick')) / 4))
+    const availablePlanks = have('planks')
+    if (availablePlanks < times * 2 && occupied(actions.inventory()) === 36) {
+      // A smaller useful batch can consume stacks and give the Bot room to
+      // gather. Require the normal preview to prove a usable destination.
+      for (let smaller = Math.floor(availablePlanks / 2); smaller > 0; smaller--) {
+        if (ctx.operations?.crafting?.preview?.('minecraft:stick', { times: smaller })?.ready === true) return craft('stick', smaller)
+      }
+    }
+    const missing = await planks(times * 2)
+    return missing ?? craft('stick', times)
+  }
   async function craftAtTable (name, times) {
     const table = await station('crafting_table')
     return table.result ?? craft(name, times, table.position)
   }
   async function torches (amount) {
     const batches = Math.min(8, Math.ceil((amount - have('torch')) / 4))
-    if (have('stick') < batches) { const times = Math.min(8, Math.ceil((batches - have('stick')) / 4)), missing = await planks(2 * times); return missing ?? craft('stick', times) }
+    if (have('stick') < batches) return makeSticks(batches)
     const fuel = have('coal') + have('charcoal')
     if (fuel >= batches) return craft('torch', batches)
     // Charcoal comes from a log in a received furnace, using wooden fuel.
@@ -173,7 +187,7 @@ function createMineSupplies (ctx, actions, storage) {
     // gather tick for wood can end outside and continue from there.
     if (name === 'ladder') {
       const batches = Math.min(8, Math.ceil((amount - have(name)) / 3)), sticks = batches * 7
-      if (have('stick') < sticks) { const times = Math.min(8, Math.ceil((sticks - have('stick')) / 4)), missing = await planks(2 * times); return missing ?? craft('stick', times) }
+      if (have('stick') < sticks) return makeSticks(sticks)
       return craftAtTable(name, batches)
     }
     if (name === 'cobblestone_slab') {

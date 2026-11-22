@@ -21,13 +21,27 @@ function fixture (plankCounts, extra = {}) {
     walk: async () => { calls.push(['walk to workbench']); return { status: 'blocked' } },
     house: { craft: async (name, times) => { calls.push(['craft', name, times]); inv.items.push({ name, count: times * 4, slot: inv.items.length }) }, why: () => null }
   }
-  return { plan, calls, inv, branch: ctx.memory.early.mine.branch, supplies: createMineSupplies(ctx, actions, {}) }
+  return { plan, calls, inv, ctx, branch: ctx.memory.early.mine.branch, supplies: createMineSupplies(ctx, actions, {}) }
 }
 
 test('multi-batch ladder sticks reserve two planks per craft before crafting', async () => {
   const f = fixture([2])
   await f.supplies.ensure(f.plan, { layer: 'upper' })
   assert.deepEqual(f.calls, [['acquire', 'planks', 16]])
+})
+
+test('a full inventory makes the largest confirmed partial stick batch before seeking more planks', async () => {
+  const f = fixture([4, 4, 1], { ladder: 1, stick: 18 })
+  for (let slot = f.inv.items.length; slot < 36; slot++) f.inv.items.push({ slot, name: 'minecraft:torch', count: 1 })
+  const checked = []
+  f.ctx.operations = { crafting: { preview: (output, { times }) => {
+    assert.equal(output, 'minecraft:stick')
+    checked.push(times)
+    return { ready: times === 3 }
+  } } }
+  await f.supplies.ensure(f.plan, { layer: 'upper' })
+  assert.deepEqual(checked, [4, 3])
+  assert.deepEqual(f.calls, [['craft', 'minecraft:stick', 3]])
 })
 
 test('split plank stacks satisfy the recipe without an endless acquire-already-held loop', async () => {
