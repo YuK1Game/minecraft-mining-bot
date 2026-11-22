@@ -304,3 +304,21 @@ test('missing queued receipt prevents prediction commit and further ladder frame
   assert.equal(result.reason, 'LADDER_INPUT_RECEIPT_UNCONFIRMED')
   assert.equal(f.packets.length, 1)
 })
+
+
+test('a surface side landing can be reached over the last rung during a long ascent', async t => {
+  const top = 112
+  let corrected = false
+  const f = fixture(t, { landings: [65, top], startOffset: { x: -1.0125, z: -0.2 }, timeoutMs: 45000, interrupt: c => {
+    const p = c.server.position
+    if (corrected || p.y < top - 0.3) return
+    corrected = true
+    c.correct({ x: p.x, y: top + 0.93 + 1.62, z: p.z }, { delta: { x: 0, y: 0.13, z: 0 }, updatePeer: true })
+  } })
+  const result = await f.move(65, top, { from: { x: 0.4875, y: 65, z: 0.3 } })
+  assert.equal(corrected, true)
+  assert.equal(result.status, 'completed', JSON.stringify(result))
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(f.server.onGround, true)
+  assert.ok(f.packets.some(packet => packet.position.y > top + 2.62), 'the ascent briefly rises above the final rung')
+})

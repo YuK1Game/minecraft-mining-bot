@@ -66,7 +66,9 @@ function ladderPlan (request, getBlock, physics) {
   // received landing. Keep that actual origin for both the server witness
   // and physics. Its cell centre describes only the route's adjacency.
   const from = { ...origin }, fromCell = { x: Math.floor(origin.x) + 0.5, y: origin.y, z: Math.floor(origin.z) + 0.5 }
-  if (Math.hypot(fromCell.x - origin.x, fromCell.z - origin.z) > 0.2) fail('LADDER_ORIGIN_NOT_CENTRED')
+  // The body footprint is a square; a diagonal offset can still leave it
+  // fully over this one cell. landingAt checks the actual floor and body.
+  if (Math.max(Math.abs(fromCell.x - origin.x), Math.abs(fromCell.z - origin.z)) > 0.2 + 1e-7) fail('LADDER_ORIGIN_NOT_CENTRED')
   const centre = { x: column.x + 0.5, z: column.z + 0.5 }
   for (const p of [fromCell, to]) {
     const dx = Math.abs(p.x - centre.x), dz = Math.abs(p.z - centre.z)

@@ -129,7 +129,12 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
       safeBody(getBlock, run.physics, next.predicted.position, run.replayedCorrections > 0 ? run.plan : null)
       const np = next.predicted.position
       if (np.y < Math.min(plan.from.y, plan.to.y) - 0.35 || np.y > Math.max(plan.from.y, plan.to.y) + 1.25 || horizontal(np, plan.centre) > 1.25) fail('LADDER_LEFT_ROUTE')
-      if (horizontal(np, plan.centre) < 0.3 && !next.predicted.onGround && !ladderAt(getBlock, { x: plan.column.x, y: Math.floor(np.y), z: plan.column.z })) fail('LADDER_LOST_CONTACT')
+      // Upward momentum can carry the Bot above the last rung during a
+      // sideways dismount. That frame still has to fit the verified route.
+      const rungY = Math.floor(np.y)
+      const aboveExit = run.phase === 'dismount' && plan.direction === 1 &&
+        horizontal(plan.to, plan.centre) > 0.1 && rungY === plan.maxY + 1
+      if (!aboveExit && horizontal(np, plan.centre) < 0.3 && !next.predicted.onGround && !ladderAt(getBlock, { x: plan.column.x, y: rungY, z: plan.column.z })) fail('LADDER_LOST_CONTACT')
       const settled = run.phase === 'dismount' && !next.controls.sneak && next.predicted.onGround === true && horizontal(np, plan.to) <= 0.08 && Math.abs(np.y - plan.to.y) <= 0.04 && Math.hypot(next.predicted.velocity.x, next.predicted.velocity.z) < 0.008
       run.settledFrames = settled ? run.settledFrames + 1 : 0
       if (distance(run.physical.position, np) < 1e-5 && !settled) run.stalled++
