@@ -74,7 +74,9 @@ function createDiscard ({ client, getState, crafting, allocateRequestId, invento
       if (response.request_id !== mine.id) continue
       if (response.status !== 'ok' && response.status !== 0) { finish(mine, { phase: 'rejected', serverConfirmed: false, reason: `server status ${response.status}` }); return }
       try {
-        const row = responseSlot(response, 'main', mine.slot, mine.raw.count - mine.amount)
+        // Bedrock can omit the stack ID when the accepted drop emptied
+        // the requested slot. A remaining stack still needs its own ID.
+        const row = responseSlot(response, 'main', mine.slot, mine.raw.count - mine.amount, { allowMissingEmptyStackId: true })
         const item = receivedItem(mine.raw, row)
         validateMain(crafting, inventoryStore, mine.slot, mine.before, item)
         onInventory(mainDelta(mine.slot, item, mine.id, 'discard'))

@@ -69,6 +69,7 @@ async function discardJunk ({ drop, walk = null, why = () => null, cells = () =>
   let thrown = 0
   const names = []
   for (const stack of list) {
+    if (!throwable(getInventory()).some(item => item.slot === stack.slot && item.name === stack.name && item.count === stack.count)) continue
     try {
       const result = await drop(stack.slot, stack.count)
       if (result?.phase === 'completed') { thrown++; names.push(`${stack.name.replace('minecraft:', '')} ${stack.count}`) }
