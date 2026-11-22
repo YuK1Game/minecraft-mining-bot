@@ -186,6 +186,11 @@ test('capacity relief retains the same unfinished deep-shaft ladder and chest bu
   assert.equal(offered.filter(i=>i.name==='minecraft:ladder').reduce((n,i)=>n+i.count,0),2)
   assert.equal(keep.chest,plan.storage.reduce((sum,room)=>sum+room.pairs.length*2,0))
   assert.equal(offered.some(i=>i.name==='minecraft:diamond_pickaxe'),false)
+
+  inv.items = [{ slot: 0, name: 'minecraft:ladder', count: 27 }, { slot: 1, name: 'minecraft:stick', count: 33 }]
+  const stillBuilding = constructionKeep(ctx, { plan }, 'lower')
+  assert.equal(stillBuilding.stick, 56)
+  assert.deepEqual(capacityCargo(inv, stillBuilding), [])
 })
 
 test('a supported incomplete lower shaft returns to upper supplies by ladder without a surface walk',async t=>{
